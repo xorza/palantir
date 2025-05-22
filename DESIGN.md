@@ -90,35 +90,6 @@ Grid::new()
     );
 ```
 
-#### Internal Representations
-
-Internally, positioning and span are encapsulated as follows:
-
-```rust
-struct ColumnPosition {
-    start: usize,
-    span: usize,
-}
-
-struct RowPosition {
-    start: usize,
-    span: usize,
-}
-
-impl From<(usize, usize)> for ColumnPosition {
-    fn from(value: (usize, usize)) -> Self {
-        ColumnPosition { start: value.0, span: value.1 }
-    }
-}
-impl From<usize> for ColumnPosition {
-    fn from(value: usize) -> Self {
-        ColumnPosition { start: value.0, span: 1 }
-    }
-}
-
-// same for rows
-```
-
 ### Styling and Theming
 
 Components will support direct styling methods:
@@ -184,23 +155,6 @@ The measure pass determines the desired size of each element in the UI tree:
 - **Recursive Process**: This process starts from the root element and proceeds down the visual tree recursively.
 - **Goal**: Determine how much space each element would like to occupy without assigning final sizes or positions.
 
-```rust
-trait Measurable {
-    fn measure(&mut self, available_size: Size) -> Size;
-}
-
-impl Measurable for Text {
-    fn measure(&mut self, available_size: Size) -> Size {
-        // Calculate text dimensions based on font, content, and available space
-        let text_metrics = self.calculate_text_metrics(available_size);
-        Size::new(
-            text_metrics.width.min(available_size.width),
-            text_metrics.height.min(available_size.height)
-        )
-    }
-}
-```
-
 #### 2. Arrange Pass (Bottom-Up)
 
 The arrange pass finalizes the size and position of each element:
@@ -211,118 +165,20 @@ The arrange pass finalizes the size and position of each element:
 - **Final Layout**: Each element receives its exact size and position on the screen.
 
 ```rust
-trait Arrangeable {
-    fn arrange(&mut self, final_rect: Rect);
-}
-
-impl Arrangeable for Button {
-    fn arrange(&mut self, final_rect: Rect) {
-        self.bounds = final_rect;
-        // Apply alignment and arrange internal content
-        self.arrange_content(final_rect);
-    }
-}
-```
-
-### Layout Behavior Based on Sizing and Alignment
-
-The layout system supports different sizing behaviors determined during the measure and arrange passes:
-
-#### Auto Sizing
-When width or height is set to `Auto`, elements size themselves to fit their content:
-
-```rust
+// Auto sizing - fits content
 Text::new("Dynamic content")
     .width(SizeMode::Auto)
     .height(SizeMode::Auto)
-```
 
-#### Stretching
-When alignment is set to `Stretch` and no explicit size is provided, elements expand to fill available space:
-
-```rust
+// Stretching - fills available space
 Button::new("Stretch Button", || {})
     .horizontal_alignment(HorizontalAlignment::Stretch)
     .vertical_alignment(VerticalAlignment::Stretch)
-```
 
-#### Fixed Size
-Explicit width and height values force elements to use exact dimensions:
-
-```rust
+// Fixed size - explicit dimensions
 Text::new("Fixed size text")
-    .width(200.0.into())           // SizeMode from f32
+    .width(200.0.into())
     .height(SizeMode::Fixed(50.0))
-```
-
-### Layout Engine Implementation
-
-```rust
-pub struct LayoutEngine;
-
-impl LayoutEngine {
-    pub fn layout(root: &mut dyn UIElement, available_size: Size) {
-        // Measure pass: determine desired sizes
-        let desired_size = root.measure(available_size);
-        
-        // Arrange pass: assign final positions and sizes
-        let final_rect = Rect::new(0.0, 0.0, desired_size.width, desired_size.height);
-        root.arrange(final_rect);
-    }
-}
-
-pub trait UIElement: Measurable + Arrangeable {
-    fn get_children(&mut self) -> &mut [Box<dyn UIElement>];
-    fn get_desired_size(&self) -> Size;
-    fn get_bounds(&self) -> Rect;
-}
-```
-
-
-### Custom Layout Support
-
-The system provides mechanisms for custom layout behaviors through override methods:
-
-```rust
-pub trait CustomLayout: UIElement {
-    fn measure_override(&mut self, available_size: Size) -> Size {
-        // Default implementation calls standard measure
-        self.measure(available_size)
-    }
-    
-    fn arrange_override(&mut self, final_rect: Rect) {
-        // Default implementation calls standard arrange
-        self.arrange(final_rect)
-    }
-}
-```
-
-### Performance Considerations
-
-- **Layout Invalidation**: Only re-layout when necessary (content changes, size changes, etc.)
-- **Incremental Updates**: Support for partial layout updates when only specific elements change
-- **Caching**: Cache measurement results when possible to avoid redundant calculations
-
-```rust
-pub struct LayoutCache {
-    last_available_size: Option<Size>,
-    cached_desired_size: Option<Size>,
-    is_valid: bool,
-}
-
-impl LayoutCache {
-    pub fn invalidate(&mut self) {
-        self.is_valid = false;
-    }
-    
-    pub fn get_cached_size(&self, available_size: Size) -> Option<Size> {
-        if self.is_valid && self.last_available_size == Some(available_size) {
-            self.cached_desired_size
-        } else {
-            None
-        }
-    }
-}
 ```
 
 ---
