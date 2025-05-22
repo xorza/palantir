@@ -19,7 +19,9 @@ The goal of this project is to research and develop a Rust-based Graphical User 
 
 ### Pure Rust Implementation
 
-* No external dependencies apart from the Rust standard library.
+* No non-Rust runtime requirements.
+* The library ships as a single crate and **does not require** C/C++ tool-chains or system DLLs at runtime.  
+* Rust crates from crates.io (e.g. `wgpu`, `winit`, etc.) are allowed; foreign-language bindings are avoided.
 * Avoid usage of macros unless strictly necessary to maintain clarity.
 * GUI elements and logic must rely solely on Rust compiler capabilities.
 
@@ -30,13 +32,20 @@ The goal of this project is to research and develop a Rust-based Graphical User 
 
 ### Styling and Theming
 
-* Robust support for per-component styling and global theming.
-* Styles and themes should be intuitive to define and apply.
+* Support for per-component styling and global theming.
 
 ### Performance
 
 * The GUI should be performant, leveraging Rust’s speed and efficiency.
 * Minimize unnecessary redraws and resource usage.
+
+### Testing
+
+* Support headless renderer for layout unit testing.
+
+### Accessibility
+
+* Not considered in initial design.
 
 ---
 
@@ -72,10 +81,15 @@ The Grid component will explicitly declare child components using column and row
 Grid::new()
     .padding(10)
     .spacing(8)
-    .column(Column::fixed(100))
-    .column(Column::auto().min_width(50))
-    .row(Row::auto())
-    .row(Row::auto())
+    .columns([
+        Column::fixed(100),
+        Column::auto().min_width(50),
+    ])
+    .rows([
+        Row::auto(),
+        Row::auto(),
+        Row::auto(),
+    ])
     .add(
         (0, 1).into(),  // Column index and span
         0.into(),       // Row index
@@ -177,8 +191,8 @@ Button::new("Stretch Button", || {})
 
 // Fixed size - explicit dimensions
 Text::new("Fixed size text")
-    .width(200.0.into())
-    .height(SizeMode::Fixed(50.0))
+    .width(SizeMode::Fixed(50.0))
+    .height(200.0.into())           // either way
 ```
 
 ---
