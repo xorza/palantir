@@ -1,4 +1,4 @@
-# Rust GUI Library: Research & Development
+# Palantir - a rust GUI Library: Research & Development
 
 ## This document
 
