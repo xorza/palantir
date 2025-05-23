@@ -58,22 +58,24 @@ The goal of this project is to research and develop a Rust-based Graphical User 
 
 ### Declarative GUI Definition
 
-The GUI definitions will use a clear, concise, builder-pattern-inspired API:
+The GUI definitions use a clear, concise, builder-pattern-inspired API with trait-based styling:
 
 ```rust
-fn main() {
-    Gui::new(Window::new("My App", || {
-        VStack::new()
-            .padding(10)
-            .spacing(5)
-            .add(Text::new("Hello, world!")
-                .font_size(18)
-                .color(Color::Blue))
-            .add(Button::new("Click me!", || {
+VStack::new()
+    .padding(10.0)
+    .margin(5.0)
+    .add(
+        Label::from("Hello, world!")
+            .font_size(18)
+            .color(Colors::BLUE),
+    )
+    .add(
+        Button::new()
+            .item(Label::from("Hello, world!"))
+            .onclick(|| {
                 println!("Button clicked!");
-            }))
-    })).run();
-}
+            }),
+    );
 ```
 
 ### Grid Layout Design
@@ -94,15 +96,15 @@ Grid::new()
         Row::auto(),
     ])
     .add(
+        (0, 0).into(),  // Column 0, Row 0
         Text::new("Name:")
             .align(Alignment::Right)
-            .grid_pos((0, 0).into()), // Column 0, Row 0
     )
     .add(
+        (0, 1, 2, 1).into(),  // Column 0, Row 1, RowSpan 2, ColumnSpan 1
         Button::new("Submit", || println!("Submitted!"))
             .padding(5)
             .align(Alignment::Right)
-            .grid_pos((0, 1, 2, 1).into()), // Column 0, Row 1, RowSpan 2, ColumnSpan 1
     );
 ```
 
@@ -199,12 +201,27 @@ Text::new("Fixed size text")
 
 ---
 
-## Next Steps
+### Current Status and Next Steps
 
-* Define comprehensive components (Button, TextField, Label, etc.)
-* Explore efficient state management and reactive updates.
-* Prototype wgpu rendering backend.
-* Validate usability and performance metrics.
+#### Implemented Features
+- ✅ Core trait system (`View`, `Stylable`, `ItemsView`, `ItemView`)
+- ✅ Blanket implementation for automatic styling capabilities
+- ✅ Basic components (`VStack`, `Label`, `Button`)
+- ✅ Style system with padding, margin, font size, and color
+- ✅ Predefined color constants
+- ✅ Event handling foundation (onclick)
+
+#### In Progress
+- Layout calculation and rendering system
+- Additional UI components
+- State management
+
+#### Future Implementation
+- Grid layout system
+- Alignment system (VerticalAlignment, HorizontalAlignment)
+- Two-pass layout system (Measure/Arrange)
+- wgpu rendering backend
+- Global theming system
 
 ---
 
