@@ -83,4 +83,10 @@ impl View for Grid {
     }
 }
 
-impl ItemsView for Grid {}
+impl ItemsView for Grid {
+    fn items(&self) -> impl Iterator<Item = &dyn View> {
+        unimplemented!();
+        
+        std::iter::empty()
+    }
+}
