@@ -24,9 +24,9 @@ pub struct Edges {
     pub left: f32,
 }
 
-impl<T: Into<f32>> From<T> for Size {
-    fn from(value: T) -> Self {
-        Self::Fixed(value.into())
+impl From<f32> for Size {
+    fn from(value: f32) -> Self {
+        Self::Fixed(value)
     }
 }
 
@@ -71,6 +71,7 @@ impl PartialEq for Edges {
             && nan_aware_eq(self.left, other.left)
     }
 }
+
 impl Eq for Edges {}
 
 impl From<f32> for Edges {
@@ -84,6 +85,7 @@ impl From<i32> for Edges {
         Self::all(value as f32)
     }
 }
+
 impl From<u32> for Edges {
     fn from(value: u32) -> Self {
         Self::all(value as f32)

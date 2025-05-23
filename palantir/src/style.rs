@@ -28,7 +28,7 @@ pub struct Style {
 }
 
 pub trait Stylable: View {
-    fn style(mut self, style: Style) -> Self
+    fn set_style(mut self, style: Style) -> Self
     where
         Self: Sized,
     {
@@ -36,7 +36,7 @@ pub trait Stylable: View {
         self
     }
 
-    fn width<S: Into<Size>>(mut self, width: S) -> Self
+    fn set_width<S: Into<Size>>(mut self, width: S) -> Self
     where
         Self: Sized,
     {
@@ -44,21 +44,21 @@ pub trait Stylable: View {
         self
     }
 
-    fn height<S: Into<Size>>(mut self, height: S) -> Self
+    fn set_height<S: Into<Size>>(mut self, height: S) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.height = height.into();
         self
     }
-    fn min_width<S: Into<Size>>(mut self, width: S) -> Self
+    fn set_min_width<S: Into<Size>>(mut self, width: S) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.min_width = width.into();
         self
     }
-    fn min_height<S: Into<Size>>(mut self, height: S) -> Self
+    fn set_min_height<S: Into<Size>>(mut self, height: S) -> Self
     where
         Self: Sized,
     {
@@ -66,7 +66,7 @@ pub trait Stylable: View {
         self
     }
 
-    fn max_width<S: Into<Size>>(mut self, width: S) -> Self
+    fn set_max_width<S: Into<Size>>(mut self, width: S) -> Self
     where
         Self: Sized,
     {
@@ -74,7 +74,7 @@ pub trait Stylable: View {
         self
     }
 
-    fn max_height<S: Into<Size>>(mut self, height: S) -> Self
+    fn set_max_height<S: Into<Size>>(mut self, height: S) -> Self
     where
         Self: Sized,
     {
@@ -82,70 +82,79 @@ pub trait Stylable: View {
         self
     }
 
-    fn padding<E: Into<Edges>>(mut self, padding: E) -> Self
+    fn set_padding<E: Into<Edges>>(mut self, padding: E) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.padding = padding.into();
         self
     }
-    fn margin<E: Into<Edges>>(mut self, margin: E) -> Self
+   
+    fn set_margin<E: Into<Edges>>(mut self, margin: E) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.margin = margin.into();
         self
     }
-    fn font_size(mut self, size: u32) -> Self
+ 
+    fn set_font_size(mut self, size: u32) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.font_size = size;
         self
     }
-    fn color(mut self, color: rgb::RGBA8) -> Self
+  
+    fn set_font_color(mut self, color: rgb::RGBA8) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.color = color;
         self
     }
-    fn background_color(mut self, color: rgb::RGBA8) -> Self
+  
+    fn set_background_color(mut self, color: rgb::RGBA8) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.background_color = color;
         self
     }
-    fn border_width<E: Into<Edges>>(mut self, width: E) -> Self
+  
+    fn set_border_width<E: Into<Edges>>(mut self, width: E) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.border_width = width.into();
         self
     }
-    fn border_color(mut self, color: rgb::RGBA8) -> Self
+   
+    fn set_border_color(mut self, color: rgb::RGBA8) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.border_color = color;
         self
     }
-    fn border_radius(mut self, radius: f32) -> Self
+ 
+    fn set_border_radius(mut self, radius: f32) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.border_radius = radius;
         self
     }
-    fn v_align(mut self, align: Align) -> Self
+   
+    fn set_v_align(mut self, align: Align) -> Self
     where
         Self: Sized,
     {
         self.frag_mut().style.v_align = align;
         self
     }
-    fn h_align(mut self, align: Align) -> Self
+   
+    fn set_h_align(mut self, align: Align) -> Self
     where
         Self: Sized,
     {

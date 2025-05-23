@@ -24,22 +24,22 @@ mod tests {
     #[test]
     fn it_compiles() {
         VStack::default()
-            .padding(10.0)
-            .margin(5.0)
+            .set_padding(10.0)
+            .set_margin(5.0)
             .add_item(
                 Label::from("Hello, world!")
-                    .font_size(18)
-                    .color(Colors::BLUE),
+                    .set_font_size(18)
+                    .set_font_color(Colors::BLUE),
             )
             .add_item(
                 Button::default()
-                    .width(100.0)
-                    .background_color(Colors::RED)
+                    .set_width(100.0)
+                    .set_background_color(Colors::RED)
                     .set_item(
                         Label::from("Hello, world!")
-                            .v_align(Align::Center)
-                            .h_align(Align::Center)
-                            .color(Colors::WHITE),
+                            .set_v_align(Align::Center)
+                            .set_h_align(Align::Center)
+                            .set_font_color(Colors::WHITE),
                     )
                     .onclick(|| {
                         println!("Button clicked!");

@@ -5,14 +5,19 @@ use crate::*;
 pub trait View {
     fn frag(&self) -> &Fragment;
     fn frag_mut(&mut self) -> &mut Fragment;
+
+    fn id(mut self, id: String) -> Self
+    where
+        Self: Sized,
+    {
+        self.frag_mut().id = id;
+        self
+    }
 }
 
 pub trait ItemsView: View {
     fn items(&self) -> &Vec<Box<dyn View>> {
         &self.frag().items
-    }
-    fn items_mut(&mut self) -> &mut Vec<Box<dyn View>> {
-        &mut self.frag_mut().items
     }
 }
 pub trait ItemView: View {

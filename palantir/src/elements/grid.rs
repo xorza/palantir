@@ -72,16 +72,15 @@ impl Default for Grid {
 
 impl Grid {
     pub fn rows_cols(self, rows: u32, cols: u32) -> Self {
-        Self {
-            cols,
-            rows,
-            ..self
-        }
+        Self { cols, rows, ..self }
     }
-    pub fn add_item<P, T: View>(self, grid_pos: P, item: T) -> Self
+    pub fn add_item<P, T>(mut self, grid_pos: P, item: T) -> Self
     where
+        T: View + 'static,
         P: Into<GridPosition>,
     {
+        let grid_pos = grid_pos.into();
+        self.frag_mut().items.push(Box::new(item));
         self
     }
 }
