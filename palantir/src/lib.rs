@@ -1,21 +1,22 @@
-pub mod view;
 
-use view::Stylable;
-use view::VStack;
-use view::Label;
-use view::Button;
-use view::ItemsView;
-use view::ItemView;
-use view::Colors;
+mod elements;
+mod style;
+mod utils;
+mod view;
 
+pub use elements::*;
+pub use style::*;
+pub use utils::*;
+pub use view::*;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    
 
     #[test]
     fn it_works() {
-        VStack::new()
+        VStack::default()
             .padding(10.0)
             .margin(5.0)
             .add(
@@ -24,7 +25,7 @@ mod tests {
                     .color(Colors::BLUE),
             )
             .add(
-                Button::new()
+                Button::default()
                     .item(Label::from("Hello, world!"))
                     .onclick(|| {
                         println!("Button clicked!");
