@@ -91,16 +91,15 @@ Grid::new()
         Row::auto(),
     ])
     .add(
-        (0, 1).into(),  // Column index and span
-        0.into(),       // Row index
-        Text::new("Name:").align(Alignment::Right),
+        Text::new("Name:")
+            .align(Alignment::Right)
+            .grid_pos((0, 0).into()), // Column 0, Row 0
     )
     .add(
-        1.into(),       // Column index
-        (1, 2).into(),  // Row index and span
         Button::new("Submit", || println!("Submitted!"))
             .padding(5)
-            .align(Alignment::Right),
+            .align(Alignment::Right)
+            .grid_pos((0, 1, 2, 1).into()), // Column 0, Row 1, RowSpan 2, ColumnSpan 1
     );
 ```
 
