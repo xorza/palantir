@@ -7,5 +7,5 @@ edition = "2024"
 crate-type = ["lib"]
 
 
-
 [dependencies]
+rgb = { workspace = true }

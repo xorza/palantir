@@ -4,3 +4,10 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
+
+[workspace.dependencies]
+wgpu = { version = "*" }
+winit = { version = "*" }
+rgb = { version = "*" }
+glam = { version = "*" }
+
