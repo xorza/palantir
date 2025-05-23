@@ -9,12 +9,14 @@ mod layout;
 mod style;
 mod utils;
 mod view;
+mod fragment;
 
 pub use elements::*;
 pub use layout::*;
 pub use style::*;
 pub use utils::*;
 pub use view::*;
+pub use fragment::*;
 
 #[cfg(test)]
 mod tests {

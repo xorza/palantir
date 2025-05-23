@@ -20,7 +20,7 @@ impl Button {
 }
 
 impl View for Button {
-    fn style_mut(&mut self) -> &mut Style {
+    fn get_style_mut(&mut self) -> &mut Style {
         &mut self.style
     }
 }

@@ -61,6 +61,7 @@ impl Default for Grid {
         }
     }
 }
+
 impl Grid {
     pub fn columns_rows(self, columns: u32, rows: u32) -> Self {
         Self {
@@ -78,7 +79,7 @@ impl Grid {
 }
 
 impl View for Grid {
-    fn style_mut(&mut self) -> &mut Style {
+    fn get_style_mut(&mut self) -> &mut Style {
         &mut self.style
     }
 }
@@ -86,7 +87,8 @@ impl View for Grid {
 impl ItemsView for Grid {
     fn items(&self) -> impl Iterator<Item = &dyn View> {
         unimplemented!();
-        
+
         std::iter::empty()
     }
 }
+

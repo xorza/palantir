@@ -16,7 +16,7 @@ impl From<&str> for Label {
 }
 
 impl View for Label {
-    fn style_mut(&mut self) -> &mut Style {
+    fn get_style_mut(&mut self) -> &mut Style {
         &mut self.style
     }
 }
