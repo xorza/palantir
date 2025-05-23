@@ -2,8 +2,7 @@ use crate::*;
 
 #[derive(Debug, Default)]
 pub struct VStack {
-    style: Style,
-    items: Vec<Box<dyn View>>,
+    frag: Fragment,
 }
 
 impl VStack {
@@ -13,13 +12,12 @@ impl VStack {
 }
 
 impl View for VStack {
-    fn get_style_mut(&mut self) -> &mut Style {
-        &mut self.style
+    fn frag_mut(&mut self) -> &mut Fragment {
+        &mut self.frag
     }
 }
 
+
 impl ItemsView for VStack {
-    fn items(&self) -> impl Iterator<Item = &dyn View> {
-        self.items.iter().map(|item| item.as_ref())
-    }
+
 }

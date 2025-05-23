@@ -1,7 +1,7 @@
 use crate::*;
 
 pub struct Grid {
-    style: Style,
+    frag: Fragment,
     columns: u32,
     rows: u32,
 }
@@ -55,7 +55,7 @@ impl From<(u32, u32, u32, u32)> for GridPosition {
 impl Default for Grid {
     fn default() -> Self {
         Self {
-            style: Style::default(),
+            frag: Fragment::default(),
             columns: 1,
             rows: 1,
         }
@@ -79,16 +79,12 @@ impl Grid {
 }
 
 impl View for Grid {
-    fn get_style_mut(&mut self) -> &mut Style {
-        &mut self.style
+    fn frag_mut(&mut self) -> &mut Fragment {
+        &mut self.frag
     }
 }
 
 impl ItemsView for Grid {
-    fn items(&self) -> impl Iterator<Item = &dyn View> {
-        unimplemented!();
 
-        std::iter::empty()
-    }
 }
 

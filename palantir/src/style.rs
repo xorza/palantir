@@ -1,3 +1,5 @@
+use std::mem::swap;
+
 use crate::*;
 
 #[derive(Debug)]
@@ -26,6 +28,10 @@ pub struct Style {
 }
 
 pub trait Stylable {
+    fn style( self, style: Style) -> Self
+    where
+        Self: Sized;
+    
     fn padding<E: Into<Edges>>(self, padding: E) -> Self
     where
         Self: Sized;
@@ -59,11 +65,20 @@ pub trait Stylable {
 }
 
 impl<T: View> Stylable for T {
+
+    fn style(mut self, mut style: Style) -> Self
+    where
+        Self: Sized,
+    {
+        swap(&mut self.frag_mut().style, &mut style);
+        self
+    }
+
     fn padding<E: Into<Edges>>(mut self, padding: E) -> Self
     where
         Self: Sized,
     {
-        self.get_style_mut().padding = padding.into();
+        self.frag_mut().style.padding = padding.into();
         self
     }
 
@@ -71,7 +86,7 @@ impl<T: View> Stylable for T {
     where
         Self: Sized,
     {
-        self.get_style_mut().margin = margin.into();
+        self.frag_mut().style.margin = margin.into();
         self
     }
 
@@ -79,7 +94,7 @@ impl<T: View> Stylable for T {
     where
         Self: Sized,
     {
-        self.get_style_mut().font_size = size;
+        self.frag_mut().style.font_size = size;
         self
     }
 
@@ -87,49 +102,49 @@ impl<T: View> Stylable for T {
     where
         Self: Sized,
     {
-        self.get_style_mut().color = color;
+        self.frag_mut().style.color = color;
         self
     }
     fn background_color(mut self, color: rgb::RGBA8) -> Self
     where
         Self: Sized,
     {
-        self.get_style_mut().background_color = color;
+        self.frag_mut().style.background_color = color;
         self
     }
     fn border_width<E: Into<Edges>>(mut self, width: E) -> Self
     where
         Self: Sized,
     {
-        self.get_style_mut().border_width = width.into();
+        self.frag_mut().style.border_width = width.into();
         self
     }
     fn border_color(mut self, color: rgb::RGBA8) -> Self
     where
         Self: Sized,
     {
-        self.get_style_mut().border_color = color;
+        self.frag_mut().style.border_color = color;
         self
     }
     fn border_radius(mut self, radius: f32) -> Self
     where
         Self: Sized,
     {
-        self.get_style_mut().border_radius = radius;
+        self.frag_mut().style.border_radius = radius;
         self
     }
     fn v_align(mut self, align: Align) -> Self
     where
         Self: Sized,
     {
-        self.get_style_mut().v_align = align;
+        self.frag_mut().style.v_align = align;
         self
     }
     fn h_align(mut self, align: Align) -> Self
     where
         Self: Sized,
     {
-        self.get_style_mut().h_align = align;
+        self.frag_mut().style.h_align = align;
         self
     }
 }

@@ -27,15 +27,15 @@ mod tests {
         VStack::default()
             .padding(10.0)
             .margin(5.0)
-            .add(
+            .add_item(
                 Label::from("Hello, world!")
                     .font_size(18)
                     .color(Colors::BLUE),
             )
-            .add(
+            .add_item(
                 Button::default()
                     .background_color(Colors::RED)
-                    .item(
+                    .set_item(
                         Label::from("Hello, world!")
                             .v_align(Align::Center)
                             .h_align(Align::Center)
