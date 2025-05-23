@@ -6,12 +6,15 @@ pub struct Button {
 }
 
 impl Button {
-    pub fn onclick<F: FnOnce() -> ()>(self, _f: F) -> Self {
+    pub fn onclick<F: FnOnce()>(self, _f: F) -> Self {
         self
     }
 }
 
 impl View for Button {
+    fn frag(&self) -> &Fragment {
+        &self.frag
+    }
     fn frag_mut(&mut self) -> &mut Fragment {
         &mut self.frag
     }

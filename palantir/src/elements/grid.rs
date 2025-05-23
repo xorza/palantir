@@ -2,7 +2,7 @@ use crate::*;
 
 pub struct Grid {
     frag: Fragment,
-    columns: u32,
+    cols: u32,
     rows: u32,
 }
 
@@ -23,6 +23,13 @@ impl Default for GridPosition {
     }
 }
 impl GridPosition {
+    pub fn from_row_col(row: u32, column: u32) -> Self {
+        Self {
+            row,
+            column,
+            ..Default::default()
+        }
+    }
     pub fn row_span(mut self, span: u32) -> Self {
         self.row_span = span;
         self
@@ -32,6 +39,7 @@ impl GridPosition {
         self
     }
 }
+
 impl From<(u32, u32)> for GridPosition {
     fn from((row, column): (u32, u32)) -> Self {
         Self {
@@ -56,21 +64,21 @@ impl Default for Grid {
     fn default() -> Self {
         Self {
             frag: Fragment::default(),
-            columns: 1,
+            cols: 1,
             rows: 1,
         }
     }
 }
 
 impl Grid {
-    pub fn columns_rows(self, columns: u32, rows: u32) -> Self {
+    pub fn rows_cols(self, rows: u32, cols: u32) -> Self {
         Self {
-            columns,
+            cols,
             rows,
             ..self
         }
     }
-    pub fn add<P, T: View>(self, grid_pos: P, item: T) -> Self
+    pub fn add_item<P, T: View>(self, grid_pos: P, item: T) -> Self
     where
         P: Into<GridPosition>,
     {
@@ -79,12 +87,12 @@ impl Grid {
 }
 
 impl View for Grid {
+    fn frag(&self) -> &Fragment {
+        &self.frag
+    }
     fn frag_mut(&mut self) -> &mut Fragment {
         &mut self.frag
     }
 }
 
-impl ItemsView for Grid {
-
-}
-
+impl ItemsView for Grid {}

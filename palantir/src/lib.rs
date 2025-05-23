@@ -3,20 +3,19 @@
 #![allow(unused_variables)]
 #![allow(unreachable_code)]
 
-
 mod elements;
+mod fragment;
 mod layout;
 mod style;
 mod utils;
 mod view;
-mod fragment;
 
 pub use elements::*;
+pub use fragment::*;
 pub use layout::*;
 pub use style::*;
 pub use utils::*;
 pub use view::*;
-pub use fragment::*;
 
 #[cfg(test)]
 mod tests {
@@ -34,6 +33,7 @@ mod tests {
             )
             .add_item(
                 Button::default()
+                    .width(100.0)
                     .background_color(Colors::RED)
                     .set_item(
                         Label::from("Hello, world!")

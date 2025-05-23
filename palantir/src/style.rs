@@ -27,50 +27,58 @@ pub struct Style {
     pub border_radius: f32,
 }
 
-pub trait Stylable {
-    fn style( self, style: Style) -> Self
-    where
-        Self: Sized;
-    
-    fn padding<E: Into<Edges>>(self, padding: E) -> Self
-    where
-        Self: Sized;
-    fn margin<E: Into<Edges>>(self, margin: E) -> Self
-    where
-        Self: Sized;
-    fn font_size(self, size: u32) -> Self
-    where
-        Self: Sized;
-    fn color(self, color: rgb::RGBA8) -> Self
-    where
-        Self: Sized;
-    fn background_color(self, color: rgb::RGBA8) -> Self
-    where
-        Self: Sized;
-    fn border_width<E: Into<Edges>>(self, width: E) -> Self
-    where
-        Self: Sized;
-    fn border_color(self, color: rgb::RGBA8) -> Self
-    where
-        Self: Sized;
-    fn border_radius(self, radius: f32) -> Self
-    where
-        Self: Sized;
-    fn v_align(self, align: Align) -> Self
-    where
-        Self: Sized;
-    fn h_align(self, align: Align) -> Self
-    where
-        Self: Sized;
-}
-
-impl<T: View> Stylable for T {
-
-    fn style(mut self, mut style: Style) -> Self
+pub trait Stylable: View {
+    fn style(mut self, style: Style) -> Self
     where
         Self: Sized,
     {
-        swap(&mut self.frag_mut().style, &mut style);
+        self.frag_mut().style = style;
+        self
+    }
+
+    fn width<S: Into<Size>>(mut self, width: S) -> Self
+    where
+        Self: Sized,
+    {
+        self.frag_mut().style.width = width.into();
+        self
+    }
+
+    fn height<S: Into<Size>>(mut self, height: S) -> Self
+    where
+        Self: Sized,
+    {
+        self.frag_mut().style.height = height.into();
+        self
+    }
+    fn min_width<S: Into<Size>>(mut self, width: S) -> Self
+    where
+        Self: Sized,
+    {
+        self.frag_mut().style.min_width = width.into();
+        self
+    }
+    fn min_height<S: Into<Size>>(mut self, height: S) -> Self
+    where
+        Self: Sized,
+    {
+        self.frag_mut().style.min_height = height.into();
+        self
+    }
+
+    fn max_width<S: Into<Size>>(mut self, width: S) -> Self
+    where
+        Self: Sized,
+    {
+        self.frag_mut().style.max_width = width.into();
+        self
+    }
+
+    fn max_height<S: Into<Size>>(mut self, height: S) -> Self
+    where
+        Self: Sized,
+    {
+        self.frag_mut().style.max_height = height.into();
         self
     }
 
@@ -81,7 +89,6 @@ impl<T: View> Stylable for T {
         self.frag_mut().style.padding = padding.into();
         self
     }
-
     fn margin<E: Into<Edges>>(mut self, margin: E) -> Self
     where
         Self: Sized,
@@ -89,7 +96,6 @@ impl<T: View> Stylable for T {
         self.frag_mut().style.margin = margin.into();
         self
     }
-
     fn font_size(mut self, size: u32) -> Self
     where
         Self: Sized,
@@ -97,7 +103,6 @@ impl<T: View> Stylable for T {
         self.frag_mut().style.font_size = size;
         self
     }
-
     fn color(mut self, color: rgb::RGBA8) -> Self
     where
         Self: Sized,
@@ -148,6 +153,8 @@ impl<T: View> Stylable for T {
         self
     }
 }
+
+impl<T: View> Stylable for T {}
 
 impl Default for Style {
     fn default() -> Self {

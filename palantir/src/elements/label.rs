@@ -16,6 +16,9 @@ impl From<&str> for Label {
 }
 
 impl View for Label {
+    fn frag(&self) -> &Fragment {
+        &self.frag
+    }
     fn frag_mut(&mut self) -> &mut Fragment {
         &mut self.frag
     }
