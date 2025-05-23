@@ -5,6 +5,7 @@
 This document describes vision, goals, and design decisions for the Palantir project. It serves as a reference for contributors to understand the project's direction and design principles.
 It is intended to be a living document, evolving as the project progresses. Contributors are encouraged to refer to this document for guidance and to update it with new insights or changes in direction as they arise.
 It will be continually updated as the project evolves to ensure clarity and alignment for all contributors.
+It should avoid describing implementation details, focusing instead on high-level API.
 
 ## Goal
 

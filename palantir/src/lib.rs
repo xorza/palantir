@@ -1,13 +1,11 @@
 pub mod view;
 
-use view::View;
 use view::Stylable;
 use view::VStack;
 use view::Label;
 use view::Button;
 use view::ItemsView;
 use view::ItemView;
-use view::Style;
 use view::Colors;
 
 
