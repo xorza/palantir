@@ -1,35 +1,30 @@
 use crate::*;
 
-#[derive(Debug, Default, Clone, Copy)]
-pub enum VAlign {
-    #[default]
-    Stretch,
-    Top,
-    Center,
-    Bottom,
-}
 
-#[derive(Debug, Default, Clone, Copy)]
-pub enum HAlign {
-    #[default]
-    Stretch,
-    Left,
-    Center,
-    Right,
-}
 
 #[derive(Debug)]
 pub struct Style {
+    pub width: Size,
+    pub height: Size,
+    pub min_width: Size,
+    pub min_height: Size,
+    pub max_width: Size,
+    pub max_height: Size,
+
+    pub v_align: Align,
+    pub h_align: Align,
+
     pub padding: f32,
     pub margin: f32,
+
     pub font_size: u32,
+
     pub color: rgb::RGBA8,
-    pub v_align: VAlign,
-    pub h_align: HAlign,
+    pub background_color: rgb::RGBA8,
+    
     pub border_width: f32,
     pub border_color: rgb::RGBA8,
     pub border_radius: f32,
-    pub background_color: rgb::RGBA8,
 }
 
 pub trait Stylable {
@@ -57,10 +52,10 @@ pub trait Stylable {
     fn border_radius(self, radius: f32) -> Self
     where
         Self: Sized;
-    fn v_align(self, align: VAlign) -> Self
+    fn v_align(self, align: Align) -> Self
     where
         Self: Sized;
-    fn h_align(self, align: HAlign) -> Self
+    fn h_align(self, align: Align) -> Self
     where
         Self: Sized;
 
@@ -126,14 +121,14 @@ impl<T: View> Stylable for T {
         self.style_mut().border_radius = radius;
         self
     }
-    fn v_align(mut self, align: VAlign) -> Self
+    fn v_align(mut self, align: Align) -> Self
     where
         Self: Sized,
     {
         self.style_mut().v_align = align;
         self
     }
-    fn h_align(mut self, align: HAlign) -> Self
+    fn h_align(mut self, align: Align) -> Self
     where
         Self: Sized,
     {
@@ -146,13 +141,24 @@ impl<T: View> Stylable for T {
 impl Default for Style {
     fn default() -> Self {
         Self {
+            width:  Size::Auto,
+            height: Size::Auto,
+            min_width: Size::Auto,
+            min_height: Size::Auto,
+            max_width: Size::Auto,
+            max_height: Size::Auto,
+            
+            v_align: Align::Stretch,
+            h_align: Align::Stretch,
+
             padding: 2.0,
             margin: 2.0,
+
             font_size: 12,
+
             color: Colors::WHITE,
             background_color: Colors::TRANSPARENT,
-            v_align: VAlign::Stretch,
-            h_align: HAlign::Stretch,
+
             border_width: 0.0,
             border_color: Colors::WHITE,
             border_radius: 0.0,

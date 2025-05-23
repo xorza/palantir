@@ -1,10 +1,16 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+
 
 mod elements;
+mod layout;
 mod style;
 mod utils;
 mod view;
 
 pub use elements::*;
+pub use layout::*;
 pub use style::*;
 pub use utils::*;
 pub use view::*;
@@ -12,10 +18,9 @@ pub use view::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
-    fn it_works() {
+    fn it_compiles() {
         VStack::default()
             .padding(10.0)
             .margin(5.0)
@@ -26,7 +31,13 @@ mod tests {
             )
             .add(
                 Button::default()
-                    .item(Label::from("Hello, world!"))
+                    .background_color(Colors::RED)
+                    .item(
+                        Label::from("Hello, world!")
+                            .v_align(Align::Center)
+                            .h_align(Align::Center)
+                            .color(Colors::WHITE),
+                    )
                     .onclick(|| {
                         println!("Button clicked!");
                     }),
