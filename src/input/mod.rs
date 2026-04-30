@@ -71,6 +71,15 @@ pub struct ResponseState {
     pub clicked: bool,
 }
 
+/// One widget's hit-test entry from last frame: identity, rect, sense.
+/// Stored as the unit cell of `InputState::last_rects`.
+#[derive(Clone, Copy, Debug)]
+struct HitEntry {
+    id: WidgetId,
+    rect: Rect,
+    sense: Sense,
+}
+
 /// All UI-input bookkeeping that lives across frames: pointer position,
 /// active (captured) widget, the topmost widget under the pointer, last-frame's
 /// rect cache, and clicks emitted this frame.
@@ -81,10 +90,10 @@ pub struct InputState {
     pointer: PointerState,
     active: Option<WidgetId>,
     hovered: Option<WidgetId>,
-    /// `(WidgetId, Rect, Sense)` from last frame's tree, in pre-order paint order.
-    /// Reverse iter = topmost-first for hit-testing. `Sense` filters out
-    /// non-interactive widgets so clicks pass through containers.
-    last_rects: Vec<(WidgetId, Rect, Sense)>,
+    /// Last-frame's hit-test entries, in pre-order paint order.
+    /// Reverse iter = topmost-first; `Sense` filters out non-interactive widgets
+    /// so clicks pass through containers.
+    last_rects: Vec<HitEntry>,
     clicked_this_frame: HashSet<WidgetId>,
 }
 
@@ -140,7 +149,11 @@ impl InputState {
     pub(crate) fn end_frame(&mut self, tree: &Tree) {
         self.last_rects.clear();
         for node in &tree.nodes {
-            self.last_rects.push((node.id, node.rect, node.sense));
+            self.last_rects.push(HitEntry {
+                id: node.id,
+                rect: node.rect,
+                sense: node.sense,
+            });
         }
         self.clicked_this_frame.clear();
 
@@ -179,9 +192,9 @@ impl InputState {
     /// and decorative overlays. Bounding-rect only for v1; per-node `HitShape`
     /// lands later.
     fn hit_test(&self, pos: Vec2) -> Option<WidgetId> {
-        for (id, rect, sense) in self.last_rects.iter().rev() {
-            if sense.is_interactive() && rect.contains(pos) {
-                return Some(*id);
+        for e in self.last_rects.iter().rev() {
+            if e.sense.is_interactive() && e.rect.contains(pos) {
+                return Some(e.id);
             }
         }
         None
@@ -190,11 +203,11 @@ impl InputState {
     fn rect_for(&self, id: WidgetId) -> Option<Rect> {
         self.last_rects
             .iter()
-            .find_map(|(i, r, _)| (*i == id).then_some(*r))
+            .find_map(|e| (e.id == id).then_some(e.rect))
     }
 
     fn contains_id(&self, id: WidgetId) -> bool {
-        self.last_rects.iter().any(|(i, _, _)| *i == id)
+        self.last_rects.iter().any(|e| e.id == id)
     }
 }
 
