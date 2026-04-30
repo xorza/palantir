@@ -2,14 +2,6 @@ transform
 
 
 
-
-
-## Cheap wins SUMMARY explicitly calls out and we're missing
-
-These are listed in §3 "Recommended Palantir extensions" in cheapness order:
-
-1. **`gap` on `HStack`/`VStack`** — SUMMARY says ~5 lines in `arrange_stack`. Currently zero. Trivial.
-2. **`Fill { weight: f32 }`** — change `Sizing::Fill` to carry a weight (default 1.0); `arrange_stack`'s `fill_share = leftover * (this_weight / total_weight)`. Mirrors morphorm `Stretch(f)` and CSS `flex-grow: N`.
 3. **Per-child cross-axis `align: Start | Center | End | Stretch`** — currently `arrange_stack` always pins cross-axis to top-left for non-Fill. Mirrors WPF `HorizontalAlignment`.
 
 ## Real simplifications/generalizations

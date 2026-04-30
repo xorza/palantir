@@ -269,22 +269,42 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
 
             // Row 2: ZStack with a tinted bg + a button that spills outside it via
             // negative margins. Demonstrates layered painting and CSS-style margin.
-            ZStack::with_id("spill_demo")
-                .size((Sizing::Fixed(280.0), Sizing::FILL))
-                .padding(16.0)
-                .margin((0.0, 24.0, 0.0, 0.0))
-                .fill(Color::rgb(0.16, 0.20, 0.28))
-                .stroke(Stroke {
-                    width: 1.0,
-                    color: Color::rgb(0.30, 0.36, 0.46),
-                })
-                .radius(12.0)
+            //
+            //
+            HStack::new()
+                .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Button::with_id("spiller")
-                        .label("spilling")
-                        .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
-                        .margin((-24.0, -16.0, 0.0, 0.0))
-                        .show(ui);
+                    ZStack::with_id("spill_demo")
+                        .size((Sizing::Fixed(280.0), Sizing::FILL))
+                        .padding(16.0)
+                        .margin((0.0, 24.0, 0.0, 0.0))
+                        .fill(Color::rgb(0.16, 0.20, 0.28))
+                        .stroke(Stroke {
+                            width: 1.0,
+                            color: Color::rgb(0.30, 0.36, 0.46),
+                        })
+                        .radius(12.0)
+                        .show(ui, |ui| {
+                            Button::with_id("spiller")
+                                .label("spilling")
+                                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                                .margin((-24.0, -16.0, 0.0, 0.0))
+                                .show(ui);
+                        });
+
+                    ZStack::new()
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(16.0)
+                        .margin(5)
+                        .fill(Color::rgb(0.16, 0.20, 0.28))
+                        .stroke(Stroke {
+                            width: 1.0,
+                            color: Color::rgb(0.30, 0.36, 0.46),
+                        })
+                        .radius(12.0)
+                        .show(ui, |ui| {
+                            Button::new().label("spilling").show(ui);
+                        });
                 });
         });
 }
