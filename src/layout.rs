@@ -8,47 +8,54 @@ pub fn run(tree: &mut Tree, root: NodeId, surface: Rect) {
     arrange(tree, root, surface);
 }
 
-/// Bottom-up. Returns the node's desired size and stores it on the node.
+/// Bottom-up. Returns the node's desired *slot* size (including its own margin)
+/// and stores it on the node.
 fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
     let style = tree.node(node).style;
     let layout = tree.node(node).layout;
 
-    // Inner available = available minus padding.
+    // Inner available = available minus margin minus padding.
     let inner_avail = Size::new(
-        (available.w - style.padding.horiz()).max(0.0),
-        (available.h - style.padding.vert()).max(0.0),
+        (available.w - style.margin.horiz() - style.padding.horiz()).max(0.0),
+        (available.h - style.margin.vert() - style.padding.vert()).max(0.0),
     );
 
-    // Children-derived size (content size in inner coords).
     let content = match layout {
         LayoutKind::Leaf => leaf_content_size(tree, node),
         LayoutKind::HStack => hstack_measure(tree, node, inner_avail),
         LayoutKind::VStack => vstack_measure(tree, node, inner_avail),
     };
 
-    // Apply style sizing on the outer (padded) box. Fixed/Fill specify outer size;
-    // Hug returns content + padding.
+    let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
+    let hug_h = content.h + style.padding.vert() + style.margin.vert();
     let desired = Size::new(
-        resolve_axis(style.size.w, content.w + style.padding.horiz(), available.w),
-        resolve_axis(style.size.h, content.h + style.padding.vert(), available.h),
+        resolve_axis(style.size.w, hug_w, available.w, style.margin.horiz()),
+        resolve_axis(style.size.h, hug_h, available.h, style.margin.vert()),
     );
 
     tree.node_mut(node).desired = desired;
     desired
 }
 
-/// Top-down. Assigns final rect to `node`, recurses into children.
-fn arrange(tree: &mut Tree, node: NodeId, final_rect: Rect) {
-    tree.node_mut(node).rect = final_rect;
+/// Top-down. `slot` is the rect the parent reserved (including this node's margin).
+fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
     let style = tree.node(node).style;
     let layout = tree.node(node).layout;
 
-    // Inner rect after padding.
-    let inner = Rect {
-        min: final_rect.min + Vec2::new(style.padding.left, style.padding.top),
+    let rendered = Rect {
+        min: slot.min + Vec2::new(style.margin.left, style.margin.top),
         size: Size::new(
-            (final_rect.width() - style.padding.horiz()).max(0.0),
-            (final_rect.height() - style.padding.vert()).max(0.0),
+            (slot.width() - style.margin.horiz()).max(0.0),
+            (slot.height() - style.margin.vert()).max(0.0),
+        ),
+    };
+    tree.node_mut(node).rect = rendered;
+
+    let inner = Rect {
+        min: rendered.min + Vec2::new(style.padding.left, style.padding.top),
+        size: Size::new(
+            (rendered.width() - style.padding.horiz()).max(0.0),
+            (rendered.height() - style.padding.vert()).max(0.0),
         ),
     };
 
@@ -59,9 +66,9 @@ fn arrange(tree: &mut Tree, node: NodeId, final_rect: Rect) {
     }
 }
 
-fn resolve_axis(s: Sizing, hug_outer: f32, available: f32) -> f32 {
+fn resolve_axis(s: Sizing, hug_outer: f32, available: f32, margin: f32) -> f32 {
     match s {
-        Sizing::Fixed(v) => v,
+        Sizing::Fixed(v) => v + margin,
         Sizing::Hug => hug_outer,
         Sizing::Fill => {
             if available.is_finite() {
