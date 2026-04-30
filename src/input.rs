@@ -13,10 +13,15 @@ pub enum PointerButton {
 
 /// Palantir-native input event. Independent of any windowing toolkit.
 /// Convert from winit via [`InputEvent::from_winit`] (typical apps use
-/// [`Ui::handle_event`] which does the conversion + dispatch in one call).
+/// `Ui::handle_event` which does the conversion + dispatch in one call).
+///
+/// All coordinates are in **logical pixels** (DIPs). Backends are responsible
+/// for any physical→logical conversion before dispatching.
 #[derive(Clone, Copy, Debug)]
 pub enum InputEvent {
+    /// Pointer position in logical pixels, relative to the surface origin.
     PointerMoved(Vec2),
+    /// Pointer left the surface; clears `hovered`.
     PointerLeft,
     PointerPressed(PointerButton),
     PointerReleased(PointerButton),
@@ -57,6 +62,7 @@ pub struct PointerState {
 }
 
 /// Snapshot of one widget's interaction state for the current frame.
+/// `rect` is the widget's last-frame logical-pixel rect (`None` on first frame).
 #[derive(Default, Clone, Copy, Debug)]
 pub struct ResponseState {
     pub rect: Option<Rect>,
@@ -123,7 +129,8 @@ impl InputState {
                     self.clicked_this_frame.insert(a);
                 }
             }
-            _ => {}
+            // Right/Middle: not yet wired through to widgets. Silently drop.
+            InputEvent::PointerPressed(_) | InputEvent::PointerReleased(_) => {}
         }
     }
 
@@ -172,10 +179,7 @@ impl InputState {
     }
 
     fn recompute_hover(&mut self) {
-        self.hovered = match self.pointer.pos {
-            Some(p) => self.hit_test(p),
-            None => None,
-        };
+        self.hovered = self.pointer.pos.and_then(|p| self.hit_test(p));
     }
 
     /// Reverse-iter `last_rects` → topmost-first under our pre-order paint walk.
