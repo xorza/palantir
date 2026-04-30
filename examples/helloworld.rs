@@ -2,7 +2,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use palantir::{
-    Button, ButtonStyle, Color, HStack, InputEvent, Rect, Sizing, Ui, layout, renderer::Renderer,
+    Button, ButtonStyle, Color, HStack, InputEvent, Rect, Sizing, Stroke, Ui, VStack, ZStack,
+    layout, renderer::Renderer,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -233,29 +234,57 @@ impl State {
 }
 
 fn build_ui(ui: &mut Ui, clicks: &mut u32) {
-    HStack::new().padding(16.0).show(ui, |ui| {
-        let counter = Button::new()
-            .label(format!("clicks: {clicks}"))
-            .size((Sizing::Fill, Sizing::Hug))
-            .min_size((120.0, 60.0))
-            .margin((0.0, 0.0, 8.0, 0.0))
-            .show(ui);
-        if counter.clicked() {
-            *clicks += 1;
-            tracing::info!(clicks = *clicks, "click");
-        }
+    VStack::new()
+        .padding(16.0)
+        .size((Sizing::Fill, Sizing::Fill))
+        .show(ui, |ui| {
+            // Row 1: counter + reset buttons.
+            HStack::new()
+                .size((Sizing::Fill, Sizing::Hug))
+                .show(ui, |ui| {
+                    let counter = Button::new()
+                        .label(format!("clicks: {clicks}"))
+                        .size((Sizing::Fill, Sizing::Hug))
+                        .min_size((120.0, 60.0))
+                        .margin((0.0, 0.0, 8.0, 0.0))
+                        .show(ui);
+                    if counter.clicked() {
+                        *clicks += 1;
+                        tracing::info!(clicks = *clicks, "click");
+                    }
 
-        let reset = Button::new()
-            .label("reset")
-            .style(ButtonStyle::outlined())
-            .size((Sizing::Fill, Sizing::Hug))
-            .min_size((0.0, 10.0))
-            .margin((4.0, 24.0, 32.0, 0.0))
-            .radius(4)
-            .show(ui);
-        if reset.clicked() {
-            *clicks = 0;
-            tracing::info!("reset");
-        }
-    });
+                    let reset = Button::new()
+                        .label("reset")
+                        .style(ButtonStyle::outlined())
+                        .size((Sizing::Fill, Sizing::Hug))
+                        .min_size((0.0, 10.0))
+                        .margin((4.0, 24.0, 32.0, 0.0))
+                        .radius(4)
+                        .show(ui);
+                    if reset.clicked() {
+                        *clicks = 0;
+                        tracing::info!("reset");
+                    }
+                });
+
+            // Row 2: ZStack with a tinted bg + a button that spills outside it via
+            // negative margins. Demonstrates layered painting and CSS-style margin.
+            ZStack::with_id("spill_demo")
+                .size((Sizing::Fixed(280.0), Sizing::Fill))
+                .padding(16.0)
+                .margin((0.0, 24.0, 0.0, 0.0))
+                .fill(Color::rgb(0.16, 0.20, 0.28))
+                .stroke(Stroke {
+                    width: 1.0,
+                    color: Color::rgb(0.30, 0.36, 0.46),
+                })
+                .radius(12.0)
+                .show(ui, |ui| {
+                    Button::with_id("spiller")
+                        .label("spilling")
+                        .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                        .margin((-24.0, -16.0, 0.0, 0.0))
+                        .show(ui);
+                });
+        });
 }
