@@ -95,6 +95,13 @@ pub struct InputState {
     /// so clicks pass through containers.
     last_rects: Vec<HitEntry>,
     clicked_this_frame: HashSet<WidgetId>,
+
+    /// Per-node disabled cascade scratch. Reused frame-to-frame; cleared in
+    /// `end_frame`.
+    effective_disabled: Vec<bool>,
+    /// Per-node clip-rect cascade scratch (clip inherited by descendants).
+    /// `None` entry = no clipping ancestor. Reused frame-to-frame.
+    clip_for_descendants: Vec<Option<Rect>>,
 }
 
 impl Default for InputState {
@@ -111,6 +118,8 @@ impl InputState {
             hovered: None,
             last_rects: Vec::new(),
             clicked_this_frame: HashSet::new(),
+            effective_disabled: Vec::new(),
+            clip_for_descendants: Vec::new(),
         }
     }
 
@@ -168,19 +177,23 @@ impl InputState {
     ///   panel don't pick up clicks on the overflow.
     pub(crate) fn end_frame(&mut self, tree: &Tree) {
         self.last_rects.clear();
-        let mut effective_disabled: Vec<bool> = Vec::with_capacity(tree.nodes.len());
-        // Clip rect inherited from clipping ancestors. `None` = no ancestor clip.
-        // This node's own `clip` does NOT apply to itself, only to descendants.
-        let mut clip_for_descendants: Vec<Option<Rect>> = Vec::with_capacity(tree.nodes.len());
+        self.effective_disabled.clear();
+        self.clip_for_descendants.clear();
+        self.last_rects.reserve(tree.nodes.len());
+        self.effective_disabled.reserve(tree.nodes.len());
+        self.clip_for_descendants.reserve(tree.nodes.len());
+
         for node in &tree.nodes {
             let parent_disabled = node
                 .parent
-                .map(|p| effective_disabled[p.0 as usize])
+                .map(|p| self.effective_disabled[p.0 as usize])
                 .unwrap_or(false);
             let me_disabled = parent_disabled || node.element.disabled;
-            effective_disabled.push(me_disabled);
+            self.effective_disabled.push(me_disabled);
 
-            let parent_clip = node.parent.and_then(|p| clip_for_descendants[p.0 as usize]);
+            let parent_clip = node
+                .parent
+                .and_then(|p| self.clip_for_descendants[p.0 as usize]);
             let visible_rect = match parent_clip {
                 Some(c) => node.rect.intersect(c),
                 None => node.rect,
@@ -194,7 +207,7 @@ impl InputState {
             } else {
                 parent_clip
             };
-            clip_for_descendants.push(descendant_clip);
+            self.clip_for_descendants.push(descendant_clip);
 
             let sense = if me_disabled {
                 Sense::NONE
