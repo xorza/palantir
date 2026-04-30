@@ -1,4 +1,4 @@
-use crate::geom::{Color, Rect, Stroke};
+use crate::primitives::{Color, Corners, Rect, Stroke};
 use glam::Vec2;
 
 /// Where a shape sits inside its owner Node.
@@ -15,7 +15,7 @@ pub enum ShapeRect {
 pub enum Shape {
     RoundedRect {
         bounds: ShapeRect,
-        radius: f32,
+        radius: Corners,
         fill: Color,
         stroke: Option<Stroke>,
     },
@@ -31,6 +31,6 @@ pub enum Shape {
         offset: Vec2,
         text: String,
         color: Color,
-        measured: crate::geom::Size,
+        measured: crate::primitives::Size,
     },
 }

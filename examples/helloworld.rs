@@ -1,17 +1,13 @@
-use palantir::{layout, Button, LayoutKind, Rect, Sizing, Style, Ui, WidgetId};
+use palantir::{layout, Button, HStack, Rect, Sizing, Ui};
 
 fn main() {
     let mut ui = Ui::new();
     ui.begin_frame();
 
-    let root = ui.begin_node(
-        WidgetId::from_hash("root"),
-        Style::default(),
-        LayoutKind::HStack,
-    );
-    Button::new("a").label("Hello").show(&mut ui);
-    Button::new("b").label("World").width(Sizing::Fill).show(&mut ui);
-    ui.end_node(root);
+    let root = HStack::new("root").show(&mut ui, |ui| {
+        Button::new("a").label("Hello").show(ui);
+        Button::new("b").label("World").width(Sizing::Fill).show(ui);
+    }).node;
 
     layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 800.0, 600.0));
 
