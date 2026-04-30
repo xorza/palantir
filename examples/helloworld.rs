@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use palantir::{Button, HStack, Rect, Sizing, Spacing, Ui, layout, renderer::Renderer};
+use palantir::{Button, HStack, Rect, Sizing, Ui, layout, renderer::Renderer};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -155,11 +155,12 @@ impl State {
 }
 
 fn build_ui(ui: &mut Ui) {
-    HStack::new().padding(Spacing::all(16.0)).show(ui, |ui| {
-        Button::new().label("Hello").show(ui);
+    HStack::new().padding(16.0).show(ui, |ui| {
+        Button::new().label("Hello").margin((0.0, 0.0, 8.0, 0.0)).show(ui);
         Button::new()
             .label("World")
             .size((Sizing::Fill, Sizing::Hug))
+            .margin((4.0, 24.0, 32.0, 0.0))
             .show(ui);
     });
 }

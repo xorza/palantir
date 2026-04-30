@@ -9,6 +9,7 @@ use std::hash::Hash;
 pub struct Button {
     id: WidgetId,
     size: Sizes,
+    margin: Spacing,
     fill: Color,
     radius: Corners,
     label: String,
@@ -25,6 +26,7 @@ impl Button {
         Self {
             id: WidgetId::from_hash(id),
             size: Sizes::HUG,
+            margin: Spacing::ZERO,
             fill: Color::rgb(0.2, 0.4, 0.8),
             radius: Corners::all(4.0),
             label: String::new(),
@@ -32,6 +34,7 @@ impl Button {
     }
 
     pub fn size(mut self, s: impl Into<Sizes>) -> Self { self.size = s.into(); self }
+    pub fn margin(mut self, m: impl Into<Spacing>) -> Self { self.margin = m.into(); self }
     pub fn fill(mut self, c: Color) -> Self { self.fill = c; self }
     pub fn radius(mut self, r: impl Into<Corners>) -> Self { self.radius = r.into(); self }
     pub fn label(mut self, s: impl Into<String>) -> Self { self.label = s.into(); self }
@@ -40,7 +43,7 @@ impl Button {
         let style = Style {
             size: self.size,
             padding: Spacing::all(8.0),
-            ..Default::default()
+            margin: self.margin,
         };
 
         let node = ui.node(self.id, style, LayoutKind::Leaf, |ui| {

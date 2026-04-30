@@ -24,8 +24,8 @@ impl Stack {
     }
 
     pub fn size(mut self, s: impl Into<Sizes>) -> Self { self.size = s.into(); self }
-    pub fn padding(mut self, p: Spacing) -> Self { self.padding = p; self }
-    pub fn margin(mut self, m: Spacing) -> Self { self.margin = m; self }
+    pub fn padding(mut self, p: impl Into<Spacing>) -> Self { self.padding = p.into(); self }
+    pub fn margin(mut self, m: impl Into<Spacing>) -> Self { self.margin = m.into(); self }
 
     pub fn show(&self, ui: &mut Ui, f: impl FnOnce(&mut Ui)) -> Response {
         let style = Style {
