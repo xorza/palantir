@@ -24,6 +24,7 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
         LayoutKind::Leaf => leaf_content_size(tree, node),
         LayoutKind::HStack => hstack_measure(tree, node, inner_avail),
         LayoutKind::VStack => vstack_measure(tree, node, inner_avail),
+        LayoutKind::ZStack => zstack_measure(tree, node),
     };
 
     let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
@@ -77,6 +78,7 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
         LayoutKind::Leaf => {}
         LayoutKind::HStack => arrange_stack(tree, node, inner, Axis::X),
         LayoutKind::VStack => arrange_stack(tree, node, inner, Axis::Y),
+        LayoutKind::ZStack => arrange_zstack(tree, node, inner),
     }
 }
 
@@ -219,6 +221,46 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         };
         arrange(tree, c, child_rect);
         cursor += main_size;
+    }
+}
+
+/// ZStack: children all at the same position (top-left of inner rect).
+/// Pass `INFINITY` on both axes during measure so `Fill` children fall back to
+/// intrinsic — otherwise the `Hug` panel would size to its own `Fill` children
+/// (recursive). Content size = `max(child desired)` per axis, so the panel
+/// hugs the largest child.
+fn zstack_measure(tree: &mut Tree, node: NodeId) -> Size {
+    let child_avail = Size::INF;
+    let kids: Vec<NodeId> = tree.children(node).collect();
+    let mut max_w = 0.0f32;
+    let mut max_h = 0.0f32;
+    for c in kids {
+        let d = measure(tree, c, child_avail);
+        max_w = max_w.max(d.w);
+        max_h = max_h.max(d.h);
+    }
+    Size::new(max_w, max_h)
+}
+
+/// Each child gets the full inner rect as its slot, sized per its own `Sizing`.
+/// Default position is top-left; per-child alignment lands later.
+fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
+    let kids: Vec<NodeId> = tree.children(node).collect();
+    for c in kids {
+        let d = tree.node(c).desired;
+        let s = tree.node(c).style;
+
+        let w = match s.size.w {
+            Sizing::Fill => inner.size.w,
+            _ => d.w,
+        };
+        let h = match s.size.h {
+            Sizing::Fill => inner.size.h,
+            _ => d.h,
+        };
+
+        let child_rect = Rect::new(inner.min.x, inner.min.y, w, h);
+        arrange(tree, c, child_rect);
     }
 }
 

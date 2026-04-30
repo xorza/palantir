@@ -1,6 +1,6 @@
 use crate::primitives::{Color, Rect, Sense, Sizing};
 use crate::shape::Shape;
-use crate::widgets::{Frame, HStack};
+use crate::widgets::{Button, Frame, HStack, Panel};
 use crate::{Ui, layout};
 
 #[test]
@@ -29,6 +29,91 @@ fn frame_paints_a_single_rounded_rect() {
     let r = ui.tree.node(frame_node.unwrap()).rect;
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);
+}
+
+#[test]
+fn panel_hugs_largest_child_and_layers_them() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let mut panel_node = None;
+    let mut a_node = None;
+    let mut b_node = None;
+    HStack::new().show(&mut ui, |ui| {
+        panel_node = Some(
+            Panel::with_id("card")
+                .padding(10.0)
+                .fill(Color::rgb(0.1, 0.1, 0.15))
+                .radius(8.0)
+                .show(ui, |ui| {
+                    a_node = Some(
+                        Button::with_id("a")
+                            .size((Sizing::Fixed(80.0), Sizing::Fixed(30.0)))
+                            .show(ui)
+                            .node,
+                    );
+                    b_node = Some(
+                        Button::with_id("b")
+                            .size((Sizing::Fixed(60.0), Sizing::Fixed(50.0)))
+                            .show(ui)
+                            .node,
+                    );
+                })
+                .node,
+        );
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+
+    // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
+    let panel = ui.tree.node(panel_node.unwrap()).rect;
+    assert_eq!(panel.size.w, 100.0);
+    assert_eq!(panel.size.h, 70.0);
+
+    // Both children laid out at panel's inner top-left (10, 10), at their own size.
+    let a = ui.tree.node(a_node.unwrap()).rect;
+    let b = ui.tree.node(b_node.unwrap()).rect;
+    assert_eq!((a.min.x, a.min.y), (10.0, 10.0));
+    assert_eq!((b.min.x, b.min.y), (10.0, 10.0));
+    assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
+    assert_eq!((b.size.w, b.size.h), (60.0, 50.0));
+
+    // Panel paints its bg shape; first shape on the panel node is the rect.
+    let shapes = ui.tree.shapes_of(panel_node.unwrap());
+    assert_eq!(shapes.len(), 1);
+    assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
+}
+
+#[test]
+fn panel_with_fill_child_grows_to_panel_inner() {
+    // Panel with Fixed size + Fill child: child fills panel's inner rect.
+    // (Root is an HStack so the panel's Fixed size is honored — root would
+    // otherwise expand to surface.)
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let mut child_node = None;
+    HStack::new().show(&mut ui, |ui| {
+        Panel::with_id("p")
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+            .padding(10.0)
+            .show(ui, |ui| {
+                child_node = Some(
+                    Frame::with_id("filler")
+                        .size((Sizing::Fill, Sizing::Fill))
+                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .show(ui)
+                        .node,
+                );
+            });
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+
+    let child = ui.tree.node(child_node.unwrap()).rect;
+    // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
+    assert_eq!(child.min.x, 10.0);
+    assert_eq!(child.min.y, 10.0);
+    assert_eq!(child.size.w, 180.0);
+    assert_eq!(child.size.h, 80.0);
 }
 
 #[test]
