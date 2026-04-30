@@ -9,6 +9,9 @@ pub enum LayoutKind {
     Leaf,
     HStack,
     VStack,
+    /// Children all laid out at the same position (top-left of inner rect),
+    /// each sized per its own `Sizing`. Used by `Panel`.
+    ZStack,
 }
 
 #[derive(Debug)]
