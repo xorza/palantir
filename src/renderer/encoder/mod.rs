@@ -44,6 +44,12 @@ pub fn encode(tree: &Tree, out: &mut Vec<RenderCmd>) {
 fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
     let node = tree.node(id);
 
+    // Hidden / Collapsed: paint nothing for this node or its subtree.
+    // Cascade is implicit — descendants are never visited.
+    if node.element.visibility.is_invisible() {
+        return;
+    }
+
     // Order: clip is in parent-of-panel space (pre-transform); transform
     // applies inside the clip and only to children. The panel's own
     // background paints under the clip but BEFORE the transform — matching
