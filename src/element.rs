@@ -63,9 +63,24 @@ pub trait Element: Sized {
         self.element_mut().layout.gap = g;
         self
     }
-    /// Cross-axis alignment of this node inside a parent stack.
+    /// Horizontal alignment inside the parent's inner rect. See
+    /// `Layout::align_x` for which parent layout modes honor it.
+    fn align_x(mut self, a: Align) -> Self {
+        self.element_mut().layout.align_x = a;
+        self
+    }
+    /// Vertical alignment inside the parent's inner rect. See
+    /// `Layout::align_y` for which parent layout modes honor it.
+    fn align_y(mut self, a: Align) -> Self {
+        self.element_mut().layout.align_y = a;
+        self
+    }
+    /// Set both `align_x` and `align_y` to the same value. The parent reads
+    /// only the axis (or axes) relevant to its layout mode.
     fn align(mut self, a: Align) -> Self {
-        self.element_mut().layout.align = a;
+        let l = &mut self.element_mut().layout;
+        l.align_x = a;
+        l.align_y = a;
         self
     }
     fn sense(mut self, s: Sense) -> Self {

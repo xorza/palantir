@@ -2,8 +2,6 @@ transform
 
 
 
-3. **Per-child cross-axis `align: Start | Center | End | Stretch`** — currently `arrange_stack` always pins cross-axis to top-left for non-Fill. Mirrors WPF `HorizontalAlignment`.
-
 ## Real simplifications/generalizations
 
 1. **`Decoration` trait/struct.** Frame and Panel hold identical `{ fill: Color, stroke: Option<Stroke>, radius: Corners }` triples and identical `.fill()/.stroke()/.radius()` builders. Same `Element`-trait pattern: `Decoration` struct + `Decorated` trait with default builders. ~30 lines collapsed across both files. (I offered this earlier; it's still on the table.)
