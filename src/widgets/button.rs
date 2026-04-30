@@ -1,5 +1,5 @@
 use crate::element::{Element, UiElement};
-use crate::primitives::{Color, Corners, Sense, Spacing, Stroke, Visuals, WidgetId};
+use crate::primitives::{Color, Corners, Sense, Stroke, Visuals, WidgetId};
 use crate::shape::Shape;
 use crate::tree::LayoutMode;
 use crate::ui::Ui;
@@ -12,6 +12,7 @@ pub struct ButtonStyle {
     pub normal: Visuals,
     pub hovered: Visuals,
     pub pressed: Visuals,
+    pub radius: Corners,
 }
 
 impl ButtonStyle {
@@ -20,6 +21,7 @@ impl ButtonStyle {
             normal: v,
             hovered: v,
             pressed: v,
+            radius: Corners::ZERO,
         }
     }
 
@@ -28,6 +30,7 @@ impl ButtonStyle {
             normal: Visuals::solid(Color::rgb(0.20, 0.40, 0.80), Color::WHITE),
             hovered: Visuals::solid(Color::rgb(0.30, 0.52, 0.92), Color::WHITE),
             pressed: Visuals::solid(Color::rgb(0.10, 0.28, 0.66), Color::WHITE),
+            radius: Corners::all(4.0),
         }
     }
 
@@ -52,6 +55,7 @@ impl ButtonStyle {
                 stroke,
                 text: Color::WHITE,
             },
+            radius: Corners::all(4.0),
         }
     }
 }
@@ -65,7 +69,6 @@ impl Default for ButtonStyle {
 pub struct Button {
     element: UiElement,
     style: ButtonStyle,
-    radius: Corners,
     label: String,
 }
 
@@ -78,12 +81,10 @@ impl Button {
 
     pub fn with_id(id: impl Hash) -> Self {
         let mut element = UiElement::new(WidgetId::from_hash(id), LayoutMode::Leaf);
-        element.layout.padding = Spacing::all(8.0);
         element.sense = Sense::CLICK;
         Self {
             element,
             style: ButtonStyle::default(),
-            radius: Corners::all(4.0),
             label: String::new(),
         }
     }
@@ -92,8 +93,9 @@ impl Button {
         self.style = s;
         self
     }
+    /// Convenience: override only the corner radius on the current style.
     pub fn radius(mut self, r: impl Into<Corners>) -> Self {
-        self.radius = r.into();
+        self.style.radius = r.into();
         self
     }
     pub fn label(mut self, s: impl Into<String>) -> Self {
@@ -116,7 +118,7 @@ impl Button {
         let resp = Frame::for_element(self.element)
             .fill(v.fill)
             .stroke(v.stroke)
-            .radius(self.radius)
+            .radius(self.style.radius)
             .show(ui);
 
         // Layer the label on top of the frame's background. Safe immediately after
