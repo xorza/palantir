@@ -192,7 +192,6 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Resized(new) => {
                 let max = state.device.limits().max_texture_dimension_2d;
-                tracing::info!(?new, max, "resized");
                 state.config.width = new.width.clamp(1, max);
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
