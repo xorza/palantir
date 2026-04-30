@@ -1,8 +1,23 @@
 use crate::primitives::{
     Align, Justify, Layout, Sense, Size, Sizes, Spacing, TranslateScale, Visibility, WidgetId,
 };
-use crate::tree::LayoutMode;
 use glam::Vec2;
+
+/// How a node arranges its children. Stored on `UiElement::mode` and read by
+/// the layout pass; the tree itself treats it as an opaque tag.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LayoutMode {
+    Leaf,
+    HStack,
+    VStack,
+    /// Children all laid out at the same position (top-left of inner rect),
+    /// each sized per its own `Sizing`. Used by `Panel`.
+    ZStack,
+    /// Children placed at their declared `Layout.position` (parent-inner
+    /// coords). Each child sized per its desired (intrinsic) size. Canvas
+    /// hugs to the bounding box of placed children.
+    Canvas,
+}
 
 /// Per-node config bundle: identity + spatial layout + interaction. Every
 /// widget builder owns one and forwards it to `Ui::node`. `Element` (the

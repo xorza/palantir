@@ -1,6 +1,7 @@
+use crate::element::LayoutMode;
 use crate::primitives::{AxisAlign, Justify, Layout, Rect, Size, Sizes, Sizing, Visibility};
 use crate::shape::Shape;
-use crate::tree::{LayoutMode, NodeId, Tree};
+use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
 /// Run measure + arrange for `root` given the surface rect.

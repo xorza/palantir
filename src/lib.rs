@@ -8,13 +8,13 @@ pub mod tree;
 pub mod ui;
 pub mod widgets;
 
-pub use element::{Element, UiElement};
+pub use element::{Element, LayoutMode, UiElement};
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use primitives::{
     Align, Color, Corners, HAlign, Justify, Layout, Rect, Sense, Size, Sizes, Sizing, Spacing,
     Stroke, TranslateScale, VAlign, Visibility, Visuals, WidgetId,
 };
 pub use shape::{Shape, ShapeRect};
-pub use tree::{LayoutMode, Node, NodeId, Tree};
+pub use tree::{Node, NodeId, Tree};
 pub use ui::{Theme, Ui};
 pub use widgets::{Button, ButtonStyle, Canvas, Frame, HStack, Panel, Response, VStack, ZStack};

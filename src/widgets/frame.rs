@@ -1,7 +1,6 @@
-use crate::element::{Element, UiElement};
+use crate::element::{Element, LayoutMode, UiElement};
 use crate::primitives::{Color, Corners, Stroke, WidgetId};
 use crate::shape::{Shape, ShapeRect};
-use crate::tree::LayoutMode;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use std::hash::Hash;
