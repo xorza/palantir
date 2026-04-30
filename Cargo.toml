@@ -2,6 +2,7 @@
 name = "palantir"
 version = "0.1.0"
 edition = "2024"
+exclude = ["tmp/", "references/"]
 
 [dependencies]
 bytemuck = { version = "*", features = ["derive"] }
