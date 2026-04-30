@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use palantir::{Button, Color, HStack, Rect, Sizing, Ui, layout, renderer::Renderer};
 use winit::application::ApplicationHandler;
@@ -102,8 +103,6 @@ impl ApplicationHandler for App {
         );
         window.request_redraw();
         tracing::debug!("initial redraw requested");
-        // Poll until the first paint succeeds; macOS may report Occluded with no follow-up event.
-        event_loop.set_control_flow(ControlFlow::Poll);
         self.state = Some(State {
             window,
             surface,
@@ -117,10 +116,15 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // macOS may report Occluded for ~100ms after surface configure with no follow-up
+        // event. Throttle the retry loop to ~60Hz until first paint succeeds.
         if let Some(state) = self.state.as_ref()
             && !state.first_paint
         {
             state.window.request_redraw();
+            event_loop.set_control_flow(ControlFlow::WaitUntil(
+                Instant::now() + Duration::from_millis(16),
+            ));
         } else {
             event_loop.set_control_flow(ControlFlow::Wait);
         }
