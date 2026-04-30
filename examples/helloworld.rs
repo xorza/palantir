@@ -103,6 +103,7 @@ impl ApplicationHandler for App {
 
         let mut ui = Ui::new();
         ui.set_scale_factor(window.scale_factor() as f32);
+        ui.set_pixel_snap(true);
 
         window.request_redraw();
         self.state = Some(State {
