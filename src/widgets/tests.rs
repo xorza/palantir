@@ -216,6 +216,64 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 }
 
 #[test]
+fn zstack_centers_child_when_align_center() {
+    use crate::primitives::Align;
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let mut child_node = None;
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("box")
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+            .show(ui, |ui| {
+                child_node = Some(
+                    Frame::with_id("c")
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                        .align(Align::Center)
+                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .show(ui)
+                        .node,
+                );
+            });
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+
+    let r = ui.tree.node(child_node.unwrap()).rect;
+    // ZStack inner = 200×100, child = 40×20 → centered at (80, 40).
+    assert_eq!((r.min.x, r.min.y), (80.0, 40.0));
+    assert_eq!((r.size.w, r.size.h), (40.0, 20.0));
+}
+
+#[test]
+fn zstack_aligns_independently_per_axis() {
+    use crate::primitives::Align;
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let mut child_node = None;
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("box")
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+            .show(ui, |ui| {
+                child_node = Some(
+                    Frame::with_id("c")
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                        .align_x(Align::End)
+                        .align_y(Align::Center)
+                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .show(ui)
+                        .node,
+                );
+            });
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+
+    let r = ui.tree.node(child_node.unwrap()).rect;
+    // x: End → 200-40 = 160. y: Center → (100-20)/2 = 40.
+    assert_eq!((r.min.x, r.min.y), (160.0, 40.0));
+}
+
+#[test]
 fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     use glam::Vec2;
     let mut ui = Ui::new();

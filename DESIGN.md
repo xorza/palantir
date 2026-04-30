@@ -40,6 +40,13 @@ trait Layout {
 - `arrange` rect ≥ measured desired (parent may stretch). Alignment/margin handled here.
 - Bottom-up measure, top-down arrange — exactly WPF.
 
+**Per-axis `Align` semantics by parent layout mode:**
+- `HStack` reads `align_y` (cross axis); ignores `align_x` (main axis position is determined by stack order + gap).
+- `VStack` reads `align_x` (cross axis); ignores `align_y`.
+- `ZStack` reads both `align_x` and `align_y` (children are layered, both axes are free).
+- `Canvas` ignores both — children are placed at their absolute `Layout.position`. Mixing alignment with absolute placement muddles coordinate semantics; if you want centered placement, use `ZStack`.
+- `Leaf` has no children, so alignment doesn't apply.
+
 ### 3. Don't reinvent layout — wrap Taffy (optional path)
 For flex/grid/block, integrate **Taffy** as the layout engine. Custom widgets implement Taffy's `MeasureFunc` for intrinsic sizing (text, images). Keep the WPF trait for native panels (Stack, Grid, Dock, Canvas) where Taffy is overkill.
 

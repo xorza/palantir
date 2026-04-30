@@ -229,10 +229,15 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             Axis::X => d.h,
             Axis::Y => d.w,
         };
-        let stretch = matches!(s.align, Align::Stretch)
-            || (matches!(s.align, Align::Auto) && matches!(cross_sizing, Sizing::Fill { .. }));
+        // HStack's cross axis is Y, VStack's is X.
+        let cross_align = match axis {
+            Axis::X => s.align_y,
+            Axis::Y => s.align_x,
+        };
+        let stretch = matches!(cross_align, Align::Stretch)
+            || (matches!(cross_align, Align::Auto) && matches!(cross_sizing, Sizing::Fill { .. }));
         let cross_size = if stretch { cross } else { cross_desired };
-        let cross_offset = match s.align {
+        let cross_offset = match cross_align {
             Align::Center => ((cross - cross_size) * 0.5).max(0.0),
             Align::End => (cross - cross_size).max(0.0),
             _ => 0.0,
@@ -303,26 +308,36 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
     }
 }
 
-/// Each child gets the full inner rect as its slot, sized per its own `Sizing`.
-/// Default position is top-left; per-child alignment lands later.
+/// Each child gets a slot inside `inner`, sized per its own `Sizing` and
+/// positioned per its `align_x` / `align_y`. Defaults pin to top-left
+/// (matching the original behavior) unless the child has `Sizing::Fill` —
+/// then `Auto` falls back to stretch on that axis.
 fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
     let kids: Vec<NodeId> = tree.children(node).collect();
     for c in kids {
         let d = tree.node(c).desired;
         let s = tree.node(c).layout;
 
-        let w = match s.size.w {
-            Sizing::Fill { .. } => inner.size.w,
-            _ => d.w,
-        };
-        let h = match s.size.h {
-            Sizing::Fill { .. } => inner.size.h,
-            _ => d.h,
-        };
+        let (w, x_off) = resolve_axis_align(s.align_x, s.size.w, d.w, inner.size.w);
+        let (h, y_off) = resolve_axis_align(s.align_y, s.size.h, d.h, inner.size.h);
 
-        let child_rect = Rect::new(inner.min.x, inner.min.y, w, h);
+        let child_rect = Rect::new(inner.min.x + x_off, inner.min.y + y_off, w, h);
         arrange(tree, c, child_rect);
     }
+}
+
+/// Compute size + offset along one axis given the child's alignment, its
+/// declared sizing, intrinsic desired size, and the inner span available.
+fn resolve_axis_align(align: Align, sizing: Sizing, desired: f32, inner: f32) -> (f32, f32) {
+    let stretch = matches!(align, Align::Stretch)
+        || (matches!(align, Align::Auto) && matches!(sizing, Sizing::Fill { .. }));
+    let size = if stretch { inner } else { desired };
+    let offset = match align {
+        Align::Center => ((inner - size) * 0.5).max(0.0),
+        Align::End => (inner - size).max(0.0),
+        _ => 0.0,
+    };
+    (size, offset)
 }
 
 #[cfg(test)]
