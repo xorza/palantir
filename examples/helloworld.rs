@@ -216,7 +216,7 @@ fn build_ui(ui: &mut Ui) {
             .show(ui);
         Button::new()
             .label("World")
-            .size((Sizing::Fixed(0.3), Sizing::Hug))
+            .size((Sizing::Fill, Sizing::Hug))
             .min_size((0.0, 80.0))
             .margin((4.0, 24.0, 32.0, 0.0))
             .show(ui);
