@@ -12,6 +12,11 @@ pub struct UiElement {
     pub mode: LayoutMode,
     pub sense: Sense,
     pub disabled: bool,
+    /// Clip descendants' paint to this node's rendered rect (CSS `overflow:
+    /// hidden`). The renderer applies a scissor while walking the subtree.
+    /// Has no effect on layout — children may still measure beyond the rect;
+    /// they're just visually clipped.
+    pub clip: bool,
 }
 
 impl UiElement {
@@ -22,6 +27,7 @@ impl UiElement {
             mode,
             sense: Sense::NONE,
             disabled: false,
+            clip: false,
         }
     }
 }

@@ -5,6 +5,36 @@ use crate::widgets::{Button, Canvas, Frame, HStack, ZStack};
 use crate::{Ui, layout};
 
 #[test]
+fn clip_flag_is_recorded_on_panel_node() {
+    // The renderer reads `node.element.clip` to gate scissor application —
+    // pin that the builder flows through to the recorded element.
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let mut clipped = None;
+    let mut unclipped = None;
+    HStack::new().show(&mut ui, |ui| {
+        clipped = Some(
+            ZStack::with_id("clipped")
+                .size(50.0)
+                .clip(true)
+                .show(ui, |_| {})
+                .node,
+        );
+        unclipped = Some(
+            ZStack::with_id("unclipped")
+                .size(50.0)
+                .show(ui, |_| {})
+                .node,
+        );
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 200.0));
+
+    assert!(ui.tree.node(clipped.unwrap()).element.clip);
+    assert!(!ui.tree.node(unclipped.unwrap()).element.clip);
+}
+
+#[test]
 fn frame_paints_a_single_rounded_rect() {
     let mut ui = Ui::new();
     ui.begin_frame();

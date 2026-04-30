@@ -43,6 +43,13 @@ impl Panel {
         self.radius = r.into();
         self
     }
+    /// Clip descendants' paint to this panel's rendered rect (CSS
+    /// `overflow: hidden`). Layout is unchanged — children may still measure
+    /// beyond, they're just visually scissored.
+    pub fn clip(mut self, c: bool) -> Self {
+        self.element.clip = c;
+        self
+    }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
