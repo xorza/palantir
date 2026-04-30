@@ -24,7 +24,7 @@ impl Default for GridCell {
 
 /// Track definitions + axis gaps for a `Grid` panel. Stored on the `Tree`'s
 /// `grid_defs` side-arena and addressed from `LayoutMode::Grid(u32)`. Owns its
-/// `Vec<Track>`s so `UiElement` and `Layout` stay `Copy`.
+/// `Vec<Track>`s so `UiElement` stays `Copy`.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct GridDef {
     pub rows: Vec<Track>,
