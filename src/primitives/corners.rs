@@ -28,6 +28,14 @@ impl Corners {
     pub const fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self {
         Self { tl, tr, br, bl }
     }
+    pub fn scaled_by(&self, scale: f32) -> Self {
+        Self {
+            tl: self.tl * scale,
+            tr: self.tr * scale,
+            br: self.br * scale,
+            bl: self.bl * scale,
+        }
+    }
 }
 
 impl<T: crate::primitives::Num> From<T> for Corners {
