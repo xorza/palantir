@@ -2,6 +2,7 @@ use crate::primitives::Rect;
 use glam::Vec2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[allow(dead_code)] // Right/Middle reserved for v2.
 pub enum PointerButton {
     Left,
     Right,
