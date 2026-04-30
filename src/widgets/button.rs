@@ -1,10 +1,7 @@
-use crate::primitives::{
-    Color, Corners, Sense, Size, Sizes, Spacing, Stroke, Style, Visuals, WidgetId,
-};
-use crate::shape::{Shape, ShapeRect};
-use crate::tree::LayoutKind;
+use crate::primitives::{Color, Corners, Sense, Size, Sizes, Spacing, Stroke, Visuals, WidgetId};
+use crate::shape::Shape;
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::{Frame, Response};
 use glam::Vec2;
 use std::hash::Hash;
 
@@ -124,42 +121,45 @@ impl Button {
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
-        let state = ui.response_for(self.id);
-        let v = if state.pressed {
-            &self.style.pressed
-        } else if state.hovered {
-            &self.style.hovered
-        } else {
-            &self.style.normal
+        let v = {
+            let state = ui.response_for(self.id);
+            if state.pressed {
+                self.style.pressed
+            } else if state.hovered {
+                self.style.hovered
+            } else {
+                self.style.normal
+            }
         };
 
-        let style = Style {
-            size: self.size,
-            min_size: self.min_size,
-            max_size: self.max_size,
-            padding: Spacing::all(8.0),
-            margin: self.margin,
-        };
+        let resp = Frame::for_widget_id(self.id)
+            .size(self.size)
+            .min_size(self.min_size)
+            .max_size(self.max_size)
+            .padding(Spacing::all(8.0))
+            .margin(self.margin)
+            .fill(v.fill)
+            .stroke(v.stroke)
+            .radius(self.radius)
+            .sense(Sense::CLICK)
+            .show(ui);
 
-        let node = ui.node(self.id, style, LayoutKind::Leaf, Sense::CLICK, |ui| {
-            ui.add_shape(Shape::RoundedRect {
-                bounds: ShapeRect::Full,
-                radius: self.radius,
-                fill: v.fill,
-                stroke: v.stroke,
-            });
-
-            if !self.label.is_empty() {
-                let measured = Size::new(self.label.chars().count() as f32 * 8.0, 16.0);
-                ui.add_shape(Shape::Text {
+        // Layer the label on top of the frame's background. Safe immediately after
+        // `Frame::show` because no other shape/node has been pushed since the
+        // frame closed — `Tree::add_shape`'s contiguity invariant still holds.
+        if !self.label.is_empty() {
+            let measured = Size::new(self.label.chars().count() as f32 * 8.0, 16.0);
+            ui.tree.add_shape(
+                resp.node,
+                Shape::Text {
                     offset: Vec2::ZERO,
                     text: self.label.clone(),
                     color: v.text,
                     measured,
-                });
-            }
-        });
+                },
+            );
+        }
 
-        Response { node, state }
+        resp
     }
 }
