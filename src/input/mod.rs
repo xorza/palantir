@@ -1,4 +1,4 @@
-use crate::primitives::{Rect, Sense, WidgetId};
+use crate::primitives::{Rect, Sense, TranslateScale, WidgetId};
 use crate::tree::Tree;
 use glam::Vec2;
 use std::collections::HashSet;
@@ -99,9 +99,14 @@ pub struct InputState {
     /// Per-node disabled cascade scratch. Reused frame-to-frame; cleared in
     /// `end_frame`.
     effective_disabled: Vec<bool>,
-    /// Per-node clip-rect cascade scratch (clip inherited by descendants).
-    /// `None` entry = no clipping ancestor. Reused frame-to-frame.
+    /// Per-node clip-rect cascade scratch (clip inherited by descendants), in
+    /// SCREEN space — clips are accumulated *after* applying transforms, so
+    /// they're directly compared with screen-space hit-test rects.
     clip_for_descendants: Vec<Option<Rect>>,
+    /// Per-node cumulative transform that applies to descendants. A node's
+    /// own rect uses the *parent's* entry; the node's own transform contributes
+    /// only to descendants. Reused frame-to-frame.
+    transform_for_descendants: Vec<TranslateScale>,
 }
 
 impl Default for InputState {
@@ -120,6 +125,7 @@ impl InputState {
             clicked_this_frame: HashSet::new(),
             effective_disabled: Vec::new(),
             clip_for_descendants: Vec::new(),
+            transform_for_descendants: Vec::new(),
         }
     }
 
@@ -165,25 +171,30 @@ impl InputState {
     /// Rebuild last-frame rects from the just-arranged tree, recompute hover,
     /// drop transient per-frame flags. Call after `layout::run`.
     ///
-    /// Two ancestor-cascading state machines run in this single pre-order pass:
+    /// Three ancestor-cascading state machines run in this single pre-order pass:
     ///
-    /// - **`disabled`**: if any ancestor has `disabled = true`, this node's
-    ///   effective `Sense` becomes `NONE`, removing the whole subtree from
+    /// - **`disabled`**: any ancestor with `disabled = true` forces this
+    ///   node's effective `Sense` to `NONE`, removing the subtree from
     ///   hit-testing.
-    /// - **`clip`**: a clipping ancestor's rect bounds the visible (and thus
-    ///   hit-testable) area of all descendants. The entry's stored rect is
-    ///   intersected with the running clip rect so hover/click match what
-    ///   the user actually sees — children that overflow a `.clip(true)`
-    ///   panel don't pick up clicks on the overflow.
+    /// - **`transform`**: each node's own rect is mapped to screen space via
+    ///   its parent's cumulative transform (the panel's *own* transform applies
+    ///   only to its descendants, matching the encoder's emit order).
+    /// - **`clip`**: clipping ancestors bound the visible (and thus
+    ///   hit-testable) area of descendants. Stored in screen space so it
+    ///   composes with transformed rects directly.
     pub(crate) fn end_frame(&mut self, tree: &Tree) {
         self.last_rects.clear();
         self.effective_disabled.clear();
         self.clip_for_descendants.clear();
-        self.last_rects.reserve(tree.nodes.len());
-        self.effective_disabled.reserve(tree.nodes.len());
-        self.clip_for_descendants.reserve(tree.nodes.len());
+        self.transform_for_descendants.clear();
+        let n = tree.nodes.len();
+        self.last_rects.reserve(n);
+        self.effective_disabled.reserve(n);
+        self.clip_for_descendants.reserve(n);
+        self.transform_for_descendants.reserve(n);
 
         for node in &tree.nodes {
+            // Disabled cascade.
             let parent_disabled = node
                 .parent
                 .map(|p| self.effective_disabled[p.0 as usize])
@@ -191,18 +202,33 @@ impl InputState {
             let me_disabled = parent_disabled || node.element.disabled;
             self.effective_disabled.push(me_disabled);
 
+            // Transform cascade. Parent's cumulative transform places THIS
+            // node's rect into screen space. Own transform contributes only
+            // to descendants.
+            let parent_t = node
+                .parent
+                .map(|p| self.transform_for_descendants[p.0 as usize])
+                .unwrap_or(TranslateScale::IDENTITY);
+            let descendant_t = match node.element.transform {
+                Some(t) => parent_t.compose(t),
+                None => parent_t,
+            };
+            self.transform_for_descendants.push(descendant_t);
+
+            // Clip cascade. Both visible_rect and descendant_clip live in
+            // screen space; intersect after applying parent's transform.
+            let screen_rect = parent_t.apply_rect(node.rect);
             let parent_clip = node
                 .parent
                 .and_then(|p| self.clip_for_descendants[p.0 as usize]);
             let visible_rect = match parent_clip {
-                Some(c) => node.rect.intersect(c),
-                None => node.rect,
+                Some(c) => screen_rect.intersect(c),
+                None => screen_rect,
             };
-            // Pass to children: parent's clip ∩ (this node's rect if it clips).
             let descendant_clip = if node.element.clip {
                 Some(match parent_clip {
-                    Some(c) => node.rect.intersect(c),
-                    None => node.rect,
+                    Some(c) => screen_rect.intersect(c),
+                    None => screen_rect,
                 })
             } else {
                 parent_clip

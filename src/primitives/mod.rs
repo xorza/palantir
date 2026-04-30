@@ -10,6 +10,7 @@ mod size;
 mod sizing;
 mod spacing;
 mod stroke;
+mod transform;
 mod visuals;
 mod widget_id;
 
@@ -25,5 +26,6 @@ pub use size::Size;
 pub use sizing::{Sizes, Sizing};
 pub use spacing::Spacing;
 pub use stroke::Stroke;
+pub use transform::TranslateScale;
 pub use visuals::Visuals;
 pub use widget_id::WidgetId;

@@ -1,4 +1,4 @@
-use crate::primitives::{Align, Layout, Sense, Size, Sizes, Spacing, WidgetId};
+use crate::primitives::{Align, Layout, Sense, Size, Sizes, Spacing, TranslateScale, WidgetId};
 use crate::tree::LayoutMode;
 use glam::Vec2;
 
@@ -17,6 +17,13 @@ pub struct UiElement {
     /// Has no effect on layout — children may still measure beyond the rect;
     /// they're just visually clipped.
     pub clip: bool,
+    /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
+    /// `None` = identity = no transform. The transform composes with any
+    /// ancestor transform; descendants render and hit-test in the world
+    /// coordinates the cumulative transform produces. Origin is the top-left
+    /// of the panel's logical-rect — the caller composes its own pivot by
+    /// pre/post-translation.
+    pub transform: Option<TranslateScale>,
 }
 
 impl UiElement {
@@ -28,6 +35,7 @@ impl UiElement {
             sense: Sense::NONE,
             disabled: false,
             clip: false,
+            transform: None,
         }
     }
 }

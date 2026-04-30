@@ -271,3 +271,95 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         "click on overflow outside clip should not register"
     );
 }
+
+#[test]
+fn zoom_panel_routes_clicks_to_world_rendered_button() {
+    use crate::primitives::TranslateScale;
+    use crate::widgets::ZStack;
+
+    // ZStack with transform=scale(2) wrapping a 50x50 button. The button's
+    // logical rect is (0,0,50,50) but its world (rendered) rect is
+    // (0,0,100,100). A click at logical (5,5) must hit; a click at (75,75)
+    // (inside world bounds, outside logical bounds) must also hit.
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("zoomer")
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .transform(TranslateScale::from_scale(2.0))
+            .show(ui, |ui| {
+                Button::with_id("inner")
+                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .show(ui);
+            });
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
+
+    // Click at world (75, 75) — inside the zoomed 100x100 bounds.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 75.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    ui.begin_frame();
+    let mut clicked = false;
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("zoomer")
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .transform(TranslateScale::from_scale(2.0))
+            .show(ui, |ui| {
+                clicked = Button::with_id("inner")
+                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .show(ui)
+                    .clicked();
+            });
+    });
+    assert!(
+        clicked,
+        "click inside world-rendered (zoomed) bounds should hit"
+    );
+}
+
+#[test]
+fn click_outside_zoomed_bounds_does_not_hit() {
+    use crate::primitives::TranslateScale;
+    use crate::widgets::ZStack;
+
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("zoomer")
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .transform(TranslateScale::from_scale(0.5))
+            .show(ui, |ui| {
+                Button::with_id("inner")
+                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .show(ui);
+            });
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
+
+    // Button's world rect under scale=0.5 is 25x25. Click at (40, 40) is
+    // inside the LOGICAL rect but outside the world-rendered rect.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    ui.begin_frame();
+    let mut clicked = false;
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("zoomer")
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .transform(TranslateScale::from_scale(0.5))
+            .show(ui, |ui| {
+                clicked = Button::with_id("inner")
+                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .show(ui)
+                    .clicked();
+            });
+    });
+    assert!(!clicked, "click outside world-rendered bounds should miss");
+}

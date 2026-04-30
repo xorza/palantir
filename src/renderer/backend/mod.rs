@@ -1,6 +1,6 @@
 use super::encoder::{RenderCmd, encode};
 use super::quad::{Quad, QuadPipeline};
-use crate::primitives::{Color, Rect, Stroke};
+use crate::primitives::{Color, Rect, Stroke, TranslateScale};
 use crate::tree::Tree;
 
 /// Per-frame inputs the backend needs to actually draw. Bundled so the
@@ -31,6 +31,9 @@ pub struct Renderer {
     /// Scratch clip stack for `process`; reused across frames so steady-state
     /// rendering allocates nothing here.
     clip_stack: Vec<ScissorRect>,
+    /// Scratch transform stack: each entry is the cumulative transform when
+    /// the matching `PushTransform` was processed, restored on `PopTransform`.
+    transform_stack: Vec<TranslateScale>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +59,7 @@ impl Renderer {
             quads: Vec::new(),
             groups: Vec::new(),
             clip_stack: Vec::new(),
+            transform_stack: Vec::new(),
         }
     }
 
@@ -78,6 +82,7 @@ impl Renderer {
             &mut self.quads,
             &mut self.groups,
             &mut self.clip_stack,
+            &mut self.transform_stack,
         );
 
         tracing::trace!(
@@ -138,6 +143,7 @@ impl Renderer {
 /// Consume a logical-px command stream → physical-px `Quad` instances + draw
 /// groups (scissor ranges). Maintains a clip stack so nested `PushClip`s
 /// intersect correctly.
+#[allow(clippy::too_many_arguments)]
 fn process(
     cmds: &[RenderCmd],
     scale: f32,
@@ -146,10 +152,13 @@ fn process(
     quads: &mut Vec<Quad>,
     groups: &mut Vec<DrawGroup>,
     clip_stack: &mut Vec<ScissorRect>,
+    transform_stack: &mut Vec<TranslateScale>,
 ) {
     quads.clear();
     groups.clear();
     clip_stack.clear();
+    transform_stack.clear();
+    let mut current_transform = TranslateScale::IDENTITY;
     let mut current: Option<ScissorRect> = None;
     let mut current_start: u32 = 0;
 
@@ -167,7 +176,10 @@ fn process(
     for cmd in cmds {
         match cmd {
             RenderCmd::PushClip(r) => {
-                let me = scissor_from_logical(*r, scale, snap, viewport);
+                // Clip rect lives in the parent's logical space; transform it
+                // into world space before deriving a screen-pixel scissor.
+                let world = current_transform.apply_rect(*r);
+                let me = scissor_from_logical(world, scale, snap, viewport);
                 let new = match clip_stack.last() {
                     Some(parent) => intersect_scissor(*parent, me),
                     None => me,
@@ -189,16 +201,25 @@ fn process(
                     current_start = quads.len() as u32;
                 }
             }
+            RenderCmd::PushTransform(t) => {
+                transform_stack.push(current_transform);
+                current_transform = current_transform.compose(*t);
+            }
+            RenderCmd::PopTransform => {
+                current_transform = transform_stack.pop().unwrap_or(TranslateScale::IDENTITY);
+            }
             RenderCmd::DrawRect {
                 rect,
                 radius,
                 fill,
                 stroke,
             } => {
-                let phys_rect = rect.scaled_by(scale, snap);
-                let phys_radius = radius.scaled_by(scale);
+                let world_rect = current_transform.apply_rect(*rect);
+                let world_radius = radius.scaled_by(current_transform.scale);
+                let phys_rect = world_rect.scaled_by(scale, snap);
+                let phys_radius = world_radius.scaled_by(scale);
                 let phys_stroke = stroke.map(|s| Stroke {
-                    width: s.width * scale,
+                    width: s.width * current_transform.scale * scale,
                     color: s.color,
                 });
                 quads.push(Quad::new(phys_rect, *fill, phys_radius, phys_stroke));

@@ -1,5 +1,5 @@
 use crate::element::{Element, UiElement};
-use crate::primitives::{Color, Corners, Stroke, WidgetId};
+use crate::primitives::{Color, Corners, Stroke, TranslateScale, WidgetId};
 use crate::shape::{Shape, ShapeRect};
 use crate::tree::LayoutMode;
 use crate::ui::Ui;
@@ -48,6 +48,15 @@ impl Panel {
     /// beyond, they're just visually scissored.
     pub fn clip(mut self, c: bool) -> Self {
         self.element.clip = c;
+        self
+    }
+    /// Apply a pan/zoom transform to descendants (post-layout). Layout runs
+    /// in untransformed space; the transform only affects paint and hit-test.
+    /// Composes with any ancestor transform. The panel's *own* background
+    /// paints in the parent's space (untransformed) — only children are
+    /// transformed.
+    pub fn transform(mut self, t: TranslateScale) -> Self {
+        self.element.transform = Some(t);
         self
     }
 

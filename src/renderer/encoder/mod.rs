@@ -1,4 +1,4 @@
-use crate::primitives::{Color, Corners, Rect, Stroke};
+use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
 use crate::shape::{Shape, ShapeRect};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
@@ -17,6 +17,10 @@ pub enum RenderCmd {
     /// at process time. Pairs with `PopClip`.
     PushClip(Rect),
     PopClip,
+    /// Push a transform applied to subsequent draws and clips, composed onto
+    /// any ancestor transform. Pairs with `PopTransform`.
+    PushTransform(TranslateScale),
+    PopTransform,
     DrawRect {
         rect: Rect,
         radius: Corners,
@@ -39,6 +43,11 @@ pub fn encode(tree: &Tree, out: &mut Vec<RenderCmd>) {
 
 fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
     let node = tree.node(id);
+
+    // Order: clip is in parent-of-panel space (pre-transform); transform
+    // applies inside the clip and only to children. The panel's own
+    // background paints under the clip but BEFORE the transform — matching
+    // WPF's `RenderTransform` convention.
     if node.element.clip {
         out.push(RenderCmd::PushClip(node.rect));
     }
@@ -74,12 +83,20 @@ fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
         }
     }
 
+    let has_transform = node.element.transform.is_some();
+    if let Some(t) = node.element.transform {
+        out.push(RenderCmd::PushTransform(t));
+    }
+
     let mut c = node.first_child;
     while let Some(child) = c {
         encode_node(tree, child, out);
         c = tree.node(child).next_sibling;
     }
 
+    if has_transform {
+        out.push(RenderCmd::PopTransform);
+    }
     if node.element.clip {
         out.push(RenderCmd::PopClip);
     }
