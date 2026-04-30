@@ -84,7 +84,7 @@ fn resolve_main_size(
     let slot = match s {
         Sizing::Fixed(v) => v + margin,
         Sizing::Hug => hug_outer,
-        Sizing::Fill { .. } => {
+        Sizing::Fill(_) => {
             if available.is_finite() {
                 available
             } else {
@@ -194,15 +194,17 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         0.0
     };
 
-    // Sum desired along main axis; collect Fill weights for proportional distribution.
+    // Sum desired along main axis for non-Fill children; collect Fill weights.
+    // Fill siblings split the remaining space proportionally (WPF Star semantics)
+    // independent of their intrinsic content size.
     let mut sum_main_desired = 0.0f32;
     let mut total_weight = 0.0f32;
     for &c in &kids {
-        let d = tree.node(c).desired;
-        sum_main_desired += axis.main(d);
         let s = tree.node(c).layout;
-        if let Sizing::Fill { weight } = axis.main_sizing(s.size) {
+        if let Sizing::Fill(weight) = axis.main_sizing(s.size) {
             total_weight += weight.max(0.0);
+        } else {
+            sum_main_desired += axis.main(tree.node(c).desired);
         }
     }
 
@@ -220,14 +222,12 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         let s = tree.node(c).layout;
 
         let main_sizing = axis.main_sizing(s.size);
-        let main_desired = axis.main(d);
-        let extra = match main_sizing {
-            Sizing::Fill { weight } if total_weight > 0.0 => {
+        let main_size = match main_sizing {
+            Sizing::Fill(weight) if total_weight > 0.0 => {
                 leftover * (weight.max(0.0) / total_weight)
             }
-            _ => 0.0,
+            _ => axis.main(d),
         };
-        let main_size = main_desired + extra;
 
         let cross_align = axis.cross_align(&s);
         let cross_sizing = axis.cross_sizing(s.size);
@@ -320,7 +320,7 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
 /// Used for both stack cross-axis placement and ZStack per-axis placement.
 fn place_axis(align: Align, sizing: Sizing, desired: f32, inner: f32) -> (f32, f32) {
     let stretch = matches!(align, Align::Stretch)
-        || (matches!(align, Align::Auto) && matches!(sizing, Sizing::Fill { .. }));
+        || (matches!(align, Align::Auto) && matches!(sizing, Sizing::Fill(_)));
     let size = if stretch { inner } else { desired };
     let offset = match align {
         Align::Center => ((inner - size) * 0.5).max(0.0),
