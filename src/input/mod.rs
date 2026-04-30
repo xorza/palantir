@@ -1,4 +1,4 @@
-use crate::primitives::{Rect, WidgetId};
+use crate::primitives::{Rect, Sense, WidgetId};
 use crate::tree::Tree;
 use glam::Vec2;
 use std::collections::HashSet;
@@ -81,9 +81,10 @@ pub struct InputState {
     pointer: PointerState,
     active: Option<WidgetId>,
     hovered: Option<WidgetId>,
-    /// `(WidgetId, Rect)` pairs from last frame's tree, in pre-order paint order.
-    /// Reverse iter = topmost-first for hit-testing.
-    last_rects: Vec<(WidgetId, Rect)>,
+    /// `(WidgetId, Rect, Sense)` from last frame's tree, in pre-order paint order.
+    /// Reverse iter = topmost-first for hit-testing. `Sense` filters out
+    /// non-interactive widgets so clicks pass through containers.
+    last_rects: Vec<(WidgetId, Rect, Sense)>,
     clicked_this_frame: HashSet<WidgetId>,
 }
 
@@ -139,7 +140,7 @@ impl InputState {
     pub(crate) fn end_frame(&mut self, tree: &Tree) {
         self.last_rects.clear();
         for node in &tree.nodes {
-            self.last_rects.push((node.id, node.rect));
+            self.last_rects.push((node.id, node.rect, node.sense));
         }
         self.clicked_this_frame.clear();
 
@@ -174,10 +175,12 @@ impl InputState {
     }
 
     /// Reverse-iter `last_rects` → topmost-first under our pre-order paint walk.
-    /// Bounding-rect only for v1; per-node `HitShape` lands later.
+    /// Skips widgets with `Sense::NONE` so clicks/hover pass through containers
+    /// and decorative overlays. Bounding-rect only for v1; per-node `HitShape`
+    /// lands later.
     fn hit_test(&self, pos: Vec2) -> Option<WidgetId> {
-        for (id, rect) in self.last_rects.iter().rev() {
-            if rect.contains(pos) {
+        for (id, rect, sense) in self.last_rects.iter().rev() {
+            if sense.is_interactive() && rect.contains(pos) {
                 return Some(*id);
             }
         }
@@ -187,11 +190,11 @@ impl InputState {
     fn rect_for(&self, id: WidgetId) -> Option<Rect> {
         self.last_rects
             .iter()
-            .find_map(|(i, r)| (*i == id).then_some(*r))
+            .find_map(|(i, r, _)| (*i == id).then_some(*r))
     }
 
     fn contains_id(&self, id: WidgetId) -> bool {
-        self.last_rects.iter().any(|(i, _)| *i == id)
+        self.last_rects.iter().any(|(i, _, _)| *i == id)
     }
 }
 

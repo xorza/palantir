@@ -9,7 +9,7 @@ pub mod widgets;
 
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use primitives::{
-    Color, Corners, Rect, Size, Sizes, Sizing, Spacing, Stroke, Style, Visuals, WidgetId,
+    Color, Corners, Rect, Sense, Size, Sizes, Sizing, Spacing, Stroke, Style, Visuals, WidgetId,
 };
 pub use shape::{Shape, ShapeRect};
 pub use tree::{LayoutKind, Node, NodeId, Tree};

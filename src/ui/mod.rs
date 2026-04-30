@@ -1,6 +1,6 @@
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 
-use crate::primitives::{Style, WidgetId};
+use crate::primitives::{Sense, Style, WidgetId};
 use crate::shape::Shape;
 use crate::tree::{LayoutKind, NodeId, Tree};
 use std::collections::HashMap;
@@ -104,10 +104,11 @@ impl Ui {
         id: WidgetId,
         style: Style,
         layout: LayoutKind,
+        sense: Sense,
         f: impl FnOnce(&mut Ui),
     ) -> NodeId {
         let parent = self.parents.last().copied();
-        let node = self.tree.push_node(id, style, layout, parent);
+        let node = self.tree.push_node(id, style, layout, sense, parent);
         #[cfg(debug_assertions)]
         if let Some(prev) = self.seen_ids.insert(id, node) {
             tracing::warn!(

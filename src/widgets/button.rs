@@ -1,4 +1,6 @@
-use crate::primitives::{Color, Corners, Size, Sizes, Spacing, Stroke, Style, Visuals, WidgetId};
+use crate::primitives::{
+    Color, Corners, Sense, Size, Sizes, Spacing, Stroke, Style, Visuals, WidgetId,
+};
 use crate::shape::{Shape, ShapeRect};
 use crate::tree::LayoutKind;
 use crate::ui::Ui;
@@ -139,7 +141,7 @@ impl Button {
             margin: self.margin,
         };
 
-        let node = ui.node(self.id, style, LayoutKind::Leaf, |ui| {
+        let node = ui.node(self.id, style, LayoutKind::Leaf, Sense::CLICK, |ui| {
             ui.add_shape(Shape::RoundedRect {
                 bounds: ShapeRect::Full,
                 radius: self.radius,

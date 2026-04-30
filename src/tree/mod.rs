@@ -1,4 +1,4 @@
-use crate::primitives::{Rect, Size, Style, WidgetId};
+use crate::primitives::{Rect, Sense, Size, Style, WidgetId};
 use crate::shape::Shape;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -21,6 +21,7 @@ pub struct Node {
 
     pub style: Style,
     pub layout: LayoutKind,
+    pub sense: Sense,
 
     /// Range into Tree.shapes
     pub shapes_start: u32,
@@ -31,7 +32,13 @@ pub struct Node {
 }
 
 impl Node {
-    fn new(id: WidgetId, style: Style, layout: LayoutKind, parent: Option<NodeId>) -> Self {
+    fn new(
+        id: WidgetId,
+        style: Style,
+        layout: LayoutKind,
+        sense: Sense,
+        parent: Option<NodeId>,
+    ) -> Self {
         Self {
             id,
             parent,
@@ -40,6 +47,7 @@ impl Node {
             next_sibling: None,
             style,
             layout,
+            sense,
             shapes_start: 0,
             shapes_end: 0,
             desired: Size::ZERO,
@@ -72,10 +80,11 @@ impl Tree {
         id: WidgetId,
         style: Style,
         layout: LayoutKind,
+        sense: Sense,
         parent: Option<NodeId>,
     ) -> NodeId {
         let new_id = NodeId(self.nodes.len() as u32);
-        let mut node = Node::new(id, style, layout, parent);
+        let mut node = Node::new(id, style, layout, sense, parent);
         node.shapes_start = self.shapes.len() as u32;
         node.shapes_end = self.shapes.len() as u32;
         self.nodes.push(node);

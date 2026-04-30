@@ -1,4 +1,4 @@
-use crate::primitives::{Size, Sizes, Spacing, Style, WidgetId};
+use crate::primitives::{Sense, Size, Sizes, Spacing, Style, WidgetId};
 use crate::tree::LayoutKind;
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -12,6 +12,7 @@ pub struct Stack {
     max_size: Size,
     padding: Spacing,
     margin: Spacing,
+    sense: Sense,
 }
 
 impl Stack {
@@ -24,6 +25,7 @@ impl Stack {
             max_size: Size::INF,
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
+            sense: Sense::NONE,
         }
     }
 
@@ -47,6 +49,12 @@ impl Stack {
         self.margin = m.into();
         self
     }
+    /// Make the stack itself an interaction target (clickable card, drag handle, etc).
+    /// Default is `Sense::NONE` so containers don't intercept clicks meant for children.
+    pub fn sense(mut self, s: Sense) -> Self {
+        self.sense = s;
+        self
+    }
 
     pub fn show(&self, ui: &mut Ui, f: impl FnOnce(&mut Ui)) -> Response {
         let style = Style {
@@ -56,7 +64,7 @@ impl Stack {
             padding: self.padding,
             margin: self.margin,
         };
-        let node = ui.node(self.id, style, self.kind, f);
+        let node = ui.node(self.id, style, self.kind, self.sense, f);
         let state = ui.response_for(self.id);
         Response { node, state }
     }
