@@ -1,8 +1,8 @@
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 
-use crate::primitives::{Sense, Style, WidgetId};
+use crate::primitives::{Layout, Sense, WidgetId};
 use crate::shape::Shape;
-use crate::tree::{LayoutKind, NodeId, Tree};
+use crate::tree::{LayoutMode, NodeId, Tree};
 use std::collections::HashMap;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
@@ -102,13 +102,13 @@ impl Ui {
     pub(crate) fn node(
         &mut self,
         id: WidgetId,
-        style: Style,
-        layout: LayoutKind,
+        layout: Layout,
+        mode: LayoutMode,
         sense: Sense,
         f: impl FnOnce(&mut Ui),
     ) -> NodeId {
         let parent = self.parents.last().copied();
-        let node = self.tree.push_node(id, style, layout, sense, parent);
+        let node = self.tree.push_node(id, layout, mode, sense, parent);
         #[cfg(debug_assertions)]
         if let Some(prev) = self.seen_ids.insert(id, node) {
             tracing::warn!(

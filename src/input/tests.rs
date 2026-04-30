@@ -1,6 +1,6 @@
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{Rect, Sense, Sizing};
-use crate::widgets::{Button, HStack};
+use crate::widgets::{Button, HStack, Layoutable};
 use crate::{Ui, layout};
 use glam::Vec2;
 

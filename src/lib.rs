@@ -9,9 +9,11 @@ pub mod widgets;
 
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use primitives::{
-    Color, Corners, Rect, Sense, Size, Sizes, Sizing, Spacing, Stroke, Style, Visuals, WidgetId,
+    Color, Corners, Layout, Rect, Sense, Size, Sizes, Sizing, Spacing, Stroke, Visuals, WidgetId,
 };
 pub use shape::{Shape, ShapeRect};
-pub use tree::{LayoutKind, Node, NodeId, Tree};
+pub use tree::{LayoutMode, Node, NodeId, Tree};
 pub use ui::Ui;
-pub use widgets::{Button, ButtonStyle, Canvas, Frame, HStack, Panel, Response, VStack, ZStack};
+pub use widgets::{
+    Button, ButtonStyle, Canvas, Frame, HStack, Layoutable, Panel, Response, VStack, ZStack,
+};

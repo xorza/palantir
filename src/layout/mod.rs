@@ -1,5 +1,5 @@
 use crate::primitives::{Rect, Size, Sizing};
-use crate::tree::{LayoutKind, NodeId, Tree};
+use crate::tree::{LayoutMode, NodeId, Tree};
 use glam::Vec2;
 
 /// Run measure + arrange for `root` given the surface rect.
@@ -11,8 +11,8 @@ pub fn run(tree: &mut Tree, root: NodeId, surface: Rect) {
 /// Bottom-up. Returns the node's desired *slot* size (including its own margin)
 /// and stores it on the node.
 fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
-    let style = tree.node(node).style;
-    let layout = tree.node(node).layout;
+    let style = tree.node(node).layout;
+    let mode = tree.node(node).mode;
 
     // Inner available = available minus margin minus padding.
     let inner_avail = Size::new(
@@ -20,12 +20,12 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
         (available.h - style.margin.vert() - style.padding.vert()).max(0.0),
     );
 
-    let content = match layout {
-        LayoutKind::Leaf => leaf_content_size(tree, node),
-        LayoutKind::HStack => hstack_measure(tree, node, inner_avail),
-        LayoutKind::VStack => vstack_measure(tree, node, inner_avail),
-        LayoutKind::ZStack => zstack_measure(tree, node),
-        LayoutKind::Canvas => canvas_measure(tree, node),
+    let content = match mode {
+        LayoutMode::Leaf => leaf_content_size(tree, node),
+        LayoutMode::HStack => hstack_measure(tree, node, inner_avail),
+        LayoutMode::VStack => vstack_measure(tree, node, inner_avail),
+        LayoutMode::ZStack => zstack_measure(tree, node),
+        LayoutMode::Canvas => canvas_measure(tree, node),
     };
 
     let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
@@ -55,8 +55,8 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
 
 /// Top-down. `slot` is the rect the parent reserved (including this node's margin).
 fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
-    let style = tree.node(node).style;
-    let layout = tree.node(node).layout;
+    let style = tree.node(node).layout;
+    let mode = tree.node(node).mode;
 
     let rendered = Rect {
         min: slot.min + Vec2::new(style.margin.left, style.margin.top),
@@ -75,12 +75,12 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
         ),
     };
 
-    match layout {
-        LayoutKind::Leaf => {}
-        LayoutKind::HStack => arrange_stack(tree, node, inner, Axis::X),
-        LayoutKind::VStack => arrange_stack(tree, node, inner, Axis::Y),
-        LayoutKind::ZStack => arrange_zstack(tree, node, inner),
-        LayoutKind::Canvas => arrange_canvas(tree, node, inner),
+    match mode {
+        LayoutMode::Leaf => {}
+        LayoutMode::HStack => arrange_stack(tree, node, inner, Axis::X),
+        LayoutMode::VStack => arrange_stack(tree, node, inner, Axis::Y),
+        LayoutMode::ZStack => arrange_zstack(tree, node, inner),
+        LayoutMode::Canvas => arrange_canvas(tree, node, inner),
     }
 }
 
@@ -161,7 +161,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             Axis::Y => d.h,
         };
         sum_main_desired += main;
-        let s = tree.node(c).style;
+        let s = tree.node(c).layout;
         let main_sizing = match axis {
             Axis::X => s.size.w,
             Axis::Y => s.size.h,
@@ -192,7 +192,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     };
     for c in kids {
         let d = tree.node(c).desired;
-        let s = tree.node(c).style;
+        let s = tree.node(c).layout;
         let (main_sizing, main_desired) = match axis {
             Axis::X => (s.size.w, d.w),
             Axis::Y => (s.size.h, d.h),
@@ -244,7 +244,7 @@ fn zstack_measure(tree: &mut Tree, node: NodeId) -> Size {
     Size::new(max_w, max_h)
 }
 
-/// Canvas: children placed at their declared `Style.position` (parent-inner
+/// Canvas: children placed at their declared `Layout.position` (parent-inner
 /// coords, defaulting to `(0, 0)`). Pass `INFINITY` on both axes during measure
 /// so `Fill` children fall back to intrinsic — "fill the rest" is meaningless
 /// when children can overlap. Content size = `max(child_pos + child_desired)`
@@ -255,7 +255,7 @@ fn canvas_measure(tree: &mut Tree, node: NodeId) -> Size {
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in kids {
-        let pos = tree.node(c).style.position.unwrap_or(Vec2::ZERO);
+        let pos = tree.node(c).layout.position.unwrap_or(Vec2::ZERO);
         let d = measure(tree, c, child_avail);
         max_w = max_w.max(pos.x + d.w);
         max_h = max_h.max(pos.y + d.h);
@@ -270,7 +270,7 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
     let kids: Vec<NodeId> = tree.children(node).collect();
     for c in kids {
         let d = tree.node(c).desired;
-        let pos = tree.node(c).style.position.unwrap_or(Vec2::ZERO);
+        let pos = tree.node(c).layout.position.unwrap_or(Vec2::ZERO);
         let child_rect = Rect {
             min: inner.min + pos,
             size: d,
@@ -285,7 +285,7 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
     let kids: Vec<NodeId> = tree.children(node).collect();
     for c in kids {
         let d = tree.node(c).desired;
-        let s = tree.node(c).style;
+        let s = tree.node(c).layout;
 
         let w = match s.size.w {
             Sizing::Fill => inner.size.w,

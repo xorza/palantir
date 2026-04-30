@@ -1,7 +1,7 @@
-use crate::primitives::{Color, Corners, Sense, Size, Sizes, Spacing, Stroke, Visuals, WidgetId};
+use crate::primitives::{Color, Corners, Layout, Sense, Spacing, Stroke, Visuals, WidgetId};
 use crate::shape::Shape;
 use crate::ui::Ui;
-use crate::widgets::{Frame, Response};
+use crate::widgets::{Frame, Layoutable, Response};
 use glam::Vec2;
 use std::hash::Hash;
 
@@ -62,14 +62,10 @@ impl Default for ButtonStyle {
 
 pub struct Button {
     id: WidgetId,
-    size: Sizes,
-    min_size: Size,
-    max_size: Size,
-    margin: Spacing,
+    layout: Layout,
     style: ButtonStyle,
     radius: Corners,
     label: String,
-    position: Option<Vec2>,
 }
 
 impl Button {
@@ -82,33 +78,16 @@ impl Button {
     pub fn with_id(id: impl Hash) -> Self {
         Self {
             id: WidgetId::from_hash(id),
-            size: Sizes::HUG,
-            min_size: Size::ZERO,
-            max_size: Size::INF,
-            margin: Spacing::ZERO,
+            layout: Layout {
+                padding: Spacing::all(8.0),
+                ..Layout::default()
+            },
             style: ButtonStyle::default(),
             radius: Corners::all(4.0),
             label: String::new(),
-            position: None,
         }
     }
 
-    pub fn size(mut self, s: impl Into<Sizes>) -> Self {
-        self.size = s.into();
-        self
-    }
-    pub fn min_size(mut self, s: impl Into<Size>) -> Self {
-        self.min_size = s.into();
-        self
-    }
-    pub fn max_size(mut self, s: impl Into<Size>) -> Self {
-        self.max_size = s.into();
-        self
-    }
-    pub fn margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.margin = m.into();
-        self
-    }
     pub fn style(mut self, s: ButtonStyle) -> Self {
         self.style = s;
         self
@@ -119,12 +98,6 @@ impl Button {
     }
     pub fn label(mut self, s: impl Into<String>) -> Self {
         self.label = s.into();
-        self
-    }
-    /// Absolute position inside a `Canvas` parent (parent-inner coords).
-    /// Ignored by other layout kinds.
-    pub fn position(mut self, p: impl Into<Vec2>) -> Self {
-        self.position = Some(p.into());
         self
     }
 
@@ -140,26 +113,20 @@ impl Button {
             }
         };
 
-        let mut frame = Frame::for_widget_id(self.id)
-            .size(self.size)
-            .min_size(self.min_size)
-            .max_size(self.max_size)
-            .padding(Spacing::all(8.0))
-            .margin(self.margin)
+        let resp = Frame::for_widget_id(self.id)
+            .layout(self.layout)
             .fill(v.fill)
             .stroke(v.stroke)
             .radius(self.radius)
-            .sense(Sense::CLICK);
-        if let Some(p) = self.position {
-            frame = frame.position(p);
-        }
-        let resp = frame.show(ui);
+            .sense(Sense::CLICK)
+            .show(ui);
 
         // Layer the label on top of the frame's background. Safe immediately after
         // `Frame::show` because no other shape/node has been pushed since the
         // frame closed — `Tree::add_shape`'s contiguity invariant still holds.
         if !self.label.is_empty() {
-            let measured = Size::new(self.label.chars().count() as f32 * 8.0, 16.0);
+            let measured =
+                crate::primitives::Size::new(self.label.chars().count() as f32 * 8.0, 16.0);
             ui.tree.add_shape(
                 resp.node,
                 Shape::Text {
@@ -172,5 +139,11 @@ impl Button {
         }
 
         resp
+    }
+}
+
+impl Layoutable for Button {
+    fn layout_mut(&mut self) -> &mut Layout {
+        &mut self.layout
     }
 }

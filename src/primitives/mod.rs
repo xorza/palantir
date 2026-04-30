@@ -1,5 +1,6 @@
 mod color;
 mod corners;
+mod layout;
 mod num;
 mod rect;
 mod sense;
@@ -7,12 +8,12 @@ mod size;
 mod sizing;
 mod spacing;
 mod stroke;
-mod style;
 mod visuals;
 mod widget_id;
 
 pub use color::Color;
 pub use corners::Corners;
+pub use layout::Layout;
 pub use num::Num;
 pub use rect::Rect;
 pub use sense::Sense;
@@ -20,6 +21,5 @@ pub use size::Size;
 pub use sizing::{Sizes, Sizing};
 pub use spacing::Spacing;
 pub use stroke::Stroke;
-pub use style::Style;
 pub use visuals::Visuals;
 pub use widget_id::WidgetId;

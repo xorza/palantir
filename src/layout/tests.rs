@@ -1,5 +1,5 @@
 use crate::primitives::{Rect, Sizing};
-use crate::widgets::{Button, HStack, VStack};
+use crate::widgets::{Button, HStack, Layoutable, VStack};
 use crate::{Ui, layout};
 
 #[test]
