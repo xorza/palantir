@@ -194,3 +194,6 @@ impl InputState {
         self.last_rects.iter().any(|(i, _)| *i == id)
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -132,3 +132,6 @@ impl Ui {
         self.tree.add_shape(node, shape);
     }
 }
+
+#[cfg(test)]
+mod tests;
