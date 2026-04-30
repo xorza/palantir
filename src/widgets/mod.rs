@@ -4,7 +4,7 @@ mod panel;
 
 pub use button::{Button, ButtonStyle};
 pub use frame::Frame;
-pub use panel::{HStack, Panel, VStack, ZStack};
+pub use panel::{Canvas, HStack, Panel, VStack, ZStack};
 
 use crate::input::ResponseState;
 use crate::primitives::Rect;

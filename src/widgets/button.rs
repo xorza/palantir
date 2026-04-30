@@ -69,6 +69,7 @@ pub struct Button {
     style: ButtonStyle,
     radius: Corners,
     label: String,
+    position: Option<Vec2>,
 }
 
 impl Button {
@@ -88,6 +89,7 @@ impl Button {
             style: ButtonStyle::default(),
             radius: Corners::all(4.0),
             label: String::new(),
+            position: None,
         }
     }
 
@@ -119,6 +121,12 @@ impl Button {
         self.label = s.into();
         self
     }
+    /// Absolute position inside a `Canvas` parent (parent-inner coords).
+    /// Ignored by other layout kinds.
+    pub fn position(mut self, p: impl Into<Vec2>) -> Self {
+        self.position = Some(p.into());
+        self
+    }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let v = {
@@ -132,7 +140,7 @@ impl Button {
             }
         };
 
-        let resp = Frame::for_widget_id(self.id)
+        let mut frame = Frame::for_widget_id(self.id)
             .size(self.size)
             .min_size(self.min_size)
             .max_size(self.max_size)
@@ -141,8 +149,11 @@ impl Button {
             .fill(v.fill)
             .stroke(v.stroke)
             .radius(self.radius)
-            .sense(Sense::CLICK)
-            .show(ui);
+            .sense(Sense::CLICK);
+        if let Some(p) = self.position {
+            frame = frame.position(p);
+        }
+        let resp = frame.show(ui);
 
         // Layer the label on top of the frame's background. Safe immediately after
         // `Frame::show` because no other shape/node has been pushed since the

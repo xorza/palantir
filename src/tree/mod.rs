@@ -12,6 +12,10 @@ pub enum LayoutKind {
     /// Children all laid out at the same position (top-left of inner rect),
     /// each sized per its own `Sizing`. Used by `Panel`.
     ZStack,
+    /// Children placed at their declared `Style.position` (parent-inner coords).
+    /// Each child sized per its desired (intrinsic) size. Canvas hugs to the
+    /// bounding box of placed children.
+    Canvas,
 }
 
 #[derive(Debug)]
