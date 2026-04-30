@@ -1,6 +1,6 @@
 use crate::primitives::{Color, Rect, Sense, Sizing};
 use crate::shape::Shape;
-use crate::widgets::{Button, Frame, HStack, Panel};
+use crate::widgets::{Button, Frame, HStack, ZStack};
 use crate::{Ui, layout};
 
 #[test]
@@ -40,7 +40,7 @@ fn panel_hugs_largest_child_and_layers_them() {
     let mut b_node = None;
     HStack::new().show(&mut ui, |ui| {
         panel_node = Some(
-            Panel::with_id("card")
+            ZStack::with_id("card")
                 .padding(10.0)
                 .fill(Color::rgb(0.1, 0.1, 0.15))
                 .radius(8.0)
@@ -92,7 +92,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     ui.begin_frame();
     let mut child_node = None;
     HStack::new().show(&mut ui, |ui| {
-        Panel::with_id("p")
+        ZStack::with_id("p")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
             .padding(10.0)
             .show(ui, |ui| {
@@ -114,6 +114,58 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     assert_eq!(child.min.y, 10.0);
     assert_eq!(child.size.w, 180.0);
     assert_eq!(child.size.h, 80.0);
+}
+
+#[test]
+fn zstack_layers_children_without_painting_background() {
+    // Like Panel but with no fill/stroke/radius — pure layered layout.
+    // Wrapped in HStack so the ZStack's Hug-to-children size is honored
+    // (root would otherwise expand to surface).
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let mut zstack_node = None;
+    let mut bg_node = None;
+    let mut fg_node = None;
+    HStack::new().show(&mut ui, |ui| {
+        zstack_node = Some(
+            ZStack::with_id("layered")
+                .show(ui, |ui| {
+                    bg_node = Some(
+                        Frame::with_id("bg")
+                            .size((Sizing::Fixed(120.0), Sizing::Fixed(80.0)))
+                            .fill(Color::rgb(0.1, 0.1, 0.2))
+                            .show(ui)
+                            .node,
+                    );
+                    fg_node = Some(
+                        Button::with_id("fg")
+                            .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
+                            .show(ui)
+                            .node,
+                    );
+                })
+                .node,
+        );
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+
+    let z = zstack_node.unwrap();
+    // ZStack itself paints nothing.
+    assert!(ui.tree.shapes_of(z).is_empty());
+
+    // ZStack hugs to max(child sizes) = (120, 80).
+    let zr = ui.tree.node(z).rect;
+    assert_eq!(zr.size.w, 120.0);
+    assert_eq!(zr.size.h, 80.0);
+
+    // Both children placed at ZStack's top-left (no padding), at their own size.
+    let bg = ui.tree.node(bg_node.unwrap()).rect;
+    let fg = ui.tree.node(fg_node.unwrap()).rect;
+    assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
+    assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
+    assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
+    assert_eq!((fg.size.w, fg.size.h), (60.0, 30.0));
 }
 
 #[test]

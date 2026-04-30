@@ -5,14 +5,17 @@ use crate::ui::Ui;
 use crate::widgets::Response;
 use std::hash::Hash;
 
-/// Container with a painted background that hugs its children. Children are
-/// laid out as a ZStack — all positioned at the top-left of the panel's
-/// inner rect, sized per their own `Sizing`. Useful for cards, modals, or
-/// any "background + content" composition.
+/// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
+/// (selected via constructor) and optionally paints a background rect
+/// (fill / stroke / radius). Cards, rows, columns, and layered overlays all
+/// share this one type — `HStack::new()` / `VStack::new()` / `ZStack::new()`
+/// just preselect the layout.
 ///
-/// For absolute-positioned children, see (future) `Canvas` widget.
+/// Default fill is transparent and stroke is `None`, so a Panel without
+/// `.fill(...)` or `.stroke(...)` paints nothing — pure layout.
 pub struct Panel {
     id: WidgetId,
+    kind: LayoutKind,
     size: Sizes,
     min_size: Size,
     max_size: Size,
@@ -25,19 +28,10 @@ pub struct Panel {
 }
 
 impl Panel {
-    #[track_caller]
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self::for_widget_id(WidgetId::auto_stable())
-    }
-
-    pub fn with_id(id: impl Hash) -> Self {
-        Self::for_widget_id(WidgetId::from_hash(id))
-    }
-
-    pub fn for_widget_id(id: WidgetId) -> Self {
+    fn from_id(id: WidgetId, kind: LayoutKind) -> Self {
         Self {
             id,
+            kind,
             size: Sizes::HUG,
             min_size: Size::ZERO,
             max_size: Size::INF,
@@ -82,6 +76,8 @@ impl Panel {
         self.radius = r.into();
         self
     }
+    /// Make the panel itself an interaction target (clickable card, drag handle, etc).
+    /// Default `Sense::NONE` so containers don't intercept clicks meant for children.
     pub fn sense(mut self, s: Sense) -> Self {
         self.sense = s;
         self
@@ -95,18 +91,62 @@ impl Panel {
             padding: self.padding,
             margin: self.margin,
         };
+        // Skip the bg shape entirely if the panel has nothing to paint — keeps
+        // pure-layout HStacks/VStacks zero-shape, like before.
+        let paints_bg = self.fill.a > 0.0 || self.stroke.is_some();
 
-        let node = ui.node(self.id, style, LayoutKind::ZStack, self.sense, |ui| {
-            ui.add_shape(Shape::RoundedRect {
-                bounds: ShapeRect::Full,
-                radius: self.radius,
-                fill: self.fill,
-                stroke: self.stroke,
-            });
+        let node = ui.node(self.id, style, self.kind, self.sense, |ui| {
+            if paints_bg {
+                ui.add_shape(Shape::RoundedRect {
+                    bounds: ShapeRect::Full,
+                    radius: self.radius,
+                    fill: self.fill,
+                    stroke: self.stroke,
+                });
+            }
             body(ui);
         });
 
         let state = ui.response_for(self.id);
         Response { node, state }
+    }
+}
+
+pub struct HStack;
+pub struct VStack;
+pub struct ZStack;
+
+#[allow(clippy::new_ret_no_self)]
+impl HStack {
+    #[track_caller]
+    pub fn new() -> Panel {
+        Panel::from_id(WidgetId::auto_stable(), LayoutKind::HStack)
+    }
+    pub fn with_id(id: impl Hash) -> Panel {
+        Panel::from_id(WidgetId::from_hash(id), LayoutKind::HStack)
+    }
+}
+
+#[allow(clippy::new_ret_no_self)]
+impl VStack {
+    #[track_caller]
+    pub fn new() -> Panel {
+        Panel::from_id(WidgetId::auto_stable(), LayoutKind::VStack)
+    }
+    pub fn with_id(id: impl Hash) -> Panel {
+        Panel::from_id(WidgetId::from_hash(id), LayoutKind::VStack)
+    }
+}
+
+/// Layered children: each child placed at the parent's inner top-left, sized
+/// per its own `Sizing`. Last sibling paints on top.
+#[allow(clippy::new_ret_no_self)]
+impl ZStack {
+    #[track_caller]
+    pub fn new() -> Panel {
+        Panel::from_id(WidgetId::auto_stable(), LayoutKind::ZStack)
+    }
+    pub fn with_id(id: impl Hash) -> Panel {
+        Panel::from_id(WidgetId::from_hash(id), LayoutKind::ZStack)
     }
 }
