@@ -313,6 +313,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(16.0)
                         .margin(5)
+                        .clip(true)
                         .fill(Color::rgb(0.16, 0.20, 0.28))
                         .stroke(Stroke {
                             width: 1.0,
