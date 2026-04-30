@@ -22,7 +22,7 @@ pub fn build(ui: &mut Ui) {
             //    fixed sidebar | flexible content | hugging right rail.
             //    Row 0 spans all three as a header band.
             cell(ui, "shell", |ui| {
-                Grid::with_id("shell")
+                Grid::with_id("shell-grid")
                     .cols([Track::fixed(140.0), Track::fill(), Track::hug()])
                     .rows([Track::fixed(36.0), Track::fill()])
                     .gap(8.0)
@@ -54,15 +54,15 @@ pub fn build(ui: &mut Ui) {
                     });
             });
 
-            // 2. Min/max-clamped Fill columns. Demonstrates that a clamped
-            //    star "steals" or "donates" leftover to the others.
-            //    Left col: weight 1 with min 200 → wins more than its share.
-            //    Right col: weight 3 with max 240 → caps, donates leftover.
+            // 2. Clamped sidebar + greedy content. The left Fill is bounded
+            //    `[200, 300]` so it grows with the window only within that
+            //    range; the right Fill has no clamp and absorbs every leftover
+            //    pixel. Resize the window to watch the sidebar saturate.
             cell(ui, "min/max", |ui| {
                 Grid::with_id("clamped")
                     .cols([
-                        Track::fill_weight(1.0).min(200.0),
-                        Track::fill_weight(3.0).max(240.0),
+                        Track::fill_weight(1.0).min(200.0).max(300.0),
+                        Track::fill_weight(2.0),
                     ])
                     .rows([Track::fill()])
                     .gap(8.0)
