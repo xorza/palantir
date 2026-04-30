@@ -13,9 +13,9 @@ pub struct Stack {
 }
 
 impl Stack {
-    fn new(id: impl Hash, kind: LayoutKind) -> Self {
+    fn from_id(id: WidgetId, kind: LayoutKind) -> Self {
         Self {
-            id: WidgetId::from_hash(id),
+            id,
             kind,
             size: Sizes::HUG,
             padding: Spacing::ZERO,
@@ -43,9 +43,17 @@ pub struct HStack;
 pub struct VStack;
 
 impl HStack {
-    pub fn new(id: impl Hash) -> Stack { Stack::new(id, LayoutKind::HStack) }
+    #[track_caller]
+    pub fn new() -> Stack { Stack::from_id(WidgetId::auto_stable(), LayoutKind::HStack) }
+    pub fn with_id(id: impl Hash) -> Stack {
+        Stack::from_id(WidgetId::from_hash(id), LayoutKind::HStack)
+    }
 }
 
 impl VStack {
-    pub fn new(id: impl Hash) -> Stack { Stack::new(id, LayoutKind::VStack) }
+    #[track_caller]
+    pub fn new() -> Stack { Stack::from_id(WidgetId::auto_stable(), LayoutKind::VStack) }
+    pub fn with_id(id: impl Hash) -> Stack {
+        Stack::from_id(WidgetId::from_hash(id), LayoutKind::VStack)
+    }
 }

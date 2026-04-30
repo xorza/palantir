@@ -10,4 +10,13 @@ impl WidgetId {
         h.hash(&mut hasher);
         Self(hasher.finish())
     }
+
+    /// Stable across frames as long as the call site is unchanged.
+    /// Collides for widgets created at the same call site (e.g. inside a `for` loop) —
+    /// in that case build an id explicitly with `from_hash`.
+    #[track_caller]
+    pub fn auto_stable() -> Self {
+        let l = std::panic::Location::caller();
+        Self::from_hash((l.file(), l.line(), l.column()))
+    }
 }

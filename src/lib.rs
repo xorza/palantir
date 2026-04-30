@@ -20,9 +20,9 @@ mod tests {
         let mut ui = Ui::new();
         ui.begin_frame();
 
-        let root = HStack::new("root").show(&mut ui, |ui| {
-            Button::new("a").label("Hi").show(ui);
-            Button::new("b").label("World").width(100.0).show(ui);
+        let root = HStack::new().show(&mut ui, |ui| {
+            Button::new().label("Hi").show(ui);
+            Button::new().label("World").width(100.0).show(ui);
         }).node;
 
         let surface = Rect::new(0.0, 0.0, 800.0, 600.0);
@@ -50,9 +50,9 @@ mod tests {
         let mut ui = Ui::new();
         ui.begin_frame();
 
-        let root = VStack::new("root").show(&mut ui, |ui| {
-            Button::new("fixed").height(50.0).show(ui);
-            Button::new("filler").height(Sizing::Fill).show(ui);
+        let root = VStack::new().show(&mut ui, |ui| {
+            Button::new().height(50.0).show(ui);
+            Button::new().height(Sizing::Fill).show(ui);
         }).node;
 
         let surface = Rect::new(0.0, 0.0, 200.0, 300.0);
@@ -68,12 +68,23 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_widget_id_traces_but_does_not_panic() {
+        let mut ui = Ui::new();
+        ui.begin_frame();
+        HStack::new().show(&mut ui, |ui| {
+            Button::with_id("dup").show(ui);
+            Button::with_id("dup").show(ui);
+        });
+        assert_eq!(ui.tree.nodes.len(), 3);
+    }
+
+    #[test]
     fn shapes_attached_to_button_node() {
         let mut ui = Ui::new();
         ui.begin_frame();
         let mut button_node = None;
-        HStack::new("root").show(&mut ui, |ui| {
-            button_node = Some(Button::new("only").label("X").show(ui).node);
+        HStack::new().show(&mut ui, |ui| {
+            button_node = Some(Button::new().label("X").show(ui).node);
         });
 
         let shapes = ui.tree.shapes_of(button_node.unwrap());
