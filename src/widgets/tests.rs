@@ -246,6 +246,139 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 }
 
 #[test]
+fn collapsed_child_consumes_no_space_in_hstack() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .gap(10.0)
+        .show(&mut ui, |ui| {
+            Frame::with_id("a").size(40.0).show(ui);
+            Frame::with_id("gone").size(40.0).collapsed().show(ui);
+            Frame::with_id("b").size(40.0).show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let a = ui.tree.node(kids[0]).rect;
+    let gone = ui.tree.node(kids[1]).rect;
+    let b = ui.tree.node(kids[2]).rect;
+
+    assert_eq!(a.min.x, 0.0);
+    assert_eq!(a.size.w, 40.0);
+    assert_eq!(gone.size.w, 0.0);
+    assert_eq!(gone.size.h, 0.0);
+    // Only one gap between the two visible siblings: 40 + 10 = 50.
+    assert_eq!(b.min.x, 50.0);
+    assert_eq!(b.size.w, 40.0);
+}
+
+#[test]
+fn collapsed_does_not_consume_fill_weight() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .show(&mut ui, |ui| {
+            Frame::with_id("a")
+                .size((Sizing::Fill(1.0), Sizing::Hug))
+                .show(ui);
+            Frame::with_id("gone")
+                .size((Sizing::Fill(3.0), Sizing::Hug))
+                .collapsed()
+                .show(ui);
+            Frame::with_id("b")
+                .size((Sizing::Fill(1.0), Sizing::Hug))
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let a = ui.tree.node(kids[0]).rect;
+    let b = ui.tree.node(kids[2]).rect;
+    // Collapsed sibling's weight (3.0) is dropped — remaining two fills split 50/50.
+    assert_eq!(a.size.w, 200.0);
+    assert_eq!(b.size.w, 200.0);
+    assert_eq!(b.min.x, 200.0);
+}
+
+#[test]
+fn hidden_keeps_slot_but_emits_no_draws() {
+    use crate::renderer::{RenderCmd, encode};
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .gap(10.0)
+        .show(&mut ui, |ui| {
+            Frame::with_id("a")
+                .size(40.0)
+                .fill(Color::rgb(1.0, 0.0, 0.0))
+                .show(ui);
+            Frame::with_id("hid")
+                .size(40.0)
+                .fill(Color::rgb(0.0, 1.0, 0.0))
+                .hidden()
+                .show(ui);
+            Frame::with_id("b")
+                .size(40.0)
+                .fill(Color::rgb(0.0, 0.0, 1.0))
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let hid = ui.tree.node(kids[1]).rect;
+    let b = ui.tree.node(kids[2]).rect;
+    // Hidden node still occupies its slot.
+    assert_eq!(hid.size.w, 40.0);
+    // ...so b's offset includes hidden's width + both gaps.
+    assert_eq!(b.min.x, 40.0 + 10.0 + 40.0 + 10.0);
+
+    // ...but emits no DrawRect.
+    let mut cmds = Vec::new();
+    encode(&ui.tree, &mut cmds);
+    let draws = cmds
+        .iter()
+        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .count();
+    assert_eq!(draws, 2, "only the two Visible frames should paint");
+}
+
+#[test]
+fn hidden_button_does_not_click() {
+    use crate::input::{InputEvent, PointerButton};
+    use glam::Vec2;
+
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    HStack::new().show(&mut ui, |ui| {
+        Button::with_id("invisible")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+            .hidden()
+            .show(ui);
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.end_frame();
+
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    ui.begin_frame();
+    let mut clicked = false;
+    HStack::new().show(&mut ui, |ui| {
+        clicked = Button::with_id("invisible")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+            .hidden()
+            .show(ui)
+            .clicked();
+    });
+    assert!(!clicked, "hidden button should not receive clicks");
+}
+
+#[test]
 fn zstack_centers_child_when_align_center() {
     use crate::primitives::Align;
     let mut ui = Ui::new();

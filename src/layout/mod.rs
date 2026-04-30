@@ -1,4 +1,4 @@
-use crate::primitives::{Align, Layout, Rect, Size, Sizes, Sizing};
+use crate::primitives::{Align, Layout, Rect, Size, Sizes, Sizing, Visibility};
 use crate::shape::Shape;
 use crate::tree::{LayoutMode, NodeId, Tree};
 use glam::Vec2;
@@ -12,6 +12,10 @@ pub fn run(tree: &mut Tree, root: NodeId, surface: Rect) {
 /// Bottom-up. Returns the node's desired *slot* size (including its own margin)
 /// and stores it on the node.
 fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
+    if tree.node(node).element.visibility == Visibility::Collapsed {
+        tree.node_mut(node).desired = Size::ZERO;
+        return Size::ZERO;
+    }
     let style = tree.node(node).element.layout;
     let mode = tree.node(node).element.mode;
 
@@ -56,6 +60,13 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
 
 /// Top-down. `slot` is the rect the parent reserved (including this node's margin).
 fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
+    if tree.node(node).element.visibility == Visibility::Collapsed {
+        tree.node_mut(node).rect = Rect {
+            min: slot.min,
+            size: Size::ZERO,
+        };
+        return;
+    }
     let style = tree.node(node).element.layout;
     let mode = tree.node(node).element.mode;
 
@@ -185,7 +196,13 @@ fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size
     let mut count = 0usize;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
+        // Collapsed children still get measured (so `desired` is set to ZERO),
+        // but don't contribute to the parent's content size or gap count.
+        let collapsed = tree.node(c).element.visibility == Visibility::Collapsed;
         let d = measure(tree, c, child_avail);
+        if collapsed {
+            continue;
+        }
         total_main += axis.main(d);
         max_cross = max_cross.max(axis.cross(d));
         count += 1;
@@ -206,6 +223,9 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let n = tree.node(c);
+        if n.element.visibility == Visibility::Collapsed {
+            continue;
+        }
         if let Sizing::Fill(weight) = axis.main_sizing(n.element.layout.size) {
             total_weight += weight.max(0.0);
         } else {
@@ -225,6 +245,19 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
 
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
+        if tree.node(c).element.visibility == Visibility::Collapsed {
+            // Give Collapsed children a zero rect at the cursor so they exist
+            // in the tree but consume no space, no gap, no fill weight.
+            arrange(
+                tree,
+                c,
+                Rect {
+                    min: axis.compose_rect(cursor, cross_min, 0.0, 0.0).min,
+                    size: Size::ZERO,
+                },
+            );
+            continue;
+        }
         if !first {
             cursor += gap;
         }

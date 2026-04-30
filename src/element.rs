@@ -1,4 +1,6 @@
-use crate::primitives::{Align, Layout, Sense, Size, Sizes, Spacing, TranslateScale, WidgetId};
+use crate::primitives::{
+    Align, Layout, Sense, Size, Sizes, Spacing, TranslateScale, Visibility, WidgetId,
+};
 use crate::tree::LayoutMode;
 use glam::Vec2;
 
@@ -12,6 +14,11 @@ pub struct UiElement {
     pub mode: LayoutMode,
     pub sense: Sense,
     pub disabled: bool,
+    /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
+    /// layout but suppresses paint + input; `Collapsed` zeros the slot and
+    /// skips the subtree everywhere. Cascades implicitly (paint and input
+    /// early-return at non-`Visible` nodes).
+    pub visibility: Visibility,
     /// Clip descendants' paint to this node's rendered rect (CSS `overflow:
     /// hidden`). The renderer applies a scissor while walking the subtree.
     /// Has no effect on layout — children may still measure beyond the rect;
@@ -34,6 +41,7 @@ impl UiElement {
             mode,
             sense: Sense::NONE,
             disabled: false,
+            visibility: Visibility::Visible,
             clip: false,
             transform: None,
         }
@@ -105,5 +113,18 @@ pub trait Element: Sized {
     fn disabled(mut self, d: bool) -> Self {
         self.element_mut().disabled = d;
         self
+    }
+    /// Three-state visibility. See [`Visibility`].
+    fn visibility(mut self, v: Visibility) -> Self {
+        self.element_mut().visibility = v;
+        self
+    }
+    /// Shorthand for [`Visibility::Hidden`]: keeps the slot, hides paint + input.
+    fn hidden(self) -> Self {
+        self.visibility(Visibility::Hidden)
+    }
+    /// Shorthand for [`Visibility::Collapsed`]: skip the node entirely (zero slot).
+    fn collapsed(self) -> Self {
+        self.visibility(Visibility::Collapsed)
     }
 }

@@ -1,4 +1,4 @@
-use crate::primitives::{Rect, Sense, TranslateScale, WidgetId};
+use crate::primitives::{Rect, Sense, TranslateScale, Visibility, WidgetId};
 use crate::tree::Tree;
 use glam::Vec2;
 use std::collections::HashSet;
@@ -99,6 +99,9 @@ pub struct InputState {
     /// Per-node disabled cascade scratch. Reused frame-to-frame; cleared in
     /// `end_frame`.
     effective_disabled: Vec<bool>,
+    /// Per-node visibility cascade scratch. `true` if this node is `Hidden`/
+    /// `Collapsed` itself or has any such ancestor — i.e. invisible to input.
+    effective_invisible: Vec<bool>,
     /// Per-node clip-rect cascade scratch (clip inherited by descendants), in
     /// SCREEN space — clips are accumulated *after* applying transforms, so
     /// they're directly compared with screen-space hit-test rects.
@@ -124,6 +127,7 @@ impl InputState {
             last_rects: Vec::new(),
             clicked_this_frame: HashSet::new(),
             effective_disabled: Vec::new(),
+            effective_invisible: Vec::new(),
             clip_for_descendants: Vec::new(),
             transform_for_descendants: Vec::new(),
         }
@@ -176,6 +180,9 @@ impl InputState {
     /// - **`disabled`**: any ancestor with `disabled = true` forces this
     ///   node's effective `Sense` to `NONE`, removing the subtree from
     ///   hit-testing.
+    /// - **`visibility`**: any ancestor (or self) with `Hidden`/`Collapsed`
+    ///   visibility forces this node's effective `Sense` to `NONE` for the
+    ///   same reason. (Paint cascade is handled separately by the encoder.)
     /// - **`transform`**: each node's own rect is mapped to screen space via
     ///   its parent's cumulative transform (the panel's *own* transform applies
     ///   only to its descendants, matching the encoder's emit order).
@@ -185,11 +192,13 @@ impl InputState {
     pub(crate) fn end_frame(&mut self, tree: &Tree) {
         self.last_rects.clear();
         self.effective_disabled.clear();
+        self.effective_invisible.clear();
         self.clip_for_descendants.clear();
         self.transform_for_descendants.clear();
         let n = tree.nodes.len();
         self.last_rects.reserve(n);
         self.effective_disabled.reserve(n);
+        self.effective_invisible.reserve(n);
         self.clip_for_descendants.reserve(n);
         self.transform_for_descendants.reserve(n);
 
@@ -201,6 +210,15 @@ impl InputState {
                 .unwrap_or(false);
             let me_disabled = parent_disabled || node.element.disabled;
             self.effective_disabled.push(me_disabled);
+
+            // Visibility cascade. `Hidden` and `Collapsed` both suppress input;
+            // any non-`Visible` ancestor poisons the whole subtree.
+            let parent_invisible = node
+                .parent
+                .map(|p| self.effective_invisible[p.0 as usize])
+                .unwrap_or(false);
+            let me_invisible = parent_invisible || node.element.visibility != Visibility::Visible;
+            self.effective_invisible.push(me_invisible);
 
             // Transform cascade. Parent's cumulative transform places THIS
             // node's rect into screen space. Own transform contributes only
@@ -235,7 +253,7 @@ impl InputState {
             };
             self.clip_for_descendants.push(descendant_clip);
 
-            let sense = if me_disabled {
+            let sense = if me_disabled || me_invisible {
                 Sense::NONE
             } else {
                 node.element.sense
