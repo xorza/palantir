@@ -3,6 +3,7 @@ use palantir::{Color, Element, Frame, HStack, Sizing, Stroke, Ui, ZStack};
 pub fn build(ui: &mut Ui) {
     HStack::new()
         .gap(16.0)
+        .clip(false)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Left: clipped — child rect spills via negative margin, but the

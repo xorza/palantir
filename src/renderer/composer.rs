@@ -26,10 +26,6 @@ impl Composer {
         &self.buffer
     }
 
-    pub fn cmds(&self) -> &[RenderCmd] {
-        &self.cmds
-    }
-
     pub fn buffer(&self) -> &RenderBuffer {
         &self.buffer
     }

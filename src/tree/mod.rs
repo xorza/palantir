@@ -5,20 +5,6 @@ use crate::shape::Shape;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub u32);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum LayoutMode {
-    Leaf,
-    HStack,
-    VStack,
-    /// Children all laid out at the same position (top-left of inner rect),
-    /// each sized per its own `Sizing`. Used by `Panel`.
-    ZStack,
-    /// Children placed at their declared `Layout.position` (parent-inner coords).
-    /// Each child sized per its desired (intrinsic) size. Canvas hugs to the
-    /// bounding box of placed children.
-    Canvas,
-}
-
 #[derive(Debug)]
 pub struct Node {
     /// What was recorded for this node: id, layout, mode, sense, disabled.
@@ -29,7 +15,6 @@ pub struct Node {
 
     pub parent: Option<NodeId>,
     pub first_child: Option<NodeId>,
-    pub last_child: Option<NodeId>,
     pub next_sibling: Option<NodeId>,
 
     /// Range into Tree.shapes
@@ -46,7 +31,6 @@ impl Node {
             element,
             parent,
             first_child: None,
-            last_child: None,
             next_sibling: None,
             shapes_start: 0,
             shapes_end: 0,
@@ -63,6 +47,12 @@ impl Node {
 pub struct Tree {
     pub nodes: Vec<Node>,
     pub shapes: Vec<Shape>,
+    /// Recording-only scratch: index `i` holds the most recently appended
+    /// child of node `i`, used by `push_node` for O(1) sibling-list append.
+    /// Not read after recording — kept as a parallel vec rather than a `Node`
+    /// field so the Node footprint stays minimal across measure/arrange/paint.
+    /// Reused frame-to-frame; cleared with `Tree::clear`.
+    last_child: Vec<Option<NodeId>>,
 }
 
 impl Tree {
@@ -73,6 +63,7 @@ impl Tree {
     pub fn clear(&mut self) {
         self.nodes.clear();
         self.shapes.clear();
+        self.last_child.clear();
     }
 
     pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
@@ -81,19 +72,21 @@ impl Tree {
         node.shapes_start = self.shapes.len() as u32;
         node.shapes_end = self.shapes.len() as u32;
         self.nodes.push(node);
+        self.last_child.push(None);
 
         if let Some(p) = parent {
-            // Append as last sibling.
-            let parent_last = self.nodes[p.0 as usize].last_child;
-            match parent_last {
+            // Append as last sibling. `last_child[p]` is the previous tail (or
+            // `None` if `p` had no children yet).
+            let pi = p.0 as usize;
+            match self.last_child[pi] {
                 None => {
-                    self.nodes[p.0 as usize].first_child = Some(new_id);
+                    self.nodes[pi].first_child = Some(new_id);
                 }
                 Some(prev) => {
                     self.nodes[prev.0 as usize].next_sibling = Some(new_id);
                 }
             }
-            self.nodes[p.0 as usize].last_child = Some(new_id);
+            self.last_child[pi] = Some(new_id);
         }
         new_id
     }

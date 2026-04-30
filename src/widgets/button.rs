@@ -1,7 +1,6 @@
-use crate::element::{Element, UiElement};
+use crate::element::{Element, LayoutMode, UiElement};
 use crate::primitives::{Color, Corners, Sense, Visuals, WidgetId};
 use crate::shape::Shape;
-use crate::tree::LayoutMode;
 use crate::ui::Ui;
 use crate::widgets::{Frame, Response};
 use glam::Vec2;
