@@ -25,6 +25,10 @@ pub struct Node {
     pub style: Style,
     pub layout: LayoutKind,
     pub sense: Sense,
+    /// Suppress this node's interactions and cascade to all descendants.
+    /// Set by widgets like `Panel::disabled(true)`. Effective `Sense::NONE`
+    /// is computed in `InputState::end_frame` by walking ancestors.
+    pub disabled: bool,
 
     /// Range into Tree.shapes
     pub shapes_start: u32,
@@ -51,6 +55,7 @@ impl Node {
             style,
             layout,
             sense,
+            disabled: false,
             shapes_start: 0,
             shapes_end: 0,
             desired: Size::ZERO,

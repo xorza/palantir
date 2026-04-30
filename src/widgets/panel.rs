@@ -25,6 +25,7 @@ pub struct Panel {
     stroke: Option<Stroke>,
     radius: Corners,
     sense: Sense,
+    disabled: bool,
 }
 
 impl Panel {
@@ -41,6 +42,7 @@ impl Panel {
             stroke: None,
             radius: Corners::ZERO,
             sense: Sense::NONE,
+            disabled: false,
         }
     }
 
@@ -82,6 +84,14 @@ impl Panel {
         self.sense = s;
         self
     }
+    /// Suppress this panel's interactions and cascade to all descendants.
+    /// Buttons / clickable widgets nested inside a disabled Panel become
+    /// non-interactive without any per-widget API changes. Visual style is
+    /// unaffected — apply your own dimming if desired.
+    pub fn disabled(mut self, d: bool) -> Self {
+        self.disabled = d;
+        self
+    }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let style = Style {
@@ -106,6 +116,10 @@ impl Panel {
             }
             body(ui);
         });
+
+        if self.disabled {
+            ui.tree.node_mut(node).disabled = true;
+        }
 
         let state = ui.response_for(self.id);
         Response { node, state }
