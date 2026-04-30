@@ -1,4 +1,4 @@
-use crate::primitives::{Align, Rect, Size, Sizing};
+use crate::primitives::{Align, Layout, Rect, Size, Sizes, Sizing};
 use crate::tree::{LayoutMode, NodeId, Tree};
 use glam::Vec2;
 
@@ -22,8 +22,8 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
 
     let content = match mode {
         LayoutMode::Leaf => leaf_content_size(tree, node),
-        LayoutMode::HStack => hstack_measure(tree, node, inner_avail),
-        LayoutMode::VStack => vstack_measure(tree, node, inner_avail),
+        LayoutMode::HStack => stack_measure(tree, node, inner_avail, Axis::X),
+        LayoutMode::VStack => stack_measure(tree, node, inner_avail, Axis::Y),
         LayoutMode::ZStack => zstack_measure(tree, node),
         LayoutMode::Canvas => canvas_measure(tree, node),
     };
@@ -31,7 +31,7 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
     let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
     let hug_h = content.h + style.padding.vert() + style.margin.vert();
     let desired = Size::new(
-        resolve_axis(
+        resolve_main_size(
             style.size.w,
             hug_w,
             available.w,
@@ -39,7 +39,7 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
             style.min_size.w,
             style.max_size.w,
         ),
-        resolve_axis(
+        resolve_main_size(
             style.size.h,
             hug_h,
             available.h,
@@ -58,22 +58,9 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
     let style = tree.node(node).layout;
     let mode = tree.node(node).mode;
 
-    let rendered = Rect {
-        min: slot.min + Vec2::new(style.margin.left, style.margin.top),
-        size: Size::new(
-            (slot.width() - style.margin.horiz()).max(0.0),
-            (slot.height() - style.margin.vert()).max(0.0),
-        ),
-    };
+    let rendered = slot.deflated_by(style.margin);
     tree.node_mut(node).rect = rendered;
-
-    let inner = Rect {
-        min: rendered.min + Vec2::new(style.padding.left, style.padding.top),
-        size: Size::new(
-            (rendered.width() - style.padding.horiz()).max(0.0),
-            (rendered.height() - style.padding.vert()).max(0.0),
-        ),
-    };
+    let inner = rendered.deflated_by(style.padding);
 
     match mode {
         LayoutMode::Leaf => {}
@@ -84,7 +71,16 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
     }
 }
 
-fn resolve_axis(s: Sizing, hug_outer: f32, available: f32, margin: f32, min: f32, max: f32) -> f32 {
+/// Resolve a node's outer slot size on one axis, given its sizing policy,
+/// hug-content size, parent-supplied available, own margin, and clamps.
+fn resolve_main_size(
+    s: Sizing,
+    hug_outer: f32,
+    available: f32,
+    margin: f32,
+    min: f32,
+    max: f32,
+) -> f32 {
     let slot = match s {
         Sizing::Fixed(v) => v + margin,
         Sizing::Hug => hug_outer,
@@ -112,47 +108,78 @@ fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
     s
 }
 
-fn hstack_measure(tree: &mut Tree, node: NodeId, inner: Size) -> Size {
-    // Pass infinite width to children on the main axis (WPF trick).
-    let child_avail = Size::new(f32::INFINITY, inner.h);
-    let gap = tree.node(node).layout.gap;
-    let kids: Vec<NodeId> = tree.children(node).collect();
-    let n = kids.len();
-    let mut total_w = 0.0f32;
-    let mut max_h = 0.0f32;
-    for c in kids {
-        let d = measure(tree, c, child_avail);
-        total_w += d.w;
-        max_h = max_h.max(d.h);
-    }
-    if n > 1 {
-        total_w += gap * (n - 1) as f32;
-    }
-    Size::new(total_w, max_h)
-}
-
-fn vstack_measure(tree: &mut Tree, node: NodeId, inner: Size) -> Size {
-    let child_avail = Size::new(inner.w, f32::INFINITY);
-    let gap = tree.node(node).layout.gap;
-    let kids: Vec<NodeId> = tree.children(node).collect();
-    let n = kids.len();
-    let mut total_h = 0.0f32;
-    let mut max_w = 0.0f32;
-    for c in kids {
-        let d = measure(tree, c, child_avail);
-        total_h += d.h;
-        max_w = max_w.max(d.w);
-    }
-    if n > 1 {
-        total_h += gap * (n - 1) as f32;
-    }
-    Size::new(max_w, total_h)
-}
-
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 enum Axis {
     X,
     Y,
+}
+
+impl Axis {
+    fn main(self, s: Size) -> f32 {
+        match self {
+            Axis::X => s.w,
+            Axis::Y => s.h,
+        }
+    }
+    fn cross(self, s: Size) -> f32 {
+        match self {
+            Axis::X => s.h,
+            Axis::Y => s.w,
+        }
+    }
+    fn main_sizing(self, s: Sizes) -> Sizing {
+        match self {
+            Axis::X => s.w,
+            Axis::Y => s.h,
+        }
+    }
+    fn cross_sizing(self, s: Sizes) -> Sizing {
+        match self {
+            Axis::X => s.h,
+            Axis::Y => s.w,
+        }
+    }
+    /// HStack's cross axis is Y; VStack's is X.
+    fn cross_align(self, l: &Layout) -> Align {
+        match self {
+            Axis::X => l.align_y,
+            Axis::Y => l.align_x,
+        }
+    }
+    /// Build a `Size` from main- and cross-axis lengths.
+    fn compose_size(self, main: f32, cross: f32) -> Size {
+        match self {
+            Axis::X => Size::new(main, cross),
+            Axis::Y => Size::new(cross, main),
+        }
+    }
+    /// Build a `Rect` from main- and cross-axis positions and lengths.
+    fn compose_rect(self, main_pos: f32, cross_pos: f32, main: f32, cross: f32) -> Rect {
+        match self {
+            Axis::X => Rect::new(main_pos, cross_pos, main, cross),
+            Axis::Y => Rect::new(cross_pos, main_pos, cross, main),
+        }
+    }
+}
+
+fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size {
+    // Pass infinite size on the main axis (WPF trick): children report intrinsic.
+    let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
+    let gap = tree.node(node).layout.gap;
+    let kids: Vec<NodeId> = tree.children(node).collect();
+    let n = kids.len();
+
+    let mut total_main = 0.0f32;
+    let mut max_cross = 0.0f32;
+    for c in kids {
+        let d = measure(tree, c, child_avail);
+        total_main += axis.main(d);
+        max_cross = max_cross.max(axis.cross(d));
+    }
+    if n > 1 {
+        total_main += gap * (n - 1) as f32;
+    }
+    axis.compose_size(total_main, max_cross)
 }
 
 fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
@@ -172,47 +199,28 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     let mut total_weight = 0.0f32;
     for &c in &kids {
         let d = tree.node(c).desired;
-        let main = match axis {
-            Axis::X => d.w,
-            Axis::Y => d.h,
-        };
-        sum_main_desired += main;
+        sum_main_desired += axis.main(d);
         let s = tree.node(c).layout;
-        let main_sizing = match axis {
-            Axis::X => s.size.w,
-            Axis::Y => s.size.h,
-        };
-        if let Sizing::Fill { weight } = main_sizing {
+        if let Sizing::Fill { weight } = axis.main_sizing(s.size) {
             total_weight += weight.max(0.0);
         }
     }
 
-    let main_total = match axis {
-        Axis::X => inner.size.w,
-        Axis::Y => inner.size.h,
-    };
-    let cross = match axis {
-        Axis::X => inner.size.h,
-        Axis::Y => inner.size.w,
-    };
+    let main_total = axis.main(inner.size);
+    let cross = axis.cross(inner.size);
     let leftover = (main_total - sum_main_desired - total_gap).max(0.0);
 
-    let mut cursor = match axis {
-        Axis::X => inner.min.x,
-        Axis::Y => inner.min.y,
-    };
-    let cross_min = match axis {
-        Axis::X => inner.min.y,
-        Axis::Y => inner.min.x,
-    };
+    let main_min = axis.main(Size::new(inner.min.x, inner.min.y));
+    let cross_min = axis.cross(Size::new(inner.min.x, inner.min.y));
+    let mut cursor = main_min;
+
     for (i, c) in kids.iter().enumerate() {
         let c = *c;
         let d = tree.node(c).desired;
         let s = tree.node(c).layout;
-        let (main_sizing, main_desired) = match axis {
-            Axis::X => (s.size.w, d.w),
-            Axis::Y => (s.size.h, d.h),
-        };
+
+        let main_sizing = axis.main_sizing(s.size);
+        let main_desired = axis.main(d);
         let extra = match main_sizing {
             Sizing::Fill { weight } if total_weight > 0.0 => {
                 leftover * (weight.max(0.0) / total_weight)
@@ -221,32 +229,13 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         };
         let main_size = main_desired + extra;
 
-        let cross_sizing = match axis {
-            Axis::X => s.size.h,
-            Axis::Y => s.size.w,
-        };
-        let cross_desired = match axis {
-            Axis::X => d.h,
-            Axis::Y => d.w,
-        };
-        // HStack's cross axis is Y, VStack's is X.
-        let cross_align = match axis {
-            Axis::X => s.align_y,
-            Axis::Y => s.align_x,
-        };
-        let stretch = matches!(cross_align, Align::Stretch)
-            || (matches!(cross_align, Align::Auto) && matches!(cross_sizing, Sizing::Fill { .. }));
-        let cross_size = if stretch { cross } else { cross_desired };
-        let cross_offset = match cross_align {
-            Align::Center => ((cross - cross_size) * 0.5).max(0.0),
-            Align::End => (cross - cross_size).max(0.0),
-            _ => 0.0,
-        };
+        let cross_align = axis.cross_align(&s);
+        let cross_sizing = axis.cross_sizing(s.size);
+        let cross_desired = axis.cross(d);
+        let (cross_size, cross_offset) =
+            place_axis(cross_align, cross_sizing, cross_desired, cross);
 
-        let child_rect = match axis {
-            Axis::X => Rect::new(cursor, cross_min + cross_offset, main_size, cross_size),
-            Axis::Y => Rect::new(cross_min + cross_offset, cursor, cross_size, main_size),
-        };
+        let child_rect = axis.compose_rect(cursor, cross_min + cross_offset, main_size, cross_size);
         arrange(tree, c, child_rect);
         cursor += main_size;
         if i + 1 < kids.len() {
@@ -318,8 +307,8 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
         let d = tree.node(c).desired;
         let s = tree.node(c).layout;
 
-        let (w, x_off) = resolve_axis_align(s.align_x, s.size.w, d.w, inner.size.w);
-        let (h, y_off) = resolve_axis_align(s.align_y, s.size.h, d.h, inner.size.h);
+        let (w, x_off) = place_axis(s.align_x, s.size.w, d.w, inner.size.w);
+        let (h, y_off) = place_axis(s.align_y, s.size.h, d.h, inner.size.h);
 
         let child_rect = Rect::new(inner.min.x + x_off, inner.min.y + y_off, w, h);
         arrange(tree, c, child_rect);
@@ -328,7 +317,8 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
 
 /// Compute size + offset along one axis given the child's alignment, its
 /// declared sizing, intrinsic desired size, and the inner span available.
-fn resolve_axis_align(align: Align, sizing: Sizing, desired: f32, inner: f32) -> (f32, f32) {
+/// Used for both stack cross-axis placement and ZStack per-axis placement.
+fn place_axis(align: Align, sizing: Sizing, desired: f32, inner: f32) -> (f32, f32) {
     let stretch = matches!(align, Align::Stretch)
         || (matches!(align, Align::Auto) && matches!(sizing, Sizing::Fill { .. }));
     let size = if stretch { inner } else { desired };

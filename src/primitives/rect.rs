@@ -1,4 +1,4 @@
-use crate::primitives::Size;
+use crate::primitives::{Size, Spacing};
 use glam::Vec2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -33,5 +33,17 @@ impl Rect {
     pub fn contains(&self, p: Vec2) -> bool {
         let mx = self.max();
         p.x >= self.min.x && p.y >= self.min.y && p.x < mx.x && p.y < mx.y
+    }
+
+    /// Inset by `s` on each side, clamping the resulting size at zero. Used for
+    /// margin / padding insets in the layout pass.
+    pub fn deflated_by(&self, s: Spacing) -> Self {
+        Self {
+            min: self.min + Vec2::new(s.left, s.top),
+            size: Size::new(
+                (self.size.w - s.horiz()).max(0.0),
+                (self.size.h - s.vert()).max(0.0),
+            ),
+        }
     }
 }
