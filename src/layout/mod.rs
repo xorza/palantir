@@ -1,6 +1,6 @@
-use crate::element::LayoutMode;
+use crate::element::{LayoutMode, UiElement};
 use crate::primitives::{
-    AxisAlign, GridCell, Justify, Layout, Rect, Size, Sizes, Sizing, Track, Visibility,
+    AxisAlign, GridCell, Justify, Rect, Size, Sizes, Sizing, Track, Visibility,
 };
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
@@ -19,7 +19,7 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
         tree.node_mut(node).desired = Size::ZERO;
         return Size::ZERO;
     }
-    let style = tree.node(node).element.layout;
+    let style = tree.node(node).element;
     let mode = tree.node(node).element.mode;
 
     // Inner available = available minus margin minus padding.
@@ -71,7 +71,7 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
         };
         return;
     }
-    let style = tree.node(node).element.layout;
+    let style = tree.node(node).element;
     let mode = tree.node(node).element.mode;
 
     let rendered = slot.deflated_by(style.margin);
@@ -171,7 +171,7 @@ impl Axis {
     /// Cross-axis alignment of a child, with parent's `child_align` as
     /// fallback when the child's own align is `Auto`. Mapped through
     /// `AxisAlign` so the math is type-symmetric across axes.
-    fn cross_align(self, child: &Layout, parent: &Layout) -> AxisAlign {
+    fn cross_align(self, child: &UiElement, parent: &UiElement) -> AxisAlign {
         match self {
             // HStack: cross = vertical
             Axis::X => child.align.v.or(parent.child_align.v).to_axis(),
@@ -198,7 +198,7 @@ impl Axis {
 fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size {
     // Pass infinite size on the main axis (WPF trick): children report intrinsic.
     let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
-    let gap = tree.node(node).element.layout.gap;
+    let gap = tree.node(node).element.gap;
 
     let mut total_main = 0.0f32;
     let mut max_cross = 0.0f32;
@@ -221,7 +221,7 @@ fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size
 }
 
 fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
-    let parent_layout = tree.node(node).element.layout;
+    let parent_layout = tree.node(node).element;
     let gap = parent_layout.gap;
     let justify = parent_layout.justify;
 
@@ -237,7 +237,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         if n.element.visibility == Visibility::Collapsed {
             continue;
         }
-        if let Sizing::Fill(weight) = axis.main_sizing(n.element.layout.size) {
+        if let Sizing::Fill(weight) = axis.main_sizing(n.element.size) {
             total_weight += weight.max(0.0);
         } else {
             sum_main_desired += axis.main(n.desired);
@@ -294,7 +294,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         }
         first = false;
         let d = tree.node(c).desired;
-        let s = tree.node(c).element.layout;
+        let s = tree.node(c).element;
 
         let main_sizing = axis.main_sizing(s.size);
         let main_size = match main_sizing {
@@ -345,7 +345,7 @@ fn canvas_measure(tree: &mut Tree, node: NodeId) -> Size {
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let pos = tree.node(c).element.layout.position;
+        let pos = tree.node(c).element.position;
         let d = measure(tree, c, child_avail);
         max_w = max_w.max(pos.x + d.w);
         max_h = max_h.max(pos.y + d.h);
@@ -360,7 +360,7 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let d = tree.node(c).desired;
-        let pos = tree.node(c).element.layout.position;
+        let pos = tree.node(c).element.position;
         let child_rect = Rect {
             min: inner.min + pos,
             size: d,
@@ -375,11 +375,11 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
 /// Defaults pin to top-left unless the child has `Sizing::Fill` — then `Auto`
 /// falls back to stretch on that axis.
 fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
-    let parent_layout = tree.node(node).element.layout;
+    let parent_layout = tree.node(node).element;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let d = tree.node(c).desired;
-        let s = tree.node(c).element.layout;
+        let s = tree.node(c).element;
 
         let h_align = s.align.h.or(parent_layout.child_align.h).to_axis();
         let v_align = s.align.v.or(parent_layout.child_align.v).to_axis();
@@ -434,7 +434,7 @@ fn grid_measure(tree: &mut Tree, node: NodeId, idx: u32) -> Size {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let collapsed = tree.node(c).element.visibility == Visibility::Collapsed;
-        let cell = clamp_grid_cell(tree.node(c).element.layout.grid, n_rows, n_cols);
+        let cell = clamp_grid_cell(tree.node(c).element.grid, n_rows, n_cols);
 
         let avail_w = sum_spanned_known(&col_sizes, &col_resolved, cell.col, cell.col_span);
         let avail_h = sum_spanned_known(&row_sizes, &row_resolved, cell.row, cell.row_span);
@@ -499,7 +499,7 @@ fn arrange_grid(tree: &mut Tree, node: NodeId, inner: Rect, idx: u32) {
         if n.element.visibility == Visibility::Collapsed {
             continue;
         }
-        let cell = clamp_grid_cell(n.element.layout.grid, n_rows, n_cols);
+        let cell = clamp_grid_cell(n.element.grid, n_rows, n_cols);
         if cell.col_span == 1 && matches!(def.cols[cell.col as usize].size, Sizing::Hug) {
             let i = cell.col as usize;
             hug_w[i] = hug_w[i].max(n.desired.w);
@@ -515,7 +515,7 @@ fn arrange_grid(tree: &mut Tree, node: NodeId, inner: Rect, idx: u32) {
     let col_starts = cum_starts(&col_sizes, def.col_gap);
     let row_starts = cum_starts(&row_sizes, def.row_gap);
 
-    let parent_layout = tree.node(node).element.layout;
+    let parent_layout = tree.node(node).element;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).element.visibility == Visibility::Collapsed {
@@ -529,8 +529,8 @@ fn arrange_grid(tree: &mut Tree, node: NodeId, inner: Rect, idx: u32) {
             );
             continue;
         }
-        let cell = clamp_grid_cell(tree.node(c).element.layout.grid, n_rows, n_cols);
-        let s = tree.node(c).element.layout;
+        let cell = clamp_grid_cell(tree.node(c).element.grid, n_rows, n_cols);
+        let s = tree.node(c).element;
         let d = tree.node(c).desired;
 
         let slot_x = col_starts[cell.col as usize];

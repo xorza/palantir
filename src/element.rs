@@ -1,5 +1,5 @@
 use crate::primitives::{
-    Align, Justify, Layout, Sense, Size, Sizes, Spacing, TranslateScale, Visibility, WidgetId,
+    Align, GridCell, Justify, Sense, Size, Sizes, Spacing, TranslateScale, Visibility, WidgetId,
 };
 use glam::Vec2;
 
@@ -13,24 +13,51 @@ pub enum LayoutMode {
     /// Children all laid out at the same position (top-left of inner rect),
     /// each sized per its own `Sizing`. Used by `Panel`.
     ZStack,
-    /// Children placed at their declared `Layout.position` (parent-inner
-    /// coords). Each child sized per its desired (intrinsic) size. Canvas
-    /// hugs to the bounding box of placed children.
+    /// Children placed at their declared `position` (parent-inner coords).
+    /// Each child sized per its desired (intrinsic) size. Canvas hugs to the
+    /// bounding box of placed children.
     Canvas,
     /// WPF-style grid. Carries an index into `Tree::grid_defs` holding the row
     /// and column track definitions and per-axis gaps. Children declare cell +
-    /// span via `Layout::grid`.
+    /// span via `grid`.
     Grid(u32),
 }
 
-/// Per-node config bundle: identity + spatial layout + interaction. Every
-/// widget builder owns one and forwards it to `Ui::node`. `Element` (the
+/// Per-node config: identity + spatial layout + interaction + paint flags.
+/// Every widget builder owns one and forwards it to `Ui::node`. `Element` (the
 /// trait below) gives chained setters for all fields by impl'ing one method.
 #[derive(Clone, Copy, Debug)]
 pub struct UiElement {
     pub id: WidgetId,
-    pub layout: Layout,
     pub mode: LayoutMode,
+    pub size: Sizes,
+    pub min_size: Size,
+    pub max_size: Size,
+    pub padding: Spacing,
+    pub margin: Spacing,
+    /// Logical-px space between children of `HStack`/`VStack`. Ignored by
+    /// `Leaf` / `ZStack` / `Canvas`.
+    pub gap: f32,
+    /// Main-axis distribution of leftover space in `HStack`/`VStack`. No
+    /// effect when any child is `Sizing::Fill` on the main axis (Fill consumes
+    /// the leftover first). Ignored by `Leaf` / `ZStack` / `Canvas`.
+    pub justify: Justify,
+    /// Alignment of this node inside its parent's inner rect. Each axis is
+    /// honored only by parent layout modes that own that axis as a cross or
+    /// placement axis: HStack reads `align.v` (cross), VStack reads `align.h`
+    /// (cross), ZStack reads both, HStack/VStack ignore their main axis,
+    /// Canvas ignores both (absolute placement).
+    pub align: Align,
+    /// Default `align` applied to children when the child's own axis is
+    /// `Auto`. Mirrors CSS `align-items` (parent) + `align-self` (child).
+    /// Read by the same parents as `align`, on the same axes.
+    pub child_align: Align,
+    /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
+    /// Defaults to `Vec2::ZERO`. Ignored by other layout kinds.
+    pub position: Vec2,
+    /// Cell + span inside a `Grid` parent. Defaults to `(0, 0)` placement and
+    /// `(1, 1)` span. Ignored by other layout kinds.
+    pub grid: GridCell,
     pub sense: Sense,
     pub disabled: bool,
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
@@ -54,14 +81,25 @@ pub struct UiElement {
 
 impl UiElement {
     pub fn new(id: WidgetId, mode: LayoutMode) -> Self {
-        // Panels (HStack/VStack/ZStack/Canvas) clip descendants by default —
-        // overflow is the unusual case. Leaf has no descendants, so defaulting
-        // it to `false` saves a no-op `PushClip/PopClip` pair per leaf.
+        // Panels (HStack/VStack/ZStack/Canvas/Grid) clip descendants by default
+        // — overflow is the unusual case. Leaf has no descendants, so
+        // defaulting it to `false` saves a no-op `PushClip/PopClip` pair per
+        // leaf.
         let clip = !matches!(mode, LayoutMode::Leaf);
         Self {
             id,
-            layout: Layout::default(),
             mode,
+            size: Sizes::default(),
+            min_size: Size::ZERO,
+            max_size: Size::INF,
+            padding: Spacing::ZERO,
+            margin: Spacing::ZERO,
+            gap: 0.0,
+            justify: Justify::default(),
+            align: Align::default(),
+            child_align: Align::default(),
+            position: Vec2::ZERO,
+            grid: GridCell::default(),
             sense: Sense::NONE,
             disabled: false,
             visibility: Visibility::Visible,
@@ -78,35 +116,35 @@ pub trait Element: Sized {
     fn element_mut(&mut self) -> &mut UiElement;
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
-        self.element_mut().layout.size = s.into();
+        self.element_mut().size = s.into();
         self
     }
     fn min_size(mut self, s: impl Into<Size>) -> Self {
-        self.element_mut().layout.min_size = s.into();
+        self.element_mut().min_size = s.into();
         self
     }
     fn max_size(mut self, s: impl Into<Size>) -> Self {
-        self.element_mut().layout.max_size = s.into();
+        self.element_mut().max_size = s.into();
         self
     }
     fn padding(mut self, p: impl Into<Spacing>) -> Self {
-        self.element_mut().layout.padding = p.into();
+        self.element_mut().padding = p.into();
         self
     }
     fn margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.element_mut().layout.margin = m.into();
+        self.element_mut().margin = m.into();
         self
     }
     /// Absolute position inside a `Canvas` parent (parent-inner coords).
     /// Ignored by other layout modes.
     fn position(mut self, p: impl Into<Vec2>) -> Self {
-        self.element_mut().layout.position = p.into();
+        self.element_mut().position = p.into();
         self
     }
     /// Cell `(row, col)` inside a `Grid` parent. Default `(0, 0)`. Ignored
     /// outside a Grid parent.
     fn grid_cell(mut self, (row, col): (u16, u16)) -> Self {
-        let g = &mut self.element_mut().layout.grid;
+        let g = &mut self.element_mut().grid;
         g.row = row;
         g.col = col;
         self
@@ -115,34 +153,34 @@ pub trait Element: Sized {
     /// Spans are clamped at layout time to the grid's bounds. Ignored outside
     /// a Grid parent.
     fn grid_span(mut self, (rs, cs): (u16, u16)) -> Self {
-        let g = &mut self.element_mut().layout.grid;
+        let g = &mut self.element_mut().grid;
         g.row_span = rs.max(1);
         g.col_span = cs.max(1);
         self
     }
     /// Space between children when this node is an `HStack` / `VStack`.
     fn gap(mut self, g: f32) -> Self {
-        self.element_mut().layout.gap = g;
+        self.element_mut().gap = g;
         self
     }
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.
     /// Ignored when any child has `Sizing::Fill` on the main axis.
     fn justify(mut self, j: Justify) -> Self {
-        self.element_mut().layout.justify = j;
+        self.element_mut().justify = j;
         self
     }
     /// Alignment inside the parent's inner rect. For single-axis use the
-    /// [`Align::h`] / [`Align::v`] constructors. See `Layout::align` for
+    /// [`Align::h`] / [`Align::v`] constructors. See [`UiElement::align`] for
     /// which parent layout modes honor each axis.
     fn align(mut self, a: Align) -> Self {
-        self.element_mut().layout.align = a;
+        self.element_mut().align = a;
         self
     }
     /// Default alignment applied to children when their own axis is `Auto`.
     /// Mirrors CSS `align-items`. For single-axis defaults use the
     /// [`Align::h`] / [`Align::v`] constructors.
     fn child_align(mut self, a: Align) -> Self {
-        self.element_mut().layout.child_align = a;
+        self.element_mut().child_align = a;
         self
     }
     fn sense(mut self, s: Sense) -> Self {
