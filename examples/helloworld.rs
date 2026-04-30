@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use palantir::Align;
 use palantir::{
     Button, ButtonStyle, Color, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui, VStack,
     ZStack, layout, renderer::Renderer,
@@ -303,7 +304,10 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         })
                         .radius(12.0)
                         .show(ui, |ui| {
-                            Button::new().label("spilling").show(ui);
+                            Button::new()
+                                .align(Align::Center)
+                                .label("centered")
+                                .show(ui);
                         });
                 });
         });
