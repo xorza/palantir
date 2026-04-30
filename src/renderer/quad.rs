@@ -184,12 +184,23 @@ impl QuadPipeline {
     }
 
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instance_count: u32) {
-        if instance_count == 0 {
+        self.draw_range(pass, 0..instance_count);
+    }
+
+    /// Draw a contiguous slice of the uploaded instance buffer. Used to
+    /// segment quads by scissor region; caller is responsible for setting
+    /// `RenderPass::set_scissor_rect` before each call.
+    pub fn draw_range<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        instances: std::ops::Range<u32>,
+    ) {
+        if instances.is_empty() {
             return;
         }
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-        pass.draw(0..4, 0..instance_count);
+        pass.draw(0..4, instances);
     }
 }
