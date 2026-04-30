@@ -117,6 +117,116 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
 }
 
 #[test]
+fn hstack_justify_center_centers_content_block() {
+    use crate::primitives::Justify;
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .justify(Justify::Center)
+        .show(&mut ui, |ui| {
+            Frame::with_id("a").size(40.0).show(ui);
+            Frame::with_id("b").size(40.0).show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    // Two 40-wide children, no gap → content width = 80. Leftover = 120,
+    // half = 60 padding on the leading edge.
+    assert_eq!(ui.tree.node(kids[0]).rect.min.x, 60.0);
+    assert_eq!(ui.tree.node(kids[1]).rect.min.x, 100.0);
+}
+
+#[test]
+fn hstack_justify_end_packs_to_trailing_edge() {
+    use crate::primitives::Justify;
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .justify(Justify::End)
+        .show(&mut ui, |ui| {
+            Frame::with_id("a").size(40.0).show(ui);
+            Frame::with_id("b").size(40.0).show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    // Last child ends at 200; 40 wide → starts at 160. First at 120.
+    assert_eq!(ui.tree.node(kids[0]).rect.min.x, 120.0);
+    assert_eq!(ui.tree.node(kids[1]).rect.min.x, 160.0);
+}
+
+#[test]
+fn hstack_justify_space_between_distributes_leftover_between() {
+    use crate::primitives::Justify;
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .justify(Justify::SpaceBetween)
+        .show(&mut ui, |ui| {
+            Frame::with_id("a").size(40.0).show(ui);
+            Frame::with_id("b").size(40.0).show(ui);
+            Frame::with_id("c").size(40.0).show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    // Leftover = 200 - 120 = 80, split into 2 gaps of 40.
+    assert_eq!(ui.tree.node(kids[0]).rect.min.x, 0.0);
+    assert_eq!(ui.tree.node(kids[1]).rect.min.x, 80.0);
+    assert_eq!(ui.tree.node(kids[2]).rect.min.x, 160.0);
+}
+
+#[test]
+fn hstack_justify_space_around_distributes_with_half_pads() {
+    use crate::primitives::Justify;
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .justify(Justify::SpaceAround)
+        .show(&mut ui, |ui| {
+            Frame::with_id("a").size(40.0).show(ui);
+            Frame::with_id("b").size(40.0).show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    // Leftover = 120, /count(2) = 60 per slot. Half (30) padding before first,
+    // full 60 between, half (30) after last.
+    assert_eq!(ui.tree.node(kids[0]).rect.min.x, 30.0);
+    // 30 + 40 + 60 = 130
+    assert_eq!(ui.tree.node(kids[1]).rect.min.x, 130.0);
+}
+
+#[test]
+fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
+    use crate::primitives::Justify;
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .justify(Justify::Center)
+        .show(&mut ui, |ui| {
+            Frame::with_id("a").size(40.0).show(ui);
+            Frame::with_id("filler")
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui);
+            Frame::with_id("c").size(40.0).show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    // Fill consumes leftover → first child still pinned to start.
+    assert_eq!(ui.tree.node(kids[0]).rect.min.x, 0.0);
+    assert_eq!(ui.tree.node(kids[1]).rect.min.x, 40.0);
+    assert_eq!(ui.tree.node(kids[1]).rect.size.w, 120.0);
+    assert_eq!(ui.tree.node(kids[2]).rect.min.x, 160.0);
+}
+
+#[test]
 fn hstack_gap_inserts_space_between_children() {
     let mut ui = Ui::new();
     ui.begin_frame();

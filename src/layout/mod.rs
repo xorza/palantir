@@ -1,4 +1,4 @@
-use crate::primitives::{AxisAlign, Layout, Rect, Size, Sizes, Sizing, Visibility};
+use crate::primitives::{AxisAlign, Justify, Layout, Rect, Size, Sizes, Sizing, Visibility};
 use crate::shape::Shape;
 use crate::tree::{LayoutMode, NodeId, Tree};
 use glam::Vec2;
@@ -216,7 +216,9 @@ fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size
 }
 
 fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
-    let gap = tree.node(node).element.layout.gap;
+    let parent_layout = tree.node(node).element.layout;
+    let gap = parent_layout.gap;
+    let justify = parent_layout.justify;
 
     // Sum desired along main axis for non-Fill children; collect Fill weights.
     // Fill siblings split the remaining space proportionally (WPF Star semantics)
@@ -243,8 +245,28 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     let cross = axis.cross(inner.size);
     let leftover = (main_total - sum_main_desired - total_gap).max(0.0);
 
+    // `justify` distributes any unused main-axis space. With Fill children
+    // present, leftover is consumed by Fill weights → justify is a no-op
+    // (degrade to Start / original gap).
+    let (start_offset, effective_gap) = if total_weight > 0.0 {
+        (0.0, gap)
+    } else {
+        match justify {
+            Justify::Start => (0.0, gap),
+            Justify::Center => (leftover * 0.5, gap),
+            Justify::End => (leftover, gap),
+            Justify::SpaceBetween if count > 1 => (0.0, gap + leftover / (count - 1) as f32),
+            Justify::SpaceAround if count > 0 => {
+                let extra = leftover / count as f32;
+                (extra * 0.5, gap + extra)
+            }
+            // Fewer than 2 / 1 children → fallback to Start.
+            Justify::SpaceBetween | Justify::SpaceAround => (0.0, gap),
+        }
+    };
+
     let cross_min = axis.cross_v(inner.min);
-    let mut cursor = axis.main_v(inner.min);
+    let mut cursor = axis.main_v(inner.min) + start_offset;
     let mut first = true;
 
     let mut kids = tree.child_cursor(node);
@@ -263,7 +285,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             continue;
         }
         if !first {
-            cursor += gap;
+            cursor += effective_gap;
         }
         first = false;
         let d = tree.node(c).desired;
@@ -277,7 +299,6 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             _ => axis.main(d),
         };
 
-        let parent_layout = tree.node(node).element.layout;
         let cross_align = axis.cross_align(&s, &parent_layout);
         let cross_sizing = axis.cross_sizing(s.size);
         let cross_desired = axis.cross(d);
