@@ -15,6 +15,7 @@ mod buttons;
 mod clip;
 mod disabled;
 mod gap;
+mod grid;
 mod justify;
 mod panels;
 mod sizing;
@@ -28,6 +29,7 @@ type ShowcaseFn = fn(&mut Ui);
 
 const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("panels", panels::build),
+    ("grid", grid::build),
     ("sizing", sizing::build),
     ("alignment", alignment::build),
     ("justify", justify::build),
