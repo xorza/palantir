@@ -5,14 +5,12 @@ pub enum Sizing {
     Fixed(f32),
     #[default]
     Hug,
-    Fill {
-        weight: f32,
-    },
+    Fill(f32),
 }
 
 impl Sizing {
-    /// Equal-weight `Fill`. Equivalent to `Sizing::Fill { weight: 1.0 }`.
-    pub const FILL: Self = Self::Fill { weight: 1.0 };
+    /// Equal-weight `Fill`. Equivalent to `Sizing::Fill(1.0)`.
+    pub const FILL: Self = Self::Fill(1.0);
 }
 
 impl<T: crate::primitives::Num> From<T> for Sizing {

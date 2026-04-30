@@ -71,10 +71,10 @@ fn hstack_fill_weights_split_remainder_proportionally() {
     let root = HStack::new()
         .show(&mut ui, |ui| {
             Frame::with_id("a")
-                .size((Sizing::Fill { weight: 1.0 }, Sizing::Hug))
+                .size((Sizing::Fill(1.0), Sizing::Hug))
                 .show(ui);
             Frame::with_id("b")
-                .size((Sizing::Fill { weight: 3.0 }, Sizing::Hug))
+                .size((Sizing::Fill(3.0), Sizing::Hug))
                 .show(ui);
         })
         .node;
@@ -87,6 +87,33 @@ fn hstack_fill_weights_split_remainder_proportionally() {
     assert_eq!(a.size.w, 100.0);
     assert_eq!(b.size.w, 300.0);
     assert_eq!(b.min.x, 100.0);
+}
+
+#[test]
+fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .show(&mut ui, |ui| {
+            Button::with_id("wide")
+                .label("wide button")
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui);
+            Button::with_id("narrow")
+                .label("x")
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let a = ui.tree.node(kids[0]).rect;
+    let b = ui.tree.node(kids[1]).rect;
+    assert_eq!(a.size.w, 200.0);
+    assert_eq!(b.size.w, 200.0);
+    assert_eq!(a.min.x, 0.0);
+    assert_eq!(b.min.x, 200.0);
 }
 
 #[test]

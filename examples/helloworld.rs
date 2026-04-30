@@ -276,9 +276,9 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     ZStack::with_id("spill_demo")
-                        .size((Sizing::Fixed(280.0), Sizing::FILL))
+                        .size((Sizing::FILL, Sizing::FILL))
                         .padding(16.0)
-                        .margin((0.0, 24.0, 0.0, 0.0))
+                        .margin(5)
                         .fill(Color::rgb(0.16, 0.20, 0.28))
                         .stroke(Stroke {
                             width: 1.0,
