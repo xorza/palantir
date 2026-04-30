@@ -15,7 +15,13 @@ pub struct Button {
 }
 
 impl Button {
-    pub fn new(id: impl Hash) -> Self {
+    #[track_caller]
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self::with_id(WidgetId::auto_stable())
+    }
+
+    pub fn with_id(id: impl Hash) -> Self {
         Self {
             id: WidgetId::from_hash(id),
             size: Sizes::HUG,

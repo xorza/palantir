@@ -7,7 +7,7 @@ edition = "2024"
 bytemuck = { version = "*", features = ["derive"] }
 glam = "*"
 glyphon = "*"
-log = "*"
+tracing = "*"
 pollster = "*"
 thiserror = "*"
 wgpu = "*"

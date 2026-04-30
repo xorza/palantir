@@ -4,9 +4,9 @@ fn main() {
     let mut ui = Ui::new();
     ui.begin_frame();
 
-    let root = HStack::new("root").show(&mut ui, |ui| {
-        Button::new("a").label("Hello").show(ui);
-        Button::new("b").label("World").width(Sizing::Fill).show(ui);
+    let root = HStack::new().show(&mut ui, |ui| {
+        Button::new().label("Hello").show(ui);
+        Button::new().label("World").width(Sizing::Fill).show(ui);
     }).node;
 
     layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 800.0, 600.0));
