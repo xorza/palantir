@@ -155,13 +155,28 @@ impl InputState {
 
     /// Rebuild last-frame rects from the just-arranged tree, recompute hover,
     /// drop transient per-frame flags. Call after `layout::run`.
+    ///
+    /// `disabled` cascades from each node to its descendants: if any ancestor
+    /// has `disabled = true`, the entry's effective `Sense` becomes `NONE`,
+    /// removing the whole subtree from hit-testing in one pass. Pre-order
+    /// traversal of `tree.nodes` means each node sees its parent's effective
+    /// disabled state already computed.
     pub(crate) fn end_frame(&mut self, tree: &Tree) {
         self.last_rects.clear();
+        let mut effective_disabled: Vec<bool> = Vec::with_capacity(tree.nodes.len());
         for node in &tree.nodes {
+            let parent_disabled = node
+                .parent
+                .map(|p| effective_disabled[p.0 as usize])
+                .unwrap_or(false);
+            let me_disabled = parent_disabled || node.disabled;
+            effective_disabled.push(me_disabled);
+
+            let sense = if me_disabled { Sense::NONE } else { node.sense };
             self.last_rects.push(HitEntry {
                 id: node.id,
                 rect: node.rect,
-                sense: node.sense,
+                sense,
             });
         }
         self.clicked_this_frame.clear();

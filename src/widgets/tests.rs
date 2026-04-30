@@ -169,6 +169,52 @@ fn zstack_layers_children_without_painting_background() {
 }
 
 #[test]
+fn disabled_panel_suppresses_clicks_on_descendants() {
+    use crate::input::{InputEvent, PointerButton};
+    use glam::Vec2;
+
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("locked")
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
+            .padding(20.0)
+            .fill(Color::rgb(0.2, 0.2, 0.2))
+            .disabled(true)
+            .show(ui, |ui| {
+                Button::with_id("inside")
+                    .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                    .show(ui);
+            });
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.end_frame();
+
+    // Click on the button inside the disabled panel.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    ui.begin_frame();
+    let mut clicked = false;
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("locked")
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
+            .padding(20.0)
+            .fill(Color::rgb(0.2, 0.2, 0.2))
+            .disabled(true)
+            .show(ui, |ui| {
+                clicked = Button::with_id("inside")
+                    .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                    .show(ui)
+                    .clicked();
+            });
+    });
+    assert!(!clicked, "button inside disabled panel should not click");
+}
+
+#[test]
 fn frame_with_sense_click_is_clickable() {
     use crate::input::{InputEvent, PointerButton};
     use glam::Vec2;
