@@ -7,9 +7,9 @@ pub enum Sizing {
     Fill,
 }
 
-impl From<f32> for Sizing {
-    fn from(v: f32) -> Self {
-        Sizing::Fixed(v)
+impl<T: crate::primitives::Num> From<T> for Sizing {
+    fn from(v: T) -> Self {
+        Sizing::Fixed(v.as_f32())
     }
 }
 
@@ -39,12 +39,10 @@ impl From<Sizing> for Sizes {
     }
 }
 
-impl From<f32> for Sizes {
-    fn from(v: f32) -> Self {
-        Self {
-            w: Sizing::Fixed(v),
-            h: Sizing::Fixed(v),
-        }
+impl<T: crate::primitives::Num> From<T> for Sizes {
+    fn from(v: T) -> Self {
+        let s = Sizing::Fixed(v.as_f32());
+        Self { w: s, h: s }
     }
 }
 

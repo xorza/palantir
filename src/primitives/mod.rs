@@ -1,5 +1,6 @@
 mod color;
 mod corners;
+mod num;
 mod rect;
 mod size;
 mod sizing;
@@ -10,6 +11,7 @@ mod widget_id;
 
 pub use color::Color;
 pub use corners::Corners;
+pub use num::Num;
 pub use rect::Rect;
 pub use size::Size;
 pub use sizing::{Sizes, Sizing};

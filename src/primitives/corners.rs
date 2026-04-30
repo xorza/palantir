@@ -30,9 +30,9 @@ impl Corners {
     }
 }
 
-impl From<f32> for Corners {
-    fn from(r: f32) -> Self {
-        Self::all(r)
+impl<T: crate::primitives::Num> From<T> for Corners {
+    fn from(r: T) -> Self {
+        Self::all(r.as_f32())
     }
 }
 

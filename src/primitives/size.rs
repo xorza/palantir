@@ -29,14 +29,18 @@ impl Size {
     }
 }
 
-impl From<f32> for Size {
-    fn from(v: f32) -> Self {
+impl<T: crate::primitives::Num> From<T> for Size {
+    fn from(v: T) -> Self {
+        let v = v.as_f32();
         Self { w: v, h: v }
     }
 }
 
-impl From<(f32, f32)> for Size {
-    fn from((w, h): (f32, f32)) -> Self {
-        Self { w, h }
+impl<W: crate::primitives::Num, H: crate::primitives::Num> From<(W, H)> for Size {
+    fn from((w, h): (W, H)) -> Self {
+        Self {
+            w: w.as_f32(),
+            h: h.as_f32(),
+        }
     }
 }
