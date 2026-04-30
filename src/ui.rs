@@ -1,4 +1,5 @@
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
+
 use crate::primitives::{Style, WidgetId};
 use crate::shape::Shape;
 use crate::tree::{LayoutKind, NodeId, Tree};
@@ -95,14 +96,6 @@ impl Ui {
 
     pub fn pointer(&self) -> PointerState {
         self.input.pointer()
-    }
-
-    pub fn input(&self) -> &InputState {
-        &self.input
-    }
-
-    pub fn input_mut(&mut self) -> &mut InputState {
-        &mut self.input
     }
 
     pub fn root(&self) -> NodeId {
