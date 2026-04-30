@@ -96,7 +96,7 @@ pub trait Element: Sized {
     /// Absolute position inside a `Canvas` parent (parent-inner coords).
     /// Ignored by other layout modes.
     fn position(mut self, p: impl Into<Vec2>) -> Self {
-        self.element_mut().layout.position = Some(p.into());
+        self.element_mut().layout.position = p.into();
         self
     }
     /// Space between children when this node is an `HStack` / `VStack`.

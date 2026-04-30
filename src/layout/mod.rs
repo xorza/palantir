@@ -341,7 +341,7 @@ fn canvas_measure(tree: &mut Tree, node: NodeId) -> Size {
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let pos = tree.node(c).element.layout.position.unwrap_or(Vec2::ZERO);
+        let pos = tree.node(c).element.layout.position;
         let d = measure(tree, c, child_avail);
         max_w = max_w.max(pos.x + d.w);
         max_h = max_h.max(pos.y + d.h);
@@ -356,7 +356,7 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let d = tree.node(c).desired;
-        let pos = tree.node(c).element.layout.position.unwrap_or(Vec2::ZERO);
+        let pos = tree.node(c).element.layout.position;
         let child_rect = Rect {
             min: inner.min + pos,
             size: d,

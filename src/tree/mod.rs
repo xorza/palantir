@@ -26,6 +26,12 @@ pub struct Node {
 }
 
 impl Node {
+    /// Half-open range into `Tree.shapes` for this node's shapes. Cleaner than
+    /// indexing with the raw `shapes_start`/`shapes_end` pair.
+    pub fn shapes_range(&self) -> std::ops::Range<usize> {
+        self.shapes_start as usize..self.shapes_end as usize
+    }
+
     fn new(element: UiElement, parent: Option<NodeId>) -> Self {
         Self {
             element,
@@ -121,8 +127,7 @@ impl Tree {
     }
 
     pub fn shapes_of(&self, id: NodeId) -> &[Shape] {
-        let n = self.node(id);
-        &self.shapes[n.shapes_start as usize..n.shapes_end as usize]
+        &self.shapes[self.node(id).shapes_range()]
     }
 
     /// Iterate child NodeIds of `parent` in declaration order.

@@ -30,11 +30,11 @@ pub fn compose(cmds: &[RenderCmd], params: &ComposeParams, out: &mut RenderBuffe
 
     out.quads.clear();
     out.groups.clear();
+    out.clip_stack.clear();
+    out.transform_stack.clear();
     out.viewport_phys = viewport_phys;
     out.viewport_phys_f = viewport_phys_f;
 
-    let mut clip_stack: Vec<ScissorRect> = Vec::new();
-    let mut transform_stack: Vec<TranslateScale> = Vec::new();
     let mut current_transform = TranslateScale::IDENTITY;
     let mut current: Option<ScissorRect> = None;
     let mut current_start: u32 = 0;
@@ -47,11 +47,11 @@ pub fn compose(cmds: &[RenderCmd], params: &ComposeParams, out: &mut RenderBuffe
             RenderCmd::PushClip(r) => {
                 let world = current_transform.apply_rect(*r);
                 let me = scissor_from_logical(world, scale, snap, viewport_phys);
-                let new = match clip_stack.last() {
+                let new = match out.clip_stack.last() {
                     Some(parent) => intersect_scissor(*parent, me),
                     None => me,
                 };
-                clip_stack.push(new);
+                out.clip_stack.push(new);
                 let target = Some(new);
                 if target != current {
                     flush_group(
@@ -65,8 +65,8 @@ pub fn compose(cmds: &[RenderCmd], params: &ComposeParams, out: &mut RenderBuffe
                 }
             }
             RenderCmd::PopClip => {
-                clip_stack.pop();
-                let target = clip_stack.last().copied();
+                out.clip_stack.pop();
+                let target = out.clip_stack.last().copied();
                 if target != current {
                     flush_group(
                         current,
@@ -79,11 +79,14 @@ pub fn compose(cmds: &[RenderCmd], params: &ComposeParams, out: &mut RenderBuffe
                 }
             }
             RenderCmd::PushTransform(t) => {
-                transform_stack.push(current_transform);
+                out.transform_stack.push(current_transform);
                 current_transform = current_transform.compose(*t);
             }
             RenderCmd::PopTransform => {
-                current_transform = transform_stack.pop().unwrap_or(TranslateScale::IDENTITY);
+                current_transform = out
+                    .transform_stack
+                    .pop()
+                    .unwrap_or(TranslateScale::IDENTITY);
             }
             RenderCmd::DrawRect {
                 rect,

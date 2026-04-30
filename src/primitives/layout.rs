@@ -26,8 +26,8 @@ pub struct Layout {
     /// Read by the same parents as `align`, on the same axes.
     pub child_align: Align,
     /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
-    /// Ignored by other layout kinds.
-    pub position: Option<Vec2>,
+    /// Defaults to `Vec2::ZERO`. Ignored by other layout kinds.
+    pub position: Vec2,
 }
 
 impl Default for Layout {
@@ -42,7 +42,7 @@ impl Default for Layout {
             justify: Justify::default(),
             align: Align::default(),
             child_align: Align::default(),
-            position: None,
+            position: Vec2::ZERO,
         }
     }
 }
