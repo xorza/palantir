@@ -23,6 +23,7 @@ pub fn build(ui: &mut Ui) {
             // Right: same content, no clip — the spilling rect leaks past the panel.
             ZStack::with_id("unclipped")
                 .size((Sizing::FILL, Sizing::FILL))
+                .clip(false)
                 .fill(Color::rgb(0.16, 0.20, 0.28))
                 .stroke(Stroke {
                     width: 1.5,

@@ -287,6 +287,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
         ZStack::with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
+            .clip(false)
             .show(ui, |ui| {
                 Button::with_id("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
@@ -308,6 +309,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
         ZStack::with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
+            .clip(false)
             .show(ui, |ui| {
                 clicked = Button::with_id("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))

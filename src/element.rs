@@ -35,6 +35,10 @@ pub struct UiElement {
 
 impl UiElement {
     pub fn new(id: WidgetId, mode: LayoutMode) -> Self {
+        // Panels (HStack/VStack/ZStack/Canvas) clip descendants by default —
+        // overflow is the unusual case. Leaf has no descendants, so defaulting
+        // it to `false` saves a no-op `PushClip/PopClip` pair per leaf.
+        let clip = !matches!(mode, LayoutMode::Leaf);
         Self {
             id,
             layout: Layout::default(),
@@ -42,7 +46,7 @@ impl UiElement {
             sense: Sense::NONE,
             disabled: false,
             visibility: Visibility::Visible,
-            clip: false,
+            clip,
             transform: None,
         }
     }
