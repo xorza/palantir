@@ -47,6 +47,19 @@ impl Rect {
         }
     }
 
+    /// Axis-aligned intersection. Returns a zero-size rect if the inputs
+    /// don't overlap (either dimension goes negative).
+    pub fn intersect(&self, other: Self) -> Self {
+        let min_x = self.min.x.max(other.min.x);
+        let min_y = self.min.y.max(other.min.y);
+        let max_x = (self.min.x + self.size.w).min(other.min.x + other.size.w);
+        let max_y = (self.min.y + self.size.h).min(other.min.y + other.size.h);
+        Self {
+            min: Vec2::new(min_x, min_y),
+            size: Size::new((max_x - min_x).max(0.0), (max_y - min_y).max(0.0)),
+        }
+    }
+
     /// Scale by `scale` and optionally snap edges to integer pixels. Used at
     /// the logical→physical-px boundary inside the renderer; snapping derives
     /// width/height from rounded edges (not from `size * scale`) to avoid
