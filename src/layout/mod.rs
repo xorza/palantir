@@ -1,4 +1,4 @@
-use crate::primitives::{Align, Layout, Rect, Size, Sizes, Sizing, Visibility};
+use crate::primitives::{AxisAlign, Layout, Rect, Size, Sizes, Sizing, Visibility};
 use crate::shape::Shape;
 use crate::tree::{LayoutMode, NodeId, Tree};
 use glam::Vec2;
@@ -163,11 +163,15 @@ impl Axis {
             Axis::Y => s.w,
         }
     }
-    /// HStack's cross axis is Y; VStack's is X.
-    fn cross_align(self, l: &Layout) -> Align {
+    /// Cross-axis alignment of a child, with parent's `child_align` as
+    /// fallback when the child's own align is `Auto`. Mapped through
+    /// `AxisAlign` so the math is type-symmetric across axes.
+    fn cross_align(self, child: &Layout, parent: &Layout) -> AxisAlign {
         match self {
-            Axis::X => l.align_y,
-            Axis::Y => l.align_x,
+            // HStack: cross = vertical
+            Axis::X => child.align.v.or(parent.child_align.v).to_axis(),
+            // VStack: cross = horizontal
+            Axis::Y => child.align.h.or(parent.child_align.h).to_axis(),
         }
     }
     /// Build a `Size` from main- and cross-axis lengths.
@@ -273,7 +277,8 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             _ => axis.main(d),
         };
 
-        let cross_align = axis.cross_align(&s);
+        let parent_layout = tree.node(node).element.layout;
+        let cross_align = axis.cross_align(&s, &parent_layout);
         let cross_sizing = axis.cross_sizing(s.size);
         let cross_desired = axis.cross(d);
         let (cross_size, cross_offset) =
@@ -339,17 +344,21 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
 }
 
 /// Each child gets a slot inside `inner`, sized per its own `Sizing` and
-/// positioned per its `align_x` / `align_y`. Defaults pin to top-left
-/// (matching the original behavior) unless the child has `Sizing::Fill` —
-/// then `Auto` falls back to stretch on that axis.
+/// positioned per its `align_x` / `align_y` (with the ZStack's
+/// `child_align` as fallback when child's own axis is `Auto`).
+/// Defaults pin to top-left unless the child has `Sizing::Fill` — then `Auto`
+/// falls back to stretch on that axis.
 fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
+    let parent_layout = tree.node(node).element.layout;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let d = tree.node(c).desired;
         let s = tree.node(c).element.layout;
 
-        let (w, x_off) = place_axis(s.align_x, s.size.w, d.w, inner.size.w);
-        let (h, y_off) = place_axis(s.align_y, s.size.h, d.h, inner.size.h);
+        let h_align = s.align.h.or(parent_layout.child_align.h).to_axis();
+        let v_align = s.align.v.or(parent_layout.child_align.v).to_axis();
+        let (w, x_off) = place_axis(h_align, s.size.w, d.w, inner.size.w);
+        let (h, y_off) = place_axis(v_align, s.size.h, d.h, inner.size.h);
 
         let child_rect = Rect::new(inner.min.x + x_off, inner.min.y + y_off, w, h);
         arrange(tree, c, child_rect);
@@ -359,13 +368,13 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
 /// Compute size + offset along one axis given the child's alignment, its
 /// declared sizing, intrinsic desired size, and the inner span available.
 /// Used for both stack cross-axis placement and ZStack per-axis placement.
-fn place_axis(align: Align, sizing: Sizing, desired: f32, inner: f32) -> (f32, f32) {
-    let stretch = matches!(align, Align::Stretch)
-        || (matches!(align, Align::Auto) && matches!(sizing, Sizing::Fill(_)));
+fn place_axis(align: AxisAlign, sizing: Sizing, desired: f32, inner: f32) -> (f32, f32) {
+    let stretch = matches!(align, AxisAlign::Stretch)
+        || (matches!(align, AxisAlign::Auto) && matches!(sizing, Sizing::Fill(_)));
     let size = if stretch { inner } else { desired };
     let offset = match align {
-        Align::Center => ((inner - size) * 0.5).max(0.0),
-        Align::End => (inner - size).max(0.0),
+        AxisAlign::Center => ((inner - size) * 0.5).max(0.0),
+        AxisAlign::End => (inner - size).max(0.0),
         _ => 0.0,
     };
     (size, offset)

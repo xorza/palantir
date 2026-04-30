@@ -339,7 +339,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         .radius(12.0)
                         .show(ui, |ui| {
                             Button::new()
-                                .align(Align::Center)
+                                .align(Align::CENTER)
                                 .label("centered")
                                 .show(ui);
                         });

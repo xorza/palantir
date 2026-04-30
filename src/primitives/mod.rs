@@ -15,7 +15,8 @@ mod visibility;
 mod visuals;
 mod widget_id;
 
-pub use align::Align;
+pub(crate) use align::AxisAlign;
+pub use align::{Align, HAlign, VAlign};
 pub use approx::ApproxF32;
 pub use color::Color;
 pub use corners::Corners;

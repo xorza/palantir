@@ -85,24 +85,18 @@ pub trait Element: Sized {
         self.element_mut().layout.gap = g;
         self
     }
-    /// Horizontal alignment inside the parent's inner rect. See
-    /// `Layout::align_x` for which parent layout modes honor it.
-    fn align_x(mut self, a: Align) -> Self {
-        self.element_mut().layout.align_x = a;
-        self
-    }
-    /// Vertical alignment inside the parent's inner rect. See
-    /// `Layout::align_y` for which parent layout modes honor it.
-    fn align_y(mut self, a: Align) -> Self {
-        self.element_mut().layout.align_y = a;
-        self
-    }
-    /// Set both `align_x` and `align_y` to the same value. The parent reads
-    /// only the axis (or axes) relevant to its layout mode.
+    /// Alignment inside the parent's inner rect. For single-axis use the
+    /// [`Align::h`] / [`Align::v`] constructors. See `Layout::align` for
+    /// which parent layout modes honor each axis.
     fn align(mut self, a: Align) -> Self {
-        let l = &mut self.element_mut().layout;
-        l.align_x = a;
-        l.align_y = a;
+        self.element_mut().layout.align = a;
+        self
+    }
+    /// Default alignment applied to children when their own axis is `Auto`.
+    /// Mirrors CSS `align-items`. For single-axis defaults use the
+    /// [`Align::h`] / [`Align::v`] constructors.
+    fn child_align(mut self, a: Align) -> Self {
+        self.element_mut().layout.child_align = a;
         self
     }
     fn sense(mut self, s: Sense) -> Self {
