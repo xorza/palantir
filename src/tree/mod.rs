@@ -116,6 +116,17 @@ impl Tree {
         &mut self.nodes[id.0 as usize]
     }
 
+    /// First node in pre-order paint order, or `None` if the tree is empty.
+    /// Stable while the tree is alive: the root is always `NodeId(0)` once
+    /// pushed.
+    pub fn root(&self) -> Option<NodeId> {
+        if self.nodes.is_empty() {
+            None
+        } else {
+            Some(NodeId(0))
+        }
+    }
+
     pub fn shapes_of(&self, id: NodeId) -> &[Shape] {
         let n = self.node(id);
         &self.shapes[n.shapes_start as usize..n.shapes_end as usize]

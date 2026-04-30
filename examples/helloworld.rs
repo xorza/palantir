@@ -247,15 +247,16 @@ impl State {
         );
         self.ui.end_frame();
 
-        let pixel_snap = self.ui.pixel_snap();
         self.renderer.render(
-            &self.device,
-            &self.queue,
-            &view,
-            [w_logical, h_logical],
-            scale,
-            pixel_snap,
-            Color::rgb(0.08, 0.08, 0.10),
+            palantir::renderer::RenderFrame {
+                device: &self.device,
+                queue: &self.queue,
+                view: &view,
+                viewport_logical: [w_logical, h_logical],
+                scale,
+                pixel_snap: self.ui.pixel_snap(),
+                clear: Color::rgb(0.08, 0.08, 0.10),
+            },
             &self.ui.tree,
         );
 

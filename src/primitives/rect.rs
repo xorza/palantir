@@ -46,4 +46,25 @@ impl Rect {
             ),
         }
     }
+
+    /// Scale by `scale` and optionally snap edges to integer pixels. Used at
+    /// the logical→physical-px boundary inside the renderer; snapping derives
+    /// width/height from rounded edges (not from `size * scale`) to avoid
+    /// creeping width drift across rows of identical rects.
+    pub fn scaled_by(&self, scale: f32, snap: bool) -> Self {
+        let mut left = self.min.x * scale;
+        let mut top = self.min.y * scale;
+        let mut right = (self.min.x + self.size.w) * scale;
+        let mut bottom = (self.min.y + self.size.h) * scale;
+        if snap {
+            left = left.round();
+            top = top.round();
+            right = right.round();
+            bottom = bottom.round();
+        }
+        Self {
+            min: Vec2::new(left, top),
+            size: Size::new((right - left).max(0.0), (bottom - top).max(0.0)),
+        }
+    }
 }
