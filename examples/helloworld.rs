@@ -244,9 +244,9 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
             .label("reset")
             .style(ButtonStyle::outlined())
             .size((Sizing::Fill, Sizing::Hug))
-            .min_size((0.0, 80.0))
+            .min_size((0.0, 10.0))
             .margin((4.0, 24.0, 32.0, 0.0))
-            .radius(12.0)
+            .radius(4)
             .show(ui);
         if reset.clicked() {
             *clicks = 0;
