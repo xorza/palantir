@@ -21,10 +21,7 @@ pub struct Grid {
     fill: Color,
     stroke: Option<Stroke>,
     radius: Corners,
-    rows: Vec<Track>,
-    cols: Vec<Track>,
-    row_gap: f32,
-    col_gap: f32,
+    def: GridDef,
 }
 
 impl Grid {
@@ -46,10 +43,7 @@ impl Grid {
             fill: Color::TRANSPARENT,
             stroke: None,
             radius: Corners::ZERO,
-            rows: Vec::new(),
-            cols: Vec::new(),
-            row_gap: 0.0,
-            col_gap: 0.0,
+            def: GridDef::default(),
         }
     }
 
@@ -58,7 +52,7 @@ impl Grid {
         I: IntoIterator<Item = T>,
         T: Into<Track>,
     {
-        self.rows = rs.into_iter().map(Into::into).collect();
+        self.def.rows = rs.into_iter().map(Into::into).collect();
         self
     }
 
@@ -67,33 +61,33 @@ impl Grid {
         I: IntoIterator<Item = T>,
         T: Into<Track>,
     {
-        self.cols = cs.into_iter().map(Into::into).collect();
+        self.def.cols = cs.into_iter().map(Into::into).collect();
         self
     }
 
     /// Shorthand: `n` equal-weight `Fill` columns.
     pub fn equal_cols(mut self, n: usize) -> Self {
-        self.cols = (0..n).map(|_| Track::new(Sizing::FILL)).collect();
+        self.def.cols = (0..n).map(|_| Track::new(Sizing::FILL)).collect();
         self
     }
 
     /// Shorthand: `n` equal-weight `Fill` rows.
     pub fn equal_rows(mut self, n: usize) -> Self {
-        self.rows = (0..n).map(|_| Track::new(Sizing::FILL)).collect();
+        self.def.rows = (0..n).map(|_| Track::new(Sizing::FILL)).collect();
         self
     }
 
     /// Uniform gap on both axes. See `gap_xy` for asymmetric gaps.
     pub fn gap(mut self, g: f32) -> Self {
-        self.row_gap = g;
-        self.col_gap = g;
+        self.def.row_gap = g;
+        self.def.col_gap = g;
         self
     }
 
     /// Asymmetric gaps: `row_gap` between rows, `col_gap` between columns.
     pub fn gap_xy(mut self, row_gap: f32, col_gap: f32) -> Self {
-        self.row_gap = row_gap;
-        self.col_gap = col_gap;
+        self.def.row_gap = row_gap;
+        self.def.col_gap = col_gap;
         self
     }
 
@@ -120,12 +114,7 @@ impl Grid {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
-        let idx = ui.tree.push_grid_def(GridDef {
-            rows: self.rows,
-            cols: self.cols,
-            row_gap: self.row_gap,
-            col_gap: self.col_gap,
-        });
+        let idx = ui.tree.push_grid_def(self.def);
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
 
