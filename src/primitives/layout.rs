@@ -1,4 +1,4 @@
-use crate::primitives::{Align, Justify, Size, Sizes, Spacing};
+use crate::primitives::{Align, GridCell, Justify, Size, Sizes, Spacing};
 use glam::Vec2;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -28,6 +28,9 @@ pub struct Layout {
     /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
     /// Defaults to `Vec2::ZERO`. Ignored by other layout kinds.
     pub position: Vec2,
+    /// Cell + span inside a `Grid` parent. Defaults to `(0, 0)` placement and
+    /// `(1, 1)` span. Ignored by other layout kinds.
+    pub grid: GridCell,
 }
 
 impl Default for Layout {
@@ -43,6 +46,7 @@ impl Default for Layout {
             align: Align::default(),
             child_align: Align::default(),
             position: Vec2::ZERO,
+            grid: GridCell::default(),
         }
     }
 }

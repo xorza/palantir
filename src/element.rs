@@ -17,6 +17,10 @@ pub enum LayoutMode {
     /// coords). Each child sized per its desired (intrinsic) size. Canvas
     /// hugs to the bounding box of placed children.
     Canvas,
+    /// WPF-style grid. Carries an index into `Tree::grid_defs` holding the row
+    /// and column track definitions and per-axis gaps. Children declare cell +
+    /// span via `Layout::grid`.
+    Grid(u32),
 }
 
 /// Per-node config bundle: identity + spatial layout + interaction. Every
@@ -97,6 +101,23 @@ pub trait Element: Sized {
     /// Ignored by other layout modes.
     fn position(mut self, p: impl Into<Vec2>) -> Self {
         self.element_mut().layout.position = p.into();
+        self
+    }
+    /// Cell `(row, col)` inside a `Grid` parent. Default `(0, 0)`. Ignored
+    /// outside a Grid parent.
+    fn grid_cell(mut self, (row, col): (u16, u16)) -> Self {
+        let g = &mut self.element_mut().layout.grid;
+        g.row = row;
+        g.col = col;
+        self
+    }
+    /// Span `(row_span, col_span)` inside a `Grid` parent. Default `(1, 1)`.
+    /// Spans are clamped at layout time to the grid's bounds. Ignored outside
+    /// a Grid parent.
+    fn grid_span(mut self, (rs, cs): (u16, u16)) -> Self {
+        let g = &mut self.element_mut().layout.grid;
+        g.row_span = rs.max(1);
+        g.col_span = cs.max(1);
         self
     }
     /// Space between children when this node is an `HStack` / `VStack`.

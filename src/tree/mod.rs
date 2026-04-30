@@ -1,5 +1,5 @@
 use crate::element::UiElement;
-use crate::primitives::{Rect, Size};
+use crate::primitives::{GridDef, Rect, Size};
 use crate::shape::Shape;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -59,6 +59,9 @@ pub struct Tree {
     /// field so the Node footprint stays minimal across measure/arrange/paint.
     /// Reused frame-to-frame; cleared with `Tree::clear`.
     last_child: Vec<Option<NodeId>>,
+    /// Grid track definitions, addressed by `LayoutMode::Grid(u32)`. One
+    /// entry per `Grid` panel recorded this frame. Cleared with `clear`.
+    grid_defs: Vec<GridDef>,
 }
 
 impl Tree {
@@ -70,6 +73,19 @@ impl Tree {
         self.nodes.clear();
         self.shapes.clear();
         self.last_child.clear();
+        self.grid_defs.clear();
+    }
+
+    /// Append a `GridDef` and return its index. The index is stamped into a
+    /// `LayoutMode::Grid(idx)` on the owning panel's `UiElement`.
+    pub fn push_grid_def(&mut self, def: GridDef) -> u32 {
+        let idx = self.grid_defs.len() as u32;
+        self.grid_defs.push(def);
+        idx
+    }
+
+    pub fn grid_def(&self, idx: u32) -> &GridDef {
+        &self.grid_defs[idx as usize]
     }
 
     pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
