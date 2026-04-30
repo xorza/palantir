@@ -1,4 +1,4 @@
-use crate::geom::{Rect, Size, Style};
+use crate::primitives::{Rect, Size, Style};
 use crate::shape::Shape;
 use std::hash::{Hash, Hasher};
 

@@ -1,4 +1,4 @@
-use crate::geom::{Rect, Size, Sizing};
+use crate::primitives::{Rect, Size, Sizing};
 use crate::tree::{LayoutKind, NodeId, Tree};
 use glam::Vec2;
 
@@ -29,8 +29,8 @@ pub fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
     // Apply style sizing on the outer (padded) box. Fixed/Fill specify outer size;
     // Hug returns content + padding.
     let desired = Size::new(
-        resolve_axis(style.width,  content.w + style.padding.horiz(), available.w),
-        resolve_axis(style.height, content.h + style.padding.vert(), available.h),
+        resolve_axis(style.size.w, content.w + style.padding.horiz(), available.w),
+        resolve_axis(style.size.h, content.h + style.padding.vert(), available.h),
     );
 
     tree.node_mut(node).desired = desired;
@@ -121,7 +121,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         let main = match axis { Axis::X => d.w, Axis::Y => d.h };
         sum_main_desired += main;
         let s = tree.node(c).style;
-        let main_sizing = match axis { Axis::X => s.width, Axis::Y => s.height };
+        let main_sizing = match axis { Axis::X => s.size.w, Axis::Y => s.size.h };
         if matches!(main_sizing, Sizing::Fill) { fill_count += 1; }
     }
 
@@ -135,12 +135,12 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         let d = tree.node(c).desired;
         let s = tree.node(c).style;
         let (main_sizing, main_desired) = match axis {
-            Axis::X => (s.width,  d.w),
-            Axis::Y => (s.height, d.h),
+            Axis::X => (s.size.w, d.w),
+            Axis::Y => (s.size.h, d.h),
         };
         let main_size = main_desired + if matches!(main_sizing, Sizing::Fill) { fill_share } else { 0.0 };
 
-        let cross_sizing = match axis { Axis::X => s.height, Axis::Y => s.width };
+        let cross_sizing = match axis { Axis::X => s.size.h, Axis::Y => s.size.w };
         let cross_desired = match axis { Axis::X => d.h, Axis::Y => d.w };
         let cross_size = match cross_sizing {
             Sizing::Fill => cross,

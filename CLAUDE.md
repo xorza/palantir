@@ -56,9 +56,15 @@ scripts/
   fetch-refs.sh clones reference UI/layout/renderer projects into ./tmp
 ```
 
+## Reference notes in `./references/`
+
+29 dense per-framework notes plus a cross-cutting synthesis. **Read `references/SUMMARY.md` first** — it indexes every other doc, takes positions on the design choices Palantir must make, and lists anti-patterns + open questions across the corpus. Each per-framework doc cites source code under `tmp/` with `file:line` and ends with explicit copy/avoid/simplify recommendations for Palantir.
+
+Use the SUMMARY's "Quick-lookup matrix" (§13) to find which docs to read for a given task (HStack semantics, text widget, hit-testing, persistent state, etc.).
+
 ## Reference sources in `./tmp/`
 
-`./tmp/` is gitignored and populated on demand by `./scripts/fetch-refs.sh` (shallow clones, re-runnable). Use it for cross-checking design decisions against real codebases instead of guessing or web-searching.
+`./tmp/` is gitignored and populated on demand by `./scripts/fetch-refs.sh` (shallow clones, re-runnable). The `references/*.md` notes already digest these — go to `tmp/` only when a note doesn't cover the specific question.
 
 Most relevant when working on:
 
