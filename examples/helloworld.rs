@@ -1,7 +1,9 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use palantir::{Button, ButtonStyle, Color, HStack, Rect, Sizing, Ui, layout, renderer::Renderer};
+use palantir::{
+    Button, ButtonStyle, Color, HStack, InputEvent, Rect, Sizing, Ui, layout, renderer::Renderer,
+};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -139,8 +141,11 @@ impl ApplicationHandler for App {
             return;
         };
 
-        // Feed input events into Ui first so they're available next frame.
-        state.ui.handle_event(&event);
+        // Translate winit events to palantir-native events at the boundary, then
+        // feed them in. Ui itself is winit-agnostic.
+        if let Some(ev) = InputEvent::from_winit(&event, state.ui.scale_factor()) {
+            state.ui.on_input(ev);
+        }
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
