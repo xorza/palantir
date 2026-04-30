@@ -25,7 +25,15 @@ fn process_with_no_clip_emits_one_unscissored_group() {
     ];
     let mut quads = Vec::new();
     let mut groups = Vec::new();
-    process(&cmds, 1.0, false, [200, 200], &mut quads, &mut groups);
+    process(
+        &cmds,
+        1.0,
+        false,
+        [200, 200],
+        &mut quads,
+        &mut groups,
+        &mut Vec::new(),
+    );
 
     assert_eq!(quads.len(), 2);
     assert_eq!(groups.len(), 1);
@@ -46,7 +54,15 @@ fn process_with_clip_groups_inner_draws_under_scissor() {
     ];
     let mut quads = Vec::new();
     let mut groups = Vec::new();
-    process(&cmds, 1.0, false, [400, 400], &mut quads, &mut groups);
+    process(
+        &cmds,
+        1.0,
+        false,
+        [400, 400],
+        &mut quads,
+        &mut groups,
+        &mut Vec::new(),
+    );
 
     assert_eq!(quads.len(), 4);
     assert_eq!(groups.len(), 3);
@@ -78,7 +94,15 @@ fn process_intersects_nested_clips() {
     ];
     let mut quads = Vec::new();
     let mut groups = Vec::new();
-    process(&cmds, 1.0, false, [400, 400], &mut quads, &mut groups);
+    process(
+        &cmds,
+        1.0,
+        false,
+        [400, 400],
+        &mut quads,
+        &mut groups,
+        &mut Vec::new(),
+    );
 
     assert_eq!(quads.len(), 1);
     assert_eq!(groups.len(), 1);
@@ -99,7 +123,15 @@ fn process_skips_groups_with_no_quads() {
     ];
     let mut quads = Vec::new();
     let mut groups = Vec::new();
-    process(&cmds, 1.0, false, [200, 200], &mut quads, &mut groups);
+    process(
+        &cmds,
+        1.0,
+        false,
+        [200, 200],
+        &mut quads,
+        &mut groups,
+        &mut Vec::new(),
+    );
 
     assert!(quads.is_empty());
     assert!(groups.is_empty());
@@ -110,7 +142,15 @@ fn process_scales_rects_for_dpr() {
     let cmds = vec![draw(rect(10.0, 20.0, 30.0, 40.0))];
     let mut quads = Vec::new();
     let mut groups = Vec::new();
-    process(&cmds, 2.0, false, [400, 400], &mut quads, &mut groups);
+    process(
+        &cmds,
+        2.0,
+        false,
+        [400, 400],
+        &mut quads,
+        &mut groups,
+        &mut Vec::new(),
+    );
 
     assert_eq!(quads.len(), 1);
     let q = &quads[0];
