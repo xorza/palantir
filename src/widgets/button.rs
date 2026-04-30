@@ -1,4 +1,4 @@
-use crate::primitives::{Color, Corners, Size, Sizes, Sizing, Spacing, Style, WidgetId};
+use crate::primitives::{Color, Corners, Size, Sizes, Spacing, Style, WidgetId};
 use crate::shape::{Shape, ShapeRect};
 use crate::tree::LayoutKind;
 use crate::ui::Ui;
@@ -31,8 +31,7 @@ impl Button {
         }
     }
 
-    pub fn width(mut self,  v: impl Into<Sizing>) -> Self { self.size.w = v.into(); self }
-    pub fn height(mut self, v: impl Into<Sizing>) -> Self { self.size.h = v.into(); self }
+    pub fn size(mut self, s: impl Into<Sizes>) -> Self { self.size = s.into(); self }
     pub fn fill(mut self, c: Color) -> Self { self.fill = c; self }
     pub fn radius(mut self, r: impl Into<Corners>) -> Self { self.radius = r.into(); self }
     pub fn label(mut self, s: impl Into<String>) -> Self { self.label = s.into(); self }

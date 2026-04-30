@@ -22,7 +22,7 @@ mod tests {
 
         let root = HStack::new().show(&mut ui, |ui| {
             Button::new().label("Hi").show(ui);
-            Button::new().label("World").width(100.0).show(ui);
+            Button::new().label("World").size((100.0, Sizing::Hug)).show(ui);
         }).node;
 
         let surface = Rect::new(0.0, 0.0, 800.0, 600.0);
@@ -51,8 +51,8 @@ mod tests {
         ui.begin_frame();
 
         let root = VStack::new().show(&mut ui, |ui| {
-            Button::new().height(50.0).show(ui);
-            Button::new().height(Sizing::Fill).show(ui);
+            Button::new().size((Sizing::Hug, 50.0)).show(ui);
+            Button::new().size((Sizing::Hug, Sizing::Fill)).show(ui);
         }).node;
 
         let surface = Rect::new(0.0, 0.0, 200.0, 300.0);

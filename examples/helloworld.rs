@@ -1,12 +1,13 @@
 use palantir::{layout, Button, HStack, Rect, Sizing, Ui};
 
+
 fn main() {
     let mut ui = Ui::new();
     ui.begin_frame();
 
     let root = HStack::new().show(&mut ui, |ui| {
         Button::new().label("Hello").show(ui);
-        Button::new().label("World").width(Sizing::Fill).show(ui);
+        Button::new().label("World").size((Sizing::Fill, Sizing::Hug)).show(ui);
     }).node;
 
     layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 800.0, 600.0));

@@ -1,4 +1,4 @@
-use crate::primitives::{Sizes, Sizing, Spacing, Style, WidgetId};
+use crate::primitives::{Sizes, Spacing, Style, WidgetId};
 use crate::tree::LayoutKind;
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -23,8 +23,7 @@ impl Stack {
         }
     }
 
-    pub fn width(mut self, v: impl Into<Sizing>) -> Self { self.size.w = v.into(); self }
-    pub fn height(mut self, v: impl Into<Sizing>) -> Self { self.size.h = v.into(); self }
+    pub fn size(mut self, s: impl Into<Sizes>) -> Self { self.size = s.into(); self }
     pub fn padding(mut self, p: Spacing) -> Self { self.padding = p; self }
     pub fn margin(mut self, m: Spacing) -> Self { self.margin = m; self }
 

@@ -25,3 +25,15 @@ impl Sizes {
     pub const FILL: Self = Self { w: Sizing::Fill, h: Sizing::Fill };
     pub const fn new(w: Sizing, h: Sizing) -> Self { Self { w, h } }
 }
+
+impl From<Sizing> for Sizes {
+    fn from(s: Sizing) -> Self { Self { w: s, h: s } }
+}
+
+impl From<f32> for Sizes {
+    fn from(v: f32) -> Self { Self { w: Sizing::Fixed(v), h: Sizing::Fixed(v) } }
+}
+
+impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for Sizes {
+    fn from((w, h): (W, H)) -> Self { Self { w: w.into(), h: h.into() } }
+}
