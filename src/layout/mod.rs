@@ -170,14 +170,12 @@ fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size
     let mut total_main = 0.0f32;
     let mut max_cross = 0.0f32;
     let mut count = 0usize;
-    let mut cur = tree.node(node).first_child;
-    while let Some(c) = cur {
-        let next = tree.node(c).next_sibling;
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
         let d = measure(tree, c, child_avail);
         total_main += axis.main(d);
         max_cross = max_cross.max(axis.cross(d));
         count += 1;
-        cur = next;
     }
     if count > 1 {
         total_main += gap * (count - 1) as f32;
@@ -186,8 +184,7 @@ fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size
 }
 
 fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
-    let first = tree.node(node).first_child;
-    if first.is_none() {
+    if !tree.child_cursor(node).has_next() {
         return;
     }
     let gap = tree.node(node).layout.gap;
@@ -198,8 +195,8 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     let mut sum_main_desired = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
-    let mut cur = first;
-    while let Some(c) = cur {
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
         let n = tree.node(c);
         if let Sizing::Fill(weight) = axis.main_sizing(n.layout.size) {
             total_weight += weight.max(0.0);
@@ -207,7 +204,6 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             sum_main_desired += axis.main(n.desired);
         }
         count += 1;
-        cur = n.next_sibling;
     }
     let total_gap = if count > 1 {
         gap * (count - 1) as f32
@@ -222,10 +218,14 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     let main_min = axis.main(Size::new(inner.min.x, inner.min.y));
     let cross_min = axis.cross(Size::new(inner.min.x, inner.min.y));
     let mut cursor = main_min;
+    let mut first = true;
 
-    let mut cur = first;
-    while let Some(c) = cur {
-        let next = tree.node(c).next_sibling;
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
+        if !first {
+            cursor += gap;
+        }
+        first = false;
         let d = tree.node(c).desired;
         let s = tree.node(c).layout;
 
@@ -246,10 +246,6 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         let child_rect = axis.compose_rect(cursor, cross_min + cross_offset, main_size, cross_size);
         arrange(tree, c, child_rect);
         cursor += main_size;
-        if next.is_some() {
-            cursor += gap;
-        }
-        cur = next;
     }
 }
 
@@ -262,13 +258,11 @@ fn zstack_measure(tree: &mut Tree, node: NodeId) -> Size {
     let child_avail = Size::INF;
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
-    let mut cur = tree.node(node).first_child;
-    while let Some(c) = cur {
-        let next = tree.node(c).next_sibling;
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
         let d = measure(tree, c, child_avail);
         max_w = max_w.max(d.w);
         max_h = max_h.max(d.h);
-        cur = next;
     }
     Size::new(max_w, max_h)
 }
@@ -282,14 +276,12 @@ fn canvas_measure(tree: &mut Tree, node: NodeId) -> Size {
     let child_avail = Size::INF;
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
-    let mut cur = tree.node(node).first_child;
-    while let Some(c) = cur {
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
         let pos = tree.node(c).layout.position.unwrap_or(Vec2::ZERO);
-        let next = tree.node(c).next_sibling;
         let d = measure(tree, c, child_avail);
         max_w = max_w.max(pos.x + d.w);
         max_h = max_h.max(pos.y + d.h);
-        cur = next;
     }
     Size::new(max_w, max_h)
 }
@@ -298,9 +290,8 @@ fn canvas_measure(tree: &mut Tree, node: NodeId) -> Size {
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `canvas_measure`.
 fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
-    let mut cur = tree.node(node).first_child;
-    while let Some(c) = cur {
-        let next = tree.node(c).next_sibling;
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
         let d = tree.node(c).desired;
         let pos = tree.node(c).layout.position.unwrap_or(Vec2::ZERO);
         let child_rect = Rect {
@@ -308,7 +299,6 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
             size: d,
         };
         arrange(tree, c, child_rect);
-        cur = next;
     }
 }
 
@@ -317,9 +307,8 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
 /// (matching the original behavior) unless the child has `Sizing::Fill` —
 /// then `Auto` falls back to stretch on that axis.
 fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
-    let mut cur = tree.node(node).first_child;
-    while let Some(c) = cur {
-        let next = tree.node(c).next_sibling;
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
         let d = tree.node(c).desired;
         let s = tree.node(c).layout;
 
@@ -328,7 +317,6 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
 
         let child_rect = Rect::new(inner.min.x + x_off, inner.min.y + y_off, w, h);
         arrange(tree, c, child_rect);
-        cur = next;
     }
 }
 
