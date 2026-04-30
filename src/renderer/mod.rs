@@ -30,7 +30,7 @@ impl Renderer {
     ) {
         self.quads.clear();
         collect_quads(tree, &mut self.quads);
-        tracing::debug!(
+        tracing::trace!(
             quads = self.quads.len(),
             viewport = ?viewport,
             "renderer.render"

@@ -47,7 +47,36 @@ For flex/grid/block, integrate **Taffy** as the layout engine. Custom widgets im
 Per-widget state (scroll offset, text cursor, animation) lives in a `HashMap<Id, Box<dyn Any>>` keyed by stable ID. The tree is throwaway; state persists.
 
 ### 5. Input lags one frame, render does not
-Hit-testing uses *last frame's* arranged rects (the standard immediate-mode trick). Layout and rendering are always current. One-frame input delay is imperceptible and avoids the chicken-and-egg.
+
+Hit-testing uses arranged rects from the **most recently rendered** frame — i.e., the frame the user was looking at when they clicked. Layout and rendering are always current. One-frame input lag is imperceptible.
+
+**Frame protocol** (refines egui's "hit-test against prev rects"):
+
+```
+begin_frame                           // swap response tables
+build_ui(&mut ui)                     // widgets read prev_responses[id] → Response
+layout::run(...)                      // pure layout; produces this-frame rects
+process_input(events_since_last_frame, &this_frame_rects)
+                                      // → next_responses[id] for next frame
+end_frame                             // rebuild rect index, swap response tables
+render(...)
+```
+
+Why post-layout processing (not egui's during-recording approach): a click at time *T* targets whatever was visible at *T* — i.e., the just-rendered frame's rects, not the previous frame's. Processing events after `layout::run` uses those exact rects. The Response surfaced to the user lags by one frame in *delivery* but is correct in *attribution*.
+
+**ID-based active capture** for press/release across frames:
+- On press: hit-test current rects → set `Active = WidgetId`.
+- While Active is set, all pointer events route to that widget regardless of where its rect is now.
+- On release: emit `clicked` only if the release point is over the same widget (by ID, not by rect). Clear Active.
+- If Active's WidgetId disappears from the tree (conditional rendering), clear it silently.
+
+This makes drag-and-move-button cases correct: identity tracks across rect changes; orphaned active widgets fail open, not closed.
+
+**Don't bubble events.** Topmost widget at the point handles, then it's done. Routed events (WPF tunnel/bubble) encourage accidental coupling; egui omitted them and never regretted it.
+
+**Layers, not pure z-index.** `LayerId = (Order, AreaIndex)` where `Order ∈ {Background, Main, Foreground, Tooltip, Popup, Debug}`. Hit-test walks layers top-down. Tooltips and dragged-thing-attached-to-cursor each get their own layer.
+
+**Hit shape per node**, defaults to bounding rect. `HitShape::{Rect, RoundedRect, Path, None}` — needed for proper rounded-corner rejection and click-through overlays. Can be added incrementally; v1 ships rect-only.
 
 ### 6. wgpu rendering: batch by primitive
 Paint pass walks the laid-out tree and emits into typed batches: rounded-rect quads, glyph quads, SDF icons, clip stacks. One render pass per surface, instanced draws. Use `wgpu::RenderBundle` for unchanged subtrees later as an optimization. Text via `glyphon` or `cosmic-text` + atlas.

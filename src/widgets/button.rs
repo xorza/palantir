@@ -95,6 +95,7 @@ impl Button {
             }
         });
 
-        Response { node }
+        let state = ui.response_for(self.id);
+        Response { node, state }
     }
 }
