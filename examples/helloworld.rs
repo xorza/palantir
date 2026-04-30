@@ -11,8 +11,7 @@ fn main() {
     use tracing_subscriber::EnvFilter;
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,palantir=debug,helloworld=debug")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
 
@@ -35,12 +34,12 @@ struct State {
     renderer: Renderer,
     ui: Ui,
     first_paint: bool,
+    click_count: u32,
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_some() {
-            tracing::debug!("resumed: state already initialized, skipping");
             return;
         }
 
@@ -102,7 +101,6 @@ impl ApplicationHandler for App {
             "surface configured"
         );
         window.request_redraw();
-        tracing::debug!("initial redraw requested");
         self.state = Some(State {
             window,
             surface,
@@ -112,6 +110,7 @@ impl ApplicationHandler for App {
             renderer,
             ui: Ui::new(),
             first_paint: false,
+            click_count: 0,
         });
     }
 
@@ -135,6 +134,9 @@ impl ApplicationHandler for App {
             return;
         };
 
+        // Feed input events into Ui first so they're available next frame.
+        state.ui.handle_event(&event);
+
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(new) => {
@@ -145,10 +147,12 @@ impl ApplicationHandler for App {
                 state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
-            WindowEvent::RedrawRequested => {
-                tracing::debug!("redraw requested");
-                state.draw();
+            WindowEvent::CursorMoved { .. }
+            | WindowEvent::CursorLeft { .. }
+            | WindowEvent::MouseInput { .. } => {
+                state.window.request_redraw();
             }
+            WindowEvent::RedrawRequested => state.draw(),
             _ => {}
         }
     }
@@ -157,25 +161,19 @@ impl ApplicationHandler for App {
 impl State {
     fn draw(&mut self) {
         use wgpu::CurrentSurfaceTexture::*;
-        let acquired = self.surface.get_current_texture();
-        tracing::debug!(?acquired, "acquired surface texture");
-        let frame = match acquired {
+        let frame = match self.surface.get_current_texture() {
             Success(f) | Suboptimal(f) => f,
             Outdated | Lost => {
-                tracing::warn!("surface outdated/lost — reconfiguring and retrying");
+                tracing::warn!("surface outdated/lost — reconfiguring");
                 self.surface.configure(&self.device, &self.config);
                 self.window.request_redraw();
                 return;
             }
             Timeout => {
-                tracing::warn!("surface timeout — retrying");
                 self.window.request_redraw();
                 return;
             }
-            Occluded => {
-                tracing::debug!("occluded — skipping frame");
-                return;
-            }
+            Occluded => return,
             Validation => {
                 tracing::error!("validation error on get_current_texture");
                 return;
@@ -189,9 +187,10 @@ impl State {
         let h = self.config.height as f32;
 
         self.ui.begin_frame();
-        build_ui(&mut self.ui);
+        build_ui(&mut self.ui, &mut self.click_count);
         let root = self.ui.root();
         layout::run(&mut self.ui.tree, root, Rect::new(0.0, 0.0, w, h));
+        self.ui.end_frame();
 
         self.renderer.render(
             &self.device,
@@ -210,19 +209,33 @@ impl State {
     }
 }
 
-fn build_ui(ui: &mut Ui) {
+fn build_ui(ui: &mut Ui, clicks: &mut u32) {
     HStack::new().padding(16.0).show(ui, |ui| {
-        Button::new()
-            .label("Hello")
+        let counter = Button::new()
+            .label(format!("clicks: {}", clicks))
             .size((Sizing::Fill, Sizing::Hug))
             .min_size((120.0, 60.0))
             .margin((0.0, 0.0, 8.0, 0.0))
             .show(ui);
-        Button::new()
-            .label("World")
+        if counter.clicked() {
+            *clicks += 1;
+            tracing::info!(clicks = *clicks, "click");
+        }
+
+        let tinted = Button::new()
+            .label(if counter.hovered() { "hovered" } else { "idle" })
             .size((300, Sizing::Hug))
             .min_size((0.0, 80.0))
             .margin((4.0, 24.0, 32.0, 0.0))
+            .fill(if counter.hovered() {
+                Color::rgb(0.4, 0.6, 0.9)
+            } else {
+                Color::rgb(0.2, 0.4, 0.8)
+            })
             .show(ui);
+        if tinted.clicked() {
+            *clicks = 0;
+            tracing::info!("reset");
+        }
     });
 }

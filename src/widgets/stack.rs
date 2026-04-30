@@ -57,7 +57,8 @@ impl Stack {
             margin: self.margin,
         };
         let node = ui.node(self.id, style, self.kind, f);
-        Response { node }
+        let state = ui.response_for(self.id);
+        Response { node, state }
     }
 }
 

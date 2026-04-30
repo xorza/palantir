@@ -1,10 +1,29 @@
 mod button;
 mod stack;
+
 pub use button::Button;
 pub use stack::{HStack, Stack, VStack};
 
+use crate::input::ResponseState;
+use crate::primitives::Rect;
 use crate::tree::NodeId;
 
 pub struct Response {
     pub node: NodeId,
+    pub state: ResponseState,
+}
+
+impl Response {
+    pub fn rect(&self) -> Option<Rect> {
+        self.state.rect
+    }
+    pub fn hovered(&self) -> bool {
+        self.state.hovered
+    }
+    pub fn pressed(&self) -> bool {
+        self.state.pressed
+    }
+    pub fn clicked(&self) -> bool {
+        self.state.clicked
+    }
 }
