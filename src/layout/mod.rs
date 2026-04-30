@@ -11,8 +11,8 @@ pub fn run(tree: &mut Tree, root: NodeId, surface: Rect) {
 /// Bottom-up. Returns the node's desired *slot* size (including its own margin)
 /// and stores it on the node.
 fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
-    let style = tree.node(node).layout;
-    let mode = tree.node(node).mode;
+    let style = tree.node(node).element.layout;
+    let mode = tree.node(node).element.mode;
 
     // Inner available = available minus margin minus padding.
     let inner_avail = Size::new(
@@ -55,8 +55,8 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
 
 /// Top-down. `slot` is the rect the parent reserved (including this node's margin).
 fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
-    let style = tree.node(node).layout;
-    let mode = tree.node(node).mode;
+    let style = tree.node(node).element.layout;
+    let mode = tree.node(node).element.mode;
 
     let rendered = slot.deflated_by(style.margin);
     tree.node_mut(node).rect = rendered;
@@ -165,7 +165,7 @@ impl Axis {
 fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size {
     // Pass infinite size on the main axis (WPF trick): children report intrinsic.
     let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
-    let gap = tree.node(node).layout.gap;
+    let gap = tree.node(node).element.layout.gap;
     let kids: Vec<NodeId> = tree.children(node).collect();
     let n = kids.len();
 
@@ -187,7 +187,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     if kids.is_empty() {
         return;
     }
-    let gap = tree.node(node).layout.gap;
+    let gap = tree.node(node).element.layout.gap;
     let total_gap = if kids.len() > 1 {
         gap * (kids.len() - 1) as f32
     } else {
@@ -200,7 +200,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     for &c in &kids {
         let d = tree.node(c).desired;
         sum_main_desired += axis.main(d);
-        let s = tree.node(c).layout;
+        let s = tree.node(c).element.layout;
         if let Sizing::Fill { weight } = axis.main_sizing(s.size) {
             total_weight += weight.max(0.0);
         }
@@ -217,7 +217,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     for (i, c) in kids.iter().enumerate() {
         let c = *c;
         let d = tree.node(c).desired;
-        let s = tree.node(c).layout;
+        let s = tree.node(c).element.layout;
 
         let main_sizing = axis.main_sizing(s.size);
         let main_desired = axis.main(d);
@@ -273,7 +273,7 @@ fn canvas_measure(tree: &mut Tree, node: NodeId) -> Size {
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in kids {
-        let pos = tree.node(c).layout.position.unwrap_or(Vec2::ZERO);
+        let pos = tree.node(c).element.layout.position.unwrap_or(Vec2::ZERO);
         let d = measure(tree, c, child_avail);
         max_w = max_w.max(pos.x + d.w);
         max_h = max_h.max(pos.y + d.h);
@@ -288,7 +288,7 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
     let kids: Vec<NodeId> = tree.children(node).collect();
     for c in kids {
         let d = tree.node(c).desired;
-        let pos = tree.node(c).layout.position.unwrap_or(Vec2::ZERO);
+        let pos = tree.node(c).element.layout.position.unwrap_or(Vec2::ZERO);
         let child_rect = Rect {
             min: inner.min + pos,
             size: d,
@@ -305,7 +305,7 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
     let kids: Vec<NodeId> = tree.children(node).collect();
     for c in kids {
         let d = tree.node(c).desired;
-        let s = tree.node(c).layout;
+        let s = tree.node(c).element.layout;
 
         let (w, x_off) = place_axis(s.align_x, s.size.w, d.w, inner.size.w);
         let (h, y_off) = place_axis(s.align_y, s.size.h, d.h, inner.size.h);
