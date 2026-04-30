@@ -137,6 +137,57 @@ fn stack_with_sense_click_captures_clicks() {
 }
 
 #[test]
+fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
+    // Sense::HOVER: visible to hover state but transparent to click capture.
+    // Useful for tooltips, cursor changes, row highlights.
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let stack_node = HStack::with_id("hover_only")
+        .padding(20.0)
+        .sense(Sense::HOVER)
+        .show(&mut ui, |ui| {
+            Button::with_id("inside")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, stack_node, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.end_frame();
+
+    // Move pointer over stack's padding area (not over the button).
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(5.0, 5.0)));
+
+    // Press + release on the same spot.
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    ui.begin_frame();
+    let mut child_clicked = false;
+    let stack_resp = HStack::with_id("hover_only")
+        .padding(20.0)
+        .sense(Sense::HOVER)
+        .show(&mut ui, |ui| {
+            child_clicked = Button::with_id("inside")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .clicked();
+        });
+
+    assert!(
+        stack_resp.hovered(),
+        "Sense::HOVER stack reports hovered=true"
+    );
+    assert!(
+        !stack_resp.clicked(),
+        "Sense::HOVER does not capture clicks"
+    );
+    assert!(
+        !child_clicked,
+        "no clickable widget under cursor → no click anywhere"
+    );
+}
+
+#[test]
 fn input_state_release_outside_does_not_click() {
     let mut ui = Ui::new();
     ui.begin_frame();

@@ -130,13 +130,22 @@ impl InputState {
                 self.hovered = None;
             }
             InputEvent::PointerPressed(PointerButton::Left) => {
-                self.active = self.hovered;
+                // Press hits the topmost *clickable* widget — hover-only widgets
+                // are transparent to presses even though they show as hovered.
+                self.active = self
+                    .pointer
+                    .pos
+                    .and_then(|p| self.hit_test(p, Sense::is_clickable));
             }
             InputEvent::PointerReleased(PointerButton::Left) => {
-                if let Some(a) = self.active.take()
-                    && self.hovered == Some(a)
-                {
-                    self.clicked_this_frame.insert(a);
+                if let Some(a) = self.active.take() {
+                    let hit = self
+                        .pointer
+                        .pos
+                        .and_then(|p| self.hit_test(p, Sense::is_clickable));
+                    if hit == Some(a) {
+                        self.clicked_this_frame.insert(a);
+                    }
                 }
             }
             // Right/Middle: not yet wired through to widgets. Silently drop.
@@ -184,16 +193,19 @@ impl InputState {
     }
 
     fn recompute_hover(&mut self) {
-        self.hovered = self.pointer.pos.and_then(|p| self.hit_test(p));
+        self.hovered = self
+            .pointer
+            .pos
+            .and_then(|p| self.hit_test(p, Sense::is_hoverable));
     }
 
     /// Reverse-iter `last_rects` → topmost-first under our pre-order paint walk.
-    /// Skips widgets with `Sense::NONE` so clicks/hover pass through containers
-    /// and decorative overlays. Bounding-rect only for v1; per-node `HitShape`
-    /// lands later.
-    fn hit_test(&self, pos: Vec2) -> Option<WidgetId> {
+    /// `filter` decides which `Sense` values participate (hoverable for hover
+    /// id, clickable for press/release). Bounding-rect only for v1; per-node
+    /// `HitShape` lands later.
+    fn hit_test(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<WidgetId> {
         for e in self.last_rects.iter().rev() {
-            if e.sense.is_interactive() && e.rect.contains(pos) {
+            if filter(e.sense) && e.rect.contains(pos) {
                 return Some(e.id);
             }
         }
