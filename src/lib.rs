@@ -3,6 +3,7 @@ pub mod shape;
 pub mod tree;
 pub mod ui;
 pub mod layout;
+pub mod renderer;
 pub mod widgets;
 
 pub use primitives::{Color, Corners, Rect, Size, Sizes, Sizing, Spacing, Stroke, Style, WidgetId};
