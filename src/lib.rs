@@ -1,3 +1,4 @@
+pub mod element;
 pub mod input;
 pub mod layout;
 pub mod primitives;
@@ -7,6 +8,7 @@ pub mod tree;
 pub mod ui;
 pub mod widgets;
 
+pub use element::{Element, UiElement};
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use primitives::{
     Color, Corners, Layout, Rect, Sense, Size, Sizes, Sizing, Spacing, Stroke, Visuals, WidgetId,
@@ -14,6 +16,4 @@ pub use primitives::{
 pub use shape::{Shape, ShapeRect};
 pub use tree::{LayoutMode, Node, NodeId, Tree};
 pub use ui::Ui;
-pub use widgets::{
-    Button, ButtonStyle, Canvas, Frame, HStack, Layoutable, Panel, Response, VStack, ZStack,
-};
+pub use widgets::{Button, ButtonStyle, Canvas, Frame, HStack, Panel, Response, VStack, ZStack};

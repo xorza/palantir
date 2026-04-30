@@ -1,8 +1,9 @@
-use crate::primitives::{Color, Corners, Layout, Sense, Stroke, WidgetId};
+use crate::element::{Element, UiElement};
+use crate::primitives::{Color, Corners, Stroke, WidgetId};
 use crate::shape::{Shape, ShapeRect};
 use crate::tree::LayoutMode;
 use crate::ui::Ui;
-use crate::widgets::{Layoutable, Response};
+use crate::widgets::Response;
 use std::hash::Hash;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
@@ -14,27 +15,19 @@ use std::hash::Hash;
 /// Default fill is transparent and stroke is `None`, so a Panel without
 /// `.fill(...)` or `.stroke(...)` paints nothing — pure layout.
 pub struct Panel {
-    id: WidgetId,
-    mode: LayoutMode,
-    layout: Layout,
+    element: UiElement,
     fill: Color,
     stroke: Option<Stroke>,
     radius: Corners,
-    sense: Sense,
-    disabled: bool,
 }
 
 impl Panel {
     fn from_id(id: WidgetId, mode: LayoutMode) -> Self {
         Self {
-            id,
-            mode,
-            layout: Layout::default(),
+            element: UiElement::new(id, mode),
             fill: Color::TRANSPARENT,
             stroke: None,
             radius: Corners::ZERO,
-            sense: Sense::NONE,
-            disabled: false,
         }
     }
 
@@ -50,25 +43,12 @@ impl Panel {
         self.radius = r.into();
         self
     }
-    /// Make the panel itself an interaction target (clickable card, drag handle, etc).
-    /// Default `Sense::NONE` so containers don't intercept clicks meant for children.
-    pub fn sense(mut self, s: Sense) -> Self {
-        self.sense = s;
-        self
-    }
-    /// Suppress this panel's interactions and cascade to all descendants.
-    /// Buttons / clickable widgets nested inside a disabled Panel become
-    /// non-interactive without any per-widget API changes. Visual style is
-    /// unaffected — apply your own dimming if desired.
-    pub fn disabled(mut self, d: bool) -> Self {
-        self.disabled = d;
-        self
-    }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let paints_bg = self.fill.a > 0.0 || self.stroke.is_some();
+        let id = self.element.id;
 
-        let node = ui.node(self.id, self.layout, self.mode, self.sense, |ui| {
+        let node = ui.node(self.element, |ui| {
             if paints_bg {
                 ui.add_shape(Shape::RoundedRect {
                     bounds: ShapeRect::Full,
@@ -80,18 +60,14 @@ impl Panel {
             body(ui);
         });
 
-        if self.disabled {
-            ui.tree.node_mut(node).disabled = true;
-        }
-
-        let state = ui.response_for(self.id);
+        let state = ui.response_for(id);
         Response { node, state }
     }
 }
 
-impl Layoutable for Panel {
-    fn layout_mut(&mut self) -> &mut Layout {
-        &mut self.layout
+impl Element for Panel {
+    fn element_mut(&mut self) -> &mut UiElement {
+        &mut self.element
     }
 }
 
