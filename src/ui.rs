@@ -6,6 +6,11 @@ use std::collections::HashMap;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].
+///
+/// All public coordinate inputs and recorded rects are in **logical pixels** (DIPs).
+/// `scale_factor` is the conversion to physical pixels; the renderer applies it at
+/// upload time. Pointer events from winit are converted at the boundary
+/// (`handle_event` / `InputEvent::from_winit`).
 pub struct Ui {
     pub tree: Tree,
     parents: Vec<NodeId>,
@@ -15,6 +20,9 @@ pub struct Ui {
     seen_ids: HashMap<WidgetId, NodeId>,
 
     input: InputState,
+
+    scale_factor: f32,
+    pixel_snap: bool,
 }
 
 impl Default for Ui {
@@ -32,7 +40,30 @@ impl Ui {
             #[cfg(debug_assertions)]
             seen_ids: HashMap::new(),
             input: InputState::new(),
+            scale_factor: 1.0,
+            pixel_snap: true,
         }
+    }
+
+    /// Logical→physical conversion factor (e.g. 2.0 on a 2× retina display).
+    pub fn scale_factor(&self) -> f32 {
+        self.scale_factor
+    }
+
+    /// Update on `WindowEvent::ScaleFactorChanged` or any DPI change. Clamped to
+    /// a non-zero positive value.
+    pub fn set_scale_factor(&mut self, scale: f32) {
+        self.scale_factor = scale.max(f32::EPSILON);
+    }
+
+    /// Whether the renderer snaps rect edges to integer physical pixels.
+    /// Default `true` — sharper edges, no half-pixel blur.
+    pub fn pixel_snap(&self) -> bool {
+        self.pixel_snap
+    }
+
+    pub fn set_pixel_snap(&mut self, on: bool) {
+        self.pixel_snap = on;
     }
 
     pub fn begin_frame(&mut self) {
@@ -54,10 +85,12 @@ impl Ui {
         self.input.on_input(event);
     }
 
-    /// Convenience for winit-based apps. Equivalent to:
-    /// `if let Some(ev) = InputEvent::from_winit(event) { ui.on_input(ev) }`.
+    /// Convenience for winit-based apps. Reads `scale_factor` from `Ui`.
+    /// `WindowEvent::ScaleFactorChanged` is *not* consumed here — apps must call
+    /// `set_scale_factor` themselves so the new value is visible to subsequent
+    /// pointer events in the same dispatch.
     pub fn handle_event(&mut self, event: &winit::event::WindowEvent) {
-        self.input.handle_winit_event(event);
+        self.input.handle_winit_event(event, self.scale_factor);
     }
 
     pub fn pointer(&self) -> PointerState {
