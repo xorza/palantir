@@ -1,4 +1,4 @@
-use crate::input::{PointerButton, PointerState, ResponseState};
+use crate::input::{PointerState, ResponseState};
 use crate::primitives::{Rect, Style, WidgetId};
 use crate::shape::Shape;
 use crate::tree::{LayoutKind, NodeId, Tree};
@@ -21,16 +21,17 @@ pub struct Ui {
     /// Widget capturing the pointer (mouse pressed inside it). Cleared on release.
     active: Option<WidgetId>,
 
-    /// Last-frame rects keyed by `WidgetId`, used by `handle_event` to hit-test
-    /// presses/releases against what the user was looking at when they clicked.
-    last_rects: HashMap<WidgetId, Rect>,
+    /// Topmost widget under the pointer this frame. Recomputed when pointer moves
+    /// or when `last_rects` is rebuilt at `end_frame`.
+    hovered: Option<WidgetId>,
 
-    /// Reverse paint order over last frame (topmost-first). Each entry is
-    /// `(WidgetId, Rect)`. Used by `hit_test` to pick the deepest hit.
-    last_order: Vec<(WidgetId, Rect)>,
+    /// Last frame's `(WidgetId, Rect)` in pre-order paint order.
+    /// Reverse iter = topmost-first for hit-testing. Linear scan for id lookup;
+    /// fine at the widget counts we care about.
+    last_rects: Vec<(WidgetId, Rect)>,
 
     /// Clicks emitted by the most recent press→release pair, consumed by widget reads.
-    /// Cleared at `end_frame` so they're only visible during one `build_ui`.
+    /// Cleared at `end_frame`.
     clicked_this_frame: HashSet<WidgetId>,
 }
 
@@ -50,8 +51,8 @@ impl Ui {
             seen_ids: HashMap::new(),
             pointer: PointerState::default(),
             active: None,
-            last_rects: HashMap::new(),
-            last_order: Vec::new(),
+            hovered: None,
+            last_rects: Vec::new(),
             clicked_this_frame: HashSet::new(),
         }
     }
@@ -64,23 +65,25 @@ impl Ui {
         self.seen_ids.clear();
     }
 
-    /// Rebuild last-frame state from the just-arranged tree, and drop transient
-    /// per-frame flags (`clicked_this_frame`). Call after `layout::run`.
+    /// Rebuild last-frame rects + topmost cache from the just-arranged tree, and
+    /// drop transient per-frame flags. Call after `layout::run`.
     pub fn end_frame(&mut self) {
         self.last_rects.clear();
-        self.last_order.clear();
         for node in &self.tree.nodes {
-            self.last_rects.insert(node.id, node.rect);
-            self.last_order.push((node.id, node.rect));
+            self.last_rects.push((node.id, node.rect));
         }
         self.clicked_this_frame.clear();
 
-        // Drop active if the widget no longer exists in the tree.
+        // Drop active if the widget no longer exists in the tree. Note: an unclicked
+        // press whose widget then vanished is silently discarded, which is the
+        // standard "fail-open on conditional rendering" rule.
         if let Some(active) = self.active
-            && !self.last_rects.contains_key(&active)
+            && !self.contains_id(active)
         {
             self.active = None;
         }
+
+        self.recompute_hover();
     }
 
     /// Forward a winit `WindowEvent` and update input state eagerly. Hit-tests run
@@ -89,34 +92,28 @@ impl Ui {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
                 self.pointer.pos = Some(Vec2::new(position.x as f32, position.y as f32));
+                self.recompute_hover();
             }
             WindowEvent::CursorLeft { .. } => {
                 self.pointer.pos = None;
+                self.hovered = None;
             }
-            WindowEvent::MouseInput { state, button, .. } => {
-                let b = match button {
-                    MouseButton::Left => PointerButton::Left,
-                    MouseButton::Right => PointerButton::Right,
-                    MouseButton::Middle => PointerButton::Middle,
-                    _ => return,
-                };
-                if b != PointerButton::Left {
-                    return;
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                ..
+            } => match state {
+                ElementState::Pressed => {
+                    self.active = self.hovered;
                 }
-                match state {
-                    ElementState::Pressed => {
-                        self.active = self.pointer.pos.and_then(|p| self.hit_test(p));
-                    }
-                    ElementState::Released => {
-                        let hit = self.pointer.pos.and_then(|p| self.hit_test(p));
-                        if let Some(a) = self.active.take()
-                            && hit == Some(a)
-                        {
-                            self.clicked_this_frame.insert(a);
-                        }
+                ElementState::Released => {
+                    if let Some(a) = self.active.take()
+                        && self.hovered == Some(a)
+                    {
+                        self.clicked_this_frame.insert(a);
                     }
                 }
-            }
+            },
             _ => {}
         }
     }
@@ -126,19 +123,18 @@ impl Ui {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
-        let rect = self.last_rects.get(&id).copied();
-        let pressed = self.active == Some(id);
-        let hovered = if pressed {
-            true
-        } else if self.active.is_none() {
-            match (self.pointer.pos, rect) {
-                (Some(p), Some(r)) => r.contains(p),
-                _ => false,
-            }
-        } else {
-            false
-        };
+        let rect = self.rect_for(id);
+        let me_under_pointer = self.hovered == Some(id);
+        let me_captured = self.active == Some(id);
+        let nothing_captured = self.active.is_none();
+
+        // Pressed visual only while the cursor is over the captured widget — drag
+        // off and the visual reverts; drag back and it returns. Standard button feel.
+        let pressed = me_captured && me_under_pointer;
+        // Hover suppressed when another widget owns the pointer.
+        let hovered = me_under_pointer && (nothing_captured || me_captured);
         let clicked = self.clicked_this_frame.contains(&id);
+
         ResponseState {
             rect,
             hovered,
@@ -185,14 +181,32 @@ impl Ui {
         self.tree.add_shape(node, shape);
     }
 
-    /// Reverse declaration order ≈ topmost-first under our pre-order paint walk.
+    fn recompute_hover(&mut self) {
+        self.hovered = match self.pointer.pos {
+            Some(p) => self.hit_test(p),
+            None => None,
+        };
+    }
+
+    /// Reverse-iter `last_rects` → topmost-first under our pre-order paint walk
+    /// (a widget appears after its parent, so the deepest match comes first).
     /// Bounding-rect only for v1; per-node `HitShape` lands later.
     fn hit_test(&self, pos: Vec2) -> Option<WidgetId> {
-        for (id, rect) in self.last_order.iter().rev() {
+        for (id, rect) in self.last_rects.iter().rev() {
             if rect.contains(pos) {
                 return Some(*id);
             }
         }
         None
+    }
+
+    fn rect_for(&self, id: WidgetId) -> Option<Rect> {
+        self.last_rects
+            .iter()
+            .find_map(|(i, r)| (*i == id).then_some(*r))
+    }
+
+    fn contains_id(&self, id: WidgetId) -> bool {
+        self.last_rects.iter().any(|(i, _)| *i == id)
     }
 }

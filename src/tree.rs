@@ -48,6 +48,9 @@ impl Node {
     }
 }
 
+/// `nodes` are stored in pre-order paint order: a parent is pushed before its
+/// children, and siblings appear in declaration order. Reverse iteration gives
+/// topmost-first traversal — load-bearing for hit-testing in `Ui`.
 #[derive(Default)]
 pub struct Tree {
     pub nodes: Vec<Node>,
