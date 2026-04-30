@@ -236,15 +236,15 @@ impl State {
 fn build_ui(ui: &mut Ui, clicks: &mut u32) {
     VStack::new()
         .padding(16.0)
-        .size((Sizing::Fill, Sizing::Fill))
+        .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Row 1: counter + reset buttons.
             HStack::new()
-                .size((Sizing::Fill, Sizing::Hug))
+                .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
                     let counter = Button::new()
                         .label(format!("clicks: {clicks}"))
-                        .size((Sizing::Fill, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::Hug))
                         .min_size((120.0, 60.0))
                         .margin((0.0, 0.0, 8.0, 0.0))
                         .show(ui);
@@ -256,7 +256,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                     let reset = Button::new()
                         .label("reset")
                         .style(ButtonStyle::outlined())
-                        .size((Sizing::Fill, Sizing::Hug))
+                        .size((Sizing::FILL, Sizing::Hug))
                         .min_size((0.0, 10.0))
                         .margin((4.0, 24.0, 32.0, 0.0))
                         .radius(4)
@@ -270,7 +270,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
             // Row 2: ZStack with a tinted bg + a button that spills outside it via
             // negative margins. Demonstrates layered painting and CSS-style margin.
             ZStack::with_id("spill_demo")
-                .size((Sizing::Fixed(280.0), Sizing::Fill))
+                .size((Sizing::Fixed(280.0), Sizing::FILL))
                 .padding(16.0)
                 .margin((0.0, 24.0, 0.0, 0.0))
                 .fill(Color::rgb(0.16, 0.20, 0.28))

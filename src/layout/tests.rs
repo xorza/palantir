@@ -1,6 +1,6 @@
 use crate::element::Element;
-use crate::primitives::{Rect, Sizing};
-use crate::widgets::{Button, HStack, VStack};
+use crate::primitives::{Align, Rect, Sizing};
+use crate::widgets::{Button, Frame, HStack, VStack};
 use crate::{Ui, layout};
 
 #[test]
@@ -46,7 +46,7 @@ fn vstack_with_fill_distributes_remainder() {
     let root = VStack::new()
         .show(&mut ui, |ui| {
             Button::new().size((Sizing::Hug, 50.0)).show(ui);
-            Button::new().size((Sizing::Hug, Sizing::Fill)).show(ui);
+            Button::new().size((Sizing::Hug, Sizing::FILL)).show(ui);
         })
         .node;
 
@@ -60,6 +60,73 @@ fn vstack_with_fill_distributes_remainder() {
     assert_eq!(fixed.size.h, 50.0);
     assert_eq!(filler.min.y, 50.0);
     assert_eq!(filler.size.h, 250.0);
+}
+
+#[test]
+fn hstack_fill_weights_split_remainder_proportionally() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .show(&mut ui, |ui| {
+            Frame::with_id("a")
+                .size((Sizing::Fill { weight: 1.0 }, Sizing::Hug))
+                .show(ui);
+            Frame::with_id("b")
+                .size((Sizing::Fill { weight: 3.0 }, Sizing::Hug))
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let a = ui.tree.node(kids[0]).rect;
+    let b = ui.tree.node(kids[1]).rect;
+    // 400 leftover / 4 weight = 100 per weight unit → a=100, b=300.
+    assert_eq!(a.size.w, 100.0);
+    assert_eq!(b.size.w, 300.0);
+    assert_eq!(b.min.x, 100.0);
+}
+
+#[test]
+fn hstack_gap_inserts_space_between_children() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .gap(10.0)
+        .show(&mut ui, |ui| {
+            Frame::with_id("a").size(40.0).show(ui);
+            Frame::with_id("b").size(40.0).show(ui);
+            Frame::with_id("c").size(40.0).show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    assert_eq!(ui.tree.node(kids[0]).rect.min.x, 0.0);
+    assert_eq!(ui.tree.node(kids[1]).rect.min.x, 50.0);
+    assert_eq!(ui.tree.node(kids[2]).rect.min.x, 100.0);
+}
+
+#[test]
+fn hstack_align_center_centers_child_on_cross_axis() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .size((Sizing::FILL, Sizing::Fixed(100.0)))
+        .show(&mut ui, |ui| {
+            Frame::with_id("c")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                .align(Align::Center)
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let r = ui.tree.node(kids[0]).rect;
+    // Cross axis is height (100); child is 20 tall → centered at (100-20)/2 = 40.
+    assert_eq!(r.min.y, 40.0);
+    assert_eq!(r.size.h, 20.0);
 }
 
 #[test]
