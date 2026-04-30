@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use palantir::Align;
-use palantir::renderer::{ComposeParams, Composer, WgpuBackend};
+use palantir::renderer::{ComposeParams, Pipeline, WgpuBackend};
 use palantir::{
     Button, ButtonStyle, Color, Corners, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui,
     VStack, Visuals, ZStack, layout,
@@ -69,7 +69,7 @@ struct State {
     device: wgpu::Device,
     config: wgpu::SurfaceConfiguration,
     backend: WgpuBackend,
-    composer: Composer,
+    pipeline: Pipeline,
     ui: Ui,
     first_paint: bool,
     click_count: u32,
@@ -150,7 +150,7 @@ impl ApplicationHandler for App {
             device,
             config,
             backend,
-            composer: Composer::new(),
+            pipeline: Pipeline::new(),
             ui,
             first_paint: false,
             click_count: 0,
@@ -248,7 +248,7 @@ impl State {
         );
         self.ui.end_frame();
 
-        let buffer = self.composer.build(
+        let buffer = self.pipeline.build(
             &self.ui.tree,
             &ComposeParams {
                 viewport_logical: [w_logical, h_logical],

@@ -1,11 +1,11 @@
 use super::quad::Quad;
-use crate::primitives::TranslateScale;
 
 /// Pure output of `compose`: physical-px instances grouped by scissor region,
 /// ready for any rasterizing backend (wgpu, software, headless test capture).
 ///
-/// Contains no GPU handles. Owns its allocations across frames so steady-state
-/// composing is alloc-free; reuse a single `RenderBuffer` and call
+/// Contains no GPU handles, no compose-time scratch — just the result. Owns
+/// its allocations across frames so steady-state composing is alloc-free for
+/// the output; reuse a single `RenderBuffer` and call
 /// `compose(.., &mut buffer)` each frame.
 #[derive(Default)]
 pub struct RenderBuffer {
@@ -16,12 +16,6 @@ pub struct RenderBuffer {
     pub viewport_phys: [u32; 2],
     /// Same viewport in float — needed by the wgpu vertex shader uniform.
     pub viewport_phys_f: [f32; 2],
-    /// Scratch stacks used by `compose` for nested PushClip/PopClip and
-    /// PushTransform/PopTransform. Reused frame-to-frame; cleared at the
-    /// start of each compose pass. Public-within-crate so the free
-    /// `compose` function can reach in.
-    pub(crate) clip_stack: Vec<ScissorRect>,
-    pub(crate) transform_stack: Vec<TranslateScale>,
 }
 
 impl RenderBuffer {
