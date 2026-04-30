@@ -28,6 +28,9 @@ pub struct Renderer {
     cmds: Vec<RenderCmd>,
     quads: Vec<Quad>,
     groups: Vec<DrawGroup>,
+    /// Scratch clip stack for `process`; reused across frames so steady-state
+    /// rendering allocates nothing here.
+    clip_stack: Vec<ScissorRect>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,6 +55,7 @@ impl Renderer {
             cmds: Vec::new(),
             quads: Vec::new(),
             groups: Vec::new(),
+            clip_stack: Vec::new(),
         }
     }
 
@@ -73,6 +77,7 @@ impl Renderer {
             viewport_u,
             &mut self.quads,
             &mut self.groups,
+            &mut self.clip_stack,
         );
 
         tracing::trace!(
@@ -140,11 +145,11 @@ fn process(
     viewport: [u32; 2],
     quads: &mut Vec<Quad>,
     groups: &mut Vec<DrawGroup>,
+    clip_stack: &mut Vec<ScissorRect>,
 ) {
     quads.clear();
     groups.clear();
-
-    let mut clip_stack: Vec<ScissorRect> = Vec::new();
+    clip_stack.clear();
     let mut current: Option<ScissorRect> = None;
     let mut current_start: u32 = 0;
 
