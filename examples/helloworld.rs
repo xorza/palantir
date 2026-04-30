@@ -67,7 +67,7 @@ impl ApplicationHandler for App {
             .formats
             .iter()
             .copied()
-            .find(|f| !f.is_srgb())
+            .find(|f| f.is_srgb())
             .unwrap_or(caps.formats[0]);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -83,6 +83,7 @@ impl ApplicationHandler for App {
 
         let renderer = Renderer::new(&device, format);
 
+        window.request_redraw();
         self.state = Some(State {
             window,
             surface,
@@ -158,7 +159,7 @@ fn build_ui(ui: &mut Ui) {
     HStack::new().padding(16.0).show(ui, |ui| {
         Button::new()
             .label("Hello")
-            // .size((Sizing::Fill, Sizing::Hug))
+            .size((Sizing::Fill, Sizing::Hug))
             .min_size((120.0, 60.0))
             .margin((0.0, 0.0, 8.0, 0.0))
             .show(ui);
