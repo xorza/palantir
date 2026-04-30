@@ -89,7 +89,9 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
 }
 
 /// Resolve a node's outer slot size on one axis, given its sizing policy,
-/// hug-content size, parent-supplied available, own margin, and clamps.
+/// hug-content size (margin-inclusive), parent-supplied available, own margin,
+/// and clamps. Each branch produces *rendered* size (margin-exclusive); we
+/// clamp once and add margin once at the end.
 fn resolve_axis_size(
     s: Sizing,
     hug_outer: f32,
@@ -98,19 +100,28 @@ fn resolve_axis_size(
     min: f32,
     max: f32,
 ) -> f32 {
-    let slot = match s {
-        Sizing::Fixed(v) => v + margin,
-        Sizing::Hug => hug_outer,
-        Sizing::Fill(_) => {
-            if available.is_finite() {
-                available
-            } else {
-                hug_outer
-            }
-        }
+    let rendered = match s {
+        Sizing::Fixed(v) => v,
+        Sizing::Hug => hug_outer - margin,
+        Sizing::Fill(_) if available.is_finite() => available - margin,
+        Sizing::Fill(_) => hug_outer - margin,
     };
-    let rendered = (slot - margin).max(0.0).clamp(min, max);
-    rendered + margin
+    rendered.max(0.0).clamp(min, max) + margin
+}
+
+/// Place a collapsed child: zero-size rect at `anchor`. Recurses so the whole
+/// subtree picks up zeroed rects too. Stack/grid drivers call this so a
+/// collapsed child still exists in the tree but consumes no space, no gap,
+/// no fill weight.
+fn arrange_collapsed(tree: &mut Tree, node: NodeId, anchor: Vec2) {
+    arrange(
+        tree,
+        node,
+        Rect {
+            min: anchor,
+            size: Size::ZERO,
+        },
+    );
 }
 
 fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
@@ -277,16 +288,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).element.visibility == Visibility::Collapsed {
-            // Give Collapsed children a zero rect at the cursor so they exist
-            // in the tree but consume no space, no gap, no fill weight.
-            arrange(
-                tree,
-                c,
-                Rect {
-                    min: axis.compose_rect(cursor, cross_min, 0.0, 0.0).min,
-                    size: Size::ZERO,
-                },
-            );
+            arrange_collapsed(tree, c, axis.compose_rect(cursor, cross_min, 0.0, 0.0).min);
             continue;
         }
         if !first {
@@ -530,14 +532,7 @@ fn arrange_grid(tree: &mut Tree, node: NodeId, inner: Rect, idx: u32) {
     if rows.is_empty() || cols.is_empty() {
         let mut kids = tree.child_cursor(node);
         while let Some(c) = kids.next(tree) {
-            arrange(
-                tree,
-                c,
-                Rect {
-                    min: inner.min,
-                    size: Size::ZERO,
-                },
-            );
+            arrange_collapsed(tree, c, inner.min);
         }
         return;
     }
@@ -586,14 +581,7 @@ fn arrange_grid(tree: &mut Tree, node: NodeId, inner: Rect, idx: u32) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).element.visibility == Visibility::Collapsed {
-            arrange(
-                tree,
-                c,
-                Rect {
-                    min: inner.min,
-                    size: Size::ZERO,
-                },
-            );
+            arrange_collapsed(tree, c, inner.min);
             continue;
         }
         let cell = clamp_grid_cell(tree.node(c).element.grid, n_rows, n_cols);
