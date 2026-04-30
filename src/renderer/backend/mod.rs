@@ -73,7 +73,7 @@ impl WgpuBackend {
                 } else {
                     pass.set_scissor_rect(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
                 }
-                self.quad.draw_range(&mut pass, g.start..g.end);
+                self.quad.draw_range(&mut pass, g.instances.clone());
             }
         }
         self.queue.submit(std::iter::once(encoder.finish()));

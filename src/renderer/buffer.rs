@@ -1,4 +1,5 @@
 use super::quad::Quad;
+use std::ops::Range;
 
 /// Pure output of `compose`: physical-px instances grouped by scissor region,
 /// ready for any rasterizing backend (wgpu, software, headless test capture).
@@ -24,11 +25,10 @@ impl RenderBuffer {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DrawGroup {
     pub scissor: Option<ScissorRect>,
-    pub start: u32,
-    pub end: u32,
+    pub instances: Range<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
