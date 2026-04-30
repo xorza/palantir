@@ -158,11 +158,14 @@ fn build_ui(ui: &mut Ui) {
     HStack::new().padding(16.0).show(ui, |ui| {
         Button::new()
             .label("Hello")
+            // .size((Sizing::Fill, Sizing::Hug))
+            .min_size((120.0, 60.0))
             .margin((0.0, 0.0, 8.0, 0.0))
             .show(ui);
         Button::new()
             .label("World")
             .size((Sizing::Fill, Sizing::Hug))
+            .min_size((0.0, 80.0))
             .margin((4.0, 24.0, 32.0, 0.0))
             .show(ui);
     });

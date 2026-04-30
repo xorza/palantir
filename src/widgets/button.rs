@@ -1,4 +1,5 @@
 use crate::primitives::{Color, Corners, Size, Sizes, Spacing, Style, WidgetId};
+
 use crate::shape::{Shape, ShapeRect};
 use crate::tree::LayoutKind;
 use crate::ui::Ui;
@@ -9,6 +10,8 @@ use std::hash::Hash;
 pub struct Button {
     id: WidgetId,
     size: Sizes,
+    min_size: Size,
+    max_size: Size,
     margin: Spacing,
     fill: Color,
     radius: Corners,
@@ -26,6 +29,8 @@ impl Button {
         Self {
             id: WidgetId::from_hash(id),
             size: Sizes::HUG,
+            min_size: Size::ZERO,
+            max_size: Size::INF,
             margin: Spacing::ZERO,
             fill: Color::rgb(0.2, 0.4, 0.8),
             radius: Corners::all(4.0),
@@ -35,6 +40,14 @@ impl Button {
 
     pub fn size(mut self, s: impl Into<Sizes>) -> Self {
         self.size = s.into();
+        self
+    }
+    pub fn min_size(mut self, s: impl Into<Size>) -> Self {
+        self.min_size = s.into();
+        self
+    }
+    pub fn max_size(mut self, s: impl Into<Size>) -> Self {
+        self.max_size = s.into();
         self
     }
     pub fn margin(mut self, m: impl Into<Spacing>) -> Self {
@@ -57,6 +70,8 @@ impl Button {
     pub fn show(&self, ui: &mut Ui) -> Response {
         let style = Style {
             size: self.size,
+            min_size: self.min_size,
+            max_size: self.max_size,
             padding: Spacing::all(8.0),
             margin: self.margin,
         };
