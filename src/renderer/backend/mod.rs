@@ -2,31 +2,27 @@ use super::buffer::RenderBuffer;
 use super::quad::QuadPipeline;
 use crate::primitives::Color;
 
-/// Per-submit GPU handles + clear color. The backend gets these fresh each
-/// frame; everything else (quads, scissor groups, viewport) comes from the
-/// `RenderBuffer` produced by `compose`.
-pub struct RenderFrame<'a> {
-    pub device: &'a wgpu::Device,
-    pub queue: &'a wgpu::Queue,
-    pub view: &'a wgpu::TextureView,
-    pub clear: Color,
-}
-
-/// wgpu backend: owns the quad pipeline, uploads the buffer's quads, and
-/// submits scissor-grouped draws. No layout, no encode, no compose — those
-/// happen elsewhere and arrive here as a `RenderBuffer`.
+/// wgpu backend: owns the quad pipeline + cloned device/queue handles
+/// (cheap, Arc-backed), uploads the buffer's quads, and submits scissor-
+/// grouped draws. No layout, no encode, no compose — those happen elsewhere
+/// and arrive here as a `RenderBuffer`.
 pub struct WgpuBackend {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
     quad: QuadPipeline,
 }
 
 impl WgpuBackend {
-    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub fn new(device: wgpu::Device, queue: wgpu::Queue, format: wgpu::TextureFormat) -> Self {
+        let quad = QuadPipeline::new(&device, format);
         Self {
-            quad: QuadPipeline::new(device, format),
+            device,
+            queue,
+            quad,
         }
     }
 
-    pub fn submit(&mut self, frame: RenderFrame, buffer: &RenderBuffer) {
+    pub fn submit(&mut self, view: &wgpu::TextureView, clear: Color, buffer: &RenderBuffer) {
         tracing::trace!(
             quads = buffer.quads.len(),
             groups = buffer.groups.len(),
@@ -35,13 +31,13 @@ impl WgpuBackend {
         );
 
         self.quad.upload(
-            frame.device,
-            frame.queue,
+            &self.device,
+            &self.queue,
             buffer.viewport_phys_f,
             &buffer.quads,
         );
 
-        let mut encoder = frame
+        let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.encoder"),
@@ -50,15 +46,15 @@ impl WgpuBackend {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("palantir.renderer.pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: frame.view,
+                    view,
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: frame.clear.r as f64,
-                            g: frame.clear.g as f64,
-                            b: frame.clear.b as f64,
-                            a: frame.clear.a as f64,
+                            r: clear.r as f64,
+                            g: clear.g as f64,
+                            b: clear.b as f64,
+                            a: clear.a as f64,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -80,6 +76,6 @@ impl WgpuBackend {
                 self.quad.draw_range(&mut pass, g.start..g.end);
             }
         }
-        frame.queue.submit(std::iter::once(encoder.finish()));
+        self.queue.submit(std::iter::once(encoder.finish()));
     }
 }

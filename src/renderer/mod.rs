@@ -15,11 +15,13 @@
 mod backend;
 mod buffer;
 mod compose;
+mod composer;
 mod encoder;
 mod quad;
 
-pub use backend::{RenderFrame, WgpuBackend};
+pub use backend::WgpuBackend;
 pub use buffer::{DrawGroup, RenderBuffer, ScissorRect};
 pub use compose::{ComposeParams, compose};
+pub use composer::Composer;
 pub use encoder::{RenderCmd, encode};
 pub use quad::{Quad, QuadPipeline};
