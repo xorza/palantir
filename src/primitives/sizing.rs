@@ -1,10 +1,18 @@
-/// WPF-style sizing. Maps to: Fixed = exact px, Hug = Auto (use desired), Fill = Star (take remainder).
+/// WPF-style sizing. Maps to: Fixed = exact px, Hug = Auto (use desired),
+/// Fill = Star (take remainder, distributed by `weight` across Fill siblings).
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum Sizing {
     Fixed(f32),
     #[default]
     Hug,
-    Fill,
+    Fill {
+        weight: f32,
+    },
+}
+
+impl Sizing {
+    /// Equal-weight `Fill`. Equivalent to `Sizing::Fill { weight: 1.0 }`.
+    pub const FILL: Self = Self::Fill { weight: 1.0 };
 }
 
 impl<T: crate::primitives::Num> From<T> for Sizing {
@@ -25,8 +33,8 @@ impl Sizes {
         h: Sizing::Hug,
     };
     pub const FILL: Self = Self {
-        w: Sizing::Fill,
-        h: Sizing::Fill,
+        w: Sizing::FILL,
+        h: Sizing::FILL,
     };
     pub const fn new(w: Sizing, h: Sizing) -> Self {
         Self { w, h }

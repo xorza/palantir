@@ -11,7 +11,8 @@ pub mod widgets;
 pub use element::{Element, UiElement};
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use primitives::{
-    Color, Corners, Layout, Rect, Sense, Size, Sizes, Sizing, Spacing, Stroke, Visuals, WidgetId,
+    Align, Color, Corners, Layout, Rect, Sense, Size, Sizes, Sizing, Spacing, Stroke, Visuals,
+    WidgetId,
 };
 pub use shape::{Shape, ShapeRect};
 pub use tree::{LayoutMode, Node, NodeId, Tree};

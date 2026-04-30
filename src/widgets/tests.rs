@@ -99,7 +99,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
             .show(ui, |ui| {
                 child_node = Some(
                     Frame::with_id("filler")
-                        .size((Sizing::Fill, Sizing::Fill))
+                        .size((Sizing::FILL, Sizing::FILL))
                         .fill(Color::rgb(0.5, 0.5, 0.5))
                         .show(ui)
                         .node,

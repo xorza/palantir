@@ -1,3 +1,4 @@
+mod align;
 mod color;
 mod corners;
 mod layout;
@@ -11,6 +12,7 @@ mod stroke;
 mod visuals;
 mod widget_id;
 
+pub use align::Align;
 pub use color::Color;
 pub use corners::Corners;
 pub use layout::Layout;

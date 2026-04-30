@@ -1,4 +1,4 @@
-use crate::primitives::{Layout, Sense, Size, Sizes, Spacing, WidgetId};
+use crate::primitives::{Align, Layout, Sense, Size, Sizes, Spacing, WidgetId};
 use crate::tree::LayoutMode;
 use glam::Vec2;
 
@@ -56,6 +56,16 @@ pub trait Element: Sized {
     /// Ignored by other layout modes.
     fn position(mut self, p: impl Into<Vec2>) -> Self {
         self.element_mut().layout.position = Some(p.into());
+        self
+    }
+    /// Space between children when this node is an `HStack` / `VStack`.
+    fn gap(mut self, g: f32) -> Self {
+        self.element_mut().layout.gap = g;
+        self
+    }
+    /// Cross-axis alignment of this node inside a parent stack.
+    fn align(mut self, a: Align) -> Self {
+        self.element_mut().layout.align = a;
         self
     }
     fn sense(mut self, s: Sense) -> Self {

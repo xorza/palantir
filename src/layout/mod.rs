@@ -1,4 +1,4 @@
-use crate::primitives::{Rect, Size, Sizing};
+use crate::primitives::{Align, Rect, Size, Sizing};
 use crate::tree::{LayoutMode, NodeId, Tree};
 use glam::Vec2;
 
@@ -88,7 +88,7 @@ fn resolve_axis(s: Sizing, hug_outer: f32, available: f32, margin: f32, min: f32
     let slot = match s {
         Sizing::Fixed(v) => v + margin,
         Sizing::Hug => hug_outer,
-        Sizing::Fill => {
+        Sizing::Fill { .. } => {
             if available.is_finite() {
                 available
             } else {
@@ -115,7 +115,9 @@ fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
 fn hstack_measure(tree: &mut Tree, node: NodeId, inner: Size) -> Size {
     // Pass infinite width to children on the main axis (WPF trick).
     let child_avail = Size::new(f32::INFINITY, inner.h);
+    let gap = tree.node(node).layout.gap;
     let kids: Vec<NodeId> = tree.children(node).collect();
+    let n = kids.len();
     let mut total_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in kids {
@@ -123,18 +125,26 @@ fn hstack_measure(tree: &mut Tree, node: NodeId, inner: Size) -> Size {
         total_w += d.w;
         max_h = max_h.max(d.h);
     }
+    if n > 1 {
+        total_w += gap * (n - 1) as f32;
+    }
     Size::new(total_w, max_h)
 }
 
 fn vstack_measure(tree: &mut Tree, node: NodeId, inner: Size) -> Size {
     let child_avail = Size::new(inner.w, f32::INFINITY);
+    let gap = tree.node(node).layout.gap;
     let kids: Vec<NodeId> = tree.children(node).collect();
+    let n = kids.len();
     let mut total_h = 0.0f32;
     let mut max_w = 0.0f32;
     for c in kids {
         let d = measure(tree, c, child_avail);
         total_h += d.h;
         max_w = max_w.max(d.w);
+    }
+    if n > 1 {
+        total_h += gap * (n - 1) as f32;
     }
     Size::new(max_w, total_h)
 }
@@ -150,10 +160,16 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     if kids.is_empty() {
         return;
     }
+    let gap = tree.node(node).layout.gap;
+    let total_gap = if kids.len() > 1 {
+        gap * (kids.len() - 1) as f32
+    } else {
+        0.0
+    };
 
-    // Sum desired along main axis; count Fill children for distribution.
+    // Sum desired along main axis; collect Fill weights for proportional distribution.
     let mut sum_main_desired = 0.0f32;
-    let mut fill_count = 0u32;
+    let mut total_weight = 0.0f32;
     for &c in &kids {
         let d = tree.node(c).desired;
         let main = match axis {
@@ -166,8 +182,8 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             Axis::X => s.size.w,
             Axis::Y => s.size.h,
         };
-        if matches!(main_sizing, Sizing::Fill) {
-            fill_count += 1;
+        if let Sizing::Fill { weight } = main_sizing {
+            total_weight += weight.max(0.0);
         }
     }
 
@@ -179,30 +195,31 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         Axis::X => inner.size.h,
         Axis::Y => inner.size.w,
     };
-    let leftover = (main_total - sum_main_desired).max(0.0);
-    let fill_share = if fill_count > 0 {
-        leftover / fill_count as f32
-    } else {
-        0.0
-    };
+    let leftover = (main_total - sum_main_desired - total_gap).max(0.0);
 
     let mut cursor = match axis {
         Axis::X => inner.min.x,
         Axis::Y => inner.min.y,
     };
-    for c in kids {
+    let cross_min = match axis {
+        Axis::X => inner.min.y,
+        Axis::Y => inner.min.x,
+    };
+    for (i, c) in kids.iter().enumerate() {
+        let c = *c;
         let d = tree.node(c).desired;
         let s = tree.node(c).layout;
         let (main_sizing, main_desired) = match axis {
             Axis::X => (s.size.w, d.w),
             Axis::Y => (s.size.h, d.h),
         };
-        let main_size = main_desired
-            + if matches!(main_sizing, Sizing::Fill) {
-                fill_share
-            } else {
-                0.0
-            };
+        let extra = match main_sizing {
+            Sizing::Fill { weight } if total_weight > 0.0 => {
+                leftover * (weight.max(0.0) / total_weight)
+            }
+            _ => 0.0,
+        };
+        let main_size = main_desired + extra;
 
         let cross_sizing = match axis {
             Axis::X => s.size.h,
@@ -212,17 +229,24 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             Axis::X => d.h,
             Axis::Y => d.w,
         };
-        let cross_size = match cross_sizing {
-            Sizing::Fill => cross,
-            _ => cross_desired,
+        let stretch = matches!(s.align, Align::Stretch)
+            || (matches!(s.align, Align::Auto) && matches!(cross_sizing, Sizing::Fill { .. }));
+        let cross_size = if stretch { cross } else { cross_desired };
+        let cross_offset = match s.align {
+            Align::Center => ((cross - cross_size) * 0.5).max(0.0),
+            Align::End => (cross - cross_size).max(0.0),
+            _ => 0.0,
         };
 
         let child_rect = match axis {
-            Axis::X => Rect::new(cursor, inner.min.y, main_size, cross_size),
-            Axis::Y => Rect::new(inner.min.x, cursor, cross_size, main_size),
+            Axis::X => Rect::new(cursor, cross_min + cross_offset, main_size, cross_size),
+            Axis::Y => Rect::new(cross_min + cross_offset, cursor, cross_size, main_size),
         };
         arrange(tree, c, child_rect);
         cursor += main_size;
+        if i + 1 < kids.len() {
+            cursor += gap;
+        }
     }
 }
 
@@ -288,11 +312,11 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
         let s = tree.node(c).layout;
 
         let w = match s.size.w {
-            Sizing::Fill => inner.size.w,
+            Sizing::Fill { .. } => inner.size.w,
             _ => d.w,
         };
         let h = match s.size.h {
-            Sizing::Fill => inner.size.h,
+            Sizing::Fill { .. } => inner.size.h,
             _ => d.h,
         };
 
