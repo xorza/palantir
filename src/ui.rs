@@ -86,14 +86,6 @@ impl Ui {
         self.input.on_input(event);
     }
 
-    /// Convenience for winit-based apps. Reads `scale_factor` from `Ui`.
-    /// `WindowEvent::ScaleFactorChanged` is *not* consumed here — apps must call
-    /// `set_scale_factor` themselves so the new value is visible to subsequent
-    /// pointer events in the same dispatch.
-    pub fn handle_event(&mut self, event: &winit::event::WindowEvent) {
-        self.input.handle_winit_event(event, self.scale_factor);
-    }
-
     pub fn pointer(&self) -> PointerState {
         self.input.pointer()
     }

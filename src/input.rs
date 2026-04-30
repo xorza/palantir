@@ -134,15 +134,6 @@ impl InputState {
         }
     }
 
-    /// Convenience: feed a winit `WindowEvent`. `scale_factor` divides incoming
-    /// physical pointer coordinates so input lands in logical-pixel space.
-    /// No-op for events we don't consume.
-    pub fn handle_winit_event(&mut self, event: &winit::event::WindowEvent, scale_factor: f32) {
-        if let Some(ev) = InputEvent::from_winit(event, scale_factor) {
-            self.on_input(ev);
-        }
-    }
-
     /// Rebuild last-frame rects from the just-arranged tree, recompute hover,
     /// drop transient per-frame flags. Call after `layout::run`.
     pub(crate) fn end_frame(&mut self, tree: &Tree) {
