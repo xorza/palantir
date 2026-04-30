@@ -1,5 +1,5 @@
 use crate::primitives::{
-    Align, Layout, Sense, Size, Sizes, Spacing, TranslateScale, Visibility, WidgetId,
+    Align, Justify, Layout, Sense, Size, Sizes, Spacing, TranslateScale, Visibility, WidgetId,
 };
 use crate::tree::LayoutMode;
 use glam::Vec2;
@@ -83,6 +83,12 @@ pub trait Element: Sized {
     /// Space between children when this node is an `HStack` / `VStack`.
     fn gap(mut self, g: f32) -> Self {
         self.element_mut().layout.gap = g;
+        self
+    }
+    /// Main-axis distribution of leftover space for `HStack`/`VStack`.
+    /// Ignored when any child has `Sizing::Fill` on the main axis.
+    fn justify(mut self, j: Justify) -> Self {
+        self.element_mut().layout.justify = j;
         self
     }
     /// Alignment inside the parent's inner rect. For single-axis use the

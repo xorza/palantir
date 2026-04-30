@@ -1,4 +1,4 @@
-use crate::primitives::{Align, Size, Sizes, Spacing};
+use crate::primitives::{Align, Justify, Size, Sizes, Spacing};
 use glam::Vec2;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -11,6 +11,10 @@ pub struct Layout {
     /// Logical-px space between children of `HStack`/`VStack`. Ignored by
     /// `Leaf` / `ZStack` / `Canvas`.
     pub gap: f32,
+    /// Main-axis distribution of leftover space in `HStack`/`VStack`. No
+    /// effect when any child is `Sizing::Fill` on the main axis (Fill
+    /// consumes the leftover first). Ignored by `Leaf` / `ZStack` / `Canvas`.
+    pub justify: Justify,
     /// Alignment of this node inside its parent's inner rect. Each axis is
     /// honored only by parent layout modes that own that axis as a cross or
     /// placement axis: HStack reads `align.v` (cross), VStack reads `align.h`
@@ -35,6 +39,7 @@ impl Default for Layout {
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
             gap: 0.0,
+            justify: Justify::default(),
             align: Align::default(),
             child_align: Align::default(),
             position: None,
