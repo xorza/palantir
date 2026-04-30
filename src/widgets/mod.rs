@@ -1,12 +1,17 @@
 mod button;
+mod frame;
 mod stack;
 
 pub use button::{Button, ButtonStyle};
+pub use frame::Frame;
 pub use stack::{HStack, Stack, VStack};
 
 use crate::input::ResponseState;
 use crate::primitives::Rect;
 use crate::tree::NodeId;
+
+#[cfg(test)]
+mod tests;
 
 pub struct Response {
     pub node: NodeId,
