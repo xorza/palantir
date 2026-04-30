@@ -12,3 +12,6 @@ pollster = "*"
 thiserror = "*"
 wgpu = "*"
 winit = "*"
+
+[dev-dependencies]
+tracing-subscriber = { version = "*", features = ["env-filter"] }
