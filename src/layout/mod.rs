@@ -1,4 +1,5 @@
 use crate::primitives::{Align, Layout, Rect, Size, Sizes, Sizing};
+use crate::shape::Shape;
 use crate::tree::{LayoutMode, NodeId, Tree};
 use glam::Vec2;
 
@@ -31,7 +32,7 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
     let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
     let hug_h = content.h + style.padding.vert() + style.margin.vert();
     let desired = Size::new(
-        resolve_main_size(
+        resolve_axis_size(
             style.size.w,
             hug_w,
             available.w,
@@ -39,7 +40,7 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
             style.min_size.w,
             style.max_size.w,
         ),
-        resolve_main_size(
+        resolve_axis_size(
             style.size.h,
             hug_h,
             available.h,
@@ -73,7 +74,7 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
 
 /// Resolve a node's outer slot size on one axis, given its sizing policy,
 /// hug-content size, parent-supplied available, own margin, and clamps.
-fn resolve_main_size(
+fn resolve_axis_size(
     s: Sizing,
     hug_outer: f32,
     available: f32,
@@ -101,7 +102,7 @@ fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
     // or zero. Other shapes are owner-relative and don't drive size.
     let mut s = Size::ZERO;
     for sh in tree.shapes_of(node) {
-        if let crate::shape::Shape::Text { measured, .. } = sh {
+        if let Shape::Text { measured, .. } = sh {
             s = s.max(*measured);
         }
     }
@@ -125,6 +126,18 @@ impl Axis {
         match self {
             Axis::X => s.h,
             Axis::Y => s.w,
+        }
+    }
+    fn main_v(self, v: Vec2) -> f32 {
+        match self {
+            Axis::X => v.x,
+            Axis::Y => v.y,
+        }
+    }
+    fn cross_v(self, v: Vec2) -> f32 {
+        match self {
+            Axis::X => v.y,
+            Axis::Y => v.x,
         }
     }
     fn main_sizing(self, s: Sizes) -> Sizing {
@@ -177,16 +190,11 @@ fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size
         max_cross = max_cross.max(axis.cross(d));
         count += 1;
     }
-    if count > 1 {
-        total_main += gap * (count - 1) as f32;
-    }
+    total_main += gap * count.saturating_sub(1) as f32;
     axis.compose_size(total_main, max_cross)
 }
 
 fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
-    if !tree.child_cursor(node).has_next() {
-        return;
-    }
     let gap = tree.node(node).element.layout.gap;
 
     // Sum desired along main axis for non-Fill children; collect Fill weights.
@@ -205,19 +213,14 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         }
         count += 1;
     }
-    let total_gap = if count > 1 {
-        gap * (count - 1) as f32
-    } else {
-        0.0
-    };
+    let total_gap = gap * count.saturating_sub(1) as f32;
 
     let main_total = axis.main(inner.size);
     let cross = axis.cross(inner.size);
     let leftover = (main_total - sum_main_desired - total_gap).max(0.0);
 
-    let main_min = axis.main(Size::new(inner.min.x, inner.min.y));
-    let cross_min = axis.cross(Size::new(inner.min.x, inner.min.y));
-    let mut cursor = main_min;
+    let cross_min = axis.cross_v(inner.min);
+    let mut cursor = axis.main_v(inner.min);
     let mut first = true;
 
     let mut kids = tree.child_cursor(node);
