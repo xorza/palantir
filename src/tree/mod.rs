@@ -3,7 +3,7 @@ use crate::primitives::{GridDef, Rect, Size};
 use crate::shape::Shape;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct NodeId(pub u32);
+pub struct NodeId(pub(crate) u32);
 
 #[derive(Debug)]
 pub struct Node {
@@ -51,8 +51,8 @@ impl Node {
 /// topmost-first traversal — load-bearing for hit-testing in `Ui`.
 #[derive(Default)]
 pub struct Tree {
-    pub nodes: Vec<Node>,
-    pub shapes: Vec<Shape>,
+    pub(crate) nodes: Vec<Node>,
+    pub(crate) shapes: Vec<Shape>,
     /// Recording-only scratch: index `i` holds the most recently appended
     /// child of node `i`, used by `push_node` for O(1) sibling-list append.
     /// Not read after recording — kept as a parallel vec rather than a `Node`
