@@ -141,3 +141,6 @@ impl<'a> Iterator for ChildIter<'a> {
         Some(cur)
     }
 }
+
+#[cfg(test)]
+mod tests;

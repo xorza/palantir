@@ -221,3 +221,6 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         cursor += main_size;
     }
 }
+
+#[cfg(test)]
+mod tests;
