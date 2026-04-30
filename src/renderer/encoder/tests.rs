@@ -74,7 +74,9 @@ fn invisible_frame_does_not_emit_draw_rect() {
 fn clip_emits_balanced_push_pop() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
+    // Outer HStack opts out of the default-on clip so we can count just the
+    // ZStack's pair under test.
+    HStack::new().clip(false).show(&mut ui, |ui| {
         ZStack::with_id("clip")
             .size(50.0)
             .clip(true)
@@ -123,7 +125,7 @@ fn clip_emits_balanced_push_pop() {
 fn nested_clips_each_emit_their_own_pair() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
+    HStack::new().clip(false).show(&mut ui, |ui| {
         ZStack::with_id("outer")
             .size(Sizing::Fixed(100.0))
             .clip(true)

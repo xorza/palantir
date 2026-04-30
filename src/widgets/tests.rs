@@ -6,23 +6,18 @@ use crate::{Ui, layout};
 
 #[test]
 fn clip_flag_is_recorded_on_panel_node() {
-    // The renderer reads `node.element.clip` to gate scissor application —
-    // pin that the builder flows through to the recorded element.
+    // Panels clip by default; explicit `.clip(false)` opts out. Pin both
+    // directions so a future default change is loud.
     let mut ui = Ui::new();
     ui.begin_frame();
     let mut clipped = None;
     let mut unclipped = None;
     HStack::new().show(&mut ui, |ui| {
-        clipped = Some(
-            ZStack::with_id("clipped")
-                .size(50.0)
-                .clip(true)
-                .show(ui, |_| {})
-                .node,
-        );
+        clipped = Some(ZStack::with_id("clipped").size(50.0).show(ui, |_| {}).node);
         unclipped = Some(
             ZStack::with_id("unclipped")
                 .size(50.0)
+                .clip(false)
                 .show(ui, |_| {})
                 .node,
         );
