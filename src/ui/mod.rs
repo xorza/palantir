@@ -101,17 +101,8 @@ impl Ui {
 
     pub(crate) fn node(&mut self, element: UiElement, f: impl FnOnce(&mut Ui)) -> NodeId {
         let parent = self.parents.last().copied();
-        let UiElement {
-            id,
-            layout,
-            mode,
-            sense,
-            disabled,
-        } = element;
-        let node = self.tree.push_node(id, layout, mode, sense, parent);
-        if disabled {
-            self.tree.node_mut(node).disabled = true;
-        }
+        let id = element.id;
+        let node = self.tree.push_node(element, parent);
         #[cfg(debug_assertions)]
         if let Some(prev) = self.seen_ids.insert(id, node) {
             tracing::warn!(
