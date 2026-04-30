@@ -306,6 +306,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
             //
             HStack::new()
                 .size((Sizing::FILL, Sizing::FILL))
+                .disabled(false)
                 .show(ui, |ui| {
                     ZStack::with_id("spill_demo")
                         .size((Sizing::FILL, Sizing::FILL))
