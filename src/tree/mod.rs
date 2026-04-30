@@ -1,18 +1,18 @@
-use crate::primitives::{Rect, Sense, Size, Style, WidgetId};
+use crate::primitives::{Layout, Rect, Sense, Size, WidgetId};
 use crate::shape::Shape;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub u32);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum LayoutKind {
+pub enum LayoutMode {
     Leaf,
     HStack,
     VStack,
     /// Children all laid out at the same position (top-left of inner rect),
     /// each sized per its own `Sizing`. Used by `Panel`.
     ZStack,
-    /// Children placed at their declared `Style.position` (parent-inner coords).
+    /// Children placed at their declared `Layout.position` (parent-inner coords).
     /// Each child sized per its desired (intrinsic) size. Canvas hugs to the
     /// bounding box of placed children.
     Canvas,
@@ -26,8 +26,8 @@ pub struct Node {
     pub last_child: Option<NodeId>,
     pub next_sibling: Option<NodeId>,
 
-    pub style: Style,
-    pub layout: LayoutKind,
+    pub layout: Layout,
+    pub mode: LayoutMode,
     pub sense: Sense,
     /// Suppress this node's interactions and cascade to all descendants.
     /// Set by widgets like `Panel::disabled(true)`. Effective `Sense::NONE`
@@ -45,8 +45,8 @@ pub struct Node {
 impl Node {
     fn new(
         id: WidgetId,
-        style: Style,
-        layout: LayoutKind,
+        layout: Layout,
+        mode: LayoutMode,
         sense: Sense,
         parent: Option<NodeId>,
     ) -> Self {
@@ -56,8 +56,8 @@ impl Node {
             first_child: None,
             last_child: None,
             next_sibling: None,
-            style,
             layout,
+            mode,
             sense,
             disabled: false,
             shapes_start: 0,
@@ -90,13 +90,13 @@ impl Tree {
     pub fn push_node(
         &mut self,
         id: WidgetId,
-        style: Style,
-        layout: LayoutKind,
+        layout: Layout,
+        mode: LayoutMode,
         sense: Sense,
         parent: Option<NodeId>,
     ) -> NodeId {
         let new_id = NodeId(self.nodes.len() as u32);
-        let mut node = Node::new(id, style, layout, sense, parent);
+        let mut node = Node::new(id, layout, mode, sense, parent);
         node.shapes_start = self.shapes.len() as u32;
         node.shapes_end = self.shapes.len() as u32;
         self.nodes.push(node);

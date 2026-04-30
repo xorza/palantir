@@ -1,9 +1,8 @@
-use crate::primitives::{Color, Corners, Sense, Size, Sizes, Spacing, Stroke, Style, WidgetId};
+use crate::primitives::{Color, Corners, Layout, Sense, Stroke, WidgetId};
 use crate::shape::{Shape, ShapeRect};
-use crate::tree::LayoutKind;
+use crate::tree::LayoutMode;
 use crate::ui::Ui;
-use crate::widgets::Response;
-use glam::Vec2;
+use crate::widgets::{Layoutable, Response};
 use std::hash::Hash;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
@@ -16,59 +15,29 @@ use std::hash::Hash;
 /// `.fill(...)` or `.stroke(...)` paints nothing — pure layout.
 pub struct Panel {
     id: WidgetId,
-    kind: LayoutKind,
-    size: Sizes,
-    min_size: Size,
-    max_size: Size,
-    padding: Spacing,
-    margin: Spacing,
+    mode: LayoutMode,
+    layout: Layout,
     fill: Color,
     stroke: Option<Stroke>,
     radius: Corners,
     sense: Sense,
     disabled: bool,
-    position: Option<Vec2>,
 }
 
 impl Panel {
-    fn from_id(id: WidgetId, kind: LayoutKind) -> Self {
+    fn from_id(id: WidgetId, mode: LayoutMode) -> Self {
         Self {
             id,
-            kind,
-            size: Sizes::HUG,
-            min_size: Size::ZERO,
-            max_size: Size::INF,
-            padding: Spacing::ZERO,
-            margin: Spacing::ZERO,
+            mode,
+            layout: Layout::default(),
             fill: Color::TRANSPARENT,
             stroke: None,
             radius: Corners::ZERO,
             sense: Sense::NONE,
             disabled: false,
-            position: None,
         }
     }
 
-    pub fn size(mut self, s: impl Into<Sizes>) -> Self {
-        self.size = s.into();
-        self
-    }
-    pub fn min_size(mut self, s: impl Into<Size>) -> Self {
-        self.min_size = s.into();
-        self
-    }
-    pub fn max_size(mut self, s: impl Into<Size>) -> Self {
-        self.max_size = s.into();
-        self
-    }
-    pub fn padding(mut self, p: impl Into<Spacing>) -> Self {
-        self.padding = p.into();
-        self
-    }
-    pub fn margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.margin = m.into();
-        self
-    }
     pub fn fill(mut self, c: Color) -> Self {
         self.fill = c;
         self
@@ -95,27 +64,11 @@ impl Panel {
         self.disabled = d;
         self
     }
-    /// Absolute position inside a `Canvas` parent (parent-inner coords).
-    /// Ignored by other layout kinds.
-    pub fn position(mut self, p: impl Into<Vec2>) -> Self {
-        self.position = Some(p.into());
-        self
-    }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
-        let style = Style {
-            size: self.size,
-            min_size: self.min_size,
-            max_size: self.max_size,
-            padding: self.padding,
-            margin: self.margin,
-            position: self.position,
-        };
-        // Skip the bg shape entirely if the panel has nothing to paint — keeps
-        // pure-layout HStacks/VStacks zero-shape, like before.
         let paints_bg = self.fill.a > 0.0 || self.stroke.is_some();
 
-        let node = ui.node(self.id, style, self.kind, self.sense, |ui| {
+        let node = ui.node(self.id, self.layout, self.mode, self.sense, |ui| {
             if paints_bg {
                 ui.add_shape(Shape::RoundedRect {
                     bounds: ShapeRect::Full,
@@ -136,6 +89,12 @@ impl Panel {
     }
 }
 
+impl Layoutable for Panel {
+    fn layout_mut(&mut self) -> &mut Layout {
+        &mut self.layout
+    }
+}
+
 pub struct HStack;
 pub struct VStack;
 pub struct ZStack;
@@ -145,10 +104,10 @@ pub struct Canvas;
 impl HStack {
     #[track_caller]
     pub fn new() -> Panel {
-        Panel::from_id(WidgetId::auto_stable(), LayoutKind::HStack)
+        Panel::from_id(WidgetId::auto_stable(), LayoutMode::HStack)
     }
     pub fn with_id(id: impl Hash) -> Panel {
-        Panel::from_id(WidgetId::from_hash(id), LayoutKind::HStack)
+        Panel::from_id(WidgetId::from_hash(id), LayoutMode::HStack)
     }
 }
 
@@ -156,10 +115,10 @@ impl HStack {
 impl VStack {
     #[track_caller]
     pub fn new() -> Panel {
-        Panel::from_id(WidgetId::auto_stable(), LayoutKind::VStack)
+        Panel::from_id(WidgetId::auto_stable(), LayoutMode::VStack)
     }
     pub fn with_id(id: impl Hash) -> Panel {
-        Panel::from_id(WidgetId::from_hash(id), LayoutKind::VStack)
+        Panel::from_id(WidgetId::from_hash(id), LayoutMode::VStack)
     }
 }
 
@@ -169,23 +128,23 @@ impl VStack {
 impl ZStack {
     #[track_caller]
     pub fn new() -> Panel {
-        Panel::from_id(WidgetId::auto_stable(), LayoutKind::ZStack)
+        Panel::from_id(WidgetId::auto_stable(), LayoutMode::ZStack)
     }
     pub fn with_id(id: impl Hash) -> Panel {
-        Panel::from_id(WidgetId::from_hash(id), LayoutKind::ZStack)
+        Panel::from_id(WidgetId::from_hash(id), LayoutMode::ZStack)
     }
 }
 
-/// Children placed at their declared `Style.position` (parent-inner coords).
+/// Children placed at their declared `Layout.position` (parent-inner coords).
 /// Use per-child `.position(Vec2)`. Canvas hugs to the bounding box of placed
 /// children.
 #[allow(clippy::new_ret_no_self)]
 impl Canvas {
     #[track_caller]
     pub fn new() -> Panel {
-        Panel::from_id(WidgetId::auto_stable(), LayoutKind::Canvas)
+        Panel::from_id(WidgetId::auto_stable(), LayoutMode::Canvas)
     }
     pub fn with_id(id: impl Hash) -> Panel {
-        Panel::from_id(WidgetId::from_hash(id), LayoutKind::Canvas)
+        Panel::from_id(WidgetId::from_hash(id), LayoutMode::Canvas)
     }
 }

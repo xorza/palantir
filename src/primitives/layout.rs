@@ -2,7 +2,7 @@ use crate::primitives::{Size, Sizes, Spacing};
 use glam::Vec2;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Style {
+pub struct Layout {
     pub size: Sizes,
     pub min_size: Size,
     pub max_size: Size,
@@ -13,7 +13,7 @@ pub struct Style {
     pub position: Option<Vec2>,
 }
 
-impl Default for Style {
+impl Default for Layout {
     fn default() -> Self {
         Self {
             size: Sizes::default(),

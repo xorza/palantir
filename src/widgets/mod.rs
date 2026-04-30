@@ -1,9 +1,11 @@
 mod button;
 mod frame;
+mod layoutable;
 mod panel;
 
 pub use button::{Button, ButtonStyle};
 pub use frame::Frame;
+pub use layoutable::Layoutable;
 pub use panel::{Canvas, HStack, Panel, VStack, ZStack};
 
 use crate::input::ResponseState;

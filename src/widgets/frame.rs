@@ -1,9 +1,8 @@
-use crate::primitives::{Color, Corners, Sense, Size, Sizes, Spacing, Stroke, Style, WidgetId};
+use crate::primitives::{Color, Corners, Layout, Sense, Stroke, WidgetId};
 use crate::shape::{Shape, ShapeRect};
-use crate::tree::LayoutKind;
+use crate::tree::LayoutMode;
 use crate::ui::Ui;
-use crate::widgets::Response;
-use glam::Vec2;
+use crate::widgets::{Layoutable, Response};
 use std::hash::Hash;
 
 /// A simple decorated rectangle: configurable fill / stroke / radius / size /
@@ -11,16 +10,11 @@ use std::hash::Hash;
 /// swatches, and as the rendering primitive inside `Button`.
 pub struct Frame {
     id: WidgetId,
-    size: Sizes,
-    min_size: Size,
-    max_size: Size,
-    padding: Spacing,
-    margin: Spacing,
+    layout: Layout,
     fill: Color,
     stroke: Option<Stroke>,
     radius: Corners,
     sense: Sense,
-    position: Option<Vec2>,
 }
 
 impl Frame {
@@ -40,39 +34,14 @@ impl Frame {
     pub fn for_widget_id(id: WidgetId) -> Self {
         Self {
             id,
-            size: Sizes::HUG,
-            min_size: Size::ZERO,
-            max_size: Size::INF,
-            padding: Spacing::ZERO,
-            margin: Spacing::ZERO,
+            layout: Layout::default(),
             fill: Color::TRANSPARENT,
             stroke: None,
             radius: Corners::ZERO,
             sense: Sense::NONE,
-            position: None,
         }
     }
 
-    pub fn size(mut self, s: impl Into<Sizes>) -> Self {
-        self.size = s.into();
-        self
-    }
-    pub fn min_size(mut self, s: impl Into<Size>) -> Self {
-        self.min_size = s.into();
-        self
-    }
-    pub fn max_size(mut self, s: impl Into<Size>) -> Self {
-        self.max_size = s.into();
-        self
-    }
-    pub fn padding(mut self, p: impl Into<Spacing>) -> Self {
-        self.padding = p.into();
-        self
-    }
-    pub fn margin(mut self, m: impl Into<Spacing>) -> Self {
-        self.margin = m.into();
-        self
-    }
     pub fn fill(mut self, c: Color) -> Self {
         self.fill = c;
         self
@@ -90,24 +59,13 @@ impl Frame {
         self.sense = s;
         self
     }
-    /// Absolute position inside a `Canvas` parent (parent-inner coords).
-    /// Ignored by other layout kinds.
-    pub fn position(mut self, p: impl Into<Vec2>) -> Self {
-        self.position = Some(p.into());
+    pub fn layout(mut self, l: Layout) -> Self {
+        self.layout = l;
         self
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
-        let style = Style {
-            size: self.size,
-            min_size: self.min_size,
-            max_size: self.max_size,
-            padding: self.padding,
-            margin: self.margin,
-            position: self.position,
-        };
-
-        let node = ui.node(self.id, style, LayoutKind::Leaf, self.sense, |ui| {
+        let node = ui.node(self.id, self.layout, LayoutMode::Leaf, self.sense, |ui| {
             ui.add_shape(Shape::RoundedRect {
                 bounds: ShapeRect::Full,
                 radius: self.radius,
@@ -118,5 +76,11 @@ impl Frame {
 
         let state = ui.response_for(self.id);
         Response { node, state }
+    }
+}
+
+impl Layoutable for Frame {
+    fn layout_mut(&mut self) -> &mut Layout {
+        &mut self.layout
     }
 }
