@@ -3,13 +3,46 @@ use std::time::{Duration, Instant};
 
 use palantir::Align;
 use palantir::{
-    Button, ButtonStyle, Color, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui, VStack,
-    ZStack, layout, renderer::Renderer,
+    Button, ButtonStyle, Color, Corners, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui,
+    VStack, Visuals, ZStack, layout, renderer::Renderer,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
+
+fn outlined_button_style() -> ButtonStyle {
+    let stroke = Some(Stroke {
+        width: 1.5,
+        color: Color::rgb(0.4, 0.5, 0.7),
+    });
+    ButtonStyle {
+        normal: Visuals {
+            fill: Color::TRANSPARENT,
+            stroke,
+            text: Color::rgb(0.85, 0.88, 0.95),
+        },
+        hovered: Visuals {
+            fill: Color::rgba(0.4, 0.5, 0.7, 0.15),
+            stroke,
+            text: Color::WHITE,
+        },
+        pressed: Visuals {
+            fill: Color::rgba(0.4, 0.5, 0.7, 0.30),
+            stroke,
+            text: Color::WHITE,
+        },
+        disabled: Visuals {
+            fill: Color::TRANSPARENT,
+            stroke: Some(Stroke {
+                width: 1.5,
+                color: Color::rgba(0.4, 0.5, 0.7, 0.35),
+            }),
+            text: Color::rgba(0.85, 0.88, 0.95, 0.45),
+        },
+        radius: Corners::all(4.0),
+    }
+}
 
 fn main() {
     use tracing_subscriber::EnvFilter;
@@ -256,11 +289,10 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
 
                     let reset = Button::new()
                         .label("reset")
-                        .style(ButtonStyle::outlined())
+                        .style(outlined_button_style())
                         .size((Sizing::FILL, Sizing::Hug))
                         .min_size((0.0, 10.0))
                         .margin((4.0, 24.0, 32.0, 0.0))
-                        .radius(4)
                         .show(ui);
                     if reset.clicked() {
                         *clicks = 0;

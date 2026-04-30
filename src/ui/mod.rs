@@ -1,3 +1,6 @@
+mod theme;
+pub use theme::Theme;
+
 use crate::element::UiElement;
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::primitives::WidgetId;
@@ -14,6 +17,7 @@ use std::collections::HashMap;
 /// (`handle_event` / `InputEvent::from_winit`).
 pub struct Ui {
     pub tree: Tree,
+    pub theme: Theme,
     parents: Vec<NodeId>,
     root: Option<NodeId>,
 
@@ -36,6 +40,7 @@ impl Ui {
     pub fn new() -> Self {
         Self {
             tree: Tree::new(),
+            theme: Theme::default(),
             parents: Vec::new(),
             root: None,
             #[cfg(debug_assertions)]

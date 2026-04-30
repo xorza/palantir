@@ -1,5 +1,5 @@
 use crate::element::{Element, UiElement};
-use crate::primitives::{Color, Corners, Sense, Stroke, Visuals, WidgetId};
+use crate::primitives::{Color, Corners, Sense, Visuals, WidgetId};
 use crate::shape::Shape;
 use crate::tree::LayoutMode;
 use crate::ui::Ui;
@@ -12,63 +12,28 @@ pub struct ButtonStyle {
     pub normal: Visuals,
     pub hovered: Visuals,
     pub pressed: Visuals,
+    pub disabled: Visuals,
     pub radius: Corners,
-}
-
-impl ButtonStyle {
-    pub const fn uniform(v: Visuals) -> Self {
-        Self {
-            normal: v,
-            hovered: v,
-            pressed: v,
-            radius: Corners::ZERO,
-        }
-    }
-
-    pub fn primary() -> Self {
-        Self {
-            normal: Visuals::solid(Color::rgb(0.20, 0.40, 0.80), Color::WHITE),
-            hovered: Visuals::solid(Color::rgb(0.30, 0.52, 0.92), Color::WHITE),
-            pressed: Visuals::solid(Color::rgb(0.10, 0.28, 0.66), Color::WHITE),
-            radius: Corners::all(4.0),
-        }
-    }
-
-    pub fn outlined() -> Self {
-        let stroke = Some(Stroke {
-            width: 1.5,
-            color: Color::rgb(0.4, 0.5, 0.7),
-        });
-        Self {
-            normal: Visuals {
-                fill: Color::TRANSPARENT,
-                stroke,
-                text: Color::rgb(0.85, 0.88, 0.95),
-            },
-            hovered: Visuals {
-                fill: Color::rgba(0.4, 0.5, 0.7, 0.15),
-                stroke,
-                text: Color::WHITE,
-            },
-            pressed: Visuals {
-                fill: Color::rgba(0.4, 0.5, 0.7, 0.30),
-                stroke,
-                text: Color::WHITE,
-            },
-            radius: Corners::all(4.0),
-        }
-    }
 }
 
 impl Default for ButtonStyle {
     fn default() -> Self {
-        Self::primary()
+        Self {
+            normal: Visuals::solid(Color::rgb(0.20, 0.40, 0.80), Color::WHITE),
+            hovered: Visuals::solid(Color::rgb(0.30, 0.52, 0.92), Color::WHITE),
+            pressed: Visuals::solid(Color::rgb(0.10, 0.28, 0.66), Color::WHITE),
+            disabled: Visuals::solid(
+                Color::rgb(0.22, 0.26, 0.32),
+                Color::rgba(1.0, 1.0, 1.0, 0.45),
+            ),
+            radius: Corners::all(4.0),
+        }
     }
 }
 
 pub struct Button {
     element: UiElement,
-    style: ButtonStyle,
+    style: Option<ButtonStyle>,
     label: String,
 }
 
@@ -84,18 +49,13 @@ impl Button {
         element.sense = Sense::CLICK;
         Self {
             element,
-            style: ButtonStyle::default(),
+            style: None,
             label: String::new(),
         }
     }
 
     pub fn style(mut self, s: ButtonStyle) -> Self {
-        self.style = s;
-        self
-    }
-    /// Convenience: override only the corner radius on the current style.
-    pub fn radius(mut self, r: impl Into<Corners>) -> Self {
-        self.style.radius = r.into();
+        self.style = Some(s);
         self
     }
     pub fn label(mut self, s: impl Into<String>) -> Self {
@@ -104,21 +64,24 @@ impl Button {
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
-        let v = {
+        let style = self.style.unwrap_or(ui.theme.button);
+        let v = if self.element.disabled {
+            style.disabled
+        } else {
             let state = ui.response_for(self.element.id);
             if state.pressed {
-                self.style.pressed
+                style.pressed
             } else if state.hovered {
-                self.style.hovered
+                style.hovered
             } else {
-                self.style.normal
+                style.normal
             }
         };
 
         let resp = Frame::for_element(self.element)
             .fill(v.fill)
             .stroke(v.stroke)
-            .radius(self.style.radius)
+            .radius(style.radius)
             .show(ui);
 
         // Layer the label on top of the frame's background. Safe immediately after

@@ -16,5 +16,5 @@ pub use primitives::{
 };
 pub use shape::{Shape, ShapeRect};
 pub use tree::{LayoutMode, Node, NodeId, Tree};
-pub use ui::Ui;
+pub use ui::{Theme, Ui};
 pub use widgets::{Button, ButtonStyle, Canvas, Frame, HStack, Panel, Response, VStack, ZStack};
