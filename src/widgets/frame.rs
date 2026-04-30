@@ -3,6 +3,7 @@ use crate::shape::{Shape, ShapeRect};
 use crate::tree::LayoutKind;
 use crate::ui::Ui;
 use crate::widgets::Response;
+use glam::Vec2;
 use std::hash::Hash;
 
 /// A simple decorated rectangle: configurable fill / stroke / radius / size /
@@ -19,6 +20,7 @@ pub struct Frame {
     stroke: Option<Stroke>,
     radius: Corners,
     sense: Sense,
+    position: Option<Vec2>,
 }
 
 impl Frame {
@@ -47,6 +49,7 @@ impl Frame {
             stroke: None,
             radius: Corners::ZERO,
             sense: Sense::NONE,
+            position: None,
         }
     }
 
@@ -87,6 +90,12 @@ impl Frame {
         self.sense = s;
         self
     }
+    /// Absolute position inside a `Canvas` parent (parent-inner coords).
+    /// Ignored by other layout kinds.
+    pub fn position(mut self, p: impl Into<Vec2>) -> Self {
+        self.position = Some(p.into());
+        self
+    }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let style = Style {
@@ -95,6 +104,7 @@ impl Frame {
             max_size: self.max_size,
             padding: self.padding,
             margin: self.margin,
+            position: self.position,
         };
 
         let node = ui.node(self.id, style, LayoutKind::Leaf, self.sense, |ui| {

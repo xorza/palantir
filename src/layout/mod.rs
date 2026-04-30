@@ -25,6 +25,7 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
         LayoutKind::HStack => hstack_measure(tree, node, inner_avail),
         LayoutKind::VStack => vstack_measure(tree, node, inner_avail),
         LayoutKind::ZStack => zstack_measure(tree, node),
+        LayoutKind::Canvas => canvas_measure(tree, node),
     };
 
     let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
@@ -79,6 +80,7 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
         LayoutKind::HStack => arrange_stack(tree, node, inner, Axis::X),
         LayoutKind::VStack => arrange_stack(tree, node, inner, Axis::Y),
         LayoutKind::ZStack => arrange_zstack(tree, node, inner),
+        LayoutKind::Canvas => arrange_canvas(tree, node, inner),
     }
 }
 
@@ -240,6 +242,41 @@ fn zstack_measure(tree: &mut Tree, node: NodeId) -> Size {
         max_h = max_h.max(d.h);
     }
     Size::new(max_w, max_h)
+}
+
+/// Canvas: children placed at their declared `Style.position` (parent-inner
+/// coords, defaulting to `(0, 0)`). Pass `INFINITY` on both axes during measure
+/// so `Fill` children fall back to intrinsic — "fill the rest" is meaningless
+/// when children can overlap. Content size = `max(child_pos + child_desired)`
+/// per axis, so a `Hug` Canvas grows to the union of placed rects.
+fn canvas_measure(tree: &mut Tree, node: NodeId) -> Size {
+    let child_avail = Size::INF;
+    let kids: Vec<NodeId> = tree.children(node).collect();
+    let mut max_w = 0.0f32;
+    let mut max_h = 0.0f32;
+    for c in kids {
+        let pos = tree.node(c).style.position.unwrap_or(Vec2::ZERO);
+        let d = measure(tree, c, child_avail);
+        max_w = max_w.max(pos.x + d.w);
+        max_h = max_h.max(pos.y + d.h);
+    }
+    Size::new(max_w, max_h)
+}
+
+/// Each child gets a slot at `inner.min + style.position`, sized per its
+/// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
+/// `canvas_measure`.
+fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
+    let kids: Vec<NodeId> = tree.children(node).collect();
+    for c in kids {
+        let d = tree.node(c).desired;
+        let pos = tree.node(c).style.position.unwrap_or(Vec2::ZERO);
+        let child_rect = Rect {
+            min: inner.min + pos,
+            size: d,
+        };
+        arrange(tree, c, child_rect);
+    }
 }
 
 /// Each child gets the full inner rect as its slot, sized per its own `Sizing`.

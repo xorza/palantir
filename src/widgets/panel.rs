@@ -3,6 +3,7 @@ use crate::shape::{Shape, ShapeRect};
 use crate::tree::LayoutKind;
 use crate::ui::Ui;
 use crate::widgets::Response;
+use glam::Vec2;
 use std::hash::Hash;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
@@ -26,6 +27,7 @@ pub struct Panel {
     radius: Corners,
     sense: Sense,
     disabled: bool,
+    position: Option<Vec2>,
 }
 
 impl Panel {
@@ -43,6 +45,7 @@ impl Panel {
             radius: Corners::ZERO,
             sense: Sense::NONE,
             disabled: false,
+            position: None,
         }
     }
 
@@ -92,6 +95,12 @@ impl Panel {
         self.disabled = d;
         self
     }
+    /// Absolute position inside a `Canvas` parent (parent-inner coords).
+    /// Ignored by other layout kinds.
+    pub fn position(mut self, p: impl Into<Vec2>) -> Self {
+        self.position = Some(p.into());
+        self
+    }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let style = Style {
@@ -100,6 +109,7 @@ impl Panel {
             max_size: self.max_size,
             padding: self.padding,
             margin: self.margin,
+            position: self.position,
         };
         // Skip the bg shape entirely if the panel has nothing to paint — keeps
         // pure-layout HStacks/VStacks zero-shape, like before.
@@ -129,6 +139,7 @@ impl Panel {
 pub struct HStack;
 pub struct VStack;
 pub struct ZStack;
+pub struct Canvas;
 
 #[allow(clippy::new_ret_no_self)]
 impl HStack {
@@ -162,5 +173,19 @@ impl ZStack {
     }
     pub fn with_id(id: impl Hash) -> Panel {
         Panel::from_id(WidgetId::from_hash(id), LayoutKind::ZStack)
+    }
+}
+
+/// Children placed at their declared `Style.position` (parent-inner coords).
+/// Use per-child `.position(Vec2)`. Canvas hugs to the bounding box of placed
+/// children.
+#[allow(clippy::new_ret_no_self)]
+impl Canvas {
+    #[track_caller]
+    pub fn new() -> Panel {
+        Panel::from_id(WidgetId::auto_stable(), LayoutKind::Canvas)
+    }
+    pub fn with_id(id: impl Hash) -> Panel {
+        Panel::from_id(WidgetId::from_hash(id), LayoutKind::Canvas)
     }
 }

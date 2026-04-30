@@ -1,6 +1,6 @@
 use crate::primitives::{Color, Rect, Sense, Sizing};
 use crate::shape::Shape;
-use crate::widgets::{Button, Frame, HStack, ZStack};
+use crate::widgets::{Button, Canvas, Frame, HStack, ZStack};
 use crate::{Ui, layout};
 
 #[test]
@@ -212,6 +212,52 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
             });
     });
     assert!(!clicked, "button inside disabled panel should not click");
+}
+
+#[test]
+fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
+    use glam::Vec2;
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let mut canvas_node = None;
+    let mut a_node = None;
+    let mut b_node = None;
+    HStack::new().show(&mut ui, |ui| {
+        canvas_node = Some(
+            Canvas::with_id("c")
+                .show(ui, |ui| {
+                    a_node = Some(
+                        Frame::with_id("a")
+                            .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                            .position(Vec2::new(10.0, 5.0))
+                            .show(ui)
+                            .node,
+                    );
+                    b_node = Some(
+                        Frame::with_id("b")
+                            .size((Sizing::Fixed(30.0), Sizing::Fixed(60.0)))
+                            .position(Vec2::new(80.0, 40.0))
+                            .show(ui)
+                            .node,
+                    );
+                })
+                .node,
+        );
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+
+    let c = ui.tree.node(canvas_node.unwrap()).rect;
+    // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
+    assert_eq!(c.size.w, 110.0);
+    assert_eq!(c.size.h, 100.0);
+
+    let a = ui.tree.node(a_node.unwrap()).rect;
+    let b = ui.tree.node(b_node.unwrap()).rect;
+    assert_eq!((a.min.x, a.min.y), (10.0, 5.0));
+    assert_eq!((a.size.w, a.size.h), (40.0, 20.0));
+    assert_eq!((b.min.x, b.min.y), (80.0, 40.0));
+    assert_eq!((b.size.w, b.size.h), (30.0, 60.0));
 }
 
 #[test]
