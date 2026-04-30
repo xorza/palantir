@@ -69,14 +69,14 @@ impl Renderer {
 }
 
 fn collect_quads(tree: &Tree, out: &mut Vec<Quad>) {
-    for (i, node) in tree.nodes.iter().enumerate() {
+    for node in &tree.nodes {
         let owner = node.rect;
         for shape in &tree.shapes[node.shapes_start as usize..node.shapes_end as usize] {
             if let Shape::RoundedRect {
                 bounds,
                 radius,
                 fill,
-                ..
+                stroke,
             } = shape
             {
                 let rect = match bounds {
@@ -86,9 +86,8 @@ fn collect_quads(tree: &Tree, out: &mut Vec<Quad>) {
                         size: r.size,
                     },
                 };
-                out.push(Quad::from_rect(rect, *fill, *radius));
+                out.push(Quad::new(rect, *fill, *radius, *stroke));
             }
         }
-        let _ = i;
     }
 }

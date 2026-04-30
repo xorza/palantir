@@ -5,20 +5,24 @@ struct Viewport {
 @group(0) @binding(0) var<uniform> viewport: Viewport;
 
 struct VertexOut {
-    @builtin(position) clip:   vec4<f32>,
-    @location(0)       local:  vec2<f32>,
-    @location(1)       size:   vec2<f32>,
-    @location(2)       color:  vec4<f32>,
-    @location(3)       radius: vec4<f32>,
+    @builtin(position) clip:         vec4<f32>,
+    @location(0)       local:        vec2<f32>,
+    @location(1)       size:         vec2<f32>,
+    @location(2)       fill:         vec4<f32>,
+    @location(3)       radius:       vec4<f32>,
+    @location(4)       stroke_color: vec4<f32>,
+    @location(5)       stroke_width: f32,
 };
 
 @vertex
 fn vs(
     @builtin(vertex_index) vi: u32,
-    @location(0) pos:    vec2<f32>,
-    @location(1) size:   vec2<f32>,
-    @location(2) color:  vec4<f32>,
-    @location(3) radius: vec4<f32>,
+    @location(0) pos:          vec2<f32>,
+    @location(1) size:         vec2<f32>,
+    @location(2) fill:         vec4<f32>,
+    @location(3) radius:       vec4<f32>,
+    @location(4) stroke_color: vec4<f32>,
+    @location(5) stroke_width: f32,
 ) -> VertexOut {
     var corners = array<vec2<f32>, 4>(
         vec2<f32>(0.0, 0.0),
@@ -34,11 +38,13 @@ fn vs(
     );
 
     var out: VertexOut;
-    out.clip   = vec4<f32>(clip, 0.0, 1.0);
-    out.local  = c * size;
-    out.size   = size;
-    out.color  = color;
-    out.radius = radius;
+    out.clip         = vec4<f32>(clip, 0.0, 1.0);
+    out.local        = c * size;
+    out.size         = size;
+    out.fill         = fill;
+    out.radius       = radius;
+    out.stroke_color = stroke_color;
+    out.stroke_width = stroke_width;
     return out;
 }
 
@@ -58,6 +64,19 @@ fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     let d = sdf_rounded_rect(in.local, in.size, in.radius);
-    let aa = clamp(0.5 - d, 0.0, 1.0);
-    return vec4<f32>(in.color.rgb, in.color.a * aa);
+    let outer_aa = clamp(0.5 - d, 0.0, 1.0);
+
+    if (in.stroke_width > 0.0) {
+        // Stroke sits on the inner edge: fill region is everything inside the rect
+        // shifted inward by stroke_width.
+        let inner_d  = d + in.stroke_width;
+        let inner_aa = clamp(0.5 - inner_d, 0.0, 1.0);
+        let stroke_a = (outer_aa - inner_aa) * in.stroke_color.a;
+        let fill_a   = inner_aa * in.fill.a;
+        // Premultiplied composition: fill underneath stroke.
+        let rgb = in.fill.rgb * fill_a + in.stroke_color.rgb * stroke_a;
+        let a   = fill_a + stroke_a - fill_a * stroke_a;
+        return vec4<f32>(rgb, a);
+    }
+    return vec4<f32>(in.fill.rgb, in.fill.a * outer_aa);
 }
