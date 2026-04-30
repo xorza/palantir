@@ -11,8 +11,8 @@ pub fn run(tree: &mut Tree, root: NodeId, surface: Rect) {
 /// Bottom-up. Returns the node's desired *slot* size (including its own margin)
 /// and stores it on the node.
 fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
-    let style = tree.node(node).layout;
-    let mode = tree.node(node).mode;
+    let style = tree.node(node).element.layout;
+    let mode = tree.node(node).element.mode;
 
     // Inner available = available minus margin minus padding.
     let inner_avail = Size::new(
@@ -55,8 +55,8 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
 
 /// Top-down. `slot` is the rect the parent reserved (including this node's margin).
 fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
-    let style = tree.node(node).layout;
-    let mode = tree.node(node).mode;
+    let style = tree.node(node).element.layout;
+    let mode = tree.node(node).element.mode;
 
     let rendered = slot.deflated_by(style.margin);
     tree.node_mut(node).rect = rendered;
@@ -165,7 +165,7 @@ impl Axis {
 fn stack_measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size {
     // Pass infinite size on the main axis (WPF trick): children report intrinsic.
     let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
-    let gap = tree.node(node).layout.gap;
+    let gap = tree.node(node).element.layout.gap;
 
     let mut total_main = 0.0f32;
     let mut max_cross = 0.0f32;
@@ -187,7 +187,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     if !tree.child_cursor(node).has_next() {
         return;
     }
-    let gap = tree.node(node).layout.gap;
+    let gap = tree.node(node).element.layout.gap;
 
     // Sum desired along main axis for non-Fill children; collect Fill weights.
     // Fill siblings split the remaining space proportionally (WPF Star semantics)
@@ -198,7 +198,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let n = tree.node(c);
-        if let Sizing::Fill(weight) = axis.main_sizing(n.layout.size) {
+        if let Sizing::Fill(weight) = axis.main_sizing(n.element.layout.size) {
             total_weight += weight.max(0.0);
         } else {
             sum_main_desired += axis.main(n.desired);
@@ -227,7 +227,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
         }
         first = false;
         let d = tree.node(c).desired;
-        let s = tree.node(c).layout;
+        let s = tree.node(c).element.layout;
 
         let main_sizing = axis.main_sizing(s.size);
         let main_size = match main_sizing {
@@ -278,7 +278,7 @@ fn canvas_measure(tree: &mut Tree, node: NodeId) -> Size {
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let pos = tree.node(c).layout.position.unwrap_or(Vec2::ZERO);
+        let pos = tree.node(c).element.layout.position.unwrap_or(Vec2::ZERO);
         let d = measure(tree, c, child_avail);
         max_w = max_w.max(pos.x + d.w);
         max_h = max_h.max(pos.y + d.h);
@@ -293,7 +293,7 @@ fn arrange_canvas(tree: &mut Tree, node: NodeId, inner: Rect) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let d = tree.node(c).desired;
-        let pos = tree.node(c).layout.position.unwrap_or(Vec2::ZERO);
+        let pos = tree.node(c).element.layout.position.unwrap_or(Vec2::ZERO);
         let child_rect = Rect {
             min: inner.min + pos,
             size: d,
@@ -310,7 +310,7 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let d = tree.node(c).desired;
-        let s = tree.node(c).layout;
+        let s = tree.node(c).element.layout;
 
         let (w, x_off) = place_axis(s.align_x, s.size.w, d.w, inner.size.w);
         let (h, y_off) = place_axis(s.align_y, s.size.h, d.h, inner.size.h);

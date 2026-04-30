@@ -169,12 +169,16 @@ impl InputState {
                 .parent
                 .map(|p| effective_disabled[p.0 as usize])
                 .unwrap_or(false);
-            let me_disabled = parent_disabled || node.disabled;
+            let me_disabled = parent_disabled || node.element.disabled;
             effective_disabled.push(me_disabled);
 
-            let sense = if me_disabled { Sense::NONE } else { node.sense };
+            let sense = if me_disabled {
+                Sense::NONE
+            } else {
+                node.element.sense
+            };
             self.last_rects.push(HitEntry {
-                id: node.id,
+                id: node.element.id,
                 rect: node.rect,
                 sense,
             });

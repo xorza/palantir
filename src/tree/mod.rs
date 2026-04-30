@@ -1,4 +1,5 @@
-use crate::primitives::{Layout, Rect, Sense, Size, WidgetId};
+use crate::element::UiElement;
+use crate::primitives::{Rect, Size};
 use crate::shape::Shape;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -20,19 +21,16 @@ pub enum LayoutMode {
 
 #[derive(Debug)]
 pub struct Node {
-    pub id: WidgetId,
+    /// What was recorded for this node: id, layout, mode, sense, disabled.
+    /// Effective `Sense::NONE` from disabled-cascade is computed in
+    /// `InputState::end_frame` by walking ancestors — `element.disabled` is
+    /// just the locally-declared bit.
+    pub element: UiElement,
+
     pub parent: Option<NodeId>,
     pub first_child: Option<NodeId>,
     pub last_child: Option<NodeId>,
     pub next_sibling: Option<NodeId>,
-
-    pub layout: Layout,
-    pub mode: LayoutMode,
-    pub sense: Sense,
-    /// Suppress this node's interactions and cascade to all descendants.
-    /// Set by widgets like `Panel::disabled(true)`. Effective `Sense::NONE`
-    /// is computed in `InputState::end_frame` by walking ancestors.
-    pub disabled: bool,
 
     /// Range into Tree.shapes
     pub shapes_start: u32,
@@ -43,23 +41,13 @@ pub struct Node {
 }
 
 impl Node {
-    fn new(
-        id: WidgetId,
-        layout: Layout,
-        mode: LayoutMode,
-        sense: Sense,
-        parent: Option<NodeId>,
-    ) -> Self {
+    fn new(element: UiElement, parent: Option<NodeId>) -> Self {
         Self {
-            id,
+            element,
             parent,
             first_child: None,
             last_child: None,
             next_sibling: None,
-            layout,
-            mode,
-            sense,
-            disabled: false,
             shapes_start: 0,
             shapes_end: 0,
             desired: Size::ZERO,
@@ -87,16 +75,9 @@ impl Tree {
         self.shapes.clear();
     }
 
-    pub fn push_node(
-        &mut self,
-        id: WidgetId,
-        layout: Layout,
-        mode: LayoutMode,
-        sense: Sense,
-        parent: Option<NodeId>,
-    ) -> NodeId {
+    pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
         let new_id = NodeId(self.nodes.len() as u32);
-        let mut node = Node::new(id, layout, mode, sense, parent);
+        let mut node = Node::new(element, parent);
         node.shapes_start = self.shapes.len() as u32;
         node.shapes_end = self.shapes.len() as u32;
         self.nodes.push(node);
