@@ -137,8 +137,7 @@ fn flush_group(scissor: Option<ScissorRect>, start: u32, end: u32, groups: &mut 
     if end > start {
         groups.push(DrawGroup {
             scissor,
-            start,
-            end,
+            instances: start..end,
         });
     }
 }
