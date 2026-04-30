@@ -37,27 +37,33 @@ impl Spacing {
     }
 }
 
-impl From<f32> for Spacing {
-    fn from(v: f32) -> Self {
-        Self::all(v)
+impl<T: crate::primitives::Num> From<T> for Spacing {
+    fn from(v: T) -> Self {
+        Self::all(v.as_f32())
     }
 }
 
 /// `(horizontal, vertical)` — both sides on each axis.
-impl From<(f32, f32)> for Spacing {
-    fn from((x, y): (f32, f32)) -> Self {
-        Self::xy(x, y)
+impl<X: crate::primitives::Num, Y: crate::primitives::Num> From<(X, Y)> for Spacing {
+    fn from((x, y): (X, Y)) -> Self {
+        Self::xy(x.as_f32(), y.as_f32())
     }
 }
 
 /// `(left, top, right, bottom)` — matches struct field order.
-impl From<(f32, f32, f32, f32)> for Spacing {
-    fn from((l, t, r, b): (f32, f32, f32, f32)) -> Self {
+impl<
+    L: crate::primitives::Num,
+    T: crate::primitives::Num,
+    R: crate::primitives::Num,
+    B: crate::primitives::Num,
+> From<(L, T, R, B)> for Spacing
+{
+    fn from((l, t, r, b): (L, T, R, B)) -> Self {
         Self {
-            left: l,
-            top: t,
-            right: r,
-            bottom: b,
+            left: l.as_f32(),
+            top: t.as_f32(),
+            right: r.as_f32(),
+            bottom: b.as_f32(),
         }
     }
 }
