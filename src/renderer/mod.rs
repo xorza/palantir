@@ -30,6 +30,11 @@ impl Renderer {
     ) {
         self.quads.clear();
         collect_quads(tree, &mut self.quads);
+        tracing::debug!(
+            quads = self.quads.len(),
+            viewport = ?viewport,
+            "renderer.render"
+        );
         self.quad.upload(device, queue, viewport, &self.quads);
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {

@@ -7,6 +7,14 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
 
 fn main() {
+    use tracing_subscriber::EnvFilter;
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,palantir=debug,helloworld=debug")),
+        )
+        .init();
+
     let event_loop = EventLoop::new().expect("event loop");
     let mut app = App::default();
     event_loop.run_app(&mut app).expect("run app");
@@ -30,6 +38,7 @@ struct State {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_some() {
+            tracing::debug!("resumed: state already initialized, skipping");
             return;
         }
 
@@ -39,6 +48,7 @@ impl ApplicationHandler for App {
                 .expect("create window"),
         );
         let size = window.inner_size();
+        tracing::info!(?size, scale = window.scale_factor(), "window created");
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let surface = instance
@@ -83,7 +93,14 @@ impl ApplicationHandler for App {
 
         let renderer = Renderer::new(&device, format);
 
+        tracing::info!(
+            ?format,
+            w = config.width,
+            h = config.height,
+            "surface configured"
+        );
         window.request_redraw();
+        tracing::debug!("initial redraw requested");
         self.state = Some(State {
             window,
             surface,
@@ -103,12 +120,16 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(new) => {
+                tracing::info!(?new, "resized");
                 state.config.width = new.width.max(1);
                 state.config.height = new.height.max(1);
                 state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
-            WindowEvent::RedrawRequested => state.draw(),
+            WindowEvent::RedrawRequested => {
+                tracing::debug!("redraw requested");
+                state.draw();
+            }
             _ => {}
         }
     }
@@ -117,13 +138,29 @@ impl ApplicationHandler for App {
 impl State {
     fn draw(&mut self) {
         use wgpu::CurrentSurfaceTexture::*;
-        let frame = match self.surface.get_current_texture() {
+        let acquired = self.surface.get_current_texture();
+        tracing::debug!(?acquired, "acquired surface texture");
+        let frame = match acquired {
             Success(f) | Suboptimal(f) => f,
             Outdated | Lost => {
+                tracing::warn!("surface outdated/lost — reconfiguring and retrying");
                 self.surface.configure(&self.device, &self.config);
+                self.window.request_redraw();
                 return;
             }
-            Timeout | Occluded | Validation => return,
+            Timeout => {
+                tracing::warn!("surface timeout — retrying");
+                self.window.request_redraw();
+                return;
+            }
+            Occluded => {
+                tracing::debug!("occluded — skipping frame");
+                return;
+            }
+            Validation => {
+                tracing::error!("validation error on get_current_texture");
+                return;
+            }
         };
         let view = frame
             .texture
