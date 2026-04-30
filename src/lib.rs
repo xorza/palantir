@@ -5,9 +5,9 @@ pub mod ui;
 pub mod layout;
 pub mod widgets;
 
-pub use primitives::{Color, Corners, Rect, Size, Sizes, Sizing, Spacing, Stroke, Style};
+pub use primitives::{Color, Corners, Rect, Size, Sizes, Sizing, Spacing, Stroke, Style, WidgetId};
 pub use shape::{Shape, ShapeRect};
-pub use tree::{LayoutKind, Node, NodeId, Tree, WidgetId};
+pub use tree::{LayoutKind, Node, NodeId, Tree};
 pub use ui::Ui;
 pub use widgets::{Button, HStack, Response, Stack, VStack};
 

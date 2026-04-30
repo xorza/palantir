@@ -1,6 +1,6 @@
-use crate::primitives::Style;
+use crate::primitives::{Style, WidgetId};
 use crate::shape::Shape;
-use crate::tree::{LayoutKind, NodeId, Tree, WidgetId};
+use crate::tree::{LayoutKind, NodeId, Tree};
 
 /// Recorder. Holds a parent stack so begin/end nest correctly.
 pub struct Ui {

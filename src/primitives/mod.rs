@@ -6,6 +6,7 @@ mod sizing;
 mod spacing;
 mod stroke;
 mod style;
+mod widget_id;
 
 pub use color::Color;
 pub use corners::Corners;
@@ -15,3 +16,4 @@ pub use sizing::{Sizes, Sizing};
 pub use spacing::Spacing;
 pub use stroke::Stroke;
 pub use style::Style;
+pub use widget_id::WidgetId;

@@ -1,5 +1,5 @@
-use crate::primitives::{Sizes, Sizing, Spacing, Style};
-use crate::tree::{LayoutKind, WidgetId};
+use crate::primitives::{Sizes, Sizing, Spacing, Style, WidgetId};
+use crate::tree::LayoutKind;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use std::hash::Hash;
