@@ -26,40 +26,53 @@ pub enum LayoutMode {
 /// Per-node config: identity + spatial layout + interaction + paint flags.
 /// Every widget builder owns one and forwards it to `Ui::node`. `Element` (the
 /// trait below) gives chained setters for all fields by impl'ing one method.
+///
+/// Fields are grouped by who reads them: identity, own-size (every parent),
+/// mode-specific (only certain parents read these), interaction, and paint.
 #[derive(Clone, Copy, Debug)]
 pub struct UiElement {
+    // ---- Identity + layout-algorithm selector --------------------------------
     pub id: WidgetId,
     pub mode: LayoutMode,
+
+    // ---- Own size + alignment (read by every parent layout) ------------------
     pub size: Sizes,
     pub min_size: Size,
     pub max_size: Size,
     pub padding: Spacing,
     pub margin: Spacing,
-    /// Logical-px space between children of `HStack`/`VStack`. Ignored by
-    /// `Leaf` / `ZStack` / `Canvas`.
+
+    // ---- Mode-specific: only read when the parent or self has the right mode.
+    // Inert otherwise.
+    /// Logical-px space between children when *this* node is `HStack`/`VStack`
+    /// or `Grid`. Ignored by `Leaf` / `ZStack` / `Canvas`.
     pub gap: f32,
-    /// Main-axis distribution of leftover space in `HStack`/`VStack`. No
-    /// effect when any child is `Sizing::Fill` on the main axis (Fill consumes
-    /// the leftover first). Ignored by `Leaf` / `ZStack` / `Canvas`.
+    /// Main-axis distribution of leftover space in `HStack`/`VStack` (this
+    /// node's children). No effect when any child is `Sizing::Fill` on the
+    /// main axis. Ignored by `Leaf` / `ZStack` / `Canvas` / `Grid`.
     pub justify: Justify,
     /// Alignment of this node inside its parent's inner rect. Each axis is
     /// honored only by parent layout modes that own that axis as a cross or
     /// placement axis: HStack reads `align.v` (cross), VStack reads `align.h`
-    /// (cross), ZStack reads both, HStack/VStack ignore their main axis,
-    /// Canvas ignores both (absolute placement).
+    /// (cross), ZStack and Grid read both, HStack/VStack ignore their main
+    /// axis, Canvas ignores both (absolute placement).
     pub align: Align,
     /// Default `align` applied to children when the child's own axis is
     /// `Auto`. Mirrors CSS `align-items` (parent) + `align-self` (child).
-    /// Read by the same parents as `align`, on the same axes.
+    /// Read only by parents that honor `align` (HStack/VStack/ZStack/Grid).
     pub child_align: Align,
     /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
-    /// Defaults to `Vec2::ZERO`. Ignored by other layout kinds.
+    /// Defaults to `Vec2::ZERO`. Ignored when the parent isn't a `Canvas`.
     pub position: Vec2,
     /// Cell + span inside a `Grid` parent. Defaults to `(0, 0)` placement and
-    /// `(1, 1)` span. Ignored by other layout kinds.
+    /// `(1, 1)` span. Ignored when the parent isn't a `Grid`.
     pub grid: GridCell,
+
+    // ---- Interaction ---------------------------------------------------------
     pub sense: Sense,
     pub disabled: bool,
+
+    // ---- Paint + cascade -----------------------------------------------------
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
     /// layout but suppresses paint + input; `Collapsed` zeros the slot and
     /// skips the subtree everywhere. Cascades implicitly (paint and input
@@ -94,9 +107,9 @@ impl UiElement {
             max_size: Size::INF,
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
+            align: Align::default(),
             gap: 0.0,
             justify: Justify::default(),
-            align: Align::default(),
             child_align: Align::default(),
             position: Vec2::ZERO,
             grid: GridCell::default(),
