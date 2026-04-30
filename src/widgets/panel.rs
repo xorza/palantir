@@ -45,18 +45,15 @@ impl Panel {
     }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
-        let paints_bg = self.fill.a > 0.0 || self.stroke.is_some();
         let id = self.element.id;
 
         let node = ui.node(self.element, |ui| {
-            if paints_bg {
-                ui.add_shape(Shape::RoundedRect {
-                    bounds: ShapeRect::Full,
-                    radius: self.radius,
-                    fill: self.fill,
-                    stroke: self.stroke,
-                });
-            }
+            ui.add_shape(Shape::RoundedRect {
+                bounds: ShapeRect::Full,
+                radius: self.radius,
+                fill: self.fill,
+                stroke: self.stroke,
+            });
             body(ui);
         });
 

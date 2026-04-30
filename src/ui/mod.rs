@@ -129,6 +129,9 @@ impl Ui {
     }
 
     pub(crate) fn add_shape(&mut self, shape: Shape) {
+        if shape.is_noop() {
+            return;
+        }
         let node = *self
             .parents
             .last()
