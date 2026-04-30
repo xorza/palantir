@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use palantir::{Button, HStack, Rect, Sizing, Ui, layout, renderer::Renderer};
+use palantir::{Button, Color, HStack, Rect, Sizing, Ui, layout, renderer::Renderer};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 fn main() {
@@ -33,6 +33,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     renderer: Renderer,
     ui: Ui,
+    first_paint: bool,
 }
 
 impl ApplicationHandler for App {
@@ -65,7 +66,7 @@ impl ApplicationHandler for App {
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("palantir.device"),
             required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::downlevel_defaults(),
+            required_limits: wgpu::Limits::default(),
             experimental_features: wgpu::ExperimentalFeatures::default(),
             memory_hints: wgpu::MemoryHints::default(),
             trace: wgpu::Trace::Off,
@@ -101,6 +102,8 @@ impl ApplicationHandler for App {
         );
         window.request_redraw();
         tracing::debug!("initial redraw requested");
+        // Poll until the first paint succeeds; macOS may report Occluded with no follow-up event.
+        event_loop.set_control_flow(ControlFlow::Poll);
         self.state = Some(State {
             window,
             surface,
@@ -109,7 +112,18 @@ impl ApplicationHandler for App {
             config,
             renderer,
             ui: Ui::new(),
+            first_paint: false,
         });
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(state) = self.state.as_ref()
+            && !state.first_paint
+        {
+            state.window.request_redraw();
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -120,9 +134,10 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(new) => {
-                tracing::info!(?new, "resized");
-                state.config.width = new.width.max(1);
-                state.config.height = new.height.max(1);
+                let max = state.device.limits().max_texture_dimension_2d;
+                tracing::info!(?new, max, "resized");
+                state.config.width = new.width.clamp(1, max);
+                state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
@@ -179,16 +194,15 @@ impl State {
             &self.queue,
             &view,
             [w, h],
-            wgpu::Color {
-                r: 0.08,
-                g: 0.08,
-                b: 0.10,
-                a: 1.0,
-            },
+            Color::rgb(0.08, 0.08, 0.10),
             &self.ui.tree,
         );
 
         frame.present();
+        if !self.first_paint {
+            tracing::info!("first paint succeeded");
+            self.first_paint = true;
+        }
     }
 }
 
@@ -202,7 +216,7 @@ fn build_ui(ui: &mut Ui) {
             .show(ui);
         Button::new()
             .label("World")
-            .size((Sizing::Fill, Sizing::Hug))
+            .size((Sizing::Fixed(0.3), Sizing::Hug))
             .min_size((0.0, 80.0))
             .margin((4.0, 24.0, 32.0, 0.0))
             .show(ui);

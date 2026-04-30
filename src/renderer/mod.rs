@@ -1,6 +1,6 @@
 mod quad;
 
-use crate::primitives::Rect;
+use crate::primitives::{Color, Rect};
 use crate::shape::{Shape, ShapeRect};
 use crate::tree::Tree;
 use glam::Vec2;
@@ -25,7 +25,7 @@ impl Renderer {
         queue: &wgpu::Queue,
         view: &wgpu::TextureView,
         viewport: [f32; 2],
-        clear: wgpu::Color,
+        clear: Color,
         tree: &Tree,
     ) {
         self.quads.clear();
@@ -48,7 +48,12 @@ impl Renderer {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: clear.r as f64,
+                            g: clear.g as f64,
+                            b: clear.b as f64,
+                            a: clear.a as f64,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
