@@ -2,9 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use palantir::Align;
-use palantir::renderer::{
-    ComposeParams, RenderBuffer, RenderCmd, RenderFrame, WgpuBackend, compose, encode,
-};
+use palantir::renderer::{ComposeParams, Composer, WgpuBackend};
 use palantir::{
     Button, ButtonStyle, Color, Corners, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui,
     VStack, Visuals, ZStack, layout,
@@ -69,11 +67,9 @@ struct State {
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
-    queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     backend: WgpuBackend,
-    cmds: Vec<RenderCmd>,
-    buffer: RenderBuffer,
+    composer: Composer,
     ui: Ui,
     first_paint: bool,
     click_count: u32,
@@ -134,7 +130,7 @@ impl ApplicationHandler for App {
         };
         surface.configure(&device, &config);
 
-        let backend = WgpuBackend::new(&device, format);
+        let backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         tracing::info!(
             ?format,
@@ -152,11 +148,9 @@ impl ApplicationHandler for App {
             window,
             surface,
             device,
-            queue,
             config,
             backend,
-            cmds: Vec::new(),
-            buffer: RenderBuffer::new(),
+            composer: Composer::new(),
             ui,
             first_paint: false,
             click_count: 0,
@@ -254,25 +248,16 @@ impl State {
         );
         self.ui.end_frame();
 
-        encode(&self.ui.tree, &mut self.cmds);
-        compose(
-            &self.cmds,
+        let buffer = self.composer.build(
+            &self.ui.tree,
             &ComposeParams {
                 viewport_logical: [w_logical, h_logical],
                 scale,
                 pixel_snap: self.ui.pixel_snap(),
             },
-            &mut self.buffer,
         );
-        self.backend.submit(
-            RenderFrame {
-                device: &self.device,
-                queue: &self.queue,
-                view: &view,
-                clear: Color::rgb(0.08, 0.08, 0.10),
-            },
-            &self.buffer,
-        );
+        self.backend
+            .submit(&view, Color::rgb(0.08, 0.08, 0.10), buffer);
 
         frame.present();
         if !self.first_paint {
