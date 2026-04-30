@@ -6,9 +6,8 @@ use crate::widgets::Response;
 use std::hash::Hash;
 
 /// A simple decorated rectangle: configurable fill / stroke / radius / size /
-/// margin + an optional `Sense`. Useful as a divider, clickable region,
-/// background swatch, or building block for ZStack-style overlays once that
-/// container lands.
+/// margin + an optional `Sense`. Used directly for dividers / hit-areas / bg
+/// swatches, and as the rendering primitive inside `Button`.
 pub struct Frame {
     id: WidgetId,
     size: Sizes,
@@ -26,12 +25,19 @@ impl Frame {
     #[track_caller]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self::with_id(WidgetId::auto_stable())
+        Self::for_widget_id(WidgetId::auto_stable())
     }
 
     pub fn with_id(id: impl Hash) -> Self {
+        Self::for_widget_id(WidgetId::from_hash(id))
+    }
+
+    /// Construct a Frame for an existing `WidgetId` (e.g. a parent widget's id
+    /// that wants to reuse Frame's rect-painting machinery without minting a
+    /// new id). Used internally by `Button`.
+    pub fn for_widget_id(id: WidgetId) -> Self {
         Self {
-            id: WidgetId::from_hash(id),
+            id,
             size: Sizes::HUG,
             min_size: Size::ZERO,
             max_size: Size::INF,
@@ -68,8 +74,9 @@ impl Frame {
         self.fill = c;
         self
     }
-    pub fn stroke(mut self, s: Stroke) -> Self {
-        self.stroke = Some(s);
+    /// Accepts `Stroke`, `Option<Stroke>`, or `None`.
+    pub fn stroke(mut self, s: impl Into<Option<Stroke>>) -> Self {
+        self.stroke = s.into();
         self
     }
     pub fn radius(mut self, r: impl Into<Corners>) -> Self {
