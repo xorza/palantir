@@ -1,7 +1,7 @@
 mod button;
 mod stack;
 
-pub use button::Button;
+pub use button::{Button, ButtonStyle};
 pub use stack::{HStack, Stack, VStack};
 
 use crate::input::ResponseState;

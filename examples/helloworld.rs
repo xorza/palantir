@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use palantir::{Button, Color, HStack, Rect, Sizing, Ui, layout, renderer::Renderer};
+use palantir::{Button, ButtonStyle, Color, HStack, Rect, Sizing, Ui, layout, renderer::Renderer};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -212,7 +212,7 @@ impl State {
 fn build_ui(ui: &mut Ui, clicks: &mut u32) {
     HStack::new().padding(16.0).show(ui, |ui| {
         let counter = Button::new()
-            .label(format!("clicks: {}", clicks))
+            .label(format!("clicks: {clicks}"))
             .size((Sizing::Fill, Sizing::Hug))
             .min_size((120.0, 60.0))
             .margin((0.0, 0.0, 8.0, 0.0))
@@ -222,18 +222,15 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
             tracing::info!(clicks = *clicks, "click");
         }
 
-        let tinted = Button::new()
-            .label(if counter.hovered() { "hovered" } else { "idle" })
-            .size((300, Sizing::Hug))
+        let reset = Button::new()
+            .label("reset")
+            .style(ButtonStyle::outlined())
+            .size((Sizing::Fill, Sizing::Hug))
             .min_size((0.0, 80.0))
             .margin((4.0, 24.0, 32.0, 0.0))
-            .fill(if counter.hovered() {
-                Color::rgb(0.4, 0.6, 0.9)
-            } else {
-                Color::rgb(0.2, 0.4, 0.8)
-            })
+            .radius(12.0)
             .show(ui);
-        if tinted.clicked() {
+        if reset.clicked() {
             *clicks = 0;
             tracing::info!("reset");
         }

@@ -1,4 +1,4 @@
-use crate::primitives::{Color, Corners, Rect};
+use crate::primitives::{Color, Corners, Rect, Stroke};
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
@@ -7,17 +7,27 @@ use wgpu::util::DeviceExt;
 pub struct Quad {
     pub pos: [f32; 2],
     pub size: [f32; 2],
-    pub color: [f32; 4],
+    pub fill: [f32; 4],
     pub radius: [f32; 4],
+    pub stroke_color: [f32; 4],
+    pub stroke_width: f32,
+    pub _pad: [f32; 3],
 }
 
 impl Quad {
-    pub fn from_rect(rect: Rect, color: Color, radius: Corners) -> Self {
+    pub fn new(rect: Rect, fill: Color, radius: Corners, stroke: Option<Stroke>) -> Self {
+        let (sc, sw) = match stroke {
+            Some(s) => ([s.color.r, s.color.g, s.color.b, s.color.a], s.width),
+            None => ([0.0; 4], 0.0),
+        };
         Self {
             pos: [rect.min.x, rect.min.y],
             size: [rect.size.w, rect.size.h],
-            color: [color.r, color.g, color.b, color.a],
+            fill: [fill.r, fill.g, fill.b, fill.a],
             radius: [radius.tl, radius.tr, radius.br, radius.bl],
+            stroke_color: sc,
+            stroke_width: sw,
+            _pad: [0.0; 3],
         }
     }
 }
@@ -86,10 +96,12 @@ impl QuadPipeline {
             array_stride: std::mem::size_of::<Quad>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &wgpu::vertex_attr_array![
-                0 => Float32x2,
-                1 => Float32x2,
-                2 => Float32x4,
-                3 => Float32x4,
+                0 => Float32x2,   // pos
+                1 => Float32x2,   // size
+                2 => Float32x4,   // fill
+                3 => Float32x4,   // radius
+                4 => Float32x4,   // stroke_color
+                5 => Float32,     // stroke_width
             ],
         };
 

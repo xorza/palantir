@@ -1,5 +1,4 @@
-use crate::primitives::{Color, Corners, Size, Sizes, Spacing, Style, WidgetId};
-
+use crate::primitives::{Color, Corners, Size, Sizes, Spacing, Stroke, Style, Visuals, WidgetId};
 use crate::shape::{Shape, ShapeRect};
 use crate::tree::LayoutKind;
 use crate::ui::Ui;
@@ -7,13 +6,68 @@ use crate::widgets::Response;
 use glam::Vec2;
 use std::hash::Hash;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ButtonStyle {
+    pub normal: Visuals,
+    pub hovered: Visuals,
+    pub pressed: Visuals,
+}
+
+impl ButtonStyle {
+    pub const fn uniform(v: Visuals) -> Self {
+        Self {
+            normal: v,
+            hovered: v,
+            pressed: v,
+        }
+    }
+
+    pub fn primary() -> Self {
+        Self {
+            normal: Visuals::solid(Color::rgb(0.20, 0.40, 0.80), Color::WHITE),
+            hovered: Visuals::solid(Color::rgb(0.30, 0.52, 0.92), Color::WHITE),
+            pressed: Visuals::solid(Color::rgb(0.10, 0.28, 0.66), Color::WHITE),
+        }
+    }
+
+    pub fn outlined() -> Self {
+        let stroke = Some(Stroke {
+            width: 1.5,
+            color: Color::rgb(0.4, 0.5, 0.7),
+        });
+        Self {
+            normal: Visuals {
+                fill: Color::TRANSPARENT,
+                stroke,
+                text: Color::rgb(0.85, 0.88, 0.95),
+            },
+            hovered: Visuals {
+                fill: Color::rgba(0.4, 0.5, 0.7, 0.15),
+                stroke,
+                text: Color::WHITE,
+            },
+            pressed: Visuals {
+                fill: Color::rgba(0.4, 0.5, 0.7, 0.30),
+                stroke,
+                text: Color::WHITE,
+            },
+        }
+    }
+}
+
+impl Default for ButtonStyle {
+    fn default() -> Self {
+        Self::primary()
+    }
+}
+
 pub struct Button {
     id: WidgetId,
     size: Sizes,
     min_size: Size,
     max_size: Size,
     margin: Spacing,
-    fill: Color,
+    style: ButtonStyle,
     radius: Corners,
     label: String,
 }
@@ -32,7 +86,7 @@ impl Button {
             min_size: Size::ZERO,
             max_size: Size::INF,
             margin: Spacing::ZERO,
-            fill: Color::rgb(0.2, 0.4, 0.8),
+            style: ButtonStyle::default(),
             radius: Corners::all(4.0),
             label: String::new(),
         }
@@ -54,8 +108,8 @@ impl Button {
         self.margin = m.into();
         self
     }
-    pub fn fill(mut self, c: Color) -> Self {
-        self.fill = c;
+    pub fn style(mut self, s: ButtonStyle) -> Self {
+        self.style = s;
         self
     }
     pub fn radius(mut self, r: impl Into<Corners>) -> Self {
@@ -68,6 +122,15 @@ impl Button {
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
+        let state = ui.response_for(self.id);
+        let v = if state.pressed {
+            &self.style.pressed
+        } else if state.hovered {
+            &self.style.hovered
+        } else {
+            &self.style.normal
+        };
+
         let style = Style {
             size: self.size,
             min_size: self.min_size,
@@ -80,8 +143,8 @@ impl Button {
             ui.add_shape(Shape::RoundedRect {
                 bounds: ShapeRect::Full,
                 radius: self.radius,
-                fill: self.fill,
-                stroke: None,
+                fill: v.fill,
+                stroke: v.stroke,
             });
 
             if !self.label.is_empty() {
@@ -89,13 +152,12 @@ impl Button {
                 ui.add_shape(Shape::Text {
                     offset: Vec2::ZERO,
                     text: self.label.clone(),
-                    color: Color::WHITE,
+                    color: v.text,
                     measured,
                 });
             }
         });
 
-        let state = ui.response_for(self.id);
         Response { node, state }
     }
 }
