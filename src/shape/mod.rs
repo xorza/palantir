@@ -1,4 +1,4 @@
-use crate::primitives::{Color, Corners, Rect, Stroke};
+use crate::primitives::{ApproxF32, Color, Corners, Rect, Stroke};
 use glam::Vec2;
 
 /// Where a shape sits inside its owner Node.
@@ -33,4 +33,24 @@ pub enum Shape {
         color: Color,
         measured: crate::primitives::Size,
     },
+}
+
+impl Shape {
+    /// True if this shape paints nothing visible (transparent fill + no stroke,
+    /// zero-width line, empty text, etc.). `Ui::add_shape` filters these out so
+    /// widgets can push speculatively without guarding.
+    pub fn is_noop(&self) -> bool {
+        match self {
+            Shape::RoundedRect { fill, stroke, .. } => {
+                let no_fill = fill.a.approx_zero();
+                let no_stroke = match stroke {
+                    None => true,
+                    Some(s) => s.width.approx_zero() || s.color.a.approx_zero(),
+                };
+                no_fill && no_stroke
+            }
+            Shape::Line { width, color, .. } => width.approx_zero() || color.a.approx_zero(),
+            Shape::Text { text, color, .. } => text.is_empty() || color.a.approx_zero(),
+        }
+    }
 }

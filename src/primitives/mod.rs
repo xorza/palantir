@@ -1,4 +1,5 @@
 mod align;
+mod approx;
 mod color;
 mod corners;
 mod layout;
@@ -13,6 +14,7 @@ mod visuals;
 mod widget_id;
 
 pub use align::Align;
+pub use approx::ApproxF32;
 pub use color::Color;
 pub use corners::Corners;
 pub use layout::Layout;
