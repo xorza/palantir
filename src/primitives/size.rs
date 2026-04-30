@@ -28,3 +28,15 @@ impl Size {
         }
     }
 }
+
+impl From<f32> for Size {
+    fn from(v: f32) -> Self {
+        Self { w: v, h: v }
+    }
+}
+
+impl From<(f32, f32)> for Size {
+    fn from((w, h): (f32, f32)) -> Self {
+        Self { w, h }
+    }
+}

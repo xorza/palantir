@@ -1,4 +1,4 @@
-use crate::primitives::{Sizes, Spacing, Style, WidgetId};
+use crate::primitives::{Size, Sizes, Spacing, Style, WidgetId};
 use crate::tree::LayoutKind;
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -8,6 +8,8 @@ pub struct Stack {
     id: WidgetId,
     kind: LayoutKind,
     size: Sizes,
+    min_size: Size,
+    max_size: Size,
     padding: Spacing,
     margin: Spacing,
 }
@@ -18,6 +20,8 @@ impl Stack {
             id,
             kind,
             size: Sizes::HUG,
+            min_size: Size::ZERO,
+            max_size: Size::INF,
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
         }
@@ -25,6 +29,14 @@ impl Stack {
 
     pub fn size(mut self, s: impl Into<Sizes>) -> Self {
         self.size = s.into();
+        self
+    }
+    pub fn min_size(mut self, s: impl Into<Size>) -> Self {
+        self.min_size = s.into();
+        self
+    }
+    pub fn max_size(mut self, s: impl Into<Size>) -> Self {
+        self.max_size = s.into();
         self
     }
     pub fn padding(mut self, p: impl Into<Spacing>) -> Self {
@@ -39,6 +51,8 @@ impl Stack {
     pub fn show(&self, ui: &mut Ui, f: impl FnOnce(&mut Ui)) -> Response {
         let style = Style {
             size: self.size,
+            min_size: self.min_size,
+            max_size: self.max_size,
             padding: self.padding,
             margin: self.margin,
         };

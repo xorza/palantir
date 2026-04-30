@@ -29,8 +29,22 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
     let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
     let hug_h = content.h + style.padding.vert() + style.margin.vert();
     let desired = Size::new(
-        resolve_axis(style.size.w, hug_w, available.w, style.margin.horiz()),
-        resolve_axis(style.size.h, hug_h, available.h, style.margin.vert()),
+        resolve_axis(
+            style.size.w,
+            hug_w,
+            available.w,
+            style.margin.horiz(),
+            style.min_size.w,
+            style.max_size.w,
+        ),
+        resolve_axis(
+            style.size.h,
+            hug_h,
+            available.h,
+            style.margin.vert(),
+            style.min_size.h,
+            style.max_size.h,
+        ),
     );
 
     tree.node_mut(node).desired = desired;
@@ -66,8 +80,8 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
     }
 }
 
-fn resolve_axis(s: Sizing, hug_outer: f32, available: f32, margin: f32) -> f32 {
-    match s {
+fn resolve_axis(s: Sizing, hug_outer: f32, available: f32, margin: f32, min: f32, max: f32) -> f32 {
+    let slot = match s {
         Sizing::Fixed(v) => v + margin,
         Sizing::Hug => hug_outer,
         Sizing::Fill => {
@@ -77,7 +91,9 @@ fn resolve_axis(s: Sizing, hug_outer: f32, available: f32, margin: f32) -> f32 {
                 hug_outer
             }
         }
-    }
+    };
+    let rendered = (slot - margin).max(0.0).clamp(min, max);
+    rendered + margin
 }
 
 fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
