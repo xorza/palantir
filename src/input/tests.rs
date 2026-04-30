@@ -1,5 +1,5 @@
 use crate::input::{InputEvent, PointerButton};
-use crate::primitives::{Rect, Sizing};
+use crate::primitives::{Rect, Sense, Sizing};
 use crate::widgets::{Button, HStack};
 use crate::{Ui, layout};
 use glam::Vec2;
@@ -56,6 +56,84 @@ fn input_state_press_release_emits_click() {
             .clicked();
     });
     assert!(!still_clicking, "click is one-shot");
+}
+
+#[test]
+fn stack_with_sense_none_passes_clicks_through() {
+    // HStack default Sense::NONE — clicking on its background (between children)
+    // doesn't fire `clicked` on the stack. Clicking on a child still fires on the child.
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let stack_node = HStack::new()
+        .padding(20.0) // creates "background" area to click
+        .show(&mut ui, |ui| {
+            Button::with_id("inside")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, stack_node, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.end_frame();
+
+    // Press inside the HStack's padding (not over any child).
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(5.0, 5.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    ui.begin_frame();
+    let mut child_clicked = false;
+    let stack_resp = HStack::new().padding(20.0).show(&mut ui, |ui| {
+        child_clicked = Button::with_id("inside")
+            .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+            .show(ui)
+            .clicked();
+    });
+    assert!(
+        !stack_resp.clicked(),
+        "non-sensing stack does not capture clicks"
+    );
+    assert!(
+        !child_clicked,
+        "click on stack background doesn't reach child"
+    );
+}
+
+#[test]
+fn stack_with_sense_click_captures_clicks() {
+    // Opt-in: HStack::sense(Sense::CLICK) makes the container clickable.
+    // Use `with_id` so the stack has the same WidgetId on both frames; otherwise
+    // `auto_stable` would give different ids (different call sites in the test).
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let stack_node = HStack::with_id("clickable_card")
+        .padding(20.0)
+        .sense(Sense::CLICK)
+        .show(&mut ui, |ui| {
+            Button::with_id("inside")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, stack_node, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.end_frame();
+
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(5.0, 5.0))); // padding area
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    ui.begin_frame();
+    let stack_resp = HStack::with_id("clickable_card")
+        .padding(20.0)
+        .sense(Sense::CLICK)
+        .show(&mut ui, |ui| {
+            Button::with_id("inside")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    assert!(
+        stack_resp.clicked(),
+        "stack with Sense::CLICK fires on background click"
+    );
 }
 
 #[test]
