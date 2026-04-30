@@ -88,6 +88,18 @@ If the directory is missing or stale, run the script before doing research:
 - Don't add wgpu code paths to the layout/tree modules. Renderer goes in its own module when written.
 - `WidgetId` is built from a hash of a user-supplied key. Keep IDs stable across frames so persistent state survives.
 
+## Before reporting work as done
+
+Always run, in this order, before confirming any code change:
+
+```sh
+cargo fmt --all
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
+
+Fix anything that fails. Don't tell the user a change is complete unless these all pass.
+
 ## Status
 
 - [x] Geometry, tree, shape, recorder, measure/arrange, Button, HStack/VStack

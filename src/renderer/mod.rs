@@ -62,7 +62,13 @@ fn collect_quads(tree: &Tree, out: &mut Vec<Quad>) {
     for (i, node) in tree.nodes.iter().enumerate() {
         let owner = node.rect;
         for shape in &tree.shapes[node.shapes_start as usize..node.shapes_end as usize] {
-            if let Shape::RoundedRect { bounds, radius, fill, .. } = shape {
+            if let Shape::RoundedRect {
+                bounds,
+                radius,
+                fill,
+                ..
+            } = shape
+            {
                 let rect = match bounds {
                     ShapeRect::Full => owner,
                     ShapeRect::Offset(r) => Rect {

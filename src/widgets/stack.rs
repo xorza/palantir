@@ -23,9 +23,18 @@ impl Stack {
         }
     }
 
-    pub fn size(mut self, s: impl Into<Sizes>) -> Self { self.size = s.into(); self }
-    pub fn padding(mut self, p: impl Into<Spacing>) -> Self { self.padding = p.into(); self }
-    pub fn margin(mut self, m: impl Into<Spacing>) -> Self { self.margin = m.into(); self }
+    pub fn size(mut self, s: impl Into<Sizes>) -> Self {
+        self.size = s.into();
+        self
+    }
+    pub fn padding(mut self, p: impl Into<Spacing>) -> Self {
+        self.padding = p.into();
+        self
+    }
+    pub fn margin(mut self, m: impl Into<Spacing>) -> Self {
+        self.margin = m.into();
+        self
+    }
 
     pub fn show(&self, ui: &mut Ui, f: impl FnOnce(&mut Ui)) -> Response {
         let style = Style {
@@ -41,17 +50,23 @@ impl Stack {
 pub struct HStack;
 pub struct VStack;
 
+#[allow(clippy::new_ret_no_self)]
 impl HStack {
     #[track_caller]
-    pub fn new() -> Stack { Stack::from_id(WidgetId::auto_stable(), LayoutKind::HStack) }
+    pub fn new() -> Stack {
+        Stack::from_id(WidgetId::auto_stable(), LayoutKind::HStack)
+    }
     pub fn with_id(id: impl Hash) -> Stack {
         Stack::from_id(WidgetId::from_hash(id), LayoutKind::HStack)
     }
 }
 
+#[allow(clippy::new_ret_no_self)]
 impl VStack {
     #[track_caller]
-    pub fn new() -> Stack { Stack::from_id(WidgetId::auto_stable(), LayoutKind::VStack) }
+    pub fn new() -> Stack {
+        Stack::from_id(WidgetId::auto_stable(), LayoutKind::VStack)
+    }
     pub fn with_id(id: impl Hash) -> Stack {
         Stack::from_id(WidgetId::from_hash(id), LayoutKind::VStack)
     }

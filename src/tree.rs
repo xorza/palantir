@@ -14,42 +14,50 @@ pub enum LayoutKind {
 #[derive(Debug)]
 pub struct Node {
     pub id: WidgetId,
-    pub parent:       Option<NodeId>,
-    pub first_child:  Option<NodeId>,
-    pub last_child:   Option<NodeId>,
+    pub parent: Option<NodeId>,
+    pub first_child: Option<NodeId>,
+    pub last_child: Option<NodeId>,
     pub next_sibling: Option<NodeId>,
 
-    pub style:  Style,
+    pub style: Style,
     pub layout: LayoutKind,
 
     /// Range into Tree.shapes
     pub shapes_start: u32,
-    pub shapes_end:   u32,
+    pub shapes_end: u32,
 
     pub desired: Size,
-    pub rect:    Rect,
+    pub rect: Rect,
 }
 
 impl Node {
     fn new(id: WidgetId, style: Style, layout: LayoutKind, parent: Option<NodeId>) -> Self {
         Self {
-            id, parent,
-            first_child: None, last_child: None, next_sibling: None,
-            style, layout,
-            shapes_start: 0, shapes_end: 0,
-            desired: Size::ZERO, rect: Rect::ZERO,
+            id,
+            parent,
+            first_child: None,
+            last_child: None,
+            next_sibling: None,
+            style,
+            layout,
+            shapes_start: 0,
+            shapes_end: 0,
+            desired: Size::ZERO,
+            rect: Rect::ZERO,
         }
     }
 }
 
 #[derive(Default)]
 pub struct Tree {
-    pub nodes:  Vec<Node>,
+    pub nodes: Vec<Node>,
     pub shapes: Vec<Shape>,
 }
 
 impl Tree {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn clear(&mut self) {
         self.nodes.clear();
@@ -66,7 +74,7 @@ impl Tree {
         let new_id = NodeId(self.nodes.len() as u32);
         let mut node = Node::new(id, style, layout, parent);
         node.shapes_start = self.shapes.len() as u32;
-        node.shapes_end   = self.shapes.len() as u32;
+        node.shapes_end = self.shapes.len() as u32;
         self.nodes.push(node);
 
         if let Some(p) = parent {
@@ -88,24 +96,32 @@ impl Tree {
     pub fn add_shape(&mut self, node: NodeId, shape: Shape) {
         let idx = node.0 as usize;
         debug_assert_eq!(
-            self.nodes[idx].shapes_end, self.shapes.len() as u32,
+            self.nodes[idx].shapes_end,
+            self.shapes.len() as u32,
             "shapes for node {idx} must be added contiguously, before any child node",
         );
         self.shapes.push(shape);
         self.nodes[idx].shapes_end = self.shapes.len() as u32;
     }
 
-    pub fn node(&self, id: NodeId) -> &Node { &self.nodes[id.0 as usize] }
-    pub fn node_mut(&mut self, id: NodeId) -> &mut Node { &mut self.nodes[id.0 as usize] }
+    pub fn node(&self, id: NodeId) -> &Node {
+        &self.nodes[id.0 as usize]
+    }
+    pub fn node_mut(&mut self, id: NodeId) -> &mut Node {
+        &mut self.nodes[id.0 as usize]
+    }
 
     pub fn shapes_of(&self, id: NodeId) -> &[Shape] {
         let n = self.node(id);
-        &self.shapes[n.shapes_start as usize .. n.shapes_end as usize]
+        &self.shapes[n.shapes_start as usize..n.shapes_end as usize]
     }
 
     /// Iterate child NodeIds of `parent` in declaration order.
     pub fn children(&self, parent: NodeId) -> ChildIter<'_> {
-        ChildIter { tree: self, next: self.nodes[parent.0 as usize].first_child }
+        ChildIter {
+            tree: self,
+            next: self.nodes[parent.0 as usize].first_child,
+        }
     }
 }
 

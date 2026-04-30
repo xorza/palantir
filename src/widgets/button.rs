@@ -33,11 +33,26 @@ impl Button {
         }
     }
 
-    pub fn size(mut self, s: impl Into<Sizes>) -> Self { self.size = s.into(); self }
-    pub fn margin(mut self, m: impl Into<Spacing>) -> Self { self.margin = m.into(); self }
-    pub fn fill(mut self, c: Color) -> Self { self.fill = c; self }
-    pub fn radius(mut self, r: impl Into<Corners>) -> Self { self.radius = r.into(); self }
-    pub fn label(mut self, s: impl Into<String>) -> Self { self.label = s.into(); self }
+    pub fn size(mut self, s: impl Into<Sizes>) -> Self {
+        self.size = s.into();
+        self
+    }
+    pub fn margin(mut self, m: impl Into<Spacing>) -> Self {
+        self.margin = m.into();
+        self
+    }
+    pub fn fill(mut self, c: Color) -> Self {
+        self.fill = c;
+        self
+    }
+    pub fn radius(mut self, r: impl Into<Corners>) -> Self {
+        self.radius = r.into();
+        self
+    }
+    pub fn label(mut self, s: impl Into<String>) -> Self {
+        self.label = s.into();
+        self
+    }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let style = Style {

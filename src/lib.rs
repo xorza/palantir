@@ -1,9 +1,9 @@
+pub mod layout;
 pub mod primitives;
+pub mod renderer;
 pub mod shape;
 pub mod tree;
 pub mod ui;
-pub mod layout;
-pub mod renderer;
 pub mod widgets;
 
 pub use primitives::{Color, Corners, Rect, Size, Sizes, Sizing, Spacing, Stroke, Style, WidgetId};
@@ -21,10 +21,15 @@ mod tests {
         let mut ui = Ui::new();
         ui.begin_frame();
 
-        let root = HStack::new().show(&mut ui, |ui| {
-            Button::new().label("Hi").show(ui);
-            Button::new().label("World").size((100.0, Sizing::Hug)).show(ui);
-        }).node;
+        let root = HStack::new()
+            .show(&mut ui, |ui| {
+                Button::new().label("Hi").show(ui);
+                Button::new()
+                    .label("World")
+                    .size((100.0, Sizing::Hug))
+                    .show(ui);
+            })
+            .node;
 
         let surface = Rect::new(0.0, 0.0, 800.0, 600.0);
         layout::run(&mut ui.tree, root, surface);
@@ -51,16 +56,18 @@ mod tests {
         let mut ui = Ui::new();
         ui.begin_frame();
 
-        let root = VStack::new().show(&mut ui, |ui| {
-            Button::new().size((Sizing::Hug, 50.0)).show(ui);
-            Button::new().size((Sizing::Hug, Sizing::Fill)).show(ui);
-        }).node;
+        let root = VStack::new()
+            .show(&mut ui, |ui| {
+                Button::new().size((Sizing::Hug, 50.0)).show(ui);
+                Button::new().size((Sizing::Hug, Sizing::Fill)).show(ui);
+            })
+            .node;
 
         let surface = Rect::new(0.0, 0.0, 200.0, 300.0);
         layout::run(&mut ui.tree, root, surface);
 
         let kids: Vec<_> = ui.tree.children(root).collect();
-        let fixed  = ui.tree.node(kids[0]).rect;
+        let fixed = ui.tree.node(kids[0]).rect;
         let filler = ui.tree.node(kids[1]).rect;
 
         assert_eq!(fixed.size.h, 50.0);

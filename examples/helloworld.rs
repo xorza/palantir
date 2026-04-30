@@ -156,7 +156,10 @@ impl State {
 
 fn build_ui(ui: &mut Ui) {
     HStack::new().padding(16.0).show(ui, |ui| {
-        Button::new().label("Hello").margin((0.0, 0.0, 8.0, 0.0)).show(ui);
+        Button::new()
+            .label("Hello")
+            .margin((0.0, 0.0, 8.0, 0.0))
+            .show(ui);
         Button::new()
             .label("World")
             .size((Sizing::Fill, Sizing::Hug))
