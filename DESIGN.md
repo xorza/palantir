@@ -46,31 +46,44 @@ For flex/grid/block, integrate **Taffy** as the layout engine. Custom widgets im
 ### 4. State outside the tree
 Per-widget state (scroll offset, text cursor, animation) lives in a `HashMap<Id, Box<dyn Any>>` keyed by stable ID. The tree is throwaway; state persists.
 
-### 5. Input lags one frame, render does not
+### 5. Input handled eagerly against last-frame rects
 
-Hit-testing uses arranged rects from the **most recently rendered** frame — i.e., the frame the user was looking at when they clicked. Layout and rendering are always current. One-frame input lag is imperceptible.
+Hit-testing happens **as events arrive**, against the rects from the most recently rendered frame — i.e., the frame the user was looking at when they clicked. Visuals respond with zero lag (a press updates `pressed` immediately, the next redraw paints it). Click identity is preserved across widget movement via ID-based capture.
 
-**Frame protocol** (refines egui's "hit-test against prev rects"):
+**Frame protocol**:
 
 ```
-begin_frame                           // swap response tables
-build_ui(&mut ui)                     // widgets read prev_responses[id] → Response
-layout::run(...)                      // pure layout; produces this-frame rects
-process_input(events_since_last_frame, &this_frame_rects)
-                                      // → next_responses[id] for next frame
-end_frame                             // rebuild rect index, swap response tables
+handle_event(WindowEvent)             // eagerly updates pointer pos + active widget;
+                                       // hit-tests against last_rects.
+                                      // press → active = hit, release with same hit → click.
+begin_frame
+build_ui(&mut ui)                     // widgets read response_for(id), which derives
+                                       // hovered/pressed/clicked from live state +
+                                       // last_rects.
+layout::run(...)                      // produces this-frame rects.
+end_frame                             // rebuild last_rects from this-frame tree;
+                                       // clear clicked_this_frame.
 render(...)
 ```
 
-Why post-layout processing (not egui's during-recording approach): a click at time *T* targets whatever was visible at *T* — i.e., the just-rendered frame's rects, not the previous frame's. Processing events after `layout::run` uses those exact rects. The Response surfaced to the user lags by one frame in *delivery* but is correct in *attribution*.
-
 **ID-based active capture** for press/release across frames:
-- On press: hit-test current rects → set `Active = WidgetId`.
-- While Active is set, all pointer events route to that widget regardless of where its rect is now.
-- On release: emit `clicked` only if the release point is over the same widget (by ID, not by rect). Clear Active.
-- If Active's WidgetId disappears from the tree (conditional rendering), clear it silently.
+- On press: hit-test `last_rects` → set `Active = WidgetId`.
+- While Active is set, `pressed = (active == self.id)` — visuals pin to the captured widget regardless of where its rect is now.
+- On release: hit-test again. If `hit == Active`, emit `clicked`. Clear Active.
+- If Active's WidgetId disappears from the tree (conditional rendering), clear it silently in `end_frame`.
 
-This makes drag-and-move-button cases correct: identity tracks across rect changes; orphaned active widgets fail open, not closed.
+This handles every case correctly:
+- Static UI: instant press feedback, click on release.
+- Widget moved between press and release: still `pressed` while held (id match overrides rect). Click cancels if release point isn't over the same widget — matches user intent ("I clicked the button that *was* there, but it moved away, so cancel").
+- Drag (future): `Active` is the captured widget; pointer position tracking gives `drag_delta` regardless of rect.
+
+**Trade-off accepted:** hit-test for press/release uses last-frame's rects. If a widget appeared *just this frame* at the click position, it can't be clicked until next frame. Acceptable; matches every IM library in the corpus (egui §6, imgui §6, iced §8).
+
+**Don't bubble events.** Topmost widget at the point handles, then it's done. Routed events (WPF tunnel/bubble) encourage accidental coupling; egui omitted them and never regretted it.
+
+**Layers, not pure z-index.** `LayerId = (Order, AreaIndex)` where `Order ∈ {Background, Main, Foreground, Tooltip, Popup, Debug}`. Hit-test walks layers top-down. Tooltips and dragged-thing-attached-to-cursor each get their own layer.
+
+**Hit shape per node**, defaults to bounding rect. `HitShape::{Rect, RoundedRect, Path, None}` — needed for proper rounded-corner rejection and click-through overlays. Can be added incrementally; v1 ships rect-only.
 
 **Don't bubble events.** Topmost widget at the point handles, then it's done. Routed events (WPF tunnel/bubble) encourage accidental coupling; egui omitted them and never regretted it.
 
