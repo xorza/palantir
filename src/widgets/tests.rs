@@ -1,6 +1,7 @@
+use crate::element::Element;
 use crate::primitives::{Color, Rect, Sense, Sizing};
 use crate::shape::Shape;
-use crate::widgets::{Button, Canvas, Frame, HStack, Layoutable, ZStack};
+use crate::widgets::{Button, Canvas, Frame, HStack, ZStack};
 use crate::{Ui, layout};
 
 #[test]

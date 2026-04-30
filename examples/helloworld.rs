@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use palantir::{
-    Button, ButtonStyle, Color, HStack, InputEvent, Layoutable, Rect, Sizing, Stroke, Ui, VStack,
+    Button, ButtonStyle, Color, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui, VStack,
     ZStack, layout, renderer::Renderer,
 };
 use winit::application::ApplicationHandler;

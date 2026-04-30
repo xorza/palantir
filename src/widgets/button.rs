@@ -1,7 +1,9 @@
-use crate::primitives::{Color, Corners, Layout, Sense, Spacing, Stroke, Visuals, WidgetId};
+use crate::element::{Element, UiElement};
+use crate::primitives::{Color, Corners, Sense, Spacing, Stroke, Visuals, WidgetId};
 use crate::shape::Shape;
+use crate::tree::LayoutMode;
 use crate::ui::Ui;
-use crate::widgets::{Frame, Layoutable, Response};
+use crate::widgets::{Frame, Response};
 use glam::Vec2;
 use std::hash::Hash;
 
@@ -61,8 +63,7 @@ impl Default for ButtonStyle {
 }
 
 pub struct Button {
-    id: WidgetId,
-    layout: Layout,
+    element: UiElement,
     style: ButtonStyle,
     radius: Corners,
     label: String,
@@ -76,12 +77,11 @@ impl Button {
     }
 
     pub fn with_id(id: impl Hash) -> Self {
+        let mut element = UiElement::new(WidgetId::from_hash(id), LayoutMode::Leaf);
+        element.layout.padding = Spacing::all(8.0);
+        element.sense = Sense::CLICK;
         Self {
-            id: WidgetId::from_hash(id),
-            layout: Layout {
-                padding: Spacing::all(8.0),
-                ..Layout::default()
-            },
+            element,
             style: ButtonStyle::default(),
             radius: Corners::all(4.0),
             label: String::new(),
@@ -103,7 +103,7 @@ impl Button {
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let v = {
-            let state = ui.response_for(self.id);
+            let state = ui.response_for(self.element.id);
             if state.pressed {
                 self.style.pressed
             } else if state.hovered {
@@ -113,12 +113,10 @@ impl Button {
             }
         };
 
-        let resp = Frame::for_widget_id(self.id)
-            .layout(self.layout)
+        let resp = Frame::for_element(self.element)
             .fill(v.fill)
             .stroke(v.stroke)
             .radius(self.radius)
-            .sense(Sense::CLICK)
             .show(ui);
 
         // Layer the label on top of the frame's background. Safe immediately after
@@ -142,8 +140,8 @@ impl Button {
     }
 }
 
-impl Layoutable for Button {
-    fn layout_mut(&mut self) -> &mut Layout {
-        &mut self.layout
+impl Element for Button {
+    fn element_mut(&mut self) -> &mut UiElement {
+        &mut self.element
     }
 }
