@@ -48,6 +48,40 @@ impl Color {
     pub const fn linear_rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
     }
+
+    /// 8-bit sRGB channels (Figma/CSS/Photoshop convention). Linearized
+    /// internally, same as `Color::rgb`. `#3366CC` → `Color::rgb_u8(0x33, 0x66, 0xCC)`.
+    pub fn rgb_u8(r: u8, g: u8, b: u8) -> Self {
+        Self::rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+    }
+    /// `rgb_u8` with 8-bit alpha. Alpha is not gamma-encoded — straight `a / 255`.
+    pub fn rgba_u8(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self::rgba(
+            r as f32 / 255.0,
+            g as f32 / 255.0,
+            b as f32 / 255.0,
+            a as f32 / 255.0,
+        )
+    }
+
+    /// Packed 24-bit `0xRRGGBB` sRGB literal, opaque. Matches CSS hex
+    /// notation: `#3366CC` → `Color::hex(0x3366CC)`.
+    pub fn hex(rgb: u32) -> Self {
+        Self::rgb_u8(
+            ((rgb >> 16) & 0xff) as u8,
+            ((rgb >> 8) & 0xff) as u8,
+            (rgb & 0xff) as u8,
+        )
+    }
+    /// Packed 32-bit `0xRRGGBBAA` sRGB+alpha literal. CSS-order (alpha last).
+    pub fn hexa(rgba: u32) -> Self {
+        Self::rgba_u8(
+            ((rgba >> 24) & 0xff) as u8,
+            ((rgba >> 16) & 0xff) as u8,
+            ((rgba >> 8) & 0xff) as u8,
+            (rgba & 0xff) as u8,
+        )
+    }
 }
 
 fn srgb_to_linear(c: f32) -> f32 {
