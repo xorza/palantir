@@ -220,3 +220,54 @@ fn input_state_release_outside_does_not_click() {
         "release outside the original widget cancels click"
     );
 }
+
+#[test]
+fn click_on_overflow_outside_clipped_parent_is_suppressed() {
+    use crate::widgets::ZStack;
+
+    // A clip=true panel at (0,0,100,100) wraps a 200x200 button. The button
+    // visually extends past the panel's rect; clicks on the overflow should
+    // miss the button (input must respect the clip cascade).
+    let mut ui = Ui::new();
+
+    // Frame 1: build + layout so last_rects gets populated.
+    ui.begin_frame();
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("clipper")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .clip(true)
+            .show(ui, |ui| {
+                Button::with_id("inner")
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui);
+            });
+    });
+    let root = ui.root();
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
+
+    // Click well outside the panel's 100x100 clip rect but inside the button's
+    // raw 200x200 rect (overflow region). With clip-aware hit-test this misses.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 150.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    // Frame 2: read .clicked() from the button's response.
+    ui.begin_frame();
+    let mut clicked = false;
+    HStack::new().show(&mut ui, |ui| {
+        ZStack::with_id("clipper")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .clip(true)
+            .show(ui, |ui| {
+                clicked = Button::with_id("inner")
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui)
+                    .clicked();
+            });
+    });
+    assert!(
+        !clicked,
+        "click on overflow outside clip should not register"
+    );
+}

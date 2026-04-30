@@ -156,14 +156,22 @@ impl InputState {
     /// Rebuild last-frame rects from the just-arranged tree, recompute hover,
     /// drop transient per-frame flags. Call after `layout::run`.
     ///
-    /// `disabled` cascades from each node to its descendants: if any ancestor
-    /// has `disabled = true`, the entry's effective `Sense` becomes `NONE`,
-    /// removing the whole subtree from hit-testing in one pass. Pre-order
-    /// traversal of `tree.nodes` means each node sees its parent's effective
-    /// disabled state already computed.
+    /// Two ancestor-cascading state machines run in this single pre-order pass:
+    ///
+    /// - **`disabled`**: if any ancestor has `disabled = true`, this node's
+    ///   effective `Sense` becomes `NONE`, removing the whole subtree from
+    ///   hit-testing.
+    /// - **`clip`**: a clipping ancestor's rect bounds the visible (and thus
+    ///   hit-testable) area of all descendants. The entry's stored rect is
+    ///   intersected with the running clip rect so hover/click match what
+    ///   the user actually sees — children that overflow a `.clip(true)`
+    ///   panel don't pick up clicks on the overflow.
     pub(crate) fn end_frame(&mut self, tree: &Tree) {
         self.last_rects.clear();
         let mut effective_disabled: Vec<bool> = Vec::with_capacity(tree.nodes.len());
+        // Clip rect inherited from clipping ancestors. `None` = no ancestor clip.
+        // This node's own `clip` does NOT apply to itself, only to descendants.
+        let mut clip_for_descendants: Vec<Option<Rect>> = Vec::with_capacity(tree.nodes.len());
         for node in &tree.nodes {
             let parent_disabled = node
                 .parent
@@ -172,6 +180,22 @@ impl InputState {
             let me_disabled = parent_disabled || node.element.disabled;
             effective_disabled.push(me_disabled);
 
+            let parent_clip = node.parent.and_then(|p| clip_for_descendants[p.0 as usize]);
+            let visible_rect = match parent_clip {
+                Some(c) => node.rect.intersect(c),
+                None => node.rect,
+            };
+            // Pass to children: parent's clip ∩ (this node's rect if it clips).
+            let descendant_clip = if node.element.clip {
+                Some(match parent_clip {
+                    Some(c) => node.rect.intersect(c),
+                    None => node.rect,
+                })
+            } else {
+                parent_clip
+            };
+            clip_for_descendants.push(descendant_clip);
+
             let sense = if me_disabled {
                 Sense::NONE
             } else {
@@ -179,7 +203,7 @@ impl InputState {
             };
             self.last_rects.push(HitEntry {
                 id: node.element.id,
-                rect: node.rect,
+                rect: visible_rect,
                 sense,
             });
         }
