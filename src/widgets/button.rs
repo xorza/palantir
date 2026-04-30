@@ -36,7 +36,7 @@ impl Button {
     pub fn radius(mut self, r: impl Into<Corners>) -> Self { self.radius = r.into(); self }
     pub fn label(mut self, s: impl Into<String>) -> Self { self.label = s.into(); self }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(&self, ui: &mut Ui) -> Response {
         let style = Style {
             size: self.size,
             padding: Spacing::all(8.0),
@@ -55,7 +55,7 @@ impl Button {
                 let measured = Size::new(self.label.chars().count() as f32 * 8.0, 16.0);
                 ui.add_shape(Shape::Text {
                     offset: Vec2::ZERO,
-                    text: self.label,
+                    text: self.label.clone(),
                     color: Color::WHITE,
                     measured,
                 });
