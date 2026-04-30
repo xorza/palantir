@@ -1,6 +1,6 @@
-use crate::primitives::{Color, Corners, Size, Sizes, Sizing, Spacing, Style};
+use crate::primitives::{Color, Corners, Size, Sizes, Sizing, Spacing, Style, WidgetId};
 use crate::shape::{Shape, ShapeRect};
-use crate::tree::{LayoutKind, WidgetId};
+use crate::tree::LayoutKind;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use glam::Vec2;
