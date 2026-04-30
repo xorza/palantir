@@ -100,6 +100,10 @@ impl ApplicationHandler for App {
             h = config.height,
             "surface configured"
         );
+
+        let mut ui = Ui::new();
+        ui.set_scale_factor(window.scale_factor() as f32);
+
         window.request_redraw();
         self.state = Some(State {
             window,
@@ -108,7 +112,7 @@ impl ApplicationHandler for App {
             queue,
             config,
             renderer,
-            ui: Ui::new(),
+            ui,
             first_paint: false,
             click_count: 0,
         });
@@ -139,6 +143,11 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                tracing::info!(scale_factor, "scale factor changed");
+                state.ui.set_scale_factor(scale_factor as f32);
+                state.window.request_redraw();
+            }
             WindowEvent::Resized(new) => {
                 let max = state.device.limits().max_texture_dimension_2d;
                 tracing::info!(?new, max, "resized");
@@ -183,20 +192,28 @@ impl State {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let w = self.config.width as f32;
-        let h = self.config.height as f32;
+        let scale = self.ui.scale_factor();
+        let w_logical = self.config.width as f32 / scale;
+        let h_logical = self.config.height as f32 / scale;
 
         self.ui.begin_frame();
         build_ui(&mut self.ui, &mut self.click_count);
         let root = self.ui.root();
-        layout::run(&mut self.ui.tree, root, Rect::new(0.0, 0.0, w, h));
+        layout::run(
+            &mut self.ui.tree,
+            root,
+            Rect::new(0.0, 0.0, w_logical, h_logical),
+        );
         self.ui.end_frame();
 
+        let pixel_snap = self.ui.pixel_snap();
         self.renderer.render(
             &self.device,
             &self.queue,
             &view,
-            [w, h],
+            [w_logical, h_logical],
+            scale,
+            pixel_snap,
             Color::rgb(0.08, 0.08, 0.10),
             &self.ui.tree,
         );

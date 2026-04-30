@@ -24,14 +24,19 @@ pub enum InputEvent {
 
 impl InputEvent {
     /// Translate a winit `WindowEvent` into a palantir input event.
+    /// `scale_factor` divides physical pointer coordinates so that the produced
+    /// `PointerMoved` is in logical pixels (matches the units layout works in).
     /// Returns `None` for events we don't currently consume.
-    pub fn from_winit(event: &winit::event::WindowEvent) -> Option<Self> {
+    pub fn from_winit(event: &winit::event::WindowEvent, scale_factor: f32) -> Option<Self> {
         use winit::event::{ElementState, MouseButton, WindowEvent};
         match event {
-            WindowEvent::CursorMoved { position, .. } => Some(InputEvent::PointerMoved(Vec2::new(
-                position.x as f32,
-                position.y as f32,
-            ))),
+            WindowEvent::CursorMoved { position, .. } => {
+                let s = scale_factor.max(f32::EPSILON);
+                Some(InputEvent::PointerMoved(Vec2::new(
+                    position.x as f32 / s,
+                    position.y as f32 / s,
+                )))
+            }
             WindowEvent::CursorLeft { .. } => Some(InputEvent::PointerLeft),
             WindowEvent::MouseInput {
                 state,
@@ -122,9 +127,11 @@ impl InputState {
         }
     }
 
-    /// Convenience: feed a winit `WindowEvent`. No-op for events we don't consume.
-    pub fn handle_winit_event(&mut self, event: &winit::event::WindowEvent) {
-        if let Some(ev) = InputEvent::from_winit(event) {
+    /// Convenience: feed a winit `WindowEvent`. `scale_factor` divides incoming
+    /// physical pointer coordinates so input lands in logical-pixel space.
+    /// No-op for events we don't consume.
+    pub fn handle_winit_event(&mut self, event: &winit::event::WindowEvent, scale_factor: f32) {
+        if let Some(ev) = InputEvent::from_winit(event, scale_factor) {
             self.on_input(ev);
         }
     }
