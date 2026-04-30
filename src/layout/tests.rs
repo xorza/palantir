@@ -145,7 +145,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
         .show(&mut ui, |ui| {
             Frame::with_id("c")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                .align(Align::Center)
+                .align(Align::CENTER)
                 .show(ui);
         })
         .node;

@@ -379,6 +379,63 @@ fn hidden_button_does_not_click() {
 }
 
 #[test]
+fn hstack_child_align_y_centers_all_children_by_default() {
+    use crate::primitives::{Align, VAlign};
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .size((Sizing::FILL, Sizing::Fixed(100.0)))
+        .child_align(Align::v(VAlign::Center))
+        .show(&mut ui, |ui| {
+            Frame::with_id("a")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                .show(ui);
+            Frame::with_id("b")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let a = ui.tree.node(kids[0]).rect;
+    let b = ui.tree.node(kids[1]).rect;
+    // Cross axis = 100, child = 20 tall → centered at (100-20)/2 = 40.
+    assert_eq!(a.min.y, 40.0);
+    assert_eq!(b.min.y, 40.0);
+    assert_eq!(a.size.h, 20.0);
+    assert_eq!(b.size.h, 20.0);
+}
+
+#[test]
+fn child_align_self_overrides_parent_default() {
+    use crate::primitives::{Align, VAlign};
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = HStack::new()
+        .size((Sizing::FILL, Sizing::Fixed(100.0)))
+        .child_align(Align::v(VAlign::Center))
+        .show(&mut ui, |ui| {
+            Frame::with_id("centered")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                .show(ui);
+            // Explicit Bottom on the child wins over the parent's default.
+            Frame::with_id("bottom")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                .align(Align::v(VAlign::Bottom))
+                .show(ui);
+        })
+        .node;
+    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let centered = ui.tree.node(kids[0]).rect;
+    let bottom = ui.tree.node(kids[1]).rect;
+    assert_eq!(centered.min.y, 40.0);
+    assert_eq!(bottom.min.y, 80.0);
+}
+
+#[test]
 fn zstack_centers_child_when_align_center() {
     use crate::primitives::Align;
     let mut ui = Ui::new();
@@ -391,7 +448,7 @@ fn zstack_centers_child_when_align_center() {
                 child_node = Some(
                     Frame::with_id("c")
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                        .align(Align::Center)
+                        .align(Align::CENTER)
                         .fill(Color::rgb(0.5, 0.5, 0.5))
                         .show(ui)
                         .node,
@@ -409,7 +466,7 @@ fn zstack_centers_child_when_align_center() {
 
 #[test]
 fn zstack_aligns_independently_per_axis() {
-    use crate::primitives::Align;
+    use crate::primitives::{Align, HAlign, VAlign};
     let mut ui = Ui::new();
     ui.begin_frame();
     let mut child_node = None;
@@ -420,8 +477,7 @@ fn zstack_aligns_independently_per_axis() {
                 child_node = Some(
                     Frame::with_id("c")
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                        .align_x(Align::End)
-                        .align_y(Align::Center)
+                        .align(Align::new(HAlign::Right, VAlign::Center))
                         .fill(Color::rgb(0.5, 0.5, 0.5))
                         .show(ui)
                         .node,
