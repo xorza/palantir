@@ -2,9 +2,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use palantir::Align;
+use palantir::renderer::{
+    ComposeParams, RenderBuffer, RenderCmd, RenderFrame, WgpuBackend, compose, encode,
+};
 use palantir::{
     Button, ButtonStyle, Color, Corners, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui,
-    VStack, Visuals, ZStack, layout, renderer::Renderer,
+    VStack, Visuals, ZStack, layout,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -68,7 +71,9 @@ struct State {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    renderer: Renderer,
+    backend: WgpuBackend,
+    cmds: Vec<RenderCmd>,
+    buffer: RenderBuffer,
     ui: Ui,
     first_paint: bool,
     click_count: u32,
@@ -129,7 +134,7 @@ impl ApplicationHandler for App {
         };
         surface.configure(&device, &config);
 
-        let renderer = Renderer::new(&device, format);
+        let backend = WgpuBackend::new(&device, format);
 
         tracing::info!(
             ?format,
@@ -149,7 +154,9 @@ impl ApplicationHandler for App {
             device,
             queue,
             config,
-            renderer,
+            backend,
+            cmds: Vec::new(),
+            buffer: RenderBuffer::new(),
             ui,
             first_paint: false,
             click_count: 0,
@@ -247,17 +254,24 @@ impl State {
         );
         self.ui.end_frame();
 
-        self.renderer.render(
-            palantir::renderer::RenderFrame {
-                device: &self.device,
-                queue: &self.queue,
-                view: &view,
+        encode(&self.ui.tree, &mut self.cmds);
+        compose(
+            &self.cmds,
+            &ComposeParams {
                 viewport_logical: [w_logical, h_logical],
                 scale,
                 pixel_snap: self.ui.pixel_snap(),
+            },
+            &mut self.buffer,
+        );
+        self.backend.submit(
+            RenderFrame {
+                device: &self.device,
+                queue: &self.queue,
+                view: &view,
                 clear: Color::rgb(0.08, 0.08, 0.10),
             },
-            &self.ui.tree,
+            &self.buffer,
         );
 
         frame.present();
