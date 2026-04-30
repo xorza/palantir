@@ -13,7 +13,9 @@ pub struct Ui {
 }
 
 impl Default for Ui {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Ui {
@@ -36,7 +38,8 @@ impl Ui {
     }
 
     pub fn root(&self) -> NodeId {
-        self.root.expect("no root pushed yet — open a node before any other ops")
+        self.root
+            .expect("no root pushed yet — open a node before any other ops")
     }
 
     /// Open a node, run `f` to populate its shapes and children, close it.
@@ -56,7 +59,9 @@ impl Ui {
                 "WidgetId collision — use `with_id(...)` to disambiguate"
             );
         }
-        if self.root.is_none() { self.root = Some(node); }
+        if self.root.is_none() {
+            self.root = Some(node);
+        }
         self.parents.push(node);
         f(self);
         self.parents.pop();
@@ -65,7 +70,10 @@ impl Ui {
 
     /// Append a shape to the currently-open node. Must be called before any child node opens.
     pub(crate) fn add_shape(&mut self, shape: Shape) {
-        let node = *self.parents.last().expect("add_shape called outside any open node");
+        let node = *self
+            .parents
+            .last()
+            .expect("add_shape called outside any open node");
         self.tree.add_shape(node, shape);
     }
 }

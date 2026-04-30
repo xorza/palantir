@@ -5,17 +5,17 @@ use wgpu::util::DeviceExt;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Quad {
-    pub pos:    [f32; 2],
-    pub size:   [f32; 2],
-    pub color:  [f32; 4],
+    pub pos: [f32; 2],
+    pub size: [f32; 2],
+    pub color: [f32; 4],
     pub radius: [f32; 4],
 }
 
 impl Quad {
     pub fn from_rect(rect: Rect, color: Color, radius: Corners) -> Self {
         Self {
-            pos:   [rect.min.x, rect.min.y],
-            size:  [rect.size.w, rect.size.h],
+            pos: [rect.min.x, rect.min.y],
+            size: [rect.size.w, rect.size.h],
             color: [color.r, color.g, color.b, color.a],
             radius: [radius.tl, radius.tr, radius.br, radius.bl],
         }
@@ -30,8 +30,8 @@ struct ViewportUniform {
 }
 
 pub struct QuadPipeline {
-    pipeline:        wgpu::RenderPipeline,
-    bind_group:      wgpu::BindGroup,
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
     viewport_buffer: wgpu::Buffer,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
@@ -60,7 +60,10 @@ impl QuadPipeline {
 
         let viewport_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("palantir.quad.viewport"),
-            contents: bytemuck::cast_slice(&[ViewportUniform { size: [0.0, 0.0], _pad: [0.0, 0.0] }]),
+            contents: bytemuck::cast_slice(&[ViewportUniform {
+                size: [0.0, 0.0],
+                _pad: [0.0, 0.0],
+            }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -127,7 +130,13 @@ impl QuadPipeline {
             mapped_at_creation: false,
         });
 
-        Self { pipeline, bind_group, viewport_buffer, instance_buffer, instance_capacity }
+        Self {
+            pipeline,
+            bind_group,
+            viewport_buffer,
+            instance_buffer,
+            instance_capacity,
+        }
     }
 
     pub fn upload(
@@ -140,10 +149,15 @@ impl QuadPipeline {
         queue.write_buffer(
             &self.viewport_buffer,
             0,
-            bytemuck::cast_slice(&[ViewportUniform { size: viewport, _pad: [0.0, 0.0] }]),
+            bytemuck::cast_slice(&[ViewportUniform {
+                size: viewport,
+                _pad: [0.0, 0.0],
+            }]),
         );
 
-        if quads.is_empty() { return; }
+        if quads.is_empty() {
+            return;
+        }
 
         if quads.len() > self.instance_capacity {
             self.instance_capacity = quads.len().next_power_of_two();
@@ -158,7 +172,9 @@ impl QuadPipeline {
     }
 
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instance_count: u32) {
-        if instance_count == 0 { return; }
+        if instance_count == 0 {
+            return;
+        }
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
