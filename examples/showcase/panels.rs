@@ -11,22 +11,22 @@ pub fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             cell(ui, "HStack", |ui| {
                 HStack::new().gap(6.0).show(ui, |ui| {
-                    swatch(ui, "a", 40.0, 40.0, tile());
-                    swatch(ui, "b", 40.0, 40.0, tile());
-                    swatch(ui, "c", 40.0, 40.0, tile());
+                    swatch(ui, "h-a", 40.0, 40.0, tile());
+                    swatch(ui, "h-b", 40.0, 40.0, tile());
+                    swatch(ui, "h-c", 40.0, 40.0, tile());
                 });
             });
             cell(ui, "VStack", |ui| {
                 VStack::new().gap(6.0).show(ui, |ui| {
-                    swatch(ui, "a", 60.0, 24.0, tile());
-                    swatch(ui, "b", 60.0, 24.0, tile());
-                    swatch(ui, "c", 60.0, 24.0, tile());
+                    swatch(ui, "v-a", 60.0, 24.0, tile());
+                    swatch(ui, "v-b", 60.0, 24.0, tile());
+                    swatch(ui, "v-c", 60.0, 24.0, tile());
                 });
             });
             cell(ui, "ZStack", |ui| {
                 ZStack::new().show(ui, |ui| {
-                    swatch(ui, "back", 80.0, 80.0, Color::rgb(0.25, 0.30, 0.50));
-                    swatch(ui, "front", 50.0, 50.0, Color::rgb(0.85, 0.45, 0.30));
+                    swatch(ui, "z-back", 80.0, 80.0, Color::rgb(0.25, 0.30, 0.50));
+                    swatch(ui, "z-front", 50.0, 50.0, Color::rgb(0.85, 0.45, 0.30));
                 });
             });
             cell(ui, "Canvas", |ui| {
