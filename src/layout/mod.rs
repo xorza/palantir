@@ -1,6 +1,6 @@
 use crate::element::{LayoutMode, UiElement};
 use crate::primitives::{
-    AxisAlign, GridCell, Justify, Rect, Size, Sizes, Sizing, Track, Visibility,
+    AxisAlign, GridCell, Justify, MAX_TRACKS, Rect, Size, Sizes, Sizing, Track, Visibility,
 };
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
@@ -393,12 +393,6 @@ fn arrange_zstack(tree: &mut Tree, node: NodeId, inner: Rect) {
     }
 }
 
-/// Hard cap on tracks per grid axis. Bounds all stack scratch arrays in the
-/// grid layout pass so they alloc-free. `(64 cols × 12B + 64 rows × 12B + 6
-/// scratch arrays of 64 × 4B + flexible × 64 × 8B) ≈ 3.5 KB stack per
-/// `grid_measure` / `arrange_grid` call. Far more tracks than any real UI.
-const MAX_TRACKS: usize = 64;
-
 /// WPF-style grid measure. Resolves Fixed tracks, walks children once feeding
 /// each `Σ spanned-track sizes` (or `∞` if any spanned track is unresolved —
 /// the WPF infinity trick → child reports intrinsic), then resolves Hug
@@ -409,22 +403,16 @@ const MAX_TRACKS: usize = 64;
 /// All scratch is stack-allocated, capped at `MAX_TRACKS` per axis. Nested
 /// grids each get their own copy via the call stack — no shared buffer.
 fn grid_measure(tree: &mut Tree, node: NodeId, idx: u32) -> Size {
-    // Snapshot rows/cols + gaps onto the stack so we can drop the &GridDef
-    // borrow before recursing into children (which needs &mut Tree).
+    // Snapshot rows/cols + gaps onto the stack so we can drop the tree borrow
+    // before recursing into children (which needs &mut Tree).
     let mut rows_buf = [Track::new(Sizing::Hug); MAX_TRACKS];
     let mut cols_buf = [Track::new(Sizing::Hug); MAX_TRACKS];
-    let (n_rows, n_cols, row_gap, col_gap) = {
-        let def = tree.grid_def(idx);
-        let nr = def.rows.len();
-        let nc = def.cols.len();
-        assert!(
-            nr <= MAX_TRACKS && nc <= MAX_TRACKS,
-            "grid tracks exceed MAX_TRACKS={MAX_TRACKS} (rows={nr}, cols={nc})"
-        );
-        rows_buf[..nr].copy_from_slice(&def.rows);
-        cols_buf[..nc].copy_from_slice(&def.cols);
-        (nr, nc, def.row_gap, def.col_gap)
-    };
+    let def = tree.grid_def(idx);
+    let n_rows = def.rows.len as usize;
+    let n_cols = def.cols.len as usize;
+    rows_buf[..n_rows].copy_from_slice(tree.grid_tracks(def.rows));
+    cols_buf[..n_cols].copy_from_slice(tree.grid_tracks(def.cols));
+    let (row_gap, col_gap) = (def.row_gap, def.col_gap);
     let rows = &rows_buf[..n_rows];
     let cols = &cols_buf[..n_cols];
 
@@ -514,18 +502,12 @@ fn grid_measure(tree: &mut Tree, node: NodeId, idx: u32) -> Size {
 fn arrange_grid(tree: &mut Tree, node: NodeId, inner: Rect, idx: u32) {
     let mut rows_buf = [Track::new(Sizing::Hug); MAX_TRACKS];
     let mut cols_buf = [Track::new(Sizing::Hug); MAX_TRACKS];
-    let (n_rows, n_cols, row_gap, col_gap) = {
-        let def = tree.grid_def(idx);
-        let nr = def.rows.len();
-        let nc = def.cols.len();
-        assert!(
-            nr <= MAX_TRACKS && nc <= MAX_TRACKS,
-            "grid tracks exceed MAX_TRACKS={MAX_TRACKS} (rows={nr}, cols={nc})"
-        );
-        rows_buf[..nr].copy_from_slice(&def.rows);
-        cols_buf[..nc].copy_from_slice(&def.cols);
-        (nr, nc, def.row_gap, def.col_gap)
-    };
+    let def = tree.grid_def(idx);
+    let n_rows = def.rows.len as usize;
+    let n_cols = def.cols.len as usize;
+    rows_buf[..n_rows].copy_from_slice(tree.grid_tracks(def.rows));
+    cols_buf[..n_cols].copy_from_slice(tree.grid_tracks(def.cols));
+    let (row_gap, col_gap) = (def.row_gap, def.col_gap);
     let rows = &rows_buf[..n_rows];
     let cols = &cols_buf[..n_cols];
 

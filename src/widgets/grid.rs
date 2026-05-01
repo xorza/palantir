@@ -1,9 +1,14 @@
 use crate::element::{Element, LayoutMode, UiElement};
-use crate::primitives::{Color, Corners, GridDef, Sizing, Stroke, Track, TranslateScale, WidgetId};
+use crate::primitives::{
+    Color, Corners, MAX_TRACKS, Sizing, Stroke, Track, TranslateScale, WidgetId,
+};
 use crate::shape::{Shape, ShapeRect};
 use crate::ui::Ui;
 use crate::widgets::Response;
+use arrayvec::ArrayVec;
 use std::hash::Hash;
+
+type TrackVec = ArrayVec<Track, MAX_TRACKS>;
 
 /// WPF-style grid: explicit row + column track definitions, per-track
 /// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and
@@ -21,7 +26,10 @@ pub struct Grid {
     fill: Color,
     stroke: Option<Stroke>,
     radius: Corners,
-    def: GridDef,
+    rows: TrackVec,
+    cols: TrackVec,
+    row_gap: f32,
+    col_gap: f32,
 }
 
 impl Grid {
@@ -43,7 +51,10 @@ impl Grid {
             fill: Color::TRANSPARENT,
             stroke: None,
             radius: Corners::ZERO,
-            def: GridDef::default(),
+            rows: TrackVec::new(),
+            cols: TrackVec::new(),
+            row_gap: 0.0,
+            col_gap: 0.0,
         }
     }
 
@@ -52,7 +63,7 @@ impl Grid {
         I: IntoIterator<Item = T>,
         T: Into<Track>,
     {
-        self.def.rows = rs.into_iter().map(Into::into).collect();
+        self.rows = collect_tracks(rs);
         self
     }
 
@@ -61,33 +72,33 @@ impl Grid {
         I: IntoIterator<Item = T>,
         T: Into<Track>,
     {
-        self.def.cols = cs.into_iter().map(Into::into).collect();
+        self.cols = collect_tracks(cs);
         self
     }
 
     /// Shorthand: `n` equal-weight `Fill` columns.
     pub fn equal_cols(mut self, n: usize) -> Self {
-        self.def.cols = (0..n).map(|_| Track::new(Sizing::FILL)).collect();
+        self.cols = repeat_tracks(n, Track::new(Sizing::FILL));
         self
     }
 
     /// Shorthand: `n` equal-weight `Fill` rows.
     pub fn equal_rows(mut self, n: usize) -> Self {
-        self.def.rows = (0..n).map(|_| Track::new(Sizing::FILL)).collect();
+        self.rows = repeat_tracks(n, Track::new(Sizing::FILL));
         self
     }
 
     /// Uniform gap on both axes. See `gap_xy` for asymmetric gaps.
     pub fn gap(mut self, g: f32) -> Self {
-        self.def.row_gap = g;
-        self.def.col_gap = g;
+        self.row_gap = g;
+        self.col_gap = g;
         self
     }
 
     /// Asymmetric gaps: `row_gap` between rows, `col_gap` between columns.
     pub fn gap_xy(mut self, row_gap: f32, col_gap: f32) -> Self {
-        self.def.row_gap = row_gap;
-        self.def.col_gap = col_gap;
+        self.row_gap = row_gap;
+        self.col_gap = col_gap;
         self
     }
 
@@ -114,7 +125,9 @@ impl Grid {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
-        let idx = ui.tree.push_grid_def(self.def);
+        let idx = ui
+            .tree
+            .push_grid_def(&self.rows, &self.cols, self.row_gap, self.col_gap);
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
 
@@ -140,4 +153,31 @@ impl Element for Grid {
     fn element_mut(&mut self) -> &mut UiElement {
         &mut self.element
     }
+}
+
+#[track_caller]
+fn collect_tracks<I, T>(src: I) -> TrackVec
+where
+    I: IntoIterator<Item = T>,
+    T: Into<Track>,
+{
+    let mut out = TrackVec::new();
+    for t in src {
+        out.try_push(t.into())
+            .unwrap_or_else(|_| panic!("grid tracks exceed MAX_TRACKS={MAX_TRACKS}"));
+    }
+    out
+}
+
+#[track_caller]
+fn repeat_tracks(n: usize, t: Track) -> TrackVec {
+    assert!(
+        n <= MAX_TRACKS,
+        "grid tracks exceed MAX_TRACKS={MAX_TRACKS} (got {n})"
+    );
+    let mut out = TrackVec::new();
+    for _ in 0..n {
+        out.push(t);
+    }
+    out
 }

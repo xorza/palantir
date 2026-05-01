@@ -1,5 +1,5 @@
 use crate::element::UiElement;
-use crate::primitives::{GridDef, Rect, Size};
+use crate::primitives::{GridDef, Rect, Size, Track, TrackSlice};
 use crate::shape::Shape;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -62,6 +62,11 @@ pub struct Tree {
     /// Grid track definitions, addressed by `LayoutMode::Grid(u32)`. One
     /// entry per `Grid` panel recorded this frame. Cleared with `clear`.
     grid_defs: Vec<GridDef>,
+    /// Shared pool of `Track`s referenced by `GridDef::rows`/`cols` via
+    /// `TrackSlice` (start, len) ranges. Cleared with `clear` so all per-grid
+    /// track storage is one capacity-retaining allocation rather than two
+    /// `Vec<Track>` per `Grid` per frame.
+    tracks: Vec<Track>,
 }
 
 impl Tree {
@@ -74,18 +79,52 @@ impl Tree {
         self.shapes.clear();
         self.last_child.clear();
         self.grid_defs.clear();
+        self.tracks.clear();
     }
 
-    /// Append a `GridDef` and return its index. The index is stamped into a
-    /// `LayoutMode::Grid(idx)` on the owning panel's `UiElement`.
-    pub fn push_grid_def(&mut self, def: GridDef) -> u32 {
+    /// Append a `GridDef` referencing freshly-pooled tracks; return its index.
+    /// The index is stamped into a `LayoutMode::Grid(idx)` on the owning
+    /// panel's `UiElement`.
+    pub(crate) fn push_grid_def(
+        &mut self,
+        rows: &[Track],
+        cols: &[Track],
+        row_gap: f32,
+        col_gap: f32,
+    ) -> u32 {
+        let row_slice = self.push_tracks(rows);
+        let col_slice = self.push_tracks(cols);
         let idx = self.grid_defs.len() as u32;
-        self.grid_defs.push(def);
+        self.grid_defs.push(GridDef {
+            rows: row_slice,
+            cols: col_slice,
+            row_gap,
+            col_gap,
+        });
         idx
     }
 
-    pub fn grid_def(&self, idx: u32) -> &GridDef {
-        &self.grid_defs[idx as usize]
+    fn push_tracks(&mut self, src: &[Track]) -> TrackSlice {
+        debug_assert!(
+            src.len() <= crate::primitives::MAX_TRACKS,
+            "grid tracks exceed MAX_TRACKS={} (got {})",
+            crate::primitives::MAX_TRACKS,
+            src.len(),
+        );
+        let start = self.tracks.len() as u32;
+        self.tracks.extend_from_slice(src);
+        TrackSlice {
+            start,
+            len: src.len() as u32,
+        }
+    }
+
+    pub(crate) fn grid_def(&self, idx: u32) -> GridDef {
+        self.grid_defs[idx as usize]
+    }
+
+    pub(crate) fn grid_tracks(&self, slice: TrackSlice) -> &[Track] {
+        &self.tracks[slice.range()]
     }
 
     pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
