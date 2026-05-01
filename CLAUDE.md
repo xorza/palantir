@@ -106,6 +106,7 @@ fall back to `~/.cargo/registry/src/...` if the crate isn't listed in
 - Don't add wgpu code paths to the layout/tree modules. Renderer goes in its own module when written.
 - `WidgetId` is built from a hash of a user-supplied key. Keep IDs stable across frames so persistent state survives.
 - Widget constructors that auto-derive ids (`Button::new`, `Text::new`, etc.) use `WidgetId::auto_stable()` + `#[track_caller]` so two calls at different source lines get distinct ids. **`#[track_caller]` does not propagate through closure bodies** — if a helper function builds widgets inside a closure passed to e.g. `Panel::show(ui, |ui| { ... })`, every call site of the helper resolves the inner widget's location to the closure literal, producing colliding ids. Inside helpers that build widgets through closures, give those widgets explicit ids (`Text::with_id((tag, key), text)`, `Button::with_id(...)`). Annotating the helper with `#[track_caller]` doesn't help — the closure breaks the chain.
+- Treat all docs (`docs/*.md`, `DESIGN.md`, `references/*`) as evolving and possibly wrong. They may lag the code or encode decisions that have been re-litigated. When a doc statement contradicts the user's intent or current code, double-question rather than deferring — flag the conflict, ask the user, and update the doc to reflect the resolution. Documented decisions are starting positions, not commitments; re-evaluate when context changes.
 
 ## Before reporting work as done
 
