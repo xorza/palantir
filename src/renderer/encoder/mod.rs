@@ -46,7 +46,7 @@ fn encode_node(tree: &Tree, layout: &LayoutResult, id: NodeId, out: &mut Vec<Ren
 
     // Hidden / Collapsed: paint nothing for this node or its subtree.
     // Cascade is implicit — descendants are never visited.
-    if node.element.flags.is_invisible() {
+    if !node.element.flags.is_visible() {
         return;
     }
 

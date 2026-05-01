@@ -22,8 +22,15 @@ impl WidgetId {
     }
 
     /// Stable across frames as long as the call site is unchanged.
-    /// Collides for widgets created at the same call site (e.g. inside a `for` loop) —
-    /// in that case build an id explicitly with `from_hash`.
+    ///
+    /// **Footgun: collides on repeated calls from the same source location.**
+    /// All widgets recorded inside a `for` / `while` / `iter::map` loop will
+    /// share one id, which corrupts persistent per-widget state (focus,
+    /// scroll, animation) and breaks click capture. Use `with_id(key)` (or
+    /// `WidgetId::from_hash` / `WidgetId::with`) whenever the call site can
+    /// fire more than once per frame, where `key` is something stable like
+    /// the item's index or a domain key. `Ui::node` warns at debug time when
+    /// it sees the same id twice in one frame.
     #[track_caller]
     pub fn auto_stable() -> Self {
         let l = std::panic::Location::caller();

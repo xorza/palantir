@@ -22,9 +22,4 @@ impl Visibility {
     pub fn is_collapsed(self) -> bool {
         matches!(self, Visibility::Collapsed)
     }
-    /// True if this node should not be painted or receive input. `Hidden` and
-    /// `Collapsed` both qualify.
-    pub fn is_invisible(self) -> bool {
-        !self.is_visible()
-    }
 }
