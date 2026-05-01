@@ -48,7 +48,7 @@ pub struct GridCell {
 
 ## Storage
 
-- `LayoutMode::Grid(u32)` — index into `Tree::grid_defs: Vec<GridDef>`. Mode stays `Copy`. Cleared per frame with the rest of the tree.
+- `LayoutMode::Grid(u16)` — index into `Tree::grid_defs: Vec<GridDef>`. Mode stays `Copy`. Cleared per frame with the rest of the tree.
 - `Layout::grid: GridCell` — 8 bytes packed. Default `(0, 0, 1, 1)`. Inert when the parent isn't a Grid.
 - `GridDef { rows: Vec<Track>, cols: Vec<Track>, row_gap: f32, col_gap: f32 }` lives only on the Tree side-arena, so per-node footprint stays small and `UiElement`/`Layout` stay `Copy`.
 

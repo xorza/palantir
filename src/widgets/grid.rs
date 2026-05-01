@@ -49,7 +49,7 @@ impl Grid {
         // Mode is patched at `show()` time once we know the grid_def index.
         // Until then keep it as a placeholder — never observed by layout.
         Self {
-            element: UiElement::new(id, LayoutMode::Grid(u32::MAX)),
+            element: UiElement::new(id, LayoutMode::Grid(u16::MAX)),
             fill: Color::TRANSPARENT,
             stroke: None,
             radius: Corners::ZERO,

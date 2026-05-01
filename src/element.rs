@@ -19,8 +19,9 @@ pub enum LayoutMode {
     Canvas,
     /// WPF-style grid. Carries an index into `Tree::grid_defs` holding the row
     /// and column track definitions and per-axis gaps. Children declare cell +
-    /// span via `grid`.
-    Grid(u32),
+    /// span via `grid`. Cap is 65 535 grids per frame (`grid_defs` is cleared
+    /// each frame).
+    Grid(u16),
 }
 
 /// Per-node config: identity + spatial layout + interaction + paint flags.

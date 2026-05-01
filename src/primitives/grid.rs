@@ -38,7 +38,7 @@ impl HugSlice {
 }
 
 /// Track definitions + axis gaps for a `Grid` panel. Stored on `Tree::grid_defs`
-/// and addressed from `LayoutMode::Grid(u32)`. Track defs live behind
+/// and addressed from `LayoutMode::Grid(u16)`. Track defs live behind
 /// `Rc<[Track]>` so callers can cache and share them across frames without
 /// the framework copying — the builder stores the `Rc`, the layout pass
 /// reads through it directly. Per-track hug sizes (computed in measure, read
