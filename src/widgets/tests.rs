@@ -572,3 +572,76 @@ fn frame_with_sense_click_is_clickable() {
     });
     assert!(clicked);
 }
+
+#[test]
+fn wrapping_text_grows_height_in_narrow_frame() {
+    use crate::shape::TextWrap;
+    use crate::text::CosmicMeasure;
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.install_text_system(CosmicMeasure::with_bundled_fonts());
+    ui.begin_frame();
+    let mut text_node = None;
+    Panel::vstack()
+        .size((Sizing::Fixed(60.0), Sizing::Hug))
+        .show(&mut ui, |ui| {
+            text_node = Some(
+                Text::new("the quick brown fox jumps over the lazy dog")
+                    .size_px(16.0)
+                    .wrapping()
+                    .show(ui)
+                    .node,
+            );
+        });
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
+
+    let node = text_node.unwrap();
+    let r = ui.rect(node);
+    assert!(
+        r.size.h > 32.0,
+        "wrapped paragraph should span multiple lines, got h={}",
+        r.size.h,
+    );
+    let shape = ui.tree.shapes_of(node).first().expect("text shape");
+    let TextWrap::Wrap { intrinsic_min } = (match shape {
+        Shape::Text { wrap, .. } => *wrap,
+        _ => panic!("expected Shape::Text"),
+    }) else {
+        panic!("expected TextWrap::Wrap");
+    };
+    assert!(intrinsic_min > 0.0);
+}
+
+#[test]
+fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
+    use crate::text::CosmicMeasure;
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.install_text_system(CosmicMeasure::with_bundled_fonts());
+    ui.begin_frame();
+    let mut text_node = None;
+    Panel::vstack()
+        .size((Sizing::Fixed(8.0), Sizing::Hug))
+        .show(&mut ui, |ui| {
+            text_node = Some(
+                Text::new("supercalifragilisticexpialidocious")
+                    .size_px(16.0)
+                    .wrapping()
+                    .show(ui)
+                    .node,
+            );
+        });
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
+
+    let r = ui.rect(text_node.unwrap());
+    // The single word can't break — its width must overflow the 8 px slot.
+    assert!(
+        r.size.w > 8.0,
+        "an unbreakable word must overflow the slot, got w={}",
+        r.size.w,
+    );
+}

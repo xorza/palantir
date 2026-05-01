@@ -18,6 +18,7 @@ mod justify;
 mod panels;
 mod sizing;
 mod spacing;
+mod text;
 mod transform;
 mod visibility;
 
@@ -38,6 +39,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("gap", gap::build),
     ("spacing", spacing::build),
     ("buttons", buttons::build),
+    ("text", text::build),
 ];
 
 fn main() {

@@ -1,6 +1,6 @@
 use crate::element::{Configure, Element, LayoutMode};
 use crate::primitives::{Color, Corners, Sense, Visuals, WidgetId};
-use crate::shape::Shape;
+use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::{Frame, Response, Styled};
 use glam::Vec2;
@@ -100,6 +100,7 @@ impl Button {
                     font_size_px,
                     max_width_px: None,
                     key: m.key,
+                    wrap: TextWrap::Single,
                 },
             );
         }

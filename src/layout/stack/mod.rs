@@ -1,6 +1,7 @@
-use super::LayoutEngine;
+use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizes, Sizing};
+use crate::text::CosmicMeasure;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
@@ -53,7 +54,7 @@ impl Axis {
     /// `resolved_axis_align` so HStack/VStack share the cascade rule with
     /// ZStack/Grid. The unused main axis is computed and discarded — cheap.
     fn cross_align(self, child: &LayoutCore, parent_child_align: Align) -> AxisAlign {
-        let (h, v) = super::resolved_axis_align(child, parent_child_align);
+        let (h, v) = resolved_axis_align(child, parent_child_align);
         match self {
             // HStack: cross = vertical
             Axis::X => v,
@@ -90,6 +91,7 @@ pub(super) fn measure(
     node: NodeId,
     inner: Size,
     axis: Axis,
+    mut text: Option<&mut CosmicMeasure>,
 ) -> Size {
     // Pass infinite size on the main axis (WPF trick): children report intrinsic.
     let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
@@ -103,7 +105,7 @@ pub(super) fn measure(
         // Collapsed children still get measured (so `desired` is set to ZERO),
         // but don't contribute to the parent's content size or gap count.
         let collapsed = tree.is_collapsed(c);
-        let d = layout.measure(tree, c, child_avail);
+        let d = layout.measure(tree, c, child_avail, text.as_deref_mut());
         if collapsed {
             continue;
         }
@@ -177,7 +179,7 @@ pub(super) fn arrange(
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.is_collapsed(c) {
-            super::zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min));
+            zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min));
             continue;
         }
         let s = *tree.layout(c);
@@ -197,7 +199,7 @@ pub(super) fn arrange(
         let cross_sizing = axis.cross_sizing(s.size);
         let cross_desired = axis.cross(d);
         let (cross_size, cross_offset) =
-            super::place_axis(cross_align, cross_sizing, cross_desired, cross, false);
+            place_axis(cross_align, cross_sizing, cross_desired, cross, false);
 
         let child_rect = axis.compose_rect(cursor, cross_min + cross_offset, main_size, cross_size);
         layout.arrange(tree, c, child_rect);

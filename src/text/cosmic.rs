@@ -53,6 +53,10 @@ struct CacheEntry {
     /// can build a `TextArea` without reshaping.
     buffer: Buffer,
     measured: Size,
+    /// Width of the widest unbreakable run, in logical px. Computed once on
+    /// insert from the unbounded shaping result and reused for every later
+    /// `measure` call that hits this entry.
+    intrinsic_min: f32,
 }
 
 /// Real-shaping text measurer. Owns a [`FontSystem`] (system fonts via
@@ -154,6 +158,7 @@ impl CosmicMeasure {
             return MeasureResult {
                 size: Size::ZERO,
                 key: TextCacheKey::INVALID,
+                intrinsic_min: 0.0,
             };
         }
         let key = key_for(text, font_size_px, max_width_px);
@@ -161,6 +166,7 @@ impl CosmicMeasure {
             return MeasureResult {
                 size: entry.measured,
                 key,
+                intrinsic_min: entry.intrinsic_min,
             };
         }
 
@@ -178,15 +184,39 @@ impl CosmicMeasure {
 
         let mut max_w = 0.0_f32;
         let mut total_h = 0.0_f32;
+        let mut intrinsic_min = 0.0_f32;
+        let mut current_word_w = 0.0_f32;
         for run in buffer.layout_runs() {
             max_w = max_w.max(run.line_w);
             total_h = total_h.max(run.line_top + run.line_height);
+            for g in run.glyphs {
+                let cluster = &run.text[g.start..g.end];
+                let is_break = cluster.chars().all(|c| c.is_whitespace());
+                if is_break {
+                    intrinsic_min = intrinsic_min.max(current_word_w);
+                    current_word_w = 0.0;
+                } else {
+                    current_word_w += g.w;
+                }
+            }
+            // Hard line break (\n) terminates a run — also closes any
+            // in-progress word.
+            intrinsic_min = intrinsic_min.max(current_word_w);
+            current_word_w = 0.0;
         }
         let measured = Size::new(max_w.ceil(), total_h.ceil());
-        self.cache.insert(key, CacheEntry { buffer, measured });
+        self.cache.insert(
+            key,
+            CacheEntry {
+                buffer,
+                measured,
+                intrinsic_min,
+            },
+        );
         MeasureResult {
             size: measured,
             key,
+            intrinsic_min,
         }
     }
 }
