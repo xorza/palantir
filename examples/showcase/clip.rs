@@ -1,4 +1,4 @@
-use palantir::{Color, Element, Frame, HStack, Sizing, Stroke, Ui, ZStack};
+use palantir::{Color, Element, Frame, HStack, Sizing, Stroke, Styled, Ui, ZStack};
 
 pub fn build(ui: &mut Ui) {
     HStack::new()

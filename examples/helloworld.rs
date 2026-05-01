@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use palantir::Align;
 use palantir::renderer::{ComposeParams, Pipeline, WgpuBackend};
 use palantir::{
-    Button, ButtonStyle, Color, Corners, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui,
-    VStack, Visuals, ZStack,
+    Button, ButtonStyle, Color, Corners, Element, HStack, InputEvent, Rect, Sizing, Stroke, Styled,
+    Ui, VStack, Visuals, ZStack,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;

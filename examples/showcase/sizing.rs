@@ -1,4 +1,4 @@
-use palantir::{Color, Element, Frame, HStack, Sizing, Ui, VStack};
+use palantir::{Color, Element, Frame, HStack, Sizing, Styled, Ui, VStack};
 
 fn fixed() -> Color {
     Color::rgb(0.85, 0.45, 0.30)

@@ -1,8 +1,7 @@
 use crate::element::{Element, LayoutMode, UiElement};
-use crate::primitives::{Color, Corners, Stroke, WidgetId};
-use crate::shape::Shape;
+use crate::primitives::WidgetId;
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::{Background, Response, Styled};
 use std::hash::Hash;
 
 /// A simple decorated rectangle: configurable fill / stroke / radius / size /
@@ -10,9 +9,7 @@ use std::hash::Hash;
 /// swatches, and as the rendering primitive inside `Button`.
 pub struct Frame {
     element: UiElement,
-    fill: Color,
-    stroke: Option<Stroke>,
-    radius: Corners,
+    background: Background,
 }
 
 impl Frame {
@@ -29,34 +26,14 @@ impl Frame {
     pub fn for_element(element: UiElement) -> Self {
         Self {
             element,
-            fill: Color::TRANSPARENT,
-            stroke: None,
-            radius: Corners::ZERO,
+            background: Background::default(),
         }
-    }
-
-    pub fn fill(mut self, c: Color) -> Self {
-        self.fill = c;
-        self
-    }
-    /// Accepts `Stroke`, `Option<Stroke>`, or `None`.
-    pub fn stroke(mut self, s: impl Into<Option<Stroke>>) -> Self {
-        self.stroke = s.into();
-        self
-    }
-    pub fn radius(mut self, r: impl Into<Corners>) -> Self {
-        self.radius = r.into();
-        self
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         let node = ui.node(self.element, |ui| {
-            ui.add_shape(Shape::RoundedRect {
-                radius: self.radius,
-                fill: self.fill,
-                stroke: self.stroke,
-            });
+            self.background.add_to(ui);
         });
 
         let state = ui.response_for(id);
@@ -67,5 +44,11 @@ impl Frame {
 impl Element for Frame {
     fn element_mut(&mut self) -> &mut UiElement {
         &mut self.element
+    }
+}
+
+impl Styled for Frame {
+    fn background_mut(&mut self) -> &mut Background {
+        &mut self.background
     }
 }

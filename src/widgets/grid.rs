@@ -1,8 +1,7 @@
 use crate::element::{Element, LayoutMode, UiElement};
-use crate::primitives::{Color, Corners, Sizing, Stroke, Track, TranslateScale, WidgetId};
-use crate::shape::Shape;
+use crate::primitives::{Sizing, Track, TranslateScale, WidgetId};
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::{Background, Response, Styled};
 use std::hash::Hash;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -26,9 +25,7 @@ use std::sync::OnceLock;
 /// Auto-vs-Star cyclic dependency, no `SharedSizeScope`, no auto-flow).
 pub struct Grid {
     element: UiElement,
-    fill: Color,
-    stroke: Option<Stroke>,
-    radius: Corners,
+    background: Background,
     rows: Option<Rc<[Track]>>,
     cols: Option<Rc<[Track]>>,
     row_gap: f32,
@@ -51,9 +48,7 @@ impl Grid {
         // Until then keep it as a placeholder — never observed by layout.
         Self {
             element: UiElement::new(id, LayoutMode::Grid(u16::MAX)),
-            fill: Color::TRANSPARENT,
-            stroke: None,
-            radius: Corners::ZERO,
+            background: Background::default(),
             rows: None,
             cols: None,
             row_gap: 0.0,
@@ -97,18 +92,6 @@ impl Grid {
         self
     }
 
-    pub fn fill(mut self, c: Color) -> Self {
-        self.fill = c;
-        self
-    }
-    pub fn stroke(mut self, s: impl Into<Option<Stroke>>) -> Self {
-        self.stroke = s.into();
-        self
-    }
-    pub fn radius(mut self, r: impl Into<Corners>) -> Self {
-        self.radius = r.into();
-        self
-    }
     pub fn clip(mut self, c: bool) -> Self {
         self.element.clip = c;
         self
@@ -128,15 +111,9 @@ impl Grid {
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
 
-        let fill = self.fill;
-        let stroke = self.stroke;
-        let radius = self.radius;
+        let background = self.background;
         let node = ui.node(element, |ui| {
-            ui.add_shape(Shape::RoundedRect {
-                radius,
-                fill,
-                stroke,
-            });
+            background.add_to(ui);
             body(ui);
         });
 
@@ -148,6 +125,12 @@ impl Grid {
 impl Element for Grid {
     fn element_mut(&mut self) -> &mut UiElement {
         &mut self.element
+    }
+}
+
+impl Styled for Grid {
+    fn background_mut(&mut self) -> &mut Background {
+        &mut self.background
     }
 }
 
