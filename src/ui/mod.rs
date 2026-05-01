@@ -16,7 +16,7 @@ use std::collections::HashSet;
 /// upload time. Pointer events from winit are converted at the boundary
 /// (`handle_event` / `InputEvent::from_winit`).
 pub struct Ui {
-    pub tree: Tree,
+    pub(crate) tree: Tree,
     pub theme: Theme,
     parents: Vec<NodeId>,
     root: Option<NodeId>,
@@ -98,6 +98,18 @@ impl Ui {
     pub fn root(&self) -> NodeId {
         self.root
             .expect("no root pushed yet — open a node before any other ops")
+    }
+
+    /// Borrow the recorded tree. Pass to `layout::run`, the renderer pipeline,
+    /// or any other consumer that needs read access.
+    pub fn tree(&self) -> &Tree {
+        &self.tree
+    }
+
+    /// Mutably borrow the recorded tree. `layout::run` needs `&mut Tree` to
+    /// fill in `desired` and `rect`.
+    pub fn tree_mut(&mut self) -> &mut Tree {
+        &mut self.tree
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
