@@ -17,7 +17,7 @@ struct DefSnapshot {
 /// the per-axis scratch. `Rc::clone` per axis is refcount-only — track data
 /// stays in the user's cached `Rc<[Track]>`, never copied through the tree
 /// pool.
-fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u32, depth: usize) -> DefSnapshot {
+fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) -> DefSnapshot {
     let def = tree.grid_def(idx);
     let n_rows = def.rows.len();
     let n_cols = def.cols.len();
@@ -138,7 +138,7 @@ impl GridLayout {
 /// across frames). No fixed track-count limit. Per-track hug sizes are
 /// written through to `Tree::hug_pool` so `arrange` can read them without
 /// re-walking children.
-pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, idx: u32) -> Size {
+pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, idx: u16) -> Size {
     let depth = layout.grid.enter();
     let result = measure_inner(layout, tree, node, idx, depth);
     layout.grid.exit();
@@ -149,7 +149,7 @@ fn measure_inner(
     layout: &mut LayoutEngine,
     tree: &mut Tree,
     node: NodeId,
-    idx: u32,
+    idx: u16,
     depth: usize,
 ) -> Size {
     let DefSnapshot {
@@ -253,7 +253,7 @@ pub(super) fn arrange(
     tree: &mut Tree,
     node: NodeId,
     inner: Rect,
-    idx: u32,
+    idx: u16,
 ) {
     let depth = layout.grid.enter();
     arrange_inner(layout, tree, node, inner, idx, depth);
@@ -265,7 +265,7 @@ fn arrange_inner(
     tree: &mut Tree,
     node: NodeId,
     inner: Rect,
-    idx: u32,
+    idx: u16,
     depth: usize,
 ) {
     // Arrange re-snapshots from the tree pool; it does not assume measure's

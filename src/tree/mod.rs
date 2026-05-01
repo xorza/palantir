@@ -60,7 +60,7 @@ pub struct Tree {
     /// field so the Node footprint stays minimal across measure/arrange/paint.
     /// Reused frame-to-frame; cleared with `Tree::clear`.
     last_child: Vec<Option<NodeId>>,
-    /// Grid track definitions, addressed by `LayoutMode::Grid(u32)`. One
+    /// Grid track definitions, addressed by `LayoutMode::Grid(u16)`. One
     /// entry per `Grid` panel recorded this frame. Track lists live behind
     /// `Rc<[Track]>` so callers can cache and share them across frames; the
     /// framework only refcount-touches. Cleared with `clear`.
@@ -95,10 +95,14 @@ impl Tree {
         cols: Rc<[Track]>,
         row_gap: f32,
         col_gap: f32,
-    ) -> u32 {
+    ) -> u16 {
         let row_hugs = self.reserve_hugs(rows.len());
         let col_hugs = self.reserve_hugs(cols.len());
-        let idx = self.grid_defs.len() as u32;
+        assert!(
+            self.grid_defs.len() < u16::MAX as usize,
+            "more than 65 535 Grid panels in a single frame",
+        );
+        let idx = self.grid_defs.len() as u16;
         self.grid_defs.push(GridDef {
             rows,
             cols,
@@ -119,7 +123,7 @@ impl Tree {
         }
     }
 
-    pub(crate) fn grid_def(&self, idx: u32) -> &GridDef {
+    pub(crate) fn grid_def(&self, idx: u16) -> &GridDef {
         &self.grid_defs[idx as usize]
     }
 

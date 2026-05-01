@@ -83,6 +83,7 @@ If the directory is missing or stale, run the script before doing research:
 ## Conventions
 
 - No comments except for non-obvious *why*. Code is short and self-explanatory; keep it that way.
+- Default to release `assert!` for invariant checks, not `debug_assert!` — `debug_assert!` is stripped in release and hides logic bugs in the build users actually run. Reserve `debug_assert!` for checks that are genuinely too expensive for release (e.g. O(n) inside a hot loop), and call out the tradeoff when choosing it.
 - Edition 2024. Dependencies pinned to `*` for now (lockfile pins actual versions) — fine for prototype, pin before publishing.
 - Tests in `lib.rs` pin layout semantics. Add a test whenever you change measure/arrange behavior.
 - Don't add wgpu code paths to the layout/tree modules. Renderer goes in its own module when written.
