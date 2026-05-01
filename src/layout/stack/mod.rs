@@ -56,9 +56,15 @@ impl Axis {
         let child_align = child.flags.align();
         match self {
             // HStack: cross = vertical
-            Axis::X => child_align.v.or(parent_child_align.v).to_axis(),
+            Axis::X => child_align
+                .valign()
+                .or(parent_child_align.valign())
+                .to_axis(),
             // VStack: cross = horizontal
-            Axis::Y => child_align.h.or(parent_child_align.h).to_axis(),
+            Axis::Y => child_align
+                .halign()
+                .or(parent_child_align.halign())
+                .to_axis(),
         }
     }
     /// Build a `Size` from main- and cross-axis lengths.

@@ -114,8 +114,8 @@ impl NodeFlags {
             Visibility::Hidden => Self::VIS_HIDDEN,
             Visibility::Collapsed => Self::VIS_COLLAPSED,
         };
-        bits |= (align.h as u16) << Self::HALIGN_SHIFT;
-        bits |= (align.v as u16) << Self::VALIGN_SHIFT;
+        bits |= (align.halign() as u16) << Self::HALIGN_SHIFT;
+        bits |= (align.valign() as u16) << Self::VALIGN_SHIFT;
         Self(bits)
     }
 
@@ -152,24 +152,23 @@ impl NodeFlags {
     pub fn align(self) -> Align {
         let h = (self.0 & Self::HALIGN_MASK) >> Self::HALIGN_SHIFT;
         let v = (self.0 & Self::VALIGN_MASK) >> Self::VALIGN_SHIFT;
-        Align {
-            h: match h {
-                0 => HAlign::Auto,
-                1 => HAlign::Left,
-                2 => HAlign::Center,
-                3 => HAlign::Right,
-                4 => HAlign::Stretch,
-                _ => unreachable!(),
-            },
-            v: match v {
-                0 => VAlign::Auto,
-                1 => VAlign::Top,
-                2 => VAlign::Center,
-                3 => VAlign::Bottom,
-                4 => VAlign::Stretch,
-                _ => unreachable!(),
-            },
-        }
+        let h = match h {
+            0 => HAlign::Auto,
+            1 => HAlign::Left,
+            2 => HAlign::Center,
+            3 => HAlign::Right,
+            4 => HAlign::Stretch,
+            _ => unreachable!(),
+        };
+        let v = match v {
+            0 => VAlign::Auto,
+            1 => VAlign::Top,
+            2 => VAlign::Center,
+            3 => VAlign::Bottom,
+            4 => VAlign::Stretch,
+            _ => unreachable!(),
+        };
+        Align::new(h, v)
     }
 }
 

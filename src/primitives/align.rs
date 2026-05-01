@@ -27,27 +27,47 @@ pub enum VAlign {
     Stretch,
 }
 
-/// Two-axis alignment, for the convenience setter that fixes both at once.
-/// Held as a plain struct of two `u8`-sized enums (2 bytes total). `Element`
-/// stores the components individually (`align_x: HAlign`, `align_y: VAlign`)
-/// so that single-axis updates don't disturb the other axis.
+/// Two-axis alignment packed into a single byte. Lower 3 bits hold the
+/// `HAlign`, next 3 hold the `VAlign`. Stored on `NodeFlags` (not directly on
+/// `NodeElement`) so the layout pass reads it through `flags.align()`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub struct Align {
-    pub h: HAlign,
-    pub v: VAlign,
-}
+pub struct Align(u8);
 
 impl Align {
+    const VSHIFT: u8 = 3;
+    const HMASK: u8 = 0b111;
+    const VMASK: u8 = 0b111 << Self::VSHIFT;
+
     pub const fn new(h: HAlign, v: VAlign) -> Self {
-        Self { h, v }
+        Self((h as u8) | ((v as u8) << Self::VSHIFT))
     }
     /// Single horizontal axis; vertical defaults to `Auto`.
     pub const fn h(h: HAlign) -> Self {
-        Self { h, v: VAlign::Auto }
+        Self::new(h, VAlign::Auto)
     }
     /// Single vertical axis; horizontal defaults to `Auto`.
     pub const fn v(v: VAlign) -> Self {
-        Self { h: HAlign::Auto, v }
+        Self::new(HAlign::Auto, v)
+    }
+    pub const fn halign(self) -> HAlign {
+        match self.0 & Self::HMASK {
+            0 => HAlign::Auto,
+            1 => HAlign::Left,
+            2 => HAlign::Center,
+            3 => HAlign::Right,
+            4 => HAlign::Stretch,
+            _ => unreachable!(),
+        }
+    }
+    pub const fn valign(self) -> VAlign {
+        match (self.0 & Self::VMASK) >> Self::VSHIFT {
+            0 => VAlign::Auto,
+            1 => VAlign::Top,
+            2 => VAlign::Center,
+            3 => VAlign::Bottom,
+            4 => VAlign::Stretch,
+            _ => unreachable!(),
+        }
     }
     pub const TOP_LEFT: Self = Self::new(HAlign::Left, VAlign::Top);
     pub const TOP: Self = Self::new(HAlign::Center, VAlign::Top);
