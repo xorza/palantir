@@ -55,10 +55,10 @@ impl HitIndex {
 
         let paint = tree.paint_column();
         let widget_ids = tree.widget_id_column();
-        let own = cascades.own_column();
+        let rows = cascades.rows();
         for i in 0..n {
             let id = NodeId(i as u32);
-            let c = own[i];
+            let c = rows[i];
 
             let screen_rect = c.transform.apply_rect(layout.rect(id));
             let visible_rect = match c.clip {
