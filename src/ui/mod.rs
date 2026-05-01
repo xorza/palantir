@@ -7,7 +7,7 @@ use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::layout::{LayoutEngine, LayoutResult};
 use crate::primitives::{Rect, Size, WidgetId};
 use crate::shape::Shape;
-use crate::text::{CosmicMeasure, MeasureResult, mono_measure};
+use crate::text::{CosmicMeasure, MeasureResult, TextSystem};
 use crate::tree::{NodeId, Tree};
 use std::collections::HashSet;
 
@@ -43,12 +43,10 @@ pub struct Ui {
     scale_factor: f32,
     pixel_snap: bool,
 
-    /// Real text shaper. `None` (default) means the engine uses the
-    /// deterministic [`mono_measure`] placeholder — fine for tests and
-    /// headless use, but [`Shape::Text`] runs measured this way carry an
-    /// invalid cache key and the renderer drops them. Install one with
-    /// [`Ui::install_text_system`] to get real shaping + rendering.
-    text: Option<CosmicMeasure>,
+    /// Text shaping & measurement, with the `CosmicMeasure` / mono dispatch
+    /// hidden inside. Install a real shaper with [`Ui::install_text_system`]
+    /// to get shaping + rendering; otherwise runs use the mono placeholder.
+    text: TextSystem,
 }
 
 impl Default for Ui {
@@ -70,37 +68,34 @@ impl Ui {
             cascades: Cascades::new(),
             scale_factor: 1.0,
             pixel_snap: true,
-            text: None,
+            text: TextSystem::new(),
         }
     }
 
     /// Install a [`CosmicMeasure`] for real text shaping & rendering. Apps
     /// call this once at startup; tests typically leave it unset and run on
     /// the deterministic mono placeholder.
-    pub fn install_text_system(&mut self, text: CosmicMeasure) {
-        self.text = Some(text);
+    pub fn install_text_system(&mut self, cosmic: CosmicMeasure) {
+        self.text.install_cosmic(cosmic);
     }
 
-    /// Borrow the installed text shaper, or `None` if running on the mono
-    /// placeholder. The wgpu backend takes this at submit time to drive
-    /// glyphon's `prepare`/`render`.
-    pub fn text_mut(&mut self) -> Option<&mut CosmicMeasure> {
-        self.text.as_mut()
+    /// Mutable access to the [`TextSystem`]. Mostly for the wgpu backend
+    /// (needs the inner cosmic shaper for glyphon's `prepare`/`render`); ad-
+    /// hoc text-size queries can use [`Ui::measure_text`].
+    pub fn text_system_mut(&mut self) -> &mut TextSystem {
+        &mut self.text
     }
 
-    /// Measure (and shape, when a `CosmicMeasure` is installed) one text
-    /// run. Widgets call this from `show()` to write `Shape::Text.measured`
-    /// and `Shape::Text.key`.
+    /// One-off text measurement. Widgets don't need this any more — layout
+    /// shapes during measure — but external callers (debug overlays, etc.)
+    /// can use it.
     pub fn measure_text(
         &mut self,
         text: &str,
         font_size_px: f32,
         max_width_px: Option<f32>,
     ) -> MeasureResult {
-        match &mut self.text {
-            Some(c) => c.measure(text, font_size_px, max_width_px),
-            None => mono_measure(text, font_size_px, max_width_px),
-        }
+        self.text.measure(text, font_size_px, max_width_px)
     }
 
     /// Logical→physical conversion factor (e.g. 2.0 on a 2× retina display).
@@ -139,7 +134,7 @@ impl Ui {
     pub fn layout(&mut self, surface: Rect) {
         let root = self.root();
         self.layout_engine
-            .run(&self.tree, root, surface, self.text.as_mut());
+            .run(&self.tree, root, surface, &mut self.text);
     }
 
     /// Rebuild the per-frame cascade table and input's last-frame rect cache

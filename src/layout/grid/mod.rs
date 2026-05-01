@@ -1,6 +1,6 @@
 use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
 use crate::primitives::{GridCell, Rect, Size, Sizing, Track};
-use crate::text::CosmicMeasure;
+use crate::text::TextSystem;
 use crate::tree::{NodeId, Tree};
 use std::ops::Range;
 use std::rc::Rc;
@@ -215,7 +215,7 @@ pub(super) fn measure(
     tree: &Tree,
     node: NodeId,
     idx: u16,
-    text: Option<&mut CosmicMeasure>,
+    text: &mut TextSystem,
 ) -> Size {
     let depth = layout.grid.depth_stack.enter();
     let result = measure_inner(layout, tree, node, idx, depth, text);
@@ -229,7 +229,7 @@ fn measure_inner(
     node: NodeId,
     idx: u16,
     depth: usize,
-    mut text: Option<&mut CosmicMeasure>,
+    text: &mut TextSystem,
 ) -> Size {
     let DefSnapshot {
         n_rows,
@@ -247,7 +247,7 @@ fn measure_inner(
         // Still measure children so their `desired` is set.
         let mut kids = tree.child_cursor(node);
         while let Some(c) = kids.next(tree) {
-            layout.measure(tree, c, Size::ZERO, text.as_deref_mut());
+            layout.measure(tree, c, Size::ZERO, text);
         }
         return Size::ZERO;
     }
@@ -266,7 +266,7 @@ fn measure_inner(
             Size::new(avail_w, avail_h)
         };
 
-        let d = layout.measure(tree, c, avail, text.as_deref_mut());
+        let d = layout.measure(tree, c, avail, text);
         if collapsed {
             continue;
         }

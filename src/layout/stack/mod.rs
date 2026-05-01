@@ -1,7 +1,7 @@
 use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizes, Sizing};
-use crate::text::CosmicMeasure;
+use crate::text::TextSystem;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
@@ -91,7 +91,7 @@ pub(super) fn measure(
     node: NodeId,
     inner: Size,
     axis: Axis,
-    mut text: Option<&mut CosmicMeasure>,
+    text: &mut TextSystem,
 ) -> Size {
     // Pass infinite size on the main axis (WPF trick): children report intrinsic.
     let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
@@ -105,7 +105,7 @@ pub(super) fn measure(
         // Collapsed children still get measured (so `desired` is set to ZERO),
         // but don't contribute to the parent's content size or gap count.
         let collapsed = tree.is_collapsed(c);
-        let d = layout.measure(tree, c, child_avail, text.as_deref_mut());
+        let d = layout.measure(tree, c, child_avail, text);
         if collapsed {
             continue;
         }

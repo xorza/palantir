@@ -259,7 +259,8 @@ impl State {
             Color::rgb(0.08, 0.08, 0.10),
             buffer,
             self.ui
-                .text_mut()
+                .text_system_mut()
+                .cosmic_mut()
                 .expect("install_text_system must be called before rendering"),
         );
 

@@ -238,8 +238,10 @@ impl State {
             &view,
             Color::rgb(0.08, 0.08, 0.10),
             buffer,
+            // todo also wrap cosmic
             self.ui
-                .text_mut()
+                .text_system_mut()
+                .cosmic_mut()
                 .expect("install_text_system must be called before rendering"),
         );
 

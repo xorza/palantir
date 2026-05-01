@@ -1,6 +1,6 @@
 use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
 use crate::primitives::{Rect, Size};
-use crate::text::CosmicMeasure;
+use crate::text::TextSystem;
 use crate::tree::{NodeId, Tree};
 
 #[cfg(test)]
@@ -15,14 +15,14 @@ pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
-    mut text: Option<&mut CosmicMeasure>,
+    text: &mut TextSystem,
 ) -> Size {
     let child_avail = Size::INF;
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let d = layout.measure(tree, c, child_avail, text.as_deref_mut());
+        let d = layout.measure(tree, c, child_avail, text);
         max_w = max_w.max(d.w);
         max_h = max_h.max(d.h);
     }
