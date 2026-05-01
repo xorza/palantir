@@ -181,9 +181,10 @@ pub(super) fn resolved_axis_align(
     child: &NodeElement,
     parent_child_align: Align,
 ) -> (AxisAlign, AxisAlign) {
+    let child_align = child.flags.align();
     (
-        child.align.h.or(parent_child_align.h).to_axis(),
-        child.align.v.or(parent_child_align.v).to_axis(),
+        child_align.h.or(parent_child_align.h).to_axis(),
+        child_align.v.or(parent_child_align.v).to_axis(),
     )
 }
 

@@ -53,11 +53,12 @@ impl Axis {
     /// fallback when the child's own align is `Auto`. Mapped through
     /// `AxisAlign` so the math is type-symmetric across axes.
     fn cross_align(self, child: &NodeElement, parent_child_align: Align) -> AxisAlign {
+        let child_align = child.flags.align();
         match self {
             // HStack: cross = vertical
-            Axis::X => child.align.v.or(parent_child_align.v).to_axis(),
+            Axis::X => child_align.v.or(parent_child_align.v).to_axis(),
             // VStack: cross = horizontal
-            Axis::Y => child.align.h.or(parent_child_align.h).to_axis(),
+            Axis::Y => child_align.h.or(parent_child_align.h).to_axis(),
         }
     }
     /// Build a `Size` from main- and cross-axis lengths.
