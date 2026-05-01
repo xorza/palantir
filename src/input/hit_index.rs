@@ -53,8 +53,8 @@ impl HitIndex {
         self.entries.reserve(n);
         self.by_id.reserve(n);
 
-        let paint = tree.paint_column();
-        let widget_ids = tree.widget_id_column();
+        let paint = tree.paints();
+        let widget_ids = tree.widget_ids();
         let rows = cascades.rows();
         for i in 0..n {
             let id = NodeId(i as u32);

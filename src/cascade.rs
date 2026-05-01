@@ -56,9 +56,9 @@ impl Cascades {
         }
         let mut stack: Vec<Frame> = Vec::new();
 
-        let paint = tree.paint_column();
-        let layout_col = tree.layout_column();
-        let subtree_end = tree.subtree_end_column();
+        let paint = tree.paints();
+        let layout_col = tree.layouts();
+        let subtree_end = tree.subtree_ends();
 
         for i in 0..n {
             while let Some(top) = stack.last() {
