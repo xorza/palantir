@@ -24,6 +24,59 @@ pub enum LayoutMode {
     Grid(u16),
 }
 
+/// Rarely-set fields lifted out of `UiElement` so they don't bloat every
+/// stored `Node`. Builders write defaults inline; on `Tree::push_node` the
+/// non-default values get stamped into `Tree::node_extras` and the `Node`
+/// keeps just an `Option<u16>` slot. `transform`/`position`/`grid` are inert
+/// for most nodes (no transform, non-Canvas parent, non-Grid parent), so
+/// keeping them inline wastes ~32B per element on the common path.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct UiElementExtras {
+    pub transform: Option<TranslateScale>,
+    pub position: Vec2,
+    pub grid: GridCell,
+}
+
+impl UiElementExtras {
+    /// True when nothing has been customized — push_node skips the side-table
+    /// allocation in this case.
+    pub fn is_default(&self) -> bool {
+        self.transform.is_none() && self.position == Vec2::ZERO && self.grid == GridCell::default()
+    }
+}
+
+/// Compact form of a node's recorded element, stored inline in `Node`. Built
+/// from a `UiElement` at `Tree::push_node`: the rarely-set fields move to
+/// `Tree::node_extras`, addressed via `extras: Option<u16>`. The wide
+/// `UiElement` lives only on builders during recording.
+#[derive(Clone, Copy, Debug)]
+pub struct NodeElement {
+    pub id: WidgetId,
+    pub mode: LayoutMode,
+
+    pub size: Sizes,
+    pub min_size: Size,
+    pub max_size: Size,
+    pub padding: Spacing,
+    pub margin: Spacing,
+
+    pub gap: f32,
+    pub justify: Justify,
+    pub align: Align,
+    pub child_align: Align,
+
+    pub sense: Sense,
+    pub disabled: bool,
+
+    pub visibility: Visibility,
+    pub clip: bool,
+
+    /// Index into `Tree::node_extras`, or `None` when all extras are at
+    /// default (the common case). Cap is 65 535 non-default elements per
+    /// frame; `node_extras` is cleared per frame.
+    pub extras: Option<u16>,
+}
+
 /// Per-node config: identity + spatial layout + interaction + paint flags.
 /// Every widget builder owns one and forwards it to `Ui::node`. `Element` (the
 /// trait below) gives chained setters for all fields by impl'ing one method.
@@ -120,6 +173,35 @@ impl UiElement {
             clip,
             transform: None,
         }
+    }
+
+    /// Split into the compact `NodeElement` (with `extras: None`) and the
+    /// rarely-set bits. `Tree::push_node` stamps the side-table slot.
+    pub fn split(self) -> (NodeElement, UiElementExtras) {
+        let core = NodeElement {
+            id: self.id,
+            mode: self.mode,
+            size: self.size,
+            min_size: self.min_size,
+            max_size: self.max_size,
+            padding: self.padding,
+            margin: self.margin,
+            gap: self.gap,
+            justify: self.justify,
+            align: self.align,
+            child_align: self.child_align,
+            sense: self.sense,
+            disabled: self.disabled,
+            visibility: self.visibility,
+            clip: self.clip,
+            extras: None,
+        };
+        let extras = UiElementExtras {
+            transform: self.transform,
+            position: self.position,
+            grid: self.grid,
+        };
+        (core, extras)
     }
 }
 

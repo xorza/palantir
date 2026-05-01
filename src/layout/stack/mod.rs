@@ -1,5 +1,5 @@
 use super::LayoutEngine;
-use crate::element::UiElement;
+use crate::element::NodeElement;
 use crate::primitives::{AxisAlign, Justify, Rect, Size, Sizes, Sizing};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
@@ -52,7 +52,7 @@ impl Axis {
     /// Cross-axis alignment of a child, with parent's `child_align` as
     /// fallback when the child's own align is `Auto`. Mapped through
     /// `AxisAlign` so the math is type-symmetric across axes.
-    fn cross_align(self, child: &UiElement, parent: &UiElement) -> AxisAlign {
+    fn cross_align(self, child: &NodeElement, parent: &NodeElement) -> AxisAlign {
         match self {
             // HStack: cross = vertical
             Axis::X => child.align.v.or(parent.child_align.v).to_axis(),
