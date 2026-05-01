@@ -303,9 +303,29 @@ fn measure_inner(
 
     // Resolve column widths now (Fixed + Hug + Fill). Gives every cell a
     // committed `available.w` before it measures.
+    //
+    // For Fill cols specifically, whether cells should see the resolved
+    // Fill width or `INFINITY` depends on the *grid's* sizing on this
+    // axis. If the grid is `Sizing::Hug`, arrange's `inner.w` will be
+    // `grid.desired.w = sum_non_fill` — Fill cols get 0 leftover at
+    // arrange. Cells measured at the measure-time finite Fill width
+    // would commit row heights to a width arrange doesn't honor (the
+    // "rows grow on horizontal resize" surprise). For non-Hug grids
+    // (`Fill` / `Fixed`), measure's `inner_avail.w` matches arrange's
+    // `inner.w`, so Fill cols at measure time give cells the same
+    // width they'll get at arrange — wrap text shapes correctly.
+    let grid_sizing_w = tree.layout(node).size.w;
+    let grid_sizing_h = tree.layout(node).size.h;
     {
         let s = layout.grid.depth_stack.at(depth);
         resolve_axis(&mut s.col, inner_avail.w, col_gap);
+        if !matches!(grid_sizing_w, Sizing::Hug) && inner_avail.w.is_finite() {
+            for (i, t) in s.col.tracks.iter().enumerate() {
+                if matches!(t.size, Sizing::Fill(_)) {
+                    s.col.resolved[i] = true;
+                }
+            }
+        }
     }
 
     // Phase 2: measure cells with resolved col widths. Rows are still
@@ -318,9 +338,18 @@ fn measure_inner(
 
         let avail = {
             let s = layout.grid.depth_stack.at(depth);
-            let avail_w = span_size(&s.col.sizes, cell.col, cell.col_span, col_gap);
-            // Rows: only Fixed is known; Hug and Fill are unresolved →
-            // INF (WPF intrinsic trick).
+            // `sum_spanned_known` returns INFINITY if any spanned col is
+            // unresolved. After `resolve_axis` ran above, Fixed and Hug
+            // cols are marked resolved; Fill cols intentionally stay
+            // unresolved so cells in them get INF here — preserves the
+            // pre-Step B behavior where Fill is finalized only at
+            // arrange time. Without this, cells in Fill cols measure at
+            // a different width than they're arranged at, and that
+            // discrepancy commits row heights based on a width arrange
+            // doesn't honor.
+            let avail_w = sum_spanned_known(&s.col.sizes, &s.col.resolved, cell.col, cell.col_span);
+            // Rows: only Fixed is known yet; Hug and Fill are unresolved
+            // → INF (WPF intrinsic trick), as before.
             resolve_fixed(&mut s.row);
             let avail_h = sum_spanned_known(&s.row.sizes, &s.row.resolved, cell.row, cell.row_span);
             Size::new(avail_w, avail_h)
@@ -339,10 +368,21 @@ fn measure_inner(
         record_hug(&mut s.row, cell.row, cell.row_span, d.h, None);
     }
 
-    // Resolve row heights.
+    // Resolve row heights. Same Fill-marking rule as cols above —
+    // mark Fill rows resolved only when the grid is non-Hug on h.
+    // (Cells already measured by this point, so the resolved flag here
+    // doesn't affect the current measure; it carries forward into
+    // arrange's re-resolve via the persisted state.)
     {
         let s = layout.grid.depth_stack.at(depth);
         resolve_axis(&mut s.row, inner_avail.h, row_gap);
+        if !matches!(grid_sizing_h, Sizing::Hug) && inner_avail.h.is_finite() {
+            for (i, t) in s.row.tracks.iter().enumerate() {
+                if matches!(t.size, Sizing::Fill(_)) {
+                    s.row.resolved[i] = true;
+                }
+            }
+        }
     }
 
     // Persist hug pools so arrange can re-load them after sibling grids
@@ -596,6 +636,14 @@ fn span_size(sizes: &[f32], start: u16, span: u16, gap: f32) -> f32 {
 fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
     let n = a.tracks.len();
     a.sizes.fill(0.0);
+    // Reset resolved flags. Fixed + Hug get marked resolved as they're
+    // computed. Fill stays unresolved so cells in Fill cols see INF as
+    // their available width via `sum_spanned_known`, preserving the old
+    // "Fill is finalized at arrange" behavior. Without this, cells in
+    // Fill cols would measure with measure-time Fill leftover (a
+    // finite value), then arrange might collapse Fill to 0 (e.g., Hug
+    // grid) and the cell rect/shape would disagree.
+    a.resolved.fill(false);
     let total_gap = gap * n.saturating_sub(1) as f32;
 
     // Phase 1: Fixed.
@@ -603,6 +651,7 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
     for (i, t) in a.tracks.iter().enumerate() {
         if let Sizing::Fixed(v) = t.size {
             a.sizes[i] = v.clamp(t.min, t.max);
+            a.resolved[i] = true;
             consumed += a.sizes[i];
         }
     }
@@ -630,6 +679,7 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
                     let lo = a.hug_min[i].max(t.min);
                     let hi = a.hug_max[i].max(lo).min(t.max);
                     a.sizes[i] = hi;
+                    a.resolved[i] = true;
                     consumed += hi;
                 }
             }
@@ -639,6 +689,7 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
                 if matches!(t.size, Sizing::Hug) {
                     let lo = a.hug_min[i].max(t.min);
                     a.sizes[i] = lo;
+                    a.resolved[i] = true;
                     consumed += lo;
                 }
             }
@@ -657,6 +708,7 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
                         0.0
                     };
                     a.sizes[i] = (lo + share).min(hi);
+                    a.resolved[i] = true;
                     consumed += a.sizes[i];
                 }
             }
