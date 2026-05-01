@@ -1329,7 +1329,6 @@ name = "palantir"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "cosmic-text",
  "glam",
  "glyphon",
  "pollster",
