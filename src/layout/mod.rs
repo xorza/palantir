@@ -21,7 +21,7 @@ fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
         return Size::ZERO;
     }
     let style = tree.node(node).element;
-    let mode = tree.node(node).element.mode;
+    let mode = style.mode;
 
     // Inner available = available minus margin minus padding.
     let inner_avail = Size::new(
@@ -70,7 +70,7 @@ fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
         return;
     }
     let style = tree.node(node).element;
-    let mode = tree.node(node).element.mode;
+    let mode = style.mode;
 
     let rendered = slot.deflated_by(style.margin);
     tree.node_mut(node).rect = rendered;
@@ -107,17 +107,11 @@ fn resolve_axis_size(
     rendered.max(0.0).clamp(min, max) + margin
 }
 
-/// Place a collapsed child: zero-size rect at `anchor`. Recurses so the whole
-/// subtree picks up zeroed rects too. Stack/grid drivers call this so a
-/// collapsed child still exists in the tree but consumes no space, no gap,
-/// no fill weight.
-fn arrange_collapsed(tree: &mut Tree, node: NodeId, anchor: Vec2) {
-    zero_subtree(tree, node, anchor);
-}
-
 /// Set this node and every descendant to a zero-size rect anchored at
 /// `anchor`. Bypasses layout dispatch so a collapsed subtree pays only one
-/// pre-order walk regardless of what its children would have been.
+/// pre-order walk regardless of what its children would have been. Stack
+/// and grid drivers call this on collapsed children so they still exist in
+/// the tree but consume no space, no gap, no fill weight.
 fn zero_subtree(tree: &mut Tree, node: NodeId, anchor: Vec2) {
     tree.node_mut(node).rect = Rect {
         min: anchor,
@@ -293,7 +287,7 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).element.visibility == Visibility::Collapsed {
-            arrange_collapsed(tree, c, axis.compose_rect(cursor, cross_min, 0.0, 0.0).min);
+            zero_subtree(tree, c, axis.compose_rect(cursor, cross_min, 0.0, 0.0).min);
             continue;
         }
         if !first {
@@ -550,7 +544,7 @@ fn arrange_grid(tree: &mut Tree, node: NodeId, inner: Rect, idx: u32) {
     if snap.rows.is_empty() || snap.cols.is_empty() {
         let mut kids = tree.child_cursor(node);
         while let Some(c) = kids.next(tree) {
-            arrange_collapsed(tree, c, inner.min);
+            zero_subtree(tree, c, inner.min);
         }
         return;
     }
@@ -595,7 +589,7 @@ fn arrange_grid(tree: &mut Tree, node: NodeId, inner: Rect, idx: u32) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).element.visibility == Visibility::Collapsed {
-            arrange_collapsed(tree, c, inner.min);
+            zero_subtree(tree, c, inner.min);
             continue;
         }
         let cell = clamp_grid_cell(tree.node(c).element.grid, n_rows, n_cols);

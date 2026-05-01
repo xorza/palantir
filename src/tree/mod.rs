@@ -115,12 +115,6 @@ impl Tree {
     }
 
     fn push_tracks(&mut self, src: &[Track]) -> TrackSlice {
-        debug_assert!(
-            src.len() <= crate::primitives::MAX_TRACKS,
-            "grid tracks exceed MAX_TRACKS={} (got {})",
-            crate::primitives::MAX_TRACKS,
-            src.len(),
-        );
         let start = self.tracks.len() as u32;
         self.tracks.extend_from_slice(src);
         TrackSlice {
@@ -265,11 +259,6 @@ impl ChildCursor {
         let cur = self.next?;
         self.next = tree.nodes[cur.0 as usize].next_sibling;
         Some(cur)
-    }
-
-    /// Whether another child remains without advancing.
-    pub fn has_next(&self) -> bool {
-        self.next.is_some()
     }
 }
 
