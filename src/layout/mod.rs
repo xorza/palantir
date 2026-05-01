@@ -286,7 +286,11 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
 
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        if tree.node(c).element.visibility == Visibility::Collapsed {
+        let (s, d) = {
+            let n = tree.node(c);
+            (n.element, n.desired)
+        };
+        if s.visibility == Visibility::Collapsed {
             zero_subtree(tree, c, axis.compose_rect(cursor, cross_min, 0.0, 0.0).min);
             continue;
         }
@@ -294,8 +298,6 @@ fn arrange_stack(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             cursor += effective_gap;
         }
         first = false;
-        let d = tree.node(c).desired;
-        let s = tree.node(c).element;
 
         let main_sizing = axis.main_sizing(s.size);
         let main_size = match main_sizing {
@@ -620,6 +622,7 @@ fn arrange_grid(tree: &mut Tree, node: NodeId, inner: Rect, idx: u32) {
 }
 
 fn clamp_grid_cell(c: GridCell, n_rows: usize, n_cols: usize) -> GridCell {
+    debug_assert!(n_rows > 0 && n_cols > 0);
     let row = (c.row as usize).min(n_rows - 1);
     let col = (c.col as usize).min(n_cols - 1);
     let row_span = (c.row_span.max(1) as usize).min(n_rows - row);
