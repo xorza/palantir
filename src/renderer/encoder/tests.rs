@@ -268,10 +268,19 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     }
-    press_and_release_at(&mut ui, v_hit.min + Vec2::new(v_hit.size.w, v_hit.size.h) * 0.5);
-    press_and_release_at(&mut ui, d_hit.min + Vec2::new(d_hit.size.w, d_hit.size.h) * 0.5);
+    press_and_release_at(
+        &mut ui,
+        v_hit.min + Vec2::new(v_hit.size.w, v_hit.size.h) * 0.5,
+    );
+    press_and_release_at(
+        &mut ui,
+        d_hit.min + Vec2::new(d_hit.size.w, d_hit.size.h) * 0.5,
+    );
     let h_hit = ui.response_for(h_id).rect.unwrap();
-    press_and_release_at(&mut ui, h_hit.min + Vec2::new(h_hit.size.w, h_hit.size.h) * 0.5);
+    press_and_release_at(
+        &mut ui,
+        h_hit.min + Vec2::new(h_hit.size.w, h_hit.size.h) * 0.5,
+    );
 
     // Frame 2: rebuild and read clicked() on each widget.
     ui.begin_frame();

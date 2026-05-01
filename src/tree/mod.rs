@@ -111,6 +111,12 @@ impl Tree {
 
     pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
         let new_id = NodeId(self.nodes.len() as u32);
+        if let crate::element::LayoutMode::Grid(idx) = element.mode {
+            assert!(
+                (idx as usize) < self.grid.defs.len(),
+                "LayoutMode::Grid({idx}) references no grid_def — only Grid::show should push grid nodes",
+            );
+        }
         let (mut core, extras) = element.split();
         if !extras.is_default() {
             assert!(

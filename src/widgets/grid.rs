@@ -44,10 +44,12 @@ impl Grid {
     }
 
     fn for_id(id: WidgetId) -> Self {
-        // Mode is patched at `show()` time once we know the grid_def index.
-        // Until then keep it as a placeholder — never observed by layout.
+        // Mode is patched at `show()` time once `push_grid_def` returns the
+        // real index. Initialize with a placeholder that `Tree::push_node`'s
+        // bounds-check rejects, so any code path that reaches the tree
+        // without going through `show()` panics loudly.
         Self {
-            element: UiElement::new(id, LayoutMode::Grid(u16::MAX)),
+            element: UiElement::new(id, LayoutMode::Grid(PENDING_GRID_IDX)),
             background: Background::default(),
             rows: None,
             cols: None,
@@ -133,6 +135,11 @@ impl Styled for Grid {
         &mut self.background
     }
 }
+
+/// `LayoutMode::Grid(PENDING_GRID_IDX)` marks a `Grid` whose `grid_def` index
+/// has not yet been bound. `show()` overwrites it; if it ever reaches
+/// `Tree::push_node` unpatched, the bounds check there panics.
+const PENDING_GRID_IDX: u16 = u16::MAX;
 
 fn empty_tracks() -> Rc<[Track]> {
     thread_local! {

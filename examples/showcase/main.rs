@@ -179,7 +179,7 @@ impl ApplicationHandler for App {
                 state.config.width = new.width.clamp(1, max);
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
-                state.window.request_redraw();
+                state.draw();
             }
             WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorLeft { .. }
