@@ -7,7 +7,7 @@ use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::layout::{LayoutEngine, LayoutResult};
 use crate::primitives::{Rect, Size, WidgetId};
 use crate::shape::Shape;
-use crate::text::{MeasureResult, SharedCosmic, TextSystem};
+use crate::text::{MeasureResult, SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
 use std::collections::HashSet;
 
@@ -46,7 +46,7 @@ pub struct Ui {
     /// Text shaping & measurement, with the `CosmicMeasure` / mono dispatch
     /// hidden inside. Install a real shaper with [`Ui::install_text_system`]
     /// to get shaping + rendering; otherwise runs use the mono placeholder.
-    text: TextSystem,
+    text: TextMeasurer,
 }
 
 impl Default for Ui {
@@ -68,7 +68,7 @@ impl Ui {
             cascades: Cascades::new(),
             scale_factor: 1.0,
             pixel_snap: true,
-            text: TextSystem::new(),
+            text: TextMeasurer::new(),
         }
     }
 
