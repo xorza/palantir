@@ -2,6 +2,7 @@ use crate::layout::LayoutResult;
 use crate::primitives::{Rect, Sense, TranslateScale, WidgetId};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
+use std::collections::HashMap;
 
 /// One widget's hit-test entry from last frame: identity, screen-space rect
 /// (clipped by ancestors), and effective `Sense` (with disabled/visibility
@@ -48,6 +49,12 @@ impl Cascade {
 pub(crate) struct HitIndex {
     entries: Vec<HitEntry>,
     cascades: Vec<Cascade>,
+    /// `WidgetId → entries[idx]`. Populated alongside `entries` during
+    /// `rebuild` so `rect_for` / `contains_id` are O(1) instead of O(n) —
+    /// these run on every input event while an active widget is captured.
+    /// Capacity is reused across frames; uniqueness of ids is enforced by
+    /// `Ui::node`'s release assert.
+    by_id: HashMap<WidgetId, u32>,
 }
 
 impl HitIndex {
@@ -55,6 +62,7 @@ impl HitIndex {
         Self {
             entries: Vec::new(),
             cascades: Vec::new(),
+            by_id: HashMap::new(),
         }
     }
 
@@ -73,9 +81,11 @@ impl HitIndex {
     pub(crate) fn rebuild(&mut self, tree: &Tree, layout: &LayoutResult) {
         self.entries.clear();
         self.cascades.clear();
+        self.by_id.clear();
         let n = tree.node_count();
         self.entries.reserve(n);
         self.cascades.reserve(n);
+        self.by_id.reserve(n);
 
         for (i, node) in tree.nodes_iter().enumerate() {
             let parent = match node.parent {
@@ -119,6 +129,8 @@ impl HitIndex {
             } else {
                 node.element.flags.sense()
             };
+            self.by_id
+                .insert(node.element.id, self.entries.len() as u32);
             self.entries.push(HitEntry {
                 id: node.element.id,
                 rect: visible_rect,
@@ -140,12 +152,10 @@ impl HitIndex {
     }
 
     pub(crate) fn rect_for(&self, id: WidgetId) -> Option<Rect> {
-        self.entries
-            .iter()
-            .find_map(|e| (e.id == id).then_some(e.rect))
+        self.by_id.get(&id).map(|&i| self.entries[i as usize].rect)
     }
 
     pub(crate) fn contains_id(&self, id: WidgetId) -> bool {
-        self.entries.iter().any(|e| e.id == id)
+        self.by_id.contains_key(&id)
     }
 }
