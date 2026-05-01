@@ -1,34 +1,37 @@
-//! Per-node element data: `Element` (wide builder form), `ElementCore`
-//! (compact stored form), and `ElementExtras` (rarely-set side table).
+//! Per-node element data: `Element` (wide builder form), the four columns
+//! `Tree` stores it in (`LayoutCore`, `PaintCore`, `WidgetId`,
+//! `subtree_end`), and `ElementExtras` (rarely-set side table).
 //!
-//! Adding a field to `Element` requires editing every row below. The table
-//! is the source of truth — keep it in sync with the structs.
+//! Adding a field to `Element` requires routing it to one of the columns.
+//! Column choice is by *reader*: layout passes touch only `LayoutCore`,
+//! paint/cascade passes touch only `PaintCore`, hit-test reads the
+//! `WidgetId` column.
 //!
-//! | field           | Element | ElementCore (inline) | ElementExtras (side table) | NodeAttrs (packed)  |
-//! |-----------------|:---------:|:--------------------:|:----------------------------:|:-------------------:|
-//! | id              |     ✓     |          ✓           |                              |                     |
-//! | mode            |     ✓     |          ✓           |                              |                     |
-//! | size            |     ✓     |          ✓           |                              |                     |
-//! | padding         |     ✓     |          ✓           |                              |                     |
-//! | margin          |     ✓     |          ✓           |                              |                     |
-//! | sense           |     ✓     |                      |                              |          ✓          |
-//! | disabled        |     ✓     |                      |                              |          ✓          |
-//! | clip            |     ✓     |                      |                              |          ✓          |
-//! | visibility      |     ✓     |                      |                              |          ✓          |
-//! | align           |     ✓     |                      |                              |          ✓          |
-//! | min_size        |     ✓     |                      |              ✓               |                     |
-//! | max_size        |     ✓     |                      |              ✓               |                     |
-//! | gap             |     ✓     |                      |              ✓               |                     |
-//! | justify         |     ✓     |                      |              ✓               |                     |
-//! | child_align     |     ✓     |                      |              ✓               |                     |
-//! | position        |     ✓     |                      |              ✓               |                     |
-//! | grid            |     ✓     |                      |              ✓               |                     |
-//! | transform       |     ✓     |                      |              ✓               |                     |
+//! | field           | Element | LayoutCore | PaintCore | WidgetId | ElementExtras |
+//! |-----------------|:---------:|:--------:|:---------:|:--------:|:-------------:|
+//! | id              |     ✓     |          |           |    ✓     |               |
+//! | mode            |     ✓     |    ✓     |           |          |               |
+//! | size            |     ✓     |    ✓     |           |          |               |
+//! | padding         |     ✓     |    ✓     |           |          |               |
+//! | margin          |     ✓     |    ✓     |           |          |               |
+//! | align           |     ✓     |    ✓     |           |          |               |
+//! | visibility      |     ✓     |    ✓     |           |          |               |
+//! | sense           |     ✓     |          |     ✓     |          |               |
+//! | disabled        |     ✓     |          |     ✓     |          |               |
+//! | clip            |     ✓     |          |     ✓     |          |               |
+//! | min_size        |     ✓     |          |           |          |       ✓       |
+//! | max_size        |     ✓     |          |           |          |       ✓       |
+//! | gap             |     ✓     |          |           |          |       ✓       |
+//! | justify         |     ✓     |          |           |          |       ✓       |
+//! | child_align     |     ✓     |          |           |          |       ✓       |
+//! | position        |     ✓     |          |           |          |       ✓       |
+//! | grid            |     ✓     |          |           |          |       ✓       |
+//! | transform       |     ✓     |          |           |          |       ✓       |
 //!
-//! `Element::split` does the routing at `Tree::push_node` time. The side
-//! table is allocated only when at least one extras field differs from
-//! `ElementExtras::DEFAULT`. `Configure` (the trait) provides one chained
-//! setter per row.
+//! `Element::split` routes the fields at `Tree::push_node` time. The
+//! extras side table is allocated only when at least one extras field
+//! differs from `ElementExtras::DEFAULT`. `Configure` (the trait) provides
+//! one chained setter per row.
 
 use crate::primitives::{
     Align, GridCell, HAlign, Justify, Sense, Size, Sizes, Spacing, TranslateScale, VAlign,
@@ -118,23 +121,37 @@ impl ElementExtras {
     }
 }
 
-/// Compact form of a node's recorded element, stored inline in `Node`. Built
-/// from an `Element` at `Tree::push_node`: the rarely-set fields move to
-/// `Tree::node_extras`, addressed via `extras: Option<u16>`. The wide
-/// `Element` lives only on builders during recording.
+/// Layout-side per-node columns, stored in `Tree::layout`. Read by every
+/// pass that runs measure/arrange/alignment math; held tight (one cache
+/// line) so the layout pass doesn't pull paint/identity bytes it never
+/// looks at. Visibility lives here so `is_collapsed` short-circuits in
+/// the layout fast-path without touching `PaintCore`.
 #[derive(Clone, Copy, Debug)]
-pub struct ElementCore {
-    pub id: WidgetId,
+pub struct LayoutCore {
     pub mode: LayoutMode,
-
     pub size: Sizes,
     pub padding: Spacing,
     pub margin: Spacing,
+    pub align: Align,
+    pub visibility: Visibility,
+}
 
-    /// Packed `sense` / `disabled` / `clip` / `visibility` / `align`. Read
-    /// through the accessor methods on `NodeAttrs`.
-    pub attrs: NodeAttrs,
+impl LayoutCore {
+    pub fn is_collapsed(&self) -> bool {
+        matches!(self.visibility, Visibility::Collapsed)
+    }
+    pub fn is_visible(&self) -> bool {
+        matches!(self.visibility, Visibility::Visible)
+    }
+}
 
+/// Paint-and-input-side per-node columns, stored in `Tree::paint`. Read by
+/// cascade rebuild, the encoder, and the hit-index. Tiny (a u8 of packed
+/// flags + a u16 extras slot) so a frame's worth of paint flags fits in a
+/// handful of cache lines.
+#[derive(Clone, Copy, Debug)]
+pub struct PaintCore {
+    pub attrs: PaintAttrs,
     /// Index into `Tree::node_extras`, or `None` when all extras are at
     /// default (the common case). Cap is 65 535 non-default elements per
     /// frame; `node_extras` is cleared per frame.
@@ -234,22 +251,21 @@ impl Element {
         }
     }
 
-    /// Split into the compact `ElementCore` (with `extras: None`) and the
-    /// rarely-set bits. `Tree::push_node` stamps the side-table slot.
-    pub fn split(self) -> (ElementCore, ElementExtras) {
-        let core = ElementCore {
-            id: self.id,
+    /// Split into the four storage columns plus the rarely-set bits.
+    /// `Tree::push_node` stamps the extras side-table slot if any extras
+    /// differ from default and writes the resulting `extras` index into
+    /// `PaintCore`.
+    pub fn split(self) -> (LayoutCore, PaintCore, WidgetId, ElementExtras) {
+        let layout = LayoutCore {
             mode: self.mode,
             size: self.size,
             padding: self.padding,
             margin: self.margin,
-            attrs: NodeAttrs::pack(
-                self.sense,
-                self.disabled,
-                self.clip,
-                self.visibility,
-                self.align,
-            ),
+            align: self.align,
+            visibility: self.visibility,
+        };
+        let paint = PaintCore {
+            attrs: PaintAttrs::pack(self.sense, self.disabled, self.clip),
             extras: None,
         };
         let extras = ElementExtras {
@@ -262,7 +278,7 @@ impl Element {
             justify: self.justify,
             child_align: self.child_align,
         };
-        (core, extras)
+        (layout, paint, self.id, extras)
     }
 }
 
@@ -377,35 +393,22 @@ pub trait Configure: Sized {
     }
 }
 
-/// Packed per-`Node` attributes: `sense` (5-state enum, 3 bits), `disabled`,
-/// `clip`, `visibility` (3 variants, 2 bits) packed into one byte, plus
-/// `align` carried alongside in its native byte. Built at `Tree::push_node`
-/// from an `Element`; read everywhere else through accessors so callers
-/// don't have to know the bit layout.
+/// Packed paint/input flags: `sense` (5-state enum, 3 bits), `disabled`,
+/// `clip`. One byte. `align` and `visibility` live on `LayoutCore` since
+/// the layout pass reads them.
 ///
-/// `bits`: 0-2=sense tag, 3=disabled, 4=clip, 5-6=visibility, 7=reserved.
+/// `bits`: 0-2=sense tag, 3=disabled, 4=clip, 5-7=reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct NodeAttrs {
+pub struct PaintAttrs {
     bits: u8,
-    align: Align,
 }
 
-impl NodeAttrs {
+impl PaintAttrs {
     const SENSE_MASK: u8 = 0b111;
     const DISABLED: u8 = 1 << 3;
     const CLIP: u8 = 1 << 4;
-    const VIS_MASK: u8 = 0b11 << 5;
-    const VIS_VISIBLE: u8 = 0 << 5;
-    const VIS_HIDDEN: u8 = 1 << 5;
-    const VIS_COLLAPSED: u8 = 2 << 5;
 
-    pub(crate) fn pack(
-        sense: Sense,
-        disabled: bool,
-        clip: bool,
-        visibility: Visibility,
-        align: Align,
-    ) -> Self {
+    pub(crate) fn pack(sense: Sense, disabled: bool, clip: bool) -> Self {
         let mut bits = sense as u8;
         if disabled {
             bits |= Self::DISABLED;
@@ -413,12 +416,7 @@ impl NodeAttrs {
         if clip {
             bits |= Self::CLIP;
         }
-        bits |= match visibility {
-            Visibility::Visible => Self::VIS_VISIBLE,
-            Visibility::Hidden => Self::VIS_HIDDEN,
-            Visibility::Collapsed => Self::VIS_COLLAPSED,
-        };
-        Self { bits, align }
+        Self { bits }
     }
 
     pub fn sense(self) -> Sense {
@@ -436,23 +434,6 @@ impl NodeAttrs {
     }
     pub fn is_clip(self) -> bool {
         self.bits & Self::CLIP != 0
-    }
-    pub fn visibility(self) -> Visibility {
-        match self.bits & Self::VIS_MASK {
-            Self::VIS_VISIBLE => Visibility::Visible,
-            Self::VIS_HIDDEN => Visibility::Hidden,
-            Self::VIS_COLLAPSED => Visibility::Collapsed,
-            _ => unreachable!(),
-        }
-    }
-    pub fn is_visible(self) -> bool {
-        self.bits & Self::VIS_MASK == Self::VIS_VISIBLE
-    }
-    pub fn is_collapsed(self) -> bool {
-        self.bits & Self::VIS_MASK == Self::VIS_COLLAPSED
-    }
-    pub fn align(self) -> Align {
-        self.align
     }
 }
 

@@ -1,5 +1,5 @@
-use crate::element::{Element, ElementCore, ElementExtras, LayoutMode};
-use crate::primitives::Track;
+use crate::element::{Element, ElementExtras, LayoutCore, LayoutMode, PaintCore};
+use crate::primitives::{Track, WidgetId};
 use crate::shape::Shape;
 use std::rc::Rc;
 
@@ -15,58 +15,40 @@ impl NodeId {
     }
 }
 
-/// Recorded node — the user-described data for one element. Layout output
-/// (`desired`, `rect`) is *not* on `Node`; it lives on `LayoutEngine` keyed
-/// by `NodeId`. `Tree` is therefore read-only after recording finishes.
+/// Per-node columns are stored in parallel `Vec`s on `Tree`, all indexed by
+/// `NodeId.0`. Splitting by reader keeps each pass touching only the bytes
+/// it needs:
 ///
-/// Topology is encoded by `subtree_end`: an exclusive index into `Tree.nodes`
-/// one past the last descendant of this node. Since `nodes` is stored in
-/// pre-order, this node's children start at `self_id + 1` and the whole
-/// subtree is `nodes[self_id..subtree_end]`. To iterate direct children, jump
-/// from `self_id + 1` by each child's own `subtree_end` until reaching the
-/// parent's. No `parent` / `first_child` / `next_sibling` links needed.
-#[derive(Debug)]
-pub struct Node {
-    /// What was recorded for this node: id, layout, mode, sense, disabled.
-    /// Effective `Sense::NONE` from disabled-cascade is computed in
-    /// `InputState::end_frame` by walking ancestors — `element.disabled` is
-    /// just the locally-declared bit.
-    pub element: ElementCore,
-
-    /// Exclusive index into `Tree.nodes` one past this node's last descendant.
-    /// `self_id + 1 == subtree_end` for a leaf or a not-yet-populated parent.
-    pub subtree_end: u32,
-}
-
-impl Node {
-    pub fn is_collapsed(&self) -> bool {
-        self.element.attrs.is_collapsed()
-    }
-
-    fn new(element: ElementCore, self_id: u32) -> Self {
-        Self {
-            element,
-            subtree_end: self_id + 1,
-        }
-    }
-}
-
-/// `nodes` are stored in pre-order paint order: a parent is pushed before its
-/// children, and siblings appear in declaration order. Reverse iteration gives
-/// topmost-first traversal — load-bearing for hit-testing in `Ui`.
+/// - `layout`     — read by measure / arrange / alignment math
+/// - `paint`      — read by cascade / encoder / hit-test
+/// - `widget_ids` — read only by hit-test and (future) state map
+/// - `subtree_end`— pre-order topology; read by every walk
+///
+/// `nodes` are stored in pre-order paint order: a parent is pushed before
+/// its children, and siblings appear in declaration order. Reverse iteration
+/// over indices gives topmost-first traversal — load-bearing for hit-testing
+/// in `Ui`.
+///
+/// Topology is encoded by `subtree_end[i]`: an exclusive index one past the
+/// last descendant of node `i`. `i + 1 == subtree_end[i]` for a leaf.
 pub struct Tree {
-    pub(crate) nodes: Vec<Node>,
+    pub(crate) layout: Vec<LayoutCore>,
+    pub(crate) paint: Vec<PaintCore>,
+    pub(crate) widget_ids: Vec<WidgetId>,
+    /// Length parallel to the columns above. `i + 1 == subtree_end[i]` for a
+    /// leaf or a not-yet-populated parent; otherwise points one past the last
+    /// descendant of `i`.
+    pub(crate) subtree_end: Vec<u32>,
+
     pub(crate) shapes: Vec<Shape>,
-    /// Per-node shape-range starts, length always `nodes.len() + 1`. The
+    /// Per-node shape-range starts, length always `node_count() + 1`. The
     /// shapes for node `i` are `shapes[shape_starts[i]..shape_starts[i+1]]`;
     /// the trailing sentinel is the open end of the last node, kept equal to
     /// `shapes.len()` while recording so `add_shape` can extend it in place.
     shape_starts: Vec<u32>,
     /// Recording-only scratch: index `i` holds the parent of node `i` (or
     /// `None` if root). Used by `push_node` to walk up the ancestor chain
-    /// bumping `subtree_end`. Not read after recording — kept as a parallel
-    /// vec rather than a `Node` field so the Node footprint stays minimal
-    /// across measure/arrange/paint. Reused frame-to-frame.
+    /// bumping `subtree_end`. Not read after recording. Reused frame-to-frame.
     recording_parent: Vec<Option<NodeId>>,
     /// Frame-scoped grid storage: track defs (addressed by
     /// `LayoutMode::Grid(u16)`). Per-track hug arrays live on `LayoutResult`
@@ -74,7 +56,7 @@ pub struct Tree {
     /// capacity retained.
     grid: GridArena,
     /// Out-of-line side table for rarely-set element fields (`transform`,
-    /// `position`, `grid`). `Node.element.extras` is `Some(idx)` when a node
+    /// `position`, `grid`). `paint[i].extras` is `Some(idx)` when a node
     /// customized any of these. Cleared per frame.
     pub(crate) node_extras: Vec<ElementExtras>,
 }
@@ -82,7 +64,10 @@ pub struct Tree {
 impl Default for Tree {
     fn default() -> Self {
         Self {
-            nodes: Vec::new(),
+            layout: Vec::new(),
+            paint: Vec::new(),
+            widget_ids: Vec::new(),
+            subtree_end: Vec::new(),
             shapes: Vec::new(),
             shape_starts: vec![0],
             recording_parent: Vec::new(),
@@ -98,7 +83,10 @@ impl Tree {
     }
 
     pub fn clear(&mut self) {
-        self.nodes.clear();
+        self.layout.clear();
+        self.paint.clear();
+        self.widget_ids.clear();
+        self.subtree_end.clear();
         self.shapes.clear();
         self.shape_starts.clear();
         self.shape_starts.push(0);
@@ -126,14 +114,14 @@ impl Tree {
     }
 
     pub fn push_node(&mut self, element: Element, parent: Option<NodeId>) -> NodeId {
-        let new_id = NodeId(self.nodes.len() as u32);
+        let new_id = NodeId(self.layout.len() as u32);
         if let LayoutMode::Grid(idx) = element.mode {
             assert!(
                 (idx as usize) < self.grid.defs.len(),
                 "LayoutMode::Grid({idx}) references no grid_def — only Grid::show should push grid nodes",
             );
         }
-        let (mut core, extras) = element.split();
+        let (layout, mut paint, widget_id, extras) = element.split();
         if !extras.is_default() {
             assert!(
                 self.node_extras.len() < u16::MAX as usize,
@@ -141,9 +129,12 @@ impl Tree {
             );
             let idx = self.node_extras.len() as u16;
             self.node_extras.push(extras);
-            core.extras = Some(idx);
+            paint.extras = Some(idx);
         }
-        self.nodes.push(Node::new(core, new_id.0));
+        self.layout.push(layout);
+        self.paint.push(paint);
+        self.widget_ids.push(widget_id);
+        self.subtree_end.push(new_id.0 + 1);
         self.shape_starts.push(self.shapes.len() as u32);
         self.recording_parent.push(parent);
 
@@ -154,7 +145,7 @@ impl Tree {
         let mut anc = parent;
         while let Some(a) = anc {
             let ai = a.0 as usize;
-            self.nodes[ai].subtree_end = new_end;
+            self.subtree_end[ai] = new_end;
             anc = self.recording_parent[ai];
         }
         new_id
@@ -164,32 +155,62 @@ impl Tree {
         let idx = node.0 as usize;
         assert_eq!(
             idx,
-            self.nodes.len() - 1,
+            self.layout.len() - 1,
             "shapes for node {idx} must be added contiguously, before any child node",
         );
         self.shapes.push(shape);
         *self.shape_starts.last_mut().unwrap() = self.shapes.len() as u32;
     }
 
-    pub fn node(&self, id: NodeId) -> &Node {
-        &self.nodes[id.0 as usize]
+    pub fn layout(&self, id: NodeId) -> &LayoutCore {
+        &self.layout[id.0 as usize]
+    }
+
+    pub fn paint(&self, id: NodeId) -> PaintCore {
+        self.paint[id.0 as usize]
+    }
+
+    pub fn widget_id(&self, id: NodeId) -> WidgetId {
+        self.widget_ids[id.0 as usize]
+    }
+
+    pub fn subtree_end_of(&self, id: NodeId) -> u32 {
+        self.subtree_end[id.0 as usize]
+    }
+
+    pub fn is_collapsed(&self, id: NodeId) -> bool {
+        self.layout[id.0 as usize].is_collapsed()
     }
 
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.layout.len()
     }
 
-    /// Iterate nodes in storage order (== pre-order). The index of each node
-    /// equals its `NodeId.0`.
-    pub fn nodes_iter(&self) -> std::slice::Iter<'_, Node> {
-        self.nodes.iter()
+    /// Direct access to the layout column. Use when you need to iterate every
+    /// node's layout fields in storage order.
+    pub fn layout_column(&self) -> &[LayoutCore] {
+        &self.layout
+    }
+
+    /// Direct access to the paint column.
+    pub fn paint_column(&self) -> &[PaintCore] {
+        &self.paint
+    }
+
+    /// Direct access to the subtree-end column.
+    pub fn subtree_end_column(&self) -> &[u32] {
+        &self.subtree_end
+    }
+
+    /// Direct access to the widget-id column.
+    pub fn widget_id_column(&self) -> &[WidgetId] {
+        &self.widget_ids
     }
 
     /// Side-table extras for a node, or `None` if the node didn't customize
     /// any of the rarely-set fields (`transform`, `position`, `grid`).
     pub fn extras(&self, id: NodeId) -> Option<&ElementExtras> {
-        self.nodes[id.0 as usize]
-            .element
+        self.paint[id.0 as usize]
             .extras
             .map(|i| &self.node_extras[i as usize])
     }
@@ -206,7 +227,7 @@ impl Tree {
     /// Stable while the tree is alive: the root is always `NodeId(0)` once
     /// pushed.
     pub fn root(&self) -> Option<NodeId> {
-        if self.nodes.is_empty() {
+        if self.layout.is_empty() {
             None
         } else {
             Some(NodeId(0))
@@ -224,9 +245,9 @@ impl Tree {
     pub fn children(&self, parent: NodeId) -> ChildIter<'_> {
         let pi = parent.0 as usize;
         ChildIter {
-            tree: self,
+            subtree_end: &self.subtree_end,
             next: parent.0 + 1,
-            end: self.nodes[pi].subtree_end,
+            end: self.subtree_end[pi],
         }
     }
 
@@ -237,13 +258,13 @@ impl Tree {
         let pi = parent.0 as usize;
         ChildCursor {
             next: parent.0 + 1,
-            end: self.nodes[pi].subtree_end,
+            end: self.subtree_end[pi],
         }
     }
 }
 
 pub struct ChildIter<'a> {
-    tree: &'a Tree,
+    subtree_end: &'a [u32],
     next: u32,
     end: u32,
 }
@@ -255,7 +276,7 @@ impl<'a> Iterator for ChildIter<'a> {
             return None;
         }
         let cur = NodeId(self.next);
-        self.next = self.tree.nodes[self.next as usize].subtree_end;
+        self.next = self.subtree_end[self.next as usize];
         Some(cur)
     }
 }
@@ -282,7 +303,7 @@ impl ChildCursor {
             return None;
         }
         let cur = NodeId(self.next);
-        self.next = tree.nodes[self.next as usize].subtree_end;
+        self.next = tree.subtree_end[self.next as usize];
         Some(cur)
     }
 }

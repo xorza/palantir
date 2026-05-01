@@ -32,12 +32,12 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
     let parent_child_align = tree.read_extras(node).child_align;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        if tree.node(c).is_collapsed() {
+        if tree.is_collapsed(c) {
             super::zero_subtree(layout, tree, c, inner.min);
             continue;
         }
         let d = layout.desired(c);
-        let s = tree.node(c).element;
+        let s = *tree.layout(c);
 
         let (h_align, v_align) = super::resolved_axis_align(&s, parent_child_align);
         let (w, x_off) = super::place_axis(h_align, s.size.w, d.w, inner.size.w, false);

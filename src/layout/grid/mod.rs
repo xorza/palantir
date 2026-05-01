@@ -170,7 +170,7 @@ fn measure_inner(
     // Walk children: brief scratch borrows around each recursion.
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let collapsed = tree.node(c).is_collapsed();
+        let collapsed = tree.is_collapsed(c);
         let cell = tree.read_extras(c).grid;
         assert_cell(cell, n_rows, n_cols);
 
@@ -293,11 +293,11 @@ fn arrange_inner(
     let parent_child_align = tree.read_extras(node).child_align;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        if tree.node(c).is_collapsed() {
+        if tree.is_collapsed(c) {
             super::zero_subtree(layout, tree, c, inner.min);
             continue;
         }
-        let s_node = tree.node(c).element;
+        let s_node = *tree.layout(c);
         let cell = tree.read_extras(c).grid;
         assert_cell(cell, n_rows, n_cols);
         let d = layout.desired(c);

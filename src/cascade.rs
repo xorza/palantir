@@ -69,7 +69,11 @@ impl Cascades {
         // ancestor's subtree still contains `i` on top of the stack.
         let mut stack: Vec<(NodeCascade, u32)> = Vec::new();
 
-        for (i, node) in tree.nodes_iter().enumerate() {
+        let paint = tree.paint_column();
+        let layout_col = tree.layout_column();
+        let subtree_end = tree.subtree_end_column();
+
+        for i in 0..tree.node_count() {
             while let Some(&(_, end)) = stack.last() {
                 if (i as u32) < end {
                     break;
@@ -79,10 +83,10 @@ impl Cascades {
             let parent = stack.last().map_or(NodeCascade::ROOT_PARENT, |&(c, _)| c);
 
             let id = NodeId(i as u32);
-            let attrs = node.element.attrs;
+            let attrs = paint[i].attrs;
 
             let effective_disabled = parent.effective_disabled || attrs.is_disabled();
-            let effective_invisible = parent.effective_invisible || !attrs.is_visible();
+            let effective_invisible = parent.effective_invisible || !layout_col[i].is_visible();
 
             let own_transform = parent.descendant_transform;
             let own_clip = parent.descendant_clip;
@@ -112,7 +116,7 @@ impl Cascades {
                 effective_invisible,
             };
             self.nodes.push(row);
-            stack.push((row, node.subtree_end));
+            stack.push((row, subtree_end[i]));
         }
     }
 
