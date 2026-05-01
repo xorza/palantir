@@ -71,9 +71,6 @@ impl NodeFlags {
     pub fn is_visible(self) -> bool {
         self.bits & Self::VIS_MASK == Self::VIS_VISIBLE
     }
-    pub fn is_invisible(self) -> bool {
-        !self.is_visible()
-    }
     pub fn is_collapsed(self) -> bool {
         self.bits & Self::VIS_MASK == Self::VIS_COLLAPSED
     }
@@ -105,7 +102,6 @@ mod tests {
         assert!(!f.is_clip());
         assert_eq!(f.visibility(), Visibility::Visible);
         assert!(f.is_visible());
-        assert!(!f.is_invisible());
         assert!(!f.is_collapsed());
         assert_eq!(f.align(), Align::default());
     }
@@ -149,7 +145,6 @@ mod tests {
             let f = NodeFlags::pack(Sense::NONE, false, false, vis, Align::default());
             assert_eq!(f.visibility(), vis);
             assert_eq!(f.is_visible(), vis == Visibility::Visible);
-            assert_eq!(f.is_invisible(), vis != Visibility::Visible);
             assert_eq!(f.is_collapsed(), vis == Visibility::Collapsed);
         }
     }

@@ -84,7 +84,7 @@ impl HitIndex {
             };
 
             let me_disabled = parent.disabled || node.element.flags.is_disabled();
-            let me_invisible = parent.invisible || node.element.flags.is_invisible();
+            let me_invisible = parent.invisible || !node.element.flags.is_visible();
 
             let parent_t = parent.transform_for_descendants;
             let node_transform = tree.read_extras(NodeId(i as u32)).transform;
