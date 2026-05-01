@@ -222,6 +222,8 @@ fn arrange_inner(
     idx: u32,
     depth: usize,
 ) {
+    // Arrange re-snapshots from the tree pool; it does not assume measure's
+    // scratch survives between passes (loose measure↔arrange contract).
     // Snapshot tracks + gaps + read cached hug arrays from the tree pool.
     let (n_rows, n_cols, row_gap, col_gap) = {
         let def = tree.grid_def(idx);
@@ -295,6 +297,13 @@ fn arrange_inner(
 
 fn clamp_cell(c: GridCell, n_rows: usize, n_cols: usize) -> GridCell {
     debug_assert!(n_rows > 0 && n_cols > 0);
+    debug_assert!(
+        (c.row as usize) < n_rows
+            && (c.col as usize) < n_cols
+            && c.row_span >= 1
+            && c.col_span >= 1,
+        "grid cell out of range: {c:?} for {n_rows}x{n_cols}"
+    );
     let row = (c.row as usize).min(n_rows - 1);
     let col = (c.col as usize).min(n_cols - 1);
     let row_span = (c.row_span.max(1) as usize).min(n_rows - row);
