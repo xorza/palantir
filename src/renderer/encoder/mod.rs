@@ -97,10 +97,9 @@ fn encode_node(
         out.push(RenderCmd::PushTransform(t));
     }
 
-    let mut c = node.first_child;
-    while let Some(child) = c {
+    let mut c = tree.child_cursor(id);
+    while let Some(child) = c.next(tree) {
         encode_node(tree, layout, cascades, child, out);
-        c = tree.node(child).next_sibling;
     }
 
     if has_transform {
