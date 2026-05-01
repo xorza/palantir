@@ -11,6 +11,36 @@ pub fn build(ui: &mut Ui) {
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
+            // Known gap. Two `Auto` (Hug) grid columns with a wrapping paragraph in
+            // column 0. Layout passes `available_w = INFINITY` to the Hug column's
+            // children (the WPF unresolved-track trick), so the paragraph never sees
+            // a finite width and shapes at its full natural width — overflowing the
+            // surface. Fix requires Option B (intrinsic-dimensions pre-pass) — see
+            // `docs/text.md`. The page header below labels it so it's not mistaken
+            // for working behavior.
+            section(
+                ui,
+                "gap-grid",
+                "BUG (Option B gap): wrapping text in a Grid `Auto` column overflows",
+                |ui| {
+                    Grid::with_id("gap-grid-inner")
+                        .cols(Rc::from([Track::hug(), Track::hug()]))
+                        .rows(Rc::from([Track::hug()]))
+                        .gap_xy(0.0, 16.0)
+                        .show(ui, |ui| {
+                            Text::new(PARAGRAPH)
+                                .size_px(14.0)
+                                .wrapping()
+                                .grid_cell((0, 0))
+                                .show(ui);
+                            Text::new("right column")
+                                .size_px(14.0)
+                                .grid_cell((0, 1))
+                                .show(ui);
+                        });
+                },
+            );
+
             section(
                 ui,
                 "single",
@@ -57,36 +87,6 @@ pub fn build(ui: &mut Ui) {
                             Text::new("supercalifragilistic")
                                 .size_px(14.0)
                                 .wrapping()
-                                .show(ui);
-                        });
-                },
-            );
-
-            // Known gap. Two `Auto` (Hug) grid columns with a wrapping paragraph in
-            // column 0. Layout passes `available_w = INFINITY` to the Hug column's
-            // children (the WPF unresolved-track trick), so the paragraph never sees
-            // a finite width and shapes at its full natural width — overflowing the
-            // surface. Fix requires Option B (intrinsic-dimensions pre-pass) — see
-            // `docs/text.md`. The page header below labels it so it's not mistaken
-            // for working behavior.
-            section(
-                ui,
-                "gap-grid",
-                "BUG (Option B gap): wrapping text in a Grid `Auto` column overflows",
-                |ui| {
-                    Grid::with_id("gap-grid-inner")
-                        .cols(Rc::from([Track::hug(), Track::hug()]))
-                        .rows(Rc::from([Track::hug()]))
-                        .gap_xy(0.0, 16.0)
-                        .show(ui, |ui| {
-                            Text::new(PARAGRAPH)
-                                .size_px(14.0)
-                                .wrapping()
-                                .grid_cell((0, 0))
-                                .show(ui);
-                            Text::new("right column")
-                                .size_px(14.0)
-                                .grid_cell((0, 1))
                                 .show(ui);
                         });
                 },
