@@ -4,6 +4,7 @@ mod color;
 mod corners;
 mod grid;
 mod justify;
+mod node_flags;
 mod num;
 mod rect;
 mod sense;
@@ -26,6 +27,7 @@ pub use grid::GridCell;
 pub(crate) use grid::{GridDef, HugSlice};
 
 pub use justify::Justify;
+pub use node_flags::NodeFlags;
 pub use num::Num;
 pub use rect::Rect;
 pub use sense::Sense;
