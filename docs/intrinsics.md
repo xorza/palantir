@@ -21,7 +21,7 @@ both flip.
 
 ## Conceptual model
 
-Three explicit kinds of intrinsic query, named by CSS Grid spec:
+Two explicit kinds of intrinsic query, named by CSS Grid spec:
 
 ```rust
 pub enum LenReq {
@@ -31,18 +31,19 @@ pub enum LenReq {
     /// Size the node "wants" with unlimited room. For text: natural
     /// unbroken width.
     MaxContent,
-    /// Max-content capped at a finite width. Reserved for future Grid
-    /// `fit-content(N)` track sizing — not consumed by Step A/B.
-    FitContent(f32),
 }
 ```
 
 Each query is **per-axis**. Callers ask `engine.intrinsic(node, axis, req)`
 on the axis they care about; the orthogonal axis isn't computed.
 
-Splitting "infinity-as-intrinsic" into three named cases is the Masonry /
-Yoga / Taffy convergence point — `references/xilem.md` §3 calls
-`LenReq` "the most refined version of WPF's `availableSize`".
+Splitting "infinity-as-intrinsic" into two named cases is the Masonry /
+Yoga / Taffy convergence point — `references/xilem.md` §3 calls this
+"the most refined version of WPF's `availableSize`". (Masonry has a
+third `FitContent(N)` variant; we don't need it because our `Track`
+type already carries `min`/`max` clamps that express CSS
+`fit-content(N)` at the track level rather than the query level. If a
+non-grid widget ever needs an at-most-N intrinsic, revisit.)
 
 For the leaf-text case:
 - `intrinsic(text_node, X, MaxContent)` = natural unbroken width.
@@ -128,14 +129,17 @@ Today (in `src/layout/grid/mod.rs`): Auto tracks resolve in measure as
 `max(span-1 children's desired sizes)`. No awareness of grid container's
 available width. Sum can exceed available → grid overflows.
 
-After Option B, simplified CSS Grid §11.5 algorithm:
+After Option B, simplified CSS Grid §11.5 algorithm. Per-track ranges
+fold together two sources: (a) the user's `Track.min`/`Track.max` clamps,
+(b) intrinsic queries to span-1 cells.
 
-1. **Per-track range.** For each `Auto` track, query each span-1 cell:
-   - `track.min = max over cells of engine.intrinsic(cell, axis, MinContent)`.
-   - `track.max = max over cells of engine.intrinsic(cell, axis, MaxContent)`.
-
-   `Fixed(v)` tracks: `min = max = v`. `Fill(_)` tracks: `min = 0, max = ∞`
-   (or actual base size if any explicit `Track.min`/`max` was set).
+1. **Per-track range.**
+   - `Hug` track: `track.min = max(t.min, max over cells of intrinsic.MinContent)`,
+     `track.max = min(t.max, max over cells of intrinsic.MaxContent)` — i.e. `t.max`
+     gives a CSS `fit-content(N)`-style ceiling.
+   - `Fixed(v)` track: `track.min = track.max = v.clamp(t.min, t.max)`.
+   - `Fill(_)` track: `track.min = t.min`, `track.max = t.max` (final size resolves
+     in step 2 from leftover).
 
 2. **Distribute available space.**
    - Compute `total_min = sum(track.min) + gaps`, `total_max = sum(track.max) + gaps`.
