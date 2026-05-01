@@ -15,6 +15,14 @@ impl Size {
         Self { w, h }
     }
 
+    /// True if both axes are positive infinity. Distinct from
+    /// `f32::is_infinite` (which also accepts `-INFINITY`) so callers using
+    /// this as a "no upper bound" sentinel can't be tripped by negative
+    /// infinity or NaN.
+    pub fn is_inf(self) -> bool {
+        self.w == f32::INFINITY && self.h == f32::INFINITY
+    }
+
     pub fn min(self, other: Self) -> Self {
         Self {
             w: self.w.min(other.w),
