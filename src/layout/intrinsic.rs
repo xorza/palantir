@@ -1,5 +1,5 @@
 //! Intrinsic-dimensions queries — the on-demand `LenReq` API spec'd in
-//! `docs/intrinsics.md`.
+//! `intrinsic.md` (next to this file).
 //!
 //! This module owns:
 //! - The query types (`LenReq`, `IntrinsicQuery`).
@@ -67,9 +67,9 @@ pub(super) fn compute(
     let outer = match sizing {
         // Fixed size dominates — no need to query content.
         Sizing::Fixed(v) => v + margin,
-        // Hug + Fill both report content-driven intrinsic. Per `docs/
-        // intrinsics.md` "Step B design commitments": Fill in intrinsic
-        // context returns its content's intrinsic, ignoring weight.
+        // Hug + Fill both report content-driven intrinsic. Per
+        // `intrinsic.md` (next to this file): Fill in intrinsic context
+        // returns its content's intrinsic, ignoring weight.
         Sizing::Hug | Sizing::Fill(_) => {
             let content = content_intrinsic(engine, tree, node, axis, req, text, style.mode);
             content + pad + margin

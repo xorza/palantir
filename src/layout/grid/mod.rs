@@ -44,8 +44,8 @@ fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) 
 /// ranges for Hug tracks: max-content from `desired` (children measured
 /// with INFINITY); min-content from intrinsic queries on each span-1
 /// cell. The pair feeds the constraint solver in `resolve_axis` so Hug
-/// tracks fit inside their parent's available width — see Step B in
-/// `docs/intrinsics.md`.
+/// tracks fit inside their parent's available width — see
+/// `src/layout/intrinsic.md`.
 pub(crate) struct AxisScratch {
     pub tracks: Rc<[Track]>,
     pub sizes: Vec<f32>,
@@ -774,7 +774,7 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
 ///   distribution time, not in intrinsic.
 ///
 /// Span > 1 cells are excluded (matches existing `measure` and the
-/// Step B design commitment in `docs/intrinsics.md`).
+/// commitment in `src/layout/intrinsic.md`).
 pub(super) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,

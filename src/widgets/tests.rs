@@ -652,9 +652,9 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
 /// Pins Option A's known gap: a wrapping `Text` inside a `Grid` `Auto`
 /// column gets `available_w = INFINITY` during measure (the WPF trick for
 /// unresolved tracks), so it never reshapes and the column ends up at the
-/// Pinned by Step B of `docs/intrinsics.md`: a wrapping `Text` inside a
+/// Pinned by `src/layout/intrinsic.md`: a wrapping `Text` inside a
 /// `Grid` `Hug` column constrained by the parent's available width
-/// reshapes to fit. Step B's column resolution runs during measure with
+/// reshapes to fit. The grid column-resolution algorithm runs during measure with
 /// the grid's `inner_avail` (200 px here); the wrapping text gets its
 /// committed column width before shaping, so the cached shape is
 /// multi-line and fits the slot.

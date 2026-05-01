@@ -28,7 +28,7 @@ pub use result::{LayoutResult, ShapedText};
 ///   handoff; nothing outside layout reads it (yet — `Ui::desired(id)`
 ///   exposes it for future debug/devtools but no current consumer).
 /// - `intrinsics` — intra-frame cache for `intrinsic(node, axis, req)`
-///   queries (Step A of `docs/intrinsics.md`). Pure function of subtree;
+///   queries (see `intrinsic.md`). Pure function of subtree;
 ///   safe to memoize within a frame. Cleared in `run`.
 /// - `result` — post-layout output (rects, text shapes) read by the encoder
 ///   + hit-index.
@@ -62,7 +62,7 @@ impl LayoutEngine {
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
-    /// `axis` under content-sizing `req`. See `docs/intrinsics.md`.
+    /// `axis` under content-sizing `req`. See `intrinsic.md`.
     ///
     /// Pure function of the subtree at `node`: doesn't depend on the
     /// parent's available width or the arranged rect. Memoized via the
