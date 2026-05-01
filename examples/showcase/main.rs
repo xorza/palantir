@@ -221,14 +221,14 @@ impl State {
         build_root(&mut self.ui, &mut self.active);
         let root = self.ui.root();
         layout::run(
-            &mut self.ui.tree,
+            self.ui.tree_mut(),
             root,
             Rect::new(0.0, 0.0, w_logical, h_logical),
         );
         self.ui.end_frame();
 
         let buffer = self.pipeline.build(
-            &self.ui.tree,
+            self.ui.tree(),
             &ComposeParams {
                 viewport_logical: [w_logical, h_logical],
                 scale,
