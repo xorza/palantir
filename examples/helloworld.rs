@@ -244,6 +244,7 @@ impl State {
 
         let buffer = self.pipeline.build(
             self.ui.tree(),
+            self.ui.layout_result(),
             &ComposeParams {
                 viewport_logical: [w_logical, h_logical],
                 scale,

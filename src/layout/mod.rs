@@ -6,20 +6,19 @@ use glam::Vec2;
 
 mod canvas;
 mod grid;
+mod result;
 mod stack;
 mod zstack;
 
-/// Persistent layout engine: holds per-layout-kind scratch that survives
-/// across frames for amortized zero-alloc layout. Owned by `Ui`
-/// (`Ui::layout(surface)`); construct directly only when laying out a `Tree`
-/// outside the `Ui` flow.
-///
-/// Today only `grid` carries scratch — stack/zstack/canvas are single-pass and
-/// keep their state on the call stack. Add a sibling field here if that ever
-/// changes.
+pub use result::LayoutResult;
+
+/// Persistent layout engine: holds per-layout-kind scratch + the per-frame
+/// `LayoutResult`. Owned by `Ui` (`Ui::layout(surface)`); construct directly
+/// only when laying out a `Tree` outside the `Ui` flow.
 #[derive(Default)]
 pub struct LayoutEngine {
     pub(super) grid: grid::GridLayout,
+    result: LayoutResult,
 }
 
 impl LayoutEngine {
@@ -27,15 +26,29 @@ impl LayoutEngine {
         Self::default()
     }
 
+    pub fn result(&self) -> &LayoutResult {
+        &self.result
+    }
+
+    pub fn rect(&self, id: NodeId) -> Rect {
+        self.result.rect(id)
+    }
+
+    pub fn desired(&self, id: NodeId) -> Size {
+        self.result.desired(id)
+    }
+
     /// Run measure + arrange for `root` given the surface rect. Reuses
     /// internal scratch — call this each frame for amortized zero-alloc
-    /// layout (after warmup).
-    pub fn run(&mut self, tree: &mut Tree, root: NodeId, surface: Rect) {
+    /// layout (after warmup). `Tree` is read-only here; output lands in
+    /// `self.result`.
+    pub fn run(&mut self, tree: &Tree, root: NodeId, surface: Rect) {
         debug_assert_eq!(
             self.grid.depth(),
             0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
+        self.result.resize_for(tree);
         self.measure(tree, root, Size::new(surface.width(), surface.height()));
         self.arrange(tree, root, surface);
         debug_assert_eq!(
@@ -46,10 +59,10 @@ impl LayoutEngine {
     }
 
     /// Bottom-up measure dispatcher. Children call back via this method to
-    /// recurse. Stores `desired` on each visited node.
-    pub(super) fn measure(&mut self, tree: &mut Tree, node: NodeId, available: Size) -> Size {
+    /// recurse. Stores `desired` for each visited node in `self.result`.
+    pub(super) fn measure(&mut self, tree: &Tree, node: NodeId, available: Size) -> Size {
         if tree.node(node).is_collapsed() {
-            tree.node_mut(node).desired = Size::ZERO;
+            self.result.set_desired(node, Size::ZERO);
             return Size::ZERO;
         }
         let style = tree.node(node).element;
@@ -92,22 +105,22 @@ impl LayoutEngine {
             ),
         );
 
-        tree.node_mut(node).desired = desired;
+        self.result.set_desired(node, desired);
         desired
     }
 
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
-    /// (margin-inclusive). Stores `rect` on each visited node.
-    pub(super) fn arrange(&mut self, tree: &mut Tree, node: NodeId, slot: Rect) {
+    /// (margin-inclusive). Stores `rect` for each visited node in `self.result`.
+    pub(super) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect) {
         if tree.node(node).is_collapsed() {
-            zero_subtree(tree, node, slot.min);
+            zero_subtree(self, tree, node, slot.min);
             return;
         }
         let style = tree.node(node).element;
         let mode = style.mode;
 
         let rendered = slot.deflated_by(style.margin);
-        tree.node_mut(node).rect = rendered;
+        self.result.set_rect(node, rendered);
         let inner = rendered.deflated_by(style.padding);
 
         match mode {
@@ -151,14 +164,17 @@ fn resolve_axis_size(
 /// Set this node and every descendant to a zero-size rect anchored at
 /// `anchor`. Bypasses layout dispatch so a collapsed subtree pays only one
 /// pre-order walk regardless of what its children would have been.
-pub(super) fn zero_subtree(tree: &mut Tree, node: NodeId, anchor: Vec2) {
-    tree.node_mut(node).rect = Rect {
-        min: anchor,
-        size: Size::ZERO,
-    };
+pub(super) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, anchor: Vec2) {
+    layout.result.set_rect(
+        node,
+        Rect {
+            min: anchor,
+            size: Size::ZERO,
+        },
+    );
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        zero_subtree(tree, c, anchor);
+        zero_subtree(layout, tree, c, anchor);
     }
 }
 

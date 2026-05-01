@@ -4,7 +4,7 @@ pub use theme::Theme;
 use crate::element::UiElement;
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::layout::LayoutEngine;
-use crate::primitives::{Rect, WidgetId};
+use crate::primitives::{Rect, Size, WidgetId};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
 use std::collections::HashSet;
@@ -88,16 +88,30 @@ impl Ui {
     /// Run measure + arrange for the recorded tree at the given surface rect.
     /// Call after recording (post `begin_frame` + widget tree) and before
     /// `end_frame`. Reuses the persistent `LayoutEngine` — amortized
-    /// zero-alloc after warmup.
+    /// zero-alloc after warmup. The tree is read-only; layout output lands
+    /// in `LayoutEngine`.
     pub fn layout(&mut self, surface: Rect) {
         let root = self.root();
-        self.layout_engine.run(&mut self.tree, root, surface);
+        self.layout_engine.run(&self.tree, root, surface);
     }
 
     /// Rebuild input's last-frame rect cache from the just-arranged tree.
     /// Call after `layout`.
     pub fn end_frame(&mut self) {
-        self.input.end_frame(&self.tree);
+        self.input
+            .end_frame(&self.tree, self.layout_engine.result());
+    }
+
+    pub fn rect(&self, id: NodeId) -> Rect {
+        self.layout_engine.rect(id)
+    }
+
+    pub fn desired(&self, id: NodeId) -> Size {
+        self.layout_engine.desired(id)
+    }
+
+    pub fn layout_result(&self) -> &crate::layout::LayoutResult {
+        self.layout_engine.result()
     }
 
     /// Feed a palantir-native input event. Backend-agnostic.
@@ -118,13 +132,6 @@ impl Ui {
     /// consumer that needs read access.
     pub fn tree(&self) -> &Tree {
         &self.tree
-    }
-
-    /// Mutably borrow the recorded tree. `LayoutEngine::run` needs `&mut Tree`
-    /// to fill in `desired` and `rect`. Most callers should use `Ui::layout`
-    /// instead, which uses the persistent layout engine.
-    pub fn tree_mut(&mut self) -> &mut Tree {
-        &mut self.tree
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {

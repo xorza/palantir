@@ -52,7 +52,7 @@ fn frame_paints_a_single_rounded_rect() {
     assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
 
     // Default sense is None — frame is not a hit-test target.
-    let r = ui.tree.node(frame_node.unwrap()).rect;
+    let r = ui.rect(frame_node.unwrap());
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -91,13 +91,13 @@ fn panel_hugs_largest_child_and_layers_them() {
     ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
-    let panel = ui.tree.node(panel_node.unwrap()).rect;
+    let panel = ui.rect(panel_node.unwrap());
     assert_eq!(panel.size.w, 100.0);
     assert_eq!(panel.size.h, 70.0);
 
     // Both children laid out at panel's inner top-left (10, 10), at their own size.
-    let a = ui.tree.node(a_node.unwrap()).rect;
-    let b = ui.tree.node(b_node.unwrap()).rect;
+    let a = ui.rect(a_node.unwrap());
+    let b = ui.rect(b_node.unwrap());
     assert_eq!((a.min.x, a.min.y), (10.0, 10.0));
     assert_eq!((b.min.x, b.min.y), (10.0, 10.0));
     assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
@@ -134,7 +134,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
-    let child = ui.tree.node(child_node.unwrap()).rect;
+    let child = ui.rect(child_node.unwrap());
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
     assert_eq!(child.min.x, 10.0);
     assert_eq!(child.min.y, 10.0);
@@ -181,13 +181,13 @@ fn zstack_layers_children_without_painting_background() {
     assert!(ui.tree.shapes_of(z).is_empty());
 
     // ZStack hugs to max(child sizes) = (120, 80).
-    let zr = ui.tree.node(z).rect;
+    let zr = ui.rect(z);
     assert_eq!(zr.size.w, 120.0);
     assert_eq!(zr.size.h, 80.0);
 
     // Both children placed at ZStack's top-left (no padding), at their own size.
-    let bg = ui.tree.node(bg_node.unwrap()).rect;
-    let fg = ui.tree.node(fg_node.unwrap()).rect;
+    let bg = ui.rect(bg_node.unwrap());
+    let fg = ui.rect(fg_node.unwrap());
     assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
     assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
     assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
@@ -255,9 +255,9 @@ fn collapsed_child_consumes_no_space_in_hstack() {
     ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.tree.node(kids[0]).rect;
-    let gone = ui.tree.node(kids[1]).rect;
-    let b = ui.tree.node(kids[2]).rect;
+    let a = ui.rect(kids[0]);
+    let gone = ui.rect(kids[1]);
+    let b = ui.rect(kids[2]);
 
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.size.w, 40.0);
@@ -289,8 +289,8 @@ fn collapsed_does_not_consume_fill_weight() {
     ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.tree.node(kids[0]).rect;
-    let b = ui.tree.node(kids[2]).rect;
+    let a = ui.rect(kids[0]);
+    let b = ui.rect(kids[2]);
     // Collapsed sibling's weight (3.0) is dropped — remaining two fills split 50/50.
     assert_eq!(a.size.w, 200.0);
     assert_eq!(b.size.w, 200.0);
@@ -323,8 +323,8 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let hid = ui.tree.node(kids[1]).rect;
-    let b = ui.tree.node(kids[2]).rect;
+    let hid = ui.rect(kids[1]);
+    let b = ui.rect(kids[2]);
     // Hidden node still occupies its slot.
     assert_eq!(hid.size.w, 40.0);
     // ...so b's offset includes hidden's width + both gaps.
@@ -332,7 +332,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 
     // ...but emits no DrawRect.
     let mut cmds = Vec::new();
-    encode(&ui.tree, &mut cmds);
+    encode(&ui.tree, ui.layout_result(), &mut cmds);
     let draws = cmds
         .iter()
         .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
@@ -393,8 +393,8 @@ fn hstack_child_align_y_centers_all_children_by_default() {
     ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.tree.node(kids[0]).rect;
-    let b = ui.tree.node(kids[1]).rect;
+    let a = ui.rect(kids[0]);
+    let b = ui.rect(kids[1]);
     // Cross axis = 100, child = 20 tall → centered at (100-20)/2 = 40.
     assert_eq!(a.min.y, 40.0);
     assert_eq!(b.min.y, 40.0);
@@ -424,8 +424,8 @@ fn child_align_self_overrides_parent_default() {
     ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let centered = ui.tree.node(kids[0]).rect;
-    let bottom = ui.tree.node(kids[1]).rect;
+    let centered = ui.rect(kids[0]);
+    let bottom = ui.rect(kids[1]);
     assert_eq!(centered.min.y, 40.0);
     assert_eq!(bottom.min.y, 80.0);
 }
@@ -453,7 +453,7 @@ fn zstack_centers_child_when_align_center() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
-    let r = ui.tree.node(child_node.unwrap()).rect;
+    let r = ui.rect(child_node.unwrap());
     // ZStack inner = 200×100, child = 40×20 → centered at (80, 40).
     assert_eq!((r.min.x, r.min.y), (80.0, 40.0));
     assert_eq!((r.size.w, r.size.h), (40.0, 20.0));
@@ -482,7 +482,7 @@ fn zstack_aligns_independently_per_axis() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
-    let r = ui.tree.node(child_node.unwrap()).rect;
+    let r = ui.rect(child_node.unwrap());
     // x: End → 200-40 = 160. y: Center → (100-20)/2 = 40.
     assert_eq!((r.min.x, r.min.y), (160.0, 40.0));
 }
@@ -520,13 +520,13 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
-    let c = ui.tree.node(canvas_node.unwrap()).rect;
+    let c = ui.rect(canvas_node.unwrap());
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
     assert_eq!(c.size.w, 110.0);
     assert_eq!(c.size.h, 100.0);
 
-    let a = ui.tree.node(a_node.unwrap()).rect;
-    let b = ui.tree.node(b_node.unwrap()).rect;
+    let a = ui.rect(a_node.unwrap());
+    let b = ui.rect(b_node.unwrap());
     assert_eq!((a.min.x, a.min.y), (10.0, 5.0));
     assert_eq!((a.size.w, a.size.h), (40.0, 20.0));
     assert_eq!((b.min.x, b.min.y), (80.0, 40.0));

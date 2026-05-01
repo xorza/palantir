@@ -21,7 +21,7 @@ fn count_clip_pairs(cmds: &[RenderCmd]) -> (usize, usize) {
 fn empty_tree_encodes_to_nothing() {
     let mut cmds = Vec::new();
     let ui = Ui::new();
-    encode(&ui.tree, &mut cmds);
+    encode(&ui.tree, ui.layout_result(), &mut cmds);
     assert!(cmds.is_empty());
 }
 
@@ -39,7 +39,7 @@ fn frame_with_fill_emits_one_draw_rect() {
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
-    encode(&ui.tree, &mut cmds);
+    encode(&ui.tree, ui.layout_result(), &mut cmds);
 
     let draw_rects = cmds
         .iter()
@@ -61,7 +61,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
-    encode(&ui.tree, &mut cmds);
+    encode(&ui.tree, ui.layout_result(), &mut cmds);
 
     let draw_rects = cmds
         .iter()
@@ -91,7 +91,7 @@ fn clip_emits_balanced_push_pop() {
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
-    encode(&ui.tree, &mut cmds);
+    encode(&ui.tree, ui.layout_result(), &mut cmds);
 
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
@@ -140,7 +140,7 @@ fn nested_clips_each_emit_their_own_pair() {
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
-    encode(&ui.tree, &mut cmds);
+    encode(&ui.tree, ui.layout_result(), &mut cmds);
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
     assert_eq!(pops, 2);

@@ -92,7 +92,7 @@ impl Axis {
 
 pub(super) fn measure(
     layout: &mut LayoutEngine,
-    tree: &mut Tree,
+    tree: &Tree,
     node: NodeId,
     inner: Size,
     axis: Axis,
@@ -123,7 +123,7 @@ pub(super) fn measure(
 
 pub(super) fn arrange(
     layout: &mut LayoutEngine,
-    tree: &mut Tree,
+    tree: &Tree,
     node: NodeId,
     inner: Rect,
     axis: Axis,
@@ -146,7 +146,7 @@ pub(super) fn arrange(
         if let Sizing::Fill(weight) = axis.main_sizing(n.element.size) {
             total_weight += weight;
         } else {
-            sum_main_desired += axis.main(n.desired);
+            sum_main_desired += axis.main(layout.desired(c));
         }
         count += 1;
     }
@@ -182,14 +182,15 @@ pub(super) fn arrange(
 
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let (s, d, collapsed) = {
+        let (s, collapsed) = {
             let n = tree.node(c);
-            (n.element, n.desired, n.is_collapsed())
+            (n.element, n.is_collapsed())
         };
         if collapsed {
-            super::zero_subtree(tree, c, axis.compose_point(cursor, cross_min));
+            super::zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min));
             continue;
         }
+        let d = layout.desired(c);
         if !first {
             cursor += effective_gap;
         }

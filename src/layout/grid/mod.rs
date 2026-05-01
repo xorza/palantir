@@ -1,5 +1,5 @@
 use super::LayoutEngine;
-use crate::primitives::{GridCell, HugSlice, Rect, Size, Sizing, Track};
+use crate::primitives::{GridCell, Rect, Size, Sizing, Track};
 use crate::tree::{NodeId, Tree};
 use std::rc::Rc;
 
@@ -8,15 +8,12 @@ struct DefSnapshot {
     n_cols: usize,
     row_gap: f32,
     col_gap: f32,
-    row_hugs: HugSlice,
-    col_hugs: HugSlice,
 }
 
 /// Snapshot a `GridDef` onto the scratch slot at `depth`: clones the track
-/// `Rc<[Track]>`s (refcount-only), reads gaps + hug-pool slices, and resets
-/// the per-axis scratch. `Rc::clone` per axis is refcount-only — track data
-/// stays in the user's cached `Rc<[Track]>`, never copied through the tree
-/// pool.
+/// `Rc<[Track]>`s (refcount-only), reads gaps, and resets the per-axis
+/// scratch. Hug arrays live on `LayoutResult` and are read/written by
+/// caller — they don't fit in the snapshot.
 fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) -> DefSnapshot {
     let def = tree.grid_def(idx);
     let n_rows = def.rows.len();
@@ -25,8 +22,6 @@ fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) 
     let cols = def.cols.clone();
     let row_gap = def.row_gap;
     let col_gap = def.col_gap;
-    let row_hugs = def.row_hugs;
-    let col_hugs = def.col_hugs;
     let s = layout.grid.at(depth);
     s.col.reset(cols);
     s.row.reset(rows);
@@ -35,8 +30,6 @@ fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) 
         n_cols,
         row_gap,
         col_gap,
-        row_hugs,
-        col_hugs,
     }
 }
 
@@ -136,9 +129,10 @@ impl GridLayout {
 ///
 /// Scratch lives in `Layout::grid_scratch[depth]` (heap, capacity-retained
 /// across frames). No fixed track-count limit. Per-track hug sizes are
-/// written through to `Tree::hug_pool` so `arrange` can read them without
-/// re-walking children.
-pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, idx: u16) -> Size {
+/// persisted onto `LayoutResult` so `arrange` can read them without
+/// re-walking children — engine scratch is keyed by depth and would be
+/// clobbered by sibling grids.
+pub(super) fn measure(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, idx: u16) -> Size {
     let depth = layout.grid.enter();
     let result = measure_inner(layout, tree, node, idx, depth);
     layout.grid.exit();
@@ -147,7 +141,7 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, 
 
 fn measure_inner(
     layout: &mut LayoutEngine,
-    tree: &mut Tree,
+    tree: &Tree,
     node: NodeId,
     idx: u16,
     depth: usize,
@@ -157,8 +151,6 @@ fn measure_inner(
         n_cols,
         row_gap,
         col_gap,
-        row_hugs: row_hugs_slice,
-        col_hugs: col_hugs_slice,
     } = snapshot_def(layout, tree, idx, depth);
     {
         let s = layout.grid.at(depth);
@@ -201,21 +193,24 @@ fn measure_inner(
         record_hug(&mut s.row, cell.row, cell.row_span, d.h);
     }
 
-    // Resolve Hug tracks from accumulated hug sizes, write through to the
-    // tree's hug pool so `arrange` can read them without re-walking children,
-    // and sum content size.
+    // Resolve Hug tracks from accumulated hug sizes, persist them onto
+    // `LayoutResult` so `arrange` can read them without re-walking children
+    // (engine scratch is depth-keyed and gets clobbered by sibling grids),
+    // and sum content size. `layout.grid` and `layout.result` are separate
+    // fields so both can be borrowed simultaneously via field access.
     let s = layout.grid.at(depth);
     resolve_hug(&mut s.col);
     resolve_hug(&mut s.row);
     let total_w = s.col.sizes.iter().sum::<f32>() + col_gap * n_cols.saturating_sub(1) as f32;
     let total_h = s.row.sizes.iter().sum::<f32>() + row_gap * n_rows.saturating_sub(1) as f32;
 
-    // Persist hug arrays into the tree pool so `arrange` can read them
-    // without re-walking children. `s` (borrow of layout) and `tree` are
-    // independent objects, so both can be borrowed mutably here.
-    tree.grid_hugs_mut(col_hugs_slice)
+    layout
+        .result
+        .grid_col_hugs_mut(idx)
         .copy_from_slice(&s.col.hug);
-    tree.grid_hugs_mut(row_hugs_slice)
+    layout
+        .result
+        .grid_row_hugs_mut(idx)
         .copy_from_slice(&s.row.hug);
 
     Size::new(total_w, total_h)
@@ -248,13 +243,7 @@ fn resolve_hug(a: &mut AxisScratch) {
     }
 }
 
-pub(super) fn arrange(
-    layout: &mut LayoutEngine,
-    tree: &mut Tree,
-    node: NodeId,
-    inner: Rect,
-    idx: u16,
-) {
+pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect, idx: u16) {
     let depth = layout.grid.enter();
     arrange_inner(layout, tree, node, inner, idx, depth);
     layout.grid.exit();
@@ -262,32 +251,32 @@ pub(super) fn arrange(
 
 fn arrange_inner(
     layout: &mut LayoutEngine,
-    tree: &mut Tree,
+    tree: &Tree,
     node: NodeId,
     inner: Rect,
     idx: u16,
     depth: usize,
 ) {
-    // Arrange re-snapshots from the tree pool; it does not assume measure's
-    // scratch survives between passes (loose measure↔arrange contract).
+    // Re-snapshot and reload hugs from `LayoutResult`: engine scratch is
+    // keyed by depth, so a sibling grid that ran between this panel's
+    // measure and arrange will have clobbered the slot. The hugs persisted
+    // on `LayoutResult` are the durable record.
     let DefSnapshot {
         n_rows,
         n_cols,
         row_gap,
         col_gap,
-        row_hugs: row_hugs_slice,
-        col_hugs: col_hugs_slice,
     } = snapshot_def(layout, tree, idx, depth);
     {
         let s = layout.grid.at(depth);
-        s.col.hug.copy_from_slice(tree.grid_hugs(col_hugs_slice));
-        s.row.hug.copy_from_slice(tree.grid_hugs(row_hugs_slice));
+        s.col.hug.copy_from_slice(layout.result.grid_col_hugs(idx));
+        s.row.hug.copy_from_slice(layout.result.grid_row_hugs(idx));
     }
 
     if n_rows == 0 || n_cols == 0 {
         let mut kids = tree.child_cursor(node);
         while let Some(c) = kids.next(tree) {
-            super::zero_subtree(tree, c, inner.min);
+            super::zero_subtree(layout, tree, c, inner.min);
         }
         return;
     }
@@ -305,13 +294,13 @@ fn arrange_inner(
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).is_collapsed() {
-            super::zero_subtree(tree, c, inner.min);
+            super::zero_subtree(layout, tree, c, inner.min);
             continue;
         }
         let s_node = tree.node(c).element;
         let cell = tree.read_extras(c).grid;
         assert_cell(cell, n_rows, n_cols);
-        let d = tree.node(c).desired;
+        let d = layout.desired(c);
 
         let (slot_x, slot_y, slot_w, slot_h) = {
             let s = layout.grid.at(depth);

@@ -146,8 +146,8 @@ impl InputState {
     /// Rebuild last-frame rects from the just-arranged tree, recompute hover,
     /// drop transient per-frame flags. Call after layout. The cascade
     /// walk + screen-space rect derivation lives in [`HitIndex::rebuild`].
-    pub(crate) fn end_frame(&mut self, tree: &Tree) {
-        self.hit_index.rebuild(tree);
+    pub(crate) fn end_frame(&mut self, tree: &Tree, layout: &crate::layout::LayoutResult) {
+        self.hit_index.rebuild(tree, layout);
         self.clicked_this_frame.clear();
         if let Some(active) = self.active
             && !self.hit_index.contains_id(active)
