@@ -23,8 +23,7 @@ use std::rc::Rc;
 ///
 /// See `docs/grid.md` for the algorithm and explicit non-goals (no
 /// Auto-vs-Star cyclic dependency, no `SharedSizeScope`, no auto-flow).
-pub struct Grid<'a> {
-    ui: &'a mut Ui,
+pub struct Grid {
     element: UiElement,
     fill: Color,
     stroke: Option<Stroke>,
@@ -35,21 +34,21 @@ pub struct Grid<'a> {
     col_gap: f32,
 }
 
-impl<'a> Grid<'a> {
+impl Grid {
     #[track_caller]
-    pub fn new(ui: &'a mut Ui) -> Self {
-        Self::for_id(ui, WidgetId::auto_stable())
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self::for_id(WidgetId::auto_stable())
     }
 
-    pub fn with_id(ui: &'a mut Ui, id: impl Hash) -> Self {
-        Self::for_id(ui, WidgetId::from_hash(id))
+    pub fn with_id(id: impl Hash) -> Self {
+        Self::for_id(WidgetId::from_hash(id))
     }
 
-    fn for_id(ui: &'a mut Ui, id: WidgetId) -> Self {
+    fn for_id(id: WidgetId) -> Self {
         // Mode is patched at `show()` time once we know the grid_def index.
         // Until then keep it as a placeholder — never observed by layout.
         Self {
-            ui,
             element: UiElement::new(id, LayoutMode::Grid(u32::MAX)),
             fill: Color::TRANSPARENT,
             stroke: None,
@@ -118,12 +117,11 @@ impl<'a> Grid<'a> {
         self
     }
 
-    pub fn show(self, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
         let rows = self.rows.unwrap_or_else(empty_tracks);
         let cols = self.cols.unwrap_or_else(empty_tracks);
-        let idx = self
-            .ui
+        let idx = ui
             .tree
             .push_grid_def(rows, cols, self.row_gap, self.col_gap);
         let mut element = self.element;
@@ -132,7 +130,6 @@ impl<'a> Grid<'a> {
         let fill = self.fill;
         let stroke = self.stroke;
         let radius = self.radius;
-        let ui = self.ui;
         let node = ui.node(element, |ui| {
             ui.add_shape(Shape::RoundedRect {
                 bounds: ShapeRect::Full,
@@ -148,7 +145,7 @@ impl<'a> Grid<'a> {
     }
 }
 
-impl Element for Grid<'_> {
+impl Element for Grid {
     fn element_mut(&mut self) -> &mut UiElement {
         &mut self.element
     }
