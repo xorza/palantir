@@ -1,4 +1,6 @@
 use super::quad::Quad;
+use crate::primitives::{Color, Rect};
+use crate::text::TextCacheKey;
 use std::ops::Range;
 
 /// Pure output of `compose`: physical-px instances grouped by scissor region,
@@ -11,6 +13,7 @@ use std::ops::Range;
 #[derive(Default)]
 pub struct RenderBuffer {
     pub quads: Vec<Quad>,
+    pub texts: Vec<TextRun>,
     pub groups: Vec<DrawGroup>,
     /// Physical-px viewport, ceil'd. Backends use this as the default scissor
     /// when a group has no clip.
@@ -25,10 +28,11 @@ impl RenderBuffer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DrawGroup {
     pub scissor: Option<ScissorRect>,
-    pub instances: Range<u32>,
+    pub quads: Range<u32>,
+    pub texts: Range<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,4 +41,30 @@ pub struct ScissorRect {
     pub y: u32,
     pub w: u32,
     pub h: u32,
+}
+
+/// One shaped text run placed in physical-px space. The buffer it references
+/// is resolved by the backend at submit time using [`TextCacheKey`] against
+/// the active `TextMeasure`.
+#[derive(Clone, Copy, Debug)]
+pub struct TextRun {
+    /// Top-left of the run's bounding box, physical px.
+    pub origin: [f32; 2],
+    /// Bounds for clipping (physical px) — the parent rect after transform &
+    /// snap. Glyphs outside are clipped by the backend even if the scissor
+    /// rect is wider.
+    pub bounds: ScissorRect,
+    pub color: Color,
+    pub key: TextCacheKey,
+}
+
+impl TextRun {
+    pub fn rect(self) -> Rect {
+        // Origin only — the size is implicit in the shaped buffer. Provided
+        // for backends that want a logical bounding box.
+        Rect {
+            min: glam::Vec2::new(self.origin[0], self.origin[1]),
+            size: crate::primitives::Size::new(self.bounds.w as f32, self.bounds.h as f32),
+        }
+    }
 }
