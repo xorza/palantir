@@ -53,7 +53,7 @@ impl LayoutEngine {
             return Size::ZERO;
         }
         let style = tree.node(node).element;
-        let mode = tree.node(node).element.mode;
+        let mode = style.mode;
 
         let inner_avail = Size::new(
             (available.w - style.margin.horiz() - style.padding.horiz()).max(0.0),
@@ -102,7 +102,7 @@ impl LayoutEngine {
             return;
         }
         let style = tree.node(node).element;
-        let mode = tree.node(node).element.mode;
+        let mode = style.mode;
 
         let rendered = slot.deflated_by(style.margin);
         tree.node_mut(node).rect = rendered;
