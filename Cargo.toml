@@ -7,6 +7,7 @@ exclude = ["tmp/", "references/"]
 [dependencies]
 bytemuck = { version = "*", features = ["derive"] }
 glam = "*"
+# cosmic-text pinned to whaever version glyphon uses
 cosmic-text = "0.18"
 glyphon = "*"
 tracing = "*"
