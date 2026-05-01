@@ -46,10 +46,16 @@ pub enum RenderCmd {
 /// function over `(&Tree, &LayoutResult, &Cascades)`, so the same call works
 /// in unit tests with no device. Reads invisibility cascade from `Cascades`
 /// so encoder and hit-index can't drift.
-pub fn encode(tree: &Tree, layout: &LayoutResult, cascades: &Cascades, out: &mut Vec<RenderCmd>) {
+pub fn encode(
+    tree: &Tree,
+    layout: &LayoutResult,
+    cascades: &Cascades,
+    disabled_dim: f32,
+    out: &mut Vec<RenderCmd>,
+) {
     out.clear();
     if let Some(root) = tree.root() {
-        encode_node(tree, layout, cascades, root, out);
+        encode_node(tree, layout, cascades, disabled_dim, root, out);
     }
 }
 
@@ -57,6 +63,7 @@ fn encode_node(
     tree: &Tree,
     layout: &LayoutResult,
     cascades: &Cascades,
+    disabled_dim: f32,
     id: NodeId,
     out: &mut Vec<RenderCmd>,
 ) {
@@ -68,6 +75,11 @@ fn encode_node(
     }
 
     let rect = layout.rect(id);
+    let rgb_mul = if cascades.is_disabled(id) {
+        disabled_dim
+    } else {
+        1.0
+    };
 
     // Order: clip is in parent-of-panel space (pre-transform); transform
     // applies inside the clip and only to children. The panel's own
@@ -88,8 +100,11 @@ fn encode_node(
                 out.push(RenderCmd::DrawRect {
                     rect,
                     radius: *radius,
-                    fill: *fill,
-                    stroke: *stroke,
+                    fill: fill.dim_rgb(rgb_mul),
+                    stroke: stroke.map(|s| Stroke {
+                        width: s.width,
+                        color: s.color.dim_rgb(rgb_mul),
+                    }),
                 });
             }
             Shape::Text {
@@ -105,7 +120,7 @@ fn encode_node(
                 };
                 out.push(RenderCmd::DrawText {
                     rect: text_rect,
-                    color: *color,
+                    color: color.dim_rgb(rgb_mul),
                     key: *key,
                 });
             }
@@ -125,7 +140,7 @@ fn encode_node(
 
     let mut c = tree.child_cursor(id);
     while let Some(child) = c.next(tree) {
-        encode_node(tree, layout, cascades, child, out);
+        encode_node(tree, layout, cascades, disabled_dim, child, out);
     }
 
     if has_transform {

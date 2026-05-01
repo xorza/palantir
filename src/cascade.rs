@@ -115,6 +115,10 @@ impl Cascades {
         self.rows[id.index()].invisible
     }
 
+    pub fn is_disabled(&self, id: NodeId) -> bool {
+        self.rows[id.index()].disabled
+    }
+
     pub fn rows(&self) -> &[Cascade] {
         &self.rows
     }

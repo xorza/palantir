@@ -28,9 +28,10 @@ impl Pipeline {
         tree: &Tree,
         layout: &LayoutResult,
         cascades: &Cascades,
+        disabled_dim: f32,
         params: &ComposeParams,
     ) -> &RenderBuffer {
-        encode(tree, layout, cascades, &mut self.cmds);
+        encode(tree, layout, cascades, disabled_dim, &mut self.cmds);
         self.composer.compose(&self.cmds, params, &mut self.buffer);
         &self.buffer
     }

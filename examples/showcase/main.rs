@@ -225,6 +225,7 @@ impl State {
             self.ui.tree(),
             self.ui.layout_result(),
             self.ui.cascades(),
+            self.ui.theme.disabled_dim,
             &ComposeParams {
                 viewport_logical: [w_logical, h_logical],
                 scale,
