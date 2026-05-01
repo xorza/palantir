@@ -50,19 +50,14 @@ allocation tightening (5), and editable text (6, deferred).
 scales the rasterized glyphs to match. Atlas entries are per-scale, which is
 fine — scale_factor changes are rare.
 
-### 2. Disabled / invisible cascade for text — **gap**
+### 2. Disabled / invisible cascade for text — **done**
 
-`Cascades` already resolves `disabled`/`invisible` per node, and the encoder
-walks it for quads, but the text branch in `encoder/mod.rs:95` ignores it:
-disabled buttons render their label at full color. Two pieces:
-
-- **Skip on invisible.** The encoder's existing pre-walk already prunes invisible
-  subtrees before reaching `Shape::Text`; verify with a test (no run emitted
-  for an invisible button).
-- **Dim on disabled.** Multiply `color` by the theme's disabled alpha
-  (currently quads do this implicitly via `ButtonStyle.disabled.text`; the
-  label color comes from `ButtonStyle` already, so this *should* work — but
-  add a test to pin it because it's load-bearing for accessibility).
+`Cascades` exposes `is_disabled(id)`. The encoder applies a uniform RGB
+multiplier (`ButtonTheme.disabled_dim`, default 0.5) to every fill / stroke /
+text color in disabled subtrees via `Color::dim_rgb`. Alpha is preserved.
+Invisible subtrees were already pruned by the pre-walk early-return.
+Pinned by `disabled_ancestor_dims_descendant_fill` in
+`src/renderer/encoder/tests.rs`.
 
 ### 3. Font registry / bundled font — **gap**
 

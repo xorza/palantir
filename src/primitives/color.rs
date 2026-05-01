@@ -49,6 +49,17 @@ impl Color {
         Self { r, g, b, a }
     }
 
+    /// Multiply the linear RGB channels by `mul`, preserve alpha. Used by the
+    /// encoder to dim disabled subtrees.
+    pub fn dim_rgb(self, mul: f32) -> Self {
+        Self {
+            r: self.r * mul,
+            g: self.g * mul,
+            b: self.b * mul,
+            a: self.a,
+        }
+    }
+
     /// 8-bit sRGB channels (Figma/CSS/Photoshop convention). Linearized
     /// internally, same as `Color::rgb`. `#3366CC` → `Color::rgb_u8(0x33, 0x66, 0xCC)`.
     pub fn rgb_u8(r: u8, g: u8, b: u8) -> Self {
