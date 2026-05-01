@@ -77,6 +77,7 @@ impl TextPipeline {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         viewport_phys: [u32; 2],
+        scale: f32,
         runs: &[TextRun],
         cosmic: &mut CosmicMeasure,
     ) -> bool {
@@ -95,7 +96,7 @@ impl TextPipeline {
                 buffer,
                 left: r.origin[0],
                 top: r.origin[1],
-                scale: 1.0,
+                scale,
                 bounds: text_bounds(r.bounds),
                 default_color: glyphon_color(r.color),
                 custom_glyphs: &[],

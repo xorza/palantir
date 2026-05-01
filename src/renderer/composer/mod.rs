@@ -51,6 +51,7 @@ impl Composer {
         out.groups.clear();
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
+        out.scale = params.scale;
 
         self.clip_stack.clear();
         self.transform_stack.clear();
