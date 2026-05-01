@@ -15,12 +15,7 @@ pub struct Track {
 
 impl Track {
     pub const fn new(size: Sizing) -> Self {
-        if let Sizing::Fill(w) = size {
-            assert!(w >= 0.0, "Track Fill weight must be non-negative");
-        }
-        if let Sizing::Fixed(v) = size {
-            assert!(v >= 0.0, "Track Fixed size must be non-negative");
-        }
+        size.assert_non_negative();
         Self {
             size,
             min: 0.0,

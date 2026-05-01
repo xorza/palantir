@@ -1,20 +1,12 @@
-use crate::primitives::{ApproxF32, Color, Corners, Rect, Stroke};
+use crate::primitives::{ApproxF32, Color, Corners, Stroke};
 use glam::Vec2;
-
-/// Where a shape sits inside its owner Node.
-/// Resolved against `Node.rect` at paint time.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ShapeRect {
-    /// Fill the owner's full arranged rect.
-    Full,
-    /// Offset relative to the owner's `rect.min`.
-    Offset(Rect),
-}
 
 #[derive(Clone, Debug)]
 pub enum Shape {
+    /// Filled/stroked rounded rectangle covering the owner node's arranged
+    /// rect. Position and size come from the node — shapes don't carry their
+    /// own bounds.
     RoundedRect {
-        bounds: ShapeRect,
         radius: Corners,
         fill: Color,
         stroke: Option<Stroke>,
