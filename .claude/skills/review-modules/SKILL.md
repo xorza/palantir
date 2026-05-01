@@ -12,6 +12,10 @@ Review the modules/folders the user supplies as arguments. Look for bad decision
 
 The user provides one or more paths (folders or files) on invocation. Treat those as the review scope. Do not assume any specific folder — if no path is supplied, ask the user which paths to review.
 
+## Outputs
+
+Output your research into an md file in relevant directory.
+
 ## What to look for
 
 - **Bad architectural decisions** — misplaced responsibilities, leaky abstractions, layering violations, coupling that should be inverted, types/fields that don't belong where they live.
