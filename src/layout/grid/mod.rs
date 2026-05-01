@@ -2,22 +2,46 @@ use super::LayoutEngine;
 use crate::primitives::{GridCell, Rect, Size, Sizing, Track, Visibility};
 use crate::tree::{NodeId, Tree};
 
+/// Per-axis scratch for one nesting depth. `tracks` is a fresh copy of the
+/// tree's track defs so the borrow checker doesn't fight us during recursion.
+/// `flexible` is a transient list used only inside `resolve_axis`; it lives on
+/// the per-axis struct so its capacity is retained across frames.
+#[derive(Default)]
+pub(crate) struct AxisScratch {
+    pub tracks: Vec<Track>,
+    pub sizes: Vec<f32>,
+    pub resolved: Vec<bool>,
+    pub hug: Vec<f32>,
+    pub offsets: Vec<f32>,
+    flexible: Vec<usize>,
+}
+
+impl AxisScratch {
+    /// Snapshot tracks and (re)allocate per-track arrays to length `n`. All
+    /// arrays are zeroed; `resolved` is reset to `false`. Capacity is retained
+    /// across frames.
+    fn reset(&mut self, tracks: &[Track]) {
+        let n = tracks.len();
+        self.tracks.clear();
+        self.tracks.extend_from_slice(tracks);
+        self.sizes.clear();
+        self.sizes.resize(n, 0.0);
+        self.resolved.clear();
+        self.resolved.resize(n, false);
+        self.hug.clear();
+        self.hug.resize(n, 0.0);
+        self.offsets.clear();
+        self.offsets.resize(n, 0.0);
+    }
+}
+
 /// Per-frame scratch for `Grid` layout. Capacity is retained across frames; a
 /// `Vec<GridScratch>` indexed by nesting depth lets nested grids each have
 /// their own slot. Pushed on first descent to a new depth.
 #[derive(Default)]
 pub(crate) struct GridScratch {
-    pub rows: Vec<Track>,
-    pub cols: Vec<Track>,
-    pub col_sizes: Vec<f32>,
-    pub row_sizes: Vec<f32>,
-    pub col_resolved: Vec<bool>,
-    pub row_resolved: Vec<bool>,
-    pub hug_w: Vec<f32>,
-    pub hug_h: Vec<f32>,
-    pub col_offsets: Vec<f32>,
-    pub row_offsets: Vec<f32>,
-    pub flexible: Vec<usize>,
+    pub col: AxisScratch,
+    pub row: AxisScratch,
 }
 
 /// Grid-layout state held by `LayoutEngine`. One `GridScratch` per nesting
@@ -87,35 +111,10 @@ fn measure_inner(
         let n_rows = row_tracks.len();
         let n_cols = col_tracks.len();
         let s = layout.grid.at(depth);
-        s.rows.clear();
-        s.rows.extend_from_slice(row_tracks);
-        s.cols.clear();
-        s.cols.extend_from_slice(col_tracks);
-        s.col_sizes.clear();
-        s.col_sizes.resize(n_cols, 0.0);
-        s.col_resolved.clear();
-        s.col_resolved.resize(n_cols, false);
-        s.row_sizes.clear();
-        s.row_sizes.resize(n_rows, 0.0);
-        s.row_resolved.clear();
-        s.row_resolved.resize(n_rows, false);
-        s.hug_w.clear();
-        s.hug_w.resize(n_cols, 0.0);
-        s.hug_h.clear();
-        s.hug_h.resize(n_rows, 0.0);
-        // Resolve Fixed tracks (disjoint field borrows on `s`).
-        for (i, t) in s.cols.iter().enumerate() {
-            if let Sizing::Fixed(v) = t.size {
-                s.col_sizes[i] = v.clamp(t.min, t.max);
-                s.col_resolved[i] = true;
-            }
-        }
-        for (i, t) in s.rows.iter().enumerate() {
-            if let Sizing::Fixed(v) = t.size {
-                s.row_sizes[i] = v.clamp(t.min, t.max);
-                s.row_resolved[i] = true;
-            }
-        }
+        s.col.reset(col_tracks);
+        s.row.reset(row_tracks);
+        resolve_fixed(&mut s.col);
+        resolve_fixed(&mut s.row);
         (
             n_rows,
             n_cols,
@@ -143,8 +142,8 @@ fn measure_inner(
 
         let avail = {
             let s = layout.grid.at(depth);
-            let avail_w = sum_spanned_known(&s.col_sizes, &s.col_resolved, cell.col, cell.col_span);
-            let avail_h = sum_spanned_known(&s.row_sizes, &s.row_resolved, cell.row, cell.row_span);
+            let avail_w = sum_spanned_known(&s.col.sizes, &s.col.resolved, cell.col, cell.col_span);
+            let avail_h = sum_spanned_known(&s.row.sizes, &s.row.resolved, cell.row, cell.row_span);
             Size::new(avail_w, avail_h)
         };
 
@@ -156,40 +155,51 @@ fn measure_inner(
         // Span-1 only drives Hug-track sizing (avoids the WPF Auto↔Star
         // cyclic-iteration trap).
         let s = layout.grid.at(depth);
-        if cell.col_span == 1 && matches!(s.cols[cell.col as usize].size, Sizing::Hug) {
+        if cell.col_span == 1 && matches!(s.col.tracks[cell.col as usize].size, Sizing::Hug) {
             let i = cell.col as usize;
-            s.hug_w[i] = s.hug_w[i].max(d.w);
+            s.col.hug[i] = s.col.hug[i].max(d.w);
         }
-        if cell.row_span == 1 && matches!(s.rows[cell.row as usize].size, Sizing::Hug) {
+        if cell.row_span == 1 && matches!(s.row.tracks[cell.row as usize].size, Sizing::Hug) {
             let i = cell.row as usize;
-            s.hug_h[i] = s.hug_h[i].max(d.h);
+            s.row.hug[i] = s.row.hug[i].max(d.h);
         }
     }
 
-    // Resolve Hug tracks from accumulated hug-w/hug-h, write through to the
+    // Resolve Hug tracks from accumulated hug sizes, write through to the
     // tree's hug pool so `arrange` can read them without re-walking children,
     // and sum content size.
     let s = layout.grid.at(depth);
-    for (i, t) in s.cols.iter().enumerate() {
-        if matches!(t.size, Sizing::Hug) {
-            s.col_sizes[i] = s.hug_w[i].clamp(t.min, t.max);
-        }
-    }
-    for (i, t) in s.rows.iter().enumerate() {
-        if matches!(t.size, Sizing::Hug) {
-            s.row_sizes[i] = s.hug_h[i].clamp(t.min, t.max);
-        }
-    }
-    let total_w = s.col_sizes.iter().sum::<f32>() + col_gap * n_cols.saturating_sub(1) as f32;
-    let total_h = s.row_sizes.iter().sum::<f32>() + row_gap * n_rows.saturating_sub(1) as f32;
+    resolve_hug(&mut s.col);
+    resolve_hug(&mut s.row);
+    let total_w = s.col.sizes.iter().sum::<f32>() + col_gap * n_cols.saturating_sub(1) as f32;
+    let total_h = s.row.sizes.iter().sum::<f32>() + row_gap * n_rows.saturating_sub(1) as f32;
 
     // Persist hug arrays into the tree pool so `arrange` can read them
     // without re-walking children. `s` (borrow of layout) and `tree` are
     // independent objects, so both can be borrowed mutably here.
-    tree.grid_hugs_mut(col_hugs_slice).copy_from_slice(&s.hug_w);
-    tree.grid_hugs_mut(row_hugs_slice).copy_from_slice(&s.hug_h);
+    tree.grid_hugs_mut(col_hugs_slice)
+        .copy_from_slice(&s.col.hug);
+    tree.grid_hugs_mut(row_hugs_slice)
+        .copy_from_slice(&s.row.hug);
 
     Size::new(total_w, total_h)
+}
+
+fn resolve_fixed(a: &mut AxisScratch) {
+    for (i, t) in a.tracks.iter().enumerate() {
+        if let Sizing::Fixed(v) = t.size {
+            a.sizes[i] = v.clamp(t.min, t.max);
+            a.resolved[i] = true;
+        }
+    }
+}
+
+fn resolve_hug(a: &mut AxisScratch) {
+    for (i, t) in a.tracks.iter().enumerate() {
+        if matches!(t.size, Sizing::Hug) {
+            a.sizes[i] = a.hug[i].clamp(t.min, t.max);
+        }
+    }
 }
 
 pub(super) fn arrange(
@@ -222,14 +232,10 @@ fn arrange_inner(
         let n_rows = row_tracks.len();
         let n_cols = col_tracks.len();
         let s = layout.grid.at(depth);
-        s.rows.clear();
-        s.rows.extend_from_slice(row_tracks);
-        s.cols.clear();
-        s.cols.extend_from_slice(col_tracks);
-        s.hug_w.clear();
-        s.hug_w.extend_from_slice(col_hugs);
-        s.hug_h.clear();
-        s.hug_h.extend_from_slice(row_hugs);
+        s.col.reset(col_tracks);
+        s.row.reset(row_tracks);
+        s.col.hug.copy_from_slice(col_hugs);
+        s.row.hug.copy_from_slice(row_hugs);
         (n_rows, n_cols, def.row_gap, def.col_gap)
     };
 
@@ -241,25 +247,13 @@ fn arrange_inner(
         return;
     }
 
-    // Resolve track sizes into `col_sizes`/`row_sizes` and compute offsets.
+    // Resolve track sizes (Fixed + Hug + Fill) and compute offsets.
     {
         let s = layout.grid.at(depth);
-        s.col_sizes.clear();
-        s.col_sizes.resize(n_cols, 0.0);
-        s.row_sizes.clear();
-        s.row_sizes.resize(n_rows, 0.0);
-        s.col_offsets.clear();
-        s.col_offsets.resize(n_cols, 0.0);
-        s.row_offsets.clear();
-        s.row_offsets.resize(n_rows, 0.0);
-
-        // resolve_axis_tracks needs &mut to flexible scratch + read of tracks/hugs
-        // and write to col_sizes/row_sizes. Run per-axis.
-        resolve_axis(s, Axis::Col, inner.size.w, col_gap);
-        resolve_axis(s, Axis::Row, inner.size.h, row_gap);
-
-        track_offsets(&s.col_sizes, col_gap, &mut s.col_offsets);
-        track_offsets(&s.row_sizes, row_gap, &mut s.row_offsets);
+        resolve_axis(&mut s.col, inner.size.w, col_gap);
+        resolve_axis(&mut s.row, inner.size.h, row_gap);
+        track_offsets(&s.col.sizes, col_gap, &mut s.col.offsets);
+        track_offsets(&s.row.sizes, row_gap, &mut s.row.offsets);
     }
 
     let parent_layout = tree.node(node).element;
@@ -275,18 +269,17 @@ fn arrange_inner(
 
         let (slot_x, slot_y, slot_w, slot_h) = {
             let s = layout.grid.at(depth);
-            let slot_x = s.col_offsets[cell.col as usize];
-            let slot_y = s.row_offsets[cell.row as usize];
-            let slot_w = span_size(&s.col_sizes, cell.col, cell.col_span, col_gap);
-            let slot_h = span_size(&s.row_sizes, cell.row, cell.row_span, row_gap);
+            let slot_x = s.col.offsets[cell.col as usize];
+            let slot_y = s.row.offsets[cell.row as usize];
+            let slot_w = span_size(&s.col.sizes, cell.col, cell.col_span, col_gap);
+            let slot_h = span_size(&s.row.sizes, cell.row, cell.row_span, row_gap);
             (slot_x, slot_y, slot_w, slot_h)
         };
 
         // Grid: a child with no explicit alignment stretches to fill its cell
         // (WPF default). `place_axis` is told `auto_stretches = true` so Auto
         // collapses to Stretch even when the child isn't `Sizing::Fill`.
-        let h_align = s_node.align.h.or(parent_layout.child_align.h).to_axis();
-        let v_align = s_node.align.v.or(parent_layout.child_align.v).to_axis();
+        let (h_align, v_align) = super::resolved_axis_align(&s_node, &parent_layout);
         let (w, x_off) = super::place_axis(h_align, s_node.size.w, d.w, slot_w, true);
         let (h, y_off) = super::place_axis(v_align, s_node.size.h, d.h, slot_h, true);
 
@@ -352,45 +345,32 @@ fn span_size(sizes: &[f32], start: u16, span: u16, gap: f32) -> f32 {
     total
 }
 
-#[derive(Copy, Clone)]
-enum Axis {
-    Col,
-    Row,
-}
-
-/// Resolve track sizes on one axis into `s.col_sizes` / `s.row_sizes`. Fixed
-/// and Hug tracks are clamped to `[min, max]` once. Star tracks split the
-/// leftover proportionally to weight, using **constraint resolution by
-/// exclusion** (CSS Grid / Flutter flex): any star whose proportional share
-/// violates `[min, max]` clamps and exits the pool, the remaining stars
-/// rebalance, repeat until stable. Bounded — each iteration removes at least
-/// one star, so O(N²) worst case.
-fn resolve_axis(s: &mut GridScratch, axis: Axis, total: f32, gap: f32) {
-    let (tracks, hug_sizes, out) = match axis {
-        Axis::Col => (s.cols.as_slice(), s.hug_w.as_slice(), &mut s.col_sizes),
-        Axis::Row => (s.rows.as_slice(), s.hug_h.as_slice(), &mut s.row_sizes),
-    };
-    let n = tracks.len();
-    debug_assert_eq!(hug_sizes.len(), n);
-    debug_assert_eq!(out.len(), n);
-    out.fill(0.0);
+/// Resolve track sizes on one axis into `a.sizes`. Fixed and Hug tracks are
+/// clamped to `[min, max]` once. Star tracks split the leftover proportionally
+/// to weight, using **constraint resolution by exclusion** (CSS Grid / Flutter
+/// flex): any star whose proportional share violates `[min, max]` clamps and
+/// exits the pool, the remaining stars rebalance, repeat until stable.
+/// Bounded — each iteration removes at least one star, so O(N²) worst case.
+fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
+    let n = a.tracks.len();
+    a.sizes.fill(0.0);
 
     let mut consumed = gap * n.saturating_sub(1) as f32;
-    s.flexible.clear();
+    a.flexible.clear();
     let mut flexible_weight = 0.0f32;
 
-    for (i, t) in tracks.iter().enumerate() {
+    for (i, t) in a.tracks.iter().enumerate() {
         match t.size {
             Sizing::Fixed(v) => {
-                out[i] = v.clamp(t.min, t.max);
-                consumed += out[i];
+                a.sizes[i] = v.clamp(t.min, t.max);
+                consumed += a.sizes[i];
             }
             Sizing::Hug => {
-                out[i] = hug_sizes[i].clamp(t.min, t.max);
-                consumed += out[i];
+                a.sizes[i] = a.hug[i].clamp(t.min, t.max);
+                consumed += a.sizes[i];
             }
             Sizing::Fill(w) => {
-                s.flexible.push(i);
+                a.flexible.push(i);
                 flexible_weight += w.max(0.0);
             }
         }
@@ -398,11 +378,11 @@ fn resolve_axis(s: &mut GridScratch, axis: Axis, total: f32, gap: f32) {
 
     let mut remaining = (total - consumed).max(0.0);
 
-    'outer: while !s.flexible.is_empty() && flexible_weight > 0.0 {
+    'outer: while !a.flexible.is_empty() && flexible_weight > 0.0 {
         let mut k = 0;
-        while k < s.flexible.len() {
-            let i = s.flexible[k];
-            let t = &tracks[i];
+        while k < a.flexible.len() {
+            let i = a.flexible[k];
+            let t = &a.tracks[i];
             let w = match t.size {
                 Sizing::Fill(w) => w.max(0.0),
                 _ => unreachable!(),
@@ -410,20 +390,20 @@ fn resolve_axis(s: &mut GridScratch, axis: Axis, total: f32, gap: f32) {
             let candidate = remaining * w / flexible_weight;
             if candidate < t.min || candidate > t.max {
                 let clamped = candidate.clamp(t.min, t.max);
-                out[i] = clamped;
+                a.sizes[i] = clamped;
                 remaining = (remaining - clamped).max(0.0);
                 flexible_weight -= w;
-                s.flexible.remove(k);
+                a.flexible.remove(k);
                 continue 'outer;
             }
             k += 1;
         }
-        for &i in s.flexible.iter() {
-            let w = match tracks[i].size {
+        for &i in a.flexible.iter() {
+            let w = match a.tracks[i].size {
                 Sizing::Fill(w) => w.max(0.0),
                 _ => unreachable!(),
             };
-            out[i] = remaining * w / flexible_weight;
+            a.sizes[i] = remaining * w / flexible_weight;
         }
         break;
     }

@@ -1,5 +1,5 @@
 use super::LayoutEngine;
-use crate::primitives::{Rect, Size};
+use crate::primitives::{Rect, Size, Visibility};
 use crate::tree::{NodeId, Tree};
 
 /// Canvas: children placed at their declared `Layout.position` (parent-inner
@@ -27,6 +27,10 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId) 
 pub(super) fn arrange(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, inner: Rect) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
+        if tree.node(c).element.visibility == Visibility::Collapsed {
+            super::zero_subtree(tree, c, inner.min);
+            continue;
+        }
         let d = tree.node(c).desired;
         let pos = tree.node(c).element.position;
         let child_rect = Rect {
