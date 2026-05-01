@@ -1,6 +1,6 @@
 use crate::primitives::{
-    Align, ApproxF32, GridCell, Justify, NodeFlags, Sense, Size, Sizes, Spacing, TranslateScale,
-    Visibility, WidgetId,
+    Align, ApproxF32, GridCell, Justify, NodeFlags, Sense, Size, Sizes, Sizing, Spacing,
+    TranslateScale, Visibility, WidgetId,
 };
 use glam::Vec2;
 
@@ -233,6 +233,22 @@ impl UiElement {
     }
 }
 
+/// Negative `Fixed`/`Fill` values are nonsensical (no rect of width -5 px,
+/// no Fill weight that grants negative space). `Hug` carries no value.
+fn assert_sizing_non_negative(s: Sizing, axis: &str) {
+    match s {
+        Sizing::Fixed(v) => assert!(
+            v >= 0.0,
+            "{axis}: Sizing::Fixed must be non-negative, got {v}"
+        ),
+        Sizing::Fill(w) => assert!(
+            w >= 0.0,
+            "{axis}: Sizing::Fill weight must be non-negative, got {w}"
+        ),
+        Sizing::Hug => {}
+    }
+}
+
 /// Mixin: any widget builder that holds a `UiElement` gets the chained
 /// setters (`.size()`, `.padding()`, `.sense()`, `.disabled()`, …) for
 /// free by impl'ing just `element_mut`.
@@ -240,15 +256,28 @@ pub trait Element: Sized {
     fn element_mut(&mut self) -> &mut UiElement;
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
-        self.element_mut().size = s.into();
+        let s = s.into();
+        assert_sizing_non_negative(s.w, "size.w");
+        assert_sizing_non_negative(s.h, "size.h");
+        self.element_mut().size = s;
         self
     }
     fn min_size(mut self, s: impl Into<Size>) -> Self {
-        self.element_mut().min_size = s.into();
+        let s = s.into();
+        assert!(
+            s.w >= 0.0 && s.h >= 0.0,
+            "min_size must be non-negative on both axes, got {s:?}",
+        );
+        self.element_mut().min_size = s;
         self
     }
     fn max_size(mut self, s: impl Into<Size>) -> Self {
-        self.element_mut().max_size = s.into();
+        let s = s.into();
+        assert!(
+            s.w >= 0.0 && s.h >= 0.0,
+            "max_size must be non-negative on both axes, got {s:?}",
+        );
+        self.element_mut().max_size = s;
         self
     }
     fn padding(mut self, p: impl Into<Spacing>) -> Self {
