@@ -1,5 +1,5 @@
 use super::LayoutEngine;
-use crate::element::ElementCore;
+use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizes, Sizing};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
@@ -52,7 +52,7 @@ impl Axis {
     /// Cross-axis alignment of a child, picked from the shared two-axis
     /// `resolved_axis_align` so HStack/VStack share the cascade rule with
     /// ZStack/Grid. The unused main axis is computed and discarded — cheap.
-    fn cross_align(self, child: &ElementCore, parent_child_align: Align) -> AxisAlign {
+    fn cross_align(self, child: &LayoutCore, parent_child_align: Align) -> AxisAlign {
         let (h, v) = super::resolved_axis_align(child, parent_child_align);
         match self {
             // HStack: cross = vertical
@@ -102,7 +102,7 @@ pub(super) fn measure(
     while let Some(c) = kids.next(tree) {
         // Collapsed children still get measured (so `desired` is set to ZERO),
         // but don't contribute to the parent's content size or gap count.
-        let collapsed = tree.node(c).is_collapsed();
+        let collapsed = tree.is_collapsed(c);
         let d = layout.measure(tree, c, child_avail);
         if collapsed {
             continue;
@@ -133,11 +133,11 @@ pub(super) fn arrange(
     let mut count = 0usize;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let n = tree.node(c);
-        if n.is_collapsed() {
+        if tree.is_collapsed(c) {
             continue;
         }
-        if let Sizing::Fill(weight) = axis.main_sizing(n.element.size) {
+        let l = tree.layout(c);
+        if let Sizing::Fill(weight) = axis.main_sizing(l.size) {
             total_weight += weight;
         } else {
             sum_main_desired += axis.main(layout.desired(c));
@@ -176,14 +176,11 @@ pub(super) fn arrange(
 
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let (s, collapsed) = {
-            let n = tree.node(c);
-            (n.element, n.is_collapsed())
-        };
-        if collapsed {
+        if tree.is_collapsed(c) {
             super::zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min));
             continue;
         }
+        let s = *tree.layout(c);
         let d = layout.desired(c);
         if !first {
             cursor += effective_gap;

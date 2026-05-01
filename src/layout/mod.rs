@@ -1,4 +1,4 @@
-use crate::element::{ElementCore, LayoutMode};
+use crate::element::{LayoutCore, LayoutMode};
 use crate::primitives::{Align, AxisAlign, Rect, Size, Sizing};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
@@ -61,11 +61,11 @@ impl LayoutEngine {
     /// Bottom-up measure dispatcher. Children call back via this method to
     /// recurse. Stores `desired` for each visited node in `self.result`.
     pub(super) fn measure(&mut self, tree: &Tree, node: NodeId, available: Size) -> Size {
-        if tree.node(node).is_collapsed() {
+        if tree.is_collapsed(node) {
             self.result.set_desired(node, Size::ZERO);
             return Size::ZERO;
         }
-        let style = tree.node(node).element;
+        let style = *tree.layout(node);
         let mode = style.mode;
         let extras = tree.read_extras(node);
         let (min_size, max_size) = (extras.min_size, extras.max_size);
@@ -112,11 +112,11 @@ impl LayoutEngine {
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
     /// (margin-inclusive). Stores `rect` for each visited node in `self.result`.
     pub(super) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect) {
-        if tree.node(node).is_collapsed() {
+        if tree.is_collapsed(node) {
             zero_subtree(self, tree, node, slot.min);
             return;
         }
-        let style = tree.node(node).element;
+        let style = *tree.layout(node);
         let mode = style.mode;
 
         let rendered = slot.deflated_by(style.margin);
@@ -196,10 +196,10 @@ fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
 /// they can't drift. Stack discards the unused axis; the cost is two enum
 /// matches per child per frame.
 pub(super) fn resolved_axis_align(
-    child: &ElementCore,
+    child: &LayoutCore,
     parent_child_align: Align,
 ) -> (AxisAlign, AxisAlign) {
-    let a = child.attrs.align();
+    let a = child.align;
     (
         a.halign().or(parent_child_align.halign()).to_axis(),
         a.valign().or(parent_child_align.valign()).to_axis(),

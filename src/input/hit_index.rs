@@ -53,7 +53,9 @@ impl HitIndex {
         self.entries.reserve(n);
         self.by_id.reserve(n);
 
-        for (i, node) in tree.nodes_iter().enumerate() {
+        let paint = tree.paint_column();
+        let widget_ids = tree.widget_id_column();
+        for i in 0..n {
             let id = NodeId(i as u32);
             let c = cascades.at(id);
 
@@ -65,13 +67,13 @@ impl HitIndex {
             let sense = if c.effective_disabled || c.effective_invisible {
                 Sense::NONE
             } else {
-                node.element.attrs.sense()
+                paint[i].attrs.sense()
             };
 
-            self.by_id
-                .insert(node.element.id, self.entries.len() as u32);
+            let widget_id = widget_ids[i];
+            self.by_id.insert(widget_id, self.entries.len() as u32);
             self.entries.push(HitEntry {
-                id: node.element.id,
+                id: widget_id,
                 rect: visible_rect,
                 sense,
             });

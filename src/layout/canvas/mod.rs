@@ -16,7 +16,7 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &Tree, node: NodeId) -> S
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        if tree.node(c).is_collapsed() {
+        if tree.is_collapsed(c) {
             // Match arrange: collapsed children don't participate in the bbox.
             // Without this skip, a collapsed child at (100, 100) would still
             // grow the panel by its position even though arrange zeroes it.
@@ -37,7 +37,7 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &Tree, node: NodeId) -> S
 pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        if tree.node(c).is_collapsed() {
+        if tree.is_collapsed(c) {
             super::zero_subtree(layout, tree, c, inner.min);
             continue;
         }
