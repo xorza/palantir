@@ -46,7 +46,7 @@ fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
 
     // Hidden / Collapsed: paint nothing for this node or its subtree.
     // Cascade is implicit — descendants are never visited.
-    if node.element.visibility.is_invisible() {
+    if node.element.flags.is_invisible() {
         return;
     }
 
@@ -54,7 +54,8 @@ fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
     // applies inside the clip and only to children. The panel's own
     // background paints under the clip but BEFORE the transform — matching
     // WPF's `RenderTransform` convention.
-    if node.element.clip {
+    let clip = node.element.flags.is_clip();
+    if clip {
         out.push(RenderCmd::PushClip(node.rect));
     }
 
@@ -104,7 +105,7 @@ fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
     if has_transform {
         out.push(RenderCmd::PopTransform);
     }
-    if node.element.clip {
+    if clip {
         out.push(RenderCmd::PopClip);
     }
 }

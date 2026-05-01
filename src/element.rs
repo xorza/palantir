@@ -45,6 +45,85 @@ impl UiElementExtras {
     }
 }
 
+/// Packed boolean + small-enum flags from a `UiElement`. Saves ~5B per
+/// `NodeElement` by collapsing `sense` (3 bools), `disabled`, `clip`, and
+/// `visibility` (3-variant enum, 2 bits) into a single byte. Set at
+/// `Tree::push_node`; read everywhere else through accessors so callers
+/// don't have to know the bit layout.
+///
+/// Bits: 0=click, 1=drag, 2=hover, 3=disabled, 4=clip, 5-6=visibility,
+/// 7=reserved.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NodeFlags(u8);
+
+impl NodeFlags {
+    const CLICK: u8 = 1 << 0;
+    const DRAG: u8 = 1 << 1;
+    const HOVER: u8 = 1 << 2;
+    const DISABLED: u8 = 1 << 3;
+    const CLIP: u8 = 1 << 4;
+    const VIS_MASK: u8 = 0b11 << 5;
+    const VIS_VISIBLE: u8 = 0 << 5;
+    const VIS_HIDDEN: u8 = 1 << 5;
+    const VIS_COLLAPSED: u8 = 2 << 5;
+
+    fn pack(sense: Sense, disabled: bool, clip: bool, visibility: Visibility) -> Self {
+        let mut bits = 0u8;
+        if sense.click {
+            bits |= Self::CLICK;
+        }
+        if sense.drag {
+            bits |= Self::DRAG;
+        }
+        if sense.hover {
+            bits |= Self::HOVER;
+        }
+        if disabled {
+            bits |= Self::DISABLED;
+        }
+        if clip {
+            bits |= Self::CLIP;
+        }
+        bits |= match visibility {
+            Visibility::Visible => Self::VIS_VISIBLE,
+            Visibility::Hidden => Self::VIS_HIDDEN,
+            Visibility::Collapsed => Self::VIS_COLLAPSED,
+        };
+        Self(bits)
+    }
+
+    pub fn sense(self) -> Sense {
+        Sense {
+            click: self.0 & Self::CLICK != 0,
+            drag: self.0 & Self::DRAG != 0,
+            hover: self.0 & Self::HOVER != 0,
+        }
+    }
+    pub fn is_disabled(self) -> bool {
+        self.0 & Self::DISABLED != 0
+    }
+    pub fn is_clip(self) -> bool {
+        self.0 & Self::CLIP != 0
+    }
+    pub fn visibility(self) -> Visibility {
+        match self.0 & Self::VIS_MASK {
+            Self::VIS_VISIBLE => Visibility::Visible,
+            Self::VIS_HIDDEN => Visibility::Hidden,
+            Self::VIS_COLLAPSED => Visibility::Collapsed,
+            _ => unreachable!(),
+        }
+    }
+    pub fn is_visible(self) -> bool {
+        self.0 & Self::VIS_MASK == Self::VIS_VISIBLE
+    }
+    pub fn is_invisible(self) -> bool {
+        !self.is_visible()
+    }
+    pub fn is_collapsed(self) -> bool {
+        self.0 & Self::VIS_MASK == Self::VIS_COLLAPSED
+    }
+}
+
 /// Compact form of a node's recorded element, stored inline in `Node`. Built
 /// from a `UiElement` at `Tree::push_node`: the rarely-set fields move to
 /// `Tree::node_extras`, addressed via `extras: Option<u16>`. The wide
@@ -63,13 +142,12 @@ pub struct NodeElement {
     pub gap: f32,
     pub justify: Justify,
     pub align: Align,
+    //todo move to extras?
     pub child_align: Align,
 
-    pub sense: Sense,
-    pub disabled: bool,
-
-    pub visibility: Visibility,
-    pub clip: bool,
+    /// Packed `sense` / `disabled` / `clip` / `visibility`. Read through the
+    /// accessor methods on `NodeFlags`.
+    pub flags: NodeFlags,
 
     /// Index into `Tree::node_extras`, or `None` when all extras are at
     /// default (the common case). Cap is 65 535 non-default elements per
@@ -190,10 +268,7 @@ impl UiElement {
             justify: self.justify,
             align: self.align,
             child_align: self.child_align,
-            sense: self.sense,
-            disabled: self.disabled,
-            visibility: self.visibility,
-            clip: self.clip,
+            flags: NodeFlags::pack(self.sense, self.disabled, self.clip, self.visibility),
             extras: None,
         };
         let extras = UiElementExtras {
