@@ -1,43 +1,132 @@
 //! Text shaping & measurement.
 //!
-//! Phase 1 scope: produce a [`Size`] for a `(text, font_size, max_width)`
-//! triple so leaf widgets can report a real intrinsic size to layout.
+//! Two paths, one struct each:
 //!
-//! [`TextMeasure`] is a trait so the engine can stay font-agnostic in tests:
-//! [`MonoMeasure`] keeps the historical 8 px/char × 16 px-line placeholder so
-//! existing layout tests continue to pin exact pixel values without bundling a
-//! font. Examples and apps that want real text install [`CosmicMeasure`],
-//! which shapes via `cosmic-text` and caches the resulting `Buffer` keyed on
-//! the inputs that affect shaping. Steady-state shaping is alloc-free once
-//! every visible string has been seen at least once.
+//! - [`CosmicMeasure`] — real shaping via `cosmic-text`, with a per-key
+//!   shaped-buffer cache. The wgpu backend reuses these `Buffer`s in
+//!   `glyphon::TextRenderer::prepare`, so each visible string is shaped
+//!   exactly once across its lifetime.
+//! - [`mono_measure`] — deterministic placeholder metric used when no
+//!   `CosmicMeasure` is installed (default in [`Ui`]). Every glyph is
+//!   `font_size_px * 0.5` wide; runs measured this way carry
+//!   [`TextCacheKey::INVALID`] and the renderer drops them. Lets the engine
+//!   run in tests and headless tools without a font system.
 //!
-//! Rendering (atlas / glyph quads) is a separate concern handled by the wgpu
-//! backend in a follow-up step; this module only does CPU shaping +
-//! measurement.
+//! There's no `TextMeasure` trait: the renderer needs concrete access to
+//! `CosmicMeasure`'s `FontSystem` + cache, so a trait would just be a
+//! downcast in disguise.
+//!
+//! [`Ui`]: crate::Ui
 
 use crate::primitives::Size;
 
 mod cosmic;
-mod mono;
 
 pub use cosmic::CosmicMeasure;
-pub use mono::MonoMeasure;
 
-/// Pluggable text measurement strategy. Implementors return the bounding size
-/// of `text` rendered at `font_size_px`, optionally constrained by
-/// `max_width_px` (which triggers wrapping when supplied).
+/// Stable identifier for a shaped text run, computed at authoring time so
+/// `Shape::Text` can carry it through the encoder/composer and the renderer
+/// can look up the matching shaped buffer without rehashing.
 ///
-/// The boxed-trait approach lets tests use [`MonoMeasure`] for deterministic
-/// 8 px/char metrics without pulling in a font, while real apps install
-/// [`CosmicMeasure`] for true shaping. The trait is intentionally tiny — it's
-/// the seam between authoring (which writes `Shape::Text.measured`) and
-/// whichever shaping engine is in use.
-pub trait TextMeasure {
-    fn measure(&mut self, text: &str, font_size_px: f32, max_width_px: Option<f32>) -> Size;
+/// Three quantized fields rather than one collapsed `u64` so the renderer
+/// can also reuse the size/width components if it wants to (e.g. group runs
+/// by size for atlas bin reuse). [`TextCacheKey::INVALID`] is the sentinel
+/// returned by the mono fallback — the renderer treats it as "drop this run".
+#[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
+pub struct TextCacheKey {
+    /// 64-bit hash of the source string. `0` for the invalid sentinel.
+    pub text_hash: u64,
+    /// `font_size_px * 64`, rounded. Quantizing to 1/64 px is below any
+    /// visible difference and keeps the key purely integral.
+    pub size_q: u32,
+    /// `max_width_px * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
+    pub max_w_q: u32,
 }
 
-impl<T: TextMeasure + ?Sized> TextMeasure for Box<T> {
-    fn measure(&mut self, text: &str, font_size_px: f32, max_width_px: Option<f32>) -> Size {
-        (**self).measure(text, font_size_px, max_width_px)
+impl TextCacheKey {
+    /// Sentinel returned by the mono fallback. The renderer skips runs with
+    /// this key.
+    pub const INVALID: Self = Self {
+        text_hash: 0,
+        size_q: 0,
+        max_w_q: 0,
+    };
+
+    pub const fn is_invalid(self) -> bool {
+        self.text_hash == 0 && self.size_q == 0 && self.max_w_q == 0
+    }
+}
+
+/// Result of measuring (and, in the cosmic path, shaping) one text run.
+#[derive(Clone, Copy, Debug)]
+pub struct MeasureResult {
+    pub size: Size,
+    /// Identifier of the shaped buffer, or [`TextCacheKey::INVALID`] when no
+    /// shaping happened (mono fallback).
+    pub key: TextCacheKey,
+}
+
+/// Deterministic placeholder metric used when [`crate::Ui`] has no
+/// [`CosmicMeasure`] installed. Every glyph is `font_size_px * 0.5` wide and
+/// the line is `font_size_px` tall; wrapping is approximated by simple
+/// character-count division. At the historical 16 px font size this is the
+/// 8 px/char × 16 px line layout the engine was hard-coded to before text
+/// shaping landed, which is what existing layout tests pin.
+///
+/// Always returns [`TextCacheKey::INVALID`] — there's no shaped buffer to
+/// look up, so the renderer drops these runs cleanly.
+pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) -> MeasureResult {
+    if text.is_empty() {
+        return MeasureResult {
+            size: Size::ZERO,
+            key: TextCacheKey::INVALID,
+        };
+    }
+    let glyph_w = font_size_px * 0.5;
+    let line_h = font_size_px;
+    let total_chars = text.chars().count() as f32;
+    let unbroken_w = total_chars * glyph_w;
+
+    let size = match max_width_px {
+        None => Size::new(unbroken_w, line_h),
+        Some(max) if max >= unbroken_w => Size::new(unbroken_w, line_h),
+        Some(max) => {
+            let chars_per_line = (max / glyph_w).floor().max(1.0);
+            let lines = (total_chars / chars_per_line).ceil().max(1.0);
+            Size::new((chars_per_line * glyph_w).min(unbroken_w), lines * line_h)
+        }
+    };
+    MeasureResult {
+        size,
+        key: TextCacheKey::INVALID,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_is_zero_invalid() {
+        let r = mono_measure("", 16.0, None);
+        assert_eq!(r.size, Size::ZERO);
+        assert!(r.key.is_invalid());
+    }
+
+    #[test]
+    fn unbroken_matches_legacy_placeholder() {
+        // Pre-trait code used `chars * 8.0` × `16.0` at the implicit 16 px size.
+        assert_eq!(mono_measure("Hi", 16.0, None).size, Size::new(16.0, 16.0));
+        assert_eq!(
+            mono_measure("hello!!", 16.0, None).size,
+            Size::new(56.0, 16.0)
+        );
+    }
+
+    #[test]
+    fn wraps_when_max_width_below_unbroken() {
+        // 8 chars × 8 px = 64 unbroken; max 32 → 4 chars/line, 2 lines.
+        let s = mono_measure("12345678", 16.0, Some(32.0)).size;
+        assert_eq!(s, Size::new(32.0, 32.0));
     }
 }

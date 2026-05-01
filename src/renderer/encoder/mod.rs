@@ -2,6 +2,7 @@ use crate::cascade::Cascades;
 use crate::layout::LayoutResult;
 use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
 use crate::shape::Shape;
+use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
 
 /// One typed paint instruction in logical (DIP) coordinates. Produced by
@@ -28,7 +29,16 @@ pub enum RenderCmd {
         fill: Color,
         stroke: Option<Stroke>,
     },
-    // Future: DrawText { … }, DrawLine { … }, DrawPath { … }.
+    /// Place a shaped text run at `rect` (logical px). The shaped buffer is
+    /// resolved at submit time via [`crate::text::TextCacheKey`] against the
+    /// `TextMeasure` that did the shaping. Runs whose key is invalid are
+    /// dropped by the backend.
+    DrawText {
+        rect: Rect,
+        color: Color,
+        key: TextCacheKey,
+    },
+    // Future: DrawLine { … }, DrawPath { … }.
 }
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU work,
@@ -82,9 +92,26 @@ fn encode_node(
                     stroke: *stroke,
                 });
             }
+            Shape::Text {
+                color, key, offset, ..
+            } => {
+                if key.is_invalid() {
+                    tracing::trace!(?shape, "encoder: dropping text with invalid key");
+                    continue;
+                }
+                let text_rect = Rect {
+                    min: rect.min + *offset,
+                    size: rect.size,
+                };
+                out.push(RenderCmd::DrawText {
+                    rect: text_rect,
+                    color: *color,
+                    key: *key,
+                });
+            }
             // No backend support for these yet — drop with a trace so they're
             // not silently invisible.
-            Shape::Line { .. } | Shape::Text { .. } => {
+            Shape::Line { .. } => {
                 tracing::trace!(?shape, "encoder: dropping unsupported shape");
             }
         }

@@ -87,14 +87,19 @@ impl Button {
         // `Frame::show` because no other shape/node has been pushed since the
         // frame closed — `Tree::add_shape`'s contiguity invariant still holds.
         if !self.label.is_empty() {
-            let measured = ui.text_measure().measure(&self.label, 16.0, None);
+            let font_size_px = 16.0;
+            // todo remove
+            let m = ui.measure_text(&self.label, font_size_px, None);
             ui.tree.add_shape(
                 resp.node,
                 Shape::Text {
                     offset: Vec2::ZERO,
                     text: self.label.clone(),
                     color: v.text,
-                    measured,
+                    measured: m.size,
+                    font_size_px,
+                    max_width_px: None,
+                    key: m.key,
                 },
             );
         }

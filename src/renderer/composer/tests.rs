@@ -45,7 +45,7 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
     assert_eq!(buf.quads.len(), 2);
     assert_eq!(buf.groups.len(), 1);
     assert!(buf.groups[0].scissor.is_none());
-    assert_eq!(buf.groups[0].instances, 0..2);
+    assert_eq!(buf.groups[0].quads, 0..2);
 }
 
 #[test]
@@ -65,16 +65,16 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
     assert_eq!(buf.groups.len(), 3);
 
     assert!(buf.groups[0].scissor.is_none());
-    assert_eq!(buf.groups[0].instances, 0..1);
+    assert_eq!(buf.groups[0].quads, 0..1);
 
     let s = buf.groups[1]
         .scissor
         .expect("clipped group must have a scissor");
     assert_eq!((s.x, s.y, s.w, s.h), (50, 50, 100, 100));
-    assert_eq!(buf.groups[1].instances, 1..3);
+    assert_eq!(buf.groups[1].quads, 1..3);
 
     assert!(buf.groups[2].scissor.is_none());
-    assert_eq!(buf.groups[2].instances, 3..4);
+    assert_eq!(buf.groups[2].quads, 3..4);
 }
 
 #[test]

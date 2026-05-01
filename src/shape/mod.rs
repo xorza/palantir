@@ -1,4 +1,5 @@
 use crate::primitives::{ApproxF32, Color, Corners, Size, Stroke};
+use crate::text::TextCacheKey;
 use glam::Vec2;
 
 #[derive(Clone, Debug)]
@@ -17,13 +18,20 @@ pub enum Shape {
         width: f32,
         color: Color,
     },
-    /// Placeholder until glyphon is wired up. `measured` is the pre-shaped run size
-    /// so layout can ask for it.
+    /// Shaped text run. `measured` is the pre-shaped bounding size used by
+    /// the measure pass; `key` identifies the shaped `cosmic_text::Buffer`
+    /// in the active [`crate::text::TextMeasure`] so the renderer can look
+    /// it up without reshaping. Runs whose `key` is
+    /// [`TextCacheKey::INVALID`] (e.g. produced by `MonoMeasure`) are
+    /// dropped at render time — the size still drives layout.
     Text {
         offset: Vec2,
         text: String,
         color: Color,
         measured: Size,
+        font_size_px: f32,
+        max_width_px: Option<f32>,
+        key: TextCacheKey,
     },
 }
 

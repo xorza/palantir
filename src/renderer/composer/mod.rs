@@ -1,4 +1,4 @@
-use super::buffer::{DrawGroup, RenderBuffer, ScissorRect};
+use super::buffer::{DrawGroup, RenderBuffer, ScissorRect, TextRun};
 use super::encoder::RenderCmd;
 use super::quad::Quad;
 use crate::primitives::{Rect, Stroke, TranslateScale};
@@ -15,8 +15,9 @@ pub struct ComposeParams {
 }
 
 /// CPU-only compose engine: turns a `RenderCmd` stream into a `RenderBuffer`
-/// (physical-px quads + scissor groups) supplied by the caller. Owns just
-/// the compose-time scratch stacks so steady-state rendering is alloc-free.
+/// (physical-px quads + text runs + scissor groups) supplied by the caller.
+/// Owns just the compose-time scratch stacks so steady-state rendering is
+/// alloc-free.
 ///
 /// Composer doesn't know about `Tree`, `encode`, or where the output buffer
 /// lives — it's pure algorithm + scratch. [`Pipeline`] orchestrates encode +
@@ -33,8 +34,8 @@ impl Composer {
         Self::default()
     }
 
-    /// Consume a logical-px command stream → physical-px `Quad` instances +
-    /// draw groups (scissor ranges) into `out`. Pure: no device, no queue.
+    /// Consume a logical-px command stream → physical-px `Quad`s + `TextRun`s
+    /// + draw groups (scissor ranges) into `out`. Pure: no device, no queue.
     pub fn compose(&mut self, cmds: &[RenderCmd], params: &ComposeParams, out: &mut RenderBuffer) {
         let viewport_phys_f = [
             params.viewport_logical[0] * params.scale,
@@ -46,6 +47,7 @@ impl Composer {
         ];
 
         out.quads.clear();
+        out.texts.clear();
         out.groups.clear();
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
@@ -54,7 +56,8 @@ impl Composer {
         self.transform_stack.clear();
         let mut current_transform = TranslateScale::IDENTITY;
         let mut current: Option<ScissorRect> = None;
-        let mut current_start: u32 = 0;
+        let mut quads_start: u32 = 0;
+        let mut texts_start: u32 = 0;
 
         let scale = params.scale;
         let snap = params.pixel_snap;
@@ -72,8 +75,10 @@ impl Composer {
                     switch_group(
                         Some(new),
                         &mut current,
-                        &mut current_start,
+                        &mut quads_start,
+                        &mut texts_start,
                         out.quads.len() as u32,
+                        out.texts.len() as u32,
                         &mut out.groups,
                     );
                 }
@@ -82,8 +87,10 @@ impl Composer {
                     switch_group(
                         self.clip_stack.last().copied(),
                         &mut current,
-                        &mut current_start,
+                        &mut quads_start,
+                        &mut texts_start,
                         out.quads.len() as u32,
+                        out.texts.len() as u32,
                         &mut out.groups,
                     );
                 }
@@ -114,36 +121,68 @@ impl Composer {
                     out.quads
                         .push(Quad::new(phys_rect, *fill, phys_radius, phys_stroke));
                 }
+                RenderCmd::DrawText { rect, color, key } => {
+                    let world_rect = current_transform.apply_rect(*rect);
+                    let phys_rect = world_rect.scaled_by(scale, snap);
+                    let bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    out.texts.push(TextRun {
+                        origin: [phys_rect.min.x, phys_rect.min.y],
+                        bounds,
+                        color: *color,
+                        key: *key,
+                    });
+                }
             }
         }
         flush_group(
             current,
-            current_start,
+            quads_start,
             out.quads.len() as u32,
+            texts_start,
+            out.texts.len() as u32,
             &mut out.groups,
         );
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn switch_group(
     target: Option<ScissorRect>,
     current: &mut Option<ScissorRect>,
-    current_start: &mut u32,
-    quads_len: u32,
+    quads_start: &mut u32,
+    texts_start: &mut u32,
+    quads_end: u32,
+    texts_end: u32,
     groups: &mut Vec<DrawGroup>,
 ) {
     if target != *current {
-        flush_group(*current, *current_start, quads_len, groups);
+        flush_group(
+            *current,
+            *quads_start,
+            quads_end,
+            *texts_start,
+            texts_end,
+            groups,
+        );
         *current = target;
-        *current_start = quads_len;
+        *quads_start = quads_end;
+        *texts_start = texts_end;
     }
 }
 
-fn flush_group(scissor: Option<ScissorRect>, start: u32, end: u32, groups: &mut Vec<DrawGroup>) {
-    if end > start {
+fn flush_group(
+    scissor: Option<ScissorRect>,
+    quads_start: u32,
+    quads_end: u32,
+    texts_start: u32,
+    texts_end: u32,
+    groups: &mut Vec<DrawGroup>,
+) {
+    if quads_end > quads_start || texts_end > texts_start {
         groups.push(DrawGroup {
             scissor,
-            instances: start..end,
+            quads: quads_start..quads_end,
+            texts: texts_start..texts_end,
         });
     }
 }

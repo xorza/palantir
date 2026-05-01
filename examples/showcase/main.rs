@@ -129,6 +129,7 @@ impl ApplicationHandler for App {
         let mut ui = Ui::new();
         ui.set_scale_factor(window.scale_factor() as f32);
         ui.set_pixel_snap(true);
+        ui.install_text_system(palantir::text::CosmicMeasure::new());
 
         window.request_redraw();
         self.state = Some(State {
@@ -230,8 +231,14 @@ impl State {
                 pixel_snap: self.ui.pixel_snap(),
             },
         );
-        self.backend
-            .submit(&view, Color::rgb(0.08, 0.08, 0.10), buffer);
+        self.backend.submit(
+            &view,
+            Color::rgb(0.08, 0.08, 0.10),
+            buffer,
+            self.ui
+                .text_mut()
+                .expect("install_text_system must be called before rendering"),
+        );
 
         frame.present();
         if !self.first_paint {

@@ -171,6 +171,9 @@ fn screen_rects_by_fill(cmds: &[RenderCmd]) -> Vec<(Color, Rect)> {
                 };
                 out.push((*fill, visible));
             }
+            RenderCmd::DrawText { .. } => {
+                // Test rasterizer ignores text — encoder tests only assert on rect output.
+            }
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");

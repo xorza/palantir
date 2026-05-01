@@ -1,30 +1,50 @@
 use super::buffer::RenderBuffer;
 use super::quad::QuadPipeline;
 use crate::primitives::Color;
+use crate::text::CosmicMeasure;
 
-/// wgpu backend: owns the quad pipeline + cloned device/queue handles
-/// (cheap, Arc-backed), uploads the buffer's quads, and submits scissor-
+mod text;
+use text::TextPipeline;
+
+/// wgpu backend: owns the quad + text pipelines and cloned device/queue
+/// handles (cheap, Arc-backed). Uploads quads, runs the glyphon text
+/// pipeline against the caller's `CosmicMeasure`, and submits scissor-
 /// grouped draws. No layout, no encode, no compose — those happen elsewhere
 /// and arrive here as a `RenderBuffer`.
 pub struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
     quad: QuadPipeline,
+    text: TextPipeline,
 }
 
 impl WgpuBackend {
     pub fn new(device: wgpu::Device, queue: wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let quad = QuadPipeline::new(&device, format);
+        let text = TextPipeline::new(&device, &queue, format);
         Self {
             device,
             queue,
             quad,
+            text,
         }
     }
 
-    pub fn submit(&mut self, view: &wgpu::TextureView, clear: Color, buffer: &RenderBuffer) {
+    /// Render one frame. The wgpu backend always has a glyph atlas + text
+    /// pipeline, so it always wants a shaper — runs whose key is invalid
+    /// (mono fallback) are dropped inside `prepare`, but a real shaper is
+    /// still required to drive the pipeline. Install one on `Ui` via
+    /// [`crate::Ui::install_text_system`].
+    pub fn submit(
+        &mut self,
+        view: &wgpu::TextureView,
+        clear: Color,
+        buffer: &RenderBuffer,
+        text: &mut CosmicMeasure,
+    ) {
         tracing::trace!(
             quads = buffer.quads.len(),
+            texts = buffer.texts.len(),
             groups = buffer.groups.len(),
             viewport = ?buffer.viewport_phys,
             "wgpu_backend.submit"
@@ -35,6 +55,16 @@ impl WgpuBackend {
             &self.queue,
             buffer.viewport_phys_f,
             &buffer.quads,
+        );
+
+        // Prepare text outside the encoder/pass borrow scope so glyphon can
+        // upload to the atlas + instance buffer freely.
+        let text_ready = self.text.prepare(
+            &self.device,
+            &self.queue,
+            buffer.viewport_phys,
+            &buffer.texts,
+            text,
         );
 
         let mut encoder = self
@@ -73,9 +103,26 @@ impl WgpuBackend {
                 } else {
                     pass.set_scissor_rect(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
                 }
-                self.quad.draw_range(&mut pass, g.instances.clone());
+                self.quad.draw_range(&mut pass, g.quads.clone());
+            }
+            // Text on top, single full-viewport scissor; per-area `bounds`
+            // does the actual clipping. See `text` module on the z-order
+            // limitation.
+            if text_ready {
+                pass.set_scissor_rect(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
+                self.text.render(&mut pass);
             }
         }
         self.queue.submit(std::iter::once(encoder.finish()));
+
+        if text_ready {
+            self.text.end_frame();
+        }
+    }
+
+    /// Re-create text atlas/renderer after a surface format change.
+    pub fn surface_format_changed(&mut self, format: wgpu::TextureFormat) {
+        self.text
+            .rebuild_for_format(&self.device, &self.queue, format);
     }
 }
