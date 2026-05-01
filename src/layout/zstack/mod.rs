@@ -26,7 +26,7 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId) 
 /// Defaults pin to top-left unless the child has `Sizing::Fill` — then `Auto`
 /// falls back to stretch on that axis.
 pub(super) fn arrange(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, inner: Rect) {
-    let parent_child_align = tree.extras(node).map(|e| e.child_align).unwrap_or_default();
+    let parent_child_align = tree.read_extras(node).child_align;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).is_collapsed() {

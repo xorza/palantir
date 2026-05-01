@@ -99,7 +99,7 @@ pub(super) fn measure(
 ) -> Size {
     // Pass infinite size on the main axis (WPF trick): children report intrinsic.
     let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
-    let gap = tree.extras(node).map(|e| e.gap).unwrap_or(0.0);
+    let gap = tree.read_extras(node).gap;
 
     let mut total_main = 0.0f32;
     let mut max_cross = 0.0f32;
@@ -128,10 +128,8 @@ pub(super) fn arrange(
     inner: Rect,
     axis: Axis,
 ) {
-    let (gap, justify, parent_child_align) = tree
-        .extras(node)
-        .map(|e| (e.gap, e.justify, e.child_align))
-        .unwrap_or((0.0, Justify::default(), Align::default()));
+    let extras = tree.read_extras(node);
+    let (gap, justify, parent_child_align) = (extras.gap, extras.justify, extras.child_align);
 
     // Sum desired along main axis for non-Fill children; collect Fill weights.
     // Fill siblings split the remaining space proportionally (WPF Star semantics)
