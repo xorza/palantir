@@ -167,7 +167,8 @@ fn measure_inner(
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let collapsed = tree.node(c).is_collapsed();
-        let cell = clamp_cell(tree.node(c).element.grid, n_rows, n_cols);
+        let cell = tree.node(c).element.grid;
+        assert_cell(cell, n_rows, n_cols);
 
         let avail = {
             let s = layout.grid.at(depth);
@@ -291,8 +292,9 @@ fn arrange_inner(
             super::zero_subtree(tree, c, inner.min);
             continue;
         }
-        let cell = clamp_cell(tree.node(c).element.grid, n_rows, n_cols);
         let s_node = tree.node(c).element;
+        let cell = s_node.grid;
+        assert_cell(cell, n_rows, n_cols);
         let d = tree.node(c).desired;
 
         let (slot_x, slot_y, slot_w, slot_h) = {
@@ -321,25 +323,23 @@ fn arrange_inner(
     }
 }
 
-fn clamp_cell(c: GridCell, n_rows: usize, n_cols: usize) -> GridCell {
-    debug_assert!(n_rows > 0 && n_cols > 0);
-    debug_assert!(
-        (c.row as usize) < n_rows
-            && (c.col as usize) < n_cols
-            && c.row_span >= 1
-            && c.col_span >= 1,
+/// Validate a cell against the grid's track counts. Panics in both debug and
+/// release if the cell is out of range or has zero span — silent clamping
+/// would hide real authoring bugs (e.g. a child placed past the last column).
+fn assert_cell(c: GridCell, n_rows: usize, n_cols: usize) {
+    let row = c.row as usize;
+    let col = c.col as usize;
+    let row_span = c.row_span as usize;
+    let col_span = c.col_span as usize;
+    assert!(
+        row < n_rows
+            && col < n_cols
+            && row_span >= 1
+            && col_span >= 1
+            && row + row_span <= n_rows
+            && col + col_span <= n_cols,
         "grid cell out of range: {c:?} for {n_rows}x{n_cols}"
     );
-    let row = (c.row as usize).min(n_rows - 1);
-    let col = (c.col as usize).min(n_cols - 1);
-    let row_span = (c.row_span.max(1) as usize).min(n_rows - row);
-    let col_span = (c.col_span.max(1) as usize).min(n_cols - col);
-    GridCell {
-        row: row as u16,
-        col: col as u16,
-        row_span: row_span as u16,
-        col_span: col_span as u16,
-    }
 }
 
 /// Sum of spanned tracks' resolved sizes, or `∞` if any spanned track is not
