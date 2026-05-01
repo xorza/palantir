@@ -1,9 +1,5 @@
-/// Hard cap on track count per axis at *builder* construction time. The
-/// `Grid` builder uses `ArrayVec<Track, MAX_TRACKS>` for inline track
-/// storage — bounded so the builder is fully stack-resident. Lift this if
-/// you need wider grids; the layout pass and `Tree` track pool have no
-/// such cap.
-pub const MAX_TRACKS: usize = 64;
+use crate::primitives::Track;
+use std::rc::Rc;
 
 /// Per-child placement inside a `Grid` parent. Inert when the parent is not a
 /// `LayoutMode::Grid`. `(row, col)` is the top-left cell; `(row_span,
@@ -27,8 +23,8 @@ impl Default for GridCell {
     }
 }
 
-/// Generic `(start, len)` range into one of `Tree`'s per-frame pools.
-/// Used for tracks (`Tree::tracks`) and per-track hug sizes (`Tree::hug_pool`).
+/// `(start, len)` range into `Tree::hug_pool` (per-track hug sizes computed
+/// in measure and read in arrange).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct TrackSlice {
     pub start: u32,
@@ -42,13 +38,15 @@ impl TrackSlice {
 }
 
 /// Track definitions + axis gaps for a `Grid` panel. Stored on `Tree::grid_defs`
-/// and addressed from `LayoutMode::Grid(u32)`. Track defs live in `Tree::tracks`;
-/// per-track hug sizes (computed in measure, read in arrange) live in
-/// `Tree::hug_pool`. All cleared with `Tree::clear`.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+/// and addressed from `LayoutMode::Grid(u32)`. Track defs live behind
+/// `Rc<[Track]>` so callers can cache and share them across frames without
+/// the framework copying — the builder stores the `Rc`, the layout pass
+/// reads through it directly. Per-track hug sizes (computed in measure, read
+/// in arrange) live in `Tree::hug_pool`. All cleared with `Tree::clear`.
+#[derive(Clone, Debug)]
 pub(crate) struct GridDef {
-    pub rows: TrackSlice,
-    pub cols: TrackSlice,
+    pub rows: Rc<[Track]>,
+    pub cols: Rc<[Track]>,
     pub row_gap: f32,
     pub col_gap: f32,
     /// Per-row max desired height of span-1 children. Written by

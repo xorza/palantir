@@ -1,6 +1,7 @@
 use crate::element::UiElement;
 use crate::primitives::{GridDef, Rect, Size, Track, TrackSlice};
 use crate::shape::Shape;
+use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub(crate) u32);
@@ -56,13 +57,10 @@ pub struct Tree {
     /// Reused frame-to-frame; cleared with `Tree::clear`.
     last_child: Vec<Option<NodeId>>,
     /// Grid track definitions, addressed by `LayoutMode::Grid(u32)`. One
-    /// entry per `Grid` panel recorded this frame. Cleared with `clear`.
+    /// entry per `Grid` panel recorded this frame. Track lists live behind
+    /// `Rc<[Track]>` so callers can cache and share them across frames; the
+    /// framework only refcount-touches. Cleared with `clear`.
     grid_defs: Vec<GridDef>,
-    /// Shared pool of `Track`s referenced by `GridDef::rows`/`cols` via
-    /// `TrackSlice` (start, len) ranges. Cleared with `clear` so all per-grid
-    /// track storage is one capacity-retaining allocation rather than two
-    /// `Vec<Track>` per `Grid` per frame.
-    tracks: Vec<Track>,
     /// Shared pool of per-track hug sizes referenced by `GridDef::row_hugs` /
     /// `col_hugs`. Written by `grid_measure` and read by `arrange_grid` so
     /// arrange doesn't have to re-walk children to recompute Hug-track sizing.
@@ -79,44 +77,33 @@ impl Tree {
         self.shapes.clear();
         self.last_child.clear();
         self.grid_defs.clear();
-        self.tracks.clear();
         self.hug_pool.clear();
     }
 
-    /// Append a `GridDef` referencing freshly-pooled tracks; return its index.
-    /// The index is stamped into a `LayoutMode::Grid(idx)` on the owning
-    /// panel's `UiElement`. Reserves zero-initialized hug-size slots that
-    /// `grid_measure` will fill in.
+    /// Append a `GridDef` referencing user-owned `Rc<[Track]>` rows + cols;
+    /// return its index. The index is stamped into a `LayoutMode::Grid(idx)`
+    /// on the owning panel's `UiElement`. Reserves zero-initialized hug-size
+    /// slots that `grid_measure` will fill in. The `Rc` clones are
+    /// refcount-only — no track data is copied.
     pub(crate) fn push_grid_def(
         &mut self,
-        rows: &[Track],
-        cols: &[Track],
+        rows: Rc<[Track]>,
+        cols: Rc<[Track]>,
         row_gap: f32,
         col_gap: f32,
     ) -> u32 {
-        let row_slice = self.push_tracks(rows);
-        let col_slice = self.push_tracks(cols);
         let row_hugs = self.reserve_hugs(rows.len());
         let col_hugs = self.reserve_hugs(cols.len());
         let idx = self.grid_defs.len() as u32;
         self.grid_defs.push(GridDef {
-            rows: row_slice,
-            cols: col_slice,
+            rows,
+            cols,
             row_gap,
             col_gap,
             row_hugs,
             col_hugs,
         });
         idx
-    }
-
-    fn push_tracks(&mut self, src: &[Track]) -> TrackSlice {
-        let start = self.tracks.len() as u32;
-        self.tracks.extend_from_slice(src);
-        TrackSlice {
-            start,
-            len: src.len() as u32,
-        }
     }
 
     fn reserve_hugs(&mut self, n: usize) -> TrackSlice {
@@ -128,12 +115,8 @@ impl Tree {
         }
     }
 
-    pub(crate) fn grid_def(&self, idx: u32) -> GridDef {
-        self.grid_defs[idx as usize]
-    }
-
-    pub(crate) fn grid_tracks(&self, slice: TrackSlice) -> &[Track] {
-        &self.tracks[slice.range()]
+    pub(crate) fn grid_def(&self, idx: u32) -> &GridDef {
+        &self.grid_defs[idx as usize]
     }
 
     pub(crate) fn grid_hugs(&self, slice: TrackSlice) -> &[f32] {
