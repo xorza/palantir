@@ -3,7 +3,6 @@ use crate::primitives::{Color, Corners, Sense, Visuals, WidgetId};
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::{Frame, Response, Styled};
-use glam::Vec2;
 use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -87,19 +86,12 @@ impl Button {
         // `Frame::show` because no other shape/node has been pushed since the
         // frame closed — `Tree::add_shape`'s contiguity invariant still holds.
         if !self.label.is_empty() {
-            let font_size_px = 16.0;
-            // todo remove
-            let m = ui.measure_text(&self.label, font_size_px, None);
             ui.tree.add_shape(
                 resp.node,
                 Shape::Text {
-                    offset: Vec2::ZERO,
                     text: self.label.clone(),
                     color: v.text,
-                    measured: m.size,
-                    font_size_px,
-                    max_width_px: None,
-                    key: m.key,
+                    font_size_px: 16.0,
                     wrap: TextWrap::Single,
                 },
             );

@@ -1,7 +1,7 @@
 use crate::element::{LayoutCore, LayoutMode};
 use crate::primitives::{Align, AxisAlign, Rect, Size, Sizing};
 use crate::shape::{Shape, TextWrap};
-use crate::text::CosmicMeasure;
+use crate::text::{CosmicMeasure, MeasureResult, mono_measure};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 use grid::GridContext;
@@ -12,7 +12,7 @@ mod result;
 mod stack;
 mod zstack;
 
-pub use result::{LayoutResult, ReshapedText};
+pub use result::{LayoutResult, ShapedText};
 
 /// Persistent layout engine. Holds two kinds of per-frame state, both with
 /// capacity reused across frames:
@@ -225,87 +225,75 @@ pub(super) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
 }
 
 impl LayoutEngine {
+    /// Walk a Leaf's recorded shapes and return the content size that drives
+    /// its hugging. For `Shape::Text` runs, this is also where shaping
+    /// happens: the shaped buffer + measured size land on
+    /// `LayoutResult.text_shapes` so the encoder can pick them up later.
+    /// `available_w` flows down from the parent and gates wrapping.
     fn leaf_content_size(
         &mut self,
         tree: &Tree,
         node: NodeId,
         available_w: f32,
-        text: Option<&mut CosmicMeasure>,
+        mut text: Option<&mut CosmicMeasure>,
     ) -> Size {
-        // For a Leaf, content size = bounding box of any Text shapes'
-        // measured size (other shapes are owner-relative and don't drive
-        // size). For `TextWrap::Wrap` shapes we reshape against
-        // `available_w` here — single-pass, the parent-committed width flows
-        // down through the recursive measure call so desired size + arranged
-        // height already reflect wrapping. Falls back to the recorded
-        // unbounded measure when no shaper is available (mono path / tests).
-        if let Some(t) = text {
-            self.maybe_reshape_text(tree, node, available_w, t);
-        }
         let mut s = Size::ZERO;
-        for sh in tree.shapes_of(node) {
-            if let Shape::Text { measured, .. } = sh {
-                let m = self
-                    .result
-                    .text_reshape(node)
-                    .map(|r| r.measured)
-                    .unwrap_or(*measured);
+        for shape in tree.shapes_of(node) {
+            if let Shape::Text {
+                text: src,
+                font_size_px,
+                wrap,
+                ..
+            } = shape
+            {
+                let m = self.shape_text(
+                    node,
+                    src,
+                    *font_size_px,
+                    *wrap,
+                    available_w,
+                    text.as_deref_mut(),
+                );
                 s = s.max(m);
             }
         }
         s
     }
 
-    fn maybe_reshape_text(
+    fn shape_text(
         &mut self,
-        tree: &Tree,
         node: NodeId,
+        src: &str,
+        font_size_px: f32,
+        wrap: TextWrap,
         available_w: f32,
-        text: &mut CosmicMeasure,
-    ) {
-        if !available_w.is_finite() {
-            return;
-        }
-        for sh in tree.shapes_of(node) {
-            let Shape::Text {
-                text: src,
-                font_size_px,
-                measured,
-                wrap,
-                ..
-            } = sh
-            else {
-                continue;
-            };
-            let TextWrap::Wrap { intrinsic_min } = *wrap else {
-                continue;
-            };
-
-            let target = available_w.max(intrinsic_min);
-            // Slot wider than the natural unbroken width — no reshape
-            // needed; the recorded shape is already the answer.
-            if target >= measured.w {
-                continue;
+        mut text: Option<&mut CosmicMeasure>,
+    ) -> Size {
+        let mut measure = |max_w: Option<f32>| -> MeasureResult {
+            match text.as_deref_mut() {
+                Some(c) => c.measure(src, font_size_px, max_w),
+                None => mono_measure(src, font_size_px, max_w),
             }
+        };
 
-            tracing::trace!(
-                node = node.index(),
-                target,
-                prev_measured = ?*measured,
-                "reshape wrap text"
-            );
-            let m = text.measure(src, *font_size_px, Some(target));
-            self.result.set_text_reshape(
-                node,
-                ReshapedText {
-                    measured: m.size,
-                    key: m.key,
-                    max_width_px: target,
-                },
-            );
-            // One Shape::Text per node — no need to keep walking.
-            return;
-        }
+        let unbounded = measure(None);
+        let (measured, key) = if matches!(wrap, TextWrap::Wrap)
+            && available_w.is_finite()
+            && available_w < unbounded.size.w
+        {
+            // Floor at the widest unbreakable run so we don't break inside a
+            // word — the run overflows the slot instead.
+            let target = available_w.max(unbounded.intrinsic_min);
+            tracing::trace!(node = node.index(), target, "wrap reshape");
+            let m = measure(Some(target));
+            (m.size, m.key)
+        } else {
+            (unbounded.size, unbounded.key)
+        };
+
+        self.result
+            .set_text_shape(node, ShapedText { measured, key });
+        measured
     }
 }
 

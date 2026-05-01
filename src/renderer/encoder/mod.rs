@@ -107,27 +107,22 @@ fn encode_node(
                     }),
                 });
             }
-            Shape::Text {
-                color, key, offset, ..
-            } => {
-                // Wrap-text shapes carry the unbounded `key` recorded at
-                // `show()` time; if measure reshaped them against a parent-
-                // committed width, the override sits on `LayoutResult` and
-                // the encoder swaps it in here so the renderer picks up the
-                // wrapped buffer.
-                let effective_key = layout.text_reshape(id).map(|r| r.key).unwrap_or(*key);
-                if effective_key.is_invalid() {
+            Shape::Text { color, .. } => {
+                // Shaping happened in measure; the resulting buffer key is
+                // on `LayoutResult.text_shapes`. Missing entry means no
+                // shaper was installed (mono fallback) or the run was empty
+                // — drop in either case.
+                let Some(shaped) = layout.text_shape(id) else {
+                    continue;
+                };
+                if shaped.key.is_invalid() {
                     tracing::trace!(?shape, "encoder: dropping text with invalid key");
                     continue;
                 }
-                let text_rect = Rect {
-                    min: rect.min + *offset,
-                    size: rect.size,
-                };
                 out.push(RenderCmd::DrawText {
-                    rect: text_rect,
+                    rect,
                     color: color.dim_rgb(rgb_mul),
-                    key: effective_key,
+                    key: shaped.key,
                 });
             }
             // No backend support for these yet — drop with a trace so they're
