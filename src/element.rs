@@ -1,5 +1,5 @@
 use crate::primitives::{
-    Align, ApproxF32, GridCell, HAlign, Justify, NodeFlags, Sense, Size, Sizes, Sizing, Spacing,
+    Align, GridCell, HAlign, Justify, NodeFlags, Sense, Size, Sizes, Sizing, Spacing,
     TranslateScale, VAlign, Visibility, WidgetId,
 };
 use glam::Vec2;
@@ -78,16 +78,11 @@ impl Default for UiElementExtras {
 
 impl UiElementExtras {
     /// True when nothing has been customized — push_node skips the side-table
-    /// allocation in this case.
+    /// allocation in this case. Compared exactly against `DEFAULT` so adding
+    /// a field only requires updating `DEFAULT`; no separate predicate to
+    /// keep in sync.
     pub fn is_default(&self) -> bool {
-        self.transform.is_none()
-            && self.position.approx_zero()
-            && self.grid == GridCell::default()
-            && self.min_size.approx_zero()
-            && self.max_size.is_inf()
-            && self.gap.approx_zero()
-            && self.justify == Justify::default()
-            && self.child_align == Align::default()
+        self == &Self::DEFAULT
     }
 }
 
