@@ -27,7 +27,7 @@ fn empty_tree_encodes_to_nothing() {
     Panel::hstack().show(&mut ui, |_| {});
     ui.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
     ui.end_frame();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
     let draws = cmds
         .iter()
         .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
@@ -50,7 +50,7 @@ fn frame_with_fill_emits_one_draw_rect() {
 
     ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
 
     let draw_rects = cmds
         .iter()
@@ -73,7 +73,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
 
     ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
 
     let draw_rects = cmds
         .iter()
@@ -104,7 +104,7 @@ fn clip_emits_balanced_push_pop() {
 
     ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
 
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
@@ -235,7 +235,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     ui.end_frame();
 
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
     let drawn = screen_rects_by_fill(&cmds);
 
     // Visible node: encoder emits exactly one DrawRect with its fill, and the
@@ -356,8 +356,62 @@ fn nested_clips_each_emit_their_own_pair() {
 
     ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
     assert_eq!(pops, 2);
+}
+
+#[test]
+fn disabled_ancestor_dims_descendant_fill() {
+    let mut ui = Ui::new();
+    let pure_red = Color::rgb(1.0, 0.0, 0.0);
+    ui.begin_frame();
+    Panel::vstack().disabled(true).show(&mut ui, |ui| {
+        Frame::new()
+            .size(Sizing::Fixed(40.0))
+            .fill(pure_red)
+            .show(ui);
+    });
+    ui.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
+    ui.end_frame();
+
+    let mut cmds = Vec::new();
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), 0.5, &mut cmds);
+    let dimmed = cmds
+        .iter()
+        .find_map(|c| match c {
+            RenderCmd::DrawRect { fill, .. } => Some(*fill),
+            _ => None,
+        })
+        .expect("frame must emit one DrawRect");
+    assert_eq!(dimmed, pure_red.dim_rgb(0.5));
+
+    // Same tree with no disabled ancestor: fill comes through untouched.
+    let mut ui2 = Ui::new();
+    ui2.begin_frame();
+    Panel::vstack().show(&mut ui2, |ui| {
+        Frame::new()
+            .size(Sizing::Fixed(40.0))
+            .fill(pure_red)
+            .show(ui);
+    });
+    ui2.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
+    ui2.end_frame();
+    cmds.clear();
+    encode(
+        &ui2.tree,
+        ui2.layout_result(),
+        ui2.cascades(),
+        0.5,
+        &mut cmds,
+    );
+    let untouched = cmds
+        .iter()
+        .find_map(|c| match c {
+            RenderCmd::DrawRect { fill, .. } => Some(*fill),
+            _ => None,
+        })
+        .expect("frame must emit one DrawRect");
+    assert_eq!(untouched, pure_red);
 }
