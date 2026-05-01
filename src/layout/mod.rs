@@ -167,9 +167,9 @@ impl LayoutEngine {
             LayoutMode::VStack => {
                 stack::measure(self, tree, node, inner_avail, stack::Axis::Y, text)
             }
-            LayoutMode::ZStack => zstack::measure(self, tree, node, text),
-            LayoutMode::Canvas => canvas::measure(self, tree, node, text),
-            LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, text),
+            LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
+            LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
+            LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
         };
 
         let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
