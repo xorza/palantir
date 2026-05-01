@@ -1,6 +1,6 @@
 use super::{LayoutEngine, zero_subtree};
 use crate::primitives::{Rect, Size};
-use crate::text::TextSystem;
+use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
 #[cfg(test)]
@@ -15,7 +15,7 @@ pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
-    text: &mut TextSystem,
+    text: &mut TextMeasurer,
 ) -> Size {
     let child_avail = Size::INF;
     let mut max_w = 0.0f32;

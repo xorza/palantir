@@ -1,7 +1,7 @@
 use crate::element::{LayoutCore, LayoutMode};
 use crate::primitives::{Align, AxisAlign, Rect, Size, Sizing};
 use crate::shape::{Shape, TextWrap};
-use crate::text::TextSystem;
+use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 use grid::GridContext;
@@ -51,7 +51,7 @@ impl LayoutEngine {
     /// `text` carries the shaper (or the mono fallback inside it) and is
     /// borrowed for the duration of the call so wrapping leaves can reshape
     /// against the parent-committed width during measure.
-    pub fn run(&mut self, tree: &Tree, root: NodeId, surface: Rect, text: &mut TextSystem) {
+    pub fn run(&mut self, tree: &Tree, root: NodeId, surface: Rect, text: &mut TextMeasurer) {
         assert_eq!(
             self.grid.depth_stack.depth(),
             0,
@@ -80,7 +80,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available: Size,
-        text: &mut TextSystem,
+        text: &mut TextMeasurer,
     ) -> Size {
         if tree.is_collapsed(node) {
             self.result.set_desired(node, Size::ZERO);
@@ -228,7 +228,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available_w: f32,
-        text: &mut TextSystem,
+        text: &mut TextMeasurer,
     ) -> Size {
         let mut s = Size::ZERO;
         for shape in tree.shapes_of(node) {
@@ -253,7 +253,7 @@ impl LayoutEngine {
         font_size_px: f32,
         wrap: TextWrap,
         available_w: f32,
-        text: &mut TextSystem,
+        text: &mut TextMeasurer,
     ) -> Size {
         let unbounded = text.measure(src, font_size_px, None);
         let (measured, key) = if matches!(wrap, TextWrap::Wrap)

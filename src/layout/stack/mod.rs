@@ -1,7 +1,7 @@
 use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizes, Sizing};
-use crate::text::TextSystem;
+use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
@@ -91,7 +91,7 @@ pub(super) fn measure(
     node: NodeId,
     inner: Size,
     axis: Axis,
-    text: &mut TextSystem,
+    text: &mut TextMeasurer,
 ) -> Size {
     // Pass infinite size on the main axis (WPF trick): children report intrinsic.
     let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));

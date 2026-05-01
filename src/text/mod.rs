@@ -26,7 +26,7 @@ mod cosmic;
 
 pub use cosmic::CosmicMeasure;
 
-/// Shared handle to a [`CosmicMeasure`], cloned into both [`TextSystem`]
+/// Shared handle to a [`CosmicMeasure`], cloned into both [`TextMeasurer`]
 /// (Ui-side measurement) and the renderer's `TextRenderer` (wgpu-side
 /// shaping + rasterization). Single-threaded by design (`Rc`); access is
 /// sequential — measure during layout, prepare/render during the wgpu
@@ -136,11 +136,11 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
 /// The renderer holds its own clone of the same handle so layout and
 /// rasterization see the same buffer cache.
 #[derive(Default)]
-pub struct TextSystem {
+pub struct TextMeasurer {
     cosmic: Option<SharedCosmic>,
 }
 
-impl TextSystem {
+impl TextMeasurer {
     pub fn new() -> Self {
         Self::default()
     }

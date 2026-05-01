@@ -1,6 +1,6 @@
 use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
 use crate::primitives::{GridCell, Rect, Size, Sizing, Track};
-use crate::text::TextSystem;
+use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use std::ops::Range;
 use std::rc::Rc;
@@ -215,7 +215,7 @@ pub(super) fn measure(
     tree: &Tree,
     node: NodeId,
     idx: u16,
-    text: &mut TextSystem,
+    text: &mut TextMeasurer,
 ) -> Size {
     let depth = layout.grid.depth_stack.enter();
     let result = measure_inner(layout, tree, node, idx, depth, text);
@@ -229,7 +229,7 @@ fn measure_inner(
     node: NodeId,
     idx: u16,
     depth: usize,
-    text: &mut TextSystem,
+    text: &mut TextMeasurer,
 ) -> Size {
     let DefSnapshot {
         n_rows,
