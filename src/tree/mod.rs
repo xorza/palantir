@@ -18,6 +18,13 @@ impl NodeId {
 /// Recorded node — the user-described data for one element. Layout output
 /// (`desired`, `rect`) is *not* on `Node`; it lives on `LayoutEngine` keyed
 /// by `NodeId`. `Tree` is therefore read-only after recording finishes.
+///
+/// Topology is encoded by `subtree_end`: an exclusive index into `Tree.nodes`
+/// one past the last descendant of this node. Since `nodes` is stored in
+/// pre-order, this node's children start at `self_id + 1` and the whole
+/// subtree is `nodes[self_id..subtree_end]`. To iterate direct children, jump
+/// from `self_id + 1` by each child's own `subtree_end` until reaching the
+/// parent's. No `parent` / `first_child` / `next_sibling` links needed.
 #[derive(Debug)]
 pub struct Node {
     /// What was recorded for this node: id, layout, mode, sense, disabled.
@@ -26,9 +33,9 @@ pub struct Node {
     /// just the locally-declared bit.
     pub element: ElementCore,
 
-    pub parent: Option<NodeId>,
-    pub first_child: Option<NodeId>,
-    pub next_sibling: Option<NodeId>,
+    /// Exclusive index into `Tree.nodes` one past this node's last descendant.
+    /// `self_id + 1 == subtree_end` for a leaf or a not-yet-populated parent.
+    pub subtree_end: u32,
 }
 
 impl Node {
@@ -36,12 +43,10 @@ impl Node {
         self.element.attrs.is_collapsed()
     }
 
-    fn new(element: ElementCore, parent: Option<NodeId>) -> Self {
+    fn new(element: ElementCore, self_id: u32) -> Self {
         Self {
             element,
-            parent,
-            first_child: None,
-            next_sibling: None,
+            subtree_end: self_id + 1,
         }
     }
 }
@@ -57,12 +62,12 @@ pub struct Tree {
     /// the trailing sentinel is the open end of the last node, kept equal to
     /// `shapes.len()` while recording so `add_shape` can extend it in place.
     shape_starts: Vec<u32>,
-    /// Recording-only scratch: index `i` holds the most recently appended
-    /// child of node `i`, used by `push_node` for O(1) sibling-list append.
-    /// Not read after recording — kept as a parallel vec rather than a `Node`
-    /// field so the Node footprint stays minimal across measure/arrange/paint.
-    /// Reused frame-to-frame; cleared with `Tree::clear`.
-    last_child: Vec<Option<NodeId>>,
+    /// Recording-only scratch: index `i` holds the parent of node `i` (or
+    /// `None` if root). Used by `push_node` to walk up the ancestor chain
+    /// bumping `subtree_end`. Not read after recording — kept as a parallel
+    /// vec rather than a `Node` field so the Node footprint stays minimal
+    /// across measure/arrange/paint. Reused frame-to-frame.
+    recording_parent: Vec<Option<NodeId>>,
     /// Frame-scoped grid storage: track defs (addressed by
     /// `LayoutMode::Grid(u16)`). Per-track hug arrays live on `LayoutResult`
     /// since the tree is read-only after recording. Cleared per frame,
@@ -80,7 +85,7 @@ impl Default for Tree {
             nodes: Vec::new(),
             shapes: Vec::new(),
             shape_starts: vec![0],
-            last_child: Vec::new(),
+            recording_parent: Vec::new(),
             grid: GridArena::default(),
             node_extras: Vec::new(),
         }
@@ -97,7 +102,7 @@ impl Tree {
         self.shapes.clear();
         self.shape_starts.clear();
         self.shape_starts.push(0);
-        self.last_child.clear();
+        self.recording_parent.clear();
         self.grid.clear();
         self.node_extras.clear();
     }
@@ -138,23 +143,19 @@ impl Tree {
             self.node_extras.push(extras);
             core.extras = Some(idx);
         }
-        self.nodes.push(Node::new(core, parent));
+        self.nodes.push(Node::new(core, new_id.0));
         self.shape_starts.push(self.shapes.len() as u32);
-        self.last_child.push(None);
+        self.recording_parent.push(parent);
 
-        if let Some(p) = parent {
-            // Append as last sibling. `last_child[p]` is the previous tail (or
-            // `None` if `p` had no children yet).
-            let pi = p.0 as usize;
-            match self.last_child[pi] {
-                None => {
-                    self.nodes[pi].first_child = Some(new_id);
-                }
-                Some(prev) => {
-                    self.nodes[prev.0 as usize].next_sibling = Some(new_id);
-                }
-            }
-            self.last_child[pi] = Some(new_id);
+        // Walk up the ancestor chain, growing each one's `subtree_end` so the
+        // new node falls inside every ancestor's subtree. Cheap in practice:
+        // typical UI trees are shallow.
+        let new_end = new_id.0 + 1;
+        let mut anc = parent;
+        while let Some(a) = anc {
+            let ai = a.0 as usize;
+            self.nodes[ai].subtree_end = new_end;
+            anc = self.recording_parent[ai];
         }
         new_id
     }
@@ -221,9 +222,11 @@ impl Tree {
 
     /// Iterate child NodeIds of `parent` in declaration order.
     pub fn children(&self, parent: NodeId) -> ChildIter<'_> {
+        let pi = parent.0 as usize;
         ChildIter {
             tree: self,
-            next: self.nodes[parent.0 as usize].first_child,
+            next: parent.0 + 1,
+            end: self.nodes[pi].subtree_end,
         }
     }
 
@@ -231,22 +234,28 @@ impl Tree {
     /// doesn't borrow the tree across iterations, so the caller is free to
     /// recurse into `&mut Tree` between steps (e.g. measure/arrange passes).
     pub fn child_cursor(&self, parent: NodeId) -> ChildCursor {
+        let pi = parent.0 as usize;
         ChildCursor {
-            next: self.nodes[parent.0 as usize].first_child,
+            next: parent.0 + 1,
+            end: self.nodes[pi].subtree_end,
         }
     }
 }
 
 pub struct ChildIter<'a> {
     tree: &'a Tree,
-    next: Option<NodeId>,
+    next: u32,
+    end: u32,
 }
 
 impl<'a> Iterator for ChildIter<'a> {
     type Item = NodeId;
     fn next(&mut self) -> Option<NodeId> {
-        let cur = self.next?;
-        self.next = self.tree.nodes[cur.0 as usize].next_sibling;
+        if self.next >= self.end {
+            return None;
+        }
+        let cur = NodeId(self.next);
+        self.next = self.tree.nodes[self.next as usize].subtree_end;
         Some(cur)
     }
 }
@@ -254,23 +263,26 @@ impl<'a> Iterator for ChildIter<'a> {
 /// Lending cursor over a node's children. Holds only the next-pointer so the
 /// caller can take `&mut Tree` between steps (recursive measure/arrange).
 ///
-/// Contract: tree topology (`first_child` / `next_sibling`) must not change
-/// between `next()` calls. The cursor snapshots `c.next_sibling` when it
-/// returns `c`; mutating that field, reparenting `c`, or inserting siblings
-/// after `c` afterwards will silently desync iteration. Measure and arrange
-/// only mutate `desired` and `rect`, so they're safe.
+/// Contract: tree topology (`subtree_end`) must not change between `next()`
+/// calls. The cursor reads the current child's `subtree_end` to advance, so
+/// mutating that field, reparenting children, or appending new descendants
+/// to a yielded child afterwards will silently desync iteration. Measure
+/// and arrange only mutate `desired` and `rect`, so they're safe.
 #[derive(Clone, Copy)]
 pub struct ChildCursor {
-    next: Option<NodeId>,
+    next: u32,
+    end: u32,
 }
 
 impl ChildCursor {
-    /// Return the current child and advance. Reads `next_sibling` before
-    /// returning so the caller is free to mutate the tree between calls
-    /// (subject to the topology-invariance contract on the struct).
+    /// Return the current child and advance. Jumps past the child's whole
+    /// subtree using its `subtree_end`.
     pub fn next(&mut self, tree: &Tree) -> Option<NodeId> {
-        let cur = self.next?;
-        self.next = tree.nodes[cur.0 as usize].next_sibling;
+        if self.next >= self.end {
+            return None;
+        }
+        let cur = NodeId(self.next);
+        self.next = tree.nodes[self.next as usize].subtree_end;
         Some(cur)
     }
 }

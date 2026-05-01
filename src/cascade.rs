@@ -64,11 +64,19 @@ impl Cascades {
         self.nodes.clear();
         self.nodes.reserve(tree.node_count());
 
+        // Walk pre-order. `stack` holds the cascade row + `subtree_end` for
+        // each currently-open ancestor; the parent of node `i` is whichever
+        // ancestor's subtree still contains `i` on top of the stack.
+        let mut stack: Vec<(NodeCascade, u32)> = Vec::new();
+
         for (i, node) in tree.nodes_iter().enumerate() {
-            let parent = match node.parent {
-                Some(p) => self.nodes[p.0 as usize],
-                None => NodeCascade::ROOT_PARENT,
-            };
+            while let Some(&(_, end)) = stack.last() {
+                if (i as u32) < end {
+                    break;
+                }
+                stack.pop();
+            }
+            let parent = stack.last().map_or(NodeCascade::ROOT_PARENT, |&(c, _)| c);
 
             let id = NodeId(i as u32);
             let attrs = node.element.attrs;
@@ -95,14 +103,16 @@ impl Cascades {
                 own_clip
             };
 
-            self.nodes.push(NodeCascade {
+            let row = NodeCascade {
                 own_transform,
                 own_clip,
                 descendant_transform,
                 descendant_clip,
                 effective_disabled,
                 effective_invisible,
-            });
+            };
+            self.nodes.push(row);
+            stack.push((row, node.subtree_end));
         }
     }
 
