@@ -29,27 +29,19 @@ pub struct Node {
     pub parent: Option<NodeId>,
     pub first_child: Option<NodeId>,
     pub next_sibling: Option<NodeId>,
-
-    /// Half-open range into `Tree.shapes` for this node's shapes.
-    pub shapes: std::ops::Range<u32>,
 }
 
 impl Node {
-    pub fn shapes_range(&self) -> std::ops::Range<usize> {
-        self.shapes.start as usize..self.shapes.end as usize
-    }
-
     pub fn is_collapsed(&self) -> bool {
         self.element.attrs.is_collapsed()
     }
 
-    fn new(element: ElementCore, parent: Option<NodeId>, shapes_start: u32) -> Self {
+    fn new(element: ElementCore, parent: Option<NodeId>) -> Self {
         Self {
             element,
             parent,
             first_child: None,
             next_sibling: None,
-            shapes: shapes_start..shapes_start,
         }
     }
 }
@@ -57,10 +49,14 @@ impl Node {
 /// `nodes` are stored in pre-order paint order: a parent is pushed before its
 /// children, and siblings appear in declaration order. Reverse iteration gives
 /// topmost-first traversal — load-bearing for hit-testing in `Ui`.
-#[derive(Default)]
 pub struct Tree {
     pub(crate) nodes: Vec<Node>,
     pub(crate) shapes: Vec<Shape>,
+    /// Per-node shape-range starts, length always `nodes.len() + 1`. The
+    /// shapes for node `i` are `shapes[shape_starts[i]..shape_starts[i+1]]`;
+    /// the trailing sentinel is the open end of the last node, kept equal to
+    /// `shapes.len()` while recording so `add_shape` can extend it in place.
+    shape_starts: Vec<u32>,
     /// Recording-only scratch: index `i` holds the most recently appended
     /// child of node `i`, used by `push_node` for O(1) sibling-list append.
     /// Not read after recording — kept as a parallel vec rather than a `Node`
@@ -78,6 +74,19 @@ pub struct Tree {
     pub(crate) node_extras: Vec<ElementExtras>,
 }
 
+impl Default for Tree {
+    fn default() -> Self {
+        Self {
+            nodes: Vec::new(),
+            shapes: Vec::new(),
+            shape_starts: vec![0],
+            last_child: Vec::new(),
+            grid: GridArena::default(),
+            node_extras: Vec::new(),
+        }
+    }
+}
+
 impl Tree {
     pub fn new() -> Self {
         Self::default()
@@ -86,6 +95,8 @@ impl Tree {
     pub fn clear(&mut self) {
         self.nodes.clear();
         self.shapes.clear();
+        self.shape_starts.clear();
+        self.shape_starts.push(0);
         self.last_child.clear();
         self.grid.clear();
         self.node_extras.clear();
@@ -127,8 +138,8 @@ impl Tree {
             self.node_extras.push(extras);
             core.extras = Some(idx);
         }
-        self.nodes
-            .push(Node::new(core, parent, self.shapes.len() as u32));
+        self.nodes.push(Node::new(core, parent));
+        self.shape_starts.push(self.shapes.len() as u32);
         self.last_child.push(None);
 
         if let Some(p) = parent {
@@ -151,12 +162,12 @@ impl Tree {
     pub fn add_shape(&mut self, node: NodeId, shape: Shape) {
         let idx = node.0 as usize;
         assert_eq!(
-            self.nodes[idx].shapes.end,
-            self.shapes.len() as u32,
+            idx,
+            self.nodes.len() - 1,
             "shapes for node {idx} must be added contiguously, before any child node",
         );
         self.shapes.push(shape);
-        self.nodes[idx].shapes.end = self.shapes.len() as u32;
+        *self.shape_starts.last_mut().unwrap() = self.shapes.len() as u32;
     }
 
     pub fn node(&self, id: NodeId) -> &Node {
@@ -202,7 +213,10 @@ impl Tree {
     }
 
     pub fn shapes_of(&self, id: NodeId) -> &[Shape] {
-        &self.shapes[self.node(id).shapes_range()]
+        let i = id.index();
+        let s = self.shape_starts[i] as usize;
+        let e = self.shape_starts[i + 1] as usize;
+        &self.shapes[s..e]
     }
 
     /// Iterate child NodeIds of `parent` in declaration order.

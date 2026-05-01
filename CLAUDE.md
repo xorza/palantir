@@ -19,7 +19,7 @@ The tree is rebuilt every frame; widget *state* (scroll, focus, animation) lives
 ### Node vs Shape — the key split
 
 - **`Node`** = layout participant. Has style, measured size (on `LayoutResult`, not on `Node`), parent/child links. Lives in `Tree.nodes`.
-- **`Shape`** = paint primitive (`RoundedRect`, `Text`, `Line`, …). Stored flat in `Tree.shapes`, sliced per-node via a `Range<u32>` on `Node`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning today.
+- **`Shape`** = paint primitive (`RoundedRect`, `Text`, `Line`, …). Stored flat in `Tree.shapes`, sliced per-node via `Tree.shape_starts` (length `nodes.len() + 1`, so node `i`'s shapes are `shapes[shape_starts[i]..shape_starts[i+1]]`). `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning today.
 
 Layout passes ignore Shapes; paint pass ignores hierarchy beyond walking it. This decoupling is load-bearing — keep it.
 
