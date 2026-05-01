@@ -89,8 +89,9 @@ fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
         }
     }
 
-    let has_transform = node.element.transform.is_some();
-    if let Some(t) = node.element.transform {
+    let transform = tree.extras(id).and_then(|e| e.transform);
+    let has_transform = transform.is_some();
+    if let Some(t) = transform {
         out.push(RenderCmd::PushTransform(t));
     }
 

@@ -1,4 +1,4 @@
-use crate::element::UiElement;
+use crate::element::{NodeElement, UiElement, UiElementExtras};
 use crate::primitives::{GridDef, HugSlice, Rect, Size, Track, Visibility};
 use crate::shape::Shape;
 use std::rc::Rc;
@@ -12,7 +12,7 @@ pub struct Node {
     /// Effective `Sense::NONE` from disabled-cascade is computed in
     /// `InputState::end_frame` by walking ancestors — `element.disabled` is
     /// just the locally-declared bit.
-    pub element: UiElement,
+    pub element: NodeElement,
 
     pub parent: Option<NodeId>,
     pub first_child: Option<NodeId>,
@@ -34,7 +34,7 @@ impl Node {
         self.element.visibility == Visibility::Collapsed
     }
 
-    fn new(element: UiElement, parent: Option<NodeId>, shapes_start: u32) -> Self {
+    fn new(element: NodeElement, parent: Option<NodeId>, shapes_start: u32) -> Self {
         Self {
             element,
             parent,
@@ -69,6 +69,10 @@ pub struct Tree {
     /// `col_hugs`. Written by `grid_measure` and read by `arrange_grid` so
     /// arrange doesn't have to re-walk children to recompute Hug-track sizing.
     hug_pool: Vec<f32>,
+    /// Out-of-line side table for rarely-set element fields (`transform`,
+    /// `position`, `grid`). `Node.element.extras` is `Some(idx)` when a node
+    /// customized any of these. Cleared per frame.
+    pub(crate) node_extras: Vec<UiElementExtras>,
 }
 
 impl Tree {
@@ -82,6 +86,7 @@ impl Tree {
         self.last_child.clear();
         self.grid_defs.clear();
         self.hug_pool.clear();
+        self.node_extras.clear();
     }
 
     /// Append a `GridDef` referencing user-owned `Rc<[Track]>` rows + cols;
@@ -137,8 +142,18 @@ impl Tree {
 
     pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
         let new_id = NodeId(self.nodes.len() as u32);
+        let (mut core, extras) = element.split();
+        if !extras.is_default() {
+            assert!(
+                self.node_extras.len() < u16::MAX as usize,
+                "more than 65 535 nodes with extras (transform/position/grid) in a single frame",
+            );
+            let idx = self.node_extras.len() as u16;
+            self.node_extras.push(extras);
+            core.extras = Some(idx);
+        }
         self.nodes
-            .push(Node::new(element, parent, self.shapes.len() as u32));
+            .push(Node::new(core, parent, self.shapes.len() as u32));
         self.last_child.push(None);
 
         if let Some(p) = parent {
@@ -174,6 +189,15 @@ impl Tree {
     }
     pub fn node_mut(&mut self, id: NodeId) -> &mut Node {
         &mut self.nodes[id.0 as usize]
+    }
+
+    /// Side-table extras for a node, or `None` if the node didn't customize
+    /// any of the rarely-set fields (`transform`, `position`, `grid`).
+    pub fn extras(&self, id: NodeId) -> Option<&UiElementExtras> {
+        self.nodes[id.0 as usize]
+            .element
+            .extras
+            .map(|i| &self.node_extras[i as usize])
     }
 
     /// First node in pre-order paint order, or `None` if the tree is empty.

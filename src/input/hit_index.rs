@@ -86,7 +86,11 @@ impl HitIndex {
             let me_invisible = parent.invisible || node.element.visibility != Visibility::Visible;
 
             let parent_t = parent.transform_for_descendants;
-            let descendant_t = match node.element.transform {
+            let node_transform = node
+                .element
+                .extras
+                .and_then(|i| tree.node_extras[i as usize].transform);
+            let descendant_t = match node_transform {
                 Some(t) => parent_t.compose(t),
                 None => parent_t,
             };
