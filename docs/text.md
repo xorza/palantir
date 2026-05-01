@@ -1,239 +1,265 @@
-# Text Rendering Plan
+# Text — status & remaining work
 
-Replace the `chars * 8.0` placeholder in `Shape::Text` with real shaping, layout, and GPU rendering. Goal: correct measurement-driven `Hug` sizing, crisp rasterized glyphs through the wgpu pipeline, and **zero per-frame heap allocations in steady state** (after warmup, all frame buffers reused via `clear()` + `reserve()`, matching the existing pattern in `Tree`, `Cascades`, `RenderBuffer`, `HitIndex`).
+Tracks the move from the historical `chars * 8.0` placeholder to real shaped,
+wgpu-rendered text. Supersedes the earlier `docs/text.md` and
+`docs/text-wrapping.md` drafts: most of Phase 1–2 has landed, the wrapping
+plan ("Option A") has not.
 
-## Crate choice: glyphon (cosmic-text + etagere)
+## What's done
 
-Surveyed: `glyphon`, `cosmic-text` (raw), `parley` (linebender), `wgpu_glyph` / `wgpu_text` (glyph_brush wrappers).
+- **Crate choice**: `glyphon` 0.9 (cosmic-text + etagere atlas), pinned in
+  `Cargo.toml`. `cosmic-text` re-exported via glyphon for direct shaping.
+- **Measurement layer** (`src/text/`): two concrete paths instead of a trait,
+  by deliberate choice (the renderer needs concrete `FontSystem` access, a
+  trait would just be a downcast):
+  - `CosmicMeasure` — real shaping. Per-key shaped-`Buffer` cache, integral
+    `TextCacheKey { text_hash, size_q, max_w_q }`, hash-only key (no string
+    storage; collisions accepted). `split_for_render` hands out the disjoint
+    `(&mut FontSystem, BufferLookup)` glyphon needs.
+  - `mono_measure` — deterministic placeholder (`0.5 × font_size` per glyph,
+    `font_size` line height). Used when no `CosmicMeasure` is installed; emits
+    `TextCacheKey::INVALID` so the renderer drops the runs cleanly. Existing
+    layout tests pin against this exact metric.
+- **`Shape::Text` carries** `offset / text / color / measured / font_size_px /
+  max_width_px / key`. `is_noop` filters empty/transparent runs.
+- **Encoder**: emits `RenderCmd::DrawText { rect, color, key }`. Invalid keys
+  are traced + dropped.
+- **Composer**: applies transform + scale + pixel-snap to text origin, intersects
+  with current clip → physical-px `TextRun { origin, bounds, color, key }` in
+  `RenderBuffer.texts`, scissor-grouped in lockstep with quads.
+- **Backend** (`renderer/backend/text.rs`): `TextPipeline` owns
+  `Cache / TextAtlas / Viewport / TextRenderer / SwashCache`. Builds
+  `TextArea`s by looking up shaped buffers in `CosmicMeasure`,
+  `prepare`s once per frame, `render`s after all quads, `atlas.trim()` per
+  frame. The `'static` → frame-borrow `transmute` on `scratch` is sound because
+  the buffer is cleared before return.
+- **`Ui` integration**: `install_text_system(CosmicMeasure)`, `measure_text(...)`,
+  `text_mut()`. `examples/showcase` and `examples/helloworld` install one at
+  startup; `Button::show` calls `measure_text` and writes a real `Shape::Text`.
 
-**Pick glyphon 0.9.x** (`grovesNL/glyphon`).
+## What's left
 
-Why:
-- Already pinned in `Cargo.toml`. Drop-in wgpu renderer — atlas (`etagere` shelf packing), upload, pipeline, instanced glyph quads all done.
-- Built on `cosmic-text`: gives multi-line, BiDi, font fallback, system font discovery, and an editing model the day we want a text input widget. Same crate covers v1 button labels and v3 editable text.
-- Active maintenance, simple API surface (`FontSystem`, `SwashCache`, `Cache`, `Viewport`, `TextAtlas`, `TextRenderer`, `Buffer`, `TextArea`).
-- Glyph atlas is `R8Unorm` (grayscale) + `Rgba8Unorm` (color emoji), shelf-packed, evicts on overflow.
+The remaining work splits into four areas: correctness bugs in the existing
+pipeline (1–3), the wrapping plan that was scoped but never built (4),
+allocation tightening (5), and editable text (6, deferred).
 
-Why not parley: best-in-class shaping (HarfRust, fontique, skrifa, icu4x) but **no wgpu renderer** — we'd write our own atlas + rasterization layer. Bigger scope for a marginal shaping-quality gain at GUI sizes. Revisit if cosmic-text's shaper proves limiting (complex scripts, advanced OpenType features). The boundary is `Shape::Text` → shaped glyphs, so the shaper is swappable later without disturbing the renderer.
+### 1. HiDPI / scale-factor correctness — **bug**
 
-Why not raw cosmic-text: would force us to build the wgpu atlas/renderer ourselves — that's exactly what glyphon already is.
+Today `TextPipeline::prepare` hard-codes `scale: 1.0` on every `TextArea`, and
+shaping happens at logical px (`Metrics::new(font_size_px, font_size_px*1.2)`)
+with no awareness of `Ui::scale_factor`. The composer pre-scales the origin to
+physical px, but glyphs are rasterized at *logical* size and placed at
+*physical* coordinates → text is half-size on a 2× retina display.
 
-Why not wgpu_glyph / wgpu_text: glyph_brush + ab_glyph; no shaping, no fallback, no BiDi. Dead end for editable text.
+Two valid fixes; pick one and stick to it:
 
-## Architecture overview
+- **(A) Shape at physical px.** `measure_text` takes `scale_factor`, multiplies
+  size + max_width before shaping, returns a logical `Size` (divide back). Cache
+  keys then quantize physical px. Pro: glyphon's existing subpixel-position
+  cache works. Con: cache invalidates on every scale_factor change (rare).
+- **(B) Shape at logical px, render with `scale = scale_factor`.** Simpler,
+  one-liner change in `TextPipeline::prepare`. Glyphon scales glyph output by
+  the `TextArea.scale` field. Con: glyphon rasterizes at the scaled size
+  internally, so atlas entries depend on scale anyway — no real cache win
+  vs. (A).
 
-Five touchpoints, in frame order:
+**Recommendation: (B).** It's the change glyphon was designed for. Implementation:
+thread `scale_factor` from `WgpuBackend::render` into `TextPipeline::prepare`,
+set `TextArea.scale = scale_factor`. Adjust `bounds` if needed (`TextBounds` is
+in physical px, already correct from the composer).
 
-1. **Authoring (widgets)** — call into a shared `TextSystem` to get a shaped `Buffer` for a `(WidgetId, text, font, size, max_width)` key. Write real `measured` into `Shape::Text`.
-2. **Measure** — unchanged; already reads `Shape::Text.measured` in `leaf_content_size` (`src/layout/mod.rs:181`).
-3. **Encode** — add `RenderCmd::DrawText { run: TextRunId, rect, color }`; remove the trace-and-drop branch at `src/renderer/encoder/mod.rs:87`.
-4. **Compose** — add a parallel `text_runs: Vec<TextRunDraw>` to `RenderBuffer`, scissor-grouped in lockstep with quads.
-5. **Backend** — add `TextPipeline` wrapping glyphon's `TextAtlas` + `TextRenderer` + `Viewport`. Submit alongside `QuadPipeline`.
+Test: `examples/helloworld` at `WindowEvent::ScaleFactorChanged` → text height
+matches frame height.
 
-Glyph hit-testing, cursors, selection, and IME are explicitly **out of scope** for v1. Hooks reserved (see §Phases).
+### 2. Disabled / invisible cascade for text — **gap**
 
-## Data structures
+`Cascades` already resolves `disabled`/`invisible` per node, and the encoder
+walks it for quads, but the text branch in `encoder/mod.rs:95` ignores it:
+disabled buttons render their label at full color. Two pieces:
 
-### New
+- **Skip on invisible.** The encoder's existing pre-walk already prunes invisible
+  subtrees before reaching `Shape::Text`; verify with a test (no run emitted
+  for an invisible button).
+- **Dim on disabled.** Multiply `color` by the theme's disabled alpha
+  (currently quads do this implicitly via `ButtonStyle.disabled.text`; the
+  label color comes from `ButtonStyle` already, so this *should* work — but
+  add a test to pin it because it's load-bearing for accessibility).
+
+### 3. Font registry / bundled font — **gap**
+
+`CosmicMeasure::new()` calls `FontSystem::new()` which scans system fonts.
+Side effects:
+- Startup time (50–500ms cold, varies wildly by OS).
+- Nondeterminism in tests (different machines → different fallback chains →
+  different metrics → flaky pin tests). Today only `mono_measure` is used in
+  tests, but anyone wanting a shaped-text test will hit this.
+
+Plan:
+- `CosmicMeasure::with_bundled_font(bytes: &[u8])` constructor that uses
+  `FontSystem::new_with_locale_and_db` on an empty DB and registers the bundle.
+- Bundle Inter or DejaVu Sans via `include_bytes!` in a small `assets/`
+  directory. Inter is ~310 KB subsetted (Latin + symbols); DejaVu is ~750 KB
+  but has broader coverage. Pick Inter.
+- Keep `CosmicMeasure::new()` as the system-font path for apps that want
+  native-feeling text.
+- Future `register_font(bytes)` proxies to `FontSystem::db_mut().load_font_data`.
+
+Skipped from the original plan: a numeric `FontId`. Cosmic-text already keys
+attrs on family name; until a widget actually needs to switch fonts mid-tree
+this is YAGNI. Add when needed.
+
+### 4. Wrapping & intrinsic sizing — **not started**
+
+This is the biggest remaining piece. The earlier `text-wrapping.md` proposed
+two options, A then B. Reaffirming that plan:
+
+#### Option A — eager shape at unbounded width, reshape on constraint commit (**implement now**)
+
+The `TextKey.max_w_q` field is already in place; this is purely about wiring.
+
+**Authoring (widget side):**
+- A widget that wants wrapping calls `ui.measure_text(text, size, None)` first
+  → returns `(measured_max, key_unbounded)`. This is the max-content size and
+  drives `Hug`.
+- Compute `intrinsic_min` (width of the widest unbreakable run) by re-using the
+  same shape pass — cosmic-text's `Buffer::layout_runs` exposes per-glyph
+  cluster widths; iterate, track the max width between cluster breaks at
+  whitespace. Cache it in the `CacheEntry` so each `(text, size)` pair
+  computes it once. Avoid a second shape — read from the unbounded buffer.
+
+**Shape representation:**
+- New `Shape::Text` field `wrap: TextWrap`:
+  ```rust
+  pub enum TextWrap {
+      Single,                       // current behavior
+      Wrap { intrinsic_min: f32 },  // reshape-on-arrange enabled
+  }
+  ```
+- `measured` keeps the unbounded-width result (max-content). Layout's
+  `leaf_content_size` (`src/layout/mod.rs:181`) is unchanged.
+
+**Arrange-time reshape hook:**
+- New `LayoutEngine::reshape_text(node, width)` called from `arrange` *after*
+  the parent commits a final width to a `Wrap` text node, only if
+  `width != measured.width`:
+  - `width >= measured.width`: no-op.
+  - `width < intrinsic_min`: reshape with `max_w = intrinsic_min`, accept
+    overflow (don't break unbreakable runs).
+  - else: reshape at `width`, update arranged height, update the Shape's
+    `measured` and `key` in place (the new key replaces the old one in the
+    cache; the old entry is GC'd by frame retention — see §5).
+- This is one localized addition to arrange, not a new pass. The two-pass
+  measure/arrange model stands.
+
+**Cost:** 0 reshapes in steady state, ≤1 per visible wrapping node on resize
+frames. Cosmic-text shapes hundreds/frame at 60 fps comfortably.
+
+**What A doesn't fix** (and we accept):
+- `Grid Auto` column wrapping a paragraph: column width is committed during
+  measure, before arrange's reshape runs → wrong column width.
+- `Fill` distribution that wants min-content (intrinsic_min) as the floor:
+  we use max-content, slightly over-allocates.
+
+These are both rare in v1/v2. Trigger to revisit B is the first concrete
+widget that hits one.
+
+**Acceptance:**
+- `VStack { Frame::fixed_w(200) { Text("long paragraph...") } }`: text wraps to
+  200 px, height grows by line count.
+- `VStack { Frame::fixed_w(20) { Text("supercalifragilistic") } }`: overflows
+  at `intrinsic_min`, doesn't break the word.
+- `cargo test`: existing button-label tests unchanged.
+- Profiled showcase frame: 0 reshapes after warmup.
+
+#### Option B — intrinsic-dimensions protocol (**defer**)
+
+When a real victim of A's gaps appears (Grid/paragraph; flex/min-content),
+promote intrinsic sizing to a first-class layout stage:
+
+1. Bottom-up `intrinsic(node, axis) -> (min, max)` pre-pass.
+2. Top-down resolve: parents pick widths for `Fill`/`Auto` children using the
+   ranges as bounds.
+3. Existing measure-with-final-width + arrange.
+
+`Shape::Text.wrap` and `TextKey.max_w_q` carry forward unchanged — A is a
+strict subset of B's behavior in the cases A handles.
+
+#### Need a `Text` widget
+
+There is no `Text` widget today, only `Button`'s label. Add
+`src/widgets/text.rs`:
 
 ```rust
-// src/text/mod.rs — owned by Ui, threaded into widgets via &mut Ui
-pub struct TextSystem {
-    pub(crate) font_system: cosmic_text::FontSystem,
-    pub(crate) swash_cache: cosmic_text::SwashCache,
-    pub(crate) cache: glyphon::Cache,           // wgpu pipeline cache (one per device)
-    pub(crate) atlas: glyphon::TextAtlas,        // grayscale + color shelves
-    pub(crate) viewport: glyphon::Viewport,      // viewport uniform
-    pub(crate) renderer: glyphon::TextRenderer,  // owns instance buffer
-
-    // Per-WidgetId shaped-buffer cache. Survives across frames; entries
-    // touched-this-frame are kept, untouched are GC'd at end_frame.
-    buffers: HashMap<TextKey, BufferEntry>,
-    touched: HashSet<WidgetId>,                  // cleared each frame, reserve-pattern
-
-    // Per-frame run table — one TextArea-equivalent per visible Shape::Text.
-    // Cleared each frame; capacity retained.
-    runs: Vec<TextRun>,                          // index = TextRunId
-}
-
-#[derive(Hash, Eq, PartialEq)]
-struct TextKey {
-    id: WidgetId,
-    // Inputs that invalidate shaping. Hash strings via a stable hash of
-    // &str at insert time — store the String only on first insert, reuse
-    // on subsequent frames.
-    text_hash: u64,
-    font_id: FontId,
-    size_q: u32,        // px * 64, fixed-point so HashMap key is integral
-    max_w_q: u32,       // px * 64; u32::MAX == unbounded
-}
-
-struct BufferEntry {
-    buffer: cosmic_text::Buffer, // owns the shaped lines
-    last_frame: u64,             // for GC of stale entries
-}
-
-pub struct TextRun {
-    pub buffer_key: TextKey,     // -> buffers[key].buffer
-    pub origin: Vec2,            // physical-px top-left after transform/snap
-    pub clip: Option<Rect>,      // physical-px scissor (already from cascade)
-    pub color: glyphon::Color,
-}
-
-pub type TextRunId = u32;
-pub type FontId = u32;           // index into TextSystem font registry
-```
-
-### Changed
-
-```rust
-// src/shape/mod.rs — add a font/size pair so authoring can shape correctly.
-// `measured` stays — measure pass is unchanged.
-Shape::Text {
-    offset: Vec2,
-    text: String,           // keep for now; v2: intern via TextSystem
-    color: Color,
-    measured: Size,
-    font_id: FontId,
+pub struct Text {
+    element: Element,
+    text: Cow<'static, str>,
     size_px: f32,
-    max_w_px: Option<f32>,  // None == unbounded; Some triggers wrapping
-    run: Option<TextRunId>, // filled by encoder, not authoring
+    color: Color,
+    wrap: TextWrap,
 }
 
-// src/renderer/encoder/mod.rs
-pub enum RenderCmd {
-    PushClip(Rect),
-    PopClip,
-    PushTransform(TranslateScale),
-    PopTransform,
-    DrawRect { /* unchanged */ },
-    DrawText { run: TextRunId, rect: Rect, color: Color },
-}
-
-// src/renderer/buffer.rs
-pub struct RenderBuffer {
-    pub quads: Vec<Quad>,
-    pub text_runs: Vec<TextRunDraw>,        // NEW; cleared each frame
-    pub groups: Vec<DrawGroup>,             // gets text_range alongside quad_range
-    /* ... */
-}
-
-pub struct DrawGroup {
-    pub scissor: ScissorRect,
-    pub quads: Range<u32>,
-    pub texts: Range<u32>,                  // NEW
-}
-
-pub struct TextRunDraw {
-    pub run: TextRunId,
-    pub origin_phys: Vec2,
-    pub color: Color,
-}
-
-// src/ui/mod.rs
-pub struct Ui {
-    /* existing fields */
-    pub(crate) text: TextSystem,            // NEW; lifetime = device lifetime
+impl Text {
+    pub fn new(text: impl Into<Cow<'static, str>>) -> Self { ... }
+    pub fn size(self, px: f32) -> Self { ... }
+    pub fn color(self, c: Color) -> Self { ... }
+    pub fn wrapping(self) -> Self { ... }       // toggles to Wrap
+    pub fn show(self, ui: &mut Ui) -> Response { ... }
 }
 ```
 
-### Backend additions
+`show()` calls `ui.measure_text` (with `None` for max_w in the wrap case),
+pushes a leaf `Element` with `Sizing::Hug × Hug`, attaches one `Shape::Text`.
+Widget-level layout falls out of the leaf path automatically.
 
-```rust
-// src/renderer/backend/text.rs
-pub struct TextPipeline {
-    // glyphon owns its pipeline + instance buffer internally — we just
-    // hold the renderer. The atlas/viewport/cache live on TextSystem
-    // because authoring needs FontSystem/SwashCache too, and atlas
-    // sharing with the renderer is by &mut.
-}
-```
+### 5. Allocation tightening — **partial**
 
-Glyphon expects you to call `renderer.prepare(device, queue, font_system, atlas, viewport, &[TextArea], swash_cache)` once per frame, then `renderer.render(atlas, viewport, &mut pass)` inside the render pass. Our `TextRun` table maps 1:1 to `TextArea`.
+Glyphon retains its instance buffer. `RenderBuffer.texts` and the
+`TextPipeline.scratch` `Vec` already follow `clear()` + `reserve()`. Remaining:
 
-## Allocation strategy (zero-alloc steady state)
+- **`CacheEntry` GC.** `CosmicMeasure.cache` grows monotonically — a button
+  that flips between three labels accumulates three entries forever, plus
+  every re-shape on resize. Add `last_frame: u64` to `CacheEntry`, bump on
+  hit, walk on `end_frame` and drop entries older than ~120 frames (~2s at
+  60 fps). `HashMap::retain` is alloc-free.
+  - Need to thread a frame counter into `Ui`. Today there isn't one;
+    add `Ui.frame: u64`, increment in `begin_frame`, expose via
+    `measure_text` → cache.
+- **`Shape::Text.text: String` per-frame clone.** Each `Button::show` clones
+  the label into the `Shape`. For static labels this is one heap alloc per
+  button per frame (`Tree::clear` drops them, `set_text` stays the same).
+  Two-step fix:
+  1. Change to `text: Cow<'static, str>`. `&'static str` widgets (the common
+     case) cost zero allocs.
+  2. For dynamic strings, intern via `CosmicMeasure` → `Arc<str>` keyed on
+     `text_hash`. Renderer no longer needs the string at all (cosmic buffers
+     are looked up by `key`), so the `Shape` could in principle hold *only*
+     the `key` plus an `Arc<str>` for debug printing — keep the `Cow` for
+     diagnosability, drop it when profiling says so.
+- **Profile gate.** Don't ship either of the above without a flamegraph
+  showing the alloc on the hot path. Premature on a 100-button frame at
+  60 fps.
 
-Established pattern in this codebase: every per-frame Vec lives on a long-lived owner, gets `clear()` + `reserve(n)` at frame start, never reallocated in steady state. We follow it exactly.
+### 6. Editable text — **deferred**
 
-| Buffer | Owner | Frame-start op | Steady-state alloc |
-|---|---|---|---|
-| `TextSystem.runs` | `Ui` | `clear()` | none |
-| `TextSystem.touched` | `Ui` | `clear()` | none |
-| `RenderBuffer.text_runs` | `Composer` | `clear()` | none |
-| `glyphon::TextRenderer` instance buffer | `TextSystem` | grows monotonically | none after warmup (glyphon retains capacity) |
-| `cosmic_text::Buffer` per widget | `TextSystem.buffers` | reused if `TextKey` matches | **none** when text/size/font/width unchanged |
-| `Shape::Text.text: String` | `Tree.shapes` | freed by `Tree.shapes.clear()` each frame | **one alloc per Text shape per frame** — see below |
-
-The only remaining per-frame alloc is the `String` clone inside `Shape::Text` at authoring time (e.g. `src/widgets/button.rs:95`). Two-phase fix:
-
-- **v1**: leave it. One `String` per text shape per frame is acceptable and matches today's behavior.
-- **v2**: replace `Shape::Text.text: String` with `text: Cow<'static, str>` + a `TextSystem`-owned interner (FxHashMap from hash → Arc<str>). Then static labels (`"OK"`, `"Cancel"`) cost zero allocs after first frame and dynamic strings still work via owned `Cow`.
-
-Shape inputs that gate buffer reshaping (`text_hash`, `font_id`, `size_q`, `max_w_q`) are all integral — `TextKey` is `Copy`, no allocation in the lookup. `text_hash` is computed once at authoring time from `&str` (FxHash, no alloc).
-
-GC of stale `BufferEntry`s: at `end_frame`, walk `buffers` and drop any whose `last_frame` is older than N frames (e.g. 60). Bounded amortized cost; `HashMap::retain` is alloc-free.
-
-## Phases
-
-### Phase 1 — Plumbing & static rendering (no real shaping yet)
-
-1. Add `src/text/mod.rs` with `TextSystem` skeleton: `FontSystem`, `SwashCache`, `Cache`, `Atlas`, `Viewport`, `TextRenderer`. Construct in `Ui::new(device, queue, format)` (yes, `Ui::new` grows wgpu params — needed because the atlas is device-bound).
-2. Bundle a default font (Inter or DejaVu Sans) via `include_bytes!` and register in `FontSystem`. Single `FontId(0)` for v1. No font discovery yet.
-3. Extend `Shape::Text` with `font_id`, `size_px`, `max_w_px`, `run`.
-4. In `Button::show`, call `ui.text.shape(id, &label, font_id, size_px, None)` → returns `(measured, /* updates internal cache */)`. Write real `measured`.
-5. Encoder: replace the drop branch with `RenderCmd::DrawText`. Allocate a `TextRunId` by pushing onto `TextSystem.runs`.
-6. Composer: route `DrawText` into `RenderBuffer.text_runs`, transform/snap origin, intersect against current clip.
-7. Backend: in `Renderer::render`, after building `TextArea`s from `RenderBuffer.text_runs`, call `text_renderer.prepare(...)` then per-group `text_renderer.render(...)` between scissor switches.
-8. Smoke test: showcase example button labels render at correct size, Hug sizing actually hugs.
-
-### Phase 2 — Cascade correctness & scissor
-
-1. Verify transform cascade composes correctly with glyphon's coordinate space (glyphon takes physical px directly; we already snap in `Composer`).
-2. Verify clip rect: glyphon supports per-`TextArea` bounds; map our `Cascade.clip` → `TextArea.bounds`. Confirm no glyph leaks past clipped scrollers.
-3. Disabled cascade: dim text color, same as quads.
-4. Pixel snapping at fractional scale factors — confirm subpixel offset cache in glyphon handles `scale_factor != 1.0`.
-
-### Phase 3 — Allocation tightening
-
-1. Profile a 100-button frame with `cargo flamegraph` or `dhat-rs`. Confirm zero-alloc in steady state.
-2. Implement the `Cow<'static, str>` + interner upgrade for `Shape::Text.text` if profiling shows the per-frame `String` alloc on the hot path.
-3. `BufferEntry` GC at `end_frame`. Tunable retention window.
-4. Consider trimming the atlas on long sessions (glyphon does shelf eviction; verify it's adequate).
-
-### Phase 4 — Editable text (deferred; gated on persistent state map)
-
-Requires the `Id → Any` state map in CLAUDE.md's TODO. Then:
-- `TextEdit` widget, `cosmic_text::Editor` per `WidgetId` in state.
-- Glyph-level hit-test: extend `HitEntry` with optional `TextRunId`; cursor lookup via `Buffer::hit(x, y)`.
+Blocked on the persistent `Id → Any` state map (CLAUDE.md §Status). When that
+lands:
+- `TextEdit` widget; one `cosmic_text::Editor` per `WidgetId` in state.
+- Glyph-level hit-test: extend `HitEntry` with `Option<TextCacheKey>`; cursor
+  via `Buffer::hit(x, y)`.
 - IME: thread `winit` IME events through `InputState` → editor.
-- Selection rendering: emit a sibling `RoundedRect` shape per selection rect.
+- Selection rendering: emit per-selection `RoundedRect` shapes as siblings of
+  the `Shape::Text`.
 
 ## Open questions
 
-- **Font discovery** — bundle one font (v1) or call `FontSystem::new()` to pick up system fonts? System fonts blow up startup time and add nondeterminism in tests; bundle for now, expose `Ui::register_font(bytes)` for the app to add more.
-- **Color space** — glyphon outputs sRGB; surface format in `WgpuBackend` is whatever `WindowSurface` chose. Verify alignment; may need to surface-format-match or premultiply manually.
-- **MSAA** — backend has none today. Glyph atlas is alpha-blended; no MSAA needed for text. Quads may want MSAA later, independent decision.
-- **Long-text widgets** — for paragraphs of text, do we shape eagerly during `show()` or lazily during measure? Eager is simpler and fits the immediate-mode model; lazy would matter only if shaping cost dominates frame time. Start eager.
-
-## Files to touch
-
-| File | Change |
-|---|---|
-| `Cargo.toml` | bump `glyphon = "*"` (already pinned), add `cosmic-text = "*"` (re-exported by glyphon, but explicit is clearer) |
-| `src/text/mod.rs` | NEW — `TextSystem`, `TextKey`, `TextRun`, `BufferEntry` |
-| `src/shape/mod.rs` | extend `Shape::Text` |
-| `src/widgets/button.rs` | call `ui.text.shape(...)`, drop hardcoded `8.0` |
-| `src/ui/mod.rs` | own `TextSystem`; thread it into begin/end frame |
-| `src/renderer/encoder/mod.rs` | add `DrawText`, remove drop branch |
-| `src/renderer/composer/mod.rs` | route `DrawText` into `text_runs`, scissor groups |
-| `src/renderer/buffer.rs` | add `text_runs`, extend `DrawGroup` |
-| `src/renderer/backend/mod.rs` | hold `TextPipeline`, call prepare/render |
-| `src/renderer/backend/text.rs` | NEW — thin wrapper over glyphon's renderer |
-| `examples/showcase/` | text-only page demonstrating sizes, wrapping, clipping |
-
-## Acceptance
-
-- All existing layout tests pass unchanged (measure pass reads `measured` same as before).
-- New tests pinning: button width with real font matches `measured.width` ± rounding; wrapped text with `max_w_px` produces expected `measured.height`; disabled text dims; clipped text doesn't leak.
-- `cargo flamegraph` of a steady-state showcase frame: no `alloc::*` symbols on the hot path inside the text system after frame ~5.
-- `cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test` all green.
+- **Color space.** Glyphon outputs sRGB; the wgpu surface format is
+  whatever winit picked. Verify alignment after the HiDPI fix — if text looks
+  faded on a linear surface, premultiply on the way in or pick an sRGB view.
+- **Atlas eviction under long sessions.** `atlas.trim()` runs each frame;
+  glyphon evicts on shelf overflow. Keep an eye on memory once we have
+  multi-font / multi-size content. No action until profiled.
+- **Per-group text z-order.** Today text is prepared once and rendered after
+  all quads → labels float above sibling backgrounds. Fix when the first
+  widget needs interleaving (likely a panel-with-header where the header
+  sits over a scrolled child). Options: per-group prepare/render, or
+  glyphon's depth metadata.

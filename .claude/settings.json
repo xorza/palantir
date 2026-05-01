@@ -4,6 +4,7 @@
       "WebSearch",
       "WebFetch",
       "WebFetch(*)",
+      "WebFetch(domain:*)",
 
       "Bash(cargo fmt *)",
       "Bash(cargo clippy *)",
