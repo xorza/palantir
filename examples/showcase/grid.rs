@@ -22,12 +22,12 @@ pub fn build(ui: &mut Ui) {
             //    fixed sidebar | flexible content | hugging right rail.
             //    Row 0 spans all three as a header band.
             cell(ui, "shell", |ui| {
-                Grid::with_id(ui, "shell-grid")
+                Grid::with_id("shell-grid")
                     .cols([Track::fixed(140.0), Track::fill(), Track::hug()])
                     .rows([Track::fixed(36.0), Track::fill()])
                     .gap(8.0)
                     .size((Sizing::FILL, Sizing::FILL))
-                    .show(|ui| {
+                    .show(ui, |ui| {
                         Frame::with_id("title")
                             .grid_cell((0, 0))
                             .grid_span((1, 3))
@@ -59,7 +59,7 @@ pub fn build(ui: &mut Ui) {
             //    range; the right Fill has no clamp and absorbs every leftover
             //    pixel. Resize the window to watch the sidebar saturate.
             cell(ui, "min/max", |ui| {
-                Grid::with_id(ui, "clamped")
+                Grid::with_id("clamped")
                     .cols([
                         Track::fill_weight(1.0).min(200.0).max(300.0),
                         Track::fill_weight(2.0),
@@ -67,7 +67,7 @@ pub fn build(ui: &mut Ui) {
                     .rows([Track::fill()])
                     .gap(8.0)
                     .size((Sizing::FILL, Sizing::FILL))
-                    .show(|ui| {
+                    .show(ui, |ui| {
                         Frame::with_id("c1")
                             .grid_cell((0, 0))
                             .fill(body())
