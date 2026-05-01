@@ -144,16 +144,16 @@ Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each 
 - [x] Real text measurement + rendering via cosmic-text + glyphon (`TextMeasurer` Ui-side, `TextRenderer` wgpu-side, shared `CosmicMeasure` via `Rc<RefCell<…>>`)
 - [x] Glyph atlas + text rendering in the wgpu pipeline
 - [x] Wrapping text (Option A): `TextWrap::Wrap`, intrinsic_min from cosmic glyphs, single-pass reshape during measure (`docs/text.md` §4)
-- [x] Intrinsic-dimensions protocol (Option B): `LenReq`-based on-demand intrinsic queries, Grid Auto under constraint (Step B), Stack Fill resolved during measure (Step C). Per-axis ZStack/Canvas constraint propagation. See `docs/intrinsics.md`.
+- [x] Intrinsic-dimensions protocol: `LenReq`-based on-demand intrinsic queries, Grid Auto under constraint, Stack Fill resolved during measure. Per-axis ZStack/Canvas constraint propagation. See `src/layout/intrinsic.md`.
 - [ ] Persistent state map (`Id → Any`) for scroll, focus, animation
 - [ ] Drag tracking on top of `Active`-capture (rect-independent `drag_delta`)
 
 ## Layout vocabulary (decided)
 
 The committed native panel set is **`HStack`, `VStack`, `ZStack`,
-`Canvas`, and `Grid`**. Step B/C in `docs/intrinsics.md` extends `Grid`
-and `H/VStack` to be intrinsic-aware. After that the native set is "done"
-for the foreseeable future.
+`Canvas`, and `Grid`**. `src/layout/intrinsic.md` describes the
+intrinsic-aware extensions to `Grid` Auto and `H/VStack` Fill. The
+native set is "done" for the foreseeable future.
 
 Open future decision (deferred until first concrete user demand): whether
 richer flex/grid features arrive via Taffy as an opt-in feature flag
@@ -162,4 +162,4 @@ both Stack flex and Grid (γ), or hand-grown in-tree (δ). Until that
 trigger, native panels are the authoring surface; Stack flex stops at
 "min-floor + weight + max-size" and any feature beyond it triggers the
 α/β/γ/δ conversation, not "add a case to `stack::measure`". See
-`docs/intrinsics.md` "Future direction" for context.
+`src/layout/intrinsic.md` "Future direction" for context.

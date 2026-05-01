@@ -9,7 +9,7 @@ Each entry includes:
 - **What** — the feature, with CSS / equivalent-system reference.
 - **Use case** — concrete UI that needs it.
 - **Path** — how we'd build it (in-tree extension, new layout mode, or
-  Taffy-backed). See `docs/intrinsics.md` "Future direction" for the
+  Taffy-backed). See `src/layout/intrinsic.md` "Future direction" for the
   α/β/γ/δ Taffy framing.
 - **Trigger** — what makes it worth doing.
 
@@ -18,7 +18,7 @@ doc and remove it here.
 
 ## Layout — Stack (HStack / VStack)
 
-After Step C of `docs/intrinsics.md` lands, Stack supports:
+As described in `src/layout/intrinsic.md`, Stack supports:
 `Sizing::Fixed | Hug | Fill(weight)` per child, intrinsic min-content
 floor for Fill, max-size clamp, gap, justify, per-child / parent-default
 align. That's the committed scope.
@@ -133,7 +133,7 @@ independent of siblings.
 
 ## Layout — Grid
 
-After Step B of `docs/intrinsics.md` lands, Grid supports:
+As described in `src/layout/intrinsic.md`, Grid supports:
 `Track::fixed | hug | fill(weight)` with `min`/`max` clamps,
 explicit `(row, col)` placement + spans, gap, intrinsic-aware Auto under
 constraint. Committed scope.
