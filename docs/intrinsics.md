@@ -237,22 +237,38 @@ Stack `Fill` distribution stops at:
 - **Max-size clamp** — `Element.max_size` honored as a per-child
   ceiling.
 
-Anything richer is **out of scope** for in-tree extension:
+Anything richer (`flex-basis`, `flex-shrink` distinct from `flex-grow`,
+`align-items: baseline`, `flex-wrap`, `align-content`) is **out of
+scope** for in-tree extension.
 
-- `flex-basis` distinct from `Sizing` (preferred-size separated from
-  grow/shrink behavior).
-- `flex-shrink` weights distinct from `flex-grow`.
-- `align-items: baseline` (no baseline infrastructure today).
-- `flex-wrap: wrap` (different layout mode).
-- `align-content` (only matters with wrap).
+### Future direction: native vs Taffy
 
-If a real user demand for any of these arrives, the response is **adopt
-Taffy** (`references/taffy.md` §7 has the integration sketch — feature
-flag `palantir/taffy`, `LayoutPartialTree` over our arena, `Cache`
-per-node), not "add another case to `stack::measure`". The stop-rule
-matters because flex features compose poorly with each other when
-hand-grown — Yoga's `CalculateLayout.cpp` is hundreds of lines for a
-reason.
+For now, the native panel set — **`HStack`, `VStack`, `ZStack`,
+`Canvas`, and `Grid`** — is the committed layout vocabulary. Step C
+extends `HStack`/`VStack` Fill distribution to be intrinsic-aware (the
+chat-message use case); Step B extends `Grid` Auto track sizing the
+same way (the property-grid use case). After Steps A/B/C land, the
+native set is "done" for the foreseeable future.
+
+**Open future decision (deferred):** whether richer flex/grid features
+arrive via:
+
+- (α) Taffy as an opt-in feature flag (`palantir/taffy`), with new
+  widgets `ui.flex(|ui| …)` / extended grid backed by Taffy alongside
+  the native panels. `references/taffy.md` §7 has the integration
+  sketch.
+- (β) Taffy replacing the native Grid entirely (full CSS Grid is a
+  strict superset of our model — gains `minmax`, `repeat`, named
+  areas, etc.).
+- (γ) Taffy replacing both Stack flex and Grid (eliminates flex-creep
+  pressure entirely; native code keeps only Leaf/ZStack/Canvas).
+- (δ) Hand-grow flex/grid in-tree if Taffy proves to have unacceptable
+  cost (binary size, mental overhead, integration debt).
+
+We'll pick a direction when the first user demand for a feature beyond
+the Step C scope arrives — not now. Until then, native panels are the
+authoring surface and the stop-rule on flex creep holds. The corpus's
+preferred path is (α); it's the cheapest opt-in if/when needed.
 
 ## What stays unchanged
 
