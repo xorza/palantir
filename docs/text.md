@@ -43,33 +43,12 @@ The remaining work splits into four areas: correctness bugs in the existing
 pipeline (1–3), the wrapping plan that was scoped but never built (4),
 allocation tightening (5), and editable text (6, deferred).
 
-### 1. HiDPI / scale-factor correctness — **bug**
+### 1. HiDPI / scale-factor correctness — **done**
 
-Today `TextPipeline::prepare` hard-codes `scale: 1.0` on every `TextArea`, and
-shaping happens at logical px (`Metrics::new(font_size_px, font_size_px*1.2)`)
-with no awareness of `Ui::scale_factor`. The composer pre-scales the origin to
-physical px, but glyphs are rasterized at *logical* size and placed at
-*physical* coordinates → text is half-size on a 2× retina display.
-
-Two valid fixes; pick one and stick to it:
-
-- **(A) Shape at physical px.** `measure_text` takes `scale_factor`, multiplies
-  size + max_width before shaping, returns a logical `Size` (divide back). Cache
-  keys then quantize physical px. Pro: glyphon's existing subpixel-position
-  cache works. Con: cache invalidates on every scale_factor change (rare).
-- **(B) Shape at logical px, render with `scale = scale_factor`.** Simpler,
-  one-liner change in `TextPipeline::prepare`. Glyphon scales glyph output by
-  the `TextArea.scale` field. Con: glyphon rasterizes at the scaled size
-  internally, so atlas entries depend on scale anyway — no real cache win
-  vs. (A).
-
-**Recommendation: (B).** It's the change glyphon was designed for. Implementation:
-thread `scale_factor` from `WgpuBackend::render` into `TextPipeline::prepare`,
-set `TextArea.scale = scale_factor`. Adjust `bounds` if needed (`TextBounds` is
-in physical px, already correct from the composer).
-
-Test: `examples/helloworld` at `WindowEvent::ScaleFactorChanged` → text height
-matches frame height.
+`scale_factor` now flows `ComposeParams` → `RenderBuffer.scale` →
+`TextPipeline::prepare` → `TextArea.scale`. Shaping stays at logical px; glyphon
+scales the rasterized glyphs to match. Atlas entries are per-scale, which is
+fine — scale_factor changes are rare.
 
 ### 2. Disabled / invisible cascade for text — **gap**
 
