@@ -69,31 +69,23 @@ impl Composer {
                         None => me,
                     };
                     self.clip_stack.push(new);
-                    let target = Some(new);
-                    if target != current {
-                        flush_group(
-                            current,
-                            current_start,
-                            out.quads.len() as u32,
-                            &mut out.groups,
-                        );
-                        current = target;
-                        current_start = out.quads.len() as u32;
-                    }
+                    switch_group(
+                        Some(new),
+                        &mut current,
+                        &mut current_start,
+                        out.quads.len() as u32,
+                        &mut out.groups,
+                    );
                 }
                 RenderCmd::PopClip => {
                     self.clip_stack.pop();
-                    let target = self.clip_stack.last().copied();
-                    if target != current {
-                        flush_group(
-                            current,
-                            current_start,
-                            out.quads.len() as u32,
-                            &mut out.groups,
-                        );
-                        current = target;
-                        current_start = out.quads.len() as u32;
-                    }
+                    switch_group(
+                        self.clip_stack.last().copied(),
+                        &mut current,
+                        &mut current_start,
+                        out.quads.len() as u32,
+                        &mut out.groups,
+                    );
                 }
                 RenderCmd::PushTransform(t) => {
                     self.transform_stack.push(current_transform);
@@ -130,6 +122,20 @@ impl Composer {
             out.quads.len() as u32,
             &mut out.groups,
         );
+    }
+}
+
+fn switch_group(
+    target: Option<ScissorRect>,
+    current: &mut Option<ScissorRect>,
+    current_start: &mut u32,
+    quads_len: u32,
+    groups: &mut Vec<DrawGroup>,
+) {
+    if target != *current {
+        flush_group(*current, *current_start, quads_len, groups);
+        *current = target;
+        *current_start = quads_len;
     }
 }
 
