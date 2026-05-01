@@ -1,5 +1,6 @@
 use crate::primitives::{
-    Align, GridCell, Justify, Sense, Size, Sizes, Spacing, TranslateScale, Visibility, WidgetId,
+    Align, ApproxF32, GridCell, Justify, Sense, Size, Sizes, Spacing, TranslateScale, Visibility,
+    WidgetId,
 };
 use glam::Vec2;
 
@@ -27,21 +28,35 @@ pub enum LayoutMode {
 /// Rarely-set fields lifted out of `UiElement` so they don't bloat every
 /// stored `Node`. Builders write defaults inline; on `Tree::push_node` the
 /// non-default values get stamped into `Tree::node_extras` and the `Node`
-/// keeps just an `Option<u16>` slot. `transform`/`position`/`grid` are inert
-/// for most nodes (no transform, non-Canvas parent, non-Grid parent), so
-/// keeping them inline wastes ~32B per element on the common path.
+/// keeps just an `Option<u16>` slot. Two categories live here: per-node
+/// overrides that most nodes don't set (`transform`, `position`, `grid`) and
+/// panel-only knobs that leaves never read (`gap`, `justify`, `child_align`).
+/// Leaves vastly outnumber panels, so paying ~36B once per panel beats
+/// carrying these fields inline on every leaf.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct UiElementExtras {
     pub transform: Option<TranslateScale>,
     pub position: Vec2,
     pub grid: GridCell,
+    /// Logical-px space between children (panels only).
+    pub gap: f32,
+    /// Main-axis distribution of leftover space (HStack/VStack only).
+    pub justify: Justify,
+    /// Default alignment applied to children with `Auto` axis (panels only).
+    pub child_align: Align,
 }
 
 impl UiElementExtras {
     /// True when nothing has been customized — push_node skips the side-table
     /// allocation in this case.
     pub fn is_default(&self) -> bool {
-        self.transform.is_none() && self.position == Vec2::ZERO && self.grid == GridCell::default()
+        self.transform.is_none()
+            && self.position.x.approx_zero()
+            && self.position.y.approx_zero()
+            && self.grid == GridCell::default()
+            && self.gap.approx_zero()
+            && self.justify == Justify::default()
+            && self.child_align == Align::default()
     }
 }
 
@@ -139,11 +154,7 @@ pub struct NodeElement {
     pub padding: Spacing,
     pub margin: Spacing,
 
-    pub gap: f32,
-    pub justify: Justify,
     pub align: Align,
-    //todo move to extras?
-    pub child_align: Align,
 
     /// Packed `sense` / `disabled` / `clip` / `visibility`. Read through the
     /// accessor methods on `NodeFlags`.
@@ -264,10 +275,7 @@ impl UiElement {
             max_size: self.max_size,
             padding: self.padding,
             margin: self.margin,
-            gap: self.gap,
-            justify: self.justify,
             align: self.align,
-            child_align: self.child_align,
             flags: NodeFlags::pack(self.sense, self.disabled, self.clip, self.visibility),
             extras: None,
         };
@@ -275,6 +283,9 @@ impl UiElement {
             transform: self.transform,
             position: self.position,
             grid: self.grid,
+            gap: self.gap,
+            justify: self.justify,
+            child_align: self.child_align,
         };
         (core, extras)
     }
