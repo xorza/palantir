@@ -67,6 +67,10 @@ pub struct Tree {
     /// track storage is one capacity-retaining allocation rather than two
     /// `Vec<Track>` per `Grid` per frame.
     tracks: Vec<Track>,
+    /// Shared pool of per-track hug sizes referenced by `GridDef::row_hugs` /
+    /// `col_hugs`. Written by `grid_measure` and read by `arrange_grid` so
+    /// arrange doesn't have to re-walk children to recompute Hug-track sizing.
+    hug_pool: Vec<f32>,
 }
 
 impl Tree {
@@ -80,11 +84,13 @@ impl Tree {
         self.last_child.clear();
         self.grid_defs.clear();
         self.tracks.clear();
+        self.hug_pool.clear();
     }
 
     /// Append a `GridDef` referencing freshly-pooled tracks; return its index.
     /// The index is stamped into a `LayoutMode::Grid(idx)` on the owning
-    /// panel's `UiElement`.
+    /// panel's `UiElement`. Reserves zero-initialized hug-size slots that
+    /// `grid_measure` will fill in.
     pub(crate) fn push_grid_def(
         &mut self,
         rows: &[Track],
@@ -94,12 +100,16 @@ impl Tree {
     ) -> u32 {
         let row_slice = self.push_tracks(rows);
         let col_slice = self.push_tracks(cols);
+        let row_hugs = self.reserve_hugs(rows.len());
+        let col_hugs = self.reserve_hugs(cols.len());
         let idx = self.grid_defs.len() as u32;
         self.grid_defs.push(GridDef {
             rows: row_slice,
             cols: col_slice,
             row_gap,
             col_gap,
+            row_hugs,
+            col_hugs,
         });
         idx
     }
@@ -119,12 +129,29 @@ impl Tree {
         }
     }
 
+    fn reserve_hugs(&mut self, n: usize) -> TrackSlice {
+        let start = self.hug_pool.len() as u32;
+        self.hug_pool.resize(start as usize + n, 0.0);
+        TrackSlice {
+            start,
+            len: n as u32,
+        }
+    }
+
     pub(crate) fn grid_def(&self, idx: u32) -> GridDef {
         self.grid_defs[idx as usize]
     }
 
     pub(crate) fn grid_tracks(&self, slice: TrackSlice) -> &[Track] {
         &self.tracks[slice.range()]
+    }
+
+    pub(crate) fn grid_hugs(&self, slice: TrackSlice) -> &[f32] {
+        &self.hug_pool[slice.range()]
+    }
+
+    pub(crate) fn grid_hugs_mut(&mut self, slice: TrackSlice) -> &mut [f32] {
+        &mut self.hug_pool[slice.range()]
     }
 
     pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
