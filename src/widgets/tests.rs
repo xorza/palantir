@@ -708,3 +708,81 @@ fn wrapping_text_in_grid_auto_column_does_not_wrap_today() {
         shaped.measured.w,
     );
 }
+
+/// Step A acceptance: `Ui::intrinsic` returns sane values for a
+/// wrapping text leaf inside a Grid `Auto` cell. Pure infrastructure
+/// test — nothing in the production layout path consumes intrinsics
+/// yet; this just confirms the API + cache + per-driver functions are
+/// wired correctly. Steps B/C will flip the `does_not_wrap_today`
+/// assertions above by *consuming* what we measure here.
+#[test]
+fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
+    use crate::layout::{Axis, LenReq};
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut text_node = None;
+    Grid::new()
+        .cols(Rc::from([Track::hug(), Track::hug()]))
+        .rows(Rc::from([Track::hug()]))
+        .show(&mut ui, |ui| {
+            text_node = Some(
+                Text::new("the quick brown fox jumps over the lazy dog")
+                    .size_px(16.0)
+                    .wrapping()
+                    .grid_cell((0, 0))
+                    .show(ui)
+                    .node,
+            );
+            Text::new("right column")
+                .size_px(16.0)
+                .grid_cell((0, 1))
+                .show(ui);
+        });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
+
+    let node = text_node.unwrap();
+    // Direct engine query (no Ui wrapper) — drivers do the same in
+    // production code paths. Disjoint field borrows on `ui` let this
+    // compile without an accessor method.
+    let max_w =
+        ui.layout_engine
+            .intrinsic(&ui.tree, node, Axis::X, LenReq::MaxContent, &mut ui.text);
+    let min_w =
+        ui.layout_engine
+            .intrinsic(&ui.tree, node, Axis::X, LenReq::MinContent, &mut ui.text);
+    let max_h =
+        ui.layout_engine
+            .intrinsic(&ui.tree, node, Axis::Y, LenReq::MaxContent, &mut ui.text);
+
+    // Natural unbroken width is well over 200px (the BUG-card pin
+    // observed ~335 px); any value clearly above 200 confirms cosmic
+    // returned a real shape.
+    assert!(
+        max_w > 200.0,
+        "max_w should be the natural unbroken width, got {max_w}"
+    );
+    // Min-content is the longest unbreakable run — for this text "jumps"
+    // is one of the longer words (~5 chars × ~10 px ≈ 50 px). Any value
+    // between ~30 and ~100 is plausible; assert it's clearly less than
+    // the natural width.
+    assert!(
+        min_w > 0.0 && min_w < max_w,
+        "min_w should be positive and < max_w, got {min_w}"
+    );
+    assert!(
+        min_w < 100.0,
+        "min_w should be a single-word width, got {min_w}"
+    );
+    // Single-line height around the 16 px font's line height (~20 px).
+    assert!(
+        max_h > 0.0 && max_h < 30.0,
+        "max_h should be single-line height, got {max_h}"
+    );
+}
