@@ -13,7 +13,7 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId) 
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let pos = tree.extras(c).map(|e| e.position).unwrap_or_default();
+        let pos = tree.read_extras(c).position;
         let d = layout.measure(tree, c, child_avail);
         max_w = max_w.max(pos.x + d.w);
         max_h = max_h.max(pos.y + d.h);
@@ -32,7 +32,7 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, 
             continue;
         }
         let d = tree.node(c).desired;
-        let pos = tree.extras(c).map(|e| e.position).unwrap_or_default();
+        let pos = tree.read_extras(c).position;
         let child_rect = Rect {
             min: inner.min + pos,
             size: d,

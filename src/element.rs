@@ -1,6 +1,6 @@
 use crate::primitives::{
-    Align, ApproxF32, GridCell, Justify, NodeFlags, Sense, Size, Sizes, Sizing, Spacing,
-    TranslateScale, Visibility, WidgetId,
+    Align, ApproxF32, GridCell, HAlign, Justify, NodeFlags, Sense, Size, Sizes, Sizing, Spacing,
+    TranslateScale, VAlign, Visibility, WidgetId,
 };
 use glam::Vec2;
 
@@ -50,18 +50,29 @@ pub struct UiElementExtras {
     pub child_align: Align,
 }
 
+impl UiElementExtras {
+    /// All-defaults instance. Single source of truth — `Default` and
+    /// `Tree::read_extras`'s "missing extras" fallback both go through this.
+    pub const DEFAULT: Self = Self {
+        transform: None,
+        position: Vec2::ZERO,
+        grid: GridCell {
+            row: 0,
+            col: 0,
+            row_span: 1,
+            col_span: 1,
+        },
+        min_size: Size::ZERO,
+        max_size: Size::INF,
+        gap: 0.0,
+        justify: Justify::Start,
+        child_align: Align::new(HAlign::Auto, VAlign::Auto),
+    };
+}
+
 impl Default for UiElementExtras {
     fn default() -> Self {
-        Self {
-            transform: None,
-            position: Vec2::ZERO,
-            grid: GridCell::default(),
-            min_size: Size::ZERO,
-            max_size: Size::INF,
-            gap: 0.0,
-            justify: Justify::default(),
-            child_align: Align::default(),
-        }
+        Self::DEFAULT
     }
 }
 

@@ -167,6 +167,14 @@ impl Tree {
             .map(|i| &self.node_extras[i as usize])
     }
 
+    /// Read extras for a node, returning a borrow of `UiElementExtras::DEFAULT`
+    /// when the node has no side-table entry. Use this when you want to read
+    /// individual fields (`gap`, `child_align`, `position`, …) without
+    /// duplicating defaults at every call site.
+    pub fn read_extras(&self, id: NodeId) -> &UiElementExtras {
+        self.extras(id).unwrap_or(&UiElementExtras::DEFAULT)
+    }
+
     /// First node in pre-order paint order, or `None` if the tree is empty.
     /// Stable while the tree is alive: the root is always `NodeId(0)` once
     /// pushed.
