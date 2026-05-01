@@ -1,5 +1,5 @@
 use super::{Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
-use crate::primitives::{Rect, Size};
+use crate::primitives::{Rect, Size, Sizing};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
@@ -29,17 +29,35 @@ pub(super) fn intrinsic(
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).
-/// Pass `INFINITY` on both axes during measure so `Fill` children fall back to
-/// intrinsic — otherwise the `Hug` panel would size to its own `Fill` children
-/// (recursive). Content size = `max(child desired)` per axis, so the panel
-/// hugs the largest child.
+/// Per-axis available width: pass `inner` when the ZStack itself is
+/// constrained (Fill / Fixed) so children — including grids that need
+/// to know their slot for Step B's column resolution — get a meaningful
+/// constraint. Pass `INFINITY` only on Hug axes, where passing `inner`
+/// would create the recursive "ZStack hugs its own Fill child" loop.
+/// Same per-axis pattern Stack uses on its cross axis.
+///
+/// Content size = `max(child desired)` per axis, so the panel hugs the
+/// largest child (cross-axis fall-back when ZStack is Hug).
 pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
+    inner_avail: Size,
     text: &mut TextMeasurer,
 ) -> Size {
-    let child_avail = Size::INF;
+    let style = *tree.layout(node);
+    let child_avail = Size::new(
+        if matches!(style.size.w, Sizing::Hug) {
+            f32::INFINITY
+        } else {
+            inner_avail.w
+        },
+        if matches!(style.size.h, Sizing::Hug) {
+            f32::INFINITY
+        } else {
+            inner_avail.h
+        },
+    );
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);

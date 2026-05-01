@@ -652,12 +652,14 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
 /// Pins Option A's known gap: a wrapping `Text` inside a `Grid` `Auto`
 /// column gets `available_w = INFINITY` during measure (the WPF trick for
 /// unresolved tracks), so it never reshapes and the column ends up at the
-/// full unbroken width. Fix requires Option B (intrinsic-dimensions
-/// pre-pass). When that lands, this assertion flips: the grid should
-/// constrain the column to its share of the surface, and the wrapped text
-/// height should grow.
+/// Pinned by Step B of `docs/intrinsics.md`: a wrapping `Text` inside a
+/// `Grid` `Hug` column constrained by the parent's available width
+/// reshapes to fit. Step B's column resolution runs during measure with
+/// the grid's `inner_avail` (200 px here); the wrapping text gets its
+/// committed column width before shaping, so the cached shape is
+/// multi-line and fits the slot.
 #[test]
-fn wrapping_text_in_grid_auto_column_does_not_wrap_today() {
+fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     use crate::primitives::Track;
     use crate::text::{CosmicMeasure, share};
     use crate::widgets::{Grid, Text};
@@ -685,8 +687,8 @@ fn wrapping_text_in_grid_auto_column_does_not_wrap_today() {
                 .show(ui);
         });
     // Surface is 200 px wide — narrower than the text's natural unbroken
-    // width (~335 px). Two `Auto` columns should fit inside, but Option A
-    // can't propagate the constraint down.
+    // width (~335 px). Step B's column resolution shrinks the Hug column
+    // to fit so the text wraps cleanly inside.
     ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
     ui.end_frame();
 
@@ -695,16 +697,19 @@ fn wrapping_text_in_grid_auto_column_does_not_wrap_today() {
         .layout_result()
         .text_shape(node)
         .expect("text was shaped");
-    // Today: text is shaped unbounded (≈ one line at full natural width).
-    // After Option B: should be multi-line, height > 32 px.
+    // Multi-line height (a 16 px font wraps to 3 lines at the resolved
+    // column width — h ≈ 58 px in practice; assert > 32 to allow for
+    // line-height variation).
     assert!(
-        shaped.measured.h <= 24.0,
-        "expected single-line height (Option A), got h={}",
+        shaped.measured.h > 32.0,
+        "expected multi-line wrapped height after Step B, got h={}",
         shaped.measured.h,
     );
+    // Text fits inside the 200 px surface (column took its share, paragraph
+    // wrapped to fit).
     assert!(
-        shaped.measured.w > 200.0,
-        "expected text wider than the 200 px surface (Option A overflows), got w={}",
+        shaped.measured.w <= 200.0,
+        "expected text width within the 200 px surface, got w={}",
         shaped.measured.w,
     );
 }
@@ -785,4 +790,150 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         max_h > 0.0 && max_h < 30.0,
         "max_h should be single-line height, got {max_h}"
     );
+}
+
+/// Regression: a constrained ZStack (`Sizing::Fill`/`Fixed`) must pass
+/// its inner size to children, not `INFINITY`. Without this, Step B's
+/// Grid Auto resolution falls back to max-content for any grid nested
+/// inside a ZStack — which is exactly the showcase pattern. Pin so the
+/// `INF`-as-default doesn't sneak back.
+#[test]
+fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut text_node = None;
+    Panel::zstack()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            Grid::new()
+                .cols(Rc::from([Track::hug(), Track::hug()]))
+                .rows(Rc::from([Track::hug()]))
+                .show(ui, |ui| {
+                    text_node = Some(
+                        Text::new("the quick brown fox jumps over the lazy dog")
+                            .size_px(16.0)
+                            .wrapping()
+                            .grid_cell((0, 0))
+                            .show(ui)
+                            .node,
+                    );
+                    Text::new("right column")
+                        .size_px(16.0)
+                        .grid_cell((0, 1))
+                        .show(ui);
+                });
+        });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
+
+    let shaped = ui
+        .layout_result()
+        .text_shape(text_node.unwrap())
+        .expect("text was shaped");
+    assert!(
+        shaped.measured.h > 32.0,
+        "ZStack must propagate finite avail to grid → grid constrains hug column → text wraps; got h={}",
+        shaped.measured.h,
+    );
+    assert!(
+        shaped.measured.w <= 200.0,
+        "wrapped text must fit inside surface; got w={}",
+        shaped.measured.w,
+    );
+}
+
+/// Regression: same as above but for Canvas — also a "child-positioner"
+/// layout that historically passed `INFINITY` regardless of its own size.
+#[test]
+fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut text_node = None;
+    Panel::canvas()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            Grid::new()
+                .cols(Rc::from([Track::hug(), Track::hug()]))
+                .rows(Rc::from([Track::hug()]))
+                .show(ui, |ui| {
+                    text_node = Some(
+                        Text::new("the quick brown fox jumps over the lazy dog")
+                            .size_px(16.0)
+                            .wrapping()
+                            .grid_cell((0, 0))
+                            .show(ui)
+                            .node,
+                    );
+                    Text::new("right column")
+                        .size_px(16.0)
+                        .grid_cell((0, 1))
+                        .show(ui);
+                });
+        });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
+
+    let shaped = ui
+        .layout_result()
+        .text_shape(text_node.unwrap())
+        .expect("text was shaped");
+    assert!(
+        shaped.measured.h > 32.0,
+        "Canvas must propagate finite avail; got h={}",
+        shaped.measured.h,
+    );
+    assert!(
+        shaped.measured.w <= 200.0,
+        "wrapped text must fit inside surface; got w={}",
+        shaped.measured.w,
+    );
+}
+
+/// Pin: a `Hug` ZStack containing a `Fill` child must NOT recursively
+/// size to its child. The per-axis fix above keeps the original
+/// `INFINITY` behavior on Hug axes precisely to avoid this. If someone
+/// "simplifies" the per-axis logic by always passing `inner`, this test
+/// catches it.
+#[test]
+fn hug_zstack_does_not_recursively_size_to_fill_child() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let mut zstack_node = None;
+    Panel::hstack().show(&mut ui, |ui| {
+        zstack_node = Some(
+            Panel::zstack_with_id("hug-z")
+                // Default Sizing is Hug × Hug.
+                .show(ui, |ui| {
+                    // A Fill child inside Hug ZStack: must not blow ZStack up.
+                    Frame::with_id("fill-child")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .show(ui);
+                    // A real Fixed-size child to give the ZStack content size.
+                    Frame::with_id("fixed-child")
+                        .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
+                        .show(ui);
+                })
+                .node,
+        );
+    });
+    ui.layout(Rect::new(0.0, 0.0, 800.0, 600.0));
+
+    // Hug ZStack should hug the Fixed child (60 × 40). If the per-axis
+    // logic broke, ZStack would stretch to surface size.
+    let r = ui.rect(zstack_node.unwrap());
+    assert_eq!(r.size.w, 60.0);
+    assert_eq!(r.size.h, 40.0);
 }

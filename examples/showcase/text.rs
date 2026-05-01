@@ -11,19 +11,17 @@ pub fn build(ui: &mut Ui) {
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            // Known gap. Two `Auto` (Hug) grid columns with a wrapping paragraph in
-            // column 0. Layout passes `available_w = INFINITY` to the Hug column's
-            // children (the WPF unresolved-track trick), so the paragraph never sees
-            // a finite width and shapes at its full natural width — overflowing the
-            // surface. Fix requires Option B (intrinsic-dimensions pre-pass) — see
-            // `docs/text.md`. The page header below labels it so it's not mistaken
-            // for working behavior.
+            // Step B in action: two `Hug` columns sharing a constrained
+            // surface. The paragraph column shrinks to its intrinsic min
+            // floor + slack, the right-column label keeps its natural
+            // width, and the paragraph wraps cleanly inside its resolved
+            // column.
             section(
                 ui,
-                "gap-grid",
-                "BUG (Option B gap): wrapping text in a Grid `Auto` column overflows",
+                "two-hug-columns",
+                "two Hug columns: paragraph wraps to fit, label stays natural",
                 |ui| {
-                    Grid::with_id("gap-grid-inner")
+                    Grid::with_id("two-hug-inner")
                         .cols(Rc::from([Track::hug(), Track::hug()]))
                         .rows(Rc::from([Track::hug()]))
                         .gap_xy(0.0, 16.0)
@@ -36,6 +34,53 @@ pub fn build(ui: &mut Ui) {
                             Text::new("right column")
                                 .size_px(14.0)
                                 .grid_cell((0, 1))
+                                .show(ui);
+                        });
+                },
+            );
+
+            // Property-grid pattern: Hug label column + Fill value column
+            // with wrapping text. The label hugs to its natural width;
+            // the value column gets the rest of the surface and wraps the
+            // paragraph inside it. The motivating use case behind Step B.
+            //
+            // The Grid is `Sizing::FILL × Sizing::Hug` so it spans the
+            // section's full width — same gotcha as `HStack { Fill }` with
+            // a Hug parent: a Fill *column* needs the *grid* to be Fill
+            // (or Fixed) on that axis, otherwise leftover is zero and
+            // the column collapses. Same rule CSS Grid follows for
+            // `display: grid; width: auto; grid-template-columns: 1fr`.
+            section(
+                ui,
+                "property-grid",
+                "property grid: Hug label column + Fill value column with wrapping",
+                |ui| {
+                    Grid::with_id("property-grid-inner")
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .cols(Rc::from([Track::hug(), Track::fill()]))
+                        .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                        .gap_xy(6.0, 16.0)
+                        .show(ui, |ui| {
+                            Text::new("Title:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                            Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
+                                .size_px(14.0)
+                                .wrapping()
+                                .grid_cell((0, 1))
+                                .show(ui);
+                            Text::new("Description:")
+                                .size_px(14.0)
+                                .grid_cell((1, 0))
+                                .show(ui);
+                            Text::new(PARAGRAPH)
+                                .size_px(14.0)
+                                .wrapping()
+                                .grid_cell((1, 1))
+                                .show(ui);
+                            Text::new("Tags:").size_px(14.0).grid_cell((2, 0)).show(ui);
+                            Text::new("layout, grid, intrinsic, wrapping, css")
+                                .size_px(14.0)
+                                .wrapping()
+                                .grid_cell((2, 1))
                                 .show(ui);
                         });
                 },

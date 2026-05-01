@@ -285,39 +285,31 @@ preferred path is (α); it's the cheapest opt-in if/when needed.
 
 Three independently mergeable steps. fmt/clippy/test green at each.
 
-### Step A — intrinsic API + cache, no behavior change
+### Step A — intrinsic API + cache, no behavior change — **done**
 
-- Define `LenReq` enum and `Axis` (likely promote `stack::Axis` to `crate::primitives` or `layout::Axis`).
-- Add `intrinsic_cache: HashMap<(NodeId, Axis, LenReq), f32>` on
-  `LayoutEngine`, `clear()` in `run`.
-- New per-driver `intrinsic()` free function; new `LayoutEngine::intrinsic`
-  method that dispatches and memoizes via the cache.
-- Drivers don't *consume* anything yet — the API exists, nothing calls it
-  in production code paths.
-- New test: directly call `engine.intrinsic(...)` on the BUG-card grid's
-  text cell and assert sane values (paragraph's `MinContent` ≈ longest
-  word width, `MaxContent` ≈ natural width).
+`LenReq { MinContent, MaxContent }`, `IntrinsicQuery`, and `Axis` (promoted
+from `stack::Axis` to `layout::axis::Axis`). `LayoutEngine.intrinsics:
+HashMap<IntrinsicQuery, f32>` cleared per `run`. Per-driver `intrinsic()`
+free functions live next to `measure`/`arrange` in each driver module
+(`stack`, `zstack`, `canvas`, `grid`); the central `intrinsic.rs` keeps
+the dispatch + leaf path + helpers + types. `LayoutEngine::intrinsic`
+memoizes via the cache. Pinned by
+`intrinsic_query_on_wrapping_text_leaf_returns_sensible_values`.
 
-**Acceptance:** `cargo test` green, all 87 existing tests pass plus the
-new pin. Showcase visually unchanged.
+### Step B — Grid Auto under constraint — **done**
 
-### Step B — Grid Auto under constraint
-
-- Modify `resolve_axis` in `grid/mod.rs` (or refactor into a new
-  function) to use intrinsic queries for Auto track sizing under
-  constrained available width. Fold `Track.min`/`Track.max` clamps with
-  intrinsic ranges.
-- Audit existing grid tests; update where the algorithm change
-  deliberately shifts results.
-- Flip `wrapping_text_in_grid_auto_column_does_not_wrap_today` →
-  `_wraps`. Remove the BUG label from the showcase card (keep it as a
-  working demo).
-- New showcase card: property-grid demo (Hug label column + Fill value
-  column with wrapping text).
-
-**Acceptance:** `cargo test` green; BUG card no longer overflows;
-property-grid showcase demonstrates label-hug + value-fill-wrap; grid
-tests deliberately updated where the algorithm change shifts results.
+`AxisScratch` carries `hug_max` (from desired) + `hug_min` (from intrinsic
+queries); `GridHugStore` carries both pools. `grid::measure` now takes
+`inner_avail`, queries intrinsics for span-1 cells in Hug columns, runs
+the constraint solver to resolve column widths against the parent's
+available width, then measures cells with their resolved widths so wrap
+text shapes correctly. Row heights resolve from cell desired heights
+(unchanged). `resolve_axis` rewritten as a three-phase algorithm: Fixed →
+Hug constraint solve → Fill constraint-by-exclusion. Pinned by
+`wrapping_text_in_grid_auto_column_wraps_under_constrained_width`. New
+showcase cards: "two Hug columns" (paragraph wraps, label keeps natural)
+and "property-grid" (Hug label column + Fill value column with three
+wrapping rows).
 
 ### Step C — Stack Fill resolved during measure
 

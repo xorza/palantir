@@ -97,14 +97,48 @@ fn canvas_negative_position_does_not_extend_bbox() {
 }
 
 #[test]
-fn canvas_fill_child_falls_back_to_intrinsic_size() {
-    // Fill is meaningless when children can overlap, so Canvas measures with
-    // INF → Fill resolves to hug (intrinsic). Here that's zero since the
-    // Frame has no shapes contributing to its content size.
+fn canvas_fill_child_takes_constrained_canvas_inner() {
+    // Step B behavior change (was: Fill in Canvas falls back to intrinsic
+    // = 0). A constrained Canvas (Fixed/Fill) now passes its inner size
+    // to children, so a Fill child takes the canvas's full inner. The
+    // child's `position` still applies — placed at `pos + inner.size`,
+    // which may overflow the canvas's own rect.
+    //
+    // The old "Fill = 0 in Canvas" rule was a Canvas-specific quirk that
+    // broke Step B's constraint propagation for Hug Grid children.
+    // Authors who genuinely want "no Fill behavior" can use `Sizing::Hug`.
+    //
+    // Hug Canvas (no constraint to propagate) still passes INF on Hug
+    // axes → Fill falls back to intrinsic. Pinned by
+    // `canvas_hug_fill_child_falls_back_to_intrinsic` below.
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
         Panel::canvas()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .show(ui, |ui| {
+                Frame::with_id("filler")
+                    .position((10.0, 10.0))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui);
+            })
+            .node
+    });
+    let kids: Vec<_> = ui.tree.children(panel).collect();
+    let f = ui.rect(kids[0]);
+    assert_eq!(f.size.w, 100.0);
+    assert_eq!(f.size.h, 100.0);
+}
+
+#[test]
+fn canvas_hug_fill_child_falls_back_to_intrinsic() {
+    // Companion to `canvas_fill_child_takes_constrained_canvas_inner`:
+    // Hug Canvas still passes INF on Hug axes → Fill children fall back
+    // to intrinsic (zero for an empty Frame). This preserves the
+    // recursive-sizing protection for Hug parents.
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::canvas()
+            // Hug × Hug — default.
             .show(ui, |ui| {
                 Frame::with_id("filler")
                     .position((10.0, 10.0))

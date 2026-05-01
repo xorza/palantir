@@ -1,5 +1,5 @@
 use super::{Axis, LayoutEngine, LenReq, zero_subtree};
-use crate::primitives::{Rect, Size};
+use crate::primitives::{Rect, Size, Sizing};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
@@ -7,17 +7,33 @@ use crate::tree::{NodeId, Tree};
 mod tests;
 
 /// Canvas: children placed at their declared `Layout.position` (parent-inner
-/// coords, defaulting to `(0, 0)`). Pass `INFINITY` on both axes during measure
-/// so `Fill` children fall back to intrinsic — "fill the rest" is meaningless
-/// when children can overlap. Content size = `max(child_pos + child_desired)`
-/// per axis, so a `Hug` Canvas grows to the union of placed rects.
+/// coords, defaulting to `(0, 0)`). Per-axis available width: pass `inner`
+/// when Canvas itself is constrained (Fill / Fixed) so children that need
+/// to know their slot for Step B's column resolution get a meaningful
+/// constraint. Pass `INFINITY` only on Hug axes, where `inner` would
+/// trigger recursive sizing of Fill children. Same per-axis pattern Stack
+/// uses on its cross axis. Content size =
+/// `max(child_pos + child_desired)` per axis.
 pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
+    inner_avail: Size,
     text: &mut TextMeasurer,
 ) -> Size {
-    let child_avail = Size::INF;
+    let style = *tree.layout(node);
+    let child_avail = Size::new(
+        if matches!(style.size.w, Sizing::Hug) {
+            f32::INFINITY
+        } else {
+            inner_avail.w
+        },
+        if matches!(style.size.h, Sizing::Hug) {
+            f32::INFINITY
+        } else {
+            inner_avail.h
+        },
+    );
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
