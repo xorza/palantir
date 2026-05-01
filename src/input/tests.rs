@@ -1,5 +1,5 @@
 use crate::Ui;
-use crate::element::Element;
+use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{Rect, Sense, Sizing};
 use crate::widgets::{Button, Panel};

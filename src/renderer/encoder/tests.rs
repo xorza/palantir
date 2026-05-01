@@ -1,6 +1,6 @@
 use super::{RenderCmd, encode};
 use crate::Ui;
-use crate::element::Element;
+use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{Color, Rect, Sense, Sizing, TranslateScale, WidgetId};
 use crate::widgets::{Frame, Panel, Styled};

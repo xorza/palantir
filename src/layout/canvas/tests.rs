@@ -1,5 +1,5 @@
 use crate::Ui;
-use crate::element::Element;
+use crate::element::Configure;
 use crate::primitives::{Rect, Sizing};
 use crate::tree::NodeId;
 use crate::widgets::{Frame, Panel};

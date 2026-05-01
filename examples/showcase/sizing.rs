@@ -1,4 +1,4 @@
-use palantir::{Color, Element, Frame, Panel, Sizing, Styled, Ui};
+use palantir::{Color, Configure, Frame, Panel, Sizing, Styled, Ui};
 
 fn fixed() -> Color {
     Color::rgb(0.85, 0.45, 0.30)

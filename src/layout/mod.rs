@@ -1,4 +1,4 @@
-use crate::element::{LayoutMode, NodeElement};
+use crate::element::{ElementCore, LayoutMode};
 use crate::primitives::{Align, AxisAlign, Rect, Size, Sizing};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
@@ -196,10 +196,10 @@ fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
 /// they can't drift. Stack discards the unused axis; the cost is two enum
 /// matches per child per frame.
 pub(super) fn resolved_axis_align(
-    child: &NodeElement,
+    child: &ElementCore,
     parent_child_align: Align,
 ) -> (AxisAlign, AxisAlign) {
-    let a = child.flags.align();
+    let a = child.attrs.align();
     (
         a.halign().or(parent_child_align.halign()).to_axis(),
         a.valign().or(parent_child_align.valign()).to_axis(),

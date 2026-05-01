@@ -71,10 +71,10 @@ impl Cascades {
             };
 
             let id = NodeId(i as u32);
-            let flags = node.element.flags;
+            let attrs = node.element.attrs;
 
-            let effective_disabled = parent.effective_disabled || flags.is_disabled();
-            let effective_invisible = parent.effective_invisible || !flags.is_visible();
+            let effective_disabled = parent.effective_disabled || attrs.is_disabled();
+            let effective_invisible = parent.effective_invisible || !attrs.is_visible();
 
             let own_transform = parent.descendant_transform;
             let own_clip = parent.descendant_clip;
@@ -85,7 +85,7 @@ impl Cascades {
                 None => own_transform,
             };
 
-            let descendant_clip = if flags.is_clip() {
+            let descendant_clip = if attrs.is_clip() {
                 let screen_rect = own_transform.apply_rect(layout.rect(id));
                 Some(match own_clip {
                     Some(c) => screen_rect.intersect(c),

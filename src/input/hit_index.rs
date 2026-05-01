@@ -65,7 +65,7 @@ impl HitIndex {
             let sense = if c.effective_disabled || c.effective_invisible {
                 Sense::NONE
             } else {
-                node.element.flags.sense()
+                node.element.attrs.sense()
             };
 
             self.by_id

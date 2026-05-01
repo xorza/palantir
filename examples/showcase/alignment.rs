@@ -1,4 +1,4 @@
-use palantir::{Align, Color, Element, Frame, HAlign, Panel, Sizing, Styled, Ui, VAlign};
+use palantir::{Align, Color, Configure, Frame, HAlign, Panel, Sizing, Styled, Ui, VAlign};
 
 fn parent_default() -> Color {
     Color::rgb(0.30, 0.55, 0.85)

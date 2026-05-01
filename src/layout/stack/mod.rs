@@ -1,5 +1,5 @@
 use super::LayoutEngine;
-use crate::element::NodeElement;
+use crate::element::ElementCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizes, Sizing};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
@@ -52,7 +52,7 @@ impl Axis {
     /// Cross-axis alignment of a child, picked from the shared two-axis
     /// `resolved_axis_align` so HStack/VStack share the cascade rule with
     /// ZStack/Grid. The unused main axis is computed and discarded — cheap.
-    fn cross_align(self, child: &NodeElement, parent_child_align: Align) -> AxisAlign {
+    fn cross_align(self, child: &ElementCore, parent_child_align: Align) -> AxisAlign {
         let (h, v) = super::resolved_axis_align(child, parent_child_align);
         match self {
             // HStack: cross = vertical

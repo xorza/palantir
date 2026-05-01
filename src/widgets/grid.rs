@@ -1,4 +1,4 @@
-use crate::element::{Element, LayoutMode, UiElement};
+use crate::element::{Configure, Element, LayoutMode};
 use crate::primitives::{Sizing, Track, TranslateScale, WidgetId};
 use crate::ui::Ui;
 use crate::widgets::{Background, Response, Styled};
@@ -24,7 +24,7 @@ use std::sync::OnceLock;
 /// See `docs/grid.md` for the algorithm and explicit non-goals (no
 /// Auto-vs-Star cyclic dependency, no `SharedSizeScope`, no auto-flow).
 pub struct Grid {
-    element: UiElement,
+    element: Element,
     background: Background,
     rows: Option<Rc<[Track]>>,
     cols: Option<Rc<[Track]>>,
@@ -49,7 +49,7 @@ impl Grid {
         // bounds-check rejects, so any code path that reaches the tree
         // without going through `show()` panics loudly.
         Self {
-            element: UiElement::new(id, LayoutMode::Grid(PENDING_GRID_IDX)),
+            element: Element::new(id, LayoutMode::Grid(PENDING_GRID_IDX)),
             background: Background::default(),
             rows: None,
             cols: None,
@@ -124,8 +124,8 @@ impl Grid {
     }
 }
 
-impl Element for Grid {
-    fn element_mut(&mut self) -> &mut UiElement {
+impl Configure for Grid {
+    fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }
 }

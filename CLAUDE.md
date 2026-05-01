@@ -40,9 +40,9 @@ Linked-list children (`first_child` / `next_sibling`), not `Vec<NodeId>` per nod
 ```
 src/
   cascade.rs           per-node disabled/invisible/clip/transform table
-  element.rs           UiElement (wide builder) / NodeElement (compact) / UiElementExtras
+  element/             Element (wide builder) / ElementCore (compact) / ElementExtras / Configure trait
   shape/               Shape enum (RoundedRect, Line, Text)
-  tree/                Tree, Node, NodeId, NodeFlags (bit-packed sense+vis+align), GridDef
+  tree/                Tree, Node, NodeId, NodeAttrs (bit-packed sense+vis+align), GridDef
   ui/                  Ui recorder, ButtonTheme
   layout/              LayoutEngine, LayoutResult, stack/zstack/canvas/grid drivers
   primitives/          Vec2/Size/Rect/Color/Stroke/Corners/Spacing/Sizing/Track/Align/…

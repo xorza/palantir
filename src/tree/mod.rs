@@ -1,4 +1,4 @@
-use crate::element::{LayoutMode, NodeElement, UiElement, UiElementExtras};
+use crate::element::{Element, ElementCore, ElementExtras, LayoutMode};
 use crate::primitives::Track;
 use crate::shape::Shape;
 use std::rc::Rc;
@@ -24,7 +24,7 @@ pub struct Node {
     /// Effective `Sense::NONE` from disabled-cascade is computed in
     /// `InputState::end_frame` by walking ancestors — `element.disabled` is
     /// just the locally-declared bit.
-    pub element: NodeElement,
+    pub element: ElementCore,
 
     pub parent: Option<NodeId>,
     pub first_child: Option<NodeId>,
@@ -40,10 +40,10 @@ impl Node {
     }
 
     pub fn is_collapsed(&self) -> bool {
-        self.element.flags.is_collapsed()
+        self.element.attrs.is_collapsed()
     }
 
-    fn new(element: NodeElement, parent: Option<NodeId>, shapes_start: u32) -> Self {
+    fn new(element: ElementCore, parent: Option<NodeId>, shapes_start: u32) -> Self {
         Self {
             element,
             parent,
@@ -75,7 +75,7 @@ pub struct Tree {
     /// Out-of-line side table for rarely-set element fields (`transform`,
     /// `position`, `grid`). `Node.element.extras` is `Some(idx)` when a node
     /// customized any of these. Cleared per frame.
-    pub(crate) node_extras: Vec<UiElementExtras>,
+    pub(crate) node_extras: Vec<ElementExtras>,
 }
 
 impl Tree {
@@ -109,7 +109,7 @@ impl Tree {
         &self.grid.defs
     }
 
-    pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
+    pub fn push_node(&mut self, element: Element, parent: Option<NodeId>) -> NodeId {
         let new_id = NodeId(self.nodes.len() as u32);
         if let LayoutMode::Grid(idx) = element.mode {
             assert!(
@@ -175,19 +175,19 @@ impl Tree {
 
     /// Side-table extras for a node, or `None` if the node didn't customize
     /// any of the rarely-set fields (`transform`, `position`, `grid`).
-    pub fn extras(&self, id: NodeId) -> Option<&UiElementExtras> {
+    pub fn extras(&self, id: NodeId) -> Option<&ElementExtras> {
         self.nodes[id.0 as usize]
             .element
             .extras
             .map(|i| &self.node_extras[i as usize])
     }
 
-    /// Read extras for a node, returning a borrow of `UiElementExtras::DEFAULT`
+    /// Read extras for a node, returning a borrow of `ElementExtras::DEFAULT`
     /// when the node has no side-table entry. Use this when you want to read
     /// individual fields (`gap`, `child_align`, `position`, …) without
     /// duplicating defaults at every call site.
-    pub fn read_extras(&self, id: NodeId) -> &UiElementExtras {
-        self.extras(id).unwrap_or(&UiElementExtras::DEFAULT)
+    pub fn read_extras(&self, id: NodeId) -> &ElementExtras {
+        self.extras(id).unwrap_or(&ElementExtras::DEFAULT)
     }
 
     /// First node in pre-order paint order, or `None` if the tree is empty.
@@ -277,7 +277,7 @@ impl GridArena {
 
     /// Append a `GridDef` referencing user-owned `Rc<[Track]>` rows + cols;
     /// return its index. The index is stamped into a `LayoutMode::Grid(idx)`
-    /// on the owning panel's `UiElement`. `Rc` clones are refcount-only.
+    /// on the owning panel's `Element`. `Rc` clones are refcount-only.
     fn push_def(
         &mut self,
         rows: Rc<[Track]>,

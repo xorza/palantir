@@ -64,7 +64,7 @@ fn encode_node(
     // applies inside the clip and only to children. The panel's own
     // background paints under the clip but BEFORE the transform — matching
     // WPF's `RenderTransform` convention.
-    let clip = node.element.flags.is_clip();
+    let clip = node.element.attrs.is_clip();
     if clip {
         out.push(RenderCmd::PushClip(rect));
     }

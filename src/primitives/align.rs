@@ -28,8 +28,8 @@ pub enum VAlign {
 }
 
 /// Two-axis alignment packed into a single byte. Lower 3 bits hold the
-/// `HAlign`, next 3 hold the `VAlign`. Stored on `NodeFlags` (not directly on
-/// `NodeElement`) so the layout pass reads it through `flags.align()`.
+/// `HAlign`, next 3 hold the `VAlign`. Stored on `NodeAttrs` (not directly on
+/// `ElementCore`) so the layout pass reads it through `flags.align()`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Align(u8);
 

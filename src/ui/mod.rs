@@ -2,7 +2,7 @@ mod theme;
 pub use theme::ButtonTheme;
 
 use crate::cascade::Cascades;
-use crate::element::UiElement;
+use crate::element::Element;
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::layout::{LayoutEngine, LayoutResult};
 use crate::primitives::{Rect, Size, WidgetId};
@@ -154,7 +154,7 @@ impl Ui {
         self.input.response_for(id)
     }
 
-    pub(crate) fn node(&mut self, element: UiElement, f: impl FnOnce(&mut Ui)) -> NodeId {
+    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
         let parent = self.parents.last().copied();
         let id = element.id;
         assert!(

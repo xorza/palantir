@@ -1,4 +1,4 @@
-use crate::element::{Element, LayoutMode, UiElement};
+use crate::element::{Configure, Element, LayoutMode};
 use crate::primitives::{TranslateScale, WidgetId};
 use crate::ui::Ui;
 use crate::widgets::{Background, Response, Styled};
@@ -13,14 +13,14 @@ use std::hash::Hash;
 /// Default fill is transparent and stroke is `None`, so a Panel without
 /// `.fill(...)` or `.stroke(...)` paints nothing — pure layout.
 pub struct Panel {
-    element: UiElement,
+    element: Element,
     background: Background,
 }
 
 impl Panel {
     fn from_id(id: WidgetId, mode: LayoutMode) -> Self {
         Self {
-            element: UiElement::new(id, mode),
+            element: Element::new(id, mode),
             background: Background::default(),
         }
     }
@@ -92,8 +92,8 @@ impl Panel {
     }
 }
 
-impl Element for Panel {
-    fn element_mut(&mut self) -> &mut UiElement {
+impl Configure for Panel {
+    fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }
 }

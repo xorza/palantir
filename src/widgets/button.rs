@@ -1,4 +1,4 @@
-use crate::element::{Element, LayoutMode, UiElement};
+use crate::element::{Configure, Element, LayoutMode};
 use crate::primitives::{Color, Corners, Sense, Size, Visuals, WidgetId};
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -31,7 +31,7 @@ impl Default for ButtonStyle {
 }
 
 pub struct Button {
-    element: UiElement,
+    element: Element,
     style: Option<ButtonStyle>,
     label: String,
 }
@@ -44,7 +44,7 @@ impl Button {
     }
 
     pub fn with_id(id: impl Hash) -> Self {
-        let mut element = UiElement::new(WidgetId::from_hash(id), LayoutMode::Leaf);
+        let mut element = Element::new(WidgetId::from_hash(id), LayoutMode::Leaf);
         element.sense = Sense::CLICK;
         Self {
             element,
@@ -103,8 +103,8 @@ impl Button {
     }
 }
 
-impl Element for Button {
-    fn element_mut(&mut self) -> &mut UiElement {
+impl Configure for Button {
+    fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }
 }
