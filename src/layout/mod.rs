@@ -54,6 +54,10 @@ impl LayoutEngine {
         }
         let style = tree.node(node).element;
         let mode = style.mode;
+        let (min_size, max_size) = tree
+            .extras(node)
+            .map(|e| (e.min_size, e.max_size))
+            .unwrap_or((Size::ZERO, Size::INF));
 
         let inner_avail = Size::new(
             (available.w - style.margin.horiz() - style.padding.horiz()).max(0.0),
@@ -77,16 +81,16 @@ impl LayoutEngine {
                 hug_w,
                 available.w,
                 style.margin.horiz(),
-                style.min_size.w,
-                style.max_size.w,
+                min_size.w,
+                max_size.w,
             ),
             resolve_axis_size(
                 style.size.h,
                 hug_h,
                 available.h,
                 style.margin.vert(),
-                style.min_size.h,
-                style.max_size.h,
+                min_size.h,
+                max_size.h,
             ),
         );
 

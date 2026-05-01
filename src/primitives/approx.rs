@@ -29,3 +29,21 @@ impl ApproxF32 for f32 {
         diff <= Self::EPS * largest
     }
 }
+
+impl ApproxF32 for glam::Vec2 {
+    fn approx_zero(self) -> bool {
+        self.x.approx_zero() && self.y.approx_zero()
+    }
+    fn approx_eq(self, other: Self) -> bool {
+        self.x.approx_eq(other.x) && self.y.approx_eq(other.y)
+    }
+}
+
+impl ApproxF32 for super::Size {
+    fn approx_zero(self) -> bool {
+        self.w.approx_zero() && self.h.approx_zero()
+    }
+    fn approx_eq(self, other: Self) -> bool {
+        self.w.approx_eq(other.w) && self.h.approx_eq(other.h)
+    }
+}
