@@ -1,7 +1,7 @@
 use crate::Ui;
 use crate::element::Element;
 use crate::primitives::{Rect, Sizing, Track};
-use crate::widgets::{Button, Frame, Grid, HStack};
+use crate::widgets::{Button, Frame, Grid, Panel};
 
 #[test]
 fn grid_fixed_and_fill_columns_split_remainder() {
@@ -168,7 +168,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
     // Wrap in HStack so the Hug grid's measured size is honored — root in
     // `ui.layout` is forced to the surface size regardless of Sizing.
     let mut grid_node = None;
-    let _root = HStack::new()
+    let _root = Panel::hstack()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             grid_node = Some(

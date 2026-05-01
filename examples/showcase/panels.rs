@@ -1,36 +1,36 @@
-use palantir::{Canvas, Color, Element, Frame, HStack, Sizing, Stroke, Styled, Ui, VStack, ZStack};
+use palantir::{Color, Element, Frame, Panel, Sizing, Stroke, Styled, Ui};
 
 fn tile() -> Color {
     Color::rgb(0.30, 0.55, 0.85)
 }
 
 pub fn build(ui: &mut Ui) {
-    HStack::new()
+    Panel::hstack()
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             cell(ui, "HStack", |ui| {
-                HStack::new().gap(6.0).show(ui, |ui| {
+                Panel::hstack().gap(6.0).show(ui, |ui| {
                     swatch(ui, "h-a", 40.0, 40.0, tile());
                     swatch(ui, "h-b", 40.0, 40.0, tile());
                     swatch(ui, "h-c", 40.0, 40.0, tile());
                 });
             });
             cell(ui, "VStack", |ui| {
-                VStack::new().gap(6.0).show(ui, |ui| {
+                Panel::vstack().gap(6.0).show(ui, |ui| {
                     swatch(ui, "v-a", 60.0, 24.0, tile());
                     swatch(ui, "v-b", 60.0, 24.0, tile());
                     swatch(ui, "v-c", 60.0, 24.0, tile());
                 });
             });
             cell(ui, "ZStack", |ui| {
-                ZStack::new().show(ui, |ui| {
+                Panel::zstack().show(ui, |ui| {
                     swatch(ui, "z-back", 80.0, 80.0, Color::rgb(0.25, 0.30, 0.50));
                     swatch(ui, "z-front", 50.0, 50.0, Color::rgb(0.85, 0.45, 0.30));
                 });
             });
             cell(ui, "Canvas", |ui| {
-                Canvas::new()
+                Panel::canvas()
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         Frame::with_id("p1")
@@ -62,7 +62,7 @@ fn swatch(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
 }
 
 fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    VStack::with_id(id)
+    Panel::vstack_with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .gap(8.0)

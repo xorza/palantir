@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::element::Element;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{Rect, Sense, Sizing};
-use crate::widgets::{Button, HStack};
+use crate::widgets::{Button, Panel};
 use glam::Vec2;
 
 #[test]
@@ -14,7 +14,7 @@ fn input_state_press_release_emits_click() {
 
     // Frame 1: build, layout, end_frame to populate last_rects.
     ui.begin_frame();
-    let _root = HStack::new()
+    let _root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::with_id("target")
                 .label("hi")
@@ -34,7 +34,7 @@ fn input_state_press_release_emits_click() {
     // Frame 2: rebuild; widgets should observe the click in build_ui.
     ui.begin_frame();
     let mut got_click = false;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         let r = Button::with_id("target")
             .label("hi")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
@@ -49,7 +49,7 @@ fn input_state_press_release_emits_click() {
     ui.end_frame();
     ui.begin_frame();
     let mut still_clicking = false;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         still_clicking = Button::with_id("target")
             .label("hi")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
@@ -65,7 +65,7 @@ fn stack_with_sense_none_passes_clicks_through() {
     // doesn't fire `clicked` on the stack. Clicking on a child still fires on the child.
     let mut ui = Ui::new();
     ui.begin_frame();
-    let _stack_node = HStack::new()
+    let _stack_node = Panel::hstack()
         .padding(20.0) // creates "background" area to click
         .show(&mut ui, |ui| {
             Button::with_id("inside")
@@ -83,7 +83,7 @@ fn stack_with_sense_none_passes_clicks_through() {
 
     ui.begin_frame();
     let mut child_clicked = false;
-    let stack_resp = HStack::new().padding(20.0).show(&mut ui, |ui| {
+    let stack_resp = Panel::hstack().padding(20.0).show(&mut ui, |ui| {
         child_clicked = Button::with_id("inside")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .show(ui)
@@ -106,7 +106,7 @@ fn stack_with_sense_click_captures_clicks() {
     // `auto_stable` would give different ids (different call sites in the test).
     let mut ui = Ui::new();
     ui.begin_frame();
-    let _stack_node = HStack::with_id("clickable_card")
+    let _stack_node = Panel::hstack_with_id("clickable_card")
         .padding(20.0)
         .sense(Sense::CLICK)
         .show(&mut ui, |ui| {
@@ -123,7 +123,7 @@ fn stack_with_sense_click_captures_clicks() {
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     ui.begin_frame();
-    let stack_resp = HStack::with_id("clickable_card")
+    let stack_resp = Panel::hstack_with_id("clickable_card")
         .padding(20.0)
         .sense(Sense::CLICK)
         .show(&mut ui, |ui| {
@@ -143,7 +143,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
     // Useful for tooltips, cursor changes, row highlights.
     let mut ui = Ui::new();
     ui.begin_frame();
-    let _stack_node = HStack::with_id("hover_only")
+    let _stack_node = Panel::hstack_with_id("hover_only")
         .padding(20.0)
         .sense(Sense::HOVER)
         .show(&mut ui, |ui| {
@@ -164,7 +164,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
 
     ui.begin_frame();
     let mut child_clicked = false;
-    let stack_resp = HStack::with_id("hover_only")
+    let stack_resp = Panel::hstack_with_id("hover_only")
         .padding(20.0)
         .sense(Sense::HOVER)
         .show(&mut ui, |ui| {
@@ -192,7 +192,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
 fn input_state_release_outside_does_not_click() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    let _root = HStack::new()
+    let _root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::with_id("target")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
@@ -209,7 +209,7 @@ fn input_state_release_outside_does_not_click() {
 
     ui.begin_frame();
     let mut got_click = false;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         got_click = Button::with_id("target")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui)
@@ -223,8 +223,6 @@ fn input_state_release_outside_does_not_click() {
 
 #[test]
 fn click_on_overflow_outside_clipped_parent_is_suppressed() {
-    use crate::widgets::ZStack;
-
     // A clip=true panel at (0,0,100,100) wraps a 200x200 button. The button
     // visually extends past the panel's rect; clicks on the overflow should
     // miss the button (input must respect the clip cascade).
@@ -232,8 +230,8 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
 
     // Frame 1: build + layout so last_rects gets populated.
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("clipper")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .clip(true)
             .show(ui, |ui| {
@@ -255,8 +253,8 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     // Frame 2: read .clicked() from the button's response.
     ui.begin_frame();
     let mut clicked = false;
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("clipper")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .clip(true)
             .show(ui, |ui| {
@@ -275,7 +273,6 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
 #[test]
 fn zoom_panel_routes_clicks_to_world_rendered_button() {
     use crate::primitives::TranslateScale;
-    use crate::widgets::ZStack;
 
     // ZStack with transform=scale(2) wrapping a 50x50 button. The button's
     // logical rect is (0,0,50,50) but its world (rendered) rect is
@@ -283,8 +280,8 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
     // (inside world bounds, outside logical bounds) must also hit.
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("zoomer")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
             .clip(false)
@@ -305,8 +302,8 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
 
     ui.begin_frame();
     let mut clicked = false;
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("zoomer")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
             .clip(false)
@@ -326,12 +323,11 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
 #[test]
 fn click_outside_zoomed_bounds_does_not_hit() {
     use crate::primitives::TranslateScale;
-    use crate::widgets::ZStack;
 
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("zoomer")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(0.5))
             .show(ui, |ui| {
@@ -352,8 +348,8 @@ fn click_outside_zoomed_bounds_does_not_hit() {
 
     ui.begin_frame();
     let mut clicked = false;
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("zoomer")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(0.5))
             .show(ui, |ui| {

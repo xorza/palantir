@@ -1,14 +1,14 @@
 use crate::Ui;
 use crate::element::Element;
 use crate::primitives::{Align, Rect, Sizing};
-use crate::widgets::{Button, Frame, HStack, VStack};
+use crate::widgets::{Button, Frame, Panel};
 
 #[test]
 fn hstack_arranges_two_buttons_side_by_side() {
     let mut ui = Ui::new();
     ui.begin_frame();
 
-    let root = HStack::new()
+    let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::new().label("Hi").show(ui);
             Button::new()
@@ -45,7 +45,7 @@ fn vstack_with_fill_distributes_remainder() {
     let mut ui = Ui::new();
     ui.begin_frame();
 
-    let root = VStack::new()
+    let root = Panel::vstack()
         .show(&mut ui, |ui| {
             Button::new().size((Sizing::Hug, 50.0)).show(ui);
             Button::new().size((Sizing::Hug, Sizing::FILL)).show(ui);
@@ -68,7 +68,7 @@ fn vstack_with_fill_distributes_remainder() {
 fn hstack_fill_weights_split_remainder_proportionally() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Frame::with_id("a")
                 .size((Sizing::Fill(1.0), Sizing::Hug))
@@ -93,7 +93,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::with_id("wide")
                 .label("wide button")
@@ -121,7 +121,7 @@ fn hstack_justify_center_centers_content_block() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .justify(Justify::Center)
         .show(&mut ui, |ui| {
             Frame::with_id("a").size(40.0).show(ui);
@@ -142,7 +142,7 @@ fn hstack_justify_end_packs_to_trailing_edge() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .justify(Justify::End)
         .show(&mut ui, |ui| {
             Frame::with_id("a").size(40.0).show(ui);
@@ -162,7 +162,7 @@ fn hstack_justify_space_between_distributes_leftover_between() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .justify(Justify::SpaceBetween)
         .show(&mut ui, |ui| {
             Frame::with_id("a").size(40.0).show(ui);
@@ -184,7 +184,7 @@ fn hstack_justify_space_around_distributes_with_half_pads() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .justify(Justify::SpaceAround)
         .show(&mut ui, |ui| {
             Frame::with_id("a").size(40.0).show(ui);
@@ -206,7 +206,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .justify(Justify::Center)
         .show(&mut ui, |ui| {
             Frame::with_id("a").size(40.0).show(ui);
@@ -230,7 +230,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
 fn hstack_gap_inserts_space_between_children() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
             Frame::with_id("a").size(40.0).show(ui);
@@ -250,7 +250,7 @@ fn hstack_gap_inserts_space_between_children() {
 fn hstack_align_center_centers_child_on_cross_axis() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .size((Sizing::FILL, Sizing::Fixed(100.0)))
         .show(&mut ui, |ui| {
             Frame::with_id("c")
@@ -276,7 +276,7 @@ fn negative_left_margin_spills_outside_slot() {
     let mut ui = Ui::new();
     ui.begin_frame();
     let mut button_node = None;
-    let root = HStack::new()
+    let root = Panel::hstack()
         .show(&mut ui, |ui| {
             button_node = Some(
                 Button::with_id("spill")

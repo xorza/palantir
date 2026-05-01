@@ -1,4 +1,4 @@
-use palantir::{Align, Color, Element, Frame, HAlign, HStack, Sizing, Styled, Ui, VAlign, VStack};
+use palantir::{Align, Color, Element, Frame, HAlign, Panel, Sizing, Styled, Ui, VAlign};
 
 fn parent_default() -> Color {
     Color::rgb(0.30, 0.55, 0.85)
@@ -8,13 +8,13 @@ fn self_override() -> Color {
 }
 
 pub fn build(ui: &mut Ui) {
-    VStack::new()
+    Panel::vstack()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // HStack with `child_align(VAlign::Center)`. All children inherit unless
             // they override. The orange one explicitly aligns to the bottom.
-            HStack::new()
+            Panel::hstack()
                 .size((Sizing::FILL, Sizing::Fixed(120.0)))
                 .gap(8.0)
                 .padding(8.0)
@@ -30,7 +30,7 @@ pub fn build(ui: &mut Ui) {
 
             // VStack with `child_align(HAlign::Right)` — children stack vertically,
             // packed to the right edge by default; "b-self-left" overrides.
-            VStack::new()
+            Panel::vstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .gap(8.0)
                 .padding(8.0)

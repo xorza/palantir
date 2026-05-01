@@ -7,7 +7,7 @@ mod styled;
 pub use button::{Button, ButtonStyle};
 pub use frame::Frame;
 pub use grid::Grid;
-pub use panel::{Canvas, HStack, Panel, VStack, ZStack};
+pub use panel::Panel;
 pub use styled::{Background, Styled};
 
 use crate::input::ResponseState;

@@ -53,6 +53,43 @@ impl Panel {
         let state = ui.response_for(id);
         Response { node, state }
     }
+
+    #[track_caller]
+    pub fn hstack() -> Self {
+        Self::from_id(WidgetId::auto_stable(), LayoutMode::HStack)
+    }
+    pub fn hstack_with_id(id: impl Hash) -> Self {
+        Self::from_id(WidgetId::from_hash(id), LayoutMode::HStack)
+    }
+
+    #[track_caller]
+    pub fn vstack() -> Self {
+        Self::from_id(WidgetId::auto_stable(), LayoutMode::VStack)
+    }
+    pub fn vstack_with_id(id: impl Hash) -> Self {
+        Self::from_id(WidgetId::from_hash(id), LayoutMode::VStack)
+    }
+
+    /// Layered children: each child placed at the parent's inner top-left,
+    /// sized per its own `Sizing`. Last sibling paints on top.
+    #[track_caller]
+    pub fn zstack() -> Self {
+        Self::from_id(WidgetId::auto_stable(), LayoutMode::ZStack)
+    }
+    pub fn zstack_with_id(id: impl Hash) -> Self {
+        Self::from_id(WidgetId::from_hash(id), LayoutMode::ZStack)
+    }
+
+    /// Children placed at their declared `Layout.position` (parent-inner
+    /// coords). Use per-child `.position(Vec2)`. Canvas hugs to the bounding
+    /// box of placed children.
+    #[track_caller]
+    pub fn canvas() -> Self {
+        Self::from_id(WidgetId::auto_stable(), LayoutMode::Canvas)
+    }
+    pub fn canvas_with_id(id: impl Hash) -> Self {
+        Self::from_id(WidgetId::from_hash(id), LayoutMode::Canvas)
+    }
 }
 
 impl Element for Panel {
@@ -64,59 +101,5 @@ impl Element for Panel {
 impl Styled for Panel {
     fn background_mut(&mut self) -> &mut Background {
         &mut self.background
-    }
-}
-
-pub struct HStack;
-pub struct VStack;
-pub struct ZStack;
-pub struct Canvas;
-
-#[allow(clippy::new_ret_no_self)]
-impl HStack {
-    #[track_caller]
-    pub fn new() -> Panel {
-        Panel::from_id(WidgetId::auto_stable(), LayoutMode::HStack)
-    }
-    pub fn with_id(id: impl Hash) -> Panel {
-        Panel::from_id(WidgetId::from_hash(id), LayoutMode::HStack)
-    }
-}
-
-#[allow(clippy::new_ret_no_self)]
-impl VStack {
-    #[track_caller]
-    pub fn new() -> Panel {
-        Panel::from_id(WidgetId::auto_stable(), LayoutMode::VStack)
-    }
-    pub fn with_id(id: impl Hash) -> Panel {
-        Panel::from_id(WidgetId::from_hash(id), LayoutMode::VStack)
-    }
-}
-
-/// Layered children: each child placed at the parent's inner top-left, sized
-/// per its own `Sizing`. Last sibling paints on top.
-#[allow(clippy::new_ret_no_self)]
-impl ZStack {
-    #[track_caller]
-    pub fn new() -> Panel {
-        Panel::from_id(WidgetId::auto_stable(), LayoutMode::ZStack)
-    }
-    pub fn with_id(id: impl Hash) -> Panel {
-        Panel::from_id(WidgetId::from_hash(id), LayoutMode::ZStack)
-    }
-}
-
-/// Children placed at their declared `Layout.position` (parent-inner coords).
-/// Use per-child `.position(Vec2)`. Canvas hugs to the bounding box of placed
-/// children.
-#[allow(clippy::new_ret_no_self)]
-impl Canvas {
-    #[track_caller]
-    pub fn new() -> Panel {
-        Panel::from_id(WidgetId::auto_stable(), LayoutMode::Canvas)
-    }
-    pub fn with_id(id: impl Hash) -> Panel {
-        Panel::from_id(WidgetId::from_hash(id), LayoutMode::Canvas)
     }
 }

@@ -2,9 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use palantir::renderer::{ComposeParams, Pipeline, WgpuBackend};
-use palantir::{
-    Button, Color, Element, HStack, InputEvent, Rect, Sizing, Stroke, Styled, Ui, VStack, ZStack,
-};
+use palantir::{Button, Color, Element, InputEvent, Panel, Rect, Sizing, Stroke, Styled, Ui};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -242,13 +240,13 @@ impl State {
 }
 
 fn build_root(ui: &mut Ui, active: &mut usize) {
-    VStack::new()
+    Panel::vstack()
         .padding(12.0)
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Toolbar: one button per showcase. The active one is highlighted.
-            HStack::new()
+            Panel::hstack()
                 .gap(6.0)
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
@@ -271,7 +269,7 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
                 });
 
             // Central panel: the selected showcase fills the rest.
-            ZStack::new()
+            Panel::zstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .padding(16.0)
                 .fill(Color::rgb(0.12, 0.14, 0.18))

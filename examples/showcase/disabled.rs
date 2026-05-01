@@ -1,7 +1,7 @@
-use palantir::{Button, Color, Element, HStack, Sizing, Stroke, Styled, Ui, VStack, ZStack};
+use palantir::{Button, Color, Element, Panel, Sizing, Stroke, Styled, Ui};
 
 pub fn build(ui: &mut Ui) {
-    HStack::new()
+    Panel::hstack()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
@@ -14,7 +14,7 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn panel(ui: &mut Ui, id: &'static str, disabled: bool) {
-    ZStack::with_id(id)
+    Panel::zstack_with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .fill(Color::rgb(0.16, 0.18, 0.24))
@@ -25,7 +25,7 @@ fn panel(ui: &mut Ui, id: &'static str, disabled: bool) {
         .radius(8.0)
         .disabled(disabled)
         .show(ui, |ui| {
-            VStack::with_id((id, "stack"))
+            Panel::vstack_with_id((id, "stack"))
                 .size((Sizing::FILL, Sizing::Hug))
                 .gap(8.0)
                 .show(ui, |ui| {

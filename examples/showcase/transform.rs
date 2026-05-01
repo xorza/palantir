@@ -1,18 +1,18 @@
 use glam::Vec2;
-use palantir::{Color, Element, Frame, HStack, Sizing, Styled, TranslateScale, Ui, VStack, ZStack};
+use palantir::{Color, Element, Frame, Panel, Sizing, Styled, TranslateScale, Ui};
 
 fn tile_color() -> Color {
     Color::rgb(0.30, 0.55, 0.85)
 }
 
 pub fn build(ui: &mut Ui) {
-    HStack::new()
+    Panel::hstack()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Translate.
             cell(ui, "translate", |ui| {
-                ZStack::new()
+                Panel::zstack()
                     .transform(TranslateScale::from_translation(Vec2::new(40.0, 30.0)))
                     .show(ui, |ui| {
                         tile(ui, "t-tile");
@@ -21,7 +21,7 @@ pub fn build(ui: &mut Ui) {
 
             // Scale (descendants paint at 1.5×, including stroke widths).
             cell(ui, "scale", |ui| {
-                ZStack::new()
+                Panel::zstack()
                     .transform(TranslateScale::from_scale(1.5))
                     .show(ui, |ui| {
                         tile(ui, "s-tile");
@@ -30,10 +30,10 @@ pub fn build(ui: &mut Ui) {
 
             // Composed: outer scale 1.25, inner translate (20, 0). Order matters.
             cell(ui, "composed", |ui| {
-                ZStack::with_id("outer")
+                Panel::zstack_with_id("outer")
                     .transform(TranslateScale::from_scale(1.25))
                     .show(ui, |ui| {
-                        ZStack::with_id("inner")
+                        Panel::zstack_with_id("inner")
                             .transform(TranslateScale::from_translation(Vec2::new(20.0, 10.0)))
                             .show(ui, |ui| {
                                 tile(ui, "c-tile");
@@ -44,7 +44,7 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    VStack::with_id(id)
+    Panel::vstack_with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .fill(Color::rgb(0.16, 0.18, 0.24))

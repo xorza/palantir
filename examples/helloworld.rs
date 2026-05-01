@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use palantir::Align;
 use palantir::renderer::{ComposeParams, Pipeline, WgpuBackend};
 use palantir::{
-    Button, ButtonStyle, Color, Corners, Element, HStack, InputEvent, Rect, Sizing, Stroke, Styled,
-    Ui, VStack, Visuals, ZStack,
+    Button, ButtonStyle, Color, Corners, Element, InputEvent, Panel, Rect, Sizing, Stroke, Styled,
+    Ui, Visuals,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -263,12 +263,12 @@ impl State {
 }
 
 fn build_ui(ui: &mut Ui, clicks: &mut u32) {
-    VStack::new()
+    Panel::vstack()
         .padding(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Row 1: counter + reset buttons.
-            HStack::new()
+            Panel::hstack()
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
                     let counter = Button::new()
@@ -299,11 +299,11 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
             // negative margins. Demonstrates layered painting and CSS-style margin.
             //
             //
-            HStack::new()
+            Panel::hstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .disabled(false)
                 .show(ui, |ui| {
-                    ZStack::with_id("spill_demo")
+                    Panel::zstack_with_id("spill_demo")
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(16.0)
                         .margin(5)
@@ -322,7 +322,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                                 .show(ui);
                         });
 
-                    ZStack::new()
+                    Panel::zstack()
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(16.0)
                         .margin(5)
