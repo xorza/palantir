@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::element::Element;
 use crate::primitives::{Color, Rect, Sense, Sizing};
 use crate::shape::Shape;
-use crate::widgets::{Button, Canvas, Frame, HStack, Styled, ZStack};
+use crate::widgets::{Button, Frame, Panel, Styled};
 
 #[test]
 fn clip_flag_is_recorded_on_panel_node() {
@@ -12,10 +12,15 @@ fn clip_flag_is_recorded_on_panel_node() {
     ui.begin_frame();
     let mut clipped = None;
     let mut unclipped = None;
-    HStack::new().show(&mut ui, |ui| {
-        clipped = Some(ZStack::with_id("clipped").size(50.0).show(ui, |_| {}).node);
+    Panel::hstack().show(&mut ui, |ui| {
+        clipped = Some(
+            Panel::zstack_with_id("clipped")
+                .size(50.0)
+                .show(ui, |_| {})
+                .node,
+        );
         unclipped = Some(
-            ZStack::with_id("unclipped")
+            Panel::zstack_with_id("unclipped")
                 .size(50.0)
                 .clip(false)
                 .show(ui, |_| {})
@@ -34,7 +39,7 @@ fn frame_paints_a_single_rounded_rect() {
     let mut ui = Ui::new();
     ui.begin_frame();
     let mut frame_node = None;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         frame_node = Some(
             Frame::with_id("decoration")
                 .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
@@ -64,9 +69,9 @@ fn panel_hugs_largest_child_and_layers_them() {
     let mut panel_node = None;
     let mut a_node = None;
     let mut b_node = None;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         panel_node = Some(
-            ZStack::with_id("card")
+            Panel::zstack_with_id("card")
                 .padding(10.0)
                 .fill(Color::rgb(0.1, 0.1, 0.15))
                 .radius(8.0)
@@ -117,8 +122,8 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     let mut ui = Ui::new();
     ui.begin_frame();
     let mut child_node = None;
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("p")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("p")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
             .padding(10.0)
             .show(ui, |ui| {
@@ -152,9 +157,9 @@ fn zstack_layers_children_without_painting_background() {
     let mut zstack_node = None;
     let mut bg_node = None;
     let mut fg_node = None;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         zstack_node = Some(
-            ZStack::with_id("layered")
+            Panel::zstack_with_id("layered")
                 .show(ui, |ui| {
                     bg_node = Some(
                         Frame::with_id("bg")
@@ -201,8 +206,8 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("locked")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
             .fill(Color::rgb(0.2, 0.2, 0.2))
@@ -224,8 +229,8 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 
     ui.begin_frame();
     let mut clicked = false;
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("locked")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
             .fill(Color::rgb(0.2, 0.2, 0.2))
@@ -244,7 +249,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 fn collapsed_child_consumes_no_space_in_hstack() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
             Frame::with_id("a").size(40.0).show(ui);
@@ -272,7 +277,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 fn collapsed_does_not_consume_fill_weight() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Frame::with_id("a")
                 .size((Sizing::Fill(1.0), Sizing::Hug))
@@ -302,7 +307,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     use crate::renderer::{RenderCmd, encode};
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
             Frame::with_id("a")
@@ -347,7 +352,7 @@ fn hidden_button_does_not_click() {
 
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Button::with_id("invisible")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .hidden()
@@ -363,7 +368,7 @@ fn hidden_button_does_not_click() {
 
     ui.begin_frame();
     let mut clicked = false;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         clicked = Button::with_id("invisible")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .hidden()
@@ -378,7 +383,7 @@ fn hstack_child_align_y_centers_all_children_by_default() {
     use crate::primitives::{Align, VAlign};
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .size((Sizing::FILL, Sizing::Fixed(100.0)))
         .child_align(Align::v(VAlign::Center))
         .show(&mut ui, |ui| {
@@ -407,7 +412,7 @@ fn child_align_self_overrides_parent_default() {
     use crate::primitives::{Align, VAlign};
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let root = Panel::hstack()
         .size((Sizing::FILL, Sizing::Fixed(100.0)))
         .child_align(Align::v(VAlign::Center))
         .show(&mut ui, |ui| {
@@ -436,8 +441,8 @@ fn zstack_centers_child_when_align_center() {
     let mut ui = Ui::new();
     ui.begin_frame();
     let mut child_node = None;
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("box")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("box")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
             .show(ui, |ui| {
                 child_node = Some(
@@ -465,8 +470,8 @@ fn zstack_aligns_independently_per_axis() {
     let mut ui = Ui::new();
     ui.begin_frame();
     let mut child_node = None;
-    HStack::new().show(&mut ui, |ui| {
-        ZStack::with_id("box")
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("box")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
             .show(ui, |ui| {
                 child_node = Some(
@@ -495,9 +500,9 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     let mut canvas_node = None;
     let mut a_node = None;
     let mut b_node = None;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         canvas_node = Some(
-            Canvas::with_id("c")
+            Panel::canvas_with_id("c")
                 .show(ui, |ui| {
                     a_node = Some(
                         Frame::with_id("a")
@@ -540,7 +545,7 @@ fn frame_with_sense_click_is_clickable() {
 
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("hitbox")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
             .sense(Sense::CLICK)
@@ -556,7 +561,7 @@ fn frame_with_sense_click_is_clickable() {
 
     ui.begin_frame();
     let mut clicked = false;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         clicked = Frame::with_id("hitbox")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
             .sense(Sense::CLICK)

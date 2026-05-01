@@ -1,13 +1,13 @@
 use crate::Ui;
 use crate::shape::Shape;
-use crate::widgets::{Button, HStack};
+use crate::widgets::{Button, Panel};
 
 #[test]
 fn shapes_attached_to_button_node() {
     let mut ui = Ui::new();
     ui.begin_frame();
     let mut button_node = None;
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         button_node = Some(Button::new().label("X").show(ui).node);
     });
 

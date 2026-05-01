@@ -1,4 +1,4 @@
-use palantir::{Color, Element, Frame, Grid, Sizing, Stroke, Styled, Track, Ui, VStack};
+use palantir::{Color, Element, Frame, Grid, Panel, Sizing, Stroke, Styled, Track, Ui};
 
 fn body() -> Color {
     Color::rgb(0.30, 0.55, 0.85)
@@ -14,7 +14,7 @@ fn rail() -> Color {
 }
 
 pub fn build(ui: &mut Ui) {
-    VStack::new()
+    Panel::vstack()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
@@ -84,7 +84,7 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    VStack::with_id(id)
+    Panel::vstack_with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .gap(8.0)

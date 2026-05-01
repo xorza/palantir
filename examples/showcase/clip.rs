@@ -1,14 +1,14 @@
-use palantir::{Color, Element, Frame, HStack, Sizing, Stroke, Styled, Ui, ZStack};
+use palantir::{Color, Element, Frame, Panel, Sizing, Stroke, Styled, Ui};
 
 pub fn build(ui: &mut Ui) {
-    HStack::new()
+    Panel::hstack()
         .gap(16.0)
         .clip(false)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Left: clipped — child rect spills via negative margin, but the
             // scissor on the panel cuts it at the panel border.
-            ZStack::with_id("clipped")
+            Panel::zstack_with_id("clipped")
                 .size((Sizing::FILL, Sizing::FILL))
                 .clip(true)
                 .fill(Color::rgb(0.16, 0.20, 0.28))
@@ -22,7 +22,7 @@ pub fn build(ui: &mut Ui) {
                 });
 
             // Right: same content, no clip — the spilling rect leaks past the panel.
-            ZStack::with_id("unclipped")
+            Panel::zstack_with_id("unclipped")
                 .size((Sizing::FILL, Sizing::FILL))
                 .clip(false)
                 .fill(Color::rgb(0.16, 0.20, 0.28))

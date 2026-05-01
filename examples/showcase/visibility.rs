@@ -1,7 +1,7 @@
-use palantir::{Color, Element, Frame, HStack, Sizing, Styled, Ui, VStack, Visibility};
+use palantir::{Color, Element, Frame, Panel, Sizing, Styled, Ui, Visibility};
 
 pub fn build(ui: &mut Ui) {
-    VStack::new()
+    Panel::vstack()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
@@ -14,7 +14,7 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn row(ui: &mut Ui, id: &'static str, middle: Visibility) {
-    HStack::with_id(id)
+    Panel::hstack_with_id(id)
         .gap(12.0)
         .size((Sizing::FILL, Sizing::Fixed(60.0)))
         .fill(Color::rgb(0.16, 0.18, 0.24))

@@ -3,7 +3,7 @@ use crate::Ui;
 use crate::element::Element;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{Color, Rect, Sense, Sizing, TranslateScale};
-use crate::widgets::{Canvas, Frame, HStack, Styled, ZStack};
+use crate::widgets::{Frame, Panel, Styled};
 use glam::Vec2;
 
 fn count_clip_pairs(cmds: &[RenderCmd]) -> (usize, usize) {
@@ -31,7 +31,7 @@ fn empty_tree_encodes_to_nothing() {
 fn frame_with_fill_emits_one_draw_rect() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("a")
             .size(50.0)
             .fill(Color::rgb(1.0, 0.0, 0.0))
@@ -56,7 +56,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
     // RoundedRect in the tree, hence no DrawRect command.
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("invisible").size(50.0).show(ui);
     });
     let _root = ui.root();
@@ -78,8 +78,8 @@ fn clip_emits_balanced_push_pop() {
     ui.begin_frame();
     // Outer HStack opts out of the default-on clip so we can count just the
     // ZStack's pair under test.
-    HStack::new().clip(false).show(&mut ui, |ui| {
-        ZStack::with_id("clip")
+    Panel::hstack().clip(false).show(&mut ui, |ui| {
+        Panel::zstack_with_id("clip")
             .size(50.0)
             .clip(true)
             .show(ui, |ui| {
@@ -189,8 +189,8 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     // Frame 1: build, layout, end_frame so the hit index is populated.
     ui.begin_frame();
-    HStack::new().clip(false).show(&mut ui, |ui| {
-        Canvas::with_id("mid")
+    Panel::hstack().clip(false).show(&mut ui, |ui| {
+        Panel::canvas_with_id("mid")
             .size(200.0)
             .clip(true)
             .transform(xform)
@@ -285,8 +285,8 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     // Frame 2: rebuild and read clicked() on each widget.
     ui.begin_frame();
     let mut got = (false, false, false);
-    HStack::new().clip(false).show(&mut ui, |ui| {
-        Canvas::with_id("mid")
+    Panel::hstack().clip(false).show(&mut ui, |ui| {
+        Panel::canvas_with_id("mid")
             .size(200.0)
             .clip(true)
             .transform(xform)
@@ -326,12 +326,12 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 fn nested_clips_each_emit_their_own_pair() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    HStack::new().clip(false).show(&mut ui, |ui| {
-        ZStack::with_id("outer")
+    Panel::hstack().clip(false).show(&mut ui, |ui| {
+        Panel::zstack_with_id("outer")
             .size(Sizing::Fixed(100.0))
             .clip(true)
             .show(ui, |ui| {
-                ZStack::with_id("inner")
+                Panel::zstack_with_id("inner")
                     .size(Sizing::Fixed(50.0))
                     .clip(true)
                     .show(ui, |_| {});

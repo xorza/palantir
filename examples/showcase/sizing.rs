@@ -1,4 +1,4 @@
-use palantir::{Color, Element, Frame, HStack, Sizing, Styled, Ui, VStack};
+use palantir::{Color, Element, Frame, Panel, Sizing, Styled, Ui};
 
 fn fixed() -> Color {
     Color::rgb(0.85, 0.45, 0.30)
@@ -11,7 +11,7 @@ fn fill() -> Color {
 }
 
 pub fn build(ui: &mut Ui) {
-    VStack::new()
+    Panel::vstack()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
@@ -73,7 +73,7 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    HStack::with_id(id)
+    Panel::hstack_with_id(id)
         .gap(8.0)
         .size((Sizing::FILL, Sizing::Hug))
         .show(ui, body);

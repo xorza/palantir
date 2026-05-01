@@ -1,17 +1,17 @@
-use palantir::{Color, Element, Frame, HStack, Sizing, Stroke, Styled, Ui, VStack};
+use palantir::{Color, Element, Frame, Panel, Sizing, Stroke, Styled, Ui};
 
 fn fill_color() -> Color {
     Color::rgba(0.30, 0.55, 0.85, 0.85)
 }
 
 pub fn build(ui: &mut Ui) {
-    VStack::new()
+    Panel::vstack()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Padding: parent reserves space inside its border before children.
             cell(ui, "padding", |ui| {
-                HStack::with_id("p-row")
+                Panel::hstack_with_id("p-row")
                     .size((Sizing::FILL, Sizing::Fixed(60.0)))
                     .padding(20.0)
                     .gap(8.0)
@@ -30,7 +30,7 @@ pub fn build(ui: &mut Ui) {
 
             // Margin: child shrinks its slot, the surrounding gap is the margin.
             cell(ui, "margin", |ui| {
-                HStack::with_id("m-row")
+                Panel::hstack_with_id("m-row")
                     .size((Sizing::FILL, Sizing::Fixed(60.0)))
                     .gap(8.0)
                     .fill(Color::rgb(0.20, 0.24, 0.32))
@@ -55,7 +55,7 @@ pub fn build(ui: &mut Ui) {
             // box is anchored after the blue one, but its left margin pulls it
             // backwards 30px so the two overlap.
             cell(ui, "negative margin", |ui| {
-                HStack::with_id("neg-row")
+                Panel::hstack_with_id("neg-row")
                     .size((Sizing::FILL, Sizing::Fixed(60.0)))
                     .padding(8.0)
                     .fill(Color::rgb(0.20, 0.24, 0.32))
@@ -82,7 +82,7 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    VStack::with_id(id)
+    Panel::vstack_with_id(id)
         .gap(4.0)
         .size((Sizing::FILL, Sizing::Hug))
         .show(ui, body);

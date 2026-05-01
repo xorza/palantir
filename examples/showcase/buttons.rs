@@ -1,9 +1,7 @@
-use palantir::{
-    Button, ButtonStyle, Color, Corners, Element, HStack, Sizing, Stroke, Ui, VStack, Visuals,
-};
+use palantir::{Button, ButtonStyle, Color, Corners, Element, Panel, Sizing, Stroke, Ui, Visuals};
 
 pub fn build(ui: &mut Ui) {
-    VStack::new()
+    Panel::vstack()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
@@ -50,7 +48,7 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    HStack::with_id(id)
+    Panel::hstack_with_id(id)
         .size((Sizing::FILL, Sizing::Hug))
         .gap(8.0)
         .show(ui, body);
