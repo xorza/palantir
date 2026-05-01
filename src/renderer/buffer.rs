@@ -10,7 +10,6 @@ use std::ops::Range;
 /// its allocations across frames so steady-state composing is alloc-free for
 /// the output; reuse a single `RenderBuffer` and call
 /// `compose(.., &mut buffer)` each frame.
-#[derive(Default)]
 pub struct RenderBuffer {
     pub quads: Vec<Quad>,
     pub texts: Vec<TextRun>,
@@ -20,6 +19,23 @@ pub struct RenderBuffer {
     pub viewport_phys: [u32; 2],
     /// Same viewport in float — needed by the wgpu vertex shader uniform.
     pub viewport_phys_f: [f32; 2],
+    /// Logical→physical conversion factor, propagated from `ComposeParams`.
+    /// Glyph rasterization needs it: shaped buffers are sized in logical px,
+    /// so glyphon scales by this when emitting glyph quads.
+    pub scale: f32,
+}
+
+impl Default for RenderBuffer {
+    fn default() -> Self {
+        Self {
+            quads: Vec::new(),
+            texts: Vec::new(),
+            groups: Vec::new(),
+            viewport_phys: [0, 0],
+            viewport_phys_f: [0.0, 0.0],
+            scale: 1.0,
+        }
+    }
 }
 
 impl RenderBuffer {

@@ -63,6 +63,7 @@ impl WgpuBackend {
             &self.device,
             &self.queue,
             buffer.viewport_phys,
+            buffer.scale,
             &buffer.texts,
             text,
         );
