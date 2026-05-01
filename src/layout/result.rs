@@ -9,10 +9,7 @@ use crate::tree::{NodeId, Tree};
 pub struct LayoutResult {
     desired: Vec<Size>,
     rect: Vec<Rect>,
-    /// Flat per-track hug-size pool. One `(row_hugs, col_hugs)` slice per
-    /// `GridDef`, addressed by grid def index.
-    grid_hug_pool: Vec<f32>,
-    grid_hug_slices: Vec<(HugSlice, HugSlice)>,
+    grid_hugs: GridHugStore,
 }
 
 impl LayoutResult {
@@ -22,23 +19,7 @@ impl LayoutResult {
         self.desired.resize(n, Size::ZERO);
         self.rect.clear();
         self.rect.resize(n, Rect::ZERO);
-
-        self.grid_hug_pool.clear();
-        self.grid_hug_slices.clear();
-        for def in tree.grid_defs() {
-            let row_hugs = self.reserve_hugs(def.rows.len());
-            let col_hugs = self.reserve_hugs(def.cols.len());
-            self.grid_hug_slices.push((row_hugs, col_hugs));
-        }
-    }
-
-    fn reserve_hugs(&mut self, n: usize) -> HugSlice {
-        let start = self.grid_hug_pool.len() as u32;
-        self.grid_hug_pool.resize(start as usize + n, 0.0);
-        HugSlice {
-            start,
-            len: n as u32,
-        }
+        self.grid_hugs.reset_for(tree);
     }
 
     pub fn desired(&self, id: NodeId) -> Size {
@@ -58,22 +39,70 @@ impl LayoutResult {
     }
 
     pub(super) fn grid_row_hugs(&self, idx: u16) -> &[f32] {
-        let (row, _) = self.grid_hug_slices[idx as usize];
-        &self.grid_hug_pool[row.range()]
+        self.grid_hugs.rows(idx)
     }
 
     pub(super) fn grid_col_hugs(&self, idx: u16) -> &[f32] {
-        let (_, col) = self.grid_hug_slices[idx as usize];
-        &self.grid_hug_pool[col.range()]
+        self.grid_hugs.cols(idx)
     }
 
     pub(super) fn grid_row_hugs_mut(&mut self, idx: u16) -> &mut [f32] {
-        let (row, _) = self.grid_hug_slices[idx as usize];
-        &mut self.grid_hug_pool[row.range()]
+        self.grid_hugs.rows_mut(idx)
     }
 
     pub(super) fn grid_col_hugs_mut(&mut self, idx: u16) -> &mut [f32] {
-        let (_, col) = self.grid_hug_slices[idx as usize];
-        &mut self.grid_hug_pool[col.range()]
+        self.grid_hugs.cols_mut(idx)
+    }
+}
+
+/// Flat per-track hug-size pool with one `(rows, cols)` slot per recorded
+/// `GridDef`. Reset at the start of each layout pass; capacity is retained
+/// across frames so steady-state layout is alloc-free.
+#[derive(Default)]
+struct GridHugStore {
+    pool: Vec<f32>,
+    slots: Vec<GridHugSlot>,
+}
+
+#[derive(Clone, Copy)]
+struct GridHugSlot {
+    rows: HugSlice,
+    cols: HugSlice,
+}
+
+impl GridHugStore {
+    fn reset_for(&mut self, tree: &Tree) {
+        self.pool.clear();
+        self.slots.clear();
+        for def in tree.grid_defs() {
+            let rows = self.alloc(def.rows.len());
+            let cols = self.alloc(def.cols.len());
+            self.slots.push(GridHugSlot { rows, cols });
+        }
+    }
+
+    fn alloc(&mut self, n: usize) -> HugSlice {
+        let start = self.pool.len() as u32;
+        self.pool.resize(start as usize + n, 0.0);
+        HugSlice {
+            start,
+            len: n as u32,
+        }
+    }
+
+    fn rows(&self, idx: u16) -> &[f32] {
+        &self.pool[self.slots[idx as usize].rows.range()]
+    }
+
+    fn cols(&self, idx: u16) -> &[f32] {
+        &self.pool[self.slots[idx as usize].cols.range()]
+    }
+
+    fn rows_mut(&mut self, idx: u16) -> &mut [f32] {
+        &mut self.pool[self.slots[idx as usize].rows.range()]
+    }
+
+    fn cols_mut(&mut self, idx: u16) -> &mut [f32] {
+        &mut self.pool[self.slots[idx as usize].cols.range()]
     }
 }
