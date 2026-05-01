@@ -4,20 +4,26 @@ On-demand `intrinsic(node, axis, req: LenReq) -> f32` query plus an
 intra-frame cache, used by `Grid` and `Stack` drivers when a parent's
 available width can't be derived from a child's measure pass alone.
 
-Closes the two known gaps from `docs/text.md` §4:
+Two motivating user-facing patterns drive the scope:
 
-- **Grid `Auto` column wrapping a paragraph** — column needs to know the
-  child's intrinsic max-content width to pick its own width *before*
-  committing measure. Today `sum_spanned_known` returns `INFINITY` and the
-  paragraph shapes at full natural width.
-- **Stack `Fill` siblings respecting min-content** — `Fill` distribution
-  should clamp each child to at least its intrinsic_min, not let a flex
-  sibling steal width past the longest unbreakable run. Today
-  distribution uses max-content as the only signal.
+- **Property-grid layout** — `Grid` with `Track::hug()` for the label
+  column and `Track::fill()` for the value column, where the value
+  column contains wrapping text. The Hug column should hug to the
+  longest label; the Fill column should get the rest of the width and
+  wrap text inside. Today `sum_spanned_known` returns `INFINITY` for the
+  Hug track during measure and the value column's wrapping text shapes
+  at its natural unbroken width. **Step B target.**
+- **Chat-message layout** — `HStack { Avatar (Sizing::Fixed),
+  Message (Sizing::Fill, wrapping text) }`. Avatar takes its fixed
+  width; message Fill claims the leftover. Today Stack measures the
+  message with `available_w = INFINITY` (the WPF intrinsic trick), then
+  arrange clamps the slot to leftover — the cached shape is at natural
+  width, the rendered slot is narrower, text overflows. **Step C target.**
 
 Pinned by `wrapping_text_in_grid_auto_column_does_not_wrap_today` and the
-"BUG (Option B gap)" card in `examples/showcase/text.rs`. When this lands,
-both flip.
+"BUG (Option B gap)" card in `examples/showcase/text.rs`. When this lands
+both flip; the showcase grows two new cards demonstrating the fixed
+property-grid and chat patterns.
 
 ## Conceptual model
 
@@ -166,27 +172,35 @@ the existing `resolve_axis` becoming aware of intrinsic ranges per track.
 
 ## Stack `Fill` flex with min-content floor
 
-Today (in `src/layout/stack/mod.rs`): `Fill` distribution treats leftover
-as `available - sum(non_Fill children's desired)`. Distributes leftover
-to Fill children proportionally to weight. No min-content awareness.
+Today (in `src/layout/stack/mod.rs`): Stack measure passes `available.main
+= INFINITY` to children (WPF intrinsic trick). Children measure at their
+natural unbroken size. Stack arrange then computes Fill widths from
+leftover and slots each child into the resolved width — but the child's
+*measured* size and any cached layout (e.g. text shape) are at natural
+width, not the Fill-resolved width. Result: chat-message HStack ships a
+shape cached at 700 px into a 160 px slot, text overflows visually.
 
-Result: a `Wrap` text in an HStack with a `Fill` sibling can be squeezed
-below its longest-word width, breaking inside a word visually (or
-overflowing the panel rect, depending on rect-vs-arranged behavior).
+The fix is structural: **Fill resolution moves into Stack's measure
+pass.** Single forward pass:
 
-After Option B, proper flex on the main axis:
-
-1. **Per-child target.** Non-Fill child: `target = engine.intrinsic(c,
-   main, MaxContent)`. Fill child: `target = available × weight /
-   total_weight` (after subtracting non-Fill targets and gaps).
-2. **Min floor.** Each child also has `floor = engine.intrinsic(c, main,
-   MinContent)`.
-3. **Resolve.** If `sum(floors) + gaps > available`: every child clamped to
-   floor; stack overflows. Else: starting from floors, grow each child
-   toward its target proportionally to slack until sum = available.
+1. **Query intrinsics** for each child on main axis: `MinContent` and
+   `MaxContent`.
+2. **Resolve Fill widths** using leftover-after-non-Fill, weight share,
+   clamped to each child's `[MinContent, MaxContent]`. If total floors
+   exceed available, clamp at floors and overflow.
+3. **Measure each child** with its resolved width as `available.main`.
+   For Fill children that's the Fill share; for non-Fill children it's
+   still the WPF infinity. Wrapping text reshapes correctly because
+   `shape_text` now sees the right width.
+4. **Arrange** uses already-resolved widths, no recomputation.
 
 The non-flex (no-Fill) case stays the same — `justify` distribution with
 sum-of-desired; nothing changes there.
+
+This restructures Stack to do "decide widths during measure" instead of
+"decide widths during arrange". Cleaner long-term — measure becomes the
+single decision point — but the change is bigger than just adding an
+intrinsic call.
 
 ## What stays unchanged
 
@@ -221,25 +235,37 @@ new pin. Showcase visually unchanged.
 
 ### Step B — Grid Auto under constraint
 
-- Modify `resolve_axis` (or refactor into a new function) in
-  `grid/mod.rs` to use `Intrinsics` for Auto track sizing under
-  constrained available width.
-- Update existing grid tests where deliberate. Audit each that uses
-  `Auto` or `Hug` tracks.
+- Modify `resolve_axis` in `grid/mod.rs` (or refactor into a new
+  function) to use intrinsic queries for Auto track sizing under
+  constrained available width. Fold `Track.min`/`Track.max` clamps with
+  intrinsic ranges.
+- Audit existing grid tests; update where the algorithm change
+  deliberately shifts results.
 - Flip `wrapping_text_in_grid_auto_column_does_not_wrap_today` →
-  `_wraps`. Update the BUG card label in `examples/showcase/text.rs` (or
-  remove the BUG marker; keep the card as a working demo).
+  `_wraps`. Remove the BUG label from the showcase card (keep it as a
+  working demo).
+- New showcase card: property-grid demo (Hug label column + Fill value
+  column with wrapping text).
 
-**Acceptance:** `cargo test` green; showcase BUG card no longer
-overflows; grid tests deliberately updated where the algorithm change
-shifts results.
+**Acceptance:** `cargo test` green; BUG card no longer overflows;
+property-grid showcase demonstrates label-hug + value-fill-wrap; grid
+tests deliberately updated where the algorithm change shifts results.
 
-### Step C — Stack Fill min-content floor
+### Step C — Stack Fill resolved during measure
 
-- Modify `stack::arrange` Fill distribution to clamp at child's
-  `intrinsic.min` on the main axis.
-- New test: HStack with `Fill` Wrap text + `Fill` Frame, narrow
-  available — text gets at least longest-word width.
+- Move Fill width resolution from `stack::arrange` into `stack::measure`.
+- For each child: query `MinContent`/`MaxContent` on main axis (when the
+  child is Fill, or when distribution under-constrains a non-Fill).
+  Distribute available main-axis space respecting weights, floors, and
+  caps.
+- Re-enter `LayoutEngine::measure` on each child with its resolved width
+  as `available.main`. Wrapping text reshapes via the existing
+  `shape_text` reshape branch, which now triggers because
+  `committed_w < natural_w`.
+- New test: chat-message pattern — `HStack { Fixed, Fill(wrap text) }`
+  in a 200 px slot. Assert message rect width = 200 - avatar - gap, and
+  message height > line-height (multi-line).
+- New showcase card: chat-message demo (avatar + message bubble).
 
 **Acceptance:** `cargo test` green; new test pins the new behavior.
 
