@@ -1,4 +1,4 @@
-use palantir::{Button, Color, Element, Panel, Sizing, Stroke, Styled, Ui};
+use palantir::{Button, Color, Configure, Panel, Sizing, Stroke, Styled, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()

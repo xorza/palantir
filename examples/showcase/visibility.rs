@@ -1,4 +1,4 @@
-use palantir::{Color, Element, Frame, Panel, Sizing, Styled, Ui, Visibility};
+use palantir::{Color, Configure, Frame, Panel, Sizing, Styled, Ui, Visibility};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()

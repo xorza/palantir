@@ -35,7 +35,7 @@ impl<T: Num> From<T> for Sizing {
 /// Per-axis `Sizing`. Construct via `Default` (Hug × Hug), `Sizes::from(s)`
 /// (uniform), `Sizes::from(n)` (uniform Fixed via `Num`), or
 /// `Sizes::from((w, h))` for asymmetric. The `From` impls are the public
-/// surface — `Element::size` takes `impl Into<Sizes>` so call sites stay
+/// surface — `Configure::size` takes `impl Into<Sizes>` so call sites stay
 /// terse: `.size(100.0)`, `.size(Sizing::FILL)`, `.size((Sizing::FILL, 40.0))`.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Sizes {

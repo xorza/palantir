@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use palantir::renderer::{ComposeParams, Pipeline, WgpuBackend};
-use palantir::{Button, Color, Element, InputEvent, Panel, Rect, Sizing, Stroke, Styled, Ui};
+use palantir::{Button, Color, Configure, InputEvent, Panel, Rect, Sizing, Stroke, Styled, Ui};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};

@@ -1,5 +1,5 @@
 use crate::Ui;
-use crate::element::Element;
+use crate::element::Configure;
 use crate::primitives::{Color, Rect, Sense, Sizing};
 use crate::shape::Shape;
 use crate::widgets::{Button, Frame, Panel, Styled};
@@ -31,8 +31,8 @@ fn clip_flag_is_recorded_on_panel_node() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
-    assert!(!ui.tree.node(default_panel.unwrap()).element.flags.is_clip());
-    assert!(ui.tree.node(opt_in.unwrap()).element.flags.is_clip());
+    assert!(!ui.tree.node(default_panel.unwrap()).element.attrs.is_clip());
+    assert!(ui.tree.node(opt_in.unwrap()).element.attrs.is_clip());
 }
 
 #[test]

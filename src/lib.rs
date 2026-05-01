@@ -10,7 +10,7 @@ pub mod ui;
 pub mod widgets;
 
 pub use cascade::{Cascades, NodeCascade};
-pub use element::{Element, LayoutMode, NodeFlags, UiElement};
+pub use element::{Configure, Element, LayoutMode, NodeAttrs};
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use primitives::{
     Align, Color, Corners, GridCell, HAlign, Justify, Rect, Sense, Size, Sizes, Sizing, Spacing,

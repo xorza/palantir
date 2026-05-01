@@ -26,7 +26,7 @@ impl Background {
 
 /// Mixin: any widget builder that holds a `Background` gets the chained
 /// `.fill()` / `.stroke()` / `.radius()` setters by impl'ing one method.
-/// Analogous to `Element` for layout fields.
+/// Analogous to `Configure` for layout fields.
 pub trait Styled: Sized {
     fn background_mut(&mut self) -> &mut Background;
 

@@ -1,7 +1,7 @@
 use super::*;
 
-fn pack_default() -> NodeFlags {
-    NodeFlags::pack(
+fn pack_default() -> NodeAttrs {
+    NodeAttrs::pack(
         Sense::NONE,
         false,
         false,
@@ -31,7 +31,7 @@ fn every_sense_variant_round_trips() {
         Sense::DRAG,
         Sense::CLICK_AND_DRAG,
     ] {
-        let f = NodeFlags::pack(sense, false, false, Visibility::Visible, Align::default());
+        let f = NodeAttrs::pack(sense, false, false, Visibility::Visible, Align::default());
         assert_eq!(f.sense(), sense, "sense {sense:?}");
     }
 }
@@ -39,7 +39,7 @@ fn every_sense_variant_round_trips() {
 #[test]
 fn disabled_and_clip_bits_round_trip() {
     for &(disabled, clip) in &[(false, false), (true, false), (false, true), (true, true)] {
-        let f = NodeFlags::pack(
+        let f = NodeAttrs::pack(
             Sense::NONE,
             disabled,
             clip,
@@ -58,7 +58,7 @@ fn each_visibility_round_trips() {
         Visibility::Hidden,
         Visibility::Collapsed,
     ] {
-        let f = NodeFlags::pack(Sense::NONE, false, false, vis, Align::default());
+        let f = NodeAttrs::pack(Sense::NONE, false, false, vis, Align::default());
         assert_eq!(f.visibility(), vis);
         assert_eq!(f.is_visible(), vis == Visibility::Visible);
         assert_eq!(f.is_collapsed(), vis == Visibility::Collapsed);
@@ -75,7 +75,7 @@ fn every_halign_variant_round_trips() {
         HAlign::Stretch,
     ] {
         let a = Align::new(h, VAlign::Auto);
-        let f = NodeFlags::pack(Sense::NONE, false, false, Visibility::Visible, a);
+        let f = NodeAttrs::pack(Sense::NONE, false, false, Visibility::Visible, a);
         assert_eq!(f.align(), a, "halign {h:?}");
     }
 }
@@ -90,14 +90,14 @@ fn every_valign_variant_round_trips() {
         VAlign::Stretch,
     ] {
         let a = Align::new(HAlign::Auto, v);
-        let f = NodeFlags::pack(Sense::NONE, false, false, Visibility::Visible, a);
+        let f = NodeAttrs::pack(Sense::NONE, false, false, Visibility::Visible, a);
         assert_eq!(f.align(), a, "valign {v:?}");
     }
 }
 
 #[test]
 fn fields_do_not_alias_each_other() {
-    let f = NodeFlags::pack(
+    let f = NodeAttrs::pack(
         Sense::CLICK_AND_DRAG,
         true,
         true,
@@ -113,5 +113,5 @@ fn fields_do_not_alias_each_other() {
 
 #[test]
 fn fits_in_two_bytes() {
-    assert_eq!(std::mem::size_of::<NodeFlags>(), 2);
+    assert_eq!(std::mem::size_of::<NodeAttrs>(), 2);
 }

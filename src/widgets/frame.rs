@@ -1,4 +1,4 @@
-use crate::element::{Element, LayoutMode, UiElement};
+use crate::element::{Configure, Element, LayoutMode};
 use crate::primitives::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::{Background, Response, Styled};
@@ -8,7 +8,7 @@ use std::hash::Hash;
 /// margin + an optional `Sense`. Used directly for dividers / hit-areas / bg
 /// swatches, and as the rendering primitive inside `Button`.
 pub struct Frame {
-    element: UiElement,
+    element: Element,
     background: Background,
 }
 
@@ -16,14 +16,14 @@ impl Frame {
     #[track_caller]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self::for_element(UiElement::new(WidgetId::auto_stable(), LayoutMode::Leaf))
+        Self::for_element(Element::new(WidgetId::auto_stable(), LayoutMode::Leaf))
     }
 
     pub fn with_id(id: impl Hash) -> Self {
-        Self::for_element(UiElement::new(WidgetId::from_hash(id), LayoutMode::Leaf))
+        Self::for_element(Element::new(WidgetId::from_hash(id), LayoutMode::Leaf))
     }
 
-    pub fn for_element(element: UiElement) -> Self {
+    pub fn for_element(element: Element) -> Self {
         Self {
             element,
             background: Background::default(),
@@ -41,8 +41,8 @@ impl Frame {
     }
 }
 
-impl Element for Frame {
-    fn element_mut(&mut self) -> &mut UiElement {
+impl Configure for Frame {
+    fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }
 }

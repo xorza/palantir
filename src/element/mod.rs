@@ -1,10 +1,10 @@
-//! Per-node element data: `UiElement` (wide builder form), `NodeElement`
-//! (compact stored form), and `UiElementExtras` (rarely-set side table).
+//! Per-node element data: `Element` (wide builder form), `ElementCore`
+//! (compact stored form), and `ElementExtras` (rarely-set side table).
 //!
-//! Adding a field to `UiElement` requires editing every row below. The table
+//! Adding a field to `Element` requires editing every row below. The table
 //! is the source of truth — keep it in sync with the structs.
 //!
-//! | field           | UiElement | NodeElement (inline) | UiElementExtras (side table) | NodeFlags (packed)  |
+//! | field           | Element | ElementCore (inline) | ElementExtras (side table) | NodeAttrs (packed)  |
 //! |-----------------|:---------:|:--------------------:|:----------------------------:|:-------------------:|
 //! | id              |     ✓     |          ✓           |                              |                     |
 //! | mode            |     ✓     |          ✓           |                              |                     |
@@ -25,9 +25,9 @@
 //! | grid            |     ✓     |                      |              ✓               |                     |
 //! | transform       |     ✓     |                      |              ✓               |                     |
 //!
-//! `UiElement::split` does the routing at `Tree::push_node` time. The side
+//! `Element::split` does the routing at `Tree::push_node` time. The side
 //! table is allocated only when at least one extras field differs from
-//! `UiElementExtras::DEFAULT`. `Element` (the trait) provides one chained
+//! `ElementExtras::DEFAULT`. `Configure` (the trait) provides one chained
 //! setter per row.
 
 use crate::primitives::{
@@ -36,7 +36,7 @@ use crate::primitives::{
 };
 use glam::Vec2;
 
-/// How a node arranges its children. Stored on `UiElement::mode` and read by
+/// How a node arranges its children. Stored on `Element::mode` and read by
 /// the layout pass; the tree itself treats it as an opaque tag.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LayoutMode {
@@ -57,7 +57,7 @@ pub enum LayoutMode {
     Grid(u16),
 }
 
-/// Rarely-set fields lifted out of `UiElement` so they don't bloat every
+/// Rarely-set fields lifted out of `Element` so they don't bloat every
 /// stored `Node`. Builders write defaults inline; on `Tree::push_node` the
 /// non-default values get stamped into `Tree::node_extras` and the `Node`
 /// keeps just an `Option<u16>` slot. Two categories live here: per-node
@@ -66,7 +66,7 @@ pub enum LayoutMode {
 /// Leaves vastly outnumber panels, so paying ~36B once per panel beats
 /// carrying these fields inline on every leaf.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct UiElementExtras {
+pub struct ElementExtras {
     pub transform: Option<TranslateScale>,
     pub position: Vec2,
     pub grid: GridCell,
@@ -82,7 +82,7 @@ pub struct UiElementExtras {
     pub child_align: Align,
 }
 
-impl UiElementExtras {
+impl ElementExtras {
     /// All-defaults instance. Single source of truth — `Default` and
     /// `Tree::read_extras`'s "missing extras" fallback both go through this.
     pub const DEFAULT: Self = Self {
@@ -102,13 +102,13 @@ impl UiElementExtras {
     };
 }
 
-impl Default for UiElementExtras {
+impl Default for ElementExtras {
     fn default() -> Self {
         Self::DEFAULT
     }
 }
 
-impl UiElementExtras {
+impl ElementExtras {
     /// True when nothing has been customized — push_node skips the side-table
     /// allocation in this case. Compared exactly against `DEFAULT` so adding
     /// a field only requires updating `DEFAULT`; no separate predicate to
@@ -119,11 +119,11 @@ impl UiElementExtras {
 }
 
 /// Compact form of a node's recorded element, stored inline in `Node`. Built
-/// from a `UiElement` at `Tree::push_node`: the rarely-set fields move to
+/// from an `Element` at `Tree::push_node`: the rarely-set fields move to
 /// `Tree::node_extras`, addressed via `extras: Option<u16>`. The wide
-/// `UiElement` lives only on builders during recording.
+/// `Element` lives only on builders during recording.
 #[derive(Clone, Copy, Debug)]
-pub struct NodeElement {
+pub struct ElementCore {
     pub id: WidgetId,
     pub mode: LayoutMode,
 
@@ -132,8 +132,8 @@ pub struct NodeElement {
     pub margin: Spacing,
 
     /// Packed `sense` / `disabled` / `clip` / `visibility` / `align`. Read
-    /// through the accessor methods on `NodeFlags`.
-    pub flags: NodeFlags,
+    /// through the accessor methods on `NodeAttrs`.
+    pub attrs: NodeAttrs,
 
     /// Index into `Tree::node_extras`, or `None` when all extras are at
     /// default (the common case). Cap is 65 535 non-default elements per
@@ -142,13 +142,13 @@ pub struct NodeElement {
 }
 
 /// Per-node config: identity + spatial layout + interaction + paint flags.
-/// Every widget builder owns one and forwards it to `Ui::node`. `Element` (the
+/// Every widget builder owns one and forwards it to `Ui::node`. `Configure` (the
 /// trait below) gives chained setters for all fields by impl'ing one method.
 ///
 /// Fields are grouped by who reads them: identity, own-size (every parent),
 /// mode-specific (only certain parents read these), interaction, and paint.
 #[derive(Clone, Copy, Debug)]
-pub struct UiElement {
+pub struct Element {
     // ---- Identity + layout-algorithm selector --------------------------------
     pub id: WidgetId,
     pub mode: LayoutMode,
@@ -210,7 +210,7 @@ pub struct UiElement {
     pub transform: Option<TranslateScale>,
 }
 
-impl UiElement {
+impl Element {
     pub fn new(id: WidgetId, mode: LayoutMode) -> Self {
         Self {
             id,
@@ -234,16 +234,16 @@ impl UiElement {
         }
     }
 
-    /// Split into the compact `NodeElement` (with `extras: None`) and the
+    /// Split into the compact `ElementCore` (with `extras: None`) and the
     /// rarely-set bits. `Tree::push_node` stamps the side-table slot.
-    pub fn split(self) -> (NodeElement, UiElementExtras) {
-        let core = NodeElement {
+    pub fn split(self) -> (ElementCore, ElementExtras) {
+        let core = ElementCore {
             id: self.id,
             mode: self.mode,
             size: self.size,
             padding: self.padding,
             margin: self.margin,
-            flags: NodeFlags::pack(
+            attrs: NodeAttrs::pack(
                 self.sense,
                 self.disabled,
                 self.clip,
@@ -252,7 +252,7 @@ impl UiElement {
             ),
             extras: None,
         };
-        let extras = UiElementExtras {
+        let extras = ElementExtras {
             transform: self.transform,
             position: self.position,
             grid: self.grid,
@@ -266,11 +266,11 @@ impl UiElement {
     }
 }
 
-/// Mixin: any widget builder that holds a `UiElement` gets the chained
+/// Mixin: any widget builder that holds an `Element` gets the chained
 /// setters (`.size()`, `.padding()`, `.sense()`, `.disabled()`, …) for
 /// free by impl'ing just `element_mut`.
-pub trait Element: Sized {
-    fn element_mut(&mut self) -> &mut UiElement;
+pub trait Configure: Sized {
+    fn element_mut(&mut self) -> &mut Element;
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
         let s = s.into();
@@ -340,7 +340,7 @@ pub trait Element: Sized {
         self
     }
     /// Alignment inside the parent's inner rect. For single-axis use the
-    /// [`Align::h`] / [`Align::v`] constructors. See [`UiElement::align`] for
+    /// [`Align::h`] / [`Align::v`] constructors. See [`Element::align`] for
     /// which parent layout modes honor each axis.
     fn align(mut self, a: Align) -> Self {
         self.element_mut().align = a;
@@ -377,20 +377,20 @@ pub trait Element: Sized {
     }
 }
 
-/// Packed flags for a tree `Node`: `sense` (5-state enum, 3 bits), `disabled`,
-/// `clip`, `visibility` (3 variants, 2 bits) packed into one byte, with
-/// `align` stored in its native byte alongside. Built at `Tree::push_node`
-/// from a `UiElement`; read everywhere else through accessors so callers
+/// Packed per-`Node` attributes: `sense` (5-state enum, 3 bits), `disabled`,
+/// `clip`, `visibility` (3 variants, 2 bits) packed into one byte, plus
+/// `align` carried alongside in its native byte. Built at `Tree::push_node`
+/// from an `Element`; read everywhere else through accessors so callers
 /// don't have to know the bit layout.
 ///
 /// `bits`: 0-2=sense tag, 3=disabled, 4=clip, 5-6=visibility, 7=reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct NodeFlags {
+pub struct NodeAttrs {
     bits: u8,
     align: Align,
 }
 
-impl NodeFlags {
+impl NodeAttrs {
     const SENSE_MASK: u8 = 0b111;
     const DISABLED: u8 = 1 << 3;
     const CLIP: u8 = 1 << 4;
