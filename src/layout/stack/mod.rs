@@ -1,87 +1,20 @@
+pub use super::axis::Axis;
 use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
 use crate::element::LayoutCore;
-use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizes, Sizing};
+use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
-use glam::Vec2;
 
-/// Which axis a stack distributes children along. `X` = `HStack`, `Y` = `VStack`.
-/// All stack math is written axis-symmetrically — the dispatcher just picks one.
-#[derive(Copy, Clone, PartialEq)]
-pub(super) enum Axis {
-    X,
-    Y,
-}
-
-impl Axis {
-    fn main(self, s: Size) -> f32 {
-        match self {
-            Axis::X => s.w,
-            Axis::Y => s.h,
-        }
-    }
-    fn cross(self, s: Size) -> f32 {
-        match self {
-            Axis::X => s.h,
-            Axis::Y => s.w,
-        }
-    }
-    fn main_v(self, v: Vec2) -> f32 {
-        match self {
-            Axis::X => v.x,
-            Axis::Y => v.y,
-        }
-    }
-    fn cross_v(self, v: Vec2) -> f32 {
-        match self {
-            Axis::X => v.y,
-            Axis::Y => v.x,
-        }
-    }
-    fn main_sizing(self, s: Sizes) -> Sizing {
-        match self {
-            Axis::X => s.w,
-            Axis::Y => s.h,
-        }
-    }
-    fn cross_sizing(self, s: Sizes) -> Sizing {
-        match self {
-            Axis::X => s.h,
-            Axis::Y => s.w,
-        }
-    }
-    /// Cross-axis alignment of a child, picked from the shared two-axis
-    /// `resolved_axis_align` so HStack/VStack share the cascade rule with
-    /// ZStack/Grid. The unused main axis is computed and discarded — cheap.
-    fn cross_align(self, child: &LayoutCore, parent_child_align: Align) -> AxisAlign {
-        let (h, v) = resolved_axis_align(child, parent_child_align);
-        match self {
-            // HStack: cross = vertical
-            Axis::X => v,
-            // VStack: cross = horizontal
-            Axis::Y => h,
-        }
-    }
-    /// Build a `Size` from main- and cross-axis lengths.
-    fn compose_size(self, main: f32, cross: f32) -> Size {
-        match self {
-            Axis::X => Size::new(main, cross),
-            Axis::Y => Size::new(cross, main),
-        }
-    }
-    /// Build a `Vec2` from main- and cross-axis positions.
-    fn compose_point(self, main: f32, cross: f32) -> Vec2 {
-        match self {
-            Axis::X => Vec2::new(main, cross),
-            Axis::Y => Vec2::new(cross, main),
-        }
-    }
-    /// Build a `Rect` from main- and cross-axis positions and lengths.
-    fn compose_rect(self, main_pos: f32, cross_pos: f32, main: f32, cross: f32) -> Rect {
-        match self {
-            Axis::X => Rect::new(main_pos, cross_pos, main, cross),
-            Axis::Y => Rect::new(cross_pos, main_pos, cross, main),
-        }
+/// Cross-axis alignment of a child, picked from the shared two-axis
+/// `resolved_axis_align` so HStack/VStack share the cascade rule with
+/// ZStack/Grid. The unused main axis is computed and discarded — cheap.
+fn cross_align(axis: Axis, child: &LayoutCore, parent_child_align: Align) -> AxisAlign {
+    let (h, v) = resolved_axis_align(child, parent_child_align);
+    match axis {
+        // HStack: cross = vertical
+        Axis::X => v,
+        // VStack: cross = horizontal
+        Axis::Y => h,
     }
 }
 
@@ -195,7 +128,7 @@ pub(super) fn arrange(
             _ => axis.main(d),
         };
 
-        let cross_align = axis.cross_align(&s, parent_child_align);
+        let cross_align = cross_align(axis, &s, parent_child_align);
         let cross_sizing = axis.cross_sizing(s.size);
         let cross_desired = axis.cross(d);
         let (cross_size, cross_offset) =

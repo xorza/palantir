@@ -5,13 +5,18 @@ use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 use grid::GridContext;
+use std::collections::HashMap;
 
+mod axis;
 mod canvas;
 mod grid;
+mod intrinsic;
 mod result;
 mod stack;
 mod zstack;
 
+pub use axis::Axis;
+pub use intrinsic::{IntrinsicQuery, LenReq};
 pub use result::{LayoutResult, ShapedText};
 
 /// Persistent layout engine. Holds intermediate per-frame scratch + the
@@ -22,12 +27,16 @@ pub use result::{LayoutResult, ShapedText};
 /// - `desired` — measure-pass output read by arrange. Pure measure→arrange
 ///   handoff; nothing outside layout reads it (yet — `Ui::desired(id)`
 ///   exposes it for future debug/devtools but no current consumer).
+/// - `intrinsics` — intra-frame cache for `intrinsic(node, axis, req)`
+///   queries (Step A of `docs/intrinsics.md`). Pure function of subtree;
+///   safe to memoize within a frame. Cleared in `run`.
 /// - `result` — post-layout output (rects, text shapes) read by the encoder
 ///   + hit-index.
 #[derive(Default)]
 pub struct LayoutEngine {
     pub(super) grid: GridContext,
     desired: Vec<Size>,
+    intrinsics: HashMap<IntrinsicQuery, f32>,
     result: LayoutResult,
 }
 
@@ -52,6 +61,34 @@ impl LayoutEngine {
         self.desired[id.index()] = v;
     }
 
+    /// On-demand intrinsic-size query — outer (margin-inclusive) size on
+    /// `axis` under content-sizing `req`. See `docs/intrinsics.md`.
+    ///
+    /// Pure function of the subtree at `node`: doesn't depend on the
+    /// parent's available width or the arranged rect. Memoized via the
+    /// intra-frame cache so repeated queries during the same `run` cost
+    /// one HashMap lookup.
+    ///
+    /// Step A scaffolding: this method exists, drivers can call it, but
+    /// nothing in the production measure/arrange path consumes intrinsics
+    /// yet. Steps B and C wire Grid + Stack to it.
+    pub fn intrinsic(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        axis: Axis,
+        req: LenReq,
+        text: &mut TextMeasurer,
+    ) -> f32 {
+        let key = IntrinsicQuery { node, axis, req };
+        if let Some(&v) = self.intrinsics.get(&key) {
+            return v;
+        }
+        let v = intrinsic::compute(self, tree, node, axis, req, text);
+        self.intrinsics.insert(key, v);
+        v
+    }
+
     /// Run measure + arrange for `root` given the surface rect. Reuses
     /// internal scratch — call this each frame for amortized zero-alloc
     /// layout (after warmup). Output lands in `self.result`.
@@ -68,6 +105,7 @@ impl LayoutEngine {
         let n = tree.node_count();
         self.desired.clear();
         self.desired.resize(n, Size::ZERO);
+        self.intrinsics.clear();
         self.result.resize_for(tree);
         self.grid.hugs.reset_for(tree);
         self.measure(

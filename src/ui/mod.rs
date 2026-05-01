@@ -34,7 +34,7 @@ pub struct Ui {
     input: InputState,
     /// Persistent layout engine: holds reusable scratch buffers across frames.
     /// Accessed via `Ui::layout(surface)`.
-    layout_engine: LayoutEngine,
+    pub(crate) layout_engine: LayoutEngine,
     /// Per-frame cascade resolution shared by the renderer encoder (skip
     /// invisible subtrees) and the input hit index (screen rects + sense).
     /// Rebuilt in `end_frame`.
@@ -46,7 +46,7 @@ pub struct Ui {
     /// Text shaping & measurement, with the `CosmicMeasure` / mono dispatch
     /// hidden inside. Install a real shaper with [`Ui::install_text_system`]
     /// to get shaping + rendering; otherwise runs use the mono placeholder.
-    text: TextMeasurer,
+    pub(crate) text: TextMeasurer,
 }
 
 impl Default for Ui {
