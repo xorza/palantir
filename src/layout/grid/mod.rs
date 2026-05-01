@@ -2,6 +2,58 @@ use super::LayoutEngine;
 use crate::primitives::{GridCell, Rect, Size, Sizing, Track, Visibility};
 use crate::tree::{NodeId, Tree};
 
+/// Per-frame scratch for `Grid` layout. Capacity is retained across frames; a
+/// `Vec<GridScratch>` indexed by nesting depth lets nested grids each have
+/// their own slot. Pushed on first descent to a new depth.
+#[derive(Default)]
+pub(crate) struct GridScratch {
+    pub rows: Vec<Track>,
+    pub cols: Vec<Track>,
+    pub col_sizes: Vec<f32>,
+    pub row_sizes: Vec<f32>,
+    pub col_resolved: Vec<bool>,
+    pub row_resolved: Vec<bool>,
+    pub hug_w: Vec<f32>,
+    pub hug_h: Vec<f32>,
+    pub col_offsets: Vec<f32>,
+    pub row_offsets: Vec<f32>,
+    pub flexible: Vec<usize>,
+}
+
+/// Grid-layout state held by `LayoutEngine`. One `GridScratch` per nesting
+/// depth of `LayoutMode::Grid`. `depth` is the next free slot.
+#[derive(Default)]
+pub(crate) struct GridLayout {
+    scratch: Vec<GridScratch>,
+    depth: usize,
+}
+
+impl GridLayout {
+    pub(super) fn depth(&self) -> usize {
+        self.depth
+    }
+
+    /// Reserve a scratch slot for the next nesting depth. Grows on first
+    /// descent; reuses thereafter.
+    fn enter(&mut self) -> usize {
+        let d = self.depth;
+        if self.scratch.len() == d {
+            self.scratch.push(GridScratch::default());
+        }
+        self.depth = d + 1;
+        d
+    }
+
+    fn exit(&mut self) {
+        debug_assert!(self.depth > 0);
+        self.depth -= 1;
+    }
+
+    fn at(&mut self, depth: usize) -> &mut GridScratch {
+        &mut self.scratch[depth]
+    }
+}
+
 /// WPF-style grid measure. Resolves Fixed tracks, walks children once feeding
 /// each `Σ spanned-track sizes` (or `∞` if any spanned track is unresolved —
 /// the WPF infinity trick → child reports intrinsic), then resolves Hug
@@ -14,9 +66,9 @@ use crate::tree::{NodeId, Tree};
 /// written through to `Tree::hug_pool` so `arrange` can read them without
 /// re-walking children.
 pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, idx: u32) -> Size {
-    let depth = layout.enter_grid();
+    let depth = layout.grid.enter();
     let result = measure_inner(layout, tree, node, idx, depth);
-    layout.exit_grid();
+    layout.grid.exit();
     result
 }
 
@@ -34,7 +86,7 @@ fn measure_inner(
         let col_tracks: &[Track] = tree.grid_tracks(def.cols);
         let n_rows = row_tracks.len();
         let n_cols = col_tracks.len();
-        let s = layout.grid(depth);
+        let s = layout.grid.at(depth);
         s.rows.clear();
         s.rows.extend_from_slice(row_tracks);
         s.cols.clear();
@@ -90,7 +142,7 @@ fn measure_inner(
         let cell = clamp_cell(tree.node(c).element.grid, n_rows, n_cols);
 
         let avail = {
-            let s = layout.grid(depth);
+            let s = layout.grid.at(depth);
             let avail_w = sum_spanned_known(&s.col_sizes, &s.col_resolved, cell.col, cell.col_span);
             let avail_h = sum_spanned_known(&s.row_sizes, &s.row_resolved, cell.row, cell.row_span);
             Size::new(avail_w, avail_h)
@@ -103,7 +155,7 @@ fn measure_inner(
 
         // Span-1 only drives Hug-track sizing (avoids the WPF Auto↔Star
         // cyclic-iteration trap).
-        let s = layout.grid(depth);
+        let s = layout.grid.at(depth);
         if cell.col_span == 1 && matches!(s.cols[cell.col as usize].size, Sizing::Hug) {
             let i = cell.col as usize;
             s.hug_w[i] = s.hug_w[i].max(d.w);
@@ -117,7 +169,7 @@ fn measure_inner(
     // Resolve Hug tracks from accumulated hug-w/hug-h, write through to the
     // tree's hug pool so `arrange` can read them without re-walking children,
     // and sum content size.
-    let s = layout.grid(depth);
+    let s = layout.grid.at(depth);
     for (i, t) in s.cols.iter().enumerate() {
         if matches!(t.size, Sizing::Hug) {
             s.col_sizes[i] = s.hug_w[i].clamp(t.min, t.max);
@@ -147,9 +199,9 @@ pub(super) fn arrange(
     inner: Rect,
     idx: u32,
 ) {
-    let depth = layout.enter_grid();
+    let depth = layout.grid.enter();
     arrange_inner(layout, tree, node, inner, idx, depth);
-    layout.exit_grid();
+    layout.grid.exit();
 }
 
 fn arrange_inner(
@@ -169,7 +221,7 @@ fn arrange_inner(
         let col_hugs: &[f32] = tree.grid_hugs(def.col_hugs);
         let n_rows = row_tracks.len();
         let n_cols = col_tracks.len();
-        let s = layout.grid(depth);
+        let s = layout.grid.at(depth);
         s.rows.clear();
         s.rows.extend_from_slice(row_tracks);
         s.cols.clear();
@@ -191,7 +243,7 @@ fn arrange_inner(
 
     // Resolve track sizes into `col_sizes`/`row_sizes` and compute offsets.
     {
-        let s = layout.grid(depth);
+        let s = layout.grid.at(depth);
         s.col_sizes.clear();
         s.col_sizes.resize(n_cols, 0.0);
         s.row_sizes.clear();
@@ -222,7 +274,7 @@ fn arrange_inner(
         let d = tree.node(c).desired;
 
         let (slot_x, slot_y, slot_w, slot_h) = {
-            let s = layout.grid(depth);
+            let s = layout.grid.at(depth);
             let slot_x = s.col_offsets[cell.col as usize];
             let slot_y = s.row_offsets[cell.row as usize];
             let slot_w = span_size(&s.col_sizes, cell.col, cell.col_span, col_gap);
@@ -313,7 +365,7 @@ enum Axis {
 /// violates `[min, max]` clamps and exits the pool, the remaining stars
 /// rebalance, repeat until stable. Bounded — each iteration removes at least
 /// one star, so O(N²) worst case.
-fn resolve_axis(s: &mut super::GridScratch, axis: Axis, total: f32, gap: f32) {
+fn resolve_axis(s: &mut GridScratch, axis: Axis, total: f32, gap: f32) {
     let (tracks, hug_sizes, out) = match axis {
         Axis::Col => (s.cols.as_slice(), s.hug_w.as_slice(), &mut s.col_sizes),
         Axis::Row => (s.rows.as_slice(), s.hug_h.as_slice(), &mut s.row_sizes),

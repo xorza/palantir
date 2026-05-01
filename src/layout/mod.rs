@@ -1,5 +1,5 @@
 use crate::element::LayoutMode;
-use crate::primitives::{AxisAlign, Rect, Size, Sizing, Track, Visibility};
+use crate::primitives::{AxisAlign, Rect, Size, Sizing, Visibility};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
@@ -9,34 +9,17 @@ mod grid;
 mod stack;
 mod zstack;
 
-/// Persistent layout engine: holds reusable scratch buffers indexed by
-/// recursion depth. Owned by `Ui` (`Ui::layout(surface)`); construct directly
-/// only when laying out a `Tree` outside the `Ui` flow.
+/// Persistent layout engine: holds per-layout-kind scratch that survives
+/// across frames for amortized zero-alloc layout. Owned by `Ui`
+/// (`Ui::layout(surface)`); construct directly only when laying out a `Tree`
+/// outside the `Ui` flow.
 ///
-/// The scratch grows to peak nesting × peak track count, then retains
-/// capacity across frames. `MAX_TRACKS` is gone — grids can be any size.
+/// Today only `grid` carries scratch — stack/zstack/canvas are single-pass and
+/// keep their state on the call stack. Add a sibling field here if that ever
+/// changes.
 #[derive(Default)]
 pub struct LayoutEngine {
-    /// One `GridScratch` per nesting depth of `LayoutMode::Grid`. Pushed on
-    /// first descent to a new depth, reused thereafter. `grid_depth` is the
-    /// next free slot.
-    grid_scratch: Vec<GridScratch>,
-    grid_depth: usize,
-}
-
-#[derive(Default)]
-pub(super) struct GridScratch {
-    pub rows: Vec<Track>,
-    pub cols: Vec<Track>,
-    pub col_sizes: Vec<f32>,
-    pub row_sizes: Vec<f32>,
-    pub col_resolved: Vec<bool>,
-    pub row_resolved: Vec<bool>,
-    pub hug_w: Vec<f32>,
-    pub hug_h: Vec<f32>,
-    pub col_offsets: Vec<f32>,
-    pub row_offsets: Vec<f32>,
-    pub flexible: Vec<usize>,
+    pub(super) grid: grid::GridLayout,
 }
 
 impl LayoutEngine {
@@ -49,14 +32,16 @@ impl LayoutEngine {
     /// layout (after warmup).
     pub fn run(&mut self, tree: &mut Tree, root: NodeId, surface: Rect) {
         debug_assert_eq!(
-            self.grid_depth, 0,
-            "LayoutEngine::run entered with non-zero depth"
+            self.grid.depth(),
+            0,
+            "LayoutEngine::run entered with non-zero grid depth"
         );
         self.measure(tree, root, Size::new(surface.width(), surface.height()));
         self.arrange(tree, root, surface);
         debug_assert_eq!(
-            self.grid_depth, 0,
-            "LayoutEngine::run exited with non-zero depth"
+            self.grid.depth(),
+            0,
+            "LayoutEngine::run exited with non-zero grid depth"
         );
     }
 
@@ -131,26 +116,6 @@ impl LayoutEngine {
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner),
             LayoutMode::Grid(idx) => grid::arrange(self, tree, node, inner, idx),
         }
-    }
-
-    /// Reserve a `GridScratch` for the next nesting depth. Grows the depth
-    /// stack on first descent; reuses thereafter.
-    pub(super) fn enter_grid(&mut self) -> usize {
-        let d = self.grid_depth;
-        if self.grid_scratch.len() == d {
-            self.grid_scratch.push(GridScratch::default());
-        }
-        self.grid_depth = d + 1;
-        d
-    }
-
-    pub(super) fn exit_grid(&mut self) {
-        debug_assert!(self.grid_depth > 0);
-        self.grid_depth -= 1;
-    }
-
-    pub(super) fn grid(&mut self, depth: usize) -> &mut GridScratch {
-        &mut self.grid_scratch[depth]
     }
 }
 
