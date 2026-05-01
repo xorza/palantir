@@ -25,7 +25,8 @@ impl Default for GridCell {
     }
 }
 
-/// Range into `Tree::tracks` for one axis of a `GridDef`.
+/// Generic `(start, len)` range into one of `Tree`'s per-frame pools.
+/// Used for tracks (`Tree::tracks`) and per-track hug sizes (`Tree::hug_pool`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct TrackSlice {
     pub start: u32,
@@ -39,13 +40,19 @@ impl TrackSlice {
 }
 
 /// Track definitions + axis gaps for a `Grid` panel. Stored on `Tree::grid_defs`
-/// and addressed from `LayoutMode::Grid(u32)`. Tracks themselves live in a
-/// shared `Tree::tracks` pool; the `TrackSlice`s here are `(start, len)` ranges
-/// into it. Cleared with `Tree::clear`.
+/// and addressed from `LayoutMode::Grid(u32)`. Track defs live in `Tree::tracks`;
+/// per-track hug sizes (computed in measure, read in arrange) live in
+/// `Tree::hug_pool`. All cleared with `Tree::clear`.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub(crate) struct GridDef {
     pub rows: TrackSlice,
     pub cols: TrackSlice,
     pub row_gap: f32,
     pub col_gap: f32,
+    /// Per-row max desired height of span-1 children. Written by
+    /// `grid_measure`, read by `arrange_grid`.
+    pub row_hugs: TrackSlice,
+    /// Per-col max desired width of span-1 children. Same semantics as
+    /// `row_hugs` on the X axis.
+    pub col_hugs: TrackSlice,
 }
