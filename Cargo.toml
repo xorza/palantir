@@ -7,7 +7,7 @@ exclude = ["tmp/", "references/"]
 [dependencies]
 bytemuck = { version = "*", features = ["derive"] }
 glam = "*"
-cosmic-text = "*"
+cosmic-text = "0.18"
 glyphon = "*"
 tracing = "*"
 pollster = "*"
