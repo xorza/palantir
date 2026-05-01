@@ -11,6 +11,17 @@ pub enum Sizing {
 impl Sizing {
     /// Equal-weight `Fill`. Equivalent to `Sizing::Fill(1.0)`.
     pub const FILL: Self = Self::Fill(1.0);
+
+    /// Panic if the embedded value is negative. `Sizing::Fixed` is a pixel
+    /// extent and `Sizing::Fill` is a relative weight — neither is meaningful
+    /// below zero. `Hug` carries no value.
+    pub const fn assert_non_negative(self) {
+        match self {
+            Sizing::Fixed(v) => assert!(v >= 0.0, "Sizing::Fixed must be non-negative"),
+            Sizing::Fill(w) => assert!(w >= 0.0, "Sizing::Fill weight must be non-negative"),
+            Sizing::Hug => {}
+        }
+    }
 }
 
 impl<T: crate::primitives::Num> From<T> for Sizing {

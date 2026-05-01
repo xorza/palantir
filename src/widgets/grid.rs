@@ -1,10 +1,11 @@
 use crate::element::{Element, LayoutMode, UiElement};
 use crate::primitives::{Color, Corners, Sizing, Stroke, Track, TranslateScale, WidgetId};
-use crate::shape::{Shape, ShapeRect};
+use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use std::hash::Hash;
 use std::rc::Rc;
+use std::sync::OnceLock;
 
 /// WPF-style grid: explicit row + column track definitions, per-track
 /// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and
@@ -132,7 +133,6 @@ impl Grid {
         let radius = self.radius;
         let node = ui.node(element, |ui| {
             ui.add_shape(Shape::RoundedRect {
-                bounds: ShapeRect::Full,
                 radius,
                 fill,
                 stroke,
@@ -152,5 +152,8 @@ impl Element for Grid {
 }
 
 fn empty_tracks() -> Rc<[Track]> {
-    Rc::from(Vec::<Track>::new())
+    thread_local! {
+        static EMPTY: OnceLock<Rc<[Track]>> = const { OnceLock::new() };
+    }
+    EMPTY.with(|cell| cell.get_or_init(|| Rc::from(Vec::<Track>::new())).clone())
 }

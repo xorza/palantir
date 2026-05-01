@@ -1,6 +1,6 @@
 use crate::primitives::{
-    Align, GridCell, HAlign, Justify, NodeFlags, Sense, Size, Sizes, Sizing, Spacing,
-    TranslateScale, VAlign, Visibility, WidgetId,
+    Align, GridCell, HAlign, Justify, NodeFlags, Sense, Size, Sizes, Spacing, TranslateScale,
+    VAlign, Visibility, WidgetId,
 };
 use glam::Vec2;
 
@@ -239,22 +239,6 @@ impl UiElement {
     }
 }
 
-/// Negative `Fixed`/`Fill` values are nonsensical (no rect of width -5 px,
-/// no Fill weight that grants negative space). `Hug` carries no value.
-fn assert_sizing_non_negative(s: Sizing, axis: &str) {
-    match s {
-        Sizing::Fixed(v) => assert!(
-            v >= 0.0,
-            "{axis}: Sizing::Fixed must be non-negative, got {v}"
-        ),
-        Sizing::Fill(w) => assert!(
-            w >= 0.0,
-            "{axis}: Sizing::Fill weight must be non-negative, got {w}"
-        ),
-        Sizing::Hug => {}
-    }
-}
-
 /// Mixin: any widget builder that holds a `UiElement` gets the chained
 /// setters (`.size()`, `.padding()`, `.sense()`, `.disabled()`, …) for
 /// free by impl'ing just `element_mut`.
@@ -263,8 +247,8 @@ pub trait Element: Sized {
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
         let s = s.into();
-        assert_sizing_non_negative(s.w, "size.w");
-        assert_sizing_non_negative(s.h, "size.h");
+        s.w.assert_non_negative();
+        s.h.assert_non_negative();
         self.element_mut().size = s;
         self
     }

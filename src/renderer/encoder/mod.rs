@@ -1,8 +1,7 @@
 use crate::layout::LayoutResult;
 use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
-use crate::shape::{Shape, ShapeRect};
+use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
-use glam::Vec2;
 
 /// One typed paint instruction in logical (DIP) coordinates. Produced by
 /// `encode` from the tree, consumed by the backend which scales/snaps to
@@ -62,22 +61,13 @@ fn encode_node(tree: &Tree, layout: &LayoutResult, id: NodeId, out: &mut Vec<Ren
         out.push(RenderCmd::PushClip(rect));
     }
 
-    let owner = rect;
     for shape in tree.shapes_of(id) {
         match shape {
             Shape::RoundedRect {
-                bounds,
                 radius,
                 fill,
                 stroke,
             } => {
-                let rect = match bounds {
-                    ShapeRect::Full => owner,
-                    ShapeRect::Offset(r) => Rect {
-                        min: owner.min + Vec2::new(r.min.x, r.min.y),
-                        size: r.size,
-                    },
-                };
                 out.push(RenderCmd::DrawRect {
                     rect,
                     radius: *radius,
@@ -93,7 +83,7 @@ fn encode_node(tree: &Tree, layout: &LayoutResult, id: NodeId, out: &mut Vec<Ren
         }
     }
 
-    let transform = tree.extras(id).and_then(|e| e.transform);
+    let transform = tree.read_extras(id).transform;
     let has_transform = transform.is_some();
     if let Some(t) = transform {
         out.push(RenderCmd::PushTransform(t));

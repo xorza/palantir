@@ -1,6 +1,6 @@
 use crate::element::{Element, LayoutMode, UiElement};
 use crate::primitives::{Color, Corners, Stroke, WidgetId};
-use crate::shape::{Shape, ShapeRect};
+use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use std::hash::Hash;
@@ -53,7 +53,6 @@ impl Frame {
         let id = self.element.id;
         let node = ui.node(self.element, |ui| {
             ui.add_shape(Shape::RoundedRect {
-                bounds: ShapeRect::Full,
                 radius: self.radius,
                 fill: self.fill,
                 stroke: self.stroke,
