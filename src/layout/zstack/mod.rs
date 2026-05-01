@@ -1,5 +1,5 @@
 use super::LayoutEngine;
-use crate::primitives::{Rect, Size, Visibility};
+use crate::primitives::{Rect, Size};
 use crate::tree::{NodeId, Tree};
 
 /// ZStack: children all at the same position (top-left of inner rect).
@@ -29,7 +29,7 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, 
     let parent_layout = tree.node(node).element;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        if tree.node(c).element.visibility == Visibility::Collapsed {
+        if tree.node(c).is_collapsed() {
             super::zero_subtree(tree, c, inner.min);
             continue;
         }

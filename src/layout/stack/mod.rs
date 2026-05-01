@@ -1,6 +1,6 @@
 use super::LayoutEngine;
 use crate::element::UiElement;
-use crate::primitives::{AxisAlign, Justify, Rect, Size, Sizes, Sizing, Visibility};
+use crate::primitives::{AxisAlign, Justify, Rect, Size, Sizes, Sizing};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
@@ -94,7 +94,7 @@ pub(super) fn measure(
     while let Some(c) = kids.next(tree) {
         // Collapsed children still get measured (so `desired` is set to ZERO),
         // but don't contribute to the parent's content size or gap count.
-        let collapsed = tree.node(c).element.visibility == Visibility::Collapsed;
+        let collapsed = tree.node(c).is_collapsed();
         let d = layout.measure(tree, c, child_avail);
         if collapsed {
             continue;
@@ -127,7 +127,7 @@ pub(super) fn arrange(
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         let n = tree.node(c);
-        if n.element.visibility == Visibility::Collapsed {
+        if n.is_collapsed() {
             continue;
         }
         if let Sizing::Fill(weight) = axis.main_sizing(n.element.size) {
@@ -169,11 +169,11 @@ pub(super) fn arrange(
 
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let (s, d) = {
+        let (s, d, collapsed) = {
             let n = tree.node(c);
-            (n.element, n.desired)
+            (n.element, n.desired, n.is_collapsed())
         };
-        if s.visibility == Visibility::Collapsed {
+        if collapsed {
             super::zero_subtree(tree, c, axis.compose_rect(cursor, cross_min, 0.0, 0.0).min);
             continue;
         }

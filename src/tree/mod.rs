@@ -1,5 +1,5 @@
 use crate::element::UiElement;
-use crate::primitives::{GridDef, HugSlice, Rect, Size, Track};
+use crate::primitives::{GridDef, HugSlice, Rect, Size, Track, Visibility};
 use crate::shape::Shape;
 use std::rc::Rc;
 
@@ -28,6 +28,10 @@ pub struct Node {
 impl Node {
     pub fn shapes_range(&self) -> std::ops::Range<usize> {
         self.shapes.start as usize..self.shapes.end as usize
+    }
+
+    pub fn is_collapsed(&self) -> bool {
+        self.element.visibility == Visibility::Collapsed
     }
 
     fn new(element: UiElement, parent: Option<NodeId>, shapes_start: u32) -> Self {

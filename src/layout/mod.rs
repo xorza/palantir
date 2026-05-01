@@ -1,5 +1,5 @@
 use crate::element::{LayoutMode, UiElement};
-use crate::primitives::{AxisAlign, Rect, Size, Sizing, Visibility};
+use crate::primitives::{AxisAlign, Rect, Size, Sizing};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
@@ -48,7 +48,7 @@ impl LayoutEngine {
     /// Bottom-up measure dispatcher. Children call back via this method to
     /// recurse. Stores `desired` on each visited node.
     pub(super) fn measure(&mut self, tree: &mut Tree, node: NodeId, available: Size) -> Size {
-        if tree.node(node).element.visibility == Visibility::Collapsed {
+        if tree.node(node).is_collapsed() {
             tree.node_mut(node).desired = Size::ZERO;
             return Size::ZERO;
         }
@@ -97,7 +97,7 @@ impl LayoutEngine {
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
     /// (margin-inclusive). Stores `rect` on each visited node.
     pub(super) fn arrange(&mut self, tree: &mut Tree, node: NodeId, slot: Rect) {
-        if tree.node(node).element.visibility == Visibility::Collapsed {
+        if tree.node(node).is_collapsed() {
             zero_subtree(tree, node, slot.min);
             return;
         }
