@@ -422,7 +422,7 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
             }
             Sizing::Fill(w) => {
                 a.flexible.push(i);
-                flexible_weight += w.max(0.0);
+                flexible_weight += w;
             }
         }
     }
@@ -435,7 +435,7 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
             let i = a.flexible[k];
             let t = &a.tracks[i];
             let w = match t.size {
-                Sizing::Fill(w) => w.max(0.0),
+                Sizing::Fill(w) => w,
                 _ => unreachable!(),
             };
             let candidate = remaining * w / flexible_weight;
@@ -451,7 +451,7 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
         }
         for &i in a.flexible.iter() {
             let w = match a.tracks[i].size {
-                Sizing::Fill(w) => w.max(0.0),
+                Sizing::Fill(w) => w,
                 _ => unreachable!(),
             };
             a.sizes[i] = remaining * w / flexible_weight;

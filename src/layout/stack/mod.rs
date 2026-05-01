@@ -144,7 +144,7 @@ pub(super) fn arrange(
             continue;
         }
         if let Sizing::Fill(weight) = axis.main_sizing(n.element.size) {
-            total_weight += weight.max(0.0);
+            total_weight += weight;
         } else {
             sum_main_desired += axis.main(n.desired);
         }
@@ -197,9 +197,7 @@ pub(super) fn arrange(
 
         let main_sizing = axis.main_sizing(s.size);
         let main_size = match main_sizing {
-            Sizing::Fill(weight) if total_weight > 0.0 => {
-                leftover * (weight.max(0.0) / total_weight)
-            }
+            Sizing::Fill(weight) if total_weight > 0.0 => leftover * (weight / total_weight),
             _ => axis.main(d),
         };
 
