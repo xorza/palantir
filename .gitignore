@@ -1,3 +1,4 @@
-/target
-tmp/
-.tmp/
+**/target
+**/tmp/
+**/.tmp/
+**/.DS_Store
