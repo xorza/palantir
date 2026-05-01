@@ -1,6 +1,7 @@
 use super::LayoutEngine;
 use crate::primitives::{GridCell, HugSlice, Rect, Size, Sizing, Track};
 use crate::tree::{NodeId, Tree};
+use std::rc::Rc;
 
 struct DefSnapshot {
     n_rows: usize,
@@ -27,8 +28,8 @@ fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u32, depth: usize) 
     let row_hugs = def.row_hugs;
     let col_hugs = def.col_hugs;
     let s = layout.grid.at(depth);
-    s.col.reset(&cols);
-    s.row.reset(&rows);
+    s.col.reset(cols);
+    s.row.reset(rows);
     DefSnapshot {
         n_rows,
         n_cols,
@@ -39,13 +40,12 @@ fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u32, depth: usize) 
     }
 }
 
-/// Per-axis scratch for one nesting depth. `tracks` is a fresh copy of the
-/// tree's track defs so the borrow checker doesn't fight us during recursion.
-/// `flexible` is a transient list used only inside `resolve_axis`; it lives on
-/// the per-axis struct so its capacity is retained across frames.
-#[derive(Default)]
+/// Per-axis scratch for one nesting depth. `tracks` shares the user's
+/// `Rc<[Track]>` (refcount-only clone — no copy). `flexible` is a transient
+/// list used only inside `resolve_axis`; it lives on the per-axis struct so
+/// its capacity is retained across frames.
 pub(crate) struct AxisScratch {
-    pub tracks: Vec<Track>,
+    pub tracks: Rc<[Track]>,
     pub sizes: Vec<f32>,
     pub resolved: Vec<bool>,
     pub hug: Vec<f32>,
@@ -53,14 +53,26 @@ pub(crate) struct AxisScratch {
     flexible: Vec<usize>,
 }
 
+impl Default for AxisScratch {
+    fn default() -> Self {
+        Self {
+            tracks: Rc::from([]),
+            sizes: Vec::new(),
+            resolved: Vec::new(),
+            hug: Vec::new(),
+            offsets: Vec::new(),
+            flexible: Vec::new(),
+        }
+    }
+}
+
 impl AxisScratch {
-    /// Snapshot tracks and (re)allocate per-track arrays to length `n`. All
-    /// arrays are zeroed; `resolved` is reset to `false`. Capacity is retained
-    /// across frames.
-    fn reset(&mut self, tracks: &[Track]) {
+    /// Adopt the user's track `Rc<[Track]>` (refcount-only) and (re)size the
+    /// per-track arrays to match. All arrays are zeroed; `resolved` is reset
+    /// to `false`. Capacity on the `Vec`s is retained across frames.
+    fn reset(&mut self, tracks: Rc<[Track]>) {
         let n = tracks.len();
-        self.tracks.clear();
-        self.tracks.extend_from_slice(tracks);
+        self.tracks = tracks;
         self.sizes.clear();
         self.sizes.resize(n, 0.0);
         self.resolved.clear();
