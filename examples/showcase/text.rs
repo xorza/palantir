@@ -1,12 +1,76 @@
 use palantir::primitives::Track;
-use palantir::{Color, Configure, Grid, Panel, Sizing, Stroke, Styled, Text, Ui};
+use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Text, Ui};
 use std::rc::Rc;
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
     How vexingly quick daft zebras jump!";
 
+/// "text" tab — basic single-text wrapping mechanics in fixed-width
+/// containers. The simplest demonstrations of `Text::new(...).wrapping()`
+/// and the intrinsic-min overflow rule.
 pub fn build(ui: &mut Ui) {
+    Panel::vstack()
+        .gap(16.0)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            section(
+                ui,
+                "single",
+                "single-line label, hugs natural width",
+                |ui| {
+                    Text::new("The quick brown fox jumps over the lazy dog")
+                        .size_px(16.0)
+                        .show(ui);
+                },
+            );
+
+            section(ui, "wide", "wrapping paragraph in a 360 px panel", |ui| {
+                Panel::vstack_with_id("wide-inner")
+                    .size((Sizing::Fixed(360.0), Sizing::Hug))
+                    .padding(8.0)
+                    .show(ui, |ui| {
+                        Text::new(PARAGRAPH).size_px(14.0).wrapping().show(ui);
+                    });
+            });
+
+            section(
+                ui,
+                "narrow",
+                "same text in a 140 px panel — wraps to more lines",
+                |ui| {
+                    Panel::vstack_with_id("narrow-inner")
+                        .size((Sizing::Fixed(140.0), Sizing::Hug))
+                        .padding(8.0)
+                        .show(ui, |ui| {
+                            Text::new(PARAGRAPH).size_px(14.0).wrapping().show(ui);
+                        });
+                },
+            );
+
+            section(
+                ui,
+                "overflow",
+                "unbreakable word in a 40 px slot — overflows at intrinsic_min",
+                |ui| {
+                    Panel::vstack_with_id("overflow-inner")
+                        .size((Sizing::Fixed(40.0), Sizing::Hug))
+                        .padding(4.0)
+                        .show(ui, |ui| {
+                            Text::new("supercalifragilistic")
+                                .size_px(14.0)
+                                .wrapping()
+                                .show(ui);
+                        });
+                },
+            );
+        });
+}
+
+/// "text layouts" tab — composition patterns from the intrinsic-dimensions
+/// plan: Grid Auto under constraint (Step B), property grid (Step B), and
+/// chat-message HStack with Fill text (Step C).
+pub fn build_layouts(ui: &mut Ui) {
     Panel::vstack()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
@@ -86,53 +150,40 @@ pub fn build(ui: &mut Ui) {
                 },
             );
 
+            // Chat-message pattern: HStack { Avatar (Fixed) + Message
+            // (Fill, wrapping) }. Step C resolves the message's Fill
+            // share during HStack measure and re-measures it at that
+            // share — wrap text shapes correctly inside the leftover
+            // slot. The motivating use case behind Step C.
             section(
                 ui,
-                "single",
-                "single-line label, hugs natural width",
+                "chat-message",
+                "chat: Fixed avatar + Fill wrapping message",
                 |ui| {
-                    Text::new("The quick brown fox jumps over the lazy dog")
-                        .size_px(16.0)
-                        .show(ui);
-                },
-            );
-
-            section(ui, "wide", "wrapping paragraph in a 360 px panel", |ui| {
-                Panel::vstack_with_id("wide-inner")
-                    .size((Sizing::Fixed(360.0), Sizing::Hug))
-                    .padding(8.0)
-                    .show(ui, |ui| {
-                        Text::new(PARAGRAPH).size_px(14.0).wrapping().show(ui);
-                    });
-            });
-
-            section(
-                ui,
-                "narrow",
-                "same text in a 140 px panel — wraps to more lines",
-                |ui| {
-                    Panel::vstack_with_id("narrow-inner")
-                        .size((Sizing::Fixed(140.0), Sizing::Hug))
-                        .padding(8.0)
+                    Panel::vstack_with_id("chat-list")
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .gap(8.0)
                         .show(ui, |ui| {
-                            Text::new(PARAGRAPH).size_px(14.0).wrapping().show(ui);
-                        });
-                },
-            );
-
-            section(
-                ui,
-                "overflow",
-                "unbreakable word in a 40 px slot — overflows at intrinsic_min",
-                |ui| {
-                    Panel::vstack_with_id("overflow-inner")
-                        .size((Sizing::Fixed(40.0), Sizing::Hug))
-                        .padding(4.0)
-                        .show(ui, |ui| {
-                            Text::new("supercalifragilistic")
-                                .size_px(14.0)
-                                .wrapping()
-                                .show(ui);
+                            chat_row(
+                                ui,
+                                "alice-1",
+                                Color::rgb(0.45, 0.55, 0.85),
+                                "Hey! Did you finish reading docs/intrinsics.md last night?",
+                            );
+                            chat_row(
+                                ui,
+                                "bob-1",
+                                Color::rgb(0.85, 0.55, 0.45),
+                                "Yeah — the Step B/C distinction finally clicked once I saw \
+                                the showcase property-grid card actually wrapping. Resizing \
+                                the window confirms the message column reflows live.",
+                            );
+                            chat_row(
+                                ui,
+                                "alice-2",
+                                Color::rgb(0.45, 0.55, 0.85),
+                                "Right? layout is fun.",
+                            );
                         });
                 },
             );
@@ -163,5 +214,27 @@ fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce
                 .color(Color::rgb(0.70, 0.74, 0.82))
                 .show(ui);
             body(ui);
+        });
+}
+
+/// One chat row: avatar (Fixed circle-ish) + Fill wrapping message.
+/// Helper because `#[track_caller]` doesn't propagate through closure
+/// bodies — explicit ids derived from `key` keep the three rows
+/// distinct. Caller must pass a unique `key` per row.
+fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'static str) {
+    Panel::hstack_with_id(("chat-row", key))
+        .size((Sizing::FILL, Sizing::Hug))
+        .gap(10.0)
+        .show(ui, |ui| {
+            Frame::with_id(("avatar", key))
+                .size((Sizing::Fixed(36.0), Sizing::Fixed(36.0)))
+                .fill(avatar_color)
+                .radius(18.0)
+                .show(ui);
+            Text::with_id(("message", key), message)
+                .size_px(14.0)
+                .size((Sizing::FILL, Sizing::Hug))
+                .wrapping()
+                .show(ui);
         });
 }

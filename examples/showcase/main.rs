@@ -28,6 +28,7 @@ type ShowcaseFn = fn(&mut Ui);
 
 const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("text", text::build),
+    ("text layouts", text::build_layouts),
     ("panels", panels::build),
     ("grid", grid::build),
     ("sizing", sizing::build),
