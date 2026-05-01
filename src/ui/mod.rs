@@ -6,7 +6,7 @@ use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::primitives::WidgetId;
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].
@@ -22,7 +22,7 @@ pub struct Ui {
     root: Option<NodeId>,
 
     #[cfg(debug_assertions)]
-    seen_ids: HashMap<WidgetId, NodeId>,
+    seen_ids: HashSet<WidgetId>,
 
     input: InputState,
 
@@ -44,7 +44,7 @@ impl Ui {
             parents: Vec::new(),
             root: None,
             #[cfg(debug_assertions)]
-            seen_ids: HashMap::new(),
+            seen_ids: HashSet::new(),
             input: InputState::new(),
             scale_factor: 1.0,
             pixel_snap: true,
@@ -109,9 +109,10 @@ impl Ui {
         let id = element.id;
         let node = self.tree.push_node(element, parent);
         #[cfg(debug_assertions)]
-        if let Some(prev) = self.seen_ids.insert(id, node) {
+        if !self.seen_ids.insert(id) {
             tracing::warn!(
-                ?id, ?node, first_seen = ?prev,
+                ?id,
+                ?node,
                 "WidgetId collision — use `with_id(...)` to disambiguate"
             );
         }

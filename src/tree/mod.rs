@@ -17,29 +17,25 @@ pub struct Node {
     pub first_child: Option<NodeId>,
     pub next_sibling: Option<NodeId>,
 
-    /// Range into Tree.shapes
-    pub shapes_start: u32,
-    pub shapes_end: u32,
+    /// Half-open range into `Tree.shapes` for this node's shapes.
+    pub shapes: std::ops::Range<u32>,
 
     pub desired: Size,
     pub rect: Rect,
 }
 
 impl Node {
-    /// Half-open range into `Tree.shapes` for this node's shapes. Cleaner than
-    /// indexing with the raw `shapes_start`/`shapes_end` pair.
     pub fn shapes_range(&self) -> std::ops::Range<usize> {
-        self.shapes_start as usize..self.shapes_end as usize
+        self.shapes.start as usize..self.shapes.end as usize
     }
 
-    fn new(element: UiElement, parent: Option<NodeId>) -> Self {
+    fn new(element: UiElement, parent: Option<NodeId>, shapes_start: u32) -> Self {
         Self {
             element,
             parent,
             first_child: None,
             next_sibling: None,
-            shapes_start: 0,
-            shapes_end: 0,
+            shapes: shapes_start..shapes_start,
             desired: Size::ZERO,
             rect: Rect::ZERO,
         }
@@ -150,10 +146,8 @@ impl Tree {
 
     pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
         let new_id = NodeId(self.nodes.len() as u32);
-        let mut node = Node::new(element, parent);
-        node.shapes_start = self.shapes.len() as u32;
-        node.shapes_end = self.shapes.len() as u32;
-        self.nodes.push(node);
+        self.nodes
+            .push(Node::new(element, parent, self.shapes.len() as u32));
         self.last_child.push(None);
 
         if let Some(p) = parent {
@@ -176,12 +170,12 @@ impl Tree {
     pub fn add_shape(&mut self, node: NodeId, shape: Shape) {
         let idx = node.0 as usize;
         debug_assert_eq!(
-            self.nodes[idx].shapes_end,
+            self.nodes[idx].shapes.end,
             self.shapes.len() as u32,
             "shapes for node {idx} must be added contiguously, before any child node",
         );
         self.shapes.push(shape);
-        self.nodes[idx].shapes_end = self.shapes.len() as u32;
+        self.nodes[idx].shapes.end = self.shapes.len() as u32;
     }
 
     pub fn node(&self, id: NodeId) -> &Node {
