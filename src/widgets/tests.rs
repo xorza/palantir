@@ -937,3 +937,122 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
 }
+
+/// Pin: a `Hug` grid with a `Fill` column has the Fill column collapse
+/// to 0 at arrange (no leftover available). Step B handles this by
+/// leaving Fill cols unresolved during measure → cells in Fill cols get
+/// `INFINITY` available width → text shapes at natural (single line),
+/// so row heights don't grow weirdly when the window resizes
+/// horizontally. The cell rect itself is invisible (slot.w = 0), but the
+/// row height stays consistent regardless of available width.
+#[test]
+fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    fn measure(surface_w: f32) -> f32 {
+        let mut ui = Ui::new();
+        ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+        ui.begin_frame();
+        let mut value_node = None;
+        Grid::new()
+            // Hug × Hug grid (default sizing) with [Hug, Fill] columns.
+            .cols(Rc::from([Track::hug(), Track::fill()]))
+            .rows(Rc::from([Track::hug()]))
+            .show(&mut ui, |ui| {
+                Text::new("Label:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                value_node = Some(
+                    Text::new("the quick brown fox jumps over the lazy dog")
+                        .size_px(14.0)
+                        .wrapping()
+                        .grid_cell((0, 1))
+                        .show(ui)
+                        .node,
+                );
+            });
+        ui.layout(Rect::new(0.0, 0.0, surface_w, 400.0));
+        ui.end_frame();
+        ui.layout_result()
+            .text_shape(value_node.unwrap())
+            .expect("text was shaped")
+            .measured
+            .h
+    }
+
+    let h_wide = measure(2000.0);
+    let h_narrow = measure(200.0);
+    // Both should be single-line (≈18 px line height for 14 px Inter).
+    // The exact value isn't pinned — what matters is wide and narrow
+    // produce the same height (no width-driven wrapping during measure).
+    assert!(
+        h_wide < 24.0,
+        "wide-window value should be single-line in Hug grid, got h={h_wide}"
+    );
+    assert!(
+        h_narrow < 24.0,
+        "narrow-window value should also be single-line (Fill col gets INF avail in Hug grid), got h={h_narrow}"
+    );
+    assert!(
+        (h_wide - h_narrow).abs() < 0.5,
+        "row height must not change with horizontal resize in Hug grid + Fill col; \
+         wide={h_wide}, narrow={h_narrow}",
+    );
+}
+
+/// Pin: a `Fill` grid with a `Fill` column DOES wrap text in the Fill
+/// column — measure and arrange agree on the Fill col width (both equal
+/// inner_avail's leftover after Hug + Fixed). This is the property-grid
+/// pattern: `Sizing::FILL × Hug` grid + Hug label column + Fill value
+/// column with wrapping text.
+#[test]
+fn fill_grid_fill_col_wraps_text_under_constrained_width() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut value_node = None;
+    // Wrap the grid in a vstack so the FILL grid gets a finite cross-axis
+    // width to fill (vstack passes inner.cross to children).
+    Panel::vstack().show(&mut ui, |ui| {
+        Grid::new()
+            .size((Sizing::FILL, Sizing::Hug))
+            .cols(Rc::from([Track::hug(), Track::fill()]))
+            .rows(Rc::from([Track::hug()]))
+            .show(ui, |ui| {
+                Text::new("Label:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                value_node = Some(
+                    Text::new("the quick brown fox jumps over the lazy dog")
+                        .size_px(14.0)
+                        .wrapping()
+                        .grid_cell((0, 1))
+                        .show(ui)
+                        .node,
+                );
+            });
+    });
+    // Surface 200 wide → Fill col gets ~150 (after Hug label col).
+    // Natural unbroken width is ~290 → must wrap.
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
+
+    let shaped = ui
+        .layout_result()
+        .text_shape(value_node.unwrap())
+        .expect("text was shaped");
+    assert!(
+        shaped.measured.h > 32.0,
+        "Fill grid + Fill col should wrap text under constrained width; got h={}",
+        shaped.measured.h,
+    );
+    assert!(
+        shaped.measured.w <= 200.0,
+        "wrapped text width should fit inside surface; got w={}",
+        shaped.measured.w,
+    );
+}
