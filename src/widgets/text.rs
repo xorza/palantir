@@ -3,7 +3,6 @@ use crate::primitives::{Color, WidgetId};
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
-use glam::Vec2;
 use std::borrow::Cow;
 use std::hash::Hash;
 
@@ -57,37 +56,22 @@ impl Text {
 
     /// Allow the renderer to reshape this text at the arranged width when
     /// the parent commits a narrower width than the unbounded line. Without
-    /// this, the text just hugs its widest natural line forever.
+    /// Reshape this text at the arranged width when the parent commits a
+    /// narrower width than the unbounded line. Without this, the text just
+    /// hugs its widest natural line forever.
     pub fn wrapping(mut self) -> Self {
-        self.wrap = TextWrap::Wrap { intrinsic_min: 0.0 };
+        self.wrap = TextWrap::Wrap;
         self
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        let max_w = match self.wrap {
-            TextWrap::Single => None,
-            // Shape unbounded for measurement; the reshape-during-arrange
-            // pass narrows it later if the parent commits a tighter width.
-            TextWrap::Wrap { .. } => None,
-        };
-        let m = ui.measure_text(&self.text, self.size_px, max_w);
-        let wrap = match self.wrap {
-            TextWrap::Single => TextWrap::Single,
-            TextWrap::Wrap { .. } => TextWrap::Wrap {
-                intrinsic_min: m.intrinsic_min,
-            },
-        };
         let node = ui.node(self.element, |ui| {
             ui.add_shape(Shape::Text {
-                offset: Vec2::ZERO,
                 text: self.text.into_owned(),
                 color: self.color,
-                measured: m.size,
                 font_size_px: self.size_px,
-                max_width_px: max_w,
-                key: m.key,
-                wrap,
+                wrap: self.wrap,
             });
         });
         let state = ui.response_for(id);

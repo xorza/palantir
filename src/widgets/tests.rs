@@ -605,13 +605,16 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         r.size.h,
     );
     let shape = ui.tree.shapes_of(node).first().expect("text shape");
-    let TextWrap::Wrap { intrinsic_min } = (match shape {
+    let wrap = match shape {
         Shape::Text { wrap, .. } => *wrap,
         _ => panic!("expected Shape::Text"),
-    }) else {
-        panic!("expected TextWrap::Wrap");
     };
-    assert!(intrinsic_min > 0.0);
+    assert_eq!(wrap, TextWrap::Wrap);
+    let shaped = ui
+        .layout_result()
+        .text_shape(node)
+        .expect("layout should have shaped the text");
+    assert!(shaped.measured.h > 32.0);
 }
 
 #[test]

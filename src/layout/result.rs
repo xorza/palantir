@@ -11,25 +11,20 @@ use std::collections::HashMap;
 pub struct LayoutResult {
     desired: Vec<Size>,
     rect: Vec<Rect>,
-    /// Per-node reshape result for `Shape::Text` runs whose `wrap` is
-    /// `TextWrap::Wrap` and whose committed width during measure is narrower
-    /// than the natural unbroken line. The encoder consults this when
-    /// emitting text so the renderer uses the wrapped buffer instead of the
-    /// recorded one — i.e. it crosses the layout/render boundary, which is
-    /// what makes it output rather than scratch. Keyed by `NodeId` because
-    /// the wrapping `Text` widget pushes exactly one `Shape::Text` per node.
-    text_reshapes: HashMap<NodeId, ReshapedText>,
+    /// Per-node shape result for every `Shape::Text` the layout pass
+    /// processed. Carries the measured size that fed the leaf's content
+    /// hugging and the shaped-buffer `key` the encoder hands to the
+    /// renderer. Keyed by `NodeId` because text widgets push exactly one
+    /// `Shape::Text` per node.
+    text_shapes: HashMap<NodeId, ShapedText>,
 }
 
-/// Side-table override for one `Shape::Text` whose committed width forced
-/// a reshape during measure. Tree's recorded shape stays untouched; the
-/// encoder reads `key` from here when present so the renderer picks up the
-/// wrapped buffer.
+/// Result of shaping one `Shape::Text` during the measure pass. `Tree`
+/// records only the authoring inputs; this is the layout-side derived state.
 #[derive(Clone, Copy, Debug)]
-pub struct ReshapedText {
+pub struct ShapedText {
     pub measured: Size,
     pub key: TextCacheKey,
-    pub max_width_px: f32,
 }
 
 impl LayoutResult {
@@ -39,7 +34,7 @@ impl LayoutResult {
         self.desired.resize(n, Size::ZERO);
         self.rect.clear();
         self.rect.resize(n, Rect::ZERO);
-        self.text_reshapes.clear();
+        self.text_shapes.clear();
     }
 
     pub fn desired(&self, id: NodeId) -> Size {
@@ -58,11 +53,11 @@ impl LayoutResult {
         self.rect[id.index()] = v;
     }
 
-    pub fn text_reshape(&self, id: NodeId) -> Option<&ReshapedText> {
-        self.text_reshapes.get(&id)
+    pub fn text_shape(&self, id: NodeId) -> Option<&ShapedText> {
+        self.text_shapes.get(&id)
     }
 
-    pub(super) fn set_text_reshape(&mut self, id: NodeId, r: ReshapedText) {
-        self.text_reshapes.insert(id, r);
+    pub(super) fn set_text_shape(&mut self, id: NodeId, s: ShapedText) {
+        self.text_shapes.insert(id, s);
     }
 }

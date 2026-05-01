@@ -1,5 +1,4 @@
-use crate::primitives::{ApproxF32, Color, Corners, Size, Stroke};
-use crate::text::TextCacheKey;
+use crate::primitives::{ApproxF32, Color, Corners, Stroke};
 use glam::Vec2;
 
 #[derive(Clone, Debug)]
@@ -18,29 +17,15 @@ pub enum Shape {
         width: f32,
         color: Color,
     },
-    /// Shaped text run. `measured` is the unbounded shape's bounding size
-    /// recorded at `show()` time; `key` identifies the shaped
-    /// `cosmic_text::Buffer` so the renderer can look it up without
-    /// reshaping. Runs whose `key` is [`TextCacheKey::INVALID`] (e.g.
-    /// produced by `mono_measure`) are dropped at render time — the size
-    /// still drives layout.
-    ///
-    /// `wrap` selects between "shape once and freeze" (`Single`) and
-    /// "reshape if the parent commits a narrower width" (`Wrap`). When the
-    /// measure pass commits a narrower width to a `Wrap` shape, it stores
-    /// the reshaped size + `key` on `LayoutResult.text_reshapes` keyed by
-    /// `NodeId` — the recorded shape stays untouched so `Tree` is read-only
-    /// during layout. `max_width_px` is the user-requested cap (today
-    /// always `None`, kept for diagnostics + future authoring ergonomics).
+    /// Shaped text run — *authoring inputs only*. Measured size and
+    /// shaped-buffer key are layout outputs and live on
+    /// `LayoutResult.text_shapes`, not here. `wrap` selects between "shape
+    /// once and freeze" (`Single`) and "reshape if the parent commits a
+    /// narrower width than the natural unbroken line" (`Wrap`).
     Text {
-        // todo review fields
-        offset: Vec2,
         text: String,
         color: Color,
-        measured: Size,
         font_size_px: f32,
-        max_width_px: Option<f32>,
-        key: TextCacheKey,
         wrap: TextWrap,
     },
 }
@@ -52,12 +37,10 @@ pub enum TextWrap {
     /// run that fits on a single line — labels, headings, anything that
     /// shouldn't wrap.
     Single,
-    /// Allow the arrange pass to reshape this run at the committed width.
-    /// `intrinsic_min` is the width of the widest unbreakable run (longest
-    /// word), measured at shape time and used as the floor when the parent
-    /// commits a narrower width — the run overflows rather than breaking
-    /// inside a word.
-    Wrap { intrinsic_min: f32 },
+    /// Reshape during measure if the parent commits a width narrower than
+    /// the natural unbroken line. The widest unbreakable run (longest word)
+    /// is the floor — text overflows rather than breaking inside a word.
+    Wrap,
 }
 
 impl Shape {
