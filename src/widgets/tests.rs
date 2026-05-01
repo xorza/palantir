@@ -6,23 +6,24 @@ use crate::widgets::{Button, Frame, Panel, Styled};
 
 #[test]
 fn clip_flag_is_recorded_on_panel_node() {
-    // Panels clip by default; explicit `.clip(false)` opts out. Pin both
-    // directions so a future default change is loud.
+    // Default is `overflow: visible` — panels do not clip unless asked.
+    // Explicit `.clip(true)` opts in. Pin both directions so a future
+    // default change is loud.
     let mut ui = Ui::new();
     ui.begin_frame();
-    let mut clipped = None;
-    let mut unclipped = None;
+    let mut default_panel = None;
+    let mut opt_in = None;
     Panel::hstack().show(&mut ui, |ui| {
-        clipped = Some(
-            Panel::zstack_with_id("clipped")
+        default_panel = Some(
+            Panel::zstack_with_id("default")
                 .size(50.0)
                 .show(ui, |_| {})
                 .node,
         );
-        unclipped = Some(
-            Panel::zstack_with_id("unclipped")
+        opt_in = Some(
+            Panel::zstack_with_id("opt-in")
                 .size(50.0)
-                .clip(false)
+                .clip(true)
                 .show(ui, |_| {})
                 .node,
         );
@@ -30,8 +31,8 @@ fn clip_flag_is_recorded_on_panel_node() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
-    assert!(ui.tree.node(clipped.unwrap()).element.flags.is_clip());
-    assert!(!ui.tree.node(unclipped.unwrap()).element.flags.is_clip());
+    assert!(!ui.tree.node(default_panel.unwrap()).element.flags.is_clip());
+    assert!(ui.tree.node(opt_in.unwrap()).element.flags.is_clip());
 }
 
 #[test]

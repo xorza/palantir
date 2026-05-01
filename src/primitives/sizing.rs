@@ -30,24 +30,15 @@ impl<T: crate::primitives::Num> From<T> for Sizing {
     }
 }
 
+/// Per-axis `Sizing`. Construct via `Default` (Hug × Hug), `Sizes::from(s)`
+/// (uniform), `Sizes::from(n)` (uniform Fixed via `Num`), or
+/// `Sizes::from((w, h))` for asymmetric. The `From` impls are the public
+/// surface — `Element::size` takes `impl Into<Sizes>` so call sites stay
+/// terse: `.size(100.0)`, `.size(Sizing::FILL)`, `.size((Sizing::FILL, 40.0))`.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Sizes {
     pub w: Sizing,
     pub h: Sizing,
-}
-
-impl Sizes {
-    pub const HUG: Self = Self {
-        w: Sizing::Hug,
-        h: Sizing::Hug,
-    };
-    pub const FILL: Self = Self {
-        w: Sizing::FILL,
-        h: Sizing::FILL,
-    };
-    pub const fn new(w: Sizing, h: Sizing) -> Self {
-        Self { w, h }
-    }
 }
 
 impl From<Sizing> for Sizes {
