@@ -140,7 +140,25 @@ Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each 
 - [x] winit event loop integration (showcase example)
 - [x] Hit-testing against last frame's rects → `Response { hovered, pressed, clicked }`, with disabled/invisible/clip/transform cascade
 - [x] Per-frame `Cascades` table shared by encoder + hit-index
-- [ ] Real text measurement via glyphon (today: hardcoded 8px/char placeholder)
-- [ ] Glyph atlas + text rendering in the wgpu pipeline
+- [x] Real text measurement + rendering via cosmic-text + glyphon (`TextMeasurer` Ui-side, `TextRenderer` wgpu-side, shared `CosmicMeasure` via `Rc<RefCell<…>>`)
+- [x] Glyph atlas + text rendering in the wgpu pipeline
+- [x] Wrapping text (Option A): `TextWrap::Wrap`, intrinsic_min from cosmic glyphs, single-pass reshape during measure (`docs/text.md` §4)
+- [ ] Intrinsic-dimensions protocol (Option B): `LenReq`-based on-demand intrinsic queries, Grid Auto under constraint, Stack Fill min-floor (`docs/intrinsics.md`)
 - [ ] Persistent state map (`Id → Any`) for scroll, focus, animation
 - [ ] Drag tracking on top of `Active`-capture (rect-independent `drag_delta`)
+
+## Layout vocabulary (decided)
+
+The committed native panel set is **`HStack`, `VStack`, `ZStack`,
+`Canvas`, and `Grid`**. Step B/C in `docs/intrinsics.md` extends `Grid`
+and `H/VStack` to be intrinsic-aware. After that the native set is "done"
+for the foreseeable future.
+
+Open future decision (deferred until first concrete user demand): whether
+richer flex/grid features arrive via Taffy as an opt-in feature flag
+(α — corpus-preferred), Taffy replacing native Grid (β), Taffy replacing
+both Stack flex and Grid (γ), or hand-grown in-tree (δ). Until that
+trigger, native panels are the authoring surface; Stack flex stops at
+"min-floor + weight + max-size" and any feature beyond it triggers the
+α/β/γ/δ conversation, not "add a case to `stack::measure`". See
+`docs/intrinsics.md` "Future direction" for context.
