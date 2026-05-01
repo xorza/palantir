@@ -14,16 +14,20 @@ mod zstack;
 
 pub use result::{LayoutResult, ShapedText};
 
-/// Persistent layout engine. Holds two kinds of per-frame state, both with
-/// capacity reused across frames:
+/// Persistent layout engine. Holds intermediate per-frame scratch + the
+/// `LayoutResult` the encoder reads after layout. All allocations retain
+/// capacity across frames.
 ///
-/// - [`GridContext`] — transient scratch (grid track sizes etc.), discarded
-///   conceptually once each pass returns.
-/// - [`LayoutResult`] — output (desired sizes, rects, text reshapes), read
-///   by the encoder + hit-index after the layout pass.
+/// - `grid` — grid-driver scratch (per-depth track state, hug pool).
+/// - `desired` — measure-pass output read by arrange. Pure measure→arrange
+///   handoff; nothing outside layout reads it (yet — `Ui::desired(id)`
+///   exposes it for future debug/devtools but no current consumer).
+/// - `result` — post-layout output (rects, text shapes) read by the encoder
+///   + hit-index.
 #[derive(Default)]
 pub struct LayoutEngine {
     pub(super) grid: GridContext,
+    desired: Vec<Size>,
     result: LayoutResult,
 }
 
@@ -41,7 +45,11 @@ impl LayoutEngine {
     }
 
     pub fn desired(&self, id: NodeId) -> Size {
-        self.result.desired(id)
+        self.desired[id.index()]
+    }
+
+    fn set_desired(&mut self, id: NodeId, v: Size) {
+        self.desired[id.index()] = v;
     }
 
     /// Run measure + arrange for `root` given the surface rect. Reuses
@@ -57,6 +65,9 @@ impl LayoutEngine {
             0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
+        let n = tree.node_count();
+        self.desired.clear();
+        self.desired.resize(n, Size::ZERO);
         self.result.resize_for(tree);
         self.grid.hugs.reset_for(tree);
         self.measure(
@@ -83,7 +94,7 @@ impl LayoutEngine {
         text: &mut TextMeasurer,
     ) -> Size {
         if tree.is_collapsed(node) {
-            self.result.set_desired(node, Size::ZERO);
+            self.set_desired(node, Size::ZERO);
             return Size::ZERO;
         }
         let style = *tree.layout(node);
@@ -144,7 +155,7 @@ impl LayoutEngine {
             ),
         );
 
-        self.result.set_desired(node, desired);
+        self.set_desired(node, desired);
         desired
     }
 
