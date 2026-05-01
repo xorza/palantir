@@ -112,17 +112,24 @@ variant. Or part of a broader RTL story.
 
 ### Percentage sizes
 
-CSS: `flex-basis: 50%`, `width: 25%`.
+CSS: `flex-basis: 50%`, `width: 25%`. **Distinct from `Fill` weights:**
+`Fill(0.5)` distributes leftover proportional to other Fill weights
+(relative to siblings), while percentage = parent fraction (absolute).
+They coincide only in the "two equal Fill children" case; diverge as
+soon as a non-Fill sibling exists or the Fill count changes.
 
-**Use case:** "this column is half the parent's width."
+**Use case:** "the sidebar is exactly 25% of the parent regardless of
+the main content's other siblings"; layouts where one child must
+anchor to a parent fraction independent of the rest.
 
-**Path:** new `Sizing::Percent(f32)` variant or extend `Fixed` to allow
-percentages. Resolves against parent's resolved size (chicken-and-egg
-with Hug parents — same gotcha CSS has).
+**Path:** new `Sizing::Percent(f32)` variant. Resolves against
+parent's resolved size (chicken-and-egg with Hug parents — same
+gotcha CSS has, resolved by treating percent-of-Hug as auto).
 
 **Trigger:** first widget that genuinely can't express its layout via
-Fill weights. Most "I want 50%" cases are cleanly expressible as `Fill`
-with shared weight.
+Fill weights or shared-Fill ratios. Most "I want 50%" cases are
+expressible as `Fill(1) + Fill(1)`; the gap is parent-fraction
+independent of siblings.
 
 ## Layout — Grid
 
