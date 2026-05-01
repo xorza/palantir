@@ -27,8 +27,8 @@ mod visibility;
 type ShowcaseFn = fn(&mut Ui);
 
 const SHOWCASES: &[(&str, ShowcaseFn)] = &[
-    ("panels", panels::build),
     ("text", text::build),
+    ("panels", panels::build),
     ("grid", grid::build),
     ("sizing", sizing::build),
     ("alignment", alignment::build),
