@@ -301,7 +301,7 @@ fn arrange_inner(
         track_offsets(&s.row.sizes, row_gap, &mut s.row.offsets);
     }
 
-    let parent_layout = tree.node(node).element;
+    let parent_child_align = tree.extras(node).map(|e| e.child_align).unwrap_or_default();
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).is_collapsed() {
@@ -325,7 +325,7 @@ fn arrange_inner(
         // Grid: a child with no explicit alignment stretches to fill its cell
         // (WPF default). `place_axis` is told `auto_stretches = true` so Auto
         // collapses to Stretch even when the child isn't `Sizing::Fill`.
-        let (h_align, v_align) = super::resolved_axis_align(&s_node, &parent_layout);
+        let (h_align, v_align) = super::resolved_axis_align(&s_node, parent_child_align);
         let (w, x_off) = super::place_axis(h_align, s_node.size.w, d.w, slot_w, true);
         let (h, y_off) = super::place_axis(v_align, s_node.size.h, d.h, slot_h, true);
 

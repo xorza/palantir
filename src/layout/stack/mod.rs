@@ -1,6 +1,6 @@
 use super::LayoutEngine;
 use crate::element::NodeElement;
-use crate::primitives::{AxisAlign, Justify, Rect, Size, Sizes, Sizing};
+use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizes, Sizing};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
@@ -52,12 +52,12 @@ impl Axis {
     /// Cross-axis alignment of a child, with parent's `child_align` as
     /// fallback when the child's own align is `Auto`. Mapped through
     /// `AxisAlign` so the math is type-symmetric across axes.
-    fn cross_align(self, child: &NodeElement, parent: &NodeElement) -> AxisAlign {
+    fn cross_align(self, child: &NodeElement, parent_child_align: Align) -> AxisAlign {
         match self {
             // HStack: cross = vertical
-            Axis::X => child.align.v.or(parent.child_align.v).to_axis(),
+            Axis::X => child.align.v.or(parent_child_align.v).to_axis(),
             // VStack: cross = horizontal
-            Axis::Y => child.align.h.or(parent.child_align.h).to_axis(),
+            Axis::Y => child.align.h.or(parent_child_align.h).to_axis(),
         }
     }
     /// Build a `Size` from main- and cross-axis lengths.
@@ -92,7 +92,7 @@ pub(super) fn measure(
 ) -> Size {
     // Pass infinite size on the main axis (WPF trick): children report intrinsic.
     let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
-    let gap = tree.node(node).element.gap;
+    let gap = tree.extras(node).map(|e| e.gap).unwrap_or(0.0);
 
     let mut total_main = 0.0f32;
     let mut max_cross = 0.0f32;
@@ -121,9 +121,10 @@ pub(super) fn arrange(
     inner: Rect,
     axis: Axis,
 ) {
-    let parent_layout = tree.node(node).element;
-    let gap = parent_layout.gap;
-    let justify = parent_layout.justify;
+    let (gap, justify, parent_child_align) = tree
+        .extras(node)
+        .map(|e| (e.gap, e.justify, e.child_align))
+        .unwrap_or((0.0, Justify::default(), Align::default()));
 
     // Sum desired along main axis for non-Fill children; collect Fill weights.
     // Fill siblings split the remaining space proportionally (WPF Star semantics)
@@ -197,7 +198,7 @@ pub(super) fn arrange(
             _ => axis.main(d),
         };
 
-        let cross_align = axis.cross_align(&s, &parent_layout);
+        let cross_align = axis.cross_align(&s, parent_child_align);
         let cross_sizing = axis.cross_sizing(s.size);
         let cross_desired = axis.cross(d);
         let (cross_size, cross_offset) =

@@ -1,5 +1,5 @@
 use crate::element::{LayoutMode, NodeElement};
-use crate::primitives::{AxisAlign, Rect, Size, Sizing};
+use crate::primitives::{Align, AxisAlign, Rect, Size, Sizing};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
@@ -179,11 +179,11 @@ fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
 /// cross axis and resolve it inline.
 pub(super) fn resolved_axis_align(
     child: &NodeElement,
-    parent: &NodeElement,
+    parent_child_align: Align,
 ) -> (AxisAlign, AxisAlign) {
     (
-        child.align.h.or(parent.child_align.h).to_axis(),
-        child.align.v.or(parent.child_align.v).to_axis(),
+        child.align.h.or(parent_child_align.h).to_axis(),
+        child.align.v.or(parent_child_align.v).to_axis(),
     )
 }
 
