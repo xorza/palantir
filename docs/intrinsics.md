@@ -311,23 +311,21 @@ showcase cards: "two Hug columns" (paragraph wraps, label keeps natural)
 and "property-grid" (Hug label column + Fill value column with three
 wrapping rows).
 
-### Step C — Stack Fill resolved during measure
+### Step C — Stack Fill resolved during measure — **done**
 
-- Move Fill width resolution from `stack::arrange` into `stack::measure`.
-- For each child: query `MinContent`/`MaxContent` on main axis (when the
-  child is Fill, or when distribution under-constrains a non-Fill).
-  Distribute available main-axis space respecting weights, floors, and
-  caps.
-- Re-enter `LayoutEngine::measure` on each child with its resolved width
-  as `available.main`. Wrapping text reshapes via the existing
-  `shape_text` reshape branch, which now triggers because
-  `committed_w < natural_w`.
-- New test: chat-message pattern — `HStack { Fixed, Fill(wrap text) }`
-  in a 200 px slot. Assert message rect width = 200 - avatar - gap, and
-  message height > line-height (multi-line).
-- New showcase card: chat-message demo (avatar + message bubble).
-
-**Acceptance:** `cargo test` green; new test pins the new behavior.
+`stack::measure` is now two-pass: first measures all children at INF on
+main (the WPF intrinsic trick, as before), then — if the stack itself
+has a finite main-axis size and Fill children exist — re-measures each
+Fill child at its resolved Fill share clamped to `[intrinsic_min,
+max_size]`. Wrap text in Fill children reshapes via the existing
+`shape_text` reshape branch because `committed_w < natural_w`. Hug
+stacks (`inner.main = INF`) skip the second pass — Fill children stay
+at natural width as before, matching the existing "Hug stack hugs to
+children's natural widths" rule. Pinned by
+`hstack_fill_wrap_text_reshapes_at_resolved_share` and
+`hstack_fill_wrap_text_floors_at_min_content`. New showcase card:
+"chat-message" — `HStack { Fixed avatar + Fill wrapping message }`
+across three rows.
 
 ## Cost & risk
 

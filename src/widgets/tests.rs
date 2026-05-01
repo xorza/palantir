@@ -1056,3 +1056,109 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
         shaped.measured.w,
     );
 }
+
+/// Step C pin: chat-message HStack pattern. Avatar (Fixed) + Message
+/// (Fill, wrapping text). Without Step C, message is measured at INF →
+/// shapes at natural width → cached shape disagrees with arrange's slot.
+/// With Step C, message is re-measured at its resolved Fill share →
+/// shapes (and reshapes if narrower than natural) at the slot width.
+#[test]
+fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut message_node = None;
+    // Wrap in a vstack so the Fill HStack gets a finite cross-axis to
+    // constrain — and so the HStack's own Fill on main has parent's
+    // available to resolve against.
+    Panel::vstack().show(&mut ui, |ui| {
+        Panel::hstack()
+            .size((Sizing::FILL, Sizing::Hug))
+            .gap(8.0)
+            .show(ui, |ui| {
+                Frame::with_id("avatar")
+                    .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                    .show(ui);
+                message_node = Some(
+                    Text::new("the quick brown fox jumps over the lazy dog")
+                        .size_px(14.0)
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .wrapping()
+                        .show(ui)
+                        .node,
+                );
+            });
+    });
+    // Surface 200 wide → message gets ~152 (after avatar + gap).
+    // Natural unbroken width is ~290, so message must wrap.
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
+
+    let shaped = ui
+        .layout_result()
+        .text_shape(message_node.unwrap())
+        .expect("text was shaped");
+    assert!(
+        shaped.measured.h > 32.0,
+        "Fill message should wrap inside its resolved share; got h={}",
+        shaped.measured.h,
+    );
+    // Shape width must be <= the resolved Fill share (200 - avatar - gap = 152).
+    assert!(
+        shaped.measured.w <= 160.0,
+        "wrapped message width should fit within Fill share; got w={}",
+        shaped.measured.w,
+    );
+}
+
+/// Pin: HStack `Fill` child respects `intrinsic_min` floor — when the
+/// resolved share is smaller than the longest unbreakable word, the
+/// child stays at min-content (overflows) rather than shrinking
+/// further. Same rule the leaf reshape branch in `shape_text` follows.
+#[test]
+fn hstack_fill_wrap_text_floors_at_min_content() {
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut message_node = None;
+    Panel::vstack().show(&mut ui, |ui| {
+        Panel::hstack()
+            .size((Sizing::FILL, Sizing::Hug))
+            .show(ui, |ui| {
+                // Hug Fixed sibling ~consumes 180 of 200 surface, leaving
+                // 20 px for Fill — well below the longest word's width.
+                Frame::with_id("avatar")
+                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .show(ui);
+                message_node = Some(
+                    Text::new("supercalifragilistic")
+                        .size_px(14.0)
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .wrapping()
+                        .show(ui)
+                        .node,
+                );
+            });
+    });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
+
+    let shaped = ui
+        .layout_result()
+        .text_shape(message_node.unwrap())
+        .expect("text was shaped");
+    // The unbreakable word can't shrink below its own width (~110 px in
+    // 14 px Inter). Even though the Fill share is ~20 px, message stays
+    // at the longer floor and overflows.
+    assert!(
+        shaped.measured.w > 20.0,
+        "min-content floor should keep message wider than the cramped slot; got w={}",
+        shaped.measured.w,
+    );
+}
