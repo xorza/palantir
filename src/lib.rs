@@ -11,11 +11,11 @@ pub mod widgets;
 pub use element::{Element, LayoutMode, UiElement};
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use primitives::{
-    Align, Color, Corners, GridCell, HAlign, Justify, NodeFlags, Rect, Sense, Size, Sizes, Sizing,
-    Spacing, Stroke, Track, TranslateScale, VAlign, Visibility, Visuals, WidgetId,
+    Align, Color, Corners, GridCell, HAlign, Justify, Rect, Sense, Size, Sizes, Sizing, Spacing,
+    Stroke, Track, TranslateScale, VAlign, Visibility, Visuals, WidgetId,
 };
 pub use shape::Shape;
-pub use tree::{Node, NodeId, Tree};
+pub use tree::{Node, NodeFlags, NodeId, Tree};
 pub use ui::{Theme, Ui};
 pub use widgets::{
     Background, Button, ButtonStyle, Canvas, Frame, Grid, HStack, Panel, Response, Styled, VStack,

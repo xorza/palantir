@@ -3,6 +3,9 @@ use crate::primitives::{GridDef, Track};
 use crate::shape::Shape;
 use std::rc::Rc;
 
+mod flags;
+pub use flags::NodeFlags;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub(crate) u32);
 

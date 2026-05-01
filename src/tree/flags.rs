@@ -1,12 +1,12 @@
 use crate::primitives::{Align, Sense, Visibility};
 
-/// Packed boolean + small-enum flags from a `UiElement`. Collapses `sense`
-/// (3 bools), `disabled`, `clip`, `visibility` (3 variants, 2 bits) into a
-/// single byte and stores `align` as its native byte alongside. Set at
-/// `Tree::push_node`; read everywhere else through accessors so callers
+/// Packed flags for a tree `Node`: `sense` (5-state enum, 3 bits), `disabled`,
+/// `clip`, `visibility` (3 variants, 2 bits) packed into one byte, with
+/// `align` stored in its native byte alongside. Built at `Tree::push_node`
+/// from a `UiElement`; read everywhere else through accessors so callers
 /// don't have to know the bit layout.
 ///
-/// `bits`: 0=click, 1=drag, 2=hover, 3=disabled, 4=clip, 5-6=visibility, 7=reserved.
+/// `bits`: 0-2=sense tag, 3=disabled, 4=clip, 5-6=visibility, 7=reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NodeFlags {
     bits: u8,
@@ -14,9 +14,7 @@ pub struct NodeFlags {
 }
 
 impl NodeFlags {
-    const CLICK: u8 = 1 << 0;
-    const DRAG: u8 = 1 << 1;
-    const HOVER: u8 = 1 << 2;
+    const SENSE_MASK: u8 = 0b111;
     const DISABLED: u8 = 1 << 3;
     const CLIP: u8 = 1 << 4;
     const VIS_MASK: u8 = 0b11 << 5;
@@ -31,16 +29,7 @@ impl NodeFlags {
         visibility: Visibility,
         align: Align,
     ) -> Self {
-        let mut bits = 0u8;
-        if sense.click {
-            bits |= Self::CLICK;
-        }
-        if sense.drag {
-            bits |= Self::DRAG;
-        }
-        if sense.hover {
-            bits |= Self::HOVER;
-        }
+        let mut bits = sense as u8;
         if disabled {
             bits |= Self::DISABLED;
         }
@@ -56,10 +45,13 @@ impl NodeFlags {
     }
 
     pub fn sense(self) -> Sense {
-        Sense {
-            click: self.bits & Self::CLICK != 0,
-            drag: self.bits & Self::DRAG != 0,
-            hover: self.bits & Self::HOVER != 0,
+        match self.bits & Self::SENSE_MASK {
+            0 => Sense::None,
+            1 => Sense::Hover,
+            2 => Sense::Click,
+            3 => Sense::Drag,
+            4 => Sense::ClickAndDrag,
+            _ => unreachable!(),
         }
     }
     pub fn is_disabled(self) -> bool {
@@ -119,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn each_sense_bit_round_trips_independently() {
+    fn every_sense_variant_round_trips() {
         for sense in [
             Sense::NONE,
             Sense::HOVER,
