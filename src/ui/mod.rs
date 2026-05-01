@@ -22,7 +22,11 @@ pub struct Ui {
     parents: Vec<NodeId>,
     root: Option<NodeId>,
 
-    #[cfg(debug_assertions)]
+    /// Per-frame collision set: every `WidgetId` that has been recorded this
+    /// frame. Cleared in `begin_frame`. Used to enforce id uniqueness — a
+    /// repeat insertion in `Ui::node` is a release-`assert!` panic, not a
+    /// warning, because duplicate ids silently corrupt every per-id store
+    /// (focus, scroll, click capture, hit-test rect lookup).
     seen_ids: HashSet<WidgetId>,
 
     input: InputState,
@@ -47,7 +51,6 @@ impl Ui {
             theme: Theme::default(),
             parents: Vec::new(),
             root: None,
-            #[cfg(debug_assertions)]
             seen_ids: HashSet::new(),
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
@@ -81,7 +84,6 @@ impl Ui {
         self.tree.clear();
         self.parents.clear();
         self.root = None;
-        #[cfg(debug_assertions)]
         self.seen_ids.clear();
     }
 
@@ -141,15 +143,11 @@ impl Ui {
     pub(crate) fn node(&mut self, element: UiElement, f: impl FnOnce(&mut Ui)) -> NodeId {
         let parent = self.parents.last().copied();
         let id = element.id;
+        assert!(
+            self.seen_ids.insert(id),
+            "WidgetId collision — id {id:?} recorded twice this frame. Use `with_id(key)` (or `WidgetId::with`) to disambiguate widgets at the same call site, e.g. inside a loop. Duplicate ids silently corrupt focus, scroll, click capture, and hit-testing.",
+        );
         let node = self.tree.push_node(element, parent);
-        #[cfg(debug_assertions)]
-        if !self.seen_ids.insert(id) {
-            tracing::warn!(
-                ?id,
-                ?node,
-                "WidgetId collision — use `with_id(...)` to disambiguate"
-            );
-        }
         if self.root.is_none() {
             self.root = Some(node);
         }
