@@ -59,28 +59,19 @@ Invisible subtrees were already pruned by the pre-walk early-return.
 Pinned by `disabled_ancestor_dims_descendant_fill` in
 `src/renderer/encoder/tests.rs`.
 
-### 3. Font registry / bundled font — **gap**
+### 3. Font registry / bundled font — **done**
 
-`CosmicMeasure::new()` calls `FontSystem::new()` which scans system fonts.
-Side effects:
-- Startup time (50–500ms cold, varies wildly by OS).
-- Nondeterminism in tests (different machines → different fallback chains →
-  different metrics → flaky pin tests). Today only `mono_measure` is used in
-  tests, but anyone wanting a shaped-text test will hit this.
+`CosmicMeasure::with_bundled_fonts()` constructs a `FontSystem` from
+`include_bytes!`-embedded TTFs in `assets/fonts/`: **Inter** (Regular + Bold,
+~130 KB) for proportional / UI body and **JetBrains Mono** (Regular + Bold,
+~530 KB) for monospace. Both OFL 1.1; license texts shipped alongside
+(`Inter-LICENSE.txt`, `JetBrainsMono-LICENSE.txt`). Default `Attrs` requests
+`Family::Name("Inter")`. Both examples (showcase, helloworld) now use this
+path; `CosmicMeasure::new()` remains as the system-fonts opt-in.
 
-Plan:
-- `CosmicMeasure::with_bundled_font(bytes: &[u8])` constructor that uses
-  `FontSystem::new_with_locale_and_db` on an empty DB and registers the bundle.
-- Bundle Inter or DejaVu Sans via `include_bytes!` in a small `assets/`
-  directory. Inter is ~310 KB subsetted (Latin + symbols); DejaVu is ~750 KB
-  but has broader coverage. Pick Inter.
-- Keep `CosmicMeasure::new()` as the system-font path for apps that want
-  native-feeling text.
-- Future `register_font(bytes)` proxies to `FontSystem::db_mut().load_font_data`.
-
-Skipped from the original plan: a numeric `FontId`. Cosmic-text already keys
-attrs on family name; until a widget actually needs to switch fonts mid-tree
-this is YAGNI. Add when needed.
+Future `register_font(bytes)` would proxy to `FontSystem::db_mut().load_font_data`
+once the first widget needs to add a font at runtime; not built yet (YAGNI),
+nor is a numeric `FontId` — cosmic-text keys on family name, which is enough.
 
 ### 4. Wrapping & intrinsic sizing — **not started**
 

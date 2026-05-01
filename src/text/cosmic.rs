@@ -13,10 +13,18 @@
 
 use super::{MeasureResult, TextCacheKey};
 use crate::primitives::Size;
-use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping};
+use cosmic_text::{Attrs, AttrsOwned, Buffer, Family, FontSystem, Metrics, Shaping, fontdb};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
+
+/// Bundled fonts shipped with the crate. Inter for proportional / UI body,
+/// JetBrains Mono for monospace. Both OFL 1.1.
+const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular.ttf");
+const INTER_BOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-Bold.ttf");
+const JBMONO_REGULAR: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+const JBMONO_BOLD: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Bold.ttf");
 
 const MAX_W_NONE: u32 = u32::MAX;
 
@@ -47,19 +55,44 @@ struct CacheEntry {
     measured: Size,
 }
 
-/// Real-shaping [`TextMeasure`]. Owns a [`FontSystem`] (system fonts only at
-/// the moment — no bundled font yet) and a cache of shaped `Buffer`s keyed
-/// on the inputs that affect shaping.
+/// Real-shaping text measurer. Owns a [`FontSystem`] (system fonts via
+/// [`CosmicMeasure::new`], or just the bundled Inter + JetBrains Mono via
+/// [`CosmicMeasure::with_bundled_fonts`]) and a cache of shaped `Buffer`s
+/// keyed on the inputs that affect shaping.
+///
+/// `default_attrs` is what `measure` uses when shaping — apps that need a
+/// different family/weight/style would build their own [`Attrs`] eventually,
+/// but today every run goes through the same default.
 pub struct CosmicMeasure {
     font_system: FontSystem,
     cache: HashMap<TextCacheKey, CacheEntry>,
+    default_attrs: AttrsOwned,
 }
 
 impl CosmicMeasure {
+    /// Use the OS's font set. Picks up whatever system fonts are installed
+    /// (slow on cold start, nondeterministic across machines — fine for apps,
+    /// avoid in tests). Default family is `SansSerif`.
     pub fn new() -> Self {
         Self {
             font_system: FontSystem::new(),
             cache: HashMap::new(),
+            default_attrs: AttrsOwned::new(&Attrs::new()),
+        }
+    }
+
+    /// Use only the bundled fonts (Inter + JetBrains Mono, regular + bold).
+    /// No system font scan: fast, deterministic, and gives the same metrics
+    /// on every machine. Default family is `Inter`.
+    pub fn with_bundled_fonts() -> Self {
+        let sources = [INTER_REGULAR, INTER_BOLD, JBMONO_REGULAR, JBMONO_BOLD]
+            .into_iter()
+            .map(|b| fontdb::Source::Binary(Arc::new(b)));
+        let font_system = FontSystem::new_with_fonts(sources);
+        Self {
+            font_system,
+            cache: HashMap::new(),
+            default_attrs: AttrsOwned::new(&Attrs::new().family(Family::Name("Inter"))),
         }
     }
 
@@ -137,7 +170,7 @@ impl CosmicMeasure {
         buffer.set_text(
             &mut self.font_system,
             text,
-            &Attrs::new(),
+            &self.default_attrs.as_attrs(),
             Shaping::Advanced,
             None,
         );
