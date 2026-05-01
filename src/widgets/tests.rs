@@ -648,3 +648,63 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
         r.size.w,
     );
 }
+
+/// Pins Option A's known gap: a wrapping `Text` inside a `Grid` `Auto`
+/// column gets `available_w = INFINITY` during measure (the WPF trick for
+/// unresolved tracks), so it never reshapes and the column ends up at the
+/// full unbroken width. Fix requires Option B (intrinsic-dimensions
+/// pre-pass). When that lands, this assertion flips: the grid should
+/// constrain the column to its share of the surface, and the wrapped text
+/// height should grow.
+#[test]
+fn wrapping_text_in_grid_auto_column_does_not_wrap_today() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut text_node = None;
+    Grid::new()
+        .cols(Rc::from([Track::hug(), Track::hug()]))
+        .rows(Rc::from([Track::hug()]))
+        .show(&mut ui, |ui| {
+            text_node = Some(
+                Text::new("the quick brown fox jumps over the lazy dog")
+                    .size_px(16.0)
+                    .wrapping()
+                    .grid_cell((0, 0))
+                    .show(ui)
+                    .node,
+            );
+            Text::new("right column")
+                .size_px(16.0)
+                .grid_cell((0, 1))
+                .show(ui);
+        });
+    // Surface is 200 px wide — narrower than the text's natural unbroken
+    // width (~335 px). Two `Auto` columns should fit inside, but Option A
+    // can't propagate the constraint down.
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
+
+    let node = text_node.unwrap();
+    let shaped = ui
+        .layout_result()
+        .text_shape(node)
+        .expect("text was shaped");
+    // Today: text is shaped unbounded (≈ one line at full natural width).
+    // After Option B: should be multi-line, height > 32 px.
+    assert!(
+        shaped.measured.h <= 24.0,
+        "expected single-line height (Option A), got h={}",
+        shaped.measured.h,
+    );
+    assert!(
+        shaped.measured.w > 200.0,
+        "expected text wider than the 200 px surface (Option A overflows), got w={}",
+        shaped.measured.w,
+    );
+}
