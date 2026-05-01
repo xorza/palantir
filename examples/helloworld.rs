@@ -142,7 +142,7 @@ impl ApplicationHandler for App {
         let mut ui = Ui::new();
         ui.set_scale_factor(window.scale_factor() as f32);
         ui.set_pixel_snap(true);
-        ui.install_text_system(palantir::text::CosmicMeasure::new());
+        ui.install_text_system(palantir::text::CosmicMeasure::with_bundled_fonts());
 
         window.request_redraw();
         self.state = Some(State {
