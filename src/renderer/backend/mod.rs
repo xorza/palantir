@@ -1,27 +1,28 @@
 use super::buffer::RenderBuffer;
 use super::quad::QuadPipeline;
 use crate::primitives::Color;
-use crate::text::CosmicMeasure;
+use crate::text::SharedCosmic;
 
 mod text;
-use text::TextPipeline;
+use text::TextRenderer;
 
-/// wgpu backend: owns the quad + text pipelines and cloned device/queue
-/// handles (cheap, Arc-backed). Uploads quads, runs the glyphon text
-/// pipeline against the caller's `CosmicMeasure`, and submits scissor-
-/// grouped draws. No layout, no encode, no compose — those happen elsewhere
-/// and arrive here as a `RenderBuffer`.
+/// wgpu backend: owns the quad pipeline + text renderer and cloned
+/// device/queue handles (cheap, Arc-backed). The text side holds a shared
+/// handle to the same `CosmicMeasure` the Ui side measures against (set via
+/// [`Self::set_cosmic`]) — without it, text rendering is silently skipped.
+/// No layout, no encode, no compose — those happen elsewhere and arrive
+/// here as a `RenderBuffer`.
 pub struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
     quad: QuadPipeline,
-    text: TextPipeline,
+    text: TextRenderer,
 }
 
 impl WgpuBackend {
     pub fn new(device: wgpu::Device, queue: wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let quad = QuadPipeline::new(&device, format);
-        let text = TextPipeline::new(&device, &queue, format);
+        let text = TextRenderer::new(&device, &queue, format);
         Self {
             device,
             queue,
@@ -30,18 +31,15 @@ impl WgpuBackend {
         }
     }
 
-    /// Render one frame. The wgpu backend always has a glyph atlas + text
-    /// pipeline, so it always wants a shaper — runs whose key is invalid
-    /// (mono fallback) are dropped inside `prepare`, but a real shaper is
-    /// still required to drive the pipeline. Install one on `Ui` via
-    /// [`crate::Ui::install_text_system`].
-    pub fn submit(
-        &mut self,
-        view: &wgpu::TextureView,
-        clear: Color,
-        buffer: &RenderBuffer,
-        text: &mut CosmicMeasure,
-    ) {
+    /// Install the shared shaper handle. Pass the same `SharedCosmic` to
+    /// [`crate::Ui::set_cosmic`] so layout and rendering see one cache.
+    pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
+        self.text.set_cosmic(cosmic);
+    }
+
+    /// Render one frame. Without a shared shaper installed (mono fallback)
+    /// text rendering is silently skipped; the frame still draws quads.
+    pub fn submit(&mut self, view: &wgpu::TextureView, clear: Color, buffer: &RenderBuffer) {
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
@@ -65,7 +63,6 @@ impl WgpuBackend {
             buffer.viewport_phys,
             buffer.scale,
             &buffer.texts,
-            text,
         );
 
         let mut encoder = self

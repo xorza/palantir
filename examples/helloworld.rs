@@ -130,7 +130,7 @@ impl ApplicationHandler for App {
         };
         surface.configure(&device, &config);
 
-        let backend = WgpuBackend::new(device.clone(), queue.clone(), format);
+        let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         tracing::info!(
             ?format,
@@ -142,7 +142,9 @@ impl ApplicationHandler for App {
         let mut ui = Ui::new();
         ui.set_scale_factor(window.scale_factor() as f32);
         ui.set_pixel_snap(true);
-        ui.install_text_system(palantir::text::CosmicMeasure::with_bundled_fonts());
+        let cosmic = palantir::text::share(palantir::text::CosmicMeasure::with_bundled_fonts());
+        ui.set_cosmic(cosmic.clone());
+        backend.set_cosmic(cosmic);
 
         window.request_redraw();
         self.state = Some(State {
@@ -254,15 +256,8 @@ impl State {
                 pixel_snap: self.ui.pixel_snap(),
             },
         );
-        self.backend.submit(
-            &view,
-            Color::rgb(0.08, 0.08, 0.10),
-            buffer,
-            self.ui
-                .text_system_mut()
-                .cosmic_mut()
-                .expect("install_text_system must be called before rendering"),
-        );
+        self.backend
+            .submit(&view, Color::rgb(0.08, 0.08, 0.10), buffer);
 
         frame.present();
         if !self.first_paint {

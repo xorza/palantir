@@ -19,10 +19,25 @@
 //! [`Ui`]: crate::Ui
 
 use crate::primitives::Size;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 mod cosmic;
 
 pub use cosmic::CosmicMeasure;
+
+/// Shared handle to a [`CosmicMeasure`], cloned into both [`TextSystem`]
+/// (Ui-side measurement) and the renderer's `TextRenderer` (wgpu-side
+/// shaping + rasterization). Single-threaded by design (`Rc`); access is
+/// sequential — measure during layout, prepare/render during the wgpu
+/// frame — so the `RefCell` is just runtime insurance against accidental
+/// re-entry.
+pub type SharedCosmic = Rc<RefCell<CosmicMeasure>>;
+
+/// Wrap a fresh [`CosmicMeasure`] for sharing between Ui and renderer.
+pub fn share(cosmic: CosmicMeasure) -> SharedCosmic {
+    Rc::new(RefCell::new(cosmic))
+}
 
 /// Stable identifier for a shaped text run, computed at authoring time so
 /// `Shape::Text` can carry it through the encoder/composer and the renderer
@@ -116,15 +131,13 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
     }
 }
 
-/// One-stop shop for text shaping. Wraps the optional [`CosmicMeasure`] so
-/// the rest of the engine (layout, widgets) doesn't need to thread an
-/// `Option<&mut CosmicMeasure>` around or know about the mono fallback —
-/// they just call `text.measure(...)`. When no shaper is installed, falls
-/// through to [`mono_measure`] (deterministic, sized, but produces
-/// [`TextCacheKey::INVALID`] so the renderer drops the run).
+/// Ui-side measurement façade. Holds an optional shared handle to the real
+/// shaper; falls through to [`mono_measure`] when nothing is installed.
+/// The renderer holds its own clone of the same handle so layout and
+/// rasterization see the same buffer cache.
 #[derive(Default)]
 pub struct TextSystem {
-    cosmic: Option<CosmicMeasure>,
+    cosmic: Option<SharedCosmic>,
 }
 
 impl TextSystem {
@@ -132,9 +145,9 @@ impl TextSystem {
         Self::default()
     }
 
-    /// Install a real shaper. Apps call this once at startup; tests usually
-    /// leave it unset and run on the mono fallback.
-    pub fn install_cosmic(&mut self, cosmic: CosmicMeasure) {
+    /// Install a shared shaper handle. Pass the same `SharedCosmic` to the
+    /// renderer (`WgpuBackend::set_cosmic`) so both sides see one cache.
+    pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
         self.cosmic = Some(cosmic);
     }
 
@@ -144,12 +157,6 @@ impl TextSystem {
         self.cosmic.is_some()
     }
 
-    /// Borrow the cosmic shaper for the wgpu backend's `prepare`/`render`.
-    /// `None` when only the mono fallback is in use.
-    pub fn cosmic_mut(&mut self) -> Option<&mut CosmicMeasure> {
-        self.cosmic.as_mut()
-    }
-
     /// Shape (or mono-measure) one run. Dispatch is internal.
     pub fn measure(
         &mut self,
@@ -157,8 +164,8 @@ impl TextSystem {
         font_size_px: f32,
         max_width_px: Option<f32>,
     ) -> MeasureResult {
-        match &mut self.cosmic {
-            Some(c) => c.measure(text, font_size_px, max_width_px),
+        match &self.cosmic {
+            Some(c) => c.borrow_mut().measure(text, font_size_px, max_width_px),
             None => mono_measure(text, font_size_px, max_width_px),
         }
     }
