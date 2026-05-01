@@ -25,8 +25,8 @@ fn clip_flag_is_recorded_on_panel_node() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
-    assert!(ui.tree.node(clipped.unwrap()).element.clip);
-    assert!(!ui.tree.node(unclipped.unwrap()).element.clip);
+    assert!(ui.tree.node(clipped.unwrap()).element.flags.is_clip());
+    assert!(!ui.tree.node(unclipped.unwrap()).element.flags.is_clip());
 }
 
 #[test]

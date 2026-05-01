@@ -1,4 +1,4 @@
-use crate::primitives::{Rect, Sense, TranslateScale, Visibility, WidgetId};
+use crate::primitives::{Rect, Sense, TranslateScale, WidgetId};
 use crate::tree::Tree;
 use glam::Vec2;
 
@@ -82,8 +82,8 @@ impl HitIndex {
                 None => Cascade::ROOT_PARENT,
             };
 
-            let me_disabled = parent.disabled || node.element.disabled;
-            let me_invisible = parent.invisible || node.element.visibility != Visibility::Visible;
+            let me_disabled = parent.disabled || node.element.flags.is_disabled();
+            let me_invisible = parent.invisible || node.element.flags.is_invisible();
 
             let parent_t = parent.transform_for_descendants;
             let node_transform = node
@@ -100,7 +100,7 @@ impl HitIndex {
                 Some(c) => screen_rect.intersect(c),
                 None => screen_rect,
             };
-            let descendant_clip = if node.element.clip {
+            let descendant_clip = if node.element.flags.is_clip() {
                 Some(match parent.clip_for_descendants {
                     Some(c) => screen_rect.intersect(c),
                     None => screen_rect,
@@ -119,7 +119,7 @@ impl HitIndex {
             let sense = if me_disabled || me_invisible {
                 Sense::NONE
             } else {
-                node.element.sense
+                node.element.flags.sense()
             };
             self.entries.push(HitEntry {
                 id: node.element.id,
