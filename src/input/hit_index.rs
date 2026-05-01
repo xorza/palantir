@@ -55,16 +55,17 @@ impl HitIndex {
 
         let paint = tree.paint_column();
         let widget_ids = tree.widget_id_column();
+        let own = cascades.own_column();
         for i in 0..n {
             let id = NodeId(i as u32);
-            let c = cascades.at(id);
+            let c = own[i];
 
-            let screen_rect = c.own_transform.apply_rect(layout.rect(id));
-            let visible_rect = match c.own_clip {
+            let screen_rect = c.transform.apply_rect(layout.rect(id));
+            let visible_rect = match c.clip {
                 Some(cl) => screen_rect.intersect(cl),
                 None => screen_rect,
             };
-            let sense = if c.effective_disabled || c.effective_invisible {
+            let sense = if c.disabled || c.invisible {
                 Sense::NONE
             } else {
                 paint[i].attrs.sense()

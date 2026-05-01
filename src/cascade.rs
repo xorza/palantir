@@ -9,47 +9,38 @@ use crate::layout::LayoutResult;
 use crate::primitives::{Rect, TranslateScale};
 use crate::tree::{NodeId, Tree};
 
-/// Per-node ancestor-cascade state. `own_*` apply to this node's own paint
-/// and hit-test; `descendant_*` are what this node passes down to children.
+/// Fields a node consumes for its own paint and hit-test. Always read
+/// together by `HitIndex::rebuild`, so they live as one row.
 #[derive(Clone, Copy, Debug)]
-pub struct NodeCascade {
+pub struct OwnCascade {
     /// Cumulative transform that places this node's own rect into screen
-    /// space. Equal to the parent's `descendant_transform`.
-    pub own_transform: TranslateScale,
-    /// Clip rect inherited from ancestors that this node's own paint /
-    /// hit-test must be intersected with. Equal to the parent's
-    /// `descendant_clip`. Stored in screen space so intersection composes
-    /// directly with transformed rects.
-    pub own_clip: Option<Rect>,
-    /// Transform passed down to children. Composes `own_transform` with this
-    /// node's own transform (if any).
-    pub descendant_transform: TranslateScale,
-    /// Clip rect passed down to children. If this node has `is_clip()`,
-    /// the ancestor clip intersected with this node's own screen rect;
-    /// otherwise just the inherited clip.
-    pub descendant_clip: Option<Rect>,
-    /// True if any ancestor (or self) has `is_disabled()`.
-    pub effective_disabled: bool,
+    /// space.
+    pub transform: TranslateScale,
+    /// Ancestor clip (screen space) the node's own rect/sense must be
+    /// intersected with.
+    pub clip: Option<Rect>,
+    /// True if any ancestor (or self) is disabled.
+    pub disabled: bool,
     /// True if any ancestor (or self) is non-`Visible`.
-    pub effective_invisible: bool,
+    pub invisible: bool,
 }
 
-impl NodeCascade {
-    const ROOT_PARENT: Self = Self {
-        own_transform: TranslateScale::IDENTITY,
-        own_clip: None,
-        descendant_transform: TranslateScale::IDENTITY,
-        descendant_clip: None,
-        effective_disabled: false,
-        effective_invisible: false,
-    };
+/// Fields a node passes down to its children. Read together by `rebuild`'s
+/// open-ancestor stack and by any future encoder push/pop driver.
+#[derive(Clone, Copy, Debug)]
+pub struct DescendantCascade {
+    pub transform: TranslateScale,
+    pub clip: Option<Rect>,
 }
 
-/// Flat per-node cascade table indexed by `NodeId.0`. Capacity is reused
+/// Per-node cascade table indexed by `NodeId.0`, grouped by access
+/// pattern: hit-test/paint reads `own[i]` as a row; rebuild + future
+/// encoder push/pop reads `descendant[i]` as a row. Capacity reused
 /// across frames; alloc-free in steady state.
 #[derive(Default)]
 pub struct Cascades {
-    nodes: Vec<NodeCascade>,
+    own: Vec<OwnCascade>,
+    descendant: Vec<DescendantCascade>,
 }
 
 impl Cascades {
@@ -58,73 +49,100 @@ impl Cascades {
     }
 
     /// Walk `tree.nodes` in storage order (== pre-order, since recording is
-    /// depth-first) and produce one `NodeCascade` per node, threading the
-    /// four cascades through the parent's slot.
+    /// depth-first) and produce one `OwnCascade` + one `DescendantCascade`
+    /// per node, threading the descendant row through an open-ancestor
+    /// stack.
     pub fn rebuild(&mut self, tree: &Tree, layout: &LayoutResult) {
-        self.nodes.clear();
-        self.nodes.reserve(tree.node_count());
+        let n = tree.node_count();
+        self.own.clear();
+        self.descendant.clear();
+        self.own.reserve(n);
+        self.descendant.reserve(n);
 
-        // Walk pre-order. `stack` holds the cascade row + `subtree_end` for
-        // each currently-open ancestor; the parent of node `i` is whichever
-        // ancestor's subtree still contains `i` on top of the stack.
-        let mut stack: Vec<(NodeCascade, u32)> = Vec::new();
+        struct Frame {
+            descendant: DescendantCascade,
+            disabled: bool,
+            invisible: bool,
+            subtree_end: u32,
+        }
+        const ROOT: (DescendantCascade, bool, bool) = (
+            DescendantCascade {
+                transform: TranslateScale::IDENTITY,
+                clip: None,
+            },
+            false,
+            false,
+        );
+        let mut stack: Vec<Frame> = Vec::new();
 
         let paint = tree.paint_column();
         let layout_col = tree.layout_column();
         let subtree_end = tree.subtree_end_column();
 
-        for i in 0..tree.node_count() {
-            while let Some(&(_, end)) = stack.last() {
-                if (i as u32) < end {
+        for i in 0..n {
+            while let Some(top) = stack.last() {
+                if (i as u32) < top.subtree_end {
                     break;
                 }
                 stack.pop();
             }
-            let parent = stack.last().map_or(NodeCascade::ROOT_PARENT, |&(c, _)| c);
+            let (parent_desc, parent_dis, parent_inv) = match stack.last() {
+                Some(p) => (p.descendant, p.disabled, p.invisible),
+                None => ROOT,
+            };
 
             let id = NodeId(i as u32);
             let attrs = paint[i].attrs;
 
-            let effective_disabled = parent.effective_disabled || attrs.is_disabled();
-            let effective_invisible = parent.effective_invisible || !layout_col[i].is_visible();
+            let disabled = parent_dis || attrs.is_disabled();
+            let invisible = parent_inv || !layout_col[i].is_visible();
 
-            let own_transform = parent.descendant_transform;
-            let own_clip = parent.descendant_clip;
-
-            let node_transform = tree.read_extras(id).transform;
-            let descendant_transform = match node_transform {
-                Some(t) => own_transform.compose(t),
-                None => own_transform,
+            let own = OwnCascade {
+                transform: parent_desc.transform,
+                clip: parent_desc.clip,
+                disabled,
+                invisible,
             };
 
-            let descendant_clip = if attrs.is_clip() {
-                let screen_rect = own_transform.apply_rect(layout.rect(id));
-                Some(match own_clip {
+            let node_transform = tree.read_extras(id).transform;
+            let desc_transform = match node_transform {
+                Some(t) => own.transform.compose(t),
+                None => own.transform,
+            };
+            let desc_clip = if attrs.is_clip() {
+                let screen_rect = own.transform.apply_rect(layout.rect(id));
+                Some(match own.clip {
                     Some(c) => screen_rect.intersect(c),
                     None => screen_rect,
                 })
             } else {
-                own_clip
+                own.clip
+            };
+            let descendant = DescendantCascade {
+                transform: desc_transform,
+                clip: desc_clip,
             };
 
-            let row = NodeCascade {
-                own_transform,
-                own_clip,
-                descendant_transform,
-                descendant_clip,
-                effective_disabled,
-                effective_invisible,
-            };
-            self.nodes.push(row);
-            stack.push((row, subtree_end[i]));
+            self.own.push(own);
+            self.descendant.push(descendant);
+            stack.push(Frame {
+                descendant,
+                disabled,
+                invisible,
+                subtree_end: subtree_end[i],
+            });
         }
     }
 
-    pub fn at(&self, id: NodeId) -> NodeCascade {
-        self.nodes[id.index()]
+    pub fn is_invisible(&self, id: NodeId) -> bool {
+        self.own[id.index()].invisible
     }
 
-    pub fn is_invisible(&self, id: NodeId) -> bool {
-        self.nodes[id.index()].effective_invisible
+    pub fn own_column(&self) -> &[OwnCascade] {
+        &self.own
+    }
+
+    pub fn descendant_column(&self) -> &[DescendantCascade] {
+        &self.descendant
     }
 }
