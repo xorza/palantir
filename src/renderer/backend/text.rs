@@ -1,12 +1,8 @@
-//! Glyphon-backed text pipeline. Owns the device-bound state
-//! ([`Cache`], [`TextAtlas`], [`Viewport`], [`TextRenderer`], [`SwashCache`])
-//! that the wgpu backend needs to rasterize shaped runs.
-//!
-//! Authoring-time shaping state ([`FontSystem`] + the per-key shaped
-//! `cosmic_text::Buffer` cache) is held by [`crate::text::CosmicMeasure`] on
-//! the `Ui` side. At submit time the backend takes
-//! `Option<&mut CosmicMeasure>` directly, looks up each [`TextRun`]'s
-//! buffer, builds a `glyphon::TextArea`, and hands the lot to glyphon.
+//! Glyphon-backed text renderer. Owns the device-bound state (`Cache`,
+//! `TextAtlas`, `Viewport`, `glyphon::TextRenderer`, `SwashCache`) and a
+//! shared handle to the [`CosmicMeasure`] populated by layout, so prepare
+//! can look up each [`TextRun`]'s shaped buffer directly from the cache the
+//! Ui side filled.
 //!
 //! v1 limitation: all text is prepared and rendered after all quads, so text
 //! always paints on top of every quad in the frame. This matches the common
@@ -15,35 +11,42 @@
 //! needs the opposite z-order — likely via per-group prepare/render or
 //! glyphon's depth metadata.
 //!
-//! [`FontSystem`]: cosmic_text::FontSystem
+//! [`CosmicMeasure`]: crate::text::CosmicMeasure
 //! [`TextRun`]: super::super::buffer::TextRun
 
 use super::super::buffer::{ScissorRect, TextRun};
-use crate::text::CosmicMeasure;
+use crate::text::SharedCosmic;
 use glyphon::{
-    Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
+    Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
+    TextRenderer as GlyphonRenderer, Viewport,
 };
 
-pub(crate) struct TextPipeline {
+/// Renderer-side encapsulation of the cosmic-text → glyphon path. Holds the
+/// glyphon device-bound state plus a shared handle to the same
+/// [`CosmicMeasure`] the Ui side measured against, so the buffer cache is
+/// the single source of truth.
+pub(crate) struct TextRenderer {
+    cosmic: Option<SharedCosmic>,
     cache: Cache,
     atlas: TextAtlas,
     viewport: Viewport,
-    renderer: TextRenderer,
+    renderer: GlyphonRenderer,
     swash_cache: SwashCache,
     /// Reusable scratch for `TextArea`s built each frame from the
     /// `RenderBuffer.texts`. Cleared per submit, capacity retained.
     scratch: Vec<TextArea<'static>>,
 }
 
-impl TextPipeline {
+impl TextRenderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let cache = Cache::new(device);
         let mut atlas = TextAtlas::new(device, queue, &cache, format);
         let viewport = Viewport::new(device, &cache);
         let renderer =
-            TextRenderer::new(&mut atlas, device, wgpu::MultisampleState::default(), None);
+            GlyphonRenderer::new(&mut atlas, device, wgpu::MultisampleState::default(), None);
         let swash_cache = SwashCache::new();
         Self {
+            cosmic: None,
             cache,
             atlas,
             viewport,
@@ -51,6 +54,12 @@ impl TextPipeline {
             swash_cache,
             scratch: Vec::new(),
         }
+    }
+
+    /// Install the shared shaper handle. Pass the same `SharedCosmic` to
+    /// [`crate::Ui::set_cosmic`] so layout and rendering see one cache.
+    pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
+        self.cosmic = Some(cosmic);
     }
 
     /// Re-create on surface format change (e.g. after window recreation).
@@ -61,7 +70,7 @@ impl TextPipeline {
         format: wgpu::TextureFormat,
     ) {
         self.atlas = TextAtlas::new(device, queue, &self.cache, format);
-        self.renderer = TextRenderer::new(
+        self.renderer = GlyphonRenderer::new(
             &mut self.atlas,
             device,
             wgpu::MultisampleState::default(),
@@ -69,9 +78,9 @@ impl TextPipeline {
         );
     }
 
-    /// Build glyphon `TextArea`s from `runs` (looking up shaped buffers in
-    /// `cosmic`) and call `prepare`. Returns `false` and skips work if no
-    /// runs resolve to a buffer.
+    /// Build glyphon `TextArea`s from `runs` (looked up in the shared cosmic
+    /// cache) and call `prepare`. Returns `false` and skips work if no
+    /// shaper is installed or no runs resolve to a buffer.
     pub fn prepare(
         &mut self,
         device: &wgpu::Device,
@@ -79,8 +88,12 @@ impl TextPipeline {
         viewport_phys: [u32; 2],
         scale: f32,
         runs: &[TextRun],
-        cosmic: &mut CosmicMeasure,
     ) -> bool {
+        let Some(cosmic) = self.cosmic.as_ref() else {
+            return false;
+        };
+        let mut cosmic = cosmic.borrow_mut();
+
         // Erase the `'static` lifetime of `self.scratch` to a frame-local
         // borrow tied to `cosmic`. Sound: scratch is cleared at the bottom
         // of this method, no `TextArea` reference escapes the function.

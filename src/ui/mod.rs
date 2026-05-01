@@ -7,7 +7,7 @@ use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::layout::{LayoutEngine, LayoutResult};
 use crate::primitives::{Rect, Size, WidgetId};
 use crate::shape::Shape;
-use crate::text::{CosmicMeasure, MeasureResult, TextSystem};
+use crate::text::{MeasureResult, SharedCosmic, TextSystem};
 use crate::tree::{NodeId, Tree};
 use std::collections::HashSet;
 
@@ -72,18 +72,12 @@ impl Ui {
         }
     }
 
-    /// Install a [`CosmicMeasure`] for real text shaping & rendering. Apps
-    /// call this once at startup; tests typically leave it unset and run on
-    /// the deterministic mono placeholder.
-    pub fn install_text_system(&mut self, cosmic: CosmicMeasure) {
-        self.text.install_cosmic(cosmic);
-    }
-
-    /// Mutable access to the [`TextSystem`]. Mostly for the wgpu backend
-    /// (needs the inner cosmic shaper for glyphon's `prepare`/`render`); ad-
-    /// hoc text-size queries can use [`Ui::measure_text`].
-    pub fn text_system_mut(&mut self) -> &mut TextSystem {
-        &mut self.text
+    /// Install a shared shaper handle. Apps construct one
+    /// [`SharedCosmic`] at startup and clone it into both `Ui` and the wgpu
+    /// backend so they see the same buffer cache. Tests usually leave this
+    /// unset and run on the deterministic mono fallback.
+    pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
+        self.text.set_cosmic(cosmic);
     }
 
     /// One-off text measurement. Widgets don't need this any more — layout

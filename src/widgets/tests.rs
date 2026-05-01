@@ -576,11 +576,11 @@ fn frame_with_sense_click_is_clickable() {
 #[test]
 fn wrapping_text_grows_height_in_narrow_frame() {
     use crate::shape::TextWrap;
-    use crate::text::CosmicMeasure;
+    use crate::text::{CosmicMeasure, share};
     use crate::widgets::Text;
 
     let mut ui = Ui::new();
-    ui.install_text_system(CosmicMeasure::with_bundled_fonts());
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
     ui.begin_frame();
     let mut text_node = None;
     Panel::vstack()
@@ -619,11 +619,11 @@ fn wrapping_text_grows_height_in_narrow_frame() {
 
 #[test]
 fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
-    use crate::text::CosmicMeasure;
+    use crate::text::{CosmicMeasure, share};
     use crate::widgets::Text;
 
     let mut ui = Ui::new();
-    ui.install_text_system(CosmicMeasure::with_bundled_fonts());
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
     ui.begin_frame();
     let mut text_node = None;
     Panel::vstack()
