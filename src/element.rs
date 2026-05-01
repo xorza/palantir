@@ -33,11 +33,15 @@ pub enum LayoutMode {
 /// panel-only knobs that leaves never read (`gap`, `justify`, `child_align`).
 /// Leaves vastly outnumber panels, so paying ~36B once per panel beats
 /// carrying these fields inline on every leaf.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UiElementExtras {
     pub transform: Option<TranslateScale>,
     pub position: Vec2,
     pub grid: GridCell,
+    /// Lower clamp on the resolved outer size. Default `Size::ZERO`.
+    pub min_size: Size,
+    /// Upper clamp on the resolved outer size. Default `Size::INF`.
+    pub max_size: Size,
     /// Logical-px space between children (panels only).
     pub gap: f32,
     /// Main-axis distribution of leftover space (HStack/VStack only).
@@ -46,14 +50,30 @@ pub struct UiElementExtras {
     pub child_align: Align,
 }
 
+impl Default for UiElementExtras {
+    fn default() -> Self {
+        Self {
+            transform: None,
+            position: Vec2::ZERO,
+            grid: GridCell::default(),
+            min_size: Size::ZERO,
+            max_size: Size::INF,
+            gap: 0.0,
+            justify: Justify::default(),
+            child_align: Align::default(),
+        }
+    }
+}
+
 impl UiElementExtras {
     /// True when nothing has been customized — push_node skips the side-table
     /// allocation in this case.
     pub fn is_default(&self) -> bool {
         self.transform.is_none()
-            && self.position.x.approx_zero()
-            && self.position.y.approx_zero()
+            && self.position.approx_zero()
             && self.grid == GridCell::default()
+            && self.min_size.approx_zero()
+            && self.max_size == Size::INF
             && self.gap.approx_zero()
             && self.justify == Justify::default()
             && self.child_align == Align::default()
@@ -70,8 +90,6 @@ pub struct NodeElement {
     pub mode: LayoutMode,
 
     pub size: Sizes,
-    pub min_size: Size,
-    pub max_size: Size,
     pub padding: Spacing,
     pub margin: Spacing,
 
@@ -190,8 +208,6 @@ impl UiElement {
             id: self.id,
             mode: self.mode,
             size: self.size,
-            min_size: self.min_size,
-            max_size: self.max_size,
             padding: self.padding,
             margin: self.margin,
             flags: NodeFlags::pack(
@@ -207,6 +223,8 @@ impl UiElement {
             transform: self.transform,
             position: self.position,
             grid: self.grid,
+            min_size: self.min_size,
+            max_size: self.max_size,
             gap: self.gap,
             justify: self.justify,
             child_align: self.child_align,
