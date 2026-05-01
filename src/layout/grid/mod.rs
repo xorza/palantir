@@ -185,14 +185,8 @@ fn measure_inner(
         // Span-1 only drives Hug-track sizing (avoids the WPF Auto↔Star
         // cyclic-iteration trap).
         let s = layout.grid.at(depth);
-        if cell.col_span == 1 && matches!(s.col.tracks[cell.col as usize].size, Sizing::Hug) {
-            let i = cell.col as usize;
-            s.col.hug[i] = s.col.hug[i].max(d.w);
-        }
-        if cell.row_span == 1 && matches!(s.row.tracks[cell.row as usize].size, Sizing::Hug) {
-            let i = cell.row as usize;
-            s.row.hug[i] = s.row.hug[i].max(d.h);
-        }
+        record_hug(&mut s.col, cell.col, cell.col_span, d.w);
+        record_hug(&mut s.row, cell.row, cell.row_span, d.h);
     }
 
     // Resolve Hug tracks from accumulated hug sizes, write through to the
@@ -221,6 +215,16 @@ fn resolve_fixed(a: &mut AxisScratch) {
             a.sizes[i] = v.clamp(t.min, t.max);
             a.resolved[i] = true;
         }
+    }
+}
+
+fn record_hug(a: &mut AxisScratch, idx: u16, span: u16, desired: f32) {
+    if span != 1 {
+        return;
+    }
+    let i = idx as usize;
+    if matches!(a.tracks[i].size, Sizing::Hug) {
+        a.hug[i] = a.hug[i].max(desired);
     }
 }
 

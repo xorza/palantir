@@ -67,6 +67,13 @@ impl Axis {
             Axis::Y => Size::new(cross, main),
         }
     }
+    /// Build a `Vec2` from main- and cross-axis positions.
+    fn compose_point(self, main: f32, cross: f32) -> Vec2 {
+        match self {
+            Axis::X => Vec2::new(main, cross),
+            Axis::Y => Vec2::new(cross, main),
+        }
+    }
     /// Build a `Rect` from main- and cross-axis positions and lengths.
     fn compose_rect(self, main_pos: f32, cross_pos: f32, main: f32, cross: f32) -> Rect {
         match self {
@@ -174,7 +181,7 @@ pub(super) fn arrange(
             (n.element, n.desired, n.is_collapsed())
         };
         if collapsed {
-            super::zero_subtree(tree, c, axis.compose_rect(cursor, cross_min, 0.0, 0.0).min);
+            super::zero_subtree(tree, c, axis.compose_point(cursor, cross_min));
             continue;
         }
         if !first {
