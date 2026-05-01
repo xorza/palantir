@@ -190,25 +190,19 @@ fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
     s
 }
 
-/// Cross/placement alignment for a child, falling back to the parent's
-/// `child_align` on whichever axis the child left as `Auto`. Returned as a
-/// `(horizontal, vertical)` `AxisAlign` pair so layout math stays
-/// axis-symmetric. Used by ZStack and Grid; HStack/VStack only need the
-/// cross axis and resolve it inline.
+/// Resolve a child's alignment on both axes: child's own value if not `Auto`,
+/// else the parent's `child_align` for that axis. Single source of truth for
+/// the alignment cascade — every layout (stack, grid, zstack) calls this so
+/// they can't drift. Stack discards the unused axis; the cost is two enum
+/// matches per child per frame.
 pub(super) fn resolved_axis_align(
     child: &NodeElement,
     parent_child_align: Align,
 ) -> (AxisAlign, AxisAlign) {
-    let child_align = child.flags.align();
+    let a = child.flags.align();
     (
-        child_align
-            .halign()
-            .or(parent_child_align.halign())
-            .to_axis(),
-        child_align
-            .valign()
-            .or(parent_child_align.valign())
-            .to_axis(),
+        a.halign().or(parent_child_align.halign()).to_axis(),
+        a.valign().or(parent_child_align.valign()).to_axis(),
     )
 }
 
