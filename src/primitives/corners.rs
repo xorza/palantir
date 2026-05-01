@@ -1,4 +1,4 @@
-use crate::primitives::Size;
+use super::{Num, Size};
 use glam::Vec2;
 
 /// Per-corner radii. `Vec2`/`Size` map to (top, bottom) pairs; `f32` is uniform.
@@ -38,7 +38,7 @@ impl Corners {
     }
 }
 
-impl<T: crate::primitives::Num> From<T> for Corners {
+impl<T: Num> From<T> for Corners {
     fn from(r: T) -> Self {
         Self::all(r.as_f32())
     }

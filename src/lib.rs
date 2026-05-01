@@ -1,3 +1,4 @@
+pub mod cascade;
 pub mod element;
 pub mod input;
 pub mod layout;
@@ -8,6 +9,7 @@ pub mod tree;
 pub mod ui;
 pub mod widgets;
 
+pub use cascade::{Cascades, NodeCascade};
 pub use element::{Element, LayoutMode, UiElement};
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use primitives::{

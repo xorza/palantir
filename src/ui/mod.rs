@@ -1,9 +1,10 @@
 mod theme;
 pub use theme::Theme;
 
+use crate::cascade::Cascades;
 use crate::element::UiElement;
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
-use crate::layout::LayoutEngine;
+use crate::layout::{LayoutEngine, LayoutResult};
 use crate::primitives::{Rect, Size, WidgetId};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
@@ -33,6 +34,10 @@ pub struct Ui {
     /// Persistent layout engine: holds reusable scratch buffers across frames.
     /// Accessed via `Ui::layout(surface)`.
     layout_engine: LayoutEngine,
+    /// Per-frame cascade resolution shared by the renderer encoder (skip
+    /// invisible subtrees) and the input hit index (screen rects + sense).
+    /// Rebuilt in `end_frame`.
+    cascades: Cascades,
 
     scale_factor: f32,
     pixel_snap: bool,
@@ -54,6 +59,7 @@ impl Ui {
             seen_ids: HashSet::new(),
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
+            cascades: Cascades::new(),
             scale_factor: 1.0,
             pixel_snap: true,
         }
@@ -97,11 +103,19 @@ impl Ui {
         self.layout_engine.run(&self.tree, root, surface);
     }
 
-    /// Rebuild input's last-frame rect cache from the just-arranged tree.
-    /// Call after `layout`.
+    /// Rebuild the per-frame cascade table and input's last-frame rect cache
+    /// from the just-arranged tree. Call after `layout`.
     pub fn end_frame(&mut self) {
+        self.cascades
+            .rebuild(&self.tree, self.layout_engine.result());
         self.input
-            .end_frame(&self.tree, self.layout_engine.result());
+            .end_frame(&self.tree, self.layout_engine.result(), &self.cascades);
+    }
+
+    /// Borrow the per-frame cascade table. Pass to the renderer pipeline
+    /// alongside `tree()` and `layout_result()`.
+    pub fn cascades(&self) -> &Cascades {
+        &self.cascades
     }
 
     pub fn rect(&self, id: NodeId) -> Rect {
@@ -112,7 +126,7 @@ impl Ui {
         self.layout_engine.desired(id)
     }
 
-    pub fn layout_result(&self) -> &crate::layout::LayoutResult {
+    pub fn layout_result(&self) -> &LayoutResult {
         self.layout_engine.result()
     }
 

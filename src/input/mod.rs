@@ -1,5 +1,7 @@
 mod hit_index;
 
+use crate::cascade::Cascades;
+use crate::layout::LayoutResult;
 use crate::primitives::{Rect, Sense, WidgetId};
 use crate::tree::Tree;
 use glam::Vec2;
@@ -145,9 +147,10 @@ impl InputState {
 
     /// Rebuild last-frame rects from the just-arranged tree, recompute hover,
     /// drop transient per-frame flags. Call after layout. The cascade
-    /// walk + screen-space rect derivation lives in [`HitIndex::rebuild`].
-    pub(crate) fn end_frame(&mut self, tree: &Tree, layout: &crate::layout::LayoutResult) {
-        self.hit_index.rebuild(tree, layout);
+    /// resolution itself lives in [`Cascades`]; `HitIndex::rebuild` just
+    /// flattens its output to the per-id form hit-testing wants.
+    pub(crate) fn end_frame(&mut self, tree: &Tree, layout: &LayoutResult, cascades: &Cascades) {
+        self.hit_index.rebuild(tree, layout, cascades);
         self.clicked_this_frame.clear();
         if let Some(active) = self.active
             && !self.hit_index.contains_id(active)

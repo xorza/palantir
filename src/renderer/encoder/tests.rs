@@ -2,7 +2,7 @@ use super::{RenderCmd, encode};
 use crate::Ui;
 use crate::element::Element;
 use crate::input::{InputEvent, PointerButton};
-use crate::primitives::{Color, Rect, Sense, Sizing, TranslateScale};
+use crate::primitives::{Color, Rect, Sense, Sizing, TranslateScale, WidgetId};
 use crate::widgets::{Frame, Panel, Styled};
 use glam::Vec2;
 
@@ -22,9 +22,17 @@ fn count_clip_pairs(cmds: &[RenderCmd]) -> (usize, usize) {
 #[test]
 fn empty_tree_encodes_to_nothing() {
     let mut cmds = Vec::new();
-    let ui = Ui::new();
-    encode(&ui.tree, ui.layout_result(), &mut cmds);
-    assert!(cmds.is_empty());
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    Panel::hstack().show(&mut ui, |_| {});
+    ui.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
+    ui.end_frame();
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
+    let draws = cmds
+        .iter()
+        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .count();
+    assert_eq!(draws, 0);
 }
 
 #[test]
@@ -40,8 +48,9 @@ fn frame_with_fill_emits_one_draw_rect() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
+    ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
 
     let draw_rects = cmds
         .iter()
@@ -62,8 +71,9 @@ fn invisible_frame_does_not_emit_draw_rect() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
+    ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
 
     let draw_rects = cmds
         .iter()
@@ -92,8 +102,9 @@ fn clip_emits_balanced_push_pop() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
+    ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
 
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
@@ -221,12 +232,12 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     ui.end_frame();
 
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
     let drawn = screen_rects_by_fill(&cmds);
 
     // Visible node: encoder emits exactly one DrawRect with its fill, and the
     // resulting screen rect matches the hit index's rect for the same id.
-    let v_id = crate::primitives::WidgetId::from_hash("V");
+    let v_id = WidgetId::from_hash("V");
     let v_screen = drawn
         .iter()
         .find(|(c, _)| *c == v_color)
@@ -240,7 +251,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     // Disabled node still paints; the hit index keeps its rect too. Cascades
     // (clip + transform) must produce the same screen rect on both sides.
-    let d_id = crate::primitives::WidgetId::from_hash("D");
+    let d_id = WidgetId::from_hash("D");
     let d_screen = drawn
         .iter()
         .find(|(c, _)| *c == d_color)
@@ -250,7 +261,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     assert_eq!(d_screen, d_hit, "encoder vs hit-index rect for D");
 
     // Hidden node: encoder skips, hit index still tracks the slot.
-    let h_id = crate::primitives::WidgetId::from_hash("H");
+    let h_id = WidgetId::from_hash("H");
     assert!(
         !drawn.iter().any(|(c, _)| *c == h_color),
         "hidden node must not emit a DrawRect"
@@ -340,8 +351,9 @@ fn nested_clips_each_emit_their_own_pair() {
     let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
+    ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), &mut cmds);
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), &mut cmds);
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
     assert_eq!(pops, 2);

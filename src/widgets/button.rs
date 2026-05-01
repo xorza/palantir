@@ -1,5 +1,5 @@
 use crate::element::{Element, LayoutMode, UiElement};
-use crate::primitives::{Color, Corners, Sense, Visuals, WidgetId};
+use crate::primitives::{Color, Corners, Sense, Size, Visuals, WidgetId};
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::{Frame, Response, Styled};
@@ -87,8 +87,7 @@ impl Button {
         // `Frame::show` because no other shape/node has been pushed since the
         // frame closed — `Tree::add_shape`'s contiguity invariant still holds.
         if !self.label.is_empty() {
-            let measured =
-                crate::primitives::Size::new(self.label.chars().count() as f32 * 8.0, 16.0);
+            let measured = Size::new(self.label.chars().count() as f32 * 8.0, 16.0);
             ui.tree.add_shape(
                 resp.node,
                 Shape::Text {

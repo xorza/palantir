@@ -1,3 +1,5 @@
+use super::Num;
+
 /// WPF-style sizing. Maps to: Fixed = exact px, Hug = Auto (use desired),
 /// Fill = Star (take remainder, distributed by `weight` across Fill siblings).
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -24,7 +26,7 @@ impl Sizing {
     }
 }
 
-impl<T: crate::primitives::Num> From<T> for Sizing {
+impl<T: Num> From<T> for Sizing {
     fn from(v: T) -> Self {
         Sizing::Fixed(v.as_f32())
     }
@@ -47,7 +49,7 @@ impl From<Sizing> for Sizes {
     }
 }
 
-impl<T: crate::primitives::Num> From<T> for Sizes {
+impl<T: Num> From<T> for Sizes {
     fn from(v: T) -> Self {
         let s = Sizing::Fixed(v.as_f32());
         Self { w: s, h: s }

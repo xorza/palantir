@@ -1,3 +1,4 @@
+use crate::cascade::Cascades;
 use crate::layout::LayoutResult;
 use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
 use crate::shape::Shape;
@@ -32,23 +33,30 @@ pub enum RenderCmd {
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU work,
 /// no scale/snap math — that lives in the backend's process step. Pure
-/// function over `(&Tree, &LayoutResult)`, so the same call works in unit
-/// tests with no device.
-pub fn encode(tree: &Tree, layout: &LayoutResult, out: &mut Vec<RenderCmd>) {
+/// function over `(&Tree, &LayoutResult, &Cascades)`, so the same call works
+/// in unit tests with no device. Reads invisibility cascade from `Cascades`
+/// so encoder and hit-index can't drift.
+pub fn encode(tree: &Tree, layout: &LayoutResult, cascades: &Cascades, out: &mut Vec<RenderCmd>) {
     out.clear();
     if let Some(root) = tree.root() {
-        encode_node(tree, layout, root, out);
+        encode_node(tree, layout, cascades, root, out);
     }
 }
 
-fn encode_node(tree: &Tree, layout: &LayoutResult, id: NodeId, out: &mut Vec<RenderCmd>) {
-    let node = tree.node(id);
-
+fn encode_node(
+    tree: &Tree,
+    layout: &LayoutResult,
+    cascades: &Cascades,
+    id: NodeId,
+    out: &mut Vec<RenderCmd>,
+) {
     // Hidden / Collapsed: paint nothing for this node or its subtree.
-    // Cascade is implicit — descendants are never visited.
-    if !node.element.flags.is_visible() {
+    // The cascade table already composed self + ancestors; recursing skips
+    // the whole subtree because we early-return at the top of every node.
+    if cascades.is_invisible(id) {
         return;
     }
+    let node = tree.node(id);
 
     let rect = layout.rect(id);
 
@@ -91,7 +99,7 @@ fn encode_node(tree: &Tree, layout: &LayoutResult, id: NodeId, out: &mut Vec<Ren
 
     let mut c = node.first_child;
     while let Some(child) = c {
-        encode_node(tree, layout, child, out);
+        encode_node(tree, layout, cascades, child, out);
         c = tree.node(child).next_sibling;
     }
 
