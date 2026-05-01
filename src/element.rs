@@ -73,7 +73,7 @@ impl UiElementExtras {
             && self.position.approx_zero()
             && self.grid == GridCell::default()
             && self.min_size.approx_zero()
-            && self.max_size == Size::INF
+            && self.max_size.is_inf()
             && self.gap.approx_zero()
             && self.justify == Justify::default()
             && self.child_align == Align::default()
