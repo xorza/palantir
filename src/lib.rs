@@ -5,6 +5,7 @@ pub mod layout;
 pub mod primitives;
 pub mod renderer;
 pub mod shape;
+pub mod text;
 pub mod tree;
 pub mod ui;
 pub mod widgets;

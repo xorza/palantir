@@ -7,6 +7,7 @@ use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::layout::{LayoutEngine, LayoutResult};
 use crate::primitives::{Rect, Size, WidgetId};
 use crate::shape::Shape;
+use crate::text::{MonoMeasure, TextMeasure};
 use crate::tree::{NodeId, Tree};
 use std::collections::HashSet;
 
@@ -41,6 +42,13 @@ pub struct Ui {
 
     scale_factor: f32,
     pixel_snap: bool,
+
+    /// Text measurement strategy. Default [`MonoMeasure`] keeps the engine
+    /// font-free for tests and headless use; install [`CosmicMeasure`] (or
+    /// any custom impl) via [`Ui::set_text_measure`] for real shaping.
+    ///
+    /// [`CosmicMeasure`]: crate::text::CosmicMeasure
+    text_measure: Box<dyn TextMeasure>,
 }
 
 impl Default for Ui {
@@ -62,7 +70,24 @@ impl Ui {
             cascades: Cascades::new(),
             scale_factor: 1.0,
             pixel_snap: true,
+            text_measure: Box::new(MonoMeasure::new()),
         }
+    }
+
+    /// Replace the text measurement strategy. Apps that want real shaping
+    /// install a [`CosmicMeasure`] here at startup; tests and tools that
+    /// care about deterministic placeholder metrics leave the default
+    /// `MonoMeasure` in place.
+    ///
+    /// [`CosmicMeasure`]: crate::text::CosmicMeasure
+    pub fn set_text_measure(&mut self, m: impl TextMeasure + 'static) {
+        self.text_measure = Box::new(m);
+    }
+
+    /// Mutable access to the installed text measurer. Widgets call this from
+    /// `show()` to compute their label's intrinsic size.
+    pub fn text_measure(&mut self) -> &mut dyn TextMeasure {
+        &mut *self.text_measure
     }
 
     /// Logical→physical conversion factor (e.g. 2.0 on a 2× retina display).
