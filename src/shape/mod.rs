@@ -1,4 +1,4 @@
-use crate::primitives::{ApproxF32, Color, Corners, Stroke};
+use crate::primitives::{ApproxF32, Color, Corners, Size, Stroke};
 use glam::Vec2;
 
 #[derive(Clone, Debug)]
@@ -23,7 +23,7 @@ pub enum Shape {
         offset: Vec2,
         text: String,
         color: Color,
-        measured: crate::primitives::Size,
+        measured: Size,
     },
 }
 

@@ -1,6 +1,8 @@
 use super::buffer::RenderBuffer;
 use super::composer::{ComposeParams, Composer};
 use super::encoder::{RenderCmd, encode};
+use crate::cascade::Cascades;
+use crate::layout::LayoutResult;
 use crate::tree::Tree;
 
 /// Front-end CPU pipeline: tree → encoded commands → composed buffer. Owns
@@ -24,10 +26,11 @@ impl Pipeline {
     pub fn build(
         &mut self,
         tree: &Tree,
-        layout: &crate::layout::LayoutResult,
+        layout: &LayoutResult,
+        cascades: &Cascades,
         params: &ComposeParams,
     ) -> &RenderBuffer {
-        encode(tree, layout, &mut self.cmds);
+        encode(tree, layout, cascades, &mut self.cmds);
         self.composer.compose(&self.cmds, params, &mut self.buffer);
         &self.buffer
     }

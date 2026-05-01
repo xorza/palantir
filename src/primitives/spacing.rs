@@ -1,3 +1,5 @@
+use super::Num;
+
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Spacing {
     pub left: f32,
@@ -37,27 +39,21 @@ impl Spacing {
     }
 }
 
-impl<T: crate::primitives::Num> From<T> for Spacing {
+impl<T: Num> From<T> for Spacing {
     fn from(v: T) -> Self {
         Self::all(v.as_f32())
     }
 }
 
 /// `(horizontal, vertical)` — both sides on each axis.
-impl<X: crate::primitives::Num, Y: crate::primitives::Num> From<(X, Y)> for Spacing {
+impl<X: Num, Y: Num> From<(X, Y)> for Spacing {
     fn from((x, y): (X, Y)) -> Self {
         Self::xy(x.as_f32(), y.as_f32())
     }
 }
 
 /// `(left, top, right, bottom)` — matches struct field order.
-impl<
-    L: crate::primitives::Num,
-    T: crate::primitives::Num,
-    R: crate::primitives::Num,
-    B: crate::primitives::Num,
-> From<(L, T, R, B)> for Spacing
-{
+impl<L: Num, T: Num, R: Num, B: Num> From<(L, T, R, B)> for Spacing {
     fn from((l, t, r, b): (L, T, R, B)) -> Self {
         Self {
             left: l.as_f32(),

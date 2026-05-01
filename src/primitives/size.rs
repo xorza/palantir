@@ -1,3 +1,5 @@
+use super::Num;
+
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Size {
     pub w: f32,
@@ -37,14 +39,14 @@ impl Size {
     }
 }
 
-impl<T: crate::primitives::Num> From<T> for Size {
+impl<T: Num> From<T> for Size {
     fn from(v: T) -> Self {
         let v = v.as_f32();
         Self { w: v, h: v }
     }
 }
 
-impl<W: crate::primitives::Num, H: crate::primitives::Num> From<(W, H)> for Size {
+impl<W: Num, H: Num> From<(W, H)> for Size {
     fn from((w, h): (W, H)) -> Self {
         Self {
             w: w.as_f32(),
