@@ -1,6 +1,6 @@
 use crate::primitives::{
-    Align, ApproxF32, GridCell, HAlign, Justify, Sense, Size, Sizes, Spacing, TranslateScale,
-    VAlign, Visibility, WidgetId,
+    Align, ApproxF32, GridCell, Justify, NodeFlags, Sense, Size, Sizes, Spacing, TranslateScale,
+    Visibility, WidgetId,
 };
 use glam::Vec2;
 
@@ -57,118 +57,6 @@ impl UiElementExtras {
             && self.gap.approx_zero()
             && self.justify == Justify::default()
             && self.child_align == Align::default()
-    }
-}
-
-/// Packed boolean + small-enum flags from a `UiElement`. Collapses `sense`
-/// (3 bools), `disabled`, `clip`, `visibility` (3 variants, 2 bits) and
-/// `align` (5 variants per axis, 3 bits each) into a single `u16`. Set at
-/// `Tree::push_node`; read everywhere else through accessors so callers
-/// don't have to know the bit layout.
-///
-/// Bits: 0=click, 1=drag, 2=hover, 3=disabled, 4=clip, 5-6=visibility,
-/// 7-9=HAlign, 10-12=VAlign, 13-15=reserved.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct NodeFlags(u16);
-
-impl NodeFlags {
-    const CLICK: u16 = 1 << 0;
-    const DRAG: u16 = 1 << 1;
-    const HOVER: u16 = 1 << 2;
-    const DISABLED: u16 = 1 << 3;
-    const CLIP: u16 = 1 << 4;
-    const VIS_MASK: u16 = 0b11 << 5;
-    const VIS_VISIBLE: u16 = 0 << 5;
-    const VIS_HIDDEN: u16 = 1 << 5;
-    const VIS_COLLAPSED: u16 = 2 << 5;
-    const HALIGN_SHIFT: u16 = 7;
-    const HALIGN_MASK: u16 = 0b111 << Self::HALIGN_SHIFT;
-    const VALIGN_SHIFT: u16 = 10;
-    const VALIGN_MASK: u16 = 0b111 << Self::VALIGN_SHIFT;
-
-    fn pack(
-        sense: Sense,
-        disabled: bool,
-        clip: bool,
-        visibility: Visibility,
-        align: Align,
-    ) -> Self {
-        let mut bits = 0u16;
-        if sense.click {
-            bits |= Self::CLICK;
-        }
-        if sense.drag {
-            bits |= Self::DRAG;
-        }
-        if sense.hover {
-            bits |= Self::HOVER;
-        }
-        if disabled {
-            bits |= Self::DISABLED;
-        }
-        if clip {
-            bits |= Self::CLIP;
-        }
-        bits |= match visibility {
-            Visibility::Visible => Self::VIS_VISIBLE,
-            Visibility::Hidden => Self::VIS_HIDDEN,
-            Visibility::Collapsed => Self::VIS_COLLAPSED,
-        };
-        bits |= (align.halign() as u16) << Self::HALIGN_SHIFT;
-        bits |= (align.valign() as u16) << Self::VALIGN_SHIFT;
-        Self(bits)
-    }
-
-    pub fn sense(self) -> Sense {
-        Sense {
-            click: self.0 & Self::CLICK != 0,
-            drag: self.0 & Self::DRAG != 0,
-            hover: self.0 & Self::HOVER != 0,
-        }
-    }
-    pub fn is_disabled(self) -> bool {
-        self.0 & Self::DISABLED != 0
-    }
-    pub fn is_clip(self) -> bool {
-        self.0 & Self::CLIP != 0
-    }
-    pub fn visibility(self) -> Visibility {
-        match self.0 & Self::VIS_MASK {
-            Self::VIS_VISIBLE => Visibility::Visible,
-            Self::VIS_HIDDEN => Visibility::Hidden,
-            Self::VIS_COLLAPSED => Visibility::Collapsed,
-            _ => unreachable!(),
-        }
-    }
-    pub fn is_visible(self) -> bool {
-        self.0 & Self::VIS_MASK == Self::VIS_VISIBLE
-    }
-    pub fn is_invisible(self) -> bool {
-        !self.is_visible()
-    }
-    pub fn is_collapsed(self) -> bool {
-        self.0 & Self::VIS_MASK == Self::VIS_COLLAPSED
-    }
-    pub fn align(self) -> Align {
-        let h = (self.0 & Self::HALIGN_MASK) >> Self::HALIGN_SHIFT;
-        let v = (self.0 & Self::VALIGN_MASK) >> Self::VALIGN_SHIFT;
-        let h = match h {
-            0 => HAlign::Auto,
-            1 => HAlign::Left,
-            2 => HAlign::Center,
-            3 => HAlign::Right,
-            4 => HAlign::Stretch,
-            _ => unreachable!(),
-        };
-        let v = match v {
-            0 => VAlign::Auto,
-            1 => VAlign::Top,
-            2 => VAlign::Center,
-            3 => VAlign::Bottom,
-            4 => VAlign::Stretch,
-            _ => unreachable!(),
-        };
-        Align::new(h, v)
     }
 }
 
