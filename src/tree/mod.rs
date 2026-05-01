@@ -142,7 +142,7 @@ impl Tree {
 
     pub fn add_shape(&mut self, node: NodeId, shape: Shape) {
         let idx = node.0 as usize;
-        debug_assert_eq!(
+        assert_eq!(
             self.nodes[idx].shapes.end,
             self.shapes.len() as u32,
             "shapes for node {idx} must be added contiguously, before any child node",
