@@ -49,22 +49,16 @@ impl Axis {
             Axis::Y => s.w,
         }
     }
-    /// Cross-axis alignment of a child, with parent's `child_align` as
-    /// fallback when the child's own align is `Auto`. Mapped through
-    /// `AxisAlign` so the math is type-symmetric across axes.
+    /// Cross-axis alignment of a child, picked from the shared two-axis
+    /// `resolved_axis_align` so HStack/VStack share the cascade rule with
+    /// ZStack/Grid. The unused main axis is computed and discarded — cheap.
     fn cross_align(self, child: &NodeElement, parent_child_align: Align) -> AxisAlign {
-        let child_align = child.flags.align();
+        let (h, v) = super::resolved_axis_align(child, parent_child_align);
         match self {
             // HStack: cross = vertical
-            Axis::X => child_align
-                .valign()
-                .or(parent_child_align.valign())
-                .to_axis(),
+            Axis::X => v,
             // VStack: cross = horizontal
-            Axis::Y => child_align
-                .halign()
-                .or(parent_child_align.halign())
-                .to_axis(),
+            Axis::Y => h,
         }
     }
     /// Build a `Size` from main- and cross-axis lengths.
