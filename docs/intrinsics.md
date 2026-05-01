@@ -161,7 +161,32 @@ fold together two sources: (a) the user's `Track.min`/`Track.max` clamps,
 
 3. **Span > 1.** Same exclusion as today — span-1 only contributes to track
    sizing. Span > 1 children consume whatever the spanned tracks already
-   resolved to. Avoids the WPF cyclic-iteration trap.
+   resolved to. Avoids the WPF cyclic-iteration trap. **User-visible
+   gotcha:** a span-N cell with no span-1 cells in its tracks has zero
+   width. Workaround: add explicit `Track.min` or use span-1 cells.
+   Document in `docs/grid.md` and add a regression test pinning this
+   behavior so the limit is intentional rather than a forgotten edge.
+
+### Step B design commitments
+
+Three semantic decisions baked into the algorithm above; calling them
+out explicitly so they don't get re-litigated in code review:
+
+- **`Sizing::Fill` element in intrinsic context returns its content's
+  intrinsic, ignoring the Fill weight.** A `Fill` child reports the same
+  `MinContent` / `MaxContent` as a `Hug` child would; the weight only
+  matters at distribution time. Matches CSS Grid `1fr` semantics (track
+  contributes content's `min-content` to base size, `max-content` to
+  growth). The two alternatives — Fill = ∞ or Fill = 0 — both produce
+  surprising layouts in mixed Hug+Fill grids.
+- **No iterative re-measure.** Step B is forward-only: query intrinsics
+  → resolve track sizes → measure children with resolved widths. We do
+  not retry if results "don't converge" (WPF's `c_layoutLoopMaxCount`
+  pattern). One-shot decision, accept the result.
+- **Existing grid tests are the canary.** Run them under the new
+  algorithm before merging; any test that shifts is either a bug we
+  introduced or a deliberate behavior change worth pinning. Don't update
+  expected values blindly.
 
 4. **Mixed Auto + Fill.** Resolve Fixed first, Auto next (as above) using
    the available width *minus* Fixed total. Fill tracks consume any final
