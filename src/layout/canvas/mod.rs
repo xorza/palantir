@@ -2,6 +2,9 @@ use super::LayoutEngine;
 use crate::primitives::{Rect, Size};
 use crate::tree::{NodeId, Tree};
 
+#[cfg(test)]
+mod tests;
+
 /// Canvas: children placed at their declared `Layout.position` (parent-inner
 /// coords, defaulting to `(0, 0)`). Pass `INFINITY` on both axes during measure
 /// so `Fill` children fall back to intrinsic — "fill the rest" is meaningless
@@ -13,6 +16,13 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &Tree, node: NodeId) -> S
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
+        if tree.node(c).is_collapsed() {
+            // Match arrange: collapsed children don't participate in the bbox.
+            // Without this skip, a collapsed child at (100, 100) would still
+            // grow the panel by its position even though arrange zeroes it.
+            layout.measure(tree, c, child_avail);
+            continue;
+        }
         let pos = tree.read_extras(c).position;
         let d = layout.measure(tree, c, child_avail);
         max_w = max_w.max(pos.x + d.w);

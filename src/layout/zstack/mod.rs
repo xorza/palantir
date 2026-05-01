@@ -2,6 +2,9 @@ use super::LayoutEngine;
 use crate::primitives::{Rect, Size};
 use crate::tree::{NodeId, Tree};
 
+#[cfg(test)]
+mod tests;
+
 /// ZStack: children all at the same position (top-left of inner rect).
 /// Pass `INFINITY` on both axes during measure so `Fill` children fall back to
 /// intrinsic — otherwise the `Hug` panel would size to its own `Fill` children

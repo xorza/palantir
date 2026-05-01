@@ -1,0 +1,144 @@
+use crate::Ui;
+use crate::element::Element;
+use crate::primitives::{Rect, Sizing};
+use crate::tree::NodeId;
+use crate::widgets::{Frame, Panel};
+
+/// See `zstack/tests.rs::under_outer` — same trick: wrap the panel under test
+/// inside an outer Fill HStack so its own sizing isn't overridden by the root
+/// surface forcing.
+fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -> NodeId {
+    ui.begin_frame();
+    let mut inner = None;
+    Panel::hstack()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            inner = Some(f(ui));
+        });
+    ui.layout(surface);
+    inner.unwrap()
+}
+
+#[test]
+fn canvas_places_child_at_position_within_inner_rect() {
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::canvas()
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .padding(10.0)
+            .show(ui, |ui| {
+                Frame::with_id("a")
+                    .position((30.0, 40.0))
+                    .size((20.0, 20.0))
+                    .show(ui);
+            })
+            .node
+    });
+    let panel_rect = ui.rect(panel);
+    let kids: Vec<_> = ui.tree.children(panel).collect();
+    let a = ui.rect(kids[0]);
+    assert_eq!(a.min.x - panel_rect.min.x, 40.0);
+    assert_eq!(a.min.y, 50.0);
+    assert_eq!(a.size.w, 20.0);
+    assert_eq!(a.size.h, 20.0);
+}
+
+#[test]
+fn canvas_hugs_to_bounding_box_of_placed_children() {
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::canvas()
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Frame::with_id("a")
+                    .position((10.0, 5.0))
+                    .size((30.0, 15.0))
+                    .show(ui);
+                Frame::with_id("b")
+                    .position((50.0, 60.0))
+                    .size((20.0, 20.0))
+                    .show(ui);
+            })
+            .node
+    });
+    let r = ui.rect(panel);
+    // bbox = max(pos + desired) per axis: 50+20=70, 60+20=80
+    assert_eq!(r.size.w, 70.0);
+    assert_eq!(r.size.h, 80.0);
+}
+
+#[test]
+fn canvas_negative_position_does_not_extend_bbox() {
+    // Canvas measures `max(pos + desired)` starting at zero, so children
+    // placed at negative coords don't grow the panel — they just bleed past
+    // the inner top-left.
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::canvas()
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Frame::with_id("neg")
+                    .position((-5.0, -5.0))
+                    .size((20.0, 20.0))
+                    .show(ui);
+            })
+            .node
+    });
+    let r = ui.rect(panel);
+    // pos + desired = (15, 15) per axis.
+    assert_eq!(r.size.w, 15.0);
+    assert_eq!(r.size.h, 15.0);
+
+    let panel_rect = ui.rect(panel);
+    let kids: Vec<_> = ui.tree.children(panel).collect();
+    let child = ui.rect(kids[0]);
+    assert_eq!(child.min.x - panel_rect.min.x, -5.0);
+    assert_eq!(child.min.y - panel_rect.min.y, -5.0);
+}
+
+#[test]
+fn canvas_fill_child_falls_back_to_intrinsic_size() {
+    // Fill is meaningless when children can overlap, so Canvas measures with
+    // INF → Fill resolves to hug (intrinsic). Here that's zero since the
+    // Frame has no shapes contributing to its content size.
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::canvas()
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .show(ui, |ui| {
+                Frame::with_id("filler")
+                    .position((10.0, 10.0))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui);
+            })
+            .node
+    });
+    let kids: Vec<_> = ui.tree.children(panel).collect();
+    let f = ui.rect(kids[0]);
+    assert_eq!(f.size.w, 0.0);
+    assert_eq!(f.size.h, 0.0);
+}
+
+#[test]
+fn canvas_collapsed_child_does_not_grow_bbox() {
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::canvas()
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Frame::with_id("a")
+                    .position((0.0, 0.0))
+                    .size((10.0, 10.0))
+                    .show(ui);
+                Frame::with_id("collapsed")
+                    .position((100.0, 100.0))
+                    .size((50.0, 50.0))
+                    .collapsed()
+                    .show(ui);
+            })
+            .node
+    });
+    let r = ui.rect(panel);
+    assert_eq!(r.size.w, 10.0);
+    assert_eq!(r.size.h, 10.0);
+}
