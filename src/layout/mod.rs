@@ -1,7 +1,7 @@
 use crate::element::{LayoutCore, LayoutMode};
 use crate::primitives::{Align, AxisAlign, Rect, Size, Sizing};
 use crate::shape::{Shape, TextWrap};
-use crate::text::{CosmicMeasure, MeasureResult, mono_measure};
+use crate::text::TextSystem;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 use grid::GridContext;
@@ -48,17 +48,10 @@ impl LayoutEngine {
     /// internal scratch — call this each frame for amortized zero-alloc
     /// layout (after warmup). Output lands in `self.result`.
     ///
-    /// `text` is borrowed for the duration of the call so a wrapping leaf
-    /// (`Shape::Text` with `TextWrap::Wrap`) can reshape against the parent-
-    /// committed width *during* measure — without it (or in tests with
-    /// `mono_measure`) wrapping shapes are left at their unbounded size.
-    pub fn run(
-        &mut self,
-        tree: &Tree,
-        root: NodeId,
-        surface: Rect,
-        text: Option<&mut CosmicMeasure>,
-    ) {
+    /// `text` carries the shaper (or the mono fallback inside it) and is
+    /// borrowed for the duration of the call so wrapping leaves can reshape
+    /// against the parent-committed width during measure.
+    pub fn run(&mut self, tree: &Tree, root: NodeId, surface: Rect, text: &mut TextSystem) {
         assert_eq!(
             self.grid.depth_stack.depth(),
             0,
@@ -87,7 +80,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available: Size,
-        text: Option<&mut CosmicMeasure>,
+        text: &mut TextSystem,
     ) -> Size {
         if tree.is_collapsed(node) {
             self.result.set_desired(node, Size::ZERO);
@@ -235,7 +228,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available_w: f32,
-        mut text: Option<&mut CosmicMeasure>,
+        text: &mut TextSystem,
     ) -> Size {
         let mut s = Size::ZERO;
         for shape in tree.shapes_of(node) {
@@ -246,14 +239,7 @@ impl LayoutEngine {
                 ..
             } = shape
             {
-                let m = self.shape_text(
-                    node,
-                    src,
-                    *font_size_px,
-                    *wrap,
-                    available_w,
-                    text.as_deref_mut(),
-                );
+                let m = self.shape_text(node, src, *font_size_px, *wrap, available_w, text);
                 s = s.max(m);
             }
         }
@@ -267,16 +253,9 @@ impl LayoutEngine {
         font_size_px: f32,
         wrap: TextWrap,
         available_w: f32,
-        mut text: Option<&mut CosmicMeasure>,
+        text: &mut TextSystem,
     ) -> Size {
-        let mut measure = |max_w: Option<f32>| -> MeasureResult {
-            match text.as_deref_mut() {
-                Some(c) => c.measure(src, font_size_px, max_w),
-                None => mono_measure(src, font_size_px, max_w),
-            }
-        };
-
-        let unbounded = measure(None);
+        let unbounded = text.measure(src, font_size_px, None);
         let (measured, key) = if matches!(wrap, TextWrap::Wrap)
             && available_w.is_finite()
             && available_w < unbounded.size.w
@@ -285,7 +264,7 @@ impl LayoutEngine {
             // word — the run overflows the slot instead.
             let target = available_w.max(unbounded.intrinsic_min);
             tracing::trace!(node = node.index(), target, "wrap reshape");
-            let m = measure(Some(target));
+            let m = text.measure(src, font_size_px, Some(target));
             (m.size, m.key)
         } else {
             (unbounded.size, unbounded.key)

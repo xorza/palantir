@@ -1,6 +1,6 @@
 use super::{LayoutEngine, zero_subtree};
 use crate::primitives::{Rect, Size};
-use crate::text::CosmicMeasure;
+use crate::text::TextSystem;
 use crate::tree::{NodeId, Tree};
 
 #[cfg(test)]
@@ -15,7 +15,7 @@ pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
-    mut text: Option<&mut CosmicMeasure>,
+    text: &mut TextSystem,
 ) -> Size {
     let child_avail = Size::INF;
     let mut max_w = 0.0f32;
@@ -26,11 +26,11 @@ pub(super) fn measure(
             // Match arrange: collapsed children don't participate in the bbox.
             // Without this skip, a collapsed child at (100, 100) would still
             // grow the panel by its position even though arrange zeroes it.
-            layout.measure(tree, c, child_avail, text.as_deref_mut());
+            layout.measure(tree, c, child_avail, text);
             continue;
         }
         let pos = tree.read_extras(c).position;
-        let d = layout.measure(tree, c, child_avail, text.as_deref_mut());
+        let d = layout.measure(tree, c, child_avail, text);
         max_w = max_w.max(pos.x + d.w);
         max_h = max_h.max(pos.y + d.h);
     }

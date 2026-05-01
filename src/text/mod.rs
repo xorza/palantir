@@ -116,6 +116,54 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
     }
 }
 
+/// One-stop shop for text shaping. Wraps the optional [`CosmicMeasure`] so
+/// the rest of the engine (layout, widgets) doesn't need to thread an
+/// `Option<&mut CosmicMeasure>` around or know about the mono fallback —
+/// they just call `text.measure(...)`. When no shaper is installed, falls
+/// through to [`mono_measure`] (deterministic, sized, but produces
+/// [`TextCacheKey::INVALID`] so the renderer drops the run).
+#[derive(Default)]
+pub struct TextSystem {
+    cosmic: Option<CosmicMeasure>,
+}
+
+impl TextSystem {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Install a real shaper. Apps call this once at startup; tests usually
+    /// leave it unset and run on the mono fallback.
+    pub fn install_cosmic(&mut self, cosmic: CosmicMeasure) {
+        self.cosmic = Some(cosmic);
+    }
+
+    /// True when a real shaper is installed. Renderer uses this to decide
+    /// whether to drive the glyphon pipeline.
+    pub fn has_cosmic(&self) -> bool {
+        self.cosmic.is_some()
+    }
+
+    /// Borrow the cosmic shaper for the wgpu backend's `prepare`/`render`.
+    /// `None` when only the mono fallback is in use.
+    pub fn cosmic_mut(&mut self) -> Option<&mut CosmicMeasure> {
+        self.cosmic.as_mut()
+    }
+
+    /// Shape (or mono-measure) one run. Dispatch is internal.
+    pub fn measure(
+        &mut self,
+        text: &str,
+        font_size_px: f32,
+        max_width_px: Option<f32>,
+    ) -> MeasureResult {
+        match &mut self.cosmic {
+            Some(c) => c.measure(text, font_size_px, max_width_px),
+            None => mono_measure(text, font_size_px, max_width_px),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

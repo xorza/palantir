@@ -13,7 +13,9 @@
 
 use super::{MeasureResult, TextCacheKey};
 use crate::primitives::Size;
-use cosmic_text::{Attrs, AttrsOwned, Buffer, Family, FontSystem, Metrics, Shaping, fontdb};
+use glyphon::cosmic_text::{
+    Attrs, AttrsOwned, Buffer, Family, FontSystem, Metrics, Shaping, fontdb,
+};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
