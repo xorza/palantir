@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 /// Per-frame layout *output*. Read after the layout pass by the encoder, hit
 /// index, and any other consumer. Per-frame *scratch* (grid track hugs, etc.)
-/// lives on `LayoutContext` instead. Capacity is reused across frames via
+/// lives on `LayoutEngine.grid` instead. Capacity is reused across frames via
 /// `resize_for`.
 #[derive(Default)]
 pub struct LayoutResult {

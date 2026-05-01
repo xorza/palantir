@@ -24,7 +24,7 @@ fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) 
     let cols = def.cols.clone();
     let row_gap = def.row_gap;
     let col_gap = def.col_gap;
-    let s = layout.ctx.grid.depth_stack.at(depth);
+    let s = layout.grid.depth_stack.at(depth);
     s.col.reset(cols);
     s.row.reset(rows);
     DefSnapshot {
@@ -88,7 +88,7 @@ pub(crate) struct GridScratch {
     pub row: AxisScratch,
 }
 
-/// All grid-layout scratch held by `LayoutContext`, in one bag. The two
+/// All grid-layout scratch held by `LayoutEngine`, in one bag. The two
 /// fields are separate so writers can hold `&mut hugs` while a
 /// `&mut depth_stack[i]` borrow is live (the encoder copies hugs from
 /// scratch into the durable pool inside the same expression).
@@ -217,9 +217,9 @@ pub(super) fn measure(
     idx: u16,
     text: Option<&mut CosmicMeasure>,
 ) -> Size {
-    let depth = layout.ctx.grid.depth_stack.enter();
+    let depth = layout.grid.depth_stack.enter();
     let result = measure_inner(layout, tree, node, idx, depth, text);
-    layout.ctx.grid.depth_stack.exit();
+    layout.grid.depth_stack.exit();
     result
 }
 
@@ -238,7 +238,7 @@ fn measure_inner(
         col_gap,
     } = snapshot_def(layout, tree, idx, depth);
     {
-        let s = layout.ctx.grid.depth_stack.at(depth);
+        let s = layout.grid.depth_stack.at(depth);
         resolve_fixed(&mut s.col);
         resolve_fixed(&mut s.row);
     }
@@ -260,7 +260,7 @@ fn measure_inner(
         assert_cell(cell, n_rows, n_cols);
 
         let avail = {
-            let s = layout.ctx.grid.depth_stack.at(depth);
+            let s = layout.grid.depth_stack.at(depth);
             let avail_w = sum_spanned_known(&s.col.sizes, &s.col.resolved, cell.col, cell.col_span);
             let avail_h = sum_spanned_known(&s.row.sizes, &s.row.resolved, cell.row, cell.row_span);
             Size::new(avail_w, avail_h)
@@ -273,7 +273,7 @@ fn measure_inner(
 
         // Span-1 only drives Hug-track sizing (avoids the WPF Auto↔Star
         // cyclic-iteration trap).
-        let s = layout.ctx.grid.depth_stack.at(depth);
+        let s = layout.grid.depth_stack.at(depth);
         record_hug(&mut s.col, cell.col, cell.col_span, d.w);
         record_hug(&mut s.row, cell.row, cell.row_span, d.h);
     }
@@ -281,26 +281,16 @@ fn measure_inner(
     // Resolve Hug tracks from accumulated hug sizes, persist them onto
     // `LayoutResult` so `arrange` can read them without re-walking children
     // (engine scratch is depth-keyed and gets clobbered by sibling grids),
-    // and sum content size. `layout.ctx.grid` and `layout.result` are separate
+    // and sum content size. `layout.grid` and `layout.result` are separate
     // fields so both can be borrowed simultaneously via field access.
-    let s = layout.ctx.grid.depth_stack.at(depth);
+    let s = layout.grid.depth_stack.at(depth);
     resolve_hug(&mut s.col);
     resolve_hug(&mut s.row);
     let total_w = s.col.sizes.iter().sum::<f32>() + col_gap * n_cols.saturating_sub(1) as f32;
     let total_h = s.row.sizes.iter().sum::<f32>() + row_gap * n_rows.saturating_sub(1) as f32;
 
-    layout
-        .ctx
-        .grid
-        .hugs
-        .cols_mut(idx)
-        .copy_from_slice(&s.col.hug);
-    layout
-        .ctx
-        .grid
-        .hugs
-        .rows_mut(idx)
-        .copy_from_slice(&s.row.hug);
+    layout.grid.hugs.cols_mut(idx).copy_from_slice(&s.col.hug);
+    layout.grid.hugs.rows_mut(idx).copy_from_slice(&s.row.hug);
 
     Size::new(total_w, total_h)
 }
@@ -333,9 +323,9 @@ fn resolve_hug(a: &mut AxisScratch) {
 }
 
 pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect, idx: u16) {
-    let depth = layout.ctx.grid.depth_stack.enter();
+    let depth = layout.grid.depth_stack.enter();
     arrange_inner(layout, tree, node, inner, idx, depth);
-    layout.ctx.grid.depth_stack.exit();
+    layout.grid.depth_stack.exit();
 }
 
 fn arrange_inner(
@@ -356,9 +346,9 @@ fn arrange_inner(
         col_gap,
     } = snapshot_def(layout, tree, idx, depth);
     {
-        let s = layout.ctx.grid.depth_stack.at(depth);
-        s.col.hug.copy_from_slice(layout.ctx.grid.hugs.cols(idx));
-        s.row.hug.copy_from_slice(layout.ctx.grid.hugs.rows(idx));
+        let s = layout.grid.depth_stack.at(depth);
+        s.col.hug.copy_from_slice(layout.grid.hugs.cols(idx));
+        s.row.hug.copy_from_slice(layout.grid.hugs.rows(idx));
     }
 
     if n_rows == 0 || n_cols == 0 {
@@ -371,7 +361,7 @@ fn arrange_inner(
 
     // Resolve track sizes (Fixed + Hug + Fill) and compute offsets.
     {
-        let s = layout.ctx.grid.depth_stack.at(depth);
+        let s = layout.grid.depth_stack.at(depth);
         resolve_axis(&mut s.col, inner.size.w, col_gap);
         resolve_axis(&mut s.row, inner.size.h, row_gap);
         track_offsets(&s.col.sizes, col_gap, &mut s.col.offsets);
@@ -391,7 +381,7 @@ fn arrange_inner(
         let d = layout.desired(c);
 
         let (slot_x, slot_y, slot_w, slot_h) = {
-            let s = layout.ctx.grid.depth_stack.at(depth);
+            let s = layout.grid.depth_stack.at(depth);
             let slot_x = s.col.offsets[cell.col as usize];
             let slot_y = s.row.offsets[cell.row as usize];
             let slot_w = span_size(&s.col.sizes, cell.col, cell.col_span, col_gap);

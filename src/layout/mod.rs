@@ -14,23 +14,17 @@ mod zstack;
 
 pub use result::{LayoutResult, ReshapedText};
 
-/// Persistent layout engine. Owns the per-frame [`LayoutContext`] (transient
-/// scratch — grid track sizes, etc.) and a [`LayoutResult`] (output — desired
-/// sizes, rects, text reshapes, consumed by the encoder + hit-index after
-/// the layout pass). Both retain capacity across frames.
+/// Persistent layout engine. Holds two kinds of per-frame state, both with
+/// capacity reused across frames:
+///
+/// - [`GridContext`] — transient scratch (grid track sizes etc.), discarded
+///   conceptually once each pass returns.
+/// - [`LayoutResult`] — output (desired sizes, rects, text reshapes), read
+///   by the encoder + hit-index after the layout pass.
 #[derive(Default)]
 pub struct LayoutEngine {
-    ctx: LayoutContext,
-    result: LayoutResult,
-}
-
-/// Per-frame scratch — transient working memory used during measure/arrange
-/// and discarded once the pass returns. Distinct from [`LayoutResult`],
-/// which is the *output* the encoder reads.
-#[derive(Default)]
-// todo flatten into layout engine
-pub struct LayoutContext {
     pub(super) grid: GridContext,
+    result: LayoutResult,
 }
 
 impl LayoutEngine {
@@ -66,12 +60,12 @@ impl LayoutEngine {
         text: Option<&mut CosmicMeasure>,
     ) {
         assert_eq!(
-            self.ctx.grid.depth_stack.depth(),
+            self.grid.depth_stack.depth(),
             0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
         self.result.resize_for(tree);
-        self.ctx.grid.hugs.reset_for(tree);
+        self.grid.hugs.reset_for(tree);
         self.measure(
             tree,
             root,
@@ -80,7 +74,7 @@ impl LayoutEngine {
         );
         self.arrange(tree, root, surface);
         assert_eq!(
-            self.ctx.grid.depth_stack.depth(),
+            self.grid.depth_stack.depth(),
             0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
