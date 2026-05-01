@@ -1,5 +1,5 @@
 use crate::element::UiElement;
-use crate::primitives::{GridDef, Rect, Size, Track, TrackSlice};
+use crate::primitives::{GridDef, HugSlice, Rect, Size, Track};
 use crate::shape::Shape;
 use std::rc::Rc;
 
@@ -106,10 +106,10 @@ impl Tree {
         idx
     }
 
-    fn reserve_hugs(&mut self, n: usize) -> TrackSlice {
+    fn reserve_hugs(&mut self, n: usize) -> HugSlice {
         let start = self.hug_pool.len() as u32;
         self.hug_pool.resize(start as usize + n, 0.0);
-        TrackSlice {
+        HugSlice {
             start,
             len: n as u32,
         }
@@ -119,11 +119,11 @@ impl Tree {
         &self.grid_defs[idx as usize]
     }
 
-    pub(crate) fn grid_hugs(&self, slice: TrackSlice) -> &[f32] {
+    pub(crate) fn grid_hugs(&self, slice: HugSlice) -> &[f32] {
         &self.hug_pool[slice.range()]
     }
 
-    pub(crate) fn grid_hugs_mut(&mut self, slice: TrackSlice) -> &mut [f32] {
+    pub(crate) fn grid_hugs_mut(&mut self, slice: HugSlice) -> &mut [f32] {
         &mut self.hug_pool[slice.range()]
     }
 

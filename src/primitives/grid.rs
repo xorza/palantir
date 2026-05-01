@@ -26,12 +26,12 @@ impl Default for GridCell {
 /// `(start, len)` range into `Tree::hug_pool` (per-track hug sizes computed
 /// in measure and read in arrange).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) struct TrackSlice {
+pub(crate) struct HugSlice {
     pub start: u32,
     pub len: u32,
 }
 
-impl TrackSlice {
+impl HugSlice {
     pub(crate) fn range(self) -> std::ops::Range<usize> {
         self.start as usize..(self.start as usize + self.len as usize)
     }
@@ -51,8 +51,8 @@ pub(crate) struct GridDef {
     pub col_gap: f32,
     /// Per-row max desired height of span-1 children. Written by
     /// `grid_measure`, read by `arrange_grid`.
-    pub row_hugs: TrackSlice,
+    pub row_hugs: HugSlice,
     /// Per-col max desired width of span-1 children. Same semantics as
     /// `row_hugs` on the X axis.
-    pub col_hugs: TrackSlice,
+    pub col_hugs: HugSlice,
 }
