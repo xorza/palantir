@@ -1,7 +1,8 @@
 use crate::primitives::{
-    Align, GridCell, HAlign, Justify, NodeFlags, Sense, Size, Sizes, Spacing, TranslateScale,
-    VAlign, Visibility, WidgetId,
+    Align, GridCell, HAlign, Justify, Sense, Size, Sizes, Spacing, TranslateScale, VAlign,
+    Visibility, WidgetId,
 };
+use crate::tree::NodeFlags;
 use glam::Vec2;
 
 /// How a node arranges its children. Stored on `UiElement::mode` and read by

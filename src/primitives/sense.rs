@@ -1,55 +1,52 @@
-/// Declares which pointer interactions a widget participates in.
-/// Widgets that don't sense any interaction are skipped during hit-testing —
+/// Declares which pointer interactions a widget participates in. Widgets
+/// that don't sense any interaction are skipped during hit-testing —
 /// clicks/hovers pass through to whatever else is at that point.
 ///
-/// Convention matches egui: containers default to `NONE`, leaf-interactive
-/// widgets pick `CLICK`, draggable widgets pick `DRAG` or `CLICK_AND_DRAG`.
-/// `HOVER` is for widgets that want hover state (tooltips, cursor changes,
-/// row highlights) without capturing clicks meant for things below.
+/// `Click` / `Drag` / `ClickAndDrag` all imply hover — a clickable widget
+/// is always hoverable. Modelling the five valid states as enum variants
+/// (rather than three independent booleans) makes the invariant
+/// unrepresentable instead of a documented convention.
 ///
-/// `click` and `drag` imply `hover` — a clickable widget is always hoverable.
+/// Convention matches egui: containers default to `None`, leaf-interactive
+/// widgets pick `Click`, draggable widgets pick `Drag` or `ClickAndDrag`.
+/// `Hover` is for widgets that want hover state (tooltips, cursor changes,
+/// row highlights) without capturing clicks meant for things below.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Sense {
-    pub click: bool,
-    pub drag: bool,
-    pub hover: bool,
+pub enum Sense {
+    #[default]
+    None,
+    Hover,
+    Click,
+    Drag,
+    ClickAndDrag,
 }
 
 impl Sense {
-    pub const NONE: Self = Self {
-        click: false,
-        drag: false,
-        hover: false,
-    };
-    pub const HOVER: Self = Self {
-        click: false,
-        drag: false,
-        hover: true,
-    };
-    pub const CLICK: Self = Self {
-        click: true,
-        drag: false,
-        hover: true,
-    };
-    pub const DRAG: Self = Self {
-        click: false,
-        drag: true,
-        hover: true,
-    };
-    pub const CLICK_AND_DRAG: Self = Self {
-        click: true,
-        drag: true,
-        hover: true,
-    };
+    pub const NONE: Self = Self::None;
+    pub const HOVER: Self = Self::Hover;
+    pub const CLICK: Self = Self::Click;
+    pub const DRAG: Self = Self::Drag;
+    pub const CLICK_AND_DRAG: Self = Self::ClickAndDrag;
+
+    pub const fn click(self) -> bool {
+        matches!(self, Self::Click | Self::ClickAndDrag)
+    }
+    pub const fn drag(self) -> bool {
+        matches!(self, Self::Drag | Self::ClickAndDrag)
+    }
+    pub const fn hover(self) -> bool {
+        !matches!(self, Self::None)
+    }
 
     /// Visible to hit-test for hover/cursor purposes. Includes hover-only widgets.
-    pub fn is_hoverable(self) -> bool {
-        self.click || self.drag || self.hover
+    pub const fn is_hoverable(self) -> bool {
+        !matches!(self, Self::None)
     }
 
     /// Captures press/release. Hover-only widgets return `false`, so clicks
     /// pass through them to whatever clickable widget is beneath.
-    pub fn is_clickable(self) -> bool {
-        self.click || self.drag
+    pub const fn is_clickable(self) -> bool {
+        matches!(self, Self::Click | Self::Drag | Self::ClickAndDrag)
     }
 }
