@@ -104,25 +104,24 @@ fn measure_inner(
     depth: usize,
 ) -> Size {
     // Setup: snapshot tracks + gaps onto our scratch slot, resolve Fixed.
+    // `Rc::clone` per axis is refcount-only — track data stays in the user's
+    // cached `Rc<[Track]>`, never copied through the tree pool.
     let (n_rows, n_cols, row_gap, col_gap, row_hugs_slice, col_hugs_slice) = {
         let def = tree.grid_def(idx);
-        let row_tracks: &[Track] = tree.grid_tracks(def.rows);
-        let col_tracks: &[Track] = tree.grid_tracks(def.cols);
-        let n_rows = row_tracks.len();
-        let n_cols = col_tracks.len();
+        let n_rows = def.rows.len();
+        let n_cols = def.cols.len();
+        let rows = def.rows.clone();
+        let cols = def.cols.clone();
+        let row_gap = def.row_gap;
+        let col_gap = def.col_gap;
+        let row_hugs = def.row_hugs;
+        let col_hugs = def.col_hugs;
         let s = layout.grid.at(depth);
-        s.col.reset(col_tracks);
-        s.row.reset(row_tracks);
+        s.col.reset(&cols);
+        s.row.reset(&rows);
         resolve_fixed(&mut s.col);
         resolve_fixed(&mut s.row);
-        (
-            n_rows,
-            n_cols,
-            def.row_gap,
-            def.col_gap,
-            def.row_hugs,
-            def.col_hugs,
-        )
+        (n_rows, n_cols, row_gap, col_gap, row_hugs, col_hugs)
     };
 
     if n_rows == 0 || n_cols == 0 {
@@ -227,18 +226,20 @@ fn arrange_inner(
     // Snapshot tracks + gaps + read cached hug arrays from the tree pool.
     let (n_rows, n_cols, row_gap, col_gap) = {
         let def = tree.grid_def(idx);
-        let row_tracks: &[Track] = tree.grid_tracks(def.rows);
-        let col_tracks: &[Track] = tree.grid_tracks(def.cols);
-        let row_hugs: &[f32] = tree.grid_hugs(def.row_hugs);
-        let col_hugs: &[f32] = tree.grid_hugs(def.col_hugs);
-        let n_rows = row_tracks.len();
-        let n_cols = col_tracks.len();
+        let n_rows = def.rows.len();
+        let n_cols = def.cols.len();
+        let rows = def.rows.clone();
+        let cols = def.cols.clone();
+        let row_gap = def.row_gap;
+        let col_gap = def.col_gap;
+        let row_hugs_slice = def.row_hugs;
+        let col_hugs_slice = def.col_hugs;
         let s = layout.grid.at(depth);
-        s.col.reset(col_tracks);
-        s.row.reset(row_tracks);
-        s.col.hug.copy_from_slice(col_hugs);
-        s.row.hug.copy_from_slice(row_hugs);
-        (n_rows, n_cols, def.row_gap, def.col_gap)
+        s.col.reset(&cols);
+        s.row.reset(&rows);
+        s.col.hug.copy_from_slice(tree.grid_hugs(col_hugs_slice));
+        s.row.hug.copy_from_slice(tree.grid_hugs(row_hugs_slice));
+        (n_rows, n_cols, row_gap, col_gap)
     };
 
     if n_rows == 0 || n_cols == 0 {

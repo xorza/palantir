@@ -5,7 +5,6 @@ edition = "2024"
 exclude = ["tmp/", "references/"]
 
 [dependencies]
-arrayvec = "*"
 bytemuck = { version = "*", features = ["derive"] }
 glam = "*"
 glyphon = "*"

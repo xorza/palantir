@@ -1,14 +1,10 @@
 use crate::element::{Element, LayoutMode, UiElement};
-use crate::primitives::{
-    Color, Corners, MAX_TRACKS, Sizing, Stroke, Track, TranslateScale, WidgetId,
-};
+use crate::primitives::{Color, Corners, Sizing, Stroke, Track, TranslateScale, WidgetId};
 use crate::shape::{Shape, ShapeRect};
 use crate::ui::Ui;
 use crate::widgets::Response;
-use arrayvec::ArrayVec;
 use std::hash::Hash;
-
-type TrackVec = ArrayVec<Track, MAX_TRACKS>;
+use std::rc::Rc;
 
 /// WPF-style grid: explicit row + column track definitions, per-track
 /// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and
@@ -19,73 +15,72 @@ type TrackVec = ArrayVec<Track, MAX_TRACKS>;
 /// tracks resolve, weighted, with bounded constraint resolution if any
 /// `Track::min` / `Track::max` clamps fire.
 ///
+/// Track lists are passed as `Rc<[Track]>`; the framework only refcount-
+/// touches, never copies. Hoist a track list into app state and clone the
+/// `Rc` in each frame for zero-alloc steady state at any track count. Inline
+/// literals (`[Track::fixed(40.0), ...]`) are accepted via
+/// `Into<Rc<[Track]>>` and allocate once per frame for that grid.
+///
 /// See `docs/grid.md` for the algorithm and explicit non-goals (no
 /// Auto-vs-Star cyclic dependency, no `SharedSizeScope`, no auto-flow).
-pub struct Grid {
+pub struct Grid<'a> {
+    ui: &'a mut Ui,
     element: UiElement,
     fill: Color,
     stroke: Option<Stroke>,
     radius: Corners,
-    rows: TrackVec,
-    cols: TrackVec,
+    rows: Option<Rc<[Track]>>,
+    cols: Option<Rc<[Track]>>,
     row_gap: f32,
     col_gap: f32,
 }
 
-impl Grid {
+impl<'a> Grid<'a> {
     #[track_caller]
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self::for_id(WidgetId::auto_stable())
+    pub fn new(ui: &'a mut Ui) -> Self {
+        Self::for_id(ui, WidgetId::auto_stable())
     }
 
-    pub fn with_id(id: impl Hash) -> Self {
-        Self::for_id(WidgetId::from_hash(id))
+    pub fn with_id(ui: &'a mut Ui, id: impl Hash) -> Self {
+        Self::for_id(ui, WidgetId::from_hash(id))
     }
 
-    fn for_id(id: WidgetId) -> Self {
+    fn for_id(ui: &'a mut Ui, id: WidgetId) -> Self {
         // Mode is patched at `show()` time once we know the grid_def index.
         // Until then keep it as a placeholder — never observed by layout.
         Self {
+            ui,
             element: UiElement::new(id, LayoutMode::Grid(u32::MAX)),
             fill: Color::TRANSPARENT,
             stroke: None,
             radius: Corners::ZERO,
-            rows: TrackVec::new(),
-            cols: TrackVec::new(),
+            rows: None,
+            cols: None,
             row_gap: 0.0,
             col_gap: 0.0,
         }
     }
 
-    pub fn rows<I, T>(mut self, rs: I) -> Self
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<Track>,
-    {
-        self.rows = collect_tracks(rs);
+    pub fn rows(mut self, rs: impl Into<Rc<[Track]>>) -> Self {
+        self.rows = Some(rs.into());
         self
     }
 
-    pub fn cols<I, T>(mut self, cs: I) -> Self
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<Track>,
-    {
-        self.cols = collect_tracks(cs);
+    pub fn cols(mut self, cs: impl Into<Rc<[Track]>>) -> Self {
+        self.cols = Some(cs.into());
         self
     }
 
-    /// Shorthand: `n` equal-weight `Fill` columns.
-    pub fn equal_cols(mut self, n: usize) -> Self {
-        self.cols = repeat_tracks(n, Track::new(Sizing::FILL));
-        self
+    /// Shorthand: `n` equal-weight `Fill` columns. Allocates the `Rc<[Track]>`
+    /// each call — hoist into app state if you want zero-alloc reuse.
+    pub fn equal_cols(self, n: usize) -> Self {
+        self.cols(vec![Track::new(Sizing::FILL); n])
     }
 
-    /// Shorthand: `n` equal-weight `Fill` rows.
-    pub fn equal_rows(mut self, n: usize) -> Self {
-        self.rows = repeat_tracks(n, Track::new(Sizing::FILL));
-        self
+    /// Shorthand: `n` equal-weight `Fill` rows. Same alloc note as
+    /// `equal_cols`.
+    pub fn equal_rows(self, n: usize) -> Self {
+        self.rows(vec![Track::new(Sizing::FILL); n])
     }
 
     /// Uniform gap on both axes. See `gap_xy` for asymmetric gaps.
@@ -123,17 +118,21 @@ impl Grid {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show(self, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
-        let idx = ui
+        let rows = self.rows.unwrap_or_else(empty_tracks);
+        let cols = self.cols.unwrap_or_else(empty_tracks);
+        let idx = self
+            .ui
             .tree
-            .push_grid_def(&self.rows, &self.cols, self.row_gap, self.col_gap);
+            .push_grid_def(rows, cols, self.row_gap, self.col_gap);
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
 
         let fill = self.fill;
         let stroke = self.stroke;
         let radius = self.radius;
+        let ui = self.ui;
         let node = ui.node(element, |ui| {
             ui.add_shape(Shape::RoundedRect {
                 bounds: ShapeRect::Full,
@@ -149,35 +148,12 @@ impl Grid {
     }
 }
 
-impl Element for Grid {
+impl Element for Grid<'_> {
     fn element_mut(&mut self) -> &mut UiElement {
         &mut self.element
     }
 }
 
-#[track_caller]
-fn collect_tracks<I, T>(src: I) -> TrackVec
-where
-    I: IntoIterator<Item = T>,
-    T: Into<Track>,
-{
-    let mut out = TrackVec::new();
-    for t in src {
-        out.try_push(t.into())
-            .unwrap_or_else(|_| panic!("grid tracks exceed MAX_TRACKS={MAX_TRACKS}"));
-    }
-    out
-}
-
-#[track_caller]
-fn repeat_tracks(n: usize, t: Track) -> TrackVec {
-    assert!(
-        n <= MAX_TRACKS,
-        "grid tracks exceed MAX_TRACKS={MAX_TRACKS} (got {n})"
-    );
-    let mut out = TrackVec::new();
-    for _ in 0..n {
-        out.push(t);
-    }
-    out
+fn empty_tracks() -> Rc<[Track]> {
+    Rc::from(Vec::<Track>::new())
 }
