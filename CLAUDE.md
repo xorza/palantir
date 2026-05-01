@@ -144,7 +144,7 @@ Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each 
 - [x] Real text measurement + rendering via cosmic-text + glyphon (`TextMeasurer` Ui-side, `TextRenderer` wgpu-side, shared `CosmicMeasure` via `Rc<RefCell<…>>`)
 - [x] Glyph atlas + text rendering in the wgpu pipeline
 - [x] Wrapping text (Option A): `TextWrap::Wrap`, intrinsic_min from cosmic glyphs, single-pass reshape during measure (`docs/text.md` §4)
-- [ ] Intrinsic-dimensions protocol (Option B): `LenReq`-based on-demand intrinsic queries, Grid Auto under constraint, Stack Fill min-floor (`docs/intrinsics.md`)
+- [x] Intrinsic-dimensions protocol (Option B): `LenReq`-based on-demand intrinsic queries, Grid Auto under constraint (Step B), Stack Fill resolved during measure (Step C). Per-axis ZStack/Canvas constraint propagation. See `docs/intrinsics.md`.
 - [ ] Persistent state map (`Id → Any`) for scroll, focus, animation
 - [ ] Drag tracking on top of `Active`-capture (rect-independent `drag_delta`)
 
