@@ -1,4 +1,4 @@
-use crate::element::LayoutMode;
+use crate::element::{LayoutMode, UiElement};
 use crate::primitives::{AxisAlign, Rect, Size, Sizing, Visibility};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
@@ -134,8 +134,14 @@ fn resolve_axis_size(
     let rendered = match s {
         Sizing::Fixed(v) => v,
         Sizing::Hug => hug_outer - margin,
-        Sizing::Fill(_) if available.is_finite() => available - margin,
-        Sizing::Fill(_) => hug_outer - margin,
+        Sizing::Fill(_) => {
+            let outer = if available.is_finite() {
+                available
+            } else {
+                hug_outer
+            };
+            outer - margin
+        }
     };
     rendered.max(0.0).clamp(min, max) + margin
 }
@@ -164,6 +170,18 @@ fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
         }
     }
     s
+}
+
+/// Cross/placement alignment for a child, falling back to the parent's
+/// `child_align` on whichever axis the child left as `Auto`. Returned as a
+/// `(horizontal, vertical)` `AxisAlign` pair so layout math stays
+/// axis-symmetric. Used by ZStack and Grid; HStack/VStack only need the
+/// cross axis and resolve it inline.
+pub(super) fn resolved_axis_align(child: &UiElement, parent: &UiElement) -> (AxisAlign, AxisAlign) {
+    (
+        child.align.h.or(parent.child_align.h).to_axis(),
+        child.align.v.or(parent.child_align.v).to_axis(),
+    )
 }
 
 /// Compute size + offset along one axis given the child's alignment, its

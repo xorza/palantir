@@ -1,5 +1,5 @@
 use super::LayoutEngine;
-use crate::primitives::{Rect, Size};
+use crate::primitives::{Rect, Size, Visibility};
 use crate::tree::{NodeId, Tree};
 
 /// ZStack: children all at the same position (top-left of inner rect).
@@ -29,11 +29,14 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, 
     let parent_layout = tree.node(node).element;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
+        if tree.node(c).element.visibility == Visibility::Collapsed {
+            super::zero_subtree(tree, c, inner.min);
+            continue;
+        }
         let d = tree.node(c).desired;
         let s = tree.node(c).element;
 
-        let h_align = s.align.h.or(parent_layout.child_align.h).to_axis();
-        let v_align = s.align.v.or(parent_layout.child_align.v).to_axis();
+        let (h_align, v_align) = super::resolved_axis_align(&s, &parent_layout);
         let (w, x_off) = super::place_axis(h_align, s.size.w, d.w, inner.size.w, false);
         let (h, y_off) = super::place_axis(v_align, s.size.h, d.h, inner.size.h, false);
 
