@@ -3,9 +3,7 @@ use crate::primitives::Track;
 use crate::shape::Shape;
 use std::rc::Rc;
 
-mod flags;
 mod grid_def;
-pub use flags::NodeFlags;
 pub(crate) use grid_def::GridDef;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
