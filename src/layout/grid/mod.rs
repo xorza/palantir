@@ -1,6 +1,43 @@
 use super::LayoutEngine;
-use crate::primitives::{GridCell, Rect, Size, Sizing, Track, Visibility};
+use crate::primitives::{GridCell, HugSlice, Rect, Size, Sizing, Track};
 use crate::tree::{NodeId, Tree};
+
+struct DefSnapshot {
+    n_rows: usize,
+    n_cols: usize,
+    row_gap: f32,
+    col_gap: f32,
+    row_hugs: HugSlice,
+    col_hugs: HugSlice,
+}
+
+/// Snapshot a `GridDef` onto the scratch slot at `depth`: clones the track
+/// `Rc<[Track]>`s (refcount-only), reads gaps + hug-pool slices, and resets
+/// the per-axis scratch. `Rc::clone` per axis is refcount-only — track data
+/// stays in the user's cached `Rc<[Track]>`, never copied through the tree
+/// pool.
+fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u32, depth: usize) -> DefSnapshot {
+    let def = tree.grid_def(idx);
+    let n_rows = def.rows.len();
+    let n_cols = def.cols.len();
+    let rows = def.rows.clone();
+    let cols = def.cols.clone();
+    let row_gap = def.row_gap;
+    let col_gap = def.col_gap;
+    let row_hugs = def.row_hugs;
+    let col_hugs = def.col_hugs;
+    let s = layout.grid.at(depth);
+    s.col.reset(&cols);
+    s.row.reset(&rows);
+    DefSnapshot {
+        n_rows,
+        n_cols,
+        row_gap,
+        col_gap,
+        row_hugs,
+        col_hugs,
+    }
+}
 
 /// Per-axis scratch for one nesting depth. `tracks` is a fresh copy of the
 /// tree's track defs so the borrow checker doesn't fight us during recursion.
@@ -103,26 +140,19 @@ fn measure_inner(
     idx: u32,
     depth: usize,
 ) -> Size {
-    // Setup: snapshot tracks + gaps onto our scratch slot, resolve Fixed.
-    // `Rc::clone` per axis is refcount-only — track data stays in the user's
-    // cached `Rc<[Track]>`, never copied through the tree pool.
-    let (n_rows, n_cols, row_gap, col_gap, row_hugs_slice, col_hugs_slice) = {
-        let def = tree.grid_def(idx);
-        let n_rows = def.rows.len();
-        let n_cols = def.cols.len();
-        let rows = def.rows.clone();
-        let cols = def.cols.clone();
-        let row_gap = def.row_gap;
-        let col_gap = def.col_gap;
-        let row_hugs = def.row_hugs;
-        let col_hugs = def.col_hugs;
+    let DefSnapshot {
+        n_rows,
+        n_cols,
+        row_gap,
+        col_gap,
+        row_hugs: row_hugs_slice,
+        col_hugs: col_hugs_slice,
+    } = snapshot_def(layout, tree, idx, depth);
+    {
         let s = layout.grid.at(depth);
-        s.col.reset(&cols);
-        s.row.reset(&rows);
         resolve_fixed(&mut s.col);
         resolve_fixed(&mut s.row);
-        (n_rows, n_cols, row_gap, col_gap, row_hugs, col_hugs)
-    };
+    }
 
     if n_rows == 0 || n_cols == 0 {
         // Still measure children so their `desired` is set.
@@ -136,7 +166,7 @@ fn measure_inner(
     // Walk children: brief scratch borrows around each recursion.
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let collapsed = tree.node(c).element.visibility == Visibility::Collapsed;
+        let collapsed = tree.node(c).is_collapsed();
         let cell = clamp_cell(tree.node(c).element.grid, n_rows, n_cols);
 
         let avail = {
@@ -223,24 +253,19 @@ fn arrange_inner(
 ) {
     // Arrange re-snapshots from the tree pool; it does not assume measure's
     // scratch survives between passes (loose measure↔arrange contract).
-    // Snapshot tracks + gaps + read cached hug arrays from the tree pool.
-    let (n_rows, n_cols, row_gap, col_gap) = {
-        let def = tree.grid_def(idx);
-        let n_rows = def.rows.len();
-        let n_cols = def.cols.len();
-        let rows = def.rows.clone();
-        let cols = def.cols.clone();
-        let row_gap = def.row_gap;
-        let col_gap = def.col_gap;
-        let row_hugs_slice = def.row_hugs;
-        let col_hugs_slice = def.col_hugs;
+    let DefSnapshot {
+        n_rows,
+        n_cols,
+        row_gap,
+        col_gap,
+        row_hugs: row_hugs_slice,
+        col_hugs: col_hugs_slice,
+    } = snapshot_def(layout, tree, idx, depth);
+    {
         let s = layout.grid.at(depth);
-        s.col.reset(&cols);
-        s.row.reset(&rows);
         s.col.hug.copy_from_slice(tree.grid_hugs(col_hugs_slice));
         s.row.hug.copy_from_slice(tree.grid_hugs(row_hugs_slice));
-        (n_rows, n_cols, row_gap, col_gap)
-    };
+    }
 
     if n_rows == 0 || n_cols == 0 {
         let mut kids = tree.child_cursor(node);
@@ -262,7 +287,7 @@ fn arrange_inner(
     let parent_layout = tree.node(node).element;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        if tree.node(c).element.visibility == Visibility::Collapsed {
+        if tree.node(c).is_collapsed() {
             super::zero_subtree(tree, c, inner.min);
             continue;
         }
