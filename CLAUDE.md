@@ -90,6 +90,12 @@ If the directory is missing or stale, run the script before doing research:
 ./scripts/fetch-refs.sh
 ```
 
+When you need to look up a dependency's API (signatures, version-specific
+behavior, internal types), grep `tmp/<crate>/src` first — that source is at
+the same version Palantir builds against and is faster than `cargo doc`. Only
+fall back to `~/.cargo/registry/src/...` if the crate isn't listed in
+`fetch-refs.sh`.
+
 ## Conventions
 
 - Early-stage project. No external users, no published API. Prefer correctness, simplicity, and structural improvements over preserving the current API shape — rename, restructure, or break things freely when it makes the code better. Don't add deprecation shims, compatibility aliases, or migration helpers.
