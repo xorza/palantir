@@ -102,6 +102,16 @@ cargo test
 
 Fix anything that fails. Don't tell the user a change is complete unless these all pass.
 
+## Finding duplicated code
+
+Before refactoring or hunting for similar code by reading files, run jscpd — it's fast (~500ms) and avoids burning tokens:
+
+```sh
+npm_config_cache="$TMPDIR/npm-cache" npx --yes jscpd src/ --min-lines 5 --min-tokens 50 --ignore "**/tests.rs,**/tests/**" --reporters console
+```
+
+Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each clone pair.
+
 ## Status
 
 - [x] Geometry, tree, shape, recorder, measure/arrange, Button, HStack/VStack

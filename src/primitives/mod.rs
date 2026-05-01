@@ -23,7 +23,6 @@ pub use approx::ApproxF32;
 pub use color::Color;
 pub use corners::Corners;
 pub use grid::GridCell;
-pub(crate) use grid::{GridDef, HugSlice};
 
 pub use justify::Justify;
 pub use num::Num;

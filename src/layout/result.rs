@@ -1,5 +1,20 @@
-use crate::primitives::{HugSlice, Rect, Size};
+use crate::primitives::{Rect, Size};
 use crate::tree::{NodeId, Tree};
+
+/// `(start, len)` range into `GridHugStore::pool` (per-track hug sizes
+/// computed in measure and read in arrange). Tighter than `Range<u32>`
+/// because both bounds are inline `Copy` and the slot itself is `Copy`.
+#[derive(Clone, Copy, Default)]
+struct HugSlice {
+    start: u32,
+    len: u32,
+}
+
+impl HugSlice {
+    fn range(self) -> std::ops::Range<usize> {
+        self.start as usize..(self.start as usize + self.len as usize)
+    }
+}
 
 /// Per-frame layout output: `desired` + `rect` indexed by `NodeId.0`, plus
 /// the per-grid hug pool measure produces and arrange consumes. Lives inside
