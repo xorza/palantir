@@ -1,4 +1,4 @@
-use super::{LayoutEngine, zero_subtree};
+use super::{Axis, LayoutEngine, LenReq, zero_subtree};
 use crate::primitives::{Rect, Size};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
@@ -55,4 +55,31 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
         };
         layout.arrange(tree, c, child_rect);
     }
+}
+
+/// Intrinsic size of a Canvas: max over `(child.position +
+/// child.intrinsic)` on the queried axis. Matches how `measure` computes
+/// the canvas's content size.
+pub(super) fn intrinsic(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    axis: Axis,
+    req: LenReq,
+    text: &mut TextMeasurer,
+) -> f32 {
+    let mut max = 0.0_f32;
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
+        if tree.is_collapsed(c) {
+            continue;
+        }
+        let pos = tree.read_extras(c).position;
+        let off = match axis {
+            Axis::X => pos.x,
+            Axis::Y => pos.y,
+        };
+        max = max.max(off + layout.intrinsic(tree, c, axis, req, text));
+    }
+    max
 }

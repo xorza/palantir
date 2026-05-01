@@ -1,5 +1,5 @@
 pub use super::axis::Axis;
-use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
+use super::{LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;
@@ -137,6 +137,44 @@ pub(super) fn arrange(
         let child_rect = axis.compose_rect(cursor, cross_min + cross_offset, main_size, cross_size);
         layout.arrange(tree, c, child_rect);
         cursor += main_size;
+    }
+}
+
+/// Intrinsic size of a stack on `query_axis` under `req`. When the query
+/// axis matches the stack's `main_axis`, sum children's intrinsic on
+/// that axis plus gaps; otherwise (cross axis), max over children.
+pub(super) fn intrinsic(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    main_axis: Axis,
+    query_axis: Axis,
+    req: LenReq,
+    text: &mut TextMeasurer,
+) -> f32 {
+    let gap = tree.read_extras(node).gap;
+    if main_axis == query_axis {
+        let mut total = 0.0_f32;
+        let mut count = 0_usize;
+        let mut kids = tree.child_cursor(node);
+        while let Some(c) = kids.next(tree) {
+            if tree.is_collapsed(c) {
+                continue;
+            }
+            total += layout.intrinsic(tree, c, query_axis, req, text);
+            count += 1;
+        }
+        total + gap * count.saturating_sub(1) as f32
+    } else {
+        let mut max = 0.0_f32;
+        let mut kids = tree.child_cursor(node);
+        while let Some(c) = kids.next(tree) {
+            if tree.is_collapsed(c) {
+                continue;
+            }
+            max = max.max(layout.intrinsic(tree, c, query_axis, req, text));
+        }
+        max
     }
 }
 

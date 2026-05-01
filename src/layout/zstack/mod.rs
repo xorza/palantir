@@ -1,10 +1,32 @@
-use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
+use super::{Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
 use crate::primitives::{Rect, Size};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
 #[cfg(test)]
 mod tests;
+
+/// Intrinsic size of a ZStack: max over children on the queried axis.
+/// Children stack at the same origin, so the parent hugs the largest
+/// child.
+pub(super) fn intrinsic(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    axis: Axis,
+    req: LenReq,
+    text: &mut TextMeasurer,
+) -> f32 {
+    let mut max = 0.0_f32;
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
+        if tree.is_collapsed(c) {
+            continue;
+        }
+        max = max.max(layout.intrinsic(tree, c, axis, req, text));
+    }
+    max
+}
 
 /// ZStack: children all at the same position (top-left of inner rect).
 /// Pass `INFINITY` on both axes during measure so `Fill` children fall back to

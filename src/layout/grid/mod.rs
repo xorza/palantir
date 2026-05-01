@@ -1,4 +1,4 @@
-use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
+use super::{Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
 use crate::primitives::{GridCell, Rect, Size, Sizing, Track};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
@@ -525,6 +525,80 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
         }
         break;
     }
+}
+
+/// Intrinsic size of a Grid: per-track contribution aggregated from
+/// span-1 cells, summed across tracks plus gaps. Step B's full algorithm
+/// will refactor `measure` to consume this; for Step A this just answers
+/// "what would the Grid prefer to be on this axis?" so callers can read
+/// it without measuring.
+///
+/// Per-track contribution mirrors `Track`'s `Sizing` interpretation:
+/// - `Fixed(v)`: contributes `v` clamped to `[Track.min, Track.max]`.
+/// - `Hug`: starts at `Track.min`, grown by span-1 cells' intrinsic on
+///   the same axis, clamped to `[Track.min, Track.max]`.
+/// - `Fill(_)`: contributes `Track.min` only — Fill claims leftover at
+///   distribution time, not in intrinsic.
+///
+/// Span > 1 cells are excluded (matches existing `measure` and the
+/// Step B design commitment in `docs/intrinsics.md`).
+pub(super) fn intrinsic(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    idx: u16,
+    axis: Axis,
+    req: LenReq,
+    text: &mut TextMeasurer,
+) -> f32 {
+    let def = tree.grid_def(idx);
+    let (tracks, gap, n_tracks) = match axis {
+        Axis::X => (def.cols.clone(), def.col_gap, def.cols.len()),
+        Axis::Y => (def.rows.clone(), def.row_gap, def.rows.len()),
+    };
+    if n_tracks == 0 {
+        return 0.0;
+    }
+
+    let mut track_size = vec![0.0_f32; n_tracks];
+    for (i, t) in tracks.iter().enumerate() {
+        track_size[i] = match t.size {
+            Sizing::Fixed(v) => v.clamp(t.min, t.max),
+            // Hug starts at Track.min; Fill stays at Track.min.
+            _ => t.min,
+        };
+    }
+
+    let mut kids = tree.child_cursor(node);
+    while let Some(c) = kids.next(tree) {
+        if tree.is_collapsed(c) {
+            continue;
+        }
+        let cell = tree.read_extras(c).grid;
+        let span = match axis {
+            Axis::X => cell.col_span,
+            Axis::Y => cell.row_span,
+        };
+        if span != 1 {
+            continue;
+        }
+        let track_idx = match axis {
+            Axis::X => cell.col as usize,
+            Axis::Y => cell.row as usize,
+        };
+        if track_idx >= n_tracks {
+            continue;
+        }
+        let t = &tracks[track_idx];
+        if !matches!(t.size, Sizing::Hug) {
+            continue;
+        }
+        let child_v = layout.intrinsic(tree, c, axis, req, text);
+        track_size[track_idx] = track_size[track_idx].max(child_v.clamp(t.min, t.max));
+    }
+
+    let total: f32 = track_size.iter().sum();
+    total + gap * n_tracks.saturating_sub(1) as f32
 }
 
 #[cfg(test)]
