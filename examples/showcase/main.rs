@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use palantir::renderer::{ComposeParams, Pipeline, WgpuBackend};
 use palantir::{
-    Button, Color, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui, VStack, ZStack,
+    Button, Color, Element, HStack, InputEvent, Rect, Sizing, Stroke, Styled, Ui, VStack, ZStack,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;

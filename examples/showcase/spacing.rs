@@ -1,4 +1,4 @@
-use palantir::{Color, Element, Frame, HStack, Sizing, Stroke, Ui, VStack};
+use palantir::{Color, Element, Frame, HStack, Sizing, Stroke, Styled, Ui, VStack};
 
 fn fill_color() -> Color {
     Color::rgba(0.30, 0.55, 0.85, 0.85)

@@ -1,4 +1,4 @@
-use palantir::{Color, Element, Frame, Grid, Sizing, Stroke, Track, Ui, VStack};
+use palantir::{Color, Element, Frame, Grid, Sizing, Stroke, Styled, Track, Ui, VStack};
 
 fn body() -> Color {
     Color::rgb(0.30, 0.55, 0.85)

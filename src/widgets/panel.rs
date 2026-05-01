@@ -1,8 +1,7 @@
 use crate::element::{Element, LayoutMode, UiElement};
-use crate::primitives::{Color, Corners, Stroke, TranslateScale, WidgetId};
-use crate::shape::Shape;
+use crate::primitives::{TranslateScale, WidgetId};
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::{Background, Response, Styled};
 use std::hash::Hash;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
@@ -15,33 +14,17 @@ use std::hash::Hash;
 /// `.fill(...)` or `.stroke(...)` paints nothing — pure layout.
 pub struct Panel {
     element: UiElement,
-    fill: Color,
-    stroke: Option<Stroke>,
-    radius: Corners,
+    background: Background,
 }
 
 impl Panel {
     fn from_id(id: WidgetId, mode: LayoutMode) -> Self {
         Self {
             element: UiElement::new(id, mode),
-            fill: Color::TRANSPARENT,
-            stroke: None,
-            radius: Corners::ZERO,
+            background: Background::default(),
         }
     }
 
-    pub fn fill(mut self, c: Color) -> Self {
-        self.fill = c;
-        self
-    }
-    pub fn stroke(mut self, s: impl Into<Option<Stroke>>) -> Self {
-        self.stroke = s.into();
-        self
-    }
-    pub fn radius(mut self, r: impl Into<Corners>) -> Self {
-        self.radius = r.into();
-        self
-    }
     /// Clip descendants' paint to this panel's rendered rect (CSS
     /// `overflow: hidden`). Layout is unchanged — children may still measure
     /// beyond, they're just visually scissored.
@@ -63,11 +46,7 @@ impl Panel {
         let id = self.element.id;
 
         let node = ui.node(self.element, |ui| {
-            ui.add_shape(Shape::RoundedRect {
-                radius: self.radius,
-                fill: self.fill,
-                stroke: self.stroke,
-            });
+            self.background.add_to(ui);
             body(ui);
         });
 
@@ -79,6 +58,12 @@ impl Panel {
 impl Element for Panel {
     fn element_mut(&mut self) -> &mut UiElement {
         &mut self.element
+    }
+}
+
+impl Styled for Panel {
+    fn background_mut(&mut self) -> &mut Background {
+        &mut self.background
     }
 }
 

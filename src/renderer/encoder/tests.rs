@@ -2,7 +2,7 @@ use super::{RenderCmd, encode};
 use crate::Ui;
 use crate::element::Element;
 use crate::primitives::{Color, Rect, Sizing};
-use crate::widgets::{Frame, HStack, ZStack};
+use crate::widgets::{Frame, HStack, Styled, ZStack};
 
 fn count_clip_pairs(cmds: &[RenderCmd]) -> (usize, usize) {
     let mut pushes = 0;

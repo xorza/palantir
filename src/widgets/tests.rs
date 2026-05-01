@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::element::Element;
 use crate::primitives::{Color, Rect, Sense, Sizing};
 use crate::shape::Shape;
-use crate::widgets::{Button, Canvas, Frame, HStack, ZStack};
+use crate::widgets::{Button, Canvas, Frame, HStack, Styled, ZStack};
 
 #[test]
 fn clip_flag_is_recorded_on_panel_node() {

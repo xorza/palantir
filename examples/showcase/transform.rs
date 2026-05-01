@@ -1,5 +1,5 @@
 use glam::Vec2;
-use palantir::{Color, Element, Frame, HStack, Sizing, TranslateScale, Ui, VStack, ZStack};
+use palantir::{Color, Element, Frame, HStack, Sizing, Styled, TranslateScale, Ui, VStack, ZStack};
 
 fn tile_color() -> Color {
     Color::rgb(0.30, 0.55, 0.85)

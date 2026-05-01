@@ -18,5 +18,6 @@ pub use shape::Shape;
 pub use tree::{Node, NodeId, Tree};
 pub use ui::{Theme, Ui};
 pub use widgets::{
-    Button, ButtonStyle, Canvas, Frame, Grid, HStack, Panel, Response, VStack, ZStack,
+    Background, Button, ButtonStyle, Canvas, Frame, Grid, HStack, Panel, Response, Styled, VStack,
+    ZStack,
 };

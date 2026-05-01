@@ -1,4 +1,4 @@
-use palantir::{Color, Element, Frame, HStack, Justify, Sizing, Ui, VStack};
+use palantir::{Color, Element, Frame, HStack, Justify, Sizing, Styled, Ui, VStack};
 
 fn tile() -> Color {
     Color::rgb(0.30, 0.55, 0.85)

@@ -2,7 +2,7 @@ use crate::element::{Element, LayoutMode, UiElement};
 use crate::primitives::{Color, Corners, Sense, Visuals, WidgetId};
 use crate::shape::Shape;
 use crate::ui::Ui;
-use crate::widgets::{Frame, Response};
+use crate::widgets::{Frame, Response, Styled};
 use glam::Vec2;
 use std::hash::Hash;
 
