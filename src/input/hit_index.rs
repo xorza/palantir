@@ -1,5 +1,6 @@
+use crate::layout::LayoutResult;
 use crate::primitives::{Rect, Sense, TranslateScale, WidgetId};
-use crate::tree::Tree;
+use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
 /// One widget's hit-test entry from last frame: identity, screen-space rect
@@ -69,14 +70,14 @@ impl HitIndex {
     /// - **`clip`**: clipping ancestors bound the visible/hit-testable area
     ///   of descendants. Stored in screen space so intersection composes
     ///   directly with transformed rects.
-    pub(crate) fn rebuild(&mut self, tree: &Tree) {
+    pub(crate) fn rebuild(&mut self, tree: &Tree, layout: &LayoutResult) {
         self.entries.clear();
         self.cascades.clear();
-        let n = tree.nodes.len();
+        let n = tree.node_count();
         self.entries.reserve(n);
         self.cascades.reserve(n);
 
-        for node in &tree.nodes {
+        for (i, node) in tree.nodes_iter().enumerate() {
             let parent = match node.parent {
                 Some(p) => self.cascades[p.0 as usize],
                 None => Cascade::ROOT_PARENT,
@@ -86,16 +87,13 @@ impl HitIndex {
             let me_invisible = parent.invisible || node.element.flags.is_invisible();
 
             let parent_t = parent.transform_for_descendants;
-            let node_transform = node
-                .element
-                .extras
-                .and_then(|i| tree.node_extras[i as usize].transform);
+            let node_transform = tree.read_extras(NodeId(i as u32)).transform;
             let descendant_t = match node_transform {
                 Some(t) => parent_t.compose(t),
                 None => parent_t,
             };
 
-            let screen_rect = parent_t.apply_rect(node.rect);
+            let screen_rect = parent_t.apply_rect(layout.rect(NodeId(i as u32)));
             let visible_rect = match parent.clip_for_descendants {
                 Some(c) => screen_rect.intersect(c),
                 None => screen_rect,

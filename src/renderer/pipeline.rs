@@ -21,8 +21,13 @@ impl Pipeline {
 
     /// Encode the tree into commands, compose them into the buffer, return
     /// the buffer ready to submit.
-    pub fn build(&mut self, tree: &Tree, params: &ComposeParams) -> &RenderBuffer {
-        encode(tree, &mut self.cmds);
+    pub fn build(
+        &mut self,
+        tree: &Tree,
+        layout: &crate::layout::LayoutResult,
+        params: &ComposeParams,
+    ) -> &RenderBuffer {
+        encode(tree, layout, &mut self.cmds);
         self.composer.compose(&self.cmds, params, &mut self.buffer);
         &self.buffer
     }

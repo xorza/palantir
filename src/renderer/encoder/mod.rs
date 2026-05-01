@@ -1,3 +1,4 @@
+use crate::layout::LayoutResult;
 use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
 use crate::shape::{Shape, ShapeRect};
 use crate::tree::{NodeId, Tree};
@@ -32,16 +33,16 @@ pub enum RenderCmd {
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU work,
 /// no scale/snap math — that lives in the backend's process step. Pure
-/// function over `&Tree`, so the same call works in unit tests with no
-/// device.
-pub fn encode(tree: &Tree, out: &mut Vec<RenderCmd>) {
+/// function over `(&Tree, &LayoutResult)`, so the same call works in unit
+/// tests with no device.
+pub fn encode(tree: &Tree, layout: &LayoutResult, out: &mut Vec<RenderCmd>) {
     out.clear();
     if let Some(root) = tree.root() {
-        encode_node(tree, root, out);
+        encode_node(tree, layout, root, out);
     }
 }
 
-fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
+fn encode_node(tree: &Tree, layout: &LayoutResult, id: NodeId, out: &mut Vec<RenderCmd>) {
     let node = tree.node(id);
 
     // Hidden / Collapsed: paint nothing for this node or its subtree.
@@ -50,16 +51,18 @@ fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
         return;
     }
 
+    let rect = layout.rect(id);
+
     // Order: clip is in parent-of-panel space (pre-transform); transform
     // applies inside the clip and only to children. The panel's own
     // background paints under the clip but BEFORE the transform — matching
     // WPF's `RenderTransform` convention.
     let clip = node.element.flags.is_clip();
     if clip {
-        out.push(RenderCmd::PushClip(node.rect));
+        out.push(RenderCmd::PushClip(rect));
     }
 
-    let owner = node.rect;
+    let owner = rect;
     for shape in tree.shapes_of(id) {
         match shape {
             Shape::RoundedRect {
@@ -98,7 +101,7 @@ fn encode_node(tree: &Tree, id: NodeId, out: &mut Vec<RenderCmd>) {
 
     let mut c = node.first_child;
     while let Some(child) = c {
-        encode_node(tree, child, out);
+        encode_node(tree, layout, child, out);
         c = tree.node(child).next_sibling;
     }
 

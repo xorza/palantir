@@ -7,7 +7,7 @@ use crate::tree::{NodeId, Tree};
 /// so `Fill` children fall back to intrinsic — "fill the rest" is meaningless
 /// when children can overlap. Content size = `max(child_pos + child_desired)`
 /// per axis, so a `Hug` Canvas grows to the union of placed rects.
-pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId) -> Size {
+pub(super) fn measure(layout: &mut LayoutEngine, tree: &Tree, node: NodeId) -> Size {
     let child_avail = Size::INF;
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
@@ -24,14 +24,14 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId) 
 /// Each child gets a slot at `inner.min + style.position`, sized per its
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `measure`.
-pub(super) fn arrange(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, inner: Rect) {
+pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).is_collapsed() {
-            super::zero_subtree(tree, c, inner.min);
+            super::zero_subtree(layout, tree, c, inner.min);
             continue;
         }
-        let d = tree.node(c).desired;
+        let d = layout.desired(c);
         let pos = tree.read_extras(c).position;
         let child_rect = Rect {
             min: inner.min + pos,

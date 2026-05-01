@@ -7,7 +7,7 @@ use crate::tree::{NodeId, Tree};
 /// intrinsic — otherwise the `Hug` panel would size to its own `Fill` children
 /// (recursive). Content size = `max(child desired)` per axis, so the panel
 /// hugs the largest child.
-pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId) -> Size {
+pub(super) fn measure(layout: &mut LayoutEngine, tree: &Tree, node: NodeId) -> Size {
     let child_avail = Size::INF;
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
@@ -25,15 +25,15 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId) 
 /// `child_align` as fallback when child's own axis is `Auto`).
 /// Defaults pin to top-left unless the child has `Sizing::Fill` — then `Auto`
 /// falls back to stretch on that axis.
-pub(super) fn arrange(layout: &mut LayoutEngine, tree: &mut Tree, node: NodeId, inner: Rect) {
+pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
     let parent_child_align = tree.read_extras(node).child_align;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.node(c).is_collapsed() {
-            super::zero_subtree(tree, c, inner.min);
+            super::zero_subtree(layout, tree, c, inner.min);
             continue;
         }
-        let d = tree.node(c).desired;
+        let d = layout.desired(c);
         let s = tree.node(c).element;
 
         let (h_align, v_align) = super::resolved_axis_align(&s, parent_child_align);

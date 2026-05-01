@@ -19,8 +19,8 @@ fn grid_fixed_and_fill_columns_split_remainder() {
     ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let left = ui.tree.node(kids[0]).rect;
-    let right = ui.tree.node(kids[1]).rect;
+    let left = ui.rect(kids[0]);
+    let right = ui.rect(kids[1]);
     assert_eq!(left.size.w, 120.0);
     assert_eq!(left.min.x, 0.0);
     assert_eq!(right.size.w, 280.0);
@@ -56,9 +56,9 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let short_btn = ui.tree.node(kids[0]).rect;
-    let long_btn = ui.tree.node(kids[1]).rect;
-    let body = ui.tree.node(kids[2]).rect;
+    let short_btn = ui.rect(kids[0]);
+    let long_btn = ui.rect(kids[1]);
+    let body = ui.rect(kids[2]);
     // Hug col = max(16, 56) = 56 → x boundary at 56.
     assert_eq!(body.min.x, 56.0);
     assert_eq!(body.size.w, 344.0);
@@ -81,8 +81,8 @@ fn grid_fill_weights_split_remainder_proportionally() {
         .node;
     ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
     let kids: Vec<_> = ui.tree.children(root).collect();
-    assert_eq!(ui.tree.node(kids[0]).rect.size.w, 100.0);
-    assert_eq!(ui.tree.node(kids[1]).rect.size.w, 300.0);
+    assert_eq!(ui.rect(kids[0]).size.w, 100.0);
+    assert_eq!(ui.rect(kids[1]).size.w, 300.0);
 }
 
 #[test]
@@ -102,8 +102,8 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
         .node;
     ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
     let kids: Vec<_> = ui.tree.children(root).collect();
-    assert_eq!(ui.tree.node(kids[0]).rect.size.w, 200.0);
-    assert_eq!(ui.tree.node(kids[1]).rect.size.w, 200.0);
+    assert_eq!(ui.rect(kids[0]).size.w, 200.0);
+    assert_eq!(ui.rect(kids[1]).size.w, 200.0);
 }
 
 #[test]
@@ -122,8 +122,8 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
         .node;
     ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
     let kids: Vec<_> = ui.tree.children(root).collect();
-    assert_eq!(ui.tree.node(kids[0]).rect.size.w, 150.0);
-    assert_eq!(ui.tree.node(kids[1]).rect.size.w, 250.0);
+    assert_eq!(ui.rect(kids[0]).size.w, 150.0);
+    assert_eq!(ui.rect(kids[1]).size.w, 250.0);
 }
 
 #[test]
@@ -150,8 +150,8 @@ fn grid_col_span_covers_multiple_columns_with_gap() {
     ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let header = ui.tree.node(kids[0]).rect;
-    let body = ui.tree.node(kids[1]).rect;
+    let header = ui.rect(kids[0]);
+    let body = ui.rect(kids[1]);
     assert_eq!(header.min.x, 0.0);
     assert_eq!(header.size.w, 320.0);
     assert_eq!(header.size.h, 40.0);
@@ -185,7 +185,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
         })
         .node;
     ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
-    let r = ui.tree.node(grid_node.unwrap()).rect;
+    let r = ui.rect(grid_node.unwrap());
     assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
     assert_eq!(r.size.h, 40.0);
 }

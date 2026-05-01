@@ -1,11 +1,20 @@
 use crate::element::{NodeElement, UiElement, UiElementExtras};
-use crate::primitives::{GridDef, HugSlice, Rect, Size, Track};
+use crate::primitives::{GridDef, Track};
 use crate::shape::Shape;
 use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub(crate) u32);
 
+impl NodeId {
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+/// Recorded node — the user-described data for one element. Layout output
+/// (`desired`, `rect`) is *not* on `Node`; it lives on `LayoutEngine` keyed
+/// by `NodeId`. `Tree` is therefore read-only after recording finishes.
 #[derive(Debug)]
 pub struct Node {
     /// What was recorded for this node: id, layout, mode, sense, disabled.
@@ -20,9 +29,6 @@ pub struct Node {
 
     /// Half-open range into `Tree.shapes` for this node's shapes.
     pub shapes: std::ops::Range<u32>,
-
-    pub desired: Size,
-    pub rect: Rect,
 }
 
 impl Node {
@@ -41,8 +47,6 @@ impl Node {
             first_child: None,
             next_sibling: None,
             shapes: shapes_start..shapes_start,
-            desired: Size::ZERO,
-            rect: Rect::ZERO,
         }
     }
 }
@@ -61,10 +65,9 @@ pub struct Tree {
     /// Reused frame-to-frame; cleared with `Tree::clear`.
     last_child: Vec<Option<NodeId>>,
     /// Frame-scoped grid storage: track defs (addressed by
-    /// `LayoutMode::Grid(u16)`) plus the per-track hug-size pool the
-    /// `GridDef::row_hugs` / `col_hugs` slices reference. Distinct from
-    /// `LayoutEngine::grid` (per-depth scratch); this one bridges
-    /// measure→arrange. Cleared per frame, capacity retained.
+    /// `LayoutMode::Grid(u16)`). Per-track hug arrays live on `LayoutResult`
+    /// since the tree is read-only after recording. Cleared per frame,
+    /// capacity retained.
     grid: GridArena,
     /// Out-of-line side table for rarely-set element fields (`transform`,
     /// `position`, `grid`). `Node.element.extras` is `Some(idx)` when a node
@@ -99,12 +102,8 @@ impl Tree {
         self.grid.def(idx)
     }
 
-    pub(crate) fn grid_hugs(&self, slice: HugSlice) -> &[f32] {
-        self.grid.hugs(slice)
-    }
-
-    pub(crate) fn grid_hugs_mut(&mut self, slice: HugSlice) -> &mut [f32] {
-        self.grid.hugs_mut(slice)
+    pub(crate) fn grid_defs(&self) -> &[GridDef] {
+        &self.grid.defs
     }
 
     pub fn push_node(&mut self, element: UiElement, parent: Option<NodeId>) -> NodeId {
@@ -154,8 +153,15 @@ impl Tree {
     pub fn node(&self, id: NodeId) -> &Node {
         &self.nodes[id.0 as usize]
     }
-    pub fn node_mut(&mut self, id: NodeId) -> &mut Node {
-        &mut self.nodes[id.0 as usize]
+
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Iterate nodes in storage order (== pre-order). The index of each node
+    /// equals its `NodeId.0`.
+    pub fn nodes_iter(&self) -> std::slice::Iter<'_, Node> {
+        self.nodes.iter()
     }
 
     /// Side-table extras for a node, or `None` if the node didn't customize
@@ -246,27 +252,23 @@ impl ChildCursor {
     }
 }
 
-/// Frame-scoped storage bridging grid measure → arrange. `defs` is appended
-/// to during recording (one entry per `Grid` panel); `hug_pool` is reserved
-/// alongside and filled in during measure, then read in arrange. Capacity is
-/// retained across frames; data is cleared per frame.
+/// Frame-scoped recording-only grid storage: track defs (one per `Grid`
+/// panel), addressed by `LayoutMode::Grid(u16)`. Per-track hug arrays live
+/// on `LayoutResult` since the tree is read-only after recording. Capacity
+/// is retained across frames; data is cleared per frame.
 #[derive(Default)]
 pub(crate) struct GridArena {
-    defs: Vec<GridDef>,
-    hug_pool: Vec<f32>,
+    pub(super) defs: Vec<GridDef>,
 }
 
 impl GridArena {
     fn clear(&mut self) {
         self.defs.clear();
-        self.hug_pool.clear();
     }
 
     /// Append a `GridDef` referencing user-owned `Rc<[Track]>` rows + cols;
     /// return its index. The index is stamped into a `LayoutMode::Grid(idx)`
-    /// on the owning panel's `UiElement`. Reserves zero-initialized hug-size
-    /// slots that `grid_measure` will fill in. `Rc` clones are refcount-only
-    /// — no track data is copied.
+    /// on the owning panel's `UiElement`. `Rc` clones are refcount-only.
     fn push_def(
         &mut self,
         rows: Rc<[Track]>,
@@ -274,8 +276,6 @@ impl GridArena {
         row_gap: f32,
         col_gap: f32,
     ) -> u16 {
-        let row_hugs = self.reserve_hugs(rows.len());
-        let col_hugs = self.reserve_hugs(cols.len());
         assert!(
             self.defs.len() < u16::MAX as usize,
             "more than 65 535 Grid panels in a single frame",
@@ -286,31 +286,12 @@ impl GridArena {
             cols,
             row_gap,
             col_gap,
-            row_hugs,
-            col_hugs,
         });
         idx
     }
 
-    fn reserve_hugs(&mut self, n: usize) -> HugSlice {
-        let start = self.hug_pool.len() as u32;
-        self.hug_pool.resize(start as usize + n, 0.0);
-        HugSlice {
-            start,
-            len: n as u32,
-        }
-    }
-
     fn def(&self, idx: u16) -> &GridDef {
         &self.defs[idx as usize]
-    }
-
-    fn hugs(&self, slice: HugSlice) -> &[f32] {
-        &self.hug_pool[slice.range()]
-    }
-
-    fn hugs_mut(&mut self, slice: HugSlice) -> &mut [f32] {
-        &mut self.hug_pool[slice.range()]
     }
 }
 

@@ -23,8 +23,8 @@ impl Default for GridCell {
     }
 }
 
-/// `(start, len)` range into `Tree::hug_pool` (per-track hug sizes computed
-/// in measure and read in arrange).
+/// `(start, len)` range into `LayoutResult::grid_hug_pool` (per-track hug
+/// sizes computed in measure and read in arrange).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct HugSlice {
     pub start: u32,
@@ -42,17 +42,12 @@ impl HugSlice {
 /// `Rc<[Track]>` so callers can cache and share them across frames without
 /// the framework copying — the builder stores the `Rc`, the layout pass
 /// reads through it directly. Per-track hug sizes (computed in measure, read
-/// in arrange) live in `Tree::hug_pool`. All cleared with `Tree::clear`.
+/// in arrange) live on `LayoutResult` keyed by grid def index — the tree is
+/// read-only after recording.
 #[derive(Clone, Debug)]
 pub(crate) struct GridDef {
     pub rows: Rc<[Track]>,
     pub cols: Rc<[Track]>,
     pub row_gap: f32,
     pub col_gap: f32,
-    /// Per-row max desired height of span-1 children. Written by
-    /// `grid_measure`, read by `arrange_grid`.
-    pub row_hugs: HugSlice,
-    /// Per-col max desired width of span-1 children. Same semantics as
-    /// `row_hugs` on the X axis.
-    pub col_hugs: HugSlice,
 }
