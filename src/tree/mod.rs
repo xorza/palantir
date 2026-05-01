@@ -155,7 +155,7 @@ impl Tree {
         let idx = node.0 as usize;
         assert_eq!(
             idx,
-            self.layout.len() - 1,
+            self.node_count() - 1,
             "shapes for node {idx} must be added contiguously, before any child node",
         );
         self.shapes.push(shape);
@@ -170,14 +170,6 @@ impl Tree {
         self.paint[id.0 as usize]
     }
 
-    pub fn widget_id(&self, id: NodeId) -> WidgetId {
-        self.widget_ids[id.0 as usize]
-    }
-
-    pub fn subtree_end_of(&self, id: NodeId) -> u32 {
-        self.subtree_end[id.0 as usize]
-    }
-
     pub fn is_collapsed(&self, id: NodeId) -> bool {
         self.layout[id.0 as usize].is_collapsed()
     }
@@ -188,31 +180,23 @@ impl Tree {
 
     /// Direct access to the layout column. Use when you need to iterate every
     /// node's layout fields in storage order.
-    pub fn layout_column(&self) -> &[LayoutCore] {
+    pub fn layouts(&self) -> &[LayoutCore] {
         &self.layout
     }
 
     /// Direct access to the paint column.
-    pub fn paint_column(&self) -> &[PaintCore] {
+    pub fn paints(&self) -> &[PaintCore] {
         &self.paint
     }
 
     /// Direct access to the subtree-end column.
-    pub fn subtree_end_column(&self) -> &[u32] {
+    pub fn subtree_ends(&self) -> &[u32] {
         &self.subtree_end
     }
 
     /// Direct access to the widget-id column.
-    pub fn widget_id_column(&self) -> &[WidgetId] {
+    pub fn widget_ids(&self) -> &[WidgetId] {
         &self.widget_ids
-    }
-
-    /// Side-table extras for a node, or `None` if the node didn't customize
-    /// any of the rarely-set fields (`transform`, `position`, `grid`).
-    pub fn extras(&self, id: NodeId) -> Option<&ElementExtras> {
-        self.paint[id.0 as usize]
-            .extras
-            .map(|i| &self.node_extras[i as usize])
     }
 
     /// Read extras for a node, returning a borrow of `ElementExtras::DEFAULT`
@@ -220,7 +204,10 @@ impl Tree {
     /// individual fields (`gap`, `child_align`, `position`, …) without
     /// duplicating defaults at every call site.
     pub fn read_extras(&self, id: NodeId) -> &ElementExtras {
-        self.extras(id).unwrap_or(&ElementExtras::DEFAULT)
+        match self.paint[id.0 as usize].extras {
+            Some(i) => &self.node_extras[i as usize],
+            None => &ElementExtras::DEFAULT,
+        }
     }
 
     /// First node in pre-order paint order, or `None` if the tree is empty.
