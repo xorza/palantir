@@ -1,8 +1,11 @@
 use crate::widgets::ButtonStyle;
 
-/// Per-widget default styles. Widgets read from here at `show()` time when no
-/// per-instance style override is supplied.
+/// Default `ButtonStyle` for buttons that don't supply one. Read by
+/// `Button::show` when `Button::style` was not called. Other widgets
+/// (Frame / Panel / Grid) take their visuals at builder time via the
+/// `Styled` mixin and don't consult this — there's no global theme;
+/// "theme" today means "button defaults" only.
 #[derive(Clone, Debug, Default)]
-pub struct Theme {
+pub struct ButtonTheme {
     pub button: ButtonStyle,
 }

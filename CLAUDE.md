@@ -6,31 +6,30 @@ Read `DESIGN.md` for the full design rationale before making non-trivial changes
 
 ## Core architecture
 
-Four passes per frame:
+Five passes per frame:
 
-1. **Record** — user code (`Button::new(id).label("x").show(&mut ui)`) appends `Node`s and `Shape`s into an arena `Tree`. No painting yet.
+1. **Record** — user code (`Button::new().label("x").show(&mut ui)`) appends `Node`s and `Shape`s into an arena `Tree`. No painting yet.
 2. **Measure** — post-order. Each node returns desired size given available size.
 3. **Arrange** — pre-order. Parent assigns final `Rect` to each child.
-4. **Paint** — pre-order. Walk tree, resolve each shape's offset against its owner's `Rect`, batch into wgpu draws. *Not yet implemented.*
+4. **Cascade** — pre-order. `Cascades::rebuild` resolves disabled/invisible/clip/transform per node into a flat table; consumed by both encoder and hit-index so they can't drift.
+5. **Encode + Paint** — pre-order. `renderer::encode` walks the tree → `Vec<RenderCmd>`; `Composer` groups by scissor and snaps to physical pixels; `WgpuBackend` submits instanced quad draws.
 
-The tree is rebuilt every frame; widget *state* (scroll, focus, animation) lives in a separate `Id → Any` map keyed by `WidgetId` (hashed call-site/user key).
+The tree is rebuilt every frame; widget *state* (scroll, focus, animation) lives in a separate `Id → Any` map keyed by `WidgetId` (hashed call-site/user key) — *not yet implemented*.
 
 ### Node vs Shape — the key split
 
-- **`Node`** = layout participant. Has style, measured size, final rect, parent/child links. Lives in `Tree.nodes`.
-- **`Shape`** = paint primitive (`RoundedRect`, `Text`, `Line`, …). Owner-relative position. Stored flat in `Tree.shapes`, sliced per-node via `shapes_start..shapes_end`.
+- **`Node`** = layout participant. Has style, measured size (on `LayoutResult`, not on `Node`), parent/child links. Lives in `Tree.nodes`.
+- **`Shape`** = paint primitive (`RoundedRect`, `Text`, `Line`, …). Stored flat in `Tree.shapes`, sliced per-node via a `Range<u32>` on `Node`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning today.
 
 Layout passes ignore Shapes; paint pass ignores hierarchy beyond walking it. This decoupling is load-bearing — keep it.
-
-`ShapeRect::Full` is a sentinel meaning "use my owner's full arranged rect," resolved at paint time. Lets shapes be declared before the node has a size.
 
 ### Sizing semantics (WPF-aligned)
 
 - `Sizing::Fixed(n)` — outer dimension is exactly `n` (includes padding).
 - `Sizing::Hug` — outer dimension = content + padding (WPF's `Auto`).
-- `Sizing::Fill` — take available space, distribute leftover equally across `Fill` siblings (WPF's `*`).
+- `Sizing::Fill(weight)` — take available space, distribute leftover by weight across `Fill` siblings (WPF's `*`).
 
-If you change `resolve_axis` in `src/layout.rs`, re-run the lib tests — they pin this contract.
+`resolve_axis_size` in `src/layout/mod.rs` is the canonical implementation; `src/layout/{stack,zstack,canvas,grid}/tests.rs` pin it.
 
 ### Tree topology
 
@@ -40,20 +39,23 @@ Linked-list children (`first_child` / `next_sibling`), not `Vec<NodeId>` per nod
 
 ```
 src/
-  geom.rs       Vec2, Size, Rect, Color, Stroke, Sizing, Spacing, Style
-  shape.rs      Shape enum + ShapeRect::{Full, Offset}
-  tree.rs       Tree, Node, NodeId, WidgetId, ChildIter
-  ui.rs         Ui recorder (parent stack, begin_node/end_node, container helper)
-  layout.rs     measure + arrange + HStack/VStack drivers
-  widgets/
-    button.rs   Button::new(id).width(x).label(s).show(&ui) → Response
-  lib.rs        re-exports + unit tests pinning layout semantics
+  cascade.rs           per-node disabled/invisible/clip/transform table
+  element.rs           UiElement (wide builder) / NodeElement (compact) / UiElementExtras
+  shape/               Shape enum (RoundedRect, Line, Text)
+  tree/                Tree, Node, NodeId, NodeFlags (bit-packed sense+vis+align), GridDef
+  ui/                  Ui recorder, ButtonTheme
+  layout/              LayoutEngine, LayoutResult, stack/zstack/canvas/grid drivers
+  primitives/          Vec2/Size/Rect/Color/Stroke/Corners/Spacing/Sizing/Track/Align/…
+  input/               InputState, HitIndex (O(1) by-id lookup over Cascades output)
+  renderer/            encode → compose → wgpu backend, instanced rounded-rect quads
+  widgets/             Button, Frame, Panel (HStack/VStack/ZStack/Canvas factories), Grid, Styled mixin
 
 examples/
-  helloworld.rs minimal driver (no wgpu yet — prints arranged rects)
+  helloworld.rs        minimal wgpu-backed driver
+  showcase/            multi-page demo of every layout / clip / transform / disabled / button style
 
 scripts/
-  fetch-refs.sh clones reference UI/layout/renderer projects into ./tmp
+  fetch-refs.sh        clones reference UI/layout/renderer projects into ./tmp
 ```
 
 ## Reference notes in `./references/`
@@ -114,11 +116,15 @@ Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each 
 
 ## Status
 
-- [x] Geometry, tree, shape, recorder, measure/arrange, Button, HStack/VStack
-- [x] Lib tests covering Hug/Fixed/Fill on both axes
-- [ ] Real text measurement via glyphon
-- [ ] wgpu paint pass (RoundedRect SDF shader, glyph atlas, instanced quads)
-- [ ] winit event loop integration
-- [ ] Hit-testing against last frame's rects → `Response { hovered, clicked, ... }`
-- [ ] More layouts: Grid, Dock, Canvas
-- [ ] Persistent state map (`Id → Any`)
+- [x] Geometry, tree, shape, recorder, measure/arrange
+- [x] Layouts: HStack, VStack, ZStack, Canvas, Grid (WPF-style tracks + spans)
+- [x] Widgets: Button (with state-driven `ButtonStyle`), Frame, Panel, Grid; `Styled` mixin
+- [x] Tests pinning Hug/Fixed/Fill, alignment cascade, justify, padding/margin, span, collapsed children
+- [x] wgpu paint pass: `WgpuBackend`, instanced rounded-rect quads, scissor + transform composition
+- [x] winit event loop integration (showcase example)
+- [x] Hit-testing against last frame's rects → `Response { hovered, pressed, clicked }`, with disabled/invisible/clip/transform cascade
+- [x] Per-frame `Cascades` table shared by encoder + hit-index
+- [ ] Real text measurement via glyphon (today: hardcoded 8px/char placeholder)
+- [ ] Glyph atlas + text rendering in the wgpu pipeline
+- [ ] Persistent state map (`Id → Any`) for scroll, focus, animation
+- [ ] Drag tracking on top of `Active`-capture (rect-independent `drag_delta`)

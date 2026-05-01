@@ -1,5 +1,5 @@
 mod theme;
-pub use theme::Theme;
+pub use theme::ButtonTheme;
 
 use crate::cascade::Cascades;
 use crate::element::UiElement;
@@ -19,7 +19,7 @@ use std::collections::HashSet;
 /// (`handle_event` / `InputEvent::from_winit`).
 pub struct Ui {
     pub(crate) tree: Tree,
-    pub theme: Theme,
+    pub theme: ButtonTheme,
     parents: Vec<NodeId>,
     root: Option<NodeId>,
 
@@ -53,7 +53,7 @@ impl Ui {
     pub fn new() -> Self {
         Self {
             tree: Tree::new(),
-            theme: Theme::default(),
+            theme: ButtonTheme::default(),
             parents: Vec::new(),
             root: None,
             seen_ids: HashSet::new(),

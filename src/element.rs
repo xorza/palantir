@@ -1,3 +1,35 @@
+//! Per-node element data: `UiElement` (wide builder form), `NodeElement`
+//! (compact stored form), and `UiElementExtras` (rarely-set side table).
+//!
+//! Adding a field to `UiElement` requires editing every row below. The table
+//! is the source of truth — keep it in sync with the structs.
+//!
+//! | field           | UiElement | NodeElement (inline) | UiElementExtras (side table) | NodeFlags (packed)  |
+//! |-----------------|:---------:|:--------------------:|:----------------------------:|:-------------------:|
+//! | id              |     ✓     |          ✓           |                              |                     |
+//! | mode            |     ✓     |          ✓           |                              |                     |
+//! | size            |     ✓     |          ✓           |                              |                     |
+//! | padding         |     ✓     |          ✓           |                              |                     |
+//! | margin          |     ✓     |          ✓           |                              |                     |
+//! | sense           |     ✓     |                      |                              |          ✓          |
+//! | disabled        |     ✓     |                      |                              |          ✓          |
+//! | clip            |     ✓     |                      |                              |          ✓          |
+//! | visibility      |     ✓     |                      |                              |          ✓          |
+//! | align           |     ✓     |                      |                              |          ✓          |
+//! | min_size        |     ✓     |                      |              ✓               |                     |
+//! | max_size        |     ✓     |                      |              ✓               |                     |
+//! | gap             |     ✓     |                      |              ✓               |                     |
+//! | justify         |     ✓     |                      |              ✓               |                     |
+//! | child_align     |     ✓     |                      |              ✓               |                     |
+//! | position        |     ✓     |                      |              ✓               |                     |
+//! | grid            |     ✓     |                      |              ✓               |                     |
+//! | transform       |     ✓     |                      |              ✓               |                     |
+//!
+//! `UiElement::split` does the routing at `Tree::push_node` time. The side
+//! table is allocated only when at least one extras field differs from
+//! `UiElementExtras::DEFAULT`. `Element` (the trait) provides one chained
+//! setter per row.
+
 use crate::primitives::{
     Align, GridCell, HAlign, Justify, Sense, Size, Sizes, Spacing, TranslateScale, VAlign,
     Visibility, WidgetId,
