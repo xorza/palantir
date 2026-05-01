@@ -227,6 +227,33 @@ This restructures Stack to do "decide widths during measure" instead of
 single decision point — but the change is bigger than just adding an
 intrinsic call.
 
+### Step C scope commitment
+
+Stack `Fill` distribution stops at:
+
+- **Min floor** — each child clamped to its `MinContent` on the main
+  axis.
+- **Weight** — `Sizing::Fill(w)` weights split leftover.
+- **Max-size clamp** — `Element.max_size` honored as a per-child
+  ceiling.
+
+Anything richer is **out of scope** for in-tree extension:
+
+- `flex-basis` distinct from `Sizing` (preferred-size separated from
+  grow/shrink behavior).
+- `flex-shrink` weights distinct from `flex-grow`.
+- `align-items: baseline` (no baseline infrastructure today).
+- `flex-wrap: wrap` (different layout mode).
+- `align-content` (only matters with wrap).
+
+If a real user demand for any of these arrives, the response is **adopt
+Taffy** (`references/taffy.md` §7 has the integration sketch — feature
+flag `palantir/taffy`, `LayoutPartialTree` over our arena, `Cache`
+per-node), not "add another case to `stack::measure`". The stop-rule
+matters because flex features compose poorly with each other when
+hand-grown — Yoga's `CalculateLayout.cpp` is hundreds of lines for a
+reason.
+
 ## What stays unchanged
 
 - `Sizing::Fixed(v)`-parent → child's `inner_avail` propagation (added
