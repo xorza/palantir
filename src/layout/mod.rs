@@ -1,5 +1,5 @@
 use crate::element::LayoutMode;
-use crate::primitives::{AxisAlign, Rect, Size, Sizing, Visibility};
+use crate::primitives::{AxisAlign, Rect, Size, Sizing, Track, Visibility};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
@@ -9,82 +9,148 @@ mod grid;
 mod stack;
 mod zstack;
 
-/// Run measure + arrange for `root` given the surface rect.
-pub fn run(tree: &mut Tree, root: NodeId, surface: Rect) {
-    measure(tree, root, Size::new(surface.width(), surface.height()));
-    arrange(tree, root, surface);
+/// Persistent layout engine: holds reusable scratch buffers indexed by
+/// recursion depth. Owned by `Ui` (`Ui::layout(surface)`); construct directly
+/// only when laying out a `Tree` outside the `Ui` flow.
+///
+/// The scratch grows to peak nesting × peak track count, then retains
+/// capacity across frames. `MAX_TRACKS` is gone — grids can be any size.
+#[derive(Default)]
+pub struct LayoutEngine {
+    /// One `GridScratch` per nesting depth of `LayoutMode::Grid`. Pushed on
+    /// first descent to a new depth, reused thereafter. `grid_depth` is the
+    /// next free slot.
+    grid_scratch: Vec<GridScratch>,
+    grid_depth: usize,
 }
 
-/// Bottom-up. Returns the node's desired *slot* size (including its own margin)
-/// and stores it on the node.
-fn measure(tree: &mut Tree, node: NodeId, available: Size) -> Size {
-    if tree.node(node).element.visibility == Visibility::Collapsed {
-        tree.node_mut(node).desired = Size::ZERO;
-        return Size::ZERO;
-    }
-    let style = tree.node(node).element;
-    let mode = tree.node(node).element.mode;
-
-    // Inner available = available minus margin minus padding.
-    let inner_avail = Size::new(
-        (available.w - style.margin.horiz() - style.padding.horiz()).max(0.0),
-        (available.h - style.margin.vert() - style.padding.vert()).max(0.0),
-    );
-
-    let content = match mode {
-        LayoutMode::Leaf => leaf_content_size(tree, node),
-        LayoutMode::HStack => stack::measure(tree, node, inner_avail, stack::Axis::X),
-        LayoutMode::VStack => stack::measure(tree, node, inner_avail, stack::Axis::Y),
-        LayoutMode::ZStack => zstack::measure(tree, node),
-        LayoutMode::Canvas => canvas::measure(tree, node),
-        LayoutMode::Grid(idx) => grid::measure(tree, node, idx),
-    };
-
-    let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
-    let hug_h = content.h + style.padding.vert() + style.margin.vert();
-    let desired = Size::new(
-        resolve_axis_size(
-            style.size.w,
-            hug_w,
-            available.w,
-            style.margin.horiz(),
-            style.min_size.w,
-            style.max_size.w,
-        ),
-        resolve_axis_size(
-            style.size.h,
-            hug_h,
-            available.h,
-            style.margin.vert(),
-            style.min_size.h,
-            style.max_size.h,
-        ),
-    );
-
-    tree.node_mut(node).desired = desired;
-    desired
+#[derive(Default)]
+pub(super) struct GridScratch {
+    pub rows: Vec<Track>,
+    pub cols: Vec<Track>,
+    pub col_sizes: Vec<f32>,
+    pub row_sizes: Vec<f32>,
+    pub col_resolved: Vec<bool>,
+    pub row_resolved: Vec<bool>,
+    pub hug_w: Vec<f32>,
+    pub hug_h: Vec<f32>,
+    pub col_offsets: Vec<f32>,
+    pub row_offsets: Vec<f32>,
+    pub flexible: Vec<usize>,
 }
 
-/// Top-down. `slot` is the rect the parent reserved (including this node's margin).
-fn arrange(tree: &mut Tree, node: NodeId, slot: Rect) {
-    if tree.node(node).element.visibility == Visibility::Collapsed {
-        zero_subtree(tree, node, slot.min);
-        return;
+impl LayoutEngine {
+    pub fn new() -> Self {
+        Self::default()
     }
-    let style = tree.node(node).element;
-    let mode = tree.node(node).element.mode;
 
-    let rendered = slot.deflated_by(style.margin);
-    tree.node_mut(node).rect = rendered;
-    let inner = rendered.deflated_by(style.padding);
+    /// Run measure + arrange for `root` given the surface rect. Reuses
+    /// internal scratch — call this each frame for amortized zero-alloc
+    /// layout (after warmup).
+    pub fn run(&mut self, tree: &mut Tree, root: NodeId, surface: Rect) {
+        debug_assert_eq!(
+            self.grid_depth, 0,
+            "LayoutEngine::run entered with non-zero depth"
+        );
+        self.measure(tree, root, Size::new(surface.width(), surface.height()));
+        self.arrange(tree, root, surface);
+        debug_assert_eq!(
+            self.grid_depth, 0,
+            "LayoutEngine::run exited with non-zero depth"
+        );
+    }
 
-    match mode {
-        LayoutMode::Leaf => {}
-        LayoutMode::HStack => stack::arrange(tree, node, inner, stack::Axis::X),
-        LayoutMode::VStack => stack::arrange(tree, node, inner, stack::Axis::Y),
-        LayoutMode::ZStack => zstack::arrange(tree, node, inner),
-        LayoutMode::Canvas => canvas::arrange(tree, node, inner),
-        LayoutMode::Grid(idx) => grid::arrange(tree, node, inner, idx),
+    /// Bottom-up measure dispatcher. Children call back via this method to
+    /// recurse. Stores `desired` on each visited node.
+    pub(super) fn measure(&mut self, tree: &mut Tree, node: NodeId, available: Size) -> Size {
+        if tree.node(node).element.visibility == Visibility::Collapsed {
+            tree.node_mut(node).desired = Size::ZERO;
+            return Size::ZERO;
+        }
+        let style = tree.node(node).element;
+        let mode = tree.node(node).element.mode;
+
+        let inner_avail = Size::new(
+            (available.w - style.margin.horiz() - style.padding.horiz()).max(0.0),
+            (available.h - style.margin.vert() - style.padding.vert()).max(0.0),
+        );
+
+        let content = match mode {
+            LayoutMode::Leaf => leaf_content_size(tree, node),
+            LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, stack::Axis::X),
+            LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, stack::Axis::Y),
+            LayoutMode::ZStack => zstack::measure(self, tree, node),
+            LayoutMode::Canvas => canvas::measure(self, tree, node),
+            LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx),
+        };
+
+        let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
+        let hug_h = content.h + style.padding.vert() + style.margin.vert();
+        let desired = Size::new(
+            resolve_axis_size(
+                style.size.w,
+                hug_w,
+                available.w,
+                style.margin.horiz(),
+                style.min_size.w,
+                style.max_size.w,
+            ),
+            resolve_axis_size(
+                style.size.h,
+                hug_h,
+                available.h,
+                style.margin.vert(),
+                style.min_size.h,
+                style.max_size.h,
+            ),
+        );
+
+        tree.node_mut(node).desired = desired;
+        desired
+    }
+
+    /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
+    /// (margin-inclusive). Stores `rect` on each visited node.
+    pub(super) fn arrange(&mut self, tree: &mut Tree, node: NodeId, slot: Rect) {
+        if tree.node(node).element.visibility == Visibility::Collapsed {
+            zero_subtree(tree, node, slot.min);
+            return;
+        }
+        let style = tree.node(node).element;
+        let mode = tree.node(node).element.mode;
+
+        let rendered = slot.deflated_by(style.margin);
+        tree.node_mut(node).rect = rendered;
+        let inner = rendered.deflated_by(style.padding);
+
+        match mode {
+            LayoutMode::Leaf => {}
+            LayoutMode::HStack => stack::arrange(self, tree, node, inner, stack::Axis::X),
+            LayoutMode::VStack => stack::arrange(self, tree, node, inner, stack::Axis::Y),
+            LayoutMode::ZStack => zstack::arrange(self, tree, node, inner),
+            LayoutMode::Canvas => canvas::arrange(self, tree, node, inner),
+            LayoutMode::Grid(idx) => grid::arrange(self, tree, node, inner, idx),
+        }
+    }
+
+    /// Reserve a `GridScratch` for the next nesting depth. Grows the depth
+    /// stack on first descent; reuses thereafter.
+    pub(super) fn enter_grid(&mut self) -> usize {
+        let d = self.grid_depth;
+        if self.grid_scratch.len() == d {
+            self.grid_scratch.push(GridScratch::default());
+        }
+        self.grid_depth = d + 1;
+        d
+    }
+
+    pub(super) fn exit_grid(&mut self) {
+        debug_assert!(self.grid_depth > 0);
+        self.grid_depth -= 1;
+    }
+
+    pub(super) fn grid(&mut self, depth: usize) -> &mut GridScratch {
+        &mut self.grid_scratch[depth]
     }
 }
 
@@ -112,7 +178,7 @@ fn resolve_axis_size(
 /// Set this node and every descendant to a zero-size rect anchored at
 /// `anchor`. Bypasses layout dispatch so a collapsed subtree pays only one
 /// pre-order walk regardless of what its children would have been.
-fn zero_subtree(tree: &mut Tree, node: NodeId, anchor: Vec2) {
+pub(super) fn zero_subtree(tree: &mut Tree, node: NodeId, anchor: Vec2) {
     tree.node_mut(node).rect = Rect {
         min: anchor,
         size: Size::ZERO,
@@ -142,7 +208,7 @@ fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
 /// `auto_stretches` controls how `AxisAlign::Auto` is interpreted: stack and
 /// ZStack pass `false` (Auto stretches only when the child is `Sizing::Fill`);
 /// Grid passes `true` (Auto stretches unconditionally — WPF cell default).
-fn place_axis(
+pub(super) fn place_axis(
     align: AxisAlign,
     sizing: Sizing,
     desired: f32,

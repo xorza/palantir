@@ -1,8 +1,8 @@
+use crate::Ui;
 use crate::element::Element;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{Rect, Sense, Sizing};
 use crate::widgets::{Button, HStack};
-use crate::{Ui, layout};
 use glam::Vec2;
 
 #[test]
@@ -14,7 +14,7 @@ fn input_state_press_release_emits_click() {
 
     // Frame 1: build, layout, end_frame to populate last_rects.
     ui.begin_frame();
-    let root = HStack::new()
+    let _root = HStack::new()
         .show(&mut ui, |ui| {
             Button::with_id("target")
                 .label("hi")
@@ -23,7 +23,7 @@ fn input_state_press_release_emits_click() {
         })
         .node;
     let surface = Rect::new(0.0, 0.0, 200.0, 80.0);
-    layout::run(&mut ui.tree, root, surface);
+    ui.layout(surface);
     ui.end_frame();
 
     // Press inside the button, release inside.
@@ -44,8 +44,8 @@ fn input_state_press_release_emits_click() {
     assert!(got_click, "press+release inside button rect should click");
 
     // Click does not stick: next frame without input must clear it.
-    let root2 = ui.root();
-    layout::run(&mut ui.tree, root2, surface);
+    let _root2 = ui.root();
+    ui.layout(surface);
     ui.end_frame();
     ui.begin_frame();
     let mut still_clicking = false;
@@ -65,7 +65,7 @@ fn stack_with_sense_none_passes_clicks_through() {
     // doesn't fire `clicked` on the stack. Clicking on a child still fires on the child.
     let mut ui = Ui::new();
     ui.begin_frame();
-    let stack_node = HStack::new()
+    let _stack_node = HStack::new()
         .padding(20.0) // creates "background" area to click
         .show(&mut ui, |ui| {
             Button::with_id("inside")
@@ -73,7 +73,7 @@ fn stack_with_sense_none_passes_clicks_through() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, stack_node, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
     ui.end_frame();
 
     // Press inside the HStack's padding (not over any child).
@@ -106,7 +106,7 @@ fn stack_with_sense_click_captures_clicks() {
     // `auto_stable` would give different ids (different call sites in the test).
     let mut ui = Ui::new();
     ui.begin_frame();
-    let stack_node = HStack::with_id("clickable_card")
+    let _stack_node = HStack::with_id("clickable_card")
         .padding(20.0)
         .sense(Sense::CLICK)
         .show(&mut ui, |ui| {
@@ -115,7 +115,7 @@ fn stack_with_sense_click_captures_clicks() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, stack_node, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
     ui.end_frame();
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(5.0, 5.0))); // padding area
@@ -143,7 +143,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
     // Useful for tooltips, cursor changes, row highlights.
     let mut ui = Ui::new();
     ui.begin_frame();
-    let stack_node = HStack::with_id("hover_only")
+    let _stack_node = HStack::with_id("hover_only")
         .padding(20.0)
         .sense(Sense::HOVER)
         .show(&mut ui, |ui| {
@@ -152,7 +152,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, stack_node, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
     ui.end_frame();
 
     // Move pointer over stack's padding area (not over the button).
@@ -192,14 +192,14 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
 fn input_state_release_outside_does_not_click() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    let root = HStack::new()
+    let _root = HStack::new()
         .show(&mut ui, |ui| {
             Button::with_id("target")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 80.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 80.0));
     ui.end_frame();
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0))); // inside
@@ -242,8 +242,8 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
                     .show(ui);
             });
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
     ui.end_frame();
 
     // Click well outside the panel's 100x100 clip rect but inside the button's
@@ -294,8 +294,8 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
                     .show(ui);
             });
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
     ui.end_frame();
 
     // Click at world (75, 75) — inside the zoomed 100x100 bounds.
@@ -340,8 +340,8 @@ fn click_outside_zoomed_bounds_does_not_hit() {
                     .show(ui);
             });
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
     ui.end_frame();
 
     // Button's world rect under scale=0.5 is 25x25. Click at (40, 40) is

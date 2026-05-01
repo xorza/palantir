@@ -5,7 +5,7 @@ use palantir::Align;
 use palantir::renderer::{ComposeParams, Pipeline, WgpuBackend};
 use palantir::{
     Button, ButtonStyle, Color, Corners, Element, HStack, InputEvent, Rect, Sizing, Stroke, Ui,
-    VStack, Visuals, ZStack, layout,
+    VStack, Visuals, ZStack,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -239,12 +239,7 @@ impl State {
 
         self.ui.begin_frame();
         build_ui(&mut self.ui, &mut self.click_count);
-        let root = self.ui.root();
-        layout::run(
-            self.ui.tree_mut(),
-            root,
-            Rect::new(0.0, 0.0, w_logical, h_logical),
-        );
+        self.ui.layout(Rect::new(0.0, 0.0, w_logical, h_logical));
         self.ui.end_frame();
 
         let buffer = self.pipeline.build(

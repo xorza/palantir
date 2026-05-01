@@ -1,6 +1,8 @@
-/// Hard cap on track count per axis on a single `Grid`. Shared by the
-/// `Grid` builder (inline buffers), the `Tree` track pool, and the layout
-/// pass (stack scratch).
+/// Hard cap on track count per axis at *builder* construction time. The
+/// `Grid` builder uses `ArrayVec<Track, MAX_TRACKS>` for inline track
+/// storage — bounded so the builder is fully stack-resident. Lift this if
+/// you need wider grids; the layout pass and `Tree` track pool have no
+/// such cap.
 pub const MAX_TRACKS: usize = 64;
 
 /// Per-child placement inside a `Grid` parent. Inert when the parent is not a

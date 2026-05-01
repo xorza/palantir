@@ -3,7 +3,8 @@ pub use theme::Theme;
 
 use crate::element::UiElement;
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
-use crate::primitives::WidgetId;
+use crate::layout::LayoutEngine;
+use crate::primitives::{Rect, WidgetId};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
 use std::collections::HashSet;
@@ -25,6 +26,9 @@ pub struct Ui {
     seen_ids: HashSet<WidgetId>,
 
     input: InputState,
+    /// Persistent layout engine: holds reusable scratch buffers across frames.
+    /// Accessed via `Ui::layout(surface)`.
+    layout_engine: LayoutEngine,
 
     scale_factor: f32,
     pixel_snap: bool,
@@ -46,6 +50,7 @@ impl Ui {
             #[cfg(debug_assertions)]
             seen_ids: HashSet::new(),
             input: InputState::new(),
+            layout_engine: LayoutEngine::new(),
             scale_factor: 1.0,
             pixel_snap: true,
         }
@@ -80,8 +85,17 @@ impl Ui {
         self.seen_ids.clear();
     }
 
+    /// Run measure + arrange for the recorded tree at the given surface rect.
+    /// Call after recording (post `begin_frame` + widget tree) and before
+    /// `end_frame`. Reuses the persistent `LayoutEngine` — amortized
+    /// zero-alloc after warmup.
+    pub fn layout(&mut self, surface: Rect) {
+        let root = self.root();
+        self.layout_engine.run(&mut self.tree, root, surface);
+    }
+
     /// Rebuild input's last-frame rect cache from the just-arranged tree.
-    /// Call after `layout::run`.
+    /// Call after `layout`.
     pub fn end_frame(&mut self) {
         self.input.end_frame(&self.tree);
     }
@@ -100,14 +114,15 @@ impl Ui {
             .expect("no root pushed yet — open a node before any other ops")
     }
 
-    /// Borrow the recorded tree. Pass to `layout::run`, the renderer pipeline,
-    /// or any other consumer that needs read access.
+    /// Borrow the recorded tree. Pass to the renderer pipeline or any other
+    /// consumer that needs read access.
     pub fn tree(&self) -> &Tree {
         &self.tree
     }
 
-    /// Mutably borrow the recorded tree. `layout::run` needs `&mut Tree` to
-    /// fill in `desired` and `rect`.
+    /// Mutably borrow the recorded tree. `LayoutEngine::run` needs `&mut Tree`
+    /// to fill in `desired` and `rect`. Most callers should use `Ui::layout`
+    /// instead, which uses the persistent layout engine.
     pub fn tree_mut(&mut self) -> &mut Tree {
         &mut self.tree
     }

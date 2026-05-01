@@ -1,3 +1,4 @@
+use super::LayoutEngine;
 use crate::element::UiElement;
 use crate::primitives::{AxisAlign, Justify, Rect, Size, Sizes, Sizing, Visibility};
 use crate::tree::{NodeId, Tree};
@@ -75,7 +76,13 @@ impl Axis {
     }
 }
 
-pub(super) fn measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) -> Size {
+pub(super) fn measure(
+    layout: &mut LayoutEngine,
+    tree: &mut Tree,
+    node: NodeId,
+    inner: Size,
+    axis: Axis,
+) -> Size {
     // Pass infinite size on the main axis (WPF trick): children report intrinsic.
     let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
     let gap = tree.node(node).element.gap;
@@ -88,7 +95,7 @@ pub(super) fn measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) ->
         // Collapsed children still get measured (so `desired` is set to ZERO),
         // but don't contribute to the parent's content size or gap count.
         let collapsed = tree.node(c).element.visibility == Visibility::Collapsed;
-        let d = super::measure(tree, c, child_avail);
+        let d = layout.measure(tree, c, child_avail);
         if collapsed {
             continue;
         }
@@ -100,7 +107,13 @@ pub(super) fn measure(tree: &mut Tree, node: NodeId, inner: Size, axis: Axis) ->
     axis.compose_size(total_main, max_cross)
 }
 
-pub(super) fn arrange(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
+pub(super) fn arrange(
+    layout: &mut LayoutEngine,
+    tree: &mut Tree,
+    node: NodeId,
+    inner: Rect,
+    axis: Axis,
+) {
     let parent_layout = tree.node(node).element;
     let gap = parent_layout.gap;
     let justify = parent_layout.justify;
@@ -184,7 +197,7 @@ pub(super) fn arrange(tree: &mut Tree, node: NodeId, inner: Rect, axis: Axis) {
             super::place_axis(cross_align, cross_sizing, cross_desired, cross, false);
 
         let child_rect = axis.compose_rect(cursor, cross_min + cross_offset, main_size, cross_size);
-        super::arrange(tree, c, child_rect);
+        layout.arrange(tree, c, child_rect);
         cursor += main_size;
     }
 }

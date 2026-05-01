@@ -1,7 +1,7 @@
+use crate::Ui;
 use crate::element::Element;
 use crate::primitives::{Rect, Sizing, Track};
 use crate::widgets::{Button, Frame, Grid, HStack};
-use crate::{Ui, layout};
 
 #[test]
 fn grid_fixed_and_fill_columns_split_remainder() {
@@ -16,7 +16,7 @@ fn grid_fixed_and_fill_columns_split_remainder() {
             Frame::with_id("right").grid_cell((0, 1)).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let left = ui.tree.node(kids[0]).rect;
@@ -53,7 +53,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let short_btn = ui.tree.node(kids[0]).rect;
@@ -79,7 +79,7 @@ fn grid_fill_weights_split_remainder_proportionally() {
             Frame::with_id("b").grid_cell((0, 1)).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(ui.tree.node(kids[0]).rect.size.w, 100.0);
     assert_eq!(ui.tree.node(kids[1]).rect.size.w, 300.0);
@@ -100,7 +100,7 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
             Frame::with_id("b").grid_cell((0, 1)).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(ui.tree.node(kids[0]).rect.size.w, 200.0);
     assert_eq!(ui.tree.node(kids[1]).rect.size.w, 200.0);
@@ -120,7 +120,7 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
             Frame::with_id("b").grid_cell((0, 1)).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(ui.tree.node(kids[0]).rect.size.w, 150.0);
     assert_eq!(ui.tree.node(kids[1]).rect.size.w, 250.0);
@@ -147,7 +147,7 @@ fn grid_col_span_covers_multiple_columns_with_gap() {
             Frame::with_id("body").grid_cell((1, 1)).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let header = ui.tree.node(kids[0]).rect;
@@ -166,9 +166,9 @@ fn grid_hug_grid_collapses_fill_tracks() {
     let mut ui = Ui::new();
     ui.begin_frame();
     // Wrap in HStack so the Hug grid's measured size is honored — root in
-    // `layout::run` is forced to the surface size regardless of Sizing.
+    // `ui.layout` is forced to the surface size regardless of Sizing.
     let mut grid_node = None;
-    let root = HStack::new()
+    let _root = HStack::new()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             grid_node = Some(
@@ -184,7 +184,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
             );
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
     let r = ui.tree.node(grid_node.unwrap()).rect;
     assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
     assert_eq!(r.size.h, 40.0);

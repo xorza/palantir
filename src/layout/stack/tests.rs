@@ -1,7 +1,7 @@
+use crate::Ui;
 use crate::element::Element;
 use crate::primitives::{Align, Rect, Sizing};
 use crate::widgets::{Button, Frame, HStack, VStack};
-use crate::{Ui, layout};
 
 #[test]
 fn hstack_arranges_two_buttons_side_by_side() {
@@ -19,7 +19,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
         .node;
 
     let surface = Rect::new(0.0, 0.0, 800.0, 600.0);
-    layout::run(&mut ui.tree, root, surface);
+    ui.layout(surface);
 
     assert_eq!(ui.tree.node(root).rect, surface);
 
@@ -53,7 +53,7 @@ fn vstack_with_fill_distributes_remainder() {
         .node;
 
     let surface = Rect::new(0.0, 0.0, 200.0, 300.0);
-    layout::run(&mut ui.tree, root, surface);
+    ui.layout(surface);
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let fixed = ui.tree.node(kids[0]).rect;
@@ -78,7 +78,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.tree.node(kids[0]).rect;
@@ -105,7 +105,7 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.tree.node(kids[0]).rect;
@@ -128,7 +128,7 @@ fn hstack_justify_center_centers_content_block() {
             Frame::with_id("b").size(40.0).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Two 40-wide children, no gap → content width = 80. Leftover = 120,
@@ -149,7 +149,7 @@ fn hstack_justify_end_packs_to_trailing_edge() {
             Frame::with_id("b").size(40.0).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Last child ends at 200; 40 wide → starts at 160. First at 120.
@@ -170,7 +170,7 @@ fn hstack_justify_space_between_distributes_leftover_between() {
             Frame::with_id("c").size(40.0).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Leftover = 200 - 120 = 80, split into 2 gaps of 40.
@@ -191,7 +191,7 @@ fn hstack_justify_space_around_distributes_with_half_pads() {
             Frame::with_id("b").size(40.0).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Leftover = 120, /count(2) = 60 per slot. Half (30) padding before first,
@@ -216,7 +216,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
             Frame::with_id("c").size(40.0).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Fill consumes leftover → first child still pinned to start.
@@ -238,7 +238,7 @@ fn hstack_gap_inserts_space_between_children() {
             Frame::with_id("c").size(40.0).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(ui.tree.node(kids[0]).rect.min.x, 0.0);
@@ -259,7 +259,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let r = ui.tree.node(kids[0]).rect;
@@ -287,7 +287,7 @@ fn negative_left_margin_spills_outside_slot() {
             );
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(kids.len(), 1);

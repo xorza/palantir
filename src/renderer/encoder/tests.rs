@@ -1,8 +1,8 @@
 use super::{RenderCmd, encode};
+use crate::Ui;
 use crate::element::Element;
 use crate::primitives::{Color, Rect, Sizing};
 use crate::widgets::{Frame, HStack, ZStack};
-use crate::{Ui, layout};
 
 fn count_clip_pairs(cmds: &[RenderCmd]) -> (usize, usize) {
     let mut pushes = 0;
@@ -35,8 +35,8 @@ fn frame_with_fill_emits_one_draw_rect() {
             .fill(Color::rgb(1.0, 0.0, 0.0))
             .show(ui);
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 200.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
     encode(&ui.tree, &mut cmds);
@@ -57,8 +57,8 @@ fn invisible_frame_does_not_emit_draw_rect() {
     HStack::new().show(&mut ui, |ui| {
         Frame::with_id("invisible").size(50.0).show(ui);
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 200.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
     encode(&ui.tree, &mut cmds);
@@ -87,8 +87,8 @@ fn clip_emits_balanced_push_pop() {
                     .show(ui);
             });
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 200.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
     encode(&ui.tree, &mut cmds);
@@ -136,8 +136,8 @@ fn nested_clips_each_emit_their_own_pair() {
                     .show(ui, |_| {});
             });
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 200.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
     encode(&ui.tree, &mut cmds);

@@ -1,8 +1,8 @@
+use crate::Ui;
 use crate::element::Element;
 use crate::primitives::{Color, Rect, Sense, Sizing};
 use crate::shape::Shape;
 use crate::widgets::{Button, Canvas, Frame, HStack, ZStack};
-use crate::{Ui, layout};
 
 #[test]
 fn clip_flag_is_recorded_on_panel_node() {
@@ -22,8 +22,8 @@ fn clip_flag_is_recorded_on_panel_node() {
                 .node,
         );
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 200.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     assert!(ui.tree.node(clipped.unwrap()).element.clip);
     assert!(!ui.tree.node(unclipped.unwrap()).element.clip);
@@ -44,8 +44,8 @@ fn frame_paints_a_single_rounded_rect() {
                 .node,
         );
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let shapes = ui.tree.shapes_of(frame_node.unwrap());
     assert_eq!(shapes.len(), 1);
@@ -87,8 +87,8 @@ fn panel_hugs_largest_child_and_layers_them() {
                 .node,
         );
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
     let panel = ui.tree.node(panel_node.unwrap()).rect;
@@ -131,8 +131,8 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                 );
             });
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let child = ui.tree.node(child_node.unwrap()).rect;
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
@@ -173,8 +173,8 @@ fn zstack_layers_children_without_painting_background() {
                 .node,
         );
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     let z = zstack_node.unwrap();
     // ZStack itself paints nothing.
@@ -213,8 +213,8 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                     .show(ui);
             });
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
     ui.end_frame();
 
     // Click on the button inside the disabled panel.
@@ -252,7 +252,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
             Frame::with_id("b").size(40.0).show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.tree.node(kids[0]).rect;
@@ -286,7 +286,7 @@ fn collapsed_does_not_consume_fill_weight() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.tree.node(kids[0]).rect;
@@ -320,7 +320,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let hid = ui.tree.node(kids[1]).rect;
@@ -353,8 +353,8 @@ fn hidden_button_does_not_click() {
             .hidden()
             .show(ui);
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 200.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
     ui.end_frame();
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
@@ -390,7 +390,7 @@ fn hstack_child_align_y_centers_all_children_by_default() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.tree.node(kids[0]).rect;
@@ -421,7 +421,7 @@ fn child_align_self_overrides_parent_default() {
                 .show(ui);
         })
         .node;
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let centered = ui.tree.node(kids[0]).rect;
@@ -450,8 +450,8 @@ fn zstack_centers_child_when_align_center() {
                 );
             });
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let r = ui.tree.node(child_node.unwrap()).rect;
     // ZStack inner = 200×100, child = 40×20 → centered at (80, 40).
@@ -479,8 +479,8 @@ fn zstack_aligns_independently_per_axis() {
                 );
             });
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let r = ui.tree.node(child_node.unwrap()).rect;
     // x: End → 200-40 = 160. y: Center → (100-20)/2 = 40.
@@ -517,8 +517,8 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                 .node,
         );
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 400.0, 400.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let c = ui.tree.node(canvas_node.unwrap()).rect;
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
@@ -546,8 +546,8 @@ fn frame_with_sense_click_is_clickable() {
             .sense(Sense::CLICK)
             .show(ui);
     });
-    let root = ui.root();
-    layout::run(&mut ui.tree, root, Rect::new(0.0, 0.0, 200.0, 100.0));
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
     ui.end_frame();
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 25.0)));
