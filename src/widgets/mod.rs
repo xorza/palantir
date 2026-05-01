@@ -3,12 +3,14 @@ mod frame;
 mod grid;
 mod panel;
 mod styled;
+mod text;
 
 pub use button::{Button, ButtonStyle};
 pub use frame::Frame;
 pub use grid::Grid;
 pub use panel::Panel;
 pub use styled::{Background, Styled};
+pub use text::Text;
 
 use crate::input::ResponseState;
 use crate::primitives::Rect;

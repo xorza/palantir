@@ -138,7 +138,8 @@ impl Ui {
     /// in `LayoutEngine`.
     pub fn layout(&mut self, surface: Rect) {
         let root = self.root();
-        self.layout_engine.run(&self.tree, root, surface);
+        self.layout_engine
+            .run(&self.tree, root, surface, self.text.as_mut());
     }
 
     /// Rebuild the per-frame cascade table and input's last-frame rect cache

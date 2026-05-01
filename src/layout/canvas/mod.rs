@@ -1,5 +1,6 @@
-use super::LayoutEngine;
+use super::{LayoutEngine, zero_subtree};
 use crate::primitives::{Rect, Size};
+use crate::text::CosmicMeasure;
 use crate::tree::{NodeId, Tree};
 
 #[cfg(test)]
@@ -10,7 +11,12 @@ mod tests;
 /// so `Fill` children fall back to intrinsic — "fill the rest" is meaningless
 /// when children can overlap. Content size = `max(child_pos + child_desired)`
 /// per axis, so a `Hug` Canvas grows to the union of placed rects.
-pub(super) fn measure(layout: &mut LayoutEngine, tree: &Tree, node: NodeId) -> Size {
+pub(super) fn measure(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    mut text: Option<&mut CosmicMeasure>,
+) -> Size {
     let child_avail = Size::INF;
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
@@ -20,11 +26,11 @@ pub(super) fn measure(layout: &mut LayoutEngine, tree: &Tree, node: NodeId) -> S
             // Match arrange: collapsed children don't participate in the bbox.
             // Without this skip, a collapsed child at (100, 100) would still
             // grow the panel by its position even though arrange zeroes it.
-            layout.measure(tree, c, child_avail);
+            layout.measure(tree, c, child_avail, text.as_deref_mut());
             continue;
         }
         let pos = tree.read_extras(c).position;
-        let d = layout.measure(tree, c, child_avail);
+        let d = layout.measure(tree, c, child_avail, text.as_deref_mut());
         max_w = max_w.max(pos.x + d.w);
         max_h = max_h.max(pos.y + d.h);
     }
@@ -38,7 +44,7 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.is_collapsed(c) {
-            super::zero_subtree(layout, tree, c, inner.min);
+            zero_subtree(layout, tree, c, inner.min);
             continue;
         }
         let d = layout.desired(c);

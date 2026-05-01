@@ -64,6 +64,12 @@ pub struct MeasureResult {
     /// Identifier of the shaped buffer, or [`TextCacheKey::INVALID`] when no
     /// shaping happened (mono fallback).
     pub key: TextCacheKey,
+    /// Width of the widest unbreakable run (typically the longest word).
+    /// The wrapping path uses this as the floor when a parent commits a
+    /// narrower width: text overflows rather than breaking inside a word.
+    /// Equal to `size.w` for the mono fallback (no real word boundaries) and
+    /// for single-word inputs.
+    pub intrinsic_min: f32,
 }
 
 /// Deterministic placeholder metric used when [`crate::Ui`] has no
@@ -80,6 +86,7 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
         return MeasureResult {
             size: Size::ZERO,
             key: TextCacheKey::INVALID,
+            intrinsic_min: 0.0,
         };
     }
     let glyph_w = font_size_px * 0.5;
@@ -96,9 +103,16 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
             Size::new((chars_per_line * glyph_w).min(unbroken_w), lines * line_h)
         }
     };
+    // Mono has no real word boundaries — fall back to "the longest run of
+    // non-space characters" so wrap callers still get a sensible floor.
+    let intrinsic_min = text
+        .split_whitespace()
+        .map(|w| w.chars().count() as f32 * glyph_w)
+        .fold(0.0_f32, f32::max);
     MeasureResult {
         size,
         key: TextCacheKey::INVALID,
+        intrinsic_min,
     }
 }
 

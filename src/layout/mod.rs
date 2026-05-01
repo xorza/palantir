@@ -1,8 +1,10 @@
 use crate::element::{LayoutCore, LayoutMode};
 use crate::primitives::{Align, AxisAlign, Rect, Size, Sizing};
-use crate::shape::Shape;
+use crate::shape::{Shape, TextWrap};
+use crate::text::CosmicMeasure;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
+use grid::GridContext;
 
 mod canvas;
 mod grid;
@@ -10,15 +12,25 @@ mod result;
 mod stack;
 mod zstack;
 
-pub use result::LayoutResult;
+pub use result::{LayoutResult, ReshapedText};
 
-/// Persistent layout engine: holds per-layout-kind scratch + the per-frame
-/// `LayoutResult`. Owned by `Ui` (`Ui::layout(surface)`); construct directly
-/// only when laying out a `Tree` outside the `Ui` flow.
+/// Persistent layout engine. Owns the per-frame [`LayoutContext`] (transient
+/// scratch — grid track sizes, etc.) and a [`LayoutResult`] (output — desired
+/// sizes, rects, text reshapes, consumed by the encoder + hit-index after
+/// the layout pass). Both retain capacity across frames.
 #[derive(Default)]
 pub struct LayoutEngine {
-    pub(super) grid: grid::GridLayout,
+    ctx: LayoutContext,
     result: LayoutResult,
+}
+
+/// Per-frame scratch — transient working memory used during measure/arrange
+/// and discarded once the pass returns. Distinct from [`LayoutResult`],
+/// which is the *output* the encoder reads.
+#[derive(Default)]
+// todo flatten into layout engine
+pub struct LayoutContext {
+    pub(super) grid: GridContext,
 }
 
 impl LayoutEngine {
@@ -40,19 +52,35 @@ impl LayoutEngine {
 
     /// Run measure + arrange for `root` given the surface rect. Reuses
     /// internal scratch — call this each frame for amortized zero-alloc
-    /// layout (after warmup). `Tree` is read-only here; output lands in
-    /// `self.result`.
-    pub fn run(&mut self, tree: &Tree, root: NodeId, surface: Rect) {
-        debug_assert_eq!(
-            self.grid.depth(),
+    /// layout (after warmup). Output lands in `self.result`.
+    ///
+    /// `text` is borrowed for the duration of the call so a wrapping leaf
+    /// (`Shape::Text` with `TextWrap::Wrap`) can reshape against the parent-
+    /// committed width *during* measure — without it (or in tests with
+    /// `mono_measure`) wrapping shapes are left at their unbounded size.
+    pub fn run(
+        &mut self,
+        tree: &Tree,
+        root: NodeId,
+        surface: Rect,
+        text: Option<&mut CosmicMeasure>,
+    ) {
+        assert_eq!(
+            self.ctx.grid.depth_stack.depth(),
             0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
         self.result.resize_for(tree);
-        self.measure(tree, root, Size::new(surface.width(), surface.height()));
+        self.ctx.grid.hugs.reset_for(tree);
+        self.measure(
+            tree,
+            root,
+            Size::new(surface.width(), surface.height()),
+            text,
+        );
         self.arrange(tree, root, surface);
-        debug_assert_eq!(
-            self.grid.depth(),
+        assert_eq!(
+            self.ctx.grid.depth_stack.depth(),
             0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
@@ -60,7 +88,13 @@ impl LayoutEngine {
 
     /// Bottom-up measure dispatcher. Children call back via this method to
     /// recurse. Stores `desired` for each visited node in `self.result`.
-    pub(super) fn measure(&mut self, tree: &Tree, node: NodeId, available: Size) -> Size {
+    pub(super) fn measure(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        available: Size,
+        text: Option<&mut CosmicMeasure>,
+    ) -> Size {
         if tree.is_collapsed(node) {
             self.result.set_desired(node, Size::ZERO);
             return Size::ZERO;
@@ -70,18 +104,36 @@ impl LayoutEngine {
         let extras = tree.read_extras(node);
         let (min_size, max_size) = (extras.min_size, extras.max_size);
 
+        // For each axis: if this node has a declared `Fixed` size, that's the
+        // outer width children see — `inner = fixed - padding`. Otherwise
+        // (Hug / Fill) we propagate whatever the parent gave us. Without
+        // this, a fixed-width parent above a wrapping child wouldn't
+        // constrain the child's available width during measure, so wrapping
+        // text would never reshape.
+        let outer_w = match style.size.w {
+            Sizing::Fixed(v) => v,
+            _ => (available.w - style.margin.horiz()).max(0.0),
+        };
+        let outer_h = match style.size.h {
+            Sizing::Fixed(v) => v,
+            _ => (available.h - style.margin.vert()).max(0.0),
+        };
         let inner_avail = Size::new(
-            (available.w - style.margin.horiz() - style.padding.horiz()).max(0.0),
-            (available.h - style.margin.vert() - style.padding.vert()).max(0.0),
+            (outer_w - style.padding.horiz()).max(0.0),
+            (outer_h - style.padding.vert()).max(0.0),
         );
 
         let content = match mode {
-            LayoutMode::Leaf => leaf_content_size(tree, node),
-            LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, stack::Axis::X),
-            LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, stack::Axis::Y),
-            LayoutMode::ZStack => zstack::measure(self, tree, node),
-            LayoutMode::Canvas => canvas::measure(self, tree, node),
-            LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx),
+            LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, text),
+            LayoutMode::HStack => {
+                stack::measure(self, tree, node, inner_avail, stack::Axis::X, text)
+            }
+            LayoutMode::VStack => {
+                stack::measure(self, tree, node, inner_avail, stack::Axis::Y, text)
+            }
+            LayoutMode::ZStack => zstack::measure(self, tree, node, text),
+            LayoutMode::Canvas => canvas::measure(self, tree, node, text),
+            LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, text),
         };
 
         let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
@@ -178,16 +230,89 @@ pub(super) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
     }
 }
 
-fn leaf_content_size(tree: &Tree, node: NodeId) -> Size {
-    // For a Leaf, content size = bounding box of any Text shapes' measured size,
-    // or zero. Other shapes are owner-relative and don't drive size.
-    let mut s = Size::ZERO;
-    for sh in tree.shapes_of(node) {
-        if let Shape::Text { measured, .. } = sh {
-            s = s.max(*measured);
+impl LayoutEngine {
+    fn leaf_content_size(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        available_w: f32,
+        text: Option<&mut CosmicMeasure>,
+    ) -> Size {
+        // For a Leaf, content size = bounding box of any Text shapes'
+        // measured size (other shapes are owner-relative and don't drive
+        // size). For `TextWrap::Wrap` shapes we reshape against
+        // `available_w` here — single-pass, the parent-committed width flows
+        // down through the recursive measure call so desired size + arranged
+        // height already reflect wrapping. Falls back to the recorded
+        // unbounded measure when no shaper is available (mono path / tests).
+        if let Some(t) = text {
+            self.maybe_reshape_text(tree, node, available_w, t);
+        }
+        let mut s = Size::ZERO;
+        for sh in tree.shapes_of(node) {
+            if let Shape::Text { measured, .. } = sh {
+                let m = self
+                    .result
+                    .text_reshape(node)
+                    .map(|r| r.measured)
+                    .unwrap_or(*measured);
+                s = s.max(m);
+            }
+        }
+        s
+    }
+
+    fn maybe_reshape_text(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        available_w: f32,
+        text: &mut CosmicMeasure,
+    ) {
+        if !available_w.is_finite() {
+            return;
+        }
+        for sh in tree.shapes_of(node) {
+            let Shape::Text {
+                text: src,
+                font_size_px,
+                measured,
+                wrap,
+                ..
+            } = sh
+            else {
+                continue;
+            };
+            let TextWrap::Wrap { intrinsic_min } = *wrap else {
+                continue;
+            };
+
+            let target = available_w.max(intrinsic_min);
+            // Slot wider than the natural unbroken width — no reshape
+            // needed; the recorded shape is already the answer.
+            if target >= measured.w {
+                continue;
+            }
+
+            tracing::trace!(
+                node = node.index(),
+                target,
+                prev_measured = ?*measured,
+                "reshape wrap text"
+            );
+            let m = text.measure(src, *font_size_px, Some(target));
+            self.result.set_text_reshape(
+                node,
+                ReshapedText {
+                    measured: m.size,
+                    key: m.key,
+                    max_width_px: target,
+                },
+            );
+            // One Shape::Text per node — no need to keep walking.
+            return;
         }
     }
-    s
 }
 
 /// Resolve a child's alignment on both axes: child's own value if not `Auto`,

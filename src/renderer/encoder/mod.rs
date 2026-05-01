@@ -110,7 +110,13 @@ fn encode_node(
             Shape::Text {
                 color, key, offset, ..
             } => {
-                if key.is_invalid() {
+                // Wrap-text shapes carry the unbounded `key` recorded at
+                // `show()` time; if measure reshaped them against a parent-
+                // committed width, the override sits on `LayoutResult` and
+                // the encoder swaps it in here so the renderer picks up the
+                // wrapped buffer.
+                let effective_key = layout.text_reshape(id).map(|r| r.key).unwrap_or(*key);
+                if effective_key.is_invalid() {
                     tracing::trace!(?shape, "encoder: dropping text with invalid key");
                     continue;
                 }
@@ -121,7 +127,7 @@ fn encode_node(
                 out.push(RenderCmd::DrawText {
                     rect: text_rect,
                     color: color.dim_rgb(rgb_mul),
-                    key: *key,
+                    key: effective_key,
                 });
             }
             // No backend support for these yet — drop with a trace so they're

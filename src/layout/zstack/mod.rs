@@ -1,5 +1,6 @@
-use super::LayoutEngine;
+use super::{LayoutEngine, place_axis, resolved_axis_align, zero_subtree};
 use crate::primitives::{Rect, Size};
+use crate::text::CosmicMeasure;
 use crate::tree::{NodeId, Tree};
 
 #[cfg(test)]
@@ -10,13 +11,18 @@ mod tests;
 /// intrinsic — otherwise the `Hug` panel would size to its own `Fill` children
 /// (recursive). Content size = `max(child desired)` per axis, so the panel
 /// hugs the largest child.
-pub(super) fn measure(layout: &mut LayoutEngine, tree: &Tree, node: NodeId) -> Size {
+pub(super) fn measure(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    mut text: Option<&mut CosmicMeasure>,
+) -> Size {
     let child_avail = Size::INF;
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
-        let d = layout.measure(tree, c, child_avail);
+        let d = layout.measure(tree, c, child_avail, text.as_deref_mut());
         max_w = max_w.max(d.w);
         max_h = max_h.max(d.h);
     }
@@ -33,15 +39,15 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
     let mut kids = tree.child_cursor(node);
     while let Some(c) = kids.next(tree) {
         if tree.is_collapsed(c) {
-            super::zero_subtree(layout, tree, c, inner.min);
+            zero_subtree(layout, tree, c, inner.min);
             continue;
         }
         let d = layout.desired(c);
         let s = *tree.layout(c);
 
-        let (h_align, v_align) = super::resolved_axis_align(&s, parent_child_align);
-        let (w, x_off) = super::place_axis(h_align, s.size.w, d.w, inner.size.w, false);
-        let (h, y_off) = super::place_axis(v_align, s.size.h, d.h, inner.size.h, false);
+        let (h_align, v_align) = resolved_axis_align(&s, parent_child_align);
+        let (w, x_off) = place_axis(h_align, s.size.w, d.w, inner.size.w, false);
+        let (h, y_off) = place_axis(v_align, s.size.h, d.h, inner.size.h, false);
 
         let child_rect = Rect::new(inner.min.x + x_off, inner.min.y + y_off, w, h);
         layout.arrange(tree, c, child_rect);

@@ -73,12 +73,28 @@ Future `register_font(bytes)` would proxy to `FontSystem::db_mut().load_font_dat
 once the first widget needs to add a font at runtime; not built yet (YAGNI),
 nor is a numeric `FontId` — cosmic-text keys on family name, which is enough.
 
-### 4. Wrapping & intrinsic sizing — **not started**
+### 4. Wrapping & intrinsic sizing — **Option A done**
 
-This is the biggest remaining piece. The earlier `text-wrapping.md` proposed
-two options, A then B. Reaffirming that plan:
+Option A is implemented; Option B is still deferred. Summary of what landed:
 
-#### Option A — eager shape at unbounded width, reshape on constraint commit (**implement now**)
+#### Option A — eager shape at unbounded width, reshape on constraint commit (**done**)
+
+Concrete shape:
+
+- New `Text` widget at `src/widgets/text.rs`: `Text::new(s).size_px(px).color(c).wrapping().show(ui)`. Hugs by default; `.wrapping()` opts into the reshape path.
+- `Shape::Text` carries `wrap: TextWrap = Single | Wrap { intrinsic_min }`. `intrinsic_min` is computed once during the unbounded shape pass by walking `LayoutRun.glyphs` and tracking the widest run between whitespace clusters.
+- `MeasureResult` exposes `intrinsic_min` so widgets can pin it on the shape at record time.
+- `LayoutEngine::run` now takes `Option<&mut CosmicMeasure>`; `Ui::layout` threads it in. Layout dispatch propagates `Sizing::Fixed(v)` to children's `inner_avail` so a fixed-width parent constrains the wrapping leaf during measure (this also fixes a latent gap in the layout: previously a fixed-width parent wouldn't propagate its width down through measure).
+- `leaf_content_size` calls `reshape_wrapping_texts(tree, node, available_w, cosmic)` for each Leaf with a `Wrap` text; reshape mutates `Shape::Text.measured`/`key`/`max_width_px` in place, and the leaf's desired size reflects the wrapped result. Single-pass — no separate arrange-time hook.
+- `Tree::shapes_of_mut` is a `pub(crate)` accessor scoped to layout's reshape.
+
+Pinned by:
+- `wrapping_text_grows_height_in_narrow_frame` (60 px slot wraps a paragraph onto multiple lines).
+- `wrapping_text_overflows_intrinsic_min_without_breaking_words` (8 px slot, single long word overflows rather than breaking inside the word).
+
+Showcase page: `examples/showcase/text.rs` (added to `SHOWCASES`).
+
+#### Original sketch (kept for context)
 
 The `TextKey.max_w_q` field is already in place; this is purely about wiring.
 
