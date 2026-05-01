@@ -1,0 +1,179 @@
+use crate::Ui;
+use crate::element::Element;
+use crate::primitives::{Align, HAlign, Rect, Sizing, VAlign};
+use crate::tree::NodeId;
+use crate::widgets::{Frame, Panel};
+
+/// Wrap the closure's body in an outer HStack(FILL) so the panel under test
+/// can express its own measured size — `ui.layout` always forces the root to
+/// the surface rect, which would mask Hug/Fixed sizing on the unit-under-test.
+fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -> NodeId {
+    ui.begin_frame();
+    let mut inner = None;
+    Panel::hstack()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            inner = Some(f(ui));
+        });
+    ui.layout(surface);
+    inner.unwrap()
+}
+
+#[test]
+fn zstack_hugs_to_largest_child_per_axis_independently() {
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 800.0, 600.0), |ui| {
+        Panel::zstack()
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Frame::with_id("a").size((40.0, 20.0)).show(ui);
+                Frame::with_id("b").size((10.0, 80.0)).show(ui);
+            })
+            .node
+    });
+    let r = ui.rect(panel);
+    assert_eq!(r.size.w, 40.0);
+    assert_eq!(r.size.h, 80.0);
+}
+
+#[test]
+fn zstack_lays_children_at_inner_top_left_by_default() {
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+        Panel::zstack()
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .padding(8.0)
+            .show(ui, |ui| {
+                Frame::with_id("a").size((20.0, 20.0)).show(ui);
+                Frame::with_id("b").size((30.0, 30.0)).show(ui);
+            })
+            .node
+    });
+    let kids: Vec<_> = ui.tree.children(panel).collect();
+    let panel_rect = ui.rect(panel);
+    let a = ui.rect(kids[0]);
+    let b = ui.rect(kids[1]);
+    assert_eq!(a.min.x, panel_rect.min.x + 8.0);
+    assert_eq!(a.min.y, 8.0);
+    assert_eq!(b.min.x, panel_rect.min.x + 8.0);
+    assert_eq!(b.min.y, 8.0);
+}
+
+#[test]
+fn zstack_aligns_per_axis_from_child_override() {
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+        Panel::zstack()
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .show(ui, |ui| {
+                Frame::with_id("centered")
+                    .size((20.0, 20.0))
+                    .align(Align::CENTER)
+                    .show(ui);
+                Frame::with_id("br")
+                    .size((10.0, 10.0))
+                    .align(Align::new(HAlign::Right, VAlign::Bottom))
+                    .show(ui);
+            })
+            .node
+    });
+    let panel_rect = ui.rect(panel);
+    let kids: Vec<_> = ui.tree.children(panel).collect();
+    let c = ui.rect(kids[0]);
+    let br = ui.rect(kids[1]);
+    assert_eq!(c.min.x - panel_rect.min.x, 40.0);
+    assert_eq!(c.min.y, 40.0);
+    assert_eq!(br.min.x - panel_rect.min.x, 90.0);
+    assert_eq!(br.min.y, 90.0);
+}
+
+#[test]
+fn zstack_child_align_cascades_to_auto_axes() {
+    // Parent's child_align is the default for Auto axes; child override on one
+    // axis still uses the parent default on the unspecified axis.
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+        Panel::zstack()
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .child_align(Align::CENTER)
+            .show(ui, |ui| {
+                Frame::with_id("override-x")
+                    .size((20.0, 20.0))
+                    .align(Align::h(HAlign::Right))
+                    .show(ui);
+            })
+            .node
+    });
+    let panel_rect = ui.rect(panel);
+    let kids: Vec<_> = ui.tree.children(panel).collect();
+    let r = ui.rect(kids[0]);
+    assert_eq!(r.min.x - panel_rect.min.x, 80.0);
+    assert_eq!(r.min.y, 40.0);
+}
+
+#[test]
+fn zstack_fill_child_stretches_to_inner() {
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+        Panel::zstack()
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .padding(10.0)
+            .show(ui, |ui| {
+                Frame::with_id("filler")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui);
+            })
+            .node
+    });
+    let panel_rect = ui.rect(panel);
+    let kids: Vec<_> = ui.tree.children(panel).collect();
+    let f = ui.rect(kids[0]);
+    assert_eq!(f.min.x - panel_rect.min.x, 10.0);
+    assert_eq!(f.min.y, 10.0);
+    assert_eq!(f.size.w, 80.0);
+    assert_eq!(f.size.h, 80.0);
+}
+
+#[test]
+fn hug_zstack_with_only_fill_children_collapses_to_zero() {
+    // Fill-on-both-axes children measure with INF → fall back to intrinsic;
+    // a Hug ZStack therefore has no content to grow to.
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+        Panel::zstack()
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Frame::with_id("filler")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui);
+            })
+            .node
+    });
+    let r = ui.rect(panel);
+    assert_eq!(r.size.w, 0.0);
+    assert_eq!(r.size.h, 0.0);
+}
+
+#[test]
+fn zstack_collapsed_child_does_not_grow_panel() {
+    let mut ui = Ui::new();
+    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::zstack()
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Frame::with_id("a").size((20.0, 20.0)).show(ui);
+                Frame::with_id("hidden")
+                    .size((100.0, 100.0))
+                    .collapsed()
+                    .show(ui);
+            })
+            .node
+    });
+    let r = ui.rect(panel);
+    assert_eq!(r.size.w, 20.0);
+    assert_eq!(r.size.h, 20.0);
+    let kids: Vec<_> = ui.tree.children(panel).collect();
+    let collapsed = ui.rect(kids[1]);
+    assert_eq!(collapsed.size.w, 0.0);
+    assert_eq!(collapsed.size.h, 0.0);
+}

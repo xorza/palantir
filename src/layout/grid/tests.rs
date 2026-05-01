@@ -189,3 +189,69 @@ fn grid_hug_grid_collapses_fill_tracks() {
     assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
     assert_eq!(r.size.h, 40.0);
 }
+
+#[test]
+fn grid_row_span_covers_multiple_rows_with_gap() {
+    // Mirror image of `grid_col_span_covers_multiple_columns_with_gap` — same
+    // arithmetic, axes swapped. Pins that row-span and col-span share the
+    // same code path.
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = Grid::new()
+        .rows([
+            Track::fixed(100.0),
+            Track::fixed(100.0),
+            Track::fixed(100.0),
+        ])
+        .cols([Track::fixed(40.0), Track::fixed(40.0)])
+        .gap(10.0)
+        .show(&mut ui, |ui| {
+            Frame::with_id("sidebar")
+                .grid_cell((0, 0))
+                .grid_span((3, 1))
+                .show(ui);
+            Frame::with_id("body").grid_cell((1, 1)).show(ui);
+        })
+        .node;
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let sidebar = ui.rect(kids[0]);
+    let body = ui.rect(kids[1]);
+    assert_eq!(sidebar.min.y, 0.0);
+    assert_eq!(sidebar.size.w, 40.0);
+    assert_eq!(sidebar.size.h, 320.0);
+    assert_eq!(body.min.x, 50.0);
+    assert_eq!(body.min.y, 110.0);
+    assert_eq!(body.size.w, 40.0);
+    assert_eq!(body.size.h, 100.0);
+}
+
+#[test]
+fn grid_cell_alignment_override_pins_child_to_corner() {
+    // Default grid placement is auto-stretch (WPF cell behaviour). A child
+    // with an explicit non-stretch align should size to its own intrinsic and
+    // park at the requested corner of the cell.
+    use crate::primitives::{Align, HAlign, VAlign};
+
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let root = Grid::new()
+        .cols([Track::fixed(100.0)])
+        .rows([Track::fixed(100.0)])
+        .show(&mut ui, |ui| {
+            Frame::with_id("pinned")
+                .grid_cell((0, 0))
+                .size((20.0, 20.0))
+                .align(Align::new(HAlign::Right, VAlign::Bottom))
+                .show(ui);
+        })
+        .node;
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let r = ui.rect(kids[0]);
+    assert_eq!(r.size.w, 20.0);
+    assert_eq!(r.size.h, 20.0);
+    assert_eq!(r.min.x, 80.0);
+    assert_eq!(r.min.y, 80.0);
+}
