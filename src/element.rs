@@ -1,6 +1,6 @@
 use crate::primitives::{
-    Align, ApproxF32, GridCell, Justify, Sense, Size, Sizes, Spacing, TranslateScale, Visibility,
-    WidgetId,
+    Align, ApproxF32, GridCell, HAlign, Justify, Sense, Size, Sizes, Spacing, TranslateScale,
+    VAlign, Visibility, WidgetId,
 };
 use glam::Vec2;
 
@@ -60,30 +60,40 @@ impl UiElementExtras {
     }
 }
 
-/// Packed boolean + small-enum flags from a `UiElement`. Saves ~5B per
-/// `NodeElement` by collapsing `sense` (3 bools), `disabled`, `clip`, and
-/// `visibility` (3-variant enum, 2 bits) into a single byte. Set at
+/// Packed boolean + small-enum flags from a `UiElement`. Collapses `sense`
+/// (3 bools), `disabled`, `clip`, `visibility` (3 variants, 2 bits) and
+/// `align` (5 variants per axis, 3 bits each) into a single `u16`. Set at
 /// `Tree::push_node`; read everywhere else through accessors so callers
 /// don't have to know the bit layout.
 ///
 /// Bits: 0=click, 1=drag, 2=hover, 3=disabled, 4=clip, 5-6=visibility,
-/// 7=reserved.
+/// 7-9=HAlign, 10-12=VAlign, 13-15=reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct NodeFlags(u8);
+pub struct NodeFlags(u16);
 
 impl NodeFlags {
-    const CLICK: u8 = 1 << 0;
-    const DRAG: u8 = 1 << 1;
-    const HOVER: u8 = 1 << 2;
-    const DISABLED: u8 = 1 << 3;
-    const CLIP: u8 = 1 << 4;
-    const VIS_MASK: u8 = 0b11 << 5;
-    const VIS_VISIBLE: u8 = 0 << 5;
-    const VIS_HIDDEN: u8 = 1 << 5;
-    const VIS_COLLAPSED: u8 = 2 << 5;
+    const CLICK: u16 = 1 << 0;
+    const DRAG: u16 = 1 << 1;
+    const HOVER: u16 = 1 << 2;
+    const DISABLED: u16 = 1 << 3;
+    const CLIP: u16 = 1 << 4;
+    const VIS_MASK: u16 = 0b11 << 5;
+    const VIS_VISIBLE: u16 = 0 << 5;
+    const VIS_HIDDEN: u16 = 1 << 5;
+    const VIS_COLLAPSED: u16 = 2 << 5;
+    const HALIGN_SHIFT: u16 = 7;
+    const HALIGN_MASK: u16 = 0b111 << Self::HALIGN_SHIFT;
+    const VALIGN_SHIFT: u16 = 10;
+    const VALIGN_MASK: u16 = 0b111 << Self::VALIGN_SHIFT;
 
-    fn pack(sense: Sense, disabled: bool, clip: bool, visibility: Visibility) -> Self {
-        let mut bits = 0u8;
+    fn pack(
+        sense: Sense,
+        disabled: bool,
+        clip: bool,
+        visibility: Visibility,
+        align: Align,
+    ) -> Self {
+        let mut bits = 0u16;
         if sense.click {
             bits |= Self::CLICK;
         }
@@ -104,6 +114,8 @@ impl NodeFlags {
             Visibility::Hidden => Self::VIS_HIDDEN,
             Visibility::Collapsed => Self::VIS_COLLAPSED,
         };
+        bits |= (align.h as u16) << Self::HALIGN_SHIFT;
+        bits |= (align.v as u16) << Self::VALIGN_SHIFT;
         Self(bits)
     }
 
@@ -137,6 +149,28 @@ impl NodeFlags {
     pub fn is_collapsed(self) -> bool {
         self.0 & Self::VIS_MASK == Self::VIS_COLLAPSED
     }
+    pub fn align(self) -> Align {
+        let h = (self.0 & Self::HALIGN_MASK) >> Self::HALIGN_SHIFT;
+        let v = (self.0 & Self::VALIGN_MASK) >> Self::VALIGN_SHIFT;
+        Align {
+            h: match h {
+                0 => HAlign::Auto,
+                1 => HAlign::Left,
+                2 => HAlign::Center,
+                3 => HAlign::Right,
+                4 => HAlign::Stretch,
+                _ => unreachable!(),
+            },
+            v: match v {
+                0 => VAlign::Auto,
+                1 => VAlign::Top,
+                2 => VAlign::Center,
+                3 => VAlign::Bottom,
+                4 => VAlign::Stretch,
+                _ => unreachable!(),
+            },
+        }
+    }
 }
 
 /// Compact form of a node's recorded element, stored inline in `Node`. Built
@@ -154,10 +188,8 @@ pub struct NodeElement {
     pub padding: Spacing,
     pub margin: Spacing,
 
-    pub align: Align,
-
-    /// Packed `sense` / `disabled` / `clip` / `visibility`. Read through the
-    /// accessor methods on `NodeFlags`.
+    /// Packed `sense` / `disabled` / `clip` / `visibility` / `align`. Read
+    /// through the accessor methods on `NodeFlags`.
     pub flags: NodeFlags,
 
     /// Index into `Tree::node_extras`, or `None` when all extras are at
@@ -275,8 +307,13 @@ impl UiElement {
             max_size: self.max_size,
             padding: self.padding,
             margin: self.margin,
-            align: self.align,
-            flags: NodeFlags::pack(self.sense, self.disabled, self.clip, self.visibility),
+            flags: NodeFlags::pack(
+                self.sense,
+                self.disabled,
+                self.clip,
+                self.visibility,
+                self.align,
+            ),
             extras: None,
         };
         let extras = UiElementExtras {
