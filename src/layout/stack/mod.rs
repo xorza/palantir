@@ -82,8 +82,15 @@ pub(super) fn measure(
     // `desired` instead of trusting the parameter.
     if total_weight > 0.0 && axis.main(inner).is_finite() {
         let leftover = (axis.main(inner) - sum_non_fill_main - total_gap).max(0.0);
-        // Recompute totals from scratch — Fill children's first-pass
-        // contributions to `total_main` and `max_cross` are stale.
+        // Restart `total_main` from `sum_non_fill_main`: pass-1 also
+        // accumulated each Fill child's natural main, which is now stale.
+        // Non-Fill mains are still correct, so we keep them and only add
+        // Fill children's resolved mains in the loop (adding non-Fill's
+        // desired here too would double-count).
+        //
+        // `max_cross` resets — wrap text in Fill children grows in cross
+        // when re-measured at a narrower main, so we re-max from scratch
+        // across all live children.
         total_main = sum_non_fill_main;
         max_cross = 0.0;
         let mut kids = tree.child_cursor(node);
@@ -102,11 +109,12 @@ pub(super) fn measure(
                 let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, text);
                 let resolved = target.max(floor);
                 let new_avail = axis.compose_size(resolved, axis.cross(inner));
-                layout.measure(tree, c, new_avail, text)
+                let new_d = layout.measure(tree, c, new_avail, text);
+                total_main += axis.main(new_d);
+                new_d
             } else {
                 layout.desired(c)
             };
-            total_main += axis.main(new_d);
             max_cross = max_cross.max(axis.cross(new_d));
         }
     }
