@@ -48,7 +48,7 @@ needs it. See "Deferred" below.
 
 ```rust
 impl LayoutEngine {
-    pub(super) fn intrinsic(
+    pub fn intrinsic(
         &mut self,
         tree: &Tree,
         node: NodeId,
@@ -192,9 +192,13 @@ path. We picked the on-demand model because:
 - Cosmic's existing cross-frame text-shape cache already covers the
   expensive leaf side.
 
-The algorithm is **strictly forward**: query intrinsics → resolve sizes
-→ measure children with resolved sizes. No iterative re-measure, no
-WPF-style `c_layoutLoopMaxCount`. One-shot decision, accept the result.
+The algorithm is **forward**: drivers either query intrinsic and
+then measure at the resolved size (Grid Phase-1 col resolution,
+Stack pass-2 Fill), or measure at `INF` on the queried axis to
+get the child's natural answer at the committed cross (Stack
+pass-1 main, ZStack/Canvas Hug axes — see "Height-given-width"
+below). Either way, no iterative re-measure, no WPF-style
+`c_layoutLoopMaxCount`. One-shot decision, accept the result.
 
 ## Future direction: native vs Taffy
 
@@ -210,11 +214,40 @@ the cheapest path is opt-in Taffy alongside the native panels —
 `references/taffy.md` §7 has the integration sketch. We'll pick a
 direction when the first user demand arrives.
 
+## Height-given-width
+
+There is no separate `intrinsic_main_given_cross` query, but
+height-given-width is solved in-tree by a different mechanism:
+**measure-at-INF on the queried axis with the committed cross**.
+
+Concretely, in `stack::measure` pass-1 a non-Fill child is
+measured with `axis.compose_size(INF, cross_avail)`. The child
+runs its full layout under the finite cross — wrap text shapes
+at the constrained width, nested grids resolve cols at the
+constrained width — and reports the resulting main-axis size.
+That answer is height-given-width by definition. ZStack and
+Canvas use the same pattern on their Hug axes via
+`child_avail_per_axis_hug`.
+
+This is **not** equivalent to `intrinsic(child, main, MaxContent)`,
+which would not see the cross. For wrap text the intrinsic
+returns single-line height (unbounded shape); for a Grid with
+wrapping cells it returns sum of single-line row heights.
+Replacing INF-measure with intrinsic causes the parent to commit
+a too-small main slot and inner contents collapse.
+
+Pinned by:
+- `vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse`
+- `hug_zstack_with_nested_grid_wrap_does_not_collapse`
+
+A standalone `intrinsic_main_given_cross` would be a recursive
+intrinsic that propagates width down — i.e., a measure pass with
+a different name. The current "intrinsic for unbounded queries,
+measure-at-INF for cross-dependent queries" split is the right
+shape.
+
 ## Deferred
 
-- **Height-given-width intrinsic** (Flutter-style). The two motivating
-  patterns don't need it. Revisit if a layout sizes a parent based on
-  a wrapped child's height.
 - **Baseline alignment.** Not part of intrinsics; would attach to
   `LayoutResult` if needed.
 - **Aspect-ratio constraints.** Separate concern.
