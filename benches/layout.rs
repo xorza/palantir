@@ -148,15 +148,19 @@ fn build_ui(ui: &mut Ui, scale: usize) {
 
                             // Chat-style messages — HStack with Fixed avatar
                             // + Fill message that wraps. Step C pattern.
+                            // Panels in loops need explicit ids: `track_caller`
+                            // on the constructor doesn't propagate through
+                            // the closure body, so every iter would resolve
+                            // to the same source location and collide.
                             for i in 0..chat_messages {
-                                Panel::hstack()
+                                Panel::hstack_with_id(("chat-row", i))
                                     .gap(8.0)
                                     .size((Sizing::FILL, Sizing::Hug))
                                     .show(ui, |ui| {
                                         Frame::with_id(("avatar", i))
                                             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                                             .show(ui);
-                                        Panel::vstack()
+                                        Panel::vstack_with_id(("chat-text", i))
                                             .gap(2.0)
                                             .size((Sizing::FILL, Sizing::Hug))
                                             .show(ui, |ui| {
