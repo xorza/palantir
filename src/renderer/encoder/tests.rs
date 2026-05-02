@@ -29,7 +29,14 @@ fn empty_tree_encodes_to_nothing() {
     Panel::hstack().show(&mut ui, |_| {});
     ui.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
     ui.end_frame();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        None,
+        &mut cmds,
+    );
     let draws = cmds
         .iter()
         .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
@@ -52,7 +59,14 @@ fn frame_with_fill_emits_one_draw_rect() {
 
     ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        None,
+        &mut cmds,
+    );
 
     let draw_rects = cmds
         .iter()
@@ -75,7 +89,14 @@ fn invisible_frame_does_not_emit_draw_rect() {
 
     ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        None,
+        &mut cmds,
+    );
 
     let draw_rects = cmds
         .iter()
@@ -106,7 +127,14 @@ fn clip_emits_balanced_push_pop() {
 
     ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        None,
+        &mut cmds,
+    );
 
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
@@ -237,7 +265,14 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     ui.end_frame();
 
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        None,
+        &mut cmds,
+    );
     let drawn = screen_rects_by_fill(&cmds);
 
     // Visible node: encoder emits exactly one DrawRect with its fill, and the
@@ -358,7 +393,14 @@ fn nested_clips_each_emit_their_own_pair() {
 
     ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        None,
+        &mut cmds,
+    );
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
     assert_eq!(pops, 2);
@@ -379,7 +421,14 @@ fn disabled_ancestor_dims_descendant_fill() {
     ui.end_frame();
 
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), 0.5, &mut cmds);
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        0.5,
+        None,
+        &mut cmds,
+    );
     let dimmed = cmds
         .iter()
         .find_map(|c| match c {
@@ -406,6 +455,7 @@ fn disabled_ancestor_dims_descendant_fill() {
         ui2.layout_result(),
         ui2.cascades(),
         0.5,
+        None,
         &mut cmds,
     );
     let untouched = cmds
@@ -487,7 +537,14 @@ fn encoder_text_alignment_respects_leaf_padding() {
     ui.end_frame();
 
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        None,
+        &mut cmds,
+    );
     let text_rect = cmds
         .iter()
         .find_map(|c| match c {
@@ -513,5 +570,177 @@ fn encoder_text_alignment_respects_leaf_padding() {
         (text_rect.min.x - expected_x_center).abs() < 0.5,
         "text x should center within padded area; expected ≈{expected_x_center}, got {}",
         text_rect.min.x
+    );
+}
+
+// --- Damage filter (Step 5) -------------------------------------------------
+// `damage_filter: Some(rect)` skips DrawRect/DrawText for nodes that don't
+// intersect the dirty region. PushClip/PopClip and PushTransform/PopTransform
+// are *always* emitted so scissor groups and child transforms stay coherent.
+
+/// Pin: a node whose rect doesn't intersect the damage filter has no
+/// DrawRect emitted.
+#[test]
+fn damage_filter_skips_drawrect_outside_dirty_region() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    Panel::hstack().show(&mut ui, |ui| {
+        Frame::with_id("a")
+            .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+            .fill(Color::rgb(1.0, 0.0, 0.0))
+            .show(ui);
+        Frame::with_id("b")
+            .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+            .fill(Color::rgb(0.0, 1.0, 0.0))
+            .show(ui);
+    });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+
+    // Damage filter covers only the left half (x: 0..50). `a` at
+    // (0,0,40,40) intersects; `b` at (40,0,40,40) intersects too
+    // (its left edge is at x=40 which is < 50). Use a tighter filter.
+    let filter = Rect::new(0.0, 0.0, 30.0, 200.0);
+    let mut cmds = Vec::new();
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        Some(filter),
+        &mut cmds,
+    );
+
+    let draw_count = cmds
+        .iter()
+        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .count();
+    // `a` (0..40) intersects (0..30) → emitted. `b` (40..80) doesn't → skipped.
+    assert_eq!(
+        draw_count, 1,
+        "only the rect inside the damage filter should be drawn"
+    );
+}
+
+/// Pin: a node fully *inside* the damage filter still emits its
+/// DrawRect.
+#[test]
+fn damage_filter_keeps_drawrect_inside_dirty_region() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    Panel::hstack().show(&mut ui, |ui| {
+        Frame::with_id("a")
+            .size(50.0)
+            .fill(Color::rgb(1.0, 0.0, 0.0))
+            .show(ui);
+    });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+
+    let mut cmds = Vec::new();
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        Some(Rect::new(0.0, 0.0, 200.0, 200.0)),
+        &mut cmds,
+    );
+    let draw_count = cmds
+        .iter()
+        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .count();
+    assert!(draw_count >= 1);
+}
+
+/// Pin: PushClip/PopClip pairs are emitted even for clipped nodes whose
+/// rect doesn't intersect damage. The composer relies on these for group
+/// boundaries.
+#[test]
+fn damage_filter_preserves_clip_pushpop() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    Panel::hstack_with_id("outer")
+        .clip(false)
+        .show(&mut ui, |ui| {
+            Panel::hstack_with_id("clipped")
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                .clip(true)
+                .show(ui, |ui| {
+                    Frame::with_id("inner")
+                        .size(20.0)
+                        .fill(Color::rgb(1.0, 0.0, 0.0))
+                        .show(ui);
+                });
+        });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+
+    // Filter misses the clipped panel entirely.
+    let mut cmds = Vec::new();
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
+        &mut cmds,
+    );
+
+    let (pushes, pops) = count_clip_pairs(&cmds);
+    assert_eq!(pushes, pops, "clip push/pop must be balanced");
+    assert!(
+        pushes >= 1,
+        "filtered-out clipped node still emits its clip pair"
+    );
+    let draws = cmds
+        .iter()
+        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .count();
+    assert_eq!(draws, 0, "no rects emitted when nothing intersects damage");
+}
+
+/// Pin: PushTransform/PopTransform pairs are emitted for filtered-out
+/// nodes too, so descendant transform composition stays correct.
+#[test]
+fn damage_filter_preserves_transform_pushpop() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack_with_id("transformed")
+            .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+            .transform(TranslateScale::from_translation(Vec2::new(5.0, 5.0)))
+            .show(ui, |ui| {
+                Frame::with_id("inner")
+                    .size(20.0)
+                    .fill(Color::rgb(1.0, 0.0, 0.0))
+                    .show(ui);
+            });
+    });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+
+    let mut cmds = Vec::new();
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
+        &mut cmds,
+    );
+
+    let pushes = cmds
+        .iter()
+        .filter(|c| matches!(c, RenderCmd::PushTransform(_)))
+        .count();
+    let pops = cmds
+        .iter()
+        .filter(|c| matches!(c, RenderCmd::PopTransform))
+        .count();
+    assert_eq!(pushes, pops);
+    assert!(
+        pushes >= 1,
+        "filtered-out transformed node still emits its transform pair"
     );
 }

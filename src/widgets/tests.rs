@@ -339,7 +339,14 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     // ...but emits no DrawRect.
     ui.end_frame();
     let mut cmds = Vec::new();
-    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
+    encode(
+        &ui.tree,
+        ui.layout_result(),
+        ui.cascades(),
+        1.0,
+        None,
+        &mut cmds,
+    );
     let draws = cmds
         .iter()
         .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
