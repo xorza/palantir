@@ -71,7 +71,7 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
             zero_subtree(layout, tree, c, inner.min);
             continue;
         }
-        let d = layout.desired(c);
+        let d = layout.desired[c.index()];
         let s = *tree.layout(c);
 
         let (h_align, v_align) = resolved_axis_align(&s, parent_child_align);

@@ -18,25 +18,32 @@ pub use axis::Axis;
 pub use intrinsic::LenReq;
 pub use result::{LayoutResult, ShapedText};
 
-/// Persistent layout engine. Holds intermediate per-frame scratch + the
-/// `LayoutResult` the encoder reads after layout. All allocations retain
+/// Persistent layout engine. Holds intermediate per-frame **scratch**
+/// (valid only during `run`) and per-frame **output** (`LayoutResult`,
+/// read by encoder/hit-index after `run` returns). Allocations retain
 /// capacity across frames.
 ///
+/// **Scratch** — internal to the layout pass. Drivers in this module
+/// read/write directly. Module-internal tests (e.g.
+/// `stack/tests.rs`) reach in via `pub(in crate::layout)` to pin
+/// measure output independently of arrange's slot-clamping.
+///
 /// - `grid` — grid-driver scratch (per-depth track state, hug pool).
-/// - `desired` — measure-pass output read by arrange. Crate-private
-///   accessor (`Ui::desired`) exists so layout tests can pin measure
-///   output independently of arrange's slot-clamping.
+/// - `desired` — measure-pass output, read by arrange.
 /// - `intrinsics` — intra-frame cache for `intrinsic(node, axis, req)`
-///   queries (see `intrinsic.md`). Pure function of subtree;
-///   safe to memoize within a frame. Flat `Vec` indexed by node, with
-///   four slots per node (one per `(axis, req)` combination). NaN means
-///   "not yet computed". Cleared and resized to `node_count` in `run`.
-/// - `result` — post-layout output (rects, text shapes) read by the encoder
-///   + hit-index.
+///   queries (see `intrinsic.md`). Pure function of subtree; safe to
+///   memoize within a frame. Flat `Vec` indexed by node, four slots
+///   per node (one per `(axis, req)` combination). NaN means "not yet
+///   computed". Cleared and resized to `node_count` in `run`.
+///
+/// **Output**:
+///
+/// - `result` — post-layout rects + text shapes. Public read-only via
+///   [`LayoutEngine::result`].
 #[derive(Default)]
 pub struct LayoutEngine {
     pub(super) grid: GridContext,
-    desired: Vec<Size>,
+    pub(in crate::layout) desired: Vec<Size>,
     intrinsics: Vec<[f32; 4]>,
     result: LayoutResult,
 }
@@ -65,14 +72,6 @@ impl LayoutEngine {
 
     pub fn rect(&self, id: NodeId) -> Rect {
         self.result.rect(id)
-    }
-
-    pub(crate) fn desired(&self, id: NodeId) -> Size {
-        self.desired[id.index()]
-    }
-
-    fn set_desired(&mut self, id: NodeId, v: Size) {
-        self.desired[id.index()] = v;
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
@@ -145,7 +144,7 @@ impl LayoutEngine {
         text: &mut TextMeasurer,
     ) -> Size {
         if tree.is_collapsed(node) {
-            self.set_desired(node, Size::ZERO);
+            self.desired[node.index()] = Size::ZERO;
             return Size::ZERO;
         }
         let style = *tree.layout(node);
@@ -202,7 +201,7 @@ impl LayoutEngine {
             ),
         );
 
-        self.set_desired(node, desired);
+        self.desired[node.index()] = desired;
         desired
     }
 
