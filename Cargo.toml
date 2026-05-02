@@ -15,4 +15,9 @@ wgpu = "*"
 winit = "*"
 
 [dev-dependencies]
+criterion = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
+
+[[bench]]
+name = "layout"
+harness = false
