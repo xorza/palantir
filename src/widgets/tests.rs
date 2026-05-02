@@ -28,7 +28,6 @@ fn clip_flag_is_recorded_on_panel_node() {
                 .node,
         );
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     assert!(!ui.tree.paint(default_panel.unwrap()).attrs.is_clip());
@@ -50,7 +49,6 @@ fn frame_paints_a_single_rounded_rect() {
                 .node,
         );
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     let shapes = ui.tree.shapes_of(frame_node.unwrap());
@@ -93,7 +91,6 @@ fn panel_hugs_largest_child_and_layers_them() {
                 .node,
         );
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
@@ -137,7 +134,6 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                 );
             });
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let child = ui.rect(child_node.unwrap());
@@ -179,7 +175,6 @@ fn zstack_layers_children_without_painting_background() {
                 .node,
         );
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     let z = zstack_node.unwrap();
@@ -219,7 +214,6 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                     .show(ui);
             });
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
     ui.end_frame();
 
@@ -367,7 +361,6 @@ fn hidden_button_does_not_click() {
             .hidden()
             .show(ui);
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
     ui.end_frame();
 
@@ -464,7 +457,6 @@ fn zstack_centers_child_when_align_center() {
                 );
             });
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let r = ui.rect(child_node.unwrap());
@@ -493,7 +485,6 @@ fn zstack_aligns_independently_per_axis() {
                 );
             });
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let r = ui.rect(child_node.unwrap());
@@ -531,7 +522,6 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                 .node,
         );
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let c = ui.rect(canvas_node.unwrap());
@@ -560,7 +550,6 @@ fn frame_with_sense_click_is_clickable() {
             .sense(Sense::CLICK)
             .show(ui);
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
     ui.end_frame();
 

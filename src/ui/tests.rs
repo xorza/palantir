@@ -35,6 +35,74 @@ fn should_repaint_starts_true() {
     assert!(ui.should_repaint());
 }
 
+/// Pin: a frame that records no widgets (empty conditional UI,
+/// initial state, debug toggle) drives `begin → layout → end_frame`
+/// without panicking and leaves every per-frame table in a consistent
+/// empty state. `Ui::layout` no-ops when the tree has no root rather
+/// than panicking — empty UI is a real case.
+#[test]
+fn empty_ui_drives_a_frame_without_panicking() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+
+    assert_eq!(ui.tree().node_count(), 0);
+    assert!(ui.prev_frame.is_empty());
+    assert!(ui.damage.dirty.is_empty());
+    assert!(ui.damage.rect.is_none());
+    assert!(!ui.damage.full_repaint);
+    assert!(ui.damage_filter().is_none());
+    assert_eq!(ui.surface(), Rect::new(0.0, 0.0, 200.0, 200.0));
+    // Repaint gate clears even on empty frames so an idle empty host
+    // doesn't burn cycles.
+    assert!(!ui.should_repaint());
+}
+
+/// Pin: an empty frame followed by a populated frame works (the
+/// recorder retains no per-frame state across `begin_frame`).
+#[test]
+fn empty_then_populated_frame() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    ui.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
+    ui.end_frame();
+
+    drain_one_frame(&mut ui);
+    assert_eq!(ui.tree().node_count(), 1);
+    assert!(!ui.prev_frame.is_empty());
+}
+
+/// Pin: the full CPU render pipeline (encode + compose) survives an
+/// empty UI. Backend `submit` is GPU-bound and not exercised here,
+/// but every CPU stage between `Ui::end_frame` and the GPU must be
+/// safe on empty input.
+#[test]
+fn empty_ui_runs_through_pipeline() {
+    use crate::renderer::{ComposeParams, Pipeline};
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+
+    let mut pipeline = Pipeline::new();
+    let buffer = pipeline.build(
+        ui.tree(),
+        ui.layout_result(),
+        ui.cascades(),
+        ui.theme.disabled_dim,
+        ui.damage_filter(),
+        &ComposeParams {
+            viewport_logical: [200.0, 200.0],
+            scale: 1.0,
+            pixel_snap: true,
+        },
+    );
+    assert!(buffer.quads.is_empty());
+    assert!(buffer.texts.is_empty());
+    assert!(buffer.groups.is_empty());
+}
+
 /// Pin: a successful `end_frame()` clears the gate. After one frame
 /// with no new events, the host can skip the next tick.
 #[test]

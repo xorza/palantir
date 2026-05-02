@@ -44,7 +44,6 @@ fn input_state_press_release_emits_click() {
     assert!(got_click, "press+release inside button rect should click");
 
     // Click does not stick: next frame without input must clear it.
-    let _root2 = ui.root();
     ui.layout(surface);
     ui.end_frame();
     ui.begin_frame();
@@ -240,7 +239,6 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
                     .show(ui);
             });
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
     ui.end_frame();
 
@@ -291,7 +289,6 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
                     .show(ui);
             });
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
     ui.end_frame();
 
@@ -336,7 +333,6 @@ fn click_outside_zoomed_bounds_does_not_hit() {
                     .show(ui);
             });
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
     ui.end_frame();
 

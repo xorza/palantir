@@ -54,7 +54,6 @@ fn frame_with_fill_emits_one_draw_rect() {
             .fill(Color::rgb(1.0, 0.0, 0.0))
             .show(ui);
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     ui.end_frame();
@@ -84,7 +83,6 @@ fn invisible_frame_does_not_emit_draw_rect() {
     Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("invisible").size(50.0).show(ui);
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     ui.end_frame();
@@ -122,7 +120,6 @@ fn clip_emits_balanced_push_pop() {
                     .show(ui);
             });
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     ui.end_frame();
@@ -388,7 +385,6 @@ fn nested_clips_each_emit_their_own_pair() {
                     .show(ui, |_| {});
             });
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     ui.end_frame();
@@ -532,7 +528,6 @@ fn encoder_text_alignment_respects_leaf_padding() {
             .padding(20.0)
             .show(ui);
     });
-    let _root = ui.root();
     ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
     ui.end_frame();
 
