@@ -1,7 +1,6 @@
 use crate::primitives::{Rect, Size};
 use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
-use std::collections::HashMap;
 
 /// Per-frame layout *output* — strictly the state read after the layout
 /// pass by the encoder + hit-index. Intermediate scratch (desired sizes,
@@ -10,11 +9,10 @@ use std::collections::HashMap;
 #[derive(Default)]
 pub struct LayoutResult {
     rect: Vec<Rect>,
-    /// Per-node shape result for every `Shape::Text` the layout pass
-    /// processed. Carries the measured size and the shaped-buffer `key` the
-    /// encoder hands to the renderer. Keyed by `NodeId` because text
-    /// widgets push exactly one `Shape::Text` per node.
-    text_shapes: HashMap<NodeId, ShapedText>,
+    /// Per-node shape result for `Shape::Text` leaves. `None` for any
+    /// node the layout pass didn't shape text for. SoA column indexed by
+    /// `NodeId.0`, matching the rest of the engine.
+    text_shapes: Vec<Option<ShapedText>>,
 }
 
 /// Result of shaping one `Shape::Text` during the measure pass. `Tree`
@@ -31,6 +29,7 @@ impl LayoutResult {
         self.rect.clear();
         self.rect.resize(n, Rect::ZERO);
         self.text_shapes.clear();
+        self.text_shapes.resize(n, None);
     }
 
     pub fn rect(&self, id: NodeId) -> Rect {
@@ -41,11 +40,11 @@ impl LayoutResult {
         self.rect[id.index()] = v;
     }
 
-    pub fn text_shape(&self, id: NodeId) -> Option<&ShapedText> {
-        self.text_shapes.get(&id)
+    pub fn text_shape(&self, id: NodeId) -> Option<ShapedText> {
+        self.text_shapes[id.index()]
     }
 
     pub(super) fn set_text_shape(&mut self, id: NodeId, s: ShapedText) {
-        self.text_shapes.insert(id, s);
+        self.text_shapes[id.index()] = Some(s);
     }
 }
