@@ -51,7 +51,7 @@ impl Color {
 
     /// Multiply the linear RGB channels by `mul`, preserve alpha. Used by the
     /// encoder to dim disabled subtrees.
-    pub fn dim_rgb(self, mul: f32) -> Self {
+    pub const fn dim_rgb(self, mul: f32) -> Self {
         Self {
             r: self.r * mul,
             g: self.g * mul,
