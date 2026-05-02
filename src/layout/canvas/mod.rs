@@ -25,13 +25,13 @@ pub(super) fn measure(
     let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
+        // Skip collapsed children outright. `desired` is reset to ZERO at
+        // the top of `run`, so no measure call is needed; arrange will
+        // zero the subtree's rects, so they must not grow the bbox here
+        // either (otherwise a collapsed child at (100,100) would inflate
+        // the panel).
         if tree.is_collapsed(c) {
-            // Match arrange: collapsed children don't participate in the bbox.
-            // Without this skip, a collapsed child at (100, 100) would still
-            // grow the panel by its position even though arrange zeroes it.
-            layout.measure(tree, c, child_avail, text);
             continue;
         }
         let pos = tree.read_extras(c).position;
@@ -46,8 +46,7 @@ pub(super) fn measure(
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `measure`.
 pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         if tree.is_collapsed(c) {
             zero_subtree(layout, tree, c, inner.min);
             continue;
@@ -74,8 +73,7 @@ pub(super) fn intrinsic(
     text: &mut TextMeasurer,
 ) -> f32 {
     let mut max = 0.0_f32;
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         if tree.is_collapsed(c) {
             continue;
         }

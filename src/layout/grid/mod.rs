@@ -273,8 +273,7 @@ fn measure_inner(
 
     if n_rows == 0 || n_cols == 0 {
         // Still measure children so their `desired` is set.
-        let mut kids = tree.child_cursor(node);
-        while let Some(c) = kids.next(tree) {
+        for c in tree.children(node) {
             layout.measure(tree, c, Size::ZERO, text);
         }
         return Size::ZERO;
@@ -285,8 +284,7 @@ fn measure_inner(
     // committed column width before they shape, which is the whole point
     // of Step B.
     let col_tracks = tracks_at(layout, depth, Axis::X);
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         if tree.is_collapsed(c) {
             continue;
         }
@@ -336,8 +334,7 @@ fn measure_inner(
     // Phase 2: measure cells with resolved col widths. Rows are still
     // unresolved (only Fixed is known); cells get INF on row axis as
     // before. Cell desired heights feed row Hug resolution next.
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         let collapsed = tree.is_collapsed(c);
         let cell = tree.read_extras(c).grid;
 
@@ -511,8 +508,7 @@ fn arrange_inner(
     }
 
     if n_rows == 0 || n_cols == 0 {
-        let mut kids = tree.child_cursor(node);
-        while let Some(c) = kids.next(tree) {
+        for c in tree.children(node) {
             zero_subtree(layout, tree, c, inner.min);
         }
         return;
@@ -528,8 +524,7 @@ fn arrange_inner(
     }
 
     let parent_child_align = tree.read_extras(node).child_align;
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         if tree.is_collapsed(c) {
             zero_subtree(layout, tree, c, inner.min);
             continue;
@@ -810,8 +805,7 @@ pub(super) fn intrinsic(
         };
     }
 
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         if tree.is_collapsed(c) {
             continue;
         }
