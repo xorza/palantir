@@ -48,7 +48,7 @@ pub(super) fn measure(
     text: &mut TextMeasurer,
 ) -> Size {
     let style = *tree.layout(node);
-    let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
+    let child_avail = child_avail_per_axis_hug(layout, tree, node, style.size, inner_avail, text);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in tree.children(node) {

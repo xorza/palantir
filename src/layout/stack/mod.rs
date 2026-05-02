@@ -28,9 +28,10 @@ pub(super) fn measure(
     let gap = tree.read_extras(node).gap;
     let cross_avail = axis.cross(inner);
 
-    // Pass 1: measure non-Fill children at `INF` main (WPF intrinsic
-    // trick) and collect Fill weights. Fill children are deferred to
-    // pass 2 so they only get measured once, at their resolved share.
+    // Pass 1: query `intrinsic(MaxContent)` for non-Fill children's main
+    // and measure them with that as the committed budget. Replaces the
+    // older "measure at `INF` main" sentinel — intrinsic is the same
+    // value, named correctly, and the cache makes repeat queries free.
     let mut sum_non_fill_main = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut max_cross = 0.0f32;
@@ -45,7 +46,8 @@ pub(super) fn measure(
             total_weight += w;
             continue;
         }
-        let d = layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
+        let main_natural = layout.intrinsic(tree, c, axis, LenReq::MaxContent, text);
+        let d = layout.measure(tree, c, axis.compose_size(main_natural, cross_avail), text);
         sum_non_fill_main += axis.main(d);
         max_cross = max_cross.max(axis.cross(d));
     }
@@ -53,19 +55,10 @@ pub(super) fn measure(
 
     // Pass 2: measure Fill children. If the stack's main axis is finite
     // each Fill child gets its resolved share floored at `MinContent`
-    // and capped by `max_size`; on a Hug stack (INF main) Fill children
-    // measure at INF main and report their natural width (matches the
-    // "Hug stack hugs to children's natural widths" rule).
-    //
-    // Soundness: the `axis.main(inner)` we use as the budget here must
-    // equal the `axis.main(inner)` the matching `arrange` call sees,
-    // otherwise wrap text in Fill children shapes against the wrong
-    // width. It does, because the Stack's outer main size is a
-    // deterministic function of (its own `Sizing` + parent-supplied
-    // `available`) via `resolve_axis_size`, and the parent passes the
-    // same `available` to `measure` that it later derives `slot.size`
-    // from for `arrange`. Any future driver that clamps a child's slot
-    // *between* its own measure and arrange would break this.
+    // and capped by `max_size`. On a Hug stack (INF main) Fill children
+    // measure at their `MaxContent` intrinsic — same as if they were
+    // declared Hug, matching the "Hug stack hugs to children's natural
+    // widths" rule.
     let mut fill_main = 0.0f32;
     if total_weight > 0.0 {
         let main_finite = axis.main(inner).is_finite();
@@ -90,7 +83,7 @@ pub(super) fn measure(
                 let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, text);
                 target.max(floor)
             } else {
-                f32::INFINITY
+                layout.intrinsic(tree, c, axis, LenReq::MaxContent, text)
             };
             let d = layout.measure(tree, c, axis.compose_size(main_avail, cross_avail), text);
             fill_main += axis.main(d);

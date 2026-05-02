@@ -337,23 +337,54 @@ pub(super) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
     }
 }
 
-/// Per-axis available size to pass to children of a panel that sizes per its
-/// own `Sizing` on each axis: pass `inner_avail` on Fill/Fixed axes (children
-/// see the committed slot), `INFINITY` on Hug axes (avoids recursive sizing).
-/// Used by ZStack and Canvas. Stack uses a different rule (always INF on main).
-pub(super) fn child_avail_per_axis_hug(size: Sizes, inner_avail: Size) -> Size {
+/// Per-axis available size to pass to children of a panel that sizes per
+/// its own `Sizing` on each axis. On Fill/Fixed axes children see the
+/// parent-committed inner. On Hug axes the parent commits "max over
+/// children's `MaxContent` intrinsic" — children measure with that as
+/// their budget, which equals their natural width and avoids the older
+/// `INF` sentinel. Used by ZStack and Canvas; Stack drives its main
+/// axis differently (per-child intrinsic, see `stack::measure`).
+pub(super) fn child_avail_per_axis_hug(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    size: Sizes,
+    inner_avail: Size,
+    text: &mut TextMeasurer,
+) -> Size {
     Size::new(
         if matches!(size.w, Sizing::Hug) {
-            f32::INFINITY
+            children_max_intrinsic(layout, tree, node, Axis::X, text)
         } else {
             inner_avail.w
         },
         if matches!(size.h, Sizing::Hug) {
-            f32::INFINITY
+            children_max_intrinsic(layout, tree, node, Axis::Y, text)
         } else {
             inner_avail.h
         },
     )
+}
+
+/// Max over children's outer `MaxContent` intrinsic on `axis`. Used by
+/// ZStack/Canvas to resolve their own Hug-axis size before measuring
+/// children, so children see a finite committed budget instead of
+/// `INF`.
+fn children_max_intrinsic(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    axis: Axis,
+    text: &mut TextMeasurer,
+) -> f32 {
+    let mut m = 0.0f32;
+    for c in tree.children(node) {
+        if tree.is_collapsed(c) {
+            continue;
+        }
+        m = m.max(layout.intrinsic(tree, c, axis, LenReq::MaxContent, text));
+    }
+    m
 }
 
 /// How `place_axis` interprets `AxisAlign::Auto`.
