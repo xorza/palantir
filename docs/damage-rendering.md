@@ -45,15 +45,14 @@ layout rects misses it.
 
 | Concern | Code |
 |---|---|
-| Authoring hash | `src/tree/hash.rs`, `Tree.hashes` |
+| Authoring hash | `src/tree/hash.rs`, `Tree.hashes` (typed `NodeHash`) |
 | Per-node cascade transform | `src/cascade.rs`, `Cascade.transform` |
 | Prev-frame snapshot | `Damage.prev: FxHashMap<WidgetId, NodeSnapshot>` |
-| Damage diff | `src/ui/damage/`, `Damage::compute` |
-| Heuristic | `Damage::filter(surface)` (lazy) |
-| Public host accessor | `Ui::damage_filter(surface) -> Option<Rect>` |
-| Encoder filter | `src/renderer/encoder/mod.rs`, `damage_filter` param |
+| Damage diff + filter | `src/ui/damage/`, `Damage::compute` (returns `Option<Rect>`) |
+| Removed-widget diff | `src/ui/seen_ids.rs`, `SeenIds::removed() -> &[WidgetId]` |
+| Encoder filter | `src/renderer/frontend/encoder/mod.rs`, `damage_filter` param |
 | Backbuffer + scissor | `src/renderer/backend/mod.rs`, `Backbuffer` + `submit(damage)` |
-| Surface size | host-owned; passed into `Ui::layout` and `Ui::damage_filter` |
+| Public output | `FrameOutput.damage` returned from `Ui::end_frame` |
 
 ## Authoring hash — what's in, what's out
 
@@ -93,22 +92,24 @@ in a single batch pass after recording (`Tree::compute_hashes`),
 ## Snapshot map
 
 ```rust
-struct NodeSnapshot { rect: Rect, hash: u64 }  // rect in screen space
+struct NodeSnapshot { rect: Rect, hash: NodeHash }  // rect in screen space
 Damage.prev: FxHashMap<WidgetId, NodeSnapshot>
 ```
 
 Rolled forward in-place by `Damage::compute`: the diff loop reads
 each `WidgetId`'s old entry via `self.prev.insert(wid, curr_snap)`
 (which returns the previous value, if any) and writes the new one
-in the same step. Removed widgets are swept after the loop.
-Capacity retained; steady-state frames don't allocate.
+in the same step. Removed widgets are evicted in a follow-up pass
+that iterates the precomputed removed list. Capacity retained;
+steady-state frames don't allocate.
 
 ## Damage compute
 
-`Damage::compute` runs over `(&mut self, tree, cascades,
-curr_widget_ids, surface)` and rolls `self.prev` forward to this
-frame's snapshot in the same pass — the diff reads each `WidgetId`'s
-old entry and writes the new one via `self.prev.insert(wid, curr)`:
+`Damage::compute(&mut self, tree, cascades, removed: &[WidgetId],
+surface) -> Option<Rect>` rolls `self.prev` forward to this frame's
+snapshot and returns the filtered damage rect in one call. The diff
+reads each `WidgetId`'s old entry and writes the new one via
+`self.prev.insert(wid, curr)`:
 
 ```text
 screen_rect = cascade_rows[i].screen_rect   // cached on Cascade
@@ -119,30 +120,53 @@ match prev.insert(wid, curr_snap):
     Some(snap)                               → dirty: damage |= snap.rect ∪ screen_rect
 ```
 
-Then sweep `prev` for entries whose `wid` isn't in `curr_widget_ids`:
+Then walk the supplied `removed` slice; each disappeared widget's
+last-known rect contributes to damage and its entry is dropped from
+`prev`:
 
 ```text
-removed: damage |= snap.rect; prev.remove(wid)
+for wid in removed:
+    if let Some(snap) = prev.remove(wid):
+        damage |= snap.rect
 ```
 
-`curr_widget_ids` is reused from `Ui.seen_ids` (the per-frame
-uniqueness set) — no extra hash set built. The sweep only runs when
-`prev.len() > tree.node_count()` after the loop, since every recorded
-widget overwrote its entry.
+`removed` is precomputed by [`SeenIds::end_frame`](#sweepers-share-the-seenids-diff)
+and shared with `TextMeasurer::sweep_removed` so neither consumer
+walks `seen_ids` independently.
 
-The partial-vs-full decision is *not* baked in at compute time;
-`Damage::filter(surface)` (and its `Ui::damage_filter(surface)`
-forwarder) make the call lazily at submit time, returning `None`
-when `damage.area() / surface.area() > 0.5`.
+After the loop, the same call applies the 50% surface-area heuristic
+and returns `Some(rect)` for partial repaint or `None` for full.
+That used to live on a separate `Damage::filter(surface)` method;
+the function is still present (`pub(crate)`) for tests but the
+production call sequence is `compute → returned damage → consumed by
+frontend + backend`. The call sits at the natural submit boundary
+inside `Ui::end_frame`, so it's effectively still the lazy decision —
+just no longer split across two methods.
 
 `Cascade.screen_rect` is the layout rect projected through ancestor
 transforms; it's filled in `Cascades::rebuild` and shared by encoder,
 hit-index, and damage so the four passes can't disagree about where a
 node lives in screen space.
 
+### Sweepers share the SeenIds diff
+
+`SeenIds` (`src/ui/seen_ids.rs`) is the per-frame `WidgetId` tracker
+that owns:
+
+- collision detection (`record(id) -> bool` for `Ui::node`),
+- frame rollover (`begin_frame` swaps `curr ↔ prev` and clears
+  `curr` — no clone),
+- the removed-widget diff produced at `end_frame` and read via
+  `removed() -> &[WidgetId]`.
+
+Both `Damage::compute` and `TextMeasurer::sweep_removed` (Layer A of
+the [text-reshape-skip](text-reshape-skip.md) work) consume the same
+slice. Without this unification, each consumer would walk
+`seen_ids` against its own map.
+
 ## Encoder filter
 
-`encode(...)` and `Pipeline::build(...)` accept `damage_filter: Option<Rect>`.
+`encode(...)` and `Frontend::build(...)` accept `damage_filter: Option<Rect>`.
 `None` = paint everything; `Some(rect)` = filter.
 
 Per node:
@@ -187,28 +211,24 @@ hosts must include it in `wgpu::SurfaceConfiguration`.
 
 ## Host integration
 
+`Ui::end_frame` runs the entire CPU pipeline (layout, cascades,
+input, damage, encode, compose) and returns a `FrameOutput` with the
+composed buffer plus the filtered damage rect:
+
 ```rust
-let damage = ui.damage_filter();        // Some(rect) or None
-let buffer = pipeline.build(
-    ui.tree(),
-    ui.layout_result(),
-    ui.cascades(),
-    ui.theme.disabled_dim,
-    damage,                             // encoder filter
-    &compose_params,
-);
+let frame_out = ui.end_frame();          // FrameOutput<'_>
 backend.submit(
     &frame.texture,
     clear_color,
-    buffer,
-    damage,                             // backend scissor + LoadOp
+    frame_out.buffer,
+    frame_out.damage,                    // backend scissor + LoadOp
 );
 ```
 
-Same `damage` to both. Disagreement (filtering one, not the other)
-either skips work that the other path expects (gaps) or paints
-outside the scissor (wasted). One accessor (`Ui::damage_filter`)
-keeps them in lockstep.
+The encoder reads the same `damage` value internally during
+`Frontend::build`. Hosts can't desynchronize the encoder filter from
+the backend scissor because there's only one carrier
+(`FrameOutput.damage`).
 
 ## Edge cases (and how they're handled)
 
@@ -252,17 +272,20 @@ Preserved here so they survive context loss:
 - **Hash computed in a single batch pass** rather than incrementally
   during `push_node`/`add_shape`. Cleaner, decoupled from recorder
   hot path.
-- **Heuristic lives on `Damage::filter(surface)`** and runs lazily
-  at submit time. Earlier the threshold was computed during
-  `Damage::compute` and cached as `full_repaint: bool`, but the
-  decision only matters when the host has the surface in hand for
-  submit anyway, so caching it across frames was speculation. Lazy
-  evaluation means `Ui` doesn't have to stash `surface` either.
-- **Surface is host-owned, not `Ui`-owned.** The host passes
-  `surface` to both `Ui::layout(surface)` and
-  `Ui::damage_filter(surface)`. A previous version cached it on
-  `Ui` as a convenience; removed because the only consumer was the
-  heuristic and the host has the rect anyway.
+- **Heuristic merged into `Damage::compute(... surface)`.** Earlier
+  the threshold was computed during `Damage::compute` and cached as
+  `full_repaint: bool`; later it became a separate
+  `Damage::filter(surface)` callable lazily at submit time; the
+  current shape passes `surface` straight into `compute`, which
+  returns the filtered `Option<Rect>`. The decision still happens at
+  submit-time semantically (compute is the last `end_frame` step
+  before encode/compose), just without the two-method indirection.
+  `filter` is still present as a `pub(crate)` helper for tests.
+- **Surface is `Ui`-owned via `Display`.** `Ui::begin_frame(display)`
+  installs the surface; `Ui::end_frame` reads `self.display
+  .logical_rect()` and threads it into `Damage::compute`. The host
+  doesn't carry the surface through the rendering API anymore — it
+  hands it to `begin_frame` and reads `FrameOutput` back.
 - **No runtime damage toggle in the library.** Hosts pass `None` to
   disable filtering; backbuffer cost is structural.
 - **`copy_texture_to_texture`, not a blit pipeline.** Backbuffer
@@ -285,8 +308,9 @@ Preserved here so they survive context loss:
   artifacts.
 - ✅ Animated parent transform: descendants dirty by rect compare,
   damage unions old+new positions.
-- ✅ 206 tests passing including hover/un-hover, transformed-child,
-  animated-transform, empty-UI, intersect/union, scissor.
+- ✅ Full test suite passing (213+ tests at last count) including
+  hover/un-hover, transformed-child, animated-transform, empty-UI,
+  intersect/union, scissor.
 
 ## Future work
 
@@ -308,12 +332,13 @@ specific node* change?" — strictly more information.
   instead of re-encoding. Invalidation key: `(authoring hash, cascade
   row)`. Saves CPU on every partial-repaint frame, on top of what the
   rect filter already saves on the GPU.
-- **Skip cosmic-text reshape for clean Text nodes.** Shaping is the
-  priciest per-frame cost. The authoring hash already captures text
-  content / size / wrap / max-width-bucket; if it matches last frame,
-  reuse the shaped buffer instead of calling cosmic again in measure.
-  Needs a `WidgetId → ShapedBuffer` cache parallel to `Damage.prev`,
-  evicted when the widget disappears. Biggest single win available.
+- **~~Skip cosmic-text reshape for clean Text nodes.~~ Shipped (Layer A).**
+  Per-`WidgetId` reuse cache lives on `TextMeasurer.reuse`, keyed by
+  identity, validity-checked by `NodeHash`. Sweep tied to
+  `SeenIds.removed()`. See [`text-reshape-skip.md`](text-reshape-skip.md)
+  for the final design. Layer B (eviction of the underlying
+  `CosmicMeasure.cache` shaped-buffer table) is still pending; the
+  reshape-skip doc tracks it.
 - **Multi-rect damage.** Two unrelated regions changing (top-left +
   bottom-right) currently unions to ~the whole screen and trips the
   50% heuristic → full repaint. Cluster the per-node dirty rects into
