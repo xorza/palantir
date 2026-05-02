@@ -28,7 +28,7 @@ fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -
         .show(ui, |ui| {
             inner = Some(f(ui));
         });
-    ui.layout();
+    ui.end_frame();
     inner.unwrap()
 }
 
@@ -50,9 +50,9 @@ fn wrap_hstack_packs_into_single_line_when_fits() {
             })
             .node
     });
-    let a = ui.rect(kids[0]);
-    let b = ui.rect(kids[1]);
-    let c = ui.rect(kids[2]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let b = ui.layout_engine.rect(kids[1]);
+    let c = ui.layout_engine.rect(kids[2]);
     assert_eq!(a.min.y, 0.0);
     assert_eq!(b.min.y, 0.0);
     assert_eq!(c.min.y, 0.0);
@@ -80,10 +80,10 @@ fn wrap_hstack_wraps_when_next_child_overflows() {
             })
             .node
     });
-    let a = ui.rect(kids[0]);
-    let b = ui.rect(kids[1]);
-    let c = ui.rect(kids[2]);
-    let d = ui.rect(kids[3]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let b = ui.layout_engine.rect(kids[1]);
+    let c = ui.layout_engine.rect(kids[2]);
+    let d = ui.layout_engine.rect(kids[3]);
     assert_eq!((a.min.x, a.min.y), (0.0, 0.0));
     assert_eq!((b.min.x, b.min.y), (70.0, 0.0));
     assert_eq!((c.min.x, c.min.y), (140.0, 0.0));
@@ -108,9 +108,9 @@ fn wrap_hstack_oversize_child_owns_its_line() {
             })
             .node
     });
-    let small = ui.rect(kids[0]);
-    let wide = ui.rect(kids[1]);
-    let tail = ui.rect(kids[2]);
+    let small = ui.layout_engine.rect(kids[0]);
+    let wide = ui.layout_engine.rect(kids[1]);
+    let tail = ui.layout_engine.rect(kids[2]);
     // line 0: small alone (50+10+200 > 100, wide overflows → wraps)
     assert_eq!((small.min.x, small.min.y), (0.0, 0.0));
     // line 1: wide alone (overflowed)
@@ -138,9 +138,9 @@ fn wrap_hstack_line_height_is_max_child_cross() {
             })
             .node
     });
-    let tall = ui.rect(kids[0]);
-    let short = ui.rect(kids[1]);
-    let next = ui.rect(kids[2]);
+    let tall = ui.layout_engine.rect(kids[0]);
+    let short = ui.layout_engine.rect(kids[1]);
+    let next = ui.layout_engine.rect(kids[2]);
     assert_eq!(tall.min.y, 0.0);
     assert_eq!(short.min.y, 0.0);
     // Line 0 height = 60; line_gap = 0 → next at y=60.
@@ -165,8 +165,8 @@ fn wrap_hstack_justify_center_per_line() {
             })
             .node
     });
-    let a = ui.rect(kids[0]);
-    let b = ui.rect(kids[1]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let b = ui.layout_engine.rect(kids[1]);
     assert_eq!(a.min.x, 35.0);
     assert_eq!(b.min.x, 105.0);
 }
@@ -190,9 +190,9 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
             })
             .node
     });
-    let a = ui.rect(kids[0]);
-    let b = ui.rect(kids[1]);
-    let c = ui.rect(kids[2]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let b = ui.layout_engine.rect(kids[1]);
+    let c = ui.layout_engine.rect(kids[2]);
     // Column 0: a, b at x=0.
     assert_eq!((a.min.x, a.min.y), (0.0, 0.0));
     assert_eq!((b.min.x, b.min.y), (0.0, 50.0));
@@ -228,7 +228,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
         );
         wrap_node.unwrap()
     });
-    let r = ui.rect(wrap_node.unwrap());
+    let r = ui.layout_engine.rect(wrap_node.unwrap());
     assert_eq!(r.size.w, 200.0, "Fixed main width is honored");
     // Two lines of 20 + 8 line_gap = 48.
     assert_eq!(r.size.h, 48.0);
@@ -252,8 +252,8 @@ fn wrap_hstack_justify_space_between_per_line() {
             })
             .node
     });
-    let a = ui.rect(kids[0]);
-    let b = ui.rect(kids[1]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let b = ui.layout_engine.rect(kids[1]);
     assert_eq!(a.min.x, 0.0);
     // 200 - 60 = 140 → b at 140, exact end-edge.
     assert_eq!(b.min.x, 140.0);
@@ -278,8 +278,8 @@ fn wrap_hstack_justify_space_around_per_line() {
             })
             .node
     });
-    let a = ui.rect(kids[0]);
-    let b = ui.rect(kids[1]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let b = ui.layout_engine.rect(kids[1]);
     // start_offset = 17.5; b = 17.5 + 60 + 45 = 122.5
     assert!((a.min.x - 17.5).abs() < 0.5);
     assert!((b.min.x - 122.5).abs() < 0.5);
@@ -310,8 +310,8 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
             })
             .node
     });
-    let tall = ui.rect(kids[0]);
-    let filler = ui.rect(kids[1]);
+    let tall = ui.layout_engine.rect(kids[0]);
+    let filler = ui.layout_engine.rect(kids[1]);
     assert_eq!(tall.size.h, 60.0);
     assert_eq!(
         filler.size.h, 60.0,
@@ -345,9 +345,9 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
             })
             .node
     });
-    let a = ui.rect(kids[0]);
-    let hidden = ui.rect(kids[1]);
-    let b = ui.rect(kids[2]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let hidden = ui.layout_engine.rect(kids[1]);
+    let b = ui.layout_engine.rect(kids[2]);
     // a at 0, b at 70 — collapsed didn't insert a gap.
     assert_eq!(a.min.x, 0.0);
     assert_eq!(b.min.x, 70.0);
@@ -382,7 +382,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
             })
             .node
     });
-    let r = ui.rect(filler_node.unwrap());
+    let r = ui.layout_engine.rect(filler_node.unwrap());
     // Fill child got its min_size width (40), NOT the row leftover
     // (300 - 60 - 10 - 10 = 220). If a future change distributes
     // leftover, this assertion flips and the test becomes the spec.
@@ -421,9 +421,9 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
             })
             .node
     });
-    let ia = ui.rect(inner_a.unwrap());
-    let ib = ui.rect(inner_b.unwrap());
-    let ob = ui.rect(outer_b.unwrap());
+    let ia = ui.layout_engine.rect(inner_a.unwrap());
+    let ib = ui.layout_engine.rect(inner_b.unwrap());
+    let ob = ui.layout_engine.rect(outer_b.unwrap());
     // Inner card lays out two cells side by side: ia at 0, ib at 55.
     assert_eq!(ia.min.x, 0.0);
     assert_eq!(ib.min.x, 55.0);

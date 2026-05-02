@@ -6,12 +6,12 @@ pub(crate) use damage::Damage;
 
 use crate::cascade::Cascades;
 use crate::element::Element;
-use crate::input::{InputEvent, InputState, PointerState, ResponseState};
-use crate::layout::{LayoutEngine, LayoutResult};
-use crate::primitives::{Display, Rect, WidgetId};
+use crate::input::{InputEvent, InputState, ResponseState};
+use crate::layout::LayoutEngine;
+use crate::primitives::{Display, WidgetId};
 use crate::renderer::{FrameOutput, Painter};
 use crate::shape::Shape;
-use crate::text::{MeasureResult, SharedCosmic, TextMeasurer};
+use crate::text::{SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
 use rustc_hash::FxHashSet;
 
@@ -36,12 +36,12 @@ pub struct Ui {
 
     input: InputState,
     /// Persistent layout engine: holds reusable scratch buffers across frames.
-    /// Accessed via `Ui::layout(surface)`.
+    /// Run inside `end_frame`.
     pub(crate) layout_engine: LayoutEngine,
     /// Per-frame cascade resolution shared by the renderer encoder (skip
     /// invisible subtrees) and the input hit index (screen rects + sense).
     /// Rebuilt in `end_frame`.
-    cascades: Cascades,
+    pub(crate) cascades: Cascades,
 
     /// Display config (physical surface size + DPR + pixel-snap) for
     /// the current frame, written by [`Ui::begin_frame`]. Read by
@@ -112,27 +112,6 @@ impl Ui {
         self.text.set_cosmic(cosmic);
     }
 
-    /// One-off text measurement. Widgets don't need this any more — layout
-    /// shapes during measure — but external callers (debug overlays, etc.)
-    /// can use it.
-    pub fn measure_text(
-        &mut self,
-        text: &str,
-        font_size_px: f32,
-        max_width_px: Option<f32>,
-    ) -> MeasureResult {
-        self.text.measure(text, font_size_px, max_width_px)
-    }
-
-    /// Bundled display config (`physical`, `scale_factor`,
-    /// `pixel_snap`) from the most recent [`Ui::begin_frame`] call.
-    /// Read by hosts converting input coords
-    /// (`InputEvent::from_winit`). Defaults to `Display::default()`
-    /// before the first frame.
-    pub fn display(&self) -> Display {
-        self.display
-    }
-
     /// Start recording a frame. `display` is the canvas size + DPR
     /// for this frame; stashed and read by `end_frame` for layout,
     /// damage, and painter. Asserts `display.scale_factor >=
@@ -150,15 +129,19 @@ impl Ui {
         self.seen_ids.clear();
     }
 
-    /// Run measure + arrange for the recorded tree at the surface
-    /// described by the current `Display` (`display.logical_rect()`).
-    /// Call after recording and before `end_frame` if you want to
-    /// inspect intermediate layout state; `end_frame` runs `layout`
-    /// itself if you didn't.
-    ///
-    /// Empty trees (no widget pushed this frame) are a legitimate
-    /// state for hosts that conditionally render UI; this method is
-    /// a no-op in that case.
+    /// Borrow the recorded tree. Read-only access for benchmarks and
+    /// inspection tools that need to walk the recorded structure
+    /// (`node_count`, `widget_ids`, etc.) outside the layout/render
+    /// pipeline.
+    pub fn tree(&self) -> &Tree {
+        &self.tree
+    }
+
+    /// Run measure + arrange in isolation. Used by the
+    /// `layout_only` benchmark to time the layout pass without the
+    /// surrounding cascade/damage/encode work; `end_frame` does the
+    /// equivalent step internally and apps don't normally need to
+    /// call this.
     pub fn layout(&mut self) {
         if let Some(root) = self.tree.root() {
             self.layout_engine.run(
@@ -168,14 +151,6 @@ impl Ui {
                 &mut self.text,
             );
         }
-    }
-
-    /// Damage rect for the just-finished frame, in logical pixels.
-    /// `Some(rect)` → small change, partial repaint.
-    /// `None` → full repaint (first frame, post-resize, no diff, or
-    /// damage area exceeds the 50% threshold).
-    pub fn damage_filter(&self) -> Option<Rect> {
-        self.damage.filter(self.display.logical_rect())
     }
 
     /// Finalize the just-recorded frame: run measure + arrange,
@@ -191,10 +166,7 @@ impl Ui {
     /// tick, explicit `request_repaint`).
     pub fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
-        if let Some(root) = self.tree.root() {
-            self.layout_engine
-                .run(&self.tree, root, surface, &mut self.text);
-        }
+        self.layout();
         self.cascades
             .rebuild(&self.tree, self.layout_engine.result());
         self.input.end_frame(&self.tree, &self.cascades);
@@ -215,20 +187,6 @@ impl Ui {
             buffer: self.painter.buffer(),
             damage,
         }
-    }
-
-    /// Borrow the per-frame cascade table. Pass to the renderer pipeline
-    /// alongside `tree()` and `layout_result()`.
-    pub fn cascades(&self) -> &Cascades {
-        &self.cascades
-    }
-
-    pub fn rect(&self, id: NodeId) -> Rect {
-        self.layout_engine.rect(id)
-    }
-
-    pub fn layout_result(&self) -> &LayoutResult {
-        self.layout_engine.result()
     }
 
     /// Feed a palantir-native input event. Backend-agnostic. Schedules a
@@ -258,24 +216,6 @@ impl Ui {
     /// `begin_frame`.
     pub fn request_repaint(&mut self) {
         self.repaint_requested = true;
-    }
-
-    pub fn pointer(&self) -> PointerState {
-        self.input.pointer()
-    }
-
-    /// First node pushed this frame. `None` before any widget is
-    /// recorded — empty UI is a legitimate state for hosts that
-    /// conditionally render (initial frame, debug toggles, empty
-    /// detail panes). Forwards to [`Tree::root`].
-    pub fn root(&self) -> Option<NodeId> {
-        self.tree.root()
-    }
-
-    /// Borrow the recorded tree. Pass to the renderer pipeline or any other
-    /// consumer that needs read access.
-    pub fn tree(&self) -> &Tree {
-        &self.tree
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {

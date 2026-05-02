@@ -32,7 +32,7 @@ fn clip_flag_is_recorded_on_panel_node() {
                 .node,
         );
     });
-    ui.layout();
+    ui.end_frame();
 
     assert!(!ui.tree.paint(default_panel.unwrap()).attrs.is_clip());
     assert!(ui.tree.paint(opt_in.unwrap()).attrs.is_clip());
@@ -56,14 +56,14 @@ fn frame_paints_a_single_rounded_rect() {
                 .node,
         );
     });
-    ui.layout();
+    ui.end_frame();
 
     let shapes = ui.tree.shapes_of(frame_node.unwrap());
     assert_eq!(shapes.len(), 1);
     assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
 
     // Default sense is None — frame is not a hit-test target.
-    let r = ui.rect(frame_node.unwrap());
+    let r = ui.layout_engine.rect(frame_node.unwrap());
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -101,16 +101,16 @@ fn panel_hugs_largest_child_and_layers_them() {
                 .node,
         );
     });
-    ui.layout();
+    ui.end_frame();
 
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
-    let panel = ui.rect(panel_node.unwrap());
+    let panel = ui.layout_engine.rect(panel_node.unwrap());
     assert_eq!(panel.size.w, 100.0);
     assert_eq!(panel.size.h, 70.0);
 
     // Both children laid out at panel's inner top-left (10, 10), at their own size.
-    let a = ui.rect(a_node.unwrap());
-    let b = ui.rect(b_node.unwrap());
+    let a = ui.layout_engine.rect(a_node.unwrap());
+    let b = ui.layout_engine.rect(b_node.unwrap());
     assert_eq!((a.min.x, a.min.y), (10.0, 10.0));
     assert_eq!((b.min.x, b.min.y), (10.0, 10.0));
     assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
@@ -147,9 +147,9 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                 );
             });
     });
-    ui.layout();
+    ui.end_frame();
 
-    let child = ui.rect(child_node.unwrap());
+    let child = ui.layout_engine.rect(child_node.unwrap());
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
     assert_eq!(child.min.x, 10.0);
     assert_eq!(child.min.y, 10.0);
@@ -191,20 +191,20 @@ fn zstack_layers_children_without_painting_background() {
                 .node,
         );
     });
-    ui.layout();
+    ui.end_frame();
 
     let z = zstack_node.unwrap();
     // ZStack itself paints nothing.
     assert!(ui.tree.shapes_of(z).is_empty());
 
     // ZStack hugs to max(child sizes) = (120, 80).
-    let zr = ui.rect(z);
+    let zr = ui.layout_engine.rect(z);
     assert_eq!(zr.size.w, 120.0);
     assert_eq!(zr.size.h, 80.0);
 
     // Both children placed at ZStack's top-left (no padding), at their own size.
-    let bg = ui.rect(bg_node.unwrap());
-    let fg = ui.rect(fg_node.unwrap());
+    let bg = ui.layout_engine.rect(bg_node.unwrap());
+    let fg = ui.layout_engine.rect(fg_node.unwrap());
     assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
     assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
     assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
@@ -273,12 +273,12 @@ fn collapsed_child_consumes_no_space_in_hstack() {
             Frame::with_id("b").size(40.0).show(ui);
         })
         .node;
-    ui.layout();
+    ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.rect(kids[0]);
-    let gone = ui.rect(kids[1]);
-    let b = ui.rect(kids[2]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let gone = ui.layout_engine.rect(kids[1]);
+    let b = ui.layout_engine.rect(kids[2]);
 
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.size.w, 40.0);
@@ -310,11 +310,11 @@ fn collapsed_does_not_consume_fill_weight() {
                 .show(ui);
         })
         .node;
-    ui.layout();
+    ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.rect(kids[0]);
-    let b = ui.rect(kids[2]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let b = ui.layout_engine.rect(kids[2]);
     // Collapsed sibling's weight (3.0) is dropped — remaining two fills split 50/50.
     assert_eq!(a.size.w, 200.0);
     assert_eq!(b.size.w, 200.0);
@@ -350,8 +350,8 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let hid = ui.rect(kids[1]);
-    let b = ui.rect(kids[2]);
+    let hid = ui.layout_engine.rect(kids[1]);
+    let b = ui.layout_engine.rect(kids[2]);
     // Hidden node still occupies its slot.
     assert_eq!(hid.size.w, 40.0);
     // ...so b's offset includes hidden's width + both gaps.
@@ -361,8 +361,8 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         None,
         &mut cmds,
@@ -428,11 +428,11 @@ fn hstack_child_align_y_centers_all_children_by_default() {
                 .show(ui);
         })
         .node;
-    ui.layout();
+    ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.rect(kids[0]);
-    let b = ui.rect(kids[1]);
+    let a = ui.layout_engine.rect(kids[0]);
+    let b = ui.layout_engine.rect(kids[1]);
     // Cross axis = 100, child = 20 tall → centered at (100-20)/2 = 40.
     assert_eq!(a.min.y, 40.0);
     assert_eq!(b.min.y, 40.0);
@@ -462,11 +462,11 @@ fn child_align_self_overrides_parent_default() {
                 .show(ui);
         })
         .node;
-    ui.layout();
+    ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let centered = ui.rect(kids[0]);
-    let bottom = ui.rect(kids[1]);
+    let centered = ui.layout_engine.rect(kids[0]);
+    let bottom = ui.layout_engine.rect(kids[1]);
     assert_eq!(centered.min.y, 40.0);
     assert_eq!(bottom.min.y, 80.0);
 }
@@ -494,9 +494,9 @@ fn zstack_centers_child_when_align_center() {
                 );
             });
     });
-    ui.layout();
+    ui.end_frame();
 
-    let r = ui.rect(child_node.unwrap());
+    let r = ui.layout_engine.rect(child_node.unwrap());
     // ZStack inner = 200×100, child = 40×20 → centered at (80, 40).
     assert_eq!((r.min.x, r.min.y), (80.0, 40.0));
     assert_eq!((r.size.w, r.size.h), (40.0, 20.0));
@@ -525,9 +525,9 @@ fn zstack_aligns_independently_per_axis() {
                 );
             });
     });
-    ui.layout();
+    ui.end_frame();
 
-    let r = ui.rect(child_node.unwrap());
+    let r = ui.layout_engine.rect(child_node.unwrap());
     // x: End → 200-40 = 160. y: Center → (100-20)/2 = 40.
     assert_eq!((r.min.x, r.min.y), (160.0, 40.0));
 }
@@ -565,15 +565,15 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                 .node,
         );
     });
-    ui.layout();
+    ui.end_frame();
 
-    let c = ui.rect(canvas_node.unwrap());
+    let c = ui.layout_engine.rect(canvas_node.unwrap());
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
     assert_eq!(c.size.w, 110.0);
     assert_eq!(c.size.h, 100.0);
 
-    let a = ui.rect(a_node.unwrap());
-    let b = ui.rect(b_node.unwrap());
+    let a = ui.layout_engine.rect(a_node.unwrap());
+    let b = ui.layout_engine.rect(b_node.unwrap());
     assert_eq!((a.min.x, a.min.y), (10.0, 5.0));
     assert_eq!((a.size.w, a.size.h), (40.0, 20.0));
     assert_eq!((b.min.x, b.min.y), (80.0, 40.0));
@@ -641,7 +641,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     ui.end_frame();
 
     let node = text_node.unwrap();
-    let r = ui.rect(node);
+    let r = ui.layout_engine.rect(node);
     assert!(
         r.size.h > 32.0,
         "wrapped paragraph should span multiple lines, got h={}",
@@ -654,7 +654,8 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     };
     assert_eq!(wrap, TextWrap::Wrap);
     let shaped = ui
-        .layout_result()
+        .layout_engine
+        .result()
         .text_shape(node)
         .expect("layout should have shaped the text");
     assert!(shaped.measured.h > 32.0);
@@ -685,7 +686,7 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
         });
     ui.end_frame();
 
-    let r = ui.rect(text_node.unwrap());
+    let r = ui.layout_engine.rect(text_node.unwrap());
     // The single word can't break — its width must overflow the 8 px slot.
     assert!(
         r.size.w > 8.0,
@@ -741,7 +742,8 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
 
     let node = text_node.unwrap();
     let shaped = ui
-        .layout_result()
+        .layout_engine
+        .result()
         .text_shape(node)
         .expect("text was shaped");
     // Multi-line height (a 16 px font wraps to 3 lines at the resolved
@@ -884,7 +886,8 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
     ui.end_frame();
 
     let shaped = ui
-        .layout_result()
+        .layout_engine
+        .result()
         .text_shape(text_node.unwrap())
         .expect("text was shaped");
     assert!(
@@ -939,7 +942,8 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
     ui.end_frame();
 
     let shaped = ui
-        .layout_result()
+        .layout_engine
+        .result()
         .text_shape(text_node.unwrap())
         .expect("text was shaped");
     assert!(
@@ -985,11 +989,11 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                 .node,
         );
     });
-    ui.layout();
+    ui.end_frame();
 
     // Hug ZStack should hug the Fixed child (60 × 40). If the per-axis
     // logic broke, ZStack would stretch to surface size.
-    let r = ui.rect(zstack_node.unwrap());
+    let r = ui.layout_engine.rect(zstack_node.unwrap());
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -1032,7 +1036,8 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                 );
             });
         ui.end_frame();
-        ui.layout_result()
+        ui.layout_engine
+            .result()
             .text_shape(value_node.unwrap())
             .expect("text was shaped")
             .measured
@@ -1102,7 +1107,8 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     ui.end_frame();
 
     let shaped = ui
-        .layout_result()
+        .layout_engine
+        .result()
         .text_shape(value_node.unwrap())
         .expect("text was shaped");
     assert!(
@@ -1160,7 +1166,8 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     ui.end_frame();
 
     let shaped = ui
-        .layout_result()
+        .layout_engine
+        .result()
         .text_shape(message_node.unwrap())
         .expect("text was shaped");
     assert!(
@@ -1214,7 +1221,8 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
     ui.end_frame();
 
     let shaped = ui
-        .layout_result()
+        .layout_engine
+        .result()
         .text_shape(message_node.unwrap())
         .expect("text was shaped");
     // The unbreakable word can't shrink below its own width (~110 px in
@@ -1287,7 +1295,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
     // would mean both rows collapsed to single-line (no wrapping
     // accounted for). Wrapped paragraph in the value col must push
     // row 0 to multiple lines.
-    let h = ui.layout_result().rect(grid_node.unwrap()).size.h;
+    let h = ui.layout_engine.result().rect(grid_node.unwrap()).size.h;
     assert!(
         h > 50.0,
         "grid must size to wrapped row heights, not single-line × 2; got h={h}"
@@ -1342,7 +1350,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
         });
     ui.end_frame();
 
-    let h = ui.layout_result().rect(grid_node.unwrap()).size.h;
+    let h = ui.layout_engine.result().rect(grid_node.unwrap()).size.h;
     assert!(
         h > 30.0,
         "ZStack must pass `INF` on Hug axes so nested grid measures \
@@ -1395,12 +1403,13 @@ fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
     ui.end_frame();
 
     let shaped_w = ui
-        .layout_result()
+        .layout_engine
+        .result()
         .text_shape(message_node.unwrap())
         .expect("text was shaped")
         .measured
         .w;
-    let rect_w = ui.layout_result().rect(message_node.unwrap()).size.w;
+    let rect_w = ui.layout_engine.result().rect(message_node.unwrap()).size.w;
 
     // Pass-2 measure clamped to MinContent floor: shape ≈ longest-word
     // width (well above the 20 px Fill share).

@@ -33,8 +33,8 @@ fn empty_tree_encodes_to_nothing() {
     ui.end_frame();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         None,
         &mut cmds,
@@ -63,8 +63,8 @@ fn frame_with_fill_emits_one_draw_rect() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         None,
         &mut cmds,
@@ -93,8 +93,8 @@ fn invisible_frame_does_not_emit_draw_rect() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         None,
         &mut cmds,
@@ -131,8 +131,8 @@ fn clip_emits_balanced_push_pop() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         None,
         &mut cmds,
@@ -271,8 +271,8 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         None,
         &mut cmds,
@@ -399,8 +399,8 @@ fn nested_clips_each_emit_their_own_pair() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         None,
         &mut cmds,
@@ -429,8 +429,8 @@ fn disabled_ancestor_dims_descendant_fill() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         0.5,
         None,
         &mut cmds,
@@ -457,8 +457,8 @@ fn disabled_ancestor_dims_descendant_fill() {
     cmds.clear();
     encode(
         &ui2.tree,
-        ui2.layout_result(),
-        ui2.cascades(),
+        ui2.layout_engine.result(),
+        &ui2.cascades,
         0.5,
         None,
         &mut cmds,
@@ -545,8 +545,8 @@ fn encoder_text_alignment_respects_leaf_padding() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         None,
         &mut cmds,
@@ -612,8 +612,8 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         Some(filter),
         &mut cmds,
@@ -650,8 +650,8 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         Some(Rect::new(0.0, 0.0, 200.0, 200.0)),
         &mut cmds,
@@ -692,8 +692,8 @@ fn damage_filter_preserves_clip_pushpop() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
         &mut cmds,
@@ -737,8 +737,8 @@ fn damage_filter_preserves_transform_pushpop() {
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
-        ui.layout_result(),
-        ui.cascades(),
+        ui.layout_engine.result(),
+        &ui.cascades,
         1.0,
         Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
         &mut cmds,
