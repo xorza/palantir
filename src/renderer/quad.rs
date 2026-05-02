@@ -2,6 +2,11 @@ use crate::primitives::{Color, Corners, Rect, Stroke};
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
+/// Per-instance quad data (68 B). Layout is `pos, size, fill, radius,
+/// stroke_color, stroke_width` — see the `vertex_attr_array` in
+/// [`QuadPipeline::new`] for the explicit attribute offsets, which is the
+/// only thing constraining the field order. No tail padding: vertex
+/// buffer strides only need 4-byte alignment, unlike std140 uniforms.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Quad {
@@ -11,7 +16,6 @@ pub struct Quad {
     pub radius: [f32; 4],
     pub stroke_color: [f32; 4],
     pub stroke_width: f32,
-    pub _pad: [f32; 3],
 }
 
 impl Quad {
@@ -27,7 +31,6 @@ impl Quad {
             radius: [radius.tl, radius.tr, radius.br, radius.bl],
             stroke_color: sc,
             stroke_width: sw,
-            _pad: [0.0; 3],
         }
     }
 }
@@ -202,5 +205,21 @@ impl QuadPipeline {
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
         pass.draw(0..4, instances);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Quad;
+
+    /// Pin: `Quad` is exactly 68 bytes — pos(8) + size(8) + fill(16) +
+    /// radius(16) + stroke_color(16) + stroke_width(4). The
+    /// `vertex_attr_array` in `QuadPipeline::new` assumes this exact
+    /// layout via Rust's `repr(C)` field-order rules. A reorder or an
+    /// added field that shifts an attribute's offset would break the
+    /// shader binding silently — this test catches it.
+    #[test]
+    fn quad_struct_is_68_bytes_no_padding() {
+        assert_eq!(std::mem::size_of::<Quad>(), 68);
     }
 }
