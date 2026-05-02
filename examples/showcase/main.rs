@@ -232,12 +232,13 @@ impl State {
         self.ui.layout(Rect::new(0.0, 0.0, w_logical, h_logical));
         self.ui.end_frame();
 
+        let damage = self.ui.damage_filter();
         let buffer = self.pipeline.build(
             self.ui.tree(),
             self.ui.layout_result(),
             self.ui.cascades(),
             self.ui.theme.disabled_dim,
-            None,
+            damage,
             &ComposeParams {
                 viewport_logical: [w_logical, h_logical],
                 scale,
@@ -245,7 +246,7 @@ impl State {
             },
         );
         self.backend
-            .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), buffer, None);
+            .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), buffer, damage);
 
         frame.present();
         if !self.first_paint {
