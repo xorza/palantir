@@ -73,6 +73,35 @@ impl Rect {
         }
     }
 
+    /// Smallest axis-aligned rect enclosing both `self` and `other`. Used by
+    /// damage-rect computation to union prev+curr rects of dirty nodes.
+    /// A zero-sized rect at the origin (the `Default`) acts as the identity
+    /// for accumulation: `Rect::ZERO.union(r) == r` only when `r`'s min is
+    /// `(0,0)` — callers should fold over `Option<Rect>` to avoid biasing
+    /// toward the origin.
+    pub const fn union(&self, other: Self) -> Self {
+        let min_x = if self.min.x < other.min.x {
+            self.min.x
+        } else {
+            other.min.x
+        };
+        let min_y = if self.min.y < other.min.y {
+            self.min.y
+        } else {
+            other.min.y
+        };
+        let a_max_x = self.min.x + self.size.w;
+        let b_max_x = other.min.x + other.size.w;
+        let max_x = if a_max_x > b_max_x { a_max_x } else { b_max_x };
+        let a_max_y = self.min.y + self.size.h;
+        let b_max_y = other.min.y + other.size.h;
+        let max_y = if a_max_y > b_max_y { a_max_y } else { b_max_y };
+        Self {
+            min: Vec2::new(min_x, min_y),
+            size: Size::new(max_x - min_x, max_y - min_y),
+        }
+    }
+
     /// Scale by `scale` and optionally snap edges to integer pixels. Used at
     /// the logical→physical-px boundary inside the renderer; snapping derives
     /// width/height from rounded edges (not from `size * scale`) to avoid
