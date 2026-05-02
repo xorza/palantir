@@ -1,8 +1,10 @@
 use super::{Damage, needs_full_repaint};
 use crate::Ui;
 use crate::element::Configure;
+use crate::input::InputEvent;
 use crate::primitives::{Color, Rect, Sizing, WidgetId};
 use crate::widgets::{Button, Frame, Panel, Styled};
+use glam::Vec2;
 
 /// Drive one frame with the given builder. Closure receives `ui`
 /// after `begin_frame`.
@@ -230,6 +232,116 @@ fn first_frame_sets_full_repaint() {
         });
     });
     assert!(ui.damage.full_repaint);
+}
+
+/// Pin (motivating workload): hovering a button causes exactly one
+/// node — the button — to be dirty, with damage rect == button's
+/// rect. This is the bread-and-butter case Stage 3 is designed for:
+/// pointer hover changes a small region; partial repaint should win.
+///
+/// Hit-test response lags by one frame (recording reads last frame's
+/// state), so we run enough frames at each pointer position to let
+/// the damage stream settle, then assert on the *transition* frame.
+#[test]
+fn button_hover_damage_covers_only_the_button() {
+    let mut ui = Ui::new();
+    let mut hot_node = None;
+    let mut cold_node = None;
+    let build = |ui: &mut Ui,
+                 hot: &mut Option<crate::tree::NodeId>,
+                 cold: &mut Option<crate::tree::NodeId>| {
+        ui.begin_frame();
+        Panel::vstack_with_id("root").show(ui, |ui| {
+            *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);
+            *cold = Some(Button::with_id("cold").label("Quiet").show(ui).node);
+        });
+        ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+        ui.end_frame();
+    };
+
+    // Pointer parked off-button. Settle for two frames so hit-test +
+    // damage are at steady state (no diff).
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
+    build(&mut ui, &mut hot_node, &mut cold_node);
+    build(&mut ui, &mut hot_node, &mut cold_node);
+    assert!(
+        ui.damage.dirty.is_empty(),
+        "off-button pointer should reach a no-diff steady state"
+    );
+
+    let hot_rect = ui.rect(hot_node.unwrap());
+    let target = hot_rect.min + Vec2::new(5.0, 5.0);
+
+    // Move pointer onto the hot button. The *next* end_frame computes
+    // hover=true. The frame *after* that records the button as
+    // hovered → its fill differs → it lands in the dirty set alone.
+    // `on_input` recomputes hover against the existing hit_index
+    // immediately, so the *next* recording sees `hovered=true` and
+    // emits the hovered fill. Damage = button rect only.
+    ui.on_input(InputEvent::PointerMoved(target));
+    build(&mut ui, &mut hot_node, &mut cold_node);
+
+    assert_eq!(
+        ui.damage.dirty.len(),
+        1,
+        "only the hovered button should be dirty"
+    );
+    let dirty_id = ui.damage.dirty[0];
+    assert_eq!(
+        ui.tree().widget_ids()[dirty_id.index()],
+        WidgetId::from_hash("hot"),
+    );
+    assert_eq!(ui.damage.rect, Some(hot_rect));
+    assert!(
+        !ui.damage.full_repaint,
+        "small per-button damage must not trip the full-repaint heuristic"
+    );
+
+    // Next frame at same cursor → no diff (settled).
+    build(&mut ui, &mut hot_node, &mut cold_node);
+    assert!(
+        ui.damage.dirty.is_empty(),
+        "settled hover should produce no further damage"
+    );
+}
+
+/// Pin: leaving the button (un-hover) is symmetric — the only diff
+/// is the button's fill flipping back, damage = button rect.
+#[test]
+fn button_unhover_damage_covers_only_the_button() {
+    let mut ui = Ui::new();
+    let mut hot_node = None;
+    let mut cold_node = None;
+    let build = |ui: &mut Ui,
+                 hot: &mut Option<crate::tree::NodeId>,
+                 cold: &mut Option<crate::tree::NodeId>| {
+        ui.begin_frame();
+        Panel::vstack_with_id("root").show(ui, |ui| {
+            *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);
+            *cold = Some(Button::with_id("cold").label("Quiet").show(ui).node);
+        });
+        ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+        ui.end_frame();
+    };
+
+    // Settle two frames with cursor over the hot button.
+    build(&mut ui, &mut hot_node, &mut cold_node);
+    let hot_rect = ui.rect(hot_node.unwrap());
+    ui.on_input(InputEvent::PointerMoved(hot_rect.min + Vec2::new(5.0, 5.0)));
+    build(&mut ui, &mut hot_node, &mut cold_node);
+    build(&mut ui, &mut hot_node, &mut cold_node);
+    assert!(ui.damage.dirty.is_empty(), "settled hover");
+
+    // Pointer leaves the button.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
+    build(&mut ui, &mut hot_node, &mut cold_node);
+    assert_eq!(ui.damage.dirty.len(), 1);
+    assert_eq!(
+        ui.tree().widget_ids()[ui.damage.dirty[0].index()],
+        WidgetId::from_hash("hot"),
+    );
+    assert_eq!(ui.damage.rect, Some(hot_rect));
+    assert!(!ui.damage.full_repaint);
 }
 
 /// Pin: a small per-frame change (single leaf fill flip) stays in
