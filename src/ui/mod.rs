@@ -179,11 +179,17 @@ impl Ui {
     /// `end_frame`. Reuses the persistent `LayoutEngine` — amortized
     /// zero-alloc after warmup. The tree is read-only; layout output lands
     /// in `LayoutEngine`.
+    ///
+    /// Empty trees (no widget pushed this frame) are a legitimate state
+    /// for hosts that conditionally render UI; this method is a no-op
+    /// in that case beyond stamping `surface` so subsequent passes see
+    /// the right canvas size.
     pub fn layout(&mut self, surface: Rect) {
-        let root = self.root();
         self.surface = surface;
-        self.layout_engine
-            .run(&self.tree, root, surface, &mut self.text);
+        if let Some(root) = self.tree.root() {
+            self.layout_engine
+                .run(&self.tree, root, surface, &mut self.text);
+        }
     }
 
     /// Surface rect from the most recent [`Ui::layout`] call, in
@@ -306,9 +312,13 @@ impl Ui {
         self.input.pointer()
     }
 
-    pub fn root(&self) -> NodeId {
+    /// First node pushed this frame. `None` before any widget is
+    /// recorded — empty UI is a legitimate state for hosts that
+    /// conditionally render (initial frame, debug toggles, empty
+    /// detail panes). Use [`Tree::root`] for the same answer keyed
+    /// off the tree directly.
+    pub fn root(&self) -> Option<NodeId> {
         self.root
-            .expect("no root pushed yet — open a node before any other ops")
     }
 
     /// Borrow the recorded tree. Pass to the renderer pipeline or any other
