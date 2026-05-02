@@ -100,13 +100,18 @@ pub(crate) struct GridScratch {
 }
 
 /// All grid-layout scratch held by `LayoutEngine`, in one bag. The two
-/// fields are separate so writers can hold `&mut hugs` while a
-/// `&mut depth_stack[i]` borrow is live (the encoder copies hugs from
-/// scratch into the durable pool inside the same expression).
+/// `depth_stack` / `hugs` fields are separate so writers can hold
+/// `&mut hugs` while a `&mut depth_stack[i]` borrow is live (the encoder
+/// copies hugs from scratch into the durable pool inside the same
+/// expression). `intrinsic_scratch` is a bump-stack-style scratch for
+/// `grid::intrinsic`'s per-track aggregator: each call extends it by
+/// `n_tracks`, recurses (which may extend further but always truncates
+/// back), then truncates back to its own base. Capacity retained.
 #[derive(Default)]
 pub(crate) struct GridContext {
     pub(super) depth_stack: GridDepthStack,
     pub(super) hugs: GridHugStore,
+    pub(super) intrinsic_scratch: Vec<f32>,
 }
 
 /// Nesting stack of per-depth grid scratch. One `GridScratch` slot per
@@ -792,9 +797,13 @@ pub(super) fn intrinsic(
         return 0.0;
     }
 
-    let mut track_size = vec![0.0_f32; n_tracks];
+    // Bump-allocate `n_tracks` slots on the shared scratch. Recursive
+    // intrinsic calls extend past `base + n_tracks` and truncate back, so
+    // our slice stays valid across them.
+    let base = layout.grid.intrinsic_scratch.len();
+    layout.grid.intrinsic_scratch.resize(base + n_tracks, 0.0);
     for (i, t) in tracks.iter().enumerate() {
-        track_size[i] = match t.size {
+        layout.grid.intrinsic_scratch[base + i] = match t.size {
             Sizing::Fixed(v) => v.clamp(t.min, t.max),
             // Hug starts at Track.min; Fill stays at Track.min.
             _ => t.min,
@@ -825,11 +834,16 @@ pub(super) fn intrinsic(
         if !matches!(t.size, Sizing::Hug) {
             continue;
         }
+        let (t_min, t_max) = (t.min, t.max);
         let child_v = layout.intrinsic(tree, c, axis, req, text);
-        track_size[track_idx] = track_size[track_idx].max(child_v.clamp(t.min, t.max));
+        let slot = &mut layout.grid.intrinsic_scratch[base + track_idx];
+        *slot = slot.max(child_v.clamp(t_min, t_max));
     }
 
-    let total: f32 = track_size.iter().sum();
+    let total: f32 = layout.grid.intrinsic_scratch[base..base + n_tracks]
+        .iter()
+        .sum();
+    layout.grid.intrinsic_scratch.truncate(base);
     total + gap * n_tracks.saturating_sub(1) as f32
 }
 
