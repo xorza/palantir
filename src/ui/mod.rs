@@ -8,7 +8,7 @@ use crate::cascade::Cascades;
 use crate::element::Element;
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::layout::{LayoutEngine, LayoutResult};
-use crate::primitives::{Rect, WidgetId};
+use crate::primitives::{Display, Rect, WidgetId};
 use crate::shape::Shape;
 use crate::text::{MeasureResult, SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
@@ -43,14 +43,10 @@ pub struct Ui {
     /// Rebuilt in `end_frame`.
     cascades: Cascades,
 
-    scale_factor: f32,
-    pixel_snap: bool,
-
-    /// Surface rect from the most recent [`Ui::layout`] call. The
-    /// renderer pipeline, damage heuristic, and any future backbuffer
-    /// resize logic read this to know the canvas size in logical
-    /// pixels. `Rect::ZERO` until the first `layout()`.
-    surface: Rect,
+    /// Logical→physical pixel mapping. Read by the renderer at submit
+    /// time. Mutate via [`Ui::set_display`] to keep the
+    /// repaint-requested gate in sync.
+    pub(crate) display: Display,
 
     /// Text shaping & measurement, with the `CosmicMeasure` / mono dispatch
     /// hidden inside. Install a real shaper with [`Ui::install_text_system`]
@@ -61,15 +57,17 @@ pub struct Ui {
     /// last successful `end_frame()`; the host calls
     /// [`Ui::should_repaint`] to decide whether to run the pipeline this
     /// tick. Set conservatively by [`Ui::on_input`] and
-    /// [`Ui::set_scale_factor`], or explicitly by
-    /// [`Ui::request_repaint`] (animations, async). Cleared at the end
-    /// of `end_frame()` so the next idle check returns `false`.
-    /// Defaults to `true` so the first frame always renders.
+    /// [`Ui::set_display`], or explicitly by [`Ui::request_repaint`]
+    /// (animations, async). Cleared at the end of `end_frame()` so
+    /// the next idle check returns `false`. Defaults to `true` so
+    /// the first frame always renders.
     repaint_requested: bool,
 
-    /// Per-frame damage output (`dirty`, `rect`, `full_repaint`) plus
-    /// the cross-frame snapshot map it diffs against (`damage.prev`).
-    /// Computed in `end_frame()` after `compute_hashes()`.
+    /// Per-frame damage output (`dirty`, `rect`) plus the
+    /// cross-frame snapshot map it diffs against (`damage.prev`).
+    /// Computed in `end_frame()` after `compute_hashes()`. The
+    /// partial-vs-full repaint decision is made lazily by
+    /// `Damage::filter(surface)` at submit time.
     pub(crate) damage: Damage,
 }
 
@@ -90,9 +88,7 @@ impl Ui {
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
             cascades: Cascades::new(),
-            scale_factor: 1.0,
-            pixel_snap: true,
-            surface: Rect::ZERO,
+            display: Display::default(),
             text: TextMeasurer::new(),
             // First frame must render so the host has something to
             // present. Subsequent idle frames flip back to `false`.
@@ -121,27 +117,30 @@ impl Ui {
         self.text.measure(text, font_size_px, max_width_px)
     }
 
-    /// Logical→physical conversion factor (e.g. 2.0 on a 2× retina display).
-    pub fn scale_factor(&self) -> f32 {
-        self.scale_factor
+    /// Bundled display config (`scale_factor`, `pixel_snap`). Read
+    /// by the renderer at submit time and by hosts converting input
+    /// coords (`InputEvent::from_winit`).
+    pub fn display(&self) -> Display {
+        self.display
     }
 
-    /// Update on `WindowEvent::ScaleFactorChanged` or any DPI change. Clamped to
-    /// a non-zero positive value. Schedules a repaint — physical-pixel
-    /// rasterization changes with scale factor.
-    pub fn set_scale_factor(&mut self, scale: f32) {
-        self.scale_factor = scale.max(f32::EPSILON);
-        self.repaint_requested = true;
-    }
-
-    /// Whether the renderer snaps rect edges to integer physical pixels.
-    /// Default `true` — sharper edges, no half-pixel blur.
-    pub fn pixel_snap(&self) -> bool {
-        self.pixel_snap
-    }
-
-    pub fn set_pixel_snap(&mut self, on: bool) {
-        self.pixel_snap = on;
+    /// Replace the display config. `scale_factor` must be at least
+    /// `f32::EPSILON` — `0.0` or negative would silently collapse
+    /// the UI to a single physical pixel, so we assert instead of
+    /// clamping (a stray winit `0.0` is a host bug, not something
+    /// we should paper over). Schedules a repaint only when
+    /// something actually changed — idempotent calls (e.g. winit
+    /// re-sending the same scale on every focus change) stay free.
+    pub fn set_display(&mut self, display: Display) {
+        assert!(
+            display.scale_factor >= f32::EPSILON,
+            "Display::scale_factor must be ≥ f32::EPSILON; got {}",
+            display.scale_factor,
+        );
+        if display != self.display {
+            self.display = display;
+            self.repaint_requested = true;
+        }
     }
 
     pub fn begin_frame(&mut self) {
@@ -162,17 +161,10 @@ impl Ui {
     /// in that case beyond stamping `surface` so subsequent passes see
     /// the right canvas size.
     pub fn layout(&mut self, surface: Rect) {
-        self.surface = surface;
         if let Some(root) = self.tree.root() {
             self.layout_engine
                 .run(&self.tree, root, surface, &mut self.text);
         }
-    }
-
-    /// Surface rect from the most recent [`Ui::layout`] call, in
-    /// logical pixels. `Rect::ZERO` before the first `layout()`.
-    pub fn surface(&self) -> Rect {
-        self.surface
     }
 
     /// Damage rect for the just-finished frame, in logical pixels —
@@ -182,15 +174,12 @@ impl Ui {
     /// paint commands, the backend scissors GPU pixels; disagreement
     /// either wastes work or leaves gaps.
     ///
-    /// `Some(rect)` → small change, partial repaint.
-    /// `None` → full repaint (first frame, post-resize, no diff, or
-    /// damage area exceeds the 50% threshold).
-    pub fn damage_filter(&self) -> Option<Rect> {
-        if self.damage.full_repaint {
-            None
-        } else {
-            self.damage.rect
-        }
+    /// `surface` is the rect the host arranged the UI into this
+    /// frame (same rect passed to [`Ui::layout`]). Forwards to
+    /// [`Damage::filter`], which makes the partial-vs-full-repaint
+    /// decision lazily so `Ui` doesn't have to cache it.
+    pub fn damage_filter(&self, surface: Rect) -> Option<Rect> {
+        self.damage.filter(surface)
     }
 
     /// Rebuild the per-frame cascade table and input's last-frame rect cache
@@ -208,7 +197,7 @@ impl Ui {
         self.input.end_frame(&self.tree, &self.cascades);
         self.tree.compute_hashes();
         self.damage
-            .compute(&self.tree, &self.cascades, &self.seen_ids, self.surface);
+            .compute(&self.tree, &self.cascades, &self.seen_ids);
         self.repaint_requested = false;
     }
 
@@ -241,7 +230,7 @@ impl Ui {
     /// `end_frame()`. Hosts gate their `request_redraw()` /
     /// pipeline-run on this so idle frames cost nothing.
     ///
-    /// Set by `on_input`, `set_scale_factor`, `request_repaint`,
+    /// Set by `on_input`, `set_display`, `request_repaint`,
     /// initial construction. Cleared by `end_frame()`.
     pub fn should_repaint(&self) -> bool {
         self.repaint_requested
@@ -250,7 +239,7 @@ impl Ui {
     /// Schedule a repaint on the next host tick. Idempotent and cheap.
     /// Use for animations, async state landing, theme changes, or any
     /// state mutation that doesn't flow through `on_input` /
-    /// `set_scale_factor`.
+    /// `set_display`.
     pub fn request_repaint(&mut self) {
         self.repaint_requested = true;
     }

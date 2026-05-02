@@ -51,11 +51,6 @@ pub(crate) struct NodeSnapshot {
 pub(crate) struct Damage {
     pub dirty: Vec<NodeId>,
     pub rect: Option<Rect>,
-    /// `true` when the damage rect covers more than
-    /// [`FULL_REPAINT_THRESHOLD`] of the surface — the encoder/backend
-    /// should skip the per-node filter and clear-redraw everything.
-    /// Set by [`Damage::compute`] via [`needs_full_repaint`].
-    pub full_repaint: bool,
     /// Last frame's per-widget `(rect, hash)` snapshot. Read by the
     /// diff in `compute`, then rolled forward in the same pass.
     pub prev: FxHashMap<WidgetId, NodeSnapshot>,
@@ -68,48 +63,39 @@ pub(crate) struct Damage {
 /// LVGL's `LV_INV_BUF_SIZE` heuristic.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.5;
 
-/// Decide between a partial repaint (scissored to `damage.rect`) and
-/// a full-surface repaint. `true` when the damage rect covers more
-/// than [`FULL_REPAINT_THRESHOLD`] of the surface — beyond that, the
-/// scissor + backbuffer-copy overhead exceeds the per-pixel savings
-/// of partial repaint. `false` when damage is small *or* `None`
-/// (nothing to do).
-///
-/// A degenerate zero-area surface short-circuits to full repaint;
-/// it shouldn't happen in practice (host filters resize-to-zero),
-/// but cheap to handle.
-fn needs_full_repaint(damage: &Damage, surface: Rect) -> bool {
-    let surface_area = surface.area();
-    if surface_area <= 0.0 {
-        return true;
-    }
-    match damage.rect {
-        None => false,
-        Some(r) => r.area() / surface_area > FULL_REPAINT_THRESHOLD,
-    }
-}
-
 impl Damage {
+    /// Damage rect to feed both the encoder filter and the backend
+    /// scissor. `Some(rect)` → small change, partial repaint.
+    /// `None` → full repaint (first frame, post-resize, no diff, or
+    /// damage area exceeds [`FULL_REPAINT_THRESHOLD`] of `surface`).
+    ///
+    /// `surface` is the rect the host arranged the UI into this
+    /// frame. The decision is made here, lazily at submit time, so
+    /// the heuristic doesn't need to be cached as cross-frame state.
+    /// A degenerate zero-area surface short-circuits to full
+    /// repaint; it shouldn't happen in practice (host filters
+    /// resize-to-zero), but cheap to handle.
+    pub fn filter(&self, surface: Rect) -> Option<Rect> {
+        let r = self.rect?;
+        let surface_area = surface.area();
+        if surface_area <= 0.0 || r.area() / surface_area > FULL_REPAINT_THRESHOLD {
+            return None;
+        }
+        Some(r)
+    }
+
     /// Diff against the just-finished frame and roll `self.prev`
     /// forward to this frame's snapshot in the same pass — the diff
     /// reads each `WidgetId`'s old entry via `insert`, then any
     /// surplus entries (removed widgets) are swept after the loop.
     /// `curr_ids` is this frame's widget-id set — reused from
-    /// `Ui.seen_ids` so we don't rebuild it. `surface` is the rect
-    /// [`Ui::layout`] was called with; used to decide the
-    /// partial-vs-full-repaint heuristic.
+    /// `Ui.seen_ids` so we don't rebuild it.
     ///
     /// Rects are tracked in **screen space** (read straight off
     /// `Cascade.screen_rect`). This makes damage match where the GPU
     /// actually paints, so the backend scissor lands on the right
     /// pixels even under transformed parents.
-    pub fn compute(
-        &mut self,
-        tree: &Tree,
-        cascades: &Cascades,
-        curr_ids: &FxHashSet<WidgetId>,
-        surface: Rect,
-    ) {
+    pub fn compute(&mut self, tree: &Tree, cascades: &Cascades, curr_ids: &FxHashSet<WidgetId>) {
         self.dirty.clear();
         let mut acc: Option<Rect> = None;
 
@@ -159,7 +145,6 @@ impl Damage {
         }
 
         self.rect = acc;
-        self.full_repaint = needs_full_repaint(self, surface);
     }
 }
 

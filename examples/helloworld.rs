@@ -140,8 +140,10 @@ impl ApplicationHandler for App {
         );
 
         let mut ui = Ui::new();
-        ui.set_scale_factor(window.scale_factor() as f32);
-        ui.set_pixel_snap(true);
+        ui.set_display(palantir::primitives::Display {
+            scale_factor: window.scale_factor() as f32,
+            pixel_snap: true,
+        });
         let cosmic = palantir::text::share(palantir::text::CosmicMeasure::with_bundled_fonts());
         ui.set_cosmic(cosmic.clone());
         backend.set_cosmic(cosmic);
@@ -182,7 +184,7 @@ impl ApplicationHandler for App {
 
         // Translate winit events to palantir-native events at the boundary, then
         // feed them in. Ui itself is winit-agnostic.
-        if let Some(ev) = InputEvent::from_winit(&event, state.ui.scale_factor()) {
+        if let Some(ev) = InputEvent::from_winit(&event, state.ui.display().scale_factor) {
             state.ui.on_input(ev);
         }
 
@@ -190,7 +192,10 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 tracing::info!(scale_factor, "scale factor changed");
-                state.ui.set_scale_factor(scale_factor as f32);
+                state.ui.set_display(palantir::primitives::Display {
+                    scale_factor: scale_factor as f32,
+                    ..state.ui.display()
+                });
                 state.window.request_redraw();
             }
             WindowEvent::Resized(new) => {
@@ -232,16 +237,18 @@ impl State {
                 return;
             }
         };
-        let scale = self.ui.scale_factor();
+        let display = self.ui.display();
+        let scale = display.scale_factor;
         let w_logical = self.config.width as f32 / scale;
         let h_logical = self.config.height as f32 / scale;
 
+        let surface = Rect::new(0.0, 0.0, w_logical, h_logical);
         self.ui.begin_frame();
         build_ui(&mut self.ui, &mut self.click_count);
-        self.ui.layout(Rect::new(0.0, 0.0, w_logical, h_logical));
+        self.ui.layout(surface);
         self.ui.end_frame();
 
-        let damage = self.ui.damage_filter();
+        let damage = self.ui.damage_filter(surface);
         let buffer = self.pipeline.build(
             self.ui.tree(),
             self.ui.layout_result(),
@@ -251,7 +258,7 @@ impl State {
             &ComposeParams {
                 viewport_logical: [w_logical, h_logical],
                 scale,
-                pixel_snap: self.ui.pixel_snap(),
+                pixel_snap: display.pixel_snap,
             },
         );
         self.backend

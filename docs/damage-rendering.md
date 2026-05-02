@@ -49,11 +49,11 @@ layout rects misses it.
 | Per-node cascade transform | `src/cascade.rs`, `Cascade.transform` |
 | Prev-frame snapshot | `Damage.prev: FxHashMap<WidgetId, NodeSnapshot>` |
 | Damage diff | `src/ui/damage/`, `Damage::compute` |
-| Heuristic | `damage::needs_full_repaint` |
-| Public host accessor | `Ui::damage_filter() -> Option<Rect>` |
+| Heuristic | `Damage::filter(surface)` (lazy) |
+| Public host accessor | `Ui::damage_filter(surface) -> Option<Rect>` |
 | Encoder filter | `src/renderer/encoder/mod.rs`, `damage_filter` param |
 | Backbuffer + scissor | `src/renderer/backend/mod.rs`, `Backbuffer` + `submit(damage)` |
-| Surface size tracking | `Ui.surface: Rect` |
+| Surface size | host-owned; passed into `Ui::layout` and `Ui::damage_filter` |
 
 ## Authoring hash — what's in, what's out
 
@@ -130,8 +130,10 @@ uniqueness set) — no extra hash set built. The sweep only runs when
 `prev.len() > tree.node_count()` after the loop, since every recorded
 widget overwrote its entry.
 
-Finally `full_repaint = needs_full_repaint(self, surface)` —
-`damage.area() / surface.area() > 0.5`.
+The partial-vs-full decision is *not* baked in at compute time;
+`Damage::filter(surface)` (and its `Ui::damage_filter(surface)`
+forwarder) make the call lazily at submit time, returning `None`
+when `damage.area() / surface.area() > 0.5`.
 
 `Cascade.screen_rect` is the layout rect projected through ancestor
 transforms; it's filled in `Cascades::rebuild` and shared by encoder,
@@ -250,12 +252,17 @@ Preserved here so they survive context loss:
 - **Hash computed in a single batch pass** rather than incrementally
   during `push_node`/`add_shape`. Cleaner, decoupled from recorder
   hot path.
-- **`needs_full_repaint` is a separate function** called by
-  `Damage::compute` to set the `full_repaint` bool. Both reachable
-  from production.
-- **`Ui.surface: Rect`** is stored from the last `layout()` call so
-  damage and future backbuffer-resize logic share one source of
-  truth.
+- **Heuristic lives on `Damage::filter(surface)`** and runs lazily
+  at submit time. Earlier the threshold was computed during
+  `Damage::compute` and cached as `full_repaint: bool`, but the
+  decision only matters when the host has the surface in hand for
+  submit anyway, so caching it across frames was speculation. Lazy
+  evaluation means `Ui` doesn't have to stash `surface` either.
+- **Surface is host-owned, not `Ui`-owned.** The host passes
+  `surface` to both `Ui::layout(surface)` and
+  `Ui::damage_filter(surface)`. A previous version cached it on
+  `Ui` as a convenience; removed because the only consumer was the
+  heuristic and the host has the rect anyway.
 - **No runtime damage toggle in the library.** Hosts pass `None` to
   disable filtering; backbuffer cost is structural.
 - **`copy_texture_to_texture`, not a blit pipeline.** Backbuffer
