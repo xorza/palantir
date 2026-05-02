@@ -20,43 +20,56 @@ impl Rect {
         }
     }
 
-    pub fn max(&self) -> Vec2 {
-        self.min + Vec2::new(self.size.w, self.size.h)
+    pub const fn max(&self) -> Vec2 {
+        Vec2::new(self.min.x + self.size.w, self.min.y + self.size.h)
     }
-    pub fn width(&self) -> f32 {
+    pub const fn width(&self) -> f32 {
         self.size.w
     }
-    pub fn height(&self) -> f32 {
+    pub const fn height(&self) -> f32 {
         self.size.h
     }
 
-    pub fn contains(&self, p: Vec2) -> bool {
+    pub const fn contains(&self, p: Vec2) -> bool {
         let mx = self.max();
         p.x >= self.min.x && p.y >= self.min.y && p.x < mx.x && p.y < mx.y
     }
 
     /// Inset by `s` on each side, clamping the resulting size at zero. Used for
     /// margin / padding insets in the layout pass.
-    pub fn deflated_by(&self, s: Spacing) -> Self {
+    pub const fn deflated_by(&self, s: Spacing) -> Self {
+        let w = self.size.w - s.horiz();
+        let h = self.size.h - s.vert();
         Self {
-            min: self.min + Vec2::new(s.left, s.top),
-            size: Size::new(
-                (self.size.w - s.horiz()).max(0.0),
-                (self.size.h - s.vert()).max(0.0),
-            ),
+            min: Vec2::new(self.min.x + s.left, self.min.y + s.top),
+            size: Size::new(if w < 0.0 { 0.0 } else { w }, if h < 0.0 { 0.0 } else { h }),
         }
     }
 
     /// Axis-aligned intersection. Returns a zero-size rect if the inputs
     /// don't overlap (either dimension goes negative).
-    pub fn intersect(&self, other: Self) -> Self {
-        let min_x = self.min.x.max(other.min.x);
-        let min_y = self.min.y.max(other.min.y);
-        let max_x = (self.min.x + self.size.w).min(other.min.x + other.size.w);
-        let max_y = (self.min.y + self.size.h).min(other.min.y + other.size.h);
+    pub const fn intersect(&self, other: Self) -> Self {
+        let min_x = if self.min.x > other.min.x {
+            self.min.x
+        } else {
+            other.min.x
+        };
+        let min_y = if self.min.y > other.min.y {
+            self.min.y
+        } else {
+            other.min.y
+        };
+        let a_max_x = self.min.x + self.size.w;
+        let b_max_x = other.min.x + other.size.w;
+        let max_x = if a_max_x < b_max_x { a_max_x } else { b_max_x };
+        let a_max_y = self.min.y + self.size.h;
+        let b_max_y = other.min.y + other.size.h;
+        let max_y = if a_max_y < b_max_y { a_max_y } else { b_max_y };
+        let w = max_x - min_x;
+        let h = max_y - min_y;
         Self {
             min: Vec2::new(min_x, min_y),
-            size: Size::new((max_x - min_x).max(0.0), (max_y - min_y).max(0.0)),
+            size: Size::new(if w < 0.0 { 0.0 } else { w }, if h < 0.0 { 0.0 } else { h }),
         }
     }
 

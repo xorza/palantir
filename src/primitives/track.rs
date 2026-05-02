@@ -36,11 +36,11 @@ impl Track {
         Self::new(Sizing::Fill(w))
     }
 
-    pub fn min(mut self, m: f32) -> Self {
+    pub const fn min(mut self, m: f32) -> Self {
         self.min = m;
         self
     }
-    pub fn max(mut self, m: f32) -> Self {
+    pub const fn max(mut self, m: f32) -> Self {
         self.max = m;
         self
     }

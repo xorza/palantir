@@ -41,20 +41,29 @@ impl TranslateScale {
     /// Apply `self` after `other`: `result(p) == self.apply_point(other.apply_point(p))`.
     /// Matches matrix multiplication conventions — descend the tree by composing
     /// `parent_cumulative.compose(child_local)`.
-    pub fn compose(self, other: Self) -> Self {
+    pub const fn compose(self, other: Self) -> Self {
         Self {
             scale: self.scale * other.scale,
-            translation: other.translation * self.scale + self.translation,
+            translation: Vec2::new(
+                other.translation.x * self.scale + self.translation.x,
+                other.translation.y * self.scale + self.translation.y,
+            ),
         }
     }
 
-    pub fn apply_point(self, p: Vec2) -> Vec2 {
-        p * self.scale + self.translation
+    pub const fn apply_point(self, p: Vec2) -> Vec2 {
+        Vec2::new(
+            p.x * self.scale + self.translation.x,
+            p.y * self.scale + self.translation.y,
+        )
     }
 
-    pub fn apply_rect(self, r: Rect) -> Rect {
+    pub const fn apply_rect(self, r: Rect) -> Rect {
         Rect {
-            min: r.min * self.scale + self.translation,
+            min: Vec2::new(
+                r.min.x * self.scale + self.translation.x,
+                r.min.y * self.scale + self.translation.y,
+            ),
             size: Size::new(r.size.w * self.scale, r.size.h * self.scale),
         }
     }

@@ -21,20 +21,20 @@ impl Size {
     /// `f32::is_infinite` (which also accepts `-INFINITY`) so callers using
     /// this as a "no upper bound" sentinel can't be tripped by negative
     /// infinity or NaN.
-    pub fn is_inf(self) -> bool {
+    pub const fn is_inf(self) -> bool {
         self.w == f32::INFINITY && self.h == f32::INFINITY
     }
 
-    pub fn min(self, other: Self) -> Self {
+    pub const fn min(self, other: Self) -> Self {
         Self {
-            w: self.w.min(other.w),
-            h: self.h.min(other.h),
+            w: if self.w < other.w { self.w } else { other.w },
+            h: if self.h < other.h { self.h } else { other.h },
         }
     }
-    pub fn max(self, other: Self) -> Self {
+    pub const fn max(self, other: Self) -> Self {
         Self {
-            w: self.w.max(other.w),
-            h: self.h.max(other.h),
+            w: if self.w > other.w { self.w } else { other.w },
+            h: if self.h > other.h { self.h } else { other.h },
         }
     }
 }
