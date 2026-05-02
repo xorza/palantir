@@ -37,7 +37,7 @@ pub enum Shape {
 }
 
 /// Wrap mode for [`Shape::Text`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TextWrap {
     /// Shape once at unbounded width and never reshape. Used by every text
     /// run that fits on a single line — labels, headings, anything that
