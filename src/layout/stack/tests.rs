@@ -329,5 +329,5 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
 
     // Correct: 16 (button) + 184 (Fill share) = 200.
     // Buggy: 16 + 16 (double-counted) + 184 = 216.
-    assert_eq!(ui.desired(root).w, 200.0);
+    assert_eq!(ui.layout_engine.desired(root).w, 200.0);
 }

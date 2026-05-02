@@ -24,9 +24,9 @@ pub use result::{LayoutResult, ShapedText};
 /// capacity across frames.
 ///
 /// - `grid` — grid-driver scratch (per-depth track state, hug pool).
-/// - `desired` — measure-pass output read by arrange. Pure measure→arrange
-///   handoff; nothing outside layout reads it (yet — `Ui::desired(id)`
-///   exposes it for future debug/devtools but no current consumer).
+/// - `desired` — measure-pass output read by arrange. Crate-private
+///   accessor (`Ui::desired`) exists so layout tests can pin measure
+///   output independently of arrange's slot-clamping.
 /// - `intrinsics` — intra-frame cache for `intrinsic(node, axis, req)`
 ///   queries (see `intrinsic.md`). Pure function of subtree;
 ///   safe to memoize within a frame. Cleared in `run`.
@@ -53,7 +53,7 @@ impl LayoutEngine {
         self.result.rect(id)
     }
 
-    pub fn desired(&self, id: NodeId) -> Size {
+    pub(crate) fn desired(&self, id: NodeId) -> Size {
         self.desired[id.index()]
     }
 
