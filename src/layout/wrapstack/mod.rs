@@ -19,6 +19,51 @@ use crate::primitives::{Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
+/// Flat per-frame scratch for wrap arrange. One contiguous
+/// `Vec<NodeId>` pool serves all nesting depths: each `enter()`
+/// pushes the current pool length onto `starts`, so the depth's
+/// line buffer is `pool[starts.last()..pool.len()]`. `exit()`
+/// truncates back to its start. Capacity retained across frames;
+/// steady state is alloc-free.
+///
+/// Why flat (not `Vec<Vec<NodeId>>`): a single allocation for the
+/// pool plus a tiny stack of u32 markers, vs. one inner Vec per
+/// nesting depth. `place_line` accesses children by index — `NodeId`
+/// is `Copy`, so we read each child out before calling
+/// `layout.arrange`, sidestepping the borrow conflict that a slice
+/// would create against `&mut LayoutEngine`.
+#[derive(Default)]
+pub(crate) struct WrapScratch {
+    pool: Vec<NodeId>,
+    /// Stack of per-depth start offsets into `pool`. `enter()` pushes
+    /// the current pool length; `exit()` pops and truncates pool
+    /// back to that length, releasing this depth's buffer space for
+    /// reuse by sibling/parent depths.
+    starts: Vec<u32>,
+}
+
+impl WrapScratch {
+    fn enter(&mut self) {
+        self.starts.push(self.pool.len() as u32);
+    }
+
+    fn exit(&mut self) {
+        let start = self
+            .starts
+            .pop()
+            .expect("WrapScratch::exit called outside enter()");
+        self.pool.truncate(start as usize);
+    }
+
+    /// Start offset of the current depth's line buffer in `pool`.
+    fn start(&self) -> u32 {
+        *self
+            .starts
+            .last()
+            .expect("WrapScratch::start called outside enter()")
+    }
+}
+
 /// Pack children into lines; return content size (max-line-main, sum
 /// line-cross + line-gaps). Each call recomputes the packing — cheap
 /// (one pass over children), and arrange uses the same logic on the
@@ -109,27 +154,28 @@ pub(super) fn arrange(
     let parent_child_align = extras.child_align;
     let main_avail = axis.main(inner.size);
 
-    // Same packing logic as `measure`. Each row needs lookahead — we
+    // Same packing logic as `measure`. Each row needs lookahead —
     // can't place a child until we know the row's `line_main` (for
     // justify) and `line_cross` (for cross-axis place). Buffer node
-    // IDs in `line`, flush on overflow / end-of-children. Sizes come
-    // from `layout.desired` at flush time, so the buffer is just node
-    // IDs (4 B/child) — capacity not retained across calls today; if
-    // a profile shows arrange thrash, lift to engine scratch with a
-    // depth stack à la `GridDepthStack` (nested wraps need it).
-    let mut line: Vec<NodeId> = Vec::new();
+    // IDs in the engine's flat `wrap.pool` at this depth's slice,
+    // flush on overflow / end-of-children. Sizes come from
+    // `layout.desired` at flush time, so the buffer is just node
+    // IDs.
+    layout.wrap.enter();
+    let line_start = layout.wrap.start();
     let mut line_main = 0.0f32;
     let mut line_cross = 0.0f32;
     let mut cross_cursor = axis.cross_v(inner.min);
     let mut first_line = true;
 
     let place_line = |layout: &mut LayoutEngine,
-                      line: &mut Vec<NodeId>,
                       line_main: f32,
                       line_cross: f32,
                       cross_cursor: &mut f32,
                       first_line: &mut bool| {
-        if line.is_empty() {
+        let line_end = layout.wrap.pool.len();
+        let line_start = line_start as usize;
+        if line_end == line_start {
             return;
         }
         if !*first_line {
@@ -137,7 +183,7 @@ pub(super) fn arrange(
         }
         *first_line = false;
 
-        let count = line.len();
+        let count = line_end - line_start;
         let leftover = (main_avail - line_main).max(0.0);
         let (start_offset, eff_gap) = match justify {
             Justify::Start => (0.0, gap),
@@ -152,8 +198,12 @@ pub(super) fn arrange(
             Justify::SpaceBetween | Justify::SpaceAround => (0.0, gap),
         };
         let mut main_cursor = axis.main_v(inner.min) + start_offset;
-        for (idx, c) in line.iter().copied().enumerate() {
-            if idx > 0 {
+        // Iterate by index so we copy each `NodeId` out before
+        // calling `layout.arrange`, which needs `&mut layout`.
+        // `NodeId` is `Copy`, so no slice borrow into the pool.
+        for i in line_start..line_end {
+            let c = layout.wrap.pool[i];
+            if i > line_start {
                 main_cursor += eff_gap;
             }
             let d = layout.desired[c.index()];
@@ -184,7 +234,11 @@ pub(super) fn arrange(
             main_cursor += main_size;
         }
         *cross_cursor += line_cross;
-        line.clear();
+        // Drop our line from the pool (capacity retained). Recursive
+        // `layout.arrange` calls above may have temporarily extended
+        // and re-truncated the pool past `line_end`; we ignore those
+        // and reset to our depth's start.
+        layout.wrap.pool.truncate(line_start);
     };
 
     // Walk all children: collapsed get zeroed at the cursor, active
@@ -223,29 +277,28 @@ pub(super) fn arrange(
         if line_main > 0.0 && candidate > main_avail {
             place_line(
                 layout,
-                &mut line,
                 line_main,
                 line_cross,
                 &mut cross_cursor,
                 &mut first_line,
             );
-            line.push(c);
+            layout.wrap.pool.push(c);
             line_main = m;
             line_cross = x;
         } else {
-            line.push(c);
+            layout.wrap.pool.push(c);
             line_main = candidate;
             line_cross = line_cross.max(x);
         }
     }
     place_line(
         layout,
-        &mut line,
         line_main,
         line_cross,
         &mut cross_cursor,
         &mut first_line,
     );
+    layout.wrap.exit();
 }
 
 /// Intrinsic size on `query_axis` under `req`. Approximate for the wrap
