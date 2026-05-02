@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use palantir::Align;
 use palantir::renderer::WgpuBackend;
 use palantir::{
-    Button, ButtonStyle, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke, Styled, Ui,
+    Button, ButtonTheme, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke, Styled, Ui,
     Visuals,
 };
 use winit::application::ApplicationHandler;
@@ -12,12 +12,12 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
-fn outlined_button_style() -> ButtonStyle {
+fn outlined_button_style() -> ButtonTheme {
     let stroke = Some(Stroke {
         width: 1.5,
         color: Color::rgb(0.4, 0.5, 0.7),
     });
-    ButtonStyle {
+    ButtonTheme {
         normal: Visuals {
             fill: Color::TRANSPARENT,
             stroke,

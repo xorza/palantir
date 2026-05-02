@@ -1,7 +1,7 @@
 use crate::primitives::{Color, Stroke};
 
 /// One visual state's paint vocabulary. Shared across widget styles
-/// (e.g. `ButtonStyle::{normal, hovered, pressed}` are each `Visuals`).
+/// (e.g. `ButtonTheme::{normal, hovered, pressed}` are each `Visuals`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Visuals {
     pub fill: Color,

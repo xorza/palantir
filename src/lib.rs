@@ -19,5 +19,5 @@ pub use primitives::{
 };
 pub use shape::Shape;
 pub use tree::{NodeId, Tree};
-pub use ui::{ButtonTheme, Ui};
-pub use widgets::{Background, Button, ButtonStyle, Frame, Grid, Panel, Response, Styled, Text};
+pub use ui::{Theme, Ui};
+pub use widgets::{Background, Button, ButtonTheme, Frame, Grid, Panel, Response, Styled, Text};

@@ -6,7 +6,7 @@ use crate::widgets::{Frame, Response, Styled};
 use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ButtonStyle {
+pub struct ButtonTheme {
     pub normal: Visuals,
     pub hovered: Visuals,
     pub pressed: Visuals,
@@ -14,7 +14,7 @@ pub struct ButtonStyle {
     pub radius: Corners,
 }
 
-impl Default for ButtonStyle {
+impl Default for ButtonTheme {
     fn default() -> Self {
         Self {
             normal: Visuals::solid(Color::rgb(0.20, 0.40, 0.80), Color::WHITE),
@@ -31,7 +31,7 @@ impl Default for ButtonStyle {
 
 pub struct Button {
     element: Element,
-    style: Option<ButtonStyle>,
+    style: Option<ButtonTheme>,
     label: String,
     label_align: Align,
 }
@@ -56,7 +56,7 @@ impl Button {
         }
     }
 
-    pub fn style(mut self, s: ButtonStyle) -> Self {
+    pub fn style(mut self, s: ButtonTheme) -> Self {
         self.style = Some(s);
         self
     }

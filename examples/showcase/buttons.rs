@@ -1,5 +1,5 @@
 use palantir::{
-    Button, ButtonStyle, Color, Configure, Corners, Panel, Sizing, Stroke, Ui, Visuals,
+    Button, ButtonTheme, Color, Configure, Corners, Panel, Sizing, Stroke, Ui, Visuals,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -56,12 +56,12 @@ fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .show(ui, body);
 }
 
-fn outlined_style() -> ButtonStyle {
+fn outlined_style() -> ButtonTheme {
     let stroke = Some(Stroke {
         width: 1.5,
         color: Color::rgb(0.4, 0.5, 0.7),
     });
-    ButtonStyle {
+    ButtonTheme {
         normal: Visuals {
             fill: Color::TRANSPARENT,
             stroke,
@@ -89,9 +89,9 @@ fn outlined_style() -> ButtonStyle {
     }
 }
 
-fn danger_style() -> ButtonStyle {
+fn danger_style() -> ButtonTheme {
     let red = Color::rgb(0.85, 0.30, 0.30);
-    ButtonStyle {
+    ButtonTheme {
         normal: Visuals {
             fill: red,
             stroke: None,
