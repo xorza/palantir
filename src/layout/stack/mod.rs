@@ -42,7 +42,6 @@ pub(super) fn measure(
         count += 1;
         let l = tree.layout(c);
         if let Sizing::Fill(w) = axis.main_sizing(l.size) {
-            assert!(w > 0.0, "Sizing::Fill weight must be positive");
             total_weight += w;
             continue;
         }
@@ -124,7 +123,6 @@ pub(super) fn arrange(
         }
         let l = tree.layout(c);
         if let Sizing::Fill(weight) = axis.main_sizing(l.size) {
-            assert!(weight > 0.0, "Sizing::Fill weight must be positive");
             total_weight += weight;
         } else {
             sum_main_desired += axis.main(layout.desired(c));

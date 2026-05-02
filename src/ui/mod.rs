@@ -5,7 +5,7 @@ use crate::cascade::Cascades;
 use crate::element::Element;
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::layout::{LayoutEngine, LayoutResult};
-use crate::primitives::{Rect, Size, WidgetId};
+use crate::primitives::{Rect, WidgetId};
 use crate::shape::Shape;
 use crate::text::{MeasureResult, SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
@@ -148,10 +148,6 @@ impl Ui {
 
     pub fn rect(&self, id: NodeId) -> Rect {
         self.layout_engine.rect(id)
-    }
-
-    pub fn desired(&self, id: NodeId) -> Size {
-        self.layout_engine.desired(id)
     }
 
     pub fn layout_result(&self) -> &LayoutResult {
