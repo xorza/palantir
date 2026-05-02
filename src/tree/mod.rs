@@ -6,6 +6,7 @@ use std::rc::Rc;
 mod grid_def;
 mod hash;
 pub(crate) use grid_def::GridDef;
+pub use hash::NodeHash;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub(crate) u32);
@@ -70,10 +71,10 @@ pub struct Tree {
     /// Per-node authoring hash, computed by [`Tree::compute_hashes`] after
     /// recording is complete. Captures the inputs that affect rendering
     /// (layout fields, paint attrs, extras, shapes, grid defs) — not
-    /// derived layout output (`rect`, `desired`). Used by future damage-
-    /// rendering steps to detect "did this node's authoring change since
-    /// last frame." Indexed by `NodeId.0`. Capacity retained across frames.
-    pub(crate) hashes: Vec<u64>,
+    /// derived layout output (`rect`, `desired`). Damage diffs and the
+    /// `TextMeasurer` reuse cache compare this against last frame's
+    /// snapshot. Indexed by `NodeId.0`. Capacity retained across frames.
+    pub(crate) hashes: Vec<NodeHash>,
 }
 
 impl Default for Tree {
@@ -309,12 +310,15 @@ impl Tree {
         self.children(parent).filter(|&c| !self.is_collapsed(c))
     }
 
-    /// Authoring hash for `id`. `0` if [`Self::compute_hashes`] hasn't
-    /// run yet this frame. Future damage-rendering steps compare this
-    /// to the previous frame's hash for the same `WidgetId` to detect
-    /// per-node authoring changes.
-    pub fn node_hash(&self, id: NodeId) -> u64 {
-        self.hashes.get(id.index()).copied().unwrap_or(0)
+    /// Authoring hash for `id`. `NodeHash::UNCOMPUTED` if
+    /// [`Self::compute_hashes`] hasn't run yet this frame. Damage and
+    /// text-reuse compare this against last frame's hash for the same
+    /// `WidgetId` to detect per-node authoring changes.
+    pub fn node_hash(&self, id: NodeId) -> NodeHash {
+        self.hashes
+            .get(id.index())
+            .copied()
+            .unwrap_or(NodeHash::UNCOMPUTED)
     }
 
     /// Walk every recorded node and populate `self.hashes`. Pure read

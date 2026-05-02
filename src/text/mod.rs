@@ -19,6 +19,7 @@
 //! [`Ui`]: crate::Ui
 
 use crate::primitives::{Size, WidgetId};
+use crate::tree::NodeHash;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
@@ -168,8 +169,7 @@ fn dispatch(
 /// by authoring `hash`.
 #[derive(Clone, Copy)]
 pub(crate) struct TextReuseEntry {
-    // todo custom type for element node hash
-    hash: u64,
+    hash: NodeHash,
     unbounded: MeasureResult,
     wrap: Option<WrapReuse>,
 }
@@ -222,7 +222,7 @@ impl TextMeasurer {
     pub fn shape_unbounded(
         &mut self,
         wid: WidgetId,
-        hash: u64,
+        hash: NodeHash,
         text: &str,
         font_size_px: f32,
     ) -> MeasureResult {
