@@ -226,7 +226,11 @@ impl LayoutEngine {
 /// hug-content size (margin-inclusive), parent-supplied available, own margin,
 /// and clamps. Each branch produces *rendered* size (margin-exclusive); we
 /// clamp once and add margin once at the end.
-fn resolve_axis_size(
+///
+/// Also reused by `intrinsic::compute` with `available = INFINITY`, which
+/// collapses Fill to its content size — the parent-independent rule for
+/// intrinsic queries (CSS Grid `1fr`-in-auto-context).
+pub(super) fn resolve_axis_size(
     s: Sizing,
     hug_outer: f32,
     available: f32,
