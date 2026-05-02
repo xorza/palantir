@@ -245,7 +245,7 @@ impl State {
             },
         );
         self.backend
-            .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), buffer);
+            .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), buffer, None);
 
         frame.present();
         if !self.first_paint {
