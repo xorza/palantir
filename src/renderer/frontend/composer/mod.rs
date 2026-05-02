@@ -1,7 +1,7 @@
-use super::buffer::{DrawGroup, RenderBuffer, TextRun};
 use super::encoder::RenderCmd;
-use super::quad::Quad;
 use crate::primitives::{Display, Rect, Stroke, TranslateScale, URect};
+use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
+use crate::renderer::quad::Quad;
 
 /// CPU-only compose engine: turns a `RenderCmd` stream into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups) supplied by the caller.

@@ -1,8 +1,8 @@
-use super::super::buffer::RenderBuffer;
 use super::super::encoder::RenderCmd;
 use super::Composer;
 use crate::primitives::Display;
 use crate::primitives::{Color, Corners, Rect, URect};
+use crate::renderer::buffer::RenderBuffer;
 use crate::text::TextCacheKey;
 use glam::UVec2;
 
