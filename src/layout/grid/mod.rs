@@ -367,7 +367,7 @@ fn measure_inner(
         // height — the wrapped height (in `desired.h`) is what actually
         // matters, so leave row hug_min at zero for now.
         let s = layout.grid.depth_stack.at(depth);
-        record_hug(&mut s.row, cell.row, cell.row_span, d.h, None);
+        record_hug(&mut s.row, cell.row, cell.row_span, d.h);
     }
 
     // Resolve row heights. Same Fill-marking rule as cols above —
@@ -455,16 +455,13 @@ fn resolve_fixed(a: &mut AxisScratch) {
     }
 }
 
-fn record_hug(a: &mut AxisScratch, idx: u16, span: u16, desired: f32, intrinsic_min: Option<f32>) {
+fn record_hug(a: &mut AxisScratch, idx: u16, span: u16, desired: f32) {
     if span != 1 {
         return;
     }
     let i = idx as usize;
     if matches!(a.tracks[i].size, Sizing::Hug) {
         a.hug_max[i] = a.hug_max[i].max(desired);
-        if let Some(m) = intrinsic_min {
-            a.hug_min[i] = a.hug_min[i].max(m);
-        }
     }
 }
 
@@ -531,7 +528,6 @@ fn arrange_inner(
         }
         let s_node = *tree.layout(c);
         let cell = tree.read_extras(c).grid;
-        assert_cell(cell, n_rows, n_cols);
         let d = layout.desired(c);
 
         let (slot_x, slot_y, slot_w, slot_h) = {
