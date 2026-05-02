@@ -31,10 +31,10 @@ impl Spacing {
             bottom: y,
         }
     }
-    pub fn horiz(&self) -> f32 {
+    pub const fn horiz(&self) -> f32 {
         self.left + self.right
     }
-    pub fn vert(&self) -> f32 {
+    pub const fn vert(&self) -> f32 {
         self.top + self.bottom
     }
 }

@@ -93,7 +93,7 @@ pub(crate) enum AxisAlign {
 }
 
 impl HAlign {
-    pub(crate) fn to_axis(self) -> AxisAlign {
+    pub(crate) const fn to_axis(self) -> AxisAlign {
         match self {
             HAlign::Auto => AxisAlign::Auto,
             HAlign::Left => AxisAlign::Start,
@@ -103,7 +103,7 @@ impl HAlign {
         }
     }
     /// `self` if not `Auto`, else `default`.
-    pub(crate) fn or(self, default: HAlign) -> HAlign {
+    pub(crate) const fn or(self, default: HAlign) -> HAlign {
         if matches!(self, HAlign::Auto) {
             default
         } else {
@@ -113,7 +113,7 @@ impl HAlign {
 }
 
 impl VAlign {
-    pub(crate) fn to_axis(self) -> AxisAlign {
+    pub(crate) const fn to_axis(self) -> AxisAlign {
         match self {
             VAlign::Auto => AxisAlign::Auto,
             VAlign::Top => AxisAlign::Start,
@@ -122,7 +122,7 @@ impl VAlign {
             VAlign::Stretch => AxisAlign::Stretch,
         }
     }
-    pub(crate) fn or(self, default: VAlign) -> VAlign {
+    pub(crate) const fn or(self, default: VAlign) -> VAlign {
         if matches!(self, VAlign::Auto) {
             default
         } else {
