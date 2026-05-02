@@ -1,4 +1,7 @@
-use super::{AutoBias, Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
+use super::{
+    AutoBias, Axis, LayoutEngine, LenReq, max_child_intrinsic, place_axis, resolved_axis_align,
+    zero_subtree,
+};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;
@@ -39,10 +42,7 @@ pub(super) fn measure(
     let mut total_weight = 0.0f32;
     let mut max_cross = 0.0f32;
     let mut count = 0usize;
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            continue;
-        }
+    for c in tree.children_active(node) {
         count += 1;
         let l = tree.layout(c);
         if let Sizing::Fill(w) = axis.main_sizing(l.size) {
@@ -78,10 +78,7 @@ pub(super) fn measure(
         } else {
             0.0
         };
-        for c in tree.children(node) {
-            if tree.is_collapsed(c) {
-                continue;
-            }
+        for c in tree.children_active(node) {
             let Sizing::Fill(w) = axis.main_sizing(tree.layout(c).size) else {
                 continue;
             };
@@ -121,10 +118,7 @@ pub(super) fn arrange(
     let mut sum_main_desired = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            continue;
-        }
+    for c in tree.children_active(node) {
         let l = tree.layout(c);
         if let Sizing::Fill(weight) = axis.main_sizing(l.size) {
             total_weight += weight;
@@ -214,23 +208,13 @@ pub(super) fn intrinsic(
     if main_axis == query_axis {
         let mut total = 0.0_f32;
         let mut count = 0_usize;
-        for c in tree.children(node) {
-            if tree.is_collapsed(c) {
-                continue;
-            }
+        for c in tree.children_active(node) {
             total += layout.intrinsic(tree, c, query_axis, req, text);
             count += 1;
         }
         total + gap * count.saturating_sub(1) as f32
     } else {
-        let mut max = 0.0_f32;
-        for c in tree.children(node) {
-            if tree.is_collapsed(c) {
-                continue;
-            }
-            max = max.max(layout.intrinsic(tree, c, query_axis, req, text));
-        }
-        max
+        max_child_intrinsic(layout, tree, node, query_axis, req, text)
     }
 }
 

@@ -25,15 +25,11 @@ pub(super) fn measure(
     let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
-    for c in tree.children(node) {
-        // Skip collapsed children outright. `desired` is reset to ZERO at
-        // the top of `run`, so no measure call is needed; arrange will
-        // zero the subtree's rects, so they must not grow the bbox here
-        // either (otherwise a collapsed child at (100,100) would inflate
-        // the panel).
-        if tree.is_collapsed(c) {
-            continue;
-        }
+    // Active children only: a collapsed child at (100,100) must not
+    // inflate the canvas's content size. `desired` is already ZERO for
+    // collapsed children (reset at the top of `run`); arrange zeros
+    // their subtrees regardless.
+    for c in tree.children_active(node) {
         let pos = tree.read_extras(c).position;
         let d = layout.measure(tree, c, child_avail, text);
         max_w = max_w.max(pos.x + d.w);
@@ -73,10 +69,7 @@ pub(super) fn intrinsic(
     text: &mut TextMeasurer,
 ) -> f32 {
     let mut max = 0.0_f32;
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            continue;
-        }
+    for c in tree.children_active(node) {
         let pos = tree.read_extras(c).position;
         max = max.max(axis.main_v(pos) + layout.intrinsic(tree, c, axis, req, text));
     }

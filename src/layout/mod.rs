@@ -336,6 +336,25 @@ pub(super) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
     }
 }
 
+/// Max over non-collapsed children's outer intrinsic on `axis`. Used by
+/// drivers whose own size on an axis is "the largest child wants this much"
+/// (ZStack on either axis, Stack on the cross axis). Canvas can't use it
+/// because it adds child position to the contribution.
+pub(super) fn max_child_intrinsic(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    axis: Axis,
+    req: LenReq,
+    text: &mut TextMeasurer,
+) -> f32 {
+    let mut m = 0.0f32;
+    for c in tree.children_active(node) {
+        m = m.max(layout.intrinsic(tree, c, axis, req, text));
+    }
+    m
+}
+
 /// Per-axis available size to pass to children of a panel that sizes per its
 /// own `Sizing` on each axis: pass `inner_avail` on Fill/Fixed axes (children
 /// see the committed slot), `INFINITY` on Hug axes (avoids recursive sizing).
@@ -408,4 +427,23 @@ pub(super) fn place_axis(
         _ => 0.0,
     };
     (size, offset)
+}
+
+/// Resolve a child's two-axis size + offset inside `inner`, applying the
+/// alignment cascade and the per-driver `AutoBias` rule. Returns `(size,
+/// offset)` per axis, packed as `Size` and `Vec2`. Used by ZStack and
+/// Grid arrange — both place each child independently per axis using the
+/// same rule. Stack does cross-axis placement only (different main-axis
+/// rule) so it still calls `place_axis` directly on cross.
+pub(super) fn place_two_axis(
+    child: &LayoutCore,
+    parent_child_align: Align,
+    desired: Size,
+    inner: Size,
+    bias: AutoBias,
+) -> (Size, Vec2) {
+    let (h_align, v_align) = resolved_axis_align(child, parent_child_align);
+    let (w, x_off) = place_axis(h_align, child.size.w, desired.w, inner.w, bias);
+    let (h, y_off) = place_axis(v_align, child.size.h, desired.h, inner.h, bias);
+    (Size::new(w, h), Vec2::new(x_off, y_off))
 }
