@@ -133,7 +133,7 @@ impl Ui {
             &self.display,
         );
         self.repaint_requested = false;
-        
+
         FrameOutput {
             buffer: self.frontend.buffer(),
             damage,
