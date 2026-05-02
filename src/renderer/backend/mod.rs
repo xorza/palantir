@@ -1,7 +1,14 @@
-use super::buffer::RenderBuffer;
+use super::buffer::{RenderBuffer, ScissorRect};
 use super::quad::QuadPipeline;
-use crate::primitives::Color;
+use crate::primitives::{Color, Rect};
 use crate::text::SharedCosmic;
+
+/// Pad the damage scissor by this many physical pixels on every
+/// side. Quads and glyphs may anti-alias slightly outside their
+/// nominal rect (SDF rounded-rect AA, italic descenders); without
+/// padding the scissor would clip the AA fringe and leave a
+/// 1-px-hard edge along the damage boundary.
+const DAMAGE_AA_PADDING: u32 = 2;
 
 mod text;
 use text::TextRenderer;
@@ -106,23 +113,75 @@ impl WgpuBackend {
     /// group runs. So a child quad declared *after* a label correctly
     /// occludes that label.
     ///
-    /// Step 6a of the damage-rendering plan: this introduces the
-    /// backbuffer-then-copy pipeline. Damage scissor + `LoadOp::Load`
-    /// land in 6b/6c; for now every frame still clears the backbuffer
-    /// and behaves identically to the old direct-to-surface path.
-    pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, buffer: &RenderBuffer) {
+    /// Step 6 of the damage-rendering plan. `damage`, when `Some`,
+    /// switches the pass to `LoadOp::Load` (last frame's pixels stay) and
+    /// intersects every group's scissor with the damage rect, so only the
+    /// dirty region is repainted. `None` ⇒ `LoadOp::Clear` + paint normally
+    /// (used on the first frame, after resize, and when the dirty area
+    /// exceeds the heuristic threshold).
+    ///
+    /// `damage` is in *logical* pixels matching `buffer.scale`; the
+    /// backend handles physical-px conversion, AA padding, and
+    /// surface-bounds clamping. A degenerate damage rect that
+    /// clamps to zero area is treated as "nothing to paint" — pass
+    /// returns having loaded but not drawn.
+    pub fn submit(
+        &mut self,
+        surface_tex: &wgpu::Texture,
+        clear: Color,
+        buffer: &RenderBuffer,
+        damage: Option<Rect>,
+    ) {
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
             groups = buffer.groups.len(),
             viewport = ?buffer.viewport_phys,
+            ?damage,
             "wgpu_backend.submit"
         );
 
-        // Match backbuffer to the swapchain texture; recreated implies
-        // undefined contents, so we'll do a full clear-load below.
-        let _backbuffer_recreated =
-            self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
+        // Match backbuffer to the swapchain texture; a freshly
+        // (re)created backbuffer has undefined contents, so any
+        // requested partial repaint must escalate to a full clear
+        // this frame. Same for the very first frame after backend
+        // construction.
+        let backbuffer_recreated = self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
+        let damage = if backbuffer_recreated { None } else { damage };
+
+        // Convert the logical damage rect to a physical-px scissor,
+        // padded for AA bleed and clamped to the surface. `None`
+        // here means "full repaint" (clear + no scissor override).
+        let damage_scissor = damage.and_then(|r| {
+            let phys = r.scaled_by(buffer.scale, true);
+            let mins_x = (phys.min.x as i64 - DAMAGE_AA_PADDING as i64).max(0) as u32;
+            let mins_y = (phys.min.y as i64 - DAMAGE_AA_PADDING as i64).max(0) as u32;
+            let maxs_x = ((phys.min.x + phys.size.w) as u32 + DAMAGE_AA_PADDING)
+                .min(buffer.viewport_phys[0]);
+            let maxs_y = ((phys.min.y + phys.size.h) as u32 + DAMAGE_AA_PADDING)
+                .min(buffer.viewport_phys[1]);
+            if maxs_x > mins_x && maxs_y > mins_y {
+                Some(ScissorRect {
+                    x: mins_x,
+                    y: mins_y,
+                    w: maxs_x - mins_x,
+                    h: maxs_y - mins_y,
+                })
+            } else {
+                None
+            }
+        });
+        let load_op = if damage_scissor.is_some() {
+            wgpu::LoadOp::Load
+        } else {
+            wgpu::LoadOp::Clear(wgpu::Color {
+                r: clear.r as f64,
+                g: clear.g as f64,
+                b: clear.b as f64,
+                a: clear.a as f64,
+            })
+        };
+
         let backbuffer = self
             .backbuffer
             .as_ref()
@@ -162,12 +221,7 @@ impl WgpuBackend {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: clear.r as f64,
-                            g: clear.g as f64,
-                            b: clear.b as f64,
-                            a: clear.a as f64,
-                        }),
+                        load: load_op,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -176,25 +230,46 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            let full_viewport = ScissorRect {
+                x: 0,
+                y: 0,
+                w: buffer.viewport_phys[0],
+                h: buffer.viewport_phys[1],
+            };
             for (i, g) in buffer.groups.iter().enumerate() {
-                if let Some(s) = g.scissor {
-                    if s.w == 0 || s.h == 0 {
-                        continue;
-                    }
-                    pass.set_scissor_rect(s.x, s.y, s.w, s.h);
-                } else {
-                    pass.set_scissor_rect(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
+                let group_scissor = g.scissor.unwrap_or(full_viewport);
+                // Intersect with damage when partial-repainting. If
+                // the result is empty, this group has nothing to paint
+                // inside the dirty region — skip it entirely.
+                let effective = match damage_scissor {
+                    Some(d) => match group_scissor.intersect(d) {
+                        Some(r) => r,
+                        None => continue,
+                    },
+                    None => group_scissor,
+                };
+                if effective.w == 0 || effective.h == 0 {
+                    continue;
                 }
+                pass.set_scissor_rect(effective.x, effective.y, effective.w, effective.h);
                 if !g.quads.is_empty() {
                     self.quad.draw_range(&mut pass, g.quads.clone());
                 }
                 if !g.texts.is_empty() {
                     // Text uses a full-viewport scissor + per-area `bounds`
-                    // for clipping (set in compose). Switching scissors
-                    // mid-pass is cheap; restoring the group's quad
-                    // scissor after isn't needed because the next group
-                    // re-sets its own.
-                    pass.set_scissor_rect(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
+                    // for clipping (set in compose). Under partial repaint
+                    // we narrow that to the damage rect so glyph fringe
+                    // outside the dirty region can't bleed in.
+                    let text_scissor = match damage_scissor {
+                        Some(d) => d,
+                        None => full_viewport,
+                    };
+                    pass.set_scissor_rect(
+                        text_scissor.x,
+                        text_scissor.y,
+                        text_scissor.w,
+                        text_scissor.h,
+                    );
                     self.text.render_group(i, &mut pass);
                 }
             }

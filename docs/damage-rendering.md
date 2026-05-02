@@ -239,6 +239,116 @@ transformation. Then intersect with each draw group's scissor.
   large-damage frames pay all the bookkeeping with none of the
   saving.
 
+## Integration plan (current state — 2026-05-02)
+
+What's landed (Steps 1–5 + 6a + 6b):
+
+- **Step 1 — Tree authoring hash.** `Tree.hashes: Vec<u64>`, populated by
+  `Tree::compute_hashes()` from `(LayoutCore, PaintCore, ElementExtras,
+  shapes, GridDef)` per node. Lives in `src/tree/hash.rs`. ✅
+- **Step 2 — `Ui.prev_frame: FxHashMap<WidgetId, NodeSnapshot>`.**
+  Each `NodeSnapshot = { rect, hash }`. Rebuilt at the tail of
+  `Ui::end_frame()` after `compute_hashes`, before damage compute.
+  ✅
+- **Step 3 — `Ui.damage: Damage`.** `Damage { dirty: Vec<NodeId>,
+  rect: Option<Rect>, full_repaint: bool }`. Computed in
+  `Ui::end_frame()` *before* `rebuild_prev_frame` so it reads
+  last-frame snapshots. Lives in `src/ui/damage/`. ✅
+- **Step 4 — `needs_full_repaint(damage, surface)`.** 50%-area
+  threshold via `FULL_REPAINT_THRESHOLD = 0.5`. Sets
+  `Damage.full_repaint`. ✅
+- **Step 5 — Encoder filter.** `encode(...)` and `Pipeline::build(...)`
+  gain `damage_filter: Option<Rect>`. Per-node, skips
+  `DrawRect`/`DrawText` emission when the node's rect doesn't
+  intersect the filter. Always emits `Push/PopClip` and
+  `Push/PopTransform` for group/transform coherence. ✅
+- **Step 6a — Persistent backbuffer.** `WgpuBackend.backbuffer:
+  Option<Backbuffer>`, lazily (re)created on submit when
+  `surface_tex.size()` or `.format()` changes. `submit()` renders to
+  backbuffer, then `copy_texture_to_texture` onto the swapchain.
+  Examples: `usage |= COPY_DST`, pass `&frame.texture`. ✅
+- **Step 6b — Damage scissor + `LoadOp::Load`.** `submit()` now
+  takes `damage: Option<Rect>` (logical px). On `Some`, sets
+  `LoadOp::Load`, converts to physical-px scissor with
+  `DAMAGE_AA_PADDING = 2`, and intersects with every group's
+  scissor (skipping groups that fall outside damage entirely).
+  Forced to `None` on the frame after `ensure_backbuffer` recreates
+  (undefined contents). ✅
+
+What's left:
+
+- **Step 6c — Wire `ui.damage` end-to-end in examples.** Both
+  helloworld and showcase currently pass `None` to both
+  `Pipeline::build` (filter) and `backend.submit` (damage). The
+  flip:
+  ```rust
+  let damage_logical = if ui.damage.full_repaint {
+      None
+  } else {
+      ui.damage.rect
+  };
+  let buffer = pipeline.build(..., damage_logical, &compose_params);
+  backend.submit(&frame.texture, clear, buffer, damage_logical);
+  ```
+  Both `damage_filter` and `damage` need the *same* rect: the
+  encoder culls work, the backend scissors pixels. Disagreement
+  paints outside the scissor (wasted) or skips inside it (gaps).
+  After this lands, hover-over-button on showcase should partial-
+  repaint just the button. ~10 LOC across two examples.
+  Manual visual verification required.
+- **Step 7 — Conservative cascade for transforms.** When a node's
+  `ElementExtras.transform` differs from prev, mark its entire
+  subtree dirty (their screen-space rects move under the new
+  transform even though their authoring hashes are unchanged).
+  Simplest first cut: detect transform diff at the top of
+  `Damage::compute`'s per-node loop; if found, walk
+  `subtree_end[i]` and mark every descendant. Or escalate to
+  `full_repaint = true` for an MVP. ~30 LOC.
+
+Decisions made along the way (preserved here so they survive a
+session reboot):
+
+- **Damage lives on `Ui`, not `LayoutEngine`.** Layout's job is
+  "constraints → rects"; damage is "diff against history." Same
+  lifecycle as `Cascades` (rebuilt at end_frame), same readers
+  (encoder), no cross-frame state in layout.
+- **Hash is computed in a single batch pass** (`Tree::compute_hashes`)
+  rather than incrementally during `push_node`/`add_shape`. Cleaner,
+  decoupled from recorder hot path; ~10 µs for 100 nodes is dwarfed
+  by layout/encode/submit.
+- **`needs_full_repaint` is a separate function**, called by
+  `Damage::compute` to set the `full_repaint` bool. Both the helper
+  and the field are reachable from production.
+- **`Ui.surface: Rect`** is stored from the last `layout()` call.
+  Used by damage heuristic; future Step 6 backbuffer-resize
+  detection could also read it (currently it reads from the wgpu
+  texture instead).
+- **No runtime "damage on/off" knob** in the library. The host
+  passes `None` if it wants to disable filtering. Backbuffer cost
+  is structural — accepted (~8 MB per surface).
+- **`copy_texture_to_texture`, not a blit pipeline.** Backbuffer
+  matches surface format and size, so direct GPU memory copy works.
+  Adds ~0.2 ms per frame on desktop GPUs.
+- **`DAMAGE_AA_PADDING = 2`** physical px. SDF AA on rounded rects
+  bleeds ~1 px outside the rect; glyph descenders/italics bleed a
+  few px. 2 px is conservative without being wasteful.
+
+Acceptance bar for shipping the whole thing (Step 6c done +
+Step 7 done):
+
+- Idle showcase: zero frames per second (Stage 1 already covers
+  this; Stage 3 must not regress).
+- Hover-over-button on showcase: damage rect ≈ button rect, NOT
+  full surface. Visually: surrounding area unchanged across
+  hover-edge frames (no flicker).
+- Click-tab transition: damage = top-toolbar union + center-panel
+  swap. Two regions unioned; partial repaint or full-repaint
+  fallback both acceptable depending on size.
+- Window resize: forced full repaint (backbuffer recreated), no
+  artifacts.
+- Animated transform on a parent: every frame is full-repaint OR
+  every descendant in damage (Step 7's call).
+
 ## Implementation steps
 
 Each step is independently shippable and testable:

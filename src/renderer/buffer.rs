@@ -59,6 +59,29 @@ pub struct ScissorRect {
     pub h: u32,
 }
 
+impl ScissorRect {
+    /// Axis-aligned intersection. Returns `None` when the inputs don't
+    /// overlap (either dimension would go to zero). Used by the
+    /// damage-rendering backend to combine the per-frame damage scissor
+    /// with each group's existing clip scissor.
+    pub fn intersect(self, other: ScissorRect) -> Option<ScissorRect> {
+        let x0 = self.x.max(other.x);
+        let y0 = self.y.max(other.y);
+        let x1 = (self.x + self.w).min(other.x + other.w);
+        let y1 = (self.y + self.h).min(other.y + other.h);
+        if x1 > x0 && y1 > y0 {
+            Some(ScissorRect {
+                x: x0,
+                y: y0,
+                w: x1 - x0,
+                h: y1 - y0,
+            })
+        } else {
+            None
+        }
+    }
+}
+
 /// One shaped text run placed in physical-px space. The buffer it references
 /// is resolved by the backend at submit time using [`TextCacheKey`] against
 /// the active `TextMeasure`.
