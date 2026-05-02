@@ -1,4 +1,4 @@
-use crate::primitives::{Color, Corners, Stroke, approx_zero};
+use crate::primitives::{Align, Color, Corners, Stroke, approx_zero};
 use glam::Vec2;
 
 #[derive(Clone, Debug)]
@@ -21,12 +21,18 @@ pub enum Shape {
     /// shaped-buffer key are layout outputs and live on
     /// `LayoutResult.text_shapes`, not here. `wrap` selects between "shape
     /// once and freeze" (`Single`) and "reshape if the parent commits a
-    /// narrower width than the natural unbroken line" (`Wrap`).
+    /// narrower width than the natural unbroken line" (`Wrap`). `align`
+    /// positions the glyph bbox inside the owner leaf's arranged rect —
+    /// the encoder reads it together with `text_shapes[id].measured` to
+    /// shift the emitted `DrawText` rect. `HAlign::Auto`/`Stretch` and
+    /// `VAlign::Auto`/`Stretch` collapse to top-left for text (glyphs
+    /// don't stretch).
     Text {
         text: String,
         color: Color,
         font_size_px: f32,
         wrap: TextWrap,
+        align: Align,
     },
 }
 
