@@ -37,15 +37,14 @@ pub(super) fn measure(
     let mut count = 0usize;
     let mut total_weight = 0.0f32;
     let mut sum_non_fill_main = 0.0f32;
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
-        // Collapsed children still get measured (so `desired` is set to ZERO),
-        // but don't contribute to the parent's content size or gap count.
-        let collapsed = tree.is_collapsed(c);
-        let d = layout.measure(tree, c, child_avail, text);
-        if collapsed {
+    // Skip collapsed children outright: `LayoutEngine.desired` is reset to
+    // `Size::ZERO` for every node at the top of `run`, so a collapsed
+    // child's `desired` is already correct without a measure call.
+    for c in tree.children(node) {
+        if tree.is_collapsed(c) {
             continue;
         }
+        let d = layout.measure(tree, c, child_avail, text);
         let l = tree.layout(c);
         if let Sizing::Fill(w) = axis.main_sizing(l.size) {
             assert!(w > 0.0, "Sizing::Fill weight must be positive");
@@ -93,8 +92,7 @@ pub(super) fn measure(
         // across all live children.
         total_main = sum_non_fill_main;
         max_cross = 0.0;
-        let mut kids = tree.child_cursor(node);
-        while let Some(c) = kids.next(tree) {
+        for c in tree.children(node) {
             if tree.is_collapsed(c) {
                 continue;
             }
