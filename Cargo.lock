@@ -1501,6 +1501,7 @@ dependencies = [
  "glam",
  "glyphon",
  "pollster",
+ "rustc-hash 1.1.0",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",

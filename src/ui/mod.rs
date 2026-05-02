@@ -9,7 +9,7 @@ use crate::primitives::{Rect, WidgetId};
 use crate::shape::Shape;
 use crate::text::{MeasureResult, SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].
@@ -29,7 +29,7 @@ pub struct Ui {
     /// repeat insertion in `Ui::node` is a release-`assert!` panic, not a
     /// warning, because duplicate ids silently corrupt every per-id store
     /// (focus, scroll, click capture, hit-test rect lookup).
-    seen_ids: HashSet<WidgetId>,
+    seen_ids: FxHashSet<WidgetId>,
 
     input: InputState,
     /// Persistent layout engine: holds reusable scratch buffers across frames.
@@ -62,7 +62,7 @@ impl Ui {
             theme: ButtonTheme::default(),
             parents: Vec::new(),
             root: None,
-            seen_ids: HashSet::new(),
+            seen_ids: FxHashSet::default(),
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
             cascades: Cascades::new(),
