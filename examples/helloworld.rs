@@ -250,6 +250,7 @@ impl State {
             self.ui.layout_result(),
             self.ui.cascades(),
             self.ui.theme.disabled_dim,
+            None,
             &ComposeParams {
                 viewport_logical: [w_logical, h_logical],
                 scale,

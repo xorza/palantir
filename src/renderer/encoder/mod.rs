@@ -48,16 +48,33 @@ pub enum RenderCmd {
 /// function over `(&Tree, &LayoutResult, &Cascades)`, so the same call works
 /// in unit tests with no device. Reads invisibility cascade from `Cascades`
 /// so encoder and hit-index can't drift.
+///
+/// `damage_filter` enables Step 5 of the damage-rendering plan: when
+/// `Some(rect)`, leaf paint commands (`DrawRect`/`DrawText`) are skipped
+/// for nodes whose arranged rect doesn't intersect the filter. Clip and
+/// transform push/pop pairs are *always* emitted so descendant scissor
+/// state and group boundaries (composer text↔quad split) stay correct.
+/// `None` paints everything — used for the first frame, full-repaint
+/// fallback, and existing tests.
 pub fn encode(
     tree: &Tree,
     layout: &LayoutResult,
     cascades: &Cascades,
     disabled_dim: f32,
+    damage_filter: Option<Rect>,
     out: &mut Vec<RenderCmd>,
 ) {
     out.clear();
     if let Some(root) = tree.root() {
-        encode_node(tree, layout, cascades, disabled_dim, root, out);
+        encode_node(
+            tree,
+            layout,
+            cascades,
+            disabled_dim,
+            damage_filter,
+            root,
+            out,
+        );
     }
 }
 
@@ -66,6 +83,7 @@ fn encode_node(
     layout: &LayoutResult,
     cascades: &Cascades,
     disabled_dim: f32,
+    damage_filter: Option<Rect>,
     id: NodeId,
     out: &mut Vec<RenderCmd>,
 ) {
@@ -92,50 +110,59 @@ fn encode_node(
         out.push(RenderCmd::PushClip(rect));
     }
 
-    for shape in tree.shapes_of(id) {
-        match shape {
-            Shape::RoundedRect {
-                radius,
-                fill,
-                stroke,
-            } => {
-                out.push(RenderCmd::DrawRect {
-                    rect,
-                    radius: *radius,
-                    fill: fill.dim_rgb(rgb_mul),
-                    stroke: stroke.map(|s| Stroke {
-                        width: s.width,
-                        color: s.color.dim_rgb(rgb_mul),
-                    }),
-                });
-            }
-            Shape::Text { color, align, .. } => {
-                // Shaping happened in measure; the resulting buffer key is
-                // on `LayoutResult.text_shapes`. Missing entry means no
-                // shaper was installed (mono fallback) or the run was empty
-                // — drop in either case.
-                let Some(shaped) = layout.text_shape(id) else {
-                    continue;
-                };
-                if shaped.key.is_invalid() {
-                    tracing::trace!(?shape, "encoder: dropping text with invalid key");
-                    continue;
+    // Damage filter: skip leaf shape emission when this node's rect
+    // doesn't intersect the dirty region. Push/PopClip and
+    // Push/PopTransform are still emitted (above and below) so scissor
+    // groups and child transforms stay coherent. `None` filter ⇒ paint
+    // everything.
+    let paints = damage_filter.is_none_or(|d| rect.intersects(d));
+
+    if paints {
+        for shape in tree.shapes_of(id) {
+            match shape {
+                Shape::RoundedRect {
+                    radius,
+                    fill,
+                    stroke,
+                } => {
+                    out.push(RenderCmd::DrawRect {
+                        rect,
+                        radius: *radius,
+                        fill: fill.dim_rgb(rgb_mul),
+                        stroke: stroke.map(|s| Stroke {
+                            width: s.width,
+                            color: s.color.dim_rgb(rgb_mul),
+                        }),
+                    });
                 }
-                // `layout.rect(id)` is padding-inclusive (the rendered
-                // rect that DrawRect paints). Text aligns within the
-                // padding-deflated content area so e.g. `Button.padding(8)`
-                // insets the label visually.
-                let inner = rect.deflated_by(tree.layout(id).padding);
-                out.push(RenderCmd::DrawText {
-                    rect: align_text_in(inner, shaped.measured, *align),
-                    color: color.dim_rgb(rgb_mul),
-                    key: shaped.key,
-                });
-            }
-            // No backend support for these yet — drop with a trace so they're
-            // not silently invisible.
-            Shape::Line { .. } => {
-                tracing::trace!(?shape, "encoder: dropping unsupported shape");
+                Shape::Text { color, align, .. } => {
+                    // Shaping happened in measure; the resulting buffer key is
+                    // on `LayoutResult.text_shapes`. Missing entry means no
+                    // shaper was installed (mono fallback) or the run was empty
+                    // — drop in either case.
+                    let Some(shaped) = layout.text_shape(id) else {
+                        continue;
+                    };
+                    if shaped.key.is_invalid() {
+                        tracing::trace!(?shape, "encoder: dropping text with invalid key");
+                        continue;
+                    }
+                    // `layout.rect(id)` is padding-inclusive (the rendered
+                    // rect that DrawRect paints). Text aligns within the
+                    // padding-deflated content area so e.g. `Button.padding(8)`
+                    // insets the label visually.
+                    let inner = rect.deflated_by(tree.layout(id).padding);
+                    out.push(RenderCmd::DrawText {
+                        rect: align_text_in(inner, shaped.measured, *align),
+                        color: color.dim_rgb(rgb_mul),
+                        key: shaped.key,
+                    });
+                }
+                // No backend support for these yet — drop with a trace so they're
+                // not silently invisible.
+                Shape::Line { .. } => {
+                    tracing::trace!(?shape, "encoder: dropping unsupported shape");
+                }
             }
         }
     }
@@ -152,7 +179,15 @@ fn encode_node(
     }
 
     for child in tree.children(id) {
-        encode_node(tree, layout, cascades, disabled_dim, child, out);
+        encode_node(
+            tree,
+            layout,
+            cascades,
+            disabled_dim,
+            damage_filter,
+            child,
+            out,
+        );
     }
 
     if transform.is_some() {
