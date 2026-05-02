@@ -4,16 +4,12 @@
 //! Hug-grid columns (Step B path) and Fill stack children (Step C path),
 //! grid spans, alignment, justify, padding/margin, and Canvas position.
 //!
-//! Two scenarios per scale:
-//! - `layout_only` — record once, then call `ui.layout(surface)` in a
-//!   tight loop. Pure layout cost post-warmup.
-//! - `full_frame` — `begin_frame` + record + `layout` + `end_frame` per
-//!   iter. Includes recording cost.
+//! Records the tree once, then benches `end_frame()` in a tight loop —
+//! recording cost is intentionally out of the numbers so the
+//! measure/arrange/cascade/damage/encode passes show up directly.
 //!
 //! `Ui::new()` leaves the cosmic shaper unset, so text measurement runs
-//! through the mono fallback. That's the right choice for a *layout*
-//! bench: keeps shaping cost out of the numbers so changes to the
-//! measure/arrange algorithm show up directly.
+//! through the mono fallback.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::{Align, Button, Configure, Frame, Grid, Justify, Panel, Sizing, Text, Track, Ui};
@@ -224,50 +220,23 @@ fn bench_layout(c: &mut Criterion) {
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 1.0);
     let mut group = c.benchmark_group("layout");
 
-    // Print node counts so the per-bench numbers are interpretable.
     for &scale in &[1usize, 4, 16] {
         let mut ui = Ui::new();
         ui.begin_frame(display);
         build_ui(&mut ui, scale);
         eprintln!("scale={scale}  nodes={}", ui.tree().node_count());
-    }
 
-    for &scale in &[1usize, 4, 16] {
-        // Pure layout: pre-record once, then bench just `ui.layout`.
-        // Steady-state — capacities are warm by the second call.
-        group.bench_with_input(
-            BenchmarkId::new("layout_only", scale),
-            &scale,
-            |b, &scale| {
-                let mut ui = Ui::new();
-                ui.begin_frame(display);
-                build_ui(&mut ui, scale);
-                for _ in 0..3 {
-                    ui.layout();
-                }
-                b.iter(|| ui.layout());
-            },
-        );
+        // Warm up scratch capacities and damage snapshot so the iter
+        // loop measures steady-state.
+        for _ in 0..3 {
+            ui.end_frame();
+        }
 
-        // Full frame: begin_frame + record + end_frame.
-        // Includes recording cost; closer to "cost per real frame."
-        group.bench_with_input(
-            BenchmarkId::new("full_frame", scale),
-            &scale,
-            |b, &scale| {
-                let mut ui = Ui::new();
-                for _ in 0..3 {
-                    ui.begin_frame(display);
-                    build_ui(&mut ui, scale);
-                    ui.end_frame();
-                }
-                b.iter(|| {
-                    ui.begin_frame(black_box(display));
-                    build_ui(&mut ui, scale);
-                    ui.end_frame();
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("end_frame", scale), &scale, |b, _| {
+            b.iter(|| {
+                black_box(ui.end_frame());
+            });
+        });
     }
 
     group.finish();
