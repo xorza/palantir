@@ -5,6 +5,7 @@ use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use grid::GridContext;
 use support::{resolve_axis_size, zero_subtree};
+use wrapstack::WrapScratch;
 
 mod axis;
 mod canvas;
@@ -45,6 +46,7 @@ pub use result::{LayoutResult, ShapedText};
 #[derive(Default)]
 pub struct LayoutEngine {
     pub(in crate::layout) grid: GridContext,
+    pub(in crate::layout) wrap: WrapScratch,
     pub(in crate::layout) desired: Vec<Size>,
     intrinsics: Vec<[f32; 4]>,
     pub(in crate::layout) result: LayoutResult,

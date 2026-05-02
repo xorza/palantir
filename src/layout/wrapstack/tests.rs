@@ -309,7 +309,10 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
     let tall = ui.rect(kids[0]);
     let filler = ui.rect(kids[1]);
     assert_eq!(tall.size.h, 60.0);
-    assert_eq!(filler.size.h, 60.0, "Fill-on-cross child stretches to row height");
+    assert_eq!(
+        filler.size.h, 60.0,
+        "Fill-on-cross child stretches to row height"
+    );
 }
 
 /// Pin: a collapsed child mid-pack contributes nothing — neither main
@@ -384,4 +387,46 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
         "Fill main treated as Hug today; got w={}",
         r.size.w
     );
+}
+
+/// Pin: nested WrapStacks don't trample each other's per-line
+/// scratch buffer. `LayoutEngine.wrap` is depth-stacked so the inner
+/// arrange takes a different slot than the outer.
+#[test]
+fn nested_wrap_hstacks_do_not_trample_scratch() {
+    let mut ui = Ui::new();
+    let mut inner_a = None;
+    let mut inner_b = None;
+    let mut outer_b = None;
+    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 600.0, 400.0), |ui| {
+        Panel::wrap_hstack_with_id("outer")
+            .size((Sizing::Fixed(500.0), Sizing::Hug))
+            .gap(10.0)
+            .line_gap(10.0)
+            .show(ui, |ui| {
+                // First outer-row child: an inner WrapHStack with two
+                // cells.
+                Panel::wrap_hstack_with_id("inner-card")
+                    .size((Sizing::Fixed(120.0), Sizing::Hug))
+                    .gap(5.0)
+                    .show(ui, |ui| {
+                        inner_a = Some(cell(ui, "ia", 50.0, 20.0));
+                        inner_b = Some(cell(ui, "ib", 50.0, 20.0));
+                    });
+                outer_b = Some(cell(ui, "ob", 100.0, 20.0));
+            })
+            .node
+    });
+    let ia = ui.rect(inner_a.unwrap());
+    let ib = ui.rect(inner_b.unwrap());
+    let ob = ui.rect(outer_b.unwrap());
+    // Inner card lays out two cells side by side: ia at 0, ib at 55.
+    assert_eq!(ia.min.x, 0.0);
+    assert_eq!(ib.min.x, 55.0);
+    assert_eq!(ia.min.y, ib.min.y, "inner cells share a row");
+    // Outer's second child is the cell `ob` placed after the inner
+    // card — outer hasn't lost track of "we have one child so far"
+    // due to the inner's scratch use.
+    let inner_card_w = 120.0;
+    assert_eq!(ob.min.x, inner_card_w + 10.0); // outer gap=10
 }
