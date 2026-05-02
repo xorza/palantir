@@ -49,6 +49,18 @@ impl Rect {
         }
     }
 
+    /// True if `self` and `other` overlap on both axes (strict — touching
+    /// edges don't count). Used by the encoder's damage-rect filter to
+    /// decide whether a node's paint commands can be skipped.
+    pub const fn intersects(&self, other: Self) -> bool {
+        let a_max = self.max();
+        let b_max = other.max();
+        self.min.x < b_max.x
+            && other.min.x < a_max.x
+            && self.min.y < b_max.y
+            && other.min.y < a_max.y
+    }
+
     /// Axis-aligned intersection. Returns a zero-size rect if the inputs
     /// don't overlap (either dimension goes negative).
     pub const fn intersect(&self, other: Self) -> Self {
