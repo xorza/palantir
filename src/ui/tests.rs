@@ -51,10 +51,7 @@ fn empty_ui_drives_a_frame_without_panicking() {
     assert!(ui.damage.prev.is_empty());
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage.rect.is_none());
-    assert!(
-        ui.damage_filter(Rect::new(0.0, 0.0, 200.0, 200.0))
-            .is_none()
-    );
+    assert!(ui.damage_filter().is_none());
     // Repaint gate clears even on empty frames so an idle empty host
     // doesn't burn cycles.
     assert!(!ui.should_repaint());
@@ -76,12 +73,11 @@ fn empty_then_populated_frame() {
 
 /// Pin: the full CPU render pipeline (encode + compose) survives an
 /// empty UI. Backend `submit` is GPU-bound and not exercised here,
-/// but every CPU stage between `Ui::end_frame` and the GPU must be
-/// safe on empty input.
+/// but every CPU stage `end_frame` runs (cascade, damage, painter)
+/// must be safe on empty input.
 #[test]
 fn empty_ui_runs_through_pipeline() {
     use crate::primitives::Display;
-    use crate::renderer::Pipeline;
     use glam::UVec2;
     let mut ui = Ui::new();
     ui.set_display(Display::from_physical(UVec2::new(200, 200), 1.0));
@@ -89,18 +85,10 @@ fn empty_ui_runs_through_pipeline() {
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
     ui.end_frame();
 
-    let mut pipeline = Pipeline::new();
-    let buffer = pipeline.build(
-        ui.tree(),
-        ui.layout_result(),
-        ui.cascades(),
-        ui.theme.disabled_dim,
-        ui.damage_filter(Rect::new(0.0, 0.0, 200.0, 200.0)),
-        &ui.display(),
-    );
-    assert!(buffer.quads.is_empty());
-    assert!(buffer.texts.is_empty());
-    assert!(buffer.groups.is_empty());
+    let frame = ui.frame();
+    assert!(frame.buffer.quads.is_empty());
+    assert!(frame.buffer.texts.is_empty());
+    assert!(frame.buffer.groups.is_empty());
 }
 
 /// Pin: a successful `end_frame()` clears the gate. After one frame

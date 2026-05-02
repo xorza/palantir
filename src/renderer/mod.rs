@@ -3,9 +3,9 @@
 //! 1. [`encode`] — `&Tree` → `Vec<RenderCmd>` (logical-px). Pure free fn.
 //! 2. [`Composer`] — `&[RenderCmd]` → `RenderBuffer` (physical-px quads +
 //!    scissor groups). Owns the output + scratch; no GPU handles.
-//! 3. [`Pipeline`] — composition of (1) + (2). Typical app entry point: holds
-//!    a `Composer` and the encoded `RenderCmd` vec, calls `build(tree, …)`
-//!    each frame.
+//! 3. [`Painter`] — composition of (1) + (2). Owned by [`Ui`] so
+//!    `Ui::end_frame` produces the painted buffer in one call; consumers
+//!    pull it via `Ui::frame()`.
 //! 4. [`WgpuBackend::submit`] — `&RenderBuffer` → wgpu draws. The only stage
 //!    that touches a device/queue.
 //!
@@ -14,18 +14,20 @@
 //! and walk `RenderCmd`s itself, since pixel snap and scissor rects don't
 //! apply.
 //!
-//! All allocations are owned by `Pipeline` so steady-state rendering is
-//! alloc-free.
+//! All per-frame allocations are owned by `Painter` so steady-state
+//! rendering is alloc-free.
+//!
+//! [`Ui`]: crate::ui::Ui
 mod backend;
 mod buffer;
 mod composer;
 mod encoder;
-mod pipeline;
+mod painter;
 mod quad;
 
 pub use backend::WgpuBackend;
 pub use buffer::{DrawGroup, RenderBuffer};
 pub use composer::Composer;
 pub use encoder::{RenderCmd, encode};
-pub use pipeline::Pipeline;
+pub use painter::{FrameOutput, Painter};
 pub use quad::{Quad, QuadPipeline};

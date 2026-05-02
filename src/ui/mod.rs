@@ -9,6 +9,7 @@ use crate::element::Element;
 use crate::input::{InputEvent, InputState, PointerState, ResponseState};
 use crate::layout::{LayoutEngine, LayoutResult};
 use crate::primitives::{Display, Rect, WidgetId};
+use crate::renderer::{FrameOutput, Painter};
 use crate::shape::Shape;
 use crate::text::{MeasureResult, SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
@@ -47,6 +48,12 @@ pub struct Ui {
     /// repaint-requested gate in sync.
     pub(crate) display: Display,
 
+    /// Surface rect from the last [`Ui::layout`] call. Stashed so
+    /// `end_frame` and `damage_filter` don't need it as a parameter
+    /// — the host already passed it to `layout`. `Rect::ZERO` until
+    /// the first `layout` runs.
+    surface: Rect,
+
     /// Text shaping & measurement, with the `CosmicMeasure` / mono dispatch
     /// hidden inside. Install a real shaper with [`Ui::install_text_system`]
     /// to get shaping + rendering; otherwise runs use the mono placeholder.
@@ -68,6 +75,11 @@ pub struct Ui {
     /// partial-vs-full repaint decision is made lazily by
     /// `Damage::filter(surface)` at submit time.
     pub(crate) damage: Damage,
+
+    /// Encode + compose stage. Owns the `RenderCmd` vec, composer
+    /// scratch, and `RenderBuffer`. Run by `end_frame()` after
+    /// damage is computed; output read via [`Ui::frame`].
+    painter: Painter,
 }
 
 impl Default for Ui {
@@ -87,11 +99,13 @@ impl Ui {
             layout_engine: LayoutEngine::new(),
             cascades: Cascades::new(),
             display: Display::default(),
+            surface: Rect::ZERO,
             text: TextMeasurer::new(),
             // First frame must render so the host has something to
             // present. Subsequent idle frames flip back to `false`.
             repaint_requested: true,
             damage: Damage::default(),
+            painter: Painter::new(),
         }
     }
 
@@ -155,39 +169,31 @@ impl Ui {
     ///
     /// Empty trees (no widget pushed this frame) are a legitimate state
     /// for hosts that conditionally render UI; this method is a no-op
-    /// in that case beyond stamping `surface` so subsequent passes see
-    /// the right canvas size.
+    /// in that case.
     pub fn layout(&mut self, surface: Rect) {
+        self.surface = surface;
         if let Some(root) = self.tree.root() {
             self.layout_engine
                 .run(&self.tree, root, surface, &mut self.text);
         }
     }
 
-    /// Damage rect for the just-finished frame, in logical pixels —
-    /// the value the host should pass to both `Pipeline::build`
-    /// (encoder filter) and `WgpuBackend::submit` (LoadOp + scissor).
-    /// Pass the *same* value to both: the encoder culls per-node
-    /// paint commands, the backend scissors GPU pixels; disagreement
-    /// either wastes work or leaves gaps.
-    ///
-    /// `surface` is the rect the host arranged the UI into this
-    /// frame (same rect passed to [`Ui::layout`]). Forwards to
-    /// [`Damage::filter`], which makes the partial-vs-full-repaint
-    /// decision lazily so `Ui` doesn't have to cache it.
-    pub fn damage_filter(&self, surface: Rect) -> Option<Rect> {
-        self.damage.filter(surface)
+    /// Damage rect for the just-finished frame, in logical pixels.
+    /// `Some(rect)` → small change, partial repaint.
+    /// `None` → full repaint (first frame, post-resize, no diff, or
+    /// damage area exceeds the 50% threshold).
+    pub fn damage_filter(&self) -> Option<Rect> {
+        self.damage.filter(self.surface)
     }
 
-    /// Rebuild the per-frame cascade table and input's last-frame rect cache
-    /// from the just-arranged tree. Call after `layout`. Clears the
-    /// repaint-requested gate so the next [`Ui::should_repaint`] returns
-    /// `false` until something new happens (input, animation tick,
-    /// explicit `request_repaint`).
+    /// Finalize the just-recorded frame: rebuild cascades, hit-index,
+    /// hashes; compute damage; encode + compose into the painter's
+    /// `RenderBuffer`. After this, [`Ui::frame`] returns the buffer
+    /// + damage rect ready to submit to a backend.
     ///
-    /// Computes per-node authoring hashes (`Tree.hashes`), then runs
-    /// the damage diff which also rolls `prev_frame` forward to this
-    /// frame's snapshot in the same pass.
+    /// Clears the repaint gate so the next [`Ui::should_repaint`]
+    /// returns `false` until something new happens (input, animation
+    /// tick, explicit `request_repaint`).
     pub fn end_frame(&mut self) {
         self.cascades
             .rebuild(&self.tree, self.layout_engine.result());
@@ -195,7 +201,26 @@ impl Ui {
         self.tree.compute_hashes();
         self.damage
             .compute(&self.tree, &self.cascades, &self.seen_ids);
+        let damage = self.damage.filter(self.surface);
+        self.painter.build(
+            &self.tree,
+            self.layout_engine.result(),
+            &self.cascades,
+            self.theme.disabled_dim,
+            damage,
+            &self.display,
+        );
         self.repaint_requested = false;
+    }
+
+    /// Painted output for the just-finished frame. Pass to
+    /// `WgpuBackend::submit` (or any other backend that consumes
+    /// `&RenderBuffer`).
+    pub fn frame(&self) -> FrameOutput<'_> {
+        FrameOutput {
+            buffer: self.painter.buffer(),
+            damage: self.damage_filter(),
+        }
     }
 
     /// Borrow the per-frame cascade table. Pass to the renderer pipeline
