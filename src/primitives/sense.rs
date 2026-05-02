@@ -12,7 +12,7 @@
 /// `Hover` is for widgets that want hover state (tooltips, cursor changes,
 /// row highlights) without capturing clicks meant for things below.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Sense {
     #[default]
     None,
