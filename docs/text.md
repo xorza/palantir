@@ -130,24 +130,6 @@ that lands:
 - Selection rendering: emit per-selection `RoundedRect` shapes as siblings
   of the `Shape::Text`.
 
-### Latent: Option B — intrinsic-dimensions protocol
-
-Option A's known gaps:
-- `Grid Auto` column wrapping a paragraph: column width is committed during
-  measure, before shape_text reads `available_w` → wrong column width.
-- `Fill` distribution that wants min-content as the floor: we use
-  max-content, slightly over-allocates.
-
-Trigger to revisit B is the first widget that hits one. Sketch:
-
-1. Bottom-up `intrinsic(node, axis) -> (min, max)` pre-pass.
-2. Top-down resolve: parents pick widths for `Fill`/`Auto` children using
-   the ranges as bounds.
-3. Existing measure + arrange (now with the resolved final widths).
-
-`TextWrap` and the cosmic cache key carry forward unchanged — A is a strict
-subset of B's behavior in the cases A handles.
-
 ## Open questions
 
 - **Color space.** Glyphon outputs sRGB; the wgpu surface format is
