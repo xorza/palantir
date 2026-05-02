@@ -59,6 +59,12 @@ pub struct Ui {
     scale_factor: f32,
     pixel_snap: bool,
 
+    /// Surface rect from the most recent [`Ui::layout`] call. The
+    /// renderer pipeline, damage heuristic, and any future backbuffer
+    /// resize logic read this to know the canvas size in logical
+    /// pixels. `Rect::ZERO` until the first `layout()`.
+    surface: Rect,
+
     /// Text shaping & measurement, with the `CosmicMeasure` / mono dispatch
     /// hidden inside. Install a real shaper with [`Ui::install_text_system`]
     /// to get shaping + rendering; otherwise runs use the mono placeholder.
@@ -108,6 +114,7 @@ impl Ui {
             cascades: Cascades::new(),
             scale_factor: 1.0,
             pixel_snap: true,
+            surface: Rect::ZERO,
             text: TextMeasurer::new(),
             // First frame must render so the host has something to
             // present. Subsequent idle frames flip back to `false`.
@@ -174,8 +181,15 @@ impl Ui {
     /// in `LayoutEngine`.
     pub fn layout(&mut self, surface: Rect) {
         let root = self.root();
+        self.surface = surface;
         self.layout_engine
             .run(&self.tree, root, surface, &mut self.text);
+    }
+
+    /// Surface rect from the most recent [`Ui::layout`] call, in
+    /// logical pixels. `Rect::ZERO` before the first `layout()`.
+    pub fn surface(&self) -> Rect {
+        self.surface
     }
 
     /// Rebuild the per-frame cascade table and input's last-frame rect cache
@@ -200,6 +214,7 @@ impl Ui {
             self.layout_engine.result(),
             &self.prev_frame,
             &self.seen_ids,
+            self.surface,
         );
         self.rebuild_prev_frame();
         self.repaint_requested = false;

@@ -1,3 +1,4 @@
+use super::{Damage, needs_full_repaint};
 use crate::Ui;
 use crate::element::Configure;
 use crate::primitives::{Color, Rect, Sizing, WidgetId};
@@ -169,5 +170,91 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .map(|n| ui.tree().widget_ids()[n.index()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
+    assert!(ui.damage.rect.is_some());
+}
+
+// --- needs_full_repaint --------------------------------------------------
+
+#[test]
+fn no_damage_means_no_full_repaint() {
+    let d = Damage::default();
+    assert!(!needs_full_repaint(&d, Rect::new(0.0, 0.0, 100.0, 100.0)));
+}
+
+fn damage_with(r: Rect) -> Damage {
+    Damage {
+        rect: Some(r),
+        ..Damage::default()
+    }
+}
+
+#[test]
+fn small_damage_stays_partial() {
+    // 100 / 10000 = 1% — well below 50%.
+    let d = damage_with(Rect::new(0.0, 0.0, 10.0, 10.0));
+    assert!(!needs_full_repaint(&d, Rect::new(0.0, 0.0, 100.0, 100.0)));
+}
+
+#[test]
+fn large_damage_falls_back_to_full() {
+    // 80x80 = 6400, surface 100x100 = 10000 → 64% > 50%.
+    let d = damage_with(Rect::new(0.0, 0.0, 80.0, 80.0));
+    assert!(needs_full_repaint(&d, Rect::new(0.0, 0.0, 100.0, 100.0)));
+}
+
+#[test]
+fn at_threshold_stays_partial() {
+    // Exactly 50%. The check is `>`, not `>=`, so 50% is partial.
+    let d = damage_with(Rect::new(0.0, 0.0, 50.0, 100.0));
+    assert!(!needs_full_repaint(&d, Rect::new(0.0, 0.0, 100.0, 100.0)));
+}
+
+#[test]
+fn zero_area_surface_forces_full() {
+    let d = damage_with(Rect::new(0.0, 0.0, 1.0, 1.0));
+    assert!(needs_full_repaint(&d, Rect::ZERO));
+}
+
+/// Pin: `Damage::compute` (called by `Ui::end_frame`) sets
+/// `full_repaint` on the first frame — every node is "added,"
+/// damage = full surface, ratio = 1.0 > 0.5.
+#[test]
+fn first_frame_sets_full_repaint() {
+    let mut ui = Ui::new();
+    frame(&mut ui, |ui| {
+        Panel::hstack_with_id("root").show(ui, |ui| {
+            Frame::with_id("a")
+                .size(50.0)
+                .fill(Color::rgb(0.2, 0.4, 0.8))
+                .show(ui);
+        });
+    });
+    assert!(ui.damage.full_repaint);
+}
+
+/// Pin: a small per-frame change (single leaf fill flip) stays in
+/// the partial-repaint regime — `full_repaint` is false even though
+/// the diff is non-empty.
+#[test]
+fn small_change_stays_partial_repaint() {
+    let mut ui = Ui::new();
+    frame(&mut ui, |ui| {
+        Panel::hstack_with_id("root").show(ui, |ui| {
+            Frame::with_id("a")
+                .size(50.0)
+                .fill(Color::rgb(0.2, 0.4, 0.8))
+                .show(ui);
+        });
+    });
+    frame(&mut ui, |ui| {
+        Panel::hstack_with_id("root").show(ui, |ui| {
+            Frame::with_id("a")
+                .size(50.0)
+                .fill(Color::rgb(0.9, 0.4, 0.8))
+                .show(ui);
+        });
+    });
+    // 50x50 = 2500, surface 200x200 = 40000 → 6.25% < 50%.
+    assert!(!ui.damage.full_repaint);
     assert!(ui.damage.rect.is_some());
 }
