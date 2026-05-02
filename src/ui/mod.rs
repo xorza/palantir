@@ -47,6 +47,16 @@ pub struct Ui {
     /// hidden inside. Install a real shaper with [`Ui::install_text_system`]
     /// to get shaping + rendering; otherwise runs use the mono placeholder.
     pub(crate) text: TextMeasurer,
+
+    /// Frame-skipping gate. `true` when something has changed since the
+    /// last successful `end_frame()`; the host calls
+    /// [`Ui::should_repaint`] to decide whether to run the pipeline this
+    /// tick. Set conservatively by [`Ui::on_input`] and
+    /// [`Ui::set_scale_factor`], or explicitly by
+    /// [`Ui::request_repaint`] (animations, async). Cleared at the end
+    /// of `end_frame()` so the next idle check returns `false`.
+    /// Defaults to `true` so the first frame always renders.
+    repaint_requested: bool,
 }
 
 impl Default for Ui {
@@ -69,6 +79,9 @@ impl Ui {
             scale_factor: 1.0,
             pixel_snap: true,
             text: TextMeasurer::new(),
+            // First frame must render so the host has something to
+            // present. Subsequent idle frames flip back to `false`.
+            repaint_requested: true,
         }
     }
 
@@ -98,9 +111,11 @@ impl Ui {
     }
 
     /// Update on `WindowEvent::ScaleFactorChanged` or any DPI change. Clamped to
-    /// a non-zero positive value.
+    /// a non-zero positive value. Schedules a repaint — physical-pixel
+    /// rasterization changes with scale factor.
     pub fn set_scale_factor(&mut self, scale: f32) {
         self.scale_factor = scale.max(f32::EPSILON);
+        self.repaint_requested = true;
     }
 
     /// Whether the renderer snaps rect edges to integer physical pixels.
@@ -132,12 +147,16 @@ impl Ui {
     }
 
     /// Rebuild the per-frame cascade table and input's last-frame rect cache
-    /// from the just-arranged tree. Call after `layout`.
+    /// from the just-arranged tree. Call after `layout`. Clears the
+    /// repaint-requested gate so the next [`Ui::should_repaint`] returns
+    /// `false` until something new happens (input, animation tick,
+    /// explicit `request_repaint`).
     pub fn end_frame(&mut self) {
         self.cascades
             .rebuild(&self.tree, self.layout_engine.result());
         self.input
             .end_frame(&self.tree, self.layout_engine.result(), &self.cascades);
+        self.repaint_requested = false;
     }
 
     /// Borrow the per-frame cascade table. Pass to the renderer pipeline
@@ -154,9 +173,33 @@ impl Ui {
         self.layout_engine.result()
     }
 
-    /// Feed a palantir-native input event. Backend-agnostic.
+    /// Feed a palantir-native input event. Backend-agnostic. Schedules a
+    /// repaint conservatively: every input event sets the repaint gate
+    /// because hover/press indices, hit-test rects, or response state
+    /// may shift even when the event itself looks like a no-op.
+    /// Refining this would require running a hit-test inside `on_input`
+    /// (Stage 3 territory).
     pub fn on_input(&mut self, event: InputEvent) {
         self.input.on_input(event);
+        self.repaint_requested = true;
+    }
+
+    /// True if the UI has changed since the last successful
+    /// `end_frame()`. Hosts gate their `request_redraw()` /
+    /// pipeline-run on this so idle frames cost nothing.
+    ///
+    /// Set by `on_input`, `set_scale_factor`, `request_repaint`,
+    /// initial construction. Cleared by `end_frame()`.
+    pub fn should_repaint(&self) -> bool {
+        self.repaint_requested
+    }
+
+    /// Schedule a repaint on the next host tick. Idempotent and cheap.
+    /// Use for animations, async state landing, theme changes, or any
+    /// state mutation that doesn't flow through `on_input` /
+    /// `set_scale_factor`.
+    pub fn request_repaint(&mut self) {
+        self.repaint_requested = true;
     }
 
     pub fn pointer(&self) -> PointerState {
