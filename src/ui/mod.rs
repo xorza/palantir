@@ -9,7 +9,20 @@ use crate::primitives::{Rect, WidgetId};
 use crate::shape::Shape;
 use crate::text::{MeasureResult, SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+/// Snapshot of one node's per-frame state used by damage-rendering.
+/// Populated at the end of `Ui::end_frame()` and read on the *next*
+/// frame to detect what changed (Stage 3, Step 2 of the damage-rect
+/// plan). Indexed by stable [`WidgetId`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct NodeSnapshot {
+    /// Arranged rect in logical pixels — same value
+    /// `LayoutResult::rect` returned for the node this frame.
+    pub rect: Rect,
+    /// Authoring hash from `Tree.hashes` this frame.
+    pub hash: u64,
+}
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].
@@ -57,6 +70,13 @@ pub struct Ui {
     /// of `end_frame()` so the next idle check returns `false`.
     /// Defaults to `true` so the first frame always renders.
     repaint_requested: bool,
+
+    /// Last frame's per-widget snapshot (rect + authoring hash), keyed
+    /// by stable [`WidgetId`]. Rebuilt at the end of every
+    /// `end_frame()`. Step 3 of the damage-rendering plan reads this
+    /// *before* the rebuild to diff against the just-recorded frame.
+    /// Capacity retained across frames.
+    pub(crate) prev_frame: FxHashMap<WidgetId, NodeSnapshot>,
 }
 
 impl Default for Ui {
@@ -82,6 +102,7 @@ impl Ui {
             // First frame must render so the host has something to
             // present. Subsequent idle frames flip back to `false`.
             repaint_requested: true,
+            prev_frame: FxHashMap::default(),
         }
     }
 
@@ -152,16 +173,40 @@ impl Ui {
     /// `false` until something new happens (input, animation tick,
     /// explicit `request_repaint`).
     ///
-    /// Also computes per-node authoring hashes (`Tree.hashes`) used by
-    /// future damage-rendering steps to detect what changed since last
-    /// frame. Computed but not yet consumed in this stage.
+    /// Also computes per-node authoring hashes (`Tree.hashes`) and
+    /// snapshots `(rect, hash)` per `WidgetId` into `prev_frame` for
+    /// the next frame's damage-rect diff (Stage 3). The snapshot is
+    /// rebuilt *after* hashes are computed and before the repaint
+    /// gate clears.
     pub fn end_frame(&mut self) {
         self.cascades
             .rebuild(&self.tree, self.layout_engine.result());
         self.input
             .end_frame(&self.tree, self.layout_engine.result(), &self.cascades);
         self.tree.compute_hashes();
+        self.rebuild_prev_frame();
         self.repaint_requested = false;
+    }
+
+    /// Repopulate `prev_frame` from the just-finished frame. `clear()`
+    /// keeps the underlying capacity so steady-state frames don't
+    /// allocate. Called at the tail of `end_frame()` — after layout,
+    /// cascades, and `compute_hashes` have all run.
+    fn rebuild_prev_frame(&mut self) {
+        self.prev_frame.clear();
+        let result = self.layout_engine.result();
+        let n = self.tree.node_count();
+        self.prev_frame
+            .reserve(n.saturating_sub(self.prev_frame.len()));
+        for i in 0..n {
+            let id = NodeId(i as u32);
+            let wid = self.tree.widget_ids[i];
+            let snap = NodeSnapshot {
+                rect: result.rect(id),
+                hash: self.tree.hashes[i],
+            };
+            self.prev_frame.insert(wid, snap);
+        }
     }
 
     /// Borrow the per-frame cascade table. Pass to the renderer pipeline

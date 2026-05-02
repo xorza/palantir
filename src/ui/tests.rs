@@ -1,6 +1,7 @@
 use crate::Ui;
-use crate::primitives::Rect;
-use crate::widgets::{Button, Panel};
+use crate::element::Configure;
+use crate::primitives::{Color, Rect, WidgetId};
+use crate::widgets::{Button, Frame, Panel, Styled};
 
 #[test]
 #[should_panic(expected = "WidgetId collision")]
@@ -96,4 +97,113 @@ fn request_repaint_is_idempotent() {
 
     drain_one_frame(&mut ui);
     assert!(!ui.should_repaint());
+}
+
+// --- prev_frame snapshot tests ----------------------------------------------
+// Stage 3 / Step 2 of the damage-rendering plan. `Ui::prev_frame` holds
+// the previous frame's `(rect, authoring-hash)` per `WidgetId`, rebuilt
+// at the tail of `end_frame()`. Tests below pin the contract: empty
+// before any frame, populated after, captures both rect and hash, and
+// drops widgets that disappeared.
+
+#[test]
+fn prev_frame_empty_before_first_end_frame() {
+    let ui = Ui::new();
+    assert!(ui.prev_frame.is_empty());
+}
+
+#[test]
+fn prev_frame_populated_after_end_frame() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    Panel::hstack_with_id("root").show(&mut ui, |ui| {
+        Frame::with_id("a")
+            .size(50.0)
+            .fill(Color::rgb(0.2, 0.4, 0.8))
+            .show(ui);
+    });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+
+    let prev = &ui.prev_frame;
+    let root_id = WidgetId::from_hash("root");
+    let frame_id = WidgetId::from_hash("a");
+    assert!(prev.contains_key(&root_id));
+    assert!(prev.contains_key(&frame_id));
+}
+
+#[test]
+fn prev_frame_captures_arranged_rect() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let frame_node = Frame::with_id("a")
+        .size(50.0)
+        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .show(&mut ui)
+        .node;
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    let arranged = ui.rect(frame_node);
+    ui.end_frame();
+
+    let snap = ui.prev_frame[&WidgetId::from_hash("a")];
+    assert_eq!(snap.rect, arranged);
+}
+
+#[test]
+fn prev_frame_captures_authoring_hash() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    let frame_node = Frame::with_id("a")
+        .size(50.0)
+        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .show(&mut ui)
+        .node;
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+
+    let snap = ui.prev_frame[&WidgetId::from_hash("a")];
+    assert_eq!(snap.hash, ui.tree().node_hash(frame_node));
+}
+
+#[test]
+fn prev_frame_drops_disappeared_widgets() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    Panel::hstack_with_id("root").show(&mut ui, |ui| {
+        Button::with_id("gone").label("X").show(ui);
+    });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+    assert!(ui.prev_frame.contains_key(&WidgetId::from_hash("gone")));
+
+    ui.begin_frame();
+    Panel::hstack_with_id("root").show(&mut ui, |_| {});
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+    assert!(!ui.prev_frame.contains_key(&WidgetId::from_hash("gone")));
+    assert!(ui.prev_frame.contains_key(&WidgetId::from_hash("root")));
+}
+
+#[test]
+fn prev_frame_updates_on_authoring_change() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    Frame::with_id("a")
+        .size(50.0)
+        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .show(&mut ui);
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+    let h1 = ui.prev_frame[&WidgetId::from_hash("a")].hash;
+
+    ui.begin_frame();
+    Frame::with_id("a")
+        .size(50.0)
+        .fill(Color::rgb(0.9, 0.4, 0.8))
+        .show(&mut ui);
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
+    let h2 = ui.prev_frame[&WidgetId::from_hash("a")].hash;
+
+    assert_ne!(h1, h2);
 }
