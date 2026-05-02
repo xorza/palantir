@@ -25,7 +25,6 @@ pub struct Ui {
     pub(crate) tree: Tree,
     pub theme: ButtonTheme,
     parents: Vec<NodeId>,
-    root: Option<NodeId>,
 
     /// Per-frame collision set: every `WidgetId` that has been recorded this
     /// frame. Cleared in `begin_frame`. Used to enforce id uniqueness — a
@@ -83,7 +82,6 @@ impl Ui {
             tree: Tree::new(),
             theme: ButtonTheme::default(),
             parents: Vec::new(),
-            root: None,
             seen_ids: FxHashSet::default(),
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
@@ -146,7 +144,6 @@ impl Ui {
     pub fn begin_frame(&mut self) {
         self.tree.clear();
         self.parents.clear();
-        self.root = None;
         self.seen_ids.clear();
     }
 
@@ -251,10 +248,9 @@ impl Ui {
     /// First node pushed this frame. `None` before any widget is
     /// recorded — empty UI is a legitimate state for hosts that
     /// conditionally render (initial frame, debug toggles, empty
-    /// detail panes). Use [`Tree::root`] for the same answer keyed
-    /// off the tree directly.
+    /// detail panes). Forwards to [`Tree::root`].
     pub fn root(&self) -> Option<NodeId> {
-        self.root
+        self.tree.root()
     }
 
     /// Borrow the recorded tree. Pass to the renderer pipeline or any other
@@ -275,9 +271,6 @@ impl Ui {
             "WidgetId collision — id {id:?} recorded twice this frame. Use `with_id(key)` (or `WidgetId::with`) to disambiguate widgets at the same call site, e.g. inside a loop. Duplicate ids silently corrupt focus, scroll, click capture, and hit-testing.",
         );
         let node = self.tree.push_node(element, parent);
-        if self.root.is_none() {
-            self.root = Some(node);
-        }
         self.parents.push(node);
         f(self);
         self.parents.pop();
