@@ -721,9 +721,8 @@ fn resolve_axis(a: &mut AxisScratch, total: f32, gap: f32) {
     a.flexible.clear();
     let mut flexible_weight = 0.0_f32;
     for (i, t) in a.tracks.iter().enumerate() {
-        if let Sizing::Fill(w) = t.size
-            && w > 0.0
-        {
+        if let Sizing::Fill(w) = t.size {
+            assert!(w > 0.0, "Sizing::Fill weight must be positive");
             a.flexible.push(i);
             flexible_weight += w;
         }
