@@ -17,7 +17,7 @@ use super::GridDef;
 use crate::element::{LayoutCore, LayoutMode, PaintAttrs, PaintCore};
 use crate::primitives::{
     Align, Color, Corners, GridCell, Justify, Sense, Size, Sizes, Sizing, Spacing, Stroke, Track,
-    TranslateScale, Visibility,
+    Visibility,
 };
 use crate::shape::{Shape, TextWrap};
 use glam::Vec2;
@@ -69,12 +69,6 @@ fn hash_corners(h: &mut impl Hasher, c: Corners) {
 fn hash_stroke(h: &mut impl Hasher, s: Stroke) {
     hash_f32(h, s.width);
     hash_color(h, s.color);
-}
-
-#[inline]
-fn hash_translate_scale(h: &mut impl Hasher, t: TranslateScale) {
-    hash_vec2(h, t.translation);
-    hash_f32(h, t.scale);
 }
 
 #[inline]
@@ -174,10 +168,13 @@ fn hash_paint_core(h: &mut impl Hasher, p: PaintCore) {
 }
 
 fn hash_node_extras(h: &mut impl Hasher, e: &crate::element::ElementExtras) {
-    h.write_u8(e.transform.is_some() as u8);
-    if let Some(t) = e.transform {
-        hash_translate_scale(h, t);
-    }
+    // `transform` is intentionally omitted: it doesn't affect this
+    // node's own paint (the encoder draws the node at its layout rect
+    // *before* `PushTransform`; the transform composes into
+    // descendants' screen rects via `Cascades`). A parent transform
+    // change shows up as descendant screen-rect diffs in
+    // `Damage::compute`, which is the right granularity — the parent
+    // itself doesn't need a fresh paint.
     hash_vec2(h, e.position);
     hash_grid_cell(h, e.grid);
     hash_size(h, e.min_size);

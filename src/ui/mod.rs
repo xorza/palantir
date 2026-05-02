@@ -236,6 +236,7 @@ impl Ui {
         self.damage.compute(
             &self.tree,
             self.layout_engine.result(),
+            &self.cascades,
             &self.prev_frame,
             &self.seen_ids,
             self.surface,
@@ -248,17 +249,22 @@ impl Ui {
     /// keeps the underlying capacity so steady-state frames don't
     /// allocate. Called at the tail of `end_frame()` — after layout,
     /// cascades, and `compute_hashes` have all run.
+    ///
+    /// Rects are stored in screen space (post-transform) so next
+    /// frame's diff matches where the GPU actually paints.
     fn rebuild_prev_frame(&mut self) {
         self.prev_frame.clear();
         let result = self.layout_engine.result();
+        let cascade_rows = self.cascades.rows();
         let n = self.tree.node_count();
         self.prev_frame
             .reserve(n.saturating_sub(self.prev_frame.len()));
+        #[allow(clippy::needless_range_loop)]
         for i in 0..n {
             let id = NodeId(i as u32);
             let wid = self.tree.widget_ids[i];
             let snap = NodeSnapshot {
-                rect: result.rect(id),
+                rect: cascade_rows[i].transform.apply_rect(result.rect(id)),
                 hash: self.tree.hashes[i],
             };
             self.prev_frame.insert(wid, snap);

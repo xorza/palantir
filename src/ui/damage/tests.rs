@@ -2,7 +2,7 @@ use super::{Damage, needs_full_repaint};
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::InputEvent;
-use crate::primitives::{Color, Rect, Sizing, WidgetId};
+use crate::primitives::{Color, Rect, Sizing, TranslateScale, WidgetId};
 use crate::widgets::{Button, Frame, Panel, Styled};
 use glam::Vec2;
 
@@ -239,6 +239,104 @@ fn damage_filter_returns_none_when_nothing_dirty() {
     frame(&mut ui, build);
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage_filter().is_none());
+}
+
+// --- transforms ---------------------------------------------------------
+// Damage rects must be in *screen space*. When an ancestor has a
+// transform, the rendered position of a node differs from its layout
+// rect; the damage rect, the prev_frame snapshot, and the encoder/
+// backend scissor all need to track that screen-space position.
+
+/// Pin: when a transformed parent's child changes authoring, the
+/// damage rect covers the child's *screen* rect (post-transform),
+/// not its layout rect. Without this, the backend scissor would
+/// clip the actual paint position and leave the screen unchanged.
+#[test]
+fn child_under_transformed_parent_damage_in_screen_space() {
+    let translate = Vec2::new(100.0, 0.0);
+    let mut ui = Ui::new();
+    let mut child_node = None;
+    let build = |fill: Color, ui: &mut Ui, child: &mut Option<crate::tree::NodeId>| {
+        ui.begin_frame();
+        Panel::hstack_with_id("outer")
+            .transform(TranslateScale::from_translation(translate))
+            .show(ui, |ui| {
+                *child = Some(Frame::with_id("c").size(40.0).fill(fill).show(ui).node);
+            });
+        ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+        ui.end_frame();
+    };
+
+    build(Color::rgb(0.2, 0.4, 0.8), &mut ui, &mut child_node);
+    build(Color::rgb(0.9, 0.4, 0.8), &mut ui, &mut child_node);
+
+    // Layout rect of the child is at the parent's inner origin (0, 0
+    // in this layout). Screen rect after the parent's translate is at
+    // (100, 0) — that's where the GPU actually paints. The damage
+    // rect must cover *that* position, not the layout one.
+    let child_layout_rect = ui.rect(child_node.unwrap());
+    let expected_screen_rect = Rect {
+        min: child_layout_rect.min + translate,
+        size: child_layout_rect.size,
+    };
+    let damage_rect = ui.damage.rect.expect("child changed → some damage");
+    assert!(
+        damage_rect.min.x >= 100.0 - 0.5,
+        "damage min.x must reflect parent translate; got {damage_rect:?}, expected near {expected_screen_rect:?}",
+    );
+    assert_eq!(damage_rect, expected_screen_rect);
+}
+
+/// Pin: animating a parent's transform shifts every child's screen
+/// rect even though the children's authoring is unchanged. The
+/// damage union must cover both prev and curr screen rects so the
+/// backend repaints over the old positions too (otherwise the old
+/// frame's pixels would streak through `LoadOp::Load`).
+#[test]
+fn animated_parent_transform_unions_old_and_new_positions() {
+    let mut ui = Ui::new();
+    let mut child_node = None;
+    let build = |dx: f32, ui: &mut Ui, child: &mut Option<crate::tree::NodeId>| {
+        ui.begin_frame();
+        Panel::hstack_with_id("outer")
+            .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+            .show(ui, |ui| {
+                *child = Some(
+                    Frame::with_id("c")
+                        .size(40.0)
+                        .fill(Color::rgb(0.2, 0.4, 0.8))
+                        .show(ui)
+                        .node,
+                );
+            });
+        ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+        ui.end_frame();
+    };
+
+    build(0.0, &mut ui, &mut child_node);
+    build(50.0, &mut ui, &mut child_node);
+
+    // Child layout rect didn't change. Parent's transform shifted by
+    // (50, 0). Prev screen rect = (0,0,40,40); curr = (50,0,40,40);
+    // damage union = (0,0,90,40).
+    let damage = ui.damage.rect.expect("transform animation → damage");
+    assert_eq!(
+        damage,
+        Rect::new(0.0, 0.0, 90.0, 40.0),
+        "damage must union old (0,0)-(40,40) and new (50,0)-(90,40)",
+    );
+    // Only the child is dirty: its authoring is unchanged but its
+    // screen rect moved (rect comparison catches this). The parent
+    // panel's own paint is unaffected by its own transform — the
+    // transform only composes into descendants — so the parent's
+    // hash and screen rect are both stable, leaving it clean.
+    let dirty_widget_ids: Vec<WidgetId> = ui
+        .damage
+        .dirty
+        .iter()
+        .map(|n| ui.tree().widget_ids()[n.index()])
+        .collect();
+    assert_eq!(dirty_widget_ids, vec![WidgetId::from_hash("c")]);
 }
 
 // --- needs_full_repaint --------------------------------------------------
