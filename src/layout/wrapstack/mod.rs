@@ -15,7 +15,7 @@
 
 use super::support::{AutoBias, place_axis, resolved_axis_align, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
-use crate::primitives::{Justify, Rect, Size};
+use crate::primitives::{Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
@@ -50,7 +50,16 @@ pub(super) fn measure(
     for c in tree.children_active(node) {
         let d = layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
         let m = axis.main(d);
-        let x = axis.cross(d);
+        // CSS flex parity: `Fill` on cross stretches to the row's
+        // cross extent rather than driving it. So the line's cross
+        // height comes from non-Fill children only — a Fill-on-cross
+        // child measured at `cross_avail` would otherwise inflate
+        // `line_cross` to the parent's full cross.
+        let x = if matches!(axis.cross_sizing(tree.layout(c).size), Sizing::Fill(_)) {
+            0.0
+        } else {
+            axis.cross(d)
+        };
 
         // Try to extend the current line. The first child on a line
         // doesn't pay the within-line gap.
@@ -100,22 +109,22 @@ pub(super) fn arrange(
     let parent_child_align = extras.child_align;
     let main_avail = axis.main(inner.size);
 
-    // Same packing logic as `measure`, but this time we hold each line
-    // open long enough to place its children. We re-walk children,
-    // accumulating into a current-line buffer, then flush via
-    // `place_line` on overflow / end-of-children.
-
-    // Per-line scratch held across the children loop; each entry is
-    // `(NodeId, desired_size)` for one child in the current line. Reset
-    // when the line is flushed.
-    let mut line: Vec<(NodeId, Size)> = Vec::new();
+    // Same packing logic as `measure`. Each row needs lookahead — we
+    // can't place a child until we know the row's `line_main` (for
+    // justify) and `line_cross` (for cross-axis place). Buffer node
+    // IDs in `line`, flush on overflow / end-of-children. Sizes come
+    // from `layout.desired` at flush time, so the buffer is just node
+    // IDs (4 B/child) — capacity not retained across calls today; if
+    // a profile shows arrange thrash, lift to engine scratch with a
+    // depth stack à la `GridDepthStack` (nested wraps need it).
+    let mut line: Vec<NodeId> = Vec::new();
     let mut line_main = 0.0f32;
     let mut line_cross = 0.0f32;
     let mut cross_cursor = axis.cross_v(inner.min);
     let mut first_line = true;
 
     let place_line = |layout: &mut LayoutEngine,
-                      line: &mut Vec<(NodeId, Size)>,
+                      line: &mut Vec<NodeId>,
                       line_main: f32,
                       line_cross: f32,
                       cross_cursor: &mut f32,
@@ -143,11 +152,12 @@ pub(super) fn arrange(
             Justify::SpaceBetween | Justify::SpaceAround => (0.0, gap),
         };
         let mut main_cursor = axis.main_v(inner.min) + start_offset;
-        for (idx, (c, d)) in line.iter().enumerate() {
+        for (idx, c) in line.iter().copied().enumerate() {
             if idx > 0 {
                 main_cursor += eff_gap;
             }
-            let s = *tree.layout(*c);
+            let d = layout.desired[c.index()];
+            let s = *tree.layout(c);
             // Cross axis: each child placed within the line's cross
             // extent via `place_axis`. Same rule as Stack cross —
             // Fill stretches to line_cross, Hug aligns per child.
@@ -159,18 +169,18 @@ pub(super) fn arrange(
             let (cross_size, cross_off) = place_axis(
                 cross_align,
                 axis.cross_sizing(s.size),
-                axis.cross(*d),
+                axis.cross(d),
                 line_cross,
                 AutoBias::StretchIfFill,
             );
-            let main_size = axis.main(*d);
+            let main_size = axis.main(d);
             let child_rect = axis.compose_rect(
                 main_cursor,
                 *cross_cursor + cross_off,
                 main_size,
                 cross_size,
             );
-            layout.arrange(tree, *c, child_rect);
+            layout.arrange(tree, c, child_rect);
             main_cursor += main_size;
         }
         *cross_cursor += line_cross;
@@ -181,8 +191,9 @@ pub(super) fn arrange(
     // children pack into the current line and flush on overflow.
     for c in tree.children(node) {
         if tree.is_collapsed(c) {
-            // Place at the line's start anchor — nothing visible, just a
-            // stable anchor inside this layout's inner rect.
+            // Anchor inside this layout's inner rect at the current
+            // cursor. Position is stable; size is zero so there's no
+            // visual or input contribution.
             zero_subtree(
                 layout,
                 tree,
@@ -194,7 +205,15 @@ pub(super) fn arrange(
 
         let d = layout.desired[c.index()];
         let m = axis.main(d);
-        let x = axis.cross(d);
+        // Mirror the measure-side rule: Fill-on-cross children don't
+        // contribute to `line_cross`. Without this the row stretches
+        // to the WrapStack's inner cross (because Fill measured to
+        // `cross_avail`), defeating per-row hug semantics.
+        let x = if matches!(axis.cross_sizing(tree.layout(c).size), Sizing::Fill(_)) {
+            0.0
+        } else {
+            axis.cross(d)
+        };
 
         let candidate = if line_main > 0.0 {
             line_main + gap + m
@@ -210,12 +229,11 @@ pub(super) fn arrange(
                 &mut cross_cursor,
                 &mut first_line,
             );
-            // Start new line with this child.
-            line.push((c, d));
+            line.push(c);
             line_main = m;
             line_cross = x;
         } else {
-            line.push((c, d));
+            line.push(c);
             line_main = candidate;
             line_cross = line_cross.max(x);
         }

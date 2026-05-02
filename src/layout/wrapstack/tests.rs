@@ -229,3 +229,159 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
     // Two lines of 20 + 8 line_gap = 48.
     assert_eq!(r.size.h, 48.0);
 }
+
+/// Pin: `Justify::SpaceBetween` per row distributes leftover as extra
+/// gap between siblings on each line. 200-wide WrapHStack, two 60-wide
+/// children, gap=10 → leftover=70, 1 between-gap, eff_gap = 10+70 = 80.
+#[test]
+fn wrap_hstack_justify_space_between_per_line() {
+    let mut ui = Ui::new();
+    let mut kids = Vec::new();
+    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::wrap_hstack_with_id("w")
+            .size((Sizing::Fixed(200.0), Sizing::Hug))
+            .gap(10.0)
+            .justify(Justify::SpaceBetween)
+            .show(ui, |ui| {
+                kids.push(cell(ui, "a", 60.0, 20.0));
+                kids.push(cell(ui, "b", 60.0, 20.0));
+            })
+            .node
+    });
+    let a = ui.rect(kids[0]);
+    let b = ui.rect(kids[1]);
+    assert_eq!(a.min.x, 0.0);
+    // 200 - 60 = 140 → b at 140, exact end-edge.
+    assert_eq!(b.min.x, 140.0);
+}
+
+/// Pin: `Justify::SpaceAround` per row distributes leftover as half
+/// extra padding at line edges + full between siblings. 200-wide
+/// WrapHStack, two 60-wide, gap=10 → leftover=70, extra/count = 35,
+/// half=17.5 leading, full=35 between → siblings at gap=10+35=45.
+#[test]
+fn wrap_hstack_justify_space_around_per_line() {
+    let mut ui = Ui::new();
+    let mut kids = Vec::new();
+    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::wrap_hstack_with_id("w")
+            .size((Sizing::Fixed(200.0), Sizing::Hug))
+            .gap(10.0)
+            .justify(Justify::SpaceAround)
+            .show(ui, |ui| {
+                kids.push(cell(ui, "a", 60.0, 20.0));
+                kids.push(cell(ui, "b", 60.0, 20.0));
+            })
+            .node
+    });
+    let a = ui.rect(kids[0]);
+    let b = ui.rect(kids[1]);
+    // start_offset = 17.5; b = 17.5 + 60 + 45 = 122.5
+    assert!((a.min.x - 17.5).abs() < 0.5);
+    assert!((b.min.x - 122.5).abs() < 0.5);
+}
+
+/// Pin: cross-axis `Sizing::Fill` stretches to the row's tallest-child
+/// height (CSS `align-items: stretch` default). Mirrors Stack cross.
+#[test]
+fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
+    let mut ui = Ui::new();
+    let mut kids = Vec::new();
+    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::wrap_hstack_with_id("w")
+            .size((Sizing::Fixed(300.0), Sizing::Hug))
+            .gap(10.0)
+            .show(ui, |ui| {
+                // Tall child sets the row height = 60.
+                kids.push(cell(ui, "tall", 100.0, 60.0));
+                // Fill-on-cross child should stretch to 60 (not stay at its
+                // intrinsic).
+                kids.push(
+                    Frame::with_id("filler")
+                        .size((Sizing::Fixed(100.0), Sizing::FILL))
+                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .show(ui)
+                        .node,
+                );
+            })
+            .node
+    });
+    let tall = ui.rect(kids[0]);
+    let filler = ui.rect(kids[1]);
+    assert_eq!(tall.size.h, 60.0);
+    assert_eq!(filler.size.h, 60.0, "Fill-on-cross child stretches to row height");
+}
+
+/// Pin: a collapsed child mid-pack contributes nothing — neither main
+/// extent nor cross extent — and doesn't insert a between-line gap or
+/// shift its siblings. The collapsed node still gets a zero-size rect
+/// (anchored at the line's start) so descendant rects don't carry
+/// stale values from prior frames.
+#[test]
+fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
+    let mut ui = Ui::new();
+    let mut kids = Vec::new();
+    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::wrap_hstack_with_id("w")
+            .size((Sizing::Fixed(200.0), Sizing::Hug))
+            .gap(10.0)
+            .show(ui, |ui| {
+                kids.push(cell(ui, "a", 60.0, 20.0));
+                kids.push(
+                    Frame::with_id("hidden")
+                        .size((Sizing::Fixed(60.0), Sizing::Fixed(20.0)))
+                        .collapsed()
+                        .show(ui)
+                        .node,
+                );
+                kids.push(cell(ui, "b", 60.0, 20.0));
+            })
+            .node
+    });
+    let a = ui.rect(kids[0]);
+    let hidden = ui.rect(kids[1]);
+    let b = ui.rect(kids[2]);
+    // a at 0, b at 70 — collapsed didn't insert a gap.
+    assert_eq!(a.min.x, 0.0);
+    assert_eq!(b.min.x, 70.0);
+    // Hidden has zero size (cleared/zeroed by the collapsed branch).
+    assert_eq!((hidden.size.w, hidden.size.h), (0.0, 0.0));
+}
+
+/// Pin (today's behavior): `Sizing::Fill` on a child's main axis is
+/// treated as `Hug` — measure runs at INF main and the child reports
+/// its content size, no per-row leftover distribution. Future work
+/// adding flex-style row-leftover distribution should update this
+/// test rather than introduce the new behavior silently.
+#[test]
+fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
+    let mut ui = Ui::new();
+    let mut filler_node = None;
+    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::wrap_hstack_with_id("w")
+            .size((Sizing::Fixed(300.0), Sizing::Hug))
+            .gap(10.0)
+            .show(ui, |ui| {
+                cell(ui, "fixed-a", 60.0, 20.0);
+                filler_node = Some(
+                    Frame::with_id("filler")
+                        .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                        // min_size makes Fill measurable as a positive
+                        // number even with no row-leftover distribution.
+                        .min_size((40.0, 0.0))
+                        .show(ui)
+                        .node,
+                );
+            })
+            .node
+    });
+    let r = ui.rect(filler_node.unwrap());
+    // Fill child got its min_size width (40), NOT the row leftover
+    // (300 - 60 - 10 - 10 = 220). If a future change distributes
+    // leftover, this assertion flips and the test becomes the spec.
+    assert!(
+        r.size.w < 100.0,
+        "Fill main treated as Hug today; got w={}",
+        r.size.w
+    );
+}
