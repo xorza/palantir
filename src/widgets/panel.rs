@@ -70,6 +70,33 @@ impl Panel {
         Self::from_id(WidgetId::from_hash(id), LayoutMode::VStack)
     }
 
+    /// HStack with overflow wrap: children flow left-to-right; when the
+    /// next child wouldn't fit on the current row, wrap to a new row
+    /// below. `.gap(g)` spaces siblings within a row; `.line_gap(g)`
+    /// spaces rows. `.justify(...)` applies per row.
+    /// `Sizing::Fill` on a child's main axis is treated as `Hug` for
+    /// now (no per-row leftover distribution); cross-axis Fill stretches
+    /// to row height.
+    #[track_caller]
+    pub fn wrap_hstack() -> Self {
+        Self::from_id(WidgetId::auto_stable(), LayoutMode::WrapHStack)
+    }
+    pub fn wrap_hstack_with_id(id: impl Hash) -> Self {
+        Self::from_id(WidgetId::from_hash(id), LayoutMode::WrapHStack)
+    }
+
+    /// VStack with overflow wrap: children flow top-to-bottom; when the
+    /// next child wouldn't fit in the current column, wrap to a new
+    /// column on the right. Symmetric to `wrap_hstack` — same code,
+    /// axes swapped.
+    #[track_caller]
+    pub fn wrap_vstack() -> Self {
+        Self::from_id(WidgetId::auto_stable(), LayoutMode::WrapVStack)
+    }
+    pub fn wrap_vstack_with_id(id: impl Hash) -> Self {
+        Self::from_id(WidgetId::from_hash(id), LayoutMode::WrapVStack)
+    }
+
     /// Layered children: each child placed at the parent's inner top-left,
     /// sized per its own `Sizing`. Last sibling paints on top.
     #[track_caller]

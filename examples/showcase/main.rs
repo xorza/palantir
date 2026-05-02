@@ -22,6 +22,7 @@ mod text;
 mod text_zorder;
 mod transform;
 mod visibility;
+mod wrap;
 
 /// Each showcase: a label for the toolbar button, and a builder that fills the
 /// central panel. Adding a new showcase = one line here + one new module.
@@ -32,6 +33,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("text layouts", text::build_layouts),
     ("z-order", text_zorder::build),
     ("panels", panels::build),
+    ("wrap", wrap::build),
     ("grid", grid::build),
     ("sizing", sizing::build),
     ("alignment", alignment::build),
@@ -255,9 +257,12 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            // Toolbar: one button per showcase. The active one is highlighted.
-            Panel::hstack()
+            // Toolbar: one button per showcase. WrapHStack so the buttons
+            // wrap to a new row when the window is too narrow to fit them
+            // all on one line. Active button is highlighted.
+            Panel::wrap_hstack()
                 .gap(6.0)
+                .line_gap(6.0)
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
                     for (i, (label, _)) in SHOWCASES.iter().enumerate() {

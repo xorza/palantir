@@ -46,6 +46,17 @@ pub enum LayoutMode {
     Leaf,
     HStack,
     VStack,
+    /// HStack with overflow wrap: children flow left-to-right; when the
+    /// next child wouldn't fit in the remaining main-axis space, wrap to
+    /// a new row below. Each row's cross-axis size = max child cross
+    /// in that row. `gap` spaces siblings within a row; `line_gap`
+    /// spaces rows. Justify applies per row. `Sizing::Fill` on main is
+    /// treated as `Hug` (no row-leftover distribution today).
+    WrapHStack,
+    /// VStack with overflow wrap: same model as `WrapHStack`, axes
+    /// swapped (children flow top-to-bottom; wrap to a new column on
+    /// the right).
+    WrapVStack,
     /// Children all laid out at the same position (top-left of inner rect),
     /// each sized per its own `Sizing`. Used by `Panel`.
     ZStack,
@@ -77,8 +88,13 @@ pub struct ElementExtras {
     pub min_size: Size,
     /// Upper clamp on the resolved outer size. Default `Size::INF`.
     pub max_size: Size,
-    /// Logical-px space between children (panels only).
+    /// Logical-px space between siblings within a line. Read by
+    /// HStack/VStack (single line) and WrapHStack/WrapVStack (within
+    /// each wrap row/column).
     pub gap: f32,
+    /// Logical-px space between lines for WrapHStack/WrapVStack only.
+    /// Inert in HStack/VStack/ZStack/Canvas/Grid.
+    pub line_gap: f32,
     /// Main-axis distribution of leftover space (HStack/VStack only).
     pub justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
@@ -100,6 +116,7 @@ impl ElementExtras {
         min_size: Size::ZERO,
         max_size: Size::INF,
         gap: 0.0,
+        line_gap: 0.0,
         justify: Justify::Start,
         child_align: Align::new(HAlign::Auto, VAlign::Auto),
     };
@@ -179,9 +196,14 @@ pub struct Element {
 
     // ---- Mode-specific: only read when the parent or self has the right mode.
     // Inert otherwise.
-    /// Logical-px space between children when *this* node is `HStack`/`VStack`
-    /// or `Grid`. Ignored by `Leaf` / `ZStack` / `Canvas`.
+    /// Logical-px space between siblings within a line. Read by
+    /// HStack/VStack (single line) and WrapHStack/WrapVStack (within
+    /// each wrap row/column). Ignored by `Leaf` / `ZStack` / `Canvas` /
+    /// `Grid` (Grid uses its own row_gap/col_gap).
     pub gap: f32,
+    /// Logical-px space between lines for WrapHStack/WrapVStack only.
+    /// Inert otherwise.
+    pub line_gap: f32,
     /// Main-axis distribution of leftover space in `HStack`/`VStack` (this
     /// node's children). No effect when any child is `Sizing::Fill` on the
     /// main axis. Ignored by `Leaf` / `ZStack` / `Canvas` / `Grid`.
@@ -239,6 +261,7 @@ impl Element {
             margin: Spacing::ZERO,
             align: Align::default(),
             gap: 0.0,
+            line_gap: 0.0,
             justify: Justify::default(),
             child_align: Align::default(),
             position: Vec2::ZERO,
@@ -275,6 +298,7 @@ impl Element {
             min_size: self.min_size,
             max_size: self.max_size,
             gap: self.gap,
+            line_gap: self.line_gap,
             justify: self.justify,
             child_align: self.child_align,
         };
@@ -344,9 +368,19 @@ pub trait Configure: Sized {
         g.col_span = cs.max(1);
         self
     }
-    /// Space between children when this node is an `HStack` / `VStack`.
+    /// Logical-px space between siblings within a line. Read by
+    /// HStack/VStack and the within-line direction of WrapHStack/
+    /// WrapVStack. Grid has its own `gap_xy` and ignores this field.
     fn gap(mut self, g: f32) -> Self {
         self.element_mut().gap = g;
+        self
+    }
+    /// Logical-px space between *lines* for WrapHStack/WrapVStack —
+    /// the cross-axis spacing between wrap rows/columns. Inert in
+    /// every other layout mode. Pair with `.gap(...)` for the within-
+    /// line spacing.
+    fn line_gap(mut self, g: f32) -> Self {
+        self.element_mut().line_gap = g;
         self
     }
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.
