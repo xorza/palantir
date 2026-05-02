@@ -12,7 +12,7 @@
 //! alongside that driver's `measure`/`arrange` in its own module — same
 //! per-driver-file convention as the rest of layout.
 
-use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, stack, zstack};
+use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, resolve_axis_size, stack, zstack};
 use crate::element::LayoutCore;
 use crate::primitives::{Size, Sizing};
 use crate::shape::Shape;
@@ -64,19 +64,27 @@ pub(super) fn compute(
     let margin = axis_margin(axis, &style);
     let (min_clamp, max_clamp) = axis_clamps(axis, extras.min_size, extras.max_size);
 
-    let outer = match sizing {
-        // Fixed size dominates — no need to query content.
-        Sizing::Fixed(v) => v + margin,
-        // Hug + Fill both report content-driven intrinsic. Per
-        // `intrinsic.md` (next to this file): Fill in intrinsic context
-        // returns its content's intrinsic, ignoring weight.
+    // Hug + Fill both report content-driven intrinsic. Per `intrinsic.md`
+    // (next to this file): Fill in intrinsic context returns its content's
+    // intrinsic, ignoring weight — `resolve_axis_size` with `available =
+    // INFINITY` enforces exactly that (Fill falls back to `hug_outer`).
+    // Skip the content query for Fixed: `resolve_axis_size` short-circuits
+    // Fixed and never reads `hug_outer`.
+    let hug_outer = match sizing {
+        Sizing::Fixed(_) => 0.0,
         Sizing::Hug | Sizing::Fill(_) => {
-            let content = content_intrinsic(engine, tree, node, axis, req, text, style.mode);
-            content + pad + margin
+            content_intrinsic(engine, tree, node, axis, req, text, style.mode) + pad + margin
         }
     };
 
-    (outer - margin).max(0.0).clamp(min_clamp, max_clamp) + margin
+    resolve_axis_size(
+        sizing,
+        hug_outer,
+        f32::INFINITY,
+        margin,
+        min_clamp,
+        max_clamp,
+    )
 }
 
 fn content_intrinsic(
