@@ -1,5 +1,4 @@
-pub use super::axis::Axis;
-use super::{AutoBias, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
+use super::{AutoBias, Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;

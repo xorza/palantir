@@ -2,7 +2,7 @@
 //! intrinsic query. Lifted out of `stack` so non-stack code (intrinsics,
 //! cache keys) can refer to it.
 
-use crate::primitives::{Rect, Size, Sizes, Sizing};
+use crate::primitives::{Rect, Size, Sizes, Sizing, Spacing};
 use glam::Vec2;
 
 /// Which axis a layout distributes children along (or which axis a query
@@ -56,6 +56,13 @@ impl Axis {
         match self {
             Axis::X => s.h,
             Axis::Y => s.w,
+        }
+    }
+    /// Total spacing along this axis (left+right for X, top+bottom for Y).
+    pub fn spacing(self, s: Spacing) -> f32 {
+        match self {
+            Axis::X => s.horiz(),
+            Axis::Y => s.vert(),
         }
     }
     /// Build a `Size` from main- and cross-axis lengths.

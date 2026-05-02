@@ -13,8 +13,7 @@
 //! per-driver-file convention as the rest of layout.
 
 use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, resolve_axis_size, stack, zstack};
-use crate::element::LayoutCore;
-use crate::primitives::{Size, Sizing};
+use crate::primitives::Sizing;
 use crate::shape::Shape;
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
@@ -60,9 +59,10 @@ pub(super) fn compute(
     let extras = tree.read_extras(node);
 
     let sizing = axis.main_sizing(style.size);
-    let pad = axis_pad(axis, &style);
-    let margin = axis_margin(axis, &style);
-    let (min_clamp, max_clamp) = axis_clamps(axis, extras.min_size, extras.max_size);
+    let pad = axis.spacing(style.padding);
+    let margin = axis.spacing(style.margin);
+    let min_clamp = axis.main(extras.min_size);
+    let max_clamp = axis.main(extras.max_size);
 
     // Hug + Fill both report content-driven intrinsic. Per `intrinsic.md`
     // (next to this file): Fill in intrinsic context returns its content's
@@ -130,25 +130,4 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasu
         }
     }
     acc
-}
-
-fn axis_pad(axis: Axis, style: &LayoutCore) -> f32 {
-    match axis {
-        Axis::X => style.padding.horiz(),
-        Axis::Y => style.padding.vert(),
-    }
-}
-
-fn axis_margin(axis: Axis, style: &LayoutCore) -> f32 {
-    match axis {
-        Axis::X => style.margin.horiz(),
-        Axis::Y => style.margin.vert(),
-    }
-}
-
-fn axis_clamps(axis: Axis, min: Size, max: Size) -> (f32, f32) {
-    match axis {
-        Axis::X => (min.w, max.w),
-        Axis::Y => (min.h, max.h),
-    }
 }

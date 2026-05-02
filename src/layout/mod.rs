@@ -161,12 +161,8 @@ impl LayoutEngine {
 
         let content = match mode {
             LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, text),
-            LayoutMode::HStack => {
-                stack::measure(self, tree, node, inner_avail, stack::Axis::X, text)
-            }
-            LayoutMode::VStack => {
-                stack::measure(self, tree, node, inner_avail, stack::Axis::Y, text)
-            }
+            LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, Axis::X, text),
+            LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, Axis::Y, text),
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
             LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
@@ -213,8 +209,8 @@ impl LayoutEngine {
 
         match mode {
             LayoutMode::Leaf => {}
-            LayoutMode::HStack => stack::arrange(self, tree, node, inner, stack::Axis::X),
-            LayoutMode::VStack => stack::arrange(self, tree, node, inner, stack::Axis::Y),
+            LayoutMode::HStack => stack::arrange(self, tree, node, inner, Axis::X),
+            LayoutMode::VStack => stack::arrange(self, tree, node, inner, Axis::Y),
             LayoutMode::ZStack => zstack::arrange(self, tree, node, inner),
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner),
             LayoutMode::Grid(idx) => grid::arrange(self, tree, node, inner, idx),
