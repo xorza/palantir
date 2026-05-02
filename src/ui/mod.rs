@@ -186,22 +186,32 @@ impl Ui {
         self.damage.filter(self.surface)
     }
 
-    /// Finalize the just-recorded frame: rebuild cascades, hit-index,
-    /// hashes; compute damage; encode + compose into the painter's
-    /// `RenderBuffer`. After this, [`Ui::frame`] returns the buffer
-    /// + damage rect ready to submit to a backend.
+    /// Finalize the just-recorded frame against `surface`: run
+    /// measure + arrange, rebuild cascades and hit-index, compute
+    /// hashes and damage, and encode + compose into the painter's
+    /// `RenderBuffer`. Returns the painted output ready for
+    /// `WgpuBackend::submit`.
+    ///
+    /// `surface` is the canvas rect to lay out into — typically
+    /// `ui.display().logical_rect()`. Stashed for `damage_filter`
+    /// queries between frames.
     ///
     /// Clears the repaint gate so the next [`Ui::should_repaint`]
     /// returns `false` until something new happens (input, animation
     /// tick, explicit `request_repaint`).
-    pub fn end_frame(&mut self) {
+    pub fn end_frame(&mut self, surface: Rect) -> FrameOutput<'_> {
+        self.surface = surface;
+        if let Some(root) = self.tree.root() {
+            self.layout_engine
+                .run(&self.tree, root, surface, &mut self.text);
+        }
         self.cascades
             .rebuild(&self.tree, self.layout_engine.result());
         self.input.end_frame(&self.tree, &self.cascades);
         self.tree.compute_hashes();
         self.damage
             .compute(&self.tree, &self.cascades, &self.seen_ids);
-        let damage = self.damage.filter(self.surface);
+        let damage = self.damage.filter(surface);
         self.painter.build(
             &self.tree,
             self.layout_engine.result(),
@@ -211,15 +221,9 @@ impl Ui {
             &self.display,
         );
         self.repaint_requested = false;
-    }
-
-    /// Painted output for the just-finished frame. Pass to
-    /// `WgpuBackend::submit` (or any other backend that consumes
-    /// `&RenderBuffer`).
-    pub fn frame(&self) -> FrameOutput<'_> {
         FrameOutput {
             buffer: self.painter.buffer(),
-            damage: self.damage_filter(),
+            damage,
         }
     }
 

@@ -233,14 +233,9 @@ impl State {
         let surface = self.ui.display().logical_rect();
         self.ui.begin_frame();
         build_root(&mut self.ui, &mut self.active);
-        self.ui.layout(surface);
-        self.ui.end_frame();
-
-        self.backend.submit(
-            &frame.texture,
-            Color::rgb(0.08, 0.08, 0.10),
-            self.ui.frame(),
-        );
+        let frame_out = self.ui.end_frame(surface);
+        self.backend
+            .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), frame_out);
 
         frame.present();
         if !self.first_paint {

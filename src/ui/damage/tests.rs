@@ -13,8 +13,7 @@ const SURFACE: Rect = Rect::new(0.0, 0.0, 200.0, 200.0);
 fn frame(ui: &mut Ui, f: impl FnOnce(&mut Ui)) {
     ui.begin_frame();
     f(ui);
-    ui.layout(SURFACE);
-    ui.end_frame();
+    ui.end_frame(SURFACE);
 }
 
 /// Pin: the very first frame has no `prev_frame` entries, so every
@@ -265,8 +264,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
             .show(ui, |ui| {
                 *child = Some(Frame::with_id("c").size(40.0).fill(fill).show(ui).node);
             });
-        ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
-        ui.end_frame();
+        ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
     };
 
     build(Color::rgb(0.2, 0.4, 0.8), &mut ui, &mut child_node);
@@ -311,8 +309,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                         .node,
                 );
             });
-        ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
-        ui.end_frame();
+        ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
     };
 
     build(0.0, &mut ui, &mut child_node);
@@ -431,8 +428,7 @@ fn button_hover_damage_covers_only_the_button() {
             *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);
             *cold = Some(Button::with_id("cold").label("Quiet").show(ui).node);
         });
-        ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
-        ui.end_frame();
+        ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
     };
 
     // Pointer parked off-button. Settle for two frames so hit-test +
@@ -497,8 +493,7 @@ fn button_unhover_damage_covers_only_the_button() {
             *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);
             *cold = Some(Button::with_id("cold").label("Quiet").show(ui).node);
         });
-        ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
-        ui.end_frame();
+        ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
     };
 
     // Settle two frames with cursor over the hot button.

@@ -23,8 +23,7 @@ fn duplicate_widget_id_panics() {
 fn drain_one_frame(ui: &mut Ui) {
     ui.begin_frame();
     Panel::hstack().show(ui, |_| {});
-    ui.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
 }
 
 /// Pin: initial state has `should_repaint = true` so the very first
@@ -44,8 +43,7 @@ fn should_repaint_starts_true() {
 fn empty_ui_drives_a_frame_without_panicking() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     assert_eq!(ui.tree().node_count(), 0);
     assert!(ui.damage.prev.is_empty());
@@ -63,8 +61,7 @@ fn empty_ui_drives_a_frame_without_panicking() {
 fn empty_then_populated_frame() {
     let mut ui = Ui::new();
     ui.begin_frame();
-    ui.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
 
     drain_one_frame(&mut ui);
     assert_eq!(ui.tree().node_count(), 1);
@@ -82,10 +79,7 @@ fn empty_ui_runs_through_pipeline() {
     let mut ui = Ui::new();
     ui.set_display(Display::from_physical(UVec2::new(200, 200), 1.0));
     ui.begin_frame();
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
-
-    let frame = ui.frame();
+    let frame = ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     assert!(frame.buffer.quads.is_empty());
     assert!(frame.buffer.texts.is_empty());
     assert!(frame.buffer.groups.is_empty());
@@ -210,8 +204,7 @@ fn prev_frame_populated_after_end_frame() {
             .fill(Color::rgb(0.2, 0.4, 0.8))
             .show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let prev = &ui.damage.prev;
     let root_id = WidgetId::from_hash("root");
@@ -229,9 +222,8 @@ fn prev_frame_captures_arranged_rect() {
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui)
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     let arranged = ui.rect(frame_node);
-    ui.end_frame();
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.rect, arranged);
@@ -246,8 +238,7 @@ fn prev_frame_captures_authoring_hash() {
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui)
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.hash, ui.tree().node_hash(frame_node));
@@ -260,14 +251,12 @@ fn prev_frame_drops_disappeared_widgets() {
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         Button::with_id("gone").label("X").show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
 
     ui.begin_frame();
     Panel::hstack_with_id("root").show(&mut ui, |_| {});
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     assert!(!ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
     assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("root")));
 }
@@ -280,8 +269,7 @@ fn prev_frame_updates_on_authoring_change() {
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui);
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     let h1 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
     ui.begin_frame();
@@ -289,8 +277,7 @@ fn prev_frame_updates_on_authoring_change() {
         .size(50.0)
         .fill(Color::rgb(0.9, 0.4, 0.8))
         .show(&mut ui);
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     let h2 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
     assert_ne!(h1, h2);
