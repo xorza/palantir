@@ -4,6 +4,7 @@ use crate::shape::Shape;
 use std::rc::Rc;
 
 mod grid_def;
+mod hash;
 pub(crate) use grid_def::GridDef;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -59,6 +60,14 @@ pub struct Tree {
     /// since the tree is read-only after recording. Cleared per frame,
     /// capacity retained.
     grid: GridArena,
+
+    /// Per-node authoring hash, computed by [`Tree::compute_hashes`] after
+    /// recording is complete. Captures the inputs that affect rendering
+    /// (layout fields, paint attrs, extras, shapes, grid defs) — not
+    /// derived layout output (`rect`, `desired`). Used by future damage-
+    /// rendering steps to detect "did this node's authoring change since
+    /// last frame." Indexed by `NodeId.0`. Capacity retained across frames.
+    pub(crate) hashes: Vec<u64>,
 }
 
 impl Default for Tree {
@@ -73,6 +82,7 @@ impl Default for Tree {
             recording_parent: Vec::new(),
             grid: GridArena::default(),
             node_extras: Vec::new(),
+            hashes: Vec::new(),
         }
     }
 }
@@ -93,6 +103,7 @@ impl Tree {
         self.recording_parent.clear();
         self.grid.clear();
         self.node_extras.clear();
+        self.hashes.clear();
     }
 
     pub(crate) fn push_grid_def(
@@ -274,6 +285,38 @@ impl Tree {
     /// affect cursor/gap bookkeeping differently.
     pub fn children_active(&self, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         self.children(parent).filter(|&c| !self.is_collapsed(c))
+    }
+
+    /// Authoring hash for `id`. `0` if [`Self::compute_hashes`] hasn't
+    /// run yet this frame. Future damage-rendering steps compare this
+    /// to the previous frame's hash for the same `WidgetId` to detect
+    /// per-node authoring changes.
+    pub fn node_hash(&self, id: NodeId) -> u64 {
+        self.hashes.get(id.index()).copied().unwrap_or(0)
+    }
+
+    /// Walk every recorded node and populate `self.hashes`. Pure read
+    /// over the rest of the tree; safe to call any time after recording
+    /// completes. Capacity retained across frames.
+    pub(crate) fn compute_hashes(&mut self) {
+        let n = self.node_count();
+        self.hashes.clear();
+        self.hashes.reserve(n);
+        for i in 0..n {
+            let layout = &self.layout[i];
+            let paint = self.paint[i];
+            let extras = paint.extras.map(|idx| &self.node_extras[idx as usize]);
+            let s_start = self.shape_starts[i] as usize;
+            let s_end = self.shape_starts[i + 1] as usize;
+            let shapes = &self.shapes[s_start..s_end];
+            let grid_def = match layout.mode {
+                LayoutMode::Grid(idx) => Some(&self.grid.defs[idx as usize]),
+                _ => None,
+            };
+            self.hashes.push(hash::compute_node_hash(
+                layout, paint, extras, shapes, grid_def,
+            ));
+        }
     }
 }
 

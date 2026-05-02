@@ -151,11 +151,16 @@ impl Ui {
     /// repaint-requested gate so the next [`Ui::should_repaint`] returns
     /// `false` until something new happens (input, animation tick,
     /// explicit `request_repaint`).
+    ///
+    /// Also computes per-node authoring hashes (`Tree.hashes`) used by
+    /// future damage-rendering steps to detect what changed since last
+    /// frame. Computed but not yet consumed in this stage.
     pub fn end_frame(&mut self) {
         self.cascades
             .rebuild(&self.tree, self.layout_engine.result());
         self.input
             .end_frame(&self.tree, self.layout_engine.result(), &self.cascades);
+        self.tree.compute_hashes();
         self.repaint_requested = false;
     }
 
