@@ -137,22 +137,6 @@ impl Ui {
         &self.tree
     }
 
-    /// Run measure + arrange in isolation. Used by the
-    /// `layout_only` benchmark to time the layout pass without the
-    /// surrounding cascade/damage/encode work; `end_frame` does the
-    /// equivalent step internally and apps don't normally need to
-    /// call this.
-    pub fn layout(&mut self) {
-        if let Some(root) = self.tree.root() {
-            self.layout_engine.run(
-                &self.tree,
-                root,
-                self.display.logical_rect(),
-                &mut self.text,
-            );
-        }
-    }
-
     /// Finalize the just-recorded frame: run measure + arrange,
     /// rebuild cascades and hit-index, compute hashes and damage,
     /// and encode + compose into the painter's `RenderBuffer`.
@@ -166,7 +150,10 @@ impl Ui {
     /// tick, explicit `request_repaint`).
     pub fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
-        self.layout();
+        if let Some(root) = self.tree.root() {
+            self.layout_engine
+                .run(&self.tree, root, surface, &mut self.text);
+        }
         self.cascades
             .rebuild(&self.tree, self.layout_engine.result());
         self.input.end_frame(&self.tree, &self.cascades);
