@@ -29,24 +29,18 @@ impl Sense {
     pub const DRAG: Self = Self::Drag;
     pub const CLICK_AND_DRAG: Self = Self::ClickAndDrag;
 
-    pub const fn click(self) -> bool {
-        matches!(self, Self::Click | Self::ClickAndDrag)
-    }
     pub const fn drag(self) -> bool {
         matches!(self, Self::Drag | Self::ClickAndDrag)
     }
-    pub const fn hover(self) -> bool {
-        !matches!(self, Self::None)
-    }
 
     /// Visible to hit-test for hover/cursor purposes. Includes hover-only widgets.
-    pub const fn is_hoverable(self) -> bool {
+    pub const fn hover(self) -> bool {
         !matches!(self, Self::None)
     }
 
     /// Captures press/release. Hover-only widgets return `false`, so clicks
     /// pass through them to whatever clickable widget is beneath.
-    pub const fn is_clickable(self) -> bool {
+    pub const fn click(self) -> bool {
         matches!(self, Self::Click | Self::Drag | Self::ClickAndDrag)
     }
 }
