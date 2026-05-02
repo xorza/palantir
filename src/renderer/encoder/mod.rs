@@ -1,6 +1,8 @@
 use crate::cascade::Cascades;
 use crate::layout::LayoutResult;
-use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
+use crate::primitives::{
+    Align, Color, Corners, HAlign, Rect, Size, Stroke, TranslateScale, VAlign,
+};
 use crate::shape::Shape;
 use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
@@ -107,7 +109,7 @@ fn encode_node(
                     }),
                 });
             }
-            Shape::Text { color, .. } => {
+            Shape::Text { color, align, .. } => {
                 // Shaping happened in measure; the resulting buffer key is
                 // on `LayoutResult.text_shapes`. Missing entry means no
                 // shaper was installed (mono fallback) or the run was empty
@@ -119,8 +121,13 @@ fn encode_node(
                     tracing::trace!(?shape, "encoder: dropping text with invalid key");
                     continue;
                 }
+                // `layout.rect(id)` is padding-inclusive (the rendered
+                // rect that DrawRect paints). Text aligns within the
+                // padding-deflated content area so e.g. `Button.padding(8)`
+                // insets the label visually.
+                let inner = rect.deflated_by(tree.layout(id).padding);
                 out.push(RenderCmd::DrawText {
-                    rect,
+                    rect: align_text_in(inner, shaped.measured, *align),
                     color: color.dim_rgb(rgb_mul),
                     key: shaped.key,
                 });
@@ -154,6 +161,31 @@ fn encode_node(
     if clip {
         out.push(RenderCmd::PopClip);
     }
+}
+
+/// Position a text run's bounding box inside a leaf's arranged rect per
+/// `align`. Returns a rect with `min` shifted by the alignment offset
+/// and `size` shrunk to the measured text bbox — composer takes
+/// `min` as the glyph origin and `size` as the clip bounds. Glyphs
+/// don't stretch, so `Auto`/`Stretch` collapse to start (top-left)
+/// — matches `place_axis`'s behavior for non-stretchable content.
+fn align_text_in(leaf: Rect, measured: Size, align: Align) -> Rect {
+    let dx = match align.halign() {
+        HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
+        HAlign::Center => (leaf.size.w - measured.w) * 0.5,
+        HAlign::Right => leaf.size.w - measured.w,
+    };
+    let dy = match align.valign() {
+        VAlign::Auto | VAlign::Top | VAlign::Stretch => 0.0,
+        VAlign::Center => (leaf.size.h - measured.h) * 0.5,
+        VAlign::Bottom => leaf.size.h - measured.h,
+    };
+    Rect::new(
+        leaf.min.x + dx.max(0.0),
+        leaf.min.y + dy.max(0.0),
+        measured.w,
+        measured.h,
+    )
 }
 
 #[cfg(test)]

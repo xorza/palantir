@@ -1,8 +1,10 @@
-use super::{RenderCmd, encode};
+use super::{RenderCmd, align_text_in, encode};
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
-use crate::primitives::{Color, Rect, Sense, Sizing, TranslateScale, WidgetId};
+use crate::primitives::{
+    Align, Color, HAlign, Rect, Sense, Size, Sizing, TranslateScale, VAlign, WidgetId,
+};
 use crate::widgets::{Frame, Panel, Styled};
 use glam::Vec2;
 
@@ -414,4 +416,102 @@ fn disabled_ancestor_dims_descendant_fill() {
         })
         .expect("frame must emit one DrawRect");
     assert_eq!(untouched, pure_red);
+}
+
+/// `align_text_in` math: glyph bbox positioned inside the leaf's
+/// arranged rect. Center, right, and bottom shift the origin; auto
+/// (the default) collapses to top-left because glyphs don't stretch.
+#[test]
+fn align_text_in_centers_horizontally_and_vertically() {
+    // Leaf is 200×40, text measures 80×16.
+    let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
+    let measured = Size::new(80.0, 16.0);
+
+    let r = align_text_in(leaf, measured, Align::CENTER);
+    // x: 10 + (200-80)/2 = 70. y: 20 + (40-16)/2 = 32.
+    assert_eq!((r.min.x, r.min.y), (70.0, 32.0));
+    assert_eq!((r.size.w, r.size.h), (80.0, 16.0));
+}
+
+#[test]
+fn align_text_in_top_left_when_auto() {
+    let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
+    let measured = Size::new(80.0, 16.0);
+    let r = align_text_in(leaf, measured, Align::default());
+    assert_eq!((r.min.x, r.min.y), (10.0, 20.0));
+}
+
+#[test]
+fn align_text_in_right_bottom() {
+    let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
+    let measured = Size::new(80.0, 16.0);
+    let r = align_text_in(leaf, measured, Align::new(HAlign::Right, VAlign::Bottom));
+    assert_eq!((r.min.x, r.min.y), (10.0 + 120.0, 20.0 + 24.0));
+}
+
+/// Negative-slack guard: if the measured text is *larger* than its
+/// leaf rect, alignment shouldn't pull `min` past the leaf's `min`
+/// (which would clip the text on the wrong side). Top-left is the
+/// safe fallback — the `.max(0.0)` clamp.
+#[test]
+fn align_text_in_clamps_negative_slack_to_top_left() {
+    let leaf = Rect::new(0.0, 0.0, 50.0, 10.0);
+    let oversize = Size::new(80.0, 16.0);
+    let r = align_text_in(leaf, oversize, Align::CENTER);
+    // Even centered, min stays at leaf.min (no negative offset).
+    assert_eq!((r.min.x, r.min.y), (0.0, 0.0));
+}
+
+/// Encoder honors padding for text alignment: a centered button label
+/// inside a padded button is centered in the *content* area (rect
+/// deflated by padding), not in the padding-inclusive outer rect.
+#[test]
+fn encoder_text_alignment_respects_leaf_padding() {
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::Button;
+
+    let mut ui = Ui::new();
+    // Real shaper required so the encoder doesn't drop the text run as
+    // having an invalid key (mono fallback uses `TextCacheKey::INVALID`).
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    Panel::hstack().show(&mut ui, |ui| {
+        Button::with_id("padded")
+            .label("ok")
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
+            .padding(20.0)
+            .show(ui);
+    });
+    let _root = ui.root();
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
+
+    let mut cmds = Vec::new();
+    encode(&ui.tree, ui.layout_result(), ui.cascades(), 1.0, &mut cmds);
+    let text_rect = cmds
+        .iter()
+        .find_map(|c| match c {
+            RenderCmd::DrawText { rect, .. } => Some(*rect),
+            _ => None,
+        })
+        .expect("button must emit one DrawText");
+
+    // Outer button rect is 200×80 at (0, 0). Padding is 20, so content
+    // area is 160×40 starting at (20, 20). Centered "ok" (~16×16 with
+    // mono metrics) lands at (20 + (160-16)/2, 20 + (40-16)/2) = (92, 32).
+    // If padding were ignored, x would be (200-16)/2 = 92, but y would be
+    // (80-16)/2 = 32 → indistinguishable on this axis. Use a non-square
+    // padding-vs-rect ratio: x asserts the inset, y is just sanity.
+    assert!(
+        text_rect.min.x > 20.0 && text_rect.min.x < 180.0,
+        "text x must lie inside padded content area, got {}",
+        text_rect.min.x
+    );
+    // Specifically: centered horizontally inside [20, 180].
+    let expected_x_center = 20.0 + (160.0 - text_rect.size.w) * 0.5;
+    assert!(
+        (text_rect.min.x - expected_x_center).abs() < 0.5,
+        "text x should center within padded area; expected ≈{expected_x_center}, got {}",
+        text_rect.min.x
+    );
 }

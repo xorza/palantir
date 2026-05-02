@@ -1,5 +1,5 @@
 use crate::element::{Configure, Element, LayoutMode};
-use crate::primitives::{Color, Corners, Sense, Visuals, WidgetId};
+use crate::primitives::{Align, Color, Corners, Sense, Visuals, WidgetId};
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::{Frame, Response, Styled};
@@ -33,6 +33,7 @@ pub struct Button {
     element: Element,
     style: Option<ButtonStyle>,
     label: String,
+    label_align: Align,
 }
 
 impl Button {
@@ -49,6 +50,9 @@ impl Button {
             element,
             style: None,
             label: String::new(),
+            // Buttons center their labels by convention. Override with
+            // `.text_align(...)` for left/right-aligned labels.
+            label_align: Align::CENTER,
         }
     }
 
@@ -58,6 +62,14 @@ impl Button {
     }
     pub fn label(mut self, s: impl Into<String>) -> Self {
         self.label = s.into();
+        self
+    }
+
+    /// Position of the label glyphs inside the button's arranged rect.
+    /// Distinct from [`Configure::align`], which positions the *button*
+    /// inside its parent's slot. Default: [`Align::CENTER`].
+    pub fn text_align(mut self, a: Align) -> Self {
+        self.label_align = a;
         self
     }
 
@@ -93,6 +105,7 @@ impl Button {
                     color: v.text,
                     font_size_px: 16.0,
                     wrap: TextWrap::Single,
+                    align: self.label_align,
                 },
             );
         }

@@ -1,5 +1,5 @@
 use crate::element::{Configure, Element, LayoutMode};
-use crate::primitives::{Color, WidgetId};
+use crate::primitives::{Align, Color, WidgetId};
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -21,6 +21,7 @@ pub struct Text {
     size_px: f32,
     color: Color,
     wrap: TextWrap,
+    align: Align,
 }
 
 impl Text {
@@ -40,6 +41,10 @@ impl Text {
             size_px: DEFAULT_SIZE_PX,
             color: Color::WHITE,
             wrap: TextWrap::Single,
+            // Default = (Auto, Auto) → top-left. Only matters when the
+            // widget has Fixed size larger than its measured content;
+            // a Hug Text widget has no slack to align in.
+            align: Align::default(),
         }
     }
 
@@ -64,6 +69,17 @@ impl Text {
         self
     }
 
+    /// Position of the glyph bbox inside this text widget's arranged
+    /// rect. Distinct from [`Configure::align`], which positions the
+    /// *widget* inside its parent's slot. Only meaningful when the
+    /// widget has Fixed size larger than the text's measured size;
+    /// otherwise the widget hugs its content and there's no slack to
+    /// align in.
+    pub fn text_align(mut self, a: Align) -> Self {
+        self.align = a;
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         let node = ui.node(self.element, |ui| {
@@ -72,6 +88,7 @@ impl Text {
                 color: self.color,
                 font_size_px: self.size_px,
                 wrap: self.wrap,
+                align: self.align,
             });
         });
         let state = ui.response_for(id);
