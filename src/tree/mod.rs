@@ -32,9 +32,13 @@ impl NodeId {
 /// Topology is encoded by `subtree_end[i]`: an exclusive index one past the
 /// last descendant of node `i`. `i + 1 == subtree_end[i]` for a leaf.
 pub struct Tree {
+    pub(crate) widget_ids: Vec<WidgetId>,
     pub(crate) layout: Vec<LayoutCore>,
     pub(crate) paint: Vec<PaintCore>,
-    pub(crate) widget_ids: Vec<WidgetId>,
+    /// Out-of-line side table for rarely-set element fields (`transform`,
+    /// `position`, `grid`). `paint[i].extras` is `Some(idx)` when a node
+    /// customized any of these. Cleared per frame.
+    pub(crate) node_extras: Vec<ElementExtras>,
     /// Length parallel to the columns above. `i + 1 == subtree_end[i]` for a
     /// leaf or a not-yet-populated parent; otherwise points one past the last
     /// descendant of `i`.
@@ -55,10 +59,6 @@ pub struct Tree {
     /// since the tree is read-only after recording. Cleared per frame,
     /// capacity retained.
     grid: GridArena,
-    /// Out-of-line side table for rarely-set element fields (`transform`,
-    /// `position`, `grid`). `paint[i].extras` is `Some(idx)` when a node
-    /// customized any of these. Cleared per frame.
-    pub(crate) node_extras: Vec<ElementExtras>,
 }
 
 impl Default for Tree {
