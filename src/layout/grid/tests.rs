@@ -269,10 +269,10 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
     let tracks: Rc<[Track]> = Rc::from([Track::fixed(50.0), Track::hug(), Track::fill()]);
     let mut a = AxisScratch::default();
     a.reset(tracks);
-    a.hug_min[1] = 10.0;
-    a.hug_max[1] = 30.0;
+    let hug_min = [0.0, 10.0, 0.0];
+    let hug_max = [0.0, 30.0, 0.0];
 
-    resolve_axis(&mut a, 200.0, 0.0);
+    resolve_axis(&mut a, &hug_min, &hug_max, 200.0, 0.0);
 
     assert_eq!(
         a.resolved.as_slice(),
