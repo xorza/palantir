@@ -148,10 +148,9 @@ fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) -> Mea
     }
 }
 
-/// Free-function dispatch into the shaper. Takes `cosmic` and the
-/// call counter as separate borrows so the cached entry points can
-/// invoke it while holding a `&mut TextReuseEntry` from `reuse` —
-/// `&mut self` would over-borrow.
+/// Free-function dispatch into the shaper. Takes `&self.cosmic` so
+/// the cached entry points can invoke it while holding a
+/// `&mut TextReuseEntry` from `reuse` — `&mut self` would over-borrow.
 #[inline]
 fn dispatch(
     cosmic: &Option<SharedCosmic>,
@@ -227,38 +226,30 @@ impl TextMeasurer {
         text: &str,
         font_size_px: f32,
     ) -> MeasureResult {
-        // One hash lookup, all paths: `Entry` gives us a slot that can
-        // be read, overwritten, or inserted into without re-hashing.
-        // Disjoint field borrows let `dispatch` run while the slot
-        // borrow is held.
-        match self.reuse.entry(wid) {
-            Entry::Occupied(mut o) => {
-                if o.get().hash == hash {
-                    return o.get().unbounded;
-                }
-
-                self.measure_calls += 1;
-                let unbounded = dispatch(&self.cosmic, text, font_size_px, None);
-
-                *o.get_mut() = TextReuseEntry {
-                    hash,
-                    unbounded,
-                    wrap: None,
-                };
-                unbounded
-            }
+        // One hash lookup, all paths: `Entry` gives us a slot that
+        // can be read, overwritten, or inserted into without
+        // re-hashing. The early-return arm consumes the entry on hit;
+        // every other arm falls through to one shared dispatch +
+        // write. Disjoint field borrows let `dispatch` run while the
+        // slot borrow is held.
+        let slot = match self.reuse.entry(wid) {
+            Entry::Occupied(o) if o.get().hash == hash => return o.get().unbounded,
+            other => other,
+        };
+        self.measure_calls += 1;
+        let unbounded = dispatch(&self.cosmic, text, font_size_px, None);
+        let new = TextReuseEntry {
+            hash,
+            unbounded,
+            wrap: None,
+        };
+        match slot {
+            Entry::Occupied(mut o) => *o.get_mut() = new,
             Entry::Vacant(v) => {
-                self.measure_calls += 1;
-                let unbounded = dispatch(&self.cosmic, text, font_size_px, None);
-
-                v.insert(TextReuseEntry {
-                    hash,
-                    unbounded,
-                    wrap: None,
-                });
-                unbounded
+                v.insert(new);
             }
         }
+        unbounded
     }
 
     /// Identity-cached wrap shape for `wid` at the caller-quantized
@@ -294,7 +285,7 @@ impl TextMeasurer {
             return m;
         }
         // No prime: dispatch but don't cache.
-        self.measure_calls += 1;    
+        self.measure_calls += 1;
         dispatch(&self.cosmic, text, font_size_px, Some(target))
     }
 
