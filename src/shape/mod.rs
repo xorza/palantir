@@ -1,4 +1,4 @@
-use crate::primitives::{ApproxF32, Color, Corners, Stroke};
+use crate::primitives::{Color, Corners, Stroke, approx_zero};
 use glam::Vec2;
 
 #[derive(Clone, Debug)]
@@ -50,15 +50,15 @@ impl Shape {
     pub fn is_noop(&self) -> bool {
         match self {
             Shape::RoundedRect { fill, stroke, .. } => {
-                let no_fill = fill.a.approx_zero();
+                let no_fill = approx_zero(fill.a);
                 let no_stroke = match stroke {
                     None => true,
-                    Some(s) => s.width.approx_zero() || s.color.a.approx_zero(),
+                    Some(s) => approx_zero(s.width) || approx_zero(s.color.a),
                 };
                 no_fill && no_stroke
             }
-            Shape::Line { width, color, .. } => width.approx_zero() || color.a.approx_zero(),
-            Shape::Text { text, color, .. } => text.is_empty() || color.a.approx_zero(),
+            Shape::Line { width, color, .. } => approx_zero(*width) || approx_zero(color.a),
+            Shape::Text { text, color, .. } => text.is_empty() || approx_zero(color.a),
         }
     }
 }
