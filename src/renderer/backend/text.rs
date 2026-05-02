@@ -16,6 +16,15 @@ use glyphon::{
     TextRenderer as GlyphonRenderer, Viewport,
 };
 
+/// Pool shrinks only when grossly over-allocated: pool length must
+/// exceed `2 × high_water` to trigger a truncate down to high_water.
+/// That hysteresis absorbs frame-to-frame fluctuation (tooltip in/out,
+/// modal toggling) without forcing buffer recreation, while still
+/// reclaiming memory after a one-off burst (e.g. an app briefly
+/// rendering 1000 text groups, then settling at 50). Steady-state UIs
+/// never trigger the shrink branch — pool just hovers at peak usage.
+const POOL_SHRINK_RATIO: usize = 2;
+
 /// Renderer-side encapsulation of the cosmic-text → glyphon path. Holds
 /// glyphon device-bound state (atlas + viewport + swash cache) plus a
 /// pool of [`GlyphonRenderer`]s, one per draw group with text. The
@@ -48,6 +57,12 @@ pub(crate) struct TextRenderer {
     /// `renderers[i].prepare(...)` was called this frame and should be
     /// rendered. Reset to all-false in [`Self::end_frame`].
     ready: Vec<bool>,
+    /// Highest `group_idx + 1` prepared this frame. Used by
+    /// [`Self::end_frame`] to truncate the pool down to the slots that
+    /// were actually used, so a frame burst (e.g. an open modal with
+    /// many labels) doesn't leave its renderer slots — and their wgpu
+    /// vertex buffers — alive forever after the modal closes.
+    high_water: usize,
     /// Reusable scratch for `TextArea`s built each `prepare_group` call.
     /// Capacity retained.
     scratch: Vec<TextArea<'static>>,
@@ -67,6 +82,7 @@ impl TextRenderer {
             swash_cache,
             renderers: Vec::new(),
             ready: Vec::new(),
+            high_water: 0,
             scratch: Vec::new(),
         }
     }
@@ -89,6 +105,7 @@ impl TextRenderer {
         self.atlas = TextAtlas::new(device, queue, &self.cache, format);
         self.renderers.clear();
         self.ready.clear();
+        self.high_water = 0;
     }
 
     /// True if any group has been prepared this frame and should render.
@@ -184,6 +201,9 @@ impl TextRenderer {
             return false;
         }
         self.ready[group_idx] = true;
+        if group_idx + 1 > self.high_water {
+            self.high_water = group_idx + 1;
+        }
         true
     }
 
@@ -199,14 +219,23 @@ impl TextRenderer {
         }
     }
 
-    /// Reclaim atlas slots for glyphs unused this frame and reset the
-    /// per-renderer ready flags. Call once after all `render_group` calls
-    /// have been submitted in the encoder pass.
+    /// Reclaim atlas slots for glyphs unused this frame, shrink the
+    /// renderer pool if it's grossly over-allocated, and reset
+    /// per-renderer ready flags. Call once after all `render_group`
+    /// calls have been submitted in the encoder pass.
     pub fn end_frame(&mut self) {
         self.atlas.trim();
+        // Shrink only when pool is more than 2× high_water — see
+        // [`POOL_SHRINK_RATIO`]. Skips truncate work entirely in
+        // steady state.
+        if self.renderers.len() > self.high_water.saturating_mul(POOL_SHRINK_RATIO) {
+            self.renderers.truncate(self.high_water);
+            self.ready.truncate(self.high_water);
+        }
         for r in &mut self.ready {
             *r = false;
         }
+        self.high_water = 0;
     }
 }
 
