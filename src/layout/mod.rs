@@ -5,7 +5,6 @@ use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 use grid::GridContext;
-use std::collections::HashMap;
 
 mod axis;
 mod canvas;
@@ -16,7 +15,6 @@ mod stack;
 mod zstack;
 
 pub use axis::Axis;
-pub(crate) use intrinsic::IntrinsicQuery;
 pub use intrinsic::LenReq;
 pub use result::{LayoutResult, ShapedText};
 
@@ -30,15 +28,30 @@ pub use result::{LayoutResult, ShapedText};
 ///   output independently of arrange's slot-clamping.
 /// - `intrinsics` — intra-frame cache for `intrinsic(node, axis, req)`
 ///   queries (see `intrinsic.md`). Pure function of subtree;
-///   safe to memoize within a frame. Cleared in `run`.
+///   safe to memoize within a frame. Flat `Vec` indexed by node, with
+///   four slots per node (one per `(axis, req)` combination). NaN means
+///   "not yet computed". Cleared and resized to `node_count` in `run`.
 /// - `result` — post-layout output (rects, text shapes) read by the encoder
 ///   + hit-index.
 #[derive(Default)]
 pub struct LayoutEngine {
     pub(super) grid: GridContext,
     desired: Vec<Size>,
-    intrinsics: HashMap<IntrinsicQuery, f32>,
+    intrinsics: Vec<[f32; 4]>,
     result: LayoutResult,
+}
+
+#[inline]
+fn intrinsic_slot(axis: Axis, req: LenReq) -> usize {
+    let a = match axis {
+        Axis::X => 0,
+        Axis::Y => 1,
+    };
+    let r = match req {
+        LenReq::MinContent => 0,
+        LenReq::MaxContent => 1,
+    };
+    a * 2 + r
 }
 
 impl LayoutEngine {
@@ -68,7 +81,7 @@ impl LayoutEngine {
     /// Pure function of the subtree at `node`: doesn't depend on the
     /// parent's available width or the arranged rect. Memoized via the
     /// intra-frame cache so repeated queries during the same `run` cost
-    /// one HashMap lookup. Consumed by `grid::measure` (Phase 1 column
+    /// one array load. Consumed by `grid::measure` (Phase 1 column
     /// resolution) and `stack::measure` (Fill min-content floor).
     pub fn intrinsic(
         &mut self,
@@ -78,12 +91,13 @@ impl LayoutEngine {
         req: LenReq,
         text: &mut TextMeasurer,
     ) -> f32 {
-        let key = IntrinsicQuery { node, axis, req };
-        if let Some(&v) = self.intrinsics.get(&key) {
-            return v;
+        let slot = intrinsic_slot(axis, req);
+        let cached = self.intrinsics[node.index()][slot];
+        if !cached.is_nan() {
+            return cached;
         }
         let v = intrinsic::compute(self, tree, node, axis, req, text);
-        self.intrinsics.insert(key, v);
+        self.intrinsics[node.index()][slot] = v;
         v
     }
 
@@ -104,6 +118,7 @@ impl LayoutEngine {
         self.desired.clear();
         self.desired.resize(n, Size::ZERO);
         self.intrinsics.clear();
+        self.intrinsics.resize(n, [f32::NAN; 4]);
         self.result.resize_for(tree);
         self.grid.hugs.reset_for(tree);
         self.measure(

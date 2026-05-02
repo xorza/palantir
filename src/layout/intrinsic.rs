@@ -2,7 +2,7 @@
 //! `intrinsic.md` (next to this file).
 //!
 //! This module owns:
-//! - The query types (`LenReq`, `IntrinsicQuery`).
+//! - The query type `LenReq`.
 //! - The central `compute()` dispatch that handles `Sizing` overrides,
 //!   padding/margin, and `min_size`/`max_size` clamps before delegating to
 //!   each driver's `intrinsic()` for content-driven sizes.
@@ -27,15 +27,6 @@ pub enum LenReq {
     /// Size the node "wants" with unlimited room. Text: natural unbroken
     /// width.
     MaxContent,
-}
-
-/// One intrinsic query — what the cache keys on. `f32` answers are
-/// indexed by these.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub struct IntrinsicQuery {
-    pub node: NodeId,
-    pub axis: Axis,
-    pub req: LenReq,
 }
 
 /// Outer intrinsic on `axis`: content + padding + margin, respecting the
