@@ -6,7 +6,7 @@ use crate::primitives::{Rect, Sense, WidgetId};
 use crate::tree::Tree;
 use glam::Vec2;
 use hit_index::HitIndex;
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[allow(dead_code)] // Right/Middle reserved for v2.
@@ -83,7 +83,7 @@ pub struct InputState {
     pointer: PointerState,
     active: Option<WidgetId>,
     hovered: Option<WidgetId>,
-    clicked_this_frame: HashSet<WidgetId>,
+    clicked_this_frame: FxHashSet<WidgetId>,
     /// Pre-order rect/sense snapshot of the last arranged tree. Rebuilt every
     /// `end_frame`; queried by `on_input` and `response_for`.
     hit_index: HitIndex,
@@ -101,7 +101,7 @@ impl InputState {
             pointer: PointerState::default(),
             active: None,
             hovered: None,
-            clicked_this_frame: HashSet::new(),
+            clicked_this_frame: FxHashSet::default(),
             hit_index: HitIndex::new(),
         }
     }

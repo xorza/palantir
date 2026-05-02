@@ -3,7 +3,7 @@ use crate::layout::LayoutResult;
 use crate::primitives::{Rect, Sense, WidgetId};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 /// One widget's hit-test entry from last frame: identity, screen-space rect
 /// (clipped by ancestors), and effective `Sense` (with disabled/visibility
@@ -30,14 +30,14 @@ pub(crate) struct HitIndex {
     /// these run on every input event while an active widget is captured.
     /// Capacity is reused across frames; uniqueness of ids is enforced by
     /// `Ui::node`'s release assert.
-    by_id: HashMap<WidgetId, u32>,
+    by_id: FxHashMap<WidgetId, u32>,
 }
 
 impl HitIndex {
     pub(crate) fn new() -> Self {
         Self {
             entries: Vec::new(),
-            by_id: HashMap::new(),
+            by_id: FxHashMap::default(),
         }
     }
 

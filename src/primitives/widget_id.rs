@@ -1,3 +1,4 @@
+use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -5,8 +6,7 @@ pub struct WidgetId(pub u64);
 
 impl WidgetId {
     pub fn from_hash(h: impl Hash) -> Self {
-        use std::collections::hash_map::DefaultHasher;
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = FxHasher::default();
         h.hash(&mut hasher);
         Self(hasher.finish())
     }
@@ -14,8 +14,7 @@ impl WidgetId {
     /// Derive a child id by mixing `h` into this id. Useful for nested widgets
     /// where the parent already has a stable id.
     pub fn with(self, h: impl Hash) -> Self {
-        use std::collections::hash_map::DefaultHasher;
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = FxHasher::default();
         self.0.hash(&mut hasher);
         h.hash(&mut hasher);
         Self(hasher.finish())
