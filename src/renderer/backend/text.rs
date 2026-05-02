@@ -53,6 +53,7 @@ pub(crate) struct TextRenderer {
     /// in this app's lifetime. Grows on demand to the historical high
     /// water; capacity retained across frames so steady state is alloc-
     /// free.
+    // todo investigate how it works and maybe optimizes using specific renderers for each group
     renderers: Vec<GlyphonRenderer>,
     /// Same length as `renderers`. `ready[i]` says whether
     /// `renderers[i].prepare(...)` was called this frame and should be
