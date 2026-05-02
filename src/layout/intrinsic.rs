@@ -12,7 +12,9 @@
 //! alongside that driver's `measure`/`arrange` in its own module — same
 //! per-driver-file convention as the rest of layout.
 
-use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, resolve_axis_size, stack, zstack};
+use super::{
+    Axis, LayoutEngine, LayoutMode, canvas, grid, resolve_axis_size, stack, wrapstack, zstack,
+};
 use crate::primitives::Sizing;
 use crate::shape::Shape;
 use crate::text::TextMeasurer;
@@ -91,6 +93,12 @@ fn content_intrinsic(
         LayoutMode::Leaf => leaf(tree, node, axis, req, text),
         LayoutMode::HStack => stack::intrinsic(engine, tree, node, Axis::X, axis, req, text),
         LayoutMode::VStack => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, text),
+        LayoutMode::WrapHStack => {
+            wrapstack::intrinsic(engine, tree, node, Axis::X, axis, req, text)
+        }
+        LayoutMode::WrapVStack => {
+            wrapstack::intrinsic(engine, tree, node, Axis::Y, axis, req, text)
+        }
         LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, req, text),
         LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, req, text),
         LayoutMode::Grid(idx) => grid::intrinsic(engine, tree, node, idx, axis, req, text),

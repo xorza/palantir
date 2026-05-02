@@ -13,6 +13,7 @@ mod intrinsic;
 mod result;
 mod stack;
 mod support;
+mod wrapstack;
 mod zstack;
 
 pub use axis::Axis;
@@ -177,6 +178,12 @@ impl LayoutEngine {
             LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, text),
             LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, Axis::X, text),
             LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, Axis::Y, text),
+            LayoutMode::WrapHStack => {
+                wrapstack::measure(self, tree, node, inner_avail, Axis::X, text)
+            }
+            LayoutMode::WrapVStack => {
+                wrapstack::measure(self, tree, node, inner_avail, Axis::Y, text)
+            }
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
             LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
@@ -225,6 +232,8 @@ impl LayoutEngine {
             LayoutMode::Leaf => {}
             LayoutMode::HStack => stack::arrange(self, tree, node, inner, Axis::X),
             LayoutMode::VStack => stack::arrange(self, tree, node, inner, Axis::Y),
+            LayoutMode::WrapHStack => wrapstack::arrange(self, tree, node, inner, Axis::X),
+            LayoutMode::WrapVStack => wrapstack::arrange(self, tree, node, inner, Axis::Y),
             LayoutMode::ZStack => zstack::arrange(self, tree, node, inner),
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner),
             LayoutMode::Grid(idx) => grid::arrange(self, tree, node, inner, idx),
