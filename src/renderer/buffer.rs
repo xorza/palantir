@@ -1,5 +1,5 @@
 use super::quad::Quad;
-use crate::primitives::{Color, Rect};
+use crate::primitives::{Color, Rect, URect};
 use crate::text::TextCacheKey;
 use std::ops::Range;
 
@@ -46,40 +46,9 @@ impl RenderBuffer {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DrawGroup {
-    pub scissor: Option<ScissorRect>,
+    pub scissor: Option<URect>,
     pub quads: Range<u32>,
     pub texts: Range<u32>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ScissorRect {
-    pub x: u32,
-    pub y: u32,
-    pub w: u32,
-    pub h: u32,
-}
-
-impl ScissorRect {
-    /// Axis-aligned intersection. Returns `None` when the inputs don't
-    /// overlap (either dimension would go to zero). Used by the
-    /// damage-rendering backend to combine the per-frame damage scissor
-    /// with each group's existing clip scissor.
-    pub fn intersect(self, other: ScissorRect) -> Option<ScissorRect> {
-        let x0 = self.x.max(other.x);
-        let y0 = self.y.max(other.y);
-        let x1 = (self.x + self.w).min(other.x + other.w);
-        let y1 = (self.y + self.h).min(other.y + other.h);
-        if x1 > x0 && y1 > y0 {
-            Some(ScissorRect {
-                x: x0,
-                y: y0,
-                w: x1 - x0,
-                h: y1 - y0,
-            })
-        } else {
-            None
-        }
-    }
 }
 
 /// One shaped text run placed in physical-px space. The buffer it references
@@ -92,7 +61,7 @@ pub struct TextRun {
     /// Bounds for clipping (physical px) — the parent rect after transform &
     /// snap. Glyphs outside are clipped by the backend even if the scissor
     /// rect is wider.
-    pub bounds: ScissorRect,
+    pub bounds: URect,
     pub color: Color,
     pub key: TextCacheKey,
 }
@@ -105,50 +74,5 @@ impl TextRun {
             min: glam::Vec2::new(self.origin[0], self.origin[1]),
             size: crate::primitives::Size::new(self.bounds.w as f32, self.bounds.h as f32),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ScissorRect;
-
-    fn s(x: u32, y: u32, w: u32, h: u32) -> ScissorRect {
-        ScissorRect { x, y, w, h }
-    }
-
-    #[test]
-    fn intersect_overlapping() {
-        let a = s(0, 0, 10, 10);
-        let b = s(5, 5, 10, 10);
-        assert_eq!(a.intersect(b), Some(s(5, 5, 5, 5)));
-    }
-
-    #[test]
-    fn intersect_disjoint_returns_none() {
-        let a = s(0, 0, 10, 10);
-        let b = s(20, 20, 5, 5);
-        assert_eq!(a.intersect(b), None);
-    }
-
-    #[test]
-    fn intersect_touching_edges_returns_none() {
-        // Strict — touching is not overlap. Mirror of `Rect::intersects`.
-        let a = s(0, 0, 10, 10);
-        let b = s(10, 0, 10, 10);
-        assert_eq!(a.intersect(b), None);
-    }
-
-    #[test]
-    fn intersect_contained_returns_inner() {
-        let outer = s(0, 0, 100, 100);
-        let inner = s(20, 30, 10, 10);
-        assert_eq!(outer.intersect(inner), Some(inner));
-        assert_eq!(inner.intersect(outer), Some(inner));
-    }
-
-    #[test]
-    fn intersect_self_with_self() {
-        let r = s(5, 7, 11, 13);
-        assert_eq!(r.intersect(r), Some(r));
     }
 }

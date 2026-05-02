@@ -9,7 +9,8 @@
 //! [`CosmicMeasure`]: crate::text::CosmicMeasure
 //! [`TextRun`]: super::super::buffer::TextRun
 
-use super::super::buffer::{ScissorRect, TextRun};
+use super::super::buffer::TextRun;
+use crate::primitives::URect;
 use crate::text::SharedCosmic;
 use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
@@ -239,7 +240,7 @@ impl TextRenderer {
     }
 }
 
-fn text_bounds(b: ScissorRect) -> TextBounds {
+fn text_bounds(b: URect) -> TextBounds {
     TextBounds {
         left: b.x as i32,
         top: b.y as i32,
