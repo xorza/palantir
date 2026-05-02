@@ -1,7 +1,7 @@
-use super::{
-    AutoBias, Axis, LayoutEngine, LenReq, child_avail_per_axis_hug, max_child_intrinsic,
-    place_two_axis, zero_subtree,
+use super::support::{
+    AutoBias, child_avail_per_axis_hug, children_max_intrinsic, place_two_axis, zero_subtree,
 };
+use super::{Axis, LayoutEngine, LenReq};
 use crate::primitives::{Rect, Size};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
@@ -20,7 +20,7 @@ pub(super) fn intrinsic(
     req: LenReq,
     text: &mut TextMeasurer,
 ) -> f32 {
-    max_child_intrinsic(layout, tree, node, axis, req, text)
+    children_max_intrinsic(layout, tree, node, axis, req, text)
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).
