@@ -192,6 +192,24 @@ impl Ui {
         self.surface
     }
 
+    /// Damage rect for the just-finished frame, in logical pixels —
+    /// the value the host should pass to both `Pipeline::build`
+    /// (encoder filter) and `WgpuBackend::submit` (LoadOp + scissor).
+    /// Pass the *same* value to both: the encoder culls per-node
+    /// paint commands, the backend scissors GPU pixels; disagreement
+    /// either wastes work or leaves gaps.
+    ///
+    /// `Some(rect)` → small change, partial repaint.
+    /// `None` → full repaint (first frame, post-resize, no diff, or
+    /// damage area exceeds the 50% threshold).
+    pub fn damage_filter(&self) -> Option<Rect> {
+        if self.damage.full_repaint {
+            None
+        } else {
+            self.damage.rect
+        }
+    }
+
     /// Rebuild the per-frame cascade table and input's last-frame rect cache
     /// from the just-arranged tree. Call after `layout`. Clears the
     /// repaint-requested gate so the next [`Ui::should_repaint`] returns
