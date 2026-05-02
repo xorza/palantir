@@ -107,3 +107,48 @@ impl TextRun {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ScissorRect;
+
+    fn s(x: u32, y: u32, w: u32, h: u32) -> ScissorRect {
+        ScissorRect { x, y, w, h }
+    }
+
+    #[test]
+    fn intersect_overlapping() {
+        let a = s(0, 0, 10, 10);
+        let b = s(5, 5, 10, 10);
+        assert_eq!(a.intersect(b), Some(s(5, 5, 5, 5)));
+    }
+
+    #[test]
+    fn intersect_disjoint_returns_none() {
+        let a = s(0, 0, 10, 10);
+        let b = s(20, 20, 5, 5);
+        assert_eq!(a.intersect(b), None);
+    }
+
+    #[test]
+    fn intersect_touching_edges_returns_none() {
+        // Strict — touching is not overlap. Mirror of `Rect::intersects`.
+        let a = s(0, 0, 10, 10);
+        let b = s(10, 0, 10, 10);
+        assert_eq!(a.intersect(b), None);
+    }
+
+    #[test]
+    fn intersect_contained_returns_inner() {
+        let outer = s(0, 0, 100, 100);
+        let inner = s(20, 30, 10, 10);
+        assert_eq!(outer.intersect(inner), Some(inner));
+        assert_eq!(inner.intersect(outer), Some(inner));
+    }
+
+    #[test]
+    fn intersect_self_with_self() {
+        let r = s(5, 7, 11, 13);
+        assert_eq!(r.intersect(r), Some(r));
+    }
+}
