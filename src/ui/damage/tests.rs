@@ -35,7 +35,7 @@ fn first_frame_marks_every_node_dirty() {
                 .show(ui);
         });
     });
-    assert_eq!(ui.damage.dirty.len(), ui.tree().node_count());
+    assert_eq!(ui.damage.dirty.len(), ui.tree.node_count());
     assert!(ui.damage.rect.is_some());
 }
 
@@ -86,13 +86,13 @@ fn fill_change_marks_only_the_changed_leaf() {
     assert_eq!(ui.damage.dirty.len(), 1);
     let dirty_id = ui.damage.dirty[0];
     assert_eq!(
-        ui.tree().widget_ids()[dirty_id.index()],
+        ui.tree.widget_ids()[dirty_id.index()],
         WidgetId::from_hash("a")
     );
     // Damage rect = Frame's rect (50x50 at (0,0)). Color change
     // doesn't move the rect, so prev == curr; the union is the
     // single rect.
-    assert_eq!(ui.damage.rect, Some(ui.rect(dirty_id)));
+    assert_eq!(ui.damage.rect, Some(ui.layout_engine.rect(dirty_id)));
 }
 
 /// Pin: a sibling reflow (Fixed-width sibling resizes) shifts
@@ -122,7 +122,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
         .damage
         .dirty
         .iter()
-        .map(|n| ui.tree().widget_ids()[n.index()])
+        .map(|n| ui.tree.widget_ids()[n.index()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("a")));
     assert!(dirty_ids.contains(&WidgetId::from_hash("b")));
@@ -176,7 +176,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .damage
         .dirty
         .iter()
-        .map(|n| ui.tree().widget_ids()[n.index()])
+        .map(|n| ui.tree.widget_ids()[n.index()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
     assert!(ui.damage.rect.is_some());
@@ -202,7 +202,7 @@ fn damage_filter_returns_none_on_full_repaint() {
     // First frame: every node is "added" → damage rect is the union
     // of every screen rect → ratio > 0.5 → filter returns None.
     assert!(ui.damage.rect.is_some());
-    assert!(ui.damage_filter().is_none());
+    assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
 }
 
 /// Pin: `damage_filter()` returns the damage rect when partial.
@@ -225,8 +225,8 @@ fn damage_filter_returns_rect_when_partial() {
                 .show(ui);
         });
     });
-    assert_eq!(ui.damage_filter(), ui.damage.rect);
-    assert!(ui.damage_filter().is_some());
+    assert_eq!(ui.damage.filter(ui.display.logical_rect()), ui.damage.rect);
+    assert!(ui.damage.filter(ui.display.logical_rect()).is_some());
 }
 
 /// Pin: `damage_filter()` returns `None` when nothing changed at all
@@ -245,7 +245,7 @@ fn damage_filter_returns_none_when_nothing_dirty() {
     frame(&mut ui, build);
     frame(&mut ui, build);
     assert!(ui.damage.dirty.is_empty());
-    assert!(ui.damage_filter().is_none());
+    assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
 }
 
 // --- transforms ---------------------------------------------------------
@@ -283,7 +283,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     // in this layout). Screen rect after the parent's translate is at
     // (100, 0) — that's where the GPU actually paints. The damage
     // rect must cover *that* position, not the layout one.
-    let child_layout_rect = ui.rect(child_node.unwrap());
+    let child_layout_rect = ui.layout_engine.rect(child_node.unwrap());
     let expected_screen_rect = Rect {
         min: child_layout_rect.min + translate,
         size: child_layout_rect.size,
@@ -345,7 +345,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
         .damage
         .dirty
         .iter()
-        .map(|n| ui.tree().widget_ids()[n.index()])
+        .map(|n| ui.tree.widget_ids()[n.index()])
         .collect();
     assert_eq!(dirty_widget_ids, vec![WidgetId::from_hash("c")]);
 }
@@ -416,7 +416,7 @@ fn first_frame_filter_is_none() {
                 .show(ui);
         });
     });
-    assert!(ui.damage_filter().is_none());
+    assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
 }
 
 /// Pin (motivating workload): hovering a button causes exactly one
@@ -456,7 +456,7 @@ fn button_hover_damage_covers_only_the_button() {
         "off-button pointer should reach a no-diff steady state"
     );
 
-    let hot_rect = ui.rect(hot_node.unwrap());
+    let hot_rect = ui.layout_engine.rect(hot_node.unwrap());
     let target = hot_rect.min + Vec2::new(5.0, 5.0);
 
     // Move pointer onto the hot button. The *next* end_frame computes
@@ -475,12 +475,12 @@ fn button_hover_damage_covers_only_the_button() {
     );
     let dirty_id = ui.damage.dirty[0];
     assert_eq!(
-        ui.tree().widget_ids()[dirty_id.index()],
+        ui.tree.widget_ids()[dirty_id.index()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));
     assert_eq!(
-        ui.damage_filter(),
+        ui.damage.filter(ui.display.logical_rect()),
         Some(hot_rect),
         "small per-button damage must not trip the full-repaint heuristic",
     );
@@ -516,7 +516,7 @@ fn button_unhover_damage_covers_only_the_button() {
 
     // Settle two frames with cursor over the hot button.
     build(&mut ui, &mut hot_node, &mut cold_node);
-    let hot_rect = ui.rect(hot_node.unwrap());
+    let hot_rect = ui.layout_engine.rect(hot_node.unwrap());
     ui.on_input(InputEvent::PointerMoved(hot_rect.min + Vec2::new(5.0, 5.0)));
     build(&mut ui, &mut hot_node, &mut cold_node);
     build(&mut ui, &mut hot_node, &mut cold_node);
@@ -527,11 +527,11 @@ fn button_unhover_damage_covers_only_the_button() {
     build(&mut ui, &mut hot_node, &mut cold_node);
     assert_eq!(ui.damage.dirty.len(), 1);
     assert_eq!(
-        ui.tree().widget_ids()[ui.damage.dirty[0].index()],
+        ui.tree.widget_ids()[ui.damage.dirty[0].index()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));
-    assert_eq!(ui.damage_filter(), Some(hot_rect),);
+    assert_eq!(ui.damage.filter(ui.display.logical_rect()), Some(hot_rect),);
 }
 
 /// Pin: a small per-frame change (single leaf fill flip) stays in
@@ -559,5 +559,5 @@ fn small_change_stays_partial_repaint() {
     });
     // 50x50 = 2500, surface 200x200 = 40000 → 6.25% < 50%.
     assert!(ui.damage.rect.is_some());
-    assert_eq!(ui.damage_filter(), ui.damage.rect);
+    assert_eq!(ui.damage.filter(ui.display.logical_rect()), ui.damage.rect);
 }

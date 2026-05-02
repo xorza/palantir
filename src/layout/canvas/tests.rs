@@ -19,7 +19,7 @@ fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -
         .show(ui, |ui| {
             inner = Some(f(ui));
         });
-    ui.layout();
+    ui.end_frame();
     inner.unwrap()
 }
 
@@ -38,9 +38,9 @@ fn canvas_places_child_at_position_within_inner_rect() {
             })
             .node
     });
-    let panel_rect = ui.rect(panel);
+    let panel_rect = ui.layout_engine.rect(panel);
     let kids: Vec<_> = ui.tree.children(panel).collect();
-    let a = ui.rect(kids[0]);
+    let a = ui.layout_engine.rect(kids[0]);
     assert_eq!(a.min.x - panel_rect.min.x, 40.0);
     assert_eq!(a.min.y, 50.0);
     assert_eq!(a.size.w, 20.0);
@@ -65,7 +65,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
             })
             .node
     });
-    let r = ui.rect(panel);
+    let r = ui.layout_engine.rect(panel);
     // bbox = max(pos + desired) per axis: 50+20=70, 60+20=80
     assert_eq!(r.size.w, 70.0);
     assert_eq!(r.size.h, 80.0);
@@ -88,14 +88,14 @@ fn canvas_negative_position_does_not_extend_bbox() {
             })
             .node
     });
-    let r = ui.rect(panel);
+    let r = ui.layout_engine.rect(panel);
     // pos + desired = (15, 15) per axis.
     assert_eq!(r.size.w, 15.0);
     assert_eq!(r.size.h, 15.0);
 
-    let panel_rect = ui.rect(panel);
+    let panel_rect = ui.layout_engine.rect(panel);
     let kids: Vec<_> = ui.tree.children(panel).collect();
-    let child = ui.rect(kids[0]);
+    let child = ui.layout_engine.rect(kids[0]);
     assert_eq!(child.min.x - panel_rect.min.x, -5.0);
     assert_eq!(child.min.y - panel_rect.min.y, -5.0);
 }
@@ -128,7 +128,7 @@ fn canvas_fill_child_takes_constrained_canvas_inner() {
             .node
     });
     let kids: Vec<_> = ui.tree.children(panel).collect();
-    let f = ui.rect(kids[0]);
+    let f = ui.layout_engine.rect(kids[0]);
     assert_eq!(f.size.w, 100.0);
     assert_eq!(f.size.h, 100.0);
 }
@@ -152,7 +152,7 @@ fn canvas_hug_fill_child_falls_back_to_intrinsic() {
             .node
     });
     let kids: Vec<_> = ui.tree.children(panel).collect();
-    let f = ui.rect(kids[0]);
+    let f = ui.layout_engine.rect(kids[0]);
     assert_eq!(f.size.w, 0.0);
     assert_eq!(f.size.h, 0.0);
 }
@@ -176,7 +176,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
             })
             .node
     });
-    let r = ui.rect(panel);
+    let r = ui.layout_engine.rect(panel);
     assert_eq!(r.size.w, 10.0);
     assert_eq!(r.size.h, 10.0);
 }
@@ -209,7 +209,7 @@ fn canvas_ignores_child_align() {
             })
             .node
     });
-    let r = ui.rect(child.unwrap());
+    let r = ui.layout_engine.rect(child.unwrap());
     assert_eq!((r.min.x, r.min.y), (30.0, 40.0));
     assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
 }

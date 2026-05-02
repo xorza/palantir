@@ -52,11 +52,11 @@ fn empty_ui_drives_a_frame_without_panicking() {
     ));
     ui.end_frame();
 
-    assert_eq!(ui.tree().node_count(), 0);
+    assert_eq!(ui.tree.node_count(), 0);
     assert!(ui.damage.prev.is_empty());
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage.rect.is_none());
-    assert!(ui.damage_filter().is_none());
+    assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
     // Repaint gate clears even on empty frames so an idle empty host
     // doesn't burn cycles.
     assert!(!ui.should_repaint());
@@ -74,7 +74,7 @@ fn empty_then_populated_frame() {
     ui.end_frame();
 
     drain_one_frame(&mut ui);
-    assert_eq!(ui.tree().node_count(), 1);
+    assert_eq!(ui.tree.node_count(), 1);
     assert!(!ui.damage.prev.is_empty());
 }
 
@@ -215,7 +215,7 @@ fn prev_frame_captures_arranged_rect() {
         .show(&mut ui)
         .node;
     ui.end_frame();
-    let arranged = ui.rect(frame_node);
+    let arranged = ui.layout_engine.rect(frame_node);
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.rect, arranged);
@@ -236,7 +236,7 @@ fn prev_frame_captures_authoring_hash() {
     ui.end_frame();
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
-    assert_eq!(snap.hash, ui.tree().node_hash(frame_node));
+    assert_eq!(snap.hash, ui.tree.node_hash(frame_node));
 }
 
 #[test]
