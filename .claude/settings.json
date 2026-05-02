@@ -15,6 +15,7 @@
       "Bash(cargo add *)",
 
       "Bash(perf report *)",
+      "Bash(perf annotate *)",
 
       "Bash(git mv *)",
       "Bash(git rm *)",
