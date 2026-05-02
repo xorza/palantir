@@ -78,11 +78,7 @@ pub(super) fn intrinsic(
             continue;
         }
         let pos = tree.read_extras(c).position;
-        let off = match axis {
-            Axis::X => pos.x,
-            Axis::Y => pos.y,
-        };
-        max = max.max(off + layout.intrinsic(tree, c, axis, req, text));
+        max = max.max(axis.main_v(pos) + layout.intrinsic(tree, c, axis, req, text));
     }
     max
 }

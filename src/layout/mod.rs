@@ -16,7 +16,8 @@ mod stack;
 mod zstack;
 
 pub use axis::Axis;
-pub use intrinsic::{IntrinsicQuery, LenReq};
+pub(crate) use intrinsic::IntrinsicQuery;
+pub use intrinsic::LenReq;
 pub use result::{LayoutResult, ShapedText};
 
 /// Persistent layout engine. Holds intermediate per-frame scratch + the
@@ -67,11 +68,8 @@ impl LayoutEngine {
     /// Pure function of the subtree at `node`: doesn't depend on the
     /// parent's available width or the arranged rect. Memoized via the
     /// intra-frame cache so repeated queries during the same `run` cost
-    /// one HashMap lookup.
-    ///
-    /// Step A scaffolding: this method exists, drivers can call it, but
-    /// nothing in the production measure/arrange path consumes intrinsics
-    /// yet. Steps B and C wire Grid + Stack to it.
+    /// one HashMap lookup. Consumed by `grid::measure` (Phase 1 column
+    /// resolution) and `stack::measure` (Fill min-content floor).
     pub fn intrinsic(
         &mut self,
         tree: &Tree,
@@ -216,6 +214,63 @@ impl LayoutEngine {
             LayoutMode::Grid(idx) => grid::arrange(self, tree, node, inner, idx),
         }
     }
+
+    /// Walk a Leaf's recorded shapes and return the content size that drives
+    /// its hugging. For `Shape::Text` runs, this is also where shaping
+    /// happens: the shaped buffer + measured size land on
+    /// `LayoutResult.text_shapes` so the encoder can pick them up later.
+    /// `available_w` flows down from the parent and gates wrapping.
+    fn leaf_content_size(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        available_w: f32,
+        text: &mut TextMeasurer,
+    ) -> Size {
+        let mut s = Size::ZERO;
+        for shape in tree.shapes_of(node) {
+            if let Shape::Text {
+                text: src,
+                font_size_px,
+                wrap,
+                ..
+            } = shape
+            {
+                let m = self.shape_text(node, src, *font_size_px, *wrap, available_w, text);
+                s = s.max(m);
+            }
+        }
+        s
+    }
+
+    fn shape_text(
+        &mut self,
+        node: NodeId,
+        src: &str,
+        font_size_px: f32,
+        wrap: TextWrap,
+        available_w: f32,
+        text: &mut TextMeasurer,
+    ) -> Size {
+        let unbounded = text.measure(src, font_size_px, None);
+        let (measured, key) = if matches!(wrap, TextWrap::Wrap)
+            && available_w.is_finite()
+            && available_w < unbounded.size.w
+        {
+            // Floor at the widest unbreakable run so we don't break inside a
+            // word — the run overflows the slot instead.
+            let target = available_w.max(unbounded.intrinsic_min);
+            tracing::trace!(node = node.index(), target, "wrap reshape");
+            let m = text.measure(src, font_size_px, Some(target));
+            (m.size, m.key)
+        } else {
+            (unbounded.size, unbounded.key)
+        };
+
+        self.result
+            .set_text_shape(node, ShapedText { measured, key });
+        measured
+    }
 }
 
 /// Resolve a node's outer slot size on one axis, given its sizing policy,
@@ -293,65 +348,6 @@ pub(super) enum AutoBias {
     StretchIfFill,
     /// Grid: Auto stretches unconditionally (WPF cell default).
     AlwaysStretch,
-}
-
-impl LayoutEngine {
-    /// Walk a Leaf's recorded shapes and return the content size that drives
-    /// its hugging. For `Shape::Text` runs, this is also where shaping
-    /// happens: the shaped buffer + measured size land on
-    /// `LayoutResult.text_shapes` so the encoder can pick them up later.
-    /// `available_w` flows down from the parent and gates wrapping.
-    fn leaf_content_size(
-        &mut self,
-        tree: &Tree,
-        node: NodeId,
-        available_w: f32,
-        text: &mut TextMeasurer,
-    ) -> Size {
-        let mut s = Size::ZERO;
-        for shape in tree.shapes_of(node) {
-            if let Shape::Text {
-                text: src,
-                font_size_px,
-                wrap,
-                ..
-            } = shape
-            {
-                let m = self.shape_text(node, src, *font_size_px, *wrap, available_w, text);
-                s = s.max(m);
-            }
-        }
-        s
-    }
-
-    fn shape_text(
-        &mut self,
-        node: NodeId,
-        src: &str,
-        font_size_px: f32,
-        wrap: TextWrap,
-        available_w: f32,
-        text: &mut TextMeasurer,
-    ) -> Size {
-        let unbounded = text.measure(src, font_size_px, None);
-        let (measured, key) = if matches!(wrap, TextWrap::Wrap)
-            && available_w.is_finite()
-            && available_w < unbounded.size.w
-        {
-            // Floor at the widest unbreakable run so we don't break inside a
-            // word — the run overflows the slot instead.
-            let target = available_w.max(unbounded.intrinsic_min);
-            tracing::trace!(node = node.index(), target, "wrap reshape");
-            let m = text.measure(src, font_size_px, Some(target));
-            (m.size, m.key)
-        } else {
-            (unbounded.size, unbounded.key)
-        };
-
-        self.result
-            .set_text_shape(node, ShapedText { measured, key });
-        measured
-    }
 }
 
 /// Resolve a child's alignment on both axes: child's own value if not `Auto`,

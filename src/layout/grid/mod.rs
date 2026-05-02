@@ -14,8 +14,8 @@ struct DefSnapshot {
 
 /// Snapshot a `GridDef` onto the scratch slot at `depth`: clones the track
 /// `Rc<[Track]>`s (refcount-only), reads gaps, and resets the per-axis
-/// scratch. Hug arrays live on `LayoutResult` and are read/written by
-/// caller — they don't fit in the snapshot.
+/// scratch. Hug arrays live on `GridHugStore` (durable across the layout
+/// pass) and are read/written by callers via `hugs.min/max(idx, axis)`.
 fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) -> DefSnapshot {
     let def = tree.grid_def(idx);
     let n_rows = def.rows.len();
@@ -88,14 +88,14 @@ pub(crate) struct GridScratch {
     pub row: AxisScratch,
 }
 
-/// All grid-layout scratch held by `LayoutEngine`, in one bag. The two
-/// `depth_stack` / `hugs` fields are separate so writers can hold
-/// `&mut hugs` while a `&mut depth_stack[i]` borrow is live (the encoder
-/// copies hugs from scratch into the durable pool inside the same
-/// expression). `intrinsic_scratch` is a bump-stack-style scratch for
-/// `grid::intrinsic`'s per-track aggregator: each call extends it by
-/// `n_tracks`, recurses (which may extend further but always truncates
-/// back), then truncates back to its own base. Capacity retained.
+/// All grid-layout scratch held by `LayoutEngine`, in one bag. `depth_stack`
+/// and `hugs` are separate fields so callers can disjoint-borrow them —
+/// `resolve_axis` takes `&mut AxisScratch` (from `depth_stack`) and `&[f32]`
+/// hug slices (from `hugs`) in the same expression via destructuring.
+/// `intrinsic_scratch` is a bump-stack scratch for `grid::intrinsic`'s
+/// per-track aggregator: each call extends by `n_tracks`, recurses (which
+/// may extend further but always truncates back), then truncates to its
+/// own base. Capacity retained.
 #[derive(Default)]
 pub(crate) struct GridContext {
     pub(super) depth_stack: GridDepthStack,
@@ -139,11 +139,15 @@ impl GridDepthStack {
 
 /// Flat per-track hug-size pool with one `(rows, cols)` slot per recorded
 /// `GridDef`. Carries both `max` (max-content) and `min` (min-content) per
-/// track so Step B's constraint solver can range-distribute Hug tracks.
-/// Measure pass writes; arrange pass reads. Scratch in
-/// `GridLayout::scratch[depth]` would get clobbered by sibling grids before
-/// arrange runs, so the pool persists for the whole layout pass instead.
-/// Reset at the start of each pass; capacity retained across frames.
+/// track so the Hug-track constraint solver can range-distribute Hug
+/// tracks. Measure pass writes; arrange pass reads. Per-depth scratch in
+/// `depth_stack` gets clobbered by sibling grids before arrange runs, so
+/// the pool persists for the whole layout pass instead.
+///
+/// `reset_for` zeroes every slot at the top of each pass — load-bearing,
+/// because `record_hug` and the Phase 1 column loop both accumulate via
+/// `slot[i] = slot[i].max(...)` and assume a 0.0 starting state.
+/// Capacity retained across frames.
 #[derive(Default)]
 pub(crate) struct GridHugStore {
     max_pool: Vec<f32>,
@@ -223,11 +227,12 @@ impl GridHugStore {
 /// the grid's content size — final star sizes only resolve in arrange. See
 /// `docs/grid.md`.
 ///
-/// Scratch lives in `Layout::grid_scratch[depth]` (heap, capacity-retained
-/// across frames). No fixed track-count limit. Per-track hug sizes are
-/// persisted onto `LayoutResult` so `arrange` can read them without
-/// re-walking children — engine scratch is keyed by depth and would be
-/// clobbered by sibling grids.
+/// Per-depth scratch (`AxisScratch` columns) lives in `grid.depth_stack`
+/// and gets clobbered by sibling grids between this measure and the
+/// matching arrange. Hug sizes therefore live in `grid.hugs`
+/// (`GridHugStore`), keyed by `GridDef` index, durable for the whole
+/// layout pass. Both are heap-resident and capacity-retained across
+/// frames; no fixed track-count limit.
 pub(super) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
@@ -320,13 +325,11 @@ fn measure_inner(
             inner_avail.w,
             col_gap,
         );
-        if !matches!(grid_sizing_w, Sizing::Hug) && inner_avail.w.is_finite() {
-            for (i, t) in s.col.tracks.iter().enumerate() {
-                if matches!(t.size, Sizing::Fill(_)) {
-                    s.col.resolved[i] = true;
-                }
-            }
-        }
+        mark_fill_resolved(&mut s.col, grid_sizing_w, inner_avail.w);
+        // Resolve Fixed rows once before the per-cell loop — values are
+        // constant per GridDef and `resolve_fixed` is idempotent, so
+        // calling it inside the loop just re-set the same slots.
+        resolve_fixed(&mut s.row);
     }
 
     // Phase 2: measure cells with resolved col widths. Rows are still
@@ -350,7 +353,6 @@ fn measure_inner(
             let avail_w = sum_spanned_known(&s.col.sizes, &s.col.resolved, cell.col, cell.col_span);
             // Rows: only Fixed is known yet; Hug and Fill are unresolved
             // → INF (WPF intrinsic trick), as before.
-            resolve_fixed(&mut s.row);
             let avail_h = sum_spanned_known(&s.row.sizes, &s.row.resolved, cell.row, cell.row_span);
             Size::new(avail_w, avail_h)
         };
@@ -381,7 +383,7 @@ fn measure_inner(
     // (Cells already measured by this point, so the resolved flag here
     // doesn't affect the current measure; it carries forward into
     // arrange's re-resolve via the persisted state.)
-    let s = {
+    {
         let GridContext {
             depth_stack, hugs, ..
         } = &mut layout.grid;
@@ -393,19 +395,13 @@ fn measure_inner(
             inner_avail.h,
             row_gap,
         );
-        if !matches!(grid_sizing_h, Sizing::Hug) && inner_avail.h.is_finite() {
-            for (i, t) in s.row.tracks.iter().enumerate() {
-                if matches!(t.size, Sizing::Fill(_)) {
-                    s.row.resolved[i] = true;
-                }
-            }
-        }
-        s
-    };
+        mark_fill_resolved(&mut s.row, grid_sizing_h, inner_avail.h);
+    }
 
     // Returned content size: sum of non-Fill track sizes + gaps. Fill
     // tracks "want 0" in measure context — they only claim leftover at
     // arrange time. Mirrors WPF's "Star contributes 0 to content size."
+    let s = layout.grid.depth_stack.at(depth);
     let total_w =
         sum_non_fill(&s.col.tracks, &s.col.sizes) + col_gap * n_cols.saturating_sub(1) as f32;
     let total_h =
@@ -427,9 +423,12 @@ fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
         .sum()
 }
 
-/// Borrow the per-axis tracks at `depth`. Helper so we can read tracks
-/// for the per-axis `Sizing` check without holding a long-lived `at()`
-/// borrow that conflicts with the subsequent intrinsic call.
+/// Refcount-clone the per-axis tracks at `depth` so the caller can hold
+/// `&[Track]` while also calling `layout.intrinsic(...)` on the same
+/// engine — releasing the `&mut depth_stack[depth]` borrow that the
+/// intrinsic call would conflict with. Single caller (Phase 1 column
+/// loop in `measure_inner`); kept as a named helper to keep the borrow
+/// dance off the hot path.
 fn tracks_at(layout: &mut LayoutEngine, depth: usize, axis: Axis) -> Rc<[Track]> {
     let s = layout.grid.depth_stack.at(depth);
     match axis {
@@ -442,6 +441,24 @@ fn resolve_fixed(a: &mut AxisScratch) {
     for (i, t) in a.tracks.iter().enumerate() {
         if let Sizing::Fixed(v) = t.size {
             a.sizes[i] = v.clamp(t.min, t.max);
+            a.resolved[i] = true;
+        }
+    }
+}
+
+/// After `resolve_axis` runs, Fill tracks stay unresolved so cells in
+/// Fill cols/rows see `INF` via `sum_spanned_known` during measure. When
+/// the grid itself is non-Hug on this axis with a finite slot, that slot
+/// width will match arrange's, so we can mark Fill resolved up-front and
+/// let cells measure at the resolved width — wrap text shapes correctly.
+/// Hug grids must keep Fill unresolved (their arrange slot is unknown
+/// here).
+fn mark_fill_resolved(a: &mut AxisScratch, grid_sizing: Sizing, avail: f32) {
+    if matches!(grid_sizing, Sizing::Hug) || !avail.is_finite() {
+        return;
+    }
+    for (i, t) in a.tracks.iter().enumerate() {
+        if matches!(t.size, Sizing::Fill(_)) {
             a.resolved[i] = true;
         }
     }
@@ -549,9 +566,11 @@ fn arrange_inner(
     }
 }
 
-/// Validate a cell against the grid's track counts. Panics in both debug and
-/// release if the cell is out of range or has zero span — silent clamping
-/// would hide real authoring bugs (e.g. a child placed past the last column).
+/// Validate a cell against the grid's track counts. Called once per
+/// child during the Phase 1 column loop in `measure_inner`; arrange
+/// trusts measure's check. Panics on out-of-range or zero-span — silent
+/// clamping would hide real authoring bugs (e.g. a child placed past the
+/// last column).
 fn assert_cell(c: GridCell, n_rows: usize, n_cols: usize) {
     let row = c.row as usize;
     let col = c.col as usize;
