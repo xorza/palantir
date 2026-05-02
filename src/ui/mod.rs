@@ -11,7 +11,7 @@ use crate::element::Element;
 use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
 use crate::primitives::{Display, WidgetId};
-use crate::renderer::{FrameOutput, Painter};
+use crate::renderer::{FrameOutput, Frontend};
 use crate::shape::Shape;
 use crate::text::{SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
@@ -45,7 +45,7 @@ pub struct Ui {
     /// damage rect (`None` ⇒ full repaint, `Some(r)` ⇒ partial).
     pub(crate) damage: Damage,
 
-    painter: Painter,
+    frontend: Frontend,
 }
 
 impl Default for Ui {
@@ -69,7 +69,7 @@ impl Ui {
             // present. Subsequent idle frames flip back to `false`.
             repaint_requested: true,
             damage: Damage::default(),
-            painter: Painter::new(),
+            frontend: Frontend::new(),
         }
     }
 
@@ -102,7 +102,7 @@ impl Ui {
 
     /// Finalize the just-recorded frame: measure + arrange, rebuild cascades
     /// and hit-index, compute hashes and damage, and encode + compose into
-    /// the painter's `RenderBuffer`. Returns the painted output ready for
+    /// the frontend's `RenderBuffer`. Returns the painted output ready for
     /// `WgpuBackend::submit`. Clears the repaint gate.
     pub fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
@@ -124,7 +124,7 @@ impl Ui {
         let damage = self
             .damage
             .compute(&self.tree, &self.cascades, self.ids.removed(), surface);
-        self.painter.build(
+        self.frontend.build(
             &self.tree,
             self.layout_engine.result(),
             &self.cascades,
@@ -133,8 +133,9 @@ impl Ui {
             &self.display,
         );
         self.repaint_requested = false;
+        
         FrameOutput {
-            buffer: self.painter.buffer(),
+            buffer: self.frontend.buffer(),
             damage,
         }
     }

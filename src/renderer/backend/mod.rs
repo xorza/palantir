@@ -1,5 +1,7 @@
-use super::painter::FrameOutput;
-use super::quad::QuadPipeline;
+mod quad_pipeline;
+
+use self::quad_pipeline::QuadPipeline;
+use super::frontend::FrameOutput;
 use crate::primitives::{Color, URect};
 use crate::text::SharedCosmic;
 
