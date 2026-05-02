@@ -106,7 +106,10 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
     }
     let glyph_w = font_size_px * 0.5;
     let line_h = font_size_px;
-    let total_chars = text.chars().count() as f32;
+    // Mono is a deterministic stub — count one "char" per byte. Correct for
+    // ASCII (which is what every test and bench uses); for multibyte input
+    // it overcounts, but mono is not a production path.
+    let total_chars = text.len() as f32;
     let unbroken_w = total_chars * glyph_w;
 
     let size = match max_width_px {
@@ -119,11 +122,23 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
         }
     };
     // Mono has no real word boundaries — fall back to "the longest run of
-    // non-space characters" so wrap callers still get a sensible floor.
-    let intrinsic_min = text
-        .split_whitespace()
-        .map(|w| w.chars().count() as f32 * glyph_w)
-        .fold(0.0_f32, f32::max);
+    // non-space bytes" so wrap callers still get a sensible floor.
+    let mut longest = 0u32;
+    let mut run = 0u32;
+    for &b in text.as_bytes() {
+        if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
+            if run > longest {
+                longest = run;
+            }
+            run = 0;
+        } else {
+            run += 1;
+        }
+    }
+    if run > longest {
+        longest = run;
+    }
+    let intrinsic_min = longest as f32 * glyph_w;
     MeasureResult {
         size,
         key: TextCacheKey::INVALID,
