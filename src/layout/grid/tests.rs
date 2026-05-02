@@ -280,3 +280,136 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
         "Fill cols must stay unresolved so `sum_spanned_known` returns INF for them"
     );
 }
+
+/// Pin: a cell with both `row_span > 1` and `col_span > 1` covers the
+/// rectangular union of those tracks (gaps between spanned tracks
+/// included). Today's tests cover row_span and col_span separately;
+/// this exercises the 2-D case which goes through `span_size` on both
+/// axes plus `record_hug`'s `span != 1` skip on both axes.
+#[test]
+fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    // 3×3 of fixed-50 cells with gap=10. A 2×2 cell starting at (0,0)
+    // covers rows 0-1 and cols 0-1: w = 50+10+50 = 110, h = same.
+    let root = Grid::new()
+        .cols([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
+        .rows([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
+        .gap(10.0)
+        .show(&mut ui, |ui| {
+            Frame::with_id("big")
+                .grid_cell((0, 0))
+                .grid_span((2, 2))
+                .show(ui);
+            Frame::with_id("corner").grid_cell((2, 2)).show(ui);
+        })
+        .node;
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let big = ui.rect(kids[0]);
+    let corner = ui.rect(kids[1]);
+
+    assert_eq!((big.min.x, big.min.y), (0.0, 0.0));
+    assert_eq!((big.size.w, big.size.h), (110.0, 110.0));
+    // corner sits at row 2 col 2: x = 2*(50+10) = 120, y = 120.
+    assert_eq!((corner.min.x, corner.min.y), (120.0, 120.0));
+    assert_eq!((corner.size.w, corner.size.h), (50.0, 50.0));
+}
+
+/// Pin: an empty grid (zero rows or zero cols) measures + arranges
+/// without panicking; its content size is `Size::ZERO` and any
+/// child's rect is zeroed at the parent's anchor.
+/// `grid::measure_inner` and `grid::arrange_inner` both have an
+/// early-return shortcut for this case; without a test, removing the
+/// shortcut would silently start panicking on track indexing or
+/// producing garbage rects.
+#[test]
+fn grid_empty_dim_measures_to_zero_and_zeros_children() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    // Zero-row grid via explicit empty rows. Wrapped in HStack so the
+    // Hug grid's measured (zero) size is honored — `ui.layout` forces
+    // the root rect to the surface size regardless of Sizing.
+    let empty: Rc<[Track]> = Rc::from([] as [Track; 0]);
+    let mut grid_node = None;
+    let mut ghost_node = None;
+    Panel::hstack()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            grid_node = Some(
+                Grid::with_id("empty-grid")
+                    .cols([Track::fixed(50.0)])
+                    .rows(empty)
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .show(ui, |ui| {
+                        ghost_node = Some(Frame::with_id("ghost").size((20.0, 20.0)).show(ui).node);
+                    })
+                    .node,
+            );
+        });
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+
+    let r = ui.rect(grid_node.unwrap());
+    assert_eq!(r.size.w, 0.0);
+    assert_eq!(r.size.h, 0.0);
+
+    let ghost = ui.rect(ghost_node.unwrap());
+    assert_eq!(ghost.size.w, 0.0);
+    assert_eq!(ghost.size.h, 0.0);
+}
+
+/// Pin: each Hug row resolves to its own cells' max desired height,
+/// independent of other rows. A taller cell in row 1 must not affect
+/// row 0's height. Today tests cover single Hug rows; this catches a
+/// bug where `record_hug` accidentally writes to the wrong row index.
+#[test]
+fn grid_multi_row_hug_heights_resolve_independently() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+    // Wrap in HStack so the Hug-on-h grid's measured size is honored —
+    // root forces the surface size regardless of Sizing.
+    let mut grid_node = None;
+    let mut kids = Vec::new();
+    Panel::hstack()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            grid_node = Some(
+                Grid::with_id("multi-row")
+                    .cols([Track::fixed(50.0)])
+                    .rows([Track::hug(), Track::hug(), Track::hug()])
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .show(ui, |ui| {
+                        kids.push(
+                            Frame::with_id("short")
+                                .size((50.0, 10.0))
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node,
+                        );
+                        kids.push(
+                            Frame::with_id("tall")
+                                .size((50.0, 80.0))
+                                .grid_cell((1, 0))
+                                .show(ui)
+                                .node,
+                        );
+                        kids.push(
+                            Frame::with_id("med")
+                                .size((50.0, 30.0))
+                                .grid_cell((2, 0))
+                                .show(ui)
+                                .node,
+                        );
+                    })
+                    .node,
+            );
+        });
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+
+    assert_eq!(ui.rect(kids[0]).size.h, 10.0);
+    assert_eq!(ui.rect(kids[1]).size.h, 80.0);
+    assert_eq!(ui.rect(kids[2]).size.h, 30.0);
+    // Grid hugs to sum + (n-1)*0 (no row gap set) = 120.
+    assert_eq!(ui.rect(grid_node.unwrap()).size.h, 120.0);
+}

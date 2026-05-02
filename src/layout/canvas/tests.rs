@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Rect, Sizing};
+use crate::primitives::{Align, HAlign, Rect, Sizing, VAlign};
 use crate::tree::NodeId;
 use crate::widgets::{Frame, Panel};
 
@@ -175,4 +175,37 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
     let r = ui.rect(panel);
     assert_eq!(r.size.w, 10.0);
     assert_eq!(r.size.h, 10.0);
+}
+
+/// Pin: Canvas places children at their explicit `.position(...)` and
+/// **ignores `.align(...)`** — children's alignment values do not
+/// participate in placement (Canvas is the "explicit position wins"
+/// driver). Stack/ZStack/Grid all consume align via `place_axis`;
+/// Canvas does not. Adding align-cascade to Canvas would seem like a
+/// reasonable change but would break the contract that Canvas users
+/// rely on for free-form placement.
+#[test]
+fn canvas_ignores_child_align() {
+    let mut ui = Ui::new();
+    let mut child = None;
+    let _panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+        Panel::canvas()
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .show(ui, |ui| {
+                child = Some(
+                    Frame::with_id("aligned")
+                        .position((30.0, 40.0))
+                        .size((50.0, 50.0))
+                        // Right/Bottom would matter on Stack/ZStack/Grid;
+                        // Canvas must ignore it.
+                        .align(Align::new(HAlign::Right, VAlign::Bottom))
+                        .show(ui)
+                        .node,
+                );
+            })
+            .node
+    });
+    let r = ui.rect(child.unwrap());
+    assert_eq!((r.min.x, r.min.y), (30.0, 40.0));
+    assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
 }
