@@ -10,9 +10,7 @@ use crate::text::TextCacheKey;
 
 /// One step of the backend's per-frame draw schedule. Used here to pin
 /// draw ordering without a GPU. `Quads(i)` draws group `i`'s quads;
-/// `Text(i)` renders text scoped to group `i`. The sentinel
-/// `Text(usize::MAX)` means "all text at the end of frame, ungrouped" —
-/// the v1 limitation that ignores per-group text ordering.
+/// `Text(i)` renders text scoped to group `i`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RenderStep {
     Quads(usize),
@@ -20,21 +18,18 @@ enum RenderStep {
 }
 
 /// Pure function describing the order of operations
-/// [`super::WgpuBackend::submit`] performs on `buffer`. Captures today's
-/// behavior: quads drawn group by group in declaration order, then a
-/// single global text render at the end (see `backend/text.rs` v1
-/// limitation). Per-group text rendering would replace the trailing
-/// `Text(usize::MAX)` with `Text(i)` entries interleaved after each
-/// `Quads(i)`.
+/// [`super::WgpuBackend::submit`] performs on `buffer`. Per-group: emit
+/// `Quads(i)` if the group has quads, then `Text(i)` if the group has
+/// text. Mirrors the loop in `submit`.
 fn render_schedule(buffer: &RenderBuffer) -> Vec<RenderStep> {
     let mut steps = Vec::new();
     for (i, g) in buffer.groups.iter().enumerate() {
         if !g.quads.is_empty() {
             steps.push(RenderStep::Quads(i));
         }
-    }
-    if !buffer.texts.is_empty() {
-        steps.push(RenderStep::Text(usize::MAX));
+        if !g.texts.is_empty() {
+            steps.push(RenderStep::Text(i));
+        }
     }
     steps
 }
@@ -62,54 +57,11 @@ fn dummy_text() -> TextRun {
     }
 }
 
-/// Pin: today's schedule. All quads in group order, then one global
-/// `Text` step at the end ignoring per-group ordering.
+/// Pin: text in group 0 renders *between* group 0's quads and group 1's
+/// quads, so a child quad declared after a label can occlude it. This
+/// is the per-group z-order contract — the showcase tab `text z-order`
+/// demonstrates the visual outcome.
 #[test]
-fn render_schedule_today_renders_text_globally_at_end() {
-    let buf = RenderBuffer {
-        quads: vec![dummy_quad(); 3],
-        texts: vec![dummy_text()],
-        groups: vec![
-            DrawGroup {
-                scissor: None,
-                quads: 0..2,
-                texts: 0..1,
-            },
-            DrawGroup {
-                scissor: None,
-                quads: 2..3,
-                texts: 1..1,
-            },
-        ],
-        viewport_phys: [100, 100],
-        viewport_phys_f: [100.0, 100.0],
-        scale: 1.0,
-    };
-    assert_eq!(
-        render_schedule(&buf),
-        vec![
-            RenderStep::Quads(0),
-            RenderStep::Quads(1),
-            RenderStep::Text(usize::MAX),
-        ],
-    );
-}
-
-/// Spec for the per-group text z-order fix (see `docs/text.md`,
-/// "Per-group text z-order" open question, and the `text z-order`
-/// showcase tab). Text in group 0 must render *between* group 0's
-/// quads and group 1's quads, so a child quad declared after a label
-/// can occlude it.
-///
-/// Currently fails: today's `render_schedule` emits all quads first
-/// then a single trailing `Text(usize::MAX)`. Once the backend is
-/// rewritten to interleave per-group `prepare`/`render` (Option D —
-/// pool of `glyphon::TextRenderer`s sharing one atlas), this test
-/// passes and `#[ignore]` should be removed.
-///
-/// Run with `cargo test --include-ignored render_schedule_interleaves`.
-#[test]
-#[ignore = "spec for per-group text z-order — see text z-order showcase"]
 fn render_schedule_interleaves_text_per_group() {
     let buf = RenderBuffer {
         quads: vec![dummy_quad(); 3],
@@ -139,5 +91,36 @@ fn render_schedule_interleaves_text_per_group() {
             RenderStep::Text(0),
             RenderStep::Quads(1),
         ],
+    );
+}
+
+/// Edge case: a group with text but no quads (e.g. a Hug parent whose
+/// only paint is its label). Schedule must still emit `Text(i)`.
+#[test]
+fn render_schedule_emits_text_for_quadless_group() {
+    let buf = RenderBuffer {
+        quads: vec![dummy_quad()],
+        texts: vec![dummy_text(); 2],
+        groups: vec![
+            // Group 0: 1 quad only
+            DrawGroup {
+                scissor: None,
+                quads: 0..1,
+                texts: 0..0,
+            },
+            // Group 1: text only, no quads
+            DrawGroup {
+                scissor: None,
+                quads: 1..1,
+                texts: 0..2,
+            },
+        ],
+        viewport_phys: [100, 100],
+        viewport_phys_f: [100.0, 100.0],
+        scale: 1.0,
+    };
+    assert_eq!(
+        render_schedule(&buf),
+        vec![RenderStep::Quads(0), RenderStep::Text(1)],
     );
 }

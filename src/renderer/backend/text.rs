@@ -1,15 +1,10 @@
-//! Glyphon-backed text renderer. Owns the device-bound state (`Cache`,
-//! `TextAtlas`, `Viewport`, `glyphon::TextRenderer`, `SwashCache`) and a
-//! shared handle to the [`CosmicMeasure`] populated by layout, so prepare
-//! can look up each [`TextRun`]'s shaped buffer directly from the cache the
-//! Ui side filled.
-//!
-//! v1 limitation: all text is prepared and rendered after all quads, so text
-//! always paints on top of every quad in the frame. This matches the common
-//! case (button label over button background) but means a parent's label
-//! will visually float over a child's background. Fix when the first widget
-//! needs the opposite z-order — likely via per-group prepare/render or
-//! glyphon's depth metadata.
+//! Glyphon-backed text renderer with **per-group prepare/render** so text
+//! interleaves correctly with quads in paint order. The wgpu backend calls
+//! [`TextRenderer::prepare_group`] for each `DrawGroup` whose `texts` range
+//! is non-empty, then inside the render pass calls
+//! [`TextRenderer::render_group`] right after that group's quads draw.
+//! Glyph data is shared via a single [`TextAtlas`] across all renderers in
+//! the pool, so the cache is hit for free across groups.
 //!
 //! [`CosmicMeasure`]: crate::text::CosmicMeasure
 //! [`TextRun`]: super::super::buffer::TextRun
@@ -21,37 +16,44 @@ use glyphon::{
     TextRenderer as GlyphonRenderer, Viewport,
 };
 
-/// Renderer-side encapsulation of the cosmic-text → glyphon path. Holds the
-/// glyphon device-bound state plus a shared handle to the same
-/// [`CosmicMeasure`] the Ui side measured against, so the buffer cache is
-/// the single source of truth.
+/// Renderer-side encapsulation of the cosmic-text → glyphon path. Holds
+/// glyphon device-bound state (atlas + viewport + swash cache) plus a
+/// pool of [`GlyphonRenderer`]s, one per draw group with text. The
+/// renderers share the atlas — glyph cache hits across groups are free.
 pub(crate) struct TextRenderer {
     cosmic: Option<SharedCosmic>,
     cache: Cache,
     atlas: TextAtlas,
     viewport: Viewport,
-    renderer: GlyphonRenderer,
     swash_cache: SwashCache,
-    /// Reusable scratch for `TextArea`s built each frame from the
-    /// `RenderBuffer.texts`. Cleared per submit, capacity retained.
+    /// Pool of glyphon renderers, one slot per group that ever held text
+    /// in this app's lifetime. Grows on demand to the historical high
+    /// water; capacity retained across frames so steady state is alloc-
+    /// free.
+    renderers: Vec<GlyphonRenderer>,
+    /// Same length as `renderers`. `ready[i]` says whether
+    /// `renderers[i].prepare(...)` was called this frame and should be
+    /// rendered. Reset to all-false in [`Self::end_frame`].
+    ready: Vec<bool>,
+    /// Reusable scratch for `TextArea`s built each `prepare_group` call.
+    /// Capacity retained.
     scratch: Vec<TextArea<'static>>,
 }
 
 impl TextRenderer {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let cache = Cache::new(device);
-        let mut atlas = TextAtlas::new(device, queue, &cache, format);
+        let atlas = TextAtlas::new(device, queue, &cache, format);
         let viewport = Viewport::new(device, &cache);
-        let renderer =
-            GlyphonRenderer::new(&mut atlas, device, wgpu::MultisampleState::default(), None);
         let swash_cache = SwashCache::new();
         Self {
             cosmic: None,
             cache,
             atlas,
             viewport,
-            renderer,
             swash_cache,
+            renderers: Vec::new(),
+            ready: Vec::new(),
             scratch: Vec::new(),
         }
     }
@@ -63,6 +65,8 @@ impl TextRenderer {
     }
 
     /// Re-create on surface format change (e.g. after window recreation).
+    /// Replaces the atlas + drops the renderer pool (each renderer holds
+    /// pipeline state tied to the old format).
     pub fn rebuild_for_format(
         &mut self,
         device: &wgpu::Device,
@@ -70,23 +74,38 @@ impl TextRenderer {
         format: wgpu::TextureFormat,
     ) {
         self.atlas = TextAtlas::new(device, queue, &self.cache, format);
-        self.renderer = GlyphonRenderer::new(
-            &mut self.atlas,
-            device,
-            wgpu::MultisampleState::default(),
-            None,
+        self.renderers.clear();
+        self.ready.clear();
+    }
+
+    /// True if any group has been prepared this frame and should render.
+    pub fn has_prepared(&self) -> bool {
+        self.ready.iter().any(|&r| r)
+    }
+
+    /// Update the viewport uniform. Called once per frame before the
+    /// per-group prepares so all renderers see the same viewport.
+    pub fn update_viewport(&mut self, queue: &wgpu::Queue, viewport_phys: [u32; 2]) {
+        self.viewport.update(
+            queue,
+            Resolution {
+                width: viewport_phys[0],
+                height: viewport_phys[1],
+            },
         );
     }
 
-    /// Build glyphon `TextArea`s from `runs` (looked up in the shared cosmic
-    /// cache) and call `prepare`. Returns `false` and skips work if no
-    /// shaper is installed or no runs resolve to a buffer.
-    pub fn prepare(
+    /// Build glyphon `TextArea`s from `runs` (looked up in the shared
+    /// cosmic cache) and call `prepare` on the renderer pool slot at
+    /// `group_idx`. Returns `false` and skips work if no shaper is
+    /// installed or no runs resolve to a buffer. The pool grows on
+    /// demand if `group_idx` exceeds the current pool length.
+    pub fn prepare_group(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        viewport_phys: [u32; 2],
         scale: f32,
+        group_idx: usize,
         runs: &[TextRun],
     ) -> bool {
         let Some(cosmic) = self.cosmic.as_ref() else {
@@ -119,15 +138,21 @@ impl TextRenderer {
             return false;
         }
 
-        self.viewport.update(
-            queue,
-            Resolution {
-                width: viewport_phys[0],
-                height: viewport_phys[1],
-            },
-        );
+        // Grow pool to accommodate `group_idx`. Each renderer is small
+        // (one wgpu vertex buffer + a Vec<GlyphToRender>); pipeline is
+        // reused via `atlas.get_or_create_pipeline`.
+        while self.renderers.len() <= group_idx {
+            let renderer = GlyphonRenderer::new(
+                &mut self.atlas,
+                device,
+                wgpu::MultisampleState::default(),
+                None,
+            );
+            self.renderers.push(renderer);
+            self.ready.push(false);
+        }
 
-        let result = self.renderer.prepare(
+        let result = self.renderers[group_idx].prepare(
             device,
             queue,
             font_system,
@@ -136,27 +161,39 @@ impl TextRenderer {
             scratch.iter().cloned(),
             &mut self.swash_cache,
         );
-        // Drop scratch borrows before returning so the `'static` placeholder
-        // is sound for the next frame.
+        // Drop scratch borrows before returning so the `'static`
+        // placeholder is sound for the next call.
         scratch.clear();
 
         if let Err(e) = result {
-            tracing::warn!(?e, "glyphon prepare failed");
+            tracing::warn!(?e, group_idx, "glyphon prepare failed");
+            self.ready[group_idx] = false;
             return false;
         }
+        self.ready[group_idx] = true;
         true
     }
 
-    pub fn render(&self, pass: &mut wgpu::RenderPass<'_>) {
-        if let Err(e) = self.renderer.render(&self.atlas, &self.viewport, pass) {
-            tracing::warn!(?e, "glyphon render failed");
+    /// Render the prepared text for `group_idx`. Silently no-ops if the
+    /// group wasn't prepared this frame (no text, no shaper, or prepare
+    /// failed).
+    pub fn render_group(&self, group_idx: usize, pass: &mut wgpu::RenderPass<'_>) {
+        if !matches!(self.ready.get(group_idx), Some(true)) {
+            return;
+        }
+        if let Err(e) = self.renderers[group_idx].render(&self.atlas, &self.viewport, pass) {
+            tracing::warn!(?e, group_idx, "glyphon render failed");
         }
     }
 
-    /// Reclaim atlas slots that were allocated for glyphs unused this frame.
-    /// Call once per frame after `render` returns.
+    /// Reclaim atlas slots for glyphs unused this frame and reset the
+    /// per-renderer ready flags. Call once after all `render_group` calls
+    /// have been submitted in the encoder pass.
     pub fn end_frame(&mut self) {
         self.atlas.trim();
+        for r in &mut self.ready {
+            *r = false;
+        }
     }
 }
 

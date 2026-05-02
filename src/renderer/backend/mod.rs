@@ -39,6 +39,11 @@ impl WgpuBackend {
 
     /// Render one frame. Without a shared shaper installed (mono fallback)
     /// text rendering is silently skipped; the frame still draws quads.
+    ///
+    /// Quads and text interleave per-group in paint order: each group's
+    /// quads draw first, then its text renders on top, before the next
+    /// group runs. So a child quad declared *after* a label correctly
+    /// occludes that label.
     pub fn submit(&mut self, view: &wgpu::TextureView, clear: Color, buffer: &RenderBuffer) {
         tracing::trace!(
             quads = buffer.quads.len(),
@@ -55,15 +60,19 @@ impl WgpuBackend {
             &buffer.quads,
         );
 
-        // Prepare text outside the encoder/pass borrow scope so glyphon can
-        // upload to the atlas + instance buffer freely.
-        let text_ready = self.text.prepare(
-            &self.device,
-            &self.queue,
-            buffer.viewport_phys,
-            buffer.scale,
-            &buffer.texts,
-        );
+        // Prepare text per-group outside the encoder/pass borrow scope so
+        // glyphon can upload to the atlas + per-renderer vertex buffer
+        // freely. Viewport uniform updated once for all renderers in the
+        // pool — they share the atlas-bound pipeline + viewport state.
+        self.text.update_viewport(&self.queue, buffer.viewport_phys);
+        for (i, g) in buffer.groups.iter().enumerate() {
+            if g.texts.is_empty() {
+                continue;
+            }
+            let runs = &buffer.texts[g.texts.start as usize..g.texts.end as usize];
+            self.text
+                .prepare_group(&self.device, &self.queue, buffer.scale, i, runs);
+        }
 
         let mut encoder = self
             .device
@@ -92,7 +101,7 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            for g in &buffer.groups {
+            for (i, g) in buffer.groups.iter().enumerate() {
                 if let Some(s) = g.scissor {
                     if s.w == 0 || s.h == 0 {
                         continue;
@@ -101,19 +110,23 @@ impl WgpuBackend {
                 } else {
                     pass.set_scissor_rect(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
                 }
-                self.quad.draw_range(&mut pass, g.quads.clone());
-            }
-            // Text on top, single full-viewport scissor; per-area `bounds`
-            // does the actual clipping. See `text` module on the z-order
-            // limitation.
-            if text_ready {
-                pass.set_scissor_rect(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
-                self.text.render(&mut pass);
+                if !g.quads.is_empty() {
+                    self.quad.draw_range(&mut pass, g.quads.clone());
+                }
+                if !g.texts.is_empty() {
+                    // Text uses a full-viewport scissor + per-area `bounds`
+                    // for clipping (set in compose). Switching scissors
+                    // mid-pass is cheap; restoring the group's quad
+                    // scissor after isn't needed because the next group
+                    // re-sets its own.
+                    pass.set_scissor_rect(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
+                    self.text.render_group(i, &mut pass);
+                }
             }
         }
         self.queue.submit(std::iter::once(encoder.finish()));
 
-        if text_ready {
+        if self.text.has_prepared() {
             self.text.end_frame();
         }
     }

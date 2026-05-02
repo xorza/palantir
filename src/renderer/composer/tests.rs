@@ -2,6 +2,7 @@ use super::super::buffer::{RenderBuffer, ScissorRect};
 use super::super::encoder::RenderCmd;
 use super::{ComposeParams, Composer, intersect_scissor};
 use crate::primitives::{Color, Corners, Rect};
+use crate::text::TextCacheKey;
 
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
     Rect::new(x, y, w, h)
@@ -13,6 +14,14 @@ fn draw(r: Rect) -> RenderCmd {
         radius: Corners::ZERO,
         fill: Color::rgb(1.0, 1.0, 1.0),
         stroke: None,
+    }
+}
+
+fn text(r: Rect) -> RenderCmd {
+    RenderCmd::DrawText {
+        rect: r,
+        color: Color::WHITE,
+        key: TextCacheKey::INVALID,
     }
 }
 
@@ -221,4 +230,72 @@ fn compose_transforms_clip_rects_to_screen_space() {
         .scissor
         .expect("clipped group must have a scissor");
     assert_eq!((s.x, s.y, s.w, s.h), (20, 20, 40, 40));
+}
+
+/// Pin: a `Quad → Text → Quad` paint sequence inside a single scissor
+/// produces TWO groups so the second quad renders *after* the text.
+/// Without this split, `submit` batches both quads together and the
+/// text always paints on top — which is the bug the `text z-order`
+/// showcase tab exposes.
+#[test]
+fn compose_splits_group_on_text_to_quad_transition() {
+    let buf = run(
+        &[
+            draw(rect(0.0, 0.0, 100.0, 100.0)),
+            text(rect(10.0, 10.0, 80.0, 20.0)),
+            draw(rect(20.0, 20.0, 60.0, 40.0)),
+        ],
+        &params(1.0, [200, 200]),
+    );
+    assert_eq!(buf.quads.len(), 2);
+    assert_eq!(buf.texts.len(), 1);
+    assert_eq!(
+        buf.groups.len(),
+        2,
+        "text→quad transition must start a new group"
+    );
+    // First group: quad #0 + text #0.
+    assert_eq!(buf.groups[0].quads, 0..1);
+    assert_eq!(buf.groups[0].texts, 0..1);
+    // Second group: quad #1 only — renders after group 0's text.
+    assert_eq!(buf.groups[1].quads, 1..2);
+    assert_eq!(buf.groups[1].texts, 1..1);
+}
+
+/// Pin: consecutive `Text → Text` should NOT split (both go into the
+/// same group). Only `Text → Quad` triggers a flush. Otherwise a
+/// header-then-body label pair produces two groups for nothing.
+#[test]
+fn compose_does_not_split_consecutive_texts() {
+    let buf = run(
+        &[
+            draw(rect(0.0, 0.0, 100.0, 100.0)),
+            text(rect(10.0, 10.0, 80.0, 20.0)),
+            text(rect(10.0, 35.0, 80.0, 20.0)),
+        ],
+        &params(1.0, [200, 200]),
+    );
+    assert_eq!(buf.quads.len(), 1);
+    assert_eq!(buf.texts.len(), 2);
+    assert_eq!(buf.groups.len(), 1);
+    assert_eq!(buf.groups[0].quads, 0..1);
+    assert_eq!(buf.groups[0].texts, 0..2);
+}
+
+/// Pin: `Quad → Quad → Text` fits in one group. The text comes after
+/// both quads and renders on top of both — the common case (button
+/// background + button stroke + label).
+#[test]
+fn compose_keeps_quads_then_text_in_one_group() {
+    let buf = run(
+        &[
+            draw(rect(0.0, 0.0, 100.0, 100.0)),
+            draw(rect(2.0, 2.0, 96.0, 96.0)),
+            text(rect(10.0, 10.0, 80.0, 20.0)),
+        ],
+        &params(1.0, [200, 200]),
+    );
+    assert_eq!(buf.groups.len(), 1);
+    assert_eq!(buf.groups[0].quads, 0..2);
+    assert_eq!(buf.groups[0].texts, 0..1);
 }
