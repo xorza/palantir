@@ -260,14 +260,12 @@ fn bench_layout(c: &mut Criterion) {
                 for _ in 0..3 {
                     ui.begin_frame();
                     build_ui(&mut ui, scale);
-                    ui.layout(surface);
-                    ui.end_frame();
+                    ui.end_frame(surface);
                 }
                 b.iter(|| {
                     ui.begin_frame();
                     build_ui(&mut ui, scale);
-                    ui.layout(black_box(surface));
-                    ui.end_frame();
+                    ui.end_frame(black_box(surface));
                 });
             },
         );

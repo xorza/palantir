@@ -27,8 +27,7 @@ fn empty_tree_encodes_to_nothing() {
     let mut ui = Ui::new();
     ui.begin_frame();
     Panel::hstack().show(&mut ui, |_| {});
-    ui.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
     encode(
         &ui.tree,
         ui.layout_result(),
@@ -54,9 +53,7 @@ fn frame_with_fill_emits_one_draw_rect() {
             .fill(Color::rgb(1.0, 0.0, 0.0))
             .show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
@@ -83,9 +80,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
     Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("invisible").size(50.0).show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
@@ -120,9 +115,7 @@ fn clip_emits_balanced_push_pop() {
                     .show(ui);
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
@@ -258,8 +251,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .show(ui);
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let mut cmds = Vec::new();
     encode(
@@ -385,9 +377,7 @@ fn nested_clips_each_emit_their_own_pair() {
                     .show(ui, |_| {});
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
@@ -413,8 +403,7 @@ fn disabled_ancestor_dims_descendant_fill() {
             .fill(pure_red)
             .show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
 
     let mut cmds = Vec::new();
     encode(
@@ -443,8 +432,7 @@ fn disabled_ancestor_dims_descendant_fill() {
             .fill(pure_red)
             .show(ui);
     });
-    ui2.layout(Rect::new(0.0, 0.0, 100.0, 100.0));
-    ui2.end_frame();
+    ui2.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
     cmds.clear();
     encode(
         &ui2.tree,
@@ -528,8 +516,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
             .padding(20.0)
             .show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let mut cmds = Vec::new();
     encode(
@@ -589,8 +576,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
             .fill(Color::rgb(0.0, 1.0, 0.0))
             .show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     // Damage filter covers only the left half (x: 0..50). `a` at
     // (0,0,40,40) intersects; `b` at (40,0,40,40) intersects too
@@ -629,8 +615,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
             .fill(Color::rgb(1.0, 0.0, 0.0))
             .show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
     encode(
@@ -668,8 +653,7 @@ fn damage_filter_preserves_clip_pushpop() {
                         .show(ui);
                 });
         });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     // Filter misses the clipped panel entirely.
     let mut cmds = Vec::new();
@@ -712,8 +696,7 @@ fn damage_filter_preserves_transform_pushpop() {
                     .show(ui);
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut cmds = Vec::new();
     encode(

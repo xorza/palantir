@@ -214,8 +214,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                     .show(ui);
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     // Click on the button inside the disabled panel.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
@@ -320,7 +319,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                 .show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 100.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let hid = ui.rect(kids[1]);
@@ -331,7 +330,6 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     assert_eq!(b.min.x, 40.0 + 10.0 + 40.0 + 10.0);
 
     // ...but emits no DrawRect.
-    ui.end_frame();
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
@@ -361,8 +359,7 @@ fn hidden_button_does_not_click() {
             .hidden()
             .show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 200.0));
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -550,8 +547,7 @@ fn frame_with_sense_click_is_clickable() {
             .sense(Sense::CLICK)
             .show(ui);
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 100.0));
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 25.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -590,8 +586,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
                     .node,
             );
         });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let node = text_node.unwrap();
     let r = ui.rect(node);
@@ -633,8 +628,7 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
                     .node,
             );
         });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
 
     let r = ui.rect(text_node.unwrap());
     // The single word can't break — its width must overflow the 8 px slot.
@@ -685,8 +679,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     // Surface is 200 px wide — narrower than the text's natural unbroken
     // width (~335 px). Step B's column resolution shrinks the Hug column
     // to fit so the text wraps cleanly inside.
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
 
     let node = text_node.unwrap();
     let shaped = ui
@@ -745,8 +738,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
                 .grid_cell((0, 1))
                 .show(ui);
         });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
 
     let node = text_node.unwrap();
     // Direct engine query (no Ui wrapper) — drivers do the same in
@@ -825,8 +817,7 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
                         .show(ui);
                 });
         });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
 
     let shaped = ui
         .layout_result()
@@ -878,8 +869,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
                         .show(ui);
                 });
         });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
 
     let shaped = ui
         .layout_result()
@@ -968,8 +958,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                         .node,
                 );
             });
-        ui.layout(Rect::new(0.0, 0.0, surface_w, 400.0));
-        ui.end_frame();
+        ui.end_frame(Rect::new(0.0, 0.0, surface_w, 400.0));
         ui.layout_result()
             .text_shape(value_node.unwrap())
             .expect("text was shaped")
@@ -1034,8 +1023,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     });
     // Surface 200 wide → Fill col gets ~150 (after Hug label col).
     // Natural unbroken width is ~290 → must wrap.
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
 
     let shaped = ui
         .layout_result()
@@ -1090,8 +1078,7 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     });
     // Surface 200 wide → message gets ~152 (after avatar + gap).
     // Natural unbroken width is ~290, so message must wrap.
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
 
     let shaped = ui
         .layout_result()
@@ -1142,8 +1129,7 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
                 );
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
 
     let shaped = ui
         .layout_result()
@@ -1210,8 +1196,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                     .node,
             );
         });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 600.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 600.0));
 
     // Two rows of 14 px text. Single-line height ≈18 px → 36 px total
     // would mean both rows collapsed to single-line (no wrapping
@@ -1267,8 +1252,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     );
                 });
         });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 600.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 600.0));
 
     let h = ui.layout_result().rect(grid_node.unwrap()).size.h;
     assert!(
@@ -1317,8 +1301,7 @@ fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
                 );
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
 
     let shaped_w = ui
         .layout_result()

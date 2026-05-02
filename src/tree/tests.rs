@@ -33,8 +33,7 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> u64 {
     let mut ui = Ui::new();
     ui.begin_frame();
     let target = f(&mut ui);
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui.end_frame();
+    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
     ui.tree.node_hash(target)
 }
 
@@ -116,8 +115,7 @@ fn changing_fill_color_changes_hash() {
                 .node,
         );
     });
-    ui1.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui1.end_frame();
+    ui1.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut ui2 = Ui::new();
     ui2.begin_frame();
@@ -131,8 +129,7 @@ fn changing_fill_color_changes_hash() {
                 .node,
         );
     });
-    ui2.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui2.end_frame();
+    ui2.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     assert_ne!(
         ui1.tree.node_hash(child1.unwrap()),
@@ -230,8 +227,7 @@ fn shape_order_matters_for_hash() {
         // Push a Frame then add a manual Text shape via a Button.
         n1 = Some(Button::with_id("a").label("X").show(ui).node);
     });
-    ui1.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui1.end_frame();
+    ui1.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     // Two recordings of the same Button — hashes must match.
     let mut ui2 = Ui::new();
@@ -240,8 +236,7 @@ fn shape_order_matters_for_hash() {
     Panel::hstack().show(&mut ui2, |ui| {
         n2 = Some(Button::with_id("a").label("X").show(ui).node);
     });
-    ui2.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui2.end_frame();
+    ui2.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     assert_eq!(
         ui1.tree.node_hash(n1.unwrap()),
@@ -261,8 +256,7 @@ fn changing_text_content_changes_hash() {
     Panel::hstack().show(&mut ui1, |ui| {
         a = Some(Text::with_id("t", "Hello").show(ui).node);
     });
-    ui1.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui1.end_frame();
+    ui1.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut ui2 = Ui::new();
     ui2.begin_frame();
@@ -270,8 +264,7 @@ fn changing_text_content_changes_hash() {
     Panel::hstack().show(&mut ui2, |ui| {
         b = Some(Text::with_id("t", "World").show(ui).node);
     });
-    ui2.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui2.end_frame();
+    ui2.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     assert_ne!(
         ui1.tree.node_hash(a.unwrap()),
@@ -294,8 +287,7 @@ fn child_hash_does_not_affect_parent_hash() {
                 .show(ui);
         })
         .node;
-    ui1.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui1.end_frame();
+    ui1.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     let mut ui2 = Ui::new();
     ui2.begin_frame();
@@ -307,8 +299,7 @@ fn child_hash_does_not_affect_parent_hash() {
                 .show(ui);
         })
         .node;
-    ui2.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
-    ui2.end_frame();
+    ui2.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
 
     assert_eq!(
         ui1.tree.node_hash(parent1),
