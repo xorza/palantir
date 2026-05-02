@@ -20,12 +20,15 @@ pub fn build(ui: &mut Ui) {
                 .color(Color::rgb(0.78, 0.82, 0.90))
                 .show(ui);
 
-            Text::with_id(("hdr", "sub"), concat!(
-                "All text renders after every quad in the frame. A child quad ",
-                "drawn AFTER a text label cannot occlude it; the label always ",
-                "wins z-order. Fixing this requires per-group prepare/render ",
-                "in the wgpu backend (see docs/text.md)."
-            ))
+            Text::with_id(
+                ("hdr", "sub"),
+                concat!(
+                    "All text renders after every quad in the frame. A child quad ",
+                    "drawn AFTER a text label cannot occlude it; the label always ",
+                    "wins z-order. Fixing this requires per-group prepare/render ",
+                    "in the wgpu backend (see docs/text.md)."
+                ),
+            )
             .size_px(12.0)
             .color(Color::rgb(0.62, 0.68, 0.78))
             .wrapping()
@@ -36,10 +39,20 @@ pub fn build(ui: &mut Ui) {
                 .gap(20.0)
                 .size((Sizing::FILL, Sizing::Fixed(220.0)))
                 .show(ui, |ui| {
-                    cell(ui, "no-quad-after", "Text on top of quad — OK case",
-                         Color::rgb(0.20, 0.45, 0.85), false);
-                    cell(ui, "quad-after-text", "Red quad declared AFTER text — should cover it (bug: doesn't)",
-                         Color::rgb(0.85, 0.30, 0.30), true);
+                    cell(
+                        ui,
+                        "no-quad-after",
+                        "Text on top of quad — OK case",
+                        Color::rgb(0.20, 0.45, 0.85),
+                        false,
+                    );
+                    cell(
+                        ui,
+                        "quad-after-text",
+                        "Red quad declared AFTER text — should cover it (bug: doesn't)",
+                        Color::rgb(0.85, 0.30, 0.30),
+                        true,
+                    );
                 });
         });
 }
