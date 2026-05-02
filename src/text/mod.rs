@@ -97,7 +97,7 @@ pub struct MeasureResult {
 ///
 /// Always returns [`TextCacheKey::INVALID`] — there's no shaped buffer to
 /// look up, so the renderer drops these runs cleanly.
-pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) -> MeasureResult {
+fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) -> MeasureResult {
     if text.is_empty() {
         return MeasureResult {
             size: Size::ZERO,
@@ -147,34 +147,21 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
     }
 }
 
-/// Per-`WidgetId` cross-frame cache of shaping output. Lookup-keyed
-/// by `WidgetId`, validity-checked by authoring hash. Lets layout
-/// skip the `measure` dispatch (and the underlying string-hash +
-/// `RefCell` lock around `CosmicMeasure`) when a Text leaf's inputs
-/// are unchanged across frames. Owned by [`TextMeasurer`] so the
-/// dispatch-skip and the cache live behind one façade.
-///
-/// We always cache the unbounded shape (used by intrinsic queries and
-/// the no-wrap path); the most recent wrap result is stored in
-/// `wrap`, keyed on a quantized wrap target chosen by the caller.
-/// Quantization granularity is layout policy and is computed at the
-/// call site — not in this module.
+/// Cached unbounded shape + most-recent wrap result, validity-checked
+/// by authoring `hash`.
 #[derive(Clone, Copy)]
 pub(crate) struct TextReuseEntry {
-    /// `Tree.hashes[node]` from the frame that produced this entry. Any
-    /// authoring change (text content, font size, wrap mode, color, …)
-    /// flips this and forces a fresh measure.
+    // todo custom type for element node hash
     hash: u64,
-    /// Unbounded measure (no wrap target). Drives intrinsic queries
-    /// and the no-wrap shape path.
     unbounded: MeasureResult,
-    /// Last wrap result, if any.
     wrap: Option<WrapReuse>,
 }
 
+/// One cached wrap result — the most-recent `target_q` (caller-
+/// quantized wrap target) and the `MeasureResult` that came out of
+/// shaping at that target.
 #[derive(Clone, Copy)]
 pub(crate) struct WrapReuse {
-    /// Caller-supplied quantized wrap target (e.g. tenths of a pixel).
     target_q: u32,
     result: MeasureResult,
 }
@@ -186,10 +173,16 @@ pub(crate) struct WrapReuse {
 #[derive(Default)]
 pub struct TextMeasurer {
     cosmic: Option<SharedCosmic>,
-    /// Total `measure` calls made through this façade. Used by tests to
-    /// pin reshape-skip behaviour; cheap enough to leave on in release.
-    measure_calls: u64,
-    /// Per-widget reuse cache. See [`TextReuseEntry`].
+    /// Total `measure` calls made through this façade. Read by tests
+    /// pinning reshape-skip behaviour; cheap enough to leave on in
+    /// release.
+    pub(crate) measure_calls: u64,
+    /// Per-`WidgetId` cross-frame cache of shaping output, lookup-keyed
+    /// by identity and validity-checked by authoring hash. Lets layout
+    /// skip the `measure` dispatch (and the underlying string-hash +
+    /// `RefCell` lock around `CosmicMeasure`) when a Text leaf's
+    /// inputs are unchanged across frames. The wrap slot's `target_q`
+    /// quantization is layout policy chosen at the call site.
     pub(crate) reuse: FxHashMap<WidgetId, TextReuseEntry>,
 }
 
@@ -204,14 +197,11 @@ impl TextMeasurer {
         self.cosmic = Some(cosmic);
     }
 
-    /// Cumulative `measure` calls. Read by tests verifying that the
-    /// layout engine's per-widget reuse cache actually skips dispatch.
-    pub fn measure_calls(&self) -> u64 {
-        self.measure_calls
-    }
-
-    /// Shape (or mono-measure) one run. Dispatch is internal.
-    pub fn measure(
+    /// Raw shape (or mono-measure) one run. Internal fallthrough for
+    /// the cached entry points; outside callers should go through
+    /// [`Self::shape_unbounded`] / [`Self::shape_wrap`] so the
+    /// per-widget cache gets a chance to skip dispatch.
+    pub(crate) fn measure(
         &mut self,
         text: &str,
         font_size_px: f32,
