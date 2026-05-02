@@ -26,99 +26,81 @@ pub(super) fn measure(
     axis: Axis,
     text: &mut TextMeasurer,
 ) -> Size {
-    // Pass 1: WPF intrinsic trick — INF on main, finite on cross. Every
-    // child reports its intrinsic main size. For Fill children that's
-    // their natural (max-content) main; we'll re-measure them in pass 2.
-    let child_avail = axis.compose_size(f32::INFINITY, axis.cross(inner));
     let gap = tree.read_extras(node).gap;
+    let cross_avail = axis.cross(inner);
 
-    let mut total_main = 0.0f32;
+    // Pass 1: measure non-Fill children at `INF` main (WPF intrinsic
+    // trick) and collect Fill weights. Fill children are deferred to
+    // pass 2 so they only get measured once, at their resolved share.
+    let mut sum_non_fill_main = 0.0f32;
+    let mut total_weight = 0.0f32;
     let mut max_cross = 0.0f32;
     let mut count = 0usize;
-    let mut total_weight = 0.0f32;
-    let mut sum_non_fill_main = 0.0f32;
-    // Skip collapsed children outright: `LayoutEngine.desired` is reset to
-    // `Size::ZERO` for every node at the top of `run`, so a collapsed
-    // child's `desired` is already correct without a measure call.
     for c in tree.children(node) {
         if tree.is_collapsed(c) {
             continue;
         }
-        let d = layout.measure(tree, c, child_avail, text);
+        count += 1;
         let l = tree.layout(c);
         if let Sizing::Fill(w) = axis.main_sizing(l.size) {
             assert!(w > 0.0, "Sizing::Fill weight must be positive");
             total_weight += w;
-        } else {
-            sum_non_fill_main += axis.main(d);
+            continue;
         }
-        total_main += axis.main(d);
+        let d = layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
+        sum_non_fill_main += axis.main(d);
         max_cross = max_cross.max(axis.cross(d));
-        count += 1;
     }
     let total_gap = gap * count.saturating_sub(1) as f32;
 
-    // Step C: if the stack has a finite main-axis size and Fill children,
-    // re-measure each Fill child at its resolved Fill share so wrap text
-    // shapes correctly. Without this, Fill children are committed to their
-    // natural (max-content) widths from pass 1, and arrange clamps them
-    // into a smaller slot — text overflows the slot visually.
+    // Pass 2: measure Fill children. If the stack's main axis is finite
+    // each Fill child gets its resolved share floored at `MinContent`
+    // and capped by `max_size`; on a Hug stack (INF main) Fill children
+    // measure at INF main and report their natural width (matches the
+    // "Hug stack hugs to children's natural widths" rule).
     //
-    // Hug stacks (`inner.main = INF`) skip this branch — Fill children
-    // there fall back to natural width as before, matching the existing
-    // "Hug stack hugs to children's natural widths including Fill" rule.
-    //
-    // Soundness of pass 2: the `axis.main(inner)` we use here as the
-    // budget must equal the `axis.main(inner)` the matching `arrange`
-    // call sees — otherwise Fill children's wrap text is shaped against
-    // the wrong width. It does, because the Stack's outer main size is a
+    // Soundness: the `axis.main(inner)` we use as the budget here must
+    // equal the `axis.main(inner)` the matching `arrange` call sees,
+    // otherwise wrap text in Fill children shapes against the wrong
+    // width. It does, because the Stack's outer main size is a
     // deterministic function of (its own `Sizing` + parent-supplied
     // `available`) via `resolve_axis_size`, and the parent passes the
     // same `available` to `measure` that it later derives `slot.size`
     // from for `arrange`. Any future driver that clamps a child's slot
-    // *between* its own measure and arrange would break this — adding a
-    // new layout mode? Re-derive `inner` here from the post-measure
-    // `desired` instead of trusting the parameter.
-    if total_weight > 0.0 && axis.main(inner).is_finite() {
-        let leftover = (axis.main(inner) - sum_non_fill_main - total_gap).max(0.0);
-        // Restart `total_main` from `sum_non_fill_main`: pass-1 also
-        // accumulated each Fill child's natural main, which is now stale.
-        // Non-Fill mains are still correct, so we keep them and only add
-        // Fill children's resolved mains in the loop (adding non-Fill's
-        // desired here too would double-count).
-        //
-        // `max_cross` resets — wrap text in Fill children grows in cross
-        // when re-measured at a narrower main, so we re-max from scratch
-        // across all live children.
-        total_main = sum_non_fill_main;
-        max_cross = 0.0;
+    // *between* its own measure and arrange would break this.
+    let mut fill_main = 0.0f32;
+    if total_weight > 0.0 {
+        let main_finite = axis.main(inner).is_finite();
+        let leftover = if main_finite {
+            (axis.main(inner) - sum_non_fill_main - total_gap).max(0.0)
+        } else {
+            0.0
+        };
         for c in tree.children(node) {
             if tree.is_collapsed(c) {
                 continue;
             }
-            let l = tree.layout(c);
-            let new_d = if let Sizing::Fill(w) = axis.main_sizing(l.size) {
-                let extras = tree.read_extras(c);
-                let cap = axis.main(extras.max_size);
+            let Sizing::Fill(w) = axis.main_sizing(tree.layout(c).size) else {
+                continue;
+            };
+            let main_avail = if main_finite {
+                let cap = axis.main(tree.read_extras(c).max_size);
                 let target = (leftover * w / total_weight).min(cap);
                 // Floor at min-content so wrap text doesn't break inside
                 // a word (it overflows the slot instead — same rule the
                 // leaf reshape branch in shape_text follows).
                 let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, text);
-                let resolved = target.max(floor);
-                let new_avail = axis.compose_size(resolved, axis.cross(inner));
-                let new_d = layout.measure(tree, c, new_avail, text);
-                total_main += axis.main(new_d);
-                new_d
+                target.max(floor)
             } else {
-                layout.desired(c)
+                f32::INFINITY
             };
-            max_cross = max_cross.max(axis.cross(new_d));
+            let d = layout.measure(tree, c, axis.compose_size(main_avail, cross_avail), text);
+            fill_main += axis.main(d);
+            max_cross = max_cross.max(axis.cross(d));
         }
     }
 
-    total_main += total_gap;
-    axis.compose_size(total_main, max_cross)
+    axis.compose_size(sum_non_fill_main + fill_main + total_gap, max_cross)
 }
 
 pub(super) fn arrange(
