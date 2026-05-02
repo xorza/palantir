@@ -272,14 +272,52 @@ Preserved here so they survive context loss:
 ## Future work
 
 Out of scope for the current shipped Stage 3, but plausible next
-steps if a workload demands them:
+steps if a workload demands them.
 
-- **Multi-rect damage** (avoid full-screen heuristic when two
-  unrelated regions change). Cost: rework the encoder filter to
-  accept multiple rects, backend to set multiple scissors per group
-  (or split groups). Complexity high, payoff workload-dependent.
+### Wanted (identity-based reuse)
+
+These all need the per-node dirty *set* (`Damage.dirty: Vec<NodeId>`),
+not just the union rect. The current rect filter does spatial culling
+("is this node inside the dirty region?"); identity gives "did *this
+specific node* change?" — strictly more information.
+
+- **Per-node `RenderCmd` cache.** The encoder re-walks every visible
+  node's shapes every frame: `align_text_in`, `dim_rgb`, stroke
+  composition, etc. — even on clean nodes. Cache the emitted commands
+  per `NodeId`; on a clean node whose ancestor cascade (transform/clip/
+  disabled/invisible) is also unchanged, replay the cached slice
+  instead of re-encoding. Invalidation key: `(authoring hash, cascade
+  row)`. Saves CPU on every partial-repaint frame, on top of what the
+  rect filter already saves on the GPU.
+- **Skip cosmic-text reshape for clean Text nodes.** Shaping is the
+  priciest per-frame cost. The authoring hash already captures text
+  content / size / wrap / max-width-bucket; if it matches last frame,
+  reuse the shaped buffer instead of calling cosmic again in measure.
+  Needs a `WidgetId → ShapedBuffer` cache parallel to `prev_frame`,
+  evicted when the widget disappears. Biggest single win available.
+- **Multi-rect damage.** Two unrelated regions changing (top-left +
+  bottom-right) currently unions to ~the whole screen and trips the
+  50% heuristic → full repaint. Cluster the per-node dirty rects into
+  N disjoint regions; encoder filter accepts a slice of rects, backend
+  sets multiple scissors (or splits composer groups). Complexity high,
+  payoff workload-dependent — defer until the heuristic visibly fires
+  on something users care about.
+- **Incremental hit-index rebuild.** `HitIndex::rebuild` walks every
+  node every frame. With the dirty set, only update entries for dirty
+  nodes (and any whose cascade row changed). Modest CPU win; mostly
+  matters once node counts get into the thousands.
+- **Debug overlay.** Toggleable mode that flashes dirty nodes in
+  red and draws the damage rect outline. Trivial to add once the
+  per-node list is consumed; very useful for tuning the other items
+  on this list.
+
+### Other deferred work
+
 - **Layer caches** (per-subtree offscreen RTs for animation-heavy
-  scenarios). Months of work, separate from this stage.
+  scenarios). Months of work, separate from this stage. Strictly more
+  powerful than the per-node command cache above but also vastly more
+  invasive — only worth it if a real animation workload pushes the
+  command cache past its limits.
 - **Tighter damage on parent-transform animation.** Currently the
   damage rect is the union of every descendant's prev+curr screen
   rects, which can be large for deep transformed subtrees. A
