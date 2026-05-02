@@ -266,6 +266,15 @@ impl Tree {
             end: self.subtree_end[pi],
         }
     }
+
+    /// Iterate non-collapsed child NodeIds of `parent` in declaration order.
+    /// Layout drivers measure/intrinsic loops use this to skip the
+    /// `if tree.is_collapsed(c) { continue; }` boilerplate. Arrange loops
+    /// generally still need the explicit branch because collapsed children
+    /// affect cursor/gap bookkeeping differently.
+    pub fn children_active(&self, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        self.children(parent).filter(|&c| !self.is_collapsed(c))
+    }
 }
 
 pub struct ChildIter<'a> {

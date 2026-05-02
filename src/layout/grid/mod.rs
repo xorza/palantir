@@ -1,7 +1,8 @@
-use super::{AutoBias, Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
+use super::{AutoBias, Axis, LayoutEngine, LenReq, place_two_axis, zero_subtree};
 use crate::primitives::{Rect, Size, Sizing, Track};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
+use glam::Vec2;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -276,10 +277,7 @@ fn measure_inner(
     // committed column width before they shape, which is the whole point
     // of Step B.
     let col_tracks = tracks_at(layout, depth, Axis::X);
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            continue;
-        }
+    for c in tree.children_active(node) {
         let cell = tree.read_extras(c).grid;
         if cell.col_span != 1 {
             continue;
@@ -551,16 +549,18 @@ fn arrange_inner(
         // Grid: a child with no explicit alignment stretches to fill its cell
         // (WPF default) — `AutoBias::AlwaysStretch` collapses Auto to Stretch
         // even when the child isn't `Sizing::Fill`.
-        let (h_align, v_align) = resolved_axis_align(&s_node, parent_child_align);
-        let (w, x_off) = place_axis(h_align, s_node.size.w, d.w, slot_w, AutoBias::AlwaysStretch);
-        let (h, y_off) = place_axis(v_align, s_node.size.h, d.h, slot_h, AutoBias::AlwaysStretch);
-
-        let child_rect = Rect::new(
-            inner.min.x + slot_x + x_off,
-            inner.min.y + slot_y + y_off,
-            w,
-            h,
+        let slot = Size::new(slot_w, slot_h);
+        let (size, off) = place_two_axis(
+            &s_node,
+            parent_child_align,
+            d,
+            slot,
+            AutoBias::AlwaysStretch,
         );
+        let child_rect = Rect {
+            min: inner.min + Vec2::new(slot_x, slot_y) + off,
+            size,
+        };
         layout.arrange(tree, c, child_rect);
     }
 }
@@ -790,10 +790,7 @@ pub(super) fn intrinsic(
         };
     }
 
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            continue;
-        }
+    for c in tree.children_active(node) {
         let cell = tree.read_extras(c).grid;
         let span = match axis {
             Axis::X => cell.col_span,

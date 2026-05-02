@@ -1,6 +1,6 @@
 use super::{
-    AutoBias, Axis, LayoutEngine, LenReq, child_avail_per_axis_hug, place_axis,
-    resolved_axis_align, zero_subtree,
+    AutoBias, Axis, LayoutEngine, LenReq, child_avail_per_axis_hug, max_child_intrinsic,
+    place_two_axis, zero_subtree,
 };
 use crate::primitives::{Rect, Size};
 use crate::text::TextMeasurer;
@@ -20,14 +20,7 @@ pub(super) fn intrinsic(
     req: LenReq,
     text: &mut TextMeasurer,
 ) -> f32 {
-    let mut max = 0.0_f32;
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            continue;
-        }
-        max = max.max(layout.intrinsic(tree, c, axis, req, text));
-    }
-    max
+    max_child_intrinsic(layout, tree, node, axis, req, text)
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).
@@ -51,7 +44,7 @@ pub(super) fn measure(
     let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
-    for c in tree.children(node) {
+    for c in tree.children_active(node) {
         let d = layout.measure(tree, c, child_avail, text);
         max_w = max_w.max(d.w);
         max_h = max_h.max(d.h);
@@ -74,23 +67,17 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
         let d = layout.desired[c.index()];
         let s = *tree.layout(c);
 
-        let (h_align, v_align) = resolved_axis_align(&s, parent_child_align);
-        let (w, x_off) = place_axis(
-            h_align,
-            s.size.w,
-            d.w,
-            inner.size.w,
+        let (size, off) = place_two_axis(
+            &s,
+            parent_child_align,
+            d,
+            inner.size,
             AutoBias::StretchIfFill,
         );
-        let (h, y_off) = place_axis(
-            v_align,
-            s.size.h,
-            d.h,
-            inner.size.h,
-            AutoBias::StretchIfFill,
-        );
-
-        let child_rect = Rect::new(inner.min.x + x_off, inner.min.y + y_off, w, h);
+        let child_rect = Rect {
+            min: inner.min + off,
+            size,
+        };
         layout.arrange(tree, c, child_rect);
     }
 }
