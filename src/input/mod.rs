@@ -127,14 +127,14 @@ impl InputState {
                 self.active = self
                     .pointer
                     .pos
-                    .and_then(|p| self.hit_index.hit_test(p, Sense::is_clickable));
+                    .and_then(|p| self.hit_index.hit_test(p, Sense::click));
             }
             InputEvent::PointerReleased(PointerButton::Left) => {
                 if let Some(a) = self.active.take() {
                     let hit = self
                         .pointer
                         .pos
-                        .and_then(|p| self.hit_index.hit_test(p, Sense::is_clickable));
+                        .and_then(|p| self.hit_index.hit_test(p, Sense::click));
                     if hit == Some(a) {
                         self.clicked_this_frame.insert(a);
                     }
@@ -182,7 +182,7 @@ impl InputState {
         self.hovered = self
             .pointer
             .pos
-            .and_then(|p| self.hit_index.hit_test(p, Sense::is_hoverable));
+            .and_then(|p| self.hit_index.hit_test(p, Sense::hover));
     }
 }
 
