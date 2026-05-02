@@ -41,8 +41,8 @@ pub struct Ui {
     /// `end_frame`, set by `on_input` / `request_repaint`.
     repaint_requested: bool,
 
-    /// Partial-vs-full repaint decision is made lazily by
-    /// `Damage::filter(surface)` at submit time, not during `compute`.
+    /// Per-frame damage state. `Damage::compute` returns the filtered
+    /// damage rect (`None` ⇒ full repaint, `Some(r)` ⇒ partial).
     pub(crate) damage: Damage,
 
     painter: Painter,
@@ -121,10 +121,9 @@ impl Ui {
         self.cascades
             .rebuild(&self.tree, self.layout_engine.result());
         self.input.end_frame(&self.tree, &self.cascades);
-        // todo merge
-        self.damage
-            .compute(&self.tree, &self.cascades, self.ids.removed());
-        let damage = self.damage.filter(surface);
+        let damage = self
+            .damage
+            .compute(&self.tree, &self.cascades, self.ids.removed(), surface);
         self.painter.build(
             &self.tree,
             self.layout_engine.result(),

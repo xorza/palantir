@@ -64,38 +64,31 @@ pub(crate) struct Damage {
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.5;
 
 impl Damage {
-    /// Damage rect to feed both the encoder filter and the backend
-    /// scissor. `Some(rect)` → small change, partial repaint.
-    /// `None` → full repaint (first frame, post-resize, no diff, or
-    /// damage area exceeds [`FULL_REPAINT_THRESHOLD`] of `surface`).
-    ///
-    /// `surface` is the rect the host arranged the UI into this
-    /// frame. The decision is made here, lazily at submit time, so
-    /// the heuristic doesn't need to be cached as cross-frame state.
-    /// A degenerate zero-area surface short-circuits to full
-    /// repaint; it shouldn't happen in practice (host filters
-    /// resize-to-zero), but cheap to handle.
-    pub fn filter(&self, surface: Rect) -> Option<Rect> {
-        let r = self.rect?;
-        let surface_area = surface.area();
-        if surface_area <= 0.0 || r.area() / surface_area > FULL_REPAINT_THRESHOLD {
-            return None;
-        }
-        Some(r)
-    }
-
-    /// Diff against the just-finished frame and roll `self.prev`
-    /// forward to this frame's snapshot in the same pass — the diff
-    /// reads each `WidgetId`'s old entry via `insert`, then evicts
-    /// last-frame entries listed in `removed` (precomputed by
-    /// [`crate::ui::RemovedWidgets`] so damage and `text_reuse` share
-    /// the diff).
+    /// Diff against the just-finished frame and return the filtered
+    /// damage rect ready for the encoder filter and the backend
+    /// scissor: `Some(rect)` → partial repaint, `None` → full repaint
+    /// (no diff, area above [`FULL_REPAINT_THRESHOLD`], or degenerate
+    /// `surface`). `self.prev` is rolled forward in the same pass —
+    /// the diff reads each `WidgetId`'s old entry via `insert`, then
+    /// evicts last-frame entries listed in `removed` (precomputed by
+    /// [`crate::ui::SeenIds`] so damage and `text` reuse the diff).
     ///
     /// Rects are tracked in **screen space** (read straight off
     /// `Cascade.screen_rect`). This makes damage match where the GPU
     /// actually paints, so the backend scissor lands on the right
     /// pixels even under transformed parents.
-    pub fn compute(&mut self, tree: &Tree, cascades: &Cascades, removed: &[WidgetId]) {
+    ///
+    /// `surface` is the rect the host arranged the UI into this
+    /// frame. A degenerate zero-area surface short-circuits to full
+    /// repaint; it shouldn't happen in practice (host filters
+    /// resize-to-zero), but cheap to handle.
+    pub fn compute(
+        &mut self,
+        tree: &Tree,
+        cascades: &Cascades,
+        removed: &[WidgetId],
+        surface: Rect,
+    ) -> Option<Rect> {
         self.dirty.clear();
         let mut acc: Option<Rect> = None;
 
@@ -137,6 +130,20 @@ impl Damage {
         }
 
         self.rect = acc;
+        self.filter(surface)
+    }
+
+    /// Apply the full-repaint threshold to `self.rect`. Private —
+    /// callers should use the value returned from [`Self::compute`].
+    /// Tests reach in via the same `pub(crate)` visibility as the
+    /// rest of `Damage`'s internals.
+    pub(crate) fn filter(&self, surface: Rect) -> Option<Rect> {
+        let r = self.rect?;
+        let surface_area = surface.area();
+        if surface_area <= 0.0 || r.area() / surface_area > FULL_REPAINT_THRESHOLD {
+            return None;
+        }
+        Some(r)
     }
 }
 
