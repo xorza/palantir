@@ -238,6 +238,9 @@ fn resolve_axis_size(
         Sizing::Fixed(v) => v,
         Sizing::Hug => hug_outer - margin,
         Sizing::Fill(_) => {
+            // Fill in an unconstrained axis collapses to max-content
+            // (matches CSS Grid: a `1fr` track with `width: auto` parent
+            // resolves to its content size, not infinity).
             let outer = if available.is_finite() {
                 available
             } else {

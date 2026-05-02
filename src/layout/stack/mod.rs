@@ -68,6 +68,18 @@ pub(super) fn measure(
     // Hug stacks (`inner.main = INF`) skip this branch — Fill children
     // there fall back to natural width as before, matching the existing
     // "Hug stack hugs to children's natural widths including Fill" rule.
+    //
+    // Soundness of pass 2: the `axis.main(inner)` we use here as the
+    // budget must equal the `axis.main(inner)` the matching `arrange`
+    // call sees — otherwise Fill children's wrap text is shaped against
+    // the wrong width. It does, because the Stack's outer main size is a
+    // deterministic function of (its own `Sizing` + parent-supplied
+    // `available`) via `resolve_axis_size`, and the parent passes the
+    // same `available` to `measure` that it later derives `slot.size`
+    // from for `arrange`. Any future driver that clamps a child's slot
+    // *between* its own measure and arrange would break this — adding a
+    // new layout mode? Re-derive `inner` here from the post-measure
+    // `desired` instead of trusting the parameter.
     if total_weight > 0.0 && axis.main(inner).is_finite() {
         let leftover = (axis.main(inner) - sum_non_fill_main - total_gap).max(0.0);
         // Recompute totals from scratch — Fill children's first-pass
