@@ -1,18 +1,7 @@
 use super::buffer::{DrawGroup, RenderBuffer, TextRun};
 use super::encoder::RenderCmd;
 use super::quad::Quad;
-use crate::primitives::{Rect, Stroke, TranslateScale, URect};
-
-/// Per-frame inputs to the compose pass. No GPU handles — compose only reads
-/// commands and writes into a `RenderBuffer`.
-pub struct ComposeParams {
-    /// Surface size in logical (DIP) units.
-    pub viewport_logical: [f32; 2],
-    /// Logical→physical conversion factor (e.g. 2.0 on 2× retina).
-    pub scale: f32,
-    /// Snap rect edges to integer physical pixels (sharper, no half-px blur).
-    pub pixel_snap: bool,
-}
+use crate::primitives::{Display, Rect, Stroke, TranslateScale, URect};
 
 /// CPU-only compose engine: turns a `RenderCmd` stream into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups) supplied by the caller.
@@ -36,22 +25,18 @@ impl Composer {
 
     /// Consume a logical-px command stream → physical-px `Quad`s + `TextRun`s
     /// + draw groups (scissor ranges) into `out`. Pure: no device, no queue.
-    pub fn compose(&mut self, cmds: &[RenderCmd], params: &ComposeParams, out: &mut RenderBuffer) {
-        let viewport_phys_f = [
-            params.viewport_logical[0] * params.scale,
-            params.viewport_logical[1] * params.scale,
-        ];
-        let viewport_phys = [
-            viewport_phys_f[0].ceil() as u32,
-            viewport_phys_f[1].ceil() as u32,
-        ];
+    pub fn compose(&mut self, cmds: &[RenderCmd], display: &Display, out: &mut RenderBuffer) {
+        let scale = display.scale_factor;
+        let snap = display.pixel_snap;
+        let viewport_phys_f = [display.physical.x as f32, display.physical.y as f32];
+        let viewport_phys = [display.physical.x, display.physical.y];
 
         out.quads.clear();
         out.texts.clear();
         out.groups.clear();
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
-        out.scale = params.scale;
+        out.scale = scale;
 
         self.clip_stack.clear();
         self.transform_stack.clear();
@@ -66,9 +51,6 @@ impl Composer {
         // floats on top. Reset on scissor switch (group already
         // flushed) and on flush.
         let mut last_was_text = false;
-
-        let scale = params.scale;
-        let snap = params.pixel_snap;
 
         for cmd in cmds {
             match cmd {

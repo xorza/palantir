@@ -19,7 +19,7 @@ pub struct RenderBuffer {
     pub viewport_phys: [u32; 2],
     /// Same viewport in float — needed by the wgpu vertex shader uniform.
     pub viewport_phys_f: [f32; 2],
-    /// Logical→physical conversion factor, propagated from `ComposeParams`.
+    /// Logical→physical conversion factor, propagated from `Display`.
     /// Glyph rasterization needs it: shaped buffers are sized in logical px,
     /// so glyphon scales by this when emitting glyph quads.
     pub scale: f32,

@@ -80,8 +80,11 @@ fn empty_then_populated_frame() {
 /// safe on empty input.
 #[test]
 fn empty_ui_runs_through_pipeline() {
-    use crate::renderer::{ComposeParams, Pipeline};
+    use crate::primitives::Display;
+    use crate::renderer::Pipeline;
+    use glam::UVec2;
     let mut ui = Ui::new();
+    ui.set_display(Display::from_physical(UVec2::new(200, 200), 1.0));
     ui.begin_frame();
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
     ui.end_frame();
@@ -93,11 +96,7 @@ fn empty_ui_runs_through_pipeline() {
         ui.cascades(),
         ui.theme.disabled_dim,
         ui.damage_filter(Rect::new(0.0, 0.0, 200.0, 200.0)),
-        &ComposeParams {
-            viewport_logical: [200.0, 200.0],
-            scale: 1.0,
-            pixel_snap: true,
-        },
+        &ui.display(),
     );
     assert!(buffer.quads.is_empty());
     assert!(buffer.texts.is_empty());
@@ -146,25 +145,20 @@ fn request_repaint_flips_gate() {
 #[test]
 fn set_display_requests_repaint_only_on_change() {
     use crate::primitives::Display;
+    use glam::UVec2;
 
     let mut ui = Ui::new();
     drain_one_frame(&mut ui);
     assert!(!ui.should_repaint());
 
-    ui.set_display(Display {
-        scale_factor: 2.0,
-        pixel_snap: true,
-    });
+    ui.set_display(Display::from_physical(UVec2::new(800, 600), 2.0));
     assert!(ui.should_repaint());
 
     drain_one_frame(&mut ui);
     assert!(!ui.should_repaint());
 
     // Re-setting the same value is a no-op.
-    ui.set_display(Display {
-        scale_factor: 2.0,
-        pixel_snap: true,
-    });
+    ui.set_display(Display::from_physical(UVec2::new(800, 600), 2.0));
     assert!(!ui.should_repaint());
 }
 
@@ -175,11 +169,18 @@ fn set_display_requests_repaint_only_on_change() {
 #[should_panic(expected = "Display::scale_factor must be ≥ f32::EPSILON")]
 fn set_display_rejects_zero_scale_factor() {
     use crate::primitives::Display;
+    use glam::UVec2;
     let mut ui = Ui::new();
-    ui.set_display(Display {
-        scale_factor: 0.0,
-        pixel_snap: true,
-    });
+    ui.set_display(Display::from_physical(UVec2::new(800, 600), 0.0));
+}
+
+/// Pin: `Display::logical_rect` divides physical by scale_factor.
+#[test]
+fn display_logical_rect_scales() {
+    use crate::primitives::{Display, Rect};
+    use glam::UVec2;
+    let d = Display::from_physical(UVec2::new(800, 600), 2.0);
+    assert_eq!(d.logical_rect(), Rect::new(0.0, 0.0, 400.0, 300.0));
 }
 
 /// Pin: the gate is idempotent — multiple `request_repaint()` calls

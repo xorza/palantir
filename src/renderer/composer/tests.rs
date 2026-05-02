@@ -1,8 +1,10 @@
 use super::super::buffer::RenderBuffer;
 use super::super::encoder::RenderCmd;
-use super::{ComposeParams, Composer};
+use super::Composer;
+use crate::primitives::Display;
 use crate::primitives::{Color, Corners, Rect, URect};
 use crate::text::TextCacheKey;
+use glam::UVec2;
 
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
     Rect::new(x, y, w, h)
@@ -25,20 +27,17 @@ fn text(r: Rect) -> RenderCmd {
     }
 }
 
-fn params(scale: f32, viewport_phys: [u32; 2]) -> ComposeParams {
-    ComposeParams {
-        viewport_logical: [
-            viewport_phys[0] as f32 / scale,
-            viewport_phys[1] as f32 / scale,
-        ],
-        scale,
+fn params(scale: f32, viewport_phys: [u32; 2]) -> Display {
+    Display {
+        physical: UVec2::new(viewport_phys[0], viewport_phys[1]),
+        scale_factor: scale,
         pixel_snap: false,
     }
 }
 
-fn run(cmds: &[RenderCmd], params: &ComposeParams) -> RenderBuffer {
+fn run(cmds: &[RenderCmd], display: &Display) -> RenderBuffer {
     let mut buf = RenderBuffer::default();
-    Composer::new().compose(cmds, params, &mut buf);
+    Composer::new().compose(cmds, display, &mut buf);
     buf
 }
 
