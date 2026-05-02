@@ -22,9 +22,3 @@ tracing-subscriber = { version = "*", features = ["env-filter"] }
 [[bench]]
 name = "layout"
 harness = false
-
-[patch.crates-io]
-wgpu = { path = "vendor-wgpu/wgpu" }
-wgpu-core = { path = "vendor-wgpu/wgpu-core" }
-wgpu-hal = { path = "vendor-wgpu/wgpu-hal" }
-wgpu-types = { path = "vendor-wgpu/wgpu-types" }
