@@ -18,7 +18,7 @@
 
 use crate::cascade::Cascades;
 use crate::primitives::{Rect, WidgetId};
-use crate::tree::{NodeId, Tree};
+use crate::tree::{NodeHash, NodeId, Tree};
 use rustc_hash::FxHashMap;
 
 /// Per-widget snapshot retained across frames so the next frame's
@@ -29,7 +29,7 @@ pub(crate) struct NodeSnapshot {
     /// Screen-space rect from last frame's `Cascade.screen_rect`.
     pub rect: Rect,
     /// Authoring hash from last frame's `Tree.hashes`.
-    pub hash: u64,
+    pub hash: NodeHash,
 }
 
 /// Output of one frame's damage pass plus the cross-frame state it

@@ -24,6 +24,22 @@ use glam::Vec2;
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
+/// Authoring-hash newtype. A 64-bit `FxHash` over the inputs that
+/// affect rendering output for one node — *not* the derived layout
+/// output. Wrapping `u64` rather than passing it bare prevents
+/// confusion with `WidgetId` / other 64-bit handles in signatures
+/// like `shape_unbounded(wid: WidgetId, hash: NodeHash, …)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NodeHash(u64);
+
+impl NodeHash {
+    /// Sentinel returned by `Tree::node_hash` before
+    /// `compute_hashes` runs. Distinguishable from any real hash only
+    /// probabilistically (collisions are 2⁻⁶⁴), but adequate as an
+    /// "uninitialized" marker.
+    pub const UNCOMPUTED: Self = Self(0);
+}
+
 #[inline]
 fn hash_f32(h: &mut impl Hasher, v: f32) {
     h.write_u32(v.to_bits());
@@ -257,7 +273,7 @@ pub(super) fn compute_node_hash(
     extras: Option<&crate::element::ElementExtras>,
     shapes: &[Shape],
     grid_def: Option<&GridDef>,
-) -> u64 {
+) -> NodeHash {
     let mut h = FxHasher::default();
     hash_layout_core(&mut h, layout);
     hash_paint_core(&mut h, paint);
@@ -271,5 +287,5 @@ pub(super) fn compute_node_hash(
     if let Some(def) = grid_def {
         hash_grid_def(&mut h, def);
     }
-    h.finish()
+    NodeHash(h.finish())
 }

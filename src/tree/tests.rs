@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::element::Configure;
 use crate::primitives::{Color, Display, Justify, Sizing};
 use crate::shape::Shape;
-use crate::tree::NodeId;
+use crate::tree::{NodeHash, NodeId};
 use crate::widgets::{Button, Frame, Panel, Styled};
 use glam::UVec2;
 
@@ -30,7 +30,7 @@ fn shapes_attached_to_button_node() {
 /// Drive one frame from a builder closure and snapshot the root node's
 /// hash. The builder receives `ui` after `begin_frame` and returns the
 /// `NodeId` to read.
-fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> u64 {
+fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = Ui::new();
     ui.begin_frame(Display::from_physical(
         UVec2::new(200.0 as u32, 200.0 as u32),
