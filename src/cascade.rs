@@ -26,11 +26,26 @@ pub struct Cascade {
     pub invisible: bool,
 }
 
+/// Open-ancestor frame on the rebuild walk's stack. Carries the resolved
+/// state to fold into descendant nodes plus the pre-order span end so we
+/// know when to pop. Module-private; lives on `Cascades` so the stack's
+/// capacity is retained across frames.
+struct Frame {
+    transform: TranslateScale,
+    clip: Option<Rect>,
+    disabled: bool,
+    invisible: bool,
+    subtree_end: u32,
+}
+
 /// Per-node cascade table indexed by `NodeId.0`. Capacity reused across
 /// frames; alloc-free in steady state.
 #[derive(Default)]
 pub struct Cascades {
     rows: Vec<Cascade>,
+    /// Per-rebuild ancestor stack. Cleared at the top of every `rebuild`,
+    /// capacity retained — keeps the walk alloc-free in steady state.
+    stack: Vec<Frame>,
 }
 
 impl Cascades {
@@ -46,28 +61,20 @@ impl Cascades {
         let n = tree.node_count();
         self.rows.clear();
         self.rows.reserve(n);
-
-        struct Frame {
-            transform: TranslateScale,
-            clip: Option<Rect>,
-            disabled: bool,
-            invisible: bool,
-            subtree_end: u32,
-        }
-        let mut stack: Vec<Frame> = Vec::new();
+        self.stack.clear();
 
         let paint = tree.paints();
         let layout_col = tree.layouts();
         let subtree_end = tree.subtree_ends();
 
         for i in 0..n {
-            while let Some(top) = stack.last() {
+            while let Some(top) = self.stack.last() {
                 if (i as u32) < top.subtree_end {
                     break;
                 }
-                stack.pop();
+                self.stack.pop();
             }
-            let (parent_transform, parent_clip, parent_dis, parent_inv) = match stack.last() {
+            let (parent_transform, parent_clip, parent_dis, parent_inv) = match self.stack.last() {
                 Some(p) => (p.transform, p.clip, p.disabled, p.invisible),
                 None => (TranslateScale::IDENTITY, None, false, false),
             };
@@ -101,7 +108,7 @@ impl Cascades {
             };
 
             self.rows.push(row);
-            stack.push(Frame {
+            self.stack.push(Frame {
                 transform: desc_transform,
                 clip: desc_clip,
                 disabled,
