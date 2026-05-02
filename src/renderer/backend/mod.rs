@@ -124,3 +124,6 @@ impl WgpuBackend {
             .rebuild_for_format(&self.device, &self.queue, format);
     }
 }
+
+#[cfg(test)]
+mod tests;
