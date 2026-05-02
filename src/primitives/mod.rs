@@ -2,6 +2,7 @@ mod align;
 mod approx;
 mod color;
 mod corners;
+mod display;
 mod grid;
 mod justify;
 mod num;
@@ -23,6 +24,7 @@ pub use align::{Align, HAlign, VAlign};
 pub use approx::approx_zero;
 pub use color::Color;
 pub use corners::Corners;
+pub use display::Display;
 pub use grid::GridCell;
 
 pub use justify::Justify;

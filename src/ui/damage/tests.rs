@@ -1,4 +1,4 @@
-use super::{Damage, needs_full_repaint};
+use super::Damage;
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::InputEvent;
@@ -6,12 +6,14 @@ use crate::primitives::{Color, Rect, Sizing, TranslateScale, WidgetId};
 use crate::widgets::{Button, Frame, Panel, Styled};
 use glam::Vec2;
 
+const SURFACE: Rect = Rect::new(0.0, 0.0, 200.0, 200.0);
+
 /// Drive one frame with the given builder. Closure receives `ui`
 /// after `begin_frame`.
 fn frame(ui: &mut Ui, f: impl FnOnce(&mut Ui)) {
     ui.begin_frame();
     f(ui);
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.layout(SURFACE);
     ui.end_frame();
 }
 
@@ -177,10 +179,10 @@ fn added_widget_contributes_curr_rect_to_damage() {
 
 // --- Ui::damage_filter ---------------------------------------------------
 
-/// Pin: `damage_filter()` returns `None` when `full_repaint` is true,
-/// regardless of `damage.rect`. The encoder + backend treat `None` as
-/// "paint everything;" passing the rect anyway would do the same work
-/// at the GPU level but waste CPU on per-node filter checks.
+/// Pin: `damage_filter()` returns `None` when the damage rect covers
+/// most of the surface — the encoder + backend treat `None` as
+/// "paint everything" so they don't pay per-node filter cost on what
+/// would be a full repaint anyway.
 #[test]
 fn damage_filter_returns_none_on_full_repaint() {
     let mut ui = Ui::new();
@@ -192,9 +194,10 @@ fn damage_filter_returns_none_on_full_repaint() {
                 .show(ui);
         });
     });
-    // First frame has full_repaint=true (every node added).
-    assert!(ui.damage.full_repaint);
-    assert!(ui.damage_filter().is_none());
+    // First frame: every node is "added" → damage rect is the union
+    // of every screen rect → ratio > 0.5 → filter returns None.
+    assert!(ui.damage.rect.is_some());
+    assert!(ui.damage_filter(SURFACE).is_none());
 }
 
 /// Pin: `damage_filter()` returns the damage rect when partial.
@@ -217,13 +220,12 @@ fn damage_filter_returns_rect_when_partial() {
                 .show(ui);
         });
     });
-    assert!(!ui.damage.full_repaint);
-    assert_eq!(ui.damage_filter(), ui.damage.rect);
-    assert!(ui.damage_filter().is_some());
+    assert_eq!(ui.damage_filter(SURFACE), ui.damage.rect);
+    assert!(ui.damage_filter(SURFACE).is_some());
 }
 
 /// Pin: `damage_filter()` returns `None` when nothing changed at all
-/// (no rect, no full_repaint). Matches the steady-state idle case.
+/// (no rect). Matches the steady-state idle case.
 #[test]
 fn damage_filter_returns_none_when_nothing_dirty() {
     let mut ui = Ui::new();
@@ -238,7 +240,7 @@ fn damage_filter_returns_none_when_nothing_dirty() {
     frame(&mut ui, build);
     frame(&mut ui, build);
     assert!(ui.damage.dirty.is_empty());
-    assert!(ui.damage_filter().is_none());
+    assert!(ui.damage_filter(SURFACE).is_none());
 }
 
 // --- transforms ---------------------------------------------------------
@@ -339,12 +341,17 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     assert_eq!(dirty_widget_ids, vec![WidgetId::from_hash("c")]);
 }
 
-// --- needs_full_repaint --------------------------------------------------
+// --- Damage::filter heuristic ---------------------------------------------
+
+const TEST_SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);
 
 #[test]
-fn no_damage_means_no_full_repaint() {
+fn no_damage_means_partial_repaint() {
     let d = Damage::default();
-    assert!(!needs_full_repaint(&d, Rect::new(0.0, 0.0, 100.0, 100.0)));
+    // No damage rect → `filter` returns None for the "nothing to do"
+    // reason, not for "force full repaint." Both reasons collapse to
+    // the same return value; the host is gated by `should_repaint`.
+    assert!(d.filter(TEST_SURFACE).is_none());
 }
 
 fn damage_with(r: Rect) -> Damage {
@@ -358,34 +365,39 @@ fn damage_with(r: Rect) -> Damage {
 fn small_damage_stays_partial() {
     // 100 / 10000 = 1% — well below 50%.
     let d = damage_with(Rect::new(0.0, 0.0, 10.0, 10.0));
-    assert!(!needs_full_repaint(&d, Rect::new(0.0, 0.0, 100.0, 100.0)));
+    assert_eq!(
+        d.filter(TEST_SURFACE),
+        Some(Rect::new(0.0, 0.0, 10.0, 10.0))
+    );
 }
 
 #[test]
 fn large_damage_falls_back_to_full() {
     // 80x80 = 6400, surface 100x100 = 10000 → 64% > 50%.
     let d = damage_with(Rect::new(0.0, 0.0, 80.0, 80.0));
-    assert!(needs_full_repaint(&d, Rect::new(0.0, 0.0, 100.0, 100.0)));
+    assert!(d.filter(TEST_SURFACE).is_none());
 }
 
 #[test]
 fn at_threshold_stays_partial() {
     // Exactly 50%. The check is `>`, not `>=`, so 50% is partial.
     let d = damage_with(Rect::new(0.0, 0.0, 50.0, 100.0));
-    assert!(!needs_full_repaint(&d, Rect::new(0.0, 0.0, 100.0, 100.0)));
+    assert_eq!(
+        d.filter(TEST_SURFACE),
+        Some(Rect::new(0.0, 0.0, 50.0, 100.0))
+    );
 }
 
 #[test]
 fn zero_area_surface_forces_full() {
     let d = damage_with(Rect::new(0.0, 0.0, 1.0, 1.0));
-    assert!(needs_full_repaint(&d, Rect::ZERO));
+    assert!(d.filter(Rect::ZERO).is_none());
 }
 
-/// Pin: `Damage::compute` (called by `Ui::end_frame`) sets
-/// `full_repaint` on the first frame — every node is "added,"
-/// damage = full surface, ratio = 1.0 > 0.5.
+/// Pin: on the first frame `Damage::filter` returns `None` — every
+/// node is "added," damage = full surface, ratio = 1.0 > 0.5.
 #[test]
-fn first_frame_sets_full_repaint() {
+fn first_frame_filter_is_none() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
         Panel::hstack_with_id("root").show(ui, |ui| {
@@ -395,7 +407,7 @@ fn first_frame_sets_full_repaint() {
                 .show(ui);
         });
     });
-    assert!(ui.damage.full_repaint);
+    assert!(ui.damage_filter(SURFACE).is_none());
 }
 
 /// Pin (motivating workload): hovering a button causes exactly one
@@ -456,9 +468,10 @@ fn button_hover_damage_covers_only_the_button() {
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));
-    assert!(
-        !ui.damage.full_repaint,
-        "small per-button damage must not trip the full-repaint heuristic"
+    assert_eq!(
+        ui.damage_filter(Rect::new(0.0, 0.0, 400.0, 400.0)),
+        Some(hot_rect),
+        "small per-button damage must not trip the full-repaint heuristic",
     );
 
     // Next frame at same cursor → no diff (settled).
@@ -505,12 +518,16 @@ fn button_unhover_damage_covers_only_the_button() {
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));
-    assert!(!ui.damage.full_repaint);
+    assert_eq!(
+        ui.damage_filter(Rect::new(0.0, 0.0, 400.0, 400.0)),
+        Some(hot_rect),
+    );
 }
 
 /// Pin: a small per-frame change (single leaf fill flip) stays in
-/// the partial-repaint regime — `full_repaint` is false even though
-/// the diff is non-empty.
+/// the partial-repaint regime — `filter(surface)` returns the rect
+/// even though the diff is non-empty, because the rect is well
+/// below the threshold.
 #[test]
 fn small_change_stays_partial_repaint() {
     let mut ui = Ui::new();
@@ -531,6 +548,6 @@ fn small_change_stays_partial_repaint() {
         });
     });
     // 50x50 = 2500, surface 200x200 = 40000 → 6.25% < 50%.
-    assert!(!ui.damage.full_repaint);
     assert!(ui.damage.rect.is_some());
+    assert_eq!(ui.damage_filter(SURFACE), ui.damage.rect);
 }

@@ -51,9 +51,10 @@ fn empty_ui_drives_a_frame_without_panicking() {
     assert!(ui.damage.prev.is_empty());
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage.rect.is_none());
-    assert!(!ui.damage.full_repaint);
-    assert!(ui.damage_filter().is_none());
-    assert_eq!(ui.surface(), Rect::new(0.0, 0.0, 200.0, 200.0));
+    assert!(
+        ui.damage_filter(Rect::new(0.0, 0.0, 200.0, 200.0))
+            .is_none()
+    );
     // Repaint gate clears even on empty frames so an idle empty host
     // doesn't burn cycles.
     assert!(!ui.should_repaint());
@@ -91,7 +92,7 @@ fn empty_ui_runs_through_pipeline() {
         ui.layout_result(),
         ui.cascades(),
         ui.theme.disabled_dim,
-        ui.damage_filter(),
+        ui.damage_filter(Rect::new(0.0, 0.0, 200.0, 200.0)),
         &ComposeParams {
             viewport_logical: [200.0, 200.0],
             scale: 1.0,
@@ -140,15 +141,45 @@ fn request_repaint_flips_gate() {
 }
 
 /// Pin: DPI change requests a repaint — physical-pixel rasterization
-/// changes with scale factor.
+/// changes with scale factor. A no-op `set_display` call (same value)
+/// does *not* request a repaint; the gate is change-driven.
 #[test]
-fn set_scale_factor_requests_repaint() {
+fn set_display_requests_repaint_only_on_change() {
+    use crate::primitives::Display;
+
     let mut ui = Ui::new();
     drain_one_frame(&mut ui);
     assert!(!ui.should_repaint());
 
-    ui.set_scale_factor(2.0);
+    ui.set_display(Display {
+        scale_factor: 2.0,
+        pixel_snap: true,
+    });
     assert!(ui.should_repaint());
+
+    drain_one_frame(&mut ui);
+    assert!(!ui.should_repaint());
+
+    // Re-setting the same value is a no-op.
+    ui.set_display(Display {
+        scale_factor: 2.0,
+        pixel_snap: true,
+    });
+    assert!(!ui.should_repaint());
+}
+
+/// Pin: `set_display` panics if scale_factor is below `f32::EPSILON`.
+/// Catches stray `0.0` values from buggy hosts before they collapse
+/// the UI to a single physical pixel.
+#[test]
+#[should_panic(expected = "Display::scale_factor must be ≥ f32::EPSILON")]
+fn set_display_rejects_zero_scale_factor() {
+    use crate::primitives::Display;
+    let mut ui = Ui::new();
+    ui.set_display(Display {
+        scale_factor: 0.0,
+        pixel_snap: true,
+    });
 }
 
 /// Pin: the gate is idempotent — multiple `request_repaint()` calls
