@@ -197,11 +197,11 @@ impl TextMeasurer {
         self.cosmic = Some(cosmic);
     }
 
-    /// Raw shape (or mono-measure) one run. Internal fallthrough for
-    /// the cached entry points; outside callers should go through
-    /// [`Self::shape_unbounded`] / [`Self::shape_wrap`] so the
-    /// per-widget cache gets a chance to skip dispatch.
-    pub(crate) fn measure(
+    /// Raw shape (or mono-measure) one run — bottom of the stack.
+    /// `shape_unbounded` / `shape_wrap` compose on top of this; reach
+    /// for them first so the per-widget cache gets a chance to skip
+    /// dispatch.
+    pub(crate) fn measure_raw(
         &mut self,
         text: &str,
         font_size_px: f32,
@@ -230,7 +230,7 @@ impl TextMeasurer {
         match self.reuse.get(&wid) {
             Some(e) if e.hash == hash => e.unbounded,
             _ => {
-                let unbounded = self.measure(text, font_size_px, None);
+                let unbounded = self.measure_raw(text, font_size_px, None);
                 self.reuse.insert(
                     wid,
                     TextReuseEntry {
@@ -265,7 +265,7 @@ impl TextMeasurer {
         {
             return w.result;
         }
-        let m = self.measure(text, font_size_px, Some(target));
+        let m = self.measure_raw(text, font_size_px, Some(target));
         if let Some(entry) = self.reuse.get_mut(&wid) {
             entry.wrap = Some(WrapReuse {
                 target_q,
