@@ -35,24 +35,61 @@ use super::NodeSnapshot;
 pub(crate) struct Damage {
     pub dirty: Vec<NodeId>,
     pub rect: Option<Rect>,
+    /// `true` when the damage rect covers more than
+    /// [`FULL_REPAINT_THRESHOLD`] of the surface — the encoder/backend
+    /// should skip the per-node filter and clear-redraw everything.
+    /// Set by [`Damage::compute`] via [`needs_full_repaint`].
+    pub full_repaint: bool,
+}
+
+/// Damage-area ratio above which the renderer should skip the
+/// per-node filter and clear-redraw the whole surface. Below this,
+/// the bookkeeping (scissor + LoadOp::Load + backbuffer copy) wins;
+/// above it, the savings are eaten by the overhead. 0.5 matches
+/// LVGL's `LV_INV_BUF_SIZE` heuristic.
+pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.5;
+
+/// Decide between a partial repaint (scissored to `damage.rect`) and
+/// a full-surface repaint. `true` when the damage rect covers more
+/// than [`FULL_REPAINT_THRESHOLD`] of the surface — beyond that, the
+/// scissor + backbuffer-copy overhead exceeds the per-pixel savings
+/// of partial repaint. `false` when damage is small *or* `None`
+/// (nothing to do).
+///
+/// A degenerate zero-area surface short-circuits to full repaint;
+/// it shouldn't happen in practice (host filters resize-to-zero),
+/// but cheap to handle.
+fn needs_full_repaint(damage: &Damage, surface: Rect) -> bool {
+    let surface_area = surface.area();
+    if surface_area <= 0.0 {
+        return true;
+    }
+    match damage.rect {
+        None => false,
+        Some(r) => r.area() / surface_area > FULL_REPAINT_THRESHOLD,
+    }
 }
 
 impl Damage {
     pub fn clear(&mut self) {
         self.dirty.clear();
         self.rect = None;
+        self.full_repaint = false;
     }
 
     /// Recompute against the just-finished frame. `prev` is last
     /// frame's snapshot map (untouched here — caller rebuilds it
     /// after this). `curr_ids` is this frame's widget-id set —
-    /// reused from `Ui.seen_ids` so we don't rebuild it.
+    /// reused from `Ui.seen_ids` so we don't rebuild it. `surface`
+    /// is the rect [`Ui::layout`] was called with; used to decide
+    /// the partial-vs-full-repaint heuristic.
     pub fn compute(
         &mut self,
         tree: &Tree,
         result: &LayoutResult,
         prev: &FxHashMap<WidgetId, NodeSnapshot>,
         curr_ids: &FxHashSet<WidgetId>,
+        surface: Rect,
     ) {
         self.clear();
         let mut acc: Option<Rect> = None;
@@ -87,6 +124,7 @@ impl Damage {
         }
 
         self.rect = acc;
+        self.full_repaint = needs_full_repaint(self, surface);
     }
 }
 
