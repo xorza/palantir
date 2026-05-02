@@ -132,3 +132,120 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasu
     }
     acc
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Ui;
+    use crate::element::Configure;
+    use crate::layout::intrinsic_slot;
+    use crate::primitives::{Display, Sizing};
+    use crate::widgets::{Panel, Text};
+    use glam::UVec2;
+
+    /// Driver-triggered intrinsic queries during `run` must populate
+    /// the per-node cache. Without this, every `engine.intrinsic` call
+    /// would recompute from scratch — the 9% intrinsic cost in the
+    /// layout bench would balloon.
+    ///
+    /// Uses the Step C pattern (HStack with Fill+wrap child): pass-2
+    /// of `stack::measure` queries `MinContent` on each Fill child.
+    #[test]
+    fn intrinsic_cache_populated_after_run() {
+        let mut ui = Ui::new();
+        ui.begin_frame(Display::from_physical(UVec2::new(400, 300), 1.0));
+        let root = Panel::hstack()
+            .size((Sizing::FILL, Sizing::Hug))
+            .show(&mut ui, |ui| {
+                Text::with_id("msg", "lorem ipsum dolor sit amet")
+                    .wrapping()
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .show(ui);
+            })
+            .node;
+        ui.end_frame();
+
+        let child = ui.tree.children(root).next().expect("hstack has child");
+        let slot = intrinsic_slot(Axis::X, LenReq::MinContent);
+        let cached = ui.layout_engine.intrinsics[child.index()][slot];
+        assert!(
+            !cached.is_nan(),
+            "MinContent X for the Fill+wrap child must be cached after run"
+        );
+    }
+
+    /// `engine.intrinsic` must short-circuit on cache hit. We poison
+    /// the slot with a sentinel and verify the next query returns it
+    /// — a recompute would overwrite the sentinel with the real value.
+    #[test]
+    fn intrinsic_query_short_circuits_on_cache_hit() {
+        let mut ui = Ui::new();
+        ui.begin_frame(Display::from_physical(UVec2::new(400, 300), 1.0));
+        let root = Panel::hstack()
+            .size((Sizing::FILL, Sizing::Hug))
+            .show(&mut ui, |ui| {
+                Text::with_id("msg", "hello world")
+                    .wrapping()
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .show(ui);
+            })
+            .node;
+        ui.end_frame();
+
+        let child = ui.tree.children(root).next().unwrap();
+        let slot = intrinsic_slot(Axis::X, LenReq::MinContent);
+
+        const SENTINEL: f32 = 1234.5;
+        ui.layout_engine.intrinsics[child.index()][slot] = SENTINEL;
+
+        let v =
+            ui.layout_engine
+                .intrinsic(&ui.tree, child, Axis::X, LenReq::MinContent, &mut ui.text);
+        assert_eq!(
+            v, SENTINEL,
+            "cache hit must return the stored value verbatim, not recompute"
+        );
+    }
+
+    /// Recursive intrinsic queries must populate descendant slots too,
+    /// not just the queried node — `stack::intrinsic` etc. recurse
+    /// through `engine.intrinsic`, which writes the cache at every
+    /// level. Without this, deep trees would re-walk on every parent
+    /// query.
+    #[test]
+    fn parent_intrinsic_query_populates_descendant_cache() {
+        let mut ui = Ui::new();
+        ui.begin_frame(Display::from_physical(UVec2::new(400, 300), 1.0));
+        let root = Panel::hstack()
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(&mut ui, |ui| {
+                Text::with_id("a", "abc").show(ui);
+                Text::with_id("b", "defgh").show(ui);
+            })
+            .node;
+        // `end_frame` populates `tree.hashes` (leaf intrinsic reads it).
+        // Then clear *just the queried slot* on every node so we can
+        // observe which nodes the parent query repopulates.
+        ui.end_frame();
+        let slot = intrinsic_slot(Axis::X, LenReq::MaxContent);
+        for entry in ui.layout_engine.intrinsics.iter_mut() {
+            entry[slot] = f32::NAN;
+        }
+
+        let _ =
+            ui.layout_engine
+                .intrinsic(&ui.tree, root, Axis::X, LenReq::MaxContent, &mut ui.text);
+
+        assert!(
+            !ui.layout_engine.intrinsics[root.index()][slot].is_nan(),
+            "root slot must be cached"
+        );
+        for c in ui.tree.children(root) {
+            assert!(
+                !ui.layout_engine.intrinsics[c.index()][slot].is_nan(),
+                "child {} slot must be cached after parent query",
+                c.index()
+            );
+        }
+    }
+}

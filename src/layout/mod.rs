@@ -51,7 +51,7 @@ pub struct LayoutEngine {
     pub(in crate::layout) grid: GridContext,
     pub(in crate::layout) wrap: WrapScratch,
     pub(in crate::layout) desired: Vec<Size>,
-    intrinsics: Vec<[f32; 4]>,
+    pub(in crate::layout) intrinsics: Vec<[f32; 4]>,
     pub(in crate::layout) result: LayoutResult,
 }
 
@@ -66,7 +66,7 @@ fn quantize_wrap_target(v: f32) -> u32 {
 }
 
 #[inline]
-fn intrinsic_slot(axis: Axis, req: LenReq) -> usize {
+pub(in crate::layout) fn intrinsic_slot(axis: Axis, req: LenReq) -> usize {
     let a = match axis {
         Axis::X => 0,
         Axis::Y => 1,
