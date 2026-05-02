@@ -21,8 +21,7 @@ pub(super) fn intrinsic(
     text: &mut TextMeasurer,
 ) -> f32 {
     let mut max = 0.0_f32;
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         if tree.is_collapsed(c) {
             continue;
         }
@@ -52,8 +51,7 @@ pub(super) fn measure(
     let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         let d = layout.measure(tree, c, child_avail, text);
         max_w = max_w.max(d.w);
         max_h = max_h.max(d.h);
@@ -68,8 +66,7 @@ pub(super) fn measure(
 /// falls back to stretch on that axis.
 pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
     let parent_child_align = tree.read_extras(node).child_align;
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         if tree.is_collapsed(c) {
             zero_subtree(layout, tree, c, inner.min);
             continue;

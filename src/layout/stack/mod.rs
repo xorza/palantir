@@ -137,8 +137,7 @@ pub(super) fn arrange(
     let mut sum_main_desired = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         if tree.is_collapsed(c) {
             continue;
         }
@@ -181,8 +180,7 @@ pub(super) fn arrange(
     let mut cursor = axis.main_v(inner.min) + start_offset;
     let mut first = true;
 
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
+    for c in tree.children(node) {
         if tree.is_collapsed(c) {
             zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min));
             continue;
@@ -233,8 +231,7 @@ pub(super) fn intrinsic(
     if main_axis == query_axis {
         let mut total = 0.0_f32;
         let mut count = 0_usize;
-        let mut kids = tree.child_cursor(node);
-        while let Some(c) = kids.next(tree) {
+        for c in tree.children(node) {
             if tree.is_collapsed(c) {
                 continue;
             }
@@ -244,8 +241,7 @@ pub(super) fn intrinsic(
         total + gap * count.saturating_sub(1) as f32
     } else {
         let mut max = 0.0_f32;
-        let mut kids = tree.child_cursor(node);
-        while let Some(c) = kids.next(tree) {
+        for c in tree.children(node) {
             if tree.is_collapsed(c) {
                 continue;
             }

@@ -139,8 +139,7 @@ fn encode_node(
         out.push(RenderCmd::PushTransform(t));
     }
 
-    let mut c = tree.child_cursor(id);
-    while let Some(child) = c.next(tree) {
+    for child in tree.children(id) {
         encode_node(tree, layout, cascades, disabled_dim, child, out);
     }
 

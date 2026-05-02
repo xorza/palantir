@@ -237,17 +237,6 @@ impl Tree {
             end: self.subtree_end[pi],
         }
     }
-
-    /// Lending-style cursor over a node's children. Unlike `children()`, this
-    /// doesn't borrow the tree across iterations, so the caller is free to
-    /// recurse into `&mut Tree` between steps (e.g. measure/arrange passes).
-    pub fn child_cursor(&self, parent: NodeId) -> ChildCursor {
-        let pi = parent.0 as usize;
-        ChildCursor {
-            next: parent.0 + 1,
-            end: self.subtree_end[pi],
-        }
-    }
 }
 
 pub struct ChildIter<'a> {
@@ -264,33 +253,6 @@ impl<'a> Iterator for ChildIter<'a> {
         }
         let cur = NodeId(self.next);
         self.next = self.subtree_end[self.next as usize];
-        Some(cur)
-    }
-}
-
-/// Lending cursor over a node's children. Holds only the next-pointer so the
-/// caller can take `&mut Tree` between steps (recursive measure/arrange).
-///
-/// Contract: tree topology (`subtree_end`) must not change between `next()`
-/// calls. The cursor reads the current child's `subtree_end` to advance, so
-/// mutating that field, reparenting children, or appending new descendants
-/// to a yielded child afterwards will silently desync iteration. Measure
-/// and arrange only mutate `desired` and `rect`, so they're safe.
-#[derive(Clone, Copy)]
-pub struct ChildCursor {
-    next: u32,
-    end: u32,
-}
-
-impl ChildCursor {
-    /// Return the current child and advance. Jumps past the child's whole
-    /// subtree using its `subtree_end`.
-    pub fn next(&mut self, tree: &Tree) -> Option<NodeId> {
-        if self.next >= self.end {
-            return None;
-        }
-        let cur = NodeId(self.next);
-        self.next = tree.subtree_end[self.next as usize];
         Some(cur)
     }
 }
