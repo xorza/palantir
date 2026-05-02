@@ -21,6 +21,6 @@ impl Visuals {
 
 impl Default for Visuals {
     fn default() -> Self {
-        Self::solid(Color::linear_rgba(0.0, 0.0, 0.0, 0.0), Color::WHITE)
+        Self::solid(Color::TRANSPARENT, Color::WHITE)
     }
 }
