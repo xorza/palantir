@@ -1,5 +1,8 @@
+mod damage;
 mod theme;
 pub use theme::ButtonTheme;
+
+pub(crate) use damage::Damage;
 
 use crate::cascade::Cascades;
 use crate::element::Element;
@@ -77,6 +80,13 @@ pub struct Ui {
     /// *before* the rebuild to diff against the just-recorded frame.
     /// Capacity retained across frames.
     pub(crate) prev_frame: FxHashMap<WidgetId, NodeSnapshot>,
+
+    /// This frame's damage output: dirty `NodeId`s + union rect.
+    /// Computed in `end_frame()` after `compute_hashes()` and *before*
+    /// `rebuild_prev_frame()` — the diff needs the previous snapshot
+    /// intact. Currently computed but not consumed; Step 5 (encoder
+    /// filter) is the first reader.
+    pub(crate) damage: Damage,
 }
 
 impl Default for Ui {
@@ -103,6 +113,7 @@ impl Ui {
             // present. Subsequent idle frames flip back to `false`.
             repaint_requested: true,
             prev_frame: FxHashMap::default(),
+            damage: Damage::default(),
         }
     }
 
@@ -184,6 +195,12 @@ impl Ui {
         self.input
             .end_frame(&self.tree, self.layout_engine.result(), &self.cascades);
         self.tree.compute_hashes();
+        self.damage.compute(
+            &self.tree,
+            self.layout_engine.result(),
+            &self.prev_frame,
+            &self.seen_ids,
+        );
         self.rebuild_prev_frame();
         self.repaint_requested = false;
     }
