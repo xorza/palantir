@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use palantir::renderer::{ComposeParams, Pipeline, WgpuBackend};
-use palantir::{Button, Color, Configure, InputEvent, Panel, Rect, Sizing, Stroke, Styled, Ui};
+use palantir::renderer::{Pipeline, WgpuBackend};
+use palantir::{Button, Color, Configure, InputEvent, Panel, Sizing, Stroke, Styled, Ui};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -133,10 +133,10 @@ impl ApplicationHandler for App {
         let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         let mut ui = Ui::new();
-        ui.set_display(palantir::primitives::Display {
-            scale_factor: window.scale_factor() as f32,
-            pixel_snap: true,
-        });
+        ui.set_display(palantir::primitives::Display::from_physical(
+            glam::UVec2::new(config.width, config.height),
+            window.scale_factor() as f32,
+        ));
         let cosmic = palantir::text::share(palantir::text::CosmicMeasure::with_bundled_fonts());
         ui.set_cosmic(cosmic.clone());
         backend.set_cosmic(cosmic);
@@ -194,6 +194,10 @@ impl ApplicationHandler for App {
                 state.config.width = new.width.clamp(1, max);
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
+                state.ui.set_display(palantir::primitives::Display {
+                    physical: glam::UVec2::new(state.config.width, state.config.height),
+                    ..state.ui.display()
+                });
                 state.draw();
             }
             WindowEvent::RedrawRequested => state.draw(),
@@ -229,11 +233,7 @@ impl State {
             Validation => return,
         };
         let display = self.ui.display();
-        let scale = display.scale_factor;
-        let w_logical = self.config.width as f32 / scale;
-        let h_logical = self.config.height as f32 / scale;
-
-        let surface = Rect::new(0.0, 0.0, w_logical, h_logical);
+        let surface = display.logical_rect();
         self.ui.begin_frame();
         build_root(&mut self.ui, &mut self.active);
         self.ui.layout(surface);
@@ -246,11 +246,7 @@ impl State {
             self.ui.cascades(),
             self.ui.theme.disabled_dim,
             damage,
-            &ComposeParams {
-                viewport_logical: [w_logical, h_logical],
-                scale,
-                pixel_snap: display.pixel_snap,
-            },
+            &display,
         );
         self.backend
             .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), buffer, damage);
