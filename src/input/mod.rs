@@ -1,7 +1,6 @@
 mod hit_index;
 
 use crate::cascade::Cascades;
-use crate::layout::LayoutResult;
 use crate::primitives::{Rect, Sense, WidgetId};
 use crate::tree::Tree;
 use glam::Vec2;
@@ -149,8 +148,8 @@ impl InputState {
     /// drop transient per-frame flags. Call after layout. The cascade
     /// resolution itself lives in [`Cascades`]; `HitIndex::rebuild` just
     /// flattens its output to the per-id form hit-testing wants.
-    pub(crate) fn end_frame(&mut self, tree: &Tree, layout: &LayoutResult, cascades: &Cascades) {
-        self.hit_index.rebuild(tree, layout, cascades);
+    pub(crate) fn end_frame(&mut self, tree: &Tree, cascades: &Cascades) {
+        self.hit_index.rebuild(tree, cascades);
         self.clicked_this_frame.clear();
         if let Some(active) = self.active
             && !self.hit_index.contains_id(active)

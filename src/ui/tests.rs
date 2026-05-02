@@ -48,7 +48,7 @@ fn empty_ui_drives_a_frame_without_panicking() {
     ui.end_frame();
 
     assert_eq!(ui.tree().node_count(), 0);
-    assert!(ui.prev_frame.is_empty());
+    assert!(ui.damage.prev.is_empty());
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage.rect.is_none());
     assert!(!ui.damage.full_repaint);
@@ -70,7 +70,7 @@ fn empty_then_populated_frame() {
 
     drain_one_frame(&mut ui);
     assert_eq!(ui.tree().node_count(), 1);
-    assert!(!ui.prev_frame.is_empty());
+    assert!(!ui.damage.prev.is_empty());
 }
 
 /// Pin: the full CPU render pipeline (encode + compose) survives an
@@ -177,7 +177,7 @@ fn request_repaint_is_idempotent() {
 #[test]
 fn prev_frame_empty_before_first_end_frame() {
     let ui = Ui::new();
-    assert!(ui.prev_frame.is_empty());
+    assert!(ui.damage.prev.is_empty());
 }
 
 #[test]
@@ -193,7 +193,7 @@ fn prev_frame_populated_after_end_frame() {
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
     ui.end_frame();
 
-    let prev = &ui.prev_frame;
+    let prev = &ui.damage.prev;
     let root_id = WidgetId::from_hash("root");
     let frame_id = WidgetId::from_hash("a");
     assert!(prev.contains_key(&root_id));
@@ -213,7 +213,7 @@ fn prev_frame_captures_arranged_rect() {
     let arranged = ui.rect(frame_node);
     ui.end_frame();
 
-    let snap = ui.prev_frame[&WidgetId::from_hash("a")];
+    let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.rect, arranged);
 }
 
@@ -229,7 +229,7 @@ fn prev_frame_captures_authoring_hash() {
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
     ui.end_frame();
 
-    let snap = ui.prev_frame[&WidgetId::from_hash("a")];
+    let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.hash, ui.tree().node_hash(frame_node));
 }
 
@@ -242,14 +242,14 @@ fn prev_frame_drops_disappeared_widgets() {
     });
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
     ui.end_frame();
-    assert!(ui.prev_frame.contains_key(&WidgetId::from_hash("gone")));
+    assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
 
     ui.begin_frame();
     Panel::hstack_with_id("root").show(&mut ui, |_| {});
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
     ui.end_frame();
-    assert!(!ui.prev_frame.contains_key(&WidgetId::from_hash("gone")));
-    assert!(ui.prev_frame.contains_key(&WidgetId::from_hash("root")));
+    assert!(!ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
+    assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("root")));
 }
 
 #[test]
@@ -262,7 +262,7 @@ fn prev_frame_updates_on_authoring_change() {
         .show(&mut ui);
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
     ui.end_frame();
-    let h1 = ui.prev_frame[&WidgetId::from_hash("a")].hash;
+    let h1 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
     ui.begin_frame();
     Frame::with_id("a")
@@ -271,7 +271,7 @@ fn prev_frame_updates_on_authoring_change() {
         .show(&mut ui);
     ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
     ui.end_frame();
-    let h2 = ui.prev_frame[&WidgetId::from_hash("a")].hash;
+    let h2 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
     assert_ne!(h1, h2);
 }
