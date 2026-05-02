@@ -19,6 +19,7 @@ mod panels;
 mod sizing;
 mod spacing;
 mod text;
+mod text_zorder;
 mod transform;
 mod visibility;
 
@@ -29,6 +30,7 @@ type ShowcaseFn = fn(&mut Ui);
 const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("text", text::build),
     ("text layouts", text::build_layouts),
+    ("text z-order", text_zorder::build),
     ("panels", panels::build),
     ("grid", grid::build),
     ("sizing", sizing::build),
