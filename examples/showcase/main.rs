@@ -119,7 +119,7 @@ impl ApplicationHandler for App {
             .find(|f| f.is_srgb())
             .unwrap_or(caps.formats[0]);
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
             format,
             width: size.width.max(1),
             height: size.height.max(1),
@@ -223,10 +223,6 @@ impl State {
             Occluded => return,
             Validation => return,
         };
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
         let scale = self.ui.scale_factor();
         let w_logical = self.config.width as f32 / scale;
         let h_logical = self.config.height as f32 / scale;
@@ -249,7 +245,7 @@ impl State {
             },
         );
         self.backend
-            .submit(&view, Color::rgb(0.08, 0.08, 0.10), buffer);
+            .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), buffer);
 
         frame.present();
         if !self.first_paint {
