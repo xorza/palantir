@@ -110,12 +110,16 @@ fn encode_node(
         out.push(RenderCmd::PushClip(rect));
     }
 
-    // Damage filter: skip leaf shape emission when this node's rect
-    // doesn't intersect the dirty region. Push/PopClip and
-    // Push/PopTransform are still emitted (above and below) so scissor
-    // groups and child transforms stay coherent. `None` filter ⇒ paint
-    // everything.
-    let paints = damage_filter.is_none_or(|d| rect.intersects(d));
+    // Damage filter: skip leaf shape emission when this node's
+    // *screen* rect (layout rect projected through ancestor
+    // transforms via `cascades`) doesn't intersect the dirty region.
+    // Damage rects in `damage_filter` are also screen-space, so the
+    // comparison is consistent under arbitrary transform stacks.
+    // Push/PopClip and Push/PopTransform are still emitted (above and
+    // below) so scissor groups and child transforms stay coherent.
+    // `None` filter ⇒ paint everything.
+    let screen_rect = cascades.rows()[id.index()].transform.apply_rect(rect);
+    let paints = damage_filter.is_none_or(|d| screen_rect.intersects(d));
 
     if paints {
         for shape in tree.shapes_of(id) {

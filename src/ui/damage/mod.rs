@@ -13,6 +13,7 @@
 //! the first reader. Step 4 (heuristic fallback) and Step 7
 //! (transform cascade) are layered on top later.
 
+use crate::cascade::Cascades;
 use crate::layout::LayoutResult;
 use crate::primitives::{Rect, WidgetId};
 use crate::tree::{NodeId, Tree};
@@ -83,10 +84,17 @@ impl Damage {
     /// reused from `Ui.seen_ids` so we don't rebuild it. `surface`
     /// is the rect [`Ui::layout`] was called with; used to decide
     /// the partial-vs-full-repaint heuristic.
+    ///
+    /// Rects are tracked in **screen space** (post-transform): the
+    /// node's layout rect projected through the cumulative ancestor
+    /// transform from `cascades`. This makes damage match where the
+    /// GPU actually paints, so the backend scissor lands on the
+    /// right pixels even under transformed parents.
     pub fn compute(
         &mut self,
         tree: &Tree,
         result: &LayoutResult,
+        cascades: &Cascades,
         prev: &FxHashMap<WidgetId, NodeSnapshot>,
         curr_ids: &FxHashSet<WidgetId>,
         surface: Rect,
@@ -94,10 +102,12 @@ impl Damage {
         self.clear();
         let mut acc: Option<Rect> = None;
 
+        let cascade_rows = cascades.rows();
+        #[allow(clippy::needless_range_loop)]
         for i in 0..tree.node_count() {
             let id = NodeId(i as u32);
             let wid = tree.widget_ids()[i];
-            let curr_rect = result.rect(id);
+            let curr_rect = cascade_rows[i].transform.apply_rect(result.rect(id));
             let curr_hash = tree.hashes[i];
 
             let dirty = match prev.get(&wid) {
