@@ -20,6 +20,10 @@ pub struct Cascade {
     /// Ancestor clip (screen space) the node's own rect/sense must be
     /// intersected with.
     pub clip: Option<Rect>,
+    /// Node's layout rect projected into screen space via `transform`.
+    /// Cached here so encoder, hit-index, damage diff, and prev_frame
+    /// snapshot all read the same value without re-running the math.
+    pub screen_rect: Rect,
     /// True if any ancestor (or self) is disabled.
     pub disabled: bool,
     /// True if any ancestor (or self) is non-`Visible`.
@@ -85,9 +89,11 @@ impl Cascades {
             let disabled = parent_dis || attrs.is_disabled();
             let invisible = parent_inv || !layout_col[i].is_visible();
 
+            let screen_rect = parent_transform.apply_rect(layout.rect(id));
             let row = Cascade {
                 transform: parent_transform,
                 clip: parent_clip,
+                screen_rect,
                 disabled,
                 invisible,
             };
@@ -98,7 +104,6 @@ impl Cascades {
                 None => row.transform,
             };
             let desc_clip = if attrs.is_clip() {
-                let screen_rect = row.transform.apply_rect(layout.rect(id));
                 Some(match row.clip {
                     Some(c) => screen_rect.intersect(c),
                     None => screen_rect,

@@ -1,7 +1,6 @@
 use crate::cascade::Cascades;
-use crate::layout::LayoutResult;
 use crate::primitives::{Rect, Sense, WidgetId};
-use crate::tree::{NodeId, Tree};
+use crate::tree::Tree;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 
@@ -46,7 +45,7 @@ impl HitIndex {
     /// (disabled / invisible / clip / transform) live entirely in
     /// `Cascades`; this method only flattens to the per-id form hit-testing
     /// needs.
-    pub(crate) fn rebuild(&mut self, tree: &Tree, layout: &LayoutResult, cascades: &Cascades) {
+    pub(crate) fn rebuild(&mut self, tree: &Tree, cascades: &Cascades) {
         self.entries.clear();
         self.by_id.clear();
         let n = tree.node_count();
@@ -57,13 +56,11 @@ impl HitIndex {
         let widget_ids = tree.widget_ids();
         let rows = cascades.rows();
         for i in 0..n {
-            let id = NodeId(i as u32);
             let c = rows[i];
 
-            let screen_rect = c.transform.apply_rect(layout.rect(id));
             let visible_rect = match c.clip {
-                Some(cl) => screen_rect.intersect(cl),
-                None => screen_rect,
+                Some(cl) => c.screen_rect.intersect(cl),
+                None => c.screen_rect,
             };
             let sense = if c.disabled || c.invisible {
                 Sense::NONE

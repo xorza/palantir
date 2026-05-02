@@ -47,7 +47,7 @@ layout rects misses it.
 |---|---|
 | Authoring hash | `src/tree/hash.rs`, `Tree.hashes` |
 | Per-node cascade transform | `src/cascade.rs`, `Cascade.transform` |
-| Prev-frame snapshot | `Ui.prev_frame: FxHashMap<WidgetId, NodeSnapshot>` |
+| Prev-frame snapshot | `Damage.prev: FxHashMap<WidgetId, NodeSnapshot>` |
 | Damage diff | `src/ui/damage/`, `Damage::compute` |
 | Heuristic | `damage::needs_full_repaint` |
 | Public host accessor | `Ui::damage_filter() -> Option<Rect>` |
@@ -94,37 +94,49 @@ in a single batch pass after recording (`Tree::compute_hashes`),
 
 ```rust
 struct NodeSnapshot { rect: Rect, hash: u64 }  // rect in screen space
-Ui.prev_frame: FxHashMap<WidgetId, NodeSnapshot>
+Damage.prev: FxHashMap<WidgetId, NodeSnapshot>
 ```
 
-Rebuilt at the tail of every `Ui::end_frame()` after the damage diff
-runs (so `Damage::compute` sees the *previous* frame's snapshot).
+Rolled forward in-place by `Damage::compute`: the diff loop reads
+each `WidgetId`'s old entry via `self.prev.insert(wid, curr_snap)`
+(which returns the previous value, if any) and writes the new one
+in the same step. Removed widgets are swept after the loop.
 Capacity retained; steady-state frames don't allocate.
 
 ## Damage compute
 
-Pure function over `(tree, layout_result, cascades, prev_frame, curr_widget_ids, surface)`.
-For each curr node:
+`Damage::compute` runs over `(&mut self, tree, cascades,
+curr_widget_ids, surface)` and rolls `self.prev` forward to this
+frame's snapshot in the same pass — the diff reads each `WidgetId`'s
+old entry and writes the new one via `self.prev.insert(wid, curr)`:
 
 ```text
-screen_rect = cascade_rows[i].transform.apply_rect(layout.rect(id))
-match prev[wid]:
+screen_rect = cascade_rows[i].screen_rect   // cached on Cascade
+curr_snap   = NodeSnapshot { rect: screen_rect, hash: tree.hashes[i] }
+match prev.insert(wid, curr_snap):
     None                                     → added: damage |= screen_rect
     Some(snap) if snap matches               → clean
     Some(snap)                               → dirty: damage |= snap.rect ∪ screen_rect
 ```
 
-Then for each prev entry whose `wid` isn't in `curr_widget_ids`:
+Then sweep `prev` for entries whose `wid` isn't in `curr_widget_ids`:
 
 ```text
-removed: damage |= snap.rect
+removed: damage |= snap.rect; prev.remove(wid)
 ```
 
 `curr_widget_ids` is reused from `Ui.seen_ids` (the per-frame
-uniqueness set) — no extra hash set built.
+uniqueness set) — no extra hash set built. The sweep only runs when
+`prev.len() > tree.node_count()` after the loop, since every recorded
+widget overwrote its entry.
 
 Finally `full_repaint = needs_full_repaint(self, surface)` —
 `damage.area() / surface.area() > 0.5`.
+
+`Cascade.screen_rect` is the layout rect projected through ancestor
+transforms; it's filled in `Cascades::rebuild` and shared by encoder,
+hit-index, and damage so the four passes can't disagree about where a
+node lives in screen space.
 
 ## Encoder filter
 
@@ -200,13 +212,13 @@ keeps them in lockstep.
 
 | Case | Handling |
 |---|---|
-| First frame | `prev_frame` empty → all nodes "added" → damage = full surface → heuristic fires → full repaint. |
+| First frame | `Damage.prev` empty → all nodes "added" → damage = full surface → heuristic fires → full repaint. |
 | Backbuffer (re)created | `submit` forces `damage = None` that frame (undefined contents). |
 | Window resize | Surface size changes → backbuffer recreated → forced full repaint. |
 | Hover/press fill change | Button shape's fill differs → hash differs → button dirty → damage = button rect. |
 | Sibling reflow | Authoring unchanged on neighbour, but its screen rect shifts → caught by rect compare. |
 | Animated parent transform | Parent's hash unchanged (transform omitted from hash), parent's screen rect unchanged. Children's screen rects DO change (cascade.transform composed) → children dirty by rect compare. Damage unions prev+curr child positions. |
-| Empty UI | `Ui::layout` no-ops on empty tree; `Damage::compute` walks 0 nodes; `prev_frame` stays empty; nothing to repaint. |
+| Empty UI | `Ui::layout` no-ops on empty tree; `Damage::compute` walks 0 nodes; `Damage.prev` stays empty; nothing to repaint. |
 | Cosmic atlas growth | Glyphs are inserted, not relocated; existing UV coords stay valid. No interaction with damage. |
 | Hash collision | 2⁻³² probability per pair → effectively never. Acceptable. |
 
@@ -293,7 +305,7 @@ specific node* change?" — strictly more information.
   priciest per-frame cost. The authoring hash already captures text
   content / size / wrap / max-width-bucket; if it matches last frame,
   reuse the shaped buffer instead of calling cosmic again in measure.
-  Needs a `WidgetId → ShapedBuffer` cache parallel to `prev_frame`,
+  Needs a `WidgetId → ShapedBuffer` cache parallel to `Damage.prev`,
   evicted when the widget disappears. Biggest single win available.
 - **Multi-rect damage.** Two unrelated regions changing (top-left +
   bottom-right) currently unions to ~the whole screen and trips the

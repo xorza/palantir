@@ -132,7 +132,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
             Button::with_id("gone").label("X").show(ui);
         });
     });
-    let prev_button_rect = ui.prev_frame[&WidgetId::from_hash("gone")].rect;
+    let prev_button_rect = ui.damage.prev[&WidgetId::from_hash("gone")].rect;
 
     frame(&mut ui, |ui| {
         Panel::hstack_with_id("root").show(ui, |_| {});
