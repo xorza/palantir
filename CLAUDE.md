@@ -4,6 +4,47 @@ A Rust GUI crate. **Immediate-mode authoring API**, **WPF-style two-pass layout*
 
 Read `DESIGN.md` for the full design rationale before making non-trivial changes.
 
+## Project goal & posture
+
+Building a state-of-the-art UI framework. **No real-world consumers
+yet**, no published API, no app shipping with it. The work is driven
+by craft: the user wants this to be the best-possible thing of its
+kind, optimized hard, alloc-free per frame, with an authoring API
+that's a pleasure to use end-user-side. Treat it as sports
+programming when it helps motivation.
+
+Practical implications for how to act:
+
+- **Prefer correctness + structural improvement over API stability.**
+  Rename, refactor, break things freely when it makes the code better.
+  No deprecation shims.
+- **Per-frame allocation is a real metric.** Steady-state rendering
+  must be heap-alloc-free after warmup. New code that adds a
+  per-frame `Vec::new()` or `HashMap` rebuild is a regression — push
+  it onto retained scratch (engine-level if needed), capacity-retain
+  across frames. Audit during review.
+- **End-user API ergonomics matter.** Builder chains read like prose;
+  defaults are right; surprise behavior gets pinned by tests. When in
+  doubt about API shape, prioritize the call-site reading
+  experience.
+- **Optimize aggressively when motivated.** It's fine — encouraged —
+  to chase micro-wins (struct packing, const fns, scratch reuse,
+  cache layout) even when no current workload demands them. Treat
+  these as exercises in doing the work right.
+- **Ship work that's still useful and measurable**, even when it
+  feels too early. A single-purpose feature with tests + a showcase
+  tab is preferred over a half-finished cluster of features.
+  "Useful and measurable" = there's a test pinning it and (where
+  applicable) a showcase tab demonstrating it.
+- **It's OK to call work "too early to ship" sometimes.** When a
+  proposed change is structurally complex but lacks any motivating
+  workload (real or synthetic), say so and shelve it with a note.
+  Don't ship speculation just because it's interesting.
+- **Big-bang refactors are fine if the test surface holds.** No
+  external users to break. The bar is "fmt + clippy + tests pass and
+  the showcase still feels right by eye," not "feature-flag the
+  migration."
+
 ## Core architecture
 
 Five passes per frame:
