@@ -331,3 +331,81 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     // Buggy: 16 + 16 (double-counted) + 184 = 216.
     assert_eq!(ui.layout_engine.desired[root.index()].w, 200.0);
 }
+
+/// Pin: a collapsed child between two active children does not advance
+/// the cursor and does not count toward `total_gap`. The two active
+/// children sit `gap` apart, with the collapsed child's zero rect
+/// anchored at the cursor between them. Removing the
+/// `if collapsed { zero_subtree; continue; }` branch in `stack::arrange`
+/// would advance the cursor over a phantom child and place subsequent
+/// active siblings at the wrong position.
+#[test]
+fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+
+    let root = Panel::hstack()
+        .gap(5.0)
+        .show(&mut ui, |ui| {
+            Frame::with_id("a").size((20.0, 20.0)).show(ui);
+            // collapsed: 50 px wide, but contributes 0 to layout.
+            Frame::with_id("hidden")
+                .size((50.0, 20.0))
+                .collapsed()
+                .show(ui);
+            Frame::with_id("b").size((30.0, 20.0)).show(ui);
+        })
+        .node;
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+
+    let kids: Vec<_> = ui.tree.children(root).collect();
+    let a = ui.rect(kids[0]);
+    let hidden = ui.rect(kids[1]);
+    let b = ui.rect(kids[2]);
+
+    assert_eq!((a.min.x, a.size.w), (0.0, 20.0));
+    // collapsed: zero-size rect at cursor (= a.right). Cursor stays here.
+    assert_eq!((hidden.min.x, hidden.size.w), (20.0, 0.0));
+    assert_eq!(hidden.size.h, 0.0);
+    // b: cursor += gap (one gap, not two) → starts at 25. Width 30.
+    assert_eq!((b.min.x, b.size.w), (25.0, 30.0));
+}
+
+/// Pin: a Fill child's `max_size` clamps the measure-time main share —
+/// `desired` is capped at `max_size` even when the leftover share is
+/// larger. (Arrange separately distributes leftover by weight without
+/// consulting `max_size`, so the arranged rect can exceed `desired`;
+/// see `hstack_fill_clamped_to_min_content_arranges_at_leftover_share`
+/// in `widgets::tests` for the symmetric MinContent case.) Removing
+/// the `target.min(cap)` line in `stack::measure` pass-2 would let
+/// `desired.w` blow past the declared cap.
+#[test]
+fn hstack_fill_max_size_caps_measured_share() {
+    use crate::primitives::Size;
+
+    let mut ui = Ui::new();
+    ui.begin_frame();
+
+    let mut fill_node = None;
+    Panel::hstack()
+        .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
+        .show(&mut ui, |ui| {
+            Frame::with_id("fixed").size((20.0, 20.0)).show(ui);
+            fill_node = Some(
+                Frame::with_id("fill")
+                    .size((Sizing::FILL, 20.0))
+                    .max_size(Size::new(50.0, f32::INFINITY))
+                    .show(ui)
+                    .node,
+            );
+        });
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+
+    // Leftover for Fill share = 200 - 20 = 180. Cap = 50. Measure clamps
+    // target to 50 → desired.w = 50.
+    let desired = ui.layout_engine.desired[fill_node.unwrap().index()];
+    assert_eq!(
+        desired.w, 50.0,
+        "Fill measure must clamp to max_size when leftover share > cap"
+    );
+}
