@@ -1,5 +1,8 @@
-use super::{Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
-use crate::primitives::{Rect, Size, Sizing};
+use super::{
+    AutoBias, Axis, LayoutEngine, LenReq, child_avail_per_axis_hug, place_axis,
+    resolved_axis_align, zero_subtree,
+};
+use crate::primitives::{Rect, Size};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
@@ -46,18 +49,7 @@ pub(super) fn measure(
     text: &mut TextMeasurer,
 ) -> Size {
     let style = *tree.layout(node);
-    let child_avail = Size::new(
-        if matches!(style.size.w, Sizing::Hug) {
-            f32::INFINITY
-        } else {
-            inner_avail.w
-        },
-        if matches!(style.size.h, Sizing::Hug) {
-            f32::INFINITY
-        } else {
-            inner_avail.h
-        },
-    );
+    let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);
@@ -86,8 +78,20 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
         let s = *tree.layout(c);
 
         let (h_align, v_align) = resolved_axis_align(&s, parent_child_align);
-        let (w, x_off) = place_axis(h_align, s.size.w, d.w, inner.size.w, false);
-        let (h, y_off) = place_axis(v_align, s.size.h, d.h, inner.size.h, false);
+        let (w, x_off) = place_axis(
+            h_align,
+            s.size.w,
+            d.w,
+            inner.size.w,
+            AutoBias::StretchIfFill,
+        );
+        let (h, y_off) = place_axis(
+            v_align,
+            s.size.h,
+            d.h,
+            inner.size.h,
+            AutoBias::StretchIfFill,
+        );
 
         let child_rect = Rect::new(inner.min.x + x_off, inner.min.y + y_off, w, h);
         layout.arrange(tree, c, child_rect);

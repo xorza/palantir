@@ -1,4 +1,4 @@
-use super::{Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
+use super::{AutoBias, Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
 use crate::primitives::{GridCell, Rect, Size, Sizing, Track};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
@@ -544,11 +544,11 @@ fn arrange_inner(
         };
 
         // Grid: a child with no explicit alignment stretches to fill its cell
-        // (WPF default). `place_axis` is told `auto_stretches = true` so Auto
-        // collapses to Stretch even when the child isn't `Sizing::Fill`.
+        // (WPF default) — `AutoBias::AlwaysStretch` collapses Auto to Stretch
+        // even when the child isn't `Sizing::Fill`.
         let (h_align, v_align) = resolved_axis_align(&s_node, parent_child_align);
-        let (w, x_off) = place_axis(h_align, s_node.size.w, d.w, slot_w, true);
-        let (h, y_off) = place_axis(v_align, s_node.size.h, d.h, slot_h, true);
+        let (w, x_off) = place_axis(h_align, s_node.size.w, d.w, slot_w, AutoBias::AlwaysStretch);
+        let (h, y_off) = place_axis(v_align, s_node.size.h, d.h, slot_h, AutoBias::AlwaysStretch);
 
         let child_rect = Rect::new(
             inner.min.x + slot_x + x_off,
