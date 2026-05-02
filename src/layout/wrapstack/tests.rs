@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Justify, Rect, Sizing};
+use crate::primitives::{Color, Display, Justify, Rect, Sizing};
 use crate::tree::NodeId;
 use crate::widgets::{Frame, Panel, Styled};
 
@@ -16,7 +16,11 @@ fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
 /// HStack so its own Fixed/Hug sizing isn't overridden by the root
 /// surface. Same trick canvas/zstack tests use.
 fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -> NodeId {
-    ui.begin_frame();
+    use glam::UVec2;
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(surface.size.w as u32, surface.size.h as u32),
+        1.0,
+    ));
     let mut inner = None;
     Panel::hstack()
         .size((Sizing::FILL, Sizing::FILL))
@@ -24,7 +28,7 @@ fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -
         .show(ui, |ui| {
             inner = Some(f(ui));
         });
-    ui.layout(surface);
+    ui.layout();
     inner.unwrap()
 }
 

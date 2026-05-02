@@ -71,6 +71,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     backend: WgpuBackend,
     ui: Ui,
+    display: palantir::primitives::Display,
     first_paint: bool,
     active: usize,
 }
@@ -132,10 +133,10 @@ impl ApplicationHandler for App {
         let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         let mut ui = Ui::new();
-        ui.set_display(palantir::primitives::Display::from_physical(
+        let display = palantir::primitives::Display::from_physical(
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
-        ));
+        );
         let cosmic = palantir::text::share(palantir::text::CosmicMeasure::with_bundled_fonts());
         ui.set_cosmic(cosmic.clone());
         backend.set_cosmic(cosmic);
@@ -148,6 +149,7 @@ impl ApplicationHandler for App {
             config,
             backend,
             ui,
+            display,
             first_paint: false,
             active: 0,
         });
@@ -174,17 +176,15 @@ impl ApplicationHandler for App {
 
         // Feed input first so `Ui::should_repaint` reflects this event
         // by the time we decide whether to schedule a redraw below.
-        if let Some(ev) = InputEvent::from_winit(&event, state.ui.display().scale_factor) {
+        if let Some(ev) = InputEvent::from_winit(&event, state.display.scale_factor) {
             state.ui.on_input(ev);
         }
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                state.ui.set_display(palantir::primitives::Display {
-                    scale_factor: scale_factor as f32,
-                    ..state.ui.display()
-                });
+                state.display.scale_factor = scale_factor as f32;
+                state.ui.request_repaint();
                 state.window.request_redraw();
             }
             WindowEvent::Resized(new) => {
@@ -192,10 +192,8 @@ impl ApplicationHandler for App {
                 state.config.width = new.width.clamp(1, max);
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
-                state.ui.set_display(palantir::primitives::Display {
-                    physical: glam::UVec2::new(state.config.width, state.config.height),
-                    ..state.ui.display()
-                });
+                state.display.physical = glam::UVec2::new(state.config.width, state.config.height);
+                state.ui.request_repaint();
                 state.draw();
             }
             WindowEvent::RedrawRequested => state.draw(),
@@ -230,10 +228,9 @@ impl State {
             Occluded => return,
             Validation => return,
         };
-        let surface = self.ui.display().logical_rect();
-        self.ui.begin_frame();
+        self.ui.begin_frame(self.display);
         build_root(&mut self.ui, &mut self.active);
-        let frame_out = self.ui.end_frame(surface);
+        let frame_out = self.ui.end_frame();
         self.backend
             .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), frame_out);
 

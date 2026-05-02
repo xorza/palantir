@@ -2,18 +2,24 @@ use super::Damage;
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::InputEvent;
-use crate::primitives::{Color, Rect, Sizing, TranslateScale, WidgetId};
+use crate::primitives::{Color, Display, Rect, Sizing, TranslateScale, WidgetId};
 use crate::widgets::{Button, Frame, Panel, Styled};
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
+#[allow(dead_code)]
 const SURFACE: Rect = Rect::new(0.0, 0.0, 200.0, 200.0);
+const DISPLAY: Display = Display {
+    physical: UVec2::new(200, 200),
+    scale_factor: 1.0,
+    pixel_snap: true,
+};
 
 /// Drive one frame with the given builder. Closure receives `ui`
 /// after `begin_frame`.
 fn frame(ui: &mut Ui, f: impl FnOnce(&mut Ui)) {
-    ui.begin_frame();
+    ui.begin_frame(DISPLAY);
     f(ui);
-    ui.end_frame(SURFACE);
+    ui.end_frame();
 }
 
 /// Pin: the very first frame has no `prev_frame` entries, so every
@@ -258,13 +264,16 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let mut ui = Ui::new();
     let mut child_node = None;
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<crate::tree::NodeId>| {
-        ui.begin_frame();
+        ui.begin_frame(Display::from_physical(
+            UVec2::new(400.0 as u32, 400.0 as u32),
+            1.0,
+        ));
         Panel::hstack_with_id("outer")
             .transform(TranslateScale::from_translation(translate))
             .show(ui, |ui| {
                 *child = Some(Frame::with_id("c").size(40.0).fill(fill).show(ui).node);
             });
-        ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
+        ui.end_frame();
     };
 
     build(Color::rgb(0.2, 0.4, 0.8), &mut ui, &mut child_node);
@@ -297,7 +306,10 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     let mut ui = Ui::new();
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<crate::tree::NodeId>| {
-        ui.begin_frame();
+        ui.begin_frame(Display::from_physical(
+            UVec2::new(400.0 as u32, 400.0 as u32),
+            1.0,
+        ));
         Panel::hstack_with_id("outer")
             .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
             .show(ui, |ui| {
@@ -309,7 +321,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                         .node,
                 );
             });
-        ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
+        ui.end_frame();
     };
 
     build(0.0, &mut ui, &mut child_node);
@@ -423,12 +435,15 @@ fn button_hover_damage_covers_only_the_button() {
     let build = |ui: &mut Ui,
                  hot: &mut Option<crate::tree::NodeId>,
                  cold: &mut Option<crate::tree::NodeId>| {
-        ui.begin_frame();
+        ui.begin_frame(Display::from_physical(
+            UVec2::new(400.0 as u32, 400.0 as u32),
+            1.0,
+        ));
         Panel::vstack_with_id("root").show(ui, |ui| {
             *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);
             *cold = Some(Button::with_id("cold").label("Quiet").show(ui).node);
         });
-        ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
+        ui.end_frame();
     };
 
     // Pointer parked off-button. Settle for two frames so hit-test +
@@ -488,12 +503,15 @@ fn button_unhover_damage_covers_only_the_button() {
     let build = |ui: &mut Ui,
                  hot: &mut Option<crate::tree::NodeId>,
                  cold: &mut Option<crate::tree::NodeId>| {
-        ui.begin_frame();
+        ui.begin_frame(Display::from_physical(
+            UVec2::new(400.0 as u32, 400.0 as u32),
+            1.0,
+        ));
         Panel::vstack_with_id("root").show(ui, |ui| {
             *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);
             *cold = Some(Button::with_id("cold").label("Quiet").show(ui).node);
         });
-        ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
+        ui.end_frame();
     };
 
     // Settle two frames with cursor over the hot button.

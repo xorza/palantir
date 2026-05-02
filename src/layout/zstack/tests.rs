@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Align, HAlign, Rect, Sizing, VAlign};
+use crate::primitives::{Align, Display, HAlign, Rect, Sizing, VAlign};
 use crate::tree::NodeId;
 use crate::widgets::{Frame, Panel};
 
@@ -8,14 +8,18 @@ use crate::widgets::{Frame, Panel};
 /// can express its own measured size — `ui.layout` always forces the root to
 /// the surface rect, which would mask Hug/Fixed sizing on the unit-under-test.
 fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -> NodeId {
-    ui.begin_frame();
+    use glam::UVec2;
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(surface.size.w as u32, surface.size.h as u32),
+        1.0,
+    ));
     let mut inner = None;
     Panel::hstack()
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             inner = Some(f(ui));
         });
-    ui.layout(surface);
+    ui.layout();
     inner.unwrap()
 }
 

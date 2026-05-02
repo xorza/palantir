@@ -43,16 +43,12 @@ pub struct Ui {
     /// Rebuilt in `end_frame`.
     cascades: Cascades,
 
-    /// Logical→physical pixel mapping. Read by the renderer at submit
-    /// time. Mutate via [`Ui::set_display`] to keep the
-    /// repaint-requested gate in sync.
+    /// Display config (physical surface size + DPR + pixel-snap) for
+    /// the current frame, written by [`Ui::begin_frame`]. Read by
+    /// `end_frame` (layout, damage, painter) and by hosts converting
+    /// input coords. Defaults to `Display::default()` until the
+    /// first `begin_frame`.
     pub(crate) display: Display,
-
-    /// Surface rect from the last [`Ui::layout`] call. Stashed so
-    /// `end_frame` and `damage_filter` don't need it as a parameter
-    /// — the host already passed it to `layout`. `Rect::ZERO` until
-    /// the first `layout` runs.
-    surface: Rect,
 
     /// Text shaping & measurement, with the `CosmicMeasure` / mono dispatch
     /// hidden inside. Install a real shaper with [`Ui::install_text_system`]
@@ -62,11 +58,11 @@ pub struct Ui {
     /// Frame-skipping gate. `true` when something has changed since the
     /// last successful `end_frame()`; the host calls
     /// [`Ui::should_repaint`] to decide whether to run the pipeline this
-    /// tick. Set conservatively by [`Ui::on_input`] and
-    /// [`Ui::set_display`], or explicitly by [`Ui::request_repaint`]
-    /// (animations, async). Cleared at the end of `end_frame()` so
-    /// the next idle check returns `false`. Defaults to `true` so
-    /// the first frame always renders.
+    /// tick. Set conservatively by [`Ui::on_input`], or explicitly by
+    /// [`Ui::request_repaint`] (animations, async, surface/scale
+    /// changes). Cleared at the end of `end_frame()` so the next
+    /// idle check returns `false`. Defaults to `true` so the first
+    /// frame always renders.
     repaint_requested: bool,
 
     /// Per-frame damage output (`dirty`, `rect`) plus the
@@ -99,7 +95,6 @@ impl Ui {
             layout_engine: LayoutEngine::new(),
             cascades: Cascades::new(),
             display: Display::default(),
-            surface: Rect::ZERO,
             text: TextMeasurer::new(),
             // First frame must render so the host has something to
             // present. Subsequent idle frames flip back to `false`.
@@ -129,52 +124,49 @@ impl Ui {
         self.text.measure(text, font_size_px, max_width_px)
     }
 
-    /// Bundled display config (`scale_factor`, `pixel_snap`). Read
-    /// by the renderer at submit time and by hosts converting input
-    /// coords (`InputEvent::from_winit`).
+    /// Bundled display config (`physical`, `scale_factor`,
+    /// `pixel_snap`) from the most recent [`Ui::begin_frame`] call.
+    /// Read by hosts converting input coords
+    /// (`InputEvent::from_winit`). Defaults to `Display::default()`
+    /// before the first frame.
     pub fn display(&self) -> Display {
         self.display
     }
 
-    /// Replace the display config. `scale_factor` must be at least
-    /// `f32::EPSILON` — `0.0` or negative would silently collapse
-    /// the UI to a single physical pixel, so we assert instead of
-    /// clamping (a stray winit `0.0` is a host bug, not something
-    /// we should paper over). Schedules a repaint only when
-    /// something actually changed — idempotent calls (e.g. winit
-    /// re-sending the same scale on every focus change) stay free.
-    pub fn set_display(&mut self, display: Display) {
+    /// Start recording a frame. `display` is the canvas size + DPR
+    /// for this frame; stashed and read by `end_frame` for layout,
+    /// damage, and painter. Asserts `display.scale_factor >=
+    /// f32::EPSILON` — a stray `0.0` from winit would collapse the
+    /// UI to a single physical pixel.
+    pub fn begin_frame(&mut self, display: Display) {
         assert!(
             display.scale_factor >= f32::EPSILON,
             "Display::scale_factor must be ≥ f32::EPSILON; got {}",
             display.scale_factor,
         );
-        if display != self.display {
-            self.display = display;
-            self.repaint_requested = true;
-        }
-    }
-
-    pub fn begin_frame(&mut self) {
+        self.display = display;
         self.tree.clear();
         self.parents.clear();
         self.seen_ids.clear();
     }
 
-    /// Run measure + arrange for the recorded tree at the given surface rect.
-    /// Call after recording (post `begin_frame` + widget tree) and before
-    /// `end_frame`. Reuses the persistent `LayoutEngine` — amortized
-    /// zero-alloc after warmup. The tree is read-only; layout output lands
-    /// in `LayoutEngine`.
+    /// Run measure + arrange for the recorded tree at the surface
+    /// described by the current `Display` (`display.logical_rect()`).
+    /// Call after recording and before `end_frame` if you want to
+    /// inspect intermediate layout state; `end_frame` runs `layout`
+    /// itself if you didn't.
     ///
-    /// Empty trees (no widget pushed this frame) are a legitimate state
-    /// for hosts that conditionally render UI; this method is a no-op
-    /// in that case.
-    pub fn layout(&mut self, surface: Rect) {
-        self.surface = surface;
+    /// Empty trees (no widget pushed this frame) are a legitimate
+    /// state for hosts that conditionally render UI; this method is
+    /// a no-op in that case.
+    pub fn layout(&mut self) {
         if let Some(root) = self.tree.root() {
-            self.layout_engine
-                .run(&self.tree, root, surface, &mut self.text);
+            self.layout_engine.run(
+                &self.tree,
+                root,
+                self.display.logical_rect(),
+                &mut self.text,
+            );
         }
     }
 
@@ -183,24 +175,22 @@ impl Ui {
     /// `None` → full repaint (first frame, post-resize, no diff, or
     /// damage area exceeds the 50% threshold).
     pub fn damage_filter(&self) -> Option<Rect> {
-        self.damage.filter(self.surface)
+        self.damage.filter(self.display.logical_rect())
     }
 
-    /// Finalize the just-recorded frame against `surface`: run
-    /// measure + arrange, rebuild cascades and hit-index, compute
-    /// hashes and damage, and encode + compose into the painter's
-    /// `RenderBuffer`. Returns the painted output ready for
-    /// `WgpuBackend::submit`.
+    /// Finalize the just-recorded frame: run measure + arrange,
+    /// rebuild cascades and hit-index, compute hashes and damage,
+    /// and encode + compose into the painter's `RenderBuffer`.
+    /// Returns the painted output ready for `WgpuBackend::submit`.
     ///
-    /// `surface` is the canvas rect to lay out into — typically
-    /// `ui.display().logical_rect()`. Stashed for `damage_filter`
-    /// queries between frames.
+    /// All passes use the surface from
+    /// `display.logical_rect()` as set by [`Ui::begin_frame`].
     ///
     /// Clears the repaint gate so the next [`Ui::should_repaint`]
     /// returns `false` until something new happens (input, animation
     /// tick, explicit `request_repaint`).
-    pub fn end_frame(&mut self, surface: Rect) -> FrameOutput<'_> {
-        self.surface = surface;
+    pub fn end_frame(&mut self) -> FrameOutput<'_> {
+        let surface = self.display.logical_rect();
         if let Some(root) = self.tree.root() {
             self.layout_engine
                 .run(&self.tree, root, surface, &mut self.text);
@@ -256,7 +246,7 @@ impl Ui {
     /// `end_frame()`. Hosts gate their `request_redraw()` /
     /// pipeline-run on this so idle frames cost nothing.
     ///
-    /// Set by `on_input`, `set_display`, `request_repaint`,
+    /// Set by `on_input`, `begin_frame`, `request_repaint`,
     /// initial construction. Cleared by `end_frame()`.
     pub fn should_repaint(&self) -> bool {
         self.repaint_requested
@@ -265,7 +255,7 @@ impl Ui {
     /// Schedule a repaint on the next host tick. Idempotent and cheap.
     /// Use for animations, async state landing, theme changes, or any
     /// state mutation that doesn't flow through `on_input` /
-    /// `set_display`.
+    /// `begin_frame`.
     pub fn request_repaint(&mut self) {
         self.repaint_requested = true;
     }
