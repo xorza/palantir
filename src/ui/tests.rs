@@ -306,14 +306,14 @@ fn text_reshape_skipped_when_unchanged_across_frames() {
     };
 
     render(&mut ui);
-    let after_first = ui.text.measure_calls();
+    let after_first = ui.text.measure_calls;
     assert!(
         after_first > 0,
         "first frame should drive at least one measure call",
     );
 
     render(&mut ui);
-    let after_second = ui.text.measure_calls();
+    let after_second = ui.text.measure_calls;
     assert_eq!(
         after_second,
         after_first,
@@ -338,14 +338,14 @@ fn text_reshape_runs_when_content_changes() {
         Text::with_id("changing", "first").show(ui);
     });
     ui.end_frame();
-    let before = ui.text.measure_calls();
+    let before = ui.text.measure_calls;
 
     ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
     Panel::vstack().show(&mut ui, |ui| {
         Text::with_id("changing", "second").show(ui);
     });
     ui.end_frame();
-    let after = ui.text.measure_calls();
+    let after = ui.text.measure_calls;
 
     assert!(
         after > before,
@@ -380,9 +380,9 @@ fn wrapping_text_reshape_skipped_when_unchanged() {
     };
 
     render(&mut ui);
-    let after_first = ui.text.measure_calls();
+    let after_first = ui.text.measure_calls;
     render(&mut ui);
-    let after_second = ui.text.measure_calls();
+    let after_second = ui.text.measure_calls;
     assert_eq!(
         after_second,
         after_first,
@@ -427,9 +427,9 @@ fn intrinsic_query_reuses_cached_text_measure() {
     };
 
     render(&mut ui);
-    let after_first = ui.text.measure_calls();
+    let after_first = ui.text.measure_calls;
     render(&mut ui);
-    let after_second = ui.text.measure_calls();
+    let after_second = ui.text.measure_calls;
     assert_eq!(
         after_second,
         after_first,
@@ -501,7 +501,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
 
     // Frame 1: cold — measures unbounded + wrap (2 calls).
     render(&mut ui, 60.0);
-    let after_first = ui.text.measure_calls();
+    let after_first = ui.text.measure_calls;
     assert!(
         after_first >= 2,
         "first frame should measure both unbounded and wrap (got {after_first})",
@@ -510,7 +510,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
     // Frame 2: same content, different slot width → different wrap target.
     // Must reuse unbounded; should run exactly ONE extra measure (the wrap).
     render(&mut ui, 80.0);
-    let after_second = ui.text.measure_calls();
+    let after_second = ui.text.measure_calls;
     let delta = after_second - after_first;
     assert_eq!(
         delta, 1,
