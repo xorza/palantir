@@ -24,7 +24,7 @@ pub struct ShapedText {
 }
 
 impl LayoutResult {
-    pub(super) fn resize_for(&mut self, tree: &Tree) {
+    pub(in crate::layout) fn resize_for(&mut self, tree: &Tree) {
         let n = tree.node_count();
         self.rect.clear();
         self.rect.resize(n, Rect::ZERO);
@@ -36,7 +36,7 @@ impl LayoutResult {
         self.rect[id.index()]
     }
 
-    pub(super) fn set_rect(&mut self, id: NodeId, v: Rect) {
+    pub(in crate::layout) fn set_rect(&mut self, id: NodeId, v: Rect) {
         self.rect[id.index()] = v;
     }
 
@@ -44,7 +44,7 @@ impl LayoutResult {
         self.text_shapes[id.index()]
     }
 
-    pub(super) fn set_text_shape(&mut self, id: NodeId, s: ShapedText) {
+    pub(in crate::layout) fn set_text_shape(&mut self, id: NodeId, s: ShapedText) {
         self.text_shapes[id.index()] = Some(s);
     }
 }

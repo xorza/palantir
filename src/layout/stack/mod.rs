@@ -1,7 +1,7 @@
-use super::{
-    AutoBias, Axis, LayoutEngine, LenReq, max_child_intrinsic, place_axis, resolved_axis_align,
-    zero_subtree,
+use super::support::{
+    AutoBias, children_max_intrinsic, place_axis, resolved_axis_align, zero_subtree,
 };
+use super::{Axis, LayoutEngine, LenReq};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;
@@ -214,7 +214,7 @@ pub(super) fn intrinsic(
         }
         total + gap * count.saturating_sub(1) as f32
     } else {
-        max_child_intrinsic(layout, tree, node, query_axis, req, text)
+        children_max_intrinsic(layout, tree, node, query_axis, req, text)
     }
 }
 
