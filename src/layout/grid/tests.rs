@@ -1,7 +1,9 @@
+use super::{AxisScratch, resolve_axis};
 use crate::Ui;
 use crate::element::Configure;
 use crate::primitives::{Rect, Sizing, Track};
 use crate::widgets::{Button, Frame, Grid, Panel};
+use std::rc::Rc;
 
 #[test]
 fn grid_fixed_and_fill_columns_split_remainder() {
@@ -254,4 +256,27 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
     assert_eq!(r.size.h, 20.0);
     assert_eq!(r.min.x, 80.0);
     assert_eq!(r.min.y, 80.0);
+}
+
+/// Locks the implicit contract `sum_spanned_known` depends on: after
+/// `resolve_axis` runs, `Fixed` and `Hug` tracks are flagged resolved
+/// while `Fill` tracks stay unresolved so cells in Fill cols see
+/// `INFINITY` as their available width (the WPF intrinsic trick that
+/// lets Fill widths only finalize at arrange time). Today this is an
+/// emergent property of phase ordering; this test pins it.
+#[test]
+fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
+    let tracks: Rc<[Track]> = Rc::from([Track::fixed(50.0), Track::hug(), Track::fill()]);
+    let mut a = AxisScratch::default();
+    a.reset(tracks);
+    a.hug_min[1] = 10.0;
+    a.hug_max[1] = 30.0;
+
+    resolve_axis(&mut a, 200.0, 0.0);
+
+    assert_eq!(
+        a.resolved.as_slice(),
+        &[true, true, false],
+        "Fill cols must stay unresolved so `sum_spanned_known` returns INF for them"
+    );
 }
