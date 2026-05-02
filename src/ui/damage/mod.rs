@@ -19,7 +19,7 @@
 use crate::cascade::Cascades;
 use crate::primitives::{Rect, WidgetId};
 use crate::tree::{NodeId, Tree};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 /// Per-widget snapshot retained across frames so the next frame's
 /// `Damage::compute` can diff `(rect, hash)` against the previous
@@ -86,22 +86,22 @@ impl Damage {
 
     /// Diff against the just-finished frame and roll `self.prev`
     /// forward to this frame's snapshot in the same pass — the diff
-    /// reads each `WidgetId`'s old entry via `insert`, then any
-    /// surplus entries (removed widgets) are swept after the loop.
-    /// `curr_ids` is this frame's widget-id set — reused from
-    /// `Ui.seen_ids` so we don't rebuild it.
+    /// reads each `WidgetId`'s old entry via `insert`, then evicts
+    /// last-frame entries listed in `removed` (precomputed by
+    /// [`crate::ui::RemovedWidgets`] so damage and `text_reuse` share
+    /// the diff).
     ///
     /// Rects are tracked in **screen space** (read straight off
     /// `Cascade.screen_rect`). This makes damage match where the GPU
     /// actually paints, so the backend scissor lands on the right
     /// pixels even under transformed parents.
-    pub fn compute(&mut self, tree: &Tree, cascades: &Cascades, curr_ids: &FxHashSet<WidgetId>) {
+    pub fn compute(&mut self, tree: &Tree, cascades: &Cascades, removed: &[WidgetId]) {
         self.dirty.clear();
         let mut acc: Option<Rect> = None;
 
         let cascade_rows = cascades.rows();
         let n = tree.node_count();
-        let widget_ids = tree.widget_ids();
+        let widget_ids = &tree.widget_ids;
         for i in 0..n {
             let wid = widget_ids[i];
             let curr_rect = cascade_rows[i].screen_rect;
@@ -128,20 +128,12 @@ impl Damage {
             }
         }
 
-        // Removed widgets: entries in `prev` whose `wid` wasn't recorded
-        // this frame. They contribute their last-known rect to damage
-        // and must be evicted from `prev` so next frame's diff doesn't
-        // see them. `n` entries were just inserted/refreshed above; if
-        // `prev.len() > n`, the surplus is exactly the removed set.
-        if self.prev.len() > n {
-            self.prev.retain(|wid, snap| {
-                if curr_ids.contains(wid) {
-                    true
-                } else {
-                    extend(&mut acc, snap.rect);
-                    false
-                }
-            });
+        // Evict last-frame snapshots for removed widgets; their rect
+        // contributes to damage so the area they vacated repaints.
+        for wid in removed {
+            if let Some(snap) = self.prev.remove(wid) {
+                extend(&mut acc, snap.rect);
+            }
         }
 
         self.rect = acc;

@@ -283,3 +283,238 @@ fn prev_frame_updates_on_authoring_change() {
 
     assert_ne!(h1, h2);
 }
+
+/// Pin: a Text widget whose authoring inputs don't change across
+/// frames hits the per-`WidgetId` reuse cache in `LayoutEngine` and
+/// does *not* dispatch through `TextMeasurer::measure` again. Without
+/// the cache, every steady-state frame would re-hash the source string
+/// and round-trip through `RefCell<CosmicMeasure>`.
+#[test]
+fn text_reshape_skipped_when_unchanged_across_frames() {
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+
+    let render = |ui: &mut Ui| {
+        ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+        Panel::vstack().show(ui, |ui| {
+            Text::with_id("hello", "the quick brown fox").show(ui);
+        });
+        ui.end_frame();
+    };
+
+    render(&mut ui);
+    let after_first = ui.text.measure_calls();
+    assert!(
+        after_first > 0,
+        "first frame should drive at least one measure call",
+    );
+
+    render(&mut ui);
+    let after_second = ui.text.measure_calls();
+    assert_eq!(
+        after_second,
+        after_first,
+        "second identical frame must reuse cached MeasureResult — \
+         got {} extra measure call(s)",
+        after_second - after_first,
+    );
+}
+
+/// Pin: changing the Text's content invalidates the reuse entry and
+/// drives a fresh measure.
+#[test]
+fn text_reshape_runs_when_content_changes() {
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+
+    ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+    Panel::vstack().show(&mut ui, |ui| {
+        Text::with_id("changing", "first").show(ui);
+    });
+    ui.end_frame();
+    let before = ui.text.measure_calls();
+
+    ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+    Panel::vstack().show(&mut ui, |ui| {
+        Text::with_id("changing", "second").show(ui);
+    });
+    ui.end_frame();
+    let after = ui.text.measure_calls();
+
+    assert!(
+        after > before,
+        "content change must trigger fresh measure (before={before}, after={after})",
+    );
+}
+
+/// Pin: reuse survives a wrap reshape — same widget, same content, same
+/// constrained width across two frames runs measure once on frame 1 and
+/// not at all on frame 2.
+#[test]
+fn wrapping_text_reshape_skipped_when_unchanged() {
+    use crate::element::Configure;
+    use crate::primitives::Sizing;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+
+    let render = |ui: &mut Ui| {
+        ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+        Panel::vstack()
+            .size((Sizing::Fixed(60.0), Sizing::Hug))
+            .show(ui, |ui| {
+                Text::with_id("wrapped", "the quick brown fox jumps over the lazy dog")
+                    .size_px(16.0)
+                    .wrapping()
+                    .show(ui);
+            });
+        ui.end_frame();
+    };
+
+    render(&mut ui);
+    let after_first = ui.text.measure_calls();
+    render(&mut ui);
+    let after_second = ui.text.measure_calls();
+    assert_eq!(
+        after_second,
+        after_first,
+        "second wrapped frame must reuse — got {} extra measure call(s)",
+        after_second - after_first,
+    );
+}
+
+/// Pin: intrinsic-query path also reuses the per-widget cache. A wrapping
+/// Text inside a `Hug` Grid column triggers `intrinsic.rs::leaf` during
+/// column resolution; on a steady-state second frame, the entry stored
+/// by the prior frame's `shape_text` (or `leaf`) must satisfy the
+/// intrinsic query without dispatching through `TextMeasurer`.
+#[test]
+fn intrinsic_query_reuses_cached_text_measure() {
+    use crate::element::Configure;
+    use crate::primitives::{Sizing, Track};
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+
+    let render = |ui: &mut Ui| {
+        ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+        Grid::with_id("g")
+            .size((Sizing::Fixed(200.0), Sizing::Hug))
+            .cols(std::rc::Rc::from([Track::hug(), Track::fill()]))
+            .show(ui, |ui| {
+                Text::with_id("hug-col-text", "label")
+                    .grid_cell((0, 0))
+                    .show(ui);
+                Text::with_id(
+                    "fill-col-text",
+                    "the quick brown fox jumps over the lazy dog",
+                )
+                .wrapping()
+                .grid_cell((0, 1))
+                .show(ui);
+            });
+        ui.end_frame();
+    };
+
+    render(&mut ui);
+    let after_first = ui.text.measure_calls();
+    render(&mut ui);
+    let after_second = ui.text.measure_calls();
+    assert_eq!(
+        after_second,
+        after_first,
+        "intrinsic queries on unchanged Text widgets must reuse — got {} extra measure call(s)",
+        after_second - after_first,
+    );
+}
+
+/// Pin: when a Text widget disappears from the tree, its `text_reuse`
+/// entry is evicted on the same frame. Without the sweep, long-running
+/// apps with churning Text content would leak entries indefinitely.
+#[test]
+fn text_reuse_evicts_disappeared_widgets() {
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+
+    ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+    Panel::vstack().show(&mut ui, |ui| {
+        Text::with_id("transient", "hello").show(ui);
+    });
+    ui.end_frame();
+    let wid = WidgetId::from_hash("transient");
+    assert!(
+        ui.text.reuse.contains_key(&wid),
+        "text widget should populate text_reuse on first render",
+    );
+
+    // Next frame: don't record the widget. The sweep should evict it.
+    ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+    Panel::vstack().show(&mut ui, |_ui| {});
+    ui.end_frame();
+    assert!(
+        !ui.text.reuse.contains_key(&wid),
+        "removed widget's reuse entry must be swept",
+    );
+}
+
+/// Pin: when the authoring hash is unchanged but the wrap target
+/// (parent's available width) shifts between frames, the cached
+/// *unbounded* shape is preserved — only the *wrap* reshape runs
+/// again. Without this, an animated parent width would defeat the
+/// cache on every frame and re-measure both the unbounded and the
+/// wrapped buffer.
+#[test]
+fn wrap_target_change_preserves_unbounded_cache() {
+    use crate::element::Configure;
+    use crate::primitives::Sizing;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+
+    let render = |ui: &mut Ui, slot_w: f32| {
+        ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+        Panel::vstack()
+            .size((Sizing::Fixed(slot_w), Sizing::Hug))
+            .show(ui, |ui| {
+                Text::with_id("p", "the quick brown fox jumps over the lazy dog")
+                    .size_px(16.0)
+                    .wrapping()
+                    .show(ui);
+            });
+        ui.end_frame();
+    };
+
+    // Frame 1: cold — measures unbounded + wrap (2 calls).
+    render(&mut ui, 60.0);
+    let after_first = ui.text.measure_calls();
+    assert!(
+        after_first >= 2,
+        "first frame should measure both unbounded and wrap (got {after_first})",
+    );
+
+    // Frame 2: same content, different slot width → different wrap target.
+    // Must reuse unbounded; should run exactly ONE extra measure (the wrap).
+    render(&mut ui, 80.0);
+    let after_second = ui.text.measure_calls();
+    let delta = after_second - after_first;
+    assert_eq!(
+        delta, 1,
+        "wrap-target change must reshape only the wrap path, not unbounded \
+         (extra calls: {delta})",
+    );
+}

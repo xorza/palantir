@@ -11,6 +11,7 @@ pub(crate) use grid_def::GridDef;
 pub struct NodeId(pub(crate) u32);
 
 impl NodeId {
+    #[inline]
     pub fn index(self) -> usize {
         self.0 as usize
     }
@@ -258,11 +259,6 @@ impl Tree {
     /// Direct access to the subtree-end column.
     pub fn subtree_ends(&self) -> &[u32] {
         &self.subtree_end
-    }
-
-    /// Direct access to the widget-id column.
-    pub fn widget_ids(&self) -> &[WidgetId] {
-        &self.widget_ids
     }
 
     /// Read extras for a node, returning a borrow of `ElementExtras::DEFAULT`

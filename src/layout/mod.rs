@@ -21,15 +21,13 @@ pub use axis::Axis;
 pub use intrinsic::LenReq;
 pub use result::{LayoutResult, ShapedText};
 
-/// Persistent layout engine. Holds intermediate per-frame **scratch**
-/// (valid only during `run`) and per-frame **output** (`LayoutResult`,
-/// read by encoder/hit-index after `run` returns). Allocations retain
-/// capacity across frames.
+/// Persistent layout engine. Holds two categories of state:
 ///
-/// **Scratch** — internal to the layout pass. Drivers in this module
-/// read/write directly. Module-internal tests (e.g.
-/// `stack/tests.rs`) reach in via `pub(in crate::layout)` to pin
-/// measure output independently of arrange's slot-clamping.
+/// **Scratch** (per-frame, reset at top of `run`) — internal to the
+/// layout pass. Drivers in this module read/write directly.
+/// Module-internal tests (e.g. `stack/tests.rs`) reach in via
+/// `pub(in crate::layout)` to pin measure output independently of
+/// arrange's slot-clamping.
 ///
 /// - `grid` — grid-driver scratch (per-depth track state, hug pool).
 /// - `desired` — measure-pass output, read by arrange.
@@ -39,10 +37,15 @@ pub use result::{LayoutResult, ShapedText};
 ///   per node (one per `(axis, req)` combination). NaN means "not yet
 ///   computed". Cleared and resized to `node_count` in `run`.
 ///
-/// **Output**:
+/// **Output** (per-frame, public read-only):
 ///
-/// - `result` — post-layout rects + text shapes. Public read-only via
+/// - `result` — post-layout rects + text shapes. Read by encoder /
+///   hit-index after `run` returns. Exposed via
 ///   [`LayoutEngine::result`].
+///
+/// Cross-frame text reuse used to live here too; it now sits behind
+/// `TextMeasurer` (`unbounded_for` / `cached_wrap` / `shape_wrap`) so
+/// the dispatch-skip and the cache live in one place.
 #[derive(Default)]
 pub struct LayoutEngine {
     pub(in crate::layout) grid: GridContext,
@@ -50,6 +53,17 @@ pub struct LayoutEngine {
     pub(in crate::layout) desired: Vec<Size>,
     intrinsics: Vec<[f32; 4]>,
     pub(in crate::layout) result: LayoutResult,
+}
+
+/// Quantize wrap target to ~0.1 logical px. Coarse enough to absorb
+/// sub-pixel jitter from animated parents, fine enough that any
+/// noticeable layout shift forces a reshape. Layout policy — lives
+/// here, not in `text/`, so the granularity tradeoff is local to its
+/// only consumer.
+#[inline]
+fn quantize_wrap_target(v: f32) -> u32 {
+    // todo physical pixels?
+    (v.max(0.0) * 10.0).round() as u32
 }
 
 #[inline]
@@ -263,15 +277,17 @@ impl LayoutEngine {
                 ..
             } = shape
             {
-                let m = self.shape_text(node, src, *font_size_px, *wrap, available_w, text);
+                let m = self.shape_text(tree, node, src, *font_size_px, *wrap, available_w, text);
                 s = s.max(m);
             }
         }
         s
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn shape_text(
         &mut self,
+        tree: &Tree,
         node: NodeId,
         src: &str,
         font_size_px: f32,
@@ -279,23 +295,34 @@ impl LayoutEngine {
         available_w: f32,
         text: &mut TextMeasurer,
     ) -> Size {
-        let unbounded = text.measure(src, font_size_px, None);
-        let (measured, key) = if matches!(wrap, TextWrap::Wrap)
+        let wid = tree.widget_ids[node.index()];
+        let curr_hash = tree.hashes[node.index()];
+
+        // Refresh the unbounded measurement only when the authoring hash
+        // has shifted. Crucially, when only the wrap target changed
+        // (e.g. animated parent width), the unbounded cache is
+        // preserved and only the wrap reshape runs in shape_wrap.
+        let unbounded = text.shape_unbounded(wid, curr_hash, src, font_size_px);
+
+        let want_wrap = matches!(wrap, TextWrap::Wrap)
             && available_w.is_finite()
-            && available_w < unbounded.size.w
-        {
-            // Floor at the widest unbreakable run so we don't break inside a
-            // word — the run overflows the slot instead.
+            && available_w < unbounded.size.w;
+
+        let result = if want_wrap {
             let target = available_w.max(unbounded.intrinsic_min);
-            tracing::trace!(node = node.index(), target, "wrap reshape");
-            let m = text.measure(src, font_size_px, Some(target));
-            (m.size, m.key)
+            let target_q = quantize_wrap_target(target);
+            text.shape_wrap(wid, src, font_size_px, target, target_q)
         } else {
-            (unbounded.size, unbounded.key)
+            unbounded
         };
 
-        self.result
-            .set_text_shape(node, ShapedText { measured, key });
-        measured
+        self.result.set_text_shape(
+            node,
+            ShapedText {
+                measured: result.size,
+                key: result.key,
+            },
+        );
+        result.size
     }
 }

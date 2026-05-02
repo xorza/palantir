@@ -1,8 +1,10 @@
 mod damage;
+mod seen_ids;
 mod theme;
 pub use theme::Theme;
 
 pub(crate) use damage::Damage;
+pub(crate) use seen_ids::SeenIds;
 
 use crate::cascade::Cascades;
 use crate::element::Element;
@@ -13,7 +15,6 @@ use crate::renderer::{FrameOutput, Painter};
 use crate::shape::Shape;
 use crate::text::{SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
-use rustc_hash::FxHashSet;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].
@@ -26,9 +27,9 @@ pub struct Ui {
     pub(crate) tree: Tree,
     pub theme: Theme,
 
-    /// Duplicate ids silently corrupt every per-id store (focus, scroll,
-    /// click capture, hit-test rect lookup) — `Ui::node` panics on collision.
-    seen_ids: FxHashSet<WidgetId>,
+    /// Per-frame `WidgetId` tracker — collision detection,
+    /// removed-widget diff, and frame rollover. See [`SeenIds`].
+    pub(crate) ids: SeenIds,
 
     input: InputState,
     pub(crate) layout_engine: LayoutEngine,
@@ -58,7 +59,7 @@ impl Ui {
         Self {
             tree: Tree::new(),
             theme: Theme::default(),
-            seen_ids: FxHashSet::default(),
+            ids: SeenIds::default(),
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
             cascades: Cascades::new(),
@@ -90,7 +91,7 @@ impl Ui {
         );
         self.display = display;
         self.tree.clear();
-        self.seen_ids.clear();
+        self.ids.begin_frame();
     }
 
     /// Read-only access to the recorded tree for benchmarks and
@@ -105,6 +106,14 @@ impl Ui {
     /// `WgpuBackend::submit`. Clears the repaint gate.
     pub fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
+        // Hashes are pure functions of recorded inputs and don't depend on
+        // layout output, so we compute them up front. Layout reads them to
+        // skip text reshape for unchanged Text nodes (see
+        // `docs/text-reshape-skip.md`); damage reads them after.
+        self.tree.compute_hashes();
+        self.ids.end_frame();
+        self.text.sweep_removed(self.ids.removed());
+
         if let Some(root) = self.tree.root() {
             self.layout_engine
                 .run(&self.tree, root, surface, &mut self.text);
@@ -112,9 +121,9 @@ impl Ui {
         self.cascades
             .rebuild(&self.tree, self.layout_engine.result());
         self.input.end_frame(&self.tree, &self.cascades);
-        self.tree.compute_hashes();
+        // todo merge
         self.damage
-            .compute(&self.tree, &self.cascades, &self.seen_ids);
+            .compute(&self.tree, &self.cascades, self.ids.removed());
         let damage = self.damage.filter(surface);
         self.painter.build(
             &self.tree,
@@ -161,7 +170,7 @@ impl Ui {
     pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
         let id = element.id;
         assert!(
-            self.seen_ids.insert(id),
+            self.ids.record(id),
             "WidgetId collision — id {id:?} recorded twice this frame. Use `with_id(key)` (or `WidgetId::with`) to disambiguate widgets at the same call site, e.g. inside a loop. Duplicate ids silently corrupt focus, scroll, click capture, and hit-testing.",
         );
         let node = self.tree.open_node(element);
