@@ -1,5 +1,5 @@
 use super::{AutoBias, Axis, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
-use crate::primitives::{GridCell, Rect, Size, Sizing, Track};
+use crate::primitives::{Rect, Size, Sizing, Track};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use std::ops::Range;
@@ -281,7 +281,6 @@ fn measure_inner(
             continue;
         }
         let cell = tree.read_extras(c).grid;
-        assert_cell(cell, n_rows, n_cols);
         if cell.col_span != 1 {
             continue;
         }
@@ -564,27 +563,6 @@ fn arrange_inner(
         );
         layout.arrange(tree, c, child_rect);
     }
-}
-
-/// Validate a cell against the grid's track counts. Called once per
-/// child during the Phase 1 column loop in `measure_inner`; arrange
-/// trusts measure's check. Panics on out-of-range or zero-span — silent
-/// clamping would hide real authoring bugs (e.g. a child placed past the
-/// last column).
-fn assert_cell(c: GridCell, n_rows: usize, n_cols: usize) {
-    let row = c.row as usize;
-    let col = c.col as usize;
-    let row_span = c.row_span as usize;
-    let col_span = c.col_span as usize;
-    assert!(
-        row < n_rows
-            && col < n_cols
-            && row_span >= 1
-            && col_span >= 1
-            && row + row_span <= n_rows
-            && col + col_span <= n_cols,
-        "grid cell out of range: {c:?} for {n_rows}x{n_cols}"
-    );
 }
 
 /// Sum of spanned tracks' resolved sizes, or `∞` if any spanned track is not

@@ -122,6 +122,35 @@ impl Tree {
             );
         }
         let (layout, mut paint, widget_id, extras) = element.split();
+
+        // If the parent is a `Grid`, validate the child's `GridCell` against
+        // the grid's track counts now — once at recording time — instead of
+        // inside every measure pass. Empty grids (zero rows or cols) skip
+        // validation; their measure pass shortcuts to `Size::ZERO`.
+        if let Some(parent_id) = parent
+            && let LayoutMode::Grid(grid_idx) = self.layout[parent_id.0 as usize].mode
+        {
+            let def = self.grid.def(grid_idx);
+            let n_rows = def.rows.len();
+            let n_cols = def.cols.len();
+            if n_rows > 0 && n_cols > 0 {
+                let c = extras.grid;
+                let row = c.row as usize;
+                let col = c.col as usize;
+                let row_span = c.row_span as usize;
+                let col_span = c.col_span as usize;
+                assert!(
+                    row < n_rows
+                        && col < n_cols
+                        && row_span >= 1
+                        && col_span >= 1
+                        && row + row_span <= n_rows
+                        && col + col_span <= n_cols,
+                    "grid cell out of range: {c:?} for {n_rows}x{n_cols}"
+                );
+            }
+        }
+
         if !extras.is_default() {
             assert!(
                 self.node_extras.len() < u16::MAX as usize,

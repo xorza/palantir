@@ -1281,3 +1281,74 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
          under the constrained cross and wraps; got h={h}"
     );
 }
+
+/// Pin: when a Stack's Fill child clamps to its `MinContent` floor
+/// during pass-2 measure (the resolved share is narrower than the
+/// longest unbreakable run), `arrange` recomputes leftover from
+/// non-Fill `desired` and places the Fill child at `leftover * weight
+/// / total_weight`. That arranged size can be **less** than the
+/// child's measured size — measure floored at MinContent, arrange did
+/// not. The text shape is wide (overflows), the rect is narrow.
+///
+/// Today's behavior — pinning so a future "tighten arrange to honor
+/// measured size on Fill clamp" change is loud rather than silent.
+/// Linked from `docs/layout-review.md` "Smaller but worth flagging".
+#[test]
+fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::Text;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut message_node = None;
+    Panel::vstack().show(&mut ui, |ui| {
+        Panel::hstack()
+            .size((Sizing::FILL, Sizing::Hug))
+            .show(ui, |ui| {
+                // Fixed sibling ~consumes 180 of 200 surface, leaving
+                // ~20 px for Fill — well below the longest word's width.
+                Frame::with_id("avatar")
+                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .show(ui);
+                message_node = Some(
+                    Text::new("supercalifragilistic")
+                        .size_px(14.0)
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .wrapping()
+                        .show(ui)
+                        .node,
+                );
+            });
+    });
+    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
+
+    let shaped_w = ui
+        .layout_result()
+        .text_shape(message_node.unwrap())
+        .expect("text was shaped")
+        .measured
+        .w;
+    let rect_w = ui.layout_result().rect(message_node.unwrap()).size.w;
+
+    // Pass-2 measure clamped to MinContent floor: shape ≈ longest-word
+    // width (well above the 20 px Fill share).
+    assert!(
+        shaped_w > 50.0,
+        "measure must floor at MinContent; got shaped_w={shaped_w}"
+    );
+    // Arrange recomputes leftover from non-Fill desired only and
+    // places Fill at `leftover * weight / total_weight` ≈ 20 px,
+    // ignoring the measured floor.
+    assert!(
+        rect_w < shaped_w,
+        "arrange leftover should fall below measured floor; \
+         shaped_w={shaped_w} rect_w={rect_w}"
+    );
+    assert!(
+        rect_w < 30.0,
+        "rect should reflect ~20 px leftover share, not the floor; \
+         got rect_w={rect_w}"
+    );
+}
