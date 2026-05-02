@@ -25,7 +25,6 @@ use rustc_hash::FxHashSet;
 pub struct Ui {
     pub(crate) tree: Tree,
     pub theme: Theme,
-    parents: Vec<NodeId>,
 
     /// Duplicate ids silently corrupt every per-id store (focus, scroll,
     /// click capture, hit-test rect lookup) — `Ui::node` panics on collision.
@@ -59,7 +58,6 @@ impl Ui {
         Self {
             tree: Tree::new(),
             theme: Theme::default(),
-            parents: Vec::new(),
             seen_ids: FxHashSet::default(),
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
@@ -92,7 +90,6 @@ impl Ui {
         );
         self.display = display;
         self.tree.clear();
-        self.parents.clear();
         self.seen_ids.clear();
     }
 
@@ -162,16 +159,14 @@ impl Ui {
     }
 
     pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
-        let parent = self.parents.last().copied();
         let id = element.id;
         assert!(
             self.seen_ids.insert(id),
             "WidgetId collision — id {id:?} recorded twice this frame. Use `with_id(key)` (or `WidgetId::with`) to disambiguate widgets at the same call site, e.g. inside a loop. Duplicate ids silently corrupt focus, scroll, click capture, and hit-testing.",
         );
-        let node = self.tree.push_node(element, parent);
-        self.parents.push(node);
+        let node = self.tree.open_node(element);
         f(self);
-        self.parents.pop();
+        self.tree.close_node();
         node
     }
 
@@ -179,9 +174,9 @@ impl Ui {
         if shape.is_noop() {
             return;
         }
-        let node = *self
-            .parents
-            .last()
+        let node = self
+            .tree
+            .current_open()
             .expect("add_shape called outside any open node");
         self.tree.add_shape(node, shape);
     }

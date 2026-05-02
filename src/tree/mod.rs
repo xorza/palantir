@@ -52,9 +52,14 @@ pub struct Tree {
     /// `shapes.len()` while recording so `add_shape` can extend it in place.
     shape_starts: Vec<u32>,
     /// Recording-only scratch: index `i` holds the parent of node `i` (or
-    /// `None` if root). Used by `push_node` to walk up the ancestor chain
-    /// bumping `subtree_end`. Not read after recording. Reused frame-to-frame.
+    /// `None` if root). Used by `open_node` for the ancestor-bumping walk
+    /// and by `close_node` to pop `current_open`. Not read after recording.
+    /// Reused frame-to-frame.
     recording_parent: Vec<Option<NodeId>>,
+    /// Tip of the currently-open path while recording. `Some(n)` between an
+    /// `open_node` returning `n` and the matching `close_node`. Cleared in
+    /// `clear`.
+    current_open: Option<NodeId>,
     /// Frame-scoped grid storage: track defs (addressed by
     /// `LayoutMode::Grid(u16)`). Per-track hug arrays live on `LayoutResult`
     /// since the tree is read-only after recording. Cleared per frame,
@@ -80,6 +85,7 @@ impl Default for Tree {
             shapes: Vec::new(),
             shape_starts: vec![0],
             recording_parent: Vec::new(),
+            current_open: None,
             grid: GridArena::default(),
             node_extras: Vec::new(),
             hashes: Vec::new(),
@@ -101,9 +107,16 @@ impl Tree {
         self.shape_starts.clear();
         self.shape_starts.push(0);
         self.recording_parent.clear();
+        self.current_open = None;
         self.grid.clear();
         self.node_extras.clear();
         self.hashes.clear();
+    }
+
+    /// Tip of the currently-open recording path, or `None` if no node is
+    /// open.
+    pub fn current_open(&self) -> Option<NodeId> {
+        self.current_open
     }
 
     pub(crate) fn push_grid_def(
@@ -124,7 +137,10 @@ impl Tree {
         &self.grid.defs
     }
 
-    pub fn push_node(&mut self, element: Element, parent: Option<NodeId>) -> NodeId {
+    /// Push a node as a child of the currently-open node (or as the root if
+    /// no node is open) and make it the new tip. Pair with `close_node`.
+    pub fn open_node(&mut self, element: Element) -> NodeId {
+        let parent = self.current_open;
         let new_id = NodeId(self.layout.len() as u32);
         if let LayoutMode::Grid(idx) = element.mode {
             assert!(
@@ -188,7 +204,17 @@ impl Tree {
             self.subtree_end[ai] = new_end;
             anc = self.recording_parent[ai];
         }
+        self.current_open = Some(new_id);
         new_id
+    }
+
+    /// Pop the currently-open node back to its parent. Panics if no node is
+    /// open.
+    pub fn close_node(&mut self) {
+        let cur = self
+            .current_open
+            .expect("close_node called with no open node");
+        self.current_open = self.recording_parent[cur.0 as usize];
     }
 
     pub fn add_shape(&mut self, node: NodeId, shape: Shape) {
