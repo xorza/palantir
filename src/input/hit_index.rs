@@ -53,7 +53,7 @@ impl HitIndex {
         self.by_id.reserve(n);
 
         let paint = tree.paints();
-        let widget_ids = tree.widget_ids();
+        let widget_ids = &tree.widget_ids;
         let rows = cascades.rows();
         for i in 0..n {
             let c = rows[i];

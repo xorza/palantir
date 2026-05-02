@@ -18,7 +18,8 @@
 //!
 //! [`Ui`]: crate::Ui
 
-use crate::primitives::Size;
+use crate::primitives::{Size, WidgetId};
+use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -146,6 +147,38 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
     }
 }
 
+/// Per-`WidgetId` cross-frame cache of shaping output. Lookup-keyed
+/// by `WidgetId`, validity-checked by authoring hash. Lets layout
+/// skip the `measure` dispatch (and the underlying string-hash +
+/// `RefCell` lock around `CosmicMeasure`) when a Text leaf's inputs
+/// are unchanged across frames. Owned by [`TextMeasurer`] so the
+/// dispatch-skip and the cache live behind one façade.
+///
+/// We always cache the unbounded shape (used by intrinsic queries and
+/// the no-wrap path); the most recent wrap result is stored in
+/// `wrap`, keyed on a quantized wrap target chosen by the caller.
+/// Quantization granularity is layout policy and is computed at the
+/// call site — not in this module.
+#[derive(Clone, Copy)]
+pub(crate) struct TextReuseEntry {
+    /// `Tree.hashes[node]` from the frame that produced this entry. Any
+    /// authoring change (text content, font size, wrap mode, color, …)
+    /// flips this and forces a fresh measure.
+    hash: u64,
+    /// Unbounded measure (no wrap target). Drives intrinsic queries
+    /// and the no-wrap shape path.
+    unbounded: MeasureResult,
+    /// Last wrap result, if any.
+    wrap: Option<WrapReuse>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct WrapReuse {
+    /// Caller-supplied quantized wrap target (e.g. tenths of a pixel).
+    target_q: u32,
+    result: MeasureResult,
+}
+
 /// Ui-side measurement façade. Holds an optional shared handle to the real
 /// shaper; falls through to [`mono_measure`] when nothing is installed.
 /// The renderer holds its own clone of the same handle so layout and
@@ -153,6 +186,11 @@ pub fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) ->
 #[derive(Default)]
 pub struct TextMeasurer {
     cosmic: Option<SharedCosmic>,
+    /// Total `measure` calls made through this façade. Used by tests to
+    /// pin reshape-skip behaviour; cheap enough to leave on in release.
+    measure_calls: u64,
+    /// Per-widget reuse cache. See [`TextReuseEntry`].
+    pub(crate) reuse: FxHashMap<WidgetId, TextReuseEntry>,
 }
 
 impl TextMeasurer {
@@ -166,10 +204,10 @@ impl TextMeasurer {
         self.cosmic = Some(cosmic);
     }
 
-    /// True when a real shaper is installed. Renderer uses this to decide
-    /// whether to drive the glyphon pipeline.
-    pub fn has_cosmic(&self) -> bool {
-        self.cosmic.is_some()
+    /// Cumulative `measure` calls. Read by tests verifying that the
+    /// layout engine's per-widget reuse cache actually skips dispatch.
+    pub fn measure_calls(&self) -> u64 {
+        self.measure_calls
     }
 
     /// Shape (or mono-measure) one run. Dispatch is internal.
@@ -179,9 +217,81 @@ impl TextMeasurer {
         font_size_px: f32,
         max_width_px: Option<f32>,
     ) -> MeasureResult {
+        self.measure_calls += 1;
         match &self.cosmic {
             Some(c) => c.borrow_mut().measure(text, font_size_px, max_width_px),
             None => mono_measure(text, font_size_px, max_width_px),
+        }
+    }
+
+    /// Identity-cached unbounded shape for `wid`, refreshing it (and
+    /// clearing any stale wrap entry) when the authoring hash has
+    /// shifted. Returns by value because callers typically also call
+    /// [`Self::shape_wrap`] on the wrap path, which would borrow-
+    /// conflict with a reference into the cache.
+    pub fn shape_unbounded(
+        &mut self,
+        wid: WidgetId,
+        hash: u64,
+        text: &str,
+        font_size_px: f32,
+    ) -> MeasureResult {
+        //todo  use entry
+        match self.reuse.get(&wid) {
+            Some(e) if e.hash == hash => e.unbounded,
+            _ => {
+                let unbounded = self.measure(text, font_size_px, None);
+                self.reuse.insert(
+                    wid,
+                    TextReuseEntry {
+                        hash,
+                        unbounded,
+                        wrap: None,
+                    },
+                );
+                unbounded
+            }
+        }
+    }
+
+    /// Identity-cached wrap shape for `wid` at the caller-quantized
+    /// `target_q`. Hits the cache when the same wrap target was used
+    /// last frame; otherwise dispatches `measure` and refreshes the
+    /// entry. Caller is responsible for having populated the unbounded
+    /// entry first via [`Self::shape_unbounded`] — without that, the
+    /// wrap result is computed but cannot be cached (no parent entry)
+    /// and the next call re-measures.
+    pub fn shape_wrap(
+        &mut self,
+        wid: WidgetId,
+        text: &str,
+        font_size_px: f32,
+        target: f32,
+        target_q: u32,
+    ) -> MeasureResult {
+        if let Some(entry) = self.reuse.get(&wid)
+            && let Some(w) = entry.wrap
+            && w.target_q == target_q
+        {
+            return w.result;
+        }
+        let m = self.measure(text, font_size_px, Some(target));
+        if let Some(entry) = self.reuse.get_mut(&wid) {
+            entry.wrap = Some(WrapReuse {
+                target_q,
+                result: m,
+            });
+        }
+        m
+    }
+
+    /// Drop reuse entries for the supplied removed-widget set. Mirrors
+    /// the same per-frame diff fed to `Damage::compute` so cleanup
+    /// stays bounded under widget churn without a second `seen_ids`
+    /// scan.
+    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        for wid in removed {
+            self.reuse.remove(wid);
         }
     }
 }

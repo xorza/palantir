@@ -111,6 +111,8 @@ fn content_intrinsic(
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
 fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasurer) -> f32 {
+    let wid = tree.widget_ids[node.index()];
+    let curr_hash = tree.hashes[node.index()];
     let mut acc = 0.0_f32;
     for shape in tree.shapes_of(node) {
         if let Shape::Text {
@@ -119,7 +121,7 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasu
             ..
         } = shape
         {
-            let m = text.measure(src, *font_size_px, None);
+            let m = text.shape_unbounded(wid, curr_hash, src, *font_size_px);
             let v = match (axis, req) {
                 (Axis::X, LenReq::MinContent) => m.intrinsic_min,
                 (Axis::X, LenReq::MaxContent) => m.size.w,
