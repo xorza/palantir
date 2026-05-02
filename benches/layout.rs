@@ -16,9 +16,7 @@
 //! measure/arrange algorithm show up directly.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use palantir::{
-    Align, Button, Configure, Frame, Grid, Justify, Panel, Rect, Sizing, Text, Track, Ui,
-};
+use palantir::{Align, Button, Configure, Frame, Grid, Justify, Panel, Sizing, Text, Track, Ui};
 use std::hint::black_box;
 use std::rc::Rc;
 
@@ -222,13 +220,14 @@ fn build_ui(ui: &mut Ui, scale: usize) {
 }
 
 fn bench_layout(c: &mut Criterion) {
-    let surface = Rect::new(0.0, 0.0, 1280.0, 800.0);
+    use palantir::primitives::Display;
+    let display = Display::from_physical(glam::UVec2::new(1280, 800), 1.0);
     let mut group = c.benchmark_group("layout");
 
     // Print node counts so the per-bench numbers are interpretable.
     for &scale in &[1usize, 4, 16] {
         let mut ui = Ui::new();
-        ui.begin_frame();
+        ui.begin_frame(display);
         build_ui(&mut ui, scale);
         eprintln!("scale={scale}  nodes={}", ui.tree().node_count());
     }
@@ -241,16 +240,16 @@ fn bench_layout(c: &mut Criterion) {
             &scale,
             |b, &scale| {
                 let mut ui = Ui::new();
-                ui.begin_frame();
+                ui.begin_frame(display);
                 build_ui(&mut ui, scale);
                 for _ in 0..3 {
-                    ui.layout(surface);
+                    ui.layout();
                 }
-                b.iter(|| ui.layout(black_box(surface)));
+                b.iter(|| ui.layout());
             },
         );
 
-        // Full frame: begin_frame + record + layout + end_frame.
+        // Full frame: begin_frame + record + end_frame.
         // Includes recording cost; closer to "cost per real frame."
         group.bench_with_input(
             BenchmarkId::new("full_frame", scale),
@@ -258,14 +257,14 @@ fn bench_layout(c: &mut Criterion) {
             |b, &scale| {
                 let mut ui = Ui::new();
                 for _ in 0..3 {
-                    ui.begin_frame();
+                    ui.begin_frame(display);
                     build_ui(&mut ui, scale);
-                    ui.end_frame(surface);
+                    ui.end_frame();
                 }
                 b.iter(|| {
-                    ui.begin_frame();
+                    ui.begin_frame(black_box(display));
                     build_ui(&mut ui, scale);
-                    ui.end_frame(black_box(surface));
+                    ui.end_frame();
                 });
             },
         );

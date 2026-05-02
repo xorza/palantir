@@ -1,12 +1,16 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Align, Rect, Sizing};
+use crate::primitives::{Align, Display, Rect, Sizing};
 use crate::widgets::{Button, Frame, Panel};
+use glam::UVec2;
 
 #[test]
 fn hstack_arranges_two_buttons_side_by_side() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(800.0 as u32, 600.0 as u32),
+        1.0,
+    ));
 
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
@@ -18,10 +22,9 @@ fn hstack_arranges_two_buttons_side_by_side() {
         })
         .node;
 
-    let surface = Rect::new(0.0, 0.0, 800.0, 600.0);
-    ui.layout(surface);
+    ui.layout();
 
-    assert_eq!(ui.rect(root), surface);
+    assert_eq!(ui.rect(root), Rect::new(0.0, 0.0, 800.0, 600.0));
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(kids.len(), 2);
@@ -43,7 +46,10 @@ fn hstack_arranges_two_buttons_side_by_side() {
 #[test]
 fn vstack_with_fill_distributes_remainder() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 300.0 as u32),
+        1.0,
+    ));
 
     let root = Panel::vstack()
         .show(&mut ui, |ui| {
@@ -52,8 +58,7 @@ fn vstack_with_fill_distributes_remainder() {
         })
         .node;
 
-    let surface = Rect::new(0.0, 0.0, 200.0, 300.0);
-    ui.layout(surface);
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let fixed = ui.rect(kids[0]);
@@ -67,7 +72,10 @@ fn vstack_with_fill_distributes_remainder() {
 #[test]
 fn hstack_fill_weights_split_remainder_proportionally() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Frame::with_id("a")
@@ -78,7 +86,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
                 .show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.rect(kids[0]);
@@ -92,7 +100,10 @@ fn hstack_fill_weights_split_remainder_proportionally() {
 #[test]
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::with_id("wide")
@@ -105,7 +116,7 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
                 .show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.rect(kids[0]);
@@ -120,7 +131,10 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
 fn hstack_justify_center_centers_content_block() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .justify(Justify::Center)
         .show(&mut ui, |ui| {
@@ -128,7 +142,7 @@ fn hstack_justify_center_centers_content_block() {
             Frame::with_id("b").size(40.0).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Two 40-wide children, no gap → content width = 80. Leftover = 120,
@@ -141,7 +155,10 @@ fn hstack_justify_center_centers_content_block() {
 fn hstack_justify_end_packs_to_trailing_edge() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .justify(Justify::End)
         .show(&mut ui, |ui| {
@@ -149,7 +166,7 @@ fn hstack_justify_end_packs_to_trailing_edge() {
             Frame::with_id("b").size(40.0).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Last child ends at 200; 40 wide → starts at 160. First at 120.
@@ -161,7 +178,10 @@ fn hstack_justify_end_packs_to_trailing_edge() {
 fn hstack_justify_space_between_distributes_leftover_between() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .justify(Justify::SpaceBetween)
         .show(&mut ui, |ui| {
@@ -170,7 +190,7 @@ fn hstack_justify_space_between_distributes_leftover_between() {
             Frame::with_id("c").size(40.0).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Leftover = 200 - 120 = 80, split into 2 gaps of 40.
@@ -183,7 +203,10 @@ fn hstack_justify_space_between_distributes_leftover_between() {
 fn hstack_justify_space_around_distributes_with_half_pads() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .justify(Justify::SpaceAround)
         .show(&mut ui, |ui| {
@@ -191,7 +214,7 @@ fn hstack_justify_space_around_distributes_with_half_pads() {
             Frame::with_id("b").size(40.0).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Leftover = 120, /count(2) = 60 per slot. Half (30) padding before first,
@@ -205,7 +228,10 @@ fn hstack_justify_space_around_distributes_with_half_pads() {
 fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
     use crate::primitives::Justify;
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .justify(Justify::Center)
         .show(&mut ui, |ui| {
@@ -216,7 +242,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
             Frame::with_id("c").size(40.0).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Fill consumes leftover → first child still pinned to start.
@@ -229,7 +255,10 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
 #[test]
 fn hstack_gap_inserts_space_between_children() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
@@ -238,7 +267,7 @@ fn hstack_gap_inserts_space_between_children() {
             Frame::with_id("c").size(40.0).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(ui.rect(kids[0]).min.x, 0.0);
@@ -249,7 +278,10 @@ fn hstack_gap_inserts_space_between_children() {
 #[test]
 fn hstack_align_center_centers_child_on_cross_axis() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .size((Sizing::FILL, Sizing::Fixed(100.0)))
         .show(&mut ui, |ui| {
@@ -259,7 +291,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
                 .show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let r = ui.rect(kids[0]);
@@ -274,7 +306,10 @@ fn negative_left_margin_spills_outside_slot() {
     // larger, shifted toward the negative side. Pin the math so future layout
     // tweaks don't regress it.
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let mut button_node = None;
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
@@ -287,7 +322,7 @@ fn negative_left_margin_spills_outside_slot() {
             );
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(kids.len(), 1);
@@ -312,7 +347,10 @@ fn negative_left_margin_spills_outside_slot() {
 #[test]
 fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
 
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
@@ -324,8 +362,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
         })
         .node;
 
-    let surface = Rect::new(0.0, 0.0, 200.0, 100.0);
-    ui.layout(surface);
+    ui.layout();
 
     // Correct: 16 (button) + 184 (Fill share) = 200.
     // Buggy: 16 + 16 (double-counted) + 184 = 216.
@@ -342,7 +379,10 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
 #[test]
 fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
 
     let root = Panel::hstack()
         .gap(5.0)
@@ -356,7 +396,7 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
             Frame::with_id("b").size((30.0, 20.0)).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.rect(kids[0]);
@@ -384,7 +424,10 @@ fn hstack_fill_max_size_caps_measured_share() {
     use crate::primitives::Size;
 
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
 
     let mut fill_node = None;
     Panel::hstack()
@@ -399,7 +442,7 @@ fn hstack_fill_max_size_caps_measured_share() {
                     .node,
             );
         });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout();
 
     // Leftover for Fill share = 200 - 20 = 180. Cap = 50. Measure clamps
     // target to 50 → desired.w = 50.

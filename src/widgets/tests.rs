@@ -1,8 +1,9 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Rect, Sense, Sizing};
+use crate::primitives::{Color, Display, Sense, Sizing};
 use crate::shape::Shape;
 use crate::widgets::{Button, Frame, Panel, Styled};
+use glam::UVec2;
 
 #[test]
 fn clip_flag_is_recorded_on_panel_node() {
@@ -10,7 +11,10 @@ fn clip_flag_is_recorded_on_panel_node() {
     // Explicit `.clip(true)` opts in. Pin both directions so a future
     // default change is loud.
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     let mut default_panel = None;
     let mut opt_in = None;
     Panel::hstack().show(&mut ui, |ui| {
@@ -28,7 +32,7 @@ fn clip_flag_is_recorded_on_panel_node() {
                 .node,
         );
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.layout();
 
     assert!(!ui.tree.paint(default_panel.unwrap()).attrs.is_clip());
     assert!(ui.tree.paint(opt_in.unwrap()).attrs.is_clip());
@@ -37,7 +41,10 @@ fn clip_flag_is_recorded_on_panel_node() {
 #[test]
 fn frame_paints_a_single_rounded_rect() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let mut frame_node = None;
     Panel::hstack().show(&mut ui, |ui| {
         frame_node = Some(
@@ -49,7 +56,7 @@ fn frame_paints_a_single_rounded_rect() {
                 .node,
         );
     });
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let shapes = ui.tree.shapes_of(frame_node.unwrap());
     assert_eq!(shapes.len(), 1);
@@ -64,7 +71,10 @@ fn frame_paints_a_single_rounded_rect() {
 #[test]
 fn panel_hugs_largest_child_and_layers_them() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     let mut panel_node = None;
     let mut a_node = None;
     let mut b_node = None;
@@ -91,7 +101,7 @@ fn panel_hugs_largest_child_and_layers_them() {
                 .node,
         );
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout();
 
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
     let panel = ui.rect(panel_node.unwrap());
@@ -118,7 +128,10 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     // (Root is an HStack so the panel's Fixed size is honored — root would
     // otherwise expand to surface.)
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut child_node = None;
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack_with_id("p")
@@ -134,7 +147,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                 );
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.layout();
 
     let child = ui.rect(child_node.unwrap());
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
@@ -150,7 +163,10 @@ fn zstack_layers_children_without_painting_background() {
     // Wrapped in HStack so the ZStack's Hug-to-children size is honored
     // (root would otherwise expand to surface).
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     let mut zstack_node = None;
     let mut bg_node = None;
     let mut fg_node = None;
@@ -175,7 +191,7 @@ fn zstack_layers_children_without_painting_background() {
                 .node,
         );
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout();
 
     let z = zstack_node.unwrap();
     // ZStack itself paints nothing.
@@ -201,7 +217,10 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
     use glam::Vec2;
 
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack_with_id("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
@@ -214,14 +233,14 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                     .show(ui);
             });
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.end_frame();
 
     // Click on the button inside the disabled panel.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
-    ui.begin_frame();
+    ui.begin_frame(Display::default());
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack_with_id("locked")
@@ -242,7 +261,10 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 #[test]
 fn collapsed_child_consumes_no_space_in_hstack() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
@@ -251,7 +273,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
             Frame::with_id("b").size(40.0).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.rect(kids[0]);
@@ -270,7 +292,10 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 #[test]
 fn collapsed_does_not_consume_fill_weight() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Frame::with_id("a")
@@ -285,7 +310,7 @@ fn collapsed_does_not_consume_fill_weight() {
                 .show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.rect(kids[0]);
@@ -300,7 +325,10 @@ fn collapsed_does_not_consume_fill_weight() {
 fn hidden_keeps_slot_but_emits_no_draws() {
     use crate::renderer::{RenderCmd, encode};
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
@@ -319,7 +347,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                 .show(ui);
         })
         .node;
-    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let hid = ui.rect(kids[1]);
@@ -352,20 +380,23 @@ fn hidden_button_does_not_click() {
     use glam::Vec2;
 
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |ui| {
         Button::with_id("invisible")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .hidden()
             .show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.end_frame();
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
-    ui.begin_frame();
+    ui.begin_frame(Display::default());
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
         clicked = Button::with_id("invisible")
@@ -381,7 +412,10 @@ fn hidden_button_does_not_click() {
 fn hstack_child_align_y_centers_all_children_by_default() {
     use crate::primitives::{Align, VAlign};
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .size((Sizing::FILL, Sizing::Fixed(100.0)))
         .child_align(Align::v(VAlign::Center))
@@ -394,7 +428,7 @@ fn hstack_child_align_y_centers_all_children_by_default() {
                 .show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let a = ui.rect(kids[0]);
@@ -410,7 +444,10 @@ fn hstack_child_align_y_centers_all_children_by_default() {
 fn child_align_self_overrides_parent_default() {
     use crate::primitives::{Align, VAlign};
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Panel::hstack()
         .size((Sizing::FILL, Sizing::Fixed(100.0)))
         .child_align(Align::v(VAlign::Center))
@@ -425,7 +462,7 @@ fn child_align_self_overrides_parent_default() {
                 .show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let centered = ui.rect(kids[0]);
@@ -438,7 +475,10 @@ fn child_align_self_overrides_parent_default() {
 fn zstack_centers_child_when_align_center() {
     use crate::primitives::Align;
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut child_node = None;
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack_with_id("box")
@@ -454,7 +494,7 @@ fn zstack_centers_child_when_align_center() {
                 );
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.layout();
 
     let r = ui.rect(child_node.unwrap());
     // ZStack inner = 200×100, child = 40×20 → centered at (80, 40).
@@ -466,7 +506,10 @@ fn zstack_centers_child_when_align_center() {
 fn zstack_aligns_independently_per_axis() {
     use crate::primitives::{Align, HAlign, VAlign};
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut child_node = None;
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack_with_id("box")
@@ -482,7 +525,7 @@ fn zstack_aligns_independently_per_axis() {
                 );
             });
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.layout();
 
     let r = ui.rect(child_node.unwrap());
     // x: End → 200-40 = 160. y: Center → (100-20)/2 = 40.
@@ -493,7 +536,10 @@ fn zstack_aligns_independently_per_axis() {
 fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     use glam::Vec2;
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut canvas_node = None;
     let mut a_node = None;
     let mut b_node = None;
@@ -519,7 +565,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                 .node,
         );
     });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.layout();
 
     let c = ui.rect(canvas_node.unwrap());
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
@@ -540,20 +586,23 @@ fn frame_with_sense_click_is_clickable() {
     use glam::Vec2;
 
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("hitbox")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
             .sense(Sense::CLICK)
             .show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 100.0));
+    ui.end_frame();
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 25.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
-    ui.begin_frame();
+    ui.begin_frame(Display::default());
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
         clicked = Frame::with_id("hitbox")
@@ -573,7 +622,10 @@ fn wrapping_text_grows_height_in_narrow_frame() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut text_node = None;
     Panel::vstack()
         .size((Sizing::Fixed(60.0), Sizing::Hug))
@@ -586,7 +638,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
                     .node,
             );
         });
-    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
 
     let node = text_node.unwrap();
     let r = ui.rect(node);
@@ -615,7 +667,10 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut text_node = None;
     Panel::vstack()
         .size((Sizing::Fixed(8.0), Sizing::Hug))
@@ -628,7 +683,7 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
                     .node,
             );
         });
-    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
 
     let r = ui.rect(text_node.unwrap());
     // The single word can't break — its width must overflow the 8 px slot.
@@ -657,7 +712,10 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut text_node = None;
     Grid::new()
         .cols(Rc::from([Track::hug(), Track::hug()]))
@@ -679,7 +737,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     // Surface is 200 px wide — narrower than the text's natural unbroken
     // width (~335 px). Step B's column resolution shrinks the Hug column
     // to fit so the text wraps cleanly inside.
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
 
     let node = text_node.unwrap();
     let shaped = ui
@@ -719,7 +777,10 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut text_node = None;
     Grid::new()
         .cols(Rc::from([Track::hug(), Track::hug()]))
@@ -738,7 +799,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
                 .grid_cell((0, 1))
                 .show(ui);
         });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
 
     let node = text_node.unwrap();
     // Direct engine query (no Ui wrapper) — drivers do the same in
@@ -794,7 +855,10 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut text_node = None;
     Panel::zstack()
         .size((Sizing::FILL, Sizing::FILL))
@@ -817,7 +881,7 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
                         .show(ui);
                 });
         });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
 
     let shaped = ui
         .layout_result()
@@ -846,7 +910,10 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut text_node = None;
     Panel::canvas()
         .size((Sizing::FILL, Sizing::FILL))
@@ -869,7 +936,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
                         .show(ui);
                 });
         });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
 
     let shaped = ui
         .layout_result()
@@ -895,7 +962,10 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
 #[test]
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(800.0 as u32, 600.0 as u32),
+        1.0,
+    ));
     let mut zstack_node = None;
     Panel::hstack().show(&mut ui, |ui| {
         zstack_node = Some(
@@ -915,7 +985,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                 .node,
         );
     });
-    ui.layout(Rect::new(0.0, 0.0, 800.0, 600.0));
+    ui.layout();
 
     // Hug ZStack should hug the Fixed child (60 × 40). If the per-axis
     // logic broke, ZStack would stretch to surface size.
@@ -941,7 +1011,10 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
     fn measure(surface_w: f32) -> f32 {
         let mut ui = Ui::new();
         ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-        ui.begin_frame();
+        ui.begin_frame(Display::from_physical(
+            UVec2::new((surface_w) as u32, 400.0 as u32),
+            1.0,
+        ));
         let mut value_node = None;
         Grid::new()
             // Hug × Hug grid (default sizing) with [Hug, Fill] columns.
@@ -958,7 +1031,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                         .node,
                 );
             });
-        ui.end_frame(Rect::new(0.0, 0.0, surface_w, 400.0));
+        ui.end_frame();
         ui.layout_result()
             .text_shape(value_node.unwrap())
             .expect("text was shaped")
@@ -1000,7 +1073,10 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut value_node = None;
     // Wrap the grid in a vstack so the FILL grid gets a finite cross-axis
     // width to fill (vstack passes inner.cross to children).
@@ -1023,7 +1099,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     });
     // Surface 200 wide → Fill col gets ~150 (after Hug label col).
     // Natural unbroken width is ~290 → must wrap.
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
 
     let shaped = ui
         .layout_result()
@@ -1053,7 +1129,10 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut message_node = None;
     // Wrap in a vstack so the Fill HStack gets a finite cross-axis to
     // constrain — and so the HStack's own Fill on main has parent's
@@ -1078,7 +1157,7 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     });
     // Surface 200 wide → message gets ~152 (after avatar + gap).
     // Natural unbroken width is ~290, so message must wrap.
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
 
     let shaped = ui
         .layout_result()
@@ -1108,7 +1187,10 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut message_node = None;
     Panel::vstack().show(&mut ui, |ui| {
         Panel::hstack()
@@ -1129,7 +1211,7 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
                 );
             });
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
 
     let shaped = ui
         .layout_result()
@@ -1165,7 +1247,10 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 600.0 as u32),
+        1.0,
+    ));
     let mut grid_node = None;
     Panel::vstack()
         .size((Sizing::FILL, Sizing::Hug))
@@ -1196,7 +1281,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                     .node,
             );
         });
-    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 600.0));
+    ui.end_frame();
 
     // Two rows of 14 px text. Single-line height ≈18 px → 36 px total
     // would mean both rows collapsed to single-line (no wrapping
@@ -1224,7 +1309,10 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 600.0 as u32),
+        1.0,
+    ));
     let mut grid_node = None;
     Panel::vstack()
         .size((Sizing::Fixed(400.0), Sizing::Hug))
@@ -1252,7 +1340,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     );
                 });
         });
-    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 600.0));
+    ui.end_frame();
 
     let h = ui.layout_result().rect(grid_node.unwrap()).size.h;
     assert!(
@@ -1280,7 +1368,10 @@ fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
 
     let mut ui = Ui::new();
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let mut message_node = None;
     Panel::vstack().show(&mut ui, |ui| {
         Panel::hstack()
@@ -1301,7 +1392,7 @@ fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
                 );
             });
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.end_frame();
 
     let shaped_w = ui
         .layout_result()

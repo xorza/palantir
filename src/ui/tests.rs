@@ -1,7 +1,8 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Rect, WidgetId};
+use crate::primitives::{Color, Display, Rect, WidgetId};
 use crate::widgets::{Button, Frame, Panel, Styled};
+use glam::UVec2;
 
 #[test]
 #[should_panic(expected = "WidgetId collision")]
@@ -11,7 +12,7 @@ fn duplicate_widget_id_panics() {
     // scroll, click capture, hit-testing). `Ui::node` enforces uniqueness
     // with a release `assert!`.
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::default());
     Panel::hstack().show(&mut ui, |ui| {
         Button::with_id("dup").show(ui);
         Button::with_id("dup").show(ui);
@@ -21,9 +22,12 @@ fn duplicate_widget_id_panics() {
 /// Helper: drive one full frame with an empty root so we can inspect
 /// the post-`end_frame` state of the repaint gate.
 fn drain_one_frame(ui: &mut Ui) {
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(100.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(ui, |_| {});
-    ui.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
+    ui.end_frame();
 }
 
 /// Pin: initial state has `should_repaint = true` so the very first
@@ -42,8 +46,11 @@ fn should_repaint_starts_true() {
 #[test]
 fn empty_ui_drives_a_frame_without_panicking() {
     let mut ui = Ui::new();
-    ui.begin_frame();
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
+    ui.end_frame();
 
     assert_eq!(ui.tree().node_count(), 0);
     assert!(ui.damage.prev.is_empty());
@@ -60,8 +67,11 @@ fn empty_ui_drives_a_frame_without_panicking() {
 #[test]
 fn empty_then_populated_frame() {
     let mut ui = Ui::new();
-    ui.begin_frame();
-    ui.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(100.0 as u32, 100.0 as u32),
+        1.0,
+    ));
+    ui.end_frame();
 
     drain_one_frame(&mut ui);
     assert_eq!(ui.tree().node_count(), 1);
@@ -77,9 +87,8 @@ fn empty_ui_runs_through_pipeline() {
     use crate::primitives::Display;
     use glam::UVec2;
     let mut ui = Ui::new();
-    ui.set_display(Display::from_physical(UVec2::new(200, 200), 1.0));
-    ui.begin_frame();
-    let frame = ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
+    let frame = ui.end_frame();
     assert!(frame.buffer.quads.is_empty());
     assert!(frame.buffer.texts.is_empty());
     assert!(frame.buffer.groups.is_empty());
@@ -121,45 +130,22 @@ fn request_repaint_flips_gate() {
     assert!(ui.should_repaint());
 }
 
-/// Pin: DPI change requests a repaint — physical-pixel rasterization
-/// changes with scale factor. A no-op `set_display` call (same value)
-/// does *not* request a repaint; the gate is change-driven.
-#[test]
-fn set_display_requests_repaint_only_on_change() {
-    use crate::primitives::Display;
-    use glam::UVec2;
-
-    let mut ui = Ui::new();
-    drain_one_frame(&mut ui);
-    assert!(!ui.should_repaint());
-
-    ui.set_display(Display::from_physical(UVec2::new(800, 600), 2.0));
-    assert!(ui.should_repaint());
-
-    drain_one_frame(&mut ui);
-    assert!(!ui.should_repaint());
-
-    // Re-setting the same value is a no-op.
-    ui.set_display(Display::from_physical(UVec2::new(800, 600), 2.0));
-    assert!(!ui.should_repaint());
-}
-
-/// Pin: `set_display` panics if scale_factor is below `f32::EPSILON`.
-/// Catches stray `0.0` values from buggy hosts before they collapse
-/// the UI to a single physical pixel.
+/// Pin: `begin_frame` panics if `display.scale_factor` is below
+/// `f32::EPSILON`. Catches stray `0.0` values from buggy hosts
+/// before they collapse the UI to a single physical pixel.
 #[test]
 #[should_panic(expected = "Display::scale_factor must be ≥ f32::EPSILON")]
-fn set_display_rejects_zero_scale_factor() {
+fn begin_frame_rejects_zero_scale_factor() {
     use crate::primitives::Display;
     use glam::UVec2;
     let mut ui = Ui::new();
-    ui.set_display(Display::from_physical(UVec2::new(800, 600), 0.0));
+    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 0.0));
 }
 
 /// Pin: `Display::logical_rect` divides physical by scale_factor.
 #[test]
 fn display_logical_rect_scales() {
-    use crate::primitives::{Display, Rect};
+    use crate::primitives::Display;
     use glam::UVec2;
     let d = Display::from_physical(UVec2::new(800, 600), 2.0);
     assert_eq!(d.logical_rect(), Rect::new(0.0, 0.0, 400.0, 300.0));
@@ -197,14 +183,17 @@ fn prev_frame_empty_before_first_end_frame() {
 #[test]
 fn prev_frame_populated_after_end_frame() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         Frame::with_id("a")
             .size(50.0)
             .fill(Color::rgb(0.2, 0.4, 0.8))
             .show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
 
     let prev = &ui.damage.prev;
     let root_id = WidgetId::from_hash("root");
@@ -216,13 +205,16 @@ fn prev_frame_populated_after_end_frame() {
 #[test]
 fn prev_frame_captures_arranged_rect() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     let frame_node = Frame::with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui)
         .node;
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
     let arranged = ui.rect(frame_node);
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
@@ -232,13 +224,16 @@ fn prev_frame_captures_arranged_rect() {
 #[test]
 fn prev_frame_captures_authoring_hash() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     let frame_node = Frame::with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui)
         .node;
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.hash, ui.tree().node_hash(frame_node));
@@ -247,16 +242,19 @@ fn prev_frame_captures_authoring_hash() {
 #[test]
 fn prev_frame_drops_disappeared_widgets() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         Button::with_id("gone").label("X").show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
     assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
 
-    ui.begin_frame();
+    ui.begin_frame(Display::default());
     Panel::hstack_with_id("root").show(&mut ui, |_| {});
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
     assert!(!ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
     assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("root")));
 }
@@ -264,20 +262,23 @@ fn prev_frame_drops_disappeared_widgets() {
 #[test]
 fn prev_frame_updates_on_authoring_change() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Frame::with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui);
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
     let h1 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
-    ui.begin_frame();
+    ui.begin_frame(Display::default());
     Frame::with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.9, 0.4, 0.8))
         .show(&mut ui);
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
     let h2 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
     assert_ne!(h1, h2);

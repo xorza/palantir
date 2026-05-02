@@ -1,14 +1,18 @@
 use super::{AxisScratch, resolve_axis};
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Rect, Sizing, Track};
+use crate::primitives::{Display, Sizing, Track};
 use crate::widgets::{Button, Frame, Grid, Panel};
+use glam::UVec2;
 use std::rc::Rc;
 
 #[test]
 fn grid_fixed_and_fill_columns_split_remainder() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     let root = Grid::new()
         .cols([Track::fixed(120.0), Track::fill()])
         .rows([Track::fill()])
@@ -18,7 +22,7 @@ fn grid_fixed_and_fill_columns_split_remainder() {
             Frame::with_id("right").grid_cell((0, 1)).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let left = ui.rect(kids[0]);
@@ -34,7 +38,10 @@ fn grid_fixed_and_fill_columns_split_remainder() {
 #[test]
 fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     // Hug col 0: max(label widths). Buttons measure label text at 8px/char × 16h.
     let root = Grid::new()
         .cols([Track::hug(), Track::fill()])
@@ -55,7 +62,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                 .show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let short_btn = ui.rect(kids[0]);
@@ -71,7 +78,10 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
 #[test]
 fn grid_fill_weights_split_remainder_proportionally() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     let root = Grid::new()
         .cols([Track::fill_weight(1.0), Track::fill_weight(3.0)])
         .rows([Track::fill()])
@@ -81,7 +91,7 @@ fn grid_fill_weights_split_remainder_proportionally() {
             Frame::with_id("b").grid_cell((0, 1)).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout();
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(ui.rect(kids[0]).size.w, 100.0);
     assert_eq!(ui.rect(kids[1]).size.w, 300.0);
@@ -90,7 +100,10 @@ fn grid_fill_weights_split_remainder_proportionally() {
 #[test]
 fn grid_fill_min_clamp_steals_from_other_stars() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     // Fill col 0 wants 100 (1/4 of 400), but min=200 → it clamps to 200,
     // remaining 200 distributes to col 1 (weight 3 → 200).
     let root = Grid::new()
@@ -102,7 +115,7 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
             Frame::with_id("b").grid_cell((0, 1)).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout();
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(ui.rect(kids[0]).size.w, 200.0);
     assert_eq!(ui.rect(kids[1]).size.w, 200.0);
@@ -111,7 +124,10 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
 #[test]
 fn grid_fill_max_clamp_donates_to_other_stars() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     // Fill col 0 wants 300 (3/4 of 400) but max=150 → clamps; col 1 takes 250.
     let root = Grid::new()
         .cols([Track::fill_weight(3.0).max(150.0), Track::fill_weight(1.0)])
@@ -122,7 +138,7 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
             Frame::with_id("b").grid_cell((0, 1)).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 100.0));
+    ui.layout();
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(ui.rect(kids[0]).size.w, 150.0);
     assert_eq!(ui.rect(kids[1]).size.w, 250.0);
@@ -131,7 +147,10 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
 #[test]
 fn grid_col_span_covers_multiple_columns_with_gap() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     // 3 fixed cols of 100 with gap 10 → header spanning all = 100+10+100+10+100 = 320.
     let root = Grid::new()
         .cols([
@@ -149,7 +168,7 @@ fn grid_col_span_covers_multiple_columns_with_gap() {
             Frame::with_id("body").grid_cell((1, 1)).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let header = ui.rect(kids[0]);
@@ -166,7 +185,10 @@ fn grid_col_span_covers_multiple_columns_with_gap() {
 #[test]
 fn grid_hug_grid_collapses_fill_tracks() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     // Wrap in HStack so the Hug grid's measured size is honored — root in
     // `ui.layout` is forced to the surface size regardless of Sizing.
     let mut grid_node = None;
@@ -186,7 +208,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
             );
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 200.0));
+    ui.layout();
     let r = ui.rect(grid_node.unwrap());
     assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
     assert_eq!(r.size.h, 40.0);
@@ -198,7 +220,10 @@ fn grid_row_span_covers_multiple_rows_with_gap() {
     // arithmetic, axes swapped. Pins that row-span and col-span share the
     // same code path.
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     let root = Grid::new()
         .rows([
             Track::fixed(100.0),
@@ -215,7 +240,7 @@ fn grid_row_span_covers_multiple_rows_with_gap() {
             Frame::with_id("body").grid_cell((1, 1)).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 400.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let sidebar = ui.rect(kids[0]);
@@ -234,10 +259,13 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
     // Default grid placement is auto-stretch (WPF cell behaviour). A child
     // with an explicit non-stretch align should size to its own intrinsic and
     // park at the requested corner of the cell.
-    use crate::primitives::{Align, HAlign, VAlign};
+    use crate::primitives::{Align, Display, HAlign, VAlign};
 
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     let root = Grid::new()
         .cols([Track::fixed(100.0)])
         .rows([Track::fixed(100.0)])
@@ -249,7 +277,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
                 .show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.layout();
     let kids: Vec<_> = ui.tree.children(root).collect();
     let r = ui.rect(kids[0]);
     assert_eq!(r.size.w, 20.0);
@@ -289,7 +317,10 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 #[test]
 fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     // 3×3 of fixed-50 cells with gap=10. A 2×2 cell starting at (0,0)
     // covers rows 0-1 and cols 0-1: w = 50+10+50 = 110, h = same.
     let root = Grid::new()
@@ -304,7 +335,7 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
             Frame::with_id("corner").grid_cell((2, 2)).show(ui);
         })
         .node;
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.layout();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     let big = ui.rect(kids[0]);
@@ -327,7 +358,10 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
 #[test]
 fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     // Zero-row grid via explicit empty rows. Wrapped in HStack so the
     // Hug grid's measured (zero) size is honored — `ui.layout` forces
     // the root rect to the surface size regardless of Sizing.
@@ -348,7 +382,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                     .node,
             );
         });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.layout();
 
     let r = ui.rect(grid_node.unwrap());
     assert_eq!(r.size.w, 0.0);
@@ -366,7 +400,10 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
 #[test]
 fn grid_multi_row_hug_heights_resolve_independently() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     // Wrap in HStack so the Hug-on-h grid's measured size is honored —
     // root forces the surface size regardless of Sizing.
     let mut grid_node = None;
@@ -405,7 +442,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                     .node,
             );
         });
-    ui.layout(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.layout();
 
     assert_eq!(ui.rect(kids[0]).size.h, 10.0);
     assert_eq!(ui.rect(kids[1]).size.h, 80.0);

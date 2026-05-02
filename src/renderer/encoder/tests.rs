@@ -3,10 +3,10 @@ use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{
-    Align, Color, HAlign, Rect, Sense, Size, Sizing, TranslateScale, VAlign, WidgetId,
+    Align, Color, Display, HAlign, Rect, Sense, Size, Sizing, TranslateScale, VAlign, WidgetId,
 };
 use crate::widgets::{Frame, Panel, Styled};
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
 fn count_clip_pairs(cmds: &[RenderCmd]) -> (usize, usize) {
     let mut pushes = 0;
@@ -25,9 +25,12 @@ fn count_clip_pairs(cmds: &[RenderCmd]) -> (usize, usize) {
 fn empty_tree_encodes_to_nothing() {
     let mut cmds = Vec::new();
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(100.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |_| {});
-    ui.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
+    ui.end_frame();
     encode(
         &ui.tree,
         ui.layout_result(),
@@ -46,14 +49,17 @@ fn empty_tree_encodes_to_nothing() {
 #[test]
 fn frame_with_fill_emits_one_draw_rect() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("a")
             .size(50.0)
             .fill(Color::rgb(1.0, 0.0, 0.0))
             .show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
@@ -76,11 +82,14 @@ fn invisible_frame_does_not_emit_draw_rect() {
     // Shape::is_noop filters at Ui::add_shape time; the encoder should see no
     // RoundedRect in the tree, hence no DrawRect command.
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("invisible").size(50.0).show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
@@ -101,7 +110,10 @@ fn invisible_frame_does_not_emit_draw_rect() {
 #[test]
 fn clip_emits_balanced_push_pop() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     // Outer HStack opts out of the default-on clip so we can count just the
     // ZStack's pair under test.
     Panel::hstack().clip(false).show(&mut ui, |ui| {
@@ -115,7 +127,7 @@ fn clip_emits_balanced_push_pop() {
                     .show(ui);
             });
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
@@ -222,7 +234,10 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let mut ui = Ui::new();
 
     // Frame 1: build, layout, end_frame so the hit index is populated.
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     Panel::hstack().clip(false).show(&mut ui, |ui| {
         Panel::canvas_with_id("mid")
             .size(200.0)
@@ -251,7 +266,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .show(ui);
             });
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
 
     let mut cmds = Vec::new();
     encode(
@@ -323,7 +338,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     );
 
     // Frame 2: rebuild and read clicked() on each widget.
-    ui.begin_frame();
+    ui.begin_frame(Display::default());
     let mut got = (false, false, false);
     Panel::hstack().clip(false).show(&mut ui, |ui| {
         Panel::canvas_with_id("mid")
@@ -365,7 +380,10 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 #[test]
 fn nested_clips_each_emit_their_own_pair() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack().clip(false).show(&mut ui, |ui| {
         Panel::zstack_with_id("outer")
             .size(Sizing::Fixed(100.0))
@@ -377,7 +395,7 @@ fn nested_clips_each_emit_their_own_pair() {
                     .show(ui, |_| {});
             });
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
     let mut cmds = Vec::new();
     encode(
         &ui.tree,
@@ -396,14 +414,17 @@ fn nested_clips_each_emit_their_own_pair() {
 fn disabled_ancestor_dims_descendant_fill() {
     let mut ui = Ui::new();
     let pure_red = Color::rgb(1.0, 0.0, 0.0);
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(100.0 as u32, 100.0 as u32),
+        1.0,
+    ));
     Panel::vstack().disabled(true).show(&mut ui, |ui| {
         Frame::new()
             .size(Sizing::Fixed(40.0))
             .fill(pure_red)
             .show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
+    ui.end_frame();
 
     let mut cmds = Vec::new();
     encode(
@@ -425,14 +446,14 @@ fn disabled_ancestor_dims_descendant_fill() {
 
     // Same tree with no disabled ancestor: fill comes through untouched.
     let mut ui2 = Ui::new();
-    ui2.begin_frame();
+    ui2.begin_frame(Display::default());
     Panel::vstack().show(&mut ui2, |ui| {
         Frame::new()
             .size(Sizing::Fixed(40.0))
             .fill(pure_red)
             .show(ui);
     });
-    ui2.end_frame(Rect::new(0.0, 0.0, 100.0, 100.0));
+    ui2.end_frame();
     cmds.clear();
     encode(
         &ui2.tree,
@@ -508,7 +529,10 @@ fn encoder_text_alignment_respects_leaf_padding() {
     // Real shaper required so the encoder doesn't drop the text run as
     // having an invalid key (mono fallback uses `TextCacheKey::INVALID`).
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(400.0 as u32, 400.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |ui| {
         Button::with_id("padded")
             .label("ok")
@@ -516,7 +540,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
             .padding(20.0)
             .show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 400.0, 400.0));
+    ui.end_frame();
 
     let mut cmds = Vec::new();
     encode(
@@ -565,7 +589,10 @@ fn encoder_text_alignment_respects_leaf_padding() {
 #[test]
 fn damage_filter_skips_drawrect_outside_dirty_region() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("a")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
@@ -576,7 +603,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
             .fill(Color::rgb(0.0, 1.0, 0.0))
             .show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
 
     // Damage filter covers only the left half (x: 0..50). `a` at
     // (0,0,40,40) intersects; `b` at (40,0,40,40) intersects too
@@ -608,14 +635,17 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
 #[test]
 fn damage_filter_keeps_drawrect_inside_dirty_region() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |ui| {
         Frame::with_id("a")
             .size(50.0)
             .fill(Color::rgb(1.0, 0.0, 0.0))
             .show(ui);
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
 
     let mut cmds = Vec::new();
     encode(
@@ -639,7 +669,10 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
 #[test]
 fn damage_filter_preserves_clip_pushpop() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack_with_id("outer")
         .clip(false)
         .show(&mut ui, |ui| {
@@ -653,7 +686,7 @@ fn damage_filter_preserves_clip_pushpop() {
                         .show(ui);
                 });
         });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
 
     // Filter misses the clipped panel entirely.
     let mut cmds = Vec::new();
@@ -684,7 +717,10 @@ fn damage_filter_preserves_clip_pushpop() {
 #[test]
 fn damage_filter_preserves_transform_pushpop() {
     let mut ui = Ui::new();
-    ui.begin_frame();
+    ui.begin_frame(Display::from_physical(
+        UVec2::new(200.0 as u32, 200.0 as u32),
+        1.0,
+    ));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::hstack_with_id("transformed")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
@@ -696,7 +732,7 @@ fn damage_filter_preserves_transform_pushpop() {
                     .show(ui);
             });
     });
-    ui.end_frame(Rect::new(0.0, 0.0, 200.0, 200.0));
+    ui.end_frame();
 
     let mut cmds = Vec::new();
     encode(
