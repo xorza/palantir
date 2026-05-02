@@ -1162,3 +1162,122 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
         shaped.measured.w,
     );
 }
+
+/// Regression: a VStack section containing a `(Fill, Hug)` Grid with a
+/// Hug+Fill column layout and wrapping text in the Fill col must size
+/// to the *wrapped* row heights, not the single-line intrinsic.
+///
+/// Stack pass-1 measures non-Fill children (here, the Hug-on-main grid)
+/// at `INF` main + finite cross — that's height-given-width via
+/// measure. If pass-1 instead used `intrinsic(MaxContent)` on main, the
+/// grid's intrinsic Y collapses to single-line × n_rows (cells'
+/// unbounded shape), the stack commits a too-small main, and grid's
+/// `resolve_axis` row pass falls into the "cramped" branch — rows
+/// collapse to zero. This test pins the showcase property-grid card.
+#[test]
+fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut grid_node = None;
+    Panel::vstack()
+        .size((Sizing::FILL, Sizing::Hug))
+        .show(&mut ui, |ui| {
+            grid_node = Some(
+                Grid::with_id("pg")
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .cols(Rc::from([Track::hug(), Track::fill()]))
+                    .rows(Rc::from([Track::hug(), Track::hug()]))
+                    .show(ui, |ui| {
+                        Text::new("Title:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                        Text::new(
+                            "the quick brown fox jumps over the lazy dog \
+                             pack my box with five dozen liquor jugs how \
+                             vexingly quick daft zebras jump",
+                        )
+                        .size_px(14.0)
+                        .wrapping()
+                        .grid_cell((0, 1))
+                        .show(ui);
+                        Text::new("Tags:").size_px(14.0).grid_cell((1, 0)).show(ui);
+                        Text::new("layout, grid, intrinsic, wrapping, css")
+                            .size_px(14.0)
+                            .wrapping()
+                            .grid_cell((1, 1))
+                            .show(ui);
+                    })
+                    .node,
+            );
+        });
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 600.0));
+    ui.end_frame();
+
+    // Two rows of 14 px text. Single-line height ≈18 px → 36 px total
+    // would mean both rows collapsed to single-line (no wrapping
+    // accounted for). Wrapped paragraph in the value col must push
+    // row 0 to multiple lines.
+    let h = ui.layout_result().rect(grid_node.unwrap()).size.h;
+    assert!(
+        h > 50.0,
+        "grid must size to wrapped row heights, not single-line × 2; got h={h}"
+    );
+}
+
+/// Regression: a Hug-axis ZStack containing a Hug Grid with wrapping
+/// cells in a Fill col must let the grid measure under the constrained
+/// cross axis. ZStack passes `INF` on Hug axes via
+/// `child_avail_per_axis_hug`; replacing that `INF` with
+/// `intrinsic(MaxContent)` would collapse the grid's wrapped Y the same
+/// way as the stack regression above.
+#[test]
+fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame();
+    let mut grid_node = None;
+    Panel::vstack()
+        .size((Sizing::Fixed(400.0), Sizing::Hug))
+        .show(&mut ui, |ui| {
+            Panel::zstack_with_id("hug-z")
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui, |ui| {
+                    grid_node = Some(
+                        Grid::with_id("nested-grid")
+                            .size((Sizing::FILL, Sizing::Hug))
+                            .cols(Rc::from([Track::hug(), Track::fill()]))
+                            .rows(Rc::from([Track::hug()]))
+                            .show(ui, |ui| {
+                                Text::new("Label:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                                Text::new(
+                                    "the quick brown fox jumps over the lazy dog \
+                                     pack my box with five dozen liquor jugs",
+                                )
+                                .size_px(14.0)
+                                .wrapping()
+                                .grid_cell((0, 1))
+                                .show(ui);
+                            })
+                            .node,
+                    );
+                });
+        });
+    ui.layout(Rect::new(0.0, 0.0, 400.0, 600.0));
+    ui.end_frame();
+
+    let h = ui.layout_result().rect(grid_node.unwrap()).size.h;
+    assert!(
+        h > 30.0,
+        "ZStack must pass `INF` on Hug axes so nested grid measures \
+         under the constrained cross and wraps; got h={h}"
+    );
+}
