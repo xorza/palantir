@@ -133,8 +133,13 @@ fn encode_node(
         }
     }
 
-    let transform = tree.read_extras(id).transform;
-    let has_transform = transform.is_some();
+    // Skip Push/PopTransform when the transform is identity — composing
+    // identity is a no-op, so emitting the pair just wastes two cmd
+    // slots and a `transform_stack` push/pop in the composer.
+    let transform = tree
+        .read_extras(id)
+        .transform
+        .filter(|t| *t != TranslateScale::IDENTITY);
     if let Some(t) = transform {
         out.push(RenderCmd::PushTransform(t));
     }
@@ -143,7 +148,7 @@ fn encode_node(
         encode_node(tree, layout, cascades, disabled_dim, child, out);
     }
 
-    if has_transform {
+    if transform.is_some() {
         out.push(RenderCmd::PopTransform);
     }
     if clip {
