@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use palantir::Align;
-use palantir::renderer::{Pipeline, WgpuBackend};
+use palantir::renderer::WgpuBackend;
 use palantir::{
     Button, ButtonStyle, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke, Styled, Ui,
     Visuals,
@@ -69,7 +69,6 @@ struct State {
     device: wgpu::Device,
     config: wgpu::SurfaceConfiguration,
     backend: WgpuBackend,
-    pipeline: Pipeline,
     ui: Ui,
     first_paint: bool,
     click_count: u32,
@@ -155,7 +154,6 @@ impl ApplicationHandler for App {
             device,
             config,
             backend,
-            pipeline: Pipeline::new(),
             ui,
             first_paint: false,
             click_count: 0,
@@ -241,24 +239,17 @@ impl State {
                 return;
             }
         };
-        let display = self.ui.display();
-        let surface = display.logical_rect();
+        let surface = self.ui.display().logical_rect();
         self.ui.begin_frame();
         build_ui(&mut self.ui, &mut self.click_count);
         self.ui.layout(surface);
         self.ui.end_frame();
 
-        let damage = self.ui.damage_filter(surface);
-        let buffer = self.pipeline.build(
-            self.ui.tree(),
-            self.ui.layout_result(),
-            self.ui.cascades(),
-            self.ui.theme.disabled_dim,
-            damage,
-            &display,
+        self.backend.submit(
+            &frame.texture,
+            Color::rgb(0.08, 0.08, 0.10),
+            self.ui.frame(),
         );
-        self.backend
-            .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), buffer, damage);
 
         frame.present();
         if !self.first_paint {

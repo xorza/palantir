@@ -1,6 +1,6 @@
-use super::buffer::RenderBuffer;
+use super::painter::FrameOutput;
 use super::quad::QuadPipeline;
-use crate::primitives::{Color, Rect, URect};
+use crate::primitives::{Color, URect};
 use crate::text::SharedCosmic;
 
 /// Pad the damage scissor by this many physical pixels on every
@@ -120,18 +120,15 @@ impl WgpuBackend {
     /// (used on the first frame, after resize, and when the dirty area
     /// exceeds the heuristic threshold).
     ///
-    /// `damage` is in *logical* pixels matching `buffer.scale`; the
-    /// backend handles physical-px conversion, AA padding, and
-    /// surface-bounds clamping. A degenerate damage rect that
-    /// clamps to zero area is treated as "nothing to paint" — pass
-    /// returns having loaded but not drawn.
-    pub fn submit(
-        &mut self,
-        surface_tex: &wgpu::Texture,
-        clear: Color,
-        buffer: &RenderBuffer,
-        damage: Option<Rect>,
-    ) {
+    /// `frame.damage` is in *logical* pixels matching
+    /// `frame.buffer.scale`; the backend handles physical-px
+    /// conversion, AA padding, and surface-bounds clamping. A
+    /// degenerate damage rect that clamps to zero area is treated
+    /// as "nothing to paint" — pass returns having loaded but not
+    /// drawn.
+    pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, frame: FrameOutput<'_>) {
+        let buffer = frame.buffer;
+        let damage = frame.damage;
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),

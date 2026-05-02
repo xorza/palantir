@@ -197,7 +197,7 @@ fn damage_filter_returns_none_on_full_repaint() {
     // First frame: every node is "added" → damage rect is the union
     // of every screen rect → ratio > 0.5 → filter returns None.
     assert!(ui.damage.rect.is_some());
-    assert!(ui.damage_filter(SURFACE).is_none());
+    assert!(ui.damage_filter().is_none());
 }
 
 /// Pin: `damage_filter()` returns the damage rect when partial.
@@ -220,8 +220,8 @@ fn damage_filter_returns_rect_when_partial() {
                 .show(ui);
         });
     });
-    assert_eq!(ui.damage_filter(SURFACE), ui.damage.rect);
-    assert!(ui.damage_filter(SURFACE).is_some());
+    assert_eq!(ui.damage_filter(), ui.damage.rect);
+    assert!(ui.damage_filter().is_some());
 }
 
 /// Pin: `damage_filter()` returns `None` when nothing changed at all
@@ -240,7 +240,7 @@ fn damage_filter_returns_none_when_nothing_dirty() {
     frame(&mut ui, build);
     frame(&mut ui, build);
     assert!(ui.damage.dirty.is_empty());
-    assert!(ui.damage_filter(SURFACE).is_none());
+    assert!(ui.damage_filter().is_none());
 }
 
 // --- transforms ---------------------------------------------------------
@@ -407,7 +407,7 @@ fn first_frame_filter_is_none() {
                 .show(ui);
         });
     });
-    assert!(ui.damage_filter(SURFACE).is_none());
+    assert!(ui.damage_filter().is_none());
 }
 
 /// Pin (motivating workload): hovering a button causes exactly one
@@ -469,7 +469,7 @@ fn button_hover_damage_covers_only_the_button() {
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));
     assert_eq!(
-        ui.damage_filter(Rect::new(0.0, 0.0, 400.0, 400.0)),
+        ui.damage_filter(),
         Some(hot_rect),
         "small per-button damage must not trip the full-repaint heuristic",
     );
@@ -518,10 +518,7 @@ fn button_unhover_damage_covers_only_the_button() {
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));
-    assert_eq!(
-        ui.damage_filter(Rect::new(0.0, 0.0, 400.0, 400.0)),
-        Some(hot_rect),
-    );
+    assert_eq!(ui.damage_filter(), Some(hot_rect),);
 }
 
 /// Pin: a small per-frame change (single leaf fill flip) stays in
@@ -549,5 +546,5 @@ fn small_change_stays_partial_repaint() {
     });
     // 50x50 = 2500, surface 200x200 = 40000 → 6.25% < 50%.
     assert!(ui.damage.rect.is_some());
-    assert_eq!(ui.damage_filter(SURFACE), ui.damage.rect);
+    assert_eq!(ui.damage_filter(), ui.damage.rect);
 }
