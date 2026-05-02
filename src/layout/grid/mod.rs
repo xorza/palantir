@@ -537,7 +537,7 @@ fn arrange_inner(
         }
         let s_node = *tree.layout(c);
         let cell = tree.read_extras(c).grid;
-        let d = layout.desired(c);
+        let d = layout.desired[c.index()];
 
         let (slot_x, slot_y, slot_w, slot_h) = {
             let s = layout.grid.depth_stack.at(depth);

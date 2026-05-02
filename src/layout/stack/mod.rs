@@ -129,7 +129,7 @@ pub(super) fn arrange(
         if let Sizing::Fill(weight) = axis.main_sizing(l.size) {
             total_weight += weight;
         } else {
-            sum_main_desired += axis.main(layout.desired(c));
+            sum_main_desired += axis.main(layout.desired[c.index()]);
         }
         count += 1;
     }
@@ -169,7 +169,7 @@ pub(super) fn arrange(
             continue;
         }
         let s = *tree.layout(c);
-        let d = layout.desired(c);
+        let d = layout.desired[c.index()];
         if !first {
             cursor += effective_gap;
         }
