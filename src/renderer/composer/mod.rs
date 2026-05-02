@@ -1,7 +1,7 @@
-use super::buffer::{DrawGroup, RenderBuffer, ScissorRect, TextRun};
+use super::buffer::{DrawGroup, RenderBuffer, TextRun};
 use super::encoder::RenderCmd;
 use super::quad::Quad;
-use crate::primitives::{Rect, Stroke, TranslateScale};
+use crate::primitives::{Rect, Stroke, TranslateScale, URect};
 
 /// Per-frame inputs to the compose pass. No GPU handles — compose only reads
 /// commands and writes into a `RenderBuffer`.
@@ -25,7 +25,7 @@ pub struct ComposeParams {
 #[derive(Default)]
 pub struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
-    clip_stack: Vec<ScissorRect>,
+    clip_stack: Vec<URect>,
     transform_stack: Vec<TranslateScale>,
 }
 
@@ -56,7 +56,7 @@ impl Composer {
         self.clip_stack.clear();
         self.transform_stack.clear();
         let mut current_transform = TranslateScale::IDENTITY;
-        let mut current: Option<ScissorRect> = None;
+        let mut current: Option<URect> = None;
         let mut quads_start: u32 = 0;
         let mut texts_start: u32 = 0;
         // Tracks whether the most recent draw in the active group was
@@ -76,7 +76,7 @@ impl Composer {
                     let world = current_transform.apply_rect(*r);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
                     let new = match self.clip_stack.last() {
-                        Some(parent) => intersect_scissor(*parent, me),
+                        Some(parent) => me.clamp_to(*parent),
                         None => me,
                     };
                     self.clip_stack.push(new);
@@ -174,8 +174,8 @@ impl Composer {
 
 #[allow(clippy::too_many_arguments)]
 fn switch_group(
-    target: Option<ScissorRect>,
-    current: &mut Option<ScissorRect>,
+    target: Option<URect>,
+    current: &mut Option<URect>,
     quads_start: &mut u32,
     texts_start: &mut u32,
     quads_end: u32,
@@ -198,7 +198,7 @@ fn switch_group(
 }
 
 fn flush_group(
-    scissor: Option<ScissorRect>,
+    scissor: Option<URect>,
     quads_start: u32,
     quads_end: u32,
     texts_start: u32,
@@ -214,30 +214,17 @@ fn flush_group(
     }
 }
 
-fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: [u32; 2]) -> ScissorRect {
+fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: [u32; 2]) -> URect {
     let phys = r.scaled_by(scale, snap);
     let x = (phys.min.x.max(0.0) as u32).min(viewport[0]);
     let y = (phys.min.y.max(0.0) as u32).min(viewport[1]);
     let right = ((phys.min.x + phys.size.w).max(0.0) as u32).min(viewport[0]);
     let bottom = ((phys.min.y + phys.size.h).max(0.0) as u32).min(viewport[1]);
-    ScissorRect {
+    URect {
         x,
         y,
         w: right.saturating_sub(x),
         h: bottom.saturating_sub(y),
-    }
-}
-
-fn intersect_scissor(parent: ScissorRect, me: ScissorRect) -> ScissorRect {
-    let x = parent.x.max(me.x);
-    let y = parent.y.max(me.y);
-    let r = (parent.x + parent.w).min(me.x + me.w);
-    let b = (parent.y + parent.h).min(me.y + me.h);
-    ScissorRect {
-        x,
-        y,
-        w: r.saturating_sub(x),
-        h: b.saturating_sub(y),
     }
 }
 

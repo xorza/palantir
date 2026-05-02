@@ -1,6 +1,6 @@
-use super::buffer::{RenderBuffer, ScissorRect};
+use super::buffer::RenderBuffer;
 use super::quad::QuadPipeline;
-use crate::primitives::{Color, Rect};
+use crate::primitives::{Color, Rect, URect};
 use crate::text::SharedCosmic;
 
 /// Pad the damage scissor by this many physical pixels on every
@@ -161,12 +161,7 @@ impl WgpuBackend {
             let maxs_y = ((phys.min.y + phys.size.h) as u32 + DAMAGE_AA_PADDING)
                 .min(buffer.viewport_phys[1]);
             if maxs_x > mins_x && maxs_y > mins_y {
-                Some(ScissorRect {
-                    x: mins_x,
-                    y: mins_y,
-                    w: maxs_x - mins_x,
-                    h: maxs_y - mins_y,
-                })
+                Some(URect::new(mins_x, mins_y, maxs_x - mins_x, maxs_y - mins_y))
             } else {
                 None
             }
@@ -230,12 +225,7 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            let full_viewport = ScissorRect {
-                x: 0,
-                y: 0,
-                w: buffer.viewport_phys[0],
-                h: buffer.viewport_phys[1],
-            };
+            let full_viewport = URect::new(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
             for (i, g) in buffer.groups.iter().enumerate() {
                 let group_scissor = g.scissor.unwrap_or(full_viewport);
                 // Intersect with damage when partial-repainting. If

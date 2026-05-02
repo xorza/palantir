@@ -4,7 +4,8 @@
 //! pin the order against expected sequences.
 
 use crate::primitives::Color;
-use crate::renderer::buffer::{DrawGroup, RenderBuffer, ScissorRect, TextRun};
+use crate::primitives::URect;
+use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::quad::Quad;
 use crate::text::TextCacheKey;
 
@@ -46,7 +47,7 @@ fn dummy_quad() -> Quad {
 fn dummy_text() -> TextRun {
     TextRun {
         origin: [0.0, 0.0],
-        bounds: ScissorRect {
+        bounds: URect {
             x: 0,
             y: 0,
             w: 0,

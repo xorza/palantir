@@ -1,7 +1,7 @@
-use super::super::buffer::{RenderBuffer, ScissorRect};
+use super::super::buffer::RenderBuffer;
 use super::super::encoder::RenderCmd;
-use super::{ComposeParams, Composer, intersect_scissor};
-use crate::primitives::{Color, Corners, Rect};
+use super::{ComposeParams, Composer};
+use crate::primitives::{Color, Corners, Rect, URect};
 use crate::text::TextCacheKey;
 
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
@@ -133,21 +133,22 @@ fn compose_scales_rects_for_dpr() {
 
 #[test]
 fn intersect_disjoint_yields_zero_size() {
-    let a = ScissorRect {
+    let a = URect {
         x: 0,
         y: 0,
         w: 10,
         h: 10,
     };
-    let b = ScissorRect {
+    let b = URect {
         x: 100,
         y: 100,
         w: 10,
         h: 10,
     };
-    let r = intersect_scissor(a, b);
-    assert_eq!(r.w, 0);
-    assert_eq!(r.h, 0);
+    // The composer uses `URect::clamp_to` for child↔parent scissor
+    // intersection — disjoint rects collapse to a zero-sized result.
+    let r = b.clamp_to(a);
+    assert!(r.is_empty());
 }
 
 #[test]

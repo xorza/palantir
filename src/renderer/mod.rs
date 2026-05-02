@@ -24,7 +24,7 @@ mod pipeline;
 mod quad;
 
 pub use backend::WgpuBackend;
-pub use buffer::{DrawGroup, RenderBuffer, ScissorRect};
+pub use buffer::{DrawGroup, RenderBuffer};
 pub use composer::{ComposeParams, Composer};
 pub use encoder::{RenderCmd, encode};
 pub use pipeline::Pipeline;
