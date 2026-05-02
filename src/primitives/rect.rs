@@ -29,6 +29,9 @@ impl Rect {
     pub const fn height(&self) -> f32 {
         self.size.h
     }
+    pub const fn area(&self) -> f32 {
+        self.size.w * self.size.h
+    }
 
     pub const fn contains(&self, p: Vec2) -> bool {
         let mx = self.max();
