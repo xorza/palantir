@@ -19,7 +19,7 @@ mod widget_id;
 
 pub(crate) use align::AxisAlign;
 pub use align::{Align, HAlign, VAlign};
-pub use approx::ApproxF32;
+pub use approx::approx_zero;
 pub use color::Color;
 pub use corners::Corners;
 pub use grid::GridCell;
