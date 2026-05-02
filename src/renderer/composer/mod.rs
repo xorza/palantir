@@ -59,6 +59,13 @@ impl Composer {
         let mut current: Option<ScissorRect> = None;
         let mut quads_start: u32 = 0;
         let mut texts_start: u32 = 0;
+        // Tracks whether the most recent draw in the active group was
+        // text. A subsequent quad must start a new group so the prior
+        // group's text renders BEFORE that quad — otherwise the quad
+        // and the prior group's quads batch together and the text
+        // floats on top. Reset on scissor switch (group already
+        // flushed) and on flush.
+        let mut last_was_text = false;
 
         let scale = params.scale;
         let snap = params.pixel_snap;
@@ -82,6 +89,7 @@ impl Composer {
                         out.texts.len() as u32,
                         &mut out.groups,
                     );
+                    last_was_text = false;
                 }
                 RenderCmd::PopClip => {
                     self.clip_stack.pop();
@@ -94,6 +102,7 @@ impl Composer {
                         out.texts.len() as u32,
                         &mut out.groups,
                     );
+                    last_was_text = false;
                 }
                 RenderCmd::PushTransform(t) => {
                     self.transform_stack.push(current_transform);
@@ -111,6 +120,22 @@ impl Composer {
                     fill,
                     stroke,
                 } => {
+                    if last_was_text {
+                        // Flush the current group so this quad renders
+                        // *after* the prior group's text. Same scissor
+                        // continues into the new group.
+                        flush_group(
+                            current,
+                            quads_start,
+                            out.quads.len() as u32,
+                            texts_start,
+                            out.texts.len() as u32,
+                            &mut out.groups,
+                        );
+                        quads_start = out.quads.len() as u32;
+                        texts_start = out.texts.len() as u32;
+                        last_was_text = false;
+                    }
                     let world_rect = current_transform.apply_rect(*rect);
                     let world_radius = radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
@@ -132,6 +157,7 @@ impl Composer {
                         color: *color,
                         key: *key,
                     });
+                    last_was_text = true;
                 }
             }
         }

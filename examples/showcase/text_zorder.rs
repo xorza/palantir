@@ -1,11 +1,9 @@
-//! Demonstrates the v1 text z-order limitation: all text is prepared once
-//! and rendered after every quad in the frame, so a quad declared *after*
-//! a text run can't visually occlude that text. See `docs/text.md` open
-//! questions and `src/renderer/backend/text.rs` for the architecture.
-//!
-//! Each demo here pairs the same content shaped two ways. If the bug were
-//! fixed, the right-hand panel would show the red box covering the label;
-//! today, the label "T-shirt" floats on top of the red box.
+//! Demonstrates per-group text z-ordering in the wgpu backend. Both
+//! cells show that paint order is honored — text on top of an earlier
+//! quad reads as a label on a background; a later quad correctly
+//! occludes a prior text label. See `src/renderer/composer/mod.rs`
+//! (group split on text→quad transition) and
+//! `src/renderer/backend/text.rs` (per-group prepare/render pool).
 
 use palantir::{Color, Configure, Frame, Panel, Sizing, Stroke, Styled, Text, Ui};
 
@@ -15,18 +13,21 @@ pub fn build(ui: &mut Ui) {
         .gap(20.0)
         .padding(16.0)
         .show(ui, |ui| {
-            Text::with_id(("hdr", "title"), "Text z-order — current limitation")
-                .size_px(14.0)
-                .color(Color::rgb(0.78, 0.82, 0.90))
-                .show(ui);
+            Text::with_id(
+                ("hdr", "title"),
+                "Z-order — paint order honored across quads + text",
+            )
+            .size_px(14.0)
+            .color(Color::rgb(0.78, 0.82, 0.90))
+            .show(ui);
 
             Text::with_id(
                 ("hdr", "sub"),
                 concat!(
-                    "All text renders after every quad in the frame. A child quad ",
-                    "drawn AFTER a text label cannot occlude it; the label always ",
-                    "wins z-order. Fixing this requires per-group prepare/render ",
-                    "in the wgpu backend (see docs/text.md)."
+                    "Composer splits draw groups on every text→quad transition; ",
+                    "the wgpu backend keeps a pool of glyphon TextRenderers (one ",
+                    "per group with text) so quads and text interleave per group ",
+                    "in the encoder pass."
                 ),
             )
             .size_px(12.0)
@@ -41,15 +42,15 @@ pub fn build(ui: &mut Ui) {
                 .show(ui, |ui| {
                     cell(
                         ui,
-                        "no-quad-after",
-                        "Text on top of quad — OK case",
+                        "label-on-bg",
+                        "Text on top of background quad",
                         Color::rgb(0.20, 0.45, 0.85),
                         false,
                     );
                     cell(
                         ui,
-                        "quad-after-text",
-                        "Red quad declared AFTER text — should cover it (bug: doesn't)",
+                        "occluder-after-label",
+                        "Black quad declared AFTER text — correctly covers it",
                         Color::rgb(0.85, 0.30, 0.30),
                         true,
                     );
@@ -58,10 +59,10 @@ pub fn build(ui: &mut Ui) {
 }
 
 /// One demo cell. `quad_after`:
-/// - `false` — text painted on a colored background. Always-on-top
-///   behavior is correct here.
-/// - `true` — same plus a red Frame *after* the text. The red Frame
-///   should occlude the label, but text-renders-last makes it float.
+/// - `false` — label painted on a colored background. Label is on top
+///   (paint order: bg, label).
+/// - `true` — same plus a black Frame *after* the text. Paint order is
+///   (bg, label, occluder); the occluder correctly covers the label.
 fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, quad_after: bool) {
     Panel::vstack_with_id(("cell", id))
         .size((Sizing::FILL, Sizing::FILL))
@@ -92,16 +93,17 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
                         .radius(4.0)
                         .show(ui);
 
-                    // The label — should be visually below the occluder when
-                    // `quad_after` is true.
+                    // Label — visible on top of the background. When
+                    // `quad_after` is true, the occluder declared next
+                    // covers it.
                     Text::with_id(("label", id), "T-shirt")
                         .size_px(28.0)
                         .color(Color::WHITE)
                         .show(ui);
 
                     if quad_after {
-                        // Occluder declared AFTER the text. Smaller than the
-                        // ZStack but big enough to cover the label.
+                        // Occluder declared AFTER the text. Smaller than
+                        // the ZStack but big enough to cover the label.
                         Frame::with_id(("occluder", id))
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
                             .fill(Color::rgb(0.10, 0.10, 0.10))

@@ -138,7 +138,12 @@ that lands:
 - **Atlas eviction under long sessions.** `atlas.trim()` runs each frame;
   glyphon evicts on shelf overflow. Verify under multi-font / multi-size
   load.
-- **Per-group text z-order.** Today text is prepared once and rendered
-  after all quads → labels float above sibling backgrounds. Fix when the
-  first widget needs interleaving (panel-with-header over a scrolled
-  child). Options: per-group prepare/render, or glyphon's depth metadata.
+- ~~**Per-group text z-order.**~~ Resolved. The wgpu backend now keeps
+  a pool of `glyphon::TextRenderer`s sharing one `TextAtlas` (one
+  renderer per `DrawGroup` with text). `submit` interleaves
+  `prepare_group` + `render_group` calls per group, so a child quad
+  declared after a label correctly occludes it. Atlas glyph cache is
+  shared across the pool — no extra glyph rasterization. See
+  `src/renderer/backend/text.rs` and the `text z-order` showcase tab.
+  Pinned by `render_schedule_interleaves_text_per_group` in
+  `backend/tests.rs`.
