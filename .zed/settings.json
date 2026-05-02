@@ -1,3 +1,3 @@
 {
-  "file_scan_exclusions": ["**/.git", "tmp", "tmp/**"],
+  "file_scan_exclusions": ["**/.git", "tmp", "tmp/**", ".DS_Store"],
 }
