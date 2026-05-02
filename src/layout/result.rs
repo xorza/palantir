@@ -4,7 +4,7 @@ use crate::tree::{NodeId, Tree};
 
 /// Per-frame layout *output* — strictly the state read after the layout
 /// pass by the encoder + hit-index. Intermediate scratch (desired sizes,
-/// grid track hugs, future intrinsics) lives on `LayoutEngine` directly.
+/// grid track hugs, intrinsic cache) lives on `LayoutEngine` directly.
 /// Capacity is reused across frames via `resize_for`.
 #[derive(Default)]
 pub struct LayoutResult {
