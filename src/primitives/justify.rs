@@ -2,7 +2,7 @@
 /// `justify-content`. Has no effect when any child is `Sizing::Fill` along
 /// the main axis — Fill consumes the leftover first.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum Justify {
     /// Pack to the start (left for HStack, top for VStack). Default.
     #[default]

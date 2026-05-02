@@ -7,7 +7,7 @@
 ///
 /// Cascade is implicit: encoder/input early-return at a non-`Visible` node, so
 /// descendants are never visited regardless of their own `Visibility`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Visibility {
     #[default]
     Visible,
