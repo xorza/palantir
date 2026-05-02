@@ -16,10 +16,10 @@
 //! measure/arrange algorithm show up directly.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use std::hint::black_box;
 use palantir::{
     Align, Button, Configure, Frame, Grid, Justify, Panel, Rect, Sizing, Text, Track, Ui,
 };
+use std::hint::black_box;
 use std::rc::Rc;
 
 /// Build the bench UI. `scale` linearly scales the repetitive parts

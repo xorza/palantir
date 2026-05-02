@@ -94,8 +94,10 @@ before delegating content sizing to the driver.
 
 ## Cache
 
-`HashMap<IntrinsicQuery, f32>` on `LayoutEngine`, cleared at the top of
-`run` (capacity retained, same pattern as `desired`).
+`Vec<[f32; 4]>` on `LayoutEngine`, indexed by `node.index()` with one
+slot per `(axis, req)` pair. NaN means "not yet computed". Resized to
+`node_count` at the top of `run` (capacity retained, same pattern as
+`desired`).
 
 `engine.intrinsic()` checks the cache first, recurses on miss, stores
 the result. The answer is a pure function of the subtree — it doesn't
