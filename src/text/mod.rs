@@ -21,6 +21,7 @@
 use crate::primitives::{Size, WidgetId};
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
+use std::collections::hash_map::Entry;
 use std::rc::Rc;
 
 mod cosmic;
@@ -147,6 +148,23 @@ fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) -> Mea
     }
 }
 
+/// Free-function dispatch into the shaper. Takes `cosmic` and the
+/// call counter as separate borrows so the cached entry points can
+/// invoke it while holding a `&mut TextReuseEntry` from `reuse` —
+/// `&mut self` would over-borrow.
+#[inline]
+fn dispatch(
+    cosmic: &Option<SharedCosmic>,
+    text: &str,
+    font_size_px: f32,
+    max_width_px: Option<f32>,
+) -> MeasureResult {
+    match cosmic {
+        Some(c) => c.borrow_mut().measure(text, font_size_px, max_width_px),
+        None => mono_measure(text, font_size_px, max_width_px),
+    }
+}
+
 /// Cached unbounded shape + most-recent wrap result, validity-checked
 /// by authoring `hash`.
 #[derive(Clone, Copy)]
@@ -197,23 +215,6 @@ impl TextMeasurer {
         self.cosmic = Some(cosmic);
     }
 
-    /// Raw shape (or mono-measure) one run — bottom of the stack.
-    /// `shape_unbounded` / `shape_wrap` compose on top of this; reach
-    /// for them first so the per-widget cache gets a chance to skip
-    /// dispatch.
-    pub(crate) fn measure_raw(
-        &mut self,
-        text: &str,
-        font_size_px: f32,
-        max_width_px: Option<f32>,
-    ) -> MeasureResult {
-        self.measure_calls += 1;
-        match &self.cosmic {
-            Some(c) => c.borrow_mut().measure(text, font_size_px, max_width_px),
-            None => mono_measure(text, font_size_px, max_width_px),
-        }
-    }
-
     /// Identity-cached unbounded shape for `wid`, refreshing it (and
     /// clearing any stale wrap entry) when the authoring hash has
     /// shifted. Returns by value because callers typically also call
@@ -226,19 +227,35 @@ impl TextMeasurer {
         text: &str,
         font_size_px: f32,
     ) -> MeasureResult {
-        //todo  use entry
-        match self.reuse.get(&wid) {
-            Some(e) if e.hash == hash => e.unbounded,
-            _ => {
-                let unbounded = self.measure_raw(text, font_size_px, None);
-                self.reuse.insert(
-                    wid,
-                    TextReuseEntry {
-                        hash,
-                        unbounded,
-                        wrap: None,
-                    },
-                );
+        // One hash lookup, all paths: `Entry` gives us a slot that can
+        // be read, overwritten, or inserted into without re-hashing.
+        // Disjoint field borrows let `dispatch` run while the slot
+        // borrow is held.
+        match self.reuse.entry(wid) {
+            Entry::Occupied(mut o) => {
+                if o.get().hash == hash {
+                    return o.get().unbounded;
+                }
+
+                self.measure_calls += 1;
+                let unbounded = dispatch(&self.cosmic, text, font_size_px, None);
+
+                *o.get_mut() = TextReuseEntry {
+                    hash,
+                    unbounded,
+                    wrap: None,
+                };
+                unbounded
+            }
+            Entry::Vacant(v) => {
+                self.measure_calls += 1;
+                let unbounded = dispatch(&self.cosmic, text, font_size_px, None);
+
+                v.insert(TextReuseEntry {
+                    hash,
+                    unbounded,
+                    wrap: None,
+                });
                 unbounded
             }
         }
@@ -259,20 +276,26 @@ impl TextMeasurer {
         target: f32,
         target_q: u32,
     ) -> MeasureResult {
-        if let Some(entry) = self.reuse.get(&wid)
-            && let Some(w) = entry.wrap
-            && w.target_q == target_q
-        {
-            return w.result;
-        }
-        let m = self.measure_raw(text, font_size_px, Some(target));
         if let Some(entry) = self.reuse.get_mut(&wid) {
+            if let Some(w) = entry.wrap
+                && w.target_q == target_q
+            {
+                return w.result;
+            }
+            // Cache miss with existing entry: write back through the same
+            // borrow. Disjoint field borrows let `dispatch` run while
+            // `entry` is held.
+            self.measure_calls += 1;
+            let m = dispatch(&self.cosmic, text, font_size_px, Some(target));
             entry.wrap = Some(WrapReuse {
                 target_q,
                 result: m,
             });
+            return m;
         }
-        m
+        // No prime: dispatch but don't cache.
+        self.measure_calls += 1;    
+        dispatch(&self.cosmic, text, font_size_px, Some(target))
     }
 
     /// Drop reuse entries for the supplied removed-widget set. Mirrors
