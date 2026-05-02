@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use palantir::renderer::{ComposeParams, Pipeline, WgpuBackend};
 use palantir::{Button, Color, Configure, InputEvent, Panel, Rect, Sizing, Stroke, Styled, Ui};
@@ -155,16 +154,17 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        if let Some(state) = self.state.as_ref()
-            && !state.first_paint
-        {
+        // Pure event-driven: only wake to redraw when the UI itself
+        // says something changed. Initial frame still needs a kick
+        // because nothing has happened yet (no input, no resize).
+        let needs_paint = match self.state.as_ref() {
+            Some(state) => state.first_paint || state.ui.should_repaint(),
+            None => false,
+        };
+        if needs_paint && let Some(state) = self.state.as_ref() {
             state.window.request_redraw();
-            event_loop.set_control_flow(ControlFlow::WaitUntil(
-                Instant::now() + Duration::from_millis(16),
-            ));
-        } else {
-            event_loop.set_control_flow(ControlFlow::Wait);
         }
+        event_loop.set_control_flow(ControlFlow::Wait);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -172,6 +172,8 @@ impl ApplicationHandler for App {
             return;
         };
 
+        // Feed input first so `Ui::should_repaint` reflects this event
+        // by the time we decide whether to schedule a redraw below.
         if let Some(ev) = InputEvent::from_winit(&event, state.ui.scale_factor()) {
             state.ui.on_input(ev);
         }
@@ -189,13 +191,17 @@ impl ApplicationHandler for App {
                 state.surface.configure(&state.device, &state.config);
                 state.draw();
             }
-            WindowEvent::CursorMoved { .. }
-            | WindowEvent::CursorLeft { .. }
-            | WindowEvent::MouseInput { .. } => {
-                state.window.request_redraw();
-            }
             WindowEvent::RedrawRequested => state.draw(),
-            _ => {}
+            // Other events (cursor / button) flow through `on_input`
+            // above, which sets the repaint gate. `about_to_wait`
+            // turns that into a `request_redraw` call. No need to
+            // handle each variant here — the gate is the single
+            // source of truth.
+            _ => {
+                if state.ui.should_repaint() {
+                    state.window.request_redraw();
+                }
+            }
         }
     }
 }
