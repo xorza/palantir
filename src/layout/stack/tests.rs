@@ -303,3 +303,31 @@ fn negative_left_margin_spills_outside_slot() {
     );
     assert_eq!(r.size.h, 30.0);
 }
+
+/// Pass-2 must not double-count non-Fill children in `total_main`. A Hug
+/// HStack with a Hug button and a Fill frame in a 200-wide parent should
+/// hug to 200 (button + Fill share). The buggy version starts pass 2 with
+/// `total_main = sum_non_fill_main` and then adds non-Fill children's
+/// desired again in the loop, inflating the reported content size.
+#[test]
+fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
+    let mut ui = Ui::new();
+    ui.begin_frame();
+
+    let root = Panel::hstack()
+        .show(&mut ui, |ui| {
+            // Button "Hi" measures 16 wide via the placeholder text metrics.
+            Button::new().label("Hi").show(ui);
+            Frame::with_id("filler")
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui);
+        })
+        .node;
+
+    let surface = Rect::new(0.0, 0.0, 200.0, 100.0);
+    ui.layout(surface);
+
+    // Correct: 16 (button) + 184 (Fill share) = 200.
+    // Buggy: 16 + 16 (double-counted) + 184 = 216.
+    assert_eq!(ui.desired(root).w, 200.0);
+}
