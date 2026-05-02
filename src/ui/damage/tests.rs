@@ -175,6 +175,72 @@ fn added_widget_contributes_curr_rect_to_damage() {
     assert!(ui.damage.rect.is_some());
 }
 
+// --- Ui::damage_filter ---------------------------------------------------
+
+/// Pin: `damage_filter()` returns `None` when `full_repaint` is true,
+/// regardless of `damage.rect`. The encoder + backend treat `None` as
+/// "paint everything;" passing the rect anyway would do the same work
+/// at the GPU level but waste CPU on per-node filter checks.
+#[test]
+fn damage_filter_returns_none_on_full_repaint() {
+    let mut ui = Ui::new();
+    frame(&mut ui, |ui| {
+        Panel::hstack_with_id("root").show(ui, |ui| {
+            Frame::with_id("a")
+                .size(50.0)
+                .fill(Color::rgb(0.2, 0.4, 0.8))
+                .show(ui);
+        });
+    });
+    // First frame has full_repaint=true (every node added).
+    assert!(ui.damage.full_repaint);
+    assert!(ui.damage_filter().is_none());
+}
+
+/// Pin: `damage_filter()` returns the damage rect when partial.
+#[test]
+fn damage_filter_returns_rect_when_partial() {
+    let mut ui = Ui::new();
+    frame(&mut ui, |ui| {
+        Panel::hstack_with_id("root").show(ui, |ui| {
+            Frame::with_id("a")
+                .size(50.0)
+                .fill(Color::rgb(0.2, 0.4, 0.8))
+                .show(ui);
+        });
+    });
+    frame(&mut ui, |ui| {
+        Panel::hstack_with_id("root").show(ui, |ui| {
+            Frame::with_id("a")
+                .size(50.0)
+                .fill(Color::rgb(0.9, 0.4, 0.8))
+                .show(ui);
+        });
+    });
+    assert!(!ui.damage.full_repaint);
+    assert_eq!(ui.damage_filter(), ui.damage.rect);
+    assert!(ui.damage_filter().is_some());
+}
+
+/// Pin: `damage_filter()` returns `None` when nothing changed at all
+/// (no rect, no full_repaint). Matches the steady-state idle case.
+#[test]
+fn damage_filter_returns_none_when_nothing_dirty() {
+    let mut ui = Ui::new();
+    let build = |ui: &mut Ui| {
+        Panel::hstack_with_id("root").show(ui, |ui| {
+            Frame::with_id("a")
+                .size(50.0)
+                .fill(Color::rgb(0.2, 0.4, 0.8))
+                .show(ui);
+        });
+    };
+    frame(&mut ui, build);
+    frame(&mut ui, build);
+    assert!(ui.damage.dirty.is_empty());
+    assert!(ui.damage_filter().is_none());
+}
+
 // --- needs_full_repaint --------------------------------------------------
 
 #[test]

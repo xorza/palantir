@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::primitives::{Size, Spacing};
 use glam::Vec2;
 
