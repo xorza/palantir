@@ -62,7 +62,6 @@ pub struct LayoutEngine {
 /// only consumer.
 #[inline]
 fn quantize_wrap_target(v: f32) -> u32 {
-    // todo physical pixels?
     (v.max(0.0) * 10.0).round() as u32
 }
 
