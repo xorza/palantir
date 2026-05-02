@@ -20,6 +20,19 @@ use glyphon::{
 /// glyphon device-bound state (atlas + viewport + swash cache) plus a
 /// pool of [`GlyphonRenderer`]s, one per draw group with text. The
 /// renderers share the atlas — glyph cache hits across groups are free.
+///
+/// **Why a pool, not a single renderer.** `GlyphonRenderer::prepare`
+/// clears its `glyph_vertices` and overwrites its `vertex_buffer` —
+/// calling `prepare` twice between two `render` draws would let the
+/// second prepare overwrite the buffer the first draw still needs at
+/// GPU execution time. Glyphon's `bind_group` and `get_or_create_pipeline`
+/// are `pub(crate)`, so we can't bypass `render()` and slice into one
+/// renderer's buffer ourselves with our own draw offsets.
+///
+/// Cost is small: pipeline is `Arc`-cloned across renderers (free), and
+/// each renderer is just a ~4 KB vertex buffer + a `Vec<GlyphToRender>`
+/// scratch. Capacity retains across frames; pool grows to historical
+/// high water.
 pub(crate) struct TextRenderer {
     cosmic: Option<SharedCosmic>,
     cache: Cache,
