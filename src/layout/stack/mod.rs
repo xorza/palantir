@@ -1,5 +1,5 @@
 pub use super::axis::Axis;
-use super::{LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
+use super::{AutoBias, LayoutEngine, LenReq, place_axis, resolved_axis_align, zero_subtree};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;
@@ -183,8 +183,13 @@ pub(super) fn arrange(
         let cross_align = cross_align(axis, &s, parent_child_align);
         let cross_sizing = axis.cross_sizing(s.size);
         let cross_desired = axis.cross(d);
-        let (cross_size, cross_offset) =
-            place_axis(cross_align, cross_sizing, cross_desired, cross, false);
+        let (cross_size, cross_offset) = place_axis(
+            cross_align,
+            cross_sizing,
+            cross_desired,
+            cross,
+            AutoBias::StretchIfFill,
+        );
 
         let child_rect = axis.compose_rect(cursor, cross_min + cross_offset, main_size, cross_size);
         layout.arrange(tree, c, child_rect);

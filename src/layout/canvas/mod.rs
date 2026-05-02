@@ -1,5 +1,5 @@
-use super::{Axis, LayoutEngine, LenReq, zero_subtree};
-use crate::primitives::{Rect, Size, Sizing};
+use super::{Axis, LayoutEngine, LenReq, child_avail_per_axis_hug, zero_subtree};
+use crate::primitives::{Rect, Size};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
@@ -22,18 +22,7 @@ pub(super) fn measure(
     text: &mut TextMeasurer,
 ) -> Size {
     let style = *tree.layout(node);
-    let child_avail = Size::new(
-        if matches!(style.size.w, Sizing::Hug) {
-            f32::INFINITY
-        } else {
-            inner_avail.w
-        },
-        if matches!(style.size.h, Sizing::Hug) {
-            f32::INFINITY
-        } else {
-            inner_avail.h
-        },
-    );
+    let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     let mut kids = tree.child_cursor(node);

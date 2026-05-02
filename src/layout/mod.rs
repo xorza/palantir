@@ -1,5 +1,5 @@
 use crate::element::{LayoutCore, LayoutMode};
-use crate::primitives::{Align, AxisAlign, Rect, Size, Sizing};
+use crate::primitives::{Align, AxisAlign, Rect, Size, Sizes, Sizing};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
@@ -250,20 +250,46 @@ fn resolve_axis_size(
 }
 
 /// Set this node and every descendant to a zero-size rect anchored at
-/// `anchor`. Bypasses layout dispatch so a collapsed subtree pays only one
-/// pre-order walk regardless of what its children would have been.
+/// `anchor`. Walks the contiguous pre-order span `[node, subtree_end[node])`
+/// directly — no recursion, no child cursors.
 pub(super) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, anchor: Vec2) {
-    layout.result.set_rect(
-        node,
-        Rect {
-            min: anchor,
-            size: Size::ZERO,
-        },
-    );
-    let mut kids = tree.child_cursor(node);
-    while let Some(c) = kids.next(tree) {
-        zero_subtree(layout, tree, c, anchor);
+    let zero = Rect {
+        min: anchor,
+        size: Size::ZERO,
+    };
+    let start = node.index();
+    let end = tree.subtree_ends()[start] as usize;
+    for i in start..end {
+        layout.result.set_rect(NodeId(i as u32), zero);
     }
+}
+
+/// Per-axis available size to pass to children of a panel that sizes per its
+/// own `Sizing` on each axis: pass `inner_avail` on Fill/Fixed axes (children
+/// see the committed slot), `INFINITY` on Hug axes (avoids recursive sizing).
+/// Used by ZStack and Canvas. Stack uses a different rule (always INF on main).
+pub(super) fn child_avail_per_axis_hug(size: Sizes, inner_avail: Size) -> Size {
+    Size::new(
+        if matches!(size.w, Sizing::Hug) {
+            f32::INFINITY
+        } else {
+            inner_avail.w
+        },
+        if matches!(size.h, Sizing::Hug) {
+            f32::INFINITY
+        } else {
+            inner_avail.h
+        },
+    )
+}
+
+/// How `place_axis` interprets `AxisAlign::Auto`.
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub(super) enum AutoBias {
+    /// Stack/ZStack: Auto stretches only when the child is `Sizing::Fill`.
+    StretchIfFill,
+    /// Grid: Auto stretches unconditionally (WPF cell default).
+    AlwaysStretch,
 }
 
 impl LayoutEngine {
@@ -344,20 +370,17 @@ pub(super) fn resolved_axis_align(
 /// Compute size + offset along one axis given the child's alignment, its
 /// declared sizing, intrinsic desired size, and the inner span available.
 /// Used for stack cross-axis, ZStack per-axis, and Grid per-cell placement.
-///
-/// `auto_stretches` controls how `AxisAlign::Auto` is interpreted: stack and
-/// ZStack pass `false` (Auto stretches only when the child is `Sizing::Fill`);
-/// Grid passes `true` (Auto stretches unconditionally — WPF cell default).
+/// `bias` selects the per-driver `AxisAlign::Auto` rule (see `AutoBias`).
 pub(super) fn place_axis(
     align: AxisAlign,
     sizing: Sizing,
     desired: f32,
     inner: f32,
-    auto_stretches: bool,
+    bias: AutoBias,
 ) -> (f32, f32) {
     let stretch = matches!(align, AxisAlign::Stretch)
         || matches!(align, AxisAlign::Auto)
-            && (auto_stretches || matches!(sizing, Sizing::Fill(_)));
+            && (matches!(bias, AutoBias::AlwaysStretch) || matches!(sizing, Sizing::Fill(_)));
     let size = if stretch { inner } else { desired };
     let offset = match align {
         AxisAlign::Center => ((inner - size) * 0.5).max(0.0),
