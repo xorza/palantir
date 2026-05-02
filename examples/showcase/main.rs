@@ -290,13 +290,13 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
         });
 }
 
-fn outlined_button_style() -> palantir::ButtonStyle {
-    use palantir::{ButtonStyle, Corners, Visuals};
+fn outlined_button_style() -> palantir::ButtonTheme {
+    use palantir::{ButtonTheme, Corners, Visuals};
     let stroke = Some(Stroke {
         width: 1.0,
         color: Color::rgb(0.4, 0.5, 0.7),
     });
-    ButtonStyle {
+    ButtonTheme {
         normal: Visuals {
             fill: Color::TRANSPARENT,
             stroke,
@@ -324,10 +324,10 @@ fn outlined_button_style() -> palantir::ButtonStyle {
     }
 }
 
-fn highlight_button_style() -> palantir::ButtonStyle {
-    use palantir::{ButtonStyle, Visuals};
+fn highlight_button_style() -> palantir::ButtonTheme {
+    use palantir::{ButtonTheme, Visuals};
     let s = outlined_button_style();
-    ButtonStyle {
+    ButtonTheme {
         normal: Visuals {
             fill: Color::rgba(0.4, 0.5, 0.7, 0.45),
             stroke: s.normal.stroke,

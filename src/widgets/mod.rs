@@ -5,7 +5,7 @@ mod panel;
 mod styled;
 mod text;
 
-pub use button::{Button, ButtonStyle};
+pub use button::{Button, ButtonTheme};
 pub use frame::Frame;
 pub use grid::Grid;
 pub use panel::Panel;

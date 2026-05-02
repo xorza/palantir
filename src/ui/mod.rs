@@ -1,6 +1,6 @@
 mod damage;
 mod theme;
-pub use theme::ButtonTheme;
+pub use theme::Theme;
 
 pub(crate) use damage::Damage;
 
@@ -24,57 +24,27 @@ use rustc_hash::FxHashSet;
 /// (`handle_event` / `InputEvent::from_winit`).
 pub struct Ui {
     pub(crate) tree: Tree,
-    pub theme: ButtonTheme,
+    pub theme: Theme,
     parents: Vec<NodeId>,
 
-    /// Per-frame collision set: every `WidgetId` that has been recorded this
-    /// frame. Cleared in `begin_frame`. Used to enforce id uniqueness — a
-    /// repeat insertion in `Ui::node` is a release-`assert!` panic, not a
-    /// warning, because duplicate ids silently corrupt every per-id store
-    /// (focus, scroll, click capture, hit-test rect lookup).
+    /// Duplicate ids silently corrupt every per-id store (focus, scroll,
+    /// click capture, hit-test rect lookup) — `Ui::node` panics on collision.
     seen_ids: FxHashSet<WidgetId>,
 
     input: InputState,
-    /// Persistent layout engine: holds reusable scratch buffers across frames.
-    /// Run inside `end_frame`.
     pub(crate) layout_engine: LayoutEngine,
-    /// Per-frame cascade resolution shared by the renderer encoder (skip
-    /// invisible subtrees) and the input hit index (screen rects + sense).
-    /// Rebuilt in `end_frame`.
     pub(crate) cascades: Cascades,
-
-    /// Display config (physical surface size + DPR + pixel-snap) for
-    /// the current frame, written by [`Ui::begin_frame`]. Read by
-    /// `end_frame` (layout, damage, painter) and by hosts converting
-    /// input coords. Defaults to `Display::default()` until the
-    /// first `begin_frame`.
     pub(crate) display: Display,
-
-    /// Text shaping & measurement, with the `CosmicMeasure` / mono dispatch
-    /// hidden inside. Install a real shaper with [`Ui::install_text_system`]
-    /// to get shaping + rendering; otherwise runs use the mono placeholder.
     pub(crate) text: TextMeasurer,
 
-    /// Frame-skipping gate. `true` when something has changed since the
-    /// last successful `end_frame()`; the host calls
-    /// [`Ui::should_repaint`] to decide whether to run the pipeline this
-    /// tick. Set conservatively by [`Ui::on_input`], or explicitly by
-    /// [`Ui::request_repaint`] (animations, async, surface/scale
-    /// changes). Cleared at the end of `end_frame()` so the next
-    /// idle check returns `false`. Defaults to `true` so the first
-    /// frame always renders.
+    /// Defaults to `true` so the first frame always renders. Cleared by
+    /// `end_frame`, set by `on_input` / `request_repaint`.
     repaint_requested: bool,
 
-    /// Per-frame damage output (`dirty`, `rect`) plus the
-    /// cross-frame snapshot map it diffs against (`damage.prev`).
-    /// Computed in `end_frame()` after `compute_hashes()`. The
-    /// partial-vs-full repaint decision is made lazily by
-    /// `Damage::filter(surface)` at submit time.
+    /// Partial-vs-full repaint decision is made lazily by
+    /// `Damage::filter(surface)` at submit time, not during `compute`.
     pub(crate) damage: Damage,
 
-    /// Encode + compose stage. Owns the `RenderCmd` vec, composer
-    /// scratch, and `RenderBuffer`. Run by `end_frame()` after
-    /// damage is computed; output read via [`Ui::frame`].
     painter: Painter,
 }
 
@@ -88,7 +58,7 @@ impl Ui {
     pub fn new() -> Self {
         Self {
             tree: Tree::new(),
-            theme: ButtonTheme::default(),
+            theme: Theme::default(),
             parents: Vec::new(),
             seen_ids: FxHashSet::default(),
             input: InputState::new(),
@@ -104,19 +74,16 @@ impl Ui {
         }
     }
 
-    /// Install a shared shaper handle. Apps construct one
-    /// [`SharedCosmic`] at startup and clone it into both `Ui` and the wgpu
-    /// backend so they see the same buffer cache. Tests usually leave this
-    /// unset and run on the deterministic mono fallback.
+    /// Install a shared shaper handle. Apps construct one [`SharedCosmic`]
+    /// at startup and clone it into both `Ui` and the wgpu backend so they
+    /// see the same buffer cache. Tests leave this unset and run on the
+    /// deterministic mono fallback.
     pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
         self.text.set_cosmic(cosmic);
     }
 
-    /// Start recording a frame. `display` is the canvas size + DPR
-    /// for this frame; stashed and read by `end_frame` for layout,
-    /// damage, and painter. Asserts `display.scale_factor >=
-    /// f32::EPSILON` — a stray `0.0` from winit would collapse the
-    /// UI to a single physical pixel.
+    /// Start recording a frame. A stray `scale_factor` of `0.0` from winit
+    /// would collapse the UI to a single physical pixel — assert against it.
     pub fn begin_frame(&mut self, display: Display) {
         assert!(
             display.scale_factor >= f32::EPSILON,
@@ -129,25 +96,16 @@ impl Ui {
         self.seen_ids.clear();
     }
 
-    /// Borrow the recorded tree. Read-only access for benchmarks and
-    /// inspection tools that need to walk the recorded structure
-    /// (`node_count`, `widget_ids`, etc.) outside the layout/render
-    /// pipeline.
+    /// Read-only access to the recorded tree for benchmarks and
+    /// inspection tools.
     pub fn tree(&self) -> &Tree {
         &self.tree
     }
 
-    /// Finalize the just-recorded frame: run measure + arrange,
-    /// rebuild cascades and hit-index, compute hashes and damage,
-    /// and encode + compose into the painter's `RenderBuffer`.
-    /// Returns the painted output ready for `WgpuBackend::submit`.
-    ///
-    /// All passes use the surface from
-    /// `display.logical_rect()` as set by [`Ui::begin_frame`].
-    ///
-    /// Clears the repaint gate so the next [`Ui::should_repaint`]
-    /// returns `false` until something new happens (input, animation
-    /// tick, explicit `request_repaint`).
+    /// Finalize the just-recorded frame: measure + arrange, rebuild cascades
+    /// and hit-index, compute hashes and damage, and encode + compose into
+    /// the painter's `RenderBuffer`. Returns the painted output ready for
+    /// `WgpuBackend::submit`. Clears the repaint gate.
     pub fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
         if let Some(root) = self.tree.root() {
@@ -176,31 +134,25 @@ impl Ui {
         }
     }
 
-    /// Feed a palantir-native input event. Backend-agnostic. Schedules a
-    /// repaint conservatively: every input event sets the repaint gate
-    /// because hover/press indices, hit-test rects, or response state
-    /// may shift even when the event itself looks like a no-op.
-    /// Refining this would require running a hit-test inside `on_input`
-    /// (Stage 3 territory).
+    /// Feed a palantir-native input event. Schedules a repaint
+    /// conservatively: every event sets the gate because hover/press
+    /// indices, hit-test rects, or response state may shift even when the
+    /// event itself looks like a no-op. Refining this needs a hit-test
+    /// inside `on_input`.
     pub fn on_input(&mut self, event: InputEvent) {
         self.input.on_input(event);
         self.repaint_requested = true;
     }
 
-    /// True if the UI has changed since the last successful
-    /// `end_frame()`. Hosts gate their `request_redraw()` /
-    /// pipeline-run on this so idle frames cost nothing.
-    ///
-    /// Set by `on_input`, `begin_frame`, `request_repaint`,
-    /// initial construction. Cleared by `end_frame()`.
+    /// True if the UI has changed since the last `end_frame`. Hosts gate
+    /// `request_redraw` on this so idle frames cost nothing.
     pub fn should_repaint(&self) -> bool {
         self.repaint_requested
     }
 
-    /// Schedule a repaint on the next host tick. Idempotent and cheap.
-    /// Use for animations, async state landing, theme changes, or any
-    /// state mutation that doesn't flow through `on_input` /
-    /// `begin_frame`.
+    /// Schedule a repaint on the next host tick. Use for animations, async
+    /// state landing, theme changes, or any mutation that doesn't flow
+    /// through `on_input`.
     pub fn request_repaint(&mut self) {
         self.repaint_requested = true;
     }
