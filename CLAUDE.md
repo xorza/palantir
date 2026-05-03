@@ -55,7 +55,7 @@ Five passes per frame:
 4. **Cascade** — pre-order. `Cascades::rebuild` resolves disabled/invisible/clip/transform per node into a flat table; consumed by both encoder and hit-index so they can't drift.
 5. **Encode + Paint** — pre-order. `renderer::encode` walks the tree → `Vec<RenderCmd>`; `Composer` groups by scissor and snaps to physical pixels; `WgpuBackend` submits instanced quad draws.
 
-The tree is rebuilt every frame; widget *state* (scroll, focus, animation) lives in a separate `Id → Any` map keyed by `WidgetId` (hashed call-site/user key) — *not yet implemented*.
+The tree is rebuilt every frame; widget *state* (scroll, focus, animation) will live in a separate `Id → Any` map keyed by `WidgetId` (hashed call-site/user key). See Status for what's shipped.
 
 ### Node columns vs Shape — the key split
 
@@ -78,13 +78,13 @@ Layout passes ignore Shapes and `PaintCore`; paint pass ignores hierarchy beyond
 - `Sizing::Hug` — outer dimension = content + padding (WPF's `Auto`).
 - `Sizing::Fill(weight)` — take available space, distribute leftover by weight across `Fill` siblings (WPF's `*`).
 
-`resolve_axis_size` in `src/layout/mod.rs` is the canonical implementation; `src/layout/{stack,zstack,canvas,grid}/tests.rs` pin it.
+`resolve_axis_size` in `src/layout/mod.rs` is the canonical implementation; `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs` pin it.
 
 ### Tree topology
 
 Pre-order arena: nodes are stored in pre-order paint order, so node `i`'s children start at `i + 1` and its whole subtree spans `i..subtree_end[i]`. To iterate direct children, jump from `i + 1` past each child's own `subtree_end` until reaching the parent's. No `parent` / `first_child` / `next_sibling` links — `subtree_end` (4 bytes per node) is the only topology field. Inspired by Clay (`tmp/clay`) and `indextree`. `Tree::push_node` is O(depth): it appends the new node and walks up the ancestor chain bumping each ancestor's `subtree_end`.
 
-## Layout
+## Project structure
 
 ```
 src/
@@ -151,7 +151,7 @@ fall back to `~/.cargo/registry/src/...` if the crate isn't listed in
 - Default to release `assert!` for invariant checks, not `debug_assert!` — `debug_assert!` is stripped in release and hides logic bugs in the build users actually run. Reserve `debug_assert!` for checks that are genuinely too expensive for release (e.g. O(n) inside a hot loop), and call out the tradeoff when choosing it.
 - Edition 2024. Dependencies pinned to `*` for now (lockfile pins actual versions) — fine for prototype, pin before publishing.
 - Tests in `lib.rs` pin layout semantics. Add a test whenever you change measure/arrange behavior.
-- Don't add wgpu code paths to the layout/tree modules. Renderer goes in its own module when written.
+- Don't add wgpu code paths to the layout/tree modules.
 - `WidgetId` is built from a hash of a user-supplied key. Keep IDs stable across frames so persistent state survives.
 - Widget constructors that auto-derive ids (`Button::new`, `Text::new`, etc.) use `WidgetId::auto_stable()` + `#[track_caller]` so two calls at different source lines get distinct ids. **`#[track_caller]` does not propagate through closure bodies** — if a helper function builds widgets inside a closure passed to e.g. `Panel::show(ui, |ui| { ... })`, every call site of the helper resolves the inner widget's location to the closure literal, producing colliding ids. Inside helpers that build widgets through closures, give those widgets explicit ids (`Text::with_id((tag, key), text)`, `Button::with_id(...)`). Annotating the helper with `#[track_caller]` doesn't help — the closure breaks the chain.
 - Treat all docs (`docs/*.md`, `DESIGN.md`, `references/*`) as evolving and possibly wrong. They may lag the code or encode decisions that have been re-litigated. When a doc statement contradicts the user's intent or current code, double-question rather than deferring — flag the conflict, ask the user, and update the doc to reflect the resolution. Documented decisions are starting positions, not commitments; re-evaluate when context changes.
@@ -191,7 +191,7 @@ Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each 
 - [x] Per-frame `Cascades` table shared by encoder + hit-index
 - [x] Real text measurement + rendering via cosmic-text + glyphon (`TextMeasurer` Ui-side, `TextRenderer` wgpu-side, shared `CosmicMeasure` via `Rc<RefCell<…>>`)
 - [x] Glyph atlas + text rendering in the wgpu pipeline
-- [x] Wrapping text (Option A): `TextWrap::Wrap`, intrinsic_min from cosmic glyphs, single-pass reshape during measure (`docs/text.md` §4)
+- [x] Wrapping text: `TextWrap::Wrap` opt-in, intrinsic_min from cosmic glyphs, single-pass reshape during measure.
 - [x] Intrinsic-dimensions protocol: `LenReq`-based on-demand intrinsic queries, Grid Auto under constraint, Stack Fill resolved during measure. Per-axis ZStack/Canvas constraint propagation. See `src/layout/intrinsic.md`.
 - [x] WrapStack (flow layout, line-wrapped HStack-style). `src/layout/wrapstack/`.
 - [x] Measure cache: full-subtree skip across frames, flat arena storage. See `docs/measure-cache.md`.
