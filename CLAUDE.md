@@ -6,44 +6,13 @@ Read `DESIGN.md` for the full design rationale before making non-trivial changes
 
 ## Project goal & posture
 
-Building a state-of-the-art UI framework. **No real-world consumers
-yet**, no published API, no app shipping with it. The work is driven
-by craft: the user wants this to be the best-possible thing of its
-kind, optimized hard, alloc-free per frame, with an authoring API
-that's a pleasure to use end-user-side. Treat it as sports
-programming when it helps motivation.
+State-of-the-art UI framework, craft-driven. **No external consumers, no published API.** Optimize hard, keep the authoring API a pleasure to use. Treat it as sports programming.
 
-Practical implications for how to act:
-
-- **Prefer correctness + structural improvement over API stability.**
-  Rename, refactor, break things freely when it makes the code better.
-  No deprecation shims.
-- **Per-frame allocation is a real metric.** Steady-state rendering
-  must be heap-alloc-free after warmup. New code that adds a
-  per-frame `Vec::new()` or `HashMap` rebuild is a regression — push
-  it onto retained scratch (engine-level if needed), capacity-retain
-  across frames. Audit during review.
-- **End-user API ergonomics matter.** Builder chains read like prose;
-  defaults are right; surprise behavior gets pinned by tests. When in
-  doubt about API shape, prioritize the call-site reading
-  experience.
-- **Optimize aggressively when motivated.** It's fine — encouraged —
-  to chase micro-wins (struct packing, const fns, scratch reuse,
-  cache layout) even when no current workload demands them. Treat
-  these as exercises in doing the work right.
-- **Ship work that's still useful and measurable**, even when it
-  feels too early. A single-purpose feature with tests + a showcase
-  tab is preferred over a half-finished cluster of features.
-  "Useful and measurable" = there's a test pinning it and (where
-  applicable) a showcase tab demonstrating it.
-- **It's OK to call work "too early to ship" sometimes.** When a
-  proposed change is structurally complex but lacks any motivating
-  workload (real or synthetic), say so and shelve it with a note.
-  Don't ship speculation just because it's interesting.
-- **Big-bang refactors are fine if the test surface holds.** No
-  external users to break. The bar is "fmt + clippy + tests pass and
-  the showcase still feels right by eye," not "feature-flag the
-  migration."
+- **Break things freely.** Rename, refactor, big-bang migrations welcome — no deprecation shims, compat aliases, or feature flags. Bar is "fmt + clippy + tests pass and the showcase still feels right by eye."
+- **Per-frame allocation is a real metric.** Steady-state must be heap-alloc-free after warmup. New per-frame `Vec::new()` / `HashMap` rebuild = regression; push onto retained scratch with capacity reuse.
+- **API ergonomics matter.** Builder chains read like prose, defaults are right, surprise behavior gets a pinning test. When in doubt, prioritize call-site readability.
+- **Optimize aggressively when motivated.** Micro-wins (struct packing, const fns, scratch reuse, cache layout) are encouraged even without a workload demanding them.
+- **Ship in measurable slices.** One feature with tests + a showcase tab beats a half-finished cluster. If a change is structurally complex with no motivating workload, say "too early" and shelve with a note rather than ship speculation.
 
 ## Core architecture
 
