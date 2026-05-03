@@ -1,10 +1,22 @@
 use super::cmd_buffer::RenderCmdBuffer;
 use crate::cascade::CascadeResult;
-use crate::layout::LayoutResult;
-use crate::primitives::{Align, HAlign, Rect, Size, TranslateScale, VAlign, WidgetId};
+use crate::layout::{AvailableKey, LayoutResult};
+use crate::primitives::{Align, HAlign, Rect, Size, Span, TranslateScale, VAlign, WidgetId};
 use crate::shape::Shape;
-use crate::tree::{NodeId, Tree};
+use crate::tree::{NodeHash, NodeId, Tree};
 use cache::EncodeCache;
+
+/// Bookkeeping captured before recursing so we can write the cached
+/// subtree back after children have appended their cmds. `cmd_lo` /
+/// `data_lo` snapshot `out`'s arena lengths at entry; the hi ends are
+/// read after recursion to form the subtree's spans.
+struct CachePending {
+    wid: WidgetId,
+    hash: NodeHash,
+    avail: AvailableKey,
+    cmd_lo: u32,
+    data_lo: u32,
+}
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU work,
 /// no scale/snap math — that lives in the backend's process step. Pure
@@ -91,6 +103,12 @@ fn encode_node(
     // captured by `subtree_hash`; `screen_rect` is the only cascade
     // input that would force re-keying, and it's read only when
     // `damage_filter.is_some()`. See `cache::EncodeCache`.
+    //
+    // Damage-filtered frames neither hit nor refresh the cache: a
+    // partial repaint paints a strict subset of the tree, so writing
+    // back would lie about the snapshot covering the full subtree.
+    // Cache snapshot age is therefore bounded by the *last full-paint*
+    // frame, not the last frame.
     let cache_key = if damage_filter.is_none() {
         layout
             .available_q(id)
@@ -106,7 +124,13 @@ fn encode_node(
         return;
     }
 
-    let cache_capture = cache_key.map(|key| (key, out.kinds.len() as u32, out.data.len() as u32));
+    let cache_pending = cache_key.map(|(wid, hash, avail)| CachePending {
+        wid,
+        hash,
+        avail,
+        cmd_lo: out.kinds.len() as u32,
+        data_lo: out.data.len() as u32,
+    });
 
     let rect = layout.rect(id);
 
@@ -194,16 +218,16 @@ fn encode_node(
         out.pop_clip();
     }
 
-    if let Some(((wid, hash, avail), cmd_lo, data_lo)) = cache_capture {
+    if let Some(p) = cache_pending {
         let cmd_hi = out.kinds.len() as u32;
         let data_hi = out.data.len() as u32;
         cache.write_subtree(
-            wid,
-            hash,
-            avail,
+            p.wid,
+            p.hash,
+            p.avail,
             out,
-            cmd_lo..cmd_hi,
-            data_lo..data_hi,
+            Span::new(p.cmd_lo, cmd_hi - p.cmd_lo),
+            Span::new(p.data_lo, data_hi - p.data_lo),
             layout.rect(id).min,
         );
     }

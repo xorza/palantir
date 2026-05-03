@@ -65,7 +65,15 @@ fn write_full(
 ) {
     let cmd_end = src.kinds.len() as u32;
     let data_end = src.data.len() as u32;
-    cache.write_subtree(w, h, avail(), src, 0..cmd_end, 0..data_end, origin);
+    cache.write_subtree(
+        w,
+        h,
+        avail(),
+        src,
+        Span::new(0, cmd_end),
+        Span::new(0, data_end),
+        origin,
+    );
 }
 
 fn replay(cache: &EncodeCache, w: WidgetId, h: NodeHash, current_origin: Vec2) -> RenderCmdBuffer {
@@ -176,8 +184,8 @@ fn size_change_appends_and_marks_garbage() {
         hash(2),
         avail(),
         &small,
-        0..cmd_end,
-        0..data_end,
+        Span::new(0, cmd_end),
+        Span::new(0, data_end),
         Vec2::ZERO,
     );
 
@@ -238,8 +246,8 @@ fn compact_preserves_lookups() {
             hash(1000 + i),
             avail(),
             &small,
-            0..cmd_end,
-            0..data_end,
+            Span::new(0, cmd_end),
+            Span::new(0, data_end),
             Vec2::ZERO,
         );
     }
