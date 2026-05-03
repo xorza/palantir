@@ -1,10 +1,9 @@
 mod hit_index;
 
-use crate::cascade::Cascades;
+pub(crate) use hit_index::HitIndex;
+
 use crate::primitives::{Rect, Sense, WidgetId};
-use crate::tree::Tree;
 use glam::Vec2;
-use hit_index::HitIndex;
 use rustc_hash::FxHashSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -83,9 +82,11 @@ pub struct InputState {
     active: Option<WidgetId>,
     hovered: Option<WidgetId>,
     clicked_this_frame: FxHashSet<WidgetId>,
-    /// Pre-order rect/sense snapshot of the last arranged tree. Rebuilt every
-    /// `end_frame`; queried by `on_input` and `response_for`.
-    hit_index: HitIndex,
+    /// Pre-order rect/sense snapshot of the last arranged tree. Populated
+    /// during `Cascades::rebuild` so cascade resolution and hit-entry
+    /// flattening share a single per-node walk; queried by `on_input` and
+    /// `response_for`.
+    pub(crate) hit_index: HitIndex,
 }
 
 impl Default for InputState {
@@ -144,12 +145,10 @@ impl InputState {
         }
     }
 
-    /// Rebuild last-frame rects from the just-arranged tree, recompute hover,
-    /// drop transient per-frame flags. Call after layout. The cascade
-    /// resolution itself lives in [`Cascades`]; `HitIndex::rebuild` just
-    /// flattens its output to the per-id form hit-testing wants.
-    pub(crate) fn end_frame(&mut self, tree: &Tree, cascades: &Cascades) {
-        self.hit_index.rebuild(tree, cascades);
+    /// Recompute hover and drop transient per-frame flags. Call after
+    /// `Cascades::rebuild` (which populates `hit_index` as part of its
+    /// per-node walk).
+    pub(crate) fn end_frame(&mut self) {
         self.clicked_this_frame.clear();
         if let Some(active) = self.active
             && !self.hit_index.contains_id(active)

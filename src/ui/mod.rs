@@ -118,9 +118,12 @@ impl Ui {
             self.layout_engine
                 .run(&self.tree, root, surface, &mut self.text);
         }
-        self.cascades
-            .rebuild(&self.tree, self.layout_engine.result());
-        self.input.end_frame(&self.tree, &self.cascades);
+        self.cascades.rebuild(
+            &self.tree,
+            self.layout_engine.result(),
+            &mut self.input.hit_index,
+        );
+        self.input.end_frame();
         let damage = self
             .damage
             .compute(&self.tree, &self.cascades, self.ids.removed(), surface);
