@@ -1,3 +1,4 @@
+use super::super::cmd_buffer::RenderCmdBuffer;
 use super::{RenderCmd, align_text_in, encode};
 use crate::Ui;
 use crate::element::Configure;
@@ -8,10 +9,10 @@ use crate::primitives::{
 use crate::widgets::{Frame, Panel, Styled};
 use glam::{UVec2, Vec2};
 
-fn count_clip_pairs(cmds: &[RenderCmd]) -> (usize, usize) {
+fn count_clip_pairs(cmds: &RenderCmdBuffer) -> (usize, usize) {
     let mut pushes = 0;
     let mut pops = 0;
-    for c in cmds {
+    for c in cmds.iter() {
         match c {
             RenderCmd::PushClip(_) => pushes += 1,
             RenderCmd::PopClip => pops += 1,
@@ -23,7 +24,7 @@ fn count_clip_pairs(cmds: &[RenderCmd]) -> (usize, usize) {
 
 #[test]
 fn empty_tree_encodes_to_nothing() {
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     let mut ui = Ui::new();
     ui.begin_frame(Display::from_physical(
         UVec2::new(100.0 as u32, 100.0 as u32),
@@ -60,7 +61,7 @@ fn frame_with_fill_emits_one_draw_rect() {
             .show(ui);
     });
     ui.end_frame();
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -90,7 +91,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
         Frame::with_id("invisible").size(50.0).show(ui);
     });
     ui.end_frame();
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -128,7 +129,7 @@ fn clip_emits_balanced_push_pop() {
             });
     });
     ui.end_frame();
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -172,21 +173,21 @@ fn clip_emits_balanced_push_pop() {
 /// `PushClip` is taken in the parent's already-composed transform space and
 /// intersected with the active clip; `DrawRect.rect` is in the parent's
 /// transform space at draw time.
-fn screen_rects_by_fill(cmds: &[RenderCmd]) -> Vec<(Color, Rect)> {
+fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
     let mut t = TranslateScale::IDENTITY;
     let mut t_stack: Vec<TranslateScale> = Vec::new();
     let mut clip: Option<Rect> = None;
     let mut clip_stack: Vec<Option<Rect>> = Vec::new();
     let mut out = Vec::new();
-    for cmd in cmds {
+    for cmd in cmds.iter() {
         match cmd {
             RenderCmd::PushTransform(child) => {
                 t_stack.push(t);
-                t = t.compose(*child);
+                t = t.compose(child);
             }
             RenderCmd::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
             RenderCmd::PushClip(r) => {
-                let screen = t.apply_rect(*r);
+                let screen = t.apply_rect(r);
                 let intersected = match clip {
                     Some(c) => screen.intersect(c),
                     None => screen,
@@ -196,12 +197,12 @@ fn screen_rects_by_fill(cmds: &[RenderCmd]) -> Vec<(Color, Rect)> {
             }
             RenderCmd::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
             RenderCmd::DrawRect { rect, fill, .. } => {
-                let screen = t.apply_rect(*rect);
+                let screen = t.apply_rect(rect);
                 let visible = match clip {
                     Some(c) => screen.intersect(c),
                     None => screen,
                 };
-                out.push((*fill, visible));
+                out.push((fill, visible));
             }
             RenderCmd::DrawText { .. } => {
                 // Test rasterizer ignores text — encoder tests only assert on rect output.
@@ -268,7 +269,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     });
     ui.end_frame();
 
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -396,7 +397,7 @@ fn nested_clips_each_emit_their_own_pair() {
             });
     });
     ui.end_frame();
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -426,7 +427,7 @@ fn disabled_ancestor_dims_descendant_fill() {
     });
     ui.end_frame();
 
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -438,7 +439,7 @@ fn disabled_ancestor_dims_descendant_fill() {
     let dimmed = cmds
         .iter()
         .find_map(|c| match c {
-            RenderCmd::DrawRect { fill, .. } => Some(*fill),
+            RenderCmd::DrawRect { fill, .. } => Some(fill),
             _ => None,
         })
         .expect("frame must emit one DrawRect");
@@ -466,7 +467,7 @@ fn disabled_ancestor_dims_descendant_fill() {
     let untouched = cmds
         .iter()
         .find_map(|c| match c {
-            RenderCmd::DrawRect { fill, .. } => Some(*fill),
+            RenderCmd::DrawRect { fill, .. } => Some(fill),
             _ => None,
         })
         .expect("frame must emit one DrawRect");
@@ -542,7 +543,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     });
     ui.end_frame();
 
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -554,7 +555,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     let text_rect = cmds
         .iter()
         .find_map(|c| match c {
-            RenderCmd::DrawText { rect, .. } => Some(*rect),
+            RenderCmd::DrawText { rect, .. } => Some(rect),
             _ => None,
         })
         .expect("button must emit one DrawText");
@@ -609,7 +610,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
     // (0,0,40,40) intersects; `b` at (40,0,40,40) intersects too
     // (its left edge is at x=40 which is < 50). Use a tighter filter.
     let filter = Rect::new(0.0, 0.0, 30.0, 200.0);
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -647,7 +648,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
     });
     ui.end_frame();
 
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -689,7 +690,7 @@ fn damage_filter_preserves_clip_pushpop() {
     ui.end_frame();
 
     // Filter misses the clipped panel entirely.
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
@@ -734,7 +735,7 @@ fn damage_filter_preserves_transform_pushpop() {
     });
     ui.end_frame();
 
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),

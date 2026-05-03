@@ -1,4 +1,4 @@
-use super::encoder::RenderCmd;
+use super::cmd_buffer::{CmdKind, RenderCmdBuffer};
 use crate::primitives::{Display, Rect, Stroke, TranslateScale, URect};
 use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::quad::Quad;
@@ -25,7 +25,7 @@ impl Composer {
 
     /// Consume a logical-px command stream → physical-px `Quad`s + `TextRun`s
     /// + draw groups (scissor ranges) into `out`. Pure: no device, no queue.
-    pub fn compose(&mut self, cmds: &[RenderCmd], display: &Display, out: &mut RenderBuffer) {
+    pub fn compose(&mut self, cmds: &RenderCmdBuffer, display: &Display, out: &mut RenderBuffer) {
         let scale = display.scale_factor;
         let snap = display.pixel_snap;
         let viewport_phys_f = [display.physical.x as f32, display.physical.y as f32];
@@ -52,10 +52,12 @@ impl Composer {
         // flushed) and on flush.
         let mut last_was_text = false;
 
-        for cmd in cmds {
-            match cmd {
-                RenderCmd::PushClip(r) => {
-                    let world = current_transform.apply_rect(*r);
+        for i in 0..cmds.len() {
+            let start = cmds.starts[i];
+            match cmds.kinds[i] {
+                CmdKind::PushClip => {
+                    let r = cmds.read_clip(start);
+                    let world = current_transform.apply_rect(r);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
                     let new = match self.clip_stack.last() {
                         Some(parent) => me.clamp_to(*parent),
@@ -73,7 +75,7 @@ impl Composer {
                     );
                     last_was_text = false;
                 }
-                RenderCmd::PopClip => {
+                CmdKind::PopClip => {
                     self.clip_stack.pop();
                     switch_group(
                         self.clip_stack.last().copied(),
@@ -86,22 +88,23 @@ impl Composer {
                     );
                     last_was_text = false;
                 }
-                RenderCmd::PushTransform(t) => {
+                CmdKind::PushTransform => {
+                    let t = cmds.read_transform(start);
                     self.transform_stack.push(current_transform);
-                    current_transform = current_transform.compose(*t);
+                    current_transform = current_transform.compose(t);
                 }
-                RenderCmd::PopTransform => {
+                CmdKind::PopTransform => {
                     current_transform = self
                         .transform_stack
                         .pop()
                         .unwrap_or(TranslateScale::IDENTITY);
                 }
-                RenderCmd::DrawRect {
-                    rect,
-                    radius,
-                    fill,
-                    stroke,
-                } => {
+                kind @ (CmdKind::DrawRect | CmdKind::DrawRectStroked) => {
+                    let p = if kind == CmdKind::DrawRect {
+                        cmds.read_draw_rect(start)
+                    } else {
+                        cmds.read_draw_rect_stroked(start)
+                    };
                     if last_was_text {
                         // Flush the current group so this quad renders
                         // *after* the prior group's text. Same scissor
@@ -118,26 +121,27 @@ impl Composer {
                         texts_start = out.texts.len() as u32;
                         last_was_text = false;
                     }
-                    let world_rect = current_transform.apply_rect(*rect);
-                    let world_radius = radius.scaled_by(current_transform.scale);
+                    let world_rect = current_transform.apply_rect(p.rect);
+                    let world_radius = p.radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
-                    let phys_stroke = stroke.map(|s| Stroke {
+                    let phys_stroke = p.stroke.map(|s| Stroke {
                         width: s.width * current_transform.scale * scale,
                         color: s.color,
                     });
                     out.quads
-                        .push(Quad::new(phys_rect, *fill, phys_radius, phys_stroke));
+                        .push(Quad::new(phys_rect, p.fill, phys_radius, phys_stroke));
                 }
-                RenderCmd::DrawText { rect, color, key } => {
-                    let world_rect = current_transform.apply_rect(*rect);
+                CmdKind::DrawText => {
+                    let t = cmds.read_draw_text(start);
+                    let world_rect = current_transform.apply_rect(t.rect);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
                     out.texts.push(TextRun {
                         origin: [phys_rect.min.x, phys_rect.min.y],
                         bounds,
-                        color: *color,
-                        key: *key,
+                        color: t.color,
+                        key: t.key,
                     });
                     last_was_text = true;
                 }

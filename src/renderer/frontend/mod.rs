@@ -11,9 +11,11 @@
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
 
+mod cmd_buffer;
 mod composer;
 mod encoder;
 
+pub use cmd_buffer::RenderCmdBuffer;
 pub use composer::Composer;
 pub use encoder::{RenderCmd, encode};
 
@@ -50,7 +52,7 @@ pub struct FrameOutput<'a> {
 /// [`Ui::end_frame`](crate::ui::Ui::end_frame) call.
 #[derive(Default)]
 pub struct Frontend {
-    cmds: Vec<RenderCmd>,
+    cmds: RenderCmdBuffer,
     composer: Composer,
     buffer: RenderBuffer,
 }

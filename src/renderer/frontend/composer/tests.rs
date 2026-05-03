@@ -1,3 +1,4 @@
+use super::super::cmd_buffer::RenderCmdBuffer;
 use super::super::encoder::RenderCmd;
 use super::Composer;
 use crate::primitives::Display;
@@ -36,8 +37,12 @@ fn params(scale: f32, viewport_phys: [u32; 2]) -> Display {
 }
 
 fn run(cmds: &[RenderCmd], display: &Display) -> RenderBuffer {
+    let mut buffer = RenderCmdBuffer::new();
+    for c in cmds {
+        buffer.push(c.clone());
+    }
     let mut buf = RenderBuffer::default();
-    Composer::new().compose(cmds, display, &mut buf);
+    Composer::new().compose(&buffer, display, &mut buf);
     buf
 }
 

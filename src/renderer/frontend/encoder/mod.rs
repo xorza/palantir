@@ -1,3 +1,4 @@
+use super::cmd_buffer::RenderCmdBuffer;
 use crate::cascade::Cascades;
 use crate::layout::LayoutResult;
 use crate::primitives::{
@@ -62,7 +63,7 @@ pub fn encode(
     cascades: &Cascades,
     disabled_dim: f32,
     damage_filter: Option<Rect>,
-    out: &mut Vec<RenderCmd>,
+    out: &mut RenderCmdBuffer,
 ) {
     out.clear();
     if let Some(root) = tree.root() {
@@ -85,7 +86,7 @@ fn encode_node(
     disabled_dim: f32,
     damage_filter: Option<Rect>,
     id: NodeId,
-    out: &mut Vec<RenderCmd>,
+    out: &mut RenderCmdBuffer,
 ) {
     // Hidden / Collapsed: paint nothing for this node or its subtree.
     // The cascade table already composed self + ancestors; recursing skips
@@ -107,7 +108,7 @@ fn encode_node(
     // WPF's `RenderTransform` convention.
     let clip = tree.paint(id).attrs.is_clip();
     if clip {
-        out.push(RenderCmd::PushClip(rect));
+        out.push_clip(rect);
     }
 
     // Damage filter: skip leaf shape emission when this node's
@@ -129,15 +130,15 @@ fn encode_node(
                     fill,
                     stroke,
                 } => {
-                    out.push(RenderCmd::DrawRect {
+                    out.draw_rect(
                         rect,
-                        radius: *radius,
-                        fill: fill.dim_rgb(rgb_mul),
-                        stroke: stroke.map(|s| Stroke {
+                        *radius,
+                        fill.dim_rgb(rgb_mul),
+                        stroke.map(|s| Stroke {
                             width: s.width,
                             color: s.color.dim_rgb(rgb_mul),
                         }),
-                    });
+                    );
                 }
                 Shape::Text { color, align, .. } => {
                     // Shaping happened in measure; the resulting buffer key is
@@ -156,11 +157,11 @@ fn encode_node(
                     // padding-deflated content area so e.g. `Button.padding(8)`
                     // insets the label visually.
                     let inner = rect.deflated_by(tree.layout(id).padding);
-                    out.push(RenderCmd::DrawText {
-                        rect: align_text_in(inner, shaped.measured, *align),
-                        color: color.dim_rgb(rgb_mul),
-                        key: shaped.key,
-                    });
+                    out.draw_text(
+                        align_text_in(inner, shaped.measured, *align),
+                        color.dim_rgb(rgb_mul),
+                        shaped.key,
+                    );
                 }
                 // No backend support for these yet — drop with a trace so they're
                 // not silently invisible.
@@ -179,7 +180,7 @@ fn encode_node(
         .transform
         .filter(|t| *t != TranslateScale::IDENTITY);
     if let Some(t) = transform {
-        out.push(RenderCmd::PushTransform(t));
+        out.push_transform(t);
     }
 
     for child in tree.children(id) {
@@ -195,10 +196,10 @@ fn encode_node(
     }
 
     if transform.is_some() {
-        out.push(RenderCmd::PopTransform);
+        out.pop_transform();
     }
     if clip {
-        out.push(RenderCmd::PopClip);
+        out.pop_clip();
     }
 }
 
