@@ -217,23 +217,16 @@ fn build_ui(ui: &mut Ui, scale: usize) {
 
 fn bench_layout(c: &mut Criterion) {
     use palantir::primitives::Display;
-    let display = Display::from_physical(glam::UVec2::new(1280, 800), 1.0);
+    let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
     let mut group = c.benchmark_group("layout");
 
-    for &scale in &[1usize, 4, 16] {
+    for &scale in &[32] {
         let mut ui = Ui::new();
-        ui.begin_frame(display);
-        build_ui(&mut ui, scale);
-        eprintln!("scale={scale}  nodes={}", ui.tree().node_count());
-
-        // Warm up scratch capacities and damage snapshot so the iter
-        // loop measures steady-state.
-        for _ in 0..3 {
-            ui.end_frame();
-        }
 
         group.bench_with_input(BenchmarkId::new("end_frame", scale), &scale, |b, _| {
             b.iter(|| {
+                ui.begin_frame(display);
+                build_ui(&mut ui, scale);
                 black_box(ui.end_frame());
             });
         });
