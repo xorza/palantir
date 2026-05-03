@@ -47,4 +47,26 @@ impl LayoutResult {
     pub(in crate::layout) fn set_text_shape(&mut self, id: NodeId, s: ShapedText) {
         self.text_shapes[id.index()] = Some(s);
     }
+
+    /// Read-only slice over `text_shapes` for snapshotting a whole
+    /// subtree into the measure cache.
+    pub(in crate::layout) fn text_shapes_slice(
+        &self,
+        start: usize,
+        end: usize,
+    ) -> &[Option<ShapedText>] {
+        &self.text_shapes[start..end]
+    }
+
+    /// Bulk write a contiguous range of `text_shapes` (for restoring a
+    /// subtree from the measure cache). `src.len()` must equal the
+    /// destination range.
+    pub(in crate::layout) fn restore_text_shapes(
+        &mut self,
+        start: usize,
+        src: &[Option<ShapedText>],
+    ) {
+        let end = start + src.len();
+        self.text_shapes[start..end].copy_from_slice(src);
+    }
 }
