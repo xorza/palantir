@@ -52,9 +52,8 @@ impl Composer {
         // flushed) and on flush.
         let mut last_was_text = false;
 
-        for i in 0..cmds.len() {
-            let start = cmds.starts[i];
-            match cmds.kinds[i] {
+        for (kind, start) in cmds.raw_iter() {
+            match kind {
                 CmdKind::PushClip => {
                     let r = cmds.read_clip(start);
                     let world = current_transform.apply_rect(r);
