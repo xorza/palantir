@@ -23,18 +23,25 @@ fn frame(ui: &mut Ui, f: impl FnOnce(&mut Ui)) {
     ui.end_frame();
 }
 
+/// The standard "root with one 50×50 frame" tree used by most damage
+/// tests. Color flips between frames to drive minimal authoring
+/// changes.
+const BLUE: Color = Color::rgb(0.2, 0.4, 0.8);
+const RED: Color = Color::rgb(0.9, 0.4, 0.8);
+
+fn one_frame(ui: &mut Ui, color: Color) {
+    Panel::hstack_with_id("root").show(ui, |ui| {
+        Frame::with_id("a").size(50.0).fill(color).show(ui);
+    });
+}
+
 /// Pin: the very first frame has no `prev_frame` entries, so every
 /// node is "added" → all nodes dirty, damage covers their union.
 #[test]
 fn first_frame_marks_every_node_dirty() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, BLUE);
     });
     assert_eq!(ui.damage.dirty.len(), ui.tree.node_count());
     assert!(ui.damage.rect.is_some());
@@ -47,12 +54,7 @@ fn first_frame_marks_every_node_dirty() {
 fn unchanged_authoring_produces_no_damage() {
     let mut ui = Ui::new();
     let build = |ui: &mut Ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, BLUE);
     };
     frame(&mut ui, build);
     frame(&mut ui, build);
@@ -68,20 +70,10 @@ fn unchanged_authoring_produces_no_damage() {
 fn fill_change_marks_only_the_changed_leaf() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, BLUE);
     });
     frame(&mut ui, |ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.9, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, RED);
     });
 
     assert_eq!(ui.damage.dirty.len(), 1);
@@ -193,12 +185,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
 fn damage_filter_returns_none_on_full_repaint() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, BLUE);
     });
     // First frame: every node is "added" → damage rect is the union
     // of every screen rect → ratio > 0.5 → filter returns None.
@@ -211,20 +198,10 @@ fn damage_filter_returns_none_on_full_repaint() {
 fn damage_filter_returns_rect_when_partial() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, BLUE);
     });
     frame(&mut ui, |ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.9, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, RED);
     });
     assert_eq!(ui.damage.filter(ui.display.logical_rect()), ui.damage.rect);
     assert!(ui.damage.filter(ui.display.logical_rect()).is_some());
@@ -236,12 +213,7 @@ fn damage_filter_returns_rect_when_partial() {
 fn damage_filter_returns_none_when_nothing_dirty() {
     let mut ui = Ui::new();
     let build = |ui: &mut Ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, BLUE);
     };
     frame(&mut ui, build);
     frame(&mut ui, build);
@@ -404,12 +376,7 @@ fn zero_area_surface_forces_full() {
 fn first_frame_filter_is_none() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, BLUE);
     });
     assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
 }
@@ -531,20 +498,10 @@ fn button_unhover_damage_covers_only_the_button() {
 fn small_change_stays_partial_repaint() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, BLUE);
     });
     frame(&mut ui, |ui| {
-        Panel::hstack_with_id("root").show(ui, |ui| {
-            Frame::with_id("a")
-                .size(50.0)
-                .fill(Color::rgb(0.9, 0.4, 0.8))
-                .show(ui);
-        });
+        one_frame(ui, RED);
     });
     // 50x50 = 2500, surface 200x200 = 40000 → 6.25% < 50%.
     assert!(ui.damage.rect.is_some());

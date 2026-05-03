@@ -1,7 +1,7 @@
 use crate::element::Configure;
 use crate::primitives::{Color, Sense, Sizing};
 use crate::shape::Shape;
-use crate::test_support::ui_at;
+use crate::test_support::{click_at, ui_at};
 use crate::widgets::{Frame, Panel, Styled};
 use glam::UVec2;
 
@@ -33,7 +33,6 @@ fn frame_paints_a_single_rounded_rect() {
 
 #[test]
 fn frame_with_sense_click_is_clickable() {
-    use crate::input::{InputEvent, PointerButton};
     use crate::primitives::Display;
     use glam::Vec2;
 
@@ -46,9 +45,7 @@ fn frame_with_sense_click_is_clickable() {
     });
     ui.end_frame();
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 25.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    click_at(&mut ui, Vec2::new(50.0, 25.0));
 
     ui.begin_frame(Display::default());
     let mut clicked = false;

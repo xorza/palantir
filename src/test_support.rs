@@ -3,10 +3,14 @@
 #![cfg(test)]
 
 use crate::Ui;
-use crate::primitives::Display;
+use crate::element::Configure;
+use crate::input::{InputEvent, PointerButton};
+use crate::primitives::{Display, Sizing};
 use crate::renderer::RenderCmdBuffer;
 use crate::text::{CosmicMeasure, share};
-use glam::UVec2;
+use crate::tree::NodeId;
+use crate::widgets::Panel;
+use glam::{UVec2, Vec2};
 
 pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
     ui.begin_frame(Display::from_physical(size, 1.0));
@@ -30,13 +34,55 @@ pub(crate) fn new_ui_text() -> Ui {
     ui
 }
 
+/// Wrap the unit-under-test inside an outer `Fill` HStack so the panel
+/// under test can express its own measured size — `ui.layout` always
+/// forces the root to the surface rect, which would mask Hug/Fixed
+/// sizing on the unit-under-test. Returns the inner node.
+pub(crate) fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(
+    ui: &mut Ui,
+    surface: UVec2,
+    f: F,
+) -> NodeId {
+    begin(ui, surface);
+    let mut inner = None;
+    Panel::hstack()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            inner = Some(f(ui));
+        });
+    ui.end_frame();
+    inner.unwrap()
+}
+
+pub(crate) fn click_at(ui: &mut Ui, pos: Vec2) {
+    ui.on_input(InputEvent::PointerMoved(pos));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+}
+
+pub(crate) fn press_at(ui: &mut Ui, pos: Vec2) {
+    ui.on_input(InputEvent::PointerMoved(pos));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+}
+
+pub(crate) fn release_left(ui: &mut Ui) {
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+}
+
 pub(crate) fn encode_cmds(ui: &Ui) -> RenderCmdBuffer {
+    encode_cmds_filtered(ui, None)
+}
+
+pub(crate) fn encode_cmds_filtered(
+    ui: &Ui,
+    filter: Option<crate::primitives::Rect>,
+) -> RenderCmdBuffer {
     let mut cmds = RenderCmdBuffer::new();
     crate::renderer::encode(
         ui.tree(),
         ui.layout_engine.result(),
         ui.cascades.result(),
-        None,
+        filter,
         &mut cmds,
     );
     cmds

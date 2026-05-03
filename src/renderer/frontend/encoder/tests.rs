@@ -1,12 +1,12 @@
 use super::super::cmd_buffer::{RenderCmd, RenderCmdBuffer};
-use super::{align_text_in, encode};
+use super::align_text_in;
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{
     Align, Color, Display, HAlign, Rect, Sense, Size, Sizing, TranslateScale, VAlign, WidgetId,
 };
-use crate::test_support::{begin, ui_at};
+use crate::test_support::{begin, encode_cmds, encode_cmds_filtered, ui_at};
 use crate::widgets::{Frame, Panel, Styled};
 use glam::{UVec2, Vec2};
 
@@ -25,17 +25,10 @@ fn count_clip_pairs(cmds: &RenderCmdBuffer) -> (usize, usize) {
 
 #[test]
 fn empty_tree_encodes_to_nothing() {
-    let mut cmds = RenderCmdBuffer::new();
     let mut ui = ui_at(UVec2::new(100, 100));
     Panel::hstack().show(&mut ui, |_| {});
     ui.end_frame();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        None,
-        &mut cmds,
-    );
+    let cmds = encode_cmds(&ui);
     let draws = cmds
         .iter()
         .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
@@ -53,14 +46,7 @@ fn frame_with_fill_emits_one_draw_rect() {
             .show(ui);
     });
     ui.end_frame();
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        None,
-        &mut cmds,
-    );
+    let cmds = encode_cmds(&ui);
 
     let draw_rects = cmds
         .iter()
@@ -78,14 +64,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
         Frame::with_id("invisible").size(50.0).show(ui);
     });
     ui.end_frame();
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        None,
-        &mut cmds,
-    );
+    let cmds = encode_cmds(&ui);
 
     let draw_rects = cmds
         .iter()
@@ -111,14 +90,7 @@ fn clip_emits_balanced_push_pop() {
             });
     });
     ui.end_frame();
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        None,
-        &mut cmds,
-    );
+    let cmds = encode_cmds(&ui);
 
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
@@ -257,14 +229,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     });
     ui.end_frame();
 
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        None,
-        &mut cmds,
-    );
+    let cmds = encode_cmds(&ui);
     let drawn = screen_rects_by_fill(&cmds);
 
     // Visible node: encoder emits exactly one DrawRect with its fill, and the
@@ -380,14 +345,7 @@ fn nested_clips_each_emit_their_own_pair() {
             });
     });
     ui.end_frame();
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        None,
-        &mut cmds,
-    );
+    let cmds = encode_cmds(&ui);
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
     assert_eq!(pops, 2);
@@ -482,14 +440,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     });
     ui.end_frame();
 
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        None,
-        &mut cmds,
-    );
+    let cmds = encode_cmds(&ui);
     let text_rect = cmds
         .iter()
         .find_map(|c| match c {
@@ -544,14 +495,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
     // (0,0,40,40) intersects; `b` at (40,0,40,40) intersects too
     // (its left edge is at x=40 which is < 50). Use a tighter filter.
     let filter = Rect::new(0.0, 0.0, 30.0, 200.0);
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        Some(filter),
-        &mut cmds,
-    );
+    let cmds = encode_cmds_filtered(&ui, Some(filter));
 
     let draw_count = cmds
         .iter()
@@ -577,14 +521,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
     });
     ui.end_frame();
 
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        Some(Rect::new(0.0, 0.0, 200.0, 200.0)),
-        &mut cmds,
-    );
+    let cmds = encode_cmds_filtered(&ui, Some(Rect::new(0.0, 0.0, 200.0, 200.0)));
     let draw_count = cmds
         .iter()
         .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
@@ -614,14 +551,7 @@ fn damage_filter_preserves_clip_pushpop() {
     ui.end_frame();
 
     // Filter misses the clipped panel entirely.
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
-        &mut cmds,
-    );
+    let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
     let (pushes, pops) = count_clip_pairs(&cmds);
     assert_eq!(pushes, pops, "clip push/pop must be balanced");
@@ -654,14 +584,7 @@ fn damage_filter_preserves_transform_pushpop() {
     });
     ui.end_frame();
 
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
-        &mut cmds,
-    );
+    let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
     let pushes = cmds
         .iter()

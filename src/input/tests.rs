@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{Display, Sense, Sizing};
-use crate::test_support::{begin, ui_at};
+use crate::test_support::{begin, click_at, press_at, release_left, ui_at};
 use crate::widgets::{Button, Panel};
 use glam::{UVec2, Vec2};
 
@@ -26,9 +26,7 @@ fn input_state_press_release_emits_click() {
     ui.end_frame();
 
     // Press inside the button, release inside.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
 
     // Frame 2: rebuild; widgets should observe the click in build_ui.
     begin(&mut ui, UVec2::new(200, 80));
@@ -72,9 +70,7 @@ fn stack_with_sense_none_passes_clicks_through() {
     ui.end_frame();
 
     // Press inside the HStack's padding (not over any child).
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(5.0, 5.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    click_at(&mut ui, Vec2::new(5.0, 5.0));
 
     ui.begin_frame(Display::default());
     let mut child_clicked = false;
@@ -111,9 +107,7 @@ fn stack_with_sense_click_captures_clicks() {
         .node;
     ui.end_frame();
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(5.0, 5.0))); // padding area
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    click_at(&mut ui, Vec2::new(5.0, 5.0));
 
     ui.begin_frame(Display::default());
     let stack_resp = Panel::hstack_with_id("clickable_card")
@@ -151,7 +145,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
 
     // Press + release on the same spot.
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    release_left(&mut ui);
 
     ui.begin_frame(Display::default());
     let mut child_clicked = false;
@@ -191,10 +185,9 @@ fn input_state_release_outside_does_not_click() {
         .node;
     ui.end_frame();
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0))); // inside
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    press_at(&mut ui, Vec2::new(50.0, 20.0));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 20.0))); // outside
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    release_left(&mut ui);
 
     ui.begin_frame(Display::default());
     let mut got_click = false;
@@ -233,9 +226,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
 
     // Click well outside the panel's 100x100 clip rect but inside the button's
     // raw 200x200 rect (overflow region). With clip-aware hit-test this misses.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 150.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    click_at(&mut ui, Vec2::new(150.0, 150.0));
 
     // Frame 2: read .clicked() from the button's response.
     ui.begin_frame(Display::default());
@@ -280,9 +271,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
     ui.end_frame();
 
     // Click at world (75, 75) — inside the zoomed 100x100 bounds.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(75.0, 75.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    click_at(&mut ui, Vec2::new(75.0, 75.0));
 
     ui.begin_frame(Display::default());
     let mut clicked = false;
@@ -323,9 +312,7 @@ fn click_outside_zoomed_bounds_does_not_hit() {
 
     // Button's world rect under scale=0.5 is 25x25. Click at (40, 40) is
     // inside the LOGICAL rect but outside the world-rendered rect.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    click_at(&mut ui, Vec2::new(40.0, 40.0));
 
     ui.begin_frame(Display::default());
     let mut clicked = false;

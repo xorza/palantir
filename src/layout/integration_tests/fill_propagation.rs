@@ -3,6 +3,7 @@
 //! parent has a finite slot — that would make any nested grid fall
 //! back to max-content and break wrapping under constrained widths.
 
+use super::scaffold::two_hug_cols_with_wrap;
 use crate::element::Configure;
 use crate::primitives::{Color, Sizing, Track};
 use crate::test_support::{ui_at, ui_with_text};
@@ -10,52 +11,41 @@ use crate::widgets::{Frame, Grid, Panel, Styled, Text};
 use glam::UVec2;
 use std::rc::Rc;
 
-/// Regression: a constrained ZStack (`Sizing::Fill`/`Fixed`) must pass
-/// its inner size to children, not `INFINITY`. Without this, Step B's
-/// Grid Auto resolution falls back to max-content for any grid nested
-/// inside a ZStack — which is exactly the showcase pattern.
-#[test]
-fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
-    let mut ui = ui_with_text(UVec2::new(200, 400));
-    let mut text_node = None;
-    Panel::zstack()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(&mut ui, |ui| {
-            Grid::new()
-                .cols(Rc::from([Track::hug(), Track::hug()]))
-                .rows(Rc::from([Track::hug()]))
-                .show(ui, |ui| {
-                    text_node = Some(
-                        Text::new("the quick brown fox jumps over the lazy dog")
-                            .size_px(16.0)
-                            .wrapping()
-                            .grid_cell((0, 0))
-                            .show(ui)
-                            .node,
-                    );
-                    Text::new("right column")
-                        .size_px(16.0)
-                        .grid_cell((0, 1))
-                        .show(ui);
-                });
-        });
-    ui.end_frame();
+const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
+fn assert_wrapped_within_surface(ui: &crate::Ui, node: crate::tree::NodeId, surface_w: f32) {
     let shaped = ui
         .layout_engine
         .result()
-        .text_shape(text_node.unwrap())
+        .text_shape(node)
         .expect("text was shaped");
     assert!(
         shaped.measured.h > 32.0,
-        "ZStack must propagate finite avail to grid → grid constrains hug column → text wraps; got h={}",
+        "expected multi-line wrapped height, got h={}",
         shaped.measured.h,
     );
     assert!(
-        shaped.measured.w <= 200.0,
-        "wrapped text must fit inside surface; got w={}",
+        shaped.measured.w <= surface_w,
+        "wrapped text must fit inside surface ({surface_w}); got w={}",
         shaped.measured.w,
     );
+}
+
+/// Regression: a constrained ZStack (`Sizing::Fill`/`Fixed`) must pass
+/// its inner size to children, not `INFINITY`. Without this, Step B's
+/// Grid Auto resolution falls back to max-content for any grid nested
+/// inside a ZStack.
+#[test]
+fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
+    let mut ui = ui_with_text(UVec2::new(200, 400));
+    let mut node = None;
+    Panel::zstack()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
+        });
+    ui.end_frame();
+    assert_wrapped_within_surface(&ui, node.unwrap(), 200.0);
 }
 
 /// Regression: same as above but for Canvas — also a "child-positioner"
@@ -63,45 +53,14 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
 #[test]
 fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
-    let mut text_node = None;
+    let mut node = None;
     Panel::canvas()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
-            Grid::new()
-                .cols(Rc::from([Track::hug(), Track::hug()]))
-                .rows(Rc::from([Track::hug()]))
-                .show(ui, |ui| {
-                    text_node = Some(
-                        Text::new("the quick brown fox jumps over the lazy dog")
-                            .size_px(16.0)
-                            .wrapping()
-                            .grid_cell((0, 0))
-                            .show(ui)
-                            .node,
-                    );
-                    Text::new("right column")
-                        .size_px(16.0)
-                        .grid_cell((0, 1))
-                        .show(ui);
-                });
+            node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
         });
     ui.end_frame();
-
-    let shaped = ui
-        .layout_engine
-        .result()
-        .text_shape(text_node.unwrap())
-        .expect("text was shaped");
-    assert!(
-        shaped.measured.h > 32.0,
-        "Canvas must propagate finite avail; got h={}",
-        shaped.measured.h,
-    );
-    assert!(
-        shaped.measured.w <= 200.0,
-        "wrapped text must fit inside surface; got w={}",
-        shaped.measured.w,
-    );
+    assert_wrapped_within_surface(&ui, node.unwrap(), 200.0);
 }
 
 /// Pin: a `Hug` ZStack containing a `Fill` child must NOT recursively
