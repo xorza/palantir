@@ -90,25 +90,6 @@ impl RenderCmdBuffer {
         self.kinds.is_empty()
     }
 
-    /// Append a command in its `RenderCmd` form. Convenience for tests
-    /// and one-off construction; the encoder uses the typed `push_*`
-    /// methods directly.
-    pub fn push(&mut self, cmd: RenderCmd) {
-        match cmd {
-            RenderCmd::PushClip(r) => self.push_clip(r),
-            RenderCmd::PopClip => self.pop_clip(),
-            RenderCmd::PushTransform(t) => self.push_transform(t),
-            RenderCmd::PopTransform => self.pop_transform(),
-            RenderCmd::DrawRect {
-                rect,
-                radius,
-                fill,
-                stroke,
-            } => self.draw_rect(rect, radius, fill, stroke),
-            RenderCmd::DrawText { rect, color, key } => self.draw_text(rect, color, key),
-        }
-    }
-
     #[inline]
     pub fn push_clip(&mut self, r: Rect) {
         self.record_start(CmdKind::PushClip);
@@ -199,6 +180,14 @@ impl RenderCmdBuffer {
 
     pub fn iter(&self) -> Iter<'_> {
         Iter { buf: self, i: 0 }
+    }
+
+    /// Raw iterator over `(kind, payload-start)` pairs, in order. Used by
+    /// the composer hot path to dispatch on `CmdKind` and call typed
+    /// `read_*` helpers — avoids materializing `RenderCmd` per command.
+    #[inline]
+    pub(crate) fn raw_iter(&self) -> impl Iterator<Item = (CmdKind, u32)> + '_ {
+        self.kinds.iter().copied().zip(self.starts.iter().copied())
     }
 
     #[inline]

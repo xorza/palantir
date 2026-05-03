@@ -39,7 +39,19 @@ fn params(scale: f32, viewport_phys: [u32; 2]) -> Display {
 fn run(cmds: &[RenderCmd], display: &Display) -> RenderBuffer {
     let mut buffer = RenderCmdBuffer::new();
     for c in cmds {
-        buffer.push(c.clone());
+        match *c {
+            RenderCmd::PushClip(r) => buffer.push_clip(r),
+            RenderCmd::PopClip => buffer.pop_clip(),
+            RenderCmd::PushTransform(t) => buffer.push_transform(t),
+            RenderCmd::PopTransform => buffer.pop_transform(),
+            RenderCmd::DrawRect {
+                rect,
+                radius,
+                fill,
+                stroke,
+            } => buffer.draw_rect(rect, radius, fill, stroke),
+            RenderCmd::DrawText { rect, color, key } => buffer.draw_text(rect, color, key),
+        }
     }
     let mut buf = RenderBuffer::default();
     Composer::new().compose(&buffer, display, &mut buf);
