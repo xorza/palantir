@@ -163,6 +163,15 @@ impl Ui {
         self.layout_engine.__clear_cache();
     }
 
+    /// Drop every cross-frame encode-cache entry, forcing the next
+    /// frame's encoder to re-encode every subtree from scratch.
+    /// `#[doc(hidden)]` — exists only so `benches/encode_cache.rs`
+    /// can A/B cache-enabled vs forced-miss frames against the public API.
+    #[doc(hidden)]
+    pub fn __clear_encode_cache(&mut self) {
+        self.frontend.__clear_encode_cache();
+    }
+
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
         self.input.response_for(id, self.cascades.result())
     }

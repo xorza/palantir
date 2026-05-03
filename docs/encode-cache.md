@@ -5,7 +5,28 @@ shape, same arena pattern, but stores `RenderCmd` slices instead
 of `desired` sizes. See `docs/measure-cache.md` for the parent
 design.
 
-**Status:** planned, not shipped.
+**Status:** shipped. Lives at
+`src/renderer/frontend/encoder/cache/`. Wired into `Encoder::encode`
+(`src/renderer/frontend/encoder/mod.rs`); the `Encoder` struct owns
+the cache + cmd buffer and is the entry point from `Frontend::build`.
+
+## Bench numbers
+
+`benches/encode_cache.rs`, A/B'd against an otherwise-identical
+warm-cache frame with `__clear_encode_cache()` between iterations
+(measure cache held hot in both arms, so the delta is purely
+encoder work). Times are `end_frame()` end-to-end.
+
+| Workload | cached | forced miss | win |
+|---|---|---|---|
+| `flat`   (~1000 leaves)            | 74.5 µs | 96.7 µs | 22.9 % |
+| `nested` (100 × 32 nodes ≈ 3200)   | 372 µs  | 449 µs  | 17.0 % |
+
+Nested falls slightly under the original ≥20 % goal because
+`end_frame` includes the composer pass, which the encode cache
+doesn't help — the encoder pass itself saves more than 17 % in
+absolute terms but is diluted across the larger denominator. See
+"Where the time goes" below.
 
 ## Decisions
 

@@ -2,8 +2,10 @@
 
 WPF-style short-circuit: skip a node's measure when neither its
 authoring inputs nor its incoming `available` size changed since last
-frame. Composes with damage (subtree-hash equality is the same key the
-encode cache wants).
+frame. Composes with damage. Same `(subtree_hash, available_q)` key is
+reused by the [encode cache](encode-cache.md), which mirrors the SoA
+arena + snapshot shape and is eviction-locked to this cache via the
+shared `removed` sweep.
 
 **Status:** shipped. Subtree-skip at every non-collapsed node, backed
 by a single SoA arena per attribute. See `src/layout/cache/mod.rs`.
