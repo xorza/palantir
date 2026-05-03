@@ -24,7 +24,6 @@ use crate::layout::result::ShapedText;
 use crate::primitives::{Size, WidgetId};
 use crate::tree::NodeHash;
 use rustc_hash::FxHashMap;
-use std::ops::Range;
 
 /// 24-byte snapshot. `start..start+len` indexes both arenas.
 #[derive(Clone, Copy, Debug)]
@@ -50,14 +49,14 @@ pub(crate) struct ArenaSnapshot {
 /// Hug parents propagate `f32::INFINITY`).
 pub(crate) type AvailableKey = (i32, i32);
 
-/// Triple identifying *which* snapshot a measure call should match
-/// against. Built once at the top of a measure call and reused for
-/// the cache write-back at the bottom.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct SubtreeCacheKey {
-    pub wid: WidgetId,
-    pub subtree_hash: NodeHash,
-    pub available_q: AvailableKey,
+/// What [`MeasureCache::try_lookup`] returns on a hit. The slices are
+/// borrows into the cache's arenas, ready to `copy_from_slice` into
+/// the caller's destination columns. `root` is the snapshot root's
+/// own `desired` — the value `measure` returns up the recursion.
+pub(crate) struct CachedSubtree<'a> {
+    pub root: Size,
+    pub desired: &'a [Size],
+    pub text_shapes: &'a [Option<ShapedText>],
 }
 
 #[inline]
@@ -77,10 +76,10 @@ pub(crate) fn quantize_available(s: Size) -> AvailableKey {
 /// Compaction trigger: arena length must exceed `live_entries × this`.
 /// `2.0` keeps fragmentation under one extra arena's worth without
 /// firing compactions on every miss frame.
-const COMPACT_RATIO: u32 = 2;
+const COMPACT_RATIO: usize = 2;
 /// Don't bother compacting until live data is at least this many
 /// entries — avoids compaction spam at warmup when the arena is tiny.
-const COMPACT_FLOOR: u32 = 64;
+const COMPACT_FLOOR: usize = 64;
 
 #[derive(Default)]
 pub(crate) struct MeasureCache {
@@ -95,30 +94,32 @@ pub(crate) struct MeasureCache {
     pub snapshots: FxHashMap<WidgetId, ArenaSnapshot>,
     /// Sum of `snap.len` across `snapshots` — the total live data in
     /// the arenas. Garbage = `desired_arena.len() - live_entries`.
-    pub live_entries: u32,
+    pub live_entries: usize,
 }
 
 impl MeasureCache {
     /// Validate the cache for `wid` against the current frame's
-    /// `(subtree_hash, available_q)`. On hit, return the arena range
-    /// to copy from — usable directly as a slice index into
-    /// `desired_arena` / `text_arena`. On miss, `None`.
+    /// `(subtree_hash, available_q)`. On hit, return a
+    /// [`CachedSubtree`] with the root's `desired` and the two
+    /// arena slices ready to copy. On miss, `None`.
     #[inline]
-    pub fn lookup(
+    pub fn try_lookup(
         &self,
         wid: WidgetId,
         curr_hash: NodeHash,
         curr_avail: AvailableKey,
-    ) -> Option<Range<usize>> {
+    ) -> Option<CachedSubtree<'_>> {
         let snap = self.snapshots.get(&wid)?;
-        if snap.subtree_hash != curr_hash {
+        if snap.subtree_hash != curr_hash || snap.available_q != curr_avail {
             return None;
         }
-        if snap.available_q != curr_avail {
-            return None;
-        }
-        let start = snap.start as usize;
-        Some(start..start + snap.len as usize)
+        let s = snap.start as usize;
+        let e = s + snap.len as usize;
+        Some(CachedSubtree {
+            root: self.desired_arena[s],
+            desired: &self.desired_arena[s..e],
+            text_shapes: &self.text_arena[s..e],
+        })
     }
 
     /// Overwrite (or insert) `wid`'s snapshot. Hot path is in-place
@@ -129,14 +130,16 @@ impl MeasureCache {
     /// and append a fresh range to the arena.
     pub fn write_subtree(
         &mut self,
-        key: SubtreeCacheKey,
+        wid: WidgetId,
+        subtree_hash: NodeHash,
+        available_q: AvailableKey,
         desired: &[Size],
         text_shapes: &[Option<ShapedText>],
     ) {
         debug_assert_eq!(desired.len(), text_shapes.len());
         let new_len = desired.len() as u32;
 
-        if let Some(prev) = self.snapshots.get_mut(&key.wid)
+        if let Some(prev) = self.snapshots.get_mut(&wid)
             && prev.len == new_len
         {
             // In-place: hot path.
@@ -144,32 +147,32 @@ impl MeasureCache {
             let e = s + new_len as usize;
             self.desired_arena[s..e].copy_from_slice(desired);
             self.text_arena[s..e].copy_from_slice(text_shapes);
-            prev.subtree_hash = key.subtree_hash;
-            prev.available_q = key.available_q;
+            prev.subtree_hash = subtree_hash;
+            prev.available_q = available_q;
             return;
         }
 
         // Different len (or first write): mark any existing range as
         // garbage, append the new one. Subtree size only changes when
         // a widget's structure changes, so this path is rare.
-        if let Some(prev) = self.snapshots.get(&key.wid) {
-            self.live_entries -= prev.len;
+        if let Some(prev) = self.snapshots.get(&wid) {
+            self.live_entries -= prev.len as usize;
         }
         let start = self.desired_arena.len() as u32;
         self.desired_arena.extend_from_slice(desired);
         self.text_arena.extend_from_slice(text_shapes);
-        self.live_entries += new_len;
+        self.live_entries += new_len as usize;
         self.snapshots.insert(
-            key.wid,
+            wid,
             ArenaSnapshot {
-                subtree_hash: key.subtree_hash,
-                available_q: key.available_q,
+                subtree_hash,
+                available_q,
                 start,
                 len: new_len,
             },
         );
 
-        if self.desired_arena.len() as u32 > self.live_entries.saturating_mul(COMPACT_RATIO)
+        if self.desired_arena.len() > self.live_entries.saturating_mul(COMPACT_RATIO)
             && self.live_entries > COMPACT_FLOOR
         {
             self.compact();
@@ -183,7 +186,7 @@ impl MeasureCache {
     pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
-                self.live_entries -= snap.len;
+                self.live_entries -= snap.len as usize;
             }
         }
     }
@@ -207,9 +210,8 @@ impl MeasureCache {
             snapshots,
             live_entries,
         } = self;
-        let cap = *live_entries as usize;
-        let mut new_desired: Vec<Size> = Vec::with_capacity(cap);
-        let mut new_text: Vec<Option<ShapedText>> = Vec::with_capacity(cap);
+        let mut new_desired: Vec<Size> = Vec::with_capacity(*live_entries);
+        let mut new_text: Vec<Option<ShapedText>> = Vec::with_capacity(*live_entries);
         for snap in snapshots.values_mut() {
             let s = snap.start as usize;
             let e = s + snap.len as usize;

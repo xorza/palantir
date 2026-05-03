@@ -260,7 +260,7 @@ fn arena_invariant_holds_under_fragmentation() {
     use super::{COMPACT_FLOOR, COMPACT_RATIO};
     let mut ui = Ui::new();
 
-    let n_first = (COMPACT_FLOOR as usize) * 4;
+    let n_first = (COMPACT_FLOOR) * 4;
     ui.begin_frame(Display::from_physical(UVec2::new(800, 800), 1.0));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         for i in 0..n_first {
@@ -275,7 +275,7 @@ fn arena_invariant_holds_under_fragmentation() {
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         Frame::with_id(("a", 0usize)).size(10.0).show(ui);
         Panel::vstack_with_id("new-group").show(ui, |ui| {
-            for j in 0..(COMPACT_FLOOR as usize + 4) {
+            for j in 0..(COMPACT_FLOOR + 4) {
                 Frame::with_id(("inner", j)).size(5.0).show(ui);
             }
         });
@@ -285,7 +285,7 @@ fn arena_invariant_holds_under_fragmentation() {
     let cache = &ui.layout_engine.cache;
     if cache.live_entries > COMPACT_FLOOR {
         assert!(
-            cache.desired_arena.len() as u32 <= cache.live_entries.saturating_mul(COMPACT_RATIO),
+            cache.desired_arena.len() <= cache.live_entries.saturating_mul(COMPACT_RATIO),
             "arena {} > live {} × {}x",
             cache.desired_arena.len(),
             cache.live_entries,
@@ -305,7 +305,7 @@ fn cache_hits_remain_valid_after_compaction() {
 
     // Frame 1: enough widgets to clear the floor; remember one that
     // we'll keep across frames.
-    let n_first = (COMPACT_FLOOR as usize) * 4;
+    let n_first = (COMPACT_FLOOR) * 4;
     ui.begin_frame(Display::from_physical(UVec2::new(800, 800), 1.0));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         for i in 0..n_first {
@@ -321,7 +321,7 @@ fn cache_hits_remain_valid_after_compaction() {
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         Frame::with_id(("a", 0usize)).size(11.0).show(ui);
         Panel::vstack_with_id("new-group").show(ui, |ui| {
-            for j in 0..(COMPACT_FLOOR as usize + 4) {
+            for j in 0..(COMPACT_FLOOR + 4) {
                 Frame::with_id(("inner", j)).size(5.0).show(ui);
             }
         });
@@ -344,8 +344,6 @@ fn cache_hits_remain_valid_after_compaction() {
 
     // And the global invariant should still hold past the floor.
     if cache.live_entries > COMPACT_FLOOR {
-        assert!(
-            cache.desired_arena.len() as u32 <= cache.live_entries.saturating_mul(COMPACT_RATIO),
-        );
+        assert!(cache.desired_arena.len() <= cache.live_entries.saturating_mul(COMPACT_RATIO),);
     }
 }
