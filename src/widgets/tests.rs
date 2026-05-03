@@ -1431,3 +1431,437 @@ fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
          got rect_w={rect_w}"
     );
 }
+
+/// Showcase regression: the "two Hug columns" text-layouts section
+/// rendered the right-column label on top of the wrapping paragraph.
+/// Pin that the two cells' arranged rects don't horizontally overlap
+/// — the right cell's `min.x` must sit at or past the left cell's
+/// `max.x`.
+#[test]
+fn two_hug_columns_with_wrapping_text_do_not_overlap() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 1.0));
+    let mut left = None;
+    let mut right = None;
+    Panel::vstack()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            Grid::new()
+                .cols(Rc::from([Track::hug(), Track::hug()]))
+                .rows(Rc::from([Track::hug()]))
+                .show(ui, |ui| {
+                    left = Some(
+                        Text::new(
+                            "The quick brown fox jumps over the lazy dog. Pack my box \
+                             with five dozen liquor jugs. How vexingly quick daft zebras jump!",
+                        )
+                        .size_px(14.0)
+                        .wrapping()
+                        .grid_cell((0, 0))
+                        .show(ui)
+                        .node,
+                    );
+                    right = Some(
+                        Text::new("right column")
+                            .size_px(14.0)
+                            .grid_cell((0, 1))
+                            .show(ui)
+                            .node,
+                    );
+                });
+        });
+    ui.end_frame();
+
+    let layout = ui.layout_engine.result();
+    let lr = layout.rect(left.unwrap());
+    let rr = layout.rect(right.unwrap());
+    assert!(lr.size.w > 0.0, "left column must have a positive width");
+    assert!(
+        rr.min.x >= lr.max().x - 0.5,
+        "right column must start at or past the left column's right edge: \
+         left={lr:?}, right={rr:?}",
+    );
+}
+
+/// Showcase regression — full repro of the broken "text layouts"
+/// page: a vstack of sections (each a vstack with a title + body),
+/// containing back-to-back grids with wrapping text. Reproduces the
+/// case where one section's measure leaks across to another and
+/// places cells overlapping. Surface matches the visible bug width.
+#[test]
+fn text_layouts_two_sections_back_to_back_no_overlap() {
+    use crate::primitives::{Stroke, Track};
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
+        Pack my box with five dozen liquor jugs. \
+        How vexingly quick daft zebras jump!";
+
+    let section = |ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)| {
+        Panel::vstack_with_id(id)
+            .size((Sizing::FILL, Sizing::Hug))
+            .gap(6.0)
+            .padding(8.0)
+            .fill(Color::rgb(0.16, 0.18, 0.22))
+            .stroke(Stroke {
+                width: 1.0,
+                color: Color::rgb(0.30, 0.34, 0.42),
+            })
+            .radius(4.0)
+            .show(ui, |ui| {
+                Text::with_id(("section-title", id), "title")
+                    .size_px(12.0)
+                    .show(ui);
+                body(ui);
+            });
+    };
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame(Display::from_physical(UVec2::new(1500, 900), 1.0));
+
+    let mut hug_left = None;
+    let mut hug_right = None;
+    let mut prop_label = None;
+    let mut prop_value = None;
+
+    Panel::vstack()
+        .gap(16.0)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            section(ui, "two-hug-columns", &mut |ui| {
+                Grid::with_id("two-hug-inner")
+                    .cols(Rc::from([Track::hug(), Track::hug()]))
+                    .rows(Rc::from([Track::hug()]))
+                    .gap_xy(0.0, 16.0)
+                    .show(ui, |ui| {
+                        hug_left = Some(
+                            Text::new(PARAGRAPH)
+                                .size_px(14.0)
+                                .wrapping()
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node,
+                        );
+                        hug_right = Some(
+                            Text::new("right column")
+                                .size_px(14.0)
+                                .grid_cell((0, 1))
+                                .show(ui)
+                                .node,
+                        );
+                    });
+            });
+
+            section(ui, "property-grid", &mut |ui| {
+                Grid::with_id("property-grid-inner")
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .cols(Rc::from([Track::hug(), Track::fill()]))
+                    .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                    .gap_xy(6.0, 16.0)
+                    .show(ui, |ui| {
+                        prop_label = Some(
+                            Text::new("Title:")
+                                .size_px(14.0)
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node,
+                        );
+                        prop_value = Some(
+                            Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
+                                .size_px(14.0)
+                                .wrapping()
+                                .grid_cell((0, 1))
+                                .show(ui)
+                                .node,
+                        );
+                    });
+            });
+        });
+    ui.end_frame();
+
+    let layout = ui.layout_engine.result();
+    let l1 = layout.rect(hug_left.unwrap());
+    let r1 = layout.rect(hug_right.unwrap());
+    let l2 = layout.rect(prop_label.unwrap());
+    let r2 = layout.rect(prop_value.unwrap());
+
+    assert!(l1.size.w > 0.0);
+    assert!(l2.size.w > 0.0);
+    assert!(
+        r1.min.x >= l1.max().x - 0.5,
+        "two-hug-columns: right cell must start past left cell. left={l1:?}, right={r1:?}",
+    );
+    assert!(
+        r2.min.x >= l2.max().x - 0.5,
+        "property-grid: value cell must start past label cell. label={l2:?}, value={r2:?}",
+    );
+}
+
+/// Render-pass repro: build the property-grid pattern and inspect
+/// the emitted `DrawText` commands directly. The visual showcase
+/// bug shows label and value columns painted at the SAME x even
+/// though their layout rects are correctly side-by-side.
+#[test]
+fn property_grid_emits_distinct_drawtext_x_positions() {
+    use crate::primitives::Track;
+    use crate::renderer::RenderCmd;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame(Display::from_physical(UVec2::new(1500, 900), 1.0));
+    Panel::vstack()
+        .gap(16.0)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            Grid::with_id("property-grid-inner")
+                .size((Sizing::FILL, Sizing::Hug))
+                .cols(Rc::from([Track::hug(), Track::fill()]))
+                .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                .gap_xy(6.0, 16.0)
+                .show(ui, |ui| {
+                    Text::new("Title:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                    Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
+                        .size_px(14.0)
+                        .wrapping()
+                        .grid_cell((0, 1))
+                        .show(ui);
+                    Text::new("Description:")
+                        .size_px(14.0)
+                        .grid_cell((1, 0))
+                        .show(ui);
+                });
+        });
+    ui.end_frame();
+
+    let mut cmds = RenderCmdBuffer::new();
+    crate::renderer::encode(
+        ui.tree(),
+        ui.layout_engine.result(),
+        ui.cascades.result(),
+        None,
+        &mut cmds,
+    );
+    let mut text_xs: Vec<f32> = Vec::new();
+    for i in 0..cmds.len() {
+        if let RenderCmd::DrawText(payload) = cmds.get(i) {
+            text_xs.push(payload.rect.min.x);
+        }
+    }
+    // The two cells in row 0 (Title + Lorem) must emit text at
+    // different x positions. Currently the bug renders them at the
+    // same x.
+    assert!(
+        text_xs.len() >= 2,
+        "expected at least two DrawText cmds; got {text_xs:?}",
+    );
+    assert!(
+        text_xs[0] != text_xs[1],
+        "Title and Lorem texts must paint at different x; got {text_xs:?}",
+    );
+}
+
+/// Diagnostic: full showcase repro. Catches the screenshot bug where
+/// two distinct texts emit `DrawText` at the same (x, y).
+#[test]
+fn text_layouts_full_showcase_drawtext_dump() {
+    use crate::primitives::{Stroke, Track};
+    use crate::renderer::RenderCmd;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
+        Pack my box with five dozen liquor jugs. \
+        How vexingly quick daft zebras jump!";
+
+    let section = |ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)| {
+        Panel::vstack_with_id(id)
+            .size((Sizing::FILL, Sizing::Hug))
+            .gap(6.0)
+            .padding(8.0)
+            .fill(Color::rgb(0.16, 0.18, 0.22))
+            .stroke(Stroke {
+                width: 1.0,
+                color: Color::rgb(0.30, 0.34, 0.42),
+            })
+            .radius(4.0)
+            .show(ui, |ui| {
+                Text::with_id(("section-title", id), "title")
+                    .size_px(12.0)
+                    .show(ui);
+                body(ui);
+            });
+    };
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame(Display::from_physical(UVec2::new(1620, 980), 1.0));
+    Panel::vstack()
+        .padding(12.0)
+        .gap(12.0)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            Panel::hstack()
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui, |_| {});
+            Panel::zstack()
+                .size((Sizing::FILL, Sizing::FILL))
+                .padding(16.0)
+                .show(ui, |ui| {
+                    Panel::vstack()
+                        .gap(16.0)
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui, |ui| {
+                            section(ui, "two-hug-columns", &mut |ui| {
+                                Grid::with_id("two-hug-inner")
+                                    .cols(Rc::from([Track::hug(), Track::hug()]))
+                                    .rows(Rc::from([Track::hug()]))
+                                    .gap_xy(0.0, 16.0)
+                                    .show(ui, |ui| {
+                                        Text::new(PARAGRAPH)
+                                            .size_px(14.0)
+                                            .wrapping()
+                                            .grid_cell((0, 0))
+                                            .show(ui);
+                                        Text::new("right column")
+                                            .size_px(14.0)
+                                            .grid_cell((0, 1))
+                                            .show(ui);
+                                    });
+                            });
+                            section(ui, "property-grid", &mut |ui| {
+                                Grid::with_id("property-grid-inner")
+                                    .size((Sizing::FILL, Sizing::Hug))
+                                    .cols(Rc::from([Track::hug(), Track::fill()]))
+                                    .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                                    .gap_xy(6.0, 16.0)
+                                    .show(ui, |ui| {
+                                        Text::new("Title:")
+                                            .size_px(14.0)
+                                            .grid_cell((0, 0))
+                                            .show(ui);
+                                        Text::new(
+                                            "Lorem Ipsum is simply dummy text of the printing industry.",
+                                        )
+                                        .size_px(14.0)
+                                        .wrapping()
+                                        .grid_cell((0, 1))
+                                        .show(ui);
+                                        Text::new("Description:")
+                                            .size_px(14.0)
+                                            .grid_cell((1, 0))
+                                            .show(ui);
+                                        Text::new(PARAGRAPH)
+                                            .size_px(14.0)
+                                            .wrapping()
+                                            .grid_cell((1, 1))
+                                            .show(ui);
+                                        Text::new("Tags:")
+                                            .size_px(14.0)
+                                            .grid_cell((2, 0))
+                                            .show(ui);
+                                        Text::new("layout, grid, intrinsic, wrapping, css")
+                                            .size_px(14.0)
+                                            .wrapping()
+                                            .grid_cell((2, 1))
+                                            .show(ui);
+                                    });
+                            });
+                        });
+                });
+        });
+    ui.end_frame();
+
+    let mut cmds = RenderCmdBuffer::new();
+    crate::renderer::encode(
+        ui.tree(),
+        ui.layout_engine.result(),
+        ui.cascades.result(),
+        None,
+        &mut cmds,
+    );
+    let mut entries: Vec<(f32, f32, u64)> = Vec::new();
+    for i in 0..cmds.len() {
+        if let RenderCmd::DrawText(p) = cmds.get(i) {
+            entries.push((p.rect.min.x, p.rect.min.y, p.key.text_hash));
+        }
+    }
+    for i in 0..entries.len() {
+        for j in (i + 1)..entries.len() {
+            let (xi, yi, hi) = entries[i];
+            let (xj, yj, hj) = entries[j];
+            if hi != hj && (xi - xj).abs() < 0.5 && (yi - yj).abs() < 0.5 {
+                panic!(
+                    "two distinct texts at same (x,y): #{i} hash={hi:#x} vs #{j} hash={hj:#x} at ({xi}, {yi})",
+                );
+            }
+        }
+    }
+}
+
+/// Showcase regression: the property-grid section overlapped its
+/// label column ("Title:", "Description:", "Tags:") with its
+/// wrapping value column. Pin that label cells in column 0 don't
+/// horizontally overlap value cells in column 1.
+#[test]
+fn property_grid_hug_label_does_not_overlap_fill_value() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 1.0));
+    let mut label = None;
+    let mut value = None;
+    Panel::vstack()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            Grid::new()
+                .size((Sizing::FILL, Sizing::Hug))
+                .cols(Rc::from([Track::hug(), Track::fill()]))
+                .rows(Rc::from([Track::hug()]))
+                .gap_xy(6.0, 16.0)
+                .show(ui, |ui| {
+                    label = Some(
+                        Text::new("Title:")
+                            .size_px(14.0)
+                            .grid_cell((0, 0))
+                            .show(ui)
+                            .node,
+                    );
+                    value = Some(
+                        Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
+                            .size_px(14.0)
+                            .wrapping()
+                            .grid_cell((0, 1))
+                            .show(ui)
+                            .node,
+                    );
+                });
+        });
+    ui.end_frame();
+
+    let layout = ui.layout_engine.result();
+    let lr = layout.rect(label.unwrap());
+    let vr = layout.rect(value.unwrap());
+    assert!(lr.size.w > 0.0, "label cell must have a positive width");
+    assert!(
+        vr.min.x >= lr.max().x - 0.5,
+        "value cell must start at or past the label cell's right edge: \
+         label={lr:?}, value={vr:?}",
+    );
+}
