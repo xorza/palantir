@@ -54,91 +54,102 @@ absolute terms but is diluted across the larger denominator. See
   snapshot, in-place rewrite on same-len, append-and-mark-garbage on
   size change, compaction at `live × 2`, sweep on `removed`.
 
-## Steps
+## What shipped
 
-1. **Add `available_q` to `LayoutResult`.** One `Vec<AvailableKey>`
-   parallel to `desired`, written in `LayoutEngine::measure`. Encoder
-   needs the same key dimension the measure cache uses; right now it's
-   intra-engine.
+- `EncodeSnapshot { subtree_hash, available_q, cmds: Span, data: Span }`.
+- Three SoA arenas — `kinds_arena`, `starts_arena` (parallel,
+  subtree-relative offsets), `data_arena` — plus an
+  `FxHashMap<WidgetId, EncodeSnapshot>` index. Same `COMPACT_RATIO = 2`
+  / `COMPACT_FLOOR = 64` as `MeasureCache`; eviction-locked via the
+  shared `removed` sweep in `Ui::end_frame`.
+- `RenderCmdBuffer::extend_from_cached` is the cache-replay primitive;
+  `bump_rect_min` is the shared rect-shift helper used by both replay
+  and `EncodeCache::write_subtree`.
+- `available_q` was promoted from `LayoutScratch` to `LayoutResult` so
+  the encoder can read it without reaching into the engine.
+- Encoder is now an entity (`pub(crate) struct Encoder { cache, cmds }`);
+  `Frontend` holds `Encoder` + `Composer`, both own their outputs and
+  return them from the do-the-work method.
 
-2. **Translate-aware append on `RenderCmdBuffer`.** Add
-   `extend_translated(&mut self, src: &Self, cmd_range: Range<u32>,
-   data_range: Range<u32>, offset: Vec2)`: copies cmd kinds,
-   recomputes `starts`, copies the data slice, and rewrites
-   `rect.min` in `DrawRect`/`DrawRectStroked`/`DrawText`/`PushClip`
-   payloads in-place. `PushTransform` / `Pop*` pass through untouched
-   (transforms are subtree-local; they compose with parent at
-   composer-time).
+## Where the time goes
 
-3. **`EncodeCache` (`src/renderer/frontend/encoder/cache.rs`).**
-   Mirror `layout/cache/mod.rs`. Two arenas (`kinds: Vec<CmdKind>`,
-   `data: Vec<u32>`) plus per-id `EncodeSnapshot { subtree_hash,
-   available_q, kinds_start, kinds_len, data_start, data_len }`.
-   `try_lookup` returns the cmd/data slice pair. `write_subtree` does
-   the subtract-origin rewrite at insertion time. In-place rewrite
-   when both `kinds_len` and `data_len` match (~always: same
-   `subtree_hash` → identical cmd shape and payload sizes).
-   `sweep_removed`, `compact`, `clear`. Same `COMPACT_RATIO` /
-   `COMPACT_FLOOR` constants.
+The bench measures `end_frame()`, which runs:
 
-4. **Hook into `encode_node`.** Before the shape loop, when
-   `damage_filter.is_none()` and not invisible: `if let Some(hit) =
-   cache.try_lookup(wid, subtree_hash, available_q)` →
-   `out.extend_translated(...)`, return. On miss: capture `out.len()`
-   and `out.data.len()` as `snap_start`s, run normal encode for self +
-   children, then `cache.write_subtree(...)` with the resulting slices
-   and `origin = layout.rect(id).min`. Cache passed in as a new `&mut
-   EncodeCache` parameter on `encode` / threaded onto `Frontend`.
+1. layout (measure cache hit ⇒ ~free in both arms)
+2. cascade rebuild
+3. damage compute
+4. **encoder** (cache hit vs forced miss — only this differs)
+5. composer (cmd stream → quads — runs in both arms)
 
-5. **Tests** (`encoder/cache_tests.rs`).
-   - Cached replay byte-identical to cold encode (after origin
-     translate).
-   - In-place rewrite keeps snapshot positions stable across unchanged
-     frame.
-   - Subtree-skip across origin shift produces correctly translated
-     cmds.
-   - Authoring change (color, text, added child) busts the right slot.
-   - `damage_filter = Some(_)` does not consult the cache.
-   - `sweep_removed` evicts; compaction preserves slot validity.
+So the cached-vs-miss delta is purely encoder work, but it sits on top
+of (2) + (3) + (5) which are shared denominators. On the nested
+workload, the composer alone walks ~3 200 cmds emitting one quad each;
+that's the floor that pulls the percentage down. The encoder pass
+itself is saving substantially more than 17 % in absolute terms.
 
-6. **Bench.** Extend `benches/measure_cache.rs` with `encode_flat` /
-   `encode_nested` groups: build the same workloads, time
-   `frontend.build()` `cached` vs `__clear_encode_cache()`
-   `forced_miss`. Target: ≥20% on the nested workload.
+## Follow-up wins (in rough order of bang-for-buck)
 
-7. **Docs + status.** Update this doc with shipped status + numbers.
-   Tick a box in `CLAUDE.md` Status. Cross-link from
-   `measure-cache.md` "Not done — deferred" since that doc currently
-   implies encode-cache is the next obvious extension.
+1. **Composer pass.** It's the biggest constant in `end_frame` once
+   the encode cache is in. Same key idea would work: snapshot
+   `(quads, texts, groups)` per cached encode subtree, rewrite scissor
+   rects under the current root origin at replay time. Bigger ROI than
+   anything below — the structural pattern is identical to this cache,
+   just one layer further down the pipeline. Estimated win: pulls
+   nested closer to the cumulative ratio (cached encode × cached
+   compose).
 
-## Follow-up: hit-hint propagation
+2. **Hit-hint propagation.** Both caches key on
+   `(WidgetId, subtree_hash, available_q)` and sweep on the same
+   `removed` list, so a measure-cache hit is by construction an
+   encode-cache hit too (modulo independent `__clear` for benches).
+   Layout can write a `Vec<bool>` (or a packed bit on `LayoutResult`)
+   marking which subtree roots were measure-cache hits this frame; the
+   encoder reads the bit and skips its own hash-map probe on those
+   subtrees, going straight to the arena slice copy. Saves one
+   `FxHashMap::get` per cached subtree. Tiny per-call win, only sound
+   while the two caches stay eviction-locked. Worth doing once a
+   profile shows hashmap lookups in the top frames.
 
-Both caches key on `(WidgetId, subtree_hash, available_q)` and sweep
-on the same `removed` list, so a measure-cache hit is by construction
-an encode-cache hit too (modulo independent `__clear` for benches).
-Layout can write a `Vec<bool>` (or a packed bit on `LayoutResult`)
-marking which subtree roots were measure-cache hits this frame; the
-encoder reads the bit and skips its own hash-map probe on those
-subtrees, going straight to the arena slice copy. Saves one hash
-lookup per cached subtree.
+3. **Damage-aware encode cache.** Currently
+   `damage_filter.is_some()` bypasses the cache entirely, so animated
+   frames don't get the win. The follow-up is a damage-aware replay:
+   subtree-skip when `screen_rect ∩ damage = ∅`. The cached cmds are
+   already correct (they don't change with damage region — they're the
+   full subtree); we'd just gate the replay on intersection. Closer to
+   a damage optimization than to this cache, but composes naturally.
 
-Tiny win, only sound while the two caches stay eviction-locked.
-Don't block the initial encode-cache landing on this — add it as a
-follow-up once benches show the per-subtree lookup cost matters.
+4. **Shape-payload SIMD on `bump_rect_min`.** The replay loop reads
+   2× f32 / writes 2× f32 per rect-bearing cmd. With 3 200 cmds, that's
+   ~12 800 f32 ops on the hot path. The kinds array is small enough
+   for a SIMD-friendly precomputed mask (rect-bearing bit per cmd) so
+   `bump_rect_min` could vectorize the rect shifts. Only worth it if
+   profiles show this loop hot — currently it's dominated by composer
+   iteration, not the rewrite.
 
-## Risks / open questions
+5. **Bypass cache for tiny subtrees.** A subtree of 1-2 cmds costs
+   more in hashmap probe + write_subtree bookkeeping than it saves on
+   replay. A `min_cmds_for_cache: usize` (say 4) threshold would skip
+   speculative writes for leaves and small panels. Speculative — needs
+   a profile showing per-leaf overhead before tightening.
 
-- **Float determinism on translate.** Subtract+re-add `origin` can
-  drift one ulp vs a cold-encode comparison. Tests compare with an
-  epsilon; if showcase shows visible jitter, store the delta and apply
-  once at replay rather than round-tripping.
-- **Damage-frame coverage.** Skipping the cache on
-  `damage_filter=Some` means animated frames don't benefit. If
-  profiles show that's the bottleneck, the follow-up is a damage-aware
-  variant (subtree skip when `screen_rect ∩ damage = ∅`), which is
-  closer to a damage optimization than to this cache.
-- **Stroke / no-stroke variant split.** `RenderCmdBuffer` already
-  splits `DrawRect` and `DrawRectStroked` by kind, so the data-len
-  check in step 3 is a sufficient size guard — a fill→stroked switch
-  flips the kind and the rewrite falls through to the append path
-  correctly.
+6. **Coarser `available_q` quantization.** 1-logical-px granularity
+   may bust the cache on sub-pixel parent drift (e.g. animated `Fill`
+   children). Bump to 2 px or 4 px if a profile shows hash-match /
+   avail-mismatch as a common miss path.
+
+## Decisions revisited
+
+The "Decisions" section above documents the design choices from the
+planning phase. After landing, all of them held:
+
+- Subtree-relative storage: round-trip is byte-identical (no float
+  drift on integer-px inputs; tests pin this).
+- Cascade-not-in-key: confirmed by reading `encoder/mod.rs` —
+  `damage_filter.is_some()` is the only path that reads `screen_rect`,
+  and we bypass the cache in that branch.
+- Reusing `MeasureCache` shape: SoA arenas + per-`WidgetId` snapshot +
+  in-place rewrite + append-on-mismatch + compact at `live × 2`.
+- `extend_translated` (the doc's original primitive name) was dropped
+  in favor of `extend_from_cached` once `EncodeCache` stored
+  subtree-relative slices directly. Same correctness anchor
+  (`bump_rect_min`), simpler call site.
