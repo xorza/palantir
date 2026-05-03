@@ -21,41 +21,33 @@
 //! until the next compact.
 
 use crate::layout::result::ShapedText;
-use crate::primitives::{Size, WidgetId};
+use crate::primitives::{Size, Span, WidgetId};
 use crate::tree::NodeHash;
 use rustc_hash::FxHashMap;
 
-/// 24-byte snapshot. `start..start+len` indexes the three node-
-/// indexed arenas (`desired_arena`, `text_arena`, `available_arena`);
-/// `hugs_start..hugs_start+hugs_len` indexes `hugs_arena`. The
-/// snapshot's quantized `available` is recoverable as
-/// `available_arena[start]` (always the snapshot root's per-node
-/// entry) — no separate field.
+/// 24-byte snapshot. `nodes` indexes the three node-indexed arenas
+/// (`desired_arena`, `text_arena`, `available_arena`); `hugs` indexes
+/// `hugs_arena`. The snapshot's quantized `available` is recoverable
+/// as `available_arena[nodes.start]` (always the snapshot root's
+/// per-node entry) — no separate field.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ArenaSnapshot {
     /// Rolled subtree hash from last frame. The rollup includes child
     /// count and per-child subtree hashes, so any structural or
     /// authoring change anywhere in the subtree busts the key.
     pub subtree_hash: NodeHash,
-    /// Range start into all three node-indexed arenas.
-    pub start: u32,
-    /// Range length (number of nodes in the snapshot's subtree).
-    /// `desired_arena[start..start+len]` is the subtree's `desired`
-    /// in pre-order; index 0 (i.e. `desired_arena[start]`) is the
+    /// Range over the three node-indexed arenas. `desired_arena[nodes.range()]`
+    /// is the subtree's `desired` in pre-order; index 0 is the
     /// snapshot root's own size.
-    pub len: u32,
-    /// Range start into `hugs_arena`. Per-grid hug arrays for every
+    pub nodes: Span,
+    /// Range over `hugs_arena`. Per-grid hug arrays for every
     /// `LayoutMode::Grid` descendant of the subtree, in pre-order.
     /// Each grid contributes four arrays in fixed order:
-    /// cols.max, cols.min, rows.max, rows.min. Empty for grid-free
-    /// subtrees (`hugs_len == 0`).
-    // todo range -like struct for u32?
-    pub hugs_start: u32,
-    /// Total f32 count under this snapshot's hug range. Stable
-    /// across frames as long as `subtree_hash` is unchanged because
-    /// the hash includes every descendant `GridDef` (track count +
-    /// sizing).
-    pub hugs_len: u32,
+    /// cols.max, cols.min, rows.max, rows.min. `Span::EMPTY` for
+    /// grid-free subtrees. Length stable across frames as long as
+    /// `subtree_hash` is unchanged because the hash includes every
+    /// descendant `GridDef` (track count + sizing).
+    pub hugs: Span,
 }
 
 /// Quantized `available` size — the dimensional half of the cache
@@ -154,23 +146,19 @@ impl MeasureCache {
         curr_avail: AvailableKey,
     ) -> Option<CachedSubtree<'_>> {
         let snap = self.snapshots.get(&wid)?;
-        let s = snap.start as usize;
-        // Snapshot's `available_q` lives at `available_arena[start]` —
+        let nodes = snap.nodes.range();
+        // Snapshot's `available_q` lives at `available_arena[nodes.start]` —
         // the per-node entry for the snapshot root, written at the
         // same time as the field used to live.
-        if snap.subtree_hash != curr_hash || self.available_arena[s] != curr_avail {
+        if snap.subtree_hash != curr_hash || self.available_arena[nodes.start] != curr_avail {
             return None;
         }
-
-        let e = s + snap.len as usize;
-        let hs = snap.hugs_start as usize;
-        let he = hs + snap.hugs_len as usize;
         Some(CachedSubtree {
-            root: self.desired_arena[s],
-            desired: &self.desired_arena[s..e],
-            text_shapes: &self.text_arena[s..e],
-            available_q: &self.available_arena[s..e],
-            hugs: &self.hugs_arena[hs..he],
+            root: self.desired_arena[nodes.start],
+            desired: &self.desired_arena[nodes.clone()],
+            text_shapes: &self.text_arena[nodes.clone()],
+            available_q: &self.available_arena[nodes],
+            hugs: &self.hugs_arena[snap.hugs.range()],
         })
     }
 
@@ -199,20 +187,17 @@ impl MeasureCache {
         let new_hugs_len = hugs.len() as u32;
 
         if let Some(prev) = self.snapshots.get_mut(&wid)
-            && prev.len == new_len
-            && prev.hugs_len == new_hugs_len
+            && prev.nodes.len == new_len
+            && prev.hugs.len == new_hugs_len
         {
             // In-place: hot path. Same `subtree_hash` → identical
             // structure → identical hug-array shape, so the existing
             // ranges fit byte-for-byte.
-            let s = prev.start as usize;
-            let e = s + new_len as usize;
-            self.desired_arena[s..e].copy_from_slice(desired);
-            self.text_arena[s..e].copy_from_slice(text_shapes);
-            self.available_arena[s..e].copy_from_slice(available_qs);
-            let hs = prev.hugs_start as usize;
-            let he = hs + new_hugs_len as usize;
-            self.hugs_arena[hs..he].copy_from_slice(hugs);
+            let nodes = prev.nodes.range();
+            self.desired_arena[nodes.clone()].copy_from_slice(desired);
+            self.text_arena[nodes.clone()].copy_from_slice(text_shapes);
+            self.available_arena[nodes].copy_from_slice(available_qs);
+            self.hugs_arena[prev.hugs.range()].copy_from_slice(hugs);
             prev.subtree_hash = subtree_hash;
             return;
         }
@@ -221,23 +206,21 @@ impl MeasureCache {
         // garbage, append the new one. Subtree size only changes when
         // a widget's structure changes, so this path is rare.
         if let Some(prev) = self.snapshots.get(&wid) {
-            self.live_entries -= prev.len as usize;
+            self.live_entries -= prev.nodes.len as usize;
         }
-        let start = self.desired_arena.len() as u32;
+        let nodes = Span::new(self.desired_arena.len() as u32, new_len);
         self.desired_arena.extend_from_slice(desired);
         self.text_arena.extend_from_slice(text_shapes);
         self.available_arena.extend_from_slice(available_qs);
-        let hugs_start = self.hugs_arena.len() as u32;
+        let hugs_span = Span::new(self.hugs_arena.len() as u32, new_hugs_len);
         self.hugs_arena.extend_from_slice(hugs);
         self.live_entries += new_len as usize;
         self.snapshots.insert(
             wid,
             ArenaSnapshot {
                 subtree_hash,
-                start,
-                len: new_len,
-                hugs_start,
-                hugs_len: new_hugs_len,
+                nodes,
+                hugs: hugs_span,
             },
         );
 
@@ -255,7 +238,7 @@ impl MeasureCache {
     pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
-                self.live_entries -= snap.len as usize;
+                self.live_entries -= snap.nodes.len as usize;
             }
         }
     }
@@ -288,16 +271,14 @@ impl MeasureCache {
         let mut new_avail: Vec<AvailableKey> = Vec::with_capacity(*live_entries);
         let mut new_hugs: Vec<f32> = Vec::with_capacity(hugs_arena.len());
         for snap in snapshots.values_mut() {
-            let s = snap.start as usize;
-            let e = s + snap.len as usize;
-            snap.start = new_desired.len() as u32;
-            new_desired.extend_from_slice(&desired_arena[s..e]);
-            new_text.extend_from_slice(&text_arena[s..e]);
-            new_avail.extend_from_slice(&available_arena[s..e]);
-            let hs = snap.hugs_start as usize;
-            let he = hs + snap.hugs_len as usize;
-            snap.hugs_start = new_hugs.len() as u32;
-            new_hugs.extend_from_slice(&hugs_arena[hs..he]);
+            let nodes = snap.nodes.range();
+            snap.nodes.start = new_desired.len() as u32;
+            new_desired.extend_from_slice(&desired_arena[nodes.clone()]);
+            new_text.extend_from_slice(&text_arena[nodes.clone()]);
+            new_avail.extend_from_slice(&available_arena[nodes]);
+            let hugs = snap.hugs.range();
+            snap.hugs.start = new_hugs.len() as u32;
+            new_hugs.extend_from_slice(&hugs_arena[hugs]);
         }
         *desired_arena = new_desired;
         *text_arena = new_text;

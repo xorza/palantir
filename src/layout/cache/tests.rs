@@ -15,9 +15,7 @@ fn run_frame(ui: &mut Ui, build: impl FnOnce(&mut Ui)) {
 fn snap_for(ui: &Ui, wid: WidgetId) -> Option<(super::ArenaSnapshot, &[Size])> {
     let cache = &ui.layout_engine.cache;
     let snap = *cache.snapshots.get(&wid)?;
-    let s = snap.start as usize;
-    let e = s + snap.len as usize;
-    Some((snap, &cache.desired_arena[s..e]))
+    Some((snap, &cache.desired_arena[snap.nodes.range()]))
 }
 
 #[test]
@@ -31,7 +29,7 @@ fn leaf_snapshot_populated_after_first_frame() {
     });
     let wid = WidgetId::from_hash("a");
     let (snap, desired) = snap_for(&ui, wid).expect("leaf snapshot must be inserted");
-    assert_eq!(snap.len, 1, "leaf subtree spans one node");
+    assert_eq!(snap.nodes.len, 1, "leaf subtree spans one node");
     assert_eq!(desired[0].w, 50.0);
     assert_eq!(desired[0].h, 50.0);
 }
@@ -139,7 +137,7 @@ fn changing_available_forces_miss_and_remeasure() {
 
     let wid = WidgetId::from_hash("fill");
     let avail1 =
-        ui.layout_engine.cache.available_arena[snap_for(&ui, wid).unwrap().0.start as usize];
+        ui.layout_engine.cache.available_arena[snap_for(&ui, wid).unwrap().0.nodes.start as usize];
     let d1 = snap_for(&ui, wid).unwrap().1[0];
 
     ui.begin_frame(Display::from_physical(UVec2::new(80, 80), 1.0));
@@ -147,7 +145,7 @@ fn changing_available_forces_miss_and_remeasure() {
     ui.end_frame();
 
     let avail2 =
-        ui.layout_engine.cache.available_arena[snap_for(&ui, wid).unwrap().0.start as usize];
+        ui.layout_engine.cache.available_arena[snap_for(&ui, wid).unwrap().0.nodes.start as usize];
     let desired2 = snap_for(&ui, wid).unwrap().1[0];
     assert_ne!(
         avail1, avail2,
@@ -175,7 +173,7 @@ fn subtree_snapshot_covers_every_descendant() {
     let group_wid = WidgetId::from_hash("group");
     let (snap, desired) = snap_for(&ui, group_wid).unwrap();
     // group itself + 3 children = 4 entries.
-    assert_eq!(snap.len, 4);
+    assert_eq!(snap.nodes.len, 4);
     // Children are leaves — their own desired sizes are stored at
     // indices 1, 2, 3 in pre-order.
     assert_eq!(desired[1].w, 10.0);
@@ -288,14 +286,22 @@ fn in_place_rewrite_preserves_arena_position() {
     ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     Panel::hstack_with_id("root").show(&mut ui, |ui| build(ui, 0.2));
     ui.end_frame();
-    let start1 = snap_for(&ui, WidgetId::from_hash("a")).unwrap().0.start;
+    let start1 = snap_for(&ui, WidgetId::from_hash("a"))
+        .unwrap()
+        .0
+        .nodes
+        .start;
 
     // Different fill → different hash, but same subtree size (still 1
     // leaf). In-place path should reuse the slot.
     ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     Panel::hstack_with_id("root").show(&mut ui, |ui| build(ui, 0.9));
     ui.end_frame();
-    let start2 = snap_for(&ui, WidgetId::from_hash("a")).unwrap().0.start;
+    let start2 = snap_for(&ui, WidgetId::from_hash("a"))
+        .unwrap()
+        .0
+        .nodes
+        .start;
 
     assert_eq!(
         start1, start2,
@@ -389,7 +395,7 @@ fn cache_hits_remain_valid_after_compaction() {
         .snapshots
         .get(&kept_wid)
         .expect("kept widget must still have a snapshot");
-    let s = snap.start as usize;
+    let s = snap.nodes.start as usize;
     let kept_desired_post = cache.desired_arena[s];
     assert_eq!(
         kept_desired_pre, kept_desired_post,
