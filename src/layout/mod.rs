@@ -1,13 +1,15 @@
 use crate::element::LayoutMode;
-use crate::primitives::{Rect, Size, Sizing};
+use crate::primitives::{Rect, Size, Sizing, WidgetId};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
+use cache::{LeafCacheKey, LeafSnapshot, MeasureCache, quantize_available};
 use grid::GridContext;
 use support::{resolve_axis_size, zero_subtree};
 use wrapstack::WrapScratch;
 
 mod axis;
+mod cache;
 mod canvas;
 mod grid;
 mod intrinsic;
@@ -53,6 +55,9 @@ pub struct LayoutEngine {
     pub(in crate::layout) desired: Vec<Size>,
     pub(in crate::layout) intrinsics: Vec<[f32; 4]>,
     pub(in crate::layout) result: LayoutResult,
+    /// Cross-frame leaf-measure cache. See [`cache`] and
+    /// `docs/measure-cache.md`.
+    pub(in crate::layout) cache: MeasureCache,
 }
 
 /// Quantize wrap target to ~0.1 logical px. Coarse enough to absorb
@@ -89,6 +94,13 @@ impl LayoutEngine {
 
     pub fn rect(&self, id: NodeId) -> Rect {
         self.result.rect(id)
+    }
+
+    /// Drop cross-frame measure-cache entries for `WidgetId`s that
+    /// vanished this frame. Called from `Ui::end_frame` with the same
+    /// `removed` slice that `Damage` and `TextMeasurer` consume.
+    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        self.cache.sweep_removed(removed);
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
@@ -182,6 +194,31 @@ impl LayoutEngine {
         let extras = tree.read_extras(node);
         let (min_size, max_size) = (extras.min_size, extras.max_size);
 
+        // Phase-1 measure-cache short-circuit: leaves only. Same
+        // `WidgetId`, same subtree hash, same quantized `available`
+        // → reuse last frame's `desired` (and text shape, if any)
+        // without walking shapes or dispatching cosmic.
+        let leaf_cache_key = if matches!(mode, LayoutMode::Leaf) {
+            let key = LeafCacheKey {
+                wid: tree.widget_ids[node.index()],
+                subtree_hash: tree.subtree_hashes[node.index()],
+                available_q: quantize_available(available),
+            };
+            if let Some(snap) = self.cache.prev.get(&key.wid)
+                && snap.subtree_hash == key.subtree_hash
+                && snap.available_q == key.available_q
+            {
+                self.desired[node.index()] = snap.desired;
+                if let Some(ts) = snap.text_shape {
+                    self.result.set_text_shape(node, ts);
+                }
+                return snap.desired;
+            }
+            Some(key)
+        } else {
+            None
+        };
+
         // For each axis: if this node has a declared `Fixed` size, that's the
         // outer width children see — `inner = fixed - padding`. Otherwise
         // (Hug / Fill) we propagate whatever the parent gave us. Without
@@ -238,6 +275,19 @@ impl LayoutEngine {
         );
 
         self.desired[node.index()] = desired;
+
+        if let Some(key) = leaf_cache_key {
+            self.cache.prev.insert(
+                key.wid,
+                LeafSnapshot {
+                    subtree_hash: key.subtree_hash,
+                    available_q: key.available_q,
+                    desired,
+                    text_shape: self.result.text_shape(node),
+                },
+            );
+        }
+
         desired
     }
 
