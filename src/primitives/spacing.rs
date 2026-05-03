@@ -1,6 +1,7 @@
 use super::Num;
 
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Spacing {
     pub left: f32,
     pub top: f32,
