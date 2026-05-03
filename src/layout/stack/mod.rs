@@ -5,7 +5,7 @@ use super::{Axis, LayoutEngine, LenReq};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;
-use crate::tree::{NodeId, Tree};
+use crate::tree::{Child, NodeId, Tree};
 
 /// Cross-axis alignment of a child, picked from the shared two-axis
 /// `resolved_axis_align` so HStack/VStack share the cascade rule with
@@ -157,11 +157,14 @@ pub(super) fn arrange(
     let mut cursor = axis.main_v(inner.min) + start_offset;
     let mut first = true;
 
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min));
-            continue;
-        }
+    for child in tree.children_with_state(node) {
+        let c = match child {
+            Child::Collapsed(c) => {
+                zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min));
+                continue;
+            }
+            Child::Active(c) => c,
+        };
         let s = *tree.layout(c);
         let d = layout.scratch.desired[c.index()];
         if !first {

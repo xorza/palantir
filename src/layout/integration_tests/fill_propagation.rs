@@ -32,9 +32,9 @@ fn assert_wrapped_within_surface(ui: &crate::Ui, node: crate::tree::NodeId, surf
 }
 
 /// Regression: a constrained ZStack (`Sizing::Fill`/`Fixed`) must pass
-/// its inner size to children, not `INFINITY`. Without this, Step B's
+/// its inner size to children, not `INFINITY`. Without this,
 /// Grid Auto resolution falls back to max-content for any grid nested
-/// inside a ZStack.
+/// inside a ZStack (Phase-1 column intrinsics need a finite slot).
 #[test]
 fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
@@ -93,8 +93,8 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
 }
 
 /// Pin: a `Hug` grid with a `Fill` column has the Fill column collapse
-/// to 0 at arrange (no leftover available). Step B handles this by
-/// leaving Fill cols unresolved during measure → cells in Fill cols get
+/// to 0 at arrange (no leftover available). The measure pass handles
+/// this by leaving Fill cols unresolved → cells in Fill cols get
 /// `INFINITY` available width → text shapes at natural (single line),
 /// so row heights don't grow weirdly when the window resizes
 /// horizontally.

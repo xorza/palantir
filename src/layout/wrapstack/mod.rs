@@ -17,7 +17,7 @@ use super::support::{AutoBias, place_axis, resolved_axis_align, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
 use crate::primitives::{Justify, Rect, Size, Sizing};
 use crate::text::TextMeasurer;
-use crate::tree::{NodeId, Tree};
+use crate::tree::{Child, NodeId, Tree};
 
 /// Flat per-frame scratch for wrap arrange. One contiguous
 /// `Vec<NodeId>` pool serves all nesting depths: each `enter()`
@@ -243,19 +243,22 @@ pub(super) fn arrange(
 
     // Walk all children: collapsed get zeroed at the cursor, active
     // children pack into the current line and flush on overflow.
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            // Anchor inside this layout's inner rect at the current
-            // cursor. Position is stable; size is zero so there's no
-            // visual or input contribution.
-            zero_subtree(
-                layout,
-                tree,
-                c,
-                axis.compose_point(axis.main_v(inner.min), cross_cursor),
-            );
-            continue;
-        }
+    for child in tree.children_with_state(node) {
+        let c = match child {
+            Child::Collapsed(c) => {
+                // Anchor inside this layout's inner rect at the
+                // current cursor. Position is stable; size is zero so
+                // there's no visual or input contribution.
+                zero_subtree(
+                    layout,
+                    tree,
+                    c,
+                    axis.compose_point(axis.main_v(inner.min), cross_cursor),
+                );
+                continue;
+            }
+            Child::Active(c) => c,
+        };
 
         let d = layout.scratch.desired[c.index()];
         let m = axis.main(d);

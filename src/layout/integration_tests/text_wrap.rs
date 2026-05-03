@@ -89,7 +89,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     // line-height variation).
     assert!(
         shaped.measured.h > 32.0,
-        "expected multi-line wrapped height after Step B, got h={}",
+        "expected multi-line wrapped height, got h={}",
         shaped.measured.h,
     );
     assert!(
@@ -99,10 +99,9 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     );
 }
 
-/// Step A acceptance: `Ui::intrinsic` returns sane values for a
-/// wrapping text leaf inside a Grid `Auto` cell. Pure infrastructure
-/// test — confirms the API + cache + per-driver functions are wired
-/// correctly.
+/// `Ui::intrinsic` returns sane values for a wrapping text leaf
+/// inside a Grid `Auto` cell. Pure infrastructure test — confirms
+/// the API + cache + per-driver functions are wired correctly.
 #[test]
 fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
@@ -137,9 +136,10 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     );
 }
 
-/// Step C pin: chat-message HStack pattern. Avatar (Fixed) + Message
-/// (Fill, wrapping text). Without Step C, message is measured at INF →
-/// shapes at natural width → cached shape disagrees with arrange's slot.
+/// Chat-message HStack pattern. Avatar (Fixed) + Message (Fill,
+/// wrapping text). Without HStack-Fill min-content floor + width
+/// commitment, message is measured at INF → shapes at natural width →
+/// cached shape disagrees with arrange's slot.
 #[test]
 fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
