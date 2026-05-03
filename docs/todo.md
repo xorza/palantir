@@ -1,7 +1,5 @@
 # Todo
 
-paralelize hash compute
-
 remove dim from frontend
 
 Open work pulled from `docs/`. Each item is shipped-when-conditions-merit;
