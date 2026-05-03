@@ -3,7 +3,7 @@ use crate::primitives::{Rect, Size, Sizing, WidgetId};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
-use cache::{MeasureCache, SubtreeCacheKey, quantize_available};
+use cache::{MeasureCache, quantize_available};
 use grid::GridContext;
 use support::{resolve_axis_size, zero_subtree};
 use wrapstack::WrapScratch;
@@ -209,26 +209,18 @@ impl LayoutEngine {
         // authoring equivalence; `available_q` guards against parent
         // resize since outer-leaf measure is `available`-dependent
         // for `Hug` / `Fill` axes.
-        let cache_key = SubtreeCacheKey {
-            wid: tree.widget_ids[node.index()],
-            subtree_hash: tree.subtree_hashes[node.index()],
-            available_q: quantize_available(available),
-        };
-        if let Some(arena) =
-            self.cache
-                .lookup(cache_key.wid, cache_key.subtree_hash, cache_key.available_q)
-        {
+        let cache_wid = tree.widget_ids[node.index()];
+        let cache_hash = tree.subtree_hashes[node.index()];
+        let cache_avail = quantize_available(available);
+        if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
             let curr_start = node.index();
-            let curr_end = curr_start + arena.len();
+            let curr_end = curr_start + hit.desired.len();
             // Subtree hash includes child count + per-child rollups,
             // so a length mismatch here would mean the rollup is broken.
             debug_assert_eq!(curr_end, tree.subtree_end[curr_start] as usize);
-            let root_desired = self.cache.desired_arena[arena.start];
-            self.desired[curr_start..curr_end]
-                .copy_from_slice(&self.cache.desired_arena[arena.clone()]);
-            self.result
-                .restore_text_shapes(curr_start, &self.cache.text_arena[arena]);
-            return root_desired;
+            self.desired[curr_start..curr_end].copy_from_slice(hit.desired);
+            self.result.restore_text_shapes(curr_start, hit.text_shapes);
+            return hit.root;
         }
 
         // For each axis: if this node has a declared `Fixed` size, that's the
@@ -296,7 +288,9 @@ impl LayoutEngine {
         let start = node.index();
         let end = tree.subtree_end[start] as usize;
         self.cache.write_subtree(
-            cache_key,
+            cache_wid,
+            cache_hash,
+            cache_avail,
             &self.desired[start..end],
             self.result.text_shapes_slice(start, end),
         );
