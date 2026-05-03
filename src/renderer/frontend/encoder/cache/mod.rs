@@ -31,7 +31,6 @@ use crate::renderer::frontend::cmd_buffer::{CmdKind, RenderCmdBuffer, bump_rect_
 use crate::tree::NodeHash;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
-use std::ops::Range;
 
 /// 32-byte snapshot. `cmds` indexes the parallel
 /// (`kinds_arena`, `starts_arena`); `data` indexes `data_arena`. Both
@@ -87,7 +86,7 @@ impl EncodeCache {
     }
 
     /// Insert or overwrite `wid`'s snapshot from `src`'s freshly-encoded
-    /// `cmd_range` / `data_range`. `origin` is the snapshot root's
+    /// `src_cmds` / `src_data` spans. `origin` is the snapshot root's
     /// arranged `min` — subtracted from each rect-bearing payload's
     /// `rect.min` so storage is subtree-relative.
     ///
@@ -103,21 +102,17 @@ impl EncodeCache {
         subtree_hash: NodeHash,
         available_q: AvailableKey,
         src: &RenderCmdBuffer,
-        cmd_range: Range<u32>,
-        data_range: Range<u32>,
+        src_cmds: Span,
+        src_data: Span,
         origin: Vec2,
     ) {
-        let cmd_lo = cmd_range.start as usize;
-        let cmd_hi = cmd_range.end as usize;
-        let data_lo = data_range.start as usize;
-        let data_hi = data_range.end as usize;
-        let new_cmd_len = (cmd_hi - cmd_lo) as u32;
-        let new_data_len = (data_hi - data_lo) as u32;
         let neg_origin = -origin;
+        let src_cmd_range = src_cmds.range();
+        let src_data_range = src_data.range();
 
         if let Some(prev) = self.snapshots.get_mut(&wid)
-            && prev.cmds.len == new_cmd_len
-            && prev.data.len == new_data_len
+            && prev.cmds.len == src_cmds.len
+            && prev.data.len == src_data.len
         {
             // In-place: hot path. Same subtree_hash → identical layout.
             let cmds = prev.cmds.range();
@@ -130,16 +125,16 @@ impl EncodeCache {
                 data_arena,
                 ..
             } = self;
-            let src_kinds = &src.kinds[cmd_lo..cmd_hi];
+            let src_kinds = &src.kinds[src_cmd_range.clone()];
             debug_assert_eq!(&kinds_arena[cmds.clone()], src_kinds);
             kinds_arena[cmds.clone()].copy_from_slice(src_kinds);
             for (dst, &abs) in starts_arena[cmds]
                 .iter_mut()
-                .zip(src.starts[cmd_lo..cmd_hi].iter())
+                .zip(src.starts[src_cmd_range].iter())
             {
-                *dst = abs - data_range.start;
+                *dst = abs - src_data.start;
             }
-            data_arena[data.clone()].copy_from_slice(&src.data[data_lo..data_hi]);
+            data_arena[data.clone()].copy_from_slice(&src.data[src_data_range]);
             bump_rect_min(
                 &kinds_arena[prev.cmds.range()],
                 &starts_arena[prev.cmds.range()],
@@ -157,17 +152,16 @@ impl EncodeCache {
             self.live_cmds -= prev.cmds.len as usize;
             self.live_data -= prev.data.len as usize;
         }
-        let cmds_span = Span::new(self.kinds_arena.len() as u32, new_cmd_len);
-        let data_span = Span::new(self.data_arena.len() as u32, new_data_len);
+        let cmds_span = Span::new(self.kinds_arena.len() as u32, src_cmds.len);
+        let data_span = Span::new(self.data_arena.len() as u32, src_data.len);
 
         self.kinds_arena
-            .extend_from_slice(&src.kinds[cmd_lo..cmd_hi]);
-        self.starts_arena.reserve(new_cmd_len as usize);
-        for &abs in &src.starts[cmd_lo..cmd_hi] {
-            self.starts_arena.push(abs - data_range.start);
+            .extend_from_slice(&src.kinds[src_cmd_range.clone()]);
+        self.starts_arena.reserve(src_cmds.len as usize);
+        for &abs in &src.starts[src_cmd_range.clone()] {
+            self.starts_arena.push(abs - src_data.start);
         }
-        self.data_arena
-            .extend_from_slice(&src.data[data_lo..data_hi]);
+        self.data_arena.extend_from_slice(&src.data[src_data_range]);
 
         let appended_kinds = &self.kinds_arena[cmds_span.range()];
         let appended_starts = &self.starts_arena[cmds_span.range()];
@@ -178,8 +172,8 @@ impl EncodeCache {
             neg_origin,
         );
 
-        self.live_cmds += new_cmd_len as usize;
-        self.live_data += new_data_len as usize;
+        self.live_cmds += src_cmds.len as usize;
+        self.live_data += src_data.len as usize;
         self.snapshots.insert(
             wid,
             EncodeSnapshot {
