@@ -3,31 +3,32 @@
 //! `subtree_hash` and incoming `available` size both match last
 //! frame. See `docs/measure-cache.md`.
 //!
-//! Keyed by stable [`WidgetId`]; lifecycle mirrors [`crate::ui::Damage`]
-//! and [`crate::text::TextMeasurer`] — eviction piggy-backs on the
-//! `SeenIds.removed()` diff at frame end.
+//! **Storage**: a single SoA arena per attribute (`desired_arena`,
+//! `text_arena`) plus a tiny per-`WidgetId` `ArenaSnapshot` pointing
+//! at a contiguous range. Steady-state writes are in-place memcpys
+//! when the subtree size matches; size mismatches fall back to
+//! append + mark-garbage with periodic compaction. This keeps total
+//! allocations bounded to two `Vec`s (the arenas) plus one
+//! `FxHashMap` (the snapshot index), regardless of widget count.
+//!
+//! Compaction kicks in when the arena holds more than `2 ×
+//! live_entries`. It walks every snapshot, rewrites their `start`
+//! indices to point at a freshly-packed arena, and drops the old
+//! one. O(live_entries) — a one-frame cost paid infrequently.
+//!
+//! Eviction (via [`MeasureCache::sweep_removed`]) drops the snapshot
+//! and decrements `live_entries`; the arena slot stays as garbage
+//! until the next compact.
 
 use crate::layout::result::ShapedText;
 use crate::primitives::{Size, WidgetId};
 use crate::tree::NodeHash;
 use rustc_hash::FxHashMap;
+use std::ops::Range;
 
-/// Snapshot of one node's whole measured subtree. Stored across
-/// frames so a cache hit can replay every descendant's `desired`
-/// (and any text shapes) with one map lookup + two slice copies,
-/// skipping the recursive measure walk entirely.
-///
-/// `desired` and `text_shapes` are stored in pre-order, NodeId-relative
-/// to the snapshot's root: index `0` is the root, indices `1..` are
-/// the descendants in the same order they appear in the tree's
-/// pre-order arena. Length is `subtree_end[root] - root.index()`. On
-/// restore, the slices are blitted into `LayoutEngine.desired` and
-/// `LayoutResult.text_shapes` at `[root.index() .. subtree_end[root]]`.
-///
-/// `Default` produces empty `Vec`s; the steady-state path overwrites
-/// via `clear() + extend_from_slice` to keep capacity across frames.
-#[derive(Default, Debug)]
-pub(crate) struct SubtreeSnapshot {
+/// 24-byte snapshot. `start..start+len` indexes both arenas.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ArenaSnapshot {
     /// Rolled subtree hash from last frame. The rollup includes child
     /// count and per-child subtree hashes, so any structural or
     /// authoring change anywhere in the subtree busts the key.
@@ -35,24 +36,23 @@ pub(crate) struct SubtreeSnapshot {
     /// `available` size passed to this node's measure last frame,
     /// quantized to integer logical pixels.
     pub available_q: AvailableKey,
-    /// Outer (margin-inclusive) `desired` per descendant in subtree
-    /// pre-order. `desired[0]` is the snapshot root's own size — the
-    /// value `measure` returns on a hit.
-    pub desired: Vec<Size>,
-    /// Text-shape result per descendant, same indexing as `desired`.
-    /// `None` for nodes that didn't shape text last frame.
-    pub text_shapes: Vec<Option<ShapedText>>,
+    /// Range start into both `desired_arena` and `text_arena`.
+    pub start: u32,
+    /// Range length (number of nodes in the snapshot's subtree).
+    /// `desired_arena[start..start+len]` is the subtree's `desired`
+    /// in pre-order; index 0 (i.e. `desired_arena[start]`) is the
+    /// snapshot root's own size.
+    pub len: u32,
 }
 
-/// Quantized (`available.w`, `available.h`) used as the cache's
-/// dimensional key. `i32::MAX` represents an infinite axis (ZStack /
+/// Quantized (`available.w`, `available.h`) — the dimensional half of
+/// the cache key. `i32::MAX` represents an infinite axis (ZStack /
 /// Hug parents propagate `f32::INFINITY`).
 pub(crate) type AvailableKey = (i32, i32);
 
 /// Triple identifying *which* snapshot a measure call should match
-/// against — the inputs the cache keys on. Built once at the top of a
-/// measure call and reused at the cache write-back at the bottom, so
-/// `WidgetId` / hash / quantization are looked up only once per node.
+/// against. Built once at the top of a measure call and reused for
+/// the cache write-back at the bottom.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SubtreeCacheKey {
     pub wid: WidgetId,
@@ -74,30 +74,59 @@ pub(crate) fn quantize_available(s: Size) -> AvailableKey {
     (quantize_axis(s.w), quantize_axis(s.h))
 }
 
+/// Compaction trigger: arena length must exceed `live_entries × this`.
+/// `2.0` keeps fragmentation under one extra arena's worth without
+/// firing compactions on every miss frame.
+const COMPACT_RATIO: u32 = 2;
+/// Don't bother compacting until live data is at least this many
+/// entries — avoids compaction spam at warmup when the arena is tiny.
+const COMPACT_FLOOR: u32 = 64;
+
 #[derive(Default)]
 pub(crate) struct MeasureCache {
-    /// Per-`WidgetId` snapshot from the previous frame's measure pass.
-    /// Mutated in place: a hit reads the entry, a miss overwrites it
-    /// (or inserts a new one) at the end of measure. Inner `Vec`
-    /// capacities are retained across frames.
-    pub prev: FxHashMap<WidgetId, SubtreeSnapshot>,
+    /// Backing storage for every snapshot's `desired` data. Live
+    /// regions are pointed at by `snapshots`; freed regions sit as
+    /// garbage until the next [`Self::compact`].
+    pub desired_arena: Vec<Size>,
+    /// Parallel to `desired_arena`. Same indexing.
+    pub text_arena: Vec<Option<ShapedText>>,
+    /// Per-`WidgetId` snapshot index. Each value points at a range in
+    /// the two arenas above.
+    pub snapshots: FxHashMap<WidgetId, ArenaSnapshot>,
+    /// Sum of `snap.len` across `snapshots` — the total live data in
+    /// the arenas. Garbage = `desired_arena.len() - live_entries`.
+    pub live_entries: u32,
 }
 
 impl MeasureCache {
-    /// Drop snapshots for widgets that were present last frame but not
-    /// this one. Called once per frame from `Ui::end_frame`, fed the
-    /// same `removed` slice that `Damage` and `TextMeasurer` consume.
-    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        for wid in removed {
-            self.prev.remove(wid);
+    /// Validate the cache for `wid` against the current frame's
+    /// `(subtree_hash, available_q)`. On hit, return the arena range
+    /// to copy from — usable directly as a slice index into
+    /// `desired_arena` / `text_arena`. On miss, `None`.
+    #[inline]
+    pub fn lookup(
+        &self,
+        wid: WidgetId,
+        curr_hash: NodeHash,
+        curr_avail: AvailableKey,
+    ) -> Option<Range<usize>> {
+        let snap = self.snapshots.get(&wid)?;
+        if snap.subtree_hash != curr_hash {
+            return None;
         }
+        if snap.available_q != curr_avail {
+            return None;
+        }
+        let start = snap.start as usize;
+        Some(start..start + snap.len as usize)
     }
 
-    /// Overwrite (or insert) `wid`'s snapshot from disjoint slices on
-    /// `LayoutEngine`. Splitting the write into a method on the cache
-    /// lets the caller hold immutable borrows of `LayoutEngine.desired`
-    /// and `LayoutResult.text_shapes` while we mutate `cache.prev` —
-    /// the borrows are field-disjoint.
+    /// Overwrite (or insert) `wid`'s snapshot. Hot path is in-place
+    /// memcpy when the existing range has the same length —
+    /// expected to hit ~always once a widget reaches steady state,
+    /// since `subtree_hash` includes structure (same hash → same
+    /// subtree size). Size mismatches mark the old range as garbage
+    /// and append a fresh range to the arena.
     pub fn write_subtree(
         &mut self,
         key: SubtreeCacheKey,
@@ -105,13 +134,91 @@ impl MeasureCache {
         text_shapes: &[Option<ShapedText>],
     ) {
         debug_assert_eq!(desired.len(), text_shapes.len());
-        let snap = self.prev.entry(key.wid).or_default();
-        snap.subtree_hash = key.subtree_hash;
-        snap.available_q = key.available_q;
-        snap.desired.clear();
-        snap.desired.extend_from_slice(desired);
-        snap.text_shapes.clear();
-        snap.text_shapes.extend_from_slice(text_shapes);
+        let new_len = desired.len() as u32;
+
+        if let Some(prev) = self.snapshots.get_mut(&key.wid)
+            && prev.len == new_len
+        {
+            // In-place: hot path.
+            let s = prev.start as usize;
+            let e = s + new_len as usize;
+            self.desired_arena[s..e].copy_from_slice(desired);
+            self.text_arena[s..e].copy_from_slice(text_shapes);
+            prev.subtree_hash = key.subtree_hash;
+            prev.available_q = key.available_q;
+            return;
+        }
+
+        // Different len (or first write): mark any existing range as
+        // garbage, append the new one. Subtree size only changes when
+        // a widget's structure changes, so this path is rare.
+        if let Some(prev) = self.snapshots.get(&key.wid) {
+            self.live_entries -= prev.len;
+        }
+        let start = self.desired_arena.len() as u32;
+        self.desired_arena.extend_from_slice(desired);
+        self.text_arena.extend_from_slice(text_shapes);
+        self.live_entries += new_len;
+        self.snapshots.insert(
+            key.wid,
+            ArenaSnapshot {
+                subtree_hash: key.subtree_hash,
+                available_q: key.available_q,
+                start,
+                len: new_len,
+            },
+        );
+
+        if self.desired_arena.len() as u32 > self.live_entries.saturating_mul(COMPACT_RATIO)
+            && self.live_entries > COMPACT_FLOOR
+        {
+            self.compact();
+        }
+    }
+
+    /// Drop snapshots for widgets that vanished this frame. The
+    /// arena slots they referenced become garbage; a future
+    /// `write_subtree` will compact them out once fragmentation
+    /// crosses the threshold.
+    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        for wid in removed {
+            if let Some(snap) = self.snapshots.remove(wid) {
+                self.live_entries -= snap.len;
+            }
+        }
+    }
+
+    /// Drop every cross-frame snapshot. Public via
+    /// `Ui::__clear_measure_cache` for benchmarks.
+    pub fn clear(&mut self) {
+        self.desired_arena.clear();
+        self.text_arena.clear();
+        self.snapshots.clear();
+        self.live_entries = 0;
+    }
+
+    /// Walk every snapshot, copy its live range into a freshly-packed
+    /// arena, and rewrite snapshot pointers. O(live_entries) — runs
+    /// at most once per ~N writes given `COMPACT_RATIO = 2`.
+    fn compact(&mut self) {
+        let Self {
+            desired_arena,
+            text_arena,
+            snapshots,
+            live_entries,
+        } = self;
+        let cap = *live_entries as usize;
+        let mut new_desired: Vec<Size> = Vec::with_capacity(cap);
+        let mut new_text: Vec<Option<ShapedText>> = Vec::with_capacity(cap);
+        for snap in snapshots.values_mut() {
+            let s = snap.start as usize;
+            let e = s + snap.len as usize;
+            snap.start = new_desired.len() as u32;
+            new_desired.extend_from_slice(&desired_arena[s..e]);
+            new_text.extend_from_slice(&text_arena[s..e]);
+        }
+        *desired_arena = new_desired;
+        *text_arena = new_text;
     }
 }
 

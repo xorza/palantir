@@ -41,31 +41,34 @@ N × avg_depth snapshot-write cost; see results below.
    | flat | 93.5 µs | 104.0 µs | 10.5 µs | 10.1% |
    | nested | 414.1 µs | 455.5 µs | 41.4 µs | 9.1% |
 
-   Phase 2 (subtree-skip at every non-collapsed node, what's shipped):
+   Phase 2 (subtree-skip at every non-collapsed node, single-arena
+   storage — what's shipped):
 
-   | workload | cached | forced_miss | cached Δ vs P1 |
-   | --- | --- | --- | --- |
-   | flat | **84.3 µs** | 153.2 µs | -10% (-9.2 µs) |
-   | nested | **369.8 µs** | 677.1 µs | -11% (-44 µs) |
+   | workload | cached | forced_miss |
+   | --- | --- | --- |
+   | flat | **85.0 µs** | **112.7 µs** |
+   | nested | **375.5 µs** | **496.2 µs** |
 
-   Steady-state hit path is ~10% faster than Phase 1, on top of
-   Phase 1's ~10% over no cache. But forced_miss got ~50% slower
-   because every node now writes a subtree-sized snapshot on miss
-   (`extend_from_slice` of `desired` + `text_shapes`, lengths summing
-   to O(N · depth) per cold frame). Real frames hit a mix; the
-   regression only matters when the entire visible tree invalidates
-   in one frame (resize, theme switch, first frame after navigation).
+   The arena design (single `Vec<Size>` + single `Vec<Option<ShapedText>>`
+   shared across all snapshots, in-place rewrite when subtree size is
+   stable, append + periodic compaction otherwise) cuts the cold-cache
+   write cost vs the earlier per-WidgetId-Vec design by ~27% on both
+   workloads. Steady-state cached path is unchanged (within noise). It
+   also drops the per-snapshot memory footprint from ~358 KB to ~77 KB
+   on the nested workload.
 
-4. **Phase 2: full subtree skip — shipped.** Each `WidgetId` now
-   owns a `SubtreeSnapshot { subtree_hash, available_q,
-   desired: Vec<Size>, text_shapes: Vec<Option<ShapedText>> }`. On
-   hit at any non-collapsed node, the cache blits both arrays into
-   `LayoutEngine.desired[i..subtree_end[i]]` and
-   `LayoutResult.text_shapes[i..subtree_end[i]]` and returns without
-   recursing. On miss, the body runs as before, then
-   `MeasureCache::write_subtree` overwrites the snapshot from the
-   freshly-populated slices (capacity retained via
-   `clear() + extend_from_slice`).
+4. **Phase 2: full subtree skip with single-arena storage — shipped.**
+   Cache holds two flat arenas (`desired_arena: Vec<Size>`,
+   `text_arena: Vec<Option<ShapedText>>`) plus a per-`WidgetId` map of
+   24-byte `ArenaSnapshot { subtree_hash, available_q, start, len }`.
+   On hit at any non-collapsed node, the cache returns a `Range<usize>`
+   into the arenas and the caller `copy_from_slice`s into
+   `LayoutEngine.desired[i..]` and `LayoutResult.text_shapes[i..]`.
+   On miss, `write_subtree` rewrites the arena slot in place if the
+   subtree size matches the previous snapshot (steady-state hot path);
+   otherwise it appends to the arenas and marks the old slot as
+   garbage. When `arena_len > live_entries × 2`, a compact pass walks
+   every snapshot and rewrites pointers into a freshly-packed arena.
 
 ## Open questions
 
