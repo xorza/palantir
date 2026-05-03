@@ -8,7 +8,8 @@ use glam::Vec2;
 /// - the rounded-rect SDF shader unchanged (CPU-side parameter scaling only).
 ///
 /// Apply `self` after `other` via `compose`: `compose(p) = self(other(p))`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct TranslateScale {
     pub translation: Vec2,
     pub scale: f32,
