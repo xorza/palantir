@@ -1,6 +1,7 @@
 # Todo
 
-
+verify project structure
+move cascades into ui/
 
 
 Open work pulled from `docs/`. Each item is shipped-when-conditions-merit;
