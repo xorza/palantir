@@ -5,81 +5,63 @@ authoring inputs nor its incoming `available` size changed since last
 frame. Composes with damage (subtree-hash equality is the same key the
 encode cache wants).
 
-Phase 2 (full subtree skip) is what's currently shipped. The cache
-checks at every non-collapsed node and, on hit, blits the whole
-subtree's `desired` and `text_shapes` arrays from the snapshot —
-recursion is skipped entirely. Trade-off: cold-cache frames pay an
-N × avg_depth snapshot-write cost; see results below.
+**Status:** shipped. Subtree-skip at every non-collapsed node, backed
+by a single SoA arena per attribute. See `src/layout/cache/mod.rs`.
 
-## Plan
+## What's done
 
-1. **Subtree hash rollup.** Add `Tree.subtree_hashes: Vec<NodeHash>`,
-   populated in `compute_hashes` after the per-node pass. Reverse
-   pre-order walk: `subtree_hashes[i] = fold(node_hash[i], subtree_hashes[c]
-   for each direct child c)`. Test: changing a leaf must invalidate
-   every ancestor's subtree hash; reordering siblings must change the
-   parent's subtree hash; identical trees must hash identically.
+- [x] **Subtree-hash rollup.** `Tree.subtree_hashes: Vec<NodeHash>` is
+  populated alongside `hashes` in `compute_hashes` via a reverse
+  pre-order walk. Pinned by `tree::tests::subtree_hash_*`.
+- [x] **Subtree-skip cache.** `MeasureCache::try_lookup` fires at
+  every non-collapsed node in `LayoutEngine::measure`. Hit blits the
+  whole subtree's `desired` + `text_shapes` from the cache and skips
+  recursion. `available_q` (integer-px-quantized) gates `Hug`/`Fill`
+  variance.
+- [x] **Single-arena storage.** Two flat arenas (`desired_arena`,
+  `text_arena`) shared across all snapshots, plus a per-`WidgetId`
+  map of 24-byte `ArenaSnapshot { subtree_hash, available_q, start,
+  len }`. In-place rewrite on same-len writes; append + mark-garbage
+  on size changes; lazy compaction when `arena_len > live_entries × 2`.
+- [x] **Lifecycle hooks.** Eviction via `SeenIds.removed` →
+  `MeasureCache::sweep_removed`. `__clear_cache` for benches.
+- [x] **Tests.** 13 in `cache/tests.rs`: hit/miss paths, eviction,
+  subtree-snapshot coverage, in-place rewrite preserves arena
+  position, compaction invariant, post-compaction hit validity, plus
+  the rect-stability contract via `subtree_skip_preserves_descendant_rects`.
+- [x] **Bench harness.** `benches/measure_cache.rs` covers `flat`
+  (1000 leaves, depth 1) and `nested` (3200 nodes, depth 4) with
+  `cached` vs `forced_miss` variants.
 
-2. **`MeasureCache` (leaf-only skip).**
-   `prev: FxHashMap<WidgetId, MeasureSnapshot { subtree_hash, available_q, desired }>`.
-   At measure entry for `LayoutMode::Leaf`, look up by `widget_ids[i]`
-   and write `desired[i] = snapshot.desired` on hit. Quantize
-   `available` to integer logical pixels. Eviction piggy-backs on
-   `SeenIds.removed()` (same lifecycle as `Damage.prev` and the text
-   cache).
+## Numbers
 
-3. **Bench.** `benches/measure_cache.rs` runs two workloads:
+| workload | cached | forced_miss |
+| --- | --- | --- |
+| flat   | **85.0 µs** | **112.7 µs** |
+| nested | **375.5 µs** | **496.2 µs** |
 
-   - `flat`: 1 000 leaves under one VStack root, depth 1.
-   - `nested`: 3 200 nodes — 100 groups × (header + 10 rows × 3 leaves
-     + footer), depth 4.
+Steady-state cache hits dominate by ~25% on the nested workload;
+cold-cache `forced_miss` improved ~27% over the previous per-Vec
+design thanks to in-place arena writes (no per-snapshot allocation).
+Per-snapshot memory footprint dropped from ~358 KB to ~77 KB on the
+nested workload (24-byte `ArenaSnapshot` vs ~80 bytes inline + two
+Vec headers + scattered heap data).
 
-   Phase 1 (leaf-only short-circuit, prior to Phase 2):
+## Not done — deferred
 
-   | workload | cached | forced_miss | save | % |
-   | --- | --- | --- | --- | --- |
-   | flat | 93.5 µs | 104.0 µs | 10.5 µs | 10.1% |
-   | nested | 414.1 µs | 455.5 µs | 41.4 µs | 9.1% |
-
-   Phase 2 (subtree-skip at every non-collapsed node, single-arena
-   storage — what's shipped):
-
-   | workload | cached | forced_miss |
-   | --- | --- | --- |
-   | flat | **85.0 µs** | **112.7 µs** |
-   | nested | **375.5 µs** | **496.2 µs** |
-
-   The arena design (single `Vec<Size>` + single `Vec<Option<ShapedText>>`
-   shared across all snapshots, in-place rewrite when subtree size is
-   stable, append + periodic compaction otherwise) cuts the cold-cache
-   write cost vs the earlier per-WidgetId-Vec design by ~27% on both
-   workloads. Steady-state cached path is unchanged (within noise). It
-   also drops the per-snapshot memory footprint from ~358 KB to ~77 KB
-   on the nested workload.
-
-4. **Phase 2: full subtree skip with single-arena storage — shipped.**
-   Cache holds two flat arenas (`desired_arena: Vec<Size>`,
-   `text_arena: Vec<Option<ShapedText>>`) plus a per-`WidgetId` map of
-   24-byte `ArenaSnapshot { subtree_hash, available_q, start, len }`.
-   On hit at any non-collapsed node, the cache returns a `Range<usize>`
-   into the arenas and the caller `copy_from_slice`s into
-   `LayoutEngine.desired[i..]` and `LayoutResult.text_shapes[i..]`.
-   On miss, `write_subtree` rewrites the arena slot in place if the
-   subtree size matches the previous snapshot (steady-state hot path);
-   otherwise it appends to the arenas and marks the old slot as
-   garbage. When `arena_len > live_entries × 2`, a compact pass walks
-   every snapshot and rewrites pointers into a freshly-packed arena.
-
-## Open questions
-
-- Quantization granularity for `available` (1 logical px is the
-  starting position; finer if Fill children show jitter-driven misses).
-- Whether to extend the cache to `intrinsic()` queries cross-frame
-  (keyed on `subtree_hash + axis + req`). Small extension on top of
-  Phase 2.
-- Whether the cold-cache regression matters in practice. The
-  forced_miss bench is the upper bound; real frames have partial
-  invalidation. If a real workload shows resize-frame jank, options:
-  skip snapshot writes for collapsed subtrees, gate writes by
-  subtree size threshold, or share storage via an arena
-  (`Vec<Size>` + per-snapshot ranges).
+- [ ] **Cross-frame intrinsic-query cache.** `LayoutEngine::intrinsic`
+  is intra-frame only. A second column keyed on `subtree_hash + axis +
+  req` would compose cleanly. Skip until a workload proves it matters.
+- [ ] **Per-frame allocation audit.** CLAUDE.md flags this as a
+  project-wide goal. The cache is alloc-amortized after warmup but
+  there's no harness asserting it. Cross-cutting; not cache-local.
+- [ ] **Real-workload validation.** Bench numbers are synthetic. The
+  showcase doesn't push against the 400 µs ceiling, so the cache's
+  user-visible win is unverified.
+- [ ] **Cold-cache mitigations.** If a workload ever shows resize-
+  frame jank, candidates: skip snapshot writes for collapsed
+  subtrees, gate writes by subtree-size threshold, amortize compact
+  across frames. Speculative.
+- [ ] **Coarser `available` quantization.** Currently 1 logical px.
+  If jittery `Fill` children show cache misses on sub-pixel parent
+  drift, bump granularity. Wait for evidence.
