@@ -39,6 +39,50 @@ impl TranslateScale {
         }
     }
 
+    /// Scale by `s` about the pivot `center` (in the *parent* coordinate
+    /// space the transform is applied in). The pivot is folded into the
+    /// translation at construction time:
+    ///
+    /// ```text
+    /// p ↦ (p - center) * s + center
+    ///   = p * s + center * (1 - s)
+    /// ```
+    ///
+    /// so the runtime representation stays the same uniform-scale + translate
+    /// pair. Useful for "scale about my own center" / "zoom toward cursor"
+    /// effects where origin-relative scaling would translate the content away
+    /// from where the user expects.
+    pub const fn from_scale_about(center: Vec2, s: f32) -> Self {
+        Self {
+            translation: Vec2::new(center.x * (1.0 - s), center.y * (1.0 - s)),
+            scale: s,
+        }
+    }
+
+    /// Scale by `s` about `center`, then translate by `translation`. The
+    /// pivot and the additional translation collapse into the single
+    /// `translation` field at construction:
+    ///
+    /// ```text
+    /// p ↦ (p - center) * s + center + translation
+    ///   = p * s + center * (1 - s) + translation
+    /// ```
+    ///
+    /// so the runtime representation stays a plain uniform-scale +
+    /// translate pair — same compose/apply paths, no extra fields.
+    /// Useful when an animation wants both a pan and a pivot-anchored
+    /// zoom in one step (e.g. "zoom toward cursor while easing the
+    /// content into view").
+    pub const fn from_translate_scale_about(translation: Vec2, center: Vec2, s: f32) -> Self {
+        Self {
+            translation: Vec2::new(
+                center.x * (1.0 - s) + translation.x,
+                center.y * (1.0 - s) + translation.y,
+            ),
+            scale: s,
+        }
+    }
+
     /// Apply `self` after `other`: `result(p) == self.apply_point(other.apply_point(p))`.
     /// Matches matrix multiplication conventions — descend the tree by composing
     /// `parent_cumulative.compose(child_local)`.
