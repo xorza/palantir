@@ -3,7 +3,7 @@ use crate::primitives::{Rect, Size, Sizing, WidgetId};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
-use cache::{LeafCacheKey, LeafSnapshot, MeasureCache, quantize_available};
+use cache::{MeasureCache, SubtreeCacheKey, quantize_available};
 use grid::GridContext;
 use support::{resolve_axis_size, zero_subtree};
 use wrapstack::WrapScratch;
@@ -201,30 +201,32 @@ impl LayoutEngine {
         let extras = tree.read_extras(node);
         let (min_size, max_size) = (extras.min_size, extras.max_size);
 
-        // Phase-1 measure-cache short-circuit: leaves only. Same
-        // `WidgetId`, same subtree hash, same quantized `available`
-        // → reuse last frame's `desired` (and text shape, if any)
-        // without walking shapes or dispatching cosmic.
-        let leaf_cache_key = if matches!(mode, LayoutMode::Leaf) {
-            let key = LeafCacheKey {
-                wid: tree.widget_ids[node.index()],
-                subtree_hash: tree.subtree_hashes[node.index()],
-                available_q: quantize_available(available),
-            };
-            if let Some(snap) = self.cache.prev.get(&key.wid)
-                && snap.subtree_hash == key.subtree_hash
-                && snap.available_q == key.available_q
-            {
-                self.desired[node.index()] = snap.desired;
-                if let Some(ts) = snap.text_shape {
-                    self.result.set_text_shape(node, ts);
-                }
-                return snap.desired;
-            }
-            Some(key)
-        } else {
-            None
+        // Phase-2 measure-cache short-circuit: any node. Same
+        // `WidgetId`, same rolled subtree hash, same quantized
+        // `available` → restore the *whole subtree*'s `desired` and
+        // text shapes from last frame's snapshot and skip recursion
+        // entirely. The subtree-hash rollup guarantees structural and
+        // authoring equivalence; `available_q` guards against parent
+        // resize since outer-leaf measure is `available`-dependent
+        // for `Hug` / `Fill` axes.
+        let cache_key = SubtreeCacheKey {
+            wid: tree.widget_ids[node.index()],
+            subtree_hash: tree.subtree_hashes[node.index()],
+            available_q: quantize_available(available),
         };
+        if let Some(snap) = self.cache.prev.get(&cache_key.wid)
+            && snap.subtree_hash == cache_key.subtree_hash
+            && snap.available_q == cache_key.available_q
+        {
+            let start = node.index();
+            let end = start + snap.desired.len();
+            // Subtree hash includes child count + per-child rollups,
+            // so a stale length here would mean the rollup is broken.
+            debug_assert_eq!(end, tree.subtree_end[start] as usize);
+            self.desired[start..end].copy_from_slice(&snap.desired);
+            self.result.restore_text_shapes(start, &snap.text_shapes);
+            return snap.desired[0];
+        }
 
         // For each axis: if this node has a declared `Fixed` size, that's the
         // outer width children see — `inner = fixed - padding`. Otherwise
@@ -283,17 +285,18 @@ impl LayoutEngine {
 
         self.desired[node.index()] = desired;
 
-        if let Some(key) = leaf_cache_key {
-            self.cache.prev.insert(
-                key.wid,
-                LeafSnapshot {
-                    subtree_hash: key.subtree_hash,
-                    available_q: key.available_q,
-                    desired,
-                    text_shape: self.result.text_shape(node),
-                },
-            );
-        }
+        // Snapshot the entire subtree we just (re)measured. Pre-order
+        // arena means the subtree is `[node.index() .. subtree_end[i]]`
+        // contiguous in both `desired` and `text_shapes`. Capacity
+        // retains across frames via `clear() + extend_from_slice`
+        // inside `MeasureCache::write_subtree`.
+        let start = node.index();
+        let end = tree.subtree_end[start] as usize;
+        self.cache.write_subtree(
+            cache_key,
+            &self.desired[start..end],
+            self.result.text_shapes_slice(start, end),
+        );
 
         desired
     }

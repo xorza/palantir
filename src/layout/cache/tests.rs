@@ -25,10 +25,10 @@ fn leaf_snapshot_populated_after_first_frame() {
         .cache
         .prev
         .get(&wid)
-        .copied()
         .expect("leaf snapshot must be inserted on first frame");
-    assert_eq!(snap.desired.w, 50.0);
-    assert_eq!(snap.desired.h, 50.0);
+    assert_eq!(snap.desired.len(), 1, "leaf subtree is one entry");
+    assert_eq!(snap.desired[0].w, 50.0);
+    assert_eq!(snap.desired[0].h, 50.0);
 }
 
 #[test]
@@ -97,9 +97,8 @@ fn removed_widget_is_evicted() {
 #[test]
 fn cache_hit_replays_same_desired_size() {
     // Two identical frames: the second must produce the same
-    // `desired` (read off `LayoutResult.rect`) as the first. This
-    // is the correctness contract for the short-circuit — a hit
-    // must not perturb the layout output.
+    // `desired` as the first. Correctness contract for the
+    // short-circuit — a hit must not perturb layout output.
     let mut ui = Ui::new();
     let build = |ui: &mut Ui| {
         Frame::with_id("a")
@@ -109,10 +108,10 @@ fn cache_hit_replays_same_desired_size() {
     };
     run_frame(&mut ui, build);
     let wid = WidgetId::from_hash("a");
-    let snap1 = ui.layout_engine.cache.prev.get(&wid).copied().unwrap();
+    let d1 = ui.layout_engine.cache.prev.get(&wid).unwrap().desired[0];
     run_frame(&mut ui, build);
-    let snap2 = ui.layout_engine.cache.prev.get(&wid).copied().unwrap();
-    assert_eq!(snap1.desired, snap2.desired);
+    let d2 = ui.layout_engine.cache.prev.get(&wid).unwrap().desired[0];
+    assert_eq!(d1, d2);
 }
 
 #[test]
@@ -134,20 +133,80 @@ fn changing_available_forces_miss_and_remeasure() {
     ui.end_frame();
 
     let wid = WidgetId::from_hash("fill");
-    let snap1 = ui.layout_engine.cache.prev.get(&wid).copied().unwrap();
+    let snap1 = ui.layout_engine.cache.prev.get(&wid).unwrap();
+    let avail1 = snap1.available_q;
+    let desired1 = snap1.desired[0];
 
     ui.begin_frame(Display::from_physical(UVec2::new(80, 80), 1.0));
     Panel::hstack_with_id("root").show(&mut ui, build);
     ui.end_frame();
 
-    let snap2 = ui.layout_engine.cache.prev.get(&wid).copied().unwrap();
+    let snap2 = ui.layout_engine.cache.prev.get(&wid).unwrap();
     assert_ne!(
-        snap1.available_q, snap2.available_q,
+        avail1, snap2.available_q,
         "shrinking the surface must change the cache's available key",
     );
     assert_ne!(
-        snap1.desired, snap2.desired,
+        desired1, snap2.desired[0],
         "remeasure must produce a different desired for a Fill child",
+    );
+}
+
+#[test]
+fn subtree_snapshot_covers_every_descendant() {
+    // Phase-2 contract: a parent's snapshot stores `desired` for
+    // every node in its subtree, in pre-order, contiguous. Verifies
+    // that the snapshot's length matches the tree's `subtree_end`.
+    let mut ui = Ui::new();
+    run_frame(&mut ui, |ui| {
+        Panel::vstack_with_id("group").show(ui, |ui| {
+            Frame::with_id("c1").size(10.0).show(ui);
+            Frame::with_id("c2").size(20.0).show(ui);
+            Frame::with_id("c3").size(30.0).show(ui);
+        });
+    });
+    let group_wid = WidgetId::from_hash("group");
+    let snap = ui.layout_engine.cache.prev.get(&group_wid).unwrap();
+    // group itself + 3 children = 4 entries.
+    assert_eq!(snap.desired.len(), 4);
+    // Children are leaves — their own desired sizes are stored at
+    // indices 1, 2, 3 in pre-order.
+    assert_eq!(snap.desired[1].w, 10.0);
+    assert_eq!(snap.desired[2].w, 20.0);
+    assert_eq!(snap.desired[3].w, 30.0);
+}
+
+#[test]
+fn subtree_skip_preserves_descendant_rects() {
+    // Identical frames must produce identical arranged rects for
+    // every node, even when the parent (and so the whole subtree)
+    // is short-circuited. If the restore path skipped a descendant,
+    // arrange would zero or stale-fill its rect on frame 2.
+    let mut ui = Ui::new();
+    let build = |ui: &mut Ui| {
+        Panel::vstack_with_id("group").show(ui, |ui| {
+            Frame::with_id("c1").size(10.0).show(ui);
+            Frame::with_id("c2").size(20.0).show(ui);
+        });
+    };
+    run_frame(&mut ui, build);
+    let layout1 = ui.layout_engine.result();
+    let group_node = ui.tree().root().unwrap(); // root is the outer "root" hstack
+    // Snapshot every node's rect for frame 1.
+    let n = ui.tree().node_count();
+    let rects1: Vec<_> = (0..n)
+        .map(|i| layout1.rect(crate::tree::NodeId(i as u32)))
+        .collect();
+    let _ = group_node;
+
+    run_frame(&mut ui, build);
+    let layout2 = ui.layout_engine.result();
+    let rects2: Vec<_> = (0..n)
+        .map(|i| layout2.rect(crate::tree::NodeId(i as u32)))
+        .collect();
+    assert_eq!(
+        rects1, rects2,
+        "subtree-skip cache hit must not perturb any arranged rect",
     );
 }
 
