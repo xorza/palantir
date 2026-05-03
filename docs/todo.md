@@ -1,5 +1,7 @@
 # Todo
 
+paralelize hash compute
+
 Open work pulled from `docs/`. Each item is shipped-when-conditions-merit;
 no committed roadmap.
 
