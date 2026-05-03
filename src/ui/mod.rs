@@ -155,6 +155,15 @@ impl Ui {
         self.repaint_requested = true;
     }
 
+    /// Drop every cross-frame measure-cache entry, forcing the next
+    /// frame to re-measure every leaf from scratch. `#[doc(hidden)]`
+    /// — exists only so `benches/measure_cache.rs` can A/B
+    /// cache-enabled vs forced-miss frames against the public API.
+    #[doc(hidden)]
+    pub fn __clear_measure_cache(&mut self) {
+        self.layout_engine.__clear_cache();
+    }
+
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
         self.input.response_for(id, self.cascades.result())
     }

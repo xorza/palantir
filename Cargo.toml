@@ -23,3 +23,7 @@ tracing-subscriber = { version = "*", features = ["env-filter"] }
 [[bench]]
 name = "layout"
 harness = false
+
+[[bench]]
+name = "measure_cache"
+harness = false
