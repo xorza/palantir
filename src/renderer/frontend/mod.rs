@@ -11,12 +11,11 @@
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
 
-mod cmd_buffer;
+pub(crate) mod cmd_buffer;
 mod composer;
 mod encoder;
 
-pub use cmd_buffer::{RenderCmd, RenderCmdBuffer};
-pub use composer::Composer;
+pub(crate) use composer::Composer;
 pub(crate) use encoder::Encoder;
 
 use crate::cascade::CascadeResult;
@@ -37,8 +36,8 @@ use crate::tree::Tree;
 /// [`Ui::end_frame`]: crate::ui::Ui::end_frame
 /// [`WgpuBackend::submit`]: crate::renderer::WgpuBackend::submit
 pub struct FrameOutput<'a> {
-    pub buffer: &'a RenderBuffer,
-    pub damage: Option<Rect>,
+    pub(crate) buffer: &'a RenderBuffer,
+    pub(crate) damage: Option<Rect>,
 }
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
@@ -51,13 +50,13 @@ pub struct FrameOutput<'a> {
 /// frame state (UI logic + paint output) from one
 /// [`Ui::end_frame`](crate::ui::Ui::end_frame) call.
 #[derive(Default)]
-pub struct Frontend {
+pub(crate) struct Frontend {
     pub(crate) encoder: Encoder,
     composer: Composer,
 }
 
 impl Frontend {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
@@ -66,7 +65,7 @@ impl Frontend {
     /// pre-resolved into `cascades` (`Cascade::rgb_mul`), so this stage
     /// reads everything it needs from the inputs without per-call
     /// theme threading.
-    pub fn build(
+    pub(crate) fn build(
         &mut self,
         tree: &Tree,
         layout: &LayoutResult,
@@ -81,7 +80,7 @@ impl Frontend {
     /// Drop encoder cache entries for `WidgetId`s that vanished this
     /// frame. Called from `Ui::end_frame` with the same `removed` slice
     /// that the measure cache and text reuse map consume.
-    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         self.encoder.sweep_removed(removed);
     }
 }

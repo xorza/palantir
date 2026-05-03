@@ -60,7 +60,7 @@ impl Encoder {
     /// Encode `tree` into the encoder's owned command buffer using last
     /// frame's cache for subtree skips (when `damage_filter.is_none()`),
     /// and return a borrow of the freshly-encoded result.
-    pub fn encode(
+    pub(crate) fn encode(
         &mut self,
         tree: &Tree,
         layout: &LayoutResult,
@@ -83,7 +83,7 @@ impl Encoder {
     }
 
     /// Drop cache entries for `WidgetId`s that vanished this frame.
-    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         self.cache.sweep_removed(removed);
     }
 }

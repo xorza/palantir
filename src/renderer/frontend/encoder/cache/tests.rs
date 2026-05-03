@@ -1,12 +1,13 @@
 use super::*;
 use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale, WidgetId};
-use crate::renderer::frontend::cmd_buffer::{RenderCmd, RenderCmdBuffer};
+use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
+use crate::test_support::{RenderCmd, cmd_at};
 use crate::text::TextCacheKey;
 use crate::tree::NodeHash;
 use glam::Vec2;
 
 fn buf_at(origin: Vec2) -> RenderCmdBuffer {
-    let mut b = RenderCmdBuffer::new();
+    let mut b = RenderCmdBuffer::default();
     b.push_clip(Rect::new(origin.x + 1.0, origin.y + 2.0, 100.0, 50.0));
     b.draw_rect(
         Rect::new(origin.x + 3.0, origin.y + 4.0, 5.0, 6.0),
@@ -35,7 +36,7 @@ fn buf_at(origin: Vec2) -> RenderCmdBuffer {
 }
 
 fn rect_of(buf: &RenderCmdBuffer, i: usize) -> Option<Rect> {
-    match buf.get(i) {
+    match cmd_at(buf, i) {
         RenderCmd::PushClip(r) => Some(r),
         RenderCmd::DrawRect(p) => Some(p.rect),
         RenderCmd::DrawRectStroked(p) => Some(p.rect),
@@ -78,7 +79,7 @@ fn write_full(
 
 fn replay(cache: &EncodeCache, w: WidgetId, h: NodeHash, current_origin: Vec2) -> RenderCmdBuffer {
     let hit = cache.try_lookup(w, h, avail()).expect("cache miss");
-    let mut out = RenderCmdBuffer::new();
+    let mut out = RenderCmdBuffer::default();
     out.extend_from_cached(hit.kinds, hit.starts, hit.data, current_origin);
     out
 }
@@ -170,7 +171,7 @@ fn size_change_appends_and_marks_garbage() {
     // Second snapshot: just one DrawRect. Different hash → caller would
     // see a miss before write, but write_subtree itself still rewrites
     // the same WidgetId.
-    let mut small = RenderCmdBuffer::new();
+    let mut small = RenderCmdBuffer::default();
     small.draw_rect(
         Rect::new(0.0, 0.0, 1.0, 1.0),
         Corners::default(),
@@ -231,7 +232,7 @@ fn compact_preserves_lookups() {
     }
     // Bust them all by writing a smaller payload under a new hash —
     // each leaves the original range as garbage.
-    let mut small = RenderCmdBuffer::new();
+    let mut small = RenderCmdBuffer::default();
     small.draw_rect(
         Rect::new(0.0, 0.0, 1.0, 1.0),
         Corners::default(),

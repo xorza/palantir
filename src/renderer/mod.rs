@@ -15,12 +15,9 @@
 //! [`Ui`]: crate::ui::Ui
 mod backend;
 mod buffer;
-mod frontend;
+pub(crate) mod frontend;
 mod quad;
 
 pub use backend::WgpuBackend;
-pub use buffer::{DrawGroup, RenderBuffer};
-#[cfg(test)]
-pub(crate) use frontend::Encoder;
-pub use frontend::{Composer, FrameOutput, Frontend, RenderCmd, RenderCmdBuffer};
-pub use quad::Quad;
+pub use frontend::FrameOutput;
+pub(crate) use frontend::Frontend;

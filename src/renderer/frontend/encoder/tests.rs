@@ -1,4 +1,4 @@
-use super::super::cmd_buffer::{RenderCmd, RenderCmdBuffer};
+use super::super::cmd_buffer::RenderCmdBuffer;
 use super::align_text_in;
 use crate::Ui;
 use crate::element::Configure;
@@ -6,14 +6,14 @@ use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{
     Align, Color, Display, HAlign, Rect, Sense, Size, Sizing, TranslateScale, VAlign, WidgetId,
 };
-use crate::test_support::{begin, encode_cmds, encode_cmds_filtered, ui_at};
+use crate::test_support::{RenderCmd, begin, encode_cmds, encode_cmds_filtered, iter_cmds, ui_at};
 use crate::widgets::{Frame, Panel, Styled};
 use glam::{UVec2, Vec2};
 
 fn count_clip_pairs(cmds: &RenderCmdBuffer) -> (usize, usize) {
     let mut pushes = 0;
     let mut pops = 0;
-    for c in cmds.iter() {
+    for c in iter_cmds(cmds) {
         match c {
             RenderCmd::PushClip(_) => pushes += 1,
             RenderCmd::PopClip => pops += 1,
@@ -29,8 +29,7 @@ fn empty_tree_encodes_to_nothing() {
     Panel::hstack().show(&mut ui, |_| {});
     ui.end_frame();
     let cmds = encode_cmds(&ui);
-    let draws = cmds
-        .iter()
+    let draws = iter_cmds(&cmds)
         .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert_eq!(draws, 0);
@@ -48,8 +47,7 @@ fn frame_with_fill_emits_one_draw_rect() {
     ui.end_frame();
     let cmds = encode_cmds(&ui);
 
-    let draw_rects = cmds
-        .iter()
+    let draw_rects = iter_cmds(&cmds)
         .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert_eq!(draw_rects, 1);
@@ -66,8 +64,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
     ui.end_frame();
     let cmds = encode_cmds(&ui);
 
-    let draw_rects = cmds
-        .iter()
+    let draw_rects = iter_cmds(&cmds)
         .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert_eq!(draw_rects, 0);
@@ -98,16 +95,13 @@ fn clip_emits_balanced_push_pop() {
 
     // PushClip must come before the inner DrawRect, PopClip after — i.e. the
     // inner draw is sandwiched.
-    let push_idx = cmds
-        .iter()
+    let push_idx = iter_cmds(&cmds)
         .position(|c| matches!(c, RenderCmd::PushClip(_)))
         .unwrap();
-    let pop_idx = cmds
-        .iter()
+    let pop_idx = iter_cmds(&cmds)
         .position(|c| matches!(c, RenderCmd::PopClip))
         .unwrap();
-    let draw_idxs: Vec<_> = cmds
-        .iter()
+    let draw_idxs: Vec<_> = iter_cmds(&cmds)
         .enumerate()
         .filter_map(|(i, c)| {
             matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)).then_some(i)
@@ -134,7 +128,7 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
     let mut clip: Option<Rect> = None;
     let mut clip_stack: Vec<Option<Rect>> = Vec::new();
     let mut out = Vec::new();
-    for cmd in cmds.iter() {
+    for cmd in iter_cmds(cmds) {
         match cmd {
             RenderCmd::PushTransform(child) => {
                 t_stack.push(t);
@@ -441,8 +435,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     ui.end_frame();
 
     let cmds = encode_cmds(&ui);
-    let text_rect = cmds
-        .iter()
+    let text_rect = iter_cmds(&cmds)
         .find_map(|c| match c {
             RenderCmd::DrawText(p) => Some(p.rect),
             _ => None,
@@ -497,8 +490,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
     let filter = Rect::new(0.0, 0.0, 30.0, 200.0);
     let cmds = encode_cmds_filtered(&ui, Some(filter));
 
-    let draw_count = cmds
-        .iter()
+    let draw_count = iter_cmds(&cmds)
         .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     // `a` (0..40) intersects (0..30) → emitted. `b` (40..80) doesn't → skipped.
@@ -522,8 +514,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
     ui.end_frame();
 
     let cmds = encode_cmds_filtered(&ui, Some(Rect::new(0.0, 0.0, 200.0, 200.0)));
-    let draw_count = cmds
-        .iter()
+    let draw_count = iter_cmds(&cmds)
         .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert!(draw_count >= 1);
@@ -559,8 +550,7 @@ fn damage_filter_preserves_clip_pushpop() {
         pushes >= 1,
         "filtered-out clipped node still emits its clip pair"
     );
-    let draws = cmds
-        .iter()
+    let draws = iter_cmds(&cmds)
         .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert_eq!(draws, 0, "no rects emitted when nothing intersects damage");
@@ -586,12 +576,10 @@ fn damage_filter_preserves_transform_pushpop() {
 
     let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
-    let pushes = cmds
-        .iter()
+    let pushes = iter_cmds(&cmds)
         .filter(|c| matches!(c, RenderCmd::PushTransform(_)))
         .count();
-    let pops = cmds
-        .iter()
+    let pops = iter_cmds(&cmds)
         .filter(|c| matches!(c, RenderCmd::PopTransform))
         .count();
     assert_eq!(pushes, pops);

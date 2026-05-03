@@ -14,17 +14,17 @@ use bytemuck::{Pod, Zeroable};
 /// unlike std140 uniforms.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-pub struct Quad {
-    pub pos: [f32; 2],
-    pub size: [f32; 2],
-    pub fill: [f32; 4],
-    pub radius: [f32; 4],
-    pub stroke_color: [f32; 4],
-    pub stroke_width: f32,
+pub(crate) struct Quad {
+    pub(crate) pos: [f32; 2],
+    pub(crate) size: [f32; 2],
+    pub(crate) fill: [f32; 4],
+    pub(crate) radius: [f32; 4],
+    pub(crate) stroke_color: [f32; 4],
+    pub(crate) stroke_width: f32,
 }
 
 impl Quad {
-    pub fn new(rect: Rect, fill: Color, radius: Corners, stroke: Option<Stroke>) -> Self {
+    pub(crate) fn new(rect: Rect, fill: Color, radius: Corners, stroke: Option<Stroke>) -> Self {
         let (sc, sw) = match stroke {
             Some(s) => ([s.color.r, s.color.g, s.color.b, s.color.a], s.width),
             None => ([0.0; 4], 0.0),

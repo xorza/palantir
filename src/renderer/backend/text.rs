@@ -157,8 +157,8 @@ impl TextRenderer {
             };
             scratch.push(TextArea {
                 buffer,
-                left: r.origin[0],
-                top: r.origin[1],
+                left: r.origin.x,
+                top: r.origin.y,
                 scale,
                 bounds: text_bounds(r.bounds),
                 default_color: glyphon_color(r.color),

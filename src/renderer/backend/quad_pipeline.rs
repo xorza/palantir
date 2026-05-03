@@ -13,7 +13,7 @@ struct ViewportUniform {
     _pad: [f32; 2],
 }
 
-pub struct QuadPipeline {
+pub(crate) struct QuadPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     viewport_buffer: wgpu::Buffer,
@@ -22,7 +22,7 @@ pub struct QuadPipeline {
 }
 
 impl QuadPipeline {
-    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.quad.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
@@ -125,7 +125,7 @@ impl QuadPipeline {
         }
     }
 
-    pub fn upload(
+    pub(crate) fn upload(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -160,7 +160,7 @@ impl QuadPipeline {
     /// Draw a contiguous slice of the uploaded instance buffer. Used to
     /// segment quads by scissor region; caller is responsible for setting
     /// `RenderPass::set_scissor_rect` before each call.
-    pub fn draw_range<'a>(
+    pub(crate) fn draw_range<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         instances: std::ops::Range<u32>,

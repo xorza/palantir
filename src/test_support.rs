@@ -5,12 +5,46 @@
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
-use crate::primitives::{Display, Sizing};
-use crate::renderer::{Encoder, RenderCmdBuffer};
+use crate::primitives::{Display, Rect, Sizing, TranslateScale};
+use crate::renderer::frontend::Encoder;
+use crate::renderer::frontend::cmd_buffer::{
+    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
+};
 use crate::text::{CosmicMeasure, share};
 use crate::tree::NodeId;
 use crate::widgets::Panel;
 use glam::{UVec2, Vec2};
+
+/// Decoded view of one command — test-only mirror of the SoA storage in
+/// [`RenderCmdBuffer`]. Production code dispatches on `CmdKind` via
+/// `raw_iter()` and reads payloads with the typed `read::<T>()` helper.
+#[derive(Clone, Debug)]
+pub(crate) enum RenderCmd {
+    PushClip(Rect),
+    PopClip,
+    PushTransform(TranslateScale),
+    PopTransform,
+    DrawRect(DrawRectPayload),
+    DrawRectStroked(DrawRectStrokedPayload),
+    DrawText(DrawTextPayload),
+}
+
+pub(crate) fn cmd_at(buf: &RenderCmdBuffer, i: usize) -> RenderCmd {
+    let start = buf.starts[i];
+    match buf.kinds[i] {
+        CmdKind::PushClip => RenderCmd::PushClip(buf.read(start)),
+        CmdKind::PopClip => RenderCmd::PopClip,
+        CmdKind::PushTransform => RenderCmd::PushTransform(buf.read(start)),
+        CmdKind::PopTransform => RenderCmd::PopTransform,
+        CmdKind::DrawRect => RenderCmd::DrawRect(buf.read(start)),
+        CmdKind::DrawRectStroked => RenderCmd::DrawRectStroked(buf.read(start)),
+        CmdKind::DrawText => RenderCmd::DrawText(buf.read(start)),
+    }
+}
+
+pub(crate) fn iter_cmds(buf: &RenderCmdBuffer) -> impl Iterator<Item = RenderCmd> + '_ {
+    (0..buf.kinds.len()).map(|i| cmd_at(buf, i))
+}
 
 pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
     ui.begin_frame(Display::from_physical(size, 1.0));

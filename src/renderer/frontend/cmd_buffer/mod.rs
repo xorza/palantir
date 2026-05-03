@@ -38,111 +38,74 @@ pub(crate) enum CmdKind {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct DrawRectPayload {
-    pub rect: Rect,
-    pub radius: Corners,
-    pub fill: Color,
+pub(crate) struct DrawRectPayload {
+    pub(crate) rect: Rect,
+    pub(crate) radius: Corners,
+    pub(crate) fill: Color,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct DrawRectStrokedPayload {
-    pub rect: Rect,
-    pub radius: Corners,
-    pub fill: Color,
-    pub stroke: Stroke,
+pub(crate) struct DrawRectStrokedPayload {
+    pub(crate) rect: Rect,
+    pub(crate) radius: Corners,
+    pub(crate) fill: Color,
+    pub(crate) stroke: Stroke,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct DrawTextPayload {
-    pub rect: Rect,
-    pub color: Color,
-    pub key: TextCacheKey,
-}
-
-/// Decoded view of one command. The buffer never stores `RenderCmd` —
-/// it's reconstructed by `get()` / `iter()` for tests and debugging.
-/// Production code reads payloads directly via the typed helpers and
-/// dispatches on `CmdKind`.
-///
-/// `DrawRect` and `DrawRectStroked` are separate variants because the
-/// buffer's storage splits them: stroked rects pay 5 extra u32s for the
-/// stroke, unstroked rects don't. The split is part of the contract.
-#[derive(Clone, Debug)]
-pub enum RenderCmd {
-    /// Push a logical-px clip rect; the backend intersects it with the
-    /// parent at process time. Pairs with `PopClip`.
-    PushClip(Rect),
-    PopClip,
-    /// Push a transform applied to subsequent draws and clips, composed
-    /// onto any ancestor transform. Pairs with `PopTransform`.
-    PushTransform(TranslateScale),
-    PopTransform,
-    /// Filled rounded rect, no stroke.
-    DrawRect(DrawRectPayload),
-    /// Filled rounded rect with stroke.
-    DrawRectStroked(DrawRectStrokedPayload),
-    /// Place a shaped text run at `payload.rect` (logical px). The
-    /// shaped buffer is resolved at submit time via
-    /// [`crate::text::TextCacheKey`] against the `TextMeasure` that did
-    /// the shaping. Runs whose key is invalid are dropped by the backend.
-    DrawText(DrawTextPayload),
+pub(crate) struct DrawTextPayload {
+    pub(crate) rect: Rect,
+    pub(crate) color: Color,
+    pub(crate) key: TextCacheKey,
 }
 
 /// Append-only command buffer. See module docs.
 #[derive(Default)]
-pub struct RenderCmdBuffer {
+pub(crate) struct RenderCmdBuffer {
     pub(crate) kinds: Vec<CmdKind>,
     pub(crate) starts: Vec<u32>,
     pub(crate) data: Vec<u32>,
 }
 
 impl RenderCmdBuffer {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.kinds.clear();
         self.starts.clear();
         self.data.clear();
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
-        self.kinds.len()
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.kinds.is_empty()
-    }
-
-    #[inline]
-    pub fn push_clip(&mut self, r: Rect) {
+    pub(crate) fn push_clip(&mut self, r: Rect) {
         self.record_start(CmdKind::PushClip);
         write_pod(&mut self.data, r);
     }
 
     #[inline]
-    pub fn pop_clip(&mut self) {
+    pub(crate) fn pop_clip(&mut self) {
         self.record_start(CmdKind::PopClip);
     }
 
     #[inline]
-    pub fn push_transform(&mut self, t: TranslateScale) {
+    pub(crate) fn push_transform(&mut self, t: TranslateScale) {
         self.record_start(CmdKind::PushTransform);
         write_pod(&mut self.data, t);
     }
 
     #[inline]
-    pub fn pop_transform(&mut self) {
+    pub(crate) fn pop_transform(&mut self) {
         self.record_start(CmdKind::PopTransform);
     }
 
     #[inline]
-    pub fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: Color, stroke: Option<Stroke>) {
+    pub(crate) fn draw_rect(
+        &mut self,
+        rect: Rect,
+        radius: Corners,
+        fill: Color,
+        stroke: Option<Stroke>,
+    ) {
         match stroke {
             None => {
                 self.record_start(CmdKind::DrawRect);
@@ -164,30 +127,9 @@ impl RenderCmdBuffer {
     }
 
     #[inline]
-    pub fn draw_text(&mut self, rect: Rect, color: Color, key: TextCacheKey) {
+    pub(crate) fn draw_text(&mut self, rect: Rect, color: Color, key: TextCacheKey) {
         self.record_start(CmdKind::DrawText);
         write_pod(&mut self.data, DrawTextPayload { rect, color, key });
-    }
-
-    /// Decode the i-th command back into a `RenderCmd`. Used by tests
-    /// and `iter()`; production code dispatches on `kinds[i]` directly.
-    #[inline]
-    pub fn get(&self, i: usize) -> RenderCmd {
-        let start = self.starts[i];
-        match self.kinds[i] {
-            CmdKind::PushClip => RenderCmd::PushClip(self.read(start)),
-            CmdKind::PopClip => RenderCmd::PopClip,
-            CmdKind::PushTransform => RenderCmd::PushTransform(self.read(start)),
-            CmdKind::PopTransform => RenderCmd::PopTransform,
-            CmdKind::DrawRect => RenderCmd::DrawRect(self.read(start)),
-            CmdKind::DrawRectStroked => RenderCmd::DrawRectStroked(self.read(start)),
-            CmdKind::DrawText => RenderCmd::DrawText(self.read(start)),
-        }
-    }
-
-    #[inline]
-    pub fn iter(&self) -> Iter<'_> {
-        Iter { buf: self, i: 0 }
     }
 
     /// Append a cached subtree's cmd slice into this buffer, shifting
@@ -251,23 +193,6 @@ impl RenderCmdBuffer {
         // `DrawTextPayload` via `TextCacheKey: u64`) work even though
         // the arena is `Vec<u32>` (4-byte aligned).
         bytemuck::pod_read_unaligned(bytemuck::cast_slice(words))
-    }
-}
-
-pub struct Iter<'a> {
-    buf: &'a RenderCmdBuffer,
-    i: usize,
-}
-
-impl Iterator for Iter<'_> {
-    type Item = RenderCmd;
-    fn next(&mut self) -> Option<RenderCmd> {
-        if self.i >= self.buf.len() {
-            return None;
-        }
-        let cmd = self.buf.get(self.i);
-        self.i += 1;
-        Some(cmd)
     }
 }
 
