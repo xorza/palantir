@@ -264,7 +264,10 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
     let hug_min = [0.0, 10.0, 0.0];
     let hug_max = [0.0, 30.0, 0.0];
 
-    resolve_axis(&mut a, &hug_min, &hug_max, 200.0, 0.0);
+    // Pass `Sizing::Hug` for the grid's own axis sizing so Phase 4
+    // skips the Fill-resolved commit — that's the contract this test
+    // pins (cells in Fill cols see INF until arrange).
+    resolve_axis(&mut a, &hug_min, &hug_max, 200.0, 0.0, Sizing::Hug);
 
     assert_eq!(
         a.resolved.as_slice(),

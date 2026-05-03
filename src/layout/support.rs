@@ -6,9 +6,31 @@
 use super::{Axis, LayoutEngine, LenReq};
 use crate::element::LayoutCore;
 use crate::primitives::{Align, AxisAlign, Rect, Size, Sizes, Sizing};
+use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
+
+/// Iterate `(text, font_size_px, wrap)` for every `Shape::Text` on a
+/// leaf. Single source of truth for the layout-side leaf walk —
+/// `mod.rs::leaf_content_size` drives wrap shaping, `intrinsic::leaf`
+/// drives the unbounded content axis. Filtering and destructuring
+/// happen here so neither side can drift on which shape variants
+/// contribute to size.
+pub(in crate::layout) fn leaf_text_shapes(
+    tree: &Tree,
+    node: NodeId,
+) -> impl Iterator<Item = (&str, f32, TextWrap)> {
+    tree.shapes_of(node).iter().filter_map(|s| match s {
+        Shape::Text {
+            text,
+            font_size_px,
+            wrap,
+            ..
+        } => Some((text.as_str(), *font_size_px, *wrap)),
+        _ => None,
+    })
+}
 
 /// Resolve a node's outer slot size on one axis, given its sizing policy,
 /// hug-content size (margin-inclusive), parent-supplied available, own margin,
