@@ -24,18 +24,29 @@ const HUG_ORDER: [(Axis, HugKind); 4] = [
     (Axis::Y, HugKind::Min),
 ];
 
-struct DefSnapshot {
+/// Track counts + gaps for a grid, returned by
+/// [`prepare_axis_scratch_at`] after it adopts the def into per-depth
+/// scratch. Carries no behavior; exists so call-site destructuring
+/// names the scalars instead of relying on tuple position.
+struct GridShape {
     n_rows: usize,
     n_cols: usize,
     row_gap: f32,
     col_gap: f32,
 }
 
-/// Snapshot a `GridDef` onto the scratch slot at `depth`: clones the track
-/// `Rc<[Track]>`s (refcount-only), reads gaps, and resets the per-axis
-/// scratch. Hug arrays live on `GridHugStore` (durable across the layout
-/// pass) and are read/written by callers via `hugs.min/max(idx, axis)`.
-fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) -> DefSnapshot {
+/// Adopt the `GridDef` at `idx` into the per-depth scratch slot:
+/// refcount-clone the track `Rc<[Track]>`s, read gaps, reset the
+/// per-axis `AxisScratch`. Returns the grid's track counts + gaps for
+/// the caller. Hug arrays live on `GridHugStore` (durable across the
+/// layout pass) and are read/written separately via
+/// `hugs.min/max(idx, axis)`.
+fn prepare_axis_scratch_at(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    idx: u16,
+    depth: usize,
+) -> GridShape {
     let def = tree.grid_def(idx);
     let n_rows = def.rows.len();
     let n_cols = def.cols.len();
@@ -46,7 +57,7 @@ fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) 
     let s = layout.scratch.grid.depth_stack.at(depth);
     s.col.reset(cols);
     s.row.reset(rows);
-    DefSnapshot {
+    GridShape {
         n_rows,
         n_cols,
         row_gap,
@@ -325,12 +336,12 @@ fn measure_inner(
     inner_avail: Size,
     text: &mut TextMeasurer,
 ) -> Size {
-    let DefSnapshot {
+    let GridShape {
         n_rows,
         n_cols,
         row_gap,
         col_gap,
-    } = snapshot_def(layout, tree, idx, depth);
+    } = prepare_axis_scratch_at(layout, tree, idx, depth);
 
     if n_rows == 0 || n_cols == 0 {
         // Still measure children so their `desired` is set.
@@ -543,12 +554,12 @@ fn arrange_inner(
     // between measure and arrange, so we re-read tracks/gaps from the
     // GridDef. Hug sizes are read directly from `GridHugStore`, the
     // durable record across the layout pass.
-    let DefSnapshot {
+    let GridShape {
         n_rows,
         n_cols,
         row_gap,
         col_gap,
-    } = snapshot_def(layout, tree, idx, depth);
+    } = prepare_axis_scratch_at(layout, tree, idx, depth);
 
     if n_rows == 0 || n_cols == 0 {
         for c in tree.children(node) {
