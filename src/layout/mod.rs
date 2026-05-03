@@ -124,7 +124,13 @@ impl LayoutEngine {
     /// `text` carries the shaper (or the mono fallback inside it) and is
     /// borrowed for the duration of the call so wrapping leaves can reshape
     /// against the parent-committed width during measure.
-    pub fn run(&mut self, tree: &Tree, root: NodeId, surface: Rect, text: &mut TextMeasurer) {
+    pub fn run(
+        &mut self,
+        tree: &Tree,
+        root: NodeId,
+        surface: Rect,
+        text: &mut TextMeasurer,
+    ) -> &LayoutResult {
         assert_eq!(
             self.grid.depth_stack.depth(),
             0,
@@ -149,6 +155,7 @@ impl LayoutEngine {
             0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
+        &self.result
     }
 
     /// Bottom-up measure dispatcher. Children call back via this method to
