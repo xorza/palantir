@@ -170,6 +170,7 @@ impl RenderCmdBuffer {
 
     /// Decode the i-th command back into a `RenderCmd`. Used by tests
     /// and `iter()`; production code dispatches on `kinds[i]` directly.
+    #[inline]
     pub fn get(&self, i: usize) -> RenderCmd {
         let start = self.starts[i];
         match self.kinds[i] {
@@ -183,6 +184,7 @@ impl RenderCmdBuffer {
         }
     }
 
+    #[inline]
     pub fn iter(&self) -> Iter<'_> {
         Iter { buf: self, i: 0 }
     }
