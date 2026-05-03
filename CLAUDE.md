@@ -88,23 +88,24 @@ Pre-order arena: nodes are stored in pre-order paint order, so node `i`'s childr
 
 ```
 src/
-  cascade.rs           per-node disabled/invisible/clip/transform table
-  element/             Element (wide builder) / LayoutCore + PaintCore (storage columns) / PaintAttrs (bit-packed sense/disabled/clip) / ElementExtras / Configure trait
-  shape/               Shape enum (RoundedRect, Line, Text)
-  tree/                Tree (parallel SoA columns: layout/paint/widget_ids/subtree_end), NodeId, GridDef
-  ui/                  Ui recorder, ButtonTheme
-  layout/              LayoutEngine, LayoutResult, stack/zstack/canvas/grid drivers
-  primitives/          Vec2/Size/Rect/Color/Stroke/Corners/Spacing/Sizing/Track/Align/…
-  input/               InputState, HitIndex (O(1) by-id lookup over Cascades output)
-  renderer/            encode → compose → wgpu backend, instanced rounded-rect quads
-  widgets/             Button, Frame, Panel (HStack/VStack/ZStack/Canvas factories), Grid, Styled mixin
+  cascade.rs       per-node disabled/invisible/clip/transform table
+  element/         Element builder, LayoutCore + PaintCore columns, PaintAttrs, Configure
+  shape/           Shape enum (RoundedRect, Line, Text)
+  tree/            Tree (SoA columns + subtree_end), NodeId, GridDef, hash
+  ui/              Ui recorder, theme, seen-id tracking, damage
+  layout/          LayoutEngine + drivers (stack, wrapstack, zstack, canvas, grid), intrinsic, cache
+  primitives/      Vec2/Size/Rect/Color/Stroke/Corners/Spacing/Sizing/Track/Align/Transform/…
+  text/            cosmic-text measurement + glyphon-backed rendering glue
+  input/           InputState, HitIndex (O(1) by-id lookup over Cascades output)
+  renderer/        frontend (encode/compose) + backend (wgpu), instanced quads
+  widgets/         Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, Styled mixin
 
 examples/
-  helloworld.rs        minimal wgpu-backed driver
-  showcase/            multi-page demo of every layout / clip / transform / disabled / button style
+  helloworld.rs    minimal wgpu-backed driver
+  showcase/        multi-page demo of every layout / clip / transform / disabled / button style
 
 scripts/
-  fetch-refs.sh        clones reference UI/layout/renderer projects into ./tmp
+  fetch-refs.sh    clones reference UI/layout/renderer projects into ./tmp
 ```
 
 ## Reference notes in `./references/`
@@ -186,6 +187,9 @@ Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each 
 - [x] Glyph atlas + text rendering in the wgpu pipeline
 - [x] Wrapping text (Option A): `TextWrap::Wrap`, intrinsic_min from cosmic glyphs, single-pass reshape during measure (`docs/text.md` §4)
 - [x] Intrinsic-dimensions protocol: `LenReq`-based on-demand intrinsic queries, Grid Auto under constraint, Stack Fill resolved during measure. Per-axis ZStack/Canvas constraint propagation. See `src/layout/intrinsic.md`.
+- [x] WrapStack (flow layout, line-wrapped HStack-style). `src/layout/wrapstack/`.
+- [x] Measure cache: full-subtree skip across frames, flat arena storage. See `docs/measure-cache.md`.
+- [x] Damage tracking: per-frame dirty-region collection in `src/ui/damage/`.
 - [ ] Persistent state map (`Id → Any`) for scroll, focus, animation
 - [ ] Drag tracking on top of `Active`-capture (rect-independent `drag_delta`)
 
