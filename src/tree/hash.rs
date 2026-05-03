@@ -34,6 +34,21 @@ impl NodeHash {
     /// probabilistically (collisions are 2⁻⁶⁴), but adequate as an
     /// "uninitialized" marker.
     pub const UNCOMPUTED: Self = Self(0);
+
+    /// Raw 64-bit hash value. Exposed so `Tree::compute_hashes` can
+    /// fold per-node hashes into the subtree-hash rollup without
+    /// reaching into private fields.
+    #[inline]
+    pub(crate) fn as_u64(self) -> u64 {
+        self.0
+    }
+
+    /// Construct a `NodeHash` from a raw `u64`. Same use-case as
+    /// [`Self::as_u64`].
+    #[inline]
+    pub(crate) fn from_u64(v: u64) -> Self {
+        Self(v)
+    }
 }
 
 /// Hash a value as its raw bytes in one `Hasher::write` call. The
