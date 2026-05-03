@@ -37,10 +37,10 @@ use rustc_hash::FxHashMap;
 /// `subtree_hash` and `available_q` are required equal at lookup time.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodeSnapshot {
-    pub subtree_hash: NodeHash,
-    pub available_q: AvailableKey,
-    pub cmds: Span,
-    pub data: Span,
+    pub(crate) subtree_hash: NodeHash,
+    pub(crate) available_q: AvailableKey,
+    pub(crate) cmds: Span,
+    pub(crate) data: Span,
 }
 
 /// What [`EncodeCache::try_lookup`] returns on a hit. Slices borrow
@@ -48,9 +48,9 @@ pub(crate) struct EncodeSnapshot {
 /// [`RenderCmdBuffer::extend_from_cached`] with the current root's
 /// origin to replay.
 pub(crate) struct CachedEncode<'a> {
-    pub kinds: &'a [CmdKind],
-    pub starts: &'a [u32],
-    pub data: &'a [u32],
+    pub(crate) kinds: &'a [CmdKind],
+    pub(crate) starts: &'a [u32],
+    pub(crate) data: &'a [u32],
 }
 
 const COMPACT_RATIO: usize = 2;
@@ -68,7 +68,7 @@ pub(crate) struct EncodeCache {
 
 impl EncodeCache {
     #[inline]
-    pub fn try_lookup(
+    pub(crate) fn try_lookup(
         &self,
         wid: WidgetId,
         curr_hash: NodeHash,
@@ -96,7 +96,7 @@ impl EncodeCache {
     /// changes the subtree's structure) marks the old ranges as garbage
     /// and appends fresh ones.
     #[allow(clippy::too_many_arguments)]
-    pub fn write_subtree(
+    pub(crate) fn write_subtree(
         &mut self,
         wid: WidgetId,
         subtree_hash: NodeHash,
@@ -193,7 +193,7 @@ impl EncodeCache {
         }
     }
 
-    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
                 self.live_cmds -= snap.cmds.len as usize;
@@ -204,7 +204,7 @@ impl EncodeCache {
 
     /// Drop every snapshot and free all arena storage. Used by
     /// `Ui::__clear_encode_cache` for benches.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.kinds_arena.clear();
         self.starts_arena.clear();
         self.data_arena.clear();

@@ -13,7 +13,7 @@ use crate::renderer::quad::Quad;
 /// scratch + output. [`Frontend`](crate::renderer::Frontend) orchestrates
 /// encode + compose.
 #[derive(Default)]
-pub struct Composer {
+pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
     clip_stack: Vec<URect>,
     transform_stack: Vec<TranslateScale>,
@@ -21,15 +21,11 @@ pub struct Composer {
 }
 
 impl Composer {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Consume a logical-px command stream → physical-px `Quad`s +
     /// `TextRun`s + draw groups (scissor ranges) into the composer's
     /// owned buffer, and return a borrow of the freshly-composed
     /// result. Pure: no device, no queue.
-    pub fn compose(&mut self, cmds: &RenderCmdBuffer, display: &Display) -> &RenderBuffer {
+    pub(crate) fn compose(&mut self, cmds: &RenderCmdBuffer, display: &Display) -> &RenderBuffer {
         let out = &mut self.buffer;
         let scale = display.scale_factor;
         let snap = display.pixel_snap;
@@ -147,7 +143,7 @@ impl Composer {
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
                     out.texts.push(TextRun {
-                        origin: [phys_rect.min.x, phys_rect.min.y],
+                        origin: phys_rect.min,
                         bounds,
                         color: t.color,
                         key: t.key,

@@ -1,10 +1,11 @@
 use super::super::cmd_buffer::{
-    DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmd, RenderCmdBuffer,
+    DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
 use super::Composer;
 use crate::primitives::Display;
 use crate::primitives::{Color, Corners, Rect, URect};
 use crate::renderer::buffer::RenderBuffer;
+use crate::test_support::RenderCmd;
 use crate::text::TextCacheKey;
 use glam::UVec2;
 
@@ -37,7 +38,7 @@ fn params(scale: f32, viewport_phys: [u32; 2]) -> Display {
 }
 
 fn run(cmds: &[RenderCmd], display: &Display) -> RenderBuffer {
-    let mut buffer = RenderCmdBuffer::new();
+    let mut buffer = RenderCmdBuffer::default();
     for c in cmds {
         match *c {
             RenderCmd::PushClip(r) => buffer.push_clip(r),
@@ -58,7 +59,7 @@ fn run(cmds: &[RenderCmd], display: &Display) -> RenderBuffer {
             }
         }
     }
-    let mut composer = Composer::new();
+    let mut composer = Composer::default();
     composer.compose(&buffer, display);
     std::mem::take(&mut composer.buffer)
 }

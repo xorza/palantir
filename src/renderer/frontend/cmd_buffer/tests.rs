@@ -1,9 +1,10 @@
 use super::*;
 use crate::primitives::Color;
+use crate::test_support::{RenderCmd, cmd_at};
 use crate::text::TextCacheKey;
 
 fn sample_buf() -> RenderCmdBuffer {
-    let mut b = RenderCmdBuffer::new();
+    let mut b = RenderCmdBuffer::default();
     b.push_clip(Rect::new(1.0, 2.0, 10.0, 20.0));
     b.draw_rect(
         Rect::new(3.0, 4.0, 5.0, 6.0),
@@ -32,7 +33,7 @@ fn sample_buf() -> RenderCmdBuffer {
 }
 
 fn rect_of(buf: &RenderCmdBuffer, i: usize) -> Rect {
-    match buf.get(i) {
+    match cmd_at(buf, i) {
         RenderCmd::PushClip(r) => r,
         RenderCmd::DrawRect(p) => p.rect,
         RenderCmd::DrawRectStroked(p) => p.rect,
@@ -44,7 +45,7 @@ fn rect_of(buf: &RenderCmdBuffer, i: usize) -> Rect {
 #[test]
 fn extend_from_cached_shifts_rect_min() {
     let src = sample_buf();
-    let mut dst = RenderCmdBuffer::new();
+    let mut dst = RenderCmdBuffer::default();
     let offset = Vec2::new(10.0, 20.0);
     dst.extend_from_cached(&src.kinds, &src.starts, &src.data, offset);
 
@@ -63,10 +64,10 @@ fn extend_from_cached_shifts_rect_min() {
             }
             CmdKind::PopClip | CmdKind::PopTransform => {}
             CmdKind::PushTransform => {
-                let RenderCmd::PushTransform(d) = dst.get(i) else {
+                let RenderCmd::PushTransform(d) = cmd_at(&dst, i) else {
                     unreachable!()
                 };
-                let RenderCmd::PushTransform(s) = src.get(i) else {
+                let RenderCmd::PushTransform(s) = cmd_at(&src, i) else {
                     unreachable!()
                 };
                 assert_eq!(d, s);
@@ -78,10 +79,10 @@ fn extend_from_cached_shifts_rect_min() {
 #[test]
 fn extend_from_cached_round_trip_is_identity() {
     let src = sample_buf();
-    let mut mid = RenderCmdBuffer::new();
+    let mut mid = RenderCmdBuffer::default();
     mid.extend_from_cached(&src.kinds, &src.starts, &src.data, Vec2::new(7.5, -3.25));
 
-    let mut back = RenderCmdBuffer::new();
+    let mut back = RenderCmdBuffer::default();
     back.extend_from_cached(&mid.kinds, &mid.starts, &mid.data, Vec2::new(-7.5, 3.25));
 
     assert_eq!(back.kinds, src.kinds);
@@ -92,7 +93,7 @@ fn extend_from_cached_round_trip_is_identity() {
 #[test]
 fn extend_from_cached_multi_segment_concatenates() {
     let src = sample_buf();
-    let mut dst = RenderCmdBuffer::new();
+    let mut dst = RenderCmdBuffer::default();
     dst.extend_from_cached(&src.kinds, &src.starts, &src.data, Vec2::new(1.0, 0.0));
     dst.extend_from_cached(&src.kinds, &src.starts, &src.data, Vec2::new(0.0, 1.0));
 

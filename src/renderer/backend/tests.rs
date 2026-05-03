@@ -46,7 +46,7 @@ fn dummy_quad() -> Quad {
 
 fn dummy_text() -> TextRun {
     TextRun {
-        origin: [0.0, 0.0],
+        origin: glam::Vec2::ZERO,
         bounds: URect {
             x: 0,
             y: 0,
