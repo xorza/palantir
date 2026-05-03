@@ -1,48 +1,9 @@
 use super::cmd_buffer::RenderCmdBuffer;
 use crate::cascade::Cascades;
 use crate::layout::LayoutResult;
-use crate::primitives::{
-    Align, Color, Corners, HAlign, Rect, Size, Stroke, TranslateScale, VAlign,
-};
+use crate::primitives::{Align, HAlign, Rect, Size, Stroke, TranslateScale, VAlign};
 use crate::shape::Shape;
-use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
-
-/// One typed paint instruction in logical (DIP) coordinates. Produced by
-/// `encode` from the tree, consumed by the backend which scales/snaps to
-/// physical pixels and groups by scissor.
-///
-/// Decoupling encode from backend means: (a) the encoder is pure data and
-/// tree-shaped knowledge; (b) any backend (wgpu, future software/Vello,
-/// test harness) consumes the same stream; (c) future shape kinds (Text,
-/// Line, Path) just add variants without touching pipeline code.
-#[derive(Clone, Debug)]
-pub enum RenderCmd {
-    /// Push a logical-px clip rect; the backend intersects it with the parent
-    /// at process time. Pairs with `PopClip`.
-    PushClip(Rect),
-    PopClip,
-    /// Push a transform applied to subsequent draws and clips, composed onto
-    /// any ancestor transform. Pairs with `PopTransform`.
-    PushTransform(TranslateScale),
-    PopTransform,
-    DrawRect {
-        rect: Rect,
-        radius: Corners,
-        fill: Color,
-        stroke: Option<Stroke>,
-    },
-    /// Place a shaped text run at `rect` (logical px). The shaped buffer is
-    /// resolved at submit time via [`crate::text::TextCacheKey`] against the
-    /// `TextMeasure` that did the shaping. Runs whose key is invalid are
-    /// dropped by the backend.
-    DrawText {
-        rect: Rect,
-        color: Color,
-        key: TextCacheKey,
-    },
-    // Future: DrawLine { … }, DrawPath { … }.
-}
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU work,
 /// no scale/snap math — that lives in the backend's process step. Pure

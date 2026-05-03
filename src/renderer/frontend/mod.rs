@@ -15,9 +15,9 @@ mod cmd_buffer;
 mod composer;
 mod encoder;
 
-pub use cmd_buffer::RenderCmdBuffer;
+pub use cmd_buffer::{RenderCmd, RenderCmdBuffer};
 pub use composer::Composer;
-pub use encoder::{RenderCmd, encode};
+pub use encoder::encode;
 
 use crate::cascade::Cascades;
 use crate::layout::LayoutResult;

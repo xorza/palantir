@@ -1,5 +1,6 @@
-use super::super::cmd_buffer::RenderCmdBuffer;
-use super::super::encoder::RenderCmd;
+use super::super::cmd_buffer::{
+    DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmd, RenderCmdBuffer,
+};
 use super::Composer;
 use crate::primitives::Display;
 use crate::primitives::{Color, Corners, Rect, URect};
@@ -12,20 +13,19 @@ fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
 }
 
 fn draw(r: Rect) -> RenderCmd {
-    RenderCmd::DrawRect {
+    RenderCmd::DrawRect(DrawRectPayload {
         rect: r,
         radius: Corners::ZERO,
         fill: Color::rgb(1.0, 1.0, 1.0),
-        stroke: None,
-    }
+    })
 }
 
 fn text(r: Rect) -> RenderCmd {
-    RenderCmd::DrawText {
+    RenderCmd::DrawText(DrawTextPayload {
         rect: r,
         color: Color::WHITE,
         key: TextCacheKey::INVALID,
-    }
+    })
 }
 
 fn params(scale: f32, viewport_phys: [u32; 2]) -> Display {
@@ -44,13 +44,18 @@ fn run(cmds: &[RenderCmd], display: &Display) -> RenderBuffer {
             RenderCmd::PopClip => buffer.pop_clip(),
             RenderCmd::PushTransform(t) => buffer.push_transform(t),
             RenderCmd::PopTransform => buffer.pop_transform(),
-            RenderCmd::DrawRect {
+            RenderCmd::DrawRect(DrawRectPayload { rect, radius, fill }) => {
+                buffer.draw_rect(rect, radius, fill, None)
+            }
+            RenderCmd::DrawRectStroked(DrawRectStrokedPayload {
                 rect,
                 radius,
                 fill,
                 stroke,
-            } => buffer.draw_rect(rect, radius, fill, stroke),
-            RenderCmd::DrawText { rect, color, key } => buffer.draw_text(rect, color, key),
+            }) => buffer.draw_rect(rect, radius, fill, Some(stroke)),
+            RenderCmd::DrawText(DrawTextPayload { rect, color, key }) => {
+                buffer.draw_text(rect, color, key)
+            }
         }
     }
     let mut buf = RenderBuffer::default();
@@ -192,15 +197,15 @@ fn compose_scales_radius_and_stroke_under_transform() {
     let buf = run(
         &[
             RenderCmd::PushTransform(TranslateScale::from_scale(2.0)),
-            RenderCmd::DrawRect {
+            RenderCmd::DrawRectStroked(DrawRectStrokedPayload {
                 rect: rect(0.0, 0.0, 50.0, 50.0),
                 radius: Corners::all(8.0),
                 fill: Color::rgb(1.0, 1.0, 1.0),
-                stroke: Some(Stroke {
+                stroke: Stroke {
                     width: 1.5,
                     color: Color::rgb(0.0, 0.0, 0.0),
-                }),
-            },
+                },
+            }),
             RenderCmd::PopTransform,
         ],
         &params(1.0, [400, 400]),

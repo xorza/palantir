@@ -99,10 +99,15 @@ impl Composer {
                         .unwrap_or(TranslateScale::IDENTITY);
                 }
                 kind @ (CmdKind::DrawRect | CmdKind::DrawRectStroked) => {
-                    let p = if kind == CmdKind::DrawRect {
-                        cmds.read_draw_rect(start)
-                    } else {
-                        cmds.read_draw_rect_stroked(start)
+                    let (rect, radius, fill, stroke) = match kind {
+                        CmdKind::DrawRect => {
+                            let p = cmds.read_draw_rect(start);
+                            (p.rect, p.radius, p.fill, None)
+                        }
+                        _ => {
+                            let p = cmds.read_draw_rect_stroked(start);
+                            (p.rect, p.radius, p.fill, Some(p.stroke))
+                        }
                     };
                     if last_was_text {
                         // Flush the current group so this quad renders
@@ -120,16 +125,16 @@ impl Composer {
                         texts_start = out.texts.len() as u32;
                         last_was_text = false;
                     }
-                    let world_rect = current_transform.apply_rect(p.rect);
-                    let world_radius = p.radius.scaled_by(current_transform.scale);
+                    let world_rect = current_transform.apply_rect(rect);
+                    let world_radius = radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
-                    let phys_stroke = p.stroke.map(|s| Stroke {
+                    let phys_stroke = stroke.map(|s| Stroke {
                         width: s.width * current_transform.scale * scale,
                         color: s.color,
                     });
                     out.quads
-                        .push(Quad::new(phys_rect, p.fill, phys_radius, phys_stroke));
+                        .push(Quad::new(phys_rect, fill, phys_radius, phys_stroke));
                 }
                 CmdKind::DrawText => {
                     let t = cmds.read_draw_text(start);
