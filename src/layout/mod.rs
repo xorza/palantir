@@ -72,7 +72,7 @@ impl LayoutScratch {
 ///   encoder / hit-index after `run` returns. Exposed via
 ///   [`LayoutEngine::result`].
 /// - `cache` — cross-frame measure cache. See [`cache`] and
-///   `docs/measure-cache.md`.
+///   `src/layout/measure-cache.md`.
 ///
 /// Cross-frame text reuse used to live here too; it now sits behind
 /// `TextMeasurer` (`unbounded_for` / `cached_wrap` / `shape_wrap`) so

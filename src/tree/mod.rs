@@ -80,8 +80,9 @@ pub struct Tree {
     /// subtree hashes of `i`'s direct children, in declaration order.
     /// Equality of `subtree_hashes[i]` across frames means nothing in
     /// the subtree rooted at `i` changed — the cross-frame measure
-    /// cache and (planned) per-subtree encode cache key on this. See
-    /// `docs/measure-cache.md`.
+    /// cache and the encode cache both key on this. See
+    /// `src/layout/measure-cache.md` and
+    /// `src/renderer/frontend/encoder/encode-cache.md`.
     pub(crate) subtree_hashes: Vec<NodeHash>,
     /// Per-node "this subtree contains a `LayoutMode::Grid`". Rolled
     /// up alongside `subtree_hashes` in `compute_hashes`. Used as a

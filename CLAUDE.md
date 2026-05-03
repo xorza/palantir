@@ -163,8 +163,8 @@ Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each 
 - [x] Wrapping text: `TextWrap::Wrap` opt-in, intrinsic_min from cosmic glyphs, single-pass reshape during measure.
 - [x] Intrinsic-dimensions protocol: `LenReq`-based on-demand intrinsic queries, Grid Auto under constraint, Stack Fill resolved during measure. Per-axis ZStack/Canvas constraint propagation. See `src/layout/intrinsic.md`.
 - [x] WrapStack (flow layout, line-wrapped HStack-style). `src/layout/wrapstack/`.
-- [x] Measure cache: full-subtree skip across frames, flat arena storage. See `docs/measure-cache.md`.
-- [x] Encode cache: full-subtree skip on the encoder, mirrors measure cache. See `docs/encode-cache.md`.
+- [x] Measure cache: full-subtree skip across frames, flat arena storage. See `src/layout/measure-cache.md`.
+- [x] Encode cache: full-subtree skip on the encoder, mirrors measure cache. See `src/renderer/frontend/encoder/encode-cache.md`.
 - [x] Damage tracking: per-frame dirty-region collection in `src/ui/damage/`.
 - [ ] Persistent state map (`Id → Any`) for scroll, focus, animation
 - [ ] Drag tracking on top of `Active`-capture (rect-independent `drag_delta`)
