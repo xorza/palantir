@@ -44,10 +44,19 @@ pub(crate) struct ArenaSnapshot {
     pub len: u32,
 }
 
-/// Quantized (`available.w`, `available.h`) — the dimensional half of
-/// the cache key. `i32::MAX` represents an infinite axis (ZStack /
-/// Hug parents propagate `f32::INFINITY`).
-pub(crate) type AvailableKey = (i32, i32);
+/// Quantized `available` size — the dimensional half of the cache
+/// key. `i32::MAX` on either axis represents an infinite available
+/// (ZStack / Hug parents propagate `f32::INFINITY`). Equality compare
+/// is used as a cache-validity gate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AvailableKey {
+    pub w: i32,
+    pub h: i32,
+}
+
+impl AvailableKey {
+    pub const ZERO: Self = Self { w: 0, h: 0 };
+}
 
 /// What [`MeasureCache::try_lookup`] returns on a hit. The slices are
 /// borrows into the cache's arenas, ready to `copy_from_slice` into
@@ -57,6 +66,7 @@ pub(crate) struct CachedSubtree<'a> {
     pub root: Size,
     pub desired: &'a [Size],
     pub text_shapes: &'a [Option<ShapedText>],
+    pub available_q: &'a [AvailableKey],
 }
 
 #[inline]
@@ -69,8 +79,11 @@ fn quantize_axis(v: f32) -> i32 {
 }
 
 #[inline]
-pub(crate) fn quantize_available(s: Size) -> AvailableKey {
-    (quantize_axis(s.w), quantize_axis(s.h))
+pub fn quantize_available(s: Size) -> AvailableKey {
+    AvailableKey {
+        w: quantize_axis(s.w),
+        h: quantize_axis(s.h),
+    }
 }
 
 /// Compaction trigger: arena length must exceed `live_entries × this`.
@@ -89,6 +102,13 @@ pub(crate) struct MeasureCache {
     pub desired_arena: Vec<Size>,
     /// Parallel to `desired_arena`. Same indexing.
     pub text_arena: Vec<Option<ShapedText>>,
+    /// Parallel to `desired_arena`. Same indexing. Per-descendant
+    /// quantized `available`, snapshotted so a measure-cache hit can
+    /// restore the full subtree's `available_q` column on
+    /// `LayoutResult`. The encode cache reads it at every node it
+    /// visits, so descendants must remain correct even when the
+    /// measure pass short-circuits and never visits them.
+    pub available_arena: Vec<AvailableKey>,
     /// Per-`WidgetId` snapshot index. Each value points at a range in
     /// the two arenas above.
     pub snapshots: FxHashMap<WidgetId, ArenaSnapshot>,
@@ -119,6 +139,7 @@ impl MeasureCache {
             root: self.desired_arena[s],
             desired: &self.desired_arena[s..e],
             text_shapes: &self.text_arena[s..e],
+            available_q: &self.available_arena[s..e],
         })
     }
 
@@ -135,8 +156,10 @@ impl MeasureCache {
         available_q: AvailableKey,
         desired: &[Size],
         text_shapes: &[Option<ShapedText>],
+        available_qs: &[AvailableKey],
     ) {
         debug_assert_eq!(desired.len(), text_shapes.len());
+        debug_assert_eq!(desired.len(), available_qs.len());
         let new_len = desired.len() as u32;
 
         if let Some(prev) = self.snapshots.get_mut(&wid)
@@ -147,6 +170,7 @@ impl MeasureCache {
             let e = s + new_len as usize;
             self.desired_arena[s..e].copy_from_slice(desired);
             self.text_arena[s..e].copy_from_slice(text_shapes);
+            self.available_arena[s..e].copy_from_slice(available_qs);
             prev.subtree_hash = subtree_hash;
             prev.available_q = available_q;
             return;
@@ -161,6 +185,7 @@ impl MeasureCache {
         let start = self.desired_arena.len() as u32;
         self.desired_arena.extend_from_slice(desired);
         self.text_arena.extend_from_slice(text_shapes);
+        self.available_arena.extend_from_slice(available_qs);
         self.live_entries += new_len as usize;
         self.snapshots.insert(
             wid,
@@ -196,6 +221,7 @@ impl MeasureCache {
     pub fn clear(&mut self) {
         self.desired_arena.clear();
         self.text_arena.clear();
+        self.available_arena.clear();
         self.snapshots.clear();
         self.live_entries = 0;
     }
@@ -207,20 +233,24 @@ impl MeasureCache {
         let Self {
             desired_arena,
             text_arena,
+            available_arena,
             snapshots,
             live_entries,
         } = self;
         let mut new_desired: Vec<Size> = Vec::with_capacity(*live_entries);
         let mut new_text: Vec<Option<ShapedText>> = Vec::with_capacity(*live_entries);
+        let mut new_avail: Vec<AvailableKey> = Vec::with_capacity(*live_entries);
         for snap in snapshots.values_mut() {
             let s = snap.start as usize;
             let e = s + snap.len as usize;
             snap.start = new_desired.len() as u32;
             new_desired.extend_from_slice(&desired_arena[s..e]);
             new_text.extend_from_slice(&text_arena[s..e]);
+            new_avail.extend_from_slice(&available_arena[s..e]);
         }
         *desired_arena = new_desired;
         *text_arena = new_text;
+        *available_arena = new_avail;
     }
 }
 

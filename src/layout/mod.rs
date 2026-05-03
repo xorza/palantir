@@ -3,7 +3,7 @@ use crate::primitives::{Rect, Size, Sizing, WidgetId};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
-use cache::{MeasureCache, quantize_available};
+use cache::MeasureCache;
 use grid::GridContext;
 use support::{resolve_axis_size, zero_subtree};
 use wrapstack::WrapScratch;
@@ -20,6 +20,7 @@ mod wrapstack;
 mod zstack;
 
 pub use axis::Axis;
+pub use cache::{AvailableKey, quantize_available};
 pub use intrinsic::LenReq;
 pub use result::{LayoutResult, ShapedText};
 
@@ -212,6 +213,13 @@ impl LayoutEngine {
         let cache_wid = tree.widget_ids[node.index()];
         let cache_hash = tree.subtree_hashes[node.index()];
         let cache_avail = quantize_available(available);
+        // Record this node's quantized `available` on `LayoutResult`
+        // before any short-circuit. Downstream consumers (encode
+        // cache, etc.) read the column at every node they visit; on a
+        // measure-cache hit the descendant range is restored from the
+        // snapshot below, so this single write covers the miss path
+        // and the snapshot covers the hit path.
+        self.result.set_available_q(node, cache_avail);
         if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
             let curr_start = node.index();
             let curr_end = curr_start + hit.desired.len();
@@ -220,6 +228,7 @@ impl LayoutEngine {
             debug_assert_eq!(curr_end, tree.subtree_end[curr_start] as usize);
             self.desired[curr_start..curr_end].copy_from_slice(hit.desired);
             self.result.restore_text_shapes(curr_start, hit.text_shapes);
+            self.result.restore_available_q(curr_start, hit.available_q);
             return hit.root;
         }
 
@@ -293,6 +302,7 @@ impl LayoutEngine {
             cache_avail,
             &self.desired[start..end],
             self.result.text_shapes_slice(start, end),
+            self.result.available_q_slice(start, end),
         );
 
         desired
