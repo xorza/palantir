@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Align, Display, HAlign, Rect, Sizing, VAlign};
+use crate::primitives::{Align, HAlign, Rect, Sizing, VAlign};
+use crate::test_support::begin;
 use crate::tree::NodeId;
 use crate::widgets::{Frame, Panel};
 
@@ -9,10 +10,7 @@ use crate::widgets::{Frame, Panel};
 /// surface forcing.
 fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -> NodeId {
     use glam::UVec2;
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(surface.size.w as u32, surface.size.h as u32),
-        1.0,
-    ));
+    begin(ui, UVec2::new(surface.size.w as u32, surface.size.h as u32));
     let mut inner = None;
     Panel::hstack()
         .size((Sizing::FILL, Sizing::FILL))

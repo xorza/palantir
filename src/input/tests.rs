@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{Display, Sense, Sizing};
+use crate::test_support::{begin, ui_at};
 use crate::widgets::{Button, Panel};
 use glam::{UVec2, Vec2};
 
@@ -13,10 +14,7 @@ fn input_state_press_release_emits_click() {
     let mut ui = Ui::new();
 
     // Frame 1: build, layout, end_frame to populate last_rects.
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 80.0 as u32),
-        1.0,
-    ));
+    begin(&mut ui, UVec2::new(200, 80));
     let _root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::with_id("target")
@@ -33,10 +31,7 @@ fn input_state_press_release_emits_click() {
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     // Frame 2: rebuild; widgets should observe the click in build_ui.
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 80.0 as u32),
-        1.0,
-    ));
+    begin(&mut ui, UVec2::new(200, 80));
     let mut got_click = false;
     Panel::hstack().show(&mut ui, |ui| {
         let r = Button::with_id("target")
@@ -49,10 +44,7 @@ fn input_state_press_release_emits_click() {
 
     // Click does not stick: next frame without input must clear it.
     ui.end_frame();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 80.0 as u32),
-        1.0,
-    ));
+    begin(&mut ui, UVec2::new(200, 80));
     let mut still_clicking = false;
     Panel::hstack().show(&mut ui, |ui| {
         still_clicking = Button::with_id("target")
@@ -68,11 +60,7 @@ fn input_state_press_release_emits_click() {
 fn stack_with_sense_none_passes_clicks_through() {
     // HStack default Sense::NONE — clicking on its background (between children)
     // doesn't fire `clicked` on the stack. Clicking on a child still fires on the child.
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let _stack_node = Panel::hstack()
         .padding(20.0) // creates "background" area to click
         .show(&mut ui, |ui| {
@@ -111,11 +99,7 @@ fn stack_with_sense_click_captures_clicks() {
     // Opt-in: HStack::sense(Sense::CLICK) makes the container clickable.
     // Use `with_id` so the stack has the same WidgetId on both frames; otherwise
     // `auto_stable` would give different ids (different call sites in the test).
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let _stack_node = Panel::hstack_with_id("clickable_card")
         .padding(20.0)
         .sense(Sense::CLICK)
@@ -150,11 +134,7 @@ fn stack_with_sense_click_captures_clicks() {
 fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
     // Sense::HOVER: visible to hover state but transparent to click capture.
     // Useful for tooltips, cursor changes, row highlights.
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let _stack_node = Panel::hstack_with_id("hover_only")
         .padding(20.0)
         .sense(Sense::HOVER)
@@ -201,11 +181,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
 
 #[test]
 fn input_state_release_outside_does_not_click() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(400.0 as u32, 80.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(400, 80));
     let _root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::with_id("target")
@@ -242,10 +218,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     let mut ui = Ui::new();
 
     // Frame 1: build + layout so last_rects gets populated.
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(400.0 as u32, 400.0 as u32),
-        1.0,
-    ));
+    begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack_with_id("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
@@ -292,11 +265,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
     // logical rect is (0,0,50,50) but its world (rendered) rect is
     // (0,0,100,100). A click at logical (5,5) must hit; a click at (75,75)
     // (inside world bounds, outside logical bounds) must also hit.
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(400.0 as u32, 400.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack_with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
@@ -339,11 +308,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
 fn click_outside_zoomed_bounds_does_not_hit() {
     use crate::primitives::TranslateScale;
 
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(400.0 as u32, 400.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack_with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))

@@ -1,0 +1,106 @@
+use crate::element::Configure;
+use crate::primitives::{Align, Color, HAlign, Sizing, VAlign};
+use crate::test_support::ui_at;
+use crate::widgets::{Button, Frame, Panel, Styled};
+use glam::UVec2;
+
+#[test]
+fn zstack_layers_children_without_painting_background() {
+    // Like Panel but with no fill/stroke/radius — pure layered layout.
+    // Wrapped in HStack so the ZStack's Hug-to-children size is honored
+    // (root would otherwise expand to surface).
+    let mut ui = ui_at(UVec2::new(400, 200));
+    let mut zstack_node = None;
+    let mut bg_node = None;
+    let mut fg_node = None;
+    Panel::hstack().show(&mut ui, |ui| {
+        zstack_node = Some(
+            Panel::zstack_with_id("layered")
+                .show(ui, |ui| {
+                    bg_node = Some(
+                        Frame::with_id("bg")
+                            .size((Sizing::Fixed(120.0), Sizing::Fixed(80.0)))
+                            .fill(Color::rgb(0.1, 0.1, 0.2))
+                            .show(ui)
+                            .node,
+                    );
+                    fg_node = Some(
+                        Button::with_id("fg")
+                            .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
+                            .show(ui)
+                            .node,
+                    );
+                })
+                .node,
+        );
+    });
+    ui.end_frame();
+
+    let z = zstack_node.unwrap();
+    // ZStack itself paints nothing.
+    assert!(ui.tree.shapes_of(z).is_empty());
+
+    // ZStack hugs to max(child sizes) = (120, 80).
+    let zr = ui.layout_engine.rect(z);
+    assert_eq!(zr.size.w, 120.0);
+    assert_eq!(zr.size.h, 80.0);
+
+    // Both children placed at ZStack's top-left (no padding), at their own size.
+    let bg = ui.layout_engine.rect(bg_node.unwrap());
+    let fg = ui.layout_engine.rect(fg_node.unwrap());
+    assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
+    assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
+    assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
+    assert_eq!((fg.size.w, fg.size.h), (60.0, 30.0));
+}
+
+#[test]
+fn zstack_centers_child_when_align_center() {
+    let mut ui = ui_at(UVec2::new(400, 400));
+    let mut child_node = None;
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("box")
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+            .show(ui, |ui| {
+                child_node = Some(
+                    Frame::with_id("c")
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                        .align(Align::CENTER)
+                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .show(ui)
+                        .node,
+                );
+            });
+    });
+    ui.end_frame();
+
+    let r = ui.layout_engine.rect(child_node.unwrap());
+    // ZStack inner = 200×100, child = 40×20 → centered at (80, 40).
+    assert_eq!((r.min.x, r.min.y), (80.0, 40.0));
+    assert_eq!((r.size.w, r.size.h), (40.0, 20.0));
+}
+
+#[test]
+fn zstack_aligns_independently_per_axis() {
+    let mut ui = ui_at(UVec2::new(400, 400));
+    let mut child_node = None;
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack_with_id("box")
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+            .show(ui, |ui| {
+                child_node = Some(
+                    Frame::with_id("c")
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                        .align(Align::new(HAlign::Right, VAlign::Center))
+                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .show(ui)
+                        .node,
+                );
+            });
+    });
+    ui.end_frame();
+
+    let r = ui.layout_engine.rect(child_node.unwrap());
+    // x: End → 200-40 = 160. y: Center → (100-20)/2 = 40.
+    assert_eq!((r.min.x, r.min.y), (160.0, 40.0));
+}

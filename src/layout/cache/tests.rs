@@ -1,11 +1,12 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Display, Size, WidgetId};
+use crate::primitives::{Color, Size, WidgetId};
+use crate::test_support::{begin, ui_at};
 use crate::widgets::{Frame, Panel, Styled};
 use glam::UVec2;
 
 fn run_frame(ui: &mut Ui, build: impl FnOnce(&mut Ui)) {
-    ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
+    begin(ui, UVec2::new(200, 200));
     Panel::hstack_with_id("root").show(ui, build);
     ui.end_frame();
 }
@@ -131,7 +132,7 @@ fn changing_available_forces_miss_and_remeasure() {
                 .show(ui);
         });
     };
-    ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
+    begin(&mut ui, UVec2::new(200, 200));
     Panel::hstack_with_id("root").show(&mut ui, build);
     ui.end_frame();
 
@@ -140,7 +141,7 @@ fn changing_available_forces_miss_and_remeasure() {
         ui.layout_engine.cache.available_arena[snap_for(&ui, wid).unwrap().0.nodes.start as usize];
     let d1 = snap_for(&ui, wid).unwrap().1[0];
 
-    ui.begin_frame(Display::from_physical(UVec2::new(80, 80), 1.0));
+    begin(&mut ui, UVec2::new(80, 80));
     Panel::hstack_with_id("root").show(&mut ui, build);
     ui.end_frame();
 
@@ -283,7 +284,7 @@ fn in_place_rewrite_preserves_arena_position() {
             .show(ui);
     };
 
-    ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
+    begin(&mut ui, UVec2::new(200, 200));
     Panel::hstack_with_id("root").show(&mut ui, |ui| build(ui, 0.2));
     ui.end_frame();
     let start1 = snap_for(&ui, WidgetId::from_hash("a"))
@@ -294,7 +295,7 @@ fn in_place_rewrite_preserves_arena_position() {
 
     // Different fill → different hash, but same subtree size (still 1
     // leaf). In-place path should reuse the slot.
-    ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
+    begin(&mut ui, UVec2::new(200, 200));
     Panel::hstack_with_id("root").show(&mut ui, |ui| build(ui, 0.9));
     ui.end_frame();
     let start2 = snap_for(&ui, WidgetId::from_hash("a"))
@@ -321,7 +322,7 @@ fn arena_invariant_holds_under_fragmentation() {
     let mut ui = Ui::new();
 
     let n_first = (COMPACT_FLOOR) * 4;
-    ui.begin_frame(Display::from_physical(UVec2::new(800, 800), 1.0));
+    begin(&mut ui, UVec2::new(800, 800));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         for i in 0..n_first {
             Frame::with_id(("a", i)).size(10.0).show(ui);
@@ -331,7 +332,7 @@ fn arena_invariant_holds_under_fragmentation() {
 
     // Drop all but one and add a fresh subtree to force append-path
     // writes; expect compaction to trigger somewhere along the way.
-    ui.begin_frame(Display::from_physical(UVec2::new(800, 800), 1.0));
+    begin(&mut ui, UVec2::new(800, 800));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         Frame::with_id(("a", 0usize)).size(10.0).show(ui);
         Panel::vstack_with_id("new-group").show(ui, |ui| {
@@ -366,7 +367,7 @@ fn cache_hits_remain_valid_after_compaction() {
     // Frame 1: enough widgets to clear the floor; remember one that
     // we'll keep across frames.
     let n_first = (COMPACT_FLOOR) * 4;
-    ui.begin_frame(Display::from_physical(UVec2::new(800, 800), 1.0));
+    begin(&mut ui, UVec2::new(800, 800));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         for i in 0..n_first {
             Frame::with_id(("a", i)).size(11.0).show(ui);
@@ -377,7 +378,7 @@ fn cache_hits_remain_valid_after_compaction() {
     let kept_desired_pre = snap_for(&ui, kept_wid).unwrap().1[0];
 
     // Frame 2: drop most, add fresh subtree to drive compaction.
-    ui.begin_frame(Display::from_physical(UVec2::new(800, 800), 1.0));
+    begin(&mut ui, UVec2::new(800, 800));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         Frame::with_id(("a", 0usize)).size(11.0).show(ui);
         Panel::vstack_with_id("new-group").show(ui, |ui| {
@@ -434,8 +435,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
         });
     };
 
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(UVec2::new(400, 400), 1.0));
+    let mut ui = ui_at(UVec2::new(400, 400));
     build(&mut ui, Color::rgb(1.0, 0.0, 0.0));
     ui.end_frame();
 
@@ -457,7 +457,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
     // Frame 2: only the changing leaf's color flips. Hash rollup
     // must propagate the change all the way to `root`; the stable
     // sibling subtree must be untouched.
-    ui.begin_frame(Display::from_physical(UVec2::new(400, 400), 1.0));
+    begin(&mut ui, UVec2::new(400, 400));
     build(&mut ui, Color::rgb(0.0, 1.0, 0.0));
     ui.end_frame();
 

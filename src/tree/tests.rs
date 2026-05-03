@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::element::Configure;
 use crate::primitives::{Color, Display, Justify, Sizing};
 use crate::shape::Shape;
+use crate::test_support::ui_at;
 use crate::tree::{NodeHash, NodeId};
 use crate::widgets::{Button, Frame, Panel, Styled};
 use glam::UVec2;
@@ -31,11 +32,7 @@ fn shapes_attached_to_button_node() {
 /// hash. The builder receives `ui` after `begin_frame` and returns the
 /// `NodeId` to read.
 fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 200));
     let target = f(&mut ui);
     ui.end_frame();
     ui.tree.node_hash(target)
@@ -108,10 +105,7 @@ fn changing_fill_color_changes_hash() {
     let _ = (h1, h2); // root is unaffected — pin the child instead.
 
     let mut ui1 = Ui::new();
-    ui1.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut child1 = None;
     Panel::hstack_with_id("root").show(&mut ui1, |ui| {
         child1 = Some(
@@ -228,10 +222,7 @@ fn shape_order_matters_for_hash() {
     // bg-then-text and text-then-bg paint differently. Hash must
     // reflect that.
     let mut ui1 = Ui::new();
-    ui1.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut n1 = None;
     Panel::hstack().show(&mut ui1, |ui| {
         // Push a Frame then add a manual Text shape via a Button.
@@ -261,10 +252,7 @@ fn shape_order_matters_for_hash() {
 fn changing_text_content_changes_hash() {
     use crate::widgets::Text;
     let mut ui1 = Ui::new();
-    ui1.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut a = None;
     Panel::hstack().show(&mut ui1, |ui| {
         a = Some(Text::with_id("t", "Hello").show(ui).node);
@@ -291,10 +279,7 @@ fn changing_text_content_changes_hash() {
 #[test]
 fn child_hash_does_not_affect_parent_hash() {
     let mut ui1 = Ui::new();
-    ui1.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let parent1 = Panel::hstack_with_id("root")
         .show(&mut ui1, |ui| {
             Frame::with_id("c")
@@ -331,8 +316,7 @@ fn child_hash_does_not_affect_parent_hash() {
 // cache will rely on.
 
 fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
+    let mut ui = ui_at(UVec2::new(200, 200));
     let target = f(&mut ui);
     ui.end_frame();
     ui.tree.subtree_hash(target)

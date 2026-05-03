@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::element::Configure;
 use crate::primitives::{Color, Display, Rect, WidgetId};
+use crate::test_support::{begin, new_ui_text, ui_at};
 use crate::widgets::{Button, Frame, Panel, Styled};
 use glam::UVec2;
 
@@ -22,10 +23,7 @@ fn duplicate_widget_id_panics() {
 /// Helper: drive one full frame with an empty root so we can inspect
 /// the post-`end_frame` state of the repaint gate.
 fn drain_one_frame(ui: &mut Ui) {
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(100.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    begin(ui, UVec2::new(100, 100));
     Panel::hstack().show(ui, |_| {});
     ui.end_frame();
 }
@@ -45,11 +43,7 @@ fn should_repaint_starts_true() {
 /// than panicking — empty UI is a real case.
 #[test]
 fn empty_ui_drives_a_frame_without_panicking() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 200));
     ui.end_frame();
 
     assert_eq!(ui.tree.node_count(), 0);
@@ -66,11 +60,7 @@ fn empty_ui_drives_a_frame_without_panicking() {
 /// recorder retains no per-frame state across `begin_frame`).
 #[test]
 fn empty_then_populated_frame() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(100.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(100, 100));
     ui.end_frame();
 
     drain_one_frame(&mut ui);
@@ -79,15 +69,10 @@ fn empty_then_populated_frame() {
 }
 
 /// Pin: the full CPU render pipeline (encode + compose) survives an
-/// empty UI. Backend `submit` is GPU-bound and not exercised here,
-/// but every CPU stage `end_frame` runs (cascade, damage, painter)
-/// must be safe on empty input.
+/// empty UI.
 #[test]
 fn empty_ui_runs_through_pipeline() {
-    use crate::primitives::Display;
-    use glam::UVec2;
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
+    let mut ui = ui_at(UVec2::new(200, 200));
     let frame = ui.end_frame();
     assert!(frame.buffer.quads.is_empty());
     assert!(frame.buffer.texts.is_empty());
@@ -103,9 +88,7 @@ fn should_repaint_clears_after_end_frame() {
     assert!(!ui.should_repaint());
 }
 
-/// Pin: any input flips the gate back on. Conservative — even a
-/// pointer move that doesn't change hover index sets it (refining
-/// is Stage 3 territory).
+/// Pin: any input flips the gate back on.
 #[test]
 fn should_repaint_after_input() {
     use crate::input::InputEvent;
@@ -118,8 +101,7 @@ fn should_repaint_after_input() {
     assert!(ui.should_repaint());
 }
 
-/// Pin: explicit `request_repaint()` flips the gate. Animations and
-/// async state landing use this path.
+/// Pin: explicit `request_repaint()` flips the gate.
 #[test]
 fn request_repaint_flips_gate() {
     let mut ui = Ui::new();
@@ -131,13 +113,10 @@ fn request_repaint_flips_gate() {
 }
 
 /// Pin: `begin_frame` panics if `display.scale_factor` is below
-/// `f32::EPSILON`. Catches stray `0.0` values from buggy hosts
-/// before they collapse the UI to a single physical pixel.
+/// `f32::EPSILON`.
 #[test]
 #[should_panic(expected = "Display::scale_factor must be ≥ f32::EPSILON")]
 fn begin_frame_rejects_zero_scale_factor() {
-    use crate::primitives::Display;
-    use glam::UVec2;
     let mut ui = Ui::new();
     ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 0.0));
 }
@@ -145,8 +124,6 @@ fn begin_frame_rejects_zero_scale_factor() {
 /// Pin: `Display::logical_rect` divides physical by scale_factor.
 #[test]
 fn display_logical_rect_scales() {
-    use crate::primitives::Display;
-    use glam::UVec2;
     let d = Display::from_physical(UVec2::new(800, 600), 2.0);
     assert_eq!(d.logical_rect(), Rect::new(0.0, 0.0, 400.0, 300.0));
 }
@@ -170,9 +147,7 @@ fn request_repaint_is_idempotent() {
 // --- prev_frame snapshot tests ----------------------------------------------
 // Stage 3 / Step 2 of the damage-rendering plan. `Ui::prev_frame` holds
 // the previous frame's `(rect, authoring-hash)` per `WidgetId`, rebuilt
-// at the tail of `end_frame()`. Tests below pin the contract: empty
-// before any frame, populated after, captures both rect and hash, and
-// drops widgets that disappeared.
+// at the tail of `end_frame()`.
 
 #[test]
 fn prev_frame_empty_before_first_end_frame() {
@@ -182,11 +157,7 @@ fn prev_frame_empty_before_first_end_frame() {
 
 #[test]
 fn prev_frame_populated_after_end_frame() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         Frame::with_id("a")
             .size(50.0)
@@ -204,11 +175,7 @@ fn prev_frame_populated_after_end_frame() {
 
 #[test]
 fn prev_frame_captures_arranged_rect() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 200));
     let frame_node = Frame::with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
@@ -223,11 +190,7 @@ fn prev_frame_captures_arranged_rect() {
 
 #[test]
 fn prev_frame_captures_authoring_hash() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 200));
     let frame_node = Frame::with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
@@ -241,11 +204,7 @@ fn prev_frame_captures_authoring_hash() {
 
 #[test]
 fn prev_frame_drops_disappeared_widgets() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack_with_id("root").show(&mut ui, |ui| {
         Button::with_id("gone").label("X").show(ui);
     });
@@ -261,11 +220,7 @@ fn prev_frame_drops_disappeared_widgets() {
 
 #[test]
 fn prev_frame_updates_on_authoring_change() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 200.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 200));
     Frame::with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
@@ -286,19 +241,15 @@ fn prev_frame_updates_on_authoring_change() {
 
 /// Pin: a Text widget whose authoring inputs don't change across
 /// frames hits the per-`WidgetId` reuse cache in `LayoutEngine` and
-/// does *not* dispatch through `TextMeasurer::measure` again. Without
-/// the cache, every steady-state frame would re-hash the source string
-/// and round-trip through `RefCell<CosmicMeasure>`.
+/// does *not* dispatch through `TextMeasurer::measure` again.
 #[test]
 fn text_reshape_skipped_when_unchanged_across_frames() {
-    use crate::text::{CosmicMeasure, share};
     use crate::widgets::Text;
 
-    let mut ui = Ui::new();
-    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    let mut ui = new_ui_text();
 
     let render = |ui: &mut Ui| {
-        ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+        begin(ui, UVec2::new(400, 200));
         Panel::vstack().show(ui, |ui| {
             Text::with_id("hello", "the quick brown fox").show(ui);
         });
@@ -327,20 +278,18 @@ fn text_reshape_skipped_when_unchanged_across_frames() {
 /// drives a fresh measure.
 #[test]
 fn text_reshape_runs_when_content_changes() {
-    use crate::text::{CosmicMeasure, share};
     use crate::widgets::Text;
 
-    let mut ui = Ui::new();
-    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    let mut ui = new_ui_text();
 
-    ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+    begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().show(&mut ui, |ui| {
         Text::with_id("changing", "first").show(ui);
     });
     ui.end_frame();
     let before = ui.text.measure_calls;
 
-    ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+    begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().show(&mut ui, |ui| {
         Text::with_id("changing", "second").show(ui);
     });
@@ -358,16 +307,13 @@ fn text_reshape_runs_when_content_changes() {
 /// not at all on frame 2.
 #[test]
 fn wrapping_text_reshape_skipped_when_unchanged() {
-    use crate::element::Configure;
     use crate::primitives::Sizing;
-    use crate::text::{CosmicMeasure, share};
     use crate::widgets::Text;
 
-    let mut ui = Ui::new();
-    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    let mut ui = new_ui_text();
 
     let render = |ui: &mut Ui| {
-        ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+        begin(ui, UVec2::new(400, 200));
         Panel::vstack()
             .size((Sizing::Fixed(60.0), Sizing::Hug))
             .show(ui, |ui| {
@@ -391,23 +337,16 @@ fn wrapping_text_reshape_skipped_when_unchanged() {
     );
 }
 
-/// Pin: intrinsic-query path also reuses the per-widget cache. A wrapping
-/// Text inside a `Hug` Grid column triggers `intrinsic.rs::leaf` during
-/// column resolution; on a steady-state second frame, the entry stored
-/// by the prior frame's `shape_text` (or `leaf`) must satisfy the
-/// intrinsic query without dispatching through `TextMeasurer`.
+/// Pin: intrinsic-query path also reuses the per-widget cache.
 #[test]
 fn intrinsic_query_reuses_cached_text_measure() {
-    use crate::element::Configure;
     use crate::primitives::{Sizing, Track};
-    use crate::text::{CosmicMeasure, share};
     use crate::widgets::{Grid, Text};
 
-    let mut ui = Ui::new();
-    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    let mut ui = new_ui_text();
 
     let render = |ui: &mut Ui| {
-        ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+        begin(ui, UVec2::new(400, 200));
         Grid::with_id("g")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .cols(std::rc::Rc::from([Track::hug(), Track::fill()]))
@@ -439,17 +378,14 @@ fn intrinsic_query_reuses_cached_text_measure() {
 }
 
 /// Pin: when a Text widget disappears from the tree, its `text_reuse`
-/// entry is evicted on the same frame. Without the sweep, long-running
-/// apps with churning Text content would leak entries indefinitely.
+/// entry is evicted on the same frame.
 #[test]
 fn text_reuse_evicts_disappeared_widgets() {
-    use crate::text::{CosmicMeasure, share};
     use crate::widgets::Text;
 
-    let mut ui = Ui::new();
-    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    let mut ui = new_ui_text();
 
-    ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+    begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().show(&mut ui, |ui| {
         Text::with_id("transient", "hello").show(ui);
     });
@@ -460,8 +396,7 @@ fn text_reuse_evicts_disappeared_widgets() {
         "text widget should populate text_reuse on first render",
     );
 
-    // Next frame: don't record the widget. The sweep should evict it.
-    ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+    begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().show(&mut ui, |_ui| {});
     ui.end_frame();
     assert!(
@@ -473,21 +408,16 @@ fn text_reuse_evicts_disappeared_widgets() {
 /// Pin: when the authoring hash is unchanged but the wrap target
 /// (parent's available width) shifts between frames, the cached
 /// *unbounded* shape is preserved — only the *wrap* reshape runs
-/// again. Without this, an animated parent width would defeat the
-/// cache on every frame and re-measure both the unbounded and the
-/// wrapped buffer.
+/// again.
 #[test]
 fn wrap_target_change_preserves_unbounded_cache() {
-    use crate::element::Configure;
     use crate::primitives::Sizing;
-    use crate::text::{CosmicMeasure, share};
     use crate::widgets::Text;
 
-    let mut ui = Ui::new();
-    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    let mut ui = new_ui_text();
 
     let render = |ui: &mut Ui, slot_w: f32| {
-        ui.begin_frame(Display::from_physical(UVec2::new(400, 200), 1.0));
+        begin(ui, UVec2::new(400, 200));
         Panel::vstack()
             .size((Sizing::Fixed(slot_w), Sizing::Hug))
             .show(ui, |ui| {
@@ -499,7 +429,6 @@ fn wrap_target_change_preserves_unbounded_cache() {
         ui.end_frame();
     };
 
-    // Frame 1: cold — measures unbounded + wrap (2 calls).
     render(&mut ui, 60.0);
     let after_first = ui.text.measure_calls;
     assert!(
@@ -507,8 +436,6 @@ fn wrap_target_change_preserves_unbounded_cache() {
         "first frame should measure both unbounded and wrap (got {after_first})",
     );
 
-    // Frame 2: same content, different slot width → different wrap target.
-    // Must reuse unbounded; should run exactly ONE extra measure (the wrap).
     render(&mut ui, 80.0);
     let after_second = ui.text.measure_calls;
     let delta = after_second - after_first;
