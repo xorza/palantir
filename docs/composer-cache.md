@@ -120,57 +120,141 @@ ancestor offset back. Key drops `ancestor_transform.translate` and
 Defer B unless a real workload (scroll-heavy app, animated parent)
 proves cascade-keyed misses are the dominant cost.
 
-## Sketch of A's implementation
+## Subtree-marker mechanism: decided
 
-1. **Per-subtree compose snapshot.** When `Encoder::encode` writes a
-   subtree to its cache, also signal the composer: "this WidgetId
-   covers `cmds[cmd_lo..cmd_hi]`; if you compose it under stable
-   ancestors, cache the resulting `quads`/`texts`/`groups` slices."
-   This means the composer needs the same per-subtree boundary
-   markers the encoder has.
-2. **Composer reads per-subtree boundaries.** Either:
-   - Encode cache exposes its `EncodeSnapshot` table to the composer
-     (subtree boundaries in cmd-index space); composer correlates as
-     it walks the stream.
-   - Encoder writes a parallel `Vec<SubtreeMark { wid, cmd_lo, cmd_hi }>`
-     for the composer to consume.
-3. **Cascade fingerprint.** Composer hashes
-   `(current_transform, parent_scissor, scale, snap)` at the
-   subtree boundary; that's the cascade half of the cache key.
-4. **`ComposeCache`**: `FxHashMap<WidgetId, ComposeSnapshot>` with
+The composer needs to know "I'm now entering subtree X (`WidgetId`),
+spanning cmds [N..M]". Today it has zero subtree awareness — just
+`cmds.raw_iter()`. Three mechanisms were considered (parallel
+`Vec<SubtreeMark>`, in-stream `EnterSubtree/ExitSubtree` cmds,
+composer reading `EncodeCache` directly).
+
+**Decision: cmd-stream markers.** Add two `CmdKind` variants:
+
+```rust
+EnterSubtree(EnterSubtreePayload { wid: WidgetId, exit_idx: u32 })
+ExitSubtree
+```
+
+`exit_idx` lets a cache-hit fast-forward past the cmd range without
+re-walking. Encoder emits the pair around each cached subtree;
+composer dispatches normally, mirroring the existing
+`PushClip/PopClip` and `PushTransform/PopTransform` stack discipline.
+
+**Why this over the alternatives:**
+
+- **Composes for free with the encode cache.** Markers are just cmds
+  in the stream — `EncodeCache` already stores and replays cmd slices
+  via `extend_from_cached`. Recursive composer-cache hits (cached
+  panel containing cached frame) work mechanically; no fourth arena
+  on `EncodeCache`, no parallel marker replay path.
+- **Self-describing.** Nesting and ordering fall out of stack
+  discipline, same as the two existing marker pairs in the cmd
+  stream.
+- **No coordination invariant** between cmd buffer and a side table.
+
+**Trade-off accepted:** always-on cost of ~22 bytes per cached
+subtree in the cmd buffer (kind+start × 2 + 12 byte payload), plus
+two extra match arms in the composer's hot loop. On the nested
+workload (~100-1000 candidate subtrees) this is 2-22 KB extra per
+frame and adds dispatch arms to ~3200 iterations.
+
+**Validation gate before committing to A:** Step 1's first sub-task
+is a **spike** — add `EnterSubtree`/`ExitSubtree` as no-op cmds (encoder
+emits, composer treats as fall-through), rerun
+`benches/encode_cache.rs`, verify cold-frame overhead is under ~3 %.
+If not, revisit (gate emission by subtree-cmd-count threshold, or
+fall back to the parallel-Vec design).
+
+## Implementation steps
+
+**Step 1 — Plumbing.** Land the marker mechanism without any
+caching.
+
+1. Add `EnterSubtree` / `ExitSubtree` to `CmdKind` and `RenderCmd`,
+   with `EnterSubtreePayload { wid, exit_idx }`. Push helpers on
+   `RenderCmdBuffer`.
+2. `Encoder::encode_node` emits `EnterSubtree(wid, ?)` before the
+   shape loop and `ExitSubtree` after children — mirrors the existing
+   cache-capture/write_subtree bracketing. `exit_idx` is patched in
+   at `ExitSubtree` time (encoder records the `EnterSubtree`'s
+   `start` offset, rewrites the payload's `exit_idx` field once the
+   close cmd index is known).
+3. `Composer::compose` adds two no-op match arms for the new kinds.
+4. Add a `last_was_text = false` reset after `EnterSubtree` /
+   `ExitSubtree` in the composer (subtrees own their own group flow;
+   they shouldn't inherit text→quad split state from outside).
+5. Force a group flush at `EnterSubtree` and `ExitSubtree` so
+   cached groups don't bleed into the surrounding group state.
+   Small cold-frame overhead, simpler bookkeeping.
+
+**Acceptance gate:** existing `composer/tests.rs` and
+`encoder/tests.rs::encode_cache_warm_frame_matches_cold_encode` pass
+unchanged (the cmd-stream output gets longer, but the
+`RenderBuffer` it composes to is byte-identical). `benches/encode_cache.rs`
+shows < 3 % cold-frame regression.
+
+**Step 2 — Cache.** Add `ComposeCache` mirroring `EncodeCache`.
+
+1. **`ComposeCache`** at `src/renderer/frontend/composer/cache/`:
+   `FxHashMap<WidgetId, ComposeSnapshot>` with
    `ComposeSnapshot { subtree_hash, available_q, cascade_fingerprint,
-   quads: Span, texts: Span, groups: Span }` over three arenas.
-5. **Eviction-locked** with measure + encode caches: same `removed`
-   sweep at `Ui::end_frame`.
+   quads: Span, texts: Span, groups: Span }` over three SoA arenas
+   (`quads_arena: Vec<Quad>`, `texts_arena: Vec<TextRun>`,
+   `groups_arena: Vec<DrawGroup>`). Same `COMPACT_RATIO` /
+   `COMPACT_FLOOR` / `live_*` discipline as `EncodeCache`.
+2. **Cascade fingerprint.** Composer hashes
+   `(current_transform, parent_scissor.unwrap_or(default),
+   scale, snap)` at each `EnterSubtree`. The hash is the cascade
+   half of the cache key alongside `(wid, subtree_hash, available_q)`
+   — but `subtree_hash` and `available_q` aren't free; they need to
+   be in the marker. Either extend `EnterSubtreePayload` to carry
+   them (~16 more bytes), or look them up via a side-channel from
+   the encode cache. Decision: extend the payload; keeps the
+   "self-describing cmd stream" property.
+3. **Hook into compose loop.** On `EnterSubtree`: build cascade
+   fingerprint, try lookup. On hit: splice cached `quads/texts/groups`
+   into output (rebasing intra-group `quads`/`texts` ranges by
+   current `out.quads.len()` / `out.texts.len()`), advance the cmd
+   iterator to `exit_idx`, continue. On miss: push a frame onto a
+   new `compose_subtree_stack: Vec<ComposeFrame>` capturing
+   `(wid, fingerprint, quads_lo, texts_lo, groups_lo)`, continue
+   normally. On `ExitSubtree`: pop the frame, call
+   `compose_cache.write_subtree(...)`.
+4. **Eviction-locked** with measure + encode caches:
+   `Frontend::sweep_removed` cascades to `composer.cache.sweep_removed`.
+5. **`__clear_compose_cache`** on `Composer` and `Frontend`,
+   exposed via `Ui::__clear_compose_cache` for benches.
 
-## Open questions before implementation
+**Step 3 — Tests + bench.**
 
-- **Group splitting at subtree boundaries.** Cached groups must not
-  bleed into the surrounding group state. May require flushing the
-  active group at every subtree boundary on cold compose, even when
-  scissor is unchanged — small overhead on cold frames, simpler
-  bookkeeping.
-- **`last_was_text` discipline at replay.** Cached `groups` start
-  with their own scissor; cold replay must flush the surrounding
-  group before splicing. Same flush-at-boundary discipline as above.
+- `composer/cache/tests.rs`: round-trip at same/different ancestor
+  state, fingerprint mismatch → miss, in-place rewrite, sweep,
+  compaction. Mirror of `encoder/cache/tests.rs`.
+- Integration: warm-frame `Frontend::build` cmd→compose path is
+  byte-identical to a cold-build via fresh `Composer`.
+- `benches/compose_cache.rs`: same flat/nested workloads. A/B `cached`
+  vs `__clear_compose_cache()` `forced_miss`.
+
+## Open questions parked
+
 - **Memory floor.** Three vec arenas × per-`Quad` 68 bytes + per-text
   ~32 bytes + per-group ~32 bytes. On the nested workload (~3 200
   cmds → ~3 200 quads), live `quads_arena` ~ 220 KB. Comparable to
   the encode cache's `data_arena`.
 - **Interplay with damage.** Damage-filtered frames already bypass
-  the encode cache; compose cache must follow the same rule. Animated
+  the encode cache; compose cache follows the same rule. Animated
   frames hit neither cache; that's where B's translate-aware variant
   would matter.
 
 ## Effort estimate
 
-A, no B: ~1-2 days of focused work. ~300 lines of cache code mirroring
-`encoder/cache/`, ~50 lines of composer hook plumbing, ~100 lines of
-tests. Bench harness already exists (`benches/encode_cache.rs`
-pattern).
+| Phase | Scope | Estimate |
+|---|---|---|
+| Step 1 spike | EnterSubtree/ExitSubtree as no-ops; bench cold overhead | ~2 hours |
+| Step 1 ship | Plumbing + group-flush discipline + test gate | ~0.5 day |
+| Step 2 ship | ComposeCache + hookup + tests | ~1 day |
+| Step 3 ship | Bench + measure | ~0.5 day |
+| **Total A** |  | **~2 days** |
 
 B, on top of A: another ~1-2 days, mostly snap-handling tests and the
-ancestor-relative storage rewrite.
-
-Add to `docs/todo.md` "Encode cache" section's #1 with a pointer here
-once the plan is firm.
+ancestor-relative storage rewrite. Skip until evidence motivates it.
