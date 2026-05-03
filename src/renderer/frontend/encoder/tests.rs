@@ -600,3 +600,51 @@ fn damage_filter_preserves_transform_pushpop() {
         "filtered-out transformed node still emits its transform pair"
     );
 }
+
+/// Encode-cache integration: after a warm frame, the frontend's
+/// internally-encoded cmd buffer (which uses `EncodeCache`) must be
+/// byte-identical to a fresh cache-free encode of the same tree.
+/// Pins both the cache-hit replay correctness and the
+/// (`subtree_hash`, `available_q`) key plumbing in `encode_node`.
+#[test]
+fn encode_cache_warm_frame_matches_cold_encode() {
+    let build = |ui: &mut Ui| {
+        Panel::vstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .padding(8.0)
+            .gap(6.0)
+            .show(ui, |ui| {
+                Panel::zstack_with_id("inner")
+                    .clip(true)
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .padding(6.0)
+                    .fill(Color::rgb(0.16, 0.18, 0.22))
+                    .transform(TranslateScale::new(Vec2::new(2.0, 1.0), 1.0))
+                    .show(ui, |ui| {
+                        Frame::with_id("a")
+                            .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                            .fill(Color::rgb(0.4, 0.4, 0.5))
+                            .show(ui);
+                        Frame::with_id("b")
+                            .size((Sizing::FILL, Sizing::Fixed(10.0)))
+                            .fill(Color::rgb(0.5, 0.4, 0.4))
+                            .show(ui);
+                    });
+            });
+    };
+
+    let mut ui = ui_at(UVec2::new(400, 200));
+    build(&mut ui);
+    ui.end_frame();
+
+    // Second frame populates the encode cache via Frontend::build.
+    begin(&mut ui, UVec2::new(400, 200));
+    build(&mut ui);
+    ui.end_frame();
+    let cold = encode_cmds(&ui);
+    let warm = &ui.frontend.cmds;
+
+    assert_eq!(warm.kinds, cold.kinds);
+    assert_eq!(warm.starts, cold.starts);
+    assert_eq!(warm.data, cold.data);
+}

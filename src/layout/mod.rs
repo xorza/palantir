@@ -40,11 +40,6 @@ pub use result::{LayoutResult, ShapedText};
 ///   memoize within a frame. Flat `Vec` indexed by node, four slots
 ///   per node (one per `(axis, req)` combination). NaN means "not yet
 ///   computed".
-/// - `available_q` — per-node quantized `available` size, the
-///   dimensional half of the cross-frame cache key. Written on every
-///   measure entry, restored from a snapshot on cache-hit subtrees.
-///   Read by the encode cache (and any other consumer keyed on the
-///   same `(subtree_hash, available_q)` shape as `MeasureCache`).
 ///
 /// Module-internal tests (e.g. `stack/tests.rs`) reach in via
 /// `pub(in crate::layout)` to pin measure output independently of
@@ -55,7 +50,6 @@ pub(in crate::layout) struct LayoutScratch {
     pub(in crate::layout) wrap: WrapScratch,
     pub(in crate::layout) desired: Vec<Size>,
     pub(in crate::layout) intrinsics: Vec<[f32; 4]>,
-    pub(in crate::layout) available_q: Vec<AvailableKey>,
 }
 
 impl LayoutScratch {
@@ -65,8 +59,6 @@ impl LayoutScratch {
         self.desired.resize(n, Size::ZERO);
         self.intrinsics.clear();
         self.intrinsics.resize(n, [f32::NAN; 4]);
-        self.available_q.clear();
-        self.available_q.resize(n, AvailableKey::UNSET);
         self.grid.hugs.reset_for(tree);
     }
 }
@@ -130,19 +122,10 @@ impl LayoutEngine {
     }
 
     /// Per-node quantized `available` size last passed to this node's
-    /// measure. `None` when this node was never visited by the current
-    /// frame's `run` (collapsed root, empty frame, or — defensively —
-    /// any future caller that reads a slot before `measure` writes it).
-    /// Read by the encode cache (and any other consumer keyed on the
-    /// same `(subtree_hash, available_q)` shape as `MeasureCache`).
+    /// measure. Delegates to [`LayoutResult::available_q`].
     #[inline]
     pub fn available_q(&self, id: NodeId) -> Option<AvailableKey> {
-        let v = self.scratch.available_q[id.index()];
-        if v == AvailableKey::UNSET {
-            None
-        } else {
-            Some(v)
-        }
+        self.result.available_q(id)
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
@@ -280,7 +263,7 @@ impl LayoutEngine {
         // hit the descendant range is restored from the snapshot
         // below, so this single write covers the miss path and the
         // snapshot covers the hit path.
-        self.scratch.available_q[node.index()] = cache_avail;
+        self.result.available_q[node.index()] = cache_avail;
         if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
             let curr_start = node.index();
             let curr_end = curr_start + hit.desired.len();
@@ -289,7 +272,7 @@ impl LayoutEngine {
             assert_eq!(curr_end, tree.subtree_end[curr_start] as usize);
             self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
             self.result.restore_text_shapes(curr_start, hit.text_shapes);
-            self.scratch.available_q[curr_start..curr_end].copy_from_slice(hit.available_q);
+            self.result.available_q[curr_start..curr_end].copy_from_slice(hit.available_q);
             // Restore per-grid hug arrays. `grid::arrange` reads
             // `LayoutEngine.scratch.grid.hugs`, populated only by
             // `grid::measure`. Without this restore, a cache hit at
@@ -384,7 +367,7 @@ impl LayoutEngine {
                 cache_hash,
                 &self.scratch.desired[start..end],
                 self.result.text_shapes_slice(start..end),
-                &self.scratch.available_q[start..end],
+                &self.result.available_q[start..end],
             );
         }
 

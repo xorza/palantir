@@ -1,9 +1,10 @@
 use super::cmd_buffer::RenderCmdBuffer;
 use crate::cascade::CascadeResult;
 use crate::layout::LayoutResult;
-use crate::primitives::{Align, HAlign, Rect, Size, TranslateScale, VAlign};
+use crate::primitives::{Align, HAlign, Rect, Size, TranslateScale, VAlign, WidgetId};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
+use cache::EncodeCache;
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU work,
 /// no scale/snap math — that lives in the backend's process step. Pure
@@ -18,16 +19,57 @@ use crate::tree::{NodeId, Tree};
 /// state and group boundaries (composer text↔quad split) stay correct.
 /// `None` paints everything — used for the first frame, full-repaint
 /// fallback, and existing tests.
-pub fn encode(
-    tree: &Tree,
-    layout: &LayoutResult,
-    cascades: &CascadeResult,
-    damage_filter: Option<Rect>,
-    out: &mut RenderCmdBuffer,
-) {
-    out.clear();
-    if let Some(root) = tree.root() {
-        encode_node(tree, layout, cascades, damage_filter, root, out);
+///
+/// Owns the cross-frame subtree-skip cache (`EncodeCache`) and exposes
+/// the encode entry point. The output [`RenderCmdBuffer`] stays on
+/// [`Frontend`](crate::renderer::Frontend) since the composer also reads
+/// it; the cache lives here because nothing else in the frontend touches
+/// it.
+///
+/// The cache is **only consulted when `damage_filter.is_none()`** — see
+/// `cache::EncodeCache` for the cascade-not-in-key argument.
+/// Damage-filtered frames bypass the cache entirely; full-repaint frames
+/// (resize, theme, first frame) and `damage_filter=None` paths get the
+/// win.
+#[derive(Default)]
+pub(crate) struct Encoder {
+    cache: EncodeCache,
+}
+
+impl Encoder {
+    /// Encode `tree` into `out` using last frame's cache for subtree
+    /// skips (when `damage_filter.is_none()`).
+    pub fn encode(
+        &mut self,
+        tree: &Tree,
+        layout: &LayoutResult,
+        cascades: &CascadeResult,
+        damage_filter: Option<Rect>,
+        out: &mut RenderCmdBuffer,
+    ) {
+        out.clear();
+        if let Some(root) = tree.root() {
+            encode_node(
+                tree,
+                layout,
+                cascades,
+                damage_filter,
+                &mut self.cache,
+                root,
+                out,
+            );
+        }
+    }
+
+    /// Drop cache entries for `WidgetId`s that vanished this frame.
+    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        self.cache.sweep_removed(removed);
+    }
+
+    /// Drop every cache entry. `#[doc(hidden)]` — for benches.
+    #[doc(hidden)]
+    pub fn __clear_cache(&mut self) {
+        self.cache.__clear();
     }
 }
 
@@ -36,6 +78,7 @@ fn encode_node(
     layout: &LayoutResult,
     cascades: &CascadeResult,
     damage_filter: Option<Rect>,
+    cache: &mut EncodeCache,
     id: NodeId,
     out: &mut RenderCmdBuffer,
 ) {
@@ -45,6 +88,29 @@ fn encode_node(
     if cascades.is_invisible(id) {
         return;
     }
+
+    // Cross-frame subtree-skip cache (Phase 3). Only consulted on
+    // full-paint frames (`damage_filter.is_none()`) — the descendant
+    // is_invisible / clip / transform reads inside this subtree are
+    // captured by `subtree_hash`; `screen_rect` is the only cascade
+    // input that would force re-keying, and it's read only when
+    // `damage_filter.is_some()`. See `cache::EncodeCache`.
+    let cache_key = if damage_filter.is_none() {
+        layout
+            .available_q(id)
+            .map(|avail| (tree.widget_ids[id.index()], tree.subtree_hash(id), avail))
+    } else {
+        None
+    };
+
+    if let Some((wid, hash, avail)) = cache_key
+        && let Some(hit) = cache.try_lookup(wid, hash, avail)
+    {
+        out.extend_from_cached(hit.kinds, hit.starts, hit.data, layout.rect(id).min);
+        return;
+    }
+
+    let cache_capture = cache_key.map(|key| (key, out.kinds.len() as u32, out.data.len() as u32));
 
     let rect = layout.rect(id);
 
@@ -122,7 +188,7 @@ fn encode_node(
     }
 
     for child in tree.children(id) {
-        encode_node(tree, layout, cascades, damage_filter, child, out);
+        encode_node(tree, layout, cascades, damage_filter, cache, child, out);
     }
 
     if transform.is_some() {
@@ -130,6 +196,20 @@ fn encode_node(
     }
     if clip {
         out.pop_clip();
+    }
+
+    if let Some(((wid, hash, avail), cmd_lo, data_lo)) = cache_capture {
+        let cmd_hi = out.kinds.len() as u32;
+        let data_hi = out.data.len() as u32;
+        cache.write_subtree(
+            wid,
+            hash,
+            avail,
+            out,
+            cmd_lo..cmd_hi,
+            data_lo..data_hi,
+            layout.rect(id).min,
+        );
     }
 }
 

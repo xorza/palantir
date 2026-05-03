@@ -20,5 +20,7 @@ mod quad;
 
 pub use backend::WgpuBackend;
 pub use buffer::{DrawGroup, RenderBuffer};
-pub use frontend::{Composer, FrameOutput, Frontend, RenderCmd, RenderCmdBuffer, encode};
+#[cfg(test)]
+pub(crate) use frontend::Encoder;
+pub use frontend::{Composer, FrameOutput, Frontend, RenderCmd, RenderCmdBuffer};
 pub use quad::Quad;
