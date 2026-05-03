@@ -93,10 +93,14 @@ pub(super) fn compute(
     // Hug + Fill both report content-driven intrinsic. Per `intrinsic.md`
     // (next to this file): Fill in intrinsic context returns its content's
     // intrinsic, ignoring weight — `resolve_axis_size` with `available =
-    // INFINITY` enforces exactly that (Fill falls back to `hug_outer`).
+    // INFINITY` enforces exactly that (Fill falls back to `hug_with_margin`).
     // Skip the content query for Fixed: `resolve_axis_size` short-circuits
-    // Fixed and never reads `hug_outer`.
-    let hug_outer = match sizing {
+    // Fixed and never reads `hug_with_margin`. The `+ margin` term gets
+    // subtracted back inside `resolve_axis_size` (Hug branch:
+    // `hug_with_margin - margin`) and re-added at the end — the round-trip
+    // exists so this function and the in-pass measure path can share the
+    // same Sizing/clamp logic.
+    let hug_with_margin = match sizing {
         Sizing::Fixed(_) => 0.0,
         Sizing::Hug | Sizing::Fill(_) => {
             content_intrinsic(engine, tree, node, axis, req, text, style.mode) + pad + margin
@@ -105,7 +109,7 @@ pub(super) fn compute(
 
     resolve_axis_size(
         sizing,
-        hug_outer,
+        hug_with_margin,
         f32::INFINITY,
         margin,
         min_clamp,
@@ -246,11 +250,11 @@ pub(super) fn compute_pair(
         }
     };
 
-    let resolve = |c: f32| {
-        let hug_outer = c + pad + margin;
+    let resolve = |content: f32| {
+        let hug_with_margin = content + pad + margin;
         resolve_axis_size(
             sizing,
-            hug_outer,
+            hug_with_margin,
             f32::INFINITY,
             margin,
             min_clamp,

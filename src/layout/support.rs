@@ -32,17 +32,21 @@ pub(in crate::layout) fn leaf_text_shapes(
     })
 }
 
-/// Resolve a node's outer slot size on one axis, given its sizing policy,
-/// hug-content size (margin-inclusive), parent-supplied available, own margin,
-/// and clamps. Each branch produces *rendered* size (margin-exclusive); we
-/// clamp once and add margin once at the end.
+/// Resolve a node's outer slot size on one axis, given its sizing
+/// policy, hug-content size (margin-inclusive: content+padding+margin),
+/// parent-supplied available, own margin, and clamps. Each branch
+/// derives a *rendered* size (margin-exclusive) by subtracting margin,
+/// clamps once, then re-adds margin at the end so the return is
+/// margin-inclusive too. The margin round-trip exists so callers don't
+/// have to special-case Fixed (which doesn't read `hug_with_margin`)
+/// vs Hug/Fill (which do).
 ///
-/// Also reused by `intrinsic::compute` with `available = INFINITY`, which
-/// collapses Fill to its content size — the parent-independent rule for
-/// intrinsic queries (CSS Grid `1fr`-in-auto-context).
+/// Also reused by `intrinsic::compute` with `available = INFINITY`,
+/// which collapses Fill to its content size — the parent-independent
+/// rule for intrinsic queries (CSS Grid `1fr`-in-auto-context).
 pub(in crate::layout) fn resolve_axis_size(
     s: Sizing,
-    hug_outer: f32,
+    hug_with_margin: f32,
     available: f32,
     margin: f32,
     min: f32,
@@ -50,7 +54,7 @@ pub(in crate::layout) fn resolve_axis_size(
 ) -> f32 {
     let rendered = match s {
         Sizing::Fixed(v) => v,
-        Sizing::Hug => hug_outer - margin,
+        Sizing::Hug => hug_with_margin - margin,
         Sizing::Fill(_) => {
             // Fill in an unconstrained axis collapses to max-content
             // (matches CSS Grid: a `1fr` track with `width: auto` parent
@@ -58,7 +62,7 @@ pub(in crate::layout) fn resolve_axis_size(
             let outer = if available.is_finite() {
                 available
             } else {
-                hug_outer
+                hug_with_margin
             };
             outer - margin
         }
