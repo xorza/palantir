@@ -130,7 +130,9 @@ impl EncodeCache {
                 data_arena,
                 ..
             } = self;
-            kinds_arena[cmds.clone()].copy_from_slice(&src.kinds[cmd_lo..cmd_hi]);
+            let src_kinds = &src.kinds[cmd_lo..cmd_hi];
+            debug_assert_eq!(&kinds_arena[cmds.clone()], src_kinds);
+            kinds_arena[cmds.clone()].copy_from_slice(src_kinds);
             for (dst, &abs) in starts_arena[cmds]
                 .iter_mut()
                 .zip(src.starts[cmd_lo..cmd_hi].iter())
@@ -150,6 +152,8 @@ impl EncodeCache {
         // Different len (or first write): mark old ranges as garbage,
         // append new ones.
         if let Some(prev) = self.snapshots.get(&wid) {
+            debug_assert!(self.live_cmds >= prev.cmds.len as usize);
+            debug_assert!(self.live_data >= prev.data.len as usize);
             self.live_cmds -= prev.cmds.len as usize;
             self.live_data -= prev.data.len as usize;
         }

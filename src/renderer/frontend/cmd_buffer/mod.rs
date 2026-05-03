@@ -214,7 +214,7 @@ impl RenderCmdBuffer {
         self.kinds.extend_from_slice(kinds);
         self.starts.reserve(starts.len());
         for &s in starts {
-            debug_assert!((s as usize) <= data.len());
+            debug_assert!((s as usize) < data.len() || s as usize == data.len());
             self.starts.push(s + dest_data_base);
         }
 
