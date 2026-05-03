@@ -158,5 +158,7 @@ fn align_text_in(leaf: Rect, measured: Size, align: Align) -> Rect {
     )
 }
 
+pub(crate) mod cache;
+
 #[cfg(test)]
 mod tests;

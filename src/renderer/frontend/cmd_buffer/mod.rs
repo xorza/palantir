@@ -202,8 +202,6 @@ impl RenderCmdBuffer {
     /// indexes into `src.data` and must cover every payload referenced
     /// by `cmd_range` (in normal use it's captured as
     /// `src.data.len()` before/after the subtree's encode).
-    // Wired into the encode cache in a follow-up; until then only the
-    // tests in this module exercise it.
     #[allow(dead_code)]
     pub(crate) fn extend_translated(
         &mut self,
@@ -225,33 +223,44 @@ impl RenderCmdBuffer {
         self.starts.reserve(n_cmds);
 
         for i in cmd_lo..cmd_hi {
-            let kind = src.kinds[i];
             let src_start = src.starts[i];
             debug_assert!(src_start >= data_range.start && src_start <= data_range.end);
             let new_start = src_start - data_range.start + dest_data_base;
-            self.kinds.push(kind);
+            self.kinds.push(src.kinds[i]);
             self.starts.push(new_start);
-
-            // `rect.min` lives at the first 8 bytes (= 2 u32 words) of
-            // every payload that starts with `rect: Rect` — `Rect` is
-            // `#[repr(C)] { min: Vec2, size: Size }`. Read/write through
-            // `f32::{from,to}_bits` so we don't depend on the arena's
-            // u32 alignment lining up with f32 (it does, but staying
-            // bits-only matches the rest of the buffer's discipline).
-            match kind {
-                CmdKind::PushClip
-                | CmdKind::DrawRect
-                | CmdKind::DrawRectStroked
-                | CmdKind::DrawText => {
-                    let off = new_start as usize;
-                    let x = f32::from_bits(self.data[off]) + offset.x;
-                    let y = f32::from_bits(self.data[off + 1]) + offset.y;
-                    self.data[off] = x.to_bits();
-                    self.data[off + 1] = y.to_bits();
-                }
-                CmdKind::PopClip | CmdKind::PushTransform | CmdKind::PopTransform => {}
-            }
         }
+
+        let appended_kinds = &self.kinds[self.kinds.len() - n_cmds..];
+        let appended_starts = &self.starts[self.starts.len() - n_cmds..];
+        bump_rect_min(appended_kinds, appended_starts, &mut self.data, offset);
+    }
+
+    /// Like [`Self::extend_translated`] but reads from raw cache slices.
+    /// `starts` are subtree-relative offsets (0-based into `data`); they
+    /// get rebased onto this buffer's data arena during append. Used by
+    /// [`crate::renderer::frontend::encoder::cache::EncodeCache`] to
+    /// replay a cached subtree under the current frame's root origin.
+    #[allow(dead_code)]
+    pub(crate) fn extend_from_cached(
+        &mut self,
+        kinds: &[CmdKind],
+        starts: &[u32],
+        data: &[u32],
+        offset: Vec2,
+    ) {
+        let dest_data_base = self.data.len() as u32;
+        self.data.extend_from_slice(data);
+
+        self.kinds.extend_from_slice(kinds);
+        self.starts.reserve(starts.len());
+        for &s in starts {
+            debug_assert!((s as usize) <= data.len());
+            self.starts.push(s + dest_data_base);
+        }
+
+        let n = kinds.len();
+        let appended_starts = &self.starts[self.starts.len() - n..];
+        bump_rect_min(kinds, appended_starts, &mut self.data, offset);
     }
 
     /// Raw iterator over `(kind, payload-start)` pairs, in order. Used by
@@ -311,6 +320,36 @@ impl Iterator for Iter<'_> {
 #[inline]
 fn write_pod<T: bytemuck::Pod>(data: &mut Vec<u32>, v: T) {
     data.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&v)));
+}
+
+/// Add `offset` to `rect.min` for every rect-bearing cmd in `kinds`,
+/// reading the payload offset from the parallel `starts` slice.
+///
+/// `rect.min` lives at the first 8 bytes (= 2 u32 words) of every
+/// payload that begins with `rect: Rect` — `Rect` is `#[repr(C)]
+/// { min: Vec2, size: Size }`. Read/write through `f32::{from,to}_bits`
+/// so we don't depend on the arena's u32 alignment lining up with f32
+/// (it does, but staying bits-only matches the rest of the buffer's
+/// discipline).
+#[inline]
+#[allow(dead_code)]
+pub(crate) fn bump_rect_min(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], offset: Vec2) {
+    debug_assert_eq!(kinds.len(), starts.len());
+    for (kind, &start) in kinds.iter().zip(starts.iter()) {
+        match kind {
+            CmdKind::PushClip
+            | CmdKind::DrawRect
+            | CmdKind::DrawRectStroked
+            | CmdKind::DrawText => {
+                let off = start as usize;
+                let x = f32::from_bits(data[off]) + offset.x;
+                let y = f32::from_bits(data[off + 1]) + offset.y;
+                data[off] = x.to_bits();
+                data[off + 1] = y.to_bits();
+            }
+            CmdKind::PopClip | CmdKind::PushTransform | CmdKind::PopTransform => {}
+        }
+    }
 }
 
 #[cfg(test)]
