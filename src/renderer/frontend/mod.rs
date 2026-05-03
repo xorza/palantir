@@ -52,10 +52,8 @@ pub struct FrameOutput<'a> {
 /// [`Ui::end_frame`](crate::ui::Ui::end_frame) call.
 #[derive(Default)]
 pub struct Frontend {
-    encoder: Encoder,
-    pub(crate) cmds: RenderCmdBuffer,
+    pub(crate) encoder: Encoder,
     composer: Composer,
-    buffer: RenderBuffer,
 }
 
 impl Frontend {
@@ -75,15 +73,9 @@ impl Frontend {
         cascades: &CascadeResult,
         damage_filter: Option<Rect>,
         display: &Display,
-    ) {
-        //todo move self buffer and self cmds as results of encode and composer
-        self.encoder
-            .encode(tree, layout, cascades, damage_filter, &mut self.cmds);
-        self.composer.compose(&self.cmds, display, &mut self.buffer);
-    }
-
-    pub fn buffer(&self) -> &RenderBuffer {
-        &self.buffer
+    ) -> &RenderBuffer {
+        let cmds = self.encoder.encode(tree, layout, cascades, damage_filter);
+        self.composer.compose(cmds, display)
     }
 
     /// Drop encoder cache entries for `WidgetId`s that vanished this

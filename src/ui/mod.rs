@@ -123,14 +123,12 @@ impl Ui {
         self.input.end_frame(cascades);
         let damage = self.damage.compute(&self.tree, cascades, removed, surface);
 
-        self.frontend
-            .build(&self.tree, layout, cascades, damage, &self.display);
         self.repaint_requested = false;
+        let buffer = self
+            .frontend
+            .build(&self.tree, layout, cascades, damage, &self.display);
 
-        FrameOutput {
-            buffer: self.frontend.buffer(),
-            damage,
-        }
+        FrameOutput { buffer, damage }
     }
 
     /// Feed a palantir-native input event. Schedules a repaint
