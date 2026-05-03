@@ -8,7 +8,7 @@ pub(crate) use seen_ids::SeenIds;
 
 use crate::cascade::Cascades;
 use crate::element::Element;
-use crate::input::{InputEvent, InputState, ResponseState};
+use crate::input::{HitIndex, InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
 use crate::primitives::{Display, WidgetId};
 use crate::renderer::{FrameOutput, Frontend};
@@ -34,6 +34,13 @@ pub struct Ui {
     input: InputState,
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) cascades: Cascades,
+    /// Pre-order rect/sense snapshot of the just-arranged tree. Written
+    /// by `Cascades::rebuild` (whose pre-order walk produces both the
+    /// cascade rows and these hit entries in one pass), read by
+    /// `InputState` for hit-testing. Owned here at the orchestrator
+    /// level so neither writer nor reader has to claim ownership of a
+    /// shared resource.
+    pub(crate) hit_index: HitIndex,
     pub(crate) display: Display,
     pub(crate) text: TextMeasurer,
 
@@ -63,6 +70,7 @@ impl Ui {
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
             cascades: Cascades::new(),
+            hit_index: HitIndex::default(),
             display: Display::default(),
             text: TextMeasurer::new(),
             // First frame must render so the host has something to
@@ -118,12 +126,9 @@ impl Ui {
             self.layout_engine
                 .run(&self.tree, root, surface, &mut self.text);
         }
-        self.cascades.rebuild(
-            &self.tree,
-            self.layout_engine.result(),
-            &mut self.input.hit_index,
-        );
-        self.input.end_frame();
+        self.cascades
+            .rebuild(&self.tree, self.layout_engine.result(), &mut self.hit_index);
+        self.input.end_frame(&self.hit_index);
         let damage = self
             .damage
             .compute(&self.tree, &self.cascades, self.ids.removed(), surface);
@@ -149,7 +154,7 @@ impl Ui {
     /// event itself looks like a no-op. Refining this needs a hit-test
     /// inside `on_input`.
     pub fn on_input(&mut self, event: InputEvent) {
-        self.input.on_input(event);
+        self.input.on_input(event, &self.hit_index);
         self.repaint_requested = true;
     }
 
@@ -167,7 +172,7 @@ impl Ui {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
-        self.input.response_for(id)
+        self.input.response_for(id, &self.hit_index)
     }
 
     pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {

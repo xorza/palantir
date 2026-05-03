@@ -20,6 +20,7 @@ struct HitEntry {
 /// Rebuilt every `Ui::end_frame` from the shared `Cascades` table. Owns no
 /// cascade scratch of its own — that lives in `Cascades` so the encoder and
 /// hit index can't drift.
+#[derive(Default)]
 pub(crate) struct HitIndex {
     entries: Vec<HitEntry>,
     /// `WidgetId → entries[idx]`. Populated alongside `entries` during
@@ -31,13 +32,6 @@ pub(crate) struct HitIndex {
 }
 
 impl HitIndex {
-    pub(crate) fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-            by_id: FxHashMap::default(),
-        }
-    }
-
     /// Reset the entry/by-id storage for a fresh rebuild. Capacity is
     /// retained across frames so the steady-state path is alloc-free.
     /// Pair with `push_entry` per node, called from `Cascades::rebuild`

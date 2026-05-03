@@ -1,11 +1,8 @@
 //! Per-node cascade resolution. Rebuilt every frame from `(&Tree,
 //! &LayoutResult)`; consumed by the renderer encoder (to skip invisible
-//! subtrees), damage diff (to read screen-space rects), and the input
-//! hit index. The `HitIndex` is *populated in this same walk* — its
-//! per-node entry is a flat function of the cascade row plus
-//! `widget_id` + `paint.sense`, so folding it in here saves a separate
-//! O(n) pass and keeps the cascade walk the single owner of all
-//! post-arrange per-node derived state.
+//! subtrees), damage diff (to read screen-space rects), and the
+//! `HitIndex` (populated in this same walk so cascade resolution and
+//! hit-entry flattening share one O(n) pass).
 //!
 //! Centralizing the cascade rules here means
 //! disabled/invisible/clip/transform live in exactly one walk — encoder,
@@ -67,7 +64,7 @@ impl Cascades {
     /// Walk `tree.nodes` in storage order (== pre-order, since recording is
     /// depth-first) and produce one `Cascade` row per node, threading the
     /// descendant transform/clip/disabled/invisible through an open-ancestor
-    /// stack. Same loop also pushes one `HitIndex` entry per node — the
+    /// stack. Same loop also writes one `HitIndex` entry per node — the
     /// hit-test view is a flat function of the cascade row + widget_id +
     /// effective sense, so producing it inline saves a second O(n) pass.
     pub(crate) fn rebuild(&mut self, tree: &Tree, layout: &LayoutResult, hit_index: &mut HitIndex) {
