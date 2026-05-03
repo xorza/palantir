@@ -107,7 +107,7 @@ impl LayoutEngine {
     /// see [`crate::Ui::__clear_measure_cache`].
     #[doc(hidden)]
     pub fn __clear_cache(&mut self) {
-        self.cache.prev.clear();
+        self.cache.clear();
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
@@ -214,18 +214,21 @@ impl LayoutEngine {
             subtree_hash: tree.subtree_hashes[node.index()],
             available_q: quantize_available(available),
         };
-        if let Some(snap) = self.cache.prev.get(&cache_key.wid)
-            && snap.subtree_hash == cache_key.subtree_hash
-            && snap.available_q == cache_key.available_q
+        if let Some(arena) =
+            self.cache
+                .lookup(cache_key.wid, cache_key.subtree_hash, cache_key.available_q)
         {
-            let start = node.index();
-            let end = start + snap.desired.len();
+            let curr_start = node.index();
+            let curr_end = curr_start + arena.len();
             // Subtree hash includes child count + per-child rollups,
-            // so a stale length here would mean the rollup is broken.
-            debug_assert_eq!(end, tree.subtree_end[start] as usize);
-            self.desired[start..end].copy_from_slice(&snap.desired);
-            self.result.restore_text_shapes(start, &snap.text_shapes);
-            return snap.desired[0];
+            // so a length mismatch here would mean the rollup is broken.
+            debug_assert_eq!(curr_end, tree.subtree_end[curr_start] as usize);
+            let root_desired = self.cache.desired_arena[arena.start];
+            self.desired[curr_start..curr_end]
+                .copy_from_slice(&self.cache.desired_arena[arena.clone()]);
+            self.result
+                .restore_text_shapes(curr_start, &self.cache.text_arena[arena]);
+            return root_desired;
         }
 
         // For each axis: if this node has a declared `Fixed` size, that's the
