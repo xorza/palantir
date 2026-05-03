@@ -13,11 +13,12 @@
 //! payload entirely.
 //!
 //! Soundness: payload structs are `#[repr(C)]` aggregates of `f32`/`u32`
-//! only, so they have no padding bytes and trivial Copy. The arena is
-//! `Vec<u32>` (4-byte aligned). Each push appends `size_of::<T>() / 4`
-//! words at the current `data.len()`; reads cast `data.as_ptr().add(start)`
-//! back to `*const T`. Encode/decode are symmetric per kind, both bounded
-//! to this module.
+//! (and one `u64` in `TextCacheKey`) tagged `bytemuck::Pod`, so the
+//! compiler proves they have no padding bytes. The arena is `Vec<u32>`
+//! (4-byte aligned). Pushes go through `bytemuck::cast_slice` (safe);
+//! reads go through `bytemuck::pod_read_unaligned` so payloads with
+//! align >4 (`DrawTextPayload`) work even when the arena slot starts at
+//! a 4-byte-only-aligned offset.
 
 use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
 use crate::text::TextCacheKey;
@@ -35,7 +36,7 @@ pub(crate) enum CmdKind {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct DrawRectPayload {
     pub rect: Rect,
     pub radius: Corners,
@@ -43,7 +44,7 @@ pub struct DrawRectPayload {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct DrawRectStrokedPayload {
     pub rect: Rect,
     pub radius: Corners,
@@ -52,7 +53,7 @@ pub struct DrawRectStrokedPayload {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct DrawTextPayload {
     pub rect: Rect,
     pub color: Color,
@@ -172,15 +173,13 @@ impl RenderCmdBuffer {
     pub fn get(&self, i: usize) -> RenderCmd {
         let start = self.starts[i];
         match self.kinds[i] {
-            CmdKind::PushClip => RenderCmd::PushClip(self.read_clip(start)),
+            CmdKind::PushClip => RenderCmd::PushClip(self.read(start)),
             CmdKind::PopClip => RenderCmd::PopClip,
-            CmdKind::PushTransform => RenderCmd::PushTransform(self.read_transform(start)),
+            CmdKind::PushTransform => RenderCmd::PushTransform(self.read(start)),
             CmdKind::PopTransform => RenderCmd::PopTransform,
-            CmdKind::DrawRect => RenderCmd::DrawRect(self.read_draw_rect(start)),
-            CmdKind::DrawRectStroked => {
-                RenderCmd::DrawRectStroked(self.read_draw_rect_stroked(start))
-            }
-            CmdKind::DrawText => RenderCmd::DrawText(self.read_draw_text(start)),
+            CmdKind::DrawRect => RenderCmd::DrawRect(self.read(start)),
+            CmdKind::DrawRectStroked => RenderCmd::DrawRectStroked(self.read(start)),
+            CmdKind::DrawText => RenderCmd::DrawText(self.read(start)),
         }
     }
 
@@ -202,31 +201,20 @@ impl RenderCmdBuffer {
         self.kinds.push(kind);
     }
 
-    // --- typed reads, used by composer hot path and `get()` ----------
-
+    /// Read the payload at `start` (in u32 words) as `T`. Caller picks
+    /// `T` based on `kinds[i]` — the symmetric `write_pod` at push time
+    /// guarantees the bytes are valid for the kind's expected payload.
+    /// Used by `get()` and the composer hot path.
     #[inline]
-    pub(crate) fn read_clip(&self, start: u32) -> Rect {
-        unsafe { read_pod(&self.data, start) }
-    }
-
-    #[inline]
-    pub(crate) fn read_transform(&self, start: u32) -> TranslateScale {
-        unsafe { read_pod(&self.data, start) }
-    }
-
-    #[inline]
-    pub(crate) fn read_draw_rect(&self, start: u32) -> DrawRectPayload {
-        unsafe { read_pod(&self.data, start) }
-    }
-
-    #[inline]
-    pub(crate) fn read_draw_rect_stroked(&self, start: u32) -> DrawRectStrokedPayload {
-        unsafe { read_pod(&self.data, start) }
-    }
-
-    #[inline]
-    pub(crate) fn read_draw_text(&self, start: u32) -> DrawTextPayload {
-        unsafe { read_pod(&self.data, start) }
+    pub(crate) fn read<T: bytemuck::Pod>(&self, start: u32) -> T {
+        let start = start as usize;
+        let n_words = std::mem::size_of::<T>() / 4;
+        debug_assert!(start + n_words <= self.data.len());
+        let words = &self.data[start..start + n_words];
+        // `pod_read_unaligned` so payloads with align >4 (e.g.
+        // `DrawTextPayload` via `TextCacheKey: u64`) work even though
+        // the arena is `Vec<u32>` (4-byte aligned).
+        bytemuck::pod_read_unaligned(bytemuck::cast_slice(words))
     }
 }
 
@@ -249,28 +237,11 @@ impl Iterator for Iter<'_> {
 
 // --- raw POD r/w on the u32 arena ----------------------------------
 
+/// Append a `T` to the arena as `size_of::<T>() / 4` u32 words. `Pod`
+/// guarantees no padding bytes — the reinterpretation as `&[u32]` is
+/// sound because `align_of::<T>() % 4 == 0` for every payload we use
+/// (all field alignments are multiples of 4).
 #[inline]
-fn write_pod<T: Copy>(data: &mut Vec<u32>, v: T) {
-    const {
-        assert!(
-            std::mem::size_of::<T>().is_multiple_of(std::mem::align_of::<u32>()),
-            "payload must be a whole number of u32 words",
-        );
-    }
-    let n_words = std::mem::size_of::<T>() / std::mem::size_of::<u32>();
-    let ptr = (&v as *const T).cast::<u32>();
-    let slice = unsafe { std::slice::from_raw_parts(ptr, n_words) };
-    data.extend_from_slice(slice);
-}
-
-/// Read a POD payload at `start` (in u32 words). Caller must ensure
-/// the encoder wrote a value of type `T` at this offset.
-#[inline]
-unsafe fn read_pod<T: Copy>(data: &[u32], start: u32) -> T {
-    let start = start as usize;
-    debug_assert!(start + std::mem::size_of::<T>() / 4 <= data.len());
-    let ptr = unsafe { data.as_ptr().add(start).cast::<T>() };
-    // The arena is u32-aligned and our payloads are 4-byte-aligned
-    // f32/u32 aggregates, so a plain aligned read is sound.
-    unsafe { std::ptr::read(ptr) }
+fn write_pod<T: bytemuck::Pod>(data: &mut Vec<u32>, v: T) {
+    data.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&v)));
 }
