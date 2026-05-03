@@ -5,7 +5,6 @@ no committed roadmap.
 
 ## Damage rendering (`docs/damage-rendering.md`)
 
-- do we render undamaged text?
 - **Per-node `RenderCmd` cache.** Cache encoder output per `NodeId`; on a clean node whose `(NodeHash, cascade row)` matches, replay the slice instead of re-encoding. CPU win on every partial-repaint frame.
 - **Multi-rect damage.** Replace the single union rect with N disjoint regions (clustered from the per-node dirty set). Avoids the 50% heuristic tripping when two unrelated corners change.
 - **Incremental hit-index rebuild.** Only update `HitIndex` entries for dirty nodes (and any whose cascade row changed) instead of walking every node every frame.
