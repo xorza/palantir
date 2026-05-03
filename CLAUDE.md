@@ -106,7 +106,13 @@ examples/
 
 scripts/
   fetch-refs.sh    clones reference UI/layout/renderer projects into ./tmp
+
+benches/           criterion benches (layout, measure_cache)
+docs/              in-flight design notes (todo, layouts-todo, measure-cache, proposed-features)
+DESIGN.md          full design rationale — read before non-trivial changes
 ```
+
+Key deps: `wgpu` + `winit` (windowing/render), `glyphon` + cosmic-text (text), `glam` (math), `rustc-hash` (id hashing), `rayon` (parallel passes), `bytemuck` (gpu pod). All pinned `*` (lockfile is source of truth).
 
 ## Reference notes in `./references/`
 
