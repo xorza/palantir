@@ -1,7 +1,7 @@
 //! Cross-frame measure cache (Phase 2: full subtree skip). Skip a
 //! node's *entire subtree* — body and recursion — when its
 //! `subtree_hash` and incoming `available` size both match last
-//! frame. See `docs/measure-cache.md`.
+//! frame. See `src/layout/measure-cache.md`.
 //!
 //! **Storage**: a single SoA arena per attribute (`desired_arena`,
 //! `text_arena`) plus a tiny per-`WidgetId` `ArenaSnapshot` pointing

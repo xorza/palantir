@@ -2,7 +2,8 @@
 //! Subtree-skip on the encoder, mirroring [`MeasureCache`]: same
 //! arena+snapshot shape, same in-place-on-match / append-on-mismatch
 //! write path, same `live × COMPACT_RATIO` compaction trigger. See
-//! `docs/encode-cache.md` and `docs/measure-cache.md`.
+//! `src/renderer/frontend/encoder/encode-cache.md` and
+//! `src/layout/measure-cache.md`.
 //!
 //! Storage layout: three SoA arenas — `kinds_arena`, `starts_arena`
 //! (parallel, length = total cached cmds across all snapshots) and
