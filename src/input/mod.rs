@@ -1,7 +1,4 @@
-mod hit_index;
-
-pub(crate) use hit_index::HitIndex;
-
+use crate::cascade::CascadeResult;
 use crate::primitives::{Rect, Sense, WidgetId};
 use glam::Vec2;
 use rustc_hash::FxHashSet;
@@ -105,12 +102,12 @@ impl InputState {
     }
 
     /// Feed a palantir-native input event. Hit-tests against the
-    /// just-rebuilt `HitIndex` (populated by `Cascades::rebuild`).
-    pub(crate) fn on_input(&mut self, event: InputEvent, hit_index: &HitIndex) {
+    /// frozen `CascadeResult` from this frame's most recent run.
+    pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &CascadeResult) {
         match event {
             InputEvent::PointerMoved(p) => {
                 self.pointer.pos = Some(p);
-                self.recompute_hover(hit_index);
+                self.recompute_hover(cascades);
             }
             InputEvent::PointerLeft => {
                 self.pointer.pos = None;
@@ -122,14 +119,14 @@ impl InputState {
                 self.active = self
                     .pointer
                     .pos
-                    .and_then(|p| hit_index.hit_test(p, Sense::click));
+                    .and_then(|p| cascades.hit_test(p, Sense::click));
             }
             InputEvent::PointerReleased(PointerButton::Left) => {
                 if let Some(a) = self.active.take() {
                     let hit = self
                         .pointer
                         .pos
-                        .and_then(|p| hit_index.hit_test(p, Sense::click));
+                        .and_then(|p| cascades.hit_test(p, Sense::click));
                     if hit == Some(a) {
                         self.clicked_this_frame.insert(a);
                     }
@@ -142,20 +139,19 @@ impl InputState {
 
     /// Recompute hover, drop transient per-frame flags, evict captured
     /// widgets that disappeared from the tree. Call after
-    /// `Cascades::rebuild` (which populates `hit_index` in the same
-    /// pass).
-    pub(crate) fn end_frame(&mut self, hit_index: &HitIndex) {
+    /// `Cascades::run` (whose result `cascades` is passed here).
+    pub(crate) fn end_frame(&mut self, cascades: &CascadeResult) {
         self.clicked_this_frame.clear();
         if let Some(active) = self.active
-            && !hit_index.contains_id(active)
+            && !cascades.contains_id(active)
         {
             self.active = None;
         }
-        self.recompute_hover(hit_index);
+        self.recompute_hover(cascades);
     }
 
-    pub(crate) fn response_for(&self, id: WidgetId, hit_index: &HitIndex) -> ResponseState {
-        let rect = hit_index.rect_for(id);
+    pub(crate) fn response_for(&self, id: WidgetId, cascades: &CascadeResult) -> ResponseState {
+        let rect = cascades.rect_for(id);
         let me_under_pointer = self.hovered == Some(id);
         let me_captured = self.active == Some(id);
         let nothing_captured = self.active.is_none();
@@ -172,11 +168,11 @@ impl InputState {
         }
     }
 
-    fn recompute_hover(&mut self, hit_index: &HitIndex) {
+    fn recompute_hover(&mut self, cascades: &CascadeResult) {
         self.hovered = self
             .pointer
             .pos
-            .and_then(|p| hit_index.hit_test(p, Sense::hover));
+            .and_then(|p| cascades.hit_test(p, Sense::hover));
     }
 }
 

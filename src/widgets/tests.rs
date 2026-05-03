@@ -363,7 +363,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         None,
         &mut cmds,

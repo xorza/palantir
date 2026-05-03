@@ -19,7 +19,7 @@ pub use cmd_buffer::{RenderCmd, RenderCmdBuffer};
 pub use composer::Composer;
 pub use encoder::encode;
 
-use crate::cascade::Cascades;
+use crate::cascade::CascadeResult;
 use crate::layout::LayoutResult;
 use crate::primitives::{Display, Rect};
 use crate::renderer::buffer::RenderBuffer;
@@ -70,7 +70,7 @@ impl Frontend {
         &mut self,
         tree: &Tree,
         layout: &LayoutResult,
-        cascades: &Cascades,
+        cascades: &CascadeResult,
         disabled_dim: f32,
         damage_filter: Option<Rect>,
         display: &Display,

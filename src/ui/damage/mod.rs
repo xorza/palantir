@@ -16,7 +16,7 @@
 //! ("Wanted: per-node `RenderCmd` cache, text-shape cache,
 //! multi-rect damage, incremental hit-index, debug overlay").
 
-use crate::cascade::Cascades;
+use crate::cascade::CascadeResult;
 use crate::primitives::{Rect, WidgetId};
 use crate::tree::{NodeHash, NodeId, Tree};
 use rustc_hash::FxHashMap;
@@ -85,7 +85,7 @@ impl Damage {
     pub fn compute(
         &mut self,
         tree: &Tree,
-        cascades: &Cascades,
+        cascades: &CascadeResult,
         removed: &[WidgetId],
         surface: Rect,
     ) -> Option<Rect> {
