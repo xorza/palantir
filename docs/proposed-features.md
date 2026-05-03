@@ -21,7 +21,7 @@ sketches; promote into `todo.md` when motivated by a workload.
 - **Offscreen render targets / mask layer.** No render-to-texture path today, which blocks real drop shadows beyond SDF, blur, masked compositing, and tab transitions. Mark as a known fork point in `DESIGN.md`.
 - **Color management discipline.** The glyphon-sRGB-vs-linear concern in `todo.md` applies to every shape — verify surface format matches shader assumptions and pin a test.
 - **Push constants vs shared UBO for camera/scissor.** Open question from `references/SUMMARY.md §12.5`. UBO works on stock wgpu (quirky proves it); document the choice.
-- **Vello-style flat tag-encoded stream.** SUMMARY §6 calls out the encoding model itself as "high-leverage even at our scale" once shape volume grows past a few hundred per frame. Worth doing before reaching for a third-party renderer.
+- ~~**Vello-style flat tag-encoded stream.**~~ Done — `RenderCmdBuffer` (SoA: kinds + starts + u32 arena).
 
 ## Input / hit-test
 
