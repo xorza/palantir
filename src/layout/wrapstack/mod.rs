@@ -159,10 +159,10 @@ pub(super) fn arrange(
     // justify) and `line_cross` (for cross-axis place). Buffer node
     // IDs in the engine's flat `wrap.pool` at this depth's slice,
     // flush on overflow / end-of-children. Sizes come from
-    // `layout.desired` at flush time, so the buffer is just node
+    // `layout.scratch.desired` at flush time, so the buffer is just node
     // IDs.
-    layout.wrap.enter();
-    let line_start = layout.wrap.start();
+    layout.scratch.wrap.enter();
+    let line_start = layout.scratch.wrap.start();
     let mut line_main = 0.0f32;
     let mut line_cross = 0.0f32;
     let mut cross_cursor = axis.cross_v(inner.min);
@@ -173,7 +173,7 @@ pub(super) fn arrange(
                       line_cross: f32,
                       cross_cursor: &mut f32,
                       first_line: &mut bool| {
-        let line_end = layout.wrap.pool.len();
+        let line_end = layout.scratch.wrap.pool.len();
         let line_start = line_start as usize;
         if line_end == line_start {
             return;
@@ -202,11 +202,11 @@ pub(super) fn arrange(
         // calling `layout.arrange`, which needs `&mut layout`.
         // `NodeId` is `Copy`, so no slice borrow into the pool.
         for i in line_start..line_end {
-            let c = layout.wrap.pool[i];
+            let c = layout.scratch.wrap.pool[i];
             if i > line_start {
                 main_cursor += eff_gap;
             }
-            let d = layout.desired[c.index()];
+            let d = layout.scratch.desired[c.index()];
             let s = *tree.layout(c);
             // Cross axis: each child placed within the line's cross
             // extent via `place_axis`. Same rule as Stack cross —
@@ -238,7 +238,7 @@ pub(super) fn arrange(
         // `layout.arrange` calls above may have temporarily extended
         // and re-truncated the pool past `line_end`; we ignore those
         // and reset to our depth's start.
-        layout.wrap.pool.truncate(line_start);
+        layout.scratch.wrap.pool.truncate(line_start);
     };
 
     // Walk all children: collapsed get zeroed at the cursor, active
@@ -257,7 +257,7 @@ pub(super) fn arrange(
             continue;
         }
 
-        let d = layout.desired[c.index()];
+        let d = layout.scratch.desired[c.index()];
         let m = axis.main(d);
         // Mirror the measure-side rule: Fill-on-cross children don't
         // contribute to `line_cross`. Without this the row stretches
@@ -282,11 +282,11 @@ pub(super) fn arrange(
                 &mut cross_cursor,
                 &mut first_line,
             );
-            layout.wrap.pool.push(c);
+            layout.scratch.wrap.pool.push(c);
             line_main = m;
             line_cross = x;
         } else {
-            layout.wrap.pool.push(c);
+            layout.scratch.wrap.pool.push(c);
             line_main = candidate;
             line_cross = line_cross.max(x);
         }
@@ -298,7 +298,7 @@ pub(super) fn arrange(
         &mut cross_cursor,
         &mut first_line,
     );
-    layout.wrap.exit();
+    layout.scratch.wrap.exit();
 }
 
 /// Intrinsic size on `query_axis` under `req`. Approximate for the wrap

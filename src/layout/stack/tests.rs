@@ -317,7 +317,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
 
     // Correct: 16 (button) + 184 (Fill share) = 200.
     // Buggy: 16 + 16 (double-counted) + 184 = 216.
-    assert_eq!(ui.layout_engine.desired[root.index()].w, 200.0);
+    assert_eq!(ui.layout_engine.scratch.desired[root.index()].w, 200.0);
 }
 
 /// Pin: a collapsed child between two active children does not advance
@@ -389,7 +389,7 @@ fn hstack_fill_max_size_caps_measured_share() {
 
     // Leftover for Fill share = 200 - 20 = 180. Cap = 50. Measure clamps
     // target to 50 → desired.w = 50.
-    let desired = ui.layout_engine.desired[fill_node.unwrap().index()];
+    let desired = ui.layout_engine.scratch.desired[fill_node.unwrap().index()];
     assert_eq!(
         desired.w, 50.0,
         "Fill measure must clamp to max_size when leftover share > cap"

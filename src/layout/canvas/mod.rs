@@ -48,7 +48,7 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
             zero_subtree(layout, tree, c, inner.min);
             continue;
         }
-        let d = layout.desired[c.index()];
+        let d = layout.scratch.desired[c.index()];
         let pos = tree.read_extras(c).position;
         let child_rect = Rect {
             min: inner.min + pos,
