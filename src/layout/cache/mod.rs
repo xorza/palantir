@@ -183,9 +183,9 @@ impl MeasureCache {
         text_shapes: &[Option<ShapedText>],
         available_qs: &[AvailableKey],
     ) {
-        debug_assert_eq!(desired.len(), text_shapes.len());
-        debug_assert_eq!(desired.len(), available_qs.len());
-        debug_assert!(
+        assert_eq!(desired.len(), text_shapes.len());
+        assert_eq!(desired.len(), available_qs.len());
+        assert!(
             !available_qs.is_empty(),
             "snapshot must include the root's own per-node available_q",
         );

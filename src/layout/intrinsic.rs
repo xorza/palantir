@@ -12,11 +12,11 @@
 //! alongside that driver's `measure`/`arrange` in its own module — same
 //! per-driver-file convention as the rest of layout.
 
+use super::support::leaf_text_shapes;
 use super::{
     Axis, LayoutEngine, LayoutMode, canvas, grid, resolve_axis_size, stack, wrapstack, zstack,
 };
 use crate::primitives::Sizing;
-use crate::shape::Shape;
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
@@ -132,21 +132,14 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasu
     let wid = tree.widget_ids[node.index()];
     let curr_hash = tree.hashes[node.index()];
     let mut acc = 0.0_f32;
-    for shape in tree.shapes_of(node) {
-        if let Shape::Text {
-            text: src,
-            font_size_px,
-            ..
-        } = shape
-        {
-            let m = text.shape_unbounded(wid, curr_hash, src, *font_size_px);
-            let v = match (axis, req) {
-                (Axis::X, LenReq::MinContent) => m.intrinsic_min,
-                (Axis::X, LenReq::MaxContent) => m.size.w,
-                (Axis::Y, _) => m.size.h,
-            };
-            acc = acc.max(v);
-        }
+    for (src, font_size_px, _wrap) in leaf_text_shapes(tree, node) {
+        let m = text.shape_unbounded(wid, curr_hash, src, font_size_px);
+        let v = match (axis, req) {
+            (Axis::X, LenReq::MinContent) => m.intrinsic_min,
+            (Axis::X, LenReq::MaxContent) => m.size.w,
+            (Axis::Y, _) => m.size.h,
+        };
+        acc = acc.max(v);
     }
     acc
 }

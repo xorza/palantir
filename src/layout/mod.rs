@@ -1,11 +1,11 @@
 use crate::element::LayoutMode;
 use crate::primitives::{Rect, Size, Sizing, WidgetId};
-use crate::shape::{Shape, TextWrap};
+use crate::shape::TextWrap;
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use cache::MeasureCache;
 use grid::GridContext;
-use support::{resolve_axis_size, zero_subtree};
+use support::{leaf_text_shapes, resolve_axis_size, zero_subtree};
 use wrapstack::WrapScratch;
 
 mod axis;
@@ -247,7 +247,7 @@ impl LayoutEngine {
             let curr_end = curr_start + hit.desired.len();
             // Subtree hash includes child count + per-child rollups,
             // so a length mismatch here would mean the rollup is broken.
-            debug_assert_eq!(curr_end, tree.subtree_end[curr_start] as usize);
+            assert_eq!(curr_end, tree.subtree_end[curr_start] as usize);
             self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
             self.result.restore_text_shapes(curr_start, hit.text_shapes);
             self.scratch.available_q[curr_start..curr_end].copy_from_slice(hit.available_q);
@@ -391,17 +391,16 @@ impl LayoutEngine {
         text: &mut TextMeasurer,
     ) -> Size {
         let mut s = Size::ZERO;
-        for shape in tree.shapes_of(node) {
-            if let Shape::Text {
-                text: src,
-                font_size_px,
-                wrap,
-                ..
-            } = shape
-            {
-                let m = self.shape_text(tree, node, src, *font_size_px, *wrap, available_w, text);
-                s = s.max(m);
-            }
+        for (src, font_size_px, wrap) in leaf_text_shapes(tree, node) {
+            // SAFETY: `src` borrows from `tree.shapes`, which `shape_text`
+            // does not mutate — its `&mut self` only touches engine state.
+            // Reborrow as a short-lived `&str` to release the iterator's
+            // implicit shared borrow on `tree` for the duration of the
+            // call. (Would compile without the rebind on Polonius; today
+            // we sidestep the conservative check.)
+            let src: &str = src;
+            let m = self.shape_text(tree, node, src, font_size_px, wrap, available_w, text);
+            s = s.max(m);
         }
         s
     }

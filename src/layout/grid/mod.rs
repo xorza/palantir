@@ -111,7 +111,7 @@ pub(crate) struct GridScratch {
 /// and `hugs` are separate fields so callers can disjoint-borrow them —
 /// `resolve_axis` takes `&mut AxisScratch` (from `depth_stack`) and `&[f32]`
 /// hug slices (from `hugs`) in the same expression via destructuring.
-/// `intrinsic_scratch` is a bump-stack scratch for `grid::intrinsic`'s
+/// `track_aggregator` is a bump-stack scratch for `grid::intrinsic`'s
 /// per-track aggregator: each call extends by `n_tracks`, recurses (which
 /// may extend further but always truncates back), then truncates to its
 /// own base. Capacity retained.
@@ -119,7 +119,7 @@ pub(crate) struct GridScratch {
 pub(crate) struct GridContext {
     pub(super) depth_stack: GridDepthStack,
     pub(super) hugs: GridHugStore,
-    pub(super) intrinsic_scratch: Vec<f32>,
+    pub(super) track_aggregator: Vec<f32>,
 }
 
 /// Nesting stack of per-depth grid scratch. One `GridScratch` slot per
@@ -389,8 +389,8 @@ fn measure_inner(
             hugs.max(idx, Axis::X),
             inner_avail.w,
             col_gap,
+            grid_sizing_w,
         );
-        mark_fill_resolved(&mut s.col, grid_sizing_w, inner_avail.w);
         // Resolve Fixed rows once before the per-cell loop — values are
         // constant per GridDef and `resolve_fixed` is idempotent, so
         // calling it inside the loop just re-set the same slots.
@@ -459,8 +459,8 @@ fn measure_inner(
             hugs.max(idx, Axis::Y),
             inner_avail.h,
             row_gap,
+            grid_sizing_h,
         );
-        mark_fill_resolved(&mut s.row, grid_sizing_h, inner_avail.h);
     }
 
     // Returned content size: sum of non-Fill track sizes + gaps. Fill
@@ -511,24 +511,6 @@ fn resolve_fixed(a: &mut AxisScratch) {
     }
 }
 
-/// After `resolve_axis` runs, Fill tracks stay unresolved so cells in
-/// Fill cols/rows see `INF` via `sum_spanned_known` during measure. When
-/// the grid itself is non-Hug on this axis with a finite slot, that slot
-/// width will match arrange's, so we can mark Fill resolved up-front and
-/// let cells measure at the resolved width — wrap text shapes correctly.
-/// Hug grids must keep Fill unresolved (their arrange slot is unknown
-/// here).
-fn mark_fill_resolved(a: &mut AxisScratch, grid_sizing: Sizing, avail: f32) {
-    if matches!(grid_sizing, Sizing::Hug) || !avail.is_finite() {
-        return;
-    }
-    for (i, t) in a.tracks.iter().enumerate() {
-        if matches!(t.size, Sizing::Fill(_)) {
-            a.resolved[i] = true;
-        }
-    }
-}
-
 fn record_hug(tracks: &[Track], hug_max: &mut [f32], idx: u16, span: u16, desired: f32) {
     if span != 1 {
         return;
@@ -571,7 +553,12 @@ fn arrange_inner(
         return;
     }
 
+    let grid_size = tree.layout(node).size;
+
     // Resolve track sizes (Fixed + Hug + Fill) and compute offsets.
+    // Arrange ignores `resolved` flags but `resolve_axis` requires
+    // `grid_sizing` for its Phase-4 commit (no-op on arrange's read
+    // path; passing the real value keeps the call self-consistent).
     {
         let GridContext {
             depth_stack, hugs, ..
@@ -583,6 +570,7 @@ fn arrange_inner(
             hugs.max(idx, Axis::X),
             inner.size.w,
             col_gap,
+            grid_size.w,
         );
         resolve_axis(
             &mut s.row,
@@ -590,6 +578,7 @@ fn arrange_inner(
             hugs.max(idx, Axis::Y),
             inner.size.h,
             row_gap,
+            grid_size.h,
         );
         track_offsets(&s.col.sizes, col_gap, &mut s.col.offsets);
         track_offsets(&s.row.sizes, row_gap, &mut s.row.offsets);
@@ -637,7 +626,7 @@ fn arrange_inner(
 /// yet resolved (Hug / Fill at measure time). Infinity makes the child fall
 /// back to its intrinsic size on that axis (the WPF trick).
 fn sum_spanned_known(sizes: &[f32], resolved: &[bool], start: u16, span: u16) -> f32 {
-    let s = start as usize;
+    let s = (start as usize).min(sizes.len());
     let n = (span as usize).min(sizes.len() - s);
     let mut sum = 0.0;
     for i in s..s + n {
@@ -662,7 +651,7 @@ fn track_offsets(sizes: &[f32], gap: f32, out: &mut [f32]) {
 }
 
 fn span_size(sizes: &[f32], start: u16, span: u16, gap: f32) -> f32 {
-    let s = start as usize;
+    let s = (start as usize).min(sizes.len());
     let n = (span as usize).min(sizes.len() - s);
     let mut total: f32 = sizes[s..s + n].iter().sum();
     if n > 1 {
@@ -673,8 +662,11 @@ fn span_size(sizes: &[f32], start: u16, span: u16, gap: f32) -> f32 {
 
 /// Resolve track sizes on one axis into `a.sizes` for a grid with
 /// `total` available main-axis length and `gap` between adjacent tracks.
+/// `grid_sizing` is the grid node's own `Sizing` on this axis — used
+/// only by Phase 4 to decide whether Fill tracks can be marked resolved
+/// at measure time.
 ///
-/// **Step B algorithm**, three phases:
+/// **Step B algorithm**, four phases:
 /// 1. **Fixed:** clamp `Sizing::Fixed(v)` to `[Track.min, Track.max]`,
 ///    consume from available.
 /// 2. **Hug:** constraint-solve `[hug_min ⊔ Track.min, hug_max ⊓ Track.max]`
@@ -687,7 +679,24 @@ fn span_size(sizes: &[f32], start: u16, span: u16, gap: f32) -> f32 {
 ///    distribute leftover proportional to weight; any Fill whose share
 ///    falls outside `[Track.min, Track.max]` clamps and exits the pool,
 ///    remaining Fills rebalance.
-fn resolve_axis(a: &mut AxisScratch, hug_min: &[f32], hug_max: &[f32], total: f32, gap: f32) {
+/// 4. **Mark Fill resolved (commit):** by default Fill tracks stay
+///    unresolved so cells in Fill cols see `INF` via `sum_spanned_known`
+///    during measure (preserves "Fill is finalized at arrange"). When
+///    the grid itself is non-Hug on this axis with a finite slot, the
+///    measure-time `total` matches arrange's, so Fill tracks can be
+///    committed up-front and cells measure at the resolved width — wrap
+///    text shapes correctly. Hug grids must keep Fill unresolved (their
+///    arrange slot is unknown here). Arrange ignores `resolved`, so
+///    passing the actual `grid_sizing` from arrange's call site is
+///    harmless.
+fn resolve_axis(
+    a: &mut AxisScratch,
+    hug_min: &[f32],
+    hug_max: &[f32],
+    total: f32,
+    gap: f32,
+    grid_sizing: Sizing,
+) {
     let n = a.tracks.len();
     a.sizes.fill(0.0);
     // Reset resolved flags. Fixed + Hug get marked resolved as they're
@@ -810,6 +819,16 @@ fn resolve_axis(a: &mut AxisScratch, hug_min: &[f32], hug_max: &[f32], total: f3
         }
         break;
     }
+
+    // Phase 4: commit Fill tracks as resolved when the grid's own axis
+    // sizing guarantees measure-time `total` matches arrange-time slot.
+    if !matches!(grid_sizing, Sizing::Hug) && total.is_finite() {
+        for (i, t) in a.tracks.iter().enumerate() {
+            if matches!(t.size, Sizing::Fill(_)) {
+                a.resolved[i] = true;
+            }
+        }
+    }
 }
 
 /// Intrinsic size of a Grid: per-track contribution aggregated from
@@ -848,14 +867,14 @@ pub(super) fn intrinsic(
     // Bump-allocate `n_tracks` slots on the shared scratch. Recursive
     // intrinsic calls extend past `base + n_tracks` and truncate back, so
     // our slice stays valid across them.
-    let base = layout.scratch.grid.intrinsic_scratch.len();
+    let base = layout.scratch.grid.track_aggregator.len();
     layout
         .scratch
         .grid
-        .intrinsic_scratch
+        .track_aggregator
         .resize(base + n_tracks, 0.0);
     for (i, t) in tracks.iter().enumerate() {
-        layout.scratch.grid.intrinsic_scratch[base + i] = match t.size {
+        layout.scratch.grid.track_aggregator[base + i] = match t.size {
             Sizing::Fixed(v) => v.clamp(t.min, t.max),
             // Hug starts at Track.min; Fill stays at Track.min.
             _ => t.min,
@@ -884,14 +903,14 @@ pub(super) fn intrinsic(
         }
         let (t_min, t_max) = (t.min, t.max);
         let child_v = layout.intrinsic(tree, c, axis, req, text);
-        let slot = &mut layout.scratch.grid.intrinsic_scratch[base + track_idx];
+        let slot = &mut layout.scratch.grid.track_aggregator[base + track_idx];
         *slot = slot.max(child_v.clamp(t_min, t_max));
     }
 
-    let total: f32 = layout.scratch.grid.intrinsic_scratch[base..base + n_tracks]
+    let total: f32 = layout.scratch.grid.track_aggregator[base..base + n_tracks]
         .iter()
         .sum();
-    layout.scratch.grid.intrinsic_scratch.truncate(base);
+    layout.scratch.grid.track_aggregator.truncate(base);
     total + gap * n_tracks.saturating_sub(1) as f32
 }
 
