@@ -182,6 +182,51 @@ fn subtree_snapshot_covers_every_descendant() {
 }
 
 #[test]
+fn subtree_skip_restores_descendant_available_q() {
+    // Contract for downstream consumers (e.g. the encode cache) that
+    // read `LayoutResult.available_q` at every visited node:
+    // descendants of a measure-cache hit must carry their correct
+    // `available_q` even though `measure()` short-circuits at the
+    // subtree root and never visits them. `resize_for` zeros the
+    // column at frame start, so a missing restore would leave
+    // descendants at `AvailableKey::ZERO`.
+    let mut ui = Ui::new();
+    let build = |ui: &mut Ui| {
+        Panel::vstack_with_id("group").show(ui, |ui| {
+            Frame::with_id("c1").size(10.0).show(ui);
+            Frame::with_id("c2").size(20.0).show(ui);
+        });
+    };
+    run_frame(&mut ui, build);
+    let n = ui.tree().node_count();
+    let cold: Vec<_> = (0..n)
+        .map(|i| {
+            ui.layout_engine
+                .result()
+                .available_q(crate::tree::NodeId(i as u32))
+        })
+        .collect();
+    // Cold frame must have populated every descendant.
+    assert!(
+        cold.iter().all(|q| *q != crate::layout::AvailableKey::ZERO),
+        "cold frame must populate `available_q` for every node",
+    );
+
+    run_frame(&mut ui, build);
+    let warm: Vec<_> = (0..n)
+        .map(|i| {
+            ui.layout_engine
+                .result()
+                .available_q(crate::tree::NodeId(i as u32))
+        })
+        .collect();
+    assert_eq!(
+        cold, warm,
+        "subtree-skip must restore descendants' `available_q` from the snapshot",
+    );
+}
+
+#[test]
 fn subtree_skip_preserves_descendant_rects() {
     // Identical frames must produce identical arranged rects for
     // every node, even when the parent (and so the whole subtree) is
