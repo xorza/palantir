@@ -36,22 +36,18 @@ impl NodeHash {
     pub const UNCOMPUTED: Self = Self(0);
 }
 
-/// Hash a value as its raw bytes in one `Hasher::write` call. Sound only
-/// for `T` with no padding bytes — the caller is responsible for that.
-/// Used here for homogeneous-primitive structs (`Spacing`, `Color`,
-/// `Corners`, `Stroke`, `Size`, `Vec2`, `GridCell`), where uniform field
-/// alignment rules out gaps.
+/// Hash a value as its raw bytes in one `Hasher::write` call. The
+/// `NoUninit` bound proves at compile time that `T` has no padding so
+/// `bytes_of` is sound.
 ///
-/// Why this is faster: `FxHasher::write(&[u8])` consumes 8 bytes per
-/// loop iteration and amortizes the rotate/multiply/xor cost across the
-/// whole slice. Replacing N×`write_u32`/`write_u16` calls with one
-/// `write` cuts the per-call overhead and lets the compiler keep more
-/// state in registers.
+/// Why this is faster than per-field writes: `FxHasher::write(&[u8])`
+/// consumes 8 bytes per loop iteration and amortizes the
+/// rotate/multiply/xor cost across the whole slice. Replacing
+/// N×`write_u32`/`write_u16` calls with one `write` cuts the per-call
+/// overhead and lets the compiler keep more state in registers.
 #[inline]
-fn pod<T>(h: &mut impl Hasher, v: &T) {
-    let bytes =
-        unsafe { std::slice::from_raw_parts(v as *const T as *const u8, std::mem::size_of::<T>()) };
-    h.write(bytes);
+fn pod<T: bytemuck::NoUninit>(h: &mut impl Hasher, v: &T) {
+    h.write(bytemuck::bytes_of(v));
 }
 
 /// `Sizing` is a tagged union with niche-uninit padding in its inactive
@@ -97,8 +93,8 @@ fn hash_layout_mode(h: &mut impl Hasher, m: LayoutMode) {
 fn hash_layout_core(h: &mut impl Hasher, l: &LayoutCore) {
     hash_layout_mode(h, l.mode);
     hash_sizes(h, l.size);
-    pod(h, &l.padding);
-    pod(h, &l.margin);
+    // padding + margin: two `Spacing`s (4 f32 each = 32 contiguous bytes).
+    pod(h, &[l.padding, l.margin]);
     // Pack Align (u8) + Visibility (u8 discriminant) into one u16 write.
     h.write_u16(((l.visibility as u8 as u16) << 8) | l.align.raw() as u16);
 }
@@ -128,10 +124,8 @@ fn hash_node_extras(h: &mut impl Hasher, e: &ElementExtras) {
     // `Damage::compute`, which is the right granularity.
     pod(h, &e.position);
     pod(h, &e.grid);
-    pod(h, &e.min_size);
-    pod(h, &e.max_size);
-    h.write_u32(e.gap.to_bits());
-    h.write_u32(e.line_gap.to_bits());
+    pod(h, &[e.min_size, e.max_size]);
+    pod(h, &[e.gap, e.line_gap]);
     h.write_u16(((e.child_align.raw() as u16) << 8) | e.justify as u8 as u16);
 }
 
