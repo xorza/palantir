@@ -1,5 +1,5 @@
 use super::cmd_buffer::RenderCmdBuffer;
-use crate::cascade::Cascades;
+use crate::cascade::CascadeResult;
 use crate::layout::LayoutResult;
 use crate::primitives::{Align, HAlign, Rect, Size, Stroke, TranslateScale, VAlign};
 use crate::shape::Shape;
@@ -21,7 +21,7 @@ use crate::tree::{NodeId, Tree};
 pub fn encode(
     tree: &Tree,
     layout: &LayoutResult,
-    cascades: &Cascades,
+    cascades: &CascadeResult,
     disabled_dim: f32,
     damage_filter: Option<Rect>,
     out: &mut RenderCmdBuffer,
@@ -43,7 +43,7 @@ pub fn encode(
 fn encode_node(
     tree: &Tree,
     layout: &LayoutResult,
-    cascades: &Cascades,
+    cascades: &CascadeResult,
     disabled_dim: f32,
     damage_filter: Option<Rect>,
     id: NodeId,

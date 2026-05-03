@@ -35,7 +35,7 @@ fn empty_tree_encodes_to_nothing() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         None,
         &mut cmds,
@@ -65,7 +65,7 @@ fn frame_with_fill_emits_one_draw_rect() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         None,
         &mut cmds,
@@ -95,7 +95,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         None,
         &mut cmds,
@@ -133,7 +133,7 @@ fn clip_emits_balanced_push_pop() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         None,
         &mut cmds,
@@ -283,7 +283,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         None,
         &mut cmds,
@@ -411,7 +411,7 @@ fn nested_clips_each_emit_their_own_pair() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         None,
         &mut cmds,
@@ -441,7 +441,7 @@ fn disabled_ancestor_dims_descendant_fill() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         0.5,
         None,
         &mut cmds,
@@ -470,7 +470,7 @@ fn disabled_ancestor_dims_descendant_fill() {
     encode(
         &ui2.tree,
         ui2.layout_engine.result(),
-        &ui2.cascades,
+        ui2.cascades.result(),
         0.5,
         None,
         &mut cmds,
@@ -559,7 +559,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         None,
         &mut cmds,
@@ -626,7 +626,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         Some(filter),
         &mut cmds,
@@ -664,7 +664,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         Some(Rect::new(0.0, 0.0, 200.0, 200.0)),
         &mut cmds,
@@ -706,7 +706,7 @@ fn damage_filter_preserves_clip_pushpop() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
         &mut cmds,
@@ -751,7 +751,7 @@ fn damage_filter_preserves_transform_pushpop() {
     encode(
         &ui.tree,
         ui.layout_engine.result(),
-        &ui.cascades,
+        ui.cascades.result(),
         1.0,
         Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
         &mut cmds,
