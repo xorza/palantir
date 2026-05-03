@@ -114,12 +114,9 @@ impl Ui {
         let removed = self.ids.end_frame();
         self.text.sweep_removed(removed);
 
-        let layout = match self.tree.root() {
-            Some(root) => self
-                .layout_engine
-                .run(&self.tree, root, surface, &mut self.text),
-            None => self.layout_engine.result(),
-        };
+        let layout = self
+            .layout_engine
+            .run(&self.tree, self.tree.root(), surface, &mut self.text);
         let cascades = self.cascades.run(&self.tree, layout);
         self.input.end_frame(cascades);
         let damage = self.damage.compute(&self.tree, cascades, removed, surface);

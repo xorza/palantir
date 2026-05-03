@@ -127,7 +127,7 @@ impl LayoutEngine {
     pub fn run(
         &mut self,
         tree: &Tree,
-        root: NodeId,
+        root: Option<NodeId>,
         surface: Rect,
         text: &mut TextMeasurer,
     ) -> &LayoutResult {
@@ -143,13 +143,18 @@ impl LayoutEngine {
         self.intrinsics.resize(n, [f32::NAN; 4]);
         self.result.resize_for(tree);
         self.grid.hugs.reset_for(tree);
-        self.measure(
-            tree,
-            root,
-            Size::new(surface.width(), surface.height()),
-            text,
-        );
-        self.arrange(tree, root, surface);
+        // No root ⇒ no widgets recorded this frame. Result is sized to
+        // `tree.node_count() == 0`, so downstream consumers walk zero
+        // entries — return the freshly-cleared result without measuring.
+        if let Some(root) = root {
+            self.measure(
+                tree,
+                root,
+                Size::new(surface.width(), surface.height()),
+                text,
+            );
+            self.arrange(tree, root, surface);
+        }
         assert_eq!(
             self.grid.depth_stack.depth(),
             0,
