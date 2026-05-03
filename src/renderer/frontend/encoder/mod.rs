@@ -67,12 +67,6 @@ impl Encoder {
     pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
         self.cache.sweep_removed(removed);
     }
-
-    /// Drop every cache entry. `#[doc(hidden)]` — for benches.
-    #[doc(hidden)]
-    pub fn __clear_cache(&mut self) {
-        self.cache.__clear();
-    }
 }
 
 fn encode_node(

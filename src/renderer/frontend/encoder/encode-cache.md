@@ -59,7 +59,7 @@ owns the cache + cmd buffer and is the entry point from
   cache itself: round-trip at same/shifted origin, hash and
   `available_q` mismatch, in-place rewrite preserves positions, size
   change marks garbage, `sweep_removed` evicts and decrements live
-  counters, compaction preserves lookups, `__clear`.
+  counters, compaction preserves lookups, `clear`.
 - `src/renderer/frontend/encoder/tests.rs::encode_cache_warm_frame_matches_cold_encode`
   — integration test: warm-cache replay through `Frontend::build` is
   byte-identical to a fresh cold encode.
