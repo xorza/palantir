@@ -73,13 +73,18 @@ encoder work). Times are `end_frame()` end-to-end.
 
 | Workload | cached | forced miss | win |
 |---|---|---|---|
-| `flat`   (~1000 leaves)            | 74.5 µs | 96.7 µs | 22.9 % |
-| `nested` (100 × 32 nodes ≈ 3200)   | 372 µs  | 449 µs  | 17.0 % |
+| `flat`   (~1000 leaves)            | 75.9 µs | 86.4 µs | 12.2 % |
+| `nested` (100 × 32 nodes ≈ 3200)   | 376 µs  | 417 µs  | 9.8 %  |
 
 The end-to-end percentage is diluted by the composer pass, which runs
 in both arms; the encoder pass itself saves substantially more in
 absolute terms.
 
+`TINY_SUBTREE_THRESHOLD = 1` skips cache lookup + write for size-1
+leaves: one `draw_rect`/`draw_text` is cheaper to re-emit than the
+hashmap miss + insert that would replace it. K=2 was tried and
+regressed `nested/forced_miss` by 7 %, so the threshold stays at 1.
+
 Future-work items (composer cache, hit-hint propagation,
-damage-aware encode replay, SIMD `bump_rect_min`, tiny-subtree
-threshold, coarser `available_q` quantization) live in `docs/todo.md`.
+damage-aware encode replay, SIMD `bump_rect_min`, coarser
+`available_q` quantization) live in `docs/todo.md`.
