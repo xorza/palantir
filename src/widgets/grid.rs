@@ -1,5 +1,6 @@
 use crate::element::{Configure, Element, LayoutMode};
 use crate::primitives::{Sizing, Track, TranslateScale, WidgetId};
+use crate::tree::GridDef;
 use crate::ui::Ui;
 use crate::widgets::{Background, Response, Styled};
 use std::hash::Hash;
@@ -26,10 +27,7 @@ use std::sync::OnceLock;
 pub struct Grid {
     element: Element,
     background: Background,
-    rows: Option<Rc<[Track]>>,
-    cols: Option<Rc<[Track]>>,
-    row_gap: f32,
-    col_gap: f32,
+    def: GridDef,
 }
 
 impl Grid {
@@ -51,20 +49,22 @@ impl Grid {
         Self {
             element: Element::new(id, LayoutMode::Grid(PENDING_GRID_IDX)),
             background: Background::default(),
-            rows: None,
-            cols: None,
-            row_gap: 0.0,
-            col_gap: 0.0,
+            def: GridDef {
+                rows: empty_tracks(),
+                cols: empty_tracks(),
+                row_gap: 0.0,
+                col_gap: 0.0,
+            },
         }
     }
 
     pub fn rows(mut self, rs: impl Into<Rc<[Track]>>) -> Self {
-        self.rows = Some(rs.into());
+        self.def.rows = rs.into();
         self
     }
 
     pub fn cols(mut self, cs: impl Into<Rc<[Track]>>) -> Self {
-        self.cols = Some(cs.into());
+        self.def.cols = cs.into();
         self
     }
 
@@ -82,15 +82,15 @@ impl Grid {
 
     /// Uniform gap on both axes. See `gap_xy` for asymmetric gaps.
     pub fn gap(mut self, g: f32) -> Self {
-        self.row_gap = g;
-        self.col_gap = g;
+        self.def.row_gap = g;
+        self.def.col_gap = g;
         self
     }
 
     /// Asymmetric gaps: `row_gap` between rows, `col_gap` between columns.
     pub fn gap_xy(mut self, row_gap: f32, col_gap: f32) -> Self {
-        self.row_gap = row_gap;
-        self.col_gap = col_gap;
+        self.def.row_gap = row_gap;
+        self.def.col_gap = col_gap;
         self
     }
 
@@ -105,11 +105,7 @@ impl Grid {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
-        let rows = self.rows.unwrap_or_else(empty_tracks);
-        let cols = self.cols.unwrap_or_else(empty_tracks);
-        let idx = ui
-            .tree
-            .push_grid_def(rows, cols, self.row_gap, self.col_gap);
+        let idx = ui.tree.push_grid_def(self.def);
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
 

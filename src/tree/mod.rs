@@ -1,7 +1,6 @@
 use crate::element::{Element, ElementExtras, LayoutCore, LayoutMode, PaintCore};
-use crate::primitives::{Track, WidgetId};
+use crate::primitives::WidgetId;
 use crate::shape::Shape;
-use std::rc::Rc;
 
 mod grid_def;
 mod hash;
@@ -121,14 +120,8 @@ impl Tree {
         self.current_open
     }
 
-    pub(crate) fn push_grid_def(
-        &mut self,
-        rows: Rc<[Track]>,
-        cols: Rc<[Track]>,
-        row_gap: f32,
-        col_gap: f32,
-    ) -> u16 {
-        self.grid.push_def(rows, cols, row_gap, col_gap)
+    pub(crate) fn push_grid_def(&mut self, def: GridDef) -> u16 {
+        self.grid.push_def(def)
     }
 
     pub(crate) fn grid_def(&self, idx: u16) -> &GridDef {
@@ -381,24 +374,13 @@ impl GridArena {
     /// Append a `GridDef` referencing user-owned `Rc<[Track]>` rows + cols;
     /// return its index. The index is stamped into a `LayoutMode::Grid(idx)`
     /// on the owning panel's `Element`. `Rc` clones are refcount-only.
-    fn push_def(
-        &mut self,
-        rows: Rc<[Track]>,
-        cols: Rc<[Track]>,
-        row_gap: f32,
-        col_gap: f32,
-    ) -> u16 {
+    fn push_def(&mut self, def: GridDef) -> u16 {
         assert!(
             self.defs.len() < u16::MAX as usize,
             "more than 65 535 Grid panels in a single frame",
         );
         let idx = self.defs.len() as u16;
-        self.defs.push(GridDef {
-            rows,
-            cols,
-            row_gap,
-            col_gap,
-        });
+        self.defs.push(def);
         idx
     }
 
