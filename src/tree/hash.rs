@@ -14,7 +14,7 @@
 //! in builders enforce non-negative sizes etc.).
 
 use super::GridDef;
-use crate::element::{LayoutCore, LayoutMode, PaintAttrs, PaintCore};
+use crate::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, PaintCore};
 use crate::primitives::{
     Align, Color, Corners, GridCell, Justify, Sense, Size, Sizes, Sizing, Spacing, Stroke, Track,
     Visibility,
@@ -183,7 +183,7 @@ fn hash_paint_core(h: &mut impl Hasher, p: PaintCore) {
     h.write_u8(p.extras.is_some() as u8);
 }
 
-fn hash_node_extras(h: &mut impl Hasher, e: &crate::element::ElementExtras) {
+fn hash_node_extras(h: &mut impl Hasher, e: &ElementExtras) {
     // `transform` is intentionally omitted: it doesn't affect this
     // node's own paint (the encoder draws the node at its layout rect
     // *before* `PushTransform`; the transform composes into
@@ -270,7 +270,7 @@ fn hash_grid_def(h: &mut impl Hasher, def: &GridDef) {
 pub(super) fn compute_node_hash(
     layout: &LayoutCore,
     paint: PaintCore,
-    extras: Option<&crate::element::ElementExtras>,
+    extras: Option<&ElementExtras>,
     shapes: &[Shape],
     grid_def: Option<&GridDef>,
 ) -> NodeHash {
