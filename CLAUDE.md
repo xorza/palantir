@@ -126,6 +126,15 @@ fall back to `~/.cargo/registry/src/...` if the crate isn't listed in
 - Treat all docs (`docs/*.md`, `DESIGN.md`, `references/*`) as evolving and possibly wrong. They may lag the code or encode decisions that have been re-litigated. When a doc statement contradicts the user's intent or current code, double-question rather than deferring — flag the conflict, ask the user, and update the doc to reflect the resolution. Documented decisions are starting positions, not commitments; re-evaluate when context changes.
 - **All code used only by tests lives in test modules.** No `#[cfg(test)] pub(crate) fn …` methods on production types as a "tests-only API". If a test needs to reach production internals, expose the underlying field as `pub(crate)` (so disjoint field borrows compose) and have the test call the production code paths directly, OR move the test inside the relevant module's `#[cfg(test)] mod tests` where it has access to private items. Test-only methods on production types creep, drift, and signal "real consumer coming any day" that never arrives.
 
+## Style preferences
+
+- No trivial field-exposing accessors. If a method body is just `self.field` / `&self.field` / `self.field = v`, delete it and make the field `pub(crate)`. Inline accessors are fine when they do real work.
+- `pub(crate)` on fields is fine for convenient cross-module access — invariants live in the methods that mutate, not in encapsulation theater.
+- No tuple returns. Even single-use, give it a named result struct next to the function. `Option`/`Result` excepted.
+- Default to the narrowest visibility. Demote `pub` → `pub(crate)` → private whenever nothing outside that scope uses the item; this crate has no external consumers.
+- Small refactors to shrink the public surface are welcome.
+- Split fat-test files into `foo/{mod.rs, tests.rs}` when tests dominate the file (>40% or >150 lines).
+
 ## Before reporting work as done
 
 Always run, in this order, before confirming any code change:
