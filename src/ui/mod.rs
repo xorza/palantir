@@ -113,6 +113,7 @@ impl Ui {
         self.tree.compute_hashes();
         let removed = self.ids.end_frame();
         self.text.sweep_removed(removed);
+        self.layout_engine.sweep_removed(removed);
 
         let layout = self
             .layout_engine
