@@ -94,6 +94,50 @@ Out of scope for v1: momentum/overscroll/elastic, virtualization (see
 `docs/proposed-features.md` "Long-list / scroll"), nested
 scroll-chaining policy, sticky headers.
 
+## Off-screen cost — what each pass does
+
+Without virtualization, scroll content pays full per-pass cost
+regardless of what's visible:
+
+- **Measure / arrange**: unconditional on every node. ScrollView passes
+  `LenReq::Unbounded` along the scrolled axis, so the child reports its
+  full intrinsic size; arrange positions every grandchild at its
+  natural position. Inherent — measure has to know total content size
+  to clamp the offset. Cost is O(content), not O(viewport).
+- **Cascade**: walks every node. Clip intersection in `cascade.rs:188`
+  shrinks off-screen rects to empty, which is what makes hit-testing
+  correctly ignore them. Cheap.
+- **Encode**: walks every node pre-order; today emits leaf shapes for
+  every visible (non-`Hidden`) node regardless of clip. The encoder
+  already has a `damage_filter: Option<Rect>` path
+  (`renderer/frontend/encoder/mod.rs:25,68`) that skips leaf emission
+  when a node's screen rect misses the filter — built for damage
+  rendering, but exactly the mechanism we want for clip culling.
+- **GPU**: scissor discards off-screen fragments, so no shading. CPU
+  encode + compose + instance-buffer write still runs.
+
+So a 10k-row list in a 600px viewport still does 10k of measure,
+arrange, cascade, encode every frame, with the GPU scissoring ~9.97k of
+the emitted instances. Correct, but only fine up to hundreds of items.
+
+### Cheap wins to fold in
+
+1. **Clip-cull the encoder.** Reuse the `damage_filter` machinery:
+   while a `push_clip` is active, skip leaf shape emission for
+   descendants whose screen rect doesn't intersect the current clip.
+   Push/pop pairs still emit so composer state stays coherent. ~Free
+   order-of-magnitude on encode for tall scroll content; also helps
+   any `clip = true` panel.
+2. **Skip cascade/encode recursion under empty clip.** When a subtree
+   root's screen rect is fully outside the root viewport, short-circuit
+   descent. Trickier — `Active` capture and (future) focus may want
+   off-screen rects to stay live. Defer until a workload asks.
+
+Real virtualization (the "virtual children" hook in
+`proposed-features.md`) is the only path to O(viewport) measure cost,
+and is a separate, larger project. v1 ships unvirtualized scroll that's
+correct; clip-cull #1 above buys another order of magnitude on encode.
+
 ## Open questions
 
 - **Where does the state map live?** Hung off `Ui`, or a sibling of
