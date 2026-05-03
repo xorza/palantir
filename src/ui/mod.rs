@@ -111,30 +111,22 @@ impl Ui {
         // skip text reshape for unchanged Text nodes (see
         // `docs/text-reshape-skip.md`); damage reads them after.
         self.tree.compute_hashes();
-        self.ids.end_frame();
-        self.text.sweep_removed(self.ids.removed());
+        let removed = self.ids.end_frame();
+        self.text.sweep_removed(removed);
 
-        if let Some(root) = self.tree.root() {
-            self.layout_engine
-                .run(&self.tree, root, surface, &mut self.text);
-        }
-        self.cascades.run(&self.tree, self.layout_engine.result());
-        self.input.end_frame(self.cascades.result());
-        let damage = self.damage.compute(
-            &self.tree,
-            self.cascades.result(),
-            self.ids.removed(),
-            surface,
-        );
-        self.frontend.build(
-            &self.tree,
-            self.layout_engine.result(),
-            self.cascades.result(),
-            //todo remove
-            self.theme.disabled_dim,
-            damage,
-            &self.display,
-        );
+        let layout = match self.tree.root() {
+            Some(root) => self
+                .layout_engine
+                .run(&self.tree, root, surface, &mut self.text),
+            None => self.layout_engine.result(),
+        };
+        let cascades = self.cascades.run(&self.tree, layout);
+        self.input.end_frame(cascades);
+        let damage = self.damage.compute(&self.tree, cascades, removed, surface);
+
+        self.frontend.set_disabled_dim(self.theme.disabled_dim);
+        self.frontend
+            .build(&self.tree, layout, cascades, damage, &self.display);
         self.repaint_requested = false;
 
         FrameOutput {

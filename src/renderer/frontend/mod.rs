@@ -43,18 +43,33 @@ pub struct FrameOutput<'a> {
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
 /// every persistent allocation (the recorded `RenderCmd` vec, the
-/// output `RenderBuffer`, the [`Composer`] with its scratch). No GPU
-/// handles — `buffer()` is fed into any backend (`WgpuBackend`, future
+/// output `RenderBuffer`, the [`Composer`] with its scratch) plus the
+/// paint-time theme constants the encoder reads. No GPU handles —
+/// `buffer()` is fed into any backend (`WgpuBackend`, future
 /// software/Vello/etc.).
 ///
 /// Lives inside [`Ui`](crate::ui::Ui) so a host gets the entire CPU
 /// frame state (UI logic + paint output) from one
 /// [`Ui::end_frame`](crate::ui::Ui::end_frame) call.
-#[derive(Default)]
 pub struct Frontend {
     cmds: RenderCmdBuffer,
     composer: Composer,
     buffer: RenderBuffer,
+    /// `Theme::disabled_dim` cached here so `build` doesn't have to
+    /// thread it through. `Ui::end_frame` writes this once per frame
+    /// before calling `build`. Default matches `Theme::default`.
+    disabled_dim: f32,
+}
+
+impl Default for Frontend {
+    fn default() -> Self {
+        Self {
+            cmds: RenderCmdBuffer::default(),
+            composer: Composer::default(),
+            buffer: RenderBuffer::default(),
+            disabled_dim: 0.5,
+        }
+    }
 }
 
 impl Frontend {
@@ -62,16 +77,20 @@ impl Frontend {
         Self::default()
     }
 
+    /// Push the paint-time theme constants the encoder reads. Call
+    /// once per frame before `build` (cheap; copies a few floats).
+    pub fn set_disabled_dim(&mut self, dim: f32) {
+        self.disabled_dim = dim;
+    }
+
     /// Encode the tree into commands, compose them into the buffer.
-    /// `disabled_dim` is `Theme::disabled_dim`; `damage_filter` is
-    /// the filtered damage rect from `Damage::compute`. Both are read
-    /// off `Ui` by `Ui::end_frame` and threaded here.
+    /// `damage_filter` is the filtered damage rect from
+    /// `Damage::compute`.
     pub fn build(
         &mut self,
         tree: &Tree,
         layout: &LayoutResult,
         cascades: &CascadeResult,
-        disabled_dim: f32,
         damage_filter: Option<Rect>,
         display: &Display,
     ) {
@@ -79,7 +98,7 @@ impl Frontend {
             tree,
             layout,
             cascades,
-            disabled_dim,
+            self.disabled_dim,
             damage_filter,
             &mut self.cmds,
         );

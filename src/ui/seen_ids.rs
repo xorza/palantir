@@ -45,20 +45,17 @@ impl SeenIds {
         self.curr.insert(id)
     }
 
-    /// Compute the removed-widget list for this frame. Must be
-    /// called once between recording and the consumers that read
-    /// [`Self::removed`].
-    pub(crate) fn end_frame(&mut self) {
+    /// Compute the removed-widget list for this frame and return a
+    /// borrow of it. Must be called once between recording and the
+    /// consumers that fan the diff out (text cache eviction, damage
+    /// rect accumulation, etc.).
+    pub(crate) fn end_frame(&mut self) -> &[WidgetId] {
         self.removed.clear();
         for wid in &self.prev {
             if !self.curr.contains(wid) {
                 self.removed.push(*wid);
             }
         }
-    }
-
-    /// `WidgetId`s present last frame but not this frame.
-    pub(crate) fn removed(&self) -> &[WidgetId] {
         &self.removed
     }
 }

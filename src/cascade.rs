@@ -137,7 +137,7 @@ impl Cascades {
     /// descendant transform/clip/disabled/invisible through an
     /// open-ancestor stack; hit-entry derivation (clip-intersected rect
     /// + sense-cascaded effective sense) rides along the same loop.
-    pub fn run(&mut self, tree: &Tree, layout: &LayoutResult) {
+    pub fn run(&mut self, tree: &Tree, layout: &LayoutResult) -> &CascadeResult {
         let n = tree.node_count();
         let r = &mut self.result;
         r.rows.clear();
@@ -221,5 +221,6 @@ impl Cascades {
                 subtree_end: subtree_end[i],
             });
         }
+        &self.result
     }
 }
