@@ -1,12 +1,19 @@
 //! Per-node cascade resolution. Rebuilt every frame from `(&Tree,
-//! &LayoutResult)`; consumed by both the renderer encoder (to skip invisible
-//! subtrees) and the input hit index (to derive screen-space rects and
-//! effective sense). Centralizing the cascade rules here means
-//! disabled/invisible/clip/transform live in exactly one walk — encoder
-//! and hit-index can no longer drift from each other.
+//! &LayoutResult)`; consumed by the renderer encoder (to skip invisible
+//! subtrees), damage diff (to read screen-space rects), and the input
+//! hit index. The `HitIndex` is *populated in this same walk* — its
+//! per-node entry is a flat function of the cascade row plus
+//! `widget_id` + `paint.sense`, so folding it in here saves a separate
+//! O(n) pass and keeps the cascade walk the single owner of all
+//! post-arrange per-node derived state.
+//!
+//! Centralizing the cascade rules here means
+//! disabled/invisible/clip/transform live in exactly one walk — encoder,
+//! damage, and hit-index can no longer drift from each other.
 
+use crate::input::HitIndex;
 use crate::layout::LayoutResult;
-use crate::primitives::{Rect, TranslateScale};
+use crate::primitives::{Rect, Sense, TranslateScale};
 use crate::tree::{NodeId, Tree};
 
 /// Resolved cascade row for one node: the transform/clip/disabled/invisible
@@ -60,16 +67,20 @@ impl Cascades {
     /// Walk `tree.nodes` in storage order (== pre-order, since recording is
     /// depth-first) and produce one `Cascade` row per node, threading the
     /// descendant transform/clip/disabled/invisible through an open-ancestor
-    /// stack.
-    pub fn rebuild(&mut self, tree: &Tree, layout: &LayoutResult) {
+    /// stack. Same loop also pushes one `HitIndex` entry per node — the
+    /// hit-test view is a flat function of the cascade row + widget_id +
+    /// effective sense, so producing it inline saves a second O(n) pass.
+    pub(crate) fn rebuild(&mut self, tree: &Tree, layout: &LayoutResult, hit_index: &mut HitIndex) {
         let n = tree.node_count();
         self.rows.clear();
         self.rows.reserve(n);
         self.stack.clear();
+        hit_index.begin_rebuild(n);
 
         let paint = tree.paints();
         let layout_col = tree.layouts();
         let subtree_end = tree.subtree_ends();
+        let widget_ids = &tree.widget_ids;
 
         for i in 0..n {
             while let Some(top) = self.stack.last() {
@@ -111,6 +122,18 @@ impl Cascades {
             } else {
                 row.clip
             };
+
+            // Hit-entry: same per-node data, just clipped + sense-cascaded.
+            let visible_rect = match parent_clip {
+                Some(c) => screen_rect.intersect(c),
+                None => screen_rect,
+            };
+            let sense = if disabled || invisible {
+                Sense::NONE
+            } else {
+                attrs.sense()
+            };
+            hit_index.push_entry(widget_ids[i], visible_rect, sense);
 
             self.rows.push(row);
             self.stack.push(Frame {

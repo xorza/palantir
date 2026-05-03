@@ -1,6 +1,4 @@
-use crate::cascade::Cascades;
 use crate::primitives::{Rect, Sense, WidgetId};
-use crate::tree::Tree;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 
@@ -40,42 +38,24 @@ impl HitIndex {
         }
     }
 
-    /// Walk `tree.nodes` in storage order alongside the precomputed
-    /// `Cascades` to produce one `HitEntry` per node. Cascade rules
-    /// (disabled / invisible / clip / transform) live entirely in
-    /// `Cascades`; this method only flattens to the per-id form hit-testing
-    /// needs.
-    pub(crate) fn rebuild(&mut self, tree: &Tree, cascades: &Cascades) {
+    /// Reset the entry/by-id storage for a fresh rebuild. Capacity is
+    /// retained across frames so the steady-state path is alloc-free.
+    /// Pair with `push_entry` per node, called from `Cascades::rebuild`
+    /// inside its pre-order walk.
+    pub(crate) fn begin_rebuild(&mut self, capacity: usize) {
         self.entries.clear();
         self.by_id.clear();
-        let n = tree.node_count();
-        self.entries.reserve(n);
-        self.by_id.reserve(n);
+        self.entries.reserve(capacity);
+        self.by_id.reserve(capacity);
+    }
 
-        let paint = tree.paints();
-        let widget_ids = &tree.widget_ids;
-        let rows = cascades.rows();
-        for i in 0..n {
-            let c = rows[i];
-
-            let visible_rect = match c.clip {
-                Some(cl) => c.screen_rect.intersect(cl),
-                None => c.screen_rect,
-            };
-            let sense = if c.disabled || c.invisible {
-                Sense::NONE
-            } else {
-                paint[i].attrs.sense()
-            };
-
-            let widget_id = widget_ids[i];
-            self.by_id.insert(widget_id, self.entries.len() as u32);
-            self.entries.push(HitEntry {
-                id: widget_id,
-                rect: visible_rect,
-                sense,
-            });
-        }
+    /// Append one node's hit entry. Caller (the cascade walk) has
+    /// already applied disabled/invisible cascade to `sense` and
+    /// intersected `rect` with the ancestor clip.
+    #[inline]
+    pub(crate) fn push_entry(&mut self, id: WidgetId, rect: Rect, sense: Sense) {
+        self.by_id.insert(id, self.entries.len() as u32);
+        self.entries.push(HitEntry { id, rect, sense });
     }
 
     /// Reverse-iter entries → topmost-first under pre-order paint walk.
