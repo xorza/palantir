@@ -83,6 +83,14 @@ pub struct Tree {
     /// cache and (planned) per-subtree encode cache key on this. See
     /// `docs/measure-cache.md`.
     pub(crate) subtree_hashes: Vec<NodeHash>,
+    /// Per-node "this subtree contains a `LayoutMode::Grid`". Rolled
+    /// up alongside `subtree_hashes` in `compute_hashes`. Used as a
+    /// fast-path skip for `MeasureCache`'s grid-hug
+    /// snapshot/restore walk in `layout::grid_hugs`: grid-free
+    /// subtrees (the majority — panels, stacks, sections) avoid the
+    /// O(subtree-size) `LayoutMode::Grid(_)` scan on both write and
+    /// hit. Correctness doesn't depend on this bit; perf does.
+    pub(crate) subtree_has_grid: Vec<bool>,
 }
 
 impl Default for Tree {
@@ -100,6 +108,7 @@ impl Default for Tree {
             node_extras: Vec::new(),
             hashes: Vec::new(),
             subtree_hashes: Vec::new(),
+            subtree_has_grid: Vec::new(),
         }
     }
 }
@@ -123,6 +132,7 @@ impl Tree {
         self.node_extras.clear();
         self.hashes.clear();
         self.subtree_hashes.clear();
+        self.subtree_has_grid.clear();
     }
 
     /// Tip of the currently-open recording path, or `None` if no node is
@@ -367,16 +377,21 @@ impl Tree {
         // changes the parent's subtree hash.
         self.subtree_hashes.clear();
         self.subtree_hashes.resize(n, NodeHash::UNCOMPUTED);
+        self.subtree_has_grid.clear();
+        self.subtree_has_grid.resize(n, false);
         for i in (0..n).rev() {
             let end = self.subtree_end[i];
             let mut h = FxHasher::default();
             h.write_u64(self.hashes[i].as_u64());
+            let mut has_grid = matches!(self.layout[i].mode, LayoutMode::Grid(_));
             let mut next = (i as u32) + 1;
             while next < end {
                 h.write_u64(self.subtree_hashes[next as usize].as_u64());
+                has_grid |= self.subtree_has_grid[next as usize];
                 next = self.subtree_end[next as usize];
             }
             self.subtree_hashes[i] = NodeHash::from_u64(h.finish());
+            self.subtree_has_grid[i] = has_grid;
         }
     }
 }

@@ -1672,6 +1672,262 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
     );
 }
 
+/// Cross-frame measure-cache regression: when the cache hits at a
+/// Grid (or any ancestor of a Grid), the grid driver's per-frame
+/// `GridHugStore` scratch — populated by `grid::measure` and read
+/// by `grid::arrange` — stays at its `reset_for`-zero state because
+/// measure was short-circuited. Arrange then computes zero column
+/// widths, collapsing every cell to x=0.
+///
+/// Repro: identical builds across two frames at the same surface
+/// → second frame is a cache hit → arrange produces zero-width
+/// columns → every cell rect's `min.x` is the grid's `inner.min.x`.
+#[test]
+fn grid_cells_arranged_correctly_on_cache_hit_frame() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let build = |ui: &mut Ui, capture: &mut Option<(crate::tree::NodeId, crate::tree::NodeId)>| {
+        let mut left = None;
+        let mut right = None;
+        Panel::vstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Grid::with_id("g")
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .cols(Rc::from([Track::hug(), Track::fill()]))
+                    .rows(Rc::from([Track::hug()]))
+                    .gap_xy(6.0, 16.0)
+                    .show(ui, |ui| {
+                        left = Some(
+                            Text::new("Title:")
+                                .size_px(14.0)
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node,
+                        );
+                        right = Some(
+                            Text::new("value column")
+                                .size_px(14.0)
+                                .wrapping()
+                                .grid_cell((0, 1))
+                                .show(ui)
+                                .node,
+                        );
+                    });
+            });
+        *capture = Some((left.unwrap(), right.unwrap()));
+    };
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+
+    // Frame 1 (cold).
+    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 1.0));
+    let mut nodes = None;
+    build(&mut ui, &mut nodes);
+    ui.end_frame();
+    let (l, r) = nodes.unwrap();
+    let cold_l = ui.layout_engine.result().rect(l);
+    let cold_r = ui.layout_engine.result().rect(r);
+
+    // Frame 2 (warm — cache hit at Panel/Grid).
+    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 1.0));
+    let mut nodes = None;
+    build(&mut ui, &mut nodes);
+    ui.end_frame();
+    let (l, r) = nodes.unwrap();
+    let warm_l = ui.layout_engine.result().rect(l);
+    let warm_r = ui.layout_engine.result().rect(r);
+
+    assert_eq!(
+        cold_l, warm_l,
+        "cache-hit frame must not perturb left-cell rect: cold={cold_l:?} warm={warm_l:?}",
+    );
+    assert_eq!(
+        cold_r, warm_r,
+        "cache-hit frame must not perturb right-cell rect: cold={cold_r:?} warm={warm_r:?}",
+    );
+}
+
+/// Nested grids: outer Grid with an inner Grid in one of its cells.
+/// A cache hit at any ancestor must restore hugs for both, each at
+/// its current-frame `idx`. Different track counts ensure an
+/// out-of-order or dropped grid would surface as a track-count
+/// mismatch in restore.
+#[test]
+fn cache_hit_restores_hugs_for_nested_grids() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let build = |ui: &mut Ui, capture: &mut [Option<crate::tree::NodeId>; 4]| {
+        Panel::vstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Grid::with_id("outer")
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .cols(Rc::from([Track::hug(), Track::fill()]))
+                    .rows(Rc::from([Track::hug()]))
+                    .show(ui, |ui| {
+                        capture[0] = Some(
+                            Text::new("outer-L")
+                                .size_px(14.0)
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node,
+                        );
+                        Panel::vstack_with_id("inner-host")
+                            .grid_cell((0, 1))
+                            .show(ui, |ui| {
+                                Grid::with_id("inner")
+                                    .size((Sizing::FILL, Sizing::Hug))
+                                    .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
+                                    .rows(Rc::from([Track::hug()]))
+                                    .show(ui, |ui| {
+                                        capture[1] = Some(
+                                            Text::new("a")
+                                                .size_px(14.0)
+                                                .grid_cell((0, 0))
+                                                .show(ui)
+                                                .node,
+                                        );
+                                        capture[2] = Some(
+                                            Text::new("bb")
+                                                .size_px(14.0)
+                                                .grid_cell((0, 1))
+                                                .show(ui)
+                                                .node,
+                                        );
+                                        capture[3] = Some(
+                                            Text::new("end")
+                                                .size_px(14.0)
+                                                .grid_cell((0, 2))
+                                                .show(ui)
+                                                .node,
+                                        );
+                                    });
+                            });
+                    });
+            });
+    };
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+
+    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 1.0));
+    let mut nodes = [None; 4];
+    build(&mut ui, &mut nodes);
+    ui.end_frame();
+    let cold: Vec<_> = nodes
+        .iter()
+        .map(|n| ui.layout_engine.result().rect(n.unwrap()))
+        .collect();
+
+    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 1.0));
+    let mut nodes = [None; 4];
+    build(&mut ui, &mut nodes);
+    ui.end_frame();
+    let warm: Vec<_> = nodes
+        .iter()
+        .map(|n| ui.layout_engine.result().rect(n.unwrap()))
+        .collect();
+
+    assert_eq!(
+        cold, warm,
+        "cache-hit frame must preserve outer+nested grid cell rects",
+    );
+}
+
+/// Two sibling Grids inside a vstack: a cache hit at the vstack
+/// must restore hug arrays for *both* grids, in pre-order. Catches
+/// any regression where the snapshot/restore walk drops a grid or
+/// reads them out of order (different track counts → length
+/// mismatch + collapse on the wrong grid).
+#[test]
+fn cache_hit_restores_hugs_for_multiple_sibling_grids() {
+    use crate::primitives::Track;
+    use crate::text::{CosmicMeasure, share};
+    use crate::widgets::{Grid, Text};
+    use std::rc::Rc;
+
+    let build = |ui: &mut Ui, capture: &mut [Option<crate::tree::NodeId>; 4]| {
+        Panel::vstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Grid::with_id("g1")
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .cols(Rc::from([Track::hug(), Track::fill()]))
+                    .rows(Rc::from([Track::hug()]))
+                    .show(ui, |ui| {
+                        capture[0] = Some(
+                            Text::new("L1:")
+                                .size_px(14.0)
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node,
+                        );
+                        capture[1] = Some(
+                            Text::new("v1")
+                                .size_px(14.0)
+                                .grid_cell((0, 1))
+                                .show(ui)
+                                .node,
+                        );
+                    });
+                Grid::with_id("g2")
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
+                    .rows(Rc::from([Track::hug()]))
+                    .show(ui, |ui| {
+                        capture[2] = Some(
+                            Text::new("Description:")
+                                .size_px(14.0)
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node,
+                        );
+                        capture[3] = Some(
+                            Text::new("end")
+                                .size_px(14.0)
+                                .grid_cell((0, 2))
+                                .show(ui)
+                                .node,
+                        );
+                    });
+            });
+    };
+
+    let mut ui = Ui::new();
+    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+
+    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 1.0));
+    let mut nodes = [None; 4];
+    build(&mut ui, &mut nodes);
+    ui.end_frame();
+    let cold: Vec<_> = nodes
+        .iter()
+        .map(|n| ui.layout_engine.result().rect(n.unwrap()))
+        .collect();
+
+    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 1.0));
+    let mut nodes = [None; 4];
+    build(&mut ui, &mut nodes);
+    ui.end_frame();
+    let warm: Vec<_> = nodes
+        .iter()
+        .map(|n| ui.layout_engine.result().rect(n.unwrap()))
+        .collect();
+
+    assert_eq!(
+        cold, warm,
+        "cache-hit frame must preserve all sibling-grid cell rects"
+    );
+}
+
 /// Diagnostic: full showcase repro. Catches the screenshot bug where
 /// two distinct texts emit `DrawText` at the same (x, y).
 #[test]

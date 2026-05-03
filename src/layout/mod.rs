@@ -59,6 +59,11 @@ pub struct LayoutEngine {
     /// Cross-frame leaf-measure cache. See [`cache`] and
     /// `docs/measure-cache.md`.
     pub(in crate::layout) cache: MeasureCache,
+    /// Reusable scratch for collecting per-grid hug arrays before
+    /// snapshotting them into `MeasureCache`. Cleared between
+    /// snapshot writes; capacity retained across frames so steady-
+    /// state writes don't allocate.
+    pub(in crate::layout) hugs_scratch: Vec<f32>,
 }
 
 /// Quantize wrap target to ~0.1 logical px. Coarse enough to absorb
@@ -229,6 +234,17 @@ impl LayoutEngine {
             self.desired[curr_start..curr_end].copy_from_slice(hit.desired);
             self.result.restore_text_shapes(curr_start, hit.text_shapes);
             self.result.restore_available_q(curr_start, hit.available_q);
+            // Restore per-grid hug arrays. `grid::arrange` reads
+            // `LayoutEngine.grid.hugs`, populated only by
+            // `grid::measure`. Without this restore, a cache hit at
+            // any ancestor of a Grid leaves hugs zeroed and the
+            // grid would collapse every cell to (0, 0). Pinned by
+            // `widgets::tests::grid_cells_arranged_correctly_on_cache_hit_frame`.
+            if tree.subtree_has_grid[curr_start] {
+                self.grid
+                    .hugs
+                    .restore_subtree(tree, curr_start..curr_end, hit.hugs);
+            }
             return hit.root;
         }
 
@@ -294,16 +310,27 @@ impl LayoutEngine {
         // contiguous in both `desired` and `text_shapes`. Capacity
         // retains across frames via `clear() + extend_from_slice`
         // inside `MeasureCache::write_subtree`.
-        let start = node.index();
-        let end = tree.subtree_end[start] as usize;
-        self.cache.write_subtree(
-            cache_wid,
-            cache_hash,
-            cache_avail,
-            &self.desired[start..end],
-            self.result.text_shapes_slice(start, end),
-            self.result.available_q_slice(start, end),
-        );
+        {
+            let start = node.index();
+            let end = tree.subtree_end[start] as usize;
+            // Collect per-grid hug arrays for every descendant Grid.
+            // Empty (`hugs.is_empty()`) for grid-free subtrees so the
+            // arena entry stays zero-cost.
+            self.hugs_scratch.clear();
+            if tree.subtree_has_grid[start] {
+                self.grid
+                    .hugs
+                    .snapshot_subtree(tree, start..end, &mut self.hugs_scratch);
+            }
+            self.cache.write_subtree(
+                cache_wid,
+                cache_hash,
+                &self.desired[start..end],
+                self.result.text_shapes_slice(start..end),
+                self.result.available_q_slice(start..end),
+                &self.hugs_scratch,
+            );
+        }
 
         desired
     }
