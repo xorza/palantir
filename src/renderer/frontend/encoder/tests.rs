@@ -1,5 +1,5 @@
-use super::super::cmd_buffer::RenderCmdBuffer;
-use super::{RenderCmd, align_text_in, encode};
+use super::super::cmd_buffer::{RenderCmd, RenderCmdBuffer};
+use super::{align_text_in, encode};
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
@@ -42,7 +42,7 @@ fn empty_tree_encodes_to_nothing() {
     );
     let draws = cmds
         .iter()
-        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert_eq!(draws, 0);
 }
@@ -73,7 +73,7 @@ fn frame_with_fill_emits_one_draw_rect() {
 
     let draw_rects = cmds
         .iter()
-        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert_eq!(draw_rects, 1);
 }
@@ -103,7 +103,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
 
     let draw_rects = cmds
         .iter()
-        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert_eq!(draw_rects, 0);
 }
@@ -156,7 +156,9 @@ fn clip_emits_balanced_push_pop() {
     let draw_idxs: Vec<_> = cmds
         .iter()
         .enumerate()
-        .filter_map(|(i, c)| matches!(c, RenderCmd::DrawRect { .. }).then_some(i))
+        .filter_map(|(i, c)| {
+            matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)).then_some(i)
+        })
         .collect();
     assert!(!draw_idxs.is_empty());
     for &di in &draw_idxs {
@@ -196,15 +198,23 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
                 clip = Some(intersected);
             }
             RenderCmd::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
-            RenderCmd::DrawRect { rect, fill, .. } => {
-                let screen = t.apply_rect(rect);
+            RenderCmd::DrawRect(p) => {
+                let screen = t.apply_rect(p.rect);
                 let visible = match clip {
                     Some(c) => screen.intersect(c),
                     None => screen,
                 };
-                out.push((fill, visible));
+                out.push((p.fill, visible));
             }
-            RenderCmd::DrawText { .. } => {
+            RenderCmd::DrawRectStroked(p) => {
+                let screen = t.apply_rect(p.rect);
+                let visible = match clip {
+                    Some(c) => screen.intersect(c),
+                    None => screen,
+                };
+                out.push((p.fill, visible));
+            }
+            RenderCmd::DrawText(_) => {
                 // Test rasterizer ignores text — encoder tests only assert on rect output.
             }
         }
@@ -439,7 +449,8 @@ fn disabled_ancestor_dims_descendant_fill() {
     let dimmed = cmds
         .iter()
         .find_map(|c| match c {
-            RenderCmd::DrawRect { fill, .. } => Some(fill),
+            RenderCmd::DrawRect(p) => Some(p.fill),
+            RenderCmd::DrawRectStroked(p) => Some(p.fill),
             _ => None,
         })
         .expect("frame must emit one DrawRect");
@@ -467,7 +478,8 @@ fn disabled_ancestor_dims_descendant_fill() {
     let untouched = cmds
         .iter()
         .find_map(|c| match c {
-            RenderCmd::DrawRect { fill, .. } => Some(fill),
+            RenderCmd::DrawRect(p) => Some(p.fill),
+            RenderCmd::DrawRectStroked(p) => Some(p.fill),
             _ => None,
         })
         .expect("frame must emit one DrawRect");
@@ -555,7 +567,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     let text_rect = cmds
         .iter()
         .find_map(|c| match c {
-            RenderCmd::DrawText { rect, .. } => Some(rect),
+            RenderCmd::DrawText(p) => Some(p.rect),
             _ => None,
         })
         .expect("button must emit one DrawText");
@@ -622,7 +634,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
 
     let draw_count = cmds
         .iter()
-        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     // `a` (0..40) intersects (0..30) → emitted. `b` (40..80) doesn't → skipped.
     assert_eq!(
@@ -659,7 +671,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
     );
     let draw_count = cmds
         .iter()
-        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert!(draw_count >= 1);
 }
@@ -708,7 +720,7 @@ fn damage_filter_preserves_clip_pushpop() {
     );
     let draws = cmds
         .iter()
-        .filter(|c| matches!(c, RenderCmd::DrawRect { .. }))
+        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
         .count();
     assert_eq!(draws, 0, "no rects emitted when nothing intersects damage");
 }

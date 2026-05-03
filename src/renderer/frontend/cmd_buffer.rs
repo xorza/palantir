@@ -8,9 +8,9 @@
 //! Memory: `RenderCmd` enum is sized to its largest variant (~80 B with
 //! padding), so a sequence of `PopClip`/`PopTransform` paid full-variant
 //! storage in the old `Vec<RenderCmd>`. Here Pops are 1 + 4 = 5 bytes
-//! (kind byte + start offset, no payload). DrawRect splits internally
-//! into stroked / unstroked kinds so the no-stroke variant skips the
-//! 5×u32 stroke payload entirely.
+//! (kind byte + start offset, no payload). DrawRect splits into stroked
+//! / unstroked kinds so the no-stroke variant skips the 5×u32 stroke
+//! payload entirely.
 //!
 //! Soundness: payload structs are `#[repr(C)]` aggregates of `f32`/`u32`
 //! only, so they have no padding bytes and trivial Copy. The arena is
@@ -21,8 +21,6 @@
 
 use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
 use crate::text::TextCacheKey;
-
-use super::encoder::RenderCmd;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,28 +35,57 @@ pub(crate) enum CmdKind {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
-struct DrawRectPayload {
-    rect: Rect,
-    radius: Corners,
-    fill: Color,
+#[derive(Clone, Copy, Debug)]
+pub struct DrawRectPayload {
+    pub rect: Rect,
+    pub radius: Corners,
+    pub fill: Color,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
-struct DrawRectStrokedPayload {
-    rect: Rect,
-    radius: Corners,
-    fill: Color,
-    stroke: Stroke,
+#[derive(Clone, Copy, Debug)]
+pub struct DrawRectStrokedPayload {
+    pub rect: Rect,
+    pub radius: Corners,
+    pub fill: Color,
+    pub stroke: Stroke,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
-struct DrawTextPayload {
-    rect: Rect,
-    color: Color,
-    key: TextCacheKey,
+#[derive(Clone, Copy, Debug)]
+pub struct DrawTextPayload {
+    pub rect: Rect,
+    pub color: Color,
+    pub key: TextCacheKey,
+}
+
+/// Decoded view of one command. The buffer never stores `RenderCmd` —
+/// it's reconstructed by `get()` / `iter()` for tests and debugging.
+/// Production code reads payloads directly via the typed helpers and
+/// dispatches on `CmdKind`.
+///
+/// `DrawRect` and `DrawRectStroked` are separate variants because the
+/// buffer's storage splits them: stroked rects pay 5 extra u32s for the
+/// stroke, unstroked rects don't. The split is part of the contract.
+#[derive(Clone, Debug)]
+pub enum RenderCmd {
+    /// Push a logical-px clip rect; the backend intersects it with the
+    /// parent at process time. Pairs with `PopClip`.
+    PushClip(Rect),
+    PopClip,
+    /// Push a transform applied to subsequent draws and clips, composed
+    /// onto any ancestor transform. Pairs with `PopTransform`.
+    PushTransform(TranslateScale),
+    PopTransform,
+    /// Filled rounded rect, no stroke.
+    DrawRect(DrawRectPayload),
+    /// Filled rounded rect with stroke.
+    DrawRectStroked(DrawRectStrokedPayload),
+    /// Place a shaped text run at `payload.rect` (logical px). The
+    /// shaped buffer is resolved at submit time via
+    /// [`crate::text::TextCacheKey`] against the `TextMeasure` that did
+    /// the shaping. Runs whose key is invalid are dropped by the backend.
+    DrawText(DrawTextPayload),
 }
 
 /// Append-only command buffer. See module docs.
@@ -149,32 +176,11 @@ impl RenderCmdBuffer {
             CmdKind::PopClip => RenderCmd::PopClip,
             CmdKind::PushTransform => RenderCmd::PushTransform(self.read_transform(start)),
             CmdKind::PopTransform => RenderCmd::PopTransform,
-            CmdKind::DrawRect => {
-                let p = self.read_draw_rect(start);
-                RenderCmd::DrawRect {
-                    rect: p.rect,
-                    radius: p.radius,
-                    fill: p.fill,
-                    stroke: None,
-                }
-            }
+            CmdKind::DrawRect => RenderCmd::DrawRect(self.read_draw_rect(start)),
             CmdKind::DrawRectStroked => {
-                let p = self.read_draw_rect_stroked(start);
-                RenderCmd::DrawRect {
-                    rect: p.rect,
-                    radius: p.radius,
-                    fill: p.fill,
-                    stroke: p.stroke,
-                }
+                RenderCmd::DrawRectStroked(self.read_draw_rect_stroked(start))
             }
-            CmdKind::DrawText => {
-                let p = self.read_draw_text(start);
-                RenderCmd::DrawText {
-                    rect: p.rect,
-                    color: p.color,
-                    key: p.key,
-                }
-            }
+            CmdKind::DrawText => RenderCmd::DrawText(self.read_draw_text(start)),
         }
     }
 
@@ -209,55 +215,19 @@ impl RenderCmdBuffer {
     }
 
     #[inline]
-    pub(crate) fn read_draw_rect(&self, start: u32) -> DrawRect<'_> {
-        let p: DrawRectPayload = unsafe { read_pod(&self.data, start) };
-        DrawRect {
-            rect: p.rect,
-            radius: p.radius,
-            fill: p.fill,
-            stroke: None,
-            _marker: std::marker::PhantomData,
-        }
+    pub(crate) fn read_draw_rect(&self, start: u32) -> DrawRectPayload {
+        unsafe { read_pod(&self.data, start) }
     }
 
     #[inline]
-    pub(crate) fn read_draw_rect_stroked(&self, start: u32) -> DrawRect<'_> {
-        let p: DrawRectStrokedPayload = unsafe { read_pod(&self.data, start) };
-        DrawRect {
-            rect: p.rect,
-            radius: p.radius,
-            fill: p.fill,
-            stroke: Some(p.stroke),
-            _marker: std::marker::PhantomData,
-        }
+    pub(crate) fn read_draw_rect_stroked(&self, start: u32) -> DrawRectStrokedPayload {
+        unsafe { read_pod(&self.data, start) }
     }
 
     #[inline]
-    pub(crate) fn read_draw_text(&self, start: u32) -> DrawText {
-        let p: DrawTextPayload = unsafe { read_pod(&self.data, start) };
-        DrawText {
-            rect: p.rect,
-            color: p.color,
-            key: p.key,
-        }
+    pub(crate) fn read_draw_text(&self, start: u32) -> DrawTextPayload {
+        unsafe { read_pod(&self.data, start) }
     }
-}
-
-/// Decoded view of a `DrawRect` / `DrawRectStroked` command. Returned
-/// from the composer-facing read helpers. Lifetime tied to the buffer
-/// for forward-compat with payloads that might reference arena slices.
-pub(crate) struct DrawRect<'a> {
-    pub rect: Rect,
-    pub radius: Corners,
-    pub fill: Color,
-    pub stroke: Option<Stroke>,
-    _marker: std::marker::PhantomData<&'a ()>,
-}
-
-pub(crate) struct DrawText {
-    pub rect: Rect,
-    pub color: Color,
-    pub key: TextCacheKey,
 }
 
 pub struct Iter<'a> {
