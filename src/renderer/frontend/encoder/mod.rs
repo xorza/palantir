@@ -18,6 +18,13 @@ struct CachePending {
     data_lo: u32,
 }
 
+/// Skip cache lookup + write for subtrees of `<=` this many nodes.
+/// A 1-node subtree's encode work (one `draw_rect` or `draw_text`) is
+/// cheaper than the hashmap miss + insert it would replace. The win
+/// shows on cold / forced-miss frames where every parent miss falls
+/// through to per-leaf cache I/O.
+const TINY_SUBTREE_THRESHOLD: u32 = 1;
+
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU work,
 /// no scale/snap math — that lives in the backend's process step. Pure
 /// function over `(&Tree, &LayoutResult, &Cascades)`, so the same call works
@@ -109,7 +116,9 @@ fn encode_node(
     // back would lie about the snapshot covering the full subtree.
     // Cache snapshot age is therefore bounded by the *last full-paint*
     // frame, not the last frame.
-    let cache_key = if damage_filter.is_none() {
+    let subtree_size = tree.subtree_end[id.index()] - id.index() as u32;
+    let cache_eligible = damage_filter.is_none() && subtree_size > TINY_SUBTREE_THRESHOLD;
+    let cache_key = if cache_eligible {
         layout
             .available_q(id)
             .map(|avail| (tree.widget_ids[id.index()], tree.subtree_hash(id), avail))
