@@ -78,7 +78,10 @@ pub(crate) fn encode_cmds_filtered(
     filter: Option<crate::primitives::Rect>,
 ) -> RenderCmdBuffer {
     let mut cmds = RenderCmdBuffer::new();
-    crate::renderer::encode(
+    // Fresh `Encoder` per call → empty cache, every encode is a cold
+    // build. Tests that want to verify cache-replay output use
+    // `Frontend::cmds()` from inside `Ui` instead.
+    Encoder::default().encode(
         ui.tree(),
         ui.layout_engine.result(),
         ui.cascades.result(),

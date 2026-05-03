@@ -17,11 +17,11 @@ mod encoder;
 
 pub use cmd_buffer::{RenderCmd, RenderCmdBuffer};
 pub use composer::Composer;
-pub use encoder::encode;
+pub(crate) use encoder::Encoder;
 
 use crate::cascade::CascadeResult;
 use crate::layout::LayoutResult;
-use crate::primitives::{Display, Rect};
+use crate::primitives::{Display, Rect, WidgetId};
 use crate::renderer::buffer::RenderBuffer;
 use crate::tree::Tree;
 
@@ -52,7 +52,8 @@ pub struct FrameOutput<'a> {
 /// [`Ui::end_frame`](crate::ui::Ui::end_frame) call.
 #[derive(Default)]
 pub struct Frontend {
-    cmds: RenderCmdBuffer,
+    encoder: Encoder,
+    pub(crate) cmds: RenderCmdBuffer,
     composer: Composer,
     buffer: RenderBuffer,
 }
@@ -75,11 +76,27 @@ impl Frontend {
         damage_filter: Option<Rect>,
         display: &Display,
     ) {
-        encode(tree, layout, cascades, damage_filter, &mut self.cmds);
+        //todo move self buffer and self cmds as results of encode and composer
+        self.encoder
+            .encode(tree, layout, cascades, damage_filter, &mut self.cmds);
         self.composer.compose(&self.cmds, display, &mut self.buffer);
     }
 
     pub fn buffer(&self) -> &RenderBuffer {
         &self.buffer
+    }
+
+    /// Drop encoder cache entries for `WidgetId`s that vanished this
+    /// frame. Called from `Ui::end_frame` with the same `removed` slice
+    /// that the measure cache and text reuse map consume.
+    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        self.encoder.sweep_removed(removed);
+    }
+
+    /// Drop every encode-cache entry. `#[doc(hidden)]` — exposed via
+    /// [`crate::Ui::__clear_encode_cache`] for benches.
+    #[doc(hidden)]
+    pub fn __clear_encode_cache(&mut self) {
+        self.encoder.__clear_cache();
     }
 }

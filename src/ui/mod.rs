@@ -45,7 +45,7 @@ pub struct Ui {
     /// damage rect (`None` ⇒ full repaint, `Some(r)` ⇒ partial).
     pub(crate) damage: Damage,
 
-    frontend: Frontend,
+    pub(crate) frontend: Frontend,
 }
 
 impl Default for Ui {
@@ -114,6 +114,7 @@ impl Ui {
         let removed = self.ids.end_frame();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);
+        self.frontend.sweep_removed(removed);
 
         let layout = self
             .layout_engine

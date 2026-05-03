@@ -23,7 +23,6 @@
 use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
 use crate::text::TextCacheKey;
 use glam::Vec2;
-use std::ops::Range;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -191,56 +190,17 @@ impl RenderCmdBuffer {
         Iter { buf: self, i: 0 }
     }
 
-    /// Append a slice of cmds + their payload bytes from `src`, shifting
+    /// Append a cached subtree's cmd slice into this buffer, shifting
     /// `rect.min` by `offset` on every payload that begins with a `Rect`
     /// (PushClip, DrawRect, DrawRectStroked, DrawText). Pops carry no
     /// payload; PushTransform carries a `TranslateScale` that is
     /// subtree-local — both pass through untouched and compose with the
     /// parent at composer-time.
     ///
-    /// `cmd_range` indexes into `src.kinds`/`src.starts`. `data_range`
-    /// indexes into `src.data` and must cover every payload referenced
-    /// by `cmd_range` (in normal use it's captured as
-    /// `src.data.len()` before/after the subtree's encode).
-    #[allow(dead_code)]
-    pub(crate) fn extend_translated(
-        &mut self,
-        src: &Self,
-        cmd_range: Range<u32>,
-        data_range: Range<u32>,
-        offset: Vec2,
-    ) {
-        let cmd_lo = cmd_range.start as usize;
-        let cmd_hi = cmd_range.end as usize;
-        let data_lo = data_range.start as usize;
-        let data_hi = data_range.end as usize;
-
-        let dest_data_base = self.data.len() as u32;
-        self.data.extend_from_slice(&src.data[data_lo..data_hi]);
-
-        let n_cmds = cmd_hi - cmd_lo;
-        self.kinds.reserve(n_cmds);
-        self.starts.reserve(n_cmds);
-
-        for i in cmd_lo..cmd_hi {
-            let src_start = src.starts[i];
-            debug_assert!(src_start >= data_range.start && src_start <= data_range.end);
-            let new_start = src_start - data_range.start + dest_data_base;
-            self.kinds.push(src.kinds[i]);
-            self.starts.push(new_start);
-        }
-
-        let appended_kinds = &self.kinds[self.kinds.len() - n_cmds..];
-        let appended_starts = &self.starts[self.starts.len() - n_cmds..];
-        bump_rect_min(appended_kinds, appended_starts, &mut self.data, offset);
-    }
-
-    /// Like [`Self::extend_translated`] but reads from raw cache slices.
     /// `starts` are subtree-relative offsets (0-based into `data`); they
     /// get rebased onto this buffer's data arena during append. Used by
     /// [`crate::renderer::frontend::encoder::cache::EncodeCache`] to
     /// replay a cached subtree under the current frame's root origin.
-    #[allow(dead_code)]
     pub(crate) fn extend_from_cached(
         &mut self,
         kinds: &[CmdKind],
@@ -332,7 +292,6 @@ fn write_pod<T: bytemuck::Pod>(data: &mut Vec<u32>, v: T) {
 /// (it does, but staying bits-only matches the rest of the buffer's
 /// discipline).
 #[inline]
-#[allow(dead_code)]
 pub(crate) fn bump_rect_min(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], offset: Vec2) {
     debug_assert_eq!(kinds.len(), starts.len());
     for (kind, &start) in kinds.iter().zip(starts.iter()) {

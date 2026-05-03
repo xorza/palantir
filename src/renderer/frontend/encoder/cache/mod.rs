@@ -24,10 +24,6 @@
 //! [`MeasureCache`]: crate::layout::cache::MeasureCache
 //! [`EncodeSnapshot`]: EncodeSnapshot
 
-// Wired into the encoder in Phase-3 Step 4. Until then the items here
-// are exercised only by `tests`.
-#![allow(dead_code)]
-
 use crate::layout::AvailableKey;
 use crate::primitives::{Span, WidgetId};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, RenderCmdBuffer, bump_rect_min};
