@@ -27,3 +27,7 @@ harness = false
 [[bench]]
 name = "measure_cache"
 harness = false
+
+[[bench]]
+name = "encode_cache"
+harness = false
