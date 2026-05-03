@@ -1,6 +1,8 @@
 use crate::element::{Element, ElementExtras, LayoutCore, LayoutMode, PaintCore};
 use crate::primitives::WidgetId;
 use crate::shape::Shape;
+use rustc_hash::FxHasher;
+use std::hash::Hasher;
 
 mod grid_def;
 mod hash;
@@ -74,6 +76,13 @@ pub struct Tree {
     /// `TextMeasurer` reuse cache compare this against last frame's
     /// snapshot. Indexed by `NodeId.0`. Capacity retained across frames.
     pub(crate) hashes: Vec<NodeHash>,
+    /// Per-node *subtree* hash: rolls `hashes[i]` together with the
+    /// subtree hashes of `i`'s direct children, in declaration order.
+    /// Equality of `subtree_hashes[i]` across frames means nothing in
+    /// the subtree rooted at `i` changed — the cross-frame measure
+    /// cache and (planned) per-subtree encode cache key on this. See
+    /// `docs/measure-cache.md`.
+    pub(crate) subtree_hashes: Vec<NodeHash>,
 }
 
 impl Default for Tree {
@@ -90,6 +99,7 @@ impl Default for Tree {
             grid: GridArena::default(),
             node_extras: Vec::new(),
             hashes: Vec::new(),
+            subtree_hashes: Vec::new(),
         }
     }
 }
@@ -112,6 +122,7 @@ impl Tree {
         self.grid.clear();
         self.node_extras.clear();
         self.hashes.clear();
+        self.subtree_hashes.clear();
     }
 
     /// Tip of the currently-open recording path, or `None` if no node is
@@ -314,9 +325,20 @@ impl Tree {
             .unwrap_or(NodeHash::UNCOMPUTED)
     }
 
-    /// Walk every recorded node and populate `self.hashes`. Pure read
-    /// over the rest of the tree; safe to call any time after recording
-    /// completes. Capacity retained across frames.
+    /// Subtree authoring hash for `id`: rolls this node's hash with
+    /// its descendants' (in declaration order). `NodeHash::UNCOMPUTED`
+    /// before [`Self::compute_hashes`] runs.
+    pub fn subtree_hash(&self, id: NodeId) -> NodeHash {
+        self.subtree_hashes
+            .get(id.index())
+            .copied()
+            .unwrap_or(NodeHash::UNCOMPUTED)
+    }
+
+    /// Walk every recorded node and populate `self.hashes` plus the
+    /// `self.subtree_hashes` rollup. Pure read over the rest of the
+    /// tree; safe to call any time after recording completes. Capacity
+    /// retained across frames.
     pub(crate) fn compute_hashes(&mut self) {
         let n = self.node_count();
         self.hashes.clear();
@@ -335,6 +357,26 @@ impl Tree {
             self.hashes.push(hash::compute_node_hash(
                 layout, paint, extras, shapes, grid_def,
             ));
+        }
+
+        // Subtree-hash rollup. Pre-order arena means every child has a
+        // strictly higher index than its parent, so iterating in
+        // reverse fills children before their parent reads them. Each
+        // parent folds its own node-hash with its direct children's
+        // subtree hashes, in declaration order — sibling reorder
+        // changes the parent's subtree hash.
+        self.subtree_hashes.clear();
+        self.subtree_hashes.resize(n, NodeHash::UNCOMPUTED);
+        for i in (0..n).rev() {
+            let end = self.subtree_end[i];
+            let mut h = FxHasher::default();
+            h.write_u64(self.hashes[i].as_u64());
+            let mut next = (i as u32) + 1;
+            while next < end {
+                h.write_u64(self.subtree_hashes[next as usize].as_u64());
+                next = self.subtree_end[next as usize];
+            }
+            self.subtree_hashes[i] = NodeHash::from_u64(h.finish());
         }
     }
 }

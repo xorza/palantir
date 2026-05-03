@@ -323,3 +323,138 @@ fn child_hash_does_not_affect_parent_hash() {
         "parent hash captures only its own fields, not children's",
     );
 }
+
+// --- Subtree-hash rollup ----------------------------------------------------
+// `Tree.subtree_hashes[i]` folds `hashes[i]` with each direct child's
+// subtree hash, in declaration order. Equality across frames means
+// nothing in the subtree changed — the contract the cross-frame measure
+// cache will rely on.
+
+fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
+    let mut ui = Ui::new();
+    ui.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
+    let target = f(&mut ui);
+    ui.end_frame();
+    ui.tree.subtree_hash(target)
+}
+
+#[test]
+fn subtree_hash_stable_across_frames() {
+    let build = |ui: &mut Ui| {
+        Panel::hstack_with_id("root")
+            .show(ui, |ui| {
+                Frame::with_id("a")
+                    .size(50.0)
+                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .show(ui);
+                Frame::with_id("b")
+                    .size(30.0)
+                    .fill(Color::rgb(0.9, 0.1, 0.1))
+                    .show(ui);
+            })
+            .node
+    };
+    let h1 = record_subtree_hash(build);
+    let h2 = record_subtree_hash(build);
+    assert_eq!(h1, h2);
+}
+
+#[test]
+fn subtree_hash_changes_when_descendant_changes() {
+    let h1 = record_subtree_hash(|ui| {
+        Panel::hstack_with_id("root")
+            .show(ui, |ui| {
+                Frame::with_id("a")
+                    .size(50.0)
+                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .show(ui);
+            })
+            .node
+    });
+    let h2 = record_subtree_hash(|ui| {
+        Panel::hstack_with_id("root")
+            .show(ui, |ui| {
+                Frame::with_id("a")
+                    .size(50.0)
+                    .fill(Color::rgb(0.9, 0.4, 0.8)) // changed leaf fill
+                    .show(ui);
+            })
+            .node
+    });
+    assert_ne!(
+        h1, h2,
+        "leaf change must invalidate every ancestor's subtree hash",
+    );
+}
+
+#[test]
+fn subtree_hash_changes_on_sibling_reorder() {
+    let h_ab = record_subtree_hash(|ui| {
+        Panel::hstack_with_id("root")
+            .show(ui, |ui| {
+                Frame::with_id("a")
+                    .size(50.0)
+                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .show(ui);
+                Frame::with_id("b")
+                    .size(30.0)
+                    .fill(Color::rgb(0.9, 0.1, 0.1))
+                    .show(ui);
+            })
+            .node
+    });
+    let h_ba = record_subtree_hash(|ui| {
+        Panel::hstack_with_id("root")
+            .show(ui, |ui| {
+                Frame::with_id("b")
+                    .size(30.0)
+                    .fill(Color::rgb(0.9, 0.1, 0.1))
+                    .show(ui);
+                Frame::with_id("a")
+                    .size(50.0)
+                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .show(ui);
+            })
+            .node
+    });
+    assert_ne!(
+        h_ab, h_ba,
+        "sibling reorder must change the parent's subtree hash",
+    );
+}
+
+#[test]
+fn leaf_subtree_hash_depends_on_node_hash() {
+    // For a leaf, the subtree hash is a deterministic function of the
+    // node hash (nothing else folded in), but the two values are not
+    // identical — the rollup runs the node hash through FxHasher
+    // again. Pin: equal node hashes ⇒ equal subtree hashes.
+    let mut ui1 = Ui::new();
+    ui1.begin_frame(Display::default());
+    let leaf1 = Frame::with_id("a")
+        .size(50.0)
+        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .show(&mut ui1)
+        .node;
+    ui1.end_frame();
+
+    let mut ui2 = Ui::new();
+    ui2.begin_frame(Display::default());
+    let leaf2 = Frame::with_id("a")
+        .size(50.0)
+        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .show(&mut ui2)
+        .node;
+    ui2.end_frame();
+
+    assert_eq!(ui1.tree.node_hash(leaf1), ui2.tree.node_hash(leaf2));
+    assert_eq!(ui1.tree.subtree_hash(leaf1), ui2.tree.subtree_hash(leaf2));
+}
+
+#[test]
+fn empty_tree_subtree_hashes_empty() {
+    let mut ui = Ui::new();
+    ui.begin_frame(Display::default());
+    ui.tree.compute_hashes();
+    assert!(ui.tree.subtree_hashes.is_empty());
+}
