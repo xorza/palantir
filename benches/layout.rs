@@ -220,6 +220,7 @@ fn bench_layout(c: &mut Criterion) {
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
     let mut group = c.benchmark_group("layout");
 
+    #[allow(clippy::single_element_loop)]
     for &scale in &[32] {
         let mut ui = Ui::new();
 

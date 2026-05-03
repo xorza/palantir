@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::element::Configure;
 use crate::primitives::{Color, Display, Sense, Sizing};
+use crate::renderer::RenderCmdBuffer;
 use crate::shape::Shape;
 use crate::widgets::{Button, Frame, Panel, Styled};
 use glam::UVec2;
@@ -358,7 +359,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     assert_eq!(b.min.x, 40.0 + 10.0 + 40.0 + 10.0);
 
     // ...but emits no DrawRect.
-    let mut cmds = Vec::new();
+    let mut cmds = RenderCmdBuffer::new();
     encode(
         &ui.tree,
         ui.layout_engine.result(),
