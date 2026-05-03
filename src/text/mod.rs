@@ -211,7 +211,20 @@ impl TextMeasurer {
 
     /// Install a shared shaper handle. Pass the same `SharedCosmic` to the
     /// renderer (`WgpuBackend::set_cosmic`) so both sides see one cache.
+    ///
+    /// Call exactly once, before the first frame. The measure cache and
+    /// encode cache key shaping outputs (`measured`, `TextCacheKey`) on
+    /// `(WidgetId, subtree_hash, available_q)` — shaper identity is *not*
+    /// in either key. Swapping shapers mid-session would let a cache hit
+    /// replay a `TextCacheKey` minted by the old shaper against the new
+    /// one. If you ever need to support a swap, also invalidate the
+    /// measure cache, encode cache, and text reuse map at the swap point.
     pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
+        assert!(
+            self.cosmic.is_none(),
+            "TextMeasurer::set_cosmic called twice; see doc comment — \
+             swapping shapers requires invalidating measure + encode caches"
+        );
         self.cosmic = Some(cosmic);
     }
 
