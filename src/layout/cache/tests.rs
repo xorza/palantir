@@ -215,7 +215,13 @@ fn subtree_skip_preserves_descendant_rects() {
 fn quantize_available_handles_infinity() {
     use super::quantize_available;
     let q = quantize_available(Size::new(f32::INFINITY, 100.4));
-    assert_eq!(q, (i32::MAX, 100));
+    assert_eq!(
+        q,
+        super::AvailableKey {
+            w: i32::MAX,
+            h: 100
+        }
+    );
 }
 
 #[test]

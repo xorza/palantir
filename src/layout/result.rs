@@ -1,3 +1,4 @@
+use crate::layout::cache::AvailableKey;
 use crate::primitives::{Rect, Size};
 use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
@@ -13,6 +14,13 @@ pub struct LayoutResult {
     /// node the layout pass didn't shape text for. SoA column indexed by
     /// `NodeId.0`, matching the rest of the engine.
     text_shapes: Vec<Option<ShapedText>>,
+    /// Per-node quantized `available` size — the dimensional half of
+    /// the cross-frame cache key. Written by `LayoutEngine::measure`
+    /// on every entry, restored by the measure cache on subtree-skip
+    /// hits so the column stays correct even when the descendant
+    /// recursion is short-circuited. Read by the encode cache (and
+    /// any other consumer that needs the same key).
+    available_q: Vec<AvailableKey>,
 }
 
 /// Result of shaping one `Shape::Text` during the measure pass. `Tree`
@@ -30,6 +38,8 @@ impl LayoutResult {
         self.rect.resize(n, Rect::ZERO);
         self.text_shapes.clear();
         self.text_shapes.resize(n, None);
+        self.available_q.clear();
+        self.available_q.resize(n, AvailableKey::ZERO);
     }
 
     pub fn rect(&self, id: NodeId) -> Rect {
@@ -68,5 +78,25 @@ impl LayoutResult {
     ) {
         let end = start + src.len();
         self.text_shapes[start..end].copy_from_slice(src);
+    }
+
+    /// Quantized `available` size last passed to this node's measure.
+    /// Read by the encode cache (and any other consumer keyed on the
+    /// same `(subtree_hash, available_q)` shape as `MeasureCache`).
+    pub fn available_q(&self, id: NodeId) -> AvailableKey {
+        self.available_q[id.index()]
+    }
+
+    pub(in crate::layout) fn set_available_q(&mut self, id: NodeId, v: AvailableKey) {
+        self.available_q[id.index()] = v;
+    }
+
+    pub(in crate::layout) fn available_q_slice(&self, start: usize, end: usize) -> &[AvailableKey] {
+        &self.available_q[start..end]
+    }
+
+    pub(in crate::layout) fn restore_available_q(&mut self, start: usize, src: &[AvailableKey]) {
+        let end = start + src.len();
+        self.available_q[start..end].copy_from_slice(src);
     }
 }
