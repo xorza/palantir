@@ -10,6 +10,9 @@ pub mod tree;
 pub mod ui;
 pub mod widgets;
 
+#[cfg(test)]
+mod test_support;
+
 pub use cascade::Cascades;
 pub use element::{Configure, Element, LayoutCore, LayoutMode, PaintAttrs, PaintCore};
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};

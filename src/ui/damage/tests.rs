@@ -3,6 +3,7 @@ use crate::Ui;
 use crate::element::Configure;
 use crate::input::InputEvent;
 use crate::primitives::{Color, Display, Rect, Sizing, TranslateScale, WidgetId};
+use crate::test_support::begin;
 use crate::widgets::{Button, Frame, Panel, Styled};
 use glam::{UVec2, Vec2};
 
@@ -264,10 +265,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let mut ui = Ui::new();
     let mut child_node = None;
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<crate::tree::NodeId>| {
-        ui.begin_frame(Display::from_physical(
-            UVec2::new(400.0 as u32, 400.0 as u32),
-            1.0,
-        ));
+        begin(ui, UVec2::new(400, 400));
         Panel::hstack_with_id("outer")
             .transform(TranslateScale::from_translation(translate))
             .show(ui, |ui| {
@@ -306,10 +304,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     let mut ui = Ui::new();
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<crate::tree::NodeId>| {
-        ui.begin_frame(Display::from_physical(
-            UVec2::new(400.0 as u32, 400.0 as u32),
-            1.0,
-        ));
+        begin(ui, UVec2::new(400, 400));
         Panel::hstack_with_id("outer")
             .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
             .show(ui, |ui| {
@@ -435,10 +430,7 @@ fn button_hover_damage_covers_only_the_button() {
     let build = |ui: &mut Ui,
                  hot: &mut Option<crate::tree::NodeId>,
                  cold: &mut Option<crate::tree::NodeId>| {
-        ui.begin_frame(Display::from_physical(
-            UVec2::new(400.0 as u32, 400.0 as u32),
-            1.0,
-        ));
+        begin(ui, UVec2::new(400, 400));
         Panel::vstack_with_id("root").show(ui, |ui| {
             *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);
             *cold = Some(Button::with_id("cold").label("Quiet").show(ui).node);
@@ -503,10 +495,7 @@ fn button_unhover_damage_covers_only_the_button() {
     let build = |ui: &mut Ui,
                  hot: &mut Option<crate::tree::NodeId>,
                  cold: &mut Option<crate::tree::NodeId>| {
-        ui.begin_frame(Display::from_physical(
-            UVec2::new(400.0 as u32, 400.0 as u32),
-            1.0,
-        ));
+        begin(ui, UVec2::new(400, 400));
         Panel::vstack_with_id("root").show(ui, |ui| {
             *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);
             *cold = Some(Button::with_id("cold").label("Quiet").show(ui).node);

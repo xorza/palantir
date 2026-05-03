@@ -1,16 +1,12 @@
-use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Align, Display, Rect, Sizing};
+use crate::primitives::{Align, Rect, Sizing};
+use crate::test_support::ui_at;
 use crate::widgets::{Button, Frame, Panel};
 use glam::UVec2;
 
 #[test]
 fn hstack_arranges_two_buttons_side_by_side() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(800.0 as u32, 600.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(800, 600));
 
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
@@ -48,11 +44,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
 
 #[test]
 fn vstack_with_fill_distributes_remainder() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 300.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 300));
 
     let root = Panel::vstack()
         .show(&mut ui, |ui| {
@@ -74,11 +66,7 @@ fn vstack_with_fill_distributes_remainder() {
 
 #[test]
 fn hstack_fill_weights_split_remainder_proportionally() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(400.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(400, 100));
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Frame::with_id("a")
@@ -102,11 +90,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
 
 #[test]
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(400.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(400, 100));
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::with_id("wide")
@@ -133,11 +117,7 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
 #[test]
 fn hstack_justify_center_centers_content_block() {
     use crate::primitives::Justify;
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::Center)
         .show(&mut ui, |ui| {
@@ -157,11 +137,7 @@ fn hstack_justify_center_centers_content_block() {
 #[test]
 fn hstack_justify_end_packs_to_trailing_edge() {
     use crate::primitives::Justify;
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::End)
         .show(&mut ui, |ui| {
@@ -180,11 +156,7 @@ fn hstack_justify_end_packs_to_trailing_edge() {
 #[test]
 fn hstack_justify_space_between_distributes_leftover_between() {
     use crate::primitives::Justify;
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::SpaceBetween)
         .show(&mut ui, |ui| {
@@ -205,11 +177,7 @@ fn hstack_justify_space_between_distributes_leftover_between() {
 #[test]
 fn hstack_justify_space_around_distributes_with_half_pads() {
     use crate::primitives::Justify;
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::SpaceAround)
         .show(&mut ui, |ui| {
@@ -230,11 +198,7 @@ fn hstack_justify_space_around_distributes_with_half_pads() {
 #[test]
 fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
     use crate::primitives::Justify;
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::Center)
         .show(&mut ui, |ui| {
@@ -257,11 +221,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
 
 #[test]
 fn hstack_gap_inserts_space_between_children() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(400.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(400, 100));
     let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
@@ -280,11 +240,7 @@ fn hstack_gap_inserts_space_between_children() {
 
 #[test]
 fn hstack_align_center_centers_child_on_cross_axis() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .size((Sizing::FILL, Sizing::Fixed(100.0)))
         .show(&mut ui, |ui| {
@@ -308,11 +264,7 @@ fn negative_left_margin_spills_outside_slot() {
     // CSS-style negative margin: the widget reserves a smaller slot but renders
     // larger, shifted toward the negative side. Pin the math so future layout
     // tweaks don't regress it.
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
     let mut button_node = None;
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
@@ -349,11 +301,7 @@ fn negative_left_margin_spills_outside_slot() {
 /// desired again in the loop, inflating the reported content size.
 #[test]
 fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
 
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
@@ -381,11 +329,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
 /// active siblings at the wrong position.
 #[test]
 fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(200.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(200, 100));
 
     let root = Panel::hstack()
         .gap(5.0)
@@ -426,11 +370,7 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
 fn hstack_fill_max_size_caps_measured_share() {
     use crate::primitives::Size;
 
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(
-        UVec2::new(400.0 as u32, 100.0 as u32),
-        1.0,
-    ));
+    let mut ui = ui_at(UVec2::new(400, 100));
 
     let mut fill_node = None;
     Panel::hstack()

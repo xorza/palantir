@@ -19,6 +19,9 @@ mod support;
 mod wrapstack;
 mod zstack;
 
+#[cfg(test)]
+mod integration_tests;
+
 pub use axis::Axis;
 pub use cache::{AvailableKey, quantize_available};
 pub use intrinsic::LenReq;
