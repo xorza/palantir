@@ -424,13 +424,6 @@ impl LayoutEngine {
     ) -> Size {
         let mut s = Size::ZERO;
         for (src, font_size_px, wrap) in leaf_text_shapes(tree, node) {
-            // SAFETY: `src` borrows from `tree.shapes`, which `shape_text`
-            // does not mutate — its `&mut self` only touches engine state.
-            // Reborrow as a short-lived `&str` to release the iterator's
-            // implicit shared borrow on `tree` for the duration of the
-            // call. (Would compile without the rebind on Polonius; today
-            // we sidestep the conservative check.)
-            let src: &str = src;
             let m = self.shape_text(tree, node, src, font_size_px, wrap, available_w, text);
             s = s.max(m);
         }
