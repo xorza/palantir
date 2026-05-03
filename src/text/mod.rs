@@ -50,7 +50,8 @@ pub fn share(cosmic: CosmicMeasure) -> SharedCosmic {
 /// can also reuse the size/width components if it wants to (e.g. group runs
 /// by size for atlas bin reuse). [`TextCacheKey::INVALID`] is the sentinel
 /// returned by the mono fallback — the renderer treats it as "drop this run".
-#[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
+#[repr(C)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct TextCacheKey {
     /// 64-bit hash of the source string. `0` for the invalid sentinel.
     pub text_hash: u64,

@@ -2,7 +2,8 @@ use super::{Num, Size};
 use glam::Vec2;
 
 /// Per-corner radii. `Vec2`/`Size` map to (top, bottom) pairs; `f32` is uniform.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Corners {
     pub tl: f32,
     pub tr: f32,

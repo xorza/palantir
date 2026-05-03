@@ -4,7 +4,8 @@ mod tests;
 use crate::primitives::{Size, Spacing};
 use glam::Vec2;
 
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Rect {
     pub min: Vec2,
     pub size: Size,
