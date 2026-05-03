@@ -130,12 +130,19 @@ impl LayoutEngine {
     }
 
     /// Per-node quantized `available` size last passed to this node's
-    /// measure. Read by the encode cache (and any other consumer keyed
-    /// on the same `(subtree_hash, available_q)` shape as
-    /// `MeasureCache`).
+    /// measure. `None` when this node was never visited by the current
+    /// frame's `run` (collapsed root, empty frame, or — defensively —
+    /// any future caller that reads a slot before `measure` writes it).
+    /// Read by the encode cache (and any other consumer keyed on the
+    /// same `(subtree_hash, available_q)` shape as `MeasureCache`).
     #[inline]
-    pub fn available_q(&self, id: NodeId) -> AvailableKey {
-        self.scratch.available_q[id.index()]
+    pub fn available_q(&self, id: NodeId) -> Option<AvailableKey> {
+        let v = self.scratch.available_q[id.index()];
+        if v == AvailableKey::UNSET {
+            None
+        } else {
+            Some(v)
+        }
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
