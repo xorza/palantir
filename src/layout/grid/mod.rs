@@ -1,7 +1,7 @@
 use super::support::{AutoBias, place_two_axis, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
 use crate::element::LayoutMode;
-use crate::primitives::{Rect, Size, Sizing, Track};
+use crate::primitives::{Rect, Size, Sizing, Span, Track};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
@@ -160,20 +160,8 @@ pub(crate) struct GridHugStore {
 
 #[derive(Clone, Copy)]
 struct GridHugSlot {
-    rows: HugSlice,
-    cols: HugSlice,
-}
-
-#[derive(Clone, Copy, Default)]
-struct HugSlice {
-    start: u32,
-    len: u32,
-}
-
-impl HugSlice {
-    fn range(self) -> Range<usize> {
-        self.start as usize..(self.start as usize + self.len as usize)
-    }
+    rows: Span,
+    cols: Span,
 }
 
 impl GridHugStore {
@@ -188,14 +176,11 @@ impl GridHugStore {
         }
     }
 
-    fn alloc(&mut self, n: usize) -> HugSlice {
+    fn alloc(&mut self, n: usize) -> Span {
         let start = self.max_pool.len() as u32;
         self.max_pool.resize(start as usize + n, 0.0);
         self.min_pool.resize(start as usize + n, 0.0);
-        HugSlice {
-            start,
-            len: n as u32,
-        }
+        Span::new(start, n as u32)
     }
 
     fn axis_slice(&self, idx: u16, axis: Axis) -> Range<usize> {
