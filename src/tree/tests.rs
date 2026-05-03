@@ -42,13 +42,14 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
 fn empty_tree_has_no_hashes() {
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
-    // No widgets recorded — node_count is 0 → hashes stays empty.
-    // (Layout / end_frame normally need a root, so we intentionally
-    // skip them; just call compute_hashes directly to verify the
-    // empty-tree case.)
+    // No widgets recorded — node_count is 0 → both hash arrays stay
+    // empty. (Layout / end_frame normally need a root, so we
+    // intentionally skip them; just call compute_hashes directly to
+    // verify the empty-tree case.)
     ui.tree.compute_hashes();
     assert_eq!(ui.tree.node_count(), 0);
     assert!(ui.tree.hashes.is_empty());
+    assert!(ui.tree.subtree_hashes.is_empty());
 }
 
 #[test]
@@ -433,12 +434,4 @@ fn leaf_subtree_hash_depends_on_node_hash() {
 
     assert_eq!(ui1.tree.node_hash(leaf1), ui2.tree.node_hash(leaf2));
     assert_eq!(ui1.tree.subtree_hash(leaf1), ui2.tree.subtree_hash(leaf2));
-}
-
-#[test]
-fn empty_tree_subtree_hashes_empty() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::default());
-    ui.tree.compute_hashes();
-    assert!(ui.tree.subtree_hashes.is_empty());
 }
