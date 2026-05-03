@@ -407,3 +407,96 @@ fn cache_hits_remain_valid_after_compaction() {
         assert!(cache.desired_arena.len() <= cache.live_entries.saturating_mul(COMPACT_RATIO),);
     }
 }
+
+/// Partial-invalidation contract: changing one leaf must bust the
+/// `subtree_hash` for that leaf and every ancestor (so they miss
+/// the cache and re-measure), but a sibling subtree must keep its
+/// hash AND its arena slot — no spurious replace, no spurious
+/// rewrite. Catches regressions where the rollup over-invalidates
+/// (siblings re-measure for free, perf cliff invisible to rect
+/// tests) or under-invalidates (ancestors hit with stale data).
+#[test]
+fn partial_invalidation_busts_ancestors_preserves_siblings() {
+    let build = |ui: &mut Ui, leaf_color: Color| {
+        Panel::vstack_with_id("root").show(ui, |ui| {
+            Panel::vstack_with_id("changing-branch").show(ui, |ui| {
+                Frame::with_id("changing-leaf")
+                    .size(50.0)
+                    .fill(leaf_color)
+                    .show(ui);
+            });
+            Panel::vstack_with_id("stable-sibling").show(ui, |ui| {
+                Frame::with_id("stable-leaf")
+                    .size(50.0)
+                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .show(ui);
+            });
+        });
+    };
+
+    let mut ui = Ui::new();
+    ui.begin_frame(Display::from_physical(UVec2::new(400, 400), 1.0));
+    build(&mut ui, Color::rgb(1.0, 0.0, 0.0));
+    ui.end_frame();
+
+    let snap = |ui: &Ui, key: &str| {
+        ui.layout_engine
+            .cache
+            .snapshots
+            .get(&WidgetId::from_hash(key))
+            .copied()
+            .unwrap_or_else(|| panic!("missing snapshot for {key}"))
+    };
+
+    let root_1 = snap(&ui, "root");
+    let branch_1 = snap(&ui, "changing-branch");
+    let leaf_1 = snap(&ui, "changing-leaf");
+    let sib_branch_1 = snap(&ui, "stable-sibling");
+    let sib_leaf_1 = snap(&ui, "stable-leaf");
+
+    // Frame 2: only the changing leaf's color flips. Hash rollup
+    // must propagate the change all the way to `root`; the stable
+    // sibling subtree must be untouched.
+    ui.begin_frame(Display::from_physical(UVec2::new(400, 400), 1.0));
+    build(&mut ui, Color::rgb(0.0, 1.0, 0.0));
+    ui.end_frame();
+
+    let root_2 = snap(&ui, "root");
+    let branch_2 = snap(&ui, "changing-branch");
+    let leaf_2 = snap(&ui, "changing-leaf");
+    let sib_branch_2 = snap(&ui, "stable-sibling");
+    let sib_leaf_2 = snap(&ui, "stable-leaf");
+
+    // Changed path: hashes must differ (caches missed and rewrote).
+    assert_ne!(
+        leaf_1.subtree_hash, leaf_2.subtree_hash,
+        "changed leaf must bust its own subtree_hash",
+    );
+    assert_ne!(
+        branch_1.subtree_hash, branch_2.subtree_hash,
+        "ancestor of changed leaf must bust its subtree_hash via rollup",
+    );
+    assert_ne!(
+        root_1.subtree_hash, root_2.subtree_hash,
+        "root must bust its subtree_hash via rollup",
+    );
+
+    // Stable sibling: hash unchanged AND arena position unchanged.
+    // The position check rules out a spurious in-place rewrite.
+    assert_eq!(
+        sib_branch_1.subtree_hash, sib_branch_2.subtree_hash,
+        "sibling subtree hash must not change when an unrelated leaf changes",
+    );
+    assert_eq!(
+        sib_leaf_1.subtree_hash, sib_leaf_2.subtree_hash,
+        "sibling leaf hash must not change",
+    );
+    assert_eq!(
+        sib_branch_1.nodes.start, sib_branch_2.nodes.start,
+        "sibling's arena slot must be untouched (no replace, no rewrite)",
+    );
+    assert_eq!(
+        sib_leaf_1.nodes.start, sib_leaf_2.nodes.start,
+        "sibling leaf's arena slot must be untouched",
+    );
+}
