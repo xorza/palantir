@@ -14,12 +14,9 @@
 //! in builders enforce non-negative sizes etc.).
 
 use super::GridDef;
-use crate::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, PaintCore};
-use crate::primitives::{
-    Align, Color, Corners, GridCell, Justify, Size, Sizes, Sizing, Spacing, Stroke, Track,
-};
-use crate::shape::{Shape, TextWrap};
-use glam::Vec2;
+use crate::element::{ElementExtras, LayoutCore, LayoutMode, PaintCore};
+use crate::primitives::{Sizes, Sizing, Track};
+use crate::shape::Shape;
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
@@ -39,73 +36,36 @@ impl NodeHash {
     pub const UNCOMPUTED: Self = Self(0);
 }
 
-#[inline]
-fn hash_f32(h: &mut impl Hasher, v: f32) {
-    h.write_u32(v.to_bits());
-}
-
 /// Hash a value as its raw bytes in one `Hasher::write` call. Sound only
 /// for `T` with no padding bytes — the caller is responsible for that.
-/// Used here for f32-only structs (`Spacing`, `Color`, `Corners`,
-/// `Stroke`, `Size`, `Vec2`), where homogeneous 4-byte alignment rules
-/// out gaps.
+/// Used here for homogeneous-primitive structs (`Spacing`, `Color`,
+/// `Corners`, `Stroke`, `Size`, `Vec2`, `GridCell`), where uniform field
+/// alignment rules out gaps.
 ///
 /// Why this is faster: `FxHasher::write(&[u8])` consumes 8 bytes per
 /// loop iteration and amortizes the rotate/multiply/xor cost across the
-/// whole slice. Replacing N×`write_u32` calls with one `write` cuts the
-/// per-call overhead and lets the compiler keep more state in registers.
+/// whole slice. Replacing N×`write_u32`/`write_u16` calls with one
+/// `write` cuts the per-call overhead and lets the compiler keep more
+/// state in registers.
 #[inline]
-fn hash_bytes_of<T>(h: &mut impl Hasher, v: &T) {
+fn pod<T>(h: &mut impl Hasher, v: &T) {
     let bytes =
         unsafe { std::slice::from_raw_parts(v as *const T as *const u8, std::mem::size_of::<T>()) };
     h.write(bytes);
 }
 
-#[inline]
-fn hash_vec2(h: &mut impl Hasher, v: Vec2) {
-    hash_bytes_of(h, &v);
-}
-
-#[inline]
-fn hash_size(h: &mut impl Hasher, s: Size) {
-    hash_bytes_of(h, &s);
-}
-
-#[inline]
-fn hash_spacing(h: &mut impl Hasher, s: Spacing) {
-    hash_bytes_of(h, &s);
-}
-
-#[inline]
-fn hash_color(h: &mut impl Hasher, c: Color) {
-    hash_bytes_of(h, &c);
-}
-
-#[inline]
-fn hash_corners(h: &mut impl Hasher, c: Corners) {
-    hash_bytes_of(h, &c);
-}
-
-#[inline]
-fn hash_stroke(h: &mut impl Hasher, s: Stroke) {
-    hash_bytes_of(h, &s);
-}
-
+/// `Sizing` is a tagged union with niche-uninit padding in its inactive
+/// variant — `pod` would hash junk bytes. Encode as a deterministic
+/// `tag:u8 + value:f32` instead. Inlined for the two `Sizes` axes.
 #[inline]
 fn hash_sizing(h: &mut impl Hasher, s: Sizing) {
-    match s {
-        Sizing::Fixed(v) => {
-            h.write_u8(0);
-            hash_f32(h, v);
-        }
-        Sizing::Hug => {
-            h.write_u8(1);
-        }
-        Sizing::Fill(w) => {
-            h.write_u8(2);
-            hash_f32(h, w);
-        }
-    }
+    let (tag, v) = match s {
+        Sizing::Fixed(v) => (0u8, v),
+        Sizing::Hug => (1, 0.0),
+        Sizing::Fill(w) => (2, w),
+    };
+    h.write_u8(tag);
+    h.write_u32(v.to_bits());
 }
 
 #[inline]
@@ -114,71 +74,46 @@ fn hash_sizes(h: &mut impl Hasher, s: Sizes) {
     hash_sizing(h, s.h);
 }
 
-#[inline]
-fn hash_align(h: &mut impl Hasher, a: Align) {
-    h.write_u8(a.raw());
-}
-
-#[inline]
-fn hash_justify(h: &mut impl Hasher, j: Justify) {
-    h.write_u8(j as u8);
-}
-
-#[inline]
-fn hash_grid_cell(h: &mut impl Hasher, c: GridCell) {
-    h.write_u16(c.row);
-    h.write_u16(c.col);
-    h.write_u16(c.row_span);
-    h.write_u16(c.col_span);
-}
-
+/// Same shape as `hash_sizing`: tagged union, inactive payload bytes are
+/// uninit, so explicit tag+payload encoding rather than `pod`. Packs the
+/// 1-byte tag + optional 2-byte payload into a single 32-bit write
+/// (high 16 bits zero for non-Grid variants).
 #[inline]
 fn hash_layout_mode(h: &mut impl Hasher, m: LayoutMode) {
-    match m {
-        LayoutMode::Leaf => h.write_u8(0),
-        LayoutMode::HStack => h.write_u8(1),
-        LayoutMode::VStack => h.write_u8(2),
-        LayoutMode::WrapHStack => h.write_u8(3),
-        LayoutMode::WrapVStack => h.write_u8(4),
-        LayoutMode::ZStack => h.write_u8(5),
-        LayoutMode::Canvas => h.write_u8(6),
-        LayoutMode::Grid(idx) => {
-            h.write_u8(7);
-            h.write_u16(idx);
-        }
-    }
+    let packed: u32 = match m {
+        LayoutMode::Leaf => 0,
+        LayoutMode::HStack => 1,
+        LayoutMode::VStack => 2,
+        LayoutMode::WrapHStack => 3,
+        LayoutMode::WrapVStack => 4,
+        LayoutMode::ZStack => 5,
+        LayoutMode::Canvas => 6,
+        LayoutMode::Grid(idx) => 7 | ((idx as u32) << 16),
+    };
+    h.write_u32(packed);
 }
 
 fn hash_layout_core(h: &mut impl Hasher, l: &LayoutCore) {
     hash_layout_mode(h, l.mode);
     hash_sizes(h, l.size);
-    // Two homogeneous-f32 spacings, hashed as 32 contiguous bytes via two
-    // calls (would be one write if Spacing pairs were stored adjacently).
-    hash_spacing(h, l.padding);
-    hash_spacing(h, l.margin);
+    pod(h, &l.padding);
+    pod(h, &l.margin);
     // Pack Align (u8) + Visibility (u8 discriminant) into one u16 write.
-    // Visibility is a `#[repr]`-less enum, but its discriminant fits in a
-    // byte (3 variants) and is stable within a build.
-    let vis_byte = l.visibility as u8;
-    h.write_u16(((vis_byte as u16) << 8) | l.align.raw() as u16);
-}
-
-fn hash_paint_attrs(h: &mut impl Hasher, a: PaintAttrs) {
-    // PaintAttrs is a packed byte (sense + disabled + clip). Hash via
-    // accessors so the byte layout is decoupled from the hash format —
-    // if someone refactors the packing, the hash spec doesn't shift.
-    let sense_byte: u8 = a.sense() as u8;
-    let flags = (a.is_disabled() as u8) | ((a.is_clip() as u8) << 1);
-    h.write_u16(((flags as u16) << 8) | sense_byte as u16);
+    h.write_u16(((l.visibility as u8 as u16) << 8) | l.align.raw() as u16);
 }
 
 fn hash_paint_core(h: &mut impl Hasher, p: PaintCore) {
-    hash_paint_attrs(h, p.attrs);
-    // `extras: Option<u16>` is just a side-table index — its presence
-    // matters (Some vs None), but not its numeric value across frames
-    // since `node_extras` is rebuilt every frame. The extras *contents*
+    // PaintAttrs sense (3 bits) + disabled + clip + extras-presence — all
+    // small flags. Pack into one u16 instead of four byte writes.
+    let a = p.attrs;
+    let packed = (a.sense() as u16)
+        | ((a.is_disabled() as u16) << 8)
+        | ((a.is_clip() as u16) << 9)
+        | ((p.extras.is_some() as u16) << 10);
+    // `extras: Option<u16>` is a side-table index — only its presence
+    // matters across frames (the table is rebuilt each frame); contents
     // are hashed separately by `hash_node_extras`.
-    h.write_u8(p.extras.is_some() as u8);
+    h.write_u16(packed);
 }
 
 fn hash_node_extras(h: &mut impl Hasher, e: &ElementExtras) {
@@ -187,21 +122,14 @@ fn hash_node_extras(h: &mut impl Hasher, e: &ElementExtras) {
     // *before* `PushTransform`; the transform composes into
     // descendants' screen rects via `Cascades`). A parent transform
     // change shows up as descendant screen-rect diffs in
-    // `Damage::compute`, which is the right granularity — the parent
-    // itself doesn't need a fresh paint.
-    hash_vec2(h, e.position);
-    hash_grid_cell(h, e.grid);
-    hash_size(h, e.min_size);
-    hash_size(h, e.max_size);
-    hash_f32(h, e.gap);
-    hash_f32(h, e.line_gap);
-    hash_justify(h, e.justify);
-    hash_align(h, e.child_align);
-}
-
-#[inline]
-fn hash_text_wrap(h: &mut impl Hasher, w: TextWrap) {
-    w.hash(h);
+    // `Damage::compute`, which is the right granularity.
+    pod(h, &e.position);
+    pod(h, &e.grid);
+    pod(h, &e.min_size);
+    pod(h, &e.max_size);
+    h.write_u32(e.gap.to_bits());
+    h.write_u32(e.line_gap.to_bits());
+    h.write_u16(((e.child_align.raw() as u16) << 8) | e.justify as u8 as u16);
 }
 
 fn hash_shape(h: &mut impl Hasher, shape: &Shape) {
@@ -212,19 +140,22 @@ fn hash_shape(h: &mut impl Hasher, shape: &Shape) {
             stroke,
         } => {
             h.write_u8(0);
-            hash_corners(h, *radius);
-            hash_color(h, *fill);
-            h.write_u8(stroke.is_some() as u8);
-            if let Some(s) = stroke {
-                hash_stroke(h, *s);
+            pod(h, radius);
+            pod(h, fill);
+            match stroke {
+                None => h.write_u8(0),
+                Some(s) => {
+                    h.write_u8(1);
+                    pod(h, s);
+                }
             }
         }
         Shape::Line { a, b, width, color } => {
             h.write_u8(1);
-            hash_vec2(h, *a);
-            hash_vec2(h, *b);
-            hash_f32(h, *width);
-            hash_color(h, *color);
+            pod(h, a);
+            pod(h, b);
+            h.write_u32(width.to_bits());
+            pod(h, color);
         }
         Shape::Text {
             text,
@@ -235,18 +166,17 @@ fn hash_shape(h: &mut impl Hasher, shape: &Shape) {
         } => {
             h.write_u8(2);
             text.hash(h);
-            hash_color(h, *color);
-            hash_f32(h, *font_size_px);
-            hash_text_wrap(h, *wrap);
-            hash_align(h, *align);
+            pod(h, color);
+            h.write_u32(font_size_px.to_bits());
+            h.write_u16(((align.raw() as u16) << 8) | *wrap as u8 as u16);
         }
     }
 }
 
 fn hash_track(h: &mut impl Hasher, t: &Track) {
     hash_sizing(h, t.size);
-    hash_f32(h, t.min);
-    hash_f32(h, t.max);
+    h.write_u32(t.min.to_bits());
+    h.write_u32(t.max.to_bits());
 }
 
 fn hash_grid_def(h: &mut impl Hasher, def: &GridDef) {
@@ -258,8 +188,8 @@ fn hash_grid_def(h: &mut impl Hasher, def: &GridDef) {
     for t in def.cols.iter() {
         hash_track(h, t);
     }
-    hash_f32(h, def.row_gap);
-    hash_f32(h, def.col_gap);
+    h.write_u32(def.row_gap.to_bits());
+    h.write_u32(def.col_gap.to_bits());
 }
 
 /// Compute the authoring hash for one node. Read-only over the tree —
