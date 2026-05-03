@@ -1,6 +1,6 @@
 use crate::element::Configure;
 use crate::primitives::{Align, Color, Sizing, VAlign};
-use crate::test_support::{encode_cmds, ui_at};
+use crate::test_support::{click_at, encode_cmds, ui_at};
 use crate::widgets::{Button, Frame, Panel, Styled};
 use glam::UVec2;
 
@@ -103,7 +103,6 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 
 #[test]
 fn hidden_button_does_not_click() {
-    use crate::input::{InputEvent, PointerButton};
     use crate::primitives::Display;
     use glam::Vec2;
 
@@ -116,9 +115,7 @@ fn hidden_button_does_not_click() {
     });
     ui.end_frame();
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
 
     ui.begin_frame(Display::default());
     let mut clicked = false;

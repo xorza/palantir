@@ -1,11 +1,13 @@
+use super::scaffold::{chat_message, two_hug_cols_with_wrap};
 use crate::element::Configure;
 use crate::layout::{Axis, LenReq};
-use crate::primitives::{Sizing, Track};
+use crate::primitives::Sizing;
 use crate::shape::{Shape, TextWrap};
 use crate::test_support::ui_with_text;
-use crate::widgets::{Frame, Grid, Panel, Text};
+use crate::widgets::{Panel, Text};
 use glam::UVec2;
-use std::rc::Rc;
+
+const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
 #[test]
 fn wrapping_text_grows_height_in_narrow_frame() {
@@ -14,13 +16,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     Panel::vstack()
         .size((Sizing::Fixed(60.0), Sizing::Hug))
         .show(&mut ui, |ui| {
-            text_node = Some(
-                Text::new("the quick brown fox jumps over the lazy dog")
-                    .size_px(16.0)
-                    .wrapping()
-                    .show(ui)
-                    .node,
-            );
+            text_node = Some(Text::new(PARAGRAPH).size_px(16.0).wrapping().show(ui).node);
         });
     ui.end_frame();
 
@@ -73,37 +69,16 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
 
 /// Pinned by `src/layout/intrinsic.md`: a wrapping `Text` inside a
 /// `Grid` `Hug` column constrained by the parent's available width
-/// reshapes to fit. The grid column-resolution algorithm runs during measure with
-/// the grid's `inner_avail` (200 px here); the wrapping text gets its
-/// committed column width before shaping, so the cached shape is
-/// multi-line and fits the slot.
+/// reshapes to fit. The grid column-resolution algorithm runs during
+/// measure with the grid's `inner_avail` (200 px here); the wrapping
+/// text gets its committed column width before shaping, so the cached
+/// shape is multi-line and fits the slot.
 #[test]
 fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
-    let mut text_node = None;
-    Grid::new()
-        .cols(Rc::from([Track::hug(), Track::hug()]))
-        .rows(Rc::from([Track::hug()]))
-        .show(&mut ui, |ui| {
-            text_node = Some(
-                Text::new("the quick brown fox jumps over the lazy dog")
-                    .size_px(16.0)
-                    .wrapping()
-                    .grid_cell((0, 0))
-                    .show(ui)
-                    .node,
-            );
-            Text::new("right column")
-                .size_px(16.0)
-                .grid_cell((0, 1))
-                .show(ui);
-        });
-    // Surface is 200 px wide — narrower than the text's natural unbroken
-    // width (~335 px). Step B's column resolution shrinks the Hug column
-    // to fit so the text wraps cleanly inside.
+    let node = two_hug_cols_with_wrap(&mut ui, PARAGRAPH);
     ui.end_frame();
 
-    let node = text_node.unwrap();
     let shaped = ui
         .layout_engine
         .result()
@@ -126,33 +101,14 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
 
 /// Step A acceptance: `Ui::intrinsic` returns sane values for a
 /// wrapping text leaf inside a Grid `Auto` cell. Pure infrastructure
-/// test — nothing in the production layout path consumes intrinsics
-/// yet; this just confirms the API + cache + per-driver functions are
-/// wired correctly.
+/// test — confirms the API + cache + per-driver functions are wired
+/// correctly.
 #[test]
 fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
-    let mut text_node = None;
-    Grid::new()
-        .cols(Rc::from([Track::hug(), Track::hug()]))
-        .rows(Rc::from([Track::hug()]))
-        .show(&mut ui, |ui| {
-            text_node = Some(
-                Text::new("the quick brown fox jumps over the lazy dog")
-                    .size_px(16.0)
-                    .wrapping()
-                    .grid_cell((0, 0))
-                    .show(ui)
-                    .node,
-            );
-            Text::new("right column")
-                .size_px(16.0)
-                .grid_cell((0, 1))
-                .show(ui);
-        });
+    let node = two_hug_cols_with_wrap(&mut ui, PARAGRAPH);
     ui.end_frame();
 
-    let node = text_node.unwrap();
     let max_w =
         ui.layout_engine
             .intrinsic(&ui.tree, node, Axis::X, LenReq::MaxContent, &mut ui.text);
@@ -184,36 +140,16 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
 /// Step C pin: chat-message HStack pattern. Avatar (Fixed) + Message
 /// (Fill, wrapping text). Without Step C, message is measured at INF →
 /// shapes at natural width → cached shape disagrees with arrange's slot.
-/// With Step C, message is re-measured at its resolved Fill share →
-/// shapes (and reshapes if narrower than natural) at the slot width.
 #[test]
 fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
-    let mut message_node = None;
-    Panel::vstack().show(&mut ui, |ui| {
-        Panel::hstack()
-            .size((Sizing::FILL, Sizing::Hug))
-            .gap(8.0)
-            .show(ui, |ui| {
-                Frame::with_id("avatar")
-                    .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
-                    .show(ui);
-                message_node = Some(
-                    Text::new("the quick brown fox jumps over the lazy dog")
-                        .size_px(14.0)
-                        .size((Sizing::FILL, Sizing::Hug))
-                        .wrapping()
-                        .show(ui)
-                        .node,
-                );
-            });
-    });
+    let msg = chat_message(&mut ui, 40.0, PARAGRAPH, 14.0);
     ui.end_frame();
 
     let shaped = ui
         .layout_engine
         .result()
-        .text_shape(message_node.unwrap())
+        .text_shape(msg)
         .expect("text was shaped");
     assert!(
         shaped.measured.h > 32.0,
@@ -234,30 +170,13 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
 #[test]
 fn hstack_fill_wrap_text_floors_at_min_content() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
-    let mut message_node = None;
-    Panel::vstack().show(&mut ui, |ui| {
-        Panel::hstack()
-            .size((Sizing::FILL, Sizing::Hug))
-            .show(ui, |ui| {
-                Frame::with_id("avatar")
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
-                    .show(ui);
-                message_node = Some(
-                    Text::new("supercalifragilistic")
-                        .size_px(14.0)
-                        .size((Sizing::FILL, Sizing::Hug))
-                        .wrapping()
-                        .show(ui)
-                        .node,
-                );
-            });
-    });
+    let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
 
     let shaped = ui
         .layout_engine
         .result()
-        .text_shape(message_node.unwrap())
+        .text_shape(msg)
         .expect("text was shaped");
     assert!(
         shaped.measured.w > 20.0,
@@ -274,34 +193,17 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
 #[test]
 fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
-    let mut message_node = None;
-    Panel::vstack().show(&mut ui, |ui| {
-        Panel::hstack()
-            .size((Sizing::FILL, Sizing::Hug))
-            .show(ui, |ui| {
-                Frame::with_id("avatar")
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
-                    .show(ui);
-                message_node = Some(
-                    Text::new("supercalifragilistic")
-                        .size_px(14.0)
-                        .size((Sizing::FILL, Sizing::Hug))
-                        .wrapping()
-                        .show(ui)
-                        .node,
-                );
-            });
-    });
+    let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
 
     let shaped_w = ui
         .layout_engine
         .result()
-        .text_shape(message_node.unwrap())
+        .text_shape(msg)
         .expect("text was shaped")
         .measured
         .w;
-    let rect_w = ui.layout_engine.result().rect(message_node.unwrap()).size.w;
+    let rect_w = ui.layout_engine.result().rect(msg).size.w;
 
     assert!(
         shaped_w > 50.0,

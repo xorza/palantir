@@ -1,7 +1,7 @@
 use crate::element::Configure;
 use crate::primitives::{Color, Sizing};
 use crate::shape::Shape;
-use crate::test_support::ui_at;
+use crate::test_support::{click_at, ui_at};
 use crate::widgets::{Button, Frame, Panel, Styled};
 use glam::UVec2;
 
@@ -117,7 +117,6 @@ fn panel_with_fill_child_grows_to_panel_inner() {
 
 #[test]
 fn disabled_panel_suppresses_clicks_on_descendants() {
-    use crate::input::{InputEvent, PointerButton};
     use crate::primitives::Display;
     use glam::Vec2;
 
@@ -136,9 +135,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
     });
     ui.end_frame();
 
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    click_at(&mut ui, Vec2::new(40.0, 40.0));
 
     ui.begin_frame(Display::default());
     let mut clicked = false;

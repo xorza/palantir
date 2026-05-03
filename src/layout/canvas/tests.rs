@@ -1,30 +1,14 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Align, HAlign, Rect, Sizing, VAlign};
-use crate::test_support::begin;
-use crate::tree::NodeId;
+use crate::primitives::{Align, HAlign, Sizing, VAlign};
+use crate::test_support::under_outer;
 use crate::widgets::{Frame, Panel};
-
-/// See `zstack/tests.rs::under_outer` — same trick: wrap the panel under test
-/// inside an outer Fill HStack so its own sizing isn't overridden by the root
-/// surface forcing.
-fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -> NodeId {
-    use glam::UVec2;
-    begin(ui, UVec2::new(surface.size.w as u32, surface.size.h as u32));
-    let mut inner = None;
-    Panel::hstack()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            inner = Some(f(ui));
-        });
-    ui.end_frame();
-    inner.unwrap()
-}
+use glam::UVec2;
 
 #[test]
 fn canvas_places_child_at_position_within_inner_rect() {
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .padding(10.0)
@@ -48,7 +32,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
 #[test]
 fn canvas_hugs_to_bounding_box_of_placed_children() {
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
@@ -75,7 +59,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
     // placed at negative coords don't grow the panel — they just bleed past
     // the inner top-left.
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
@@ -114,7 +98,7 @@ fn canvas_fill_child_takes_constrained_canvas_inner() {
     // axes → Fill falls back to intrinsic. Pinned by
     // `canvas_hug_fill_child_falls_back_to_intrinsic` below.
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .show(ui, |ui| {
@@ -138,7 +122,7 @@ fn canvas_hug_fill_child_falls_back_to_intrinsic() {
     // to intrinsic (zero for an empty Frame). This preserves the
     // recursive-sizing protection for Hug parents.
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             // Hug × Hug — default.
             .show(ui, |ui| {
@@ -158,7 +142,7 @@ fn canvas_hug_fill_child_falls_back_to_intrinsic() {
 #[test]
 fn canvas_collapsed_child_does_not_grow_bbox() {
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
@@ -190,7 +174,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
 fn canvas_ignores_child_align() {
     let mut ui = Ui::new();
     let mut child = None;
-    let _panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .show(ui, |ui| {

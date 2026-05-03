@@ -13,6 +13,35 @@ use crate::widgets::{Frame, Grid, Panel, Styled, Text};
 use glam::UVec2;
 use std::rc::Rc;
 
+/// Run `build` twice at `size` (cold then warm-from-cache) and assert
+/// every captured node's arranged rect matches across the two frames.
+/// `build` pushes the nodes whose rects matter into `capture`.
+fn assert_warm_rects_match_cold(
+    ui: &mut Ui,
+    size: UVec2,
+    msg: &str,
+    mut build: impl FnMut(&mut Ui, &mut Vec<NodeId>),
+) {
+    let mut cold_nodes = Vec::new();
+    build(ui, &mut cold_nodes);
+    ui.end_frame();
+    let cold: Vec<_> = cold_nodes
+        .iter()
+        .map(|n| ui.layout_engine.result().rect(*n))
+        .collect();
+
+    begin(ui, size);
+    let mut warm_nodes = Vec::new();
+    build(ui, &mut warm_nodes);
+    ui.end_frame();
+    let warm: Vec<_> = warm_nodes
+        .iter()
+        .map(|n| ui.layout_engine.result().rect(*n))
+        .collect();
+
+    assert_eq!(cold, warm, "{msg}");
+}
+
 /// Cross-frame measure-cache regression: when the cache hits at a
 /// Grid (or any ancestor of a Grid), the grid driver's per-frame
 /// `GridHugStore` scratch — populated by `grid::measure` and read
@@ -21,61 +50,39 @@ use std::rc::Rc;
 /// widths, collapsing every cell to x=0.
 #[test]
 fn grid_cells_arranged_correctly_on_cache_hit_frame() {
-    let build = |ui: &mut Ui, capture: &mut Option<(NodeId, NodeId)>| {
-        let mut left = None;
-        let mut right = None;
-        Panel::vstack()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Grid::with_id("g")
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .cols(Rc::from([Track::hug(), Track::fill()]))
-                    .rows(Rc::from([Track::hug()]))
-                    .gap_xy(6.0, 16.0)
-                    .show(ui, |ui| {
-                        left = Some(
-                            Text::new("Title:")
-                                .size_px(14.0)
-                                .grid_cell((0, 0))
-                                .show(ui)
-                                .node,
-                        );
-                        right = Some(
-                            Text::new("value column")
-                                .size_px(14.0)
-                                .wrapping()
-                                .grid_cell((0, 1))
-                                .show(ui)
-                                .node,
-                        );
-                    });
-            });
-        *capture = Some((left.unwrap(), right.unwrap()));
-    };
-
     let mut ui = ui_with_text(UVec2::new(800, 600));
-    let mut nodes = None;
-    build(&mut ui, &mut nodes);
-    ui.end_frame();
-    let (l, r) = nodes.unwrap();
-    let cold_l = ui.layout_engine.result().rect(l);
-    let cold_r = ui.layout_engine.result().rect(r);
-
-    begin(&mut ui, UVec2::new(800, 600));
-    let mut nodes = None;
-    build(&mut ui, &mut nodes);
-    ui.end_frame();
-    let (l, r) = nodes.unwrap();
-    let warm_l = ui.layout_engine.result().rect(l);
-    let warm_r = ui.layout_engine.result().rect(r);
-
-    assert_eq!(
-        cold_l, warm_l,
-        "cache-hit frame must not perturb left-cell rect: cold={cold_l:?} warm={warm_l:?}",
-    );
-    assert_eq!(
-        cold_r, warm_r,
-        "cache-hit frame must not perturb right-cell rect: cold={cold_r:?} warm={warm_r:?}",
+    assert_warm_rects_match_cold(
+        &mut ui,
+        UVec2::new(800, 600),
+        "cache-hit frame must not perturb single-grid cell rects",
+        |ui, capture| {
+            Panel::vstack()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Grid::with_id("g")
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .cols(Rc::from([Track::hug(), Track::fill()]))
+                        .rows(Rc::from([Track::hug()]))
+                        .gap_xy(6.0, 16.0)
+                        .show(ui, |ui| {
+                            capture.push(
+                                Text::new("Title:")
+                                    .size_px(14.0)
+                                    .grid_cell((0, 0))
+                                    .show(ui)
+                                    .node,
+                            );
+                            capture.push(
+                                Text::new("value column")
+                                    .size_px(14.0)
+                                    .wrapping()
+                                    .grid_cell((0, 1))
+                                    .show(ui)
+                                    .node,
+                            );
+                        });
+                });
+        },
     );
 }
 
@@ -84,78 +91,49 @@ fn grid_cells_arranged_correctly_on_cache_hit_frame() {
 /// its current-frame `idx`.
 #[test]
 fn cache_hit_restores_hugs_for_nested_grids() {
-    let build = |ui: &mut Ui, capture: &mut [Option<NodeId>; 4]| {
-        Panel::vstack()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Grid::with_id("outer")
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .cols(Rc::from([Track::hug(), Track::fill()]))
-                    .rows(Rc::from([Track::hug()]))
-                    .show(ui, |ui| {
-                        capture[0] = Some(
-                            Text::new("outer-L")
-                                .size_px(14.0)
-                                .grid_cell((0, 0))
-                                .show(ui)
-                                .node,
-                        );
-                        Panel::vstack_with_id("inner-host")
-                            .grid_cell((0, 1))
-                            .show(ui, |ui| {
-                                Grid::with_id("inner")
-                                    .size((Sizing::FILL, Sizing::Hug))
-                                    .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
-                                    .rows(Rc::from([Track::hug()]))
-                                    .show(ui, |ui| {
-                                        capture[1] = Some(
-                                            Text::new("a")
-                                                .size_px(14.0)
-                                                .grid_cell((0, 0))
-                                                .show(ui)
-                                                .node,
-                                        );
-                                        capture[2] = Some(
-                                            Text::new("bb")
-                                                .size_px(14.0)
-                                                .grid_cell((0, 1))
-                                                .show(ui)
-                                                .node,
-                                        );
-                                        capture[3] = Some(
-                                            Text::new("end")
-                                                .size_px(14.0)
-                                                .grid_cell((0, 2))
-                                                .show(ui)
-                                                .node,
-                                        );
-                                    });
-                            });
-                    });
-            });
-    };
-
     let mut ui = ui_with_text(UVec2::new(800, 600));
-    let mut nodes = [None; 4];
-    build(&mut ui, &mut nodes);
-    ui.end_frame();
-    let cold: Vec<_> = nodes
-        .iter()
-        .map(|n| ui.layout_engine.result().rect(n.unwrap()))
-        .collect();
-
-    begin(&mut ui, UVec2::new(800, 600));
-    let mut nodes = [None; 4];
-    build(&mut ui, &mut nodes);
-    ui.end_frame();
-    let warm: Vec<_> = nodes
-        .iter()
-        .map(|n| ui.layout_engine.result().rect(n.unwrap()))
-        .collect();
-
-    assert_eq!(
-        cold, warm,
+    assert_warm_rects_match_cold(
+        &mut ui,
+        UVec2::new(800, 600),
         "cache-hit frame must preserve outer+nested grid cell rects",
+        |ui, capture| {
+            Panel::vstack()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Grid::with_id("outer")
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .cols(Rc::from([Track::hug(), Track::fill()]))
+                        .rows(Rc::from([Track::hug()]))
+                        .show(ui, |ui| {
+                            capture.push(
+                                Text::new("outer-L")
+                                    .size_px(14.0)
+                                    .grid_cell((0, 0))
+                                    .show(ui)
+                                    .node,
+                            );
+                            Panel::vstack_with_id("inner-host")
+                                .grid_cell((0, 1))
+                                .show(ui, |ui| {
+                                    Grid::with_id("inner")
+                                        .size((Sizing::FILL, Sizing::Hug))
+                                        .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
+                                        .rows(Rc::from([Track::hug()]))
+                                        .show(ui, |ui| {
+                                            for (col, label) in [(0, "a"), (1, "bb"), (2, "end")] {
+                                                capture.push(
+                                                    Text::with_id(("inner-cell", col), label)
+                                                        .size_px(14.0)
+                                                        .grid_cell((0, col))
+                                                        .show(ui)
+                                                        .node,
+                                                );
+                                            }
+                                        });
+                                });
+                        });
+                });
+        },
     );
 }
 
@@ -163,74 +141,57 @@ fn cache_hit_restores_hugs_for_nested_grids() {
 /// must restore hug arrays for *both* grids, in pre-order.
 #[test]
 fn cache_hit_restores_hugs_for_multiple_sibling_grids() {
-    let build = |ui: &mut Ui, capture: &mut [Option<NodeId>; 4]| {
-        Panel::vstack()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Grid::with_id("g1")
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .cols(Rc::from([Track::hug(), Track::fill()]))
-                    .rows(Rc::from([Track::hug()]))
-                    .show(ui, |ui| {
-                        capture[0] = Some(
-                            Text::new("L1:")
-                                .size_px(14.0)
-                                .grid_cell((0, 0))
-                                .show(ui)
-                                .node,
-                        );
-                        capture[1] = Some(
-                            Text::new("v1")
-                                .size_px(14.0)
-                                .grid_cell((0, 1))
-                                .show(ui)
-                                .node,
-                        );
-                    });
-                Grid::with_id("g2")
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
-                    .rows(Rc::from([Track::hug()]))
-                    .show(ui, |ui| {
-                        capture[2] = Some(
-                            Text::new("Description:")
-                                .size_px(14.0)
-                                .grid_cell((0, 0))
-                                .show(ui)
-                                .node,
-                        );
-                        capture[3] = Some(
-                            Text::new("end")
-                                .size_px(14.0)
-                                .grid_cell((0, 2))
-                                .show(ui)
-                                .node,
-                        );
-                    });
-            });
-    };
-
     let mut ui = ui_with_text(UVec2::new(800, 600));
-    let mut nodes = [None; 4];
-    build(&mut ui, &mut nodes);
-    ui.end_frame();
-    let cold: Vec<_> = nodes
-        .iter()
-        .map(|n| ui.layout_engine.result().rect(n.unwrap()))
-        .collect();
-
-    begin(&mut ui, UVec2::new(800, 600));
-    let mut nodes = [None; 4];
-    build(&mut ui, &mut nodes);
-    ui.end_frame();
-    let warm: Vec<_> = nodes
-        .iter()
-        .map(|n| ui.layout_engine.result().rect(n.unwrap()))
-        .collect();
-
-    assert_eq!(
-        cold, warm,
-        "cache-hit frame must preserve all sibling-grid cell rects"
+    assert_warm_rects_match_cold(
+        &mut ui,
+        UVec2::new(800, 600),
+        "cache-hit frame must preserve all sibling-grid cell rects",
+        |ui, capture| {
+            Panel::vstack()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Grid::with_id("g1")
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .cols(Rc::from([Track::hug(), Track::fill()]))
+                        .rows(Rc::from([Track::hug()]))
+                        .show(ui, |ui| {
+                            capture.push(
+                                Text::new("L1:")
+                                    .size_px(14.0)
+                                    .grid_cell((0, 0))
+                                    .show(ui)
+                                    .node,
+                            );
+                            capture.push(
+                                Text::new("v1")
+                                    .size_px(14.0)
+                                    .grid_cell((0, 1))
+                                    .show(ui)
+                                    .node,
+                            );
+                        });
+                    Grid::with_id("g2")
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
+                        .rows(Rc::from([Track::hug()]))
+                        .show(ui, |ui| {
+                            capture.push(
+                                Text::new("Description:")
+                                    .size_px(14.0)
+                                    .grid_cell((0, 0))
+                                    .show(ui)
+                                    .node,
+                            );
+                            capture.push(
+                                Text::new("end")
+                                    .size_px(14.0)
+                                    .grid_cell((0, 2))
+                                    .show(ui)
+                                    .node,
+                            );
+                        });
+                });
+        },
     );
 }
 
@@ -298,18 +259,9 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     ui.end_frame();
     let warm = encode_cmds(&ui);
 
-    assert_eq!(
-        cold.kinds, warm.kinds,
-        "cmd kind sequence must match across cache-hit boundary",
-    );
-    assert_eq!(
-        cold.starts, warm.starts,
-        "cmd payload offsets must match across cache-hit boundary",
-    );
-    assert_eq!(
-        cold.data, warm.data,
-        "cmd payload bytes must match across cache-hit boundary",
-    );
+    assert_eq!(cold.kinds, warm.kinds, "cmd kind sequence must match");
+    assert_eq!(cold.starts, warm.starts, "cmd payload offsets must match");
+    assert_eq!(cold.data, warm.data, "cmd payload bytes must match");
 }
 
 /// Stress test: alternating surface widths force the cache through
@@ -342,7 +294,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                 capture.push(
                                     Text::new(
                                         "Lorem ipsum dolor sit amet, consectetur \
-                                     adipiscing elit, sed do eiusmod tempor.",
+                                         adipiscing elit, sed do eiusmod tempor.",
                                     )
                                     .size_px(14.0)
                                     .wrapping()
@@ -356,7 +308,6 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
     };
 
     let mut ui = new_ui_text();
-
     let widths = [800u32, 800, 600, 800, 600, 600, 800, 1000, 600];
     for (i, &w) in widths.iter().enumerate() {
         begin(&mut ui, UVec2::new(w, 600));

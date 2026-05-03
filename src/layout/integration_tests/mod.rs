@@ -5,4 +5,5 @@
 
 mod fill_propagation;
 mod no_overlap;
+mod scaffold;
 mod text_wrap;

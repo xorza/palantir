@@ -1,30 +1,14 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Align, HAlign, Rect, Sizing, VAlign};
-use crate::test_support::begin;
-use crate::tree::NodeId;
+use crate::primitives::{Align, HAlign, Sizing, VAlign};
+use crate::test_support::under_outer;
 use crate::widgets::{Frame, Panel};
-
-/// Wrap the closure's body in an outer HStack(FILL) so the panel under test
-/// can express its own measured size — `ui.layout` always forces the root to
-/// the surface rect, which would mask Hug/Fixed sizing on the unit-under-test.
-fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -> NodeId {
-    use glam::UVec2;
-    begin(ui, UVec2::new(surface.size.w as u32, surface.size.h as u32));
-    let mut inner = None;
-    Panel::hstack()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            inner = Some(f(ui));
-        });
-    ui.end_frame();
-    inner.unwrap()
-}
+use glam::UVec2;
 
 #[test]
 fn zstack_hugs_to_largest_child_per_axis_independently() {
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 800.0, 600.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(800, 600), |ui| {
         Panel::zstack()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
@@ -41,7 +25,7 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
 #[test]
 fn zstack_lays_children_at_inner_top_left_by_default() {
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .padding(8.0)
@@ -64,7 +48,7 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
 #[test]
 fn zstack_aligns_per_axis_from_child_override() {
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .show(ui, |ui| {
@@ -94,7 +78,7 @@ fn zstack_child_align_cascades_to_auto_axes() {
     // Parent's child_align is the default for Auto axes; child override on one
     // axis still uses the parent default on the unspecified axis.
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .child_align(Align::CENTER)
@@ -116,7 +100,7 @@ fn zstack_child_align_cascades_to_auto_axes() {
 #[test]
 fn zstack_fill_child_stretches_to_inner() {
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .padding(10.0)
@@ -141,7 +125,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
     // Fill-on-both-axes children measure with INF → fall back to intrinsic;
     // a Hug ZStack therefore has no content to grow to.
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 200.0, 200.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
@@ -159,7 +143,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
 #[test]
 fn zstack_collapsed_child_does_not_grow_panel() {
     let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::zstack()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {

@@ -1,9 +1,10 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Justify, Rect, Sizing};
-use crate::test_support::begin;
+use crate::primitives::{Color, Justify, Sizing};
+use crate::test_support::under_outer;
 use crate::tree::NodeId;
 use crate::widgets::{Frame, Panel, Styled};
+use glam::UVec2;
 
 fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
     Frame::with_id(id)
@@ -13,30 +14,13 @@ fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
         .node
 }
 
-/// Wrap a `WrapHStack`/`WrapVStack` under test inside an outer Fill
-/// HStack so its own Fixed/Hug sizing isn't overridden by the root
-/// surface. Same trick canvas/zstack tests use.
-fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(ui: &mut Ui, surface: Rect, f: F) -> NodeId {
-    use glam::UVec2;
-    begin(ui, UVec2::new(surface.size.w as u32, surface.size.h as u32));
-    let mut inner = None;
-    Panel::hstack()
-        .size((Sizing::FILL, Sizing::FILL))
-        .clip(false)
-        .show(ui, |ui| {
-            inner = Some(f(ui));
-        });
-    ui.end_frame();
-    inner.unwrap()
-}
-
 /// Pin: three 60×20 cells in a 200-wide WrapHStack with `gap=10` fit on
 /// one line (60+10+60+10+60 = 200). All three sit at y=0.
 #[test]
 fn wrap_hstack_packs_into_single_line_when_fits() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
@@ -65,7 +49,7 @@ fn wrap_hstack_packs_into_single_line_when_fits() {
 fn wrap_hstack_wraps_when_next_child_overflows() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
@@ -94,7 +78,7 @@ fn wrap_hstack_wraps_when_next_child_overflows() {
 fn wrap_hstack_oversize_child_owns_its_line() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(100.0), Sizing::Hug))
             .gap(10.0)
@@ -123,7 +107,7 @@ fn wrap_hstack_oversize_child_owns_its_line() {
 fn wrap_hstack_line_height_is_max_child_cross() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(0.0)
@@ -151,7 +135,7 @@ fn wrap_hstack_line_height_is_max_child_cross() {
 fn wrap_hstack_justify_center_per_line() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
@@ -175,7 +159,7 @@ fn wrap_hstack_justify_center_per_line() {
 fn wrap_vstack_wraps_columns_when_main_overflows() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_vstack_with_id("w")
             .size((Sizing::Hug, Sizing::Fixed(100.0)))
             .gap(10.0)
@@ -210,7 +194,7 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
 fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
     let mut ui = Ui::new();
     let mut wrap_node = None;
-    let _wrap = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         wrap_node = Some(
             Panel::wrap_hstack_with_id("w")
                 .size((Sizing::Fixed(200.0), Sizing::Hug))
@@ -239,7 +223,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
 fn wrap_hstack_justify_space_between_per_line() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
@@ -265,7 +249,7 @@ fn wrap_hstack_justify_space_between_per_line() {
 fn wrap_hstack_justify_space_around_per_line() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
@@ -289,7 +273,7 @@ fn wrap_hstack_justify_space_around_per_line() {
 fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(300.0), Sizing::Hug))
             .gap(10.0)
@@ -326,7 +310,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
 fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
-    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
@@ -362,7 +346,7 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
 fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     let mut ui = Ui::new();
     let mut filler_node = None;
-    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 400.0, 400.0), |ui| {
+    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack_with_id("w")
             .size((Sizing::Fixed(300.0), Sizing::Hug))
             .gap(10.0)
@@ -400,7 +384,7 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
     let mut inner_a = None;
     let mut inner_b = None;
     let mut outer_b = None;
-    let _ = under_outer(&mut ui, Rect::new(0.0, 0.0, 600.0, 400.0), |ui| {
+    let _ = under_outer(&mut ui, UVec2::new(600, 400), |ui| {
         Panel::wrap_hstack_with_id("outer")
             .size((Sizing::Fixed(500.0), Sizing::Hug))
             .gap(10.0)
