@@ -259,7 +259,7 @@ fn clear_drops_everything() {
     let mut cache = EncodeCache::default();
     let src = buf_at(Vec2::ZERO);
     write_full(&mut cache, wid(1), hash(1), &src, Vec2::ZERO);
-    cache.__clear();
+    cache.clear();
     assert_eq!(cache.live_cmds, 0);
     assert_eq!(cache.live_data, 0);
     assert!(cache.snapshots.is_empty());

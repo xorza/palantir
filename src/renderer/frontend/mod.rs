@@ -84,11 +84,4 @@ impl Frontend {
     pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
         self.encoder.sweep_removed(removed);
     }
-
-    /// Drop every encode-cache entry. `#[doc(hidden)]` — exposed via
-    /// [`crate::Ui::__clear_encode_cache`] for benches.
-    #[doc(hidden)]
-    pub fn __clear_encode_cache(&mut self) {
-        self.encoder.__clear_cache();
-    }
 }

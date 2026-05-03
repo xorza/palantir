@@ -169,7 +169,7 @@ impl Ui {
     /// can A/B cache-enabled vs forced-miss frames against the public API.
     #[doc(hidden)]
     pub fn __clear_encode_cache(&mut self) {
-        self.frontend.__clear_encode_cache();
+        self.frontend.encoder.cache.clear();
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {

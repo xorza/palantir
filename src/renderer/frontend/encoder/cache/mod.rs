@@ -59,12 +59,12 @@ const COMPACT_FLOOR: usize = 64;
 
 #[derive(Default)]
 pub(crate) struct EncodeCache {
-    pub kinds_arena: Vec<CmdKind>,
-    pub starts_arena: Vec<u32>,
-    pub data_arena: Vec<u32>,
-    pub snapshots: FxHashMap<WidgetId, EncodeSnapshot>,
-    pub live_cmds: usize,
-    pub live_data: usize,
+    kinds_arena: Vec<CmdKind>,
+    starts_arena: Vec<u32>,
+    data_arena: Vec<u32>,
+    snapshots: FxHashMap<WidgetId, EncodeSnapshot>,
+    live_cmds: usize,
+    live_data: usize,
 }
 
 impl EncodeCache {
@@ -208,8 +208,9 @@ impl EncodeCache {
         }
     }
 
-    #[doc(hidden)]
-    pub fn __clear(&mut self) {
+    /// Drop every snapshot and free all arena storage. Used by
+    /// `Ui::__clear_encode_cache` for benches.
+    pub fn clear(&mut self) {
         self.kinds_arena.clear();
         self.starts_arena.clear();
         self.data_arena.clear();
