@@ -41,6 +41,13 @@ impl Align {
     pub const fn new(h: HAlign, v: VAlign) -> Self {
         Self((h as u8) | ((v as u8) << Self::VSHIFT))
     }
+    /// Raw packed byte (lower 3 bits HAlign, next 3 VAlign). Used by
+    /// the per-node hash to fold `Align` into a single byte without
+    /// going through `Hash` derives.
+    #[inline]
+    pub(crate) const fn raw(self) -> u8 {
+        self.0
+    }
     /// Single horizontal axis; vertical defaults to `Auto`.
     pub const fn h(h: HAlign) -> Self {
         Self::new(h, VAlign::Auto)
