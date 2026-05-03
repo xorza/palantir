@@ -28,23 +28,22 @@ fn drain_one_frame(ui: &mut Ui) {
     ui.end_frame();
 }
 
-/// Pin: initial state has `should_repaint = true` so the very first
-/// frame always runs. Host has nothing to present otherwise.
+/// Pin: an empty frame (no widgets recorded) drives `begin → layout →
+/// end_frame` without panicking, leaves every per-frame table empty,
+/// and produces an empty `Frame` with no quads/texts/groups. Empty UI
+/// is a real case (initial state, debug toggle, conditional UI all
+/// empty), and the full CPU pipeline must survive it.
 #[test]
-fn should_repaint_starts_true() {
-    let ui = Ui::new();
-    assert!(ui.should_repaint());
-}
-
-/// Pin: a frame that records no widgets (empty conditional UI,
-/// initial state, debug toggle) drives `begin → layout → end_frame`
-/// without panicking and leaves every per-frame table in a consistent
-/// empty state. `Ui::layout` no-ops when the tree has no root rather
-/// than panicking — empty UI is a real case.
-#[test]
-fn empty_ui_drives_a_frame_without_panicking() {
+fn empty_ui_drives_a_frame_safely() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    ui.end_frame();
+    {
+        // FrameOutput borrows ui.buffer; check pipeline output first,
+        // then drop the borrow so we can read other ui state.
+        let frame = ui.end_frame();
+        assert!(frame.buffer.quads.is_empty());
+        assert!(frame.buffer.texts.is_empty());
+        assert!(frame.buffer.groups.is_empty());
+    }
 
     assert_eq!(ui.tree.node_count(), 0);
     assert!(ui.damage.prev.is_empty());
@@ -68,29 +67,39 @@ fn empty_then_populated_frame() {
     assert!(!ui.damage.prev.is_empty());
 }
 
-/// Pin: the full CPU render pipeline (encode + compose) survives an
-/// empty UI.
+/// Pin: initial gate state is `true` (very first frame must run, host
+/// has nothing to present otherwise) and `end_frame()` clears it (idle
+/// host can skip the next tick).
 #[test]
-fn empty_ui_runs_through_pipeline() {
-    let mut ui = ui_at(UVec2::new(200, 200));
-    let frame = ui.end_frame();
-    assert!(frame.buffer.quads.is_empty());
-    assert!(frame.buffer.texts.is_empty());
-    assert!(frame.buffer.groups.is_empty());
-}
-
-/// Pin: a successful `end_frame()` clears the gate. After one frame
-/// with no new events, the host can skip the next tick.
-#[test]
-fn should_repaint_clears_after_end_frame() {
+fn repaint_gate_starts_true_clears_after_end_frame() {
     let mut ui = Ui::new();
+    assert!(ui.should_repaint());
     drain_one_frame(&mut ui);
     assert!(!ui.should_repaint());
 }
 
-/// Pin: any input flips the gate back on.
+/// Pin: `request_repaint()` flips the gate and is idempotent — N
+/// calls in one frame don't accumulate; one `end_frame()` clears
+/// them all. Animations and async state landing use this path.
 #[test]
-fn should_repaint_after_input() {
+fn request_repaint_flips_gate_idempotently() {
+    let mut ui = Ui::new();
+    drain_one_frame(&mut ui);
+    assert!(!ui.should_repaint());
+
+    ui.request_repaint();
+    ui.request_repaint();
+    ui.request_repaint();
+    assert!(ui.should_repaint());
+
+    drain_one_frame(&mut ui);
+    assert!(!ui.should_repaint());
+}
+
+/// Pin: input flips the gate back on. Conservative — even a pointer
+/// move that doesn't change hover index sets it.
+#[test]
+fn repaint_gate_flips_on_input() {
     use crate::input::InputEvent;
     use glam::Vec2;
     let mut ui = Ui::new();
@@ -98,17 +107,6 @@ fn should_repaint_after_input() {
     assert!(!ui.should_repaint());
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
-    assert!(ui.should_repaint());
-}
-
-/// Pin: explicit `request_repaint()` flips the gate.
-#[test]
-fn request_repaint_flips_gate() {
-    let mut ui = Ui::new();
-    drain_one_frame(&mut ui);
-    assert!(!ui.should_repaint());
-
-    ui.request_repaint();
     assert!(ui.should_repaint());
 }
 
@@ -126,22 +124,6 @@ fn begin_frame_rejects_zero_scale_factor() {
 fn display_logical_rect_scales() {
     let d = Display::from_physical(UVec2::new(800, 600), 2.0);
     assert_eq!(d.logical_rect(), Rect::new(0.0, 0.0, 400.0, 300.0));
-}
-
-/// Pin: the gate is idempotent — multiple `request_repaint()` calls
-/// in one frame don't accumulate; one `end_frame()` clears them all.
-#[test]
-fn request_repaint_is_idempotent() {
-    let mut ui = Ui::new();
-    drain_one_frame(&mut ui);
-
-    ui.request_repaint();
-    ui.request_repaint();
-    ui.request_repaint();
-    assert!(ui.should_repaint());
-
-    drain_one_frame(&mut ui);
-    assert!(!ui.should_repaint());
 }
 
 // --- prev_frame snapshot tests ----------------------------------------------

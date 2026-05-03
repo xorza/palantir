@@ -193,7 +193,9 @@ fn damage_filter_returns_none_on_full_repaint() {
     assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
 }
 
-/// Pin: `damage_filter()` returns the damage rect when partial.
+/// Pin: a single-leaf fill flip stays in the partial-repaint regime —
+/// `filter(surface)` returns the damage rect, because the rect is well
+/// below the full-repaint threshold (50×50 = 2500 ≪ 200×200 surface).
 #[test]
 fn damage_filter_returns_rect_when_partial() {
     let mut ui = Ui::new();
@@ -203,6 +205,7 @@ fn damage_filter_returns_rect_when_partial() {
     frame(&mut ui, |ui| {
         one_frame(ui, RED);
     });
+    assert!(ui.damage.rect.is_some());
     assert_eq!(ui.damage.filter(ui.display.logical_rect()), ui.damage.rect);
     assert!(ui.damage.filter(ui.display.logical_rect()).is_some());
 }
@@ -488,22 +491,4 @@ fn button_unhover_damage_covers_only_the_button() {
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));
     assert_eq!(ui.damage.filter(ui.display.logical_rect()), Some(hot_rect),);
-}
-
-/// Pin: a small per-frame change (single leaf fill flip) stays in
-/// the partial-repaint regime — `filter(surface)` returns the rect
-/// even though the diff is non-empty, because the rect is well
-/// below the threshold.
-#[test]
-fn small_change_stays_partial_repaint() {
-    let mut ui = Ui::new();
-    frame(&mut ui, |ui| {
-        one_frame(ui, BLUE);
-    });
-    frame(&mut ui, |ui| {
-        one_frame(ui, RED);
-    });
-    // 50x50 = 2500, surface 200x200 = 40000 → 6.25% < 50%.
-    assert!(ui.damage.rect.is_some());
-    assert_eq!(ui.damage.filter(ui.display.logical_rect()), ui.damage.rect);
 }
