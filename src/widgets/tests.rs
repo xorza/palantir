@@ -364,7 +364,6 @@ fn hidden_keeps_slot_but_emits_no_draws() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         None,
         &mut cmds,
     );

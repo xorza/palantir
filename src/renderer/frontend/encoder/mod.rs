@@ -1,7 +1,7 @@
 use super::cmd_buffer::RenderCmdBuffer;
 use crate::cascade::CascadeResult;
 use crate::layout::LayoutResult;
-use crate::primitives::{Align, HAlign, Rect, Size, Stroke, TranslateScale, VAlign};
+use crate::primitives::{Align, HAlign, Rect, Size, TranslateScale, VAlign};
 use crate::shape::Shape;
 use crate::tree::{NodeId, Tree};
 
@@ -22,21 +22,12 @@ pub fn encode(
     tree: &Tree,
     layout: &LayoutResult,
     cascades: &CascadeResult,
-    disabled_dim: f32,
     damage_filter: Option<Rect>,
     out: &mut RenderCmdBuffer,
 ) {
     out.clear();
     if let Some(root) = tree.root() {
-        encode_node(
-            tree,
-            layout,
-            cascades,
-            disabled_dim,
-            damage_filter,
-            root,
-            out,
-        );
+        encode_node(tree, layout, cascades, damage_filter, root, out);
     }
 }
 
@@ -44,7 +35,6 @@ fn encode_node(
     tree: &Tree,
     layout: &LayoutResult,
     cascades: &CascadeResult,
-    disabled_dim: f32,
     damage_filter: Option<Rect>,
     id: NodeId,
     out: &mut RenderCmdBuffer,
@@ -57,11 +47,6 @@ fn encode_node(
     }
 
     let rect = layout.rect(id);
-    let rgb_mul = if cascades.is_disabled(id) {
-        disabled_dim
-    } else {
-        1.0
-    };
 
     // Order: clip is in parent-of-panel space (pre-transform); transform
     // applies inside the clip and only to children. The panel's own
@@ -91,15 +76,7 @@ fn encode_node(
                     fill,
                     stroke,
                 } => {
-                    out.draw_rect(
-                        rect,
-                        *radius,
-                        fill.dim_rgb(rgb_mul),
-                        stroke.map(|s| Stroke {
-                            width: s.width,
-                            color: s.color.dim_rgb(rgb_mul),
-                        }),
-                    );
+                    out.draw_rect(rect, *radius, *fill, *stroke);
                 }
                 Shape::Text { color, align, .. } => {
                     // Shaping happened in measure; the resulting buffer key is
@@ -120,7 +97,7 @@ fn encode_node(
                     let inner = rect.deflated_by(tree.layout(id).padding);
                     out.draw_text(
                         align_text_in(inner, shaped.measured, *align),
-                        color.dim_rgb(rgb_mul),
+                        *color,
                         shaped.key,
                     );
                 }
@@ -145,15 +122,7 @@ fn encode_node(
     }
 
     for child in tree.children(id) {
-        encode_node(
-            tree,
-            layout,
-            cascades,
-            disabled_dim,
-            damage_filter,
-            child,
-            out,
-        );
+        encode_node(tree, layout, cascades, damage_filter, child, out);
     }
 
     if transform.is_some() {

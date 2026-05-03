@@ -36,7 +36,6 @@ fn empty_tree_encodes_to_nothing() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         None,
         &mut cmds,
     );
@@ -66,7 +65,6 @@ fn frame_with_fill_emits_one_draw_rect() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         None,
         &mut cmds,
     );
@@ -96,7 +94,6 @@ fn invisible_frame_does_not_emit_draw_rect() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         None,
         &mut cmds,
     );
@@ -134,7 +131,6 @@ fn clip_emits_balanced_push_pop() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         None,
         &mut cmds,
     );
@@ -284,7 +280,6 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         None,
         &mut cmds,
     );
@@ -412,7 +407,6 @@ fn nested_clips_each_emit_their_own_pair() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         None,
         &mut cmds,
     );
@@ -421,69 +415,31 @@ fn nested_clips_each_emit_their_own_pair() {
     assert_eq!(pops, 2);
 }
 
+/// Disabled cascade is reported on `Cascade.disabled` for app-level
+/// theme code to act on; the framework does not auto-dim colors. Pin
+/// the flag survives the cascade walk; visual dimming is the app's
+/// responsibility.
 #[test]
-fn disabled_ancestor_dims_descendant_fill() {
+fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     let mut ui = Ui::new();
-    let pure_red = Color::rgb(1.0, 0.0, 0.0);
     ui.begin_frame(Display::from_physical(
         UVec2::new(100.0 as u32, 100.0 as u32),
         1.0,
     ));
+    let mut child_node = None;
     Panel::vstack().disabled(true).show(&mut ui, |ui| {
-        Frame::new()
-            .size(Sizing::Fixed(40.0))
-            .fill(pure_red)
-            .show(ui);
+        child_node = Some(
+            Frame::new()
+                .size(Sizing::Fixed(40.0))
+                .fill(Color::rgb(1.0, 0.0, 0.0))
+                .show(ui)
+                .node,
+        );
     });
     ui.end_frame();
 
-    let mut cmds = RenderCmdBuffer::new();
-    encode(
-        &ui.tree,
-        ui.layout_engine.result(),
-        ui.cascades.result(),
-        0.5,
-        None,
-        &mut cmds,
-    );
-    let dimmed = cmds
-        .iter()
-        .find_map(|c| match c {
-            RenderCmd::DrawRect(p) => Some(p.fill),
-            RenderCmd::DrawRectStroked(p) => Some(p.fill),
-            _ => None,
-        })
-        .expect("frame must emit one DrawRect");
-    assert_eq!(dimmed, pure_red.dim_rgb(0.5));
-
-    // Same tree with no disabled ancestor: fill comes through untouched.
-    let mut ui2 = Ui::new();
-    ui2.begin_frame(Display::default());
-    Panel::vstack().show(&mut ui2, |ui| {
-        Frame::new()
-            .size(Sizing::Fixed(40.0))
-            .fill(pure_red)
-            .show(ui);
-    });
-    ui2.end_frame();
-    cmds.clear();
-    encode(
-        &ui2.tree,
-        ui2.layout_engine.result(),
-        ui2.cascades.result(),
-        0.5,
-        None,
-        &mut cmds,
-    );
-    let untouched = cmds
-        .iter()
-        .find_map(|c| match c {
-            RenderCmd::DrawRect(p) => Some(p.fill),
-            RenderCmd::DrawRectStroked(p) => Some(p.fill),
-            _ => None,
-        })
-        .expect("frame must emit one DrawRect");
-    assert_eq!(untouched, pure_red);
+    let cascades = ui.cascades.result();
+    assert!(cascades.is_disabled(child_node.unwrap()));
 }
 
 /// `align_text_in` math: glyph bbox positioned inside the leaf's
@@ -560,7 +516,6 @@ fn encoder_text_alignment_respects_leaf_padding() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         None,
         &mut cmds,
     );
@@ -627,7 +582,6 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         Some(filter),
         &mut cmds,
     );
@@ -665,7 +619,6 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         Some(Rect::new(0.0, 0.0, 200.0, 200.0)),
         &mut cmds,
     );
@@ -707,7 +660,6 @@ fn damage_filter_preserves_clip_pushpop() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
         &mut cmds,
     );
@@ -752,7 +704,6 @@ fn damage_filter_preserves_transform_pushpop() {
         &ui.tree,
         ui.layout_engine.result(),
         ui.cascades.result(),
-        1.0,
         Some(Rect::new(150.0, 150.0, 50.0, 50.0)),
         &mut cmds,
     );

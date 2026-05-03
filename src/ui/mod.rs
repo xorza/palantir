@@ -121,7 +121,6 @@ impl Ui {
         self.input.end_frame(cascades);
         let damage = self.damage.compute(&self.tree, cascades, removed, surface);
 
-        self.frontend.set_disabled_dim(self.theme.disabled_dim);
         self.frontend
             .build(&self.tree, layout, cascades, damage, &self.display);
         self.repaint_requested = false;
