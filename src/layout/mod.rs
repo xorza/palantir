@@ -27,46 +27,69 @@ pub use cache::{AvailableKey, quantize_available};
 pub use intrinsic::LenReq;
 pub use result::{LayoutResult, ShapedText};
 
-/// Persistent layout engine. Holds two categories of state:
-///
-/// **Scratch** (per-frame, reset at top of `run`) — internal to the
-/// layout pass. Drivers in this module read/write directly.
-/// Module-internal tests (e.g. `stack/tests.rs`) reach in via
-/// `pub(in crate::layout)` to pin measure output independently of
-/// arrange's slot-clamping.
+/// Per-frame intermediate state: every field is reset / overwritten at
+/// the top of [`LayoutEngine::run`] and exists only for the duration of
+/// the layout pass. Capacity is retained across frames so steady state
+/// is alloc-free.
 ///
 /// - `grid` — grid-driver scratch (per-depth track state, hug pool).
+/// - `wrap` — wrapstack flat per-depth line buffer.
 /// - `desired` — measure-pass output, read by arrange.
 /// - `intrinsics` — intra-frame cache for `intrinsic(node, axis, req)`
 ///   queries (see `intrinsic.md`). Pure function of subtree; safe to
 ///   memoize within a frame. Flat `Vec` indexed by node, four slots
 ///   per node (one per `(axis, req)` combination). NaN means "not yet
-///   computed". Cleared and resized to `node_count` in `run`.
+///   computed".
+/// - `available_q` — per-node quantized `available` size, the
+///   dimensional half of the cross-frame cache key. Written on every
+///   measure entry, restored from a snapshot on cache-hit subtrees.
+///   Read by the encode cache (and any other consumer keyed on the
+///   same `(subtree_hash, available_q)` shape as `MeasureCache`).
 ///
-/// **Output** (per-frame, public read-only):
+/// Module-internal tests (e.g. `stack/tests.rs`) reach in via
+/// `pub(in crate::layout)` to pin measure output independently of
+/// arrange's slot-clamping.
+#[derive(Default)]
+pub(in crate::layout) struct LayoutScratch {
+    pub(in crate::layout) grid: GridContext,
+    pub(in crate::layout) wrap: WrapScratch,
+    pub(in crate::layout) desired: Vec<Size>,
+    pub(in crate::layout) intrinsics: Vec<[f32; 4]>,
+    pub(in crate::layout) available_q: Vec<AvailableKey>,
+}
+
+impl LayoutScratch {
+    fn resize_for(&mut self, tree: &Tree) {
+        let n = tree.node_count();
+        self.desired.clear();
+        self.desired.resize(n, Size::ZERO);
+        self.intrinsics.clear();
+        self.intrinsics.resize(n, [f32::NAN; 4]);
+        self.available_q.clear();
+        self.available_q.resize(n, AvailableKey::default());
+        self.grid.hugs.reset_for(tree);
+    }
+}
+
+/// Persistent layout engine. Three field groups, each with its own
+/// lifetime:
 ///
-/// - `result` — post-layout rects + text shapes. Read by encoder /
-///   hit-index after `run` returns. Exposed via
+/// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
+///   Cleared at the top of every `run`.
+/// - `result` — per-frame output (rects + text shapes). Read by
+///   encoder / hit-index after `run` returns. Exposed via
 ///   [`LayoutEngine::result`].
+/// - `cache` — cross-frame measure cache. See [`cache`] and
+///   `docs/measure-cache.md`.
 ///
 /// Cross-frame text reuse used to live here too; it now sits behind
 /// `TextMeasurer` (`unbounded_for` / `cached_wrap` / `shape_wrap`) so
 /// the dispatch-skip and the cache live in one place.
 #[derive(Default)]
 pub struct LayoutEngine {
-    pub(in crate::layout) grid: GridContext,
-    pub(in crate::layout) wrap: WrapScratch,
-    pub(in crate::layout) desired: Vec<Size>,
-    pub(in crate::layout) intrinsics: Vec<[f32; 4]>,
+    pub(in crate::layout) scratch: LayoutScratch,
     pub(in crate::layout) result: LayoutResult,
-    /// Cross-frame leaf-measure cache. See [`cache`] and
-    /// `docs/measure-cache.md`.
     pub(in crate::layout) cache: MeasureCache,
-    /// Reusable scratch for collecting per-grid hug arrays before
-    /// snapshotting them into `MeasureCache`. Cleared between
-    /// snapshot writes; capacity retained across frames so steady-
-    /// state writes don't allocate.
-    pub(in crate::layout) hugs_scratch: Vec<f32>,
 }
 
 /// Quantize wrap target to ~0.1 logical px. Coarse enough to absorb
@@ -77,19 +100,6 @@ pub struct LayoutEngine {
 #[inline]
 fn quantize_wrap_target(v: f32) -> u32 {
     (v.max(0.0) * 10.0).round() as u32
-}
-
-#[inline]
-pub(in crate::layout) fn intrinsic_slot(axis: Axis, req: LenReq) -> usize {
-    let a = match axis {
-        Axis::X => 0,
-        Axis::Y => 1,
-    };
-    let r = match req {
-        LenReq::MinContent => 0,
-        LenReq::MaxContent => 1,
-    };
-    a * 2 + r
 }
 
 impl LayoutEngine {
@@ -119,6 +129,15 @@ impl LayoutEngine {
         self.cache.clear();
     }
 
+    /// Per-node quantized `available` size last passed to this node's
+    /// measure. Read by the encode cache (and any other consumer keyed
+    /// on the same `(subtree_hash, available_q)` shape as
+    /// `MeasureCache`).
+    #[inline]
+    pub fn available_q(&self, id: NodeId) -> AvailableKey {
+        self.scratch.available_q[id.index()]
+    }
+
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
     /// `axis` under content-sizing `req`. See `intrinsic.md`.
     ///
@@ -135,13 +154,13 @@ impl LayoutEngine {
         req: LenReq,
         text: &mut TextMeasurer,
     ) -> f32 {
-        let slot = intrinsic_slot(axis, req);
-        let cached = self.intrinsics[node.index()][slot];
+        let slot = req.slot(axis);
+        let cached = self.scratch.intrinsics[node.index()][slot];
         if !cached.is_nan() {
             return cached;
         }
         let v = intrinsic::compute(self, tree, node, axis, req, text);
-        self.intrinsics[node.index()][slot] = v;
+        self.scratch.intrinsics[node.index()][slot] = v;
         v
     }
 
@@ -160,17 +179,12 @@ impl LayoutEngine {
         text: &mut TextMeasurer,
     ) -> &LayoutResult {
         assert_eq!(
-            self.grid.depth_stack.depth(),
+            self.scratch.grid.depth_stack.depth(),
             0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
-        let n = tree.node_count();
-        self.desired.clear();
-        self.desired.resize(n, Size::ZERO);
-        self.intrinsics.clear();
-        self.intrinsics.resize(n, [f32::NAN; 4]);
+        self.scratch.resize_for(tree);
         self.result.resize_for(tree);
-        self.grid.hugs.reset_for(tree);
         // No root ⇒ no widgets recorded this frame. Result is sized to
         // `tree.node_count() == 0`, so downstream consumers walk zero
         // entries — return the freshly-cleared result without measuring.
@@ -184,7 +198,7 @@ impl LayoutEngine {
             self.arrange(tree, root, surface);
         }
         assert_eq!(
-            self.grid.depth_stack.depth(),
+            self.scratch.grid.depth_stack.depth(),
             0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
@@ -202,7 +216,7 @@ impl LayoutEngine {
         text: &mut TextMeasurer,
     ) -> Size {
         if tree.is_collapsed(node) {
-            self.desired[node.index()] = Size::ZERO;
+            self.scratch.desired[node.index()] = Size::ZERO;
             return Size::ZERO;
         }
         let style = *tree.layout(node);
@@ -221,30 +235,31 @@ impl LayoutEngine {
         let cache_wid = tree.widget_ids[node.index()];
         let cache_hash = tree.subtree_hashes[node.index()];
         let cache_avail = quantize_available(available);
-        // Record this node's quantized `available` on `LayoutResult`
-        // before any short-circuit. Downstream consumers (encode
-        // cache, etc.) read the column at every node they visit; on a
-        // measure-cache hit the descendant range is restored from the
-        // snapshot below, so this single write covers the miss path
-        // and the snapshot covers the hit path.
-        self.result.set_available_q(node, cache_avail);
+        // Record this node's quantized `available` before any
+        // short-circuit. Downstream consumers (encode cache, etc.)
+        // read the column at every node they visit; on a measure-cache
+        // hit the descendant range is restored from the snapshot
+        // below, so this single write covers the miss path and the
+        // snapshot covers the hit path.
+        self.scratch.available_q[node.index()] = cache_avail;
         if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
             let curr_start = node.index();
             let curr_end = curr_start + hit.desired.len();
             // Subtree hash includes child count + per-child rollups,
             // so a length mismatch here would mean the rollup is broken.
             debug_assert_eq!(curr_end, tree.subtree_end[curr_start] as usize);
-            self.desired[curr_start..curr_end].copy_from_slice(hit.desired);
+            self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
             self.result.restore_text_shapes(curr_start, hit.text_shapes);
-            self.result.restore_available_q(curr_start, hit.available_q);
+            self.scratch.available_q[curr_start..curr_end].copy_from_slice(hit.available_q);
             // Restore per-grid hug arrays. `grid::arrange` reads
-            // `LayoutEngine.grid.hugs`, populated only by
+            // `LayoutEngine.scratch.grid.hugs`, populated only by
             // `grid::measure`. Without this restore, a cache hit at
             // any ancestor of a Grid leaves hugs zeroed and the
             // grid would collapse every cell to (0, 0). Pinned by
             // `widgets::tests::grid_cells_arranged_correctly_on_cache_hit_frame`.
             if tree.subtree_has_grid[curr_start] {
-                self.grid
+                self.scratch
+                    .grid
                     .hugs
                     .restore_subtree(tree, curr_start..curr_end, hit.hugs);
             }
@@ -306,32 +321,31 @@ impl LayoutEngine {
             ),
         );
 
-        self.desired[node.index()] = desired;
+        self.scratch.desired[node.index()] = desired;
 
         // Snapshot the entire subtree we just (re)measured. Pre-order
         // arena means the subtree is `[node.index() .. subtree_end[i]]`
         // contiguous in both `desired` and `text_shapes`. Capacity
         // retains across frames via `clear() + extend_from_slice`
-        // inside `MeasureCache::write_subtree`.
+        // inside `MeasureCache::write_subtree`. Per-grid hug arrays
+        // for descendant Grids land in the cache's own
+        // `tmp_hugs` buffer first; empty for grid-free subtrees.
         {
             let start = node.index();
             let end = tree.subtree_end[start] as usize;
-            // Collect per-grid hug arrays for every descendant Grid.
-            // Empty (`hugs.is_empty()`) for grid-free subtrees so the
-            // arena entry stays zero-cost.
-            self.hugs_scratch.clear();
+            self.cache.tmp_hugs.clear();
             if tree.subtree_has_grid[start] {
-                self.grid
+                self.scratch
+                    .grid
                     .hugs
-                    .snapshot_subtree(tree, start..end, &mut self.hugs_scratch);
+                    .snapshot_subtree(tree, start..end, &mut self.cache.tmp_hugs);
             }
             self.cache.write_subtree(
                 cache_wid,
                 cache_hash,
-                &self.desired[start..end],
+                &self.scratch.desired[start..end],
                 self.result.text_shapes_slice(start..end),
-                self.result.available_q_slice(start..end),
-                &self.hugs_scratch,
+                &self.scratch.available_q[start..end],
             );
         }
 

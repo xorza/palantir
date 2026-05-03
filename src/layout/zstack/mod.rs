@@ -64,7 +64,7 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
             zero_subtree(layout, tree, c, inner.min);
             continue;
         }
-        let d = layout.desired[c.index()];
+        let d = layout.scratch.desired[c.index()];
         let s = *tree.layout(c);
 
         let (size, off) = place_two_axis(

@@ -201,11 +201,7 @@ fn subtree_skip_restores_descendant_available_q() {
     run_frame(&mut ui, build);
     let n = ui.tree().node_count();
     let cold: Vec<_> = (0..n)
-        .map(|i| {
-            ui.layout_engine
-                .result()
-                .available_q(crate::tree::NodeId(i as u32))
-        })
+        .map(|i| ui.layout_engine.available_q(crate::tree::NodeId(i as u32)))
         .collect();
     // Cold frame must have populated every descendant.
     assert!(
@@ -216,11 +212,7 @@ fn subtree_skip_restores_descendant_available_q() {
 
     run_frame(&mut ui, build);
     let warm: Vec<_> = (0..n)
-        .map(|i| {
-            ui.layout_engine
-                .result()
-                .available_q(crate::tree::NodeId(i as u32))
-        })
+        .map(|i| ui.layout_engine.available_q(crate::tree::NodeId(i as u32)))
         .collect();
     assert_eq!(
         cold, warm,

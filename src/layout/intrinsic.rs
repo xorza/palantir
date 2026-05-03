@@ -31,6 +31,24 @@ pub enum LenReq {
     MaxContent,
 }
 
+impl LenReq {
+    /// Index into `LayoutScratch.intrinsics[node]` for `(axis, self)`.
+    /// Encoding lives next to the variant set so adding a `LenReq`
+    /// surfaces here, not in `mod.rs`.
+    #[inline]
+    pub(in crate::layout) fn slot(self, axis: Axis) -> usize {
+        let a = match axis {
+            Axis::X => 0,
+            Axis::Y => 1,
+        };
+        let r = match self {
+            LenReq::MinContent => 0,
+            LenReq::MaxContent => 1,
+        };
+        a * 2 + r
+    }
+}
+
 /// Outer intrinsic on `axis`: content + padding + margin, respecting the
 /// node's `Sizing` override and `min_size` / `max_size` clamps.
 ///
@@ -138,7 +156,6 @@ mod tests {
     use super::*;
     use crate::Ui;
     use crate::element::Configure;
-    use crate::layout::intrinsic_slot;
     use crate::primitives::{Display, Sizing};
     use crate::widgets::{Panel, Text};
     use glam::UVec2;
@@ -166,8 +183,8 @@ mod tests {
         ui.end_frame();
 
         let child = ui.tree.children(root).next().expect("hstack has child");
-        let slot = intrinsic_slot(Axis::X, LenReq::MinContent);
-        let cached = ui.layout_engine.intrinsics[child.index()][slot];
+        let slot = LenReq::MinContent.slot(Axis::X);
+        let cached = ui.layout_engine.scratch.intrinsics[child.index()][slot];
         assert!(
             !cached.is_nan(),
             "MinContent X for the Fill+wrap child must be cached after run"
@@ -193,10 +210,10 @@ mod tests {
         ui.end_frame();
 
         let child = ui.tree.children(root).next().unwrap();
-        let slot = intrinsic_slot(Axis::X, LenReq::MinContent);
+        let slot = LenReq::MinContent.slot(Axis::X);
 
         const SENTINEL: f32 = 1234.5;
-        ui.layout_engine.intrinsics[child.index()][slot] = SENTINEL;
+        ui.layout_engine.scratch.intrinsics[child.index()][slot] = SENTINEL;
 
         let v =
             ui.layout_engine
@@ -227,8 +244,8 @@ mod tests {
         // Then clear *just the queried slot* on every node so we can
         // observe which nodes the parent query repopulates.
         ui.end_frame();
-        let slot = intrinsic_slot(Axis::X, LenReq::MaxContent);
-        for entry in ui.layout_engine.intrinsics.iter_mut() {
+        let slot = LenReq::MaxContent.slot(Axis::X);
+        for entry in ui.layout_engine.scratch.intrinsics.iter_mut() {
             entry[slot] = f32::NAN;
         }
 
@@ -237,12 +254,12 @@ mod tests {
                 .intrinsic(&ui.tree, root, Axis::X, LenReq::MaxContent, &mut ui.text);
 
         assert!(
-            !ui.layout_engine.intrinsics[root.index()][slot].is_nan(),
+            !ui.layout_engine.scratch.intrinsics[root.index()][slot].is_nan(),
             "root slot must be cached"
         );
         for c in ui.tree.children(root) {
             assert!(
-                !ui.layout_engine.intrinsics[c.index()][slot].is_nan(),
+                !ui.layout_engine.scratch.intrinsics[c.index()][slot].is_nan(),
                 "child {} slot must be cached after parent query",
                 c.index()
             );

@@ -112,18 +112,18 @@ pub(crate) struct MeasureCache {
     /// Parallel to `desired_arena`. Same indexing. Per-descendant
     /// quantized `available`, snapshotted so a measure-cache hit can
     /// restore the full subtree's `available_q` column on
-    /// `LayoutResult`. The encode cache reads it at every node it
+    /// `LayoutScratch`. The encode cache reads it at every node it
     /// visits, so descendants must remain correct even when the
     /// measure pass short-circuits and never visits them.
     pub available_arena: Vec<AvailableKey>,
     /// Per-grid hug arrays for every `LayoutMode::Grid` descendant
     /// of every cached subtree, packed in pre-order. Snapshot
     /// records `(hugs_start, hugs_len)` into this arena. Lets a
-    /// cache hit restore `LayoutEngine.grid.hugs` for the cached
-    /// subtree's grids without walking children — `grid::arrange`
-    /// then resolves track sizes correctly. Without this, a cache
-    /// hit at any ancestor of a Grid would leave `hugs` zeroed and
-    /// the grid would collapse every cell to (0, 0).
+    /// cache hit restore `LayoutEngine.scratch.grid.hugs` for the
+    /// cached subtree's grids without walking children —
+    /// `grid::arrange` then resolves track sizes correctly. Without
+    /// this, a cache hit at any ancestor of a Grid would leave `hugs`
+    /// zeroed and the grid would collapse every cell to (0, 0).
     pub hugs_arena: Vec<f32>,
     /// Per-`WidgetId` snapshot index. Each value points at a range in
     /// the two arenas above.
@@ -131,6 +131,11 @@ pub(crate) struct MeasureCache {
     /// Sum of `snap.len` across `snapshots` — the total live data in
     /// the arenas. Garbage = `desired_arena.len() - live_entries`.
     pub live_entries: usize,
+    /// Reusable buffer for the next snapshot's hug payload. Caller
+    /// fills via [`GridHugStore::snapshot_subtree`] before invoking
+    /// [`Self::write_subtree`]; `write_subtree` consumes it. Capacity
+    /// retained across frames so steady-state writes don't allocate.
+    pub(crate) tmp_hugs: Vec<f32>,
 }
 
 impl MeasureCache {
@@ -162,12 +167,14 @@ impl MeasureCache {
         })
     }
 
-    /// Overwrite (or insert) `wid`'s snapshot. Hot path is in-place
-    /// memcpy when the existing range has the same length —
-    /// expected to hit ~always once a widget reaches steady state,
-    /// since `subtree_hash` includes structure (same hash → same
-    /// subtree size). Size mismatches mark the old range as garbage
-    /// and append a fresh range to the arena.
+    /// Overwrite (or insert) `wid`'s snapshot. Caller must have first
+    /// populated [`Self::tmp_hugs`] with the per-grid hug arrays for
+    /// every Grid descendant, in `HUG_ORDER` (see grid module). Hot
+    /// path is in-place memcpy when the existing range has the same
+    /// length — expected to hit ~always once a widget reaches steady
+    /// state, since `subtree_hash` includes structure (same hash →
+    /// same subtree size). Size mismatches mark the old range as
+    /// garbage and append a fresh range to the arena.
     pub fn write_subtree(
         &mut self,
         wid: WidgetId,
@@ -175,7 +182,6 @@ impl MeasureCache {
         desired: &[Size],
         text_shapes: &[Option<ShapedText>],
         available_qs: &[AvailableKey],
-        hugs: &[f32],
     ) {
         debug_assert_eq!(desired.len(), text_shapes.len());
         debug_assert_eq!(desired.len(), available_qs.len());
@@ -184,7 +190,7 @@ impl MeasureCache {
             "snapshot must include the root's own per-node available_q",
         );
         let new_len = desired.len() as u32;
-        let new_hugs_len = hugs.len() as u32;
+        let new_hugs_len = self.tmp_hugs.len() as u32;
 
         if let Some(prev) = self.snapshots.get_mut(&wid)
             && prev.nodes.len == new_len
@@ -194,11 +200,21 @@ impl MeasureCache {
             // structure → identical hug-array shape, so the existing
             // ranges fit byte-for-byte.
             let nodes = prev.nodes.range();
-            self.desired_arena[nodes.clone()].copy_from_slice(desired);
-            self.text_arena[nodes.clone()].copy_from_slice(text_shapes);
-            self.available_arena[nodes].copy_from_slice(available_qs);
-            self.hugs_arena[prev.hugs.range()].copy_from_slice(hugs);
+            let hugs_range = prev.hugs.range();
             prev.subtree_hash = subtree_hash;
+            // Disjoint-field borrows: arenas vs. tmp_hugs.
+            let Self {
+                desired_arena,
+                text_arena,
+                available_arena,
+                hugs_arena,
+                tmp_hugs,
+                ..
+            } = self;
+            desired_arena[nodes.clone()].copy_from_slice(desired);
+            text_arena[nodes.clone()].copy_from_slice(text_shapes);
+            available_arena[nodes].copy_from_slice(available_qs);
+            hugs_arena[hugs_range].copy_from_slice(tmp_hugs);
             return;
         }
 
@@ -213,7 +229,7 @@ impl MeasureCache {
         self.text_arena.extend_from_slice(text_shapes);
         self.available_arena.extend_from_slice(available_qs);
         let hugs_span = Span::new(self.hugs_arena.len() as u32, new_hugs_len);
-        self.hugs_arena.extend_from_slice(hugs);
+        self.hugs_arena.extend_from_slice(&self.tmp_hugs);
         self.live_entries += new_len as usize;
         self.snapshots.insert(
             wid,
@@ -250,6 +266,7 @@ impl MeasureCache {
         self.text_arena.clear();
         self.available_arena.clear();
         self.hugs_arena.clear();
+        self.tmp_hugs.clear();
         self.snapshots.clear();
         self.live_entries = 0;
     }
@@ -265,6 +282,7 @@ impl MeasureCache {
             hugs_arena,
             snapshots,
             live_entries,
+            tmp_hugs: _,
         } = self;
         let mut new_desired: Vec<Size> = Vec::with_capacity(*live_entries);
         let mut new_text: Vec<Option<ShapedText>> = Vec::with_capacity(*live_entries);

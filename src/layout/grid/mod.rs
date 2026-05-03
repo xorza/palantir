@@ -8,6 +8,22 @@ use glam::Vec2;
 use std::ops::Range;
 use std::rc::Rc;
 
+#[derive(Copy, Clone)]
+enum HugKind {
+    Max,
+    Min,
+}
+
+/// Pack/unpack order for hug arrays inside a snapshot. Single source of
+/// truth — `snapshot_subtree` and `restore_subtree` both iterate this,
+/// so reordering one without the other is impossible.
+const HUG_ORDER: [(Axis, HugKind); 4] = [
+    (Axis::X, HugKind::Max),
+    (Axis::X, HugKind::Min),
+    (Axis::Y, HugKind::Max),
+    (Axis::Y, HugKind::Min),
+];
+
 struct DefSnapshot {
     n_rows: usize,
     n_cols: usize,
@@ -27,7 +43,7 @@ fn snapshot_def(layout: &mut LayoutEngine, tree: &Tree, idx: u16, depth: usize) 
     let cols = def.cols.clone();
     let row_gap = def.row_gap;
     let col_gap = def.col_gap;
-    let s = layout.grid.depth_stack.at(depth);
+    let s = layout.scratch.grid.depth_stack.at(depth);
     s.col.reset(cols);
     s.row.reset(rows);
     DefSnapshot {
@@ -211,9 +227,8 @@ impl GridHugStore {
     /// in `subtree` (pre-order node-index range) into `out`. Used by
     /// the cross-frame measure cache: when a subtree is snapshotted,
     /// arrange's hug state must be saved so a later cache hit at any
-    /// ancestor can restore it via [`Self::restore_subtree`]. Order
-    /// must match `restore_subtree` exactly: cols.max, cols.min,
-    /// rows.max, rows.min per Grid, in pre-order.
+    /// ancestor can restore it via [`Self::restore_subtree`]. Order is
+    /// dictated by [`HUG_ORDER`] per Grid, in pre-order.
     pub(in crate::layout) fn snapshot_subtree(
         &self,
         tree: &Tree,
@@ -222,10 +237,9 @@ impl GridHugStore {
     ) {
         for i in subtree {
             if let LayoutMode::Grid(idx) = tree.layout[i].mode {
-                out.extend_from_slice(self.max(idx, Axis::X));
-                out.extend_from_slice(self.min(idx, Axis::X));
-                out.extend_from_slice(self.max(idx, Axis::Y));
-                out.extend_from_slice(self.min(idx, Axis::Y));
+                for (axis, kind) in HUG_ORDER {
+                    out.extend_from_slice(self.axis_array(idx, axis, kind));
+                }
             }
         }
     }
@@ -244,29 +258,34 @@ impl GridHugStore {
         let mut pos = 0usize;
         for i in subtree {
             if let LayoutMode::Grid(idx) = tree.layout[i].mode {
-                let def = tree.grid_def(idx);
-                let n_cols = def.cols.len();
-                let n_rows = def.rows.len();
-                self.max_mut(idx, Axis::X)
-                    .copy_from_slice(&hugs[pos..pos + n_cols]);
-                pos += n_cols;
-                self.min_mut(idx, Axis::X)
-                    .copy_from_slice(&hugs[pos..pos + n_cols]);
-                pos += n_cols;
-                self.max_mut(idx, Axis::Y)
-                    .copy_from_slice(&hugs[pos..pos + n_rows]);
-                pos += n_rows;
-                self.min_mut(idx, Axis::Y)
-                    .copy_from_slice(&hugs[pos..pos + n_rows]);
-                pos += n_rows;
+                for (axis, kind) in HUG_ORDER {
+                    let dst = self.axis_array_mut(idx, axis, kind);
+                    let n = dst.len();
+                    dst.copy_from_slice(&hugs[pos..pos + n]);
+                    pos += n;
+                }
             }
         }
-        debug_assert_eq!(
+        assert_eq!(
             pos,
             hugs.len(),
             "snapshot hug slice length disagrees with current subtree's grid descendants \
              (cache key let through a structural change?)",
         );
+    }
+
+    fn axis_array(&self, idx: u16, axis: Axis, kind: HugKind) -> &[f32] {
+        match kind {
+            HugKind::Max => self.max(idx, axis),
+            HugKind::Min => self.min(idx, axis),
+        }
+    }
+
+    fn axis_array_mut(&mut self, idx: u16, axis: Axis, kind: HugKind) -> &mut [f32] {
+        match kind {
+            HugKind::Max => self.max_mut(idx, axis),
+            HugKind::Min => self.min_mut(idx, axis),
+        }
     }
 }
 
@@ -291,9 +310,9 @@ pub(super) fn measure(
     inner_avail: Size,
     text: &mut TextMeasurer,
 ) -> Size {
-    let depth = layout.grid.depth_stack.enter();
+    let depth = layout.scratch.grid.depth_stack.enter();
     let result = measure_inner(layout, tree, node, idx, depth, inner_avail, text);
-    layout.grid.depth_stack.exit();
+    layout.scratch.grid.depth_stack.exit();
     result
 }
 
@@ -338,9 +357,9 @@ fn measure_inner(
         let cmin = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, text);
         let cmax = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, text);
         let i = cell.col as usize;
-        let cols_min = layout.grid.hugs.min_mut(idx, Axis::X);
+        let cols_min = layout.scratch.grid.hugs.min_mut(idx, Axis::X);
         cols_min[i] = cols_min[i].max(cmin);
-        let cols_max = layout.grid.hugs.max_mut(idx, Axis::X);
+        let cols_max = layout.scratch.grid.hugs.max_mut(idx, Axis::X);
         cols_max[i] = cols_max[i].max(cmax);
     }
 
@@ -362,7 +381,7 @@ fn measure_inner(
     {
         let GridContext {
             depth_stack, hugs, ..
-        } = &mut layout.grid;
+        } = &mut layout.scratch.grid;
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.col,
@@ -386,7 +405,7 @@ fn measure_inner(
         let cell = tree.read_extras(c).grid;
 
         let avail = {
-            let s = layout.grid.depth_stack.at(depth);
+            let s = layout.scratch.grid.depth_stack.at(depth);
             // `sum_spanned_known` returns INFINITY if any spanned col is
             // unresolved. After `resolve_axis` ran above, Fixed and Hug
             // cols are marked resolved; Fill cols intentionally stay
@@ -414,7 +433,7 @@ fn measure_inner(
         // matters, so leave row hug_min at zero for now.
         let GridContext {
             depth_stack, hugs, ..
-        } = &mut layout.grid;
+        } = &mut layout.scratch.grid;
         record_hug(
             &depth_stack.at(depth).row.tracks,
             hugs.max_mut(idx, Axis::Y),
@@ -432,7 +451,7 @@ fn measure_inner(
     {
         let GridContext {
             depth_stack, hugs, ..
-        } = &mut layout.grid;
+        } = &mut layout.scratch.grid;
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.row,
@@ -447,7 +466,7 @@ fn measure_inner(
     // Returned content size: sum of non-Fill track sizes + gaps. Fill
     // tracks "want 0" in measure context — they only claim leftover at
     // arrange time. Mirrors WPF's "Star contributes 0 to content size."
-    let s = layout.grid.depth_stack.at(depth);
+    let s = layout.scratch.grid.depth_stack.at(depth);
     let total_w =
         sum_non_fill(&s.col.tracks, &s.col.sizes) + col_gap * n_cols.saturating_sub(1) as f32;
     let total_h =
@@ -476,7 +495,7 @@ fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
 /// loop in `measure_inner`); kept as a named helper to keep the borrow
 /// dance off the hot path.
 fn tracks_at(layout: &mut LayoutEngine, depth: usize, axis: Axis) -> Rc<[Track]> {
-    let s = layout.grid.depth_stack.at(depth);
+    let s = layout.scratch.grid.depth_stack.at(depth);
     match axis {
         Axis::X => s.col.tracks.clone(),
         Axis::Y => s.row.tracks.clone(),
@@ -521,9 +540,9 @@ fn record_hug(tracks: &[Track], hug_max: &mut [f32], idx: u16, span: u16, desire
 }
 
 pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect, idx: u16) {
-    let depth = layout.grid.depth_stack.enter();
+    let depth = layout.scratch.grid.depth_stack.enter();
     arrange_inner(layout, tree, node, inner, idx, depth);
-    layout.grid.depth_stack.exit();
+    layout.scratch.grid.depth_stack.exit();
 }
 
 fn arrange_inner(
@@ -556,7 +575,7 @@ fn arrange_inner(
     {
         let GridContext {
             depth_stack, hugs, ..
-        } = &mut layout.grid;
+        } = &mut layout.scratch.grid;
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.col,
@@ -584,10 +603,10 @@ fn arrange_inner(
         }
         let s_node = *tree.layout(c);
         let cell = tree.read_extras(c).grid;
-        let d = layout.desired[c.index()];
+        let d = layout.scratch.desired[c.index()];
 
         let (slot_x, slot_y, slot_w, slot_h) = {
-            let s = layout.grid.depth_stack.at(depth);
+            let s = layout.scratch.grid.depth_stack.at(depth);
             let slot_x = s.col.offsets[cell.col as usize];
             let slot_y = s.row.offsets[cell.row as usize];
             let slot_w = span_size(&s.col.sizes, cell.col, cell.col_span, col_gap);
@@ -829,10 +848,14 @@ pub(super) fn intrinsic(
     // Bump-allocate `n_tracks` slots on the shared scratch. Recursive
     // intrinsic calls extend past `base + n_tracks` and truncate back, so
     // our slice stays valid across them.
-    let base = layout.grid.intrinsic_scratch.len();
-    layout.grid.intrinsic_scratch.resize(base + n_tracks, 0.0);
+    let base = layout.scratch.grid.intrinsic_scratch.len();
+    layout
+        .scratch
+        .grid
+        .intrinsic_scratch
+        .resize(base + n_tracks, 0.0);
     for (i, t) in tracks.iter().enumerate() {
-        layout.grid.intrinsic_scratch[base + i] = match t.size {
+        layout.scratch.grid.intrinsic_scratch[base + i] = match t.size {
             Sizing::Fixed(v) => v.clamp(t.min, t.max),
             // Hug starts at Track.min; Fill stays at Track.min.
             _ => t.min,
@@ -861,14 +884,14 @@ pub(super) fn intrinsic(
         }
         let (t_min, t_max) = (t.min, t.max);
         let child_v = layout.intrinsic(tree, c, axis, req, text);
-        let slot = &mut layout.grid.intrinsic_scratch[base + track_idx];
+        let slot = &mut layout.scratch.grid.intrinsic_scratch[base + track_idx];
         *slot = slot.max(child_v.clamp(t_min, t_max));
     }
 
-    let total: f32 = layout.grid.intrinsic_scratch[base..base + n_tracks]
+    let total: f32 = layout.scratch.grid.intrinsic_scratch[base..base + n_tracks]
         .iter()
         .sum();
-    layout.grid.intrinsic_scratch.truncate(base);
+    layout.scratch.grid.intrinsic_scratch.truncate(base);
     total + gap * n_tracks.saturating_sub(1) as f32
 }
 

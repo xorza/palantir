@@ -1,27 +1,19 @@
-use crate::layout::cache::AvailableKey;
 use crate::primitives::{Rect, Size};
 use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
 use std::ops::Range;
 
 /// Per-frame layout *output* — strictly the state read after the layout
-/// pass by the encoder + hit-index. Intermediate scratch (desired sizes,
-/// grid track hugs, intrinsic cache) lives on `LayoutEngine` directly.
-/// SoA columns indexed by `NodeId.0`. Capacity is reused across frames
-/// via `resize_for`.
+/// pass by the encoder + hit-index. Intermediate scratch (desired
+/// sizes, grid track hugs, intrinsic cache, `available_q`) lives on
+/// `LayoutScratch` directly. SoA columns indexed by `NodeId.0`.
+/// Capacity is reused across frames via `resize_for`.
 #[derive(Default)]
 pub struct LayoutResult {
     rect: Vec<Rect>,
     /// Per-node shape result for `Shape::Text` leaves. `None` for any
     /// node the layout pass didn't shape text for.
     text_shapes: Vec<Option<ShapedText>>,
-    /// Per-node quantized `available` size — the dimensional half of
-    /// the cross-frame cache key. Written by `LayoutEngine::measure`
-    /// on every entry, restored by the measure cache on subtree-skip
-    /// hits so the column stays correct even when the descendant
-    /// recursion is short-circuited. Read by the encode cache (and
-    /// any other consumer that needs the same key).
-    available_q: Vec<AvailableKey>,
 }
 
 /// Result of shaping one `Shape::Text` during the measure pass. `Tree`
@@ -39,8 +31,6 @@ impl LayoutResult {
         self.rect.resize(n, Rect::ZERO);
         self.text_shapes.clear();
         self.text_shapes.resize(n, None);
-        self.available_q.clear();
-        self.available_q.resize(n, AvailableKey::default());
     }
 
     #[inline]
@@ -79,29 +69,5 @@ impl LayoutResult {
     ) {
         let end = start + src.len();
         self.text_shapes[start..end].copy_from_slice(src);
-    }
-
-    /// Quantized `available` size last passed to this node's measure.
-    /// Read by the encode cache (and any other consumer keyed on the
-    /// same `(subtree_hash, available_q)` shape as `MeasureCache`).
-    #[inline]
-    pub fn available_q(&self, id: NodeId) -> AvailableKey {
-        self.available_q[id.index()]
-    }
-
-    #[inline]
-    pub(in crate::layout) fn set_available_q(&mut self, id: NodeId, v: AvailableKey) {
-        self.available_q[id.index()] = v;
-    }
-
-    #[inline]
-    pub(in crate::layout) fn available_q_slice(&self, range: Range<usize>) -> &[AvailableKey] {
-        &self.available_q[range]
-    }
-
-    #[inline]
-    pub(in crate::layout) fn restore_available_q(&mut self, start: usize, src: &[AvailableKey]) {
-        let end = start + src.len();
-        self.available_q[start..end].copy_from_slice(src);
     }
 }
