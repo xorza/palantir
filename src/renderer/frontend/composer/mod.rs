@@ -1,4 +1,6 @@
-use super::cmd_buffer::{CmdKind, RenderCmdBuffer};
+use super::cmd_buffer::{
+    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
+};
 use crate::primitives::{Display, Rect, Stroke, TranslateScale, URect};
 use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::quad::Quad;
@@ -55,7 +57,7 @@ impl Composer {
         for (kind, start) in cmds.raw_iter() {
             match kind {
                 CmdKind::PushClip => {
-                    let r = cmds.read_clip(start);
+                    let r: Rect = cmds.read(start);
                     let world = current_transform.apply_rect(r);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
                     let new = match self.clip_stack.last() {
@@ -88,7 +90,7 @@ impl Composer {
                     last_was_text = false;
                 }
                 CmdKind::PushTransform => {
-                    let t = cmds.read_transform(start);
+                    let t: TranslateScale = cmds.read(start);
                     self.transform_stack.push(current_transform);
                     current_transform = current_transform.compose(t);
                 }
@@ -101,11 +103,11 @@ impl Composer {
                 kind @ (CmdKind::DrawRect | CmdKind::DrawRectStroked) => {
                     let (rect, radius, fill, stroke) = match kind {
                         CmdKind::DrawRect => {
-                            let p = cmds.read_draw_rect(start);
+                            let p: DrawRectPayload = cmds.read(start);
                             (p.rect, p.radius, p.fill, None)
                         }
                         _ => {
-                            let p = cmds.read_draw_rect_stroked(start);
+                            let p: DrawRectStrokedPayload = cmds.read(start);
                             (p.rect, p.radius, p.fill, Some(p.stroke))
                         }
                     };
@@ -137,7 +139,7 @@ impl Composer {
                         .push(Quad::new(phys_rect, fill, phys_radius, phys_stroke));
                 }
                 CmdKind::DrawText => {
-                    let t = cmds.read_draw_text(start);
+                    let t: DrawTextPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(t.rect);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
