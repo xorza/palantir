@@ -66,7 +66,7 @@ impl LayoutScratch {
         self.intrinsics.clear();
         self.intrinsics.resize(n, [f32::NAN; 4]);
         self.available_q.clear();
-        self.available_q.resize(n, AvailableKey::default());
+        self.available_q.resize(n, AvailableKey::UNSET);
         self.grid.hugs.reset_for(tree);
     }
 }

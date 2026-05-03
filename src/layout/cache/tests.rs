@@ -203,10 +203,11 @@ fn subtree_skip_restores_descendant_available_q() {
     let cold: Vec<_> = (0..n)
         .map(|i| ui.layout_engine.available_q(crate::tree::NodeId(i as u32)))
         .collect();
-    // Cold frame must have populated every descendant.
+    // Cold frame must have populated every descendant — no slot can
+    // remain at the `UNSET` frame-init sentinel.
     assert!(
         cold.iter()
-            .all(|q| *q != crate::layout::AvailableKey::default()),
+            .all(|q| *q != crate::layout::AvailableKey::UNSET),
         "cold frame must populate `available_q` for every node",
     );
 
