@@ -3,7 +3,7 @@ use super::{Axis, LayoutEngine, LenReq};
 use crate::element::LayoutMode;
 use crate::primitives::{Rect, Size, Sizing, Span, Track};
 use crate::text::TextMeasurer;
-use crate::tree::{NodeId, Tree};
+use crate::tree::{Child, NodeId, Tree};
 use glam::Vec2;
 use std::ops::Range;
 use std::rc::Rc;
@@ -341,9 +341,10 @@ fn measure_inner(
     }
 
     // Phase 1: query column intrinsics for Hug-column span-1 cells.
-    // Resolves the col axis without measuring children — gives cells a
-    // committed column width before they shape, which is the whole point
-    // of Step B.
+    // Resolves the col axis without measuring children — the whole
+    // point is to give cells a committed column width before they
+    // shape (otherwise wrap text in Hug cols would always shape at INF
+    // and never wrap).
     let col_tracks = tracks_at(layout, depth, Axis::X);
     for c in tree.children_active(node) {
         let cell = tree.read_extras(c).grid;
@@ -354,13 +355,12 @@ fn measure_inner(
         if !matches!(t.size, Sizing::Hug) {
             continue;
         }
-        let cmin = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, text);
-        let cmax = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, text);
+        let bounds = layout.intrinsic_pair(tree, c, Axis::X, text);
         let i = cell.col as usize;
         let cols_min = layout.scratch.grid.hugs.min_mut(idx, Axis::X);
-        cols_min[i] = cols_min[i].max(cmin);
+        cols_min[i] = cols_min[i].max(bounds.min);
         let cols_max = layout.scratch.grid.hugs.max_mut(idx, Axis::X);
-        cols_max[i] = cols_max[i].max(cmax);
+        cols_max[i] = cols_max[i].max(bounds.max);
     }
 
     // Resolve column widths now (Fixed + Hug + Fill). Gives every cell a
@@ -400,8 +400,16 @@ fn measure_inner(
     // Phase 2: measure cells with resolved col widths. Rows are still
     // unresolved (only Fixed is known); cells get INF on row axis as
     // before. Cell desired heights feed row Hug resolution next.
-    for c in tree.children(node) {
-        let collapsed = tree.is_collapsed(c);
+    for child in tree.children_with_state(node) {
+        let c = match child {
+            Child::Collapsed(c) => {
+                // Still measure so the subtree's `desired` is zeroed
+                // (LayoutEngine::measure short-circuits on collapsed).
+                layout.measure(tree, c, Size::ZERO, text);
+                continue;
+            }
+            Child::Active(c) => c,
+        };
         let cell = tree.read_extras(c).grid;
 
         let avail = {
@@ -409,12 +417,11 @@ fn measure_inner(
             // `sum_spanned_known` returns INFINITY if any spanned col is
             // unresolved. After `resolve_axis` ran above, Fixed and Hug
             // cols are marked resolved; Fill cols intentionally stay
-            // unresolved so cells in them get INF here — preserves the
-            // pre-Step B behavior where Fill is finalized only at
-            // arrange time. Without this, cells in Fill cols measure at
-            // a different width than they're arranged at, and that
-            // discrepancy commits row heights based on a width arrange
-            // doesn't honor.
+            // unresolved so cells in them get INF here — Fill stays
+            // finalized at arrange time. Without this, cells in Fill
+            // cols would measure at a different width than they're
+            // arranged at, and that discrepancy commits row heights
+            // based on a width arrange doesn't honor.
             let avail_w = sum_spanned_known(&s.col.sizes, &s.col.resolved, cell.col, cell.col_span);
             // Rows: only Fixed is known yet; Hug and Fill are unresolved
             // → INF (WPF intrinsic trick), as before.
@@ -423,9 +430,6 @@ fn measure_inner(
         };
 
         let d = layout.measure(tree, c, avail, text);
-        if collapsed {
-            continue;
-        }
 
         // Row Hug accumulates from cell's measured height. Row min-content
         // could come from a Y intrinsic query, but it'd be the single-line
@@ -585,11 +589,14 @@ fn arrange_inner(
     }
 
     let parent_child_align = tree.read_extras(node).child_align;
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            zero_subtree(layout, tree, c, inner.min);
-            continue;
-        }
+    for child in tree.children_with_state(node) {
+        let c = match child {
+            Child::Collapsed(c) => {
+                zero_subtree(layout, tree, c, inner.min);
+                continue;
+            }
+            Child::Active(c) => c,
+        };
         let s_node = *tree.layout(c);
         let cell = tree.read_extras(c).grid;
         let d = layout.scratch.desired[c.index()];
@@ -666,7 +673,7 @@ fn span_size(sizes: &[f32], start: u16, span: u16, gap: f32) -> f32 {
 /// only by Phase 4 to decide whether Fill tracks can be marked resolved
 /// at measure time.
 ///
-/// **Step B algorithm**, four phases:
+/// **Algorithm**, four phases:
 /// 1. **Fixed:** clamp `Sizing::Fixed(v)` to `[Track.min, Track.max]`,
 ///    consume from available.
 /// 2. **Hug:** constraint-solve `[hug_min ⊔ Track.min, hug_max ⊓ Track.max]`
@@ -778,8 +785,10 @@ fn resolve_axis(
         }
     }
 
-    // Phase 3: Fill — constraint-by-exclusion (preserved from pre-Step B
-    // algorithm). Fills get the leftover after Fixed + Hug.
+    // Phase 3: Fill — constraint-by-exclusion. Fills get the leftover
+    // after Fixed + Hug, distributed by weight; any Fill whose share
+    // falls outside `[Track.min, Track.max]` clamps and exits the
+    // pool, remaining Fills rebalance.
     let mut remaining = (total - consumed).max(0.0);
     a.flexible.clear();
     let mut flexible_weight = 0.0_f32;
@@ -832,10 +841,9 @@ fn resolve_axis(
 }
 
 /// Intrinsic size of a Grid: per-track contribution aggregated from
-/// span-1 cells, summed across tracks plus gaps. Step B's full algorithm
-/// will refactor `measure` to consume this; for Step A this just answers
-/// "what would the Grid prefer to be on this axis?" so callers can read
-/// it without measuring.
+/// span-1 cells, summed across tracks plus gaps. Answers "what would
+/// the Grid prefer to be on this axis?" so callers can read it without
+/// running `measure`.
 ///
 /// Per-track contribution mirrors `Track`'s `Sizing` interpretation:
 /// - `Fixed(v)`: contributes `v` clamped to `[Track.min, Track.max]`.

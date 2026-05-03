@@ -203,10 +203,10 @@ below). Either way, no iterative re-measure, no WPF-style
 ## Future direction: native vs Taffy
 
 The committed layout vocabulary is **`HStack`, `VStack`, `ZStack`,
-`Canvas`, `Grid`**. Step C extends Stack Fill to be intrinsic-aware
-(chat message); the Grid algorithm above extends Auto track sizing the
-same way (property grid). Beyond this, the native panel set is "done"
-for the foreseeable future.
+`Canvas`, `Grid`**. Stack Fill is intrinsic-aware (chat message
+pattern); the Grid algorithm above extends Auto track sizing the same
+way (property grid pattern). Beyond this, the native panel set is
+"done" for the foreseeable future.
 
 If demand for richer flex/grid features (percentage flex-basis, wrap,
 align-content, CSS Grid `minmax`/`repeat`/named areas) ever arrives,

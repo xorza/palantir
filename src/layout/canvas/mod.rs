@@ -2,7 +2,7 @@ use super::support::{child_avail_per_axis_hug, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
 use crate::primitives::{Rect, Size};
 use crate::text::TextMeasurer;
-use crate::tree::{NodeId, Tree};
+use crate::tree::{Child, NodeId, Tree};
 
 #[cfg(test)]
 mod tests;
@@ -10,7 +10,8 @@ mod tests;
 /// Canvas: children placed at their declared `Layout.position` (parent-inner
 /// coords, defaulting to `(0, 0)`). Per-axis available width: pass `inner`
 /// when Canvas itself is constrained (Fill / Fixed) so children that need
-/// to know their slot for Step B's column resolution get a meaningful
+/// a finite slot to commit cell widths (e.g. Grid's Phase-1 column
+/// resolution, wrap text reshaping) get a meaningful
 /// constraint. Pass `INFINITY` only on Hug axes, where `inner` would
 /// trigger recursive sizing of Fill children. Same per-axis pattern Stack
 /// uses on its cross axis. Content size =
@@ -43,11 +44,14 @@ pub(super) fn measure(
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `measure`.
 pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
-    for c in tree.children(node) {
-        if tree.is_collapsed(c) {
-            zero_subtree(layout, tree, c, inner.min);
-            continue;
-        }
+    for child in tree.children_with_state(node) {
+        let c = match child {
+            Child::Collapsed(c) => {
+                zero_subtree(layout, tree, c, inner.min);
+                continue;
+            }
+            Child::Active(c) => c,
+        };
         let d = layout.scratch.desired[c.index()];
         let pos = tree.read_extras(c).position;
         let child_rect = Rect {

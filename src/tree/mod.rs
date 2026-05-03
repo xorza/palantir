@@ -240,6 +240,21 @@ impl Tree {
             self.node_count() - 1,
             "shapes for node {idx} must be added contiguously, before any child node",
         );
+        // Multi-`Shape::Text` per leaf is unsupported: layout records a
+        // single `ShapedText` per node and the encoder emits a single
+        // `DrawText` rect — a second text shape would silently
+        // overwrite the first's shaped buffer / cache key. Catch at
+        // authoring time rather than letting the corruption land in
+        // `LayoutResult.text_shapes`.
+        if matches!(shape, Shape::Text { .. }) {
+            let start = self.shape_starts[idx] as usize;
+            assert!(
+                !self.shapes[start..]
+                    .iter()
+                    .any(|s| matches!(s, Shape::Text { .. })),
+                "node {idx} already has a Shape::Text — multiple text shapes per leaf are unsupported",
+            );
+        }
         self.shapes.push(shape);
         *self.shape_starts.last_mut().unwrap() = self.shapes.len() as u32;
     }
@@ -319,9 +334,25 @@ impl Tree {
     /// Layout drivers measure/intrinsic loops use this to skip the
     /// `if tree.is_collapsed(c) { continue; }` boilerplate. Arrange loops
     /// generally still need the explicit branch because collapsed children
-    /// affect cursor/gap bookkeeping differently.
+    /// affect cursor/gap bookkeeping differently — see [`Self::children_with_state`].
     pub fn children_active(&self, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         self.children(parent).filter(|&c| !self.is_collapsed(c))
+    }
+
+    /// Iterate child NodeIds of `parent` tagged with their collapse state.
+    /// Used by every arrange driver: collapsed children must still be
+    /// visited (so their subtree's rects get zeroed at the parent's
+    /// anchor) but contribute nothing to cursors or content size.
+    /// Replacing the per-driver `if tree.is_collapsed(c) {…} continue;`
+    /// boilerplate.
+    pub fn children_with_state(&self, parent: NodeId) -> impl Iterator<Item = Child> + '_ {
+        self.children(parent).map(|c| {
+            if self.is_collapsed(c) {
+                Child::Collapsed(c)
+            } else {
+                Child::Active(c)
+            }
+        })
     }
 
     /// Authoring hash for `id`. `NodeHash::UNCOMPUTED` if
@@ -400,6 +431,19 @@ pub struct ChildIter<'a> {
     subtree_end: &'a [u32],
     next: u32,
     end: u32,
+}
+
+/// Child of a parent, tagged with its collapse state. Yielded by
+/// [`Tree::children_with_state`]; the dispatch on this enum replaces
+/// the `if tree.is_collapsed(c) {…} continue;` boilerplate that used
+/// to live in every arrange driver.
+#[derive(Copy, Clone, Debug)]
+pub enum Child {
+    /// Visible / measured child — drive its layout normally.
+    Active(NodeId),
+    /// Collapsed child — its subtree must be zeroed at the parent's
+    /// anchor and skipped from cursor/content bookkeeping.
+    Collapsed(NodeId),
 }
 
 impl<'a> Iterator for ChildIter<'a> {

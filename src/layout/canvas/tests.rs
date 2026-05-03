@@ -84,15 +84,15 @@ fn canvas_negative_position_does_not_extend_bbox() {
 
 #[test]
 fn canvas_fill_child_takes_constrained_canvas_inner() {
-    // Step B behavior change (was: Fill in Canvas falls back to intrinsic
-    // = 0). A constrained Canvas (Fixed/Fill) now passes its inner size
-    // to children, so a Fill child takes the canvas's full inner. The
+    // A constrained Canvas (Fixed/Fill) passes its inner size to
+    // children, so a Fill child takes the canvas's full inner. The
     // child's `position` still applies — placed at `pos + inner.size`,
     // which may overflow the canvas's own rect.
     //
-    // The old "Fill = 0 in Canvas" rule was a Canvas-specific quirk that
-    // broke Step B's constraint propagation for Hug Grid children.
-    // Authors who genuinely want "no Fill behavior" can use `Sizing::Hug`.
+    // The old "Fill = 0 in Canvas" rule (Fill falls back to intrinsic
+    // unconditionally) was a Canvas-specific quirk that broke
+    // constraint propagation for Hug Grid children. Authors who
+    // genuinely want "no Fill behavior" can use `Sizing::Hug`.
     //
     // Hug Canvas (no constraint to propagate) still passes INF on Hug
     // axes → Fill falls back to intrinsic. Pinned by

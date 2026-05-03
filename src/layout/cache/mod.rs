@@ -54,11 +54,24 @@ pub(crate) struct ArenaSnapshot {
 /// key. `i32::MAX` on either axis represents an infinite available
 /// (ZStack / Hug parents propagate `f32::INFINITY`). Equality compare
 /// is used as a cache-validity gate.
+///
+/// `Default` returns [`Self::UNSET`] (not zero-bytes): any
+/// `Vec<AvailableKey>::resize(n, Default::default())` therefore keeps
+/// the false-hit defense, even though the type still derives
+/// `bytemuck::Zeroable` (zero-bytes is a valid representation; it just
+/// isn't the `Default`).
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct AvailableKey {
     pub w: i32,
     pub h: i32,
+}
+
+impl Default for AvailableKey {
+    #[inline]
+    fn default() -> Self {
+        Self::UNSET
+    }
 }
 
 impl AvailableKey {
@@ -75,6 +88,11 @@ impl AvailableKey {
         w: i32::MIN,
         h: i32::MIN,
     };
+
+    /// Zero-bytes representation. Distinct from `Default::default()`
+    /// (which is `UNSET`). Provided for cases that genuinely want
+    /// `{0, 0}` rather than the unset sentinel.
+    pub const ZERO: Self = Self { w: 0, h: 0 };
 }
 
 /// What [`MeasureCache::try_lookup`] returns on a hit. The slices are

@@ -24,7 +24,7 @@ mod integration_tests;
 
 pub use axis::Axis;
 pub use cache::{AvailableKey, quantize_available};
-pub use intrinsic::LenReq;
+pub use intrinsic::{IntrinsicBounds, LenReq};
 pub use result::{LayoutResult, ShapedText};
 
 /// Per-frame intermediate state: every field is reset / overwritten at
@@ -145,7 +145,10 @@ impl LayoutEngine {
     /// parent's available width or the arranged rect. Memoized via the
     /// intra-frame cache so repeated queries during the same `run` cost
     /// one array load. Consumed by `grid::measure` (Phase 1 column
-    /// resolution) and `stack::measure` (Fill min-content floor).
+    /// resolution) and `stack::measure` (Fill min-content floor). When
+    /// a caller wants both `MinContent` and `MaxContent` for the same
+    /// `(node, axis)` (Grid Phase-1 does), prefer
+    /// [`Self::intrinsic_pair`].
     pub fn intrinsic(
         &mut self,
         tree: &Tree,
@@ -162,6 +165,35 @@ impl LayoutEngine {
         let v = intrinsic::compute(self, tree, node, axis, req, text);
         self.scratch.intrinsics[node.index()][slot] = v;
         v
+    }
+
+    /// Both `(MinContent, MaxContent)` intrinsics on `axis` in one
+    /// call. Returns the cached pair when both slots are populated;
+    /// otherwise runs `compute_pair` once and writes both slots.
+    /// Compared to two `intrinsic` calls: one cache check, one
+    /// dispatcher entry, one leaf-side `text.shape_unbounded` per leaf
+    /// (the per-axis pair is extracted from the single shaped result).
+    pub fn intrinsic_pair(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        axis: Axis,
+        text: &mut TextMeasurer,
+    ) -> IntrinsicBounds {
+        let min_slot = LenReq::MinContent.slot(axis);
+        let max_slot = LenReq::MaxContent.slot(axis);
+        let cached_min = self.scratch.intrinsics[node.index()][min_slot];
+        let cached_max = self.scratch.intrinsics[node.index()][max_slot];
+        if !cached_min.is_nan() && !cached_max.is_nan() {
+            return IntrinsicBounds {
+                min: cached_min,
+                max: cached_max,
+            };
+        }
+        let bounds = intrinsic::compute_pair(self, tree, node, axis, text);
+        self.scratch.intrinsics[node.index()][min_slot] = bounds.min;
+        self.scratch.intrinsics[node.index()][max_slot] = bounds.max;
+        bounds
     }
 
     /// Run measure + arrange for `root` given the surface rect. Reuses
