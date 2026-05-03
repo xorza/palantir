@@ -138,21 +138,23 @@ fn changing_available_forces_miss_and_remeasure() {
     ui.end_frame();
 
     let wid = WidgetId::from_hash("fill");
-    let (snap1, desired1) = snap_for(&ui, wid).unwrap();
-    let avail1 = snap1.available_q;
-    let d1 = desired1[0];
+    let avail1 =
+        ui.layout_engine.cache.available_arena[snap_for(&ui, wid).unwrap().0.start as usize];
+    let d1 = snap_for(&ui, wid).unwrap().1[0];
 
     ui.begin_frame(Display::from_physical(UVec2::new(80, 80), 1.0));
     Panel::hstack_with_id("root").show(&mut ui, build);
     ui.end_frame();
 
-    let (snap2, desired2) = snap_for(&ui, wid).unwrap();
+    let avail2 =
+        ui.layout_engine.cache.available_arena[snap_for(&ui, wid).unwrap().0.start as usize];
+    let desired2 = snap_for(&ui, wid).unwrap().1[0];
     assert_ne!(
-        avail1, snap2.available_q,
+        avail1, avail2,
         "shrinking the surface must change the cache's available key",
     );
     assert_ne!(
-        d1, desired2[0],
+        d1, desired2,
         "remeasure must produce a different desired for a Fill child",
     );
 }
@@ -208,7 +210,8 @@ fn subtree_skip_restores_descendant_available_q() {
         .collect();
     // Cold frame must have populated every descendant.
     assert!(
-        cold.iter().all(|q| *q != crate::layout::AvailableKey::ZERO),
+        cold.iter()
+            .all(|q| *q != crate::layout::AvailableKey::default()),
         "cold frame must populate `available_q` for every node",
     );
 

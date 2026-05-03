@@ -1,5 +1,6 @@
 use super::support::{AutoBias, place_two_axis, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
+use crate::element::LayoutMode;
 use crate::primitives::{Rect, Size, Sizing, Track};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
@@ -219,6 +220,68 @@ impl GridHugStore {
     pub(super) fn min_mut(&mut self, idx: u16, axis: Axis) -> &mut [f32] {
         let r = self.axis_slice(idx, axis);
         &mut self.min_pool[r]
+    }
+
+    /// Pack per-grid hug arrays for every `LayoutMode::Grid` descendant
+    /// in `subtree` (pre-order node-index range) into `out`. Used by
+    /// the cross-frame measure cache: when a subtree is snapshotted,
+    /// arrange's hug state must be saved so a later cache hit at any
+    /// ancestor can restore it via [`Self::restore_subtree`]. Order
+    /// must match `restore_subtree` exactly: cols.max, cols.min,
+    /// rows.max, rows.min per Grid, in pre-order.
+    pub(in crate::layout) fn snapshot_subtree(
+        &self,
+        tree: &Tree,
+        subtree: Range<usize>,
+        out: &mut Vec<f32>,
+    ) {
+        for i in subtree {
+            if let LayoutMode::Grid(idx) = tree.layout[i].mode {
+                out.extend_from_slice(self.max(idx, Axis::X));
+                out.extend_from_slice(self.min(idx, Axis::X));
+                out.extend_from_slice(self.max(idx, Axis::Y));
+                out.extend_from_slice(self.min(idx, Axis::Y));
+            }
+        }
+    }
+
+    /// Inverse of `snapshot_subtree`: walks the same pre-order range
+    /// and pours four hug arrays per Grid back into the slot at the
+    /// current frame's `idx`. `subtree_hash` equality on the cache key
+    /// guarantees same Grid count and same `(n_cols, n_rows)` per
+    /// Grid in the same order, so the slice and the walk align.
+    pub(in crate::layout) fn restore_subtree(
+        &mut self,
+        tree: &Tree,
+        subtree: Range<usize>,
+        hugs: &[f32],
+    ) {
+        let mut pos = 0usize;
+        for i in subtree {
+            if let LayoutMode::Grid(idx) = tree.layout[i].mode {
+                let def = tree.grid_def(idx);
+                let n_cols = def.cols.len();
+                let n_rows = def.rows.len();
+                self.max_mut(idx, Axis::X)
+                    .copy_from_slice(&hugs[pos..pos + n_cols]);
+                pos += n_cols;
+                self.min_mut(idx, Axis::X)
+                    .copy_from_slice(&hugs[pos..pos + n_cols]);
+                pos += n_cols;
+                self.max_mut(idx, Axis::Y)
+                    .copy_from_slice(&hugs[pos..pos + n_rows]);
+                pos += n_rows;
+                self.min_mut(idx, Axis::Y)
+                    .copy_from_slice(&hugs[pos..pos + n_rows]);
+                pos += n_rows;
+            }
+        }
+        debug_assert_eq!(
+            pos,
+            hugs.len(),
+            "snapshot hug slice length disagrees with current subtree's grid descendants \
+             (cache key let through a structural change?)",
+        );
     }
 }
 
