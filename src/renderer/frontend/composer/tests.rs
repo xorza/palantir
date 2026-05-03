@@ -58,9 +58,9 @@ fn run(cmds: &[RenderCmd], display: &Display) -> RenderBuffer {
             }
         }
     }
-    let mut buf = RenderBuffer::default();
-    Composer::new().compose(&buffer, display, &mut buf);
-    buf
+    let mut composer = Composer::new();
+    composer.compose(&buffer, display);
+    std::mem::take(&mut composer.buffer)
 }
 
 #[test]

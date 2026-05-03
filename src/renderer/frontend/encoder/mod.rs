@@ -33,21 +33,22 @@ use cache::EncodeCache;
 /// win.
 #[derive(Default)]
 pub(crate) struct Encoder {
-    cache: EncodeCache,
+    pub(crate) cache: EncodeCache,
+    pub(crate) cmds: RenderCmdBuffer,
 }
 
 impl Encoder {
-    /// Encode `tree` into `out` using last frame's cache for subtree
-    /// skips (when `damage_filter.is_none()`).
+    /// Encode `tree` into the encoder's owned command buffer using last
+    /// frame's cache for subtree skips (when `damage_filter.is_none()`),
+    /// and return a borrow of the freshly-encoded result.
     pub fn encode(
         &mut self,
         tree: &Tree,
         layout: &LayoutResult,
         cascades: &CascadeResult,
         damage_filter: Option<Rect>,
-        out: &mut RenderCmdBuffer,
-    ) {
-        out.clear();
+    ) -> &RenderCmdBuffer {
+        self.cmds.clear();
         if let Some(root) = tree.root() {
             encode_node(
                 tree,
@@ -56,9 +57,10 @@ impl Encoder {
                 damage_filter,
                 &mut self.cache,
                 root,
-                out,
+                &mut self.cmds,
             );
         }
+        &self.cmds
     }
 
     /// Drop cache entries for `WidgetId`s that vanished this frame.

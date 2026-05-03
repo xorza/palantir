@@ -6,18 +6,18 @@ use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::quad::Quad;
 
 /// CPU-only compose engine: turns a `RenderCmd` stream into a `RenderBuffer`
-/// (physical-px quads + text runs + scissor groups) supplied by the caller.
-/// Owns just the compose-time scratch stacks so steady-state rendering is
-/// alloc-free.
+/// (physical-px quads + text runs + scissor groups). Owns its output buffer
+/// + compose-time scratch stacks so steady-state rendering is alloc-free.
 ///
-/// Composer doesn't know about `Tree`, `encode`, or where the output buffer
-/// lives — it's pure algorithm + scratch. [`Pipeline`] orchestrates encode +
-/// compose and owns the buffer.
+/// Composer doesn't know about `Tree` or `encode` — it's pure algorithm +
+/// scratch + output. [`Frontend`](crate::renderer::Frontend) orchestrates
+/// encode + compose.
 #[derive(Default)]
 pub struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
     clip_stack: Vec<URect>,
     transform_stack: Vec<TranslateScale>,
+    pub(crate) buffer: RenderBuffer,
 }
 
 impl Composer {
@@ -25,9 +25,12 @@ impl Composer {
         Self::default()
     }
 
-    /// Consume a logical-px command stream → physical-px `Quad`s + `TextRun`s
-    /// + draw groups (scissor ranges) into `out`. Pure: no device, no queue.
-    pub fn compose(&mut self, cmds: &RenderCmdBuffer, display: &Display, out: &mut RenderBuffer) {
+    /// Consume a logical-px command stream → physical-px `Quad`s +
+    /// `TextRun`s + draw groups (scissor ranges) into the composer's
+    /// owned buffer, and return a borrow of the freshly-composed
+    /// result. Pure: no device, no queue.
+    pub fn compose(&mut self, cmds: &RenderCmdBuffer, display: &Display) -> &RenderBuffer {
+        let out = &mut self.buffer;
         let scale = display.scale_factor;
         let snap = display.pixel_snap;
         let viewport_phys_f = [display.physical.x as f32, display.physical.y as f32];
@@ -161,6 +164,8 @@ impl Composer {
             out.texts.len() as u32,
             &mut out.groups,
         );
+
+        &self.buffer
     }
 }
 

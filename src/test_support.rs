@@ -6,7 +6,7 @@ use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{Display, Sizing};
-use crate::renderer::RenderCmdBuffer;
+use crate::renderer::{Encoder, RenderCmdBuffer};
 use crate::text::{CosmicMeasure, share};
 use crate::tree::NodeId;
 use crate::widgets::Panel;
@@ -77,16 +77,15 @@ pub(crate) fn encode_cmds_filtered(
     ui: &Ui,
     filter: Option<crate::primitives::Rect>,
 ) -> RenderCmdBuffer {
-    let mut cmds = RenderCmdBuffer::new();
     // Fresh `Encoder` per call → empty cache, every encode is a cold
     // build. Tests that want to verify cache-replay output use
-    // `Frontend::cmds()` from inside `Ui` instead.
-    Encoder::default().encode(
+    // `ui.frontend.encoder.cmds()` instead.
+    let mut encoder = Encoder::default();
+    encoder.encode(
         ui.tree(),
         ui.layout_engine.result(),
         ui.cascades.result(),
         filter,
-        &mut cmds,
     );
-    cmds
+    std::mem::take(&mut encoder.cmds)
 }
