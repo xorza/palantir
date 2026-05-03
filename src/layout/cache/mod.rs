@@ -61,6 +61,22 @@ pub struct AvailableKey {
     pub h: i32,
 }
 
+impl AvailableKey {
+    /// Sentinel "never written" value. Distinct from anything
+    /// [`quantize_available`] can produce: that function emits
+    /// `i32::MAX` for infinity or `>= 0` for finite (the inputs are
+    /// always non-negative `available` sizes), so `i32::MIN` cannot
+    /// collide with a real key. Used as the per-frame init fill for
+    /// `LayoutScratch.available_q` so a cache-validity equality check
+    /// can never spuriously match against a slot whose write was
+    /// somehow skipped — the `{0, 0}` default would compare equal to a
+    /// legitimately-stored 0px × 0px snapshot.
+    pub const UNSET: Self = Self {
+        w: i32::MIN,
+        h: i32::MIN,
+    };
+}
+
 /// What [`MeasureCache::try_lookup`] returns on a hit. The slices are
 /// borrows into the cache's arenas, ready to `copy_from_slice` into
 /// the caller's destination columns. `root` is the snapshot root's
