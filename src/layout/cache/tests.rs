@@ -500,3 +500,88 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
         "sibling leaf's arena slot must be untouched",
     );
 }
+
+/// Lifecycle: a widget can vanish (sweep_removed evicts its
+/// snapshot, arena slot becomes garbage) and reappear with the same
+/// id. Re-insertion exercises the append-on-no-prev branch of
+/// `write_subtree`, distinct from the steady-state in-place
+/// rewrite. The reappeared widget must measure correctly and the
+/// cache's `live_entries` accounting must stay consistent.
+#[test]
+fn cache_handles_widget_reappearance_after_eviction() {
+    let with_widget = |ui: &mut Ui| {
+        Panel::vstack_with_id("inner").show(ui, |ui| {
+            Frame::with_id("blip")
+                .size(40.0)
+                .fill(Color::rgb(0.5, 0.2, 0.7))
+                .show(ui);
+        });
+    };
+    let without_widget = |ui: &mut Ui| {
+        Panel::vstack_with_id("inner").show(ui, |_ui| {});
+    };
+
+    let mut ui = Ui::new();
+    let blip = WidgetId::from_hash("blip");
+
+    // Frame 1: present.
+    run_frame(&mut ui, with_widget);
+    let live_before = ui.layout_engine.cache.live_entries;
+    assert!(
+        ui.layout_engine.cache.snapshots.contains_key(&blip),
+        "widget must be cached after first frame",
+    );
+
+    // Frame 2: vanished — `SeenIds` flags it removed and
+    // `Ui::end_frame` calls `MeasureCache::sweep_removed`.
+    run_frame(&mut ui, without_widget);
+    assert!(
+        !ui.layout_engine.cache.snapshots.contains_key(&blip),
+        "vanished widget must be evicted via sweep_removed",
+    );
+    let live_after_evict = ui.layout_engine.cache.live_entries;
+    assert!(
+        live_after_evict < live_before,
+        "live_entries must decrease after eviction",
+    );
+
+    // Frame 3: reappears with same id. Re-insertion runs the
+    // `no-prev` arm of `write_subtree`. After the frame the
+    // snapshot must exist and live_entries must match what we'd see
+    // on a cold cache for the same build.
+    run_frame(&mut ui, with_widget);
+    assert!(
+        ui.layout_engine.cache.snapshots.contains_key(&blip),
+        "reappeared widget must be re-cached",
+    );
+
+    // Cold oracle: clear and run again. live_entries and the
+    // snapshot's payload must match the warm reappearance.
+    let warm_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();
+    let warm_desired = ui.layout_engine.cache.desired_arena[warm_snap.nodes.range()].to_vec();
+    let warm_live = ui.layout_engine.cache.live_entries;
+
+    ui.__clear_measure_cache();
+    run_frame(&mut ui, with_widget);
+
+    let cold_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();
+    let cold_desired = ui.layout_engine.cache.desired_arena[cold_snap.nodes.range()].to_vec();
+    let cold_live = ui.layout_engine.cache.live_entries;
+
+    assert_eq!(
+        warm_snap.subtree_hash, cold_snap.subtree_hash,
+        "reappeared subtree_hash must equal cold-rebuild's",
+    );
+    assert_eq!(
+        warm_snap.nodes.len, cold_snap.nodes.len,
+        "reappeared snapshot len must equal cold-rebuild's",
+    );
+    assert_eq!(
+        warm_desired, cold_desired,
+        "reappeared snapshot's desired payload must equal cold-rebuild's",
+    );
+    assert_eq!(
+        warm_live, cold_live,
+        "live_entries accounting must match cold rebuild",
+    );
+}
