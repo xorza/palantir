@@ -230,7 +230,7 @@ impl RenderCmdBuffer {
     pub(crate) fn read<T: bytemuck::Pod>(&self, start: u32) -> T {
         let start = start as usize;
         let n_words = std::mem::size_of::<T>() / 4;
-        debug_assert!(start + n_words <= self.data.len());
+        assert!(start + n_words <= self.data.len());
         let words = &self.data[start..start + n_words];
         // `pod_read_unaligned` so payloads with align >4 (e.g.
         // `DrawTextPayload` via `TextCacheKey: u64`) work even though

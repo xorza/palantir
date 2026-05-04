@@ -185,9 +185,9 @@ impl ComposeCache {
         };
 
         if let Some((q, t, g)) = prev_lens {
-            debug_assert!(self.live_quads >= q as usize);
-            debug_assert!(self.live_texts >= t as usize);
-            debug_assert!(self.live_groups >= g as usize);
+            assert!(self.live_quads >= q as usize);
+            assert!(self.live_texts >= t as usize);
+            assert!(self.live_groups >= g as usize);
             self.live_quads -= q as usize;
             self.live_texts -= t as usize;
             self.live_groups -= g as usize;
@@ -236,9 +236,9 @@ impl ComposeCache {
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
-                debug_assert!(self.live_quads >= snap.quads.len as usize);
-                debug_assert!(self.live_texts >= snap.texts.len as usize);
-                debug_assert!(self.live_groups >= snap.groups.len as usize);
+                assert!(self.live_quads >= snap.quads.len as usize);
+                assert!(self.live_texts >= snap.texts.len as usize);
+                assert!(self.live_groups >= snap.groups.len as usize);
                 self.live_quads -= snap.quads.len as usize;
                 self.live_texts -= snap.texts.len as usize;
                 self.live_groups -= snap.groups.len as usize;

@@ -69,7 +69,7 @@ impl Ui {
             // present. Subsequent idle frames flip back to `false`.
             repaint_requested: true,
             damage: Damage::default(),
-            frontend: Frontend::new(),
+            frontend: Frontend::default(),
         }
     }
 

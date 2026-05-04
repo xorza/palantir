@@ -124,7 +124,7 @@ impl EncodeCache {
         buf.kinds.extend_from_slice(hit.kinds);
         buf.starts.reserve(hit.starts.len());
         for &s in hit.starts {
-            debug_assert!(s as usize <= hit.data.len());
+            assert!(s as usize <= hit.data.len());
             buf.starts.push(s + dest_data_base);
         }
         let n = hit.kinds.len();
@@ -204,8 +204,8 @@ impl EncodeCache {
         // append new ones. The trailing `insert` overwrites any prior
         // snapshot at this wid in a single probe.
         if let Some((cmds_len, data_len)) = prev_lens {
-            debug_assert!(self.live_cmds >= cmds_len as usize);
-            debug_assert!(self.live_data >= data_len as usize);
+            assert!(self.live_cmds >= cmds_len as usize);
+            assert!(self.live_data >= data_len as usize);
             self.live_cmds -= cmds_len as usize;
             self.live_data -= data_len as usize;
         }
@@ -253,8 +253,8 @@ impl EncodeCache {
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
-                debug_assert!(self.live_cmds >= snap.cmds.len as usize);
-                debug_assert!(self.live_data >= snap.data.len as usize);
+                assert!(self.live_cmds >= snap.cmds.len as usize);
+                assert!(self.live_data >= snap.data.len as usize);
                 self.live_cmds -= snap.cmds.len as usize;
                 self.live_data -= snap.data.len as usize;
             }

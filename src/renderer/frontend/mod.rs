@@ -59,10 +59,6 @@ pub(crate) struct Frontend {
 }
 
 impl Frontend {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     /// Encode the tree into commands, compose them into the buffer.
     /// Disabled-dim and other paint-time theme constants are
     /// pre-resolved into `cascades` (`Cascade::rgb_mul`), so this stage
@@ -85,7 +81,7 @@ impl Frontend {
     /// `removed` slice that the measure cache and text reuse map
     /// consume; keeps every cross-frame cache eviction-locked.
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        self.encoder.sweep_removed(removed);
+        self.encoder.cache.sweep_removed(removed);
         self.composer.cache.sweep_removed(removed);
     }
 }
