@@ -52,7 +52,10 @@ const _: () = {
 
 /// 32-byte snapshot. `cmds` indexes the parallel (`kinds`, `starts`);
 /// `data` indexes `data`. Both `subtree_hash` and `available_q` are
-/// required equal at lookup time.
+/// required equal at lookup time. A snapshot exists only for nodes
+/// where `LayoutResult::available_q(id)` was `Some` — so a `wid`
+/// being present in `snapshots` implies layout has a known available
+/// size for it.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodeSnapshot {
     pub(crate) subtree_hash: NodeHash,
@@ -172,9 +175,10 @@ impl EncodeCache {
                 prev.available_q = available_q;
                 let src_kinds = &src.kinds[src_cmd_range.clone()];
                 // Same `subtree_hash` ⇒ same authoring ⇒ same cmd shape.
-                // A 64-bit hash collision (or future hash bug) would break
-                // this; pay one slice compare per write to catch it.
-                assert_eq!(&self.kinds.items[cmds.clone()], src_kinds);
+                // Debug-only because the only failure mode is a 64-bit
+                // FxHash collision (~1 in 2^64) or a future hash bug —
+                // not worth a slice memcmp per in-place write in release.
+                debug_assert_eq!(&self.kinds.items[cmds.clone()], src_kinds);
                 self.kinds.items[cmds.clone()].copy_from_slice(src_kinds);
                 for (dst, &abs) in self.starts[cmds.clone()]
                     .iter_mut()
@@ -259,6 +263,11 @@ impl EncodeCache {
         self.snapshots.clear();
     }
 
+    /// Rare path: only fires when an arena exceeds `live × COMPACT_RATIO`
+    /// AND lives above `COMPACT_FLOOR`. Allocating fresh `Vec`s sized
+    /// to `live` is cheaper than reusing scratch (which would carry
+    /// the larger pre-compact capacity until the next allocation
+    /// shrink) — revisit if compaction shows up in a profile.
     fn compact(&mut self) {
         let mut new_kinds: Vec<CmdKind> = Vec::with_capacity(self.kinds.live);
         let mut new_starts: Vec<u32> = Vec::with_capacity(self.kinds.live);
