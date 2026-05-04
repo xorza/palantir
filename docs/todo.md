@@ -1,6 +1,5 @@
 # Todo
 
-split visual tests from visual tetss harnes
 
 ## Damage rendering (`docs/damage-rendering.md`)
 
