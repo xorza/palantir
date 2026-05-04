@@ -32,6 +32,13 @@ impl<T> Default for LiveArena<T> {
 }
 
 impl<T> LiveArena<T> {
+    /// Account for `len` items just appended to `items` and now owned
+    /// by a snapshot. Caller has already extended `items`; this only
+    /// updates the live counter.
+    pub(crate) fn acquire(&mut self, len: u32) {
+        self.live += len as usize;
+    }
+
     /// Mark `len` items previously owned by some snapshot as garbage.
     /// The `items` vec is unchanged — the slack lives until the next
     /// `compact`.

@@ -226,8 +226,8 @@ impl EncodeCache {
             neg_origin,
         );
 
-        self.kinds.live += src_cmds.len as usize;
-        self.data.live += src_data.len as usize;
+        self.kinds.acquire(src_cmds.len);
+        self.data.acquire(src_data.len);
         self.snapshots.insert(
             wid,
             EncodeSnapshot {
