@@ -2,6 +2,8 @@
 
 Headless wgpu renderer → PNG → diff against committed golden images.
 
+Status legend: ✅ done · 🟡 partial · ⏳ not started
+
 ## Goals
 
 - Pin visual output of representative scenes (widgets, layout drivers, text).
@@ -16,55 +18,55 @@ Headless wgpu renderer → PNG → diff against committed golden images.
 
 ## Steps
 
-### 1. Add dev-deps
-- `image = "*"` (PNG encode/decode).
-- `pollster = "*"` (block on async wgpu init).
+### 1. Add dev-deps ✅
+- `image` added with PNG-only features (`default-features = false, features = ["png"]`).
+- `pollster` reused — already a regular dep.
 
-### 2. Headless harness — `src/support/visual_test.rs`
-- `async fn make_device() -> (Device, Queue)` — `Instance::request_adapter` with no surface.
-- `struct Harness { backend: WgpuBackend, device, queue, format: Rgba8UnormSrgb }`.
-- `fn render_scene(size: UVec2, scale: f32, scene: impl FnOnce(&mut Ui)) -> RgbaImage`:
-  1. Create target `Texture` (`RENDER_ATTACHMENT | COPY_SRC`).
-  2. `Ui::begin_frame(Display::from_physical(size, scale))` → run `scene` → `end_frame()`.
-  3. `backend.submit(&frame_output, &target)`.
-  4. `copy_texture_to_buffer` honoring 256-byte row alignment → map → strip padding → `RgbaImage`.
+### 2. Headless harness ✅
+Lives at `tests/visual/harness.rs` (not `src/support/`; integration-test-only, no need to ship it).
+- `Harness::new()` — `LowPower` adapter, no surface, `Rgba8UnormSrgb`, wires `CosmicMeasure` into both `Ui` and `WgpuBackend`.
+- `Harness::render(physical, scale, clear, scene)` → `RgbaImage`.
+- Private `readback()` honors the 256-byte row alignment, returns via `RgbaImage::from_raw`.
 
-Gate behind `#[cfg(any(test, feature = "visual-test"))]`.
+### 3. Diff utility ✅
+`tests/visual/diff.rs`:
+- `Tolerance { per_channel: u8, max_ratio: f32 }` — defaults `(2, 0.001)`.
+- `DiffReport { max_channel_delta, differing_pixels, differing_ratio, diff_image }`.
+- `diff(actual, expected, tol)` — passing pixels dimmed to 25%, failing pixels solid red.
+- 6 unit tests cover identical / within-channel / sparse-outlier-ratio / saturated-fail / strict-zero / dimension-mismatch.
 
-### 3. Diff utility
-- `fn diff(actual: &RgbaImage, expected: &RgbaImage) -> DiffReport` with:
-  - `max_channel_delta: u8`
-  - `differing_pixels: u32`
-  - `differing_ratio: f32`
-  - `diff_image: RgbaImage` (red overlay where delta > threshold).
-- `struct Tolerance { per_channel: u8, max_ratio: f32 }`; default `(2, 0.001)`.
+### 4. Test entry ✅ (with deviations)
+Cargo's documented multi-file pattern: `tests/visual/main.rs` + sibling modules, auto-discovered as `--test visual`. No `[[test]]` or `#[path]`.
 
-### 4. Test entry — `tests/visual.rs`
-- `#[ignore]` by default; run via `cargo test --test visual -- --ignored`.
-- Fixture table: `&[(name, UVec2, fn(&mut Ui))]`.
-- For each: render → load golden → diff → on failure write `actual/diff` to `tests/visual/output/<name>/`.
-- `UPDATE_GOLDEN=1` env var → write `expected.png` instead of asserting.
+Deviations from the original plan:
+- **Not `#[ignore]` by default.** One fixture passes deterministically on dev machines; revisit once we have more fixtures or a CI baseline.
+- **Auto-create on missing golden** (in addition to `UPDATE_GOLDEN=1` force-rewrite). First run prints `NEW GOLDEN (no prior image)` and passes.
+- No fixture table yet — fixtures are individual `#[test]` fns. Will introduce a table if/when count justifies.
 
-### 5. Initial fixtures (3, minimal)
-- `button_default` — single `Button::new("Click")`, 200×80.
-- `grid_3x3` — small grid with colored frames, 400×400.
-- `text_paragraph` — multi-line `Text`, 400×200.
+### 5. Initial fixtures 🟡
+- ✅ `button_hello` — 256×96, single `Button` with label.
+- ⏳ `grid_3x3` — small grid with colored frames, 400×400.
+- ⏳ `text_paragraph` — multi-line `Text`, 400×200.
+- ✅ Bonus: `readback_returns_clear_color_for_empty_scene` — round-trips clear color through wgpu/sRGB pipeline (no golden, asserts pixel values directly).
 
-Goldens committed under `tests/visual/golden/<name>.png`.
+### 6. CI posture ⏳
+Local-only for now. No GitHub Actions job yet.
 
-### 6. CI posture
-- Local + manual runs only at first.
-- Once stable, add a single GitHub Actions job pinned to one runner image, still `--ignored` opt-in.
-- Revisit cross-GPU strategy (software adapter? per-platform goldens?) after a few weeks of use.
-
-### 7. Later (deferred)
-- Auto-import all `examples/showcase/` tabs as fixtures.
+### 7. Later (deferred) ⏳
+- Auto-import `examples/showcase/` tabs as fixtures.
 - Per-fixture tolerance overrides.
 - HTML diff report (gallery of failures).
 - Multi-frame / interaction capture (hover, focus).
+- Hidpi (scale 2.0) variants.
 
 ## Open questions
 
-- Adapter selection: prefer integrated GPU (`LowPower`) for determinism, or whatever the host has?
-- Golden storage: raw PNG in repo, or git-lfs once count grows?
-- Scale factor in goldens: pin at 1.0, or also test 2.0 (hidpi snapping)?
+- **Adapter selection** — currently `LowPower`. Revisit if dev-machine vs CI runners diverge.
+- **Golden storage** — raw PNG in repo (1.5 KB for current fixture). Re-evaluate at ~50+ fixtures or if any single golden exceeds ~100 KB.
+- **Scale factor** — pinned at 1.0. No 2.0 fixtures yet.
+
+## What's left, prioritized
+
+1. Add `grid_3x3` and `text_paragraph` fixtures (Step 5).
+2. Decide CI posture (Step 6) — probably gate behind `--ignored` once a second fixture exists, then wire one CI job.
+3. Tackle deferred items (Step 7) opportunistically.
