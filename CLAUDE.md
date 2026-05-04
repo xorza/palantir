@@ -134,6 +134,7 @@ fall back to `~/.cargo/registry/src/...` if the crate isn't listed in
 - Default to the narrowest visibility. Demote `pub` → `pub(crate)` → private whenever nothing outside that scope uses the item; this crate has no external consumers.
 - Small refactors to shrink the public surface are welcome.
 - Split fat-test files into `foo/{mod.rs, tests.rs}` when tests dominate the file (>40% or >150 lines).
+- **No re-exports inside the crate.** Only `lib.rs` is allowed to `pub use` items to define the published API surface. Intermediate `mod.rs` files do not re-export — make submodules `pub(crate)` and have callers import via the canonical path (`use crate::primitives::color::Color`, not `use crate::primitives::Color`). Re-exports flatten paths, but they hurt grep-ability ("where does `Color` actually live?") and create cycles of "do I import from the leaf or the parent?". One canonical path per item.
 
 ## Before reporting work as done
 
