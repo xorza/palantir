@@ -25,6 +25,28 @@
 //! Eviction (via [`MeasureCache::sweep_removed`]) drops the snapshot
 //! and releases its arena ranges; the slots stay as garbage until the
 //! next compact.
+//!
+//! ## `available_q` lives in three places — by design
+//!
+//! 1. [`MeasureCache::available`] — per-node arena, parallel to
+//!    `desired`. Stores every cached subtree's per-node quantized
+//!    `available`. The dimensional half of the cache key for *every*
+//!    descendant when a snapshot is restored.
+//! 2. [`ArenaSnapshot::available_q`] — single value at the snapshot
+//!    root. Equals `available[nodes.start]`. Read directly at lookup
+//!    time as the cache-validity gate ("did the parent change available
+//!    since last frame?"); the per-node copy could be read instead but
+//!    this saves one indirection on the hot path.
+//! 3. [`crate::layout::result::LayoutResult::available_q`] — per-node,
+//!    per-frame. Written by `LayoutEngine::measure` on every node it
+//!    visits, restored from the arena copy on a cache hit so descendants
+//!    skipped by the short-circuit still carry their value. Read by
+//!    downstream consumers (encode cache, etc.) at every visited node.
+//!
+//! The data flow on a hit: parent's `measure` looks up the snapshot,
+//! restores `desired` + `text_shapes` + `available_q` + `hugs` slices
+//! into per-frame storage, returns the root size — descendants are
+//! never visited but their per-frame state matches as if they had been.
 
 use crate::common::cache_arena::LiveArena;
 use crate::layout::result::ShapedText;
@@ -258,18 +280,6 @@ impl MeasureCache {
                 self.hugs.release(snap.hugs.len);
             }
         }
-    }
-
-    /// Drop every cross-frame snapshot. Reachable only via
-    /// `internals::clear_measure_cache` (gated to tests + the
-    /// `internals` feature) — not part of any production code path.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) fn clear(&mut self) {
-        self.desired.clear();
-        self.text.clear();
-        self.available.clear();
-        self.hugs.clear();
-        self.snapshots.clear();
     }
 
     /// Walk every snapshot, copy its live range into a freshly-packed

@@ -1,7 +1,7 @@
 use crate::layout::axis::Axis;
 use crate::layout::cache::{MeasureCache, quantize_available};
 use crate::layout::grid::GridContext;
-use crate::layout::intrinsic::{IntrinsicBounds, LenReq, SLOT_COUNT};
+use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::result::{LayoutResult, ShapedText};
 use crate::layout::support::{leaf_text_shapes, resolve_axis_size, zero_subtree};
 use crate::layout::types::sizing::Sizing;
@@ -114,12 +114,10 @@ fn resolve_desired(
     min_size: Size,
     max_size: Size,
 ) -> Size {
-    let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
-    let hug_h = content.h + style.padding.vert() + style.margin.vert();
     Size::new(
         resolve_axis_size(
             style.size.w,
-            hug_w,
+            content.w + style.padding.horiz() + style.margin.horiz(),
             available.w,
             style.margin.horiz(),
             min_size.w,
@@ -127,7 +125,7 @@ fn resolve_desired(
         ),
         resolve_axis_size(
             style.size.h,
-            hug_h,
+            content.h + style.padding.vert() + style.margin.vert(),
             available.h,
             style.margin.vert(),
             min_size.h,
@@ -155,10 +153,7 @@ impl LayoutEngine {
     /// parent's available width or the arranged rect. Memoized via the
     /// intra-frame cache so repeated queries during the same `run` cost
     /// one array load. Consumed by `grid::measure` (Phase 1 column
-    /// resolution) and `stack::measure` (Fill min-content floor). When
-    /// a caller wants both `MinContent` and `MaxContent` for the same
-    /// `(node, axis)` (Grid Phase-1 does), prefer
-    /// [`Self::intrinsic_pair`].
+    /// resolution) and `stack::measure` (Fill min-content floor).
     pub(crate) fn intrinsic(
         &mut self,
         tree: &Tree,
@@ -175,35 +170,6 @@ impl LayoutEngine {
         let v = intrinsic::compute(self, tree, node, axis, req, text);
         self.scratch.intrinsics[node.index()][slot] = v;
         v
-    }
-
-    /// Both `(MinContent, MaxContent)` intrinsics on `axis` in one
-    /// call. Returns the cached pair when both slots are populated;
-    /// otherwise runs `compute_pair` once and writes both slots.
-    /// Compared to two `intrinsic` calls: one cache check, one
-    /// dispatcher entry, one leaf-side `text.shape_unbounded` per leaf
-    /// (the per-axis pair is extracted from the single shaped result).
-    pub(crate) fn intrinsic_pair(
-        &mut self,
-        tree: &Tree,
-        node: NodeId,
-        axis: Axis,
-        text: &mut TextMeasurer,
-    ) -> IntrinsicBounds {
-        let min_slot = LenReq::MinContent.slot(axis);
-        let max_slot = LenReq::MaxContent.slot(axis);
-        let cached_min = self.scratch.intrinsics[node.index()][min_slot];
-        let cached_max = self.scratch.intrinsics[node.index()][max_slot];
-        if !cached_min.is_nan() && !cached_max.is_nan() {
-            return IntrinsicBounds {
-                min: cached_min,
-                max: cached_max,
-            };
-        }
-        let bounds = intrinsic::compute_pair(self, tree, node, axis, text);
-        self.scratch.intrinsics[node.index()][min_slot] = bounds.min;
-        self.scratch.intrinsics[node.index()][max_slot] = bounds.max;
-        bounds
     }
 
     /// Run measure + arrange for `root` given the surface rect. Reuses

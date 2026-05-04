@@ -14,7 +14,12 @@ use crate::Ui;
 /// Drop every cross-frame measure-cache entry, forcing the next frame
 /// to re-measure every leaf from scratch. See `benches/measure_cache.rs`.
 pub fn clear_measure_cache(ui: &mut Ui) {
-    ui.layout_engine.cache.clear();
+    let cache = &mut ui.layout_engine.cache;
+    cache.desired.clear();
+    cache.text.clear();
+    cache.available.clear();
+    cache.hugs.clear();
+    cache.snapshots.clear();
 }
 
 /// Drop every cross-frame encode-cache entry, forcing the next frame's

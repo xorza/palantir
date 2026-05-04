@@ -373,12 +373,13 @@ fn measure_inner(
         if !matches!(t.size, Sizing::Hug) {
             continue;
         }
-        let bounds = layout.intrinsic_pair(tree, c, Axis::X, text);
+        let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, text);
+        let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, text);
         let i = cell.col as usize;
         let cols_min = layout.scratch.grid.hugs.min_mut(idx, Axis::X);
-        cols_min[i] = cols_min[i].max(bounds.min);
+        cols_min[i] = cols_min[i].max(min);
         let cols_max = layout.scratch.grid.hugs.max_mut(idx, Axis::X);
-        cols_max[i] = cols_max[i].max(bounds.max);
+        cols_max[i] = cols_max[i].max(max);
     }
 
     // Resolve column widths now (Fixed + Hug + Fill). Gives every cell a
