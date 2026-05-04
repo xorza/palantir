@@ -74,11 +74,13 @@ pub struct Tree {
     /// the trailing sentinel is the open end of the last node, kept equal to
     /// `shapes.len()` while recording so `add_shape` can extend it in place.
     shape_starts: Vec<u32>,
-    /// Recording-only scratch: index `i` holds the parent of node `i` (or
-    /// `None` if root). Used by `open_node` for the ancestor-bumping walk
-    /// and by `close_node` to pop `current_open`. Not read after recording.
-    /// Reused frame-to-frame.
-    recording_parent: Vec<Option<NodeId>>,
+    /// Recording-only scratch: index `i` holds the parent of node `i`,
+    /// or `Self::NO_PARENT` (`u32::MAX`) for a root. Used by
+    /// `close_node` to pop `current_open` and by `finalize_subtree_end`
+    /// for the post-record rollup. `u32` with a sentinel halves the
+    /// footprint vs `Vec<Option<NodeId>>` (8 bytes / entry) and lets
+    /// the rollup loop branch on a plain integer compare.
+    recording_parent: Vec<u32>,
     /// Tip of the currently-open path while recording. `Some(n)` between an
     /// `open_node` returning `n` and the matching `close_node`. Cleared in
     /// `clear`.
@@ -135,6 +137,11 @@ impl Default for Tree {
 }
 
 impl Tree {
+    /// Sentinel parent for root nodes in `recording_parent`. Picked at
+    /// `u32::MAX` so a valid `NodeId.0` (capped at `node_count() - 1`)
+    /// never collides.
+    const NO_PARENT: u32 = u32::MAX;
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -218,22 +225,39 @@ impl Tree {
         self.layout.push(layout);
         self.paint.push(paint);
         self.widget_ids.push(widget_id);
+        // Provisional leaf marker; `finalize_subtree_end` rolls it up
+        // post-recording. Walking ancestors per `open_node` was an
+        // O(N·depth) random-write loop with a true data dependency on
+        // `recording_parent`; the deferred pass is O(N) sequential.
         self.subtree_end.push(new_id.0 + 1);
         self.shape_starts.push(self.shapes.len() as u32);
-        self.recording_parent.push(parent);
-
-        // Walk up the ancestor chain, growing each one's `subtree_end` so the
-        // new node falls inside every ancestor's subtree. Cheap in practice:
-        // typical UI trees are shallow.
-        let new_end = new_id.0 + 1;
-        let mut anc = parent;
-        while let Some(a) = anc {
-            let ai = a.0 as usize;
-            self.subtree_end[ai] = new_end;
-            anc = self.recording_parent[ai];
-        }
+        self.recording_parent
+            .push(parent.map_or(Self::NO_PARENT, |p| p.0));
         self.current_open = Some(new_id);
         new_id
+    }
+
+    /// Roll `subtree_end` up from leaves to roots so every internal
+    /// node's slot points one past its last descendant. After recording,
+    /// `subtree_end[i]` is the per-node leaf marker `i + 1` (set in
+    /// `open_node`); this single reverse pass uses `recording_parent` to
+    /// propagate each child's `subtree_end` up to its parent. Pre-order
+    /// arena → children always have higher indices than their parent →
+    /// reverse iteration visits children first. Idempotent.
+    pub(crate) fn finalize_subtree_end(&mut self) {
+        let n = self.layout.len();
+        let parents = &self.recording_parent[..n];
+        let ends = &mut self.subtree_end[..n];
+        for i in (1..n).rev() {
+            let p = parents[i];
+            if p == Self::NO_PARENT {
+                continue;
+            }
+            let pi = p as usize;
+            if ends[pi] < ends[i] {
+                ends[pi] = ends[i];
+            }
+        }
     }
 
     /// Pop the currently-open node back to its parent. Panics if no node is
@@ -242,7 +266,12 @@ impl Tree {
         let cur = self
             .current_open
             .expect("close_node called with no open node");
-        self.current_open = self.recording_parent[cur.0 as usize];
+        let p = self.recording_parent[cur.0 as usize];
+        self.current_open = if p == Self::NO_PARENT {
+            None
+        } else {
+            Some(NodeId(p))
+        };
     }
 
     pub fn add_shape(&mut self, node: NodeId, shape: Shape) {
@@ -366,6 +395,7 @@ impl Tree {
     /// tree; safe to call any time after recording completes. Capacity
     /// retained across frames.
     pub(crate) fn compute_hashes(&mut self) {
+        self.finalize_subtree_end();
         let n = self.node_count();
         self.hashes.clear();
         self.hashes.reserve(n);
