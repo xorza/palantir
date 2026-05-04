@@ -1,6 +1,7 @@
 pub(crate) mod cascade;
 pub(crate) mod damage;
 pub(crate) mod seen_ids;
+pub(crate) mod state;
 
 use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
@@ -14,6 +15,7 @@ use crate::tree::{NodeId, Tree};
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::Damage;
 use crate::ui::seen_ids::SeenIds;
+use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
@@ -30,6 +32,9 @@ pub struct Ui {
     /// Per-frame `WidgetId` tracker — collision detection,
     /// removed-widget diff, and frame rollover. See [`SeenIds`].
     pub(crate) ids: SeenIds,
+
+    /// Cross-frame `WidgetId → Any` state. See [`StateMap`].
+    pub(crate) state: StateMap,
 
     input: InputState,
     pub(crate) layout_engine: LayoutEngine,
@@ -60,6 +65,7 @@ impl Ui {
             tree: Tree::new(),
             theme: Theme::default(),
             ids: SeenIds::default(),
+            state: StateMap::default(),
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
             cascades: Cascades::default(),
@@ -108,6 +114,7 @@ impl Ui {
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);
         self.frontend.sweep_removed(removed);
+        self.state.sweep_removed(removed);
 
         let layout = self
             .layout_engine
@@ -145,6 +152,18 @@ impl Ui {
     /// through `on_input`.
     pub fn request_repaint(&mut self) {
         self.repaint_requested = true;
+    }
+
+    /// Borrow the cross-frame state row for `id`, creating it via
+    /// `T::default()` on first access. Use for scroll offset, focus
+    /// flags, animation progress — anything keyed to a `WidgetId` that
+    /// must survive between frames. Rows are dropped at `end_frame`
+    /// for any `WidgetId` that wasn't recorded this frame.
+    ///
+    /// Panics if a row already exists for `id` with a different `T`
+    /// — that's a `WidgetId` collision, not a runtime condition.
+    pub fn state_mut<T: Default + 'static>(&mut self, id: WidgetId) -> &mut T {
+        self.state.get_or_insert_with(id, T::default)
     }
 
     /// Re-run only the composer over the encoder's last cmd buffer,
