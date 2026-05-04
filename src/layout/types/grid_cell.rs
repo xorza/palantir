@@ -2,7 +2,7 @@
 /// `LayoutMode::Grid`. `(row, col)` is the top-left cell; `(row_span,
 /// col_span)` extends the slot toward the bottom-right (defaults to 1×1).
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable, Hash)]
 pub struct GridCell {
     pub row: u16,
     pub col: u16,

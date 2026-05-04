@@ -43,7 +43,7 @@ use glam::Vec2;
 
 /// How a node arranges its children. Stored on `Element::mode` and read by
 /// the layout pass; the tree itself treats it as an opaque tag.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Hash)]
 pub enum LayoutMode {
     Leaf,
     HStack,

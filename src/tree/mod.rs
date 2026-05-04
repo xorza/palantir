@@ -142,11 +142,7 @@ impl Tree {
     /// never collides.
     const NO_PARENT: u32 = u32::MAX;
 
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn clear(&mut self) {
+    pub(crate) fn begin_frame(&mut self) {
         self.layout.clear();
         self.paint.clear();
         self.widget_ids.clear();
@@ -163,13 +159,61 @@ impl Tree {
         self.subtree_has_grid.clear();
     }
 
-    pub(crate) fn push_grid_def(&mut self, def: GridDef) -> u16 {
-        self.grid.push_def(def)
+    /// Walk every recorded node and populate `self.hashes` plus the
+    /// `self.subtree_hashes` rollup. Pure read over the rest of the
+    /// tree; safe to call any time after recording completes. Capacity
+    /// retained across frames.
+    pub(crate) fn end_frame(&mut self) {
+        self.finalize_subtree_end();
+
+        let n = self.node_count();
+
+        self.hashes.clear();
+        self.hashes.reserve(n);
+        for i in 0..n {
+            let layout = &self.layout[i];
+            let paint = self.paint[i];
+            let extras = paint.extras.map(|idx| &self.node_extras[idx as usize]);
+            let s_start = self.shape_starts[i] as usize;
+            let s_end = self.shape_starts[i + 1] as usize;
+            let shapes = &self.shapes[s_start..s_end];
+            let grid_def = match layout.mode {
+                LayoutMode::Grid(idx) => Some(&self.grid.defs[idx as usize]),
+                _ => None,
+            };
+            self.hashes
+                .push(NodeHash::compute(layout, paint, extras, shapes, grid_def));
+        }
+
+        // Subtree-hash rollup. Pre-order arena means every child has a
+        // strictly higher index than its parent, so iterating in
+        // reverse fills children before their parent reads them. Each
+        // parent folds its own node-hash with its direct children's
+        // subtree hashes, in declaration order — sibling reorder
+        // changes the parent's subtree hash.
+        self.subtree_hashes.clear();
+        self.subtree_hashes.resize(n, NodeHash::UNCOMPUTED);
+        self.subtree_has_grid.clear();
+        self.subtree_has_grid.resize(n, false);
+        for i in (0..n).rev() {
+            let end = self.subtree_end[i];
+            let mut h = FxHasher::default();
+            h.write_u64(self.hashes[i].as_u64());
+            let mut has_grid = matches!(self.layout[i].mode, LayoutMode::Grid(_));
+            let mut next = (i as u32) + 1;
+            while next < end {
+                h.write_u64(self.subtree_hashes[next as usize].as_u64());
+                has_grid |= self.subtree_has_grid[next as usize];
+                next = self.subtree_end[next as usize];
+            }
+            self.subtree_hashes[i] = NodeHash::from_u64(h.finish());
+            self.subtree_has_grid[i] = has_grid;
+        }
     }
 
     /// Push a node as a child of the currently-open node (or as the root if
     /// no node is open) and make it the new tip. Pair with `close_node`.
-    pub fn open_node(&mut self, element: Element) -> NodeId {
+    pub(crate) fn open_node(&mut self, element: Element) -> NodeId {
         let parent = self.current_open;
         let new_id = NodeId(self.layout.len() as u32);
         if let LayoutMode::Grid(idx) = element.mode {
@@ -237,6 +281,10 @@ impl Tree {
         new_id
     }
 
+    pub(crate) fn push_grid_def(&mut self, def: GridDef) -> u16 {
+        self.grid.push_def(def)
+    }
+
     /// Roll `subtree_end` up from leaves to roots so every internal
     /// node's slot points one past its last descendant. After recording,
     /// `subtree_end[i]` is the per-node leaf marker `i + 1` (set in
@@ -262,7 +310,7 @@ impl Tree {
 
     /// Pop the currently-open node back to its parent. Panics if no node is
     /// open.
-    pub fn close_node(&mut self) {
+    pub(crate) fn close_node(&mut self) {
         let cur = self
             .current_open
             .expect("close_node called with no open node");
@@ -274,7 +322,7 @@ impl Tree {
         };
     }
 
-    pub fn add_shape(&mut self, node: NodeId, shape: Shape) {
+    pub(crate) fn add_shape(&mut self, node: NodeId, shape: Shape) {
         let idx = node.0 as usize;
         assert_eq!(
             idx,
@@ -388,56 +436,6 @@ impl Tree {
             .get(id.index())
             .copied()
             .unwrap_or(NodeHash::UNCOMPUTED)
-    }
-
-    /// Walk every recorded node and populate `self.hashes` plus the
-    /// `self.subtree_hashes` rollup. Pure read over the rest of the
-    /// tree; safe to call any time after recording completes. Capacity
-    /// retained across frames.
-    pub(crate) fn compute_hashes(&mut self) {
-        self.finalize_subtree_end();
-        let n = self.node_count();
-        self.hashes.clear();
-        self.hashes.reserve(n);
-        for i in 0..n {
-            let layout = &self.layout[i];
-            let paint = self.paint[i];
-            let extras = paint.extras.map(|idx| &self.node_extras[idx as usize]);
-            let s_start = self.shape_starts[i] as usize;
-            let s_end = self.shape_starts[i + 1] as usize;
-            let shapes = &self.shapes[s_start..s_end];
-            let grid_def = match layout.mode {
-                LayoutMode::Grid(idx) => Some(&self.grid.defs[idx as usize]),
-                _ => None,
-            };
-            self.hashes
-                .push(NodeHash::compute(layout, paint, extras, shapes, grid_def));
-        }
-
-        // Subtree-hash rollup. Pre-order arena means every child has a
-        // strictly higher index than its parent, so iterating in
-        // reverse fills children before their parent reads them. Each
-        // parent folds its own node-hash with its direct children's
-        // subtree hashes, in declaration order — sibling reorder
-        // changes the parent's subtree hash.
-        self.subtree_hashes.clear();
-        self.subtree_hashes.resize(n, NodeHash::UNCOMPUTED);
-        self.subtree_has_grid.clear();
-        self.subtree_has_grid.resize(n, false);
-        for i in (0..n).rev() {
-            let end = self.subtree_end[i];
-            let mut h = FxHasher::default();
-            h.write_u64(self.hashes[i].as_u64());
-            let mut has_grid = matches!(self.layout[i].mode, LayoutMode::Grid(_));
-            let mut next = (i as u32) + 1;
-            while next < end {
-                h.write_u64(self.subtree_hashes[next as usize].as_u64());
-                has_grid |= self.subtree_has_grid[next as usize];
-                next = self.subtree_end[next as usize];
-            }
-            self.subtree_hashes[i] = NodeHash::from_u64(h.finish());
-            self.subtree_has_grid[i] = has_grid;
-        }
     }
 }
 

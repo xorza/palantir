@@ -62,7 +62,7 @@ impl Default for Ui {
 impl Ui {
     pub fn new() -> Self {
         Self {
-            tree: Tree::new(),
+            tree: Tree::default(),
             theme: Theme::default(),
             ids: SeenIds::default(),
             state: StateMap::default(),
@@ -96,7 +96,7 @@ impl Ui {
             display.scale_factor,
         );
         self.display = display;
-        self.tree.clear();
+        self.tree.begin_frame();
         self.ids.begin_frame();
     }
 
@@ -109,7 +109,7 @@ impl Ui {
         // Hashes are pure functions of recorded inputs and don't depend on
         // layout output, so we compute them up front. Layout reads them to
         // skip text reshape for unchanged Text nodes; damage reads them after.
-        self.tree.compute_hashes();
+        self.tree.end_frame();
         let removed = self.ids.end_frame();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);
