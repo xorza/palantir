@@ -26,16 +26,17 @@ use crate::harness::Harness;
 fn readback_returns_clear_color_for_empty_scene() {
     let mut h = Harness::new();
     let size = UVec2::new(16, 16);
-    let clear = Color::rgb(0.5, 0.25, 0.75);
+    let (sr, sg, sb) = (0.5, 0.25, 0.75);
+    let clear = Color::rgb(sr, sg, sb);
     let img = h.render(size, 1.0, clear, |_| {});
     assert_eq!(img.dimensions(), (size.x, size.y));
 
-    // sRGB-encoded clear color, allowing ±2 for rounding through the
-    // linear↔sRGB pipeline.
+    // sRGB → linear (in `Color::rgb`) → sRGB (wgpu's sRGB target) round-trips
+    // to the original 8-bit sRGB values; ±2 covers rounding inside the pipeline.
     let expected = Rgba([
-        (clear.r.powf(1.0 / 2.2) * 255.0).round() as u8,
-        (clear.g.powf(1.0 / 2.2) * 255.0).round() as u8,
-        (clear.b.powf(1.0 / 2.2) * 255.0).round() as u8,
+        (sr * 255.0).round() as u8,
+        (sg * 255.0).round() as u8,
+        (sb * 255.0).round() as u8,
         255,
     ]);
     for p in img.pixels() {
