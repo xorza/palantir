@@ -1,18 +1,15 @@
 pub(crate) mod common;
 pub mod input;
-#[cfg(any(test, feature = "internals"))]
-pub mod internals;
 pub mod layout;
 pub mod primitives;
 pub mod renderer;
 pub mod shape;
+#[cfg(any(test, feature = "internals"))]
+pub mod support;
 pub mod text;
 pub mod tree;
 pub mod ui;
 pub mod widgets;
-
-#[cfg(test)]
-mod test_support;
 
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use layout::types::align::{Align, HAlign, VAlign};

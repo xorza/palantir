@@ -7,7 +7,7 @@ use super::support::two_hug_cols_with_wrap;
 use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::color::Color;
-use crate::test_support::{ui_at, ui_with_text};
+use crate::support::testing::{ui_at, ui_with_text};
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, styled::Styled, text::Text};

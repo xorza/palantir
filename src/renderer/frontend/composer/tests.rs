@@ -296,7 +296,7 @@ mod cache_integration {
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::color::Color;
     use crate::primitives::transform::TranslateScale;
-    use crate::test_support::{begin, ui_at};
+    use crate::support::testing::{begin, ui_at};
     use crate::tree::element::Configure;
     use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
     use glam::{UVec2, Vec2};
@@ -344,8 +344,8 @@ mod cache_integration {
         let warm = ui.frontend.composer.buffer.clone();
 
         // Frame 3: clear both caches → cold compose under same inputs.
-        crate::internals::clear_encode_cache(&mut ui);
-        crate::internals::clear_compose_cache(&mut ui);
+        crate::support::internals::clear_encode_cache(&mut ui);
+        crate::support::internals::clear_compose_cache(&mut ui);
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
@@ -409,9 +409,9 @@ mod cache_integration {
         big(&mut ui);
         ui.end_frame();
         assert!(
-            crate::internals::compose_cache_snapshot_count(&ui) > 0,
+            crate::support::internals::compose_cache_snapshot_count(&ui) > 0,
             "compose cache should have populated, got {}",
-            crate::internals::compose_cache_snapshot_count(&ui)
+            crate::support::internals::compose_cache_snapshot_count(&ui)
         );
     }
 
@@ -429,7 +429,7 @@ mod cache_integration {
         ui.end_frame();
         let warm = ui.frontend.composer.buffer.clone();
 
-        crate::internals::clear_compose_cache(&mut ui);
+        crate::support::internals::clear_compose_cache(&mut ui);
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();

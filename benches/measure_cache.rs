@@ -124,7 +124,7 @@ fn bench(c: &mut Criterion) {
         group.bench_function(format!("{name}/forced_miss"), |b| {
             let mut ui = Ui::new();
             b.iter(|| {
-                palantir::internals::clear_measure_cache(&mut ui);
+                palantir::support::internals::clear_measure_cache(&mut ui);
                 ui.begin_frame(display);
                 build(&mut ui);
                 black_box(ui.end_frame());

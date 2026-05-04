@@ -2,7 +2,7 @@ use super::support::{chat_message, two_hug_cols_with_wrap};
 use crate::layout::types::sizing::Sizing;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::shape::{Shape, TextWrap};
-use crate::test_support::ui_with_text;
+use crate::support::testing::ui_with_text;
 use crate::tree::element::Configure;
 use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;

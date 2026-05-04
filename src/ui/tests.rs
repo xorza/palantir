@@ -1,7 +1,7 @@
 use crate::Ui;
 use crate::layout::types::display::Display;
 use crate::primitives::{color::Color, rect::Rect};
-use crate::test_support::{begin, new_ui_text, ui_at};
+use crate::support::testing::{begin, new_ui_text, ui_at};
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};

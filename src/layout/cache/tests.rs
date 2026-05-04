@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::primitives::{color::Color, size::Size};
-use crate::test_support::{begin, ui_at};
+use crate::support::testing::{begin, ui_at};
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
@@ -545,7 +545,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
     let warm_desired = ui.layout_engine.cache.desired_arena[warm_snap.nodes.range()].to_vec();
     let warm_live = ui.layout_engine.cache.live_entries;
 
-    crate::internals::clear_measure_cache(&mut ui);
+    crate::support::internals::clear_measure_cache(&mut ui);
     run_frame(&mut ui, with_widget);
 
     let cold_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();

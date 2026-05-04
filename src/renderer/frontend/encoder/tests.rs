@@ -8,7 +8,7 @@ use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, display::Display, sense::Sense, sizing::Sizing,
 };
 use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
-use crate::test_support::{begin, encode_cmds, encode_cmds_filtered, ui_at};
+use crate::support::testing::{begin, encode_cmds, encode_cmds_filtered, ui_at};
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
