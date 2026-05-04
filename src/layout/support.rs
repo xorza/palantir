@@ -81,7 +81,7 @@ pub(crate) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
         size: Size::ZERO,
     };
     let start = node.index();
-    let end = tree.subtree_ends()[start] as usize;
+    let end = tree.subtree_end[start] as usize;
     for i in start..end {
         layout.result.set_rect(NodeId(i as u32), zero);
     }
@@ -143,20 +143,20 @@ pub(crate) enum AutoBias {
 
 /// Resolved horizontal/vertical alignment after the cascade.
 pub(crate) struct AxisAlignPair {
-    pub h: AxisAlign,
-    pub v: AxisAlign,
+    pub(crate) h: AxisAlign,
+    pub(crate) v: AxisAlign,
 }
 
 /// Per-axis placement: chosen extent + offset within the parent's inner span.
 pub(crate) struct AxisPlacement {
-    pub size: f32,
-    pub offset: f32,
+    pub(crate) size: f32,
+    pub(crate) offset: f32,
 }
 
 /// Two-axis placement: chosen size + offset within the parent's inner rect.
 pub(crate) struct Placement {
-    pub size: Size,
-    pub offset: Vec2,
+    pub(crate) size: Size,
+    pub(crate) offset: Vec2,
 }
 
 /// Resolve a child's alignment on both axes: child's own value if not `Auto`,

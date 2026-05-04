@@ -10,7 +10,7 @@ use std::ops::Range;
 /// columns indexed by `NodeId.0`. Capacity is reused across frames via
 /// `resize_for`.
 #[derive(Default)]
-pub struct LayoutResult {
+pub(crate) struct LayoutResult {
     rect: Vec<Rect>,
     /// Per-node shape result for `Shape::Text` leaves. `None` for any
     /// node the layout pass didn't shape text for.

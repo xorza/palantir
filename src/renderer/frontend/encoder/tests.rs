@@ -351,10 +351,9 @@ fn nested_clips_each_emit_their_own_pair() {
     assert_eq!(pops, 2);
 }
 
-/// Disabled cascade is reported on `Cascade.disabled` for app-level
-/// theme code to act on; the framework does not auto-dim colors. Pin
-/// the flag survives the cascade walk; visual dimming is the app's
-/// responsibility.
+/// Disabled cascade strips a descendant's effective `Sense` to `NONE` so
+/// it stops responding to hover/click. Pin the flag propagates through
+/// nested panels.
 #[test]
 fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     let mut ui = ui_at(UVec2::new(100, 100));
@@ -370,8 +369,9 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     });
     ui.end_frame();
 
-    let cascades = ui.cascades.result();
-    assert!(cascades.is_disabled(child_node.unwrap()));
+    let cascades = &ui.cascades.result;
+    let child = child_node.unwrap();
+    assert_eq!(cascades.entries[child.index()].sense, Sense::NONE);
 }
 
 /// `align_text_in` math: glyph bbox positioned inside the leaf's

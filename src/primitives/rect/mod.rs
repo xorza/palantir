@@ -27,12 +27,6 @@ impl Rect {
     pub const fn max(&self) -> Vec2 {
         Vec2::new(self.min.x + self.size.w, self.min.y + self.size.h)
     }
-    pub const fn width(&self) -> f32 {
-        self.size.w
-    }
-    pub const fn height(&self) -> f32 {
-        self.size.h
-    }
     pub const fn area(&self) -> f32 {
         self.size.w * self.size.h
     }

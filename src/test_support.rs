@@ -113,9 +113,9 @@ pub(crate) fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBu
     // `ui.frontend.encoder.cmds()` instead.
     let mut encoder = Encoder::default();
     encoder.encode(
-        ui.tree(),
+        &ui.tree,
         &ui.layout_engine.result,
-        ui.cascades.result(),
+        &ui.cascades.result,
         filter,
     );
     std::mem::take(&mut encoder.cmds)

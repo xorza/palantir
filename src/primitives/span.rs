@@ -6,24 +6,19 @@ use std::ops::Range;
 /// `Range<u32>` (start..end) wherever start+end is a more natural
 /// representation; this type is for the count-based form.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Span {
-    pub start: u32,
-    pub len: u32,
+pub(crate) struct Span {
+    pub(crate) start: u32,
+    pub(crate) len: u32,
 }
 
 impl Span {
     #[inline]
-    pub fn new(start: u32, len: u32) -> Self {
+    pub(crate) fn new(start: u32, len: u32) -> Self {
         Self { start, len }
     }
 
     #[inline]
-    pub fn end(self) -> u32 {
-        self.start + self.len
-    }
-
-    #[inline]
-    pub fn range(self) -> Range<usize> {
-        self.start as usize..self.end() as usize
+    pub(crate) fn range(self) -> Range<usize> {
+        self.start as usize..(self.start + self.len) as usize
     }
 }

@@ -97,10 +97,6 @@ impl InputState {
         }
     }
 
-    pub fn pointer(&self) -> PointerState {
-        self.pointer
-    }
-
     /// Feed a palantir-native input event. Hit-tests against the
     /// frozen `CascadeResult` from this frame's most recent run.
     pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &CascadeResult) {
@@ -143,7 +139,7 @@ impl InputState {
     pub(crate) fn end_frame(&mut self, cascades: &CascadeResult) {
         self.clicked_this_frame.clear();
         if let Some(active) = self.active
-            && !cascades.contains_id(active)
+            && !cascades.by_id.contains_key(&active)
         {
             self.active = None;
         }
@@ -151,7 +147,10 @@ impl InputState {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &CascadeResult) -> ResponseState {
-        let rect = cascades.rect_for(id);
+        let rect = cascades
+            .by_id
+            .get(&id)
+            .map(|&i| cascades.entries[i as usize].rect);
         let me_under_pointer = self.hovered == Some(id);
         let me_captured = self.active == Some(id);
         let nothing_captured = self.active.is_none();

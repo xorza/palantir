@@ -200,7 +200,7 @@ fn subtree_skip_restores_descendant_available_q() {
         });
     };
     run_frame(&mut ui, build);
-    let n = ui.tree().node_count();
+    let n = ui.tree.node_count();
     let cold: Vec<_> = (0..n)
         .map(|i| ui.layout_engine.result.available_q(NodeId(i as u32)))
         .collect();
@@ -234,7 +234,7 @@ fn subtree_skip_preserves_descendant_rects() {
         });
     };
     run_frame(&mut ui, build);
-    let n = ui.tree().node_count();
+    let n = ui.tree.node_count();
     let layout1 = &ui.layout_engine.result;
     let rects1: Vec<_> = (0..n).map(|i| layout1.rect(NodeId(i as u32))).collect();
 

@@ -233,7 +233,7 @@ impl TextMeasurer {
     /// shifted. Returns by value because callers typically also call
     /// [`Self::shape_wrap`] on the wrap path, which would borrow-
     /// conflict with a reference into the cache.
-    pub fn shape_unbounded(
+    pub(crate) fn shape_unbounded(
         &mut self,
         wid: WidgetId,
         hash: NodeHash,
