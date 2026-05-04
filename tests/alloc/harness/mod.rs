@@ -82,7 +82,7 @@ pub(crate) fn audit_steady_state<S>(name: &str, budget: AllocBudget, mut scene: 
 where
     S: FnMut(&mut Ui),
 {
-    const MAX_WARMUP: usize = 4;
+    const MAX_WARMUP: usize = 2;
     const AUDIT_FRAMES: usize = 64;
 
     let display = display();
