@@ -29,7 +29,6 @@ use crate::primitives::{
 use crate::text::TextCacheKey;
 use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
-use glam::Vec2;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +82,9 @@ pub(crate) struct DrawTextPayload {
 /// recorded. Carries the subtree's `(WidgetId, subtree_hash,
 /// available_q)` triple — the composer cache reads them to key its
 /// lookup directly off the cmd stream (self-describing markers).
+///
+/// Size + align are pinned by a `const` assert so the field-offset math
+/// in `push_exit_subtree` (via `offset_of!`) stays in sync.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct EnterSubtreePayload {
@@ -92,6 +94,11 @@ pub(crate) struct EnterSubtreePayload {
     pub(crate) exit_idx: u32,
     _pad: u32,
 }
+
+const _: () = {
+    assert!(std::mem::size_of::<EnterSubtreePayload>() == 32);
+    assert!(std::mem::align_of::<EnterSubtreePayload>() == 8);
+};
 
 /// Returned by [`RenderCmdBuffer::push_enter_subtree`]; threaded into
 /// [`RenderCmdBuffer::push_exit_subtree`] so the close cmd can patch
@@ -205,43 +212,9 @@ impl RenderCmdBuffer {
     pub(crate) fn push_exit_subtree(&mut self, patch: EnterPatch) {
         self.record_start(CmdKind::ExitSubtree);
         let exit_idx = (self.kinds.len() - 1) as u32;
-        // exit_idx is at u32 word 6 in EnterSubtreePayload —
-        // wid (words 0..2), subtree_hash (words 2..4),
-        // avail (words 4..6), then exit_idx at word 6.
-        self.data[patch.payload_word_offset as usize + 6] = exit_idx;
-    }
-
-    /// Append a cached subtree's cmd slice into this buffer, shifting
-    /// `rect.min` by `offset` on every payload that begins with a `Rect`
-    /// (PushClip, DrawRect, DrawRectStroked, DrawText). Pops carry no
-    /// payload; PushTransform carries a `TranslateScale` that is
-    /// subtree-local — both pass through untouched and compose with the
-    /// parent at composer-time.
-    ///
-    /// `starts` are subtree-relative offsets (0-based into `data`); they
-    /// get rebased onto this buffer's data arena during append. Used by
-    /// [`crate::renderer::frontend::encoder::cache::EncodeCache`] to
-    /// replay a cached subtree under the current frame's root origin.
-    pub(crate) fn extend_from_cached(
-        &mut self,
-        kinds: &[CmdKind],
-        starts: &[u32],
-        data: &[u32],
-        offset: Vec2,
-    ) {
-        let dest_data_base = self.data.len() as u32;
-        self.data.extend_from_slice(data);
-
-        self.kinds.extend_from_slice(kinds);
-        self.starts.reserve(starts.len());
-        for &s in starts {
-            debug_assert!((s as usize) < data.len() || s as usize == data.len());
-            self.starts.push(s + dest_data_base);
-        }
-
-        let n = kinds.len();
-        let appended_starts = &self.starts[self.starts.len() - n..];
-        bump_rect_min(kinds, appended_starts, &mut self.data, offset);
+        const EXIT_IDX_WORD: usize =
+            std::mem::offset_of!(EnterSubtreePayload, exit_idx) / size_of::<u32>();
+        self.data[patch.payload_word_offset as usize + EXIT_IDX_WORD] = exit_idx;
     }
 
     #[inline]
@@ -253,7 +226,6 @@ impl RenderCmdBuffer {
     /// Read the payload at `start` (in u32 words) as `T`. Caller picks
     /// `T` based on `kinds[i]` — the symmetric `write_pod` at push time
     /// guarantees the bytes are valid for the kind's expected payload.
-    /// Used by `get()` and the composer hot path.
     #[inline]
     pub(crate) fn read<T: bytemuck::Pod>(&self, start: u32) -> T {
         let start = start as usize;
@@ -277,39 +249,3 @@ impl RenderCmdBuffer {
 fn write_pod<T: bytemuck::Pod>(data: &mut Vec<u32>, v: T) {
     data.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&v)));
 }
-
-/// Add `offset` to `rect.min` for every rect-bearing cmd in `kinds`,
-/// reading the payload offset from the parallel `starts` slice.
-///
-/// `rect.min` lives at the first 8 bytes (= 2 u32 words) of every
-/// payload that begins with `rect: Rect` — `Rect` is `#[repr(C)]
-/// { min: Vec2, size: Size }`. Read/write through `f32::{from,to}_bits`
-/// so we don't depend on the arena's u32 alignment lining up with f32
-/// (it does, but staying bits-only matches the rest of the buffer's
-/// discipline).
-#[inline]
-pub(crate) fn bump_rect_min(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], offset: Vec2) {
-    debug_assert_eq!(kinds.len(), starts.len());
-    for (kind, &start) in kinds.iter().zip(starts.iter()) {
-        match kind {
-            CmdKind::PushClip
-            | CmdKind::DrawRect
-            | CmdKind::DrawRectStroked
-            | CmdKind::DrawText => {
-                let off = start as usize;
-                let x = f32::from_bits(data[off]) + offset.x;
-                let y = f32::from_bits(data[off + 1]) + offset.y;
-                data[off] = x.to_bits();
-                data[off + 1] = y.to_bits();
-            }
-            CmdKind::PopClip
-            | CmdKind::PushTransform
-            | CmdKind::PopTransform
-            | CmdKind::EnterSubtree
-            | CmdKind::ExitSubtree => {}
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests;

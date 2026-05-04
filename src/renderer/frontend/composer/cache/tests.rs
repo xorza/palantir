@@ -76,12 +76,11 @@ fn write(
         h,
         avail(),
         fp,
-        &quads,
-        &texts,
-        &groups,
+        &quads[quads_lo as usize..],
+        &texts[texts_lo as usize..],
+        &groups[groups_lo as usize..],
         quads_lo,
         texts_lo,
-        groups_lo,
     );
     (quads, texts, groups)
 }
