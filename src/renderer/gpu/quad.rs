@@ -18,22 +18,20 @@ pub(crate) struct Quad {
     pub(crate) rect: Rect,
     pub(crate) fill: Color,
     pub(crate) radius: Corners,
-    pub(crate) stroke_color: Color,
-    pub(crate) stroke_width: f32,
+    pub(crate) stroke: Stroke,
 }
 
 impl Quad {
     pub(crate) fn new(rect: Rect, fill: Color, radius: Corners, stroke: Option<Stroke>) -> Self {
-        let (stroke_color, stroke_width) = match stroke {
-            Some(s) => (s.color, s.width),
-            None => (Color::default(), 0.0),
-        };
+        let stroke = stroke.unwrap_or(Stroke {
+            width: 0.0,
+            color: Color::default(),
+        });
         Self {
             rect,
             fill,
             radius,
-            stroke_color,
-            stroke_width,
+            stroke,
         }
     }
 }
