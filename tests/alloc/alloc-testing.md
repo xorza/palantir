@@ -39,24 +39,32 @@ Single test binary (`cargo test --test alloc`); Cargo auto-discovers
 ## How it works
 
 `#[global_allocator]` installs `CountingAllocator`, which delegates to
-`System` and increments `ALLOCS` / `BYTES` (relaxed atomics) on every
-`alloc` / `realloc` / `alloc_zeroed`. `dealloc` is delegated unchanged
-— we count heap *operations*, not residency.
+`System` and — only when the calling thread has `IN_AUDIT` set —
+increments thread-local `ALLOCS`/`BYTES` and pushes a `Backtrace`.
+`dealloc` is delegated unchanged; we count heap *operations*, not
+residency.
+
+Per-thread (not global) counters are deliberate: cargo runs tests in
+parallel on the same process, and a global counter would let other
+tests' setup allocations on other threads leak into our window.
+Gating on the per-thread `IN_AUDIT` flag means only the auditing
+thread's audit-window allocs ever count — no cross-test interference,
+no global mutex.
 
 `run_audit(name, warmup, audit, budget, scene)`:
 
 1. Construct `Ui::new()` with a fixed 800×600 logical display.
-2. Acquire `AUDIT_LOCK` (process-global `Mutex`) — held through warmup
-   and the audited region so a sibling fixture's warmup allocs can't
-   leak into our measured window. The counter is process-global; the
-   lock is the only barrier.
-3. Run `warmup` frames — lets measure cache, encode cache,
+2. Run `warmup` frames untracked — lets measure cache, encode cache,
    scratch `Vec`s reach steady-state capacity.
-4. Snapshot counters → run `audit` frames → snapshot delta.
-5. Print per-frame averages. Assert delta ≤ `budget × audit`.
+3. Set `IN_AUDIT`, snapshot the per-thread counter.
+4. Run `audit` frames — every alloc on this thread bumps the counter
+   and (with `RUST_BACKTRACE=1`) records a backtrace.
+5. Clear `IN_AUDIT`, take delta + drained traces.
+6. Print per-frame averages. On budget violation, dump captured
+   backtraces (or hint at `RUST_BACKTRACE=1` if disabled), then panic.
 
-Setup, `Ui::new()`, and assertion still parallelize across fixtures —
-only the counter-sensitive region serializes.
+Capture is free by default — `Backtrace::capture` is a no-op unless
+`RUST_BACKTRACE` is set, so traces only cost when you ask for them.
 
 ## Status
 
@@ -85,11 +93,12 @@ once a flake or a second platform appears.
 
 Don't raise the budget. Find the alloc:
 
-1. Add a `dbg!(snapshot())` around suspect spans inside the frame loop
+1. Re-run with `RUST_BACKTRACE=1` — the harness captures one
+   backtrace per audit-window alloc and dumps them all on failure,
+   so you usually see the offending call site directly.
+2. If the trace is ambiguous (deep inside a generic), add
+   `dbg!(snapshot())` around suspect spans inside the frame loop
    to bisect which pass introduced it.
-2. Run with `RUST_BACKTRACE=1` and a temporary `eprintln!` in
-   `CountingAllocator::alloc` gated on a thread-local "in audited
-   region" flag — gives one stack trace per offending alloc.
 3. The fix is almost always: lift a `Vec::new()` to a retained scratch
    field, `.clear()` instead of replacing, or `with_capacity` with a
    sane initial size at construction time.
