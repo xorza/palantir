@@ -8,7 +8,7 @@ fn empty_frame_alloc_free() {
 
 #[test]
 fn button_only_alloc_free() {
-    run_audit("button_only", 2, 64, AllocBudget::ZERO, |ui| {
+    run_audit("button_only", 1, 64, AllocBudget::ZERO, |ui| {
         Button::new()
             .label("hello")
             .size((Sizing::FILL, Sizing::FILL))

@@ -9,9 +9,9 @@
 //! With `RUST_BACKTRACE=1`, every audit-window alloc is captured
 //! and dumped on budget failure.
 
-use crate::allocator::{delta, set_in_audit, snapshot, take_traces};
+use crate::allocator::{Backtrace, delta, set_in_audit, snapshot, take_traces};
 use palantir::{Display, Ui};
-use std::backtrace::BacktraceStatus;
+use std::fmt::Write as _;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AllocBudget {
@@ -52,7 +52,7 @@ pub(crate) fn run_audit<S>(
     }
     set_in_audit(false);
     let measured = delta(before);
-    let traces = take_traces();
+    let mut traces = take_traces();
 
     let budget_total = budget.allocs_per_frame * audit as u64;
     let per_frame_allocs = measured.allocs as f64 / audit as f64;
@@ -64,24 +64,89 @@ pub(crate) fn run_audit<S>(
     );
 
     if measured.allocs > budget_total {
-        let traces_disabled = traces
-            .iter()
-            .any(|b| matches!(b.status(), BacktraceStatus::Disabled));
-        if traces_disabled {
-            eprintln!(
-                "captured {} allocs but backtraces disabled — re-run with RUST_BACKTRACE=1 \
-                 to see call sites",
-                traces.len(),
-            );
-        } else {
-            for (i, bt) in traces.iter().enumerate() {
-                eprintln!("--- alloc #{i} backtrace ---\n{bt}");
-            }
+        for (i, bt) in traces.iter_mut().enumerate() {
+            eprintln!("--- alloc #{i} backtrace ---\n{}", user_frames(bt));
         }
+        eprintln!(
+            "(set PALANTIR_ALLOC_FULL_BT=1 to disable user-code filtering and see full stacks)",
+        );
         panic!(
             "alloc budget exceeded for `{name}`: {} allocs over {} frames \
              (budget {}/frame = {} total, {:.2} actual/frame)",
             measured.allocs, audit, budget.allocs_per_frame, budget_total, per_frame_allocs,
         );
     }
+}
+
+/// Trim a captured backtrace to just the frames a debug-this reader
+/// cares about: `palantir/src/**` (the bug source) and the fixture
+/// closure (the call site). Drops std/runtime, external deps, and the
+/// audit machinery itself (allocator/harness/main). Frames are
+/// renumbered top-to-bottom so the result reads as a clean call stack
+/// from fixture closure down to the allocating call site.
+///
+/// Resolution is lazy — capture used `Backtrace::new_unresolved`, so
+/// symbols/files are only resolved here, on the failure path.
+///
+/// Set `PALANTIR_ALLOC_FULL_BT=1` to bypass and emit the raw backtrace.
+fn user_frames(bt: &mut Backtrace) -> String {
+    if std::env::var_os("PALANTIR_ALLOC_FULL_BT").is_some() {
+        bt.resolve();
+        return format!("{bt:?}");
+    }
+    bt.resolve();
+
+    let mut out = String::new();
+    let mut idx = 0u32;
+    for frame in bt.frames() {
+        for symbol in frame.symbols() {
+            let Some(filename) = symbol.filename() else {
+                continue;
+            };
+            let path = filename.to_string_lossy();
+            if !is_user_path(&path) {
+                continue;
+            }
+            let rel = user_relative(&path).unwrap_or(&path);
+            let name = symbol
+                .name()
+                .map(|n| format!("{n:#}"))
+                .unwrap_or_else(|| String::from("<unknown>"));
+            let line = symbol.lineno().unwrap_or(0);
+            let col = symbol.colno().unwrap_or(0);
+            let _ = writeln!(out, "  {idx:>2}: {name}");
+            let _ = writeln!(out, "            at {rel}:{line}:{col}");
+            idx += 1;
+        }
+    }
+    if out.is_empty() {
+        out.push_str("(no user-code frames matched — full stack:)\n");
+        let _ = write!(out, "{bt:?}");
+    }
+    out
+}
+
+/// Workspace-relative tail of a captured filename, or `None` if the path
+/// isn't inside this crate. `backtrace`'s symbol resolver returns absolute
+/// paths (`/home/.../palantir/src/widgets/button.rs`), so we strip the
+/// crate-root anchor to compare against the user-code prefixes we know.
+fn user_relative(path: &str) -> Option<&str> {
+    const ANCHOR: &str = "/palantir/";
+    let idx = path.rfind(ANCHOR)?;
+    Some(&path[idx + ANCHOR.len()..])
+}
+
+fn is_user_path(path: &str) -> bool {
+    // Allow `src/...` and `tests/...` in this crate; reject the audit
+    // plumbing inside `tests/alloc/`. Anything outside the crate
+    // (rustc, rustup, `.cargo/registry`, hashbrown, etc.) is rejected
+    // by the anchor check.
+    let Some(rel) = user_relative(path) else {
+        return false;
+    };
+    let user = rel.starts_with("src/") || rel.starts_with("tests/");
+    let plumbing = rel.starts_with("tests/alloc/allocator.rs")
+        || rel.starts_with("tests/alloc/harness.rs")
+        || rel.starts_with("tests/alloc/main.rs");
+    user && !plumbing
 }
