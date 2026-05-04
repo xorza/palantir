@@ -34,9 +34,12 @@ impl<T> Default for LiveArena<T> {
 impl<T> LiveArena<T> {
     /// Account for `len` items just appended to `items` and now owned
     /// by a snapshot. Caller has already extended `items`; this only
-    /// updates the live counter.
+    /// updates the live counter. Asserts the post-condition `live <=
+    /// items.len()` — catches a missing `extend_from_slice` before
+    /// the inconsistency reaches `release` or `compact`.
     pub(crate) fn acquire(&mut self, len: u32) {
         self.live += len as usize;
+        assert!(self.live <= self.items.len());
     }
 
     /// Mark `len` items previously owned by some snapshot as garbage.
