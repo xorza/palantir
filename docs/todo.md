@@ -18,9 +18,9 @@
 - **Color-space verification.** Glyphon outputs sRGB; confirm text doesn't look faded on a linear surface format and document the rule.
 - **Atlas eviction under multi-font / multi-size load.** Verify `atlas.trim()` + glyphon's shelf overflow holds up over a long session.
 
-## Persistent state
+## Persistent-state consumers
 
-`Ui::state_mut::<T>(id)` lands the `Id → Any` map (`src/ui/state.rs`) — eviction tied to `SeenIds.removed`, alloc-clean steady state pinned by `state_map_counter` in `tests/alloc`. Consumers next:
+`Ui::state_mut::<T>(id)` is shipped (`src/ui/state.rs`). Pending consumers:
 
 - **ScrollView v1.** Plan in `docs/scrollview.md`. `InputEvent::Scroll` from winit, vertical-only widget, offset stored via `state_mut`.
 - **Drag tracking.** Build on the existing `Active`-capture so `drag_delta` works rect-independent (pointer can leave the originating widget mid-drag). Pre-req for scrollbars + touch-drag.
@@ -30,7 +30,6 @@
 ## Measure cache (`src/layout/measure-cache.md`)
 
 - **Cross-frame intrinsic-query cache.** `LayoutEngine::intrinsic` is intra-frame only. A second column keyed on `subtree_hash + axis + req` would compose cleanly. Skip until a workload proves it matters.
-- **Per-frame allocation audit.** CLAUDE.md flags this as a project-wide goal. The cache is alloc-amortized after warmup but there's no harness asserting it. Cross-cutting; not cache-local.
 - **Real-workload validation.** Bench numbers are synthetic. The showcase doesn't push against the 400 µs ceiling, so the cache's user-visible win is unverified.
 - **Cold-cache mitigations.** If a workload ever shows resize-frame jank, candidates: skip snapshot writes for collapsed subtrees, gate writes by subtree-size threshold, amortize compact across frames. Speculative.
 - **Coarser `available` quantization (measure side).** Currently 1 logical px. If jittery `Fill` children show cache misses on sub-pixel parent drift, bump granularity. Wait for evidence.
