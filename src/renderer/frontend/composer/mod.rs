@@ -28,6 +28,81 @@ struct SubtreeFrame {
     groups_lo: u32,
 }
 
+/// Owns the four-variable invariant that drives `out.groups`
+/// emission: `current` scissor, the open group's `quads_start` /
+/// `texts_start` markers, and the `last_was_text` flag for the
+/// text-then-quad split rule. Every group transition routes through
+/// this struct so the rule is enforced in one place.
+///
+/// Reset rule: every flush / scissor switch clears `last_was_text`.
+/// The flag is only ever set true via direct field write after
+/// pushing a `TextRun`.
+#[derive(Default)]
+struct GroupBuilder {
+    current: Option<URect>,
+    quads_start: u32,
+    texts_start: u32,
+    /// `true` iff the most recent draw appended to the in-flight
+    /// group was a text run. Set by `compose` after each text push;
+    /// cleared by every method below.
+    last_was_text: bool,
+}
+
+impl GroupBuilder {
+    /// Push the in-flight group into `out.groups` (if non-empty),
+    /// rebase `quads_start` / `texts_start` onto the current `out`
+    /// lengths, and clear `last_was_text`. Scissor (`current`) is
+    /// preserved.
+    fn flush(&mut self, out: &mut RenderBuffer) {
+        let q_end = out.quads.len() as u32;
+        let t_end = out.texts.len() as u32;
+        if q_end > self.quads_start || t_end > self.texts_start {
+            out.groups.push(DrawGroup {
+                scissor: self.current,
+                quads: self.quads_start..q_end,
+                texts: self.texts_start..t_end,
+            });
+        }
+        self.quads_start = q_end;
+        self.texts_start = t_end;
+        self.last_was_text = false;
+    }
+
+    /// Switch to `scissor`, flushing the in-flight group only if it
+    /// differs from `current`. Always clears `last_was_text` — a
+    /// clip transition is a draw boundary even when the resolved
+    /// scissor happens to equal the current one (matches the
+    /// pre-builder behavior).
+    fn set_scissor(&mut self, scissor: Option<URect>, out: &mut RenderBuffer) {
+        if scissor != self.current {
+            self.flush(out);
+            self.current = scissor;
+        }
+        self.last_was_text = false;
+    }
+
+    /// Rebase `quads_start` / `texts_start` onto the current `out`
+    /// lengths without pushing a group. Used after
+    /// `ComposeCache::try_splice` extends `out` — the splice's own
+    /// `DrawGroup`s are already sealed in `out.groups`, so we just
+    /// continue from the splice tail under the unchanged scissor.
+    /// Caller flushed before splicing, so `last_was_text` is already
+    /// false here.
+    fn rebase(&mut self, out: &RenderBuffer) {
+        self.quads_start = out.quads.len() as u32;
+        self.texts_start = out.texts.len() as u32;
+    }
+
+    /// Apply the text-then-quad split rule: if the prior draw in the
+    /// current group was text, flush so the next quad renders
+    /// *after* the text. Same scissor continues into the new group.
+    fn before_quad(&mut self, out: &mut RenderBuffer) {
+        if self.last_was_text {
+            self.flush(out);
+        }
+    }
+}
+
 /// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups). Owns its output buffer
 /// + compose-time scratch stacks so steady-state rendering is alloc-free.
@@ -68,16 +143,7 @@ impl Composer {
         self.transform_stack.clear();
         self.subtree_stack.clear();
         let mut current_transform = TranslateScale::IDENTITY;
-        let mut current: Option<URect> = None;
-        let mut quads_start: u32 = 0;
-        let mut texts_start: u32 = 0;
-        // Tracks whether the most recent draw in the active group was
-        // text. A subsequent quad must start a new group so the prior
-        // group's text renders BEFORE that quad — otherwise the quad
-        // and the prior group's quads batch together and the text
-        // floats on top. Reset on scissor switch (group already
-        // flushed) and on flush.
-        let mut last_was_text = false;
+        let mut group = GroupBuilder::default();
 
         let n = cmds.kinds.len();
         let mut i = 0usize;
@@ -94,31 +160,13 @@ impl Composer {
                         None => me,
                     };
                     self.clip_stack.push(new);
-                    switch_group(
-                        Some(new),
-                        &mut current,
-                        &mut quads_start,
-                        &mut texts_start,
-                        out.quads.len() as u32,
-                        out.texts.len() as u32,
-                        &mut out.groups,
-                    );
-                    last_was_text = false;
+                    group.set_scissor(Some(new), out);
                 }
                 CmdKind::PopClip => {
                     self.clip_stack
                         .pop()
                         .expect("PopClip without matching PushClip");
-                    switch_group(
-                        self.clip_stack.last().copied(),
-                        &mut current,
-                        &mut quads_start,
-                        &mut texts_start,
-                        out.quads.len() as u32,
-                        out.texts.len() as u32,
-                        &mut out.groups,
-                    );
-                    last_was_text = false;
+                    group.set_scissor(self.clip_stack.last().copied(), out);
                 }
                 CmdKind::PushTransform => {
                     let t: TranslateScale = cmds.read(start);
@@ -142,22 +190,7 @@ impl Composer {
                             (p.rect, p.radius, p.fill, Some(p.stroke))
                         }
                     };
-                    if last_was_text {
-                        // Flush the current group so this quad renders
-                        // *after* the prior group's text. Same scissor
-                        // continues into the new group.
-                        flush_group(
-                            current,
-                            quads_start,
-                            out.quads.len() as u32,
-                            texts_start,
-                            out.texts.len() as u32,
-                            &mut out.groups,
-                        );
-                        quads_start = out.quads.len() as u32;
-                        texts_start = out.texts.len() as u32;
-                        last_was_text = false;
-                    }
+                    group.before_quad(out);
                     let world_rect = current_transform.apply_rect(rect);
                     let world_radius = radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
@@ -181,33 +214,23 @@ impl Composer {
                         snap,
                     );
 
-                    // Finalize the parent's accumulated group BEFORE we
-                    // either splice cached output or start recording a
-                    // fresh subtree. Without this, the cached subtree's
-                    // first group would be merged with the parent's
-                    // tail, breaking the splice's group ranges.
-                    flush_group(
-                        current,
-                        quads_start,
-                        out.quads.len() as u32,
-                        texts_start,
-                        out.texts.len() as u32,
-                        &mut out.groups,
-                    );
-                    quads_start = out.quads.len() as u32;
-                    texts_start = out.texts.len() as u32;
-                    last_was_text = false;
+                    // Finalize the parent's accumulated group BEFORE
+                    // splicing or recording a fresh subtree. Without
+                    // this, the cached subtree's first group would
+                    // merge with the parent's tail and break the
+                    // splice's group ranges.
+                    group.flush(out);
 
                     if self
                         .cache
                         .try_splice(wid, subtree_hash, avail, cascade_fp, out)
                     {
-                        // Open group continues from the splice tail
-                        // under the parent's `current` scissor.
-                        quads_start = out.quads.len() as u32;
-                        texts_start = out.texts.len() as u32;
-                        // Fast-forward past the cached cmd range — the
-                        // matching `ExitSubtree` is at `payload.exit_idx`.
+                        // Splice's `DrawGroup`s are sealed; continue
+                        // the open group from the post-splice tail
+                        // under the unchanged scissor. Fast-forward
+                        // past the cached cmd range to its matching
+                        // `ExitSubtree` at `payload.exit_idx`.
+                        group.rebase(out);
                         i = payload.exit_idx as usize + 1;
                         continue;
                     }
@@ -227,17 +250,7 @@ impl Composer {
                 CmdKind::ExitSubtree => {
                     // Finalize the inner subtree's last open group so
                     // its full output is captured before snapshotting.
-                    flush_group(
-                        current,
-                        quads_start,
-                        out.quads.len() as u32,
-                        texts_start,
-                        out.texts.len() as u32,
-                        &mut out.groups,
-                    );
-                    quads_start = out.quads.len() as u32;
-                    texts_start = out.texts.len() as u32;
-                    last_was_text = false;
+                    group.flush(out);
 
                     if let Some(frame) = self.subtree_stack.pop() {
                         self.cache.write_subtree(
@@ -264,19 +277,12 @@ impl Composer {
                         color: t.color,
                         key: t.key,
                     });
-                    last_was_text = true;
+                    group.last_was_text = true;
                 }
             }
             i += 1;
         }
-        flush_group(
-            current,
-            quads_start,
-            out.quads.len() as u32,
-            texts_start,
-            out.texts.len() as u32,
-            &mut out.groups,
-        );
+        group.flush(out);
 
         &self.buffer
     }
@@ -310,48 +316,6 @@ fn cascade_fingerprint(
     scale.to_bits().hash(&mut h);
     snap.hash(&mut h);
     h.finish()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn switch_group(
-    target: Option<URect>,
-    current: &mut Option<URect>,
-    quads_start: &mut u32,
-    texts_start: &mut u32,
-    quads_end: u32,
-    texts_end: u32,
-    groups: &mut Vec<DrawGroup>,
-) {
-    if target != *current {
-        flush_group(
-            *current,
-            *quads_start,
-            quads_end,
-            *texts_start,
-            texts_end,
-            groups,
-        );
-        *current = target;
-        *quads_start = quads_end;
-        *texts_start = texts_end;
-    }
-}
-
-fn flush_group(
-    scissor: Option<URect>,
-    quads_start: u32,
-    quads_end: u32,
-    texts_start: u32,
-    texts_end: u32,
-    groups: &mut Vec<DrawGroup>,
-) {
-    if quads_end > quads_start || texts_end > texts_start {
-        groups.push(DrawGroup {
-            scissor,
-            quads: quads_start..quads_end,
-            texts: texts_start..texts_end,
-        });
-    }
 }
 
 fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: [u32; 2]) -> URect {
