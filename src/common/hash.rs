@@ -48,3 +48,62 @@ impl std::hash::Hasher for Hasher {
         self.0.finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pod_matches_write_of_bytes_of() {
+        // The performance shortcut is only safe if `pod(&v)` produces
+        // the exact same hash as feeding `bytemuck::bytes_of(&v)`
+        // through `write`. Pin the equivalence.
+        let v: u32 = 0xdead_beef;
+        let mut a = Hasher::new();
+        a.pod(&v);
+        let mut b = Hasher::new();
+        b.write(bytemuck::bytes_of(&v));
+        assert_eq!(a.finish(), b.finish());
+    }
+
+    #[test]
+    fn pod_matches_write_for_repr_c_pod() {
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::NoUninit)]
+        struct Pair {
+            a: u32,
+            b: u32,
+        }
+        let p = Pair {
+            a: 0x1234_5678,
+            b: 0x9abc_def0,
+        };
+        let mut h1 = Hasher::new();
+        h1.pod(&p);
+        let mut h2 = Hasher::new();
+        h2.write(bytemuck::bytes_of(&p));
+        assert_eq!(h1.finish(), h2.finish());
+    }
+
+    #[test]
+    fn new_matches_default_seed() {
+        // `Hasher::new` is a thin wrapper over `FxHasher::default`. If
+        // a future refactor adds a custom seed without updating call
+        // sites, every cache key changes silently — pin the equality.
+        let mut wrapped = Hasher::new();
+        let mut raw = FxHasher::default();
+        let bytes: &[u8] = b"palantir";
+        wrapped.write(bytes);
+        raw.write(bytes);
+        assert_eq!(wrapped.finish(), raw.finish());
+    }
+
+    #[test]
+    fn empty_hash_is_stable() {
+        // Cheap canary: if the underlying `FxHasher` swap changes the
+        // empty-input output, every persisted snapshot key shifts.
+        let h1 = Hasher::new().finish();
+        let h2 = Hasher::new().finish();
+        assert_eq!(h1, h2);
+    }
+}

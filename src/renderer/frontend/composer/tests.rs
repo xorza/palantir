@@ -415,6 +415,56 @@ mod cache_integration {
         );
     }
 
+    /// Cross-cache asymmetry: `pixel_snap` is in the composer's
+    /// `cascade_fp` but not in any encoder-cache key — flipping it
+    /// between frames must miss the compose cache (so output reflects
+    /// the new snap) yet leave the encoder cache eligible for hits.
+    /// The observable contract is "warm-after-snap-flip equals cold
+    /// at the new snap" — pin the cascade-fp arm of the compose key.
+    #[test]
+    fn compose_cache_invalidates_on_pixel_snap_flip() {
+        use crate::layout::types::display::Display;
+        use glam::UVec2;
+
+        let surface = UVec2::new(400, 200);
+        let snap_on = Display {
+            physical: surface,
+            scale_factor: 1.0,
+            pixel_snap: true,
+        };
+        let snap_off = Display {
+            pixel_snap: false,
+            ..snap_on
+        };
+
+        let mut ui = Ui::new();
+        ui.begin_frame(snap_on);
+        build(&mut ui);
+        ui.end_frame();
+
+        // Frame 2 with snap flipped: warm caches must produce the
+        // snap-off output, not a stale snap-on splice.
+        ui.begin_frame(snap_off);
+        build(&mut ui);
+        ui.end_frame();
+        let warm = ui.frontend.composer.buffer.clone();
+
+        // Cold oracle at snap_off: clear both caches and rerun.
+        crate::support::internals::clear_encode_cache(&mut ui);
+        crate::support::internals::clear_compose_cache(&mut ui);
+        ui.begin_frame(snap_off);
+        build(&mut ui);
+        ui.end_frame();
+        let cold = ui.frontend.composer.buffer.clone();
+
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&warm.quads),
+            bytemuck::cast_slice::<_, u8>(&cold.quads),
+            "snap-flip must invalidate compose cache; quads diverge",
+        );
+        assert_eq!(warm.groups, cold.groups);
+    }
+
     /// Pin: clearing only the compose cache (encode cache hot) still
     /// reproduces byte-identical output. The compose-cache miss
     /// re-runs the full subtree compose; cached encode cmds drive it.
