@@ -122,8 +122,8 @@ fn compose_scales_rects_for_dpr() {
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
-    assert_eq!(q.pos, Vec2::new(20.0, 40.0));
-    assert_eq!(q.size, Size::new(60.0, 80.0));
+    assert_eq!(q.rect.min, Vec2::new(20.0, 40.0));
+    assert_eq!(q.rect.size, Size::new(60.0, 80.0));
 }
 
 #[test]
@@ -159,8 +159,8 @@ fn compose_translates_under_push_transform() {
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
-    assert_eq!(q.pos, Vec2::new(110.0, 70.0));
-    assert_eq!(q.size, Size::new(30.0, 40.0));
+    assert_eq!(q.rect.min, Vec2::new(110.0, 70.0));
+    assert_eq!(q.rect.size, Size::new(30.0, 40.0));
 }
 
 #[test]
@@ -182,7 +182,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
         &params(1.0, UVec2::new(400, 400)),
     );
     let q = &buf.quads[0];
-    assert_eq!(q.size, Size::new(100.0, 100.0));
+    assert_eq!(q.rect.size, Size::new(100.0, 100.0));
     assert_eq!(q.radius.tl, 16.0);
     assert_eq!(q.stroke_width, 3.0);
 }
@@ -200,8 +200,8 @@ fn compose_composes_nested_transforms() {
         &params(1.0, UVec2::new(400, 400)),
     );
     let q = &buf.quads[0];
-    assert_eq!(q.pos, Vec2::new(30.0, 0.0));
-    assert_eq!(q.size, Size::new(20.0, 20.0));
+    assert_eq!(q.rect.min, Vec2::new(30.0, 0.0));
+    assert_eq!(q.rect.size, Size::new(20.0, 20.0));
 }
 
 #[test]

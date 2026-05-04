@@ -3,9 +3,8 @@
 //! Lives at the renderer root alongside `RenderBuffer`: both are the
 //! frontend↔backend contract, so neither side owns them.
 
-use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke};
+use crate::primitives::{color::Color, corners::Corners, rect::Rect, stroke::Stroke};
 use bytemuck::{Pod, Zeroable};
-use glam::Vec2;
 
 /// Per-instance quad data (68 B). Field types are the matching
 /// `repr(C)` primitives, byte-identical to `[f32; N]`s — see the
@@ -16,8 +15,7 @@ use glam::Vec2;
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub(crate) struct Quad {
-    pub(crate) pos: Vec2,
-    pub(crate) size: Size,
+    pub(crate) rect: Rect,
     pub(crate) fill: Color,
     pub(crate) radius: Corners,
     pub(crate) stroke_color: Color,
@@ -31,8 +29,7 @@ impl Quad {
             None => (Color::default(), 0.0),
         };
         Self {
-            pos: rect.min,
-            size: rect.size,
+            rect,
             fill,
             radius,
             stroke_color,
