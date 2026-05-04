@@ -1,4 +1,6 @@
-use super::super::cmd_buffer::RenderCmdBuffer;
+use super::super::cmd_buffer::{
+    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
+};
 use super::align_text_in;
 use crate::Ui;
 use crate::element::Configure;
@@ -7,7 +9,7 @@ use crate::primitives::{
     align::Align, align::HAlign, align::VAlign, color::Color, display::Display, rect::Rect,
     sense::Sense, size::Size, sizing::Sizing, transform::TranslateScale, widget_id::WidgetId,
 };
-use crate::test_support::{RenderCmd, begin, encode_cmds, encode_cmds_filtered, iter_cmds, ui_at};
+use crate::test_support::{begin, encode_cmds, encode_cmds_filtered, ui_at};
 use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::{UVec2, Vec2};
 
@@ -17,16 +19,24 @@ struct ClipPairs {
 }
 
 fn count_clip_pairs(cmds: &RenderCmdBuffer) -> ClipPairs {
-    let mut pushes = 0;
-    let mut pops = 0;
-    for c in iter_cmds(cmds) {
-        match c {
-            RenderCmd::PushClip(_) => pushes += 1,
-            RenderCmd::PopClip => pops += 1,
-            _ => {}
-        }
-    }
+    let pushes = cmds
+        .kinds
+        .iter()
+        .filter(|k| **k == CmdKind::PushClip)
+        .count();
+    let pops = cmds
+        .kinds
+        .iter()
+        .filter(|k| **k == CmdKind::PopClip)
+        .count();
     ClipPairs { pushes, pops }
+}
+
+fn count_draw_rects(cmds: &RenderCmdBuffer) -> usize {
+    cmds.kinds
+        .iter()
+        .filter(|k| matches!(k, CmdKind::DrawRect | CmdKind::DrawRectStroked))
+        .count()
 }
 
 #[test]
@@ -35,10 +45,7 @@ fn empty_tree_encodes_to_nothing() {
     Panel::hstack().show(&mut ui, |_| {});
     ui.end_frame();
     let cmds = encode_cmds(&ui);
-    let draws = iter_cmds(&cmds)
-        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
-        .count();
-    assert_eq!(draws, 0);
+    assert_eq!(count_draw_rects(&cmds), 0);
 }
 
 #[test]
@@ -53,10 +60,7 @@ fn frame_with_fill_emits_one_draw_rect() {
     ui.end_frame();
     let cmds = encode_cmds(&ui);
 
-    let draw_rects = iter_cmds(&cmds)
-        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
-        .count();
-    assert_eq!(draw_rects, 1);
+    assert_eq!(count_draw_rects(&cmds), 1);
 }
 
 #[test]
@@ -70,10 +74,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
     ui.end_frame();
     let cmds = encode_cmds(&ui);
 
-    let draw_rects = iter_cmds(&cmds)
-        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
-        .count();
-    assert_eq!(draw_rects, 0);
+    assert_eq!(count_draw_rects(&cmds), 0);
 }
 
 #[test]
@@ -101,17 +102,21 @@ fn clip_emits_balanced_push_pop() {
 
     // PushClip must come before the inner DrawRect, PopClip after — i.e. the
     // inner draw is sandwiched.
-    let push_idx = iter_cmds(&cmds)
-        .position(|c| matches!(c, RenderCmd::PushClip(_)))
+    let push_idx = cmds
+        .kinds
+        .iter()
+        .position(|k| *k == CmdKind::PushClip)
         .unwrap();
-    let pop_idx = iter_cmds(&cmds)
-        .position(|c| matches!(c, RenderCmd::PopClip))
+    let pop_idx = cmds
+        .kinds
+        .iter()
+        .position(|k| *k == CmdKind::PopClip)
         .unwrap();
-    let draw_idxs: Vec<_> = iter_cmds(&cmds)
+    let draw_idxs: Vec<_> = cmds
+        .kinds
+        .iter()
         .enumerate()
-        .filter_map(|(i, c)| {
-            matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)).then_some(i)
-        })
+        .filter_map(|(i, k)| matches!(k, CmdKind::DrawRect | CmdKind::DrawRectStroked).then_some(i))
         .collect();
     assert!(!draw_idxs.is_empty());
     for &di in &draw_idxs {
@@ -134,14 +139,16 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
     let mut clip: Option<Rect> = None;
     let mut clip_stack: Vec<Option<Rect>> = Vec::new();
     let mut out = Vec::new();
-    for cmd in iter_cmds(cmds) {
-        match cmd {
-            RenderCmd::PushTransform(child) => {
+    for (kind, start) in cmds.raw_iter() {
+        match kind {
+            CmdKind::PushTransform => {
+                let child: TranslateScale = cmds.read(start);
                 t_stack.push(t);
                 t = t.compose(child);
             }
-            RenderCmd::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
-            RenderCmd::PushClip(r) => {
+            CmdKind::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
+            CmdKind::PushClip => {
+                let r: Rect = cmds.read(start);
                 let screen = t.apply_rect(r);
                 let intersected = match clip {
                     Some(c) => screen.intersect(c),
@@ -150,8 +157,9 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
                 clip_stack.push(clip);
                 clip = Some(intersected);
             }
-            RenderCmd::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
-            RenderCmd::DrawRect(p) => {
+            CmdKind::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
+            CmdKind::DrawRect => {
+                let p: DrawRectPayload = cmds.read(start);
                 let screen = t.apply_rect(p.rect);
                 let visible = match clip {
                     Some(c) => screen.intersect(c),
@@ -159,7 +167,8 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
                 };
                 out.push((p.fill, visible));
             }
-            RenderCmd::DrawRectStroked(p) => {
+            CmdKind::DrawRectStroked => {
+                let p: DrawRectStrokedPayload = cmds.read(start);
                 let screen = t.apply_rect(p.rect);
                 let visible = match clip {
                     Some(c) => screen.intersect(c),
@@ -167,7 +176,7 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
                 };
                 out.push((p.fill, visible));
             }
-            RenderCmd::DrawText(_) => {
+            CmdKind::DrawText => {
                 // Test rasterizer ignores text — encoder tests only assert on rect output.
             }
         }
@@ -441,9 +450,10 @@ fn encoder_text_alignment_respects_leaf_padding() {
     ui.end_frame();
 
     let cmds = encode_cmds(&ui);
-    let text_rect = iter_cmds(&cmds)
-        .find_map(|c| match c {
-            RenderCmd::DrawText(p) => Some(p.rect),
+    let text_rect = cmds
+        .raw_iter()
+        .find_map(|(kind, start)| match kind {
+            CmdKind::DrawText => Some(cmds.read::<DrawTextPayload>(start).rect),
             _ => None,
         })
         .expect("button must emit one DrawText");
@@ -496,12 +506,10 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
     let filter = Rect::new(0.0, 0.0, 30.0, 200.0);
     let cmds = encode_cmds_filtered(&ui, Some(filter));
 
-    let draw_count = iter_cmds(&cmds)
-        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
-        .count();
     // `a` (0..40) intersects (0..30) → emitted. `b` (40..80) doesn't → skipped.
     assert_eq!(
-        draw_count, 1,
+        count_draw_rects(&cmds),
+        1,
         "only the rect inside the damage filter should be drawn"
     );
 }
@@ -520,10 +528,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
     ui.end_frame();
 
     let cmds = encode_cmds_filtered(&ui, Some(Rect::new(0.0, 0.0, 200.0, 200.0)));
-    let draw_count = iter_cmds(&cmds)
-        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
-        .count();
-    assert!(draw_count >= 1);
+    assert!(count_draw_rects(&cmds) >= 1);
 }
 
 /// Pin: PushClip/PopClip pairs are emitted even for clipped nodes whose
@@ -556,10 +561,11 @@ fn damage_filter_preserves_clip_pushpop() {
         pushes >= 1,
         "filtered-out clipped node still emits its clip pair"
     );
-    let draws = iter_cmds(&cmds)
-        .filter(|c| matches!(c, RenderCmd::DrawRect(_) | RenderCmd::DrawRectStroked(_)))
-        .count();
-    assert_eq!(draws, 0, "no rects emitted when nothing intersects damage");
+    assert_eq!(
+        count_draw_rects(&cmds),
+        0,
+        "no rects emitted when nothing intersects damage"
+    );
 }
 
 /// Pin: PushTransform/PopTransform pairs are emitted for filtered-out
@@ -582,11 +588,15 @@ fn damage_filter_preserves_transform_pushpop() {
 
     let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
-    let pushes = iter_cmds(&cmds)
-        .filter(|c| matches!(c, RenderCmd::PushTransform(_)))
+    let pushes = cmds
+        .kinds
+        .iter()
+        .filter(|k| **k == CmdKind::PushTransform)
         .count();
-    let pops = iter_cmds(&cmds)
-        .filter(|c| matches!(c, RenderCmd::PopTransform))
+    let pops = cmds
+        .kinds
+        .iter()
+        .filter(|k| **k == CmdKind::PopTransform)
         .count();
     assert_eq!(pushes, pops);
     assert!(

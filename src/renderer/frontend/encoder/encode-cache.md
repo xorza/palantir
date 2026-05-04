@@ -2,7 +2,7 @@
 
 Subtree-skip on the encoder, mirroring the
 [measure cache](../../../layout/measure-cache.md). Same key shape, same
-arena pattern, but stores `RenderCmd` slices instead of `desired` sizes.
+arena pattern, but stores `RenderCmdBuffer` slices instead of `desired` sizes.
 
 Code lives in `cache/` (this directory's sibling). The `Encoder` struct
 owns the cache + cmd buffer and is the entry point from

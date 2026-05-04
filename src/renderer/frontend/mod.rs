@@ -1,8 +1,9 @@
 //! Frontend (CPU) rendering pipeline.
 //!
-//! 1. [`encode`] — `&Tree` → `Vec<RenderCmd>` (logical-px). Pure free fn.
-//! 2. [`Composer`] — `&[RenderCmd]` → `RenderBuffer` (physical-px quads
-//!    + scissor groups). Owns the output + scratch; no GPU handles.
+//! 1. [`encode`] — `&Tree` → [`RenderCmdBuffer`](cmd_buffer::RenderCmdBuffer)
+//!    (logical-px). Pure free fn.
+//! 2. [`Composer`] — `&RenderCmdBuffer` → `RenderBuffer` (physical-px
+//!    quads + scissor groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
 //!    persistent per-frame allocation. `Ui::end_frame` calls
 //!    [`Frontend::build`] once and pulls the painted output via
@@ -42,8 +43,9 @@ pub struct FrameOutput<'a> {
 }
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
-/// every persistent allocation (the recorded `RenderCmd` vec, the
-/// output `RenderBuffer`, the [`Composer`] with its scratch). No GPU
+/// every persistent allocation (the encoder's
+/// [`RenderCmdBuffer`](cmd_buffer::RenderCmdBuffer), the output
+/// `RenderBuffer`, the [`Composer`] with its scratch). No GPU
 /// handles — `buffer()` is fed into any backend (`WgpuBackend`, future
 /// software/Vello/etc.).
 ///

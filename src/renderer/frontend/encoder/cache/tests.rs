@@ -4,7 +4,6 @@ use crate::primitives::{
     widget_id::WidgetId,
 };
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-use crate::test_support::{RenderCmd, cmd_at};
 use crate::text::TextCacheKey;
 use crate::tree::hash::NodeHash;
 use glam::Vec2;
@@ -39,11 +38,11 @@ fn buf_at(origin: Vec2) -> RenderCmdBuffer {
 }
 
 fn rect_of(buf: &RenderCmdBuffer, i: usize) -> Option<Rect> {
-    match cmd_at(buf, i) {
-        RenderCmd::PushClip(r) => Some(r),
-        RenderCmd::DrawRect(p) => Some(p.rect),
-        RenderCmd::DrawRectStroked(p) => Some(p.rect),
-        RenderCmd::DrawText(p) => Some(p.rect),
+    let start = buf.starts[i];
+    match buf.kinds[i] {
+        CmdKind::PushClip | CmdKind::DrawRect | CmdKind::DrawRectStroked | CmdKind::DrawText => {
+            Some(buf.read(start))
+        }
         _ => None,
     }
 }
