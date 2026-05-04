@@ -6,7 +6,7 @@ use crate::shape::Shape;
 use crate::tree::widget_id::WidgetId;
 use crate::tree::{NodeId, Tree, hash::NodeHash};
 use crate::ui::cascade::CascadeResult;
-use cache::{EncodeCache, extend_from_cached};
+use cache::EncodeCache;
 
 /// Bookkeeping captured before recursing so we can write the cached
 /// subtree back after children have appended their cmds. `cmd_lo` /
@@ -134,9 +134,8 @@ fn encode_node(
     };
 
     if let Some((wid, hash, avail)) = cache_key
-        && let Some(hit) = cache.try_lookup(wid, hash, avail)
+        && cache.try_replay(wid, hash, avail, out, layout.rect(id).min)
     {
-        extend_from_cached(out, hit.kinds, hit.starts, hit.data, layout.rect(id).min);
         return;
     }
 
