@@ -213,6 +213,7 @@ impl Composer {
                         self.clip_stack.last().copied(),
                         scale,
                         snap,
+                        viewport_phys,
                     );
 
                     // Finalize the parent's accumulated group BEFORE
@@ -292,14 +293,19 @@ impl Composer {
 /// Hash the cascade inputs that the subtree's physical-px output
 /// depends on. Any change here misses the cache; equality round-trips
 /// to a byte-identical splice. `f32` fields hash by bit-pattern so
-/// `-0.0 != 0.0` distinctions don't get folded.
+/// `-0.0 != 0.0` distinctions don't get folded. `viewport` is in the
+/// key because `scissor_from_logical` clamps text-run bounds against
+/// it — a window resize at constant DPI changes those clamps without
+/// touching `scale`, so without this a stale snapshot would splice.
 #[inline]
 fn cascade_fingerprint(
     t: TranslateScale,
     parent_scissor: Option<URect>,
     scale: f32,
     snap: bool,
+    viewport: UVec2,
 ) -> u64 {
+    // todo reuse hash.rs
     let mut h = FxHasher::default();
     t.translation.x.to_bits().hash(&mut h);
     t.translation.y.to_bits().hash(&mut h);
@@ -316,6 +322,8 @@ fn cascade_fingerprint(
     }
     scale.to_bits().hash(&mut h);
     snap.hash(&mut h);
+    viewport.x.hash(&mut h);
+    viewport.y.hash(&mut h);
     h.finish()
 }
 

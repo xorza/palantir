@@ -6,7 +6,7 @@ use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::text::TextCacheKey;
 use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
-use glam::Vec2;
+use glam::{IVec2, Vec2};
 
 fn buf_at(origin: Vec2) -> RenderCmdBuffer {
     let mut b = RenderCmdBuffer::default();
@@ -56,7 +56,7 @@ fn hash(n: u64) -> NodeHash {
 }
 
 fn avail() -> AvailableKey {
-    AvailableKey { w: 800, h: 600 }
+    IVec2::new(800, 600)
 }
 
 fn write_full(
@@ -128,7 +128,7 @@ fn available_mismatch_misses() {
     let src = buf_at(Vec2::ZERO);
     let mut cache = EncodeCache::default();
     write_full(&mut cache, wid(1), hash(1), &src, Vec2::ZERO);
-    let other = AvailableKey { w: 1, h: 1 };
+    let other = IVec2::new(1, 1);
     assert!(cache.try_lookup(wid(1), hash(1), other).is_none());
 }
 
