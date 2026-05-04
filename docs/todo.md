@@ -1,23 +1,6 @@
 # Todo
 
 
-## Per-frame allocation audit (`tests/alloc/alloc-testing.md`)
-
-Six fixtures pin budget 0: `empty_frame`, `button_only`, `nested_vstack_64`,
-`grid_8x8`, `damage_animated_rect`, `static_text_label`. Pipeline is fully
-alloc-clean in steady state from the audit's perspective (`Ui::end_frame`).
-
-- **Showcase-shaped fixtures.** Real workloads, not microscenes — a fixture
-  matching one tab of `examples/showcase` would catch regressions the
-  unit-shaped ones miss (interactions between widgets, larger trees, mixed
-  layout modes).
-- **Input-driven fixture.** Drive a synthetic pointer through a `Panel`
-  with `Sense::Click` and a hovered `Button`; verifies hit-index +
-  response-state paths are alloc-clean. None of the current fixtures
-  inject events.
-- **CI gating.** Local-only today, same posture as `tests/visual`. Wire one
-  pinned-runner job once the suite stabilizes.
-
 ## Damage rendering
 
 - **Multi-rect damage.** Replace the single union rect with N disjoint regions (clustered from the per-node dirty set). Avoids the 50% heuristic tripping when two unrelated corners change.

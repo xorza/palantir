@@ -4,7 +4,7 @@
 //! Two entry points:
 //! - [`run_audit`] takes an explicit `warmup` count — use when you need
 //!   precise control or are debugging the harness itself.
-//! - [`audit_until_stable`] probes for a stable point on its own and
+//! - [`audit_steady_state`] probes for a stable point on its own and
 //!   audits a fixed window after that — use for new fixtures so you
 //!   don't have to hand-tune warmup numbers per scene.
 //!

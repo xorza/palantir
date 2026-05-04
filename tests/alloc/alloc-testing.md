@@ -27,7 +27,7 @@ tests/alloc/
 ├── main.rs              entry: #[global_allocator] + mod decls
 ├── allocator.rs         CountingAllocator + with_audit
 ├── harness/
-│   ├── mod.rs           run_audit + audit_until_stable
+│   ├── mod.rs           run_audit + audit_steady_state
 │   └── format.rs        user_frames backtrace filter
 ├── harness_tests.rs     unit tests for the harness itself
 ├── fixtures.rs          mod decls
@@ -62,12 +62,11 @@ bytes, traces)` delta.
 
 Two test-facing wrappers in `harness/mod.rs`:
 
-- **`audit_until_stable(name, budget, scene)`** — auto-discovers the
-  warmup count. Probes one frame at a time until `STABLE_RUN`
-  consecutive frames have stayed within budget, then audits a fixed
-  64-frame window. **Use this for new fixtures** so warmup numbers
-  don't have to be eyeballed per scene; cache settling rates differ
-  across scenes and machines.
+- **`audit_steady_state(name, budget, scene)`** — runs up to 2 warmup
+  frames; the first within-budget frame ends warmup, then audits a
+  fixed 64-frame window where every frame must stay within budget.
+  **Use this for new fixtures** so warmup numbers don't have to be
+  eyeballed per scene.
 - **`run_audit(name, warmup, audit, budget, scene)`** — explicit
   warmup count. Use when debugging the harness itself or pinning a
   specific multi-phase behavior.
@@ -95,13 +94,13 @@ shouldn't.
 
 ### Infrastructure ✅
 - `allocator.rs` — counting wrapper around `System` + `with_audit`.
-- `harness/mod.rs` — `run_audit` + `audit_until_stable` with
+- `harness/mod.rs` — `run_audit` + `audit_steady_state` with
   `AllocBudget`.
 - `harness/format.rs` — `user_frames` backtrace filter.
 - `harness_tests.rs` — unit tests for the harness itself.
 
 ### Fixtures
-All use `audit_until_stable` (warmup auto-discovered) and pin **budget 0**.
+All use `audit_steady_state` (warmup auto-discovered) and pin **budget 0**.
 
 - `empty_frame` ✅ — `Ui` with no widgets. Sanity baseline.
 - `button_only` ✅ — single `Button::label("hello")` with FILL/FILL.
