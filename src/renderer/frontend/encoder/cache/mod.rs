@@ -26,9 +26,10 @@
 //! [`EncodeSnapshot`]: EncodeSnapshot
 
 use crate::layout::cache::AvailableKey;
-use crate::primitives::{span::Span, widget_id::WidgetId};
+use crate::layout::types::span::Span;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, RenderCmdBuffer, bump_rect_min};
 use crate::tree::hash::NodeHash;
+use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 

@@ -13,7 +13,9 @@
 //! artifact downstream consumes.
 
 use crate::layout::result::LayoutResult;
-use crate::primitives::{rect::Rect, sense::Sense, transform::TranslateScale, widget_id::WidgetId};
+use crate::layout::types::sense::Sense;
+use crate::primitives::{rect::Rect, transform::TranslateScale};
+use crate::tree::widget_id::WidgetId;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 use rustc_hash::FxHashMap;

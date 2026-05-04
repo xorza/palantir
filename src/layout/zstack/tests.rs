@@ -1,7 +1,7 @@
 use crate::Ui;
-use crate::element::Configure;
-use crate::primitives::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
+use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::test_support::under_outer;
+use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 

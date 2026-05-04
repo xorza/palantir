@@ -33,11 +33,12 @@
 //! differs from `ElementExtras::DEFAULT`. `Configure` (the trait) provides
 //! one chained setter per row.
 
-use crate::primitives::{
-    align::Align, align::HAlign, align::VAlign, grid::GridCell, justify::Justify, sense::Sense,
-    size::Size, sizing::Sizes, spacing::Spacing, transform::TranslateScale, visibility::Visibility,
-    widget_id::WidgetId,
+use crate::layout::types::{
+    align::Align, align::HAlign, align::VAlign, grid_cell::GridCell, justify::Justify,
+    sense::Sense, sizing::Sizes, visibility::Visibility,
 };
+use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
+use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 
 /// How a node arranges its children. Stored on `Element::mode` and read by

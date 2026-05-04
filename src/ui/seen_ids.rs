@@ -13,7 +13,7 @@
 //! 3. **Frame rollover.** `begin_frame` swaps `curr → prev` and
 //!    clears `curr` — no clone, capacity retained both sides.
 
-use crate::primitives::widget_id::WidgetId;
+use crate::tree::widget_id::WidgetId;
 use rustc_hash::FxHashSet;
 
 #[derive(Default)]

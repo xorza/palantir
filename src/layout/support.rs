@@ -4,12 +4,11 @@
 //! caching and result writing.
 
 use super::{Axis, LayoutEngine, LenReq};
-use crate::element::LayoutCore;
-use crate::primitives::{
-    align::Align, align::AxisAlign, rect::Rect, size::Size, sizing::Sizes, sizing::Sizing,
-};
+use crate::layout::types::{align::Align, align::AxisAlign, sizing::Sizes, sizing::Sizing};
+use crate::primitives::{rect::Rect, size::Size};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
+use crate::tree::element::LayoutCore;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 

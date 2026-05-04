@@ -4,10 +4,11 @@
 //! check on emitted `DrawText` x positions.
 
 use crate::Ui;
-use crate::element::Configure;
-use crate::primitives::{color::Color, sizing::Sizing, stroke::Stroke, track::Track};
+use crate::layout::types::{sizing::Sizing, track::Track};
+use crate::primitives::{color::Color, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{Cmd, CmdKind, DrawTextPayload};
 use crate::test_support::{encode_cmds, ui_with_text};
+use crate::tree::element::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, styled::Styled, text::Text};
 use glam::UVec2;
 use std::rc::Rc;

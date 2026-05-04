@@ -2,7 +2,7 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
-use crate::renderer::quad::Quad;
+use crate::renderer::gpu::quad::Quad;
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 

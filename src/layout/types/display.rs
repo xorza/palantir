@@ -1,5 +1,5 @@
-use super::rect::Rect;
-use super::size::Size;
+use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use glam::UVec2;
 
 /// Display state read by the renderer at submit time and by hosts

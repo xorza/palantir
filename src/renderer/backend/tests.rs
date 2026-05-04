@@ -7,8 +7,8 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
-use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
-use crate::renderer::quad::Quad;
+use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
+use crate::renderer::gpu::quad::Quad;
 use crate::text::TextCacheKey;
 
 /// One step of the backend's per-frame draw schedule. Used here to pin

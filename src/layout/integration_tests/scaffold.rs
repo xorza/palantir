@@ -4,9 +4,9 @@
 //! when a third caller appears.
 
 use crate::Ui;
-use crate::element::Configure;
-use crate::primitives::{sizing::Sizing, track::Track};
+use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::tree::NodeId;
+use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use std::rc::Rc;
 

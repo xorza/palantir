@@ -16,9 +16,10 @@
 //! ("Wanted: per-node command cache, text-shape cache,
 //! multi-rect damage, incremental hit-index, debug overlay").
 
-use crate::cascade::CascadeResult;
-use crate::primitives::{rect::Rect, widget_id::WidgetId};
+use crate::primitives::rect::Rect;
+use crate::tree::widget_id::WidgetId;
 use crate::tree::{NodeId, Tree, hash::NodeHash};
+use crate::ui::cascade::CascadeResult;
 use rustc_hash::FxHashMap;
 
 /// Per-widget snapshot retained across frames so the next frame's

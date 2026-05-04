@@ -1,4 +1,4 @@
-use crate::primitives::sizing::Sizing;
+use crate::layout::types::sizing::Sizing;
 
 /// One row or column definition for a `Grid`. Wraps a `Sizing` (Pixel / Auto /
 /// Star) with optional `[min, max]` clamps. Defaults: `min = 0.0`,

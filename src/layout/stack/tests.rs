@@ -1,6 +1,7 @@
-use crate::element::Configure;
-use crate::primitives::{align::Align, rect::Rect, sizing::Sizing};
+use crate::layout::types::{align::Align, sizing::Sizing};
+use crate::primitives::rect::Rect;
 use crate::test_support::ui_at;
+use crate::tree::element::Configure;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -116,7 +117,7 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
 
 #[test]
 fn hstack_justify_center_centers_content_block() {
-    use crate::primitives::justify::Justify;
+    use crate::layout::types::justify::Justify;
     let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::Center)
@@ -136,7 +137,7 @@ fn hstack_justify_center_centers_content_block() {
 
 #[test]
 fn hstack_justify_end_packs_to_trailing_edge() {
-    use crate::primitives::justify::Justify;
+    use crate::layout::types::justify::Justify;
     let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::End)
@@ -155,7 +156,7 @@ fn hstack_justify_end_packs_to_trailing_edge() {
 
 #[test]
 fn hstack_justify_space_between_distributes_leftover_between() {
-    use crate::primitives::justify::Justify;
+    use crate::layout::types::justify::Justify;
     let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::SpaceBetween)
@@ -176,7 +177,7 @@ fn hstack_justify_space_between_distributes_leftover_between() {
 
 #[test]
 fn hstack_justify_space_around_distributes_with_half_pads() {
-    use crate::primitives::justify::Justify;
+    use crate::layout::types::justify::Justify;
     let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::SpaceAround)
@@ -197,7 +198,7 @@ fn hstack_justify_space_around_distributes_with_half_pads() {
 
 #[test]
 fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
-    use crate::primitives::justify::Justify;
+    use crate::layout::types::justify::Justify;
     let mut ui = ui_at(UVec2::new(200, 100));
     let root = Panel::hstack()
         .justify(Justify::Center)

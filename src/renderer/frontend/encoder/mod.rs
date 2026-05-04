@@ -1,12 +1,11 @@
 use super::cmd_buffer::RenderCmdBuffer;
-use crate::cascade::CascadeResult;
+use crate::layout::types::{align::Align, align::HAlign, align::VAlign, span::Span};
 use crate::layout::{cache::AvailableKey, result::LayoutResult};
-use crate::primitives::{
-    align::Align, align::HAlign, align::VAlign, rect::Rect, size::Size, span::Span,
-    transform::TranslateScale, widget_id::WidgetId,
-};
+use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale};
 use crate::shape::Shape;
+use crate::tree::widget_id::WidgetId;
 use crate::tree::{NodeId, Tree, hash::NodeHash};
+use crate::ui::cascade::CascadeResult;
 use cache::EncodeCache;
 
 /// Bookkeeping captured before recursing so we can write the cached

@@ -7,9 +7,9 @@
 //! the pool, so the cache is hit for free across groups.
 //!
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
-//! [`TextRun`]: super::super::buffer::TextRun
+//! [`TextRun`]: super::super::gpu::buffer::TextRun
 
-use super::super::buffer::TextRun;
+use super::super::gpu::buffer::TextRun;
 use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
 use crate::text::SharedCosmic;

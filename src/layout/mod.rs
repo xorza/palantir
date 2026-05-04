@@ -1,17 +1,17 @@
-use crate::element::LayoutMode;
 use crate::layout::axis::Axis;
 use crate::layout::cache::{MeasureCache, quantize_available};
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{IntrinsicBounds, LenReq};
 use crate::layout::result::{LayoutResult, ShapedText};
 use crate::layout::support::{leaf_text_shapes, resolve_axis_size, zero_subtree};
+use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::WrapScratch;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::primitives::sizing::Sizing;
-use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
 use crate::text::TextMeasurer;
+use crate::tree::element::LayoutMode;
+use crate::tree::widget_id::WidgetId;
 use crate::tree::{NodeId, Tree};
 
 pub(crate) mod axis;
@@ -22,6 +22,7 @@ pub(crate) mod intrinsic;
 pub(crate) mod result;
 pub(crate) mod stack;
 pub(crate) mod support;
+pub(crate) mod types;
 pub(crate) mod wrapstack;
 pub(crate) mod zstack;
 

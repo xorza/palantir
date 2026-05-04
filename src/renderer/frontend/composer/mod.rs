@@ -1,11 +1,10 @@
 use super::cmd_buffer::{
     Cmd, CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
-use crate::primitives::{
-    display::Display, rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect,
-};
-use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
-use crate::renderer::quad::Quad;
+use crate::layout::types::display::Display;
+use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
+use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
+use crate::renderer::gpu::quad::Quad;
 
 /// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups). Owns its output buffer
