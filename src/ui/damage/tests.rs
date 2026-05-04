@@ -463,6 +463,169 @@ fn surface_resize_forces_full_repaint() {
     assert!(ui.damage.dirty.is_empty());
 }
 
+/// Pin (scale-factor / DPI change): same physical surface size, new
+/// `scale_factor` ⇒ logical surface rect changes (logical = physical
+/// / scale). Backend may or may not recreate the backbuffer (physical
+/// size unchanged), but text needs to reshape at the new scale and a
+/// full repaint is the safe path. Damage should treat scale-factor
+/// change like a resize.
+#[test]
+fn scale_factor_change_forces_full_repaint() {
+    let mut ui = Ui::new();
+    let build = |ui: &mut Ui| {
+        one_frame(ui, BLUE);
+    };
+
+    ui.begin_frame(DISPLAY);
+    build(&mut ui);
+    ui.end_frame();
+    ui.begin_frame(DISPLAY);
+    build(&mut ui);
+    let steady = ui.end_frame().damage;
+    assert!(steady.is_none());
+    assert!(ui.damage.dirty.is_empty());
+
+    let scaled = Display {
+        scale_factor: 2.0,
+        ..DISPLAY
+    };
+    ui.begin_frame(scaled);
+    build(&mut ui);
+    let after_scale = ui.end_frame().damage;
+    assert!(
+        after_scale.is_none(),
+        "scale-factor change must short-circuit to full repaint, got {after_scale:?}",
+    );
+}
+
+/// Pin (precise bug reproducer): the showcase resize-flicker fired
+/// when surface changed AND the damage rect was small enough to fall
+/// below the area threshold — only a few descendants shifted while
+/// the root and most others were stable. Without the surface-change
+/// short-circuit, `compute` returns `Some(small_rect)` and the
+/// encoder produces a damage-filtered partial paint, but the backend
+/// force-clears the freshly recreated backbuffer, leaving the rest of
+/// the screen as clear color.
+///
+/// The test uses a Fixed-size root so its rect stays constant across
+/// surface changes (otherwise the FILL/Hug root's rect contribution
+/// would dominate damage and the area threshold alone would short-
+/// circuit). Then injects a small `prev` mutation so the diff produces
+/// a tiny damage rect at a different surface, which would otherwise
+/// pass the threshold filter.
+#[test]
+fn small_damage_with_surface_change_forces_full_repaint() {
+    let mut ui = Ui::new();
+    let big = Display {
+        physical: UVec2::new(2000, 2000),
+        ..DISPLAY
+    };
+    // Root: Hug HStack containing a giant Fixed Frame + a small
+    // Fixed Frame. With content (3050, 60) larger than the surface
+    // (2000×2000), the root grows to content size and stays stable
+    // across surface changes — exactly the showcase regime where
+    // the bug manifests. Frame "small" ends up at (3000, 0, 50, 60)
+    // and is what we'll inject a tiny rect change into.
+    let scene = |ui: &mut Ui| {
+        Panel::hstack().with_id("root").show(ui, |ui| {
+            Frame::new()
+                .with_id("big")
+                .size((3000.0, 60.0))
+                .fill(BLUE)
+                .show(ui);
+            Frame::new()
+                .with_id("small")
+                .size((50.0, 60.0))
+                .fill(BLUE)
+                .show(ui);
+        });
+    };
+
+    ui.begin_frame(big);
+    scene(&mut ui);
+    ui.end_frame();
+    ui.begin_frame(big);
+    scene(&mut ui);
+    ui.end_frame();
+    assert!(ui.damage.dirty.is_empty());
+
+    // Inject: nudge widget "a"'s prev rect so the next diff sees a
+    // small change. Tiny rect (3×50 = 150 area) inside a 2000×2000
+    // surface (4M area) — ratio ≈ 0.004%, well below the 50%
+    // threshold.
+    let target_wid = WidgetId::from_hash("small");
+    let snap = ui.damage.prev.get_mut(&target_wid).expect("small in prev");
+    snap.rect.min.x += 3.0;
+
+    let smaller = Display {
+        physical: UVec2::new(1999, 2000),
+        ..big
+    };
+    ui.begin_frame(smaller);
+    scene(&mut ui);
+    let damage = ui.end_frame().damage;
+
+    assert!(
+        !ui.damage.dirty.is_empty(),
+        "test setup invalid — injected nudge should mark widget a dirty",
+    );
+    let r = ui.damage.rect.expect("damage rect should be Some");
+    assert!(
+        r.area() / smaller.logical_rect().area() < 0.5,
+        "test setup invalid — damage area ratio should be <50% (would \
+         otherwise pass the threshold without exercising the surface check), \
+         got rect={r:?}",
+    );
+    assert!(
+        damage.is_none(),
+        "small-damage + surface-change must force full repaint, got {damage:?} \
+         (this is the showcase resize-flicker case — encoder would emit a \
+         damage-filtered partial paint over a backend-cleared backbuffer)",
+    );
+}
+
+/// Pin (negative): a stable surface across many frames does *not*
+/// fire the surface-change short-circuit on every frame. This guards
+/// the alpha-mode / present-mode / swapchain-recreated-but-backbuffer-
+/// kept scenarios from the damage layer's POV — they all leave the
+/// surface rect unchanged, so damage must pass through to the normal
+/// dirty/threshold logic. Without this guarantee partial repaint
+/// would never apply.
+#[test]
+fn stable_surface_does_not_short_circuit() {
+    let mut ui = Ui::new();
+    let build = |ui: &mut Ui, color: Color| {
+        one_frame(ui, color);
+    };
+
+    // Warm up: two identical frames bring damage to steady state.
+    ui.begin_frame(DISPLAY);
+    build(&mut ui, BLUE);
+    ui.end_frame();
+    ui.begin_frame(DISPLAY);
+    build(&mut ui, BLUE);
+    let warm = ui.end_frame().damage;
+    assert!(warm.is_none(), "warm steady-state with no diff is None");
+    assert!(ui.damage.dirty.is_empty());
+
+    // Frame 3: same surface, *one leaf* changes color. Diff must
+    // produce a partial repaint (Some(small_rect)), not None — that
+    // proves the surface-change short-circuit didn't fire.
+    ui.begin_frame(DISPLAY);
+    build(&mut ui, RED);
+    let partial = ui.end_frame().damage;
+    let r = partial.expect(
+        "stable surface + one-leaf change should produce a partial \
+         repaint, but damage was None — surface-change short-circuit \
+         fired incorrectly",
+    );
+    // Damage rect = the 50×50 frame's rect. Well below 50% of 200×200.
+    assert!(
+        r.area() / DISPLAY.logical_rect().area() < 0.5,
+        "damage rect should be small (partial repaint range), got {r:?}",
+    );
+}
+
 /// Pin (motivating workload): hovering a button causes exactly one
 /// node — the button — to be dirty, with damage rect == button's
 /// rect. This is the bread-and-butter case Stage 3 is designed for:
