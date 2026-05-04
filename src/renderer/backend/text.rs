@@ -147,11 +147,7 @@ impl TextRenderer {
         };
         let mut cosmic = cosmic.borrow_mut();
 
-        // Erase the `'static` lifetime of `self.scratch` to a frame-local
-        // borrow tied to `cosmic`. Sound: scratch is cleared at the bottom
-        // of this method, no `TextArea` reference escapes the function.
-        let scratch: &mut Vec<TextArea<'_>> = unsafe { std::mem::transmute(&mut self.scratch) };
-        scratch.clear();
+        let mut scratch = with_transient_textareas(&mut self.scratch);
 
         let RenderSplit {
             font_system,
@@ -198,9 +194,10 @@ impl TextRenderer {
             scratch.iter().cloned(),
             &mut self.swash_cache,
         );
-        // Drop scratch borrows before returning so the `'static`
-        // placeholder is sound for the next call.
-        scratch.clear();
+        // `scratch` drops here — its `Drop` impl clears the underlying
+        // vec, so the `'static` placeholder is restored before the next
+        // call.
+        drop(scratch);
 
         if let Err(e) = result {
             tracing::warn!(?e, group_idx, "glyphon prepare failed");
@@ -244,6 +241,50 @@ impl TextRenderer {
         }
         self.high_water = 0;
     }
+}
+
+/// Guard around the renderer's `Vec<TextArea<'static>>` scratch that
+/// re-types the placeholder lifetime to a frame-local one. Clears on
+/// drop, so the `'static` placeholder is restored before any subsequent
+/// caller observes it.
+struct TransientTextAreas<'a> {
+    inner: &'a mut Vec<TextArea<'a>>,
+}
+
+impl<'a> std::ops::Deref for TransientTextAreas<'a> {
+    type Target = Vec<TextArea<'a>>;
+    fn deref(&self) -> &Self::Target {
+        self.inner
+    }
+}
+
+impl<'a> std::ops::DerefMut for TransientTextAreas<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner
+    }
+}
+
+impl Drop for TransientTextAreas<'_> {
+    fn drop(&mut self) {
+        self.inner.clear();
+    }
+}
+
+/// Re-type a `Vec<TextArea<'static>>` (kept with `'static` as a
+/// placeholder so the field can exist with no runtime owner) as a
+/// frame-local `Vec<TextArea<'a>>`. The returned guard clears the vec
+/// on drop, so the `'static` placeholder is sound for the next caller.
+///
+/// SAFETY: every `TextArea` pushed must be dropped before this function
+/// returns *to its parent caller* — the `Drop` impl on the returned
+/// guard handles that, so the call site only needs to keep the guard
+/// alive until it's done with the borrows.
+fn with_transient_textareas<'a>(
+    scratch: &'a mut Vec<TextArea<'static>>,
+) -> TransientTextAreas<'a> {
+    scratch.clear();
+    let inner: &mut Vec<TextArea<'_>> = unsafe { std::mem::transmute(scratch) };
+    TransientTextAreas { inner }
 }
 
 fn text_bounds(b: URect) -> TextBounds {
