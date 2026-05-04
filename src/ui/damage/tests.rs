@@ -403,6 +403,66 @@ fn first_frame_filter_is_none() {
     assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
 }
 
+/// Pin: when the surface size changes between frames, `compute`
+/// returns `None` (full repaint) regardless of how few widgets are
+/// dirty. The backend recreates the backbuffer on resize and forces
+/// `LoadOp::Clear`; if the encoder produced a damage-filtered partial
+/// paint (matching `dirty=2` instead of the full tree), the freshly
+/// cleared backbuffer would be left as clear color outside the tiny
+/// damage scissor — visible as a one-frame black flash on every
+/// resize step. Anti-regression for that flicker.
+#[test]
+fn surface_resize_forces_full_repaint() {
+    let mut ui = Ui::new();
+    let build = |ui: &mut Ui| {
+        one_frame(ui, BLUE);
+    };
+
+    // Frame 1: 200×200. First frame is full repaint (every node added).
+    ui.begin_frame(DISPLAY);
+    build(&mut ui);
+    let d1 = ui.end_frame().damage;
+    assert!(d1.is_none());
+
+    // Frame 2: same surface, identical authoring. Steady state ⇒
+    // no dirty nodes ⇒ damage = None (no diff to repaint).
+    ui.begin_frame(DISPLAY);
+    build(&mut ui);
+    let d2 = ui.end_frame().damage;
+    assert!(d2.is_none());
+    assert!(ui.damage.dirty.is_empty());
+
+    // Frame 3: surface narrows by 1 px, identical authoring. With
+    // `Sizing::FILL` root, every node's screen_rect shifts ⇒ many
+    // dirty nodes, but even if only one were dirty the surface
+    // change must force `damage = None`. Pin both: dirty list has
+    // entries (would otherwise be a small partial repaint), and
+    // damage = None.
+    let smaller = Display {
+        physical: UVec2::new(199, 200),
+        ..DISPLAY
+    };
+    ui.begin_frame(smaller);
+    build(&mut ui);
+    let d3 = ui.end_frame().damage;
+    assert!(
+        !ui.damage.dirty.is_empty(),
+        "resize should mark some nodes dirty (rect changed)",
+    );
+    assert!(
+        d3.is_none(),
+        "surface change must short-circuit to full repaint, got {d3:?}",
+    );
+
+    // Frame 4: surface stable at the new size, identical authoring.
+    // Back to steady state.
+    ui.begin_frame(smaller);
+    build(&mut ui);
+    let d4 = ui.end_frame().damage;
+    assert!(d4.is_none());
+    assert!(ui.damage.dirty.is_empty());
+}
+
 /// Pin (motivating workload): hovering a button causes exactly one
 /// node — the button — to be dirty, with damage rect == button's
 /// rect. This is the bread-and-butter case Stage 3 is designed for:

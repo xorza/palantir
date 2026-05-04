@@ -46,6 +46,12 @@ pub(crate) struct NodeSnapshot {
 /// frame; it's mutated in place during `compute` (read old, write
 /// new) so steady-state frames don't allocate.
 ///
+/// `prev_surface` lets `compute` short-circuit to full repaint on
+/// surface change. Backend recreates the backbuffer on resize and
+/// force-clears it; if the encoder produced a damage-filtered
+/// partial paint instead, the cleared backbuffer would be left as
+/// clear color outside the tiny damage scissor.
+///
 /// Capacities on `dirty` and `prev` are retained across frames.
 #[derive(Default)]
 pub(crate) struct Damage {
@@ -54,6 +60,8 @@ pub(crate) struct Damage {
     /// Last frame's per-widget `(rect, hash)` snapshot. Read by the
     /// diff in `compute`, then rolled forward in the same pass.
     pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
+    /// Last frame's surface rect. `None` on first frame.
+    pub(crate) prev_surface: Option<Rect>,
 }
 
 /// Damage-area ratio above which the renderer should skip the
@@ -89,6 +97,14 @@ impl Damage {
         removed: &[WidgetId],
         surface: Rect,
     ) -> Option<Rect> {
+        // Surface change ⇒ swapchain reconfigure ⇒ backbuffer recreate
+        // on the next `submit`, which forces `LoadOp::Clear`. The
+        // encoder must match: produce a full paint (damage = None)
+        // even when no widgets are dirty, so the freshly-cleared
+        // backbuffer is fully repainted instead of left as clear color
+        // outside a tiny damage scissor. Roll prev forward and bail.
+        let surface_changed = self.prev_surface != Some(surface);
+        self.prev_surface = Some(surface);
         self.dirty.clear();
         let mut acc: Option<Rect> = None;
 
@@ -130,6 +146,9 @@ impl Damage {
         }
 
         self.rect = acc;
+        if surface_changed {
+            return None;
+        }
         self.filter(surface)
     }
 
