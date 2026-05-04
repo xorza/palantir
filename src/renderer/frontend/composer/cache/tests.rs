@@ -141,6 +141,54 @@ fn same_len_rewrite_is_in_place() {
 }
 
 #[test]
+fn size_change_appends_and_marks_garbage() {
+    let mut cache = ComposeCache::default();
+
+    // First snapshot: 2 quads, 1 text, 1 group (the helper's shape).
+    write(&mut cache, wid(1), hash(1), 0xa, 0, 0, 0);
+    let big_q = cache.quads.live;
+    let big_t = cache.texts.live;
+    let big_g = cache.groups.live;
+    assert_eq!(big_q, 2);
+    assert_eq!(big_t, 1);
+    assert_eq!(big_g, 1);
+
+    // Second snapshot under same wid but different lengths: 1 quad,
+    // 0 texts, 1 group. Triggers the append + garbage path.
+    let small_quads = vec![quad(0.0)];
+    let small_groups = vec![DrawGroup {
+        scissor: None,
+        quads: 0..1,
+        texts: 0..0,
+    }];
+    cache.write_subtree(
+        wid(1),
+        hash(2),
+        avail(),
+        0xb,
+        &small_quads,
+        &[],
+        &small_groups,
+        0,
+        0,
+    );
+
+    // Live counters reflect only the new payload.
+    assert_eq!(cache.quads.live, 1);
+    assert_eq!(cache.texts.live, 0);
+    assert_eq!(cache.groups.live, 1);
+    // Old ranges still in arenas as garbage.
+    assert!(cache.quads.items.len() > cache.quads.live);
+    assert!(cache.groups.items.len() > cache.groups.live);
+
+    // Lookup with the new key hits and replays the small shape.
+    let hit = cache.try_lookup(wid(1), hash(2), avail(), 0xb).unwrap();
+    assert_eq!(hit.quads.len(), 1);
+    assert_eq!(hit.texts.len(), 0);
+    assert_eq!(hit.groups.len(), 1);
+}
+
+#[test]
 fn sweep_removed_evicts_and_decrements_live() {
     let mut cache = ComposeCache::default();
     write(&mut cache, wid(1), hash(1), 0, 0, 0, 0);

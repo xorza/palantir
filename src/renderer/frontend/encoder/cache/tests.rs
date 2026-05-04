@@ -254,6 +254,13 @@ fn compact_preserves_lookups() {
         );
     }
 
+    // Compaction must have actually run during the churn — without it
+    // the data arena would carry every busted big-payload range as
+    // garbage (~12 words each × 40 writes, ~10× live). The trigger
+    // bounds items at ≤ 2× live by design, so asserting that bound
+    // confirms compaction kicked in at least once.
+    assert!(cache.data.items.len() <= cache.data.live * 2);
+
     // After all this churn, every snapshot must still resolve and
     // replay correctly — even if compaction has run and moved their
     // arena ranges underneath.
