@@ -4,15 +4,23 @@
 
 use crate::layout::types::span::Span;
 use crate::renderer::gpu::quad::Quad;
-use bytemuck::{Pod, Zeroable};
+use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
 use wgpu::util::DeviceExt;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, ShaderType)]
 struct ViewportUniform {
-    size: [f32; 2],
-    _pad: [f32; 2],
+    size: Vec2,
+}
+
+impl ViewportUniform {
+    const BYTES: usize = Self::SHADER_SIZE.get() as usize;
+
+    fn encode(&self) -> [u8; Self::BYTES] {
+        let mut out = [0u8; Self::BYTES];
+        UniformBuffer::new(&mut out[..]).write(self).unwrap();
+        out
+    }
 }
 
 pub(crate) struct QuadPipeline {
@@ -46,10 +54,7 @@ impl QuadPipeline {
 
         let viewport_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("palantir.quad.viewport"),
-            contents: bytemuck::cast_slice(&[ViewportUniform {
-                size: [0.0, 0.0],
-                _pad: [0.0, 0.0],
-            }]),
+            contents: &ViewportUniform { size: Vec2::ZERO }.encode(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -137,10 +142,7 @@ impl QuadPipeline {
         queue.write_buffer(
             &self.viewport_buffer,
             0,
-            bytemuck::cast_slice(&[ViewportUniform {
-                size: viewport.to_array(),
-                _pad: [0.0, 0.0],
-            }]),
+            &ViewportUniform { size: viewport }.encode(),
         );
 
         if quads.is_empty() {
