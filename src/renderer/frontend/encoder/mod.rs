@@ -1,4 +1,4 @@
-use super::cmd_buffer::RenderCmdBuffer;
+use super::cmd_buffer::{EnterPatch, RenderCmdBuffer};
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, span::Span};
 use crate::layout::{cache::AvailableKey, result::LayoutResult};
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale};
@@ -18,14 +18,19 @@ struct CachePending {
     avail: AvailableKey,
     cmd_lo: u32,
     data_lo: u32,
+    enter_patch: EnterPatch,
 }
 
 /// Skip cache lookup + write for subtrees of `<=` this many nodes.
-/// A 1-node subtree's encode work (one `draw_rect` or `draw_text`) is
-/// cheaper than the hashmap miss + insert it would replace. The win
-/// shows on cold / forced-miss frames where every parent miss falls
-/// through to per-leaf cache I/O.
-const TINY_SUBTREE_THRESHOLD: u32 = 1;
+/// A small subtree's encode work (a handful of `draw_rect` /
+/// `draw_text`) is cheaper than the hashmap miss + insert + marker
+/// emission it would replace. The win shows on cold / forced-miss
+/// frames where every parent miss falls through to per-leaf cache I/O.
+///
+/// Also gates `EnterSubtree`/`ExitSubtree` marker emission — they're
+/// only useful for subtrees the composer cache might want to skip,
+/// and small subtrees never will.
+const TINY_SUBTREE_THRESHOLD: u32 = 4;
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU work,
 /// no scale/snap math — that lives in the backend's process step. Pure
@@ -135,13 +140,27 @@ fn encode_node(
         return;
     }
 
-    let cache_pending = cache_key.map(|(wid, hash, avail)| CachePending {
-        wid,
-        hash,
-        avail,
-        cmd_lo: out.kinds.len() as u32,
-        data_lo: out.data.len() as u32,
-    });
+    // Bracket cache-eligible subtrees with `EnterSubtree`/`ExitSubtree`
+    // markers. The markers go *inside* the snapshot range (cmd_lo is
+    // captured before `push_enter_subtree` so the open cmd is at index
+    // `cmd_lo`; the close is the last cmd in the range). Composer
+    // treats both as no-ops today — they exist to anchor the upcoming
+    // composer cache.
+    let cache_pending = if let Some((wid, hash, avail)) = cache_key {
+        let cmd_lo = out.kinds.len() as u32;
+        let data_lo = out.data.len() as u32;
+        let enter_patch = out.push_enter_subtree(wid);
+        Some(CachePending {
+            wid,
+            hash,
+            avail,
+            cmd_lo,
+            data_lo,
+            enter_patch,
+        })
+    } else {
+        None
+    };
 
     let rect = layout.rect(id);
 
@@ -229,6 +248,7 @@ fn encode_node(
     }
 
     if let Some(p) = cache_pending {
+        out.push_exit_subtree(p.enter_patch);
         let cmd_hi = out.kinds.len() as u32;
         let data_hi = out.data.len() as u32;
         cache.write_subtree(

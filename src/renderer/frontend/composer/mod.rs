@@ -138,6 +138,13 @@ impl Composer {
                     out.quads
                         .push(Quad::new(phys_rect, fill, phys_radius, phys_stroke));
                 }
+                CmdKind::EnterSubtree | CmdKind::ExitSubtree => {
+                    // Subtree-bracket markers from the encoder. No-op
+                    // today — anchor for the upcoming composer cache.
+                    // Group flow / `last_was_text` deliberately
+                    // unchanged so cold-frame compose output stays
+                    // byte-identical to the pre-marker baseline.
+                }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(t.rect);
