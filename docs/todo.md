@@ -3,13 +3,12 @@
 
 ## Per-frame allocation audit (`tests/alloc/alloc-testing.md`)
 
-- **Hunt the 2 allocs/frame in `Button` steady state.** First widget
-  fixture (`button_only`) caught a clean 2.00 allocs/frame; currently
-  `#[ignore]`d with budget pinned at 2. Likely culprits: `Shape::Text.text:
-  String` clone on every `Text::show` (already noted in Text section), plus
-  one more. Fix → flip budget to 0 → drop `#[ignore]`.
-- **More fixtures.** Add `nested_vstack_64`, `grid_8x8`, `damage_animated_rect`
-  (all budget 0), plus `static_text_label` with a measured baseline.
+- **More fixtures.** `empty_frame` and `button_only` pin budget 0. Next:
+  `nested_vstack_64` (scratch-Vec growth), `grid_8x8` (grid driver scratch
+  + track-list), `damage_animated_rect` (damage diff path). All budget 0.
+- **`static_text_label` baseline.** cosmic-text isn't ours — pin a measured
+  non-zero number rather than chasing it to 0, so a regression in *our*
+  text path is still visible.
 - **CI gating.** Local-only today, same posture as `tests/visual`. Wire one
   pinned-runner job once the suite stabilizes.
 
