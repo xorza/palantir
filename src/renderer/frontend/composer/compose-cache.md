@@ -145,4 +145,4 @@ real workload (scroll-heavy app, animated parent) shows
 cascade-fingerprint misses dominating compose cost.
 
 Future-work items (damage-aware compose replay, SIMD splice, coarser
-cascade fingerprint quantization) live in `docs/todo.md`.
+cascade fingerprint quantization) live in `docs/roadmap.md`.

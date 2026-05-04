@@ -58,6 +58,6 @@ Steady-state cache hits dominate by ~25 % on the nested workload.
 Per-snapshot memory footprint on that workload is ~77 KB across the
 arenas and the `FxHashMap` index.
 
-Future-work items (intrinsic-query cache, allocation audit,
-real-workload validation, cold-cache mitigations, coarser
-quantization) live in `docs/todo.md`.
+Future-work items (intrinsic-query cache, real-workload validation,
+cold-cache mitigations, coarser quantization) live in
+`docs/roadmap.md`.

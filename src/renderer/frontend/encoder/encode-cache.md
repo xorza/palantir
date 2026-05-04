@@ -90,4 +90,4 @@ threshold was raised from 1 when the markers landed; see
 
 Future-work items (composer cache, hit-hint propagation,
 damage-aware encode replay, SIMD `bump_rect_min`, coarser
-`available_q` quantization) live in `docs/todo.md`.
+`available_q` quantization) live in `docs/roadmap.md`.
