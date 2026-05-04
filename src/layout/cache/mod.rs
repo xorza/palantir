@@ -223,8 +223,8 @@ impl MeasureCache {
         self.available.extend_from_slice(available_qs);
         let hugs_span = Span::new(self.hugs.items.len() as u32, new_hugs_len);
         self.hugs.items.extend_from_slice(hugs);
-        self.desired.live += new_len as usize;
-        self.hugs.live += new_hugs_len as usize;
+        self.desired.acquire(new_len);
+        self.hugs.acquire(new_hugs_len);
         self.snapshots.insert(
             wid,
             ArenaSnapshot {

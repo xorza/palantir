@@ -170,11 +170,7 @@ impl ComposeCache {
                     .iter_mut()
                     .zip(tail_groups.iter())
                 {
-                    *dst = DrawGroup {
-                        scissor: src.scissor,
-                        quads: Span::new(src.quads.start - rebase_q, src.quads.len),
-                        texts: Span::new(src.texts.start - rebase_t, src.texts.len),
-                    };
+                    *dst = rebase_relative(src, rebase_q, rebase_t);
                 }
                 return;
             }
@@ -196,15 +192,13 @@ impl ComposeCache {
         self.texts.items.extend_from_slice(tail_texts);
         self.groups.items.reserve(g_len as usize);
         for src in tail_groups {
-            self.groups.items.push(DrawGroup {
-                scissor: src.scissor,
-                quads: Span::new(src.quads.start - rebase_q, src.quads.len),
-                texts: Span::new(src.texts.start - rebase_t, src.texts.len),
-            });
+            self.groups
+                .items
+                .push(rebase_relative(src, rebase_q, rebase_t));
         }
-        self.quads.live += q_len as usize;
-        self.texts.live += t_len as usize;
-        self.groups.live += g_len as usize;
+        self.quads.acquire(q_len);
+        self.texts.acquire(t_len);
+        self.groups.acquire(g_len);
         self.snapshots.insert(
             wid,
             ComposeSnapshot {
@@ -265,6 +259,20 @@ impl ComposeCache {
         self.quads.items = new_q;
         self.texts.items = new_t;
         self.groups.items = new_g;
+    }
+}
+
+/// Subtract the snapshot's `(rebase_q, rebase_t)` from `src`'s
+/// `quads` / `texts` starts, yielding a subtree-relative `DrawGroup`.
+/// Used both on the in-place rewrite hot path and on the append path —
+/// the cache always stores groups subtree-relative so compaction can
+/// move ranges without rewriting them.
+#[inline]
+fn rebase_relative(src: &DrawGroup, rebase_q: u32, rebase_t: u32) -> DrawGroup {
+    DrawGroup {
+        scissor: src.scissor,
+        quads: Span::new(src.quads.start - rebase_q, src.quads.len),
+        texts: Span::new(src.texts.start - rebase_t, src.texts.len),
     }
 }
 
