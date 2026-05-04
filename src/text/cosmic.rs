@@ -118,14 +118,23 @@ impl CosmicMeasure {
         self.cache.get(&key).map(|e| &e.buffer)
     }
 
-    /// Split borrow: `(font_system, cache_lookup)`. Glyphon's `prepare` needs
+    /// Split borrow: `font_system` + `lookup`. Glyphon's `prepare` needs
     /// `&mut FontSystem` while we iterate `RenderBuffer.text_runs` and look
     /// up buffers — borrowck won't let us call `buffer_for` and
     /// `font_system_mut` simultaneously through `&mut self`. This method
     /// hands out the disjoint pieces.
-    pub fn split_for_render(&mut self) -> (&mut FontSystem, BufferLookup<'_>) {
-        (&mut self.font_system, BufferLookup { cache: &self.cache })
+    pub fn split_for_render(&mut self) -> RenderSplit<'_> {
+        RenderSplit {
+            font_system: &mut self.font_system,
+            lookup: BufferLookup { cache: &self.cache },
+        }
     }
+}
+
+/// Disjoint borrow handed out by [`CosmicMeasure::split_for_render`].
+pub struct RenderSplit<'a> {
+    pub font_system: &'a mut FontSystem,
+    pub lookup: BufferLookup<'a>,
 }
 
 /// Read-only view into the buffer cache. Constructed by

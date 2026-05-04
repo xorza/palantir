@@ -4,6 +4,8 @@
 //! pin the order against expected sequences.
 
 use crate::primitives::color::Color;
+use crate::primitives::corners::Corners;
+use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
 use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::quad::Quad;
@@ -37,9 +39,9 @@ fn render_schedule(buffer: &RenderBuffer) -> Vec<RenderStep> {
 
 fn dummy_quad() -> Quad {
     Quad::new(
-        crate::primitives::rect::Rect::new(0.0, 0.0, 10.0, 10.0),
+        Rect::new(0.0, 0.0, 10.0, 10.0),
         Color::WHITE,
-        crate::primitives::corners::Corners::ZERO,
+        Corners::ZERO,
         None,
     )
 }

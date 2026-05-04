@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::element::Configure;
 use crate::primitives::{color::Color, size::Size, widget_id::WidgetId};
 use crate::test_support::{begin, ui_at};
+use crate::tree::NodeId;
 use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 
@@ -201,11 +202,7 @@ fn subtree_skip_restores_descendant_available_q() {
     run_frame(&mut ui, build);
     let n = ui.tree().node_count();
     let cold: Vec<_> = (0..n)
-        .map(|i| {
-            ui.layout_engine
-                .result
-                .available_q(crate::tree::NodeId(i as u32))
-        })
+        .map(|i| ui.layout_engine.result.available_q(NodeId(i as u32)))
         .collect();
     // Cold frame must have populated every descendant — every slot is
     // `Some(real_value)`, never `None` (the UNSET frame-init sentinel).
@@ -216,11 +213,7 @@ fn subtree_skip_restores_descendant_available_q() {
 
     run_frame(&mut ui, build);
     let warm: Vec<_> = (0..n)
-        .map(|i| {
-            ui.layout_engine
-                .result
-                .available_q(crate::tree::NodeId(i as u32))
-        })
+        .map(|i| ui.layout_engine.result.available_q(NodeId(i as u32)))
         .collect();
     assert_eq!(
         cold, warm,
@@ -243,15 +236,11 @@ fn subtree_skip_preserves_descendant_rects() {
     run_frame(&mut ui, build);
     let n = ui.tree().node_count();
     let layout1 = &ui.layout_engine.result;
-    let rects1: Vec<_> = (0..n)
-        .map(|i| layout1.rect(crate::tree::NodeId(i as u32)))
-        .collect();
+    let rects1: Vec<_> = (0..n).map(|i| layout1.rect(NodeId(i as u32))).collect();
 
     run_frame(&mut ui, build);
     let layout2 = &ui.layout_engine.result;
-    let rects2: Vec<_> = (0..n)
-        .map(|i| layout2.rect(crate::tree::NodeId(i as u32)))
-        .collect();
+    let rects2: Vec<_> = (0..n).map(|i| layout2.rect(NodeId(i as u32))).collect();
     assert_eq!(
         rects1, rects2,
         "subtree-skip cache hit must not perturb any arranged rect",

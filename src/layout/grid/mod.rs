@@ -128,9 +128,9 @@ pub(crate) struct GridScratch {
 /// own base. Capacity retained.
 #[derive(Default)]
 pub(crate) struct GridContext {
-    pub(super) depth_stack: GridDepthStack,
-    pub(super) hugs: GridHugStore,
-    pub(super) track_aggregator: Vec<f32>,
+    pub(crate) depth_stack: GridDepthStack,
+    pub(crate) hugs: GridHugStore,
+    pub(crate) track_aggregator: Vec<f32>,
 }
 
 /// Nesting stack of per-depth grid scratch. One `GridScratch` slot per
@@ -142,7 +142,7 @@ pub(crate) struct GridDepthStack {
 }
 
 impl GridDepthStack {
-    pub(super) fn depth(&self) -> usize {
+    pub(crate) fn depth(&self) -> usize {
         self.depth
     }
 
@@ -192,7 +192,7 @@ struct GridHugSlot {
 }
 
 impl GridHugStore {
-    pub(super) fn reset_for(&mut self, tree: &Tree) {
+    pub(crate) fn reset_for(&mut self, tree: &Tree) {
         self.max_pool.clear();
         self.min_pool.clear();
         self.slots.clear();
@@ -219,17 +219,17 @@ impl GridHugStore {
         s.range()
     }
 
-    pub(super) fn max(&self, idx: u16, axis: Axis) -> &[f32] {
+    pub(crate) fn max(&self, idx: u16, axis: Axis) -> &[f32] {
         &self.max_pool[self.axis_slice(idx, axis)]
     }
-    pub(super) fn min(&self, idx: u16, axis: Axis) -> &[f32] {
+    pub(crate) fn min(&self, idx: u16, axis: Axis) -> &[f32] {
         &self.min_pool[self.axis_slice(idx, axis)]
     }
-    pub(super) fn max_mut(&mut self, idx: u16, axis: Axis) -> &mut [f32] {
+    pub(crate) fn max_mut(&mut self, idx: u16, axis: Axis) -> &mut [f32] {
         let r = self.axis_slice(idx, axis);
         &mut self.max_pool[r]
     }
-    pub(super) fn min_mut(&mut self, idx: u16, axis: Axis) -> &mut [f32] {
+    pub(crate) fn min_mut(&mut self, idx: u16, axis: Axis) -> &mut [f32] {
         let r = self.axis_slice(idx, axis);
         &mut self.min_pool[r]
     }
@@ -303,7 +303,7 @@ impl GridHugStore {
 /// (`GridHugStore`), keyed by `GridDef` index, durable for the whole
 /// layout pass. Both are heap-resident and capacity-retained across
 /// frames; no fixed track-count limit.
-pub(super) fn measure(
+pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -526,7 +526,7 @@ fn record_hug(tracks: &[Track], hug_max: &mut [f32], idx: u16, span: u16, desire
     }
 }
 
-pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect, idx: u16) {
+pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect, idx: u16) {
     let depth = layout.scratch.grid.depth_stack.enter();
     arrange_inner(layout, tree, node, inner, idx, depth);
     layout.scratch.grid.depth_stack.exit();
@@ -855,7 +855,7 @@ fn resolve_axis(
 ///
 /// Span > 1 cells are excluded (matches existing `measure` and the
 /// commitment in `src/layout/intrinsic.md`).
-pub(super) fn intrinsic(
+pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,

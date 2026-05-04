@@ -69,7 +69,7 @@ impl WrapScratch {
 /// (one pass over children), and arrange uses the same logic on the
 /// same `desired` values, so the assignment is deterministic across
 /// both passes.
-pub(super) fn measure(
+pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -140,7 +140,7 @@ pub(super) fn measure(
     axis.compose_size(max_line_main, total_cross)
 }
 
-pub(super) fn arrange(
+pub(crate) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -317,7 +317,7 @@ pub(super) fn arrange(
 ///   overflows).
 /// - **MaxContent** on main: sum + within-line gaps (single line).
 /// - Cross axis: max child intrinsic (single-line approximation).
-pub(super) fn intrinsic(
+pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,

@@ -4,16 +4,18 @@
 //! back to max-content and break wrapping under constrained widths.
 
 use super::scaffold::two_hug_cols_with_wrap;
+use crate::Ui;
 use crate::element::Configure;
 use crate::primitives::{color::Color, sizing::Sizing, track::Track};
 use crate::test_support::{ui_at, ui_with_text};
+use crate::tree::NodeId;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, styled::Styled, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
-fn assert_wrapped_within_surface(ui: &crate::Ui, node: crate::tree::NodeId, surface_w: f32) {
+fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
     let shaped = ui
         .layout_engine
         .result

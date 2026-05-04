@@ -279,7 +279,7 @@ impl Element {
     /// `Tree::push_node` stamps the extras side-table slot if any extras
     /// differ from default and writes the resulting `extras` index into
     /// `PaintCore`.
-    pub fn split(self) -> (LayoutCore, PaintCore, WidgetId, ElementExtras) {
+    pub fn split(self) -> ElementSplit {
         let layout = LayoutCore {
             mode: self.mode,
             size: self.size,
@@ -303,8 +303,21 @@ impl Element {
             justify: self.justify,
             child_align: self.child_align,
         };
-        (layout, paint, self.id, extras)
+        ElementSplit {
+            layout,
+            paint,
+            id: self.id,
+            extras,
+        }
     }
+}
+
+/// Output of [`Element::split`] — the four storage columns of an `Element`.
+pub struct ElementSplit {
+    pub layout: LayoutCore,
+    pub paint: PaintCore,
+    pub id: WidgetId,
+    pub extras: ElementExtras,
 }
 
 /// Mixin: any widget builder that holds an `Element` gets the chained

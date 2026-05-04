@@ -7,6 +7,7 @@ use crate::primitives::{
     widget_id::WidgetId,
 };
 use crate::test_support::begin;
+use crate::tree::NodeId;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
 use glam::{UVec2, Vec2};
 
@@ -242,7 +243,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let translate = Vec2::new(100.0, 0.0);
     let mut ui = Ui::new();
     let mut child_node = None;
-    let build = |fill: Color, ui: &mut Ui, child: &mut Option<crate::tree::NodeId>| {
+    let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
         begin(ui, UVec2::new(400, 400));
         Panel::hstack_with_id("outer")
             .transform(TranslateScale::from_translation(translate))
@@ -281,7 +282,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
 fn animated_parent_transform_unions_old_and_new_positions() {
     let mut ui = Ui::new();
     let mut child_node = None;
-    let build = |dx: f32, ui: &mut Ui, child: &mut Option<crate::tree::NodeId>| {
+    let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
         begin(ui, UVec2::new(400, 400));
         Panel::hstack_with_id("outer")
             .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -400,9 +401,7 @@ fn button_hover_damage_covers_only_the_button() {
     let mut ui = Ui::new();
     let mut hot_node = None;
     let mut cold_node = None;
-    let build = |ui: &mut Ui,
-                 hot: &mut Option<crate::tree::NodeId>,
-                 cold: &mut Option<crate::tree::NodeId>| {
+    let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         begin(ui, UVec2::new(400, 400));
         Panel::vstack_with_id("root").show(ui, |ui| {
             *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);
@@ -465,9 +464,7 @@ fn button_unhover_damage_covers_only_the_button() {
     let mut ui = Ui::new();
     let mut hot_node = None;
     let mut cold_node = None;
-    let build = |ui: &mut Ui,
-                 hot: &mut Option<crate::tree::NodeId>,
-                 cold: &mut Option<crate::tree::NodeId>| {
+    let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         begin(ui, UVec2::new(400, 400));
         Panel::vstack_with_id("root").show(ui, |ui| {
             *hot = Some(Button::with_id("hot").label("Hover me").show(ui).node);

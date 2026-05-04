@@ -12,7 +12,7 @@ mod tests;
 /// Intrinsic size of a ZStack: max over children on the queried axis.
 /// Children stack at the same origin, so the parent hugs the largest
 /// child.
-pub(super) fn intrinsic(
+pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -34,7 +34,7 @@ pub(super) fn intrinsic(
 ///
 /// Content size = `max(child desired)` per axis, so the panel hugs the
 /// largest child (cross-axis fall-back when ZStack is Hug).
-pub(super) fn measure(
+pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -58,7 +58,7 @@ pub(super) fn measure(
 /// `child_align` as fallback when child's own axis is `Auto`).
 /// Defaults pin to top-left unless the child has `Sizing::Fill` — then `Auto`
 /// falls back to stretch on that axis.
-pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
+pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
     let parent_child_align = tree.read_extras(node).child_align;
     for child in tree.children_with_state(node) {
         let c = match child {

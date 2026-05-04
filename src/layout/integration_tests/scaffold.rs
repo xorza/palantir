@@ -14,7 +14,7 @@ use std::rc::Rc;
 /// in column 0 is the unit under test; column 1 carries a short label
 /// to keep the second column from collapsing. Returns the wrapping
 /// node so the test can read its shape afterwards.
-pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> NodeId {
+pub(crate) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> NodeId {
     let mut text_node = None;
     Grid::new()
         .cols(Rc::from([Track::hug(), Track::hug()]))
@@ -39,7 +39,7 @@ pub(super) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
 /// VStack containing a `(Fill × Hug)` HStack with a Fixed-size avatar
 /// followed by a wrapping `Fill` text. Models the chat-message
 /// pattern. Returns the message text node.
-pub(super) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_px: f32) -> NodeId {
+pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_px: f32) -> NodeId {
     let mut message_node = None;
     Panel::vstack().show(ui, |ui| {
         Panel::hstack()

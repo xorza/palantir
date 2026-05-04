@@ -69,7 +69,7 @@ impl IntrinsicBounds {
 ///
 /// Pure function of the subtree at `node`. Engine caches the result; this
 /// function is the cache miss path.
-pub(super) fn compute(
+pub(crate) fn compute(
     engine: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -195,7 +195,7 @@ fn leaf_pair(tree: &Tree, node: NodeId, axis: Axis, text: &mut TextMeasurer) -> 
 /// the leaf-side TextMeasurer cache probe (the bigger cost on
 /// text-heavy trees) and centralizes the cache write so future driver-
 /// level batching is a single point of change.
-pub(super) fn compute_pair(
+pub(crate) fn compute_pair(
     engine: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
