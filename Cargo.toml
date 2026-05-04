@@ -21,6 +21,7 @@ padding-struct = "*"
 [dev-dependencies]
 criterion = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
+image = { version = "*", default-features = false, features = ["png"] }
 
 [[bench]]
 name = "frame"
