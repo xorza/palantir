@@ -380,9 +380,8 @@ impl Tree {
                 LayoutMode::Grid(idx) => Some(&self.grid.defs[idx as usize]),
                 _ => None,
             };
-            self.hashes.push(node_hash::compute_node_hash(
-                layout, paint, extras, shapes, grid_def,
-            ));
+            self.hashes
+                .push(NodeHash::compute(layout, paint, extras, shapes, grid_def));
         }
 
         // Subtree-hash rollup. Pre-order arena means every child has a

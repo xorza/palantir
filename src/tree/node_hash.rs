@@ -51,6 +51,33 @@ impl NodeHash {
     pub(crate) fn from_u64(v: u64) -> Self {
         Self(v)
     }
+
+    /// Compute the authoring hash for one node. Read-only over the tree —
+    /// pure function of (LayoutCore, PaintCore, ElementExtras, shapes,
+    /// optional GridDef) at this `NodeId`.
+    #[inline]
+    pub(crate) fn compute(
+        layout: &LayoutCore,
+        paint: PaintCore,
+        extras: Option<&ElementExtras>,
+        shapes: &[Shape],
+        grid_def: Option<&GridDef>,
+    ) -> Self {
+        let mut h = Hasher::new();
+        hash_layout_core(&mut h, layout);
+        hash_paint_core(&mut h, paint);
+        if let Some(e) = extras {
+            hash_node_extras(&mut h, e);
+        }
+        h.write_u32(shapes.len() as u32);
+        for s in shapes {
+            hash_shape(&mut h, s);
+        }
+        if let Some(def) = grid_def {
+            hash_grid_def(&mut h, def);
+        }
+        Self(h.finish())
+    }
 }
 
 /// `Sizing` is a tagged union with niche-uninit padding in its inactive
@@ -193,31 +220,4 @@ fn hash_grid_def(h: &mut Hasher, def: &GridDef) {
     }
     h.write_u32(def.row_gap.to_bits());
     h.write_u32(def.col_gap.to_bits());
-}
-
-/// Compute the authoring hash for one node. Read-only over the tree —
-/// pure function of (LayoutCore, PaintCore, ElementExtras, shapes,
-/// optional GridDef) at this `NodeId`.
-#[inline]
-pub(crate) fn compute_node_hash(
-    layout: &LayoutCore,
-    paint: PaintCore,
-    extras: Option<&ElementExtras>,
-    shapes: &[Shape],
-    grid_def: Option<&GridDef>,
-) -> NodeHash {
-    let mut h = Hasher::new();
-    hash_layout_core(&mut h, layout);
-    hash_paint_core(&mut h, paint);
-    if let Some(e) = extras {
-        hash_node_extras(&mut h, e);
-    }
-    h.write_u32(shapes.len() as u32);
-    for s in shapes {
-        hash_shape(&mut h, s);
-    }
-    if let Some(def) = grid_def {
-        hash_grid_def(&mut h, def);
-    }
-    NodeHash(h.finish())
 }
