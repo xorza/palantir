@@ -289,6 +289,7 @@ impl Tree {
             self.node_extras.push(extras);
             paint.extras = Some(idx);
         }
+
         self.layout.push(layout);
         self.paint.push(paint);
         self.widget_ids.push(widget_id);
