@@ -51,12 +51,11 @@ fn vs(
 // Per-corner SDF rounded rect. radius = (tl, tr, br, bl).
 fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
     let half = size * 0.5;
-    var r = radius.x;
-    if (p.x > half.x) {
-        if (p.y > half.y) { r = radius.z; } else { r = radius.y; }
-    } else if (p.y > half.y) {
-        r = radius.w;
-    }
+    let right  = step(half.x, p.x);
+    let bottom = step(half.y, p.y);
+    let r = mix(mix(radius.x, radius.y, right),
+                mix(radius.w, radius.z, right),
+                bottom);
     let q = abs(p - half) - (half - vec2<f32>(r));
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
