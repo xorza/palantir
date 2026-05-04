@@ -5,7 +5,7 @@ use crate::primitives::{color::Color, urect::URect};
 use crate::renderer::gpu::buffer::{DrawGroup, TextRun};
 use crate::renderer::gpu::quad::Quad;
 use crate::text::TextCacheKey;
-use glam::Vec2;
+use glam::{IVec2, Vec2};
 
 fn wid(n: u64) -> WidgetId {
     WidgetId(n)
@@ -16,7 +16,7 @@ fn hash(n: u64) -> NodeHash {
 }
 
 fn avail() -> AvailableKey {
-    AvailableKey { w: 800, h: 600 }
+    IVec2::new(800, 600)
 }
 
 fn quad(x: f32) -> Quad {
@@ -112,7 +112,7 @@ fn avail_mismatch_misses() {
     write(&mut cache, wid(1), hash(1), 0, 0, 0, 0);
     assert!(
         cache
-            .try_lookup(wid(1), hash(1), AvailableKey { w: 1, h: 1 }, 0)
+            .try_lookup(wid(1), hash(1), IVec2::new(1, 1), 0)
             .is_none()
     );
 }

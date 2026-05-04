@@ -1,4 +1,4 @@
-use crate::layout::cache::AvailableKey;
+use crate::layout::cache::{AVAIL_UNSET, AvailableKey};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
@@ -39,7 +39,7 @@ impl LayoutResult {
         self.text_shapes.clear();
         self.text_shapes.resize(n, None);
         self.available_q.clear();
-        self.available_q.resize(n, AvailableKey::UNSET);
+        self.available_q.resize(n, AVAIL_UNSET);
     }
 
     /// Per-node quantized `available` size last passed to this node's
@@ -50,11 +50,7 @@ impl LayoutResult {
     #[inline]
     pub(crate) fn available_q(&self, id: NodeId) -> Option<AvailableKey> {
         let v = self.available_q[id.index()];
-        if v == AvailableKey::UNSET {
-            None
-        } else {
-            Some(v)
-        }
+        if v == AVAIL_UNSET { None } else { Some(v) }
     }
 
     #[inline]

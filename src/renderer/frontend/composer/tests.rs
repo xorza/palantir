@@ -21,9 +21,9 @@ fn text(buf: &mut RenderCmdBuffer, r: Rect) {
     buf.draw_text(r, Color::WHITE, TextCacheKey::INVALID);
 }
 
-fn params(scale: f32, viewport_phys: [u32; 2]) -> Display {
+fn params(scale: f32, physical: UVec2) -> Display {
     Display {
-        physical: UVec2::new(viewport_phys[0], viewport_phys[1]),
+        physical,
         scale_factor: scale,
         pixel_snap: false,
     }
@@ -44,7 +44,7 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
             draw(b, rect(0.0, 0.0, 10.0, 10.0));
             draw(b, rect(20.0, 0.0, 10.0, 10.0));
         },
-        &params(1.0, [200, 200]),
+        &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.quads.len(), 2);
     assert_eq!(buf.groups.len(), 1);
@@ -63,7 +63,7 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
             b.pop_clip();
             draw(b, rect(0.0, 0.0, 5.0, 5.0));
         },
-        &params(1.0, [400, 400]),
+        &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 4);
     assert_eq!(buf.groups.len(), 3);
@@ -91,7 +91,7 @@ fn compose_intersects_nested_clips() {
             b.pop_clip();
             b.pop_clip();
         },
-        &params(1.0, [400, 400]),
+        &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
     assert_eq!(buf.groups.len(), 1);
@@ -108,7 +108,7 @@ fn compose_skips_groups_with_no_quads() {
             b.push_clip(rect(0.0, 0.0, 50.0, 50.0));
             b.pop_clip();
         },
-        &params(1.0, [200, 200]),
+        &params(1.0, UVec2::new(200, 200)),
     );
     assert!(buf.quads.is_empty());
     assert!(buf.groups.is_empty());
@@ -118,7 +118,7 @@ fn compose_skips_groups_with_no_quads() {
 fn compose_scales_rects_for_dpr() {
     let buf = run(
         |b| draw(b, rect(10.0, 20.0, 30.0, 40.0)),
-        &params(2.0, [400, 400]),
+        &params(2.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
@@ -155,7 +155,7 @@ fn compose_translates_under_push_transform() {
             draw(b, rect(10.0, 20.0, 30.0, 40.0));
             b.pop_transform();
         },
-        &params(1.0, [400, 400]),
+        &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
@@ -179,7 +179,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
             );
             b.pop_transform();
         },
-        &params(1.0, [400, 400]),
+        &params(1.0, UVec2::new(400, 400)),
     );
     let q = &buf.quads[0];
     assert_eq!(q.size, [100.0, 100.0]);
@@ -197,7 +197,7 @@ fn compose_composes_nested_transforms() {
             b.pop_transform();
             b.pop_transform();
         },
-        &params(1.0, [400, 400]),
+        &params(1.0, UVec2::new(400, 400)),
     );
     let q = &buf.quads[0];
     assert_eq!(q.pos, [30.0, 0.0]);
@@ -214,7 +214,7 @@ fn compose_transforms_clip_rects_to_screen_space() {
             b.pop_clip();
             b.pop_transform();
         },
-        &params(1.0, [400, 400]),
+        &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.groups.len(), 1);
     let s = buf.groups[0]
@@ -236,7 +236,7 @@ fn compose_splits_group_on_text_to_quad_transition() {
             text(b, rect(10.0, 10.0, 80.0, 20.0));
             draw(b, rect(20.0, 20.0, 60.0, 40.0));
         },
-        &params(1.0, [200, 200]),
+        &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.quads.len(), 2);
     assert_eq!(buf.texts.len(), 1);
@@ -264,7 +264,7 @@ fn compose_does_not_split_consecutive_texts() {
             text(b, rect(10.0, 10.0, 80.0, 20.0));
             text(b, rect(10.0, 35.0, 80.0, 20.0));
         },
-        &params(1.0, [200, 200]),
+        &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.quads.len(), 1);
     assert_eq!(buf.texts.len(), 2);
@@ -284,7 +284,7 @@ fn compose_keeps_quads_then_text_in_one_group() {
             draw(b, rect(2.0, 2.0, 96.0, 96.0));
             text(b, rect(10.0, 10.0, 80.0, 20.0));
         },
-        &params(1.0, [200, 200]),
+        &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.groups.len(), 1);
     assert_eq!(buf.groups[0].quads, 0..2);

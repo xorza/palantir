@@ -25,6 +25,7 @@ use crate::layout::types::span::Span;
 use crate::primitives::size::Size;
 use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
+use glam::IVec2;
 use rustc_hash::FxHashMap;
 
 /// 24-byte snapshot. `nodes` indexes the three node-indexed arenas
@@ -56,41 +57,18 @@ pub(crate) struct ArenaSnapshot {
 /// key. `i32::MAX` on either axis represents an infinite available
 /// (ZStack / Hug parents propagate `f32::INFINITY`). Equality compare
 /// is used as a cache-validity gate.
-///
-/// `Default` returns [`Self::UNSET`] (not zero-bytes): any
-/// `Vec<AvailableKey>::resize(n, Default::default())` therefore keeps
-/// the false-hit defense, even though the type still derives
-/// `bytemuck::Zeroable` (zero-bytes is a valid representation; it just
-/// isn't the `Default`).
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct AvailableKey {
-    pub(crate) w: i32,
-    pub(crate) h: i32,
-}
+pub(crate) type AvailableKey = IVec2;
 
-impl Default for AvailableKey {
-    #[inline]
-    fn default() -> Self {
-        Self::UNSET
-    }
-}
-
-impl AvailableKey {
-    /// Sentinel "never written" value. Distinct from anything
-    /// [`quantize_available`] can produce: that function emits
-    /// `i32::MAX` for infinity or `>= 0` for finite (the inputs are
-    /// always non-negative `available` sizes), so `i32::MIN` cannot
-    /// collide with a real key. Used as the per-frame init fill for
-    /// `LayoutScratch.available_q` so a cache-validity equality check
-    /// can never spuriously match against a slot whose write was
-    /// somehow skipped — the `{0, 0}` default would compare equal to a
-    /// legitimately-stored 0px × 0px snapshot.
-    pub(crate) const UNSET: Self = Self {
-        w: i32::MIN,
-        h: i32::MIN,
-    };
-}
+/// Sentinel "never written" value. Distinct from anything
+/// [`quantize_available`] can produce: that function emits `i32::MAX`
+/// for infinity or `>= 0` for finite (the inputs are always
+/// non-negative `available` sizes), so `i32::MIN` cannot collide with
+/// a real key. Used as the per-frame init fill for
+/// `LayoutScratch.available_q` so a cache-validity equality check can
+/// never spuriously match against a slot whose write was somehow
+/// skipped — the `{0, 0}` zero default would compare equal to a
+/// legitimately-stored 0px × 0px snapshot.
+pub(crate) const AVAIL_UNSET: AvailableKey = IVec2::splat(i32::MIN);
 
 /// What [`MeasureCache::try_lookup`] returns on a hit. The slices are
 /// borrows into the cache's arenas, ready to `copy_from_slice` into
@@ -118,10 +96,7 @@ fn quantize_axis(v: f32) -> i32 {
 
 #[inline]
 pub(crate) fn quantize_available(s: Size) -> AvailableKey {
-    AvailableKey {
-        w: quantize_axis(s.w),
-        h: quantize_axis(s.h),
-    }
+    IVec2::new(quantize_axis(s.w), quantize_axis(s.h))
 }
 
 /// Compaction trigger: arena length must exceed `live_entries × this`.
