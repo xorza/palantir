@@ -66,6 +66,21 @@ fn prepare_axis_scratch_at(
     }
 }
 
+/// Zero this grid's hug arrays so a re-measure of the grid (e.g.,
+/// `LayoutEngine::measure`'s grow-driven second pass) starts with a
+/// clean accumulator. Both Phase 1 col-intrinsic queries and Phase 2
+/// cell-height records merge via `slot[i] = slot[i].max(...)`; without
+/// this reset, a re-measure under a wider `available` would keep the
+/// previous narrower-pass row heights, leaving cells over-allocated
+/// and inflating the grid's `desired.h`. Pinned by
+/// `cross_driver_tests::parent_contains_child::two_hug_cols_section_height_matches_post_grow_text`.
+fn reset_hugs_for(layout: &mut LayoutEngine, idx: u16) {
+    layout.scratch.grid.hugs.max_mut(idx, Axis::X).fill(0.0);
+    layout.scratch.grid.hugs.min_mut(idx, Axis::X).fill(0.0);
+    layout.scratch.grid.hugs.max_mut(idx, Axis::Y).fill(0.0);
+    layout.scratch.grid.hugs.min_mut(idx, Axis::Y).fill(0.0);
+}
+
 /// Per-axis scratch for one nesting depth. `tracks` shares the user's
 /// `Rc<[Track]>` (refcount-only clone — no copy). `flexible` is a transient
 /// list used only inside `resolve_axis`; it lives on the per-axis struct so
@@ -329,6 +344,7 @@ fn measure_inner(
         row_gap,
         col_gap,
     } = prepare_axis_scratch_at(layout, tree, idx, depth);
+    reset_hugs_for(layout, idx);
 
     if n_rows == 0 || n_cols == 0 {
         // Still measure children so their `desired` is set.

@@ -10,7 +10,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::shape::TextWrap;
 use crate::text::TextMeasurer;
-use crate::tree::element::LayoutMode;
+use crate::tree::element::{LayoutCore, LayoutMode};
 use crate::tree::widget_id::WidgetId;
 use crate::tree::{NodeId, Tree};
 
@@ -231,9 +231,6 @@ impl LayoutEngine {
             return Size::ZERO;
         }
         let style = *tree.layout(node);
-        let mode = style.mode;
-        let extras = tree.read_extras(node);
-        let (min_size, max_size) = (extras.min_size, extras.max_size);
 
         // Phase-2 measure-cache short-circuit: any node. Same
         // `WidgetId`, same rolled subtree hash, same quantized
@@ -277,60 +274,52 @@ impl LayoutEngine {
             return hit.root;
         }
 
-        // For each axis: if this node has a declared `Fixed` size, that's the
-        // outer width children see — `inner = fixed - padding`. Otherwise
-        // (Hug / Fill) we propagate whatever the parent gave us. Without
-        // this, a fixed-width parent above a wrapping child wouldn't
-        // constrain the child's available width during measure, so wrapping
-        // text would never reshape.
-        let outer_w = match style.size.w {
-            Sizing::Fixed(v) => v,
-            _ => (available.w - style.margin.horiz()).max(0.0),
-        };
-        let outer_h = match style.size.h {
-            Sizing::Fixed(v) => v,
-            _ => (available.h - style.margin.vert()).max(0.0),
-        };
-        let inner_avail = Size::new(
-            (outer_w - style.padding.horiz()).max(0.0),
-            (outer_h - style.padding.vert()).max(0.0),
-        );
+        // First dispatch: children see `inner_avail` derived from the
+        // parent-passed `available`. May grow on a Fill axis when a
+        // Fixed/Hug descendant's hug exceeds `available`.
+        let desired = self.measure_dispatch(tree, node, style, available, text);
 
-        let content = match mode {
-            LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, text),
-            LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, Axis::X, text),
-            LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, Axis::Y, text),
-            LayoutMode::WrapHStack => {
-                wrapstack::measure(self, tree, node, inner_avail, Axis::X, text)
-            }
-            LayoutMode::WrapVStack => {
-                wrapstack::measure(self, tree, node, inner_avail, Axis::Y, text)
-            }
-            LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
-            LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
-            LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
+        // Re-dispatch when grow happened on an axis whose children's
+        // `inner_avail` actually depends on `available`. Pass 1 measured
+        // children against the pre-grow `inner_avail` so they don't
+        // know they'll be allocated more space at arrange time —
+        // wrapstacks would pack extra rows, etc. Pass 2 re-measures
+        // with the grown outer so children see their actual post-grow
+        // inner. Recursion propagates: descendants that also grew
+        // re-dispatch inside the call. Converges in one extra dispatch
+        // because children of a grown parent are bounded by the new
+        // larger inner, so `desired` can only stay the same or shrink
+        // — never exceed `new_available` to trigger a third pass.
+        //
+        // `Sizing::Fixed` short-circuits: its `outer` doesn't read
+        // `available`, so pass 2 would produce identical `inner_avail`
+        // and is pure waste.
+        //
+        // Cost: O(grown subtree) on frames a grow happens; the measure
+        // cache absorbs unaffected descendants on subsequent frames.
+        let grew_w = available.w.is_finite()
+            && desired.w > available.w
+            && !matches!(style.size.w, Sizing::Fixed(_));
+        let grew_h = available.h.is_finite()
+            && desired.h > available.h
+            && !matches!(style.size.h, Sizing::Fixed(_));
+        let desired = if grew_w || grew_h {
+            let new_available = Size::new(
+                if grew_w { desired.w } else { available.w },
+                if grew_h { desired.h } else { available.h },
+            );
+            let final_desired = self.measure_dispatch(tree, node, style, new_available, text);
+            assert!(
+                final_desired.w <= new_available.w + 0.5
+                    && final_desired.h <= new_available.h + 0.5,
+                "second-pass measure exceeded grown available: \
+                 desired={final_desired:?} new_available={new_available:?} \
+                 — convergence assumption broken",
+            );
+            final_desired
+        } else {
+            desired
         };
-
-        let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
-        let hug_h = content.h + style.padding.vert() + style.margin.vert();
-        let desired = Size::new(
-            resolve_axis_size(
-                style.size.w,
-                hug_w,
-                available.w,
-                style.margin.horiz(),
-                min_size.w,
-                max_size.w,
-            ),
-            resolve_axis_size(
-                style.size.h,
-                hug_h,
-                available.h,
-                style.margin.vert(),
-                min_size.h,
-                max_size.h,
-            ),
-        );
 
         self.scratch.desired[node.index()] = desired;
 
@@ -363,6 +352,77 @@ impl LayoutEngine {
         }
 
         desired
+    }
+
+    /// One measure pass for `node`: derives `inner_avail` from
+    /// `available` and `style`, dispatches to the driver, folds the
+    /// driver's content size back into a margin-inclusive `desired`.
+    /// Called twice from `measure` when a Fill axis grows past
+    /// `available` so the children see their actual post-grow inner.
+    fn measure_dispatch(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        style: LayoutCore,
+        available: Size,
+        text: &mut TextMeasurer,
+    ) -> Size {
+        // For each axis: if this node has a declared `Fixed` size, that's the
+        // outer width children see — `inner = fixed - padding`. Otherwise
+        // (Hug / Fill) we propagate whatever the parent gave us. Without
+        // this, a fixed-width parent above a wrapping child wouldn't
+        // constrain the child's available width during measure, so wrapping
+        // text would never reshape.
+        let outer_w = match style.size.w {
+            Sizing::Fixed(v) => v,
+            _ => (available.w - style.margin.horiz()).max(0.0),
+        };
+        let outer_h = match style.size.h {
+            Sizing::Fixed(v) => v,
+            _ => (available.h - style.margin.vert()).max(0.0),
+        };
+        let inner_avail = Size::new(
+            (outer_w - style.padding.horiz()).max(0.0),
+            (outer_h - style.padding.vert()).max(0.0),
+        );
+
+        let content = match style.mode {
+            LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, text),
+            LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, Axis::X, text),
+            LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, Axis::Y, text),
+            LayoutMode::WrapHStack => {
+                wrapstack::measure(self, tree, node, inner_avail, Axis::X, text)
+            }
+            LayoutMode::WrapVStack => {
+                wrapstack::measure(self, tree, node, inner_avail, Axis::Y, text)
+            }
+            LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
+            LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
+            LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
+        };
+
+        let extras = tree.read_extras(node);
+        let (min_size, max_size) = (extras.min_size, extras.max_size);
+        let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
+        let hug_h = content.h + style.padding.vert() + style.margin.vert();
+        Size::new(
+            resolve_axis_size(
+                style.size.w,
+                hug_w,
+                available.w,
+                style.margin.horiz(),
+                min_size.w,
+                max_size.w,
+            ),
+            resolve_axis_size(
+                style.size.h,
+                hug_h,
+                available.h,
+                style.margin.vert(),
+                min_size.h,
+                max_size.h,
+            ),
+        )
     }
 
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
