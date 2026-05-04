@@ -1,5 +1,5 @@
 use super::super::cmd_buffer::{
-    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
+    Cmd, CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
 use super::align_text_in;
 use crate::Ui;
@@ -139,7 +139,7 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
     let mut clip: Option<Rect> = None;
     let mut clip_stack: Vec<Option<Rect>> = Vec::new();
     let mut out = Vec::new();
-    for (kind, start) in cmds.iter() {
+    for Cmd { kind, start } in cmds.iter() {
         match kind {
             CmdKind::PushTransform => {
                 let child: TranslateScale = cmds.read(start);
@@ -452,7 +452,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     let cmds = encode_cmds(&ui);
     let text_rect = cmds
         .iter()
-        .find_map(|(kind, start)| match kind {
+        .find_map(|Cmd { kind, start }| match kind {
             CmdKind::DrawText => Some(cmds.read::<DrawTextPayload>(start).rect),
             _ => None,
         })

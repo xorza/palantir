@@ -1,5 +1,5 @@
 use super::cmd_buffer::{
-    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
+    Cmd, CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
 use crate::primitives::{
     display::Display, rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect,
@@ -55,7 +55,7 @@ impl Composer {
         // flushed) and on flush.
         let mut last_was_text = false;
 
-        for (kind, start) in cmds.iter() {
+        for Cmd { kind, start } in cmds.iter() {
             match kind {
                 CmdKind::PushClip => {
                     let r: Rect = cmds.read(start);
