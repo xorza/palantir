@@ -44,7 +44,10 @@ impl<T> LiveArena<T> {
 
     /// Mark `len` items previously owned by some snapshot as garbage.
     /// The `items` vec is unchanged — the slack lives until the next
-    /// `compact`.
+    /// `compact`. Asserts in release: a double-release (or releasing
+    /// more than was acquired) would silently underflow `live` and
+    /// poison both the compaction trigger and `compact`'s capacity
+    /// sizing — worth panicking immediately.
     pub(crate) fn release(&mut self, len: u32) {
         assert!(self.live >= len as usize);
         self.live -= len as usize;
