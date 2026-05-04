@@ -12,6 +12,7 @@
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
 
+pub(crate) mod cache_arena;
 pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
