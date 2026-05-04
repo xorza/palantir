@@ -12,10 +12,8 @@
 //! alongside that driver's `measure`/`arrange` in its own module — same
 //! per-driver-file convention as the rest of layout.
 
-use super::support::leaf_text_shapes;
-use super::{
-    Axis, LayoutEngine, LayoutMode, canvas, grid, resolve_axis_size, stack, wrapstack, zstack,
-};
+use super::support::{leaf_text_shapes, resolve_axis_size};
+use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, stack, wrapstack, zstack};
 use crate::layout::types::sizing::Sizing;
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
@@ -62,21 +60,6 @@ const _: () = {
     assert!(LenReq::MaxContent.slot(Axis::Y) < SLOT_COUNT);
 };
 
-/// `(MinContent, MaxContent)` pair for one axis. Returned by
-/// [`crate::layout::LayoutEngine::intrinsic_pair`] and the internal
-/// `compute_pair` / `leaf_pair` helpers. Named so callers destructure
-/// by field rather than positional tuple — `(min, max)` ordering would
-/// silently break if anyone ever rearranges it.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) struct IntrinsicBounds {
-    pub min: f32,
-    pub max: f32,
-}
-
-impl IntrinsicBounds {
-    pub(crate) const ZERO: Self = Self { min: 0.0, max: 0.0 };
-}
-
 /// Outer intrinsic on `axis`: content + padding + margin, respecting the
 /// node's `Sizing` override and `min_size` / `max_size` clamps.
 ///
@@ -108,11 +91,7 @@ pub(crate) fn compute(
     // intrinsic, ignoring weight — `resolve_axis_size` with `available =
     // INFINITY` enforces exactly that (Fill falls back to `hug_with_margin`).
     // Skip the content query for Fixed: `resolve_axis_size` short-circuits
-    // Fixed and never reads `hug_with_margin`. The `+ margin` term gets
-    // subtracted back inside `resolve_axis_size` (Hug branch:
-    // `hug_with_margin - margin`) and re-added at the end — the round-trip
-    // exists so this function and the in-pass measure path can share the
-    // same Sizing/clamp logic.
+    // Fixed and never reads `hug_with_margin`.
     let hug_with_margin = match sizing {
         Sizing::Fixed(_) => 0.0,
         Sizing::Hug | Sizing::Fill(_) => {
@@ -174,110 +153,6 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasu
         acc = acc.max(v);
     }
     acc
-}
-
-/// Leaf intrinsic for both bounds at once. Single `shape_unbounded`
-/// call extracts `intrinsic_min` and `size.w` from the same shaped
-/// result; today's two-call form goes through the TextMeasurer cache
-/// twice for the second hit.
-fn leaf_pair(tree: &Tree, node: NodeId, axis: Axis, text: &mut TextMeasurer) -> IntrinsicBounds {
-    let wid = tree.widget_ids[node.index()];
-    let curr_hash = tree.hashes[node.index()];
-    let mut acc = IntrinsicBounds::ZERO;
-    for (src, font_size_px, _wrap) in leaf_text_shapes(tree, node) {
-        let m = text.shape_unbounded(wid, curr_hash, src, font_size_px);
-        let bounds = match axis {
-            Axis::X => IntrinsicBounds {
-                min: m.intrinsic_min,
-                max: m.size.w,
-            },
-            Axis::Y => IntrinsicBounds {
-                min: m.size.h,
-                max: m.size.h,
-            },
-        };
-        acc.min = acc.min.max(bounds.min);
-        acc.max = acc.max.max(bounds.max);
-    }
-    acc
-}
-
-/// Both bounds at once. Caches both slots after the walk. Today's
-/// implementation only batches the *leaf* shaper call; non-leaf
-/// dispatchers fall back to two single-bound walks. That still saves
-/// the leaf-side TextMeasurer cache probe (the bigger cost on
-/// text-heavy trees) and centralizes the cache write so future driver-
-/// level batching is a single point of change.
-pub(crate) fn compute_pair(
-    engine: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    axis: Axis,
-    text: &mut TextMeasurer,
-) -> IntrinsicBounds {
-    if tree.is_collapsed(node) {
-        return IntrinsicBounds::ZERO;
-    }
-
-    let style = *tree.layout(node);
-    let extras = tree.read_extras(node);
-
-    let sizing = axis.main_sizing(style.size);
-    let pad = axis.spacing(style.padding);
-    let margin = axis.spacing(style.margin);
-    let min_clamp = axis.main(extras.min_size);
-    let max_clamp = axis.main(extras.max_size);
-
-    let content = match sizing {
-        Sizing::Fixed(_) => IntrinsicBounds::ZERO,
-        Sizing::Hug | Sizing::Fill(_) => {
-            if matches!(style.mode, LayoutMode::Leaf) {
-                leaf_pair(tree, node, axis, text)
-            } else {
-                // Driver dispatch isn't batched yet — fall through to
-                // two single-bound walks. Still cheaper than the user
-                // calling `intrinsic` twice because the cache writes
-                // happen here, and the leaf-level shaper call uses
-                // `leaf_pair` when it bottoms out via `engine.intrinsic`.
-                IntrinsicBounds {
-                    min: content_intrinsic(
-                        engine,
-                        tree,
-                        node,
-                        axis,
-                        LenReq::MinContent,
-                        text,
-                        style.mode,
-                    ),
-                    max: content_intrinsic(
-                        engine,
-                        tree,
-                        node,
-                        axis,
-                        LenReq::MaxContent,
-                        text,
-                        style.mode,
-                    ),
-                }
-            }
-        }
-    };
-
-    let resolve = |content: f32| {
-        let hug_with_margin = content + pad + margin;
-        resolve_axis_size(
-            sizing,
-            hug_with_margin,
-            f32::INFINITY,
-            margin,
-            min_clamp,
-            max_clamp,
-        )
-    };
-    IntrinsicBounds {
-        min: resolve(content.min),
-        max: resolve(content.max),
-    }
 }
 
 #[cfg(test)]
