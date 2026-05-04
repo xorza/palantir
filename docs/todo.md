@@ -1,6 +1,8 @@
 # Todo
 
 
+automate padding in structs
+
 expose feature or something for bench related clear caches
 
 Open work pulled from `docs/`. Each item is shipped-when-conditions-merit;
