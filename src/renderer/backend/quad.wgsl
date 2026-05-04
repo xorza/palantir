@@ -73,10 +73,10 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let inner_aa = clamp(0.5 - inner_d, 0.0, 1.0);
         let stroke_a = (outer_aa - inner_aa) * in.stroke_color.a;
         let fill_a   = inner_aa * in.fill.a;
-        // Premultiplied composition: fill underneath stroke.
         let rgb = in.fill.rgb * fill_a + in.stroke_color.rgb * stroke_a;
         let a   = fill_a + stroke_a - fill_a * stroke_a;
         return vec4<f32>(rgb, a);
     }
-    return vec4<f32>(in.fill.rgb, in.fill.a * outer_aa);
+    let a = in.fill.a * outer_aa;
+    return vec4<f32>(in.fill.rgb * a, a);
 }
