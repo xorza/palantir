@@ -71,3 +71,85 @@ impl<T> LiveArena<T> {
         self.live = 0;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn acquire_advances_live() {
+        let mut a: LiveArena<u32> = LiveArena::default();
+        a.items.extend_from_slice(&[1, 2, 3]);
+        a.acquire(3);
+        assert_eq!(a.live, 3);
+    }
+
+    #[test]
+    fn release_decrements_live_without_touching_items() {
+        let mut a: LiveArena<u32> = LiveArena::default();
+        a.items.extend_from_slice(&[1, 2, 3]);
+        a.acquire(3);
+        a.release(2);
+        assert_eq!(a.live, 1);
+        assert_eq!(a.items.len(), 3, "release leaves items as garbage");
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion failed")]
+    fn acquire_past_items_len_panics() {
+        // Forgot the `extend_from_slice` before `acquire` — the
+        // post-condition assert must trip immediately rather than let
+        // the drift reach `compact` or `release`.
+        let mut a: LiveArena<u32> = LiveArena::default();
+        a.acquire(1);
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion failed")]
+    fn release_underflow_panics() {
+        let mut a: LiveArena<u32> = LiveArena::default();
+        a.items.extend_from_slice(&[1]);
+        a.acquire(1);
+        a.release(2);
+    }
+
+    #[test]
+    fn needs_compact_false_below_floor() {
+        let mut a: LiveArena<u32> = LiveArena::default();
+        // Heavy garbage but tiny live: floor gates the trigger.
+        a.items.resize(10_000, 0);
+        a.live = COMPACT_FLOOR;
+        assert!(!a.needs_compact());
+    }
+
+    #[test]
+    fn needs_compact_false_when_ratio_not_crossed() {
+        let mut a: LiveArena<u32> = LiveArena::default();
+        let live = COMPACT_FLOOR + 10;
+        a.items.resize(live * COMPACT_RATIO, 0);
+        a.live = live;
+        assert!(
+            !a.needs_compact(),
+            "items.len() == live*ratio is the boundary; only `>` should trip"
+        );
+    }
+
+    #[test]
+    fn needs_compact_true_when_both_arms_cross() {
+        let mut a: LiveArena<u32> = LiveArena::default();
+        let live = COMPACT_FLOOR + 10;
+        a.items.resize(live * COMPACT_RATIO + 1, 0);
+        a.live = live;
+        assert!(a.needs_compact());
+    }
+
+    #[test]
+    fn clear_resets_both_arms() {
+        let mut a: LiveArena<u32> = LiveArena::default();
+        a.items.extend_from_slice(&[1, 2]);
+        a.acquire(2);
+        a.clear();
+        assert_eq!(a.live, 0);
+        assert!(a.items.is_empty());
+    }
+}

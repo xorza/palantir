@@ -216,3 +216,110 @@ fn clear_drops_everything() {
     assert!(cache.snapshots.is_empty());
     assert!(cache.try_lookup(wid(1), hash(1), avail(), 0).is_none());
 }
+
+/// Mirrors `EncodeCache::compact_preserves_lookups`. Stuff in enough
+/// snapshots to clear `COMPACT_FLOOR`, bust each one with a
+/// shorter-length write to leave garbage, then verify the per-arena
+/// invariant holds and every snapshot still resolves to the right
+/// payload after compaction has run.
+#[test]
+fn compact_preserves_lookups() {
+    use crate::common::cache_arena::COMPACT_FLOOR;
+
+    let mut cache = ComposeCache::default();
+    let n = (COMPACT_FLOOR as u64) + 8;
+    for i in 0..n {
+        write(&mut cache, wid(i), hash(i), 0xa, 0, 0, 0);
+    }
+
+    // Bust each one under a new (hash, fp) with a shorter payload —
+    // 1 quad / 0 text / 1 group. Triggers the append-with-garbage
+    // path; compaction kicks in once an arena crosses `live * RATIO`.
+    let small_quads = vec![quad(0.0)];
+    let small_groups = vec![DrawGroup {
+        scissor: None,
+        quads: Span::new(0, 1),
+        texts: Span::new(0, 0),
+    }];
+    for i in 0..n {
+        cache.write_subtree(
+            wid(i),
+            hash(1000 + i),
+            avail(),
+            0xb,
+            &small_quads,
+            &[],
+            &small_groups,
+            0,
+            0,
+        );
+    }
+
+    // Compaction must have run on at least one arena: without it the
+    // quads arena would still hold every busted 2-quad range as
+    // garbage (~3× live). The trigger bounds items at ≤ 2× live.
+    assert!(cache.quads.items.len() <= cache.quads.live * 2);
+    assert!(cache.groups.items.len() <= cache.groups.live * 2);
+
+    // Every snapshot still resolves and matches its rewritten shape.
+    for i in 0..n {
+        let hit = cache
+            .try_lookup(wid(i), hash(1000 + i), avail(), 0xb)
+            .unwrap();
+        assert_eq!(hit.quads.len(), 1);
+        assert_eq!(hit.texts.len(), 0);
+        assert_eq!(hit.groups.len(), 1);
+        // Subtree-relative group ranges stay valid post-compaction
+        // because compaction moves the whole range, not the offsets
+        // within it.
+        assert_eq!(hit.groups[0].quads, Span::new(0, 1));
+    }
+}
+
+/// Pin the `try_splice` rebase math: splicing the same snapshot twice
+/// into a buffer that already holds an unrelated quad and text run
+/// must rebase each appended group's `quads.start` / `texts.start` to
+/// the post-extend offsets — independently per arena, since `out.quads`
+/// and `out.texts` grow at different rates.
+#[test]
+fn try_splice_rebases_groups_against_growing_buffer() {
+    let mut cache = ComposeCache::default();
+    write(&mut cache, wid(1), hash(1), 0xfe, 0, 0, 0);
+
+    let mut out = RenderBuffer::default();
+    // Pre-populate `out` with a non-symmetric prefix: 3 quads, 1 text.
+    // The text base and quad base diverge so a buggy rebase that mixes
+    // them up shows.
+    out.quads
+        .extend_from_slice(&[quad(100.0), quad(110.0), quad(120.0)]);
+    out.texts.push(text_run());
+
+    // First splice — group ranges should rebase by (3, 1).
+    assert!(cache.try_splice(wid(1), hash(1), avail(), 0xfe, &mut out));
+    assert_eq!(out.quads.len(), 5, "splice appended 2 quads");
+    assert_eq!(out.texts.len(), 2, "splice appended 1 text");
+    assert_eq!(out.groups.len(), 1);
+    assert_eq!(out.groups[0].quads, Span::new(3, 2));
+    assert_eq!(out.groups[0].texts, Span::new(1, 1));
+
+    // Second splice on top — must rebase against the new tails (5, 2).
+    assert!(cache.try_splice(wid(1), hash(1), avail(), 0xfe, &mut out));
+    assert_eq!(out.quads.len(), 7);
+    assert_eq!(out.texts.len(), 3);
+    assert_eq!(out.groups.len(), 2);
+    assert_eq!(out.groups[1].quads, Span::new(5, 2));
+    assert_eq!(out.groups[1].texts, Span::new(2, 1));
+}
+
+/// `try_splice` against an empty `RenderBuffer` must produce a group
+/// whose ranges match the snapshot's subtree-relative ranges verbatim
+/// — base offsets are zero, so no rebase shift is observable.
+#[test]
+fn try_splice_into_empty_buffer_preserves_relative_groups() {
+    let mut cache = ComposeCache::default();
+    write(&mut cache, wid(1), hash(1), 0, 0, 0, 0);
+    let mut out = RenderBuffer::default();
+    assert!(cache.try_splice(wid(1), hash(1), avail(), 0, &mut out));
+    assert_eq!(out.groups[0].quads, Span::new(0, 2));
+    assert_eq!(out.groups[0].texts, Span::new(0, 1));
+}
