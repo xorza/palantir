@@ -27,7 +27,7 @@
 
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::span::Span;
-use crate::renderer::gpu::buffer::{DrawGroup, TextRun};
+use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
 use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
@@ -46,13 +46,12 @@ pub(crate) struct ComposeSnapshot {
 }
 
 /// What [`ComposeCache::try_lookup`] returns on a hit. Slices borrow
-/// directly into the cache arenas; the caller (composer) splices them
-/// into the live `RenderBuffer`, rebasing each group's intra-snapshot
-/// `quads` / `texts` range by the current frame's live offsets.
-pub(crate) struct CachedCompose<'a> {
-    pub(crate) quads: &'a [Quad],
-    pub(crate) texts: &'a [TextRun],
-    pub(crate) groups: &'a [DrawGroup],
+/// directly into the cache arenas. Internal — production calls go
+/// through [`ComposeCache::try_splice`].
+struct CachedCompose<'a> {
+    quads: &'a [Quad],
+    texts: &'a [TextRun],
+    groups: &'a [DrawGroup],
 }
 
 const COMPACT_RATIO: usize = 2;
@@ -71,7 +70,7 @@ pub(crate) struct ComposeCache {
 
 impl ComposeCache {
     #[inline]
-    pub(crate) fn try_lookup(
+    fn try_lookup(
         &self,
         wid: WidgetId,
         hash: NodeHash,
@@ -87,6 +86,43 @@ impl ComposeCache {
             texts: &self.texts_arena[snap.texts.range()],
             groups: &self.groups_arena[snap.groups.range()],
         })
+    }
+
+    /// Splice `wid`'s cached subtree into `out`, rebasing each
+    /// snapshot group's intra-snapshot `quads`/`texts` ranges by the
+    /// current frame's live offsets. Returns `true` on hit (output
+    /// appended), `false` on miss (`out` untouched).
+    ///
+    /// Caller is responsible for the surrounding bookkeeping: flushing
+    /// any open group before calling, then resetting its
+    /// `quads_start`/`texts_start` markers from `out.quads.len()` /
+    /// `out.texts.len()` after, and fast-forwarding past the cached
+    /// cmd range.
+    #[inline]
+    pub(crate) fn try_splice(
+        &self,
+        wid: WidgetId,
+        hash: NodeHash,
+        avail: AvailableKey,
+        cascade_fp: u64,
+        out: &mut RenderBuffer,
+    ) -> bool {
+        let Some(hit) = self.try_lookup(wid, hash, avail, cascade_fp) else {
+            return false;
+        };
+        let base_q = out.quads.len() as u32;
+        let base_t = out.texts.len() as u32;
+        out.quads.extend_from_slice(hit.quads);
+        out.texts.extend_from_slice(hit.texts);
+        out.groups.reserve(hit.groups.len());
+        for g in hit.groups {
+            out.groups.push(DrawGroup {
+                scissor: g.scissor,
+                quads: (g.quads.start + base_q)..(g.quads.end + base_q),
+                texts: (g.texts.start + base_t)..(g.texts.end + base_t),
+            });
+        }
+        true
     }
 
     /// Insert or overwrite `wid`'s snapshot from the subtree's tail

@@ -195,19 +195,10 @@ impl Composer {
                     texts_start = out.texts.len() as u32;
                     last_was_text = false;
 
-                    if let Some(hit) = self.cache.try_lookup(wid, subtree_hash, avail, cascade_fp) {
-                        let base_q = out.quads.len() as u32;
-                        let base_t = out.texts.len() as u32;
-                        out.quads.extend_from_slice(hit.quads);
-                        out.texts.extend_from_slice(hit.texts);
-                        out.groups.reserve(hit.groups.len());
-                        for g in hit.groups {
-                            out.groups.push(DrawGroup {
-                                scissor: g.scissor,
-                                quads: (g.quads.start + base_q)..(g.quads.end + base_q),
-                                texts: (g.texts.start + base_t)..(g.texts.end + base_t),
-                            });
-                        }
+                    if self
+                        .cache
+                        .try_splice(wid, subtree_hash, avail, cascade_fp, out)
+                    {
                         // Open group continues from the splice tail
                         // under the parent's `current` scissor.
                         quads_start = out.quads.len() as u32;
