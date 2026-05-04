@@ -41,7 +41,10 @@ struct GridShape {
 /// per-axis `AxisScratch`. Returns the grid's track counts + gaps for
 /// the caller. Hug arrays live on `GridHugStore` (durable across the
 /// layout pass) and are read/written separately via
-/// `hugs.min/max(idx, axis)`.
+/// `hugs.min/max(idx, axis)`. Hugs are NOT reset here: arrange also
+/// calls this to re-snapshot tracks/gaps and must preserve the hug
+/// values written during measure. Measure-side hug reset lives in
+/// `reset_hugs_for`.
 fn prepare_axis_scratch_at(
     layout: &mut LayoutEngine,
     tree: &Tree,
@@ -72,7 +75,8 @@ fn prepare_axis_scratch_at(
 /// cell-height records merge via `slot[i] = slot[i].max(...)`; without
 /// this reset, a re-measure under a wider `available` would keep the
 /// previous narrower-pass row heights, leaving cells over-allocated
-/// and inflating the grid's `desired.h`. Pinned by
+/// and inflating the grid's `desired.h`. Measure-only — arrange must
+/// preserve these. Pinned by
 /// `cross_driver_tests::parent_contains_child::two_hug_cols_section_height_matches_post_grow_text`.
 fn reset_hugs_for(layout: &mut LayoutEngine, idx: u16) {
     layout.scratch.grid.hugs.max_mut(idx, Axis::X).fill(0.0);
