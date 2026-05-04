@@ -77,7 +77,7 @@ impl ComposeCache {
         cascade_fp: u64,
     ) -> Option<CachedCompose<'_>> {
         let snap = self.snapshots.get(&wid)?;
-        if snap.subtree_hash != hash || snap.available_q != avail || snap.cascade_fp != cascade_fp {
+        if (snap.subtree_hash, snap.available_q, snap.cascade_fp) != (hash, avail, cascade_fp) {
             return None;
         }
         Some(CachedCompose {

@@ -91,9 +91,11 @@ pub(crate) struct CachedSubtree<'a> {
     pub(crate) desired: &'a [Size],
     pub(crate) text_shapes: &'a [Option<ShapedText>],
     pub(crate) available_q: &'a [AvailableKey],
-    /// Sequential slice of f32s; consumed in pre-order by walking
-    /// the subtree and pulling `2 * (n_cols + n_rows)` per
-    /// `LayoutMode::Grid` descendant. Empty for grid-free subtrees.
+    /// Per-grid hug arrays for every `LayoutMode::Grid` descendant
+    /// of the subtree, packed in pre-order. Each grid contributes
+    /// four arrays in fixed order — cols.max, cols.min, rows.max,
+    /// rows.min — for `2 * (n_cols + n_rows)` floats per grid.
+    /// Empty for grid-free subtrees.
     pub(crate) hugs: &'a [f32],
 }
 
@@ -108,6 +110,11 @@ fn quantize_axis(v: f32) -> i32 {
 
 #[inline]
 pub(crate) fn quantize_available(s: Size) -> AvailableKey {
+    // Non-negative inputs are load-bearing for the `AVAIL_UNSET = i32::MIN`
+    // sentinel: a negative `available` could quantize to `i32::MIN` and
+    // collide with the sentinel. Layout invariants keep `available` in
+    // `[0, ∞)`; pin the contract here so a future regression trips early.
+    debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
     IVec2::new(quantize_axis(s.w), quantize_axis(s.h))
 }
 

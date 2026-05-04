@@ -128,8 +128,12 @@ impl EncodeCache {
         buf.data.extend_from_slice(hit.data);
         buf.kinds.extend_from_slice(hit.kinds);
         buf.starts.reserve(hit.starts.len());
+        // Stored starts are subtree-relative offsets into `hit.data`,
+        // bounded at write time. Debug-only check — paying a comparison
+        // per cmd in release would dominate the replay loop on hit-heavy
+        // frames.
         for &s in hit.starts {
-            assert!(s as usize <= hit.data.len());
+            debug_assert!(s as usize <= hit.data.len());
             buf.starts.push(s + dest_data_base);
         }
         let n = hit.kinds.len();
@@ -168,16 +172,18 @@ impl EncodeCache {
         // decrement live counters without re-probing before the append.
         let prev_lens = if let Some(prev) = self.snapshots.get_mut(&wid) {
             if prev.cmds.len == src_cmds.len && prev.data.len == src_data.len {
-                // In-place: hot path. Same subtree_hash → identical layout.
+                // In-place: hot path. Same `(subtree_hash, available_q)`
+                // ⇒ same wrap targets ⇒ same cmd shape and payload sizes,
+                // so the existing arena ranges fit byte-for-byte.
                 let cmds = prev.cmds.range();
                 let data = prev.data.range();
                 prev.subtree_hash = subtree_hash;
                 prev.available_q = available_q;
                 let src_kinds = &src.kinds[src_cmd_range.clone()];
-                // Same `subtree_hash` ⇒ same authoring ⇒ same cmd shape.
-                // Debug-only because the only failure mode is a 64-bit
-                // FxHash collision (~1 in 2^64) or a future hash bug —
-                // not worth a slice memcmp per in-place write in release.
+                // Debug-only kind-shape check. The only failure mode is a
+                // 64-bit FxHash collision (~1 in 2^64) or a future hash
+                // bug — not worth a slice memcmp per in-place write in
+                // release.
                 debug_assert_eq!(&self.kinds.items[cmds.clone()], src_kinds);
                 self.kinds.items[cmds.clone()].copy_from_slice(src_kinds);
                 for (dst, &abs) in self.starts[cmds.clone()]
