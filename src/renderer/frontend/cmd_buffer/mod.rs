@@ -98,6 +98,9 @@ pub(crate) struct EnterSubtreePayload {
 const _: () = {
     assert!(std::mem::size_of::<EnterSubtreePayload>() == 32);
     assert!(std::mem::align_of::<EnterSubtreePayload>() == 8);
+    // `push_exit_subtree` patches `exit_idx` by word offset — pin it
+    // so a future field reorder can't silently retarget the patch.
+    assert!(std::mem::offset_of!(EnterSubtreePayload, exit_idx) == 24);
 };
 
 /// Returned by [`RenderCmdBuffer::push_enter_subtree`]; threaded into

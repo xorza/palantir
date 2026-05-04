@@ -237,11 +237,11 @@ fn subtree_skip_preserves_descendant_rects() {
     run_frame(&mut ui, build);
     let n = ui.tree.node_count();
     let layout1 = &ui.layout_engine.result;
-    let rects1: Vec<_> = (0..n).map(|i| layout1.rect(NodeId(i as u32))).collect();
+    let rects1: Vec<_> = (0..n).map(|i| layout1.rect[i]).collect();
 
     run_frame(&mut ui, build);
     let layout2 = &ui.layout_engine.result;
-    let rects2: Vec<_> = (0..n).map(|i| layout2.rect(NodeId(i as u32))).collect();
+    let rects2: Vec<_> = (0..n).map(|i| layout2.rect[i]).collect();
     assert_eq!(
         rects1, rects2,
         "subtree-skip cache hit must not perturb any arranged rect",

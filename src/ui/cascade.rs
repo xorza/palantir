@@ -141,7 +141,7 @@ impl Cascades {
             let disabled = parent_dis || attrs.is_disabled();
             let invisible = parent_inv || !layout_col[i].visibility.is_visible();
 
-            let screen_rect = parent_transform.apply_rect(layout.rect(id));
+            let screen_rect = parent_transform.apply_rect(layout.rect[id.index()]);
             let row = Cascade {
                 transform: parent_transform,
                 clip: parent_clip,

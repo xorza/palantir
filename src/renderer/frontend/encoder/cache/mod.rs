@@ -301,7 +301,7 @@ impl EncodeCache {
 /// discipline).
 #[inline]
 fn bump_rect_min(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], offset: Vec2) {
-    debug_assert_eq!(kinds.len(), starts.len());
+    assert_eq!(kinds.len(), starts.len());
     for (kind, &start) in kinds.iter().zip(starts.iter()) {
         match kind {
             CmdKind::PushClip

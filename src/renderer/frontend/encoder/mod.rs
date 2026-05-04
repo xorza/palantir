@@ -131,7 +131,7 @@ fn encode_node(
     };
 
     if let Some((wid, hash, avail)) = cache_key
-        && cache.try_replay(wid, hash, avail, out, layout.rect(id).min)
+        && cache.try_replay(wid, hash, avail, out, layout.rect[id.index()].min)
     {
         return;
     }
@@ -159,7 +159,7 @@ fn encode_node(
         None
     };
 
-    let rect = layout.rect(id);
+    let rect = layout.rect[id.index()];
 
     // Order: clip is in parent-of-panel space (pre-transform); transform
     // applies inside the clip and only to children. The panel's own
@@ -195,14 +195,14 @@ fn encode_node(
                     // on `LayoutResult.text_shapes`. Missing entry means no
                     // shaper was installed (mono fallback) or the run was empty
                     // — drop in either case.
-                    let Some(shaped) = layout.text_shape(id) else {
+                    let Some(shaped) = layout.text_shapes[id.index()] else {
                         continue;
                     };
                     if shaped.key.is_invalid() {
                         tracing::trace!(?shape, "encoder: dropping text with invalid key");
                         continue;
                     }
-                    // `layout.rect(id)` is padding-inclusive (the rendered
+                    // `layout.rect[id.index()]` is padding-inclusive (the rendered
                     // rect that DrawRect paints). Text aligns within the
                     // padding-deflated content area so e.g. `Button.padding(8)`
                     // insets the label visually.
@@ -255,7 +255,7 @@ fn encode_node(
             out,
             Span::new(p.cmd_lo, cmd_hi - p.cmd_lo),
             Span::new(p.data_lo, data_hi - p.data_lo),
-            layout.rect(id).min,
+            layout.rect[id.index()].min,
         );
     }
 }

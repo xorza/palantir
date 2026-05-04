@@ -153,12 +153,13 @@ impl WgpuBackend {
         // here means "full repaint" (clear + no scissor override).
         let damage_scissor = damage.and_then(|r| {
             let phys = r.scaled_by(buffer.scale, true);
-            let mins_x = (phys.min.x as i64 - DAMAGE_AA_PADDING as i64).max(0) as u32;
-            let mins_y = (phys.min.y as i64 - DAMAGE_AA_PADDING as i64).max(0) as u32;
+            let pad = DAMAGE_AA_PADDING as f32;
+            let mins_x = (phys.min.x - pad).max(0.0) as u32;
+            let mins_y = (phys.min.y - pad).max(0.0) as u32;
             let maxs_x =
-                ((phys.min.x + phys.size.w) as u32 + DAMAGE_AA_PADDING).min(buffer.viewport_phys.x);
+                ((phys.min.x + phys.size.w + pad).max(0.0) as u32).min(buffer.viewport_phys.x);
             let maxs_y =
-                ((phys.min.y + phys.size.h) as u32 + DAMAGE_AA_PADDING).min(buffer.viewport_phys.y);
+                ((phys.min.y + phys.size.h + pad).max(0.0) as u32).min(buffer.viewport_phys.y);
             if maxs_x > mins_x && maxs_y > mins_y {
                 Some(URect::new(mins_x, mins_y, maxs_x - mins_x, maxs_y - mins_y))
             } else {
