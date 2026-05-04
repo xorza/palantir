@@ -1,5 +1,5 @@
 use super::support::{
-    AutoBias, children_max_intrinsic, place_axis, resolved_axis_align, zero_subtree,
+    AutoBias, AxisAlignPair, children_max_intrinsic, place_axis, resolved_axis_align, zero_subtree,
 };
 use super::{Axis, LayoutEngine, LenReq};
 use crate::element::LayoutCore;
@@ -13,7 +13,7 @@ use crate::tree::{Child, NodeId, Tree};
 /// `resolved_axis_align` so HStack/VStack share the cascade rule with
 /// ZStack/Grid. The unused main axis is computed and discarded — cheap.
 fn cross_align(axis: Axis, child: &LayoutCore, parent_child_align: Align) -> AxisAlign {
-    let (h, v) = resolved_axis_align(child, parent_child_align);
+    let AxisAlignPair { h, v } = resolved_axis_align(child, parent_child_align);
     match axis {
         // HStack: cross = vertical
         Axis::X => v,
@@ -183,7 +183,7 @@ pub(super) fn arrange(
         let cross_align = cross_align(axis, &s, parent_child_align);
         let cross_sizing = axis.cross_sizing(s.size);
         let cross_desired = axis.cross(d);
-        let (cross_size, cross_offset) = place_axis(
+        let cross_p = place_axis(
             cross_align,
             cross_sizing,
             cross_desired,
@@ -191,7 +191,8 @@ pub(super) fn arrange(
             AutoBias::StretchIfFill,
         );
 
-        let child_rect = axis.compose_rect(cursor, cross_min + cross_offset, main_size, cross_size);
+        let child_rect =
+            axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
         layout.arrange(tree, c, child_rect);
         cursor += main_size;
     }

@@ -19,7 +19,7 @@ use glam::Vec2;
 /// drives the unbounded content axis. Filtering and destructuring
 /// happen here so neither side can drift on which shape variants
 /// contribute to size.
-pub(in crate::layout) fn leaf_text_shapes(
+pub(crate) fn leaf_text_shapes(
     tree: &Tree,
     node: NodeId,
 ) -> impl Iterator<Item = (&str, f32, TextWrap)> {
@@ -46,7 +46,7 @@ pub(in crate::layout) fn leaf_text_shapes(
 /// Also reused by `intrinsic::compute` with `available = INFINITY`,
 /// which collapses Fill to its content size — the parent-independent
 /// rule for intrinsic queries (CSS Grid `1fr`-in-auto-context).
-pub(in crate::layout) fn resolve_axis_size(
+pub(crate) fn resolve_axis_size(
     s: Sizing,
     hug_with_margin: f32,
     available: f32,
@@ -75,12 +75,7 @@ pub(in crate::layout) fn resolve_axis_size(
 /// Set this node and every descendant to a zero-size rect anchored at
 /// `anchor`. Walks the contiguous pre-order span `[node, subtree_end[node])`
 /// directly — no recursion, no child cursors.
-pub(in crate::layout) fn zero_subtree(
-    layout: &mut LayoutEngine,
-    tree: &Tree,
-    node: NodeId,
-    anchor: Vec2,
-) {
+pub(crate) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, anchor: Vec2) {
     let zero = Rect {
         min: anchor,
         size: Size::ZERO,
@@ -96,7 +91,7 @@ pub(in crate::layout) fn zero_subtree(
 /// drivers whose own size on an axis is "the largest child wants this much"
 /// (ZStack on either axis, Stack on the cross axis). Canvas can't use it
 /// because it adds child position to the contribution.
-pub(in crate::layout) fn children_max_intrinsic(
+pub(crate) fn children_max_intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -122,7 +117,7 @@ pub(in crate::layout) fn children_max_intrinsic(
 /// cross-axis (Grid with wrapping cells, etc.) — intrinsic queries the
 /// unbounded shape, while INF-measure runs the child's full layout under the
 /// committed cross.
-pub(in crate::layout) fn child_avail_per_axis_hug(size: Sizes, inner_avail: Size) -> Size {
+pub(crate) fn child_avail_per_axis_hug(size: Sizes, inner_avail: Size) -> Size {
     Size::new(
         if matches!(size.w, Sizing::Hug) {
             f32::INFINITY
@@ -139,11 +134,29 @@ pub(in crate::layout) fn child_avail_per_axis_hug(size: Sizes, inner_avail: Size
 
 /// How `place_axis` interprets `AxisAlign::Auto`.
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub(in crate::layout) enum AutoBias {
+pub(crate) enum AutoBias {
     /// Stack/ZStack: Auto stretches only when the child is `Sizing::Fill`.
     StretchIfFill,
     /// Grid: Auto stretches unconditionally (WPF cell default).
     AlwaysStretch,
+}
+
+/// Resolved horizontal/vertical alignment after the cascade.
+pub(crate) struct AxisAlignPair {
+    pub h: AxisAlign,
+    pub v: AxisAlign,
+}
+
+/// Per-axis placement: chosen extent + offset within the parent's inner span.
+pub(crate) struct AxisPlacement {
+    pub size: f32,
+    pub offset: f32,
+}
+
+/// Two-axis placement: chosen size + offset within the parent's inner rect.
+pub(crate) struct Placement {
+    pub size: Size,
+    pub offset: Vec2,
 }
 
 /// Resolve a child's alignment on both axes: child's own value if not `Auto`,
@@ -151,28 +164,25 @@ pub(in crate::layout) enum AutoBias {
 /// the alignment cascade — every layout (stack, grid, zstack) calls this so
 /// they can't drift. Stack discards the unused axis; the cost is two enum
 /// matches per child per frame.
-pub(in crate::layout) fn resolved_axis_align(
-    child: &LayoutCore,
-    parent_child_align: Align,
-) -> (AxisAlign, AxisAlign) {
+pub(crate) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align) -> AxisAlignPair {
     let a = child.align;
-    (
-        a.halign().or(parent_child_align.halign()).to_axis(),
-        a.valign().or(parent_child_align.valign()).to_axis(),
-    )
+    AxisAlignPair {
+        h: a.halign().or(parent_child_align.halign()).to_axis(),
+        v: a.valign().or(parent_child_align.valign()).to_axis(),
+    }
 }
 
 /// Compute size + offset along one axis given the child's alignment, its
 /// declared sizing, intrinsic desired size, and the inner span available.
 /// Used for stack cross-axis, ZStack per-axis, and Grid per-cell placement.
 /// `bias` selects the per-driver `AxisAlign::Auto` rule (see `AutoBias`).
-pub(in crate::layout) fn place_axis(
+pub(crate) fn place_axis(
     align: AxisAlign,
     sizing: Sizing,
     desired: f32,
     inner: f32,
     bias: AutoBias,
-) -> (f32, f32) {
+) -> AxisPlacement {
     let stretch = matches!(align, AxisAlign::Stretch)
         || matches!(align, AxisAlign::Auto)
             && (matches!(bias, AutoBias::AlwaysStretch) || matches!(sizing, Sizing::Fill(_)));
@@ -182,24 +192,29 @@ pub(in crate::layout) fn place_axis(
         AxisAlign::End => (inner - size).max(0.0),
         _ => 0.0,
     };
-    (size, offset)
+    AxisPlacement { size, offset }
 }
 
 /// Resolve a child's two-axis size + offset inside `inner`, applying the
-/// alignment cascade and the per-driver `AutoBias` rule. Returns `(size,
-/// offset)` per axis, packed as `Size` and `Vec2`. Used by ZStack and
+/// alignment cascade and the per-driver `AutoBias` rule. Used by ZStack and
 /// Grid arrange — both place each child independently per axis using the
 /// same rule. Stack does cross-axis placement only (different main-axis
 /// rule) so it still calls `place_axis` directly on cross.
-pub(in crate::layout) fn place_two_axis(
+pub(crate) fn place_two_axis(
     child: &LayoutCore,
     parent_child_align: Align,
     desired: Size,
     inner: Size,
     bias: AutoBias,
-) -> (Size, Vec2) {
-    let (h_align, v_align) = resolved_axis_align(child, parent_child_align);
-    let (w, x_off) = place_axis(h_align, child.size.w, desired.w, inner.w, bias);
-    let (h, y_off) = place_axis(v_align, child.size.h, desired.h, inner.h, bias);
-    (Size::new(w, h), Vec2::new(x_off, y_off))
+) -> Placement {
+    let AxisAlignPair {
+        h: h_align,
+        v: v_align,
+    } = resolved_axis_align(child, parent_child_align);
+    let x = place_axis(h_align, child.size.w, desired.w, inner.w, bias);
+    let y = place_axis(v_align, child.size.h, desired.h, inner.h, bias);
+    Placement {
+        size: Size::new(x.size, y.size),
+        offset: Vec2::new(x.offset, y.offset),
+    }
 }

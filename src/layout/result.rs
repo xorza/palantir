@@ -20,19 +20,19 @@ pub struct LayoutResult {
     /// restored from a snapshot on cache-hit subtrees. Read by the
     /// encode cache (and any other consumer keyed on the same
     /// `(subtree_hash, available_q)` shape as `MeasureCache`).
-    pub(in crate::layout) available_q: Vec<AvailableKey>,
+    pub(crate) available_q: Vec<AvailableKey>,
 }
 
 /// Result of shaping one `Shape::Text` during the measure pass. `Tree`
 /// records only the authoring inputs; this is the layout-side derived state.
 #[derive(Clone, Copy, Debug)]
-pub struct ShapedText {
+pub(crate) struct ShapedText {
     pub measured: Size,
     pub key: TextCacheKey,
 }
 
 impl LayoutResult {
-    pub(in crate::layout) fn resize_for(&mut self, tree: &Tree) {
+    pub(crate) fn resize_for(&mut self, tree: &Tree) {
         let n = tree.node_count();
         self.rect.clear();
         self.rect.resize(n, Rect::ZERO);
@@ -43,7 +43,7 @@ impl LayoutResult {
     }
 
     #[inline]
-    pub fn rect(&self, id: NodeId) -> Rect {
+    pub(crate) fn rect(&self, id: NodeId) -> Rect {
         self.rect[id.index()]
     }
 
@@ -53,7 +53,7 @@ impl LayoutResult {
     /// — any future caller that reads a slot before `measure` writes it).
     /// Read by the encode cache.
     #[inline]
-    pub fn available_q(&self, id: NodeId) -> Option<AvailableKey> {
+    pub(crate) fn available_q(&self, id: NodeId) -> Option<AvailableKey> {
         let v = self.available_q[id.index()];
         if v == AvailableKey::UNSET {
             None
@@ -63,34 +63,27 @@ impl LayoutResult {
     }
 
     #[inline]
-    pub(in crate::layout) fn set_rect(&mut self, id: NodeId, v: Rect) {
+    pub(crate) fn set_rect(&mut self, id: NodeId, v: Rect) {
         self.rect[id.index()] = v;
     }
 
     #[inline]
-    pub fn text_shape(&self, id: NodeId) -> Option<ShapedText> {
+    pub(crate) fn text_shape(&self, id: NodeId) -> Option<ShapedText> {
         self.text_shapes[id.index()]
     }
 
     #[inline]
-    pub(in crate::layout) fn set_text_shape(&mut self, id: NodeId, s: ShapedText) {
+    pub(crate) fn set_text_shape(&mut self, id: NodeId, s: ShapedText) {
         self.text_shapes[id.index()] = Some(s);
     }
 
     #[inline]
-    pub(in crate::layout) fn text_shapes_slice(
-        &self,
-        range: Range<usize>,
-    ) -> &[Option<ShapedText>] {
+    pub(crate) fn text_shapes_slice(&self, range: Range<usize>) -> &[Option<ShapedText>] {
         &self.text_shapes[range]
     }
 
     #[inline]
-    pub(in crate::layout) fn restore_text_shapes(
-        &mut self,
-        start: usize,
-        src: &[Option<ShapedText>],
-    ) {
+    pub(crate) fn restore_text_shapes(&mut self, start: usize, src: &[Option<ShapedText>]) {
         let end = start + src.len();
         self.text_shapes[start..end].copy_from_slice(src);
     }

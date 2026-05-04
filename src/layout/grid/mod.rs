@@ -240,12 +240,7 @@ impl GridHugStore {
     /// arrange's hug state must be saved so a later cache hit at any
     /// ancestor can restore it via [`Self::restore_subtree`]. Order is
     /// dictated by [`HUG_ORDER`] per Grid, in pre-order.
-    pub(in crate::layout) fn snapshot_subtree(
-        &self,
-        tree: &Tree,
-        subtree: Range<usize>,
-        out: &mut Vec<f32>,
-    ) {
+    pub(crate) fn snapshot_subtree(&self, tree: &Tree, subtree: Range<usize>, out: &mut Vec<f32>) {
         for i in subtree {
             if let LayoutMode::Grid(idx) = tree.layout[i].mode {
                 for (axis, kind) in HUG_ORDER {
@@ -260,12 +255,7 @@ impl GridHugStore {
     /// current frame's `idx`. `subtree_hash` equality on the cache key
     /// guarantees same Grid count and same `(n_cols, n_rows)` per
     /// Grid in the same order, so the slice and the walk align.
-    pub(in crate::layout) fn restore_subtree(
-        &mut self,
-        tree: &Tree,
-        subtree: Range<usize>,
-        hugs: &[f32],
-    ) {
+    pub(crate) fn restore_subtree(&mut self, tree: &Tree, subtree: Range<usize>, hugs: &[f32]) {
         let mut pos = 0usize;
         for i in subtree {
             if let LayoutMode::Grid(idx) = tree.layout[i].mode {
@@ -625,7 +615,7 @@ fn arrange_inner(
         // (WPF default) — `AutoBias::AlwaysStretch` collapses Auto to Stretch
         // even when the child isn't `Sizing::Fill`.
         let slot = Size::new(slot_w, slot_h);
-        let (size, off) = place_two_axis(
+        let p = place_two_axis(
             &s_node,
             parent_child_align,
             d,
@@ -633,8 +623,8 @@ fn arrange_inner(
             AutoBias::AlwaysStretch,
         );
         let child_rect = Rect {
-            min: inner.min + Vec2::new(slot_x, slot_y) + off,
-            size,
+            min: inner.min + Vec2::new(slot_x, slot_y) + p.offset,
+            size: p.size,
         };
         layout.arrange(tree, c, child_rect);
     }

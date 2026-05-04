@@ -71,7 +71,7 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
         let d = layout.scratch.desired[c.index()];
         let s = *tree.layout(c);
 
-        let (size, off) = place_two_axis(
+        let p = place_two_axis(
             &s,
             parent_child_align,
             d,
@@ -79,8 +79,8 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
             AutoBias::StretchIfFill,
         );
         let child_rect = Rect {
-            min: inner.min + off,
-            size,
+            min: inner.min + p.offset,
+            size: p.size,
         };
         layout.arrange(tree, c, child_rect);
     }

@@ -13,7 +13,7 @@
 //! `place_axis` with `AutoBias::StretchIfFill` makes Fill children grow
 //! to that height (CSS `align-items: stretch` default).
 
-use super::support::{AutoBias, place_axis, resolved_axis_align, zero_subtree};
+use super::support::{AutoBias, AxisAlignPair, place_axis, resolved_axis_align, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
 use crate::primitives::{justify::Justify, rect::Rect, size::Size, sizing::Sizing};
 use crate::text::TextMeasurer;
@@ -211,12 +211,15 @@ pub(super) fn arrange(
             // Cross axis: each child placed within the line's cross
             // extent via `place_axis`. Same rule as Stack cross —
             // Fill stretches to line_cross, Hug aligns per child.
-            let (h_align, v_align) = resolved_axis_align(&s, parent_child_align);
+            let AxisAlignPair {
+                h: h_align,
+                v: v_align,
+            } = resolved_axis_align(&s, parent_child_align);
             let cross_align = match axis {
                 Axis::X => v_align,
                 Axis::Y => h_align,
             };
-            let (cross_size, cross_off) = place_axis(
+            let cross_p = place_axis(
                 cross_align,
                 axis.cross_sizing(s.size),
                 axis.cross(d),
@@ -226,9 +229,9 @@ pub(super) fn arrange(
             let main_size = axis.main(d);
             let child_rect = axis.compose_rect(
                 main_cursor,
-                *cross_cursor + cross_off,
+                *cross_cursor + cross_p.offset,
                 main_size,
-                cross_size,
+                cross_p.size,
             );
             layout.arrange(tree, c, child_rect);
             main_cursor += main_size;

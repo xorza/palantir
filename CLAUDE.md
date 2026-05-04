@@ -132,6 +132,7 @@ fall back to `~/.cargo/registry/src/...` if the crate isn't listed in
 - `pub(crate)` on fields is fine for convenient cross-module access — invariants live in the methods that mutate, not in encapsulation theater.
 - No tuple returns. Even single-use, give it a named result struct next to the function. `Option`/`Result` excepted.
 - Default to the narrowest visibility. Demote `pub` → `pub(crate)` → private whenever nothing outside that scope uses the item; this crate has no external consumers.
+- No `pub(in path)` or `pub(super)`. They're noise — exotic syntax that forces the reader to compute the actual reach and gain nothing in a single-crate codebase. Use `pub(crate)` for any cross-module access; drop to private when no other module needs it.
 - Small refactors to shrink the public surface are welcome.
 - Split fat-test files into `foo/{mod.rs, tests.rs}` when tests dominate the file (>40% or >150 lines).
 - **No re-exports inside the crate.** Only `lib.rs` is allowed to `pub use` items to define the published API surface. Intermediate `mod.rs` files do not re-export — make submodules `pub(crate)` and have callers import via the canonical path (`use crate::primitives::color::Color`, not `use crate::primitives::Color`). Re-exports flatten paths, but they hurt grep-ability ("where does `Color` actually live?") and create cycles of "do I import from the leaf or the parent?". One canonical path per item.
