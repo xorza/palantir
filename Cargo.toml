@@ -31,3 +31,7 @@ harness = false
 [[bench]]
 name = "encode_cache"
 harness = false
+
+[[bench]]
+name = "compose_cache"
+harness = false

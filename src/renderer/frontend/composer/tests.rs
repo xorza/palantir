@@ -290,3 +290,167 @@ fn compose_keeps_quads_then_text_in_one_group() {
     assert_eq!(buf.groups[0].quads, 0..2);
     assert_eq!(buf.groups[0].texts, 0..1);
 }
+
+mod cache_integration {
+    use crate::Ui;
+    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::color::Color;
+    use crate::primitives::transform::TranslateScale;
+    use crate::renderer::gpu::buffer::RenderBuffer;
+    use crate::test_support::{begin, ui_at};
+    use crate::tree::element::Configure;
+    use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
+    use glam::{UVec2, Vec2};
+
+    fn build(ui: &mut Ui) {
+        Panel::vstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .padding(8.0)
+            .gap(6.0)
+            .show(ui, |ui| {
+                Panel::zstack_with_id("inner")
+                    .clip(true)
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .padding(6.0)
+                    .fill(Color::rgb(0.16, 0.18, 0.22))
+                    .transform(TranslateScale::new(Vec2::new(2.0, 1.0), 1.0))
+                    .show(ui, |ui| {
+                        Frame::with_id("a")
+                            .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                            .fill(Color::rgb(0.4, 0.4, 0.5))
+                            .show(ui);
+                        Frame::with_id("b")
+                            .size((Sizing::FILL, Sizing::Fixed(10.0)))
+                            .fill(Color::rgb(0.5, 0.4, 0.4))
+                            .show(ui);
+                    });
+            });
+    }
+
+    fn snapshot(rb: &RenderBuffer) -> RenderBuffer {
+        RenderBuffer {
+            quads: rb.quads.clone(),
+            texts: rb.texts.clone(),
+            groups: rb.groups.clone(),
+            viewport_phys: rb.viewport_phys,
+            viewport_phys_f: rb.viewport_phys_f,
+            scale: rb.scale,
+        }
+    }
+
+    /// Warm-frame `RenderBuffer` (encode-cache + compose-cache both
+    /// active) must be byte-identical to a cold compose with both
+    /// caches cleared. Pins both the splice rebasing and the cascade
+    /// fingerprint plumbing.
+    #[test]
+    fn compose_cache_warm_frame_matches_cold_compose() {
+        let surface = UVec2::new(400, 200);
+        let mut ui = ui_at(surface);
+        build(&mut ui);
+        ui.end_frame();
+
+        // Frame 2: warm caches.
+        begin(&mut ui, surface);
+        build(&mut ui);
+        ui.end_frame();
+        let warm = snapshot(&ui.frontend.composer.buffer);
+
+        // Frame 3: clear both caches → cold compose under same inputs.
+        ui.__clear_encode_cache();
+        ui.__clear_compose_cache();
+        begin(&mut ui, surface);
+        build(&mut ui);
+        ui.end_frame();
+        let cold = snapshot(&ui.frontend.composer.buffer);
+
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&warm.quads),
+            bytemuck::cast_slice::<_, u8>(&cold.quads),
+            "quads diverge after warm cache"
+        );
+        assert_eq!(warm.texts.len(), cold.texts.len(), "text count diverges");
+        for (i, (w, c)) in warm.texts.iter().zip(cold.texts.iter()).enumerate() {
+            assert_eq!(w.origin, c.origin, "text[{i}] origin diverges");
+            assert_eq!(w.bounds, c.bounds, "text[{i}] bounds diverges");
+            assert_eq!(w.color, c.color, "text[{i}] color diverges");
+            assert_eq!(w.key, c.key, "text[{i}] key diverges");
+        }
+        assert_eq!(warm.groups, cold.groups, "groups diverge after warm cache");
+    }
+
+    /// Sanity: the compose cache should have at least one snapshot
+    /// after a warm frame on a non-trivial tree. Zero snapshots would
+    /// invalidate the bench arms. Uses a tree large enough to clear
+    /// the encoder's `TINY_SUBTREE_THRESHOLD = 4` marker emission gate.
+    #[test]
+    fn compose_cache_populates_on_warm_frame() {
+        let surface = UVec2::new(400, 400);
+        let big = |ui: &mut Ui| {
+            Panel::vstack_with_id("root")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    for i in 0..10 {
+                        Panel::hstack_with_id(("row", i))
+                            .size((Sizing::FILL, Sizing::Hug))
+                            .show(ui, |ui| {
+                                Frame::with_id(("a", i))
+                                    .size(Sizing::Fixed(10.0))
+                                    .fill(Color::WHITE)
+                                    .show(ui);
+                                Frame::with_id(("b", i))
+                                    .size(Sizing::Fixed(10.0))
+                                    .fill(Color::WHITE)
+                                    .show(ui);
+                                Frame::with_id(("c", i))
+                                    .size(Sizing::Fixed(10.0))
+                                    .fill(Color::WHITE)
+                                    .show(ui);
+                                Frame::with_id(("d", i))
+                                    .size(Sizing::Fixed(10.0))
+                                    .fill(Color::WHITE)
+                                    .show(ui);
+                            });
+                    }
+                });
+        };
+
+        let mut ui = ui_at(surface);
+        big(&mut ui);
+        ui.end_frame();
+        begin(&mut ui, surface);
+        big(&mut ui);
+        ui.end_frame();
+        assert!(
+            ui.__compose_cache_snapshot_count() > 0,
+            "compose cache should have populated, got {}",
+            ui.__compose_cache_snapshot_count()
+        );
+    }
+
+    /// Pin: clearing only the compose cache (encode cache hot) still
+    /// reproduces byte-identical output. The compose-cache miss
+    /// re-runs the full subtree compose; cached encode cmds drive it.
+    #[test]
+    fn compose_cache_clear_replays_byte_identical() {
+        let surface = UVec2::new(400, 200);
+        let mut ui = ui_at(surface);
+        build(&mut ui);
+        ui.end_frame();
+        begin(&mut ui, surface);
+        build(&mut ui);
+        ui.end_frame();
+        let warm = snapshot(&ui.frontend.composer.buffer);
+
+        ui.__clear_compose_cache();
+        begin(&mut ui, surface);
+        build(&mut ui);
+        ui.end_frame();
+        let cold_compose = snapshot(&ui.frontend.composer.buffer);
+
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&warm.quads),
+            bytemuck::cast_slice::<_, u8>(&cold_compose.quads)
+        );
+        assert_eq!(warm.groups, cold_compose.groups);
+    }
+}

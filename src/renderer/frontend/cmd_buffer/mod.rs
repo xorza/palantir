@@ -21,10 +21,12 @@
 //! align >4 (`DrawTextPayload`) work even when the arena slot starts at
 //! a 4-byte-only-aligned offset.
 
+use crate::layout::cache::AvailableKey;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
 use crate::text::TextCacheKey;
+use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 
@@ -51,7 +53,11 @@ pub(crate) enum CmdKind {
 /// One command yielded by [`RenderCmdBuffer::iter`]: the kind tag plus
 /// the offset (in `u32` words) at which its payload begins in the
 /// arena. Read with [`RenderCmdBuffer::read::<T>(start)`] using the
-/// payload type matching `kind`.
+/// payload type matching `kind`. Test-facing API — production code
+/// (the composer) iterates by index over `kinds`/`starts` directly so
+/// it can fast-forward past cached subtree ranges.
+// todo remove
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Cmd {
     pub(crate) kind: CmdKind,
@@ -83,28 +89,21 @@ pub(crate) struct DrawTextPayload {
     pub(crate) key: TextCacheKey,
 }
 
-/// 12 bytes, align 4. WidgetId is split into two u32s so the struct
-/// has no padding (a `u64` field would force struct align 8 + 4 bytes
-/// trailing pad, which `bytemuck::Pod` forbids). `exit_idx` is patched
-/// by [`RenderCmdBuffer::push_exit_subtree`] once the matching close
-/// is recorded.
+/// 32 bytes, align 8. Trailing `_pad` makes the size a multiple of 8
+/// (the alignment forced by the `u64` fields) so `bytemuck::Pod`'s
+/// no-padding-bytes invariant holds. `exit_idx` is patched by
+/// [`RenderCmdBuffer::push_exit_subtree`] once the matching close is
+/// recorded. Carries the subtree's `(WidgetId, subtree_hash,
+/// available_q)` triple — the composer cache reads them to key its
+/// lookup directly off the cmd stream (self-describing markers).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct EnterSubtreePayload {
-    pub(crate) wid_lo: u32,
-    pub(crate) wid_hi: u32,
+    pub(crate) wid: WidgetId,
+    pub(crate) subtree_hash: NodeHash,
+    pub(crate) avail: AvailableKey,
     pub(crate) exit_idx: u32,
-}
-
-impl EnterSubtreePayload {
-    /// Reconstruct the `WidgetId` from the split halves. Unused by the
-    /// spike (composer treats EnterSubtree as a no-op); the upcoming
-    /// composer cache reads this to key its lookup.
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn wid(self) -> WidgetId {
-        WidgetId(((self.wid_hi as u64) << 32) | self.wid_lo as u64)
-    }
+    _pad: u32,
 }
 
 /// Returned by [`RenderCmdBuffer::push_enter_subtree`]; threaded into
@@ -190,15 +189,22 @@ impl RenderCmdBuffer {
     /// into [`Self::push_exit_subtree`] so the open's `exit_idx` field
     /// is rewritten to point at the matching close once known.
     #[inline]
-    pub(crate) fn push_enter_subtree(&mut self, wid: WidgetId) -> EnterPatch {
+    pub(crate) fn push_enter_subtree(
+        &mut self,
+        wid: WidgetId,
+        subtree_hash: NodeHash,
+        avail: AvailableKey,
+    ) -> EnterPatch {
         self.record_start(CmdKind::EnterSubtree);
         let payload_word_offset = self.data.len() as u32;
         write_pod(
             &mut self.data,
             EnterSubtreePayload {
-                wid_lo: wid.0 as u32,
-                wid_hi: (wid.0 >> 32) as u32,
+                wid,
+                subtree_hash,
+                avail,
                 exit_idx: 0,
+                _pad: 0,
             },
         );
         EnterPatch {
@@ -212,9 +218,10 @@ impl RenderCmdBuffer {
     pub(crate) fn push_exit_subtree(&mut self, patch: EnterPatch) {
         self.record_start(CmdKind::ExitSubtree);
         let exit_idx = (self.kinds.len() - 1) as u32;
-        // exit_idx is the 3rd u32 word in EnterSubtreePayload after
-        // wid_lo (word 0) and wid_hi (word 1).
-        self.data[patch.payload_word_offset as usize + 2] = exit_idx;
+        // exit_idx is at u32 word 6 in EnterSubtreePayload —
+        // wid (words 0..2), subtree_hash (words 2..4),
+        // avail (words 4..6), then exit_idx at word 6.
+        self.data[patch.payload_word_offset as usize + 6] = exit_idx;
     }
 
     /// Append a cached subtree's cmd slice into this buffer, shifting
@@ -250,10 +257,11 @@ impl RenderCmdBuffer {
         bump_rect_min(kinds, appended_starts, &mut self.data, offset);
     }
 
-    /// Iterator over [`Cmd`]s in record order. Used by the composer hot
-    /// path (and tests) to dispatch on `CmdKind` and read payloads with
-    /// the typed `read::<T>()` helper — avoids materializing a
-    /// per-command enum.
+    /// Iterator over [`Cmd`]s in record order. Test-facing — the
+    /// composer hot path iterates by index over `kinds` / `starts`
+    /// directly so it can fast-forward past `EnterSubtree` ranges on
+    /// a compose-cache hit.
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn iter(&self) -> impl Iterator<Item = Cmd> + '_ {
         self.kinds

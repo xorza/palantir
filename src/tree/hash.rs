@@ -25,7 +25,8 @@ use std::hash::{Hash, Hasher};
 /// output. Wrapping `u64` rather than passing it bare prevents
 /// confusion with `WidgetId` / other 64-bit handles in signatures
 /// like `shape_unbounded(wid: WidgetId, hash: NodeHash, …)`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct NodeHash(u64);
 
 impl NodeHash {
