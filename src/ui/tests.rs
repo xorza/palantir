@@ -164,7 +164,7 @@ fn prev_frame_captures_arranged_rect() {
         .show(&mut ui)
         .node;
     ui.end_frame();
-    let arranged = ui.layout_engine.rect(frame_node);
+    let arranged = ui.layout_engine.result.rect(frame_node);
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.rect, arranged);

@@ -22,7 +22,7 @@ use crate::tree::{NodeId, Tree};
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub enum LenReq {
+pub(crate) enum LenReq {
     /// Smallest size the node can occupy without breaking. Text: longest
     /// unbreakable run.
     MinContent,
@@ -36,7 +36,7 @@ impl LenReq {
     /// Encoding lives next to the variant set so adding a `LenReq`
     /// surfaces here, not in `mod.rs`.
     #[inline]
-    pub(in crate::layout) fn slot(self, axis: Axis) -> usize {
+    pub(crate) fn slot(self, axis: Axis) -> usize {
         let a = match axis {
             Axis::X => 0,
             Axis::Y => 1,
@@ -55,13 +55,13 @@ impl LenReq {
 /// by field rather than positional tuple — `(min, max)` ordering would
 /// silently break if anyone ever rearranges it.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct IntrinsicBounds {
+pub(crate) struct IntrinsicBounds {
     pub min: f32,
     pub max: f32,
 }
 
 impl IntrinsicBounds {
-    pub const ZERO: Self = Self { min: 0.0, max: 0.0 };
+    pub(crate) const ZERO: Self = Self { min: 0.0, max: 0.0 };
 }
 
 /// Outer intrinsic on `axis`: content + padding + margin, respecting the

@@ -26,7 +26,7 @@ fn frame_paints_a_single_rounded_rect() {
     assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
 
     // Default sense is None — frame is not a hit-test target.
-    let r = ui.layout_engine.rect(frame_node.unwrap());
+    let r = ui.layout_engine.result.rect(frame_node.unwrap());
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);
 }

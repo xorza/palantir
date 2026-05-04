@@ -66,13 +66,13 @@ fn panel_hugs_largest_child_and_layers_them() {
     ui.end_frame();
 
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
-    let panel = ui.layout_engine.rect(panel_node.unwrap());
+    let panel = ui.layout_engine.result.rect(panel_node.unwrap());
     assert_eq!(panel.size.w, 100.0);
     assert_eq!(panel.size.h, 70.0);
 
     // Both children laid out at panel's inner top-left (10, 10), at their own size.
-    let a = ui.layout_engine.rect(a_node.unwrap());
-    let b = ui.layout_engine.rect(b_node.unwrap());
+    let a = ui.layout_engine.result.rect(a_node.unwrap());
+    let b = ui.layout_engine.result.rect(b_node.unwrap());
     assert_eq!((a.min.x, a.min.y), (10.0, 10.0));
     assert_eq!((b.min.x, b.min.y), (10.0, 10.0));
     assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
@@ -107,7 +107,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     });
     ui.end_frame();
 
-    let child = ui.layout_engine.rect(child_node.unwrap());
+    let child = ui.layout_engine.result.rect(child_node.unwrap());
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
     assert_eq!(child.min.x, 10.0);
     assert_eq!(child.min.y, 10.0);

@@ -1,6 +1,6 @@
 use crate::element::LayoutMode;
 use crate::layout::axis::Axis;
-use crate::layout::cache::{AvailableKey, MeasureCache, quantize_available};
+use crate::layout::cache::{MeasureCache, quantize_available};
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{IntrinsicBounds, LenReq};
 use crate::layout::result::{LayoutResult, ShapedText};
@@ -43,14 +43,14 @@ mod integration_tests;
 ///   computed".
 ///
 /// Module-internal tests (e.g. `stack/tests.rs`) reach in via
-/// `pub(in crate::layout)` to pin measure output independently of
+/// `pub(crate)` to pin measure output independently of
 /// arrange's slot-clamping.
 #[derive(Default)]
-pub(in crate::layout) struct LayoutScratch {
-    pub(in crate::layout) grid: GridContext,
-    pub(in crate::layout) wrap: WrapScratch,
-    pub(in crate::layout) desired: Vec<Size>,
-    pub(in crate::layout) intrinsics: Vec<[f32; 4]>,
+pub(crate) struct LayoutScratch {
+    pub(crate) grid: GridContext,
+    pub(crate) wrap: WrapScratch,
+    pub(crate) desired: Vec<Size>,
+    pub(crate) intrinsics: Vec<[f32; 4]>,
 }
 
 impl LayoutScratch {
@@ -79,10 +79,10 @@ impl LayoutScratch {
 /// `TextMeasurer` (`unbounded_for` / `cached_wrap` / `shape_wrap`) so
 /// the dispatch-skip and the cache live in one place.
 #[derive(Default)]
-pub struct LayoutEngine {
-    pub(in crate::layout) scratch: LayoutScratch,
-    pub(in crate::layout) result: LayoutResult,
-    pub(in crate::layout) cache: MeasureCache,
+pub(crate) struct LayoutEngine {
+    pub(crate) scratch: LayoutScratch,
+    pub(crate) result: LayoutResult,
+    pub(crate) cache: MeasureCache,
 }
 
 /// Quantize wrap target to ~0.1 logical px. Coarse enough to absorb
@@ -96,37 +96,22 @@ fn quantize_wrap_target(v: f32) -> u32 {
 }
 
 impl LayoutEngine {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
-    }
-
-    pub fn result(&self) -> &LayoutResult {
-        &self.result
-    }
-
-    pub fn rect(&self, id: NodeId) -> Rect {
-        self.result.rect(id)
     }
 
     /// Drop cross-frame measure-cache entries for `WidgetId`s that
     /// vanished this frame. Called from `Ui::end_frame` with the same
     /// `removed` slice that `Damage` and `TextMeasurer` consume.
-    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         self.cache.sweep_removed(removed);
     }
 
     /// Drop every cross-frame measure-cache entry. `#[doc(hidden)]` —
     /// see [`crate::Ui::__clear_measure_cache`].
     #[doc(hidden)]
-    pub fn __clear_cache(&mut self) {
+    pub(crate) fn __clear_cache(&mut self) {
         self.cache.clear();
-    }
-
-    /// Per-node quantized `available` size last passed to this node's
-    /// measure. Delegates to [`LayoutResult::available_q`].
-    #[inline]
-    pub fn available_q(&self, id: NodeId) -> Option<AvailableKey> {
-        self.result.available_q(id)
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
@@ -140,7 +125,7 @@ impl LayoutEngine {
     /// a caller wants both `MinContent` and `MaxContent` for the same
     /// `(node, axis)` (Grid Phase-1 does), prefer
     /// [`Self::intrinsic_pair`].
-    pub fn intrinsic(
+    pub(crate) fn intrinsic(
         &mut self,
         tree: &Tree,
         node: NodeId,
@@ -164,7 +149,7 @@ impl LayoutEngine {
     /// Compared to two `intrinsic` calls: one cache check, one
     /// dispatcher entry, one leaf-side `text.shape_unbounded` per leaf
     /// (the per-axis pair is extracted from the single shaped result).
-    pub fn intrinsic_pair(
+    pub(crate) fn intrinsic_pair(
         &mut self,
         tree: &Tree,
         node: NodeId,
@@ -194,7 +179,7 @@ impl LayoutEngine {
     /// `text` carries the shaper (or the mono fallback inside it) and is
     /// borrowed for the duration of the call so wrapping leaves can reshape
     /// against the parent-committed width during measure.
-    pub fn run(
+    pub(crate) fn run(
         &mut self,
         tree: &Tree,
         root: Option<NodeId>,
@@ -231,7 +216,7 @@ impl LayoutEngine {
     /// Bottom-up measure dispatcher. Children call back via this method to
     /// recurse. Stores the resolved size for each visited node in
     /// `self.desired` (read by `arrange`).
-    pub(in crate::layout) fn measure(
+    pub(crate) fn measure(
         &mut self,
         tree: &Tree,
         node: NodeId,
@@ -377,7 +362,7 @@ impl LayoutEngine {
 
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
     /// (margin-inclusive). Stores `rect` for each visited node in `self.result`.
-    pub(in crate::layout) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect) {
+    pub(crate) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect) {
         if tree.is_collapsed(node) {
             zero_subtree(self, tree, node, slot.min);
             return;

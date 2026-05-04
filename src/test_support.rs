@@ -117,7 +117,7 @@ pub(crate) fn encode_cmds_filtered(
     let mut encoder = Encoder::default();
     encoder.encode(
         ui.tree(),
-        ui.layout_engine.result(),
+        &ui.layout_engine.result,
         ui.cascades.result(),
         filter,
     );

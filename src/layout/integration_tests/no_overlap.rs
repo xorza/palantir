@@ -68,7 +68,7 @@ fn two_hug_columns_with_wrapping_text_do_not_overlap() {
         });
     ui.end_frame();
 
-    let layout = ui.layout_engine.result();
+    let layout = &ui.layout_engine.result;
     let lr = layout.rect(left.unwrap());
     let rr = layout.rect(right.unwrap());
     assert!(lr.size.w > 0.0, "left column must have a positive width");
@@ -143,7 +143,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
         });
     ui.end_frame();
 
-    let layout = ui.layout_engine.result();
+    let layout = &ui.layout_engine.result;
     let l1 = layout.rect(hug_left.unwrap());
     let r1 = layout.rect(hug_right.unwrap());
     let l2 = layout.rect(prop_label.unwrap());
@@ -344,7 +344,7 @@ fn property_grid_hug_label_does_not_overlap_fill_value() {
         });
     ui.end_frame();
 
-    let layout = ui.layout_engine.result();
+    let layout = &ui.layout_engine.result;
     let lr = layout.rect(label.unwrap());
     let vr = layout.rect(value.unwrap());
     assert!(lr.size.w > 0.0, "label cell must have a positive width");

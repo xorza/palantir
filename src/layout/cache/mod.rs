@@ -62,7 +62,7 @@ pub(crate) struct ArenaSnapshot {
 /// isn't the `Default`).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct AvailableKey {
+pub(crate) struct AvailableKey {
     pub w: i32,
     pub h: i32,
 }
@@ -84,15 +84,10 @@ impl AvailableKey {
     /// can never spuriously match against a slot whose write was
     /// somehow skipped — the `{0, 0}` default would compare equal to a
     /// legitimately-stored 0px × 0px snapshot.
-    pub const UNSET: Self = Self {
+    pub(crate) const UNSET: Self = Self {
         w: i32::MIN,
         h: i32::MIN,
     };
-
-    /// Zero-bytes representation. Distinct from `Default::default()`
-    /// (which is `UNSET`). Provided for cases that genuinely want
-    /// `{0, 0}` rather than the unset sentinel.
-    pub const ZERO: Self = Self { w: 0, h: 0 };
 }
 
 /// What [`MeasureCache::try_lookup`] returns on a hit. The slices are
@@ -120,7 +115,7 @@ fn quantize_axis(v: f32) -> i32 {
 }
 
 #[inline]
-pub fn quantize_available(s: Size) -> AvailableKey {
+pub(crate) fn quantize_available(s: Size) -> AvailableKey {
     AvailableKey {
         w: quantize_axis(s.w),
         h: quantize_axis(s.h),
