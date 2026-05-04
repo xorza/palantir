@@ -193,7 +193,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 
     let cmds = encode_cmds(&ui);
     let mut text_xs: Vec<f32> = Vec::new();
-    for (kind, start) in cmds.raw_iter() {
+    for (kind, start) in cmds.iter() {
         if kind == CmdKind::DrawText {
             text_xs.push(cmds.read::<DrawTextPayload>(start).rect.min.x);
         }
@@ -291,7 +291,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
 
     let cmds = encode_cmds(&ui);
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
-    for (kind, start) in cmds.raw_iter() {
+    for (kind, start) in cmds.iter() {
         if kind == CmdKind::DrawText {
             let p: DrawTextPayload = cmds.read(start);
             entries.push((p.rect.min.x, p.rect.min.y, p.key.text_hash));

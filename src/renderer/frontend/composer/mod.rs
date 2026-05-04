@@ -55,7 +55,7 @@ impl Composer {
         // flushed) and on flush.
         let mut last_was_text = false;
 
-        for (kind, start) in cmds.raw_iter() {
+        for (kind, start) in cmds.iter() {
             match kind {
                 CmdKind::PushClip => {
                     let r: Rect = cmds.read(start);
