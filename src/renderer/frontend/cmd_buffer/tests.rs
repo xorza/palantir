@@ -1,6 +1,5 @@
 use super::*;
 use crate::primitives::color::Color;
-use crate::test_support::{RenderCmd, cmd_at};
 use crate::text::TextCacheKey;
 
 fn sample_buf() -> RenderCmdBuffer {
@@ -32,12 +31,15 @@ fn sample_buf() -> RenderCmdBuffer {
     b
 }
 
+/// Read the leading `Rect` from any rect-bearing payload — `Rect` is
+/// the prefix of `PushClip`, `DrawRect{,Stroked}`, and `DrawText`
+/// payloads (see `bump_rect_min`).
 fn rect_of(buf: &RenderCmdBuffer, i: usize) -> Rect {
-    match cmd_at(buf, i) {
-        RenderCmd::PushClip(r) => r,
-        RenderCmd::DrawRect(p) => p.rect,
-        RenderCmd::DrawRectStroked(p) => p.rect,
-        RenderCmd::DrawText(p) => p.rect,
+    let start = buf.starts[i];
+    match buf.kinds[i] {
+        CmdKind::PushClip | CmdKind::DrawRect | CmdKind::DrawRectStroked | CmdKind::DrawText => {
+            buf.read(start)
+        }
         other => panic!("no rect on {other:?}"),
     }
 }
@@ -64,12 +66,8 @@ fn extend_from_cached_shifts_rect_min() {
             }
             CmdKind::PopClip | CmdKind::PopTransform => {}
             CmdKind::PushTransform => {
-                let RenderCmd::PushTransform(d) = cmd_at(&dst, i) else {
-                    unreachable!()
-                };
-                let RenderCmd::PushTransform(s) = cmd_at(&src, i) else {
-                    unreachable!()
-                };
+                let d: TranslateScale = dst.read(dst.starts[i]);
+                let s: TranslateScale = src.read(src.starts[i]);
                 assert_eq!(d, s);
             }
         }

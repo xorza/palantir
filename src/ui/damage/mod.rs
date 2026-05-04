@@ -13,7 +13,7 @@
 //! `Damage.dirty` is the per-node dirty list (added / hash-changed /
 //! rect-changed). Currently consumed only by tests; reserved for the
 //! identity-based reuse work in `docs/damage-rendering.md`
-//! ("Wanted: per-node `RenderCmd` cache, text-shape cache,
+//! ("Wanted: per-node command cache, text-shape cache,
 //! multi-rect damage, incremental hit-index, debug overlay").
 
 use crate::cascade::CascadeResult;

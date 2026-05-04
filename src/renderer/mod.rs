@@ -9,8 +9,9 @@
 //! `RenderBuffer` and `Quad` live at this level — they're the contract
 //! between frontend and backend. Other backends (software rasterizer,
 //! headless capture) consume `&RenderBuffer` directly. A TUI/text
-//! backend would skip the compose step and walk `RenderCmd`s itself,
-//! since pixel snap and scissor rects don't apply.
+//! backend would skip the compose step and walk the encoder's
+//! `RenderCmdBuffer` itself, since pixel snap and scissor rects don't
+//! apply.
 //!
 //! [`Ui`]: crate::ui::Ui
 pub(crate) mod backend;

@@ -7,7 +7,7 @@ use crate::primitives::{
 use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::quad::Quad;
 
-/// CPU-only compose engine: turns a `RenderCmd` stream into a `RenderBuffer`
+/// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups). Owns its output buffer
 /// + compose-time scratch stacks so steady-state rendering is alloc-free.
 ///

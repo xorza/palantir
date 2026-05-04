@@ -1,16 +1,17 @@
-//! `RenderCmdBuffer` — SoA replacement for `Vec<RenderCmd>`.
+//! `RenderCmdBuffer` — SoA command stream.
 //!
 //! Three columns: a 1-byte kind discriminant per command, a `u32` start
-//! offset into a payload arena, and the arena itself. Decodes back to
-//! `RenderCmd` on demand for tests; the composer dispatches directly on
-//! `CmdKind` without materializing the enum.
+//! offset into a payload arena, and the arena itself. Consumers (the
+//! composer, the encode cache, tests) dispatch on `CmdKind` via
+//! `raw_iter()` and read each payload with the typed `read::<T>()`
+//! helper — no command-enum is ever materialized.
 //!
-//! Memory: `RenderCmd` enum is sized to its largest variant (~80 B with
-//! padding), so a sequence of `PopClip`/`PopTransform` paid full-variant
-//! storage in the old `Vec<RenderCmd>`. Here Pops are 1 + 4 = 5 bytes
-//! (kind byte + start offset, no payload). DrawRect splits into stroked
-//! / unstroked kinds so the no-stroke variant skips the 5×u32 stroke
-//! payload entirely.
+//! Memory: a tagged-enum representation would size to its largest
+//! variant (~80 B with padding), so a sequence of
+//! `PopClip`/`PopTransform` would pay full-variant storage. Here Pops
+//! are 1 + 4 = 5 bytes (kind byte + start offset, no payload). DrawRect
+//! splits into stroked / unstroked kinds so the no-stroke variant skips
+//! the 5×u32 stroke payload entirely.
 //!
 //! Soundness: payload structs are `#[repr(C)]` aggregates of `f32`/`u32`
 //! (and one `u64` in `TextCacheKey`) tagged `bytemuck::Pod`, so the
@@ -168,8 +169,9 @@ impl RenderCmdBuffer {
     }
 
     /// Raw iterator over `(kind, payload-start)` pairs, in order. Used by
-    /// the composer hot path to dispatch on `CmdKind` and call typed
-    /// `read_*` helpers — avoids materializing `RenderCmd` per command.
+    /// the composer hot path (and tests) to dispatch on `CmdKind` and
+    /// read payloads with the typed `read::<T>()` helper — avoids
+    /// materializing a per-command enum.
     #[inline]
     pub(crate) fn raw_iter(&self) -> impl Iterator<Item = (CmdKind, u32)> + '_ {
         self.kinds.iter().copied().zip(self.starts.iter().copied())
