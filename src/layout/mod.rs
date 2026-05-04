@@ -101,6 +101,41 @@ fn quantize_wrap_target(v: f32) -> u32 {
     (v.max(0.0) * 10.0).round() as u32
 }
 
+/// Fold a driver's raw `content` size into a margin-inclusive `desired`,
+/// applying `style.size` (Fixed/Hug/Fill), padding, margin, and the
+/// node's `[min, max]` clamp. Pulled out of `measure_dispatch` so the
+/// grow-detection path can resolve once per dispatch without re-reading
+/// `extras` between passes.
+#[inline]
+fn resolve_desired(
+    style: LayoutCore,
+    content: Size,
+    available: Size,
+    min_size: Size,
+    max_size: Size,
+) -> Size {
+    let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
+    let hug_h = content.h + style.padding.vert() + style.margin.vert();
+    Size::new(
+        resolve_axis_size(
+            style.size.w,
+            hug_w,
+            available.w,
+            style.margin.horiz(),
+            min_size.w,
+            max_size.w,
+        ),
+        resolve_axis_size(
+            style.size.h,
+            hug_h,
+            available.h,
+            style.margin.vert(),
+            min_size.h,
+            max_size.h,
+        ),
+    )
+}
+
 impl LayoutEngine {
     pub(crate) fn new() -> Self {
         Self::default()
@@ -274,10 +309,14 @@ impl LayoutEngine {
             return hit.root;
         }
 
+        let extras = tree.read_extras(node);
+        let (min_size, max_size) = (extras.min_size, extras.max_size);
+
         // First dispatch: children see `inner_avail` derived from the
         // parent-passed `available`. May grow on a Fill axis when a
         // Fixed/Hug descendant's hug exceeds `available`.
-        let desired = self.measure_dispatch(tree, node, style, available, text);
+        let content = self.measure_dispatch(tree, node, style, available, text);
+        let desired = resolve_desired(style, content, available, min_size, max_size);
 
         // Re-dispatch when grow happened on an axis whose children's
         // `inner_avail` actually depends on `available`. Pass 1 measured
@@ -303,12 +342,13 @@ impl LayoutEngine {
         let grew_h = available.h.is_finite()
             && desired.h > available.h
             && !matches!(style.size.h, Sizing::Fixed(_));
+        let new_available = Size::new(
+            if grew_w { desired.w } else { available.w },
+            if grew_h { desired.h } else { available.h },
+        );
         let desired = if grew_w || grew_h {
-            let new_available = Size::new(
-                if grew_w { desired.w } else { available.w },
-                if grew_h { desired.h } else { available.h },
-            );
-            let final_desired = self.measure_dispatch(tree, node, style, new_available, text);
+            let content = self.measure_dispatch(tree, node, style, new_available, text);
+            let final_desired = resolve_desired(style, content, new_available, min_size, max_size);
             assert!(
                 final_desired.w <= new_available.w + 0.5
                     && final_desired.h <= new_available.h + 0.5,
@@ -355,10 +395,11 @@ impl LayoutEngine {
     }
 
     /// One measure pass for `node`: derives `inner_avail` from
-    /// `available` and `style`, dispatches to the driver, folds the
-    /// driver's content size back into a margin-inclusive `desired`.
-    /// Called twice from `measure` when a Fill axis grows past
-    /// `available` so the children see their actual post-grow inner.
+    /// `available` and `style`, dispatches to the driver, returns the
+    /// driver's raw content size. Called twice from `measure` when a
+    /// Fill axis grows past `available` so the children see their
+    /// actual post-grow inner. The caller folds content into a
+    /// margin-inclusive `desired` via `resolve_desired`.
     fn measure_dispatch(
         &mut self,
         tree: &Tree,
@@ -386,7 +427,7 @@ impl LayoutEngine {
             (outer_h - style.padding.vert()).max(0.0),
         );
 
-        let content = match style.mode {
+        match style.mode {
             LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, text),
             LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, Axis::X, text),
             LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, Axis::Y, text),
@@ -399,30 +440,7 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
             LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
-        };
-
-        let extras = tree.read_extras(node);
-        let (min_size, max_size) = (extras.min_size, extras.max_size);
-        let hug_w = content.w + style.padding.horiz() + style.margin.horiz();
-        let hug_h = content.h + style.padding.vert() + style.margin.vert();
-        Size::new(
-            resolve_axis_size(
-                style.size.w,
-                hug_w,
-                available.w,
-                style.margin.horiz(),
-                min_size.w,
-                max_size.w,
-            ),
-            resolve_axis_size(
-                style.size.h,
-                hug_h,
-                available.h,
-                style.margin.vert(),
-                min_size.h,
-                max_size.h,
-            ),
-        )
+        }
     }
 
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
