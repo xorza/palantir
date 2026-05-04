@@ -3,23 +3,30 @@
 //! `subtree_hash` and incoming `available` size both match last
 //! frame. See `src/layout/measure-cache.md`.
 //!
-//! **Storage**: a single SoA arena per attribute (`desired_arena`,
-//! `text_arena`) plus a tiny per-`WidgetId` `ArenaSnapshot` pointing
-//! at a contiguous range. Steady-state writes are in-place memcpys
-//! when the subtree size matches; size mismatches fall back to
-//! append + mark-garbage with periodic compaction. This keeps total
-//! allocations bounded to two `Vec`s (the arenas) plus one
-//! `FxHashMap` (the snapshot index), regardless of widget count.
+//! **Storage**: SoA arenas (`desired`, `text`, `available` — all
+//! node-indexed and parallel — and `hugs` for grid descendants) plus
+//! a tiny per-`WidgetId` `ArenaSnapshot` pointing at a contiguous
+//! range. Steady-state writes are in-place memcpys when the subtree
+//! size matches; size mismatches fall back to append + mark-garbage
+//! with periodic compaction. Storage is a small set of `Vec`s plus
+//! one `FxHashMap` (the snapshot index), regardless of widget count.
 //!
-//! Compaction kicks in when the arena holds more than `2 ×
-//! live_entries`. It walks every snapshot, rewrites their `start`
-//! indices to point at a freshly-packed arena, and drops the old
-//! one. O(live_entries) — a one-frame cost paid infrequently.
+//! Liveness bookkeeping rides on the shared [`LiveArena`] primitive
+//! so the compaction policy and constants are in one place
+//! (`src/common/cache_arena.rs`); the three node-indexed arenas share
+//! `desired.live` (they grow and shrink together by invariant), `hugs`
+//! tracks its own.
+//!
+//! Compaction kicks in when an arena holds more than `live ×
+//! COMPACT_RATIO` items. It walks every snapshot, rewrites their
+//! `start` indices to point at a freshly-packed arena, and drops the
+//! old one. O(live) — a one-frame cost paid infrequently.
 //!
 //! Eviction (via [`MeasureCache::sweep_removed`]) drops the snapshot
-//! and decrements `live_entries`; the arena slot stays as garbage
-//! until the next compact.
+//! and releases its arena ranges; the slots stay as garbage until the
+//! next compact.
 
+use crate::common::cache_arena::LiveArena;
 use crate::layout::result::ShapedText;
 use crate::layout::types::span::Span;
 use crate::primitives::size::Size;
@@ -29,21 +36,21 @@ use glam::IVec2;
 use rustc_hash::FxHashMap;
 
 /// 24-byte snapshot. `nodes` indexes the three node-indexed arenas
-/// (`desired_arena`, `text_arena`, `available_arena`); `hugs` indexes
-/// `hugs_arena`. The snapshot's quantized `available` is recoverable
-/// as `available_arena[nodes.start]` (always the snapshot root's
-/// per-node entry) — no separate field.
+/// (`desired`, `text`, `available`); `hugs` indexes `hugs`. The
+/// snapshot's quantized `available` is recoverable as
+/// `available[nodes.start]` (always the snapshot root's per-node
+/// entry) — no separate field.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ArenaSnapshot {
     /// Rolled subtree hash from last frame. The rollup includes child
     /// count and per-child subtree hashes, so any structural or
     /// authoring change anywhere in the subtree busts the key.
     pub(crate) subtree_hash: NodeHash,
-    /// Range over the three node-indexed arenas. `desired_arena[nodes.range()]`
+    /// Range over the three node-indexed arenas. `desired.items[nodes.range()]`
     /// is the subtree's `desired` in pre-order; index 0 is the
     /// snapshot root's own size.
     pub(crate) nodes: Span,
-    /// Range over `hugs_arena`. Per-grid hug arrays for every
+    /// Range over `hugs`. Per-grid hug arrays for every
     /// `LayoutMode::Grid` descendant of the subtree, in pre-order.
     /// Each grid contributes four arrays in fixed order:
     /// cols.max, cols.min, rows.max, rows.min. `Span::EMPTY` for
@@ -99,29 +106,21 @@ pub(crate) fn quantize_available(s: Size) -> AvailableKey {
     IVec2::new(quantize_axis(s.w), quantize_axis(s.h))
 }
 
-/// Compaction trigger: arena length must exceed `live_entries × this`.
-/// `2.0` keeps fragmentation under one extra arena's worth without
-/// firing compactions on every miss frame.
-const COMPACT_RATIO: usize = 2;
-/// Don't bother compacting until live data is at least this many
-/// entries — avoids compaction spam at warmup when the arena is tiny.
-const COMPACT_FLOOR: usize = 64;
-
 #[derive(Default)]
 pub(crate) struct MeasureCache {
-    /// Backing storage for every snapshot's `desired` data. Live
-    /// regions are pointed at by `snapshots`; freed regions sit as
-    /// garbage until the next [`Self::compact`].
-    pub(crate) desired_arena: Vec<Size>,
-    /// Parallel to `desired_arena`. Same indexing.
-    pub(crate) text_arena: Vec<Option<ShapedText>>,
-    /// Parallel to `desired_arena`. Same indexing. Per-descendant
+    /// Owns the live counter shared across the three parallel
+    /// node-indexed arenas. `text` and `available` ride on
+    /// `desired.live` by the same-length invariant.
+    pub(crate) desired: LiveArena<Size>,
+    /// Parallel to `desired`. Same indexing.
+    pub(crate) text: Vec<Option<ShapedText>>,
+    /// Parallel to `desired`. Same indexing. Per-descendant
     /// quantized `available`, snapshotted so a measure-cache hit can
     /// restore the full subtree's `available_q` column on
     /// `LayoutScratch`. The encode cache reads it at every node it
     /// visits, so descendants must remain correct even when the
     /// measure pass short-circuits and never visits them.
-    pub(crate) available_arena: Vec<AvailableKey>,
+    pub(crate) available: Vec<AvailableKey>,
     /// Per-grid hug arrays for every `LayoutMode::Grid` descendant
     /// of every cached subtree, packed in pre-order. Snapshot
     /// records `(hugs_start, hugs_len)` into this arena. Lets a
@@ -130,13 +129,10 @@ pub(crate) struct MeasureCache {
     /// `grid::arrange` then resolves track sizes correctly. Without
     /// this, a cache hit at any ancestor of a Grid would leave `hugs`
     /// zeroed and the grid would collapse every cell to (0, 0).
-    pub(crate) hugs_arena: Vec<f32>,
+    pub(crate) hugs: LiveArena<f32>,
     /// Per-`WidgetId` snapshot index. Each value points at a range in
-    /// the two arenas above.
+    /// the arenas above.
     pub(crate) snapshots: FxHashMap<WidgetId, ArenaSnapshot>,
-    /// Sum of `snap.len` across `snapshots` — the total live data in
-    /// the arenas. Garbage = `desired_arena.len() - live_entries`.
-    pub(crate) live_entries: usize,
     /// Reusable buffer for the next snapshot's hug payload. Caller
     /// fills via [`GridHugStore::snapshot_subtree`] before invoking
     /// [`Self::write_subtree`]; `write_subtree` consumes it. Capacity
@@ -158,18 +154,18 @@ impl MeasureCache {
     ) -> Option<CachedSubtree<'_>> {
         let snap = self.snapshots.get(&wid)?;
         let nodes = snap.nodes.range();
-        // Snapshot's `available_q` lives at `available_arena[nodes.start]` —
+        // Snapshot's `available_q` lives at `available[nodes.start]` —
         // the per-node entry for the snapshot root, written at the
         // same time as the field used to live.
-        if snap.subtree_hash != curr_hash || self.available_arena[nodes.start] != curr_avail {
+        if snap.subtree_hash != curr_hash || self.available[nodes.start] != curr_avail {
             return None;
         }
         Some(CachedSubtree {
-            root: self.desired_arena[nodes.start],
-            desired: &self.desired_arena[nodes.clone()],
-            text_shapes: &self.text_arena[nodes.clone()],
-            available_q: &self.available_arena[nodes],
-            hugs: &self.hugs_arena[snap.hugs.range()],
+            root: self.desired.items[nodes.start],
+            desired: &self.desired.items[nodes.clone()],
+            text_shapes: &self.text[nodes.clone()],
+            available_q: &self.available[nodes],
+            hugs: &self.hugs.items[snap.hugs.range()],
         })
     }
 
@@ -210,17 +206,17 @@ impl MeasureCache {
             prev.subtree_hash = subtree_hash;
             // Disjoint-field borrows: arenas vs. tmp_hugs.
             let Self {
-                desired_arena,
-                text_arena,
-                available_arena,
-                hugs_arena,
+                desired: desired_arena,
+                text,
+                available,
+                hugs,
                 tmp_hugs,
                 ..
             } = self;
-            desired_arena[nodes.clone()].copy_from_slice(desired);
-            text_arena[nodes.clone()].copy_from_slice(text_shapes);
-            available_arena[nodes].copy_from_slice(available_qs);
-            hugs_arena[hugs_range].copy_from_slice(tmp_hugs);
+            desired_arena.items[nodes.clone()].copy_from_slice(desired);
+            text[nodes.clone()].copy_from_slice(text_shapes);
+            available[nodes].copy_from_slice(available_qs);
+            hugs.items[hugs_range].copy_from_slice(tmp_hugs);
             return;
         }
 
@@ -228,15 +224,17 @@ impl MeasureCache {
         // garbage, append the new one. Subtree size only changes when
         // a widget's structure changes, so this path is rare.
         if let Some(prev) = self.snapshots.get(&wid) {
-            self.live_entries -= prev.nodes.len as usize;
+            self.desired.release(prev.nodes.len);
+            self.hugs.release(prev.hugs.len);
         }
-        let nodes = Span::new(self.desired_arena.len() as u32, new_len);
-        self.desired_arena.extend_from_slice(desired);
-        self.text_arena.extend_from_slice(text_shapes);
-        self.available_arena.extend_from_slice(available_qs);
-        let hugs_span = Span::new(self.hugs_arena.len() as u32, new_hugs_len);
-        self.hugs_arena.extend_from_slice(&self.tmp_hugs);
-        self.live_entries += new_len as usize;
+        let nodes = Span::new(self.desired.items.len() as u32, new_len);
+        self.desired.items.extend_from_slice(desired);
+        self.text.extend_from_slice(text_shapes);
+        self.available.extend_from_slice(available_qs);
+        let hugs_span = Span::new(self.hugs.items.len() as u32, new_hugs_len);
+        self.hugs.items.extend_from_slice(&self.tmp_hugs);
+        self.desired.live += new_len as usize;
+        self.hugs.live += new_hugs_len as usize;
         self.snapshots.insert(
             wid,
             ArenaSnapshot {
@@ -246,9 +244,7 @@ impl MeasureCache {
             },
         );
 
-        if self.desired_arena.len() > self.live_entries.saturating_mul(COMPACT_RATIO)
-            && self.live_entries > COMPACT_FLOOR
-        {
+        if self.desired.is_overgrown() && self.desired.over_floor() {
             self.compact();
         }
     }
@@ -260,7 +256,8 @@ impl MeasureCache {
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
-                self.live_entries -= snap.nodes.len as usize;
+                self.desired.release(snap.nodes.len);
+                self.hugs.release(snap.hugs.len);
             }
         }
     }
@@ -270,46 +267,36 @@ impl MeasureCache {
     /// `internals` feature) — not part of any production code path.
     #[cfg(any(test, feature = "internals"))]
     pub(crate) fn clear(&mut self) {
-        self.desired_arena.clear();
-        self.text_arena.clear();
-        self.available_arena.clear();
-        self.hugs_arena.clear();
+        self.desired.clear();
+        self.text.clear();
+        self.available.clear();
+        self.hugs.clear();
         self.tmp_hugs.clear();
         self.snapshots.clear();
-        self.live_entries = 0;
     }
 
     /// Walk every snapshot, copy its live range into a freshly-packed
-    /// arena, and rewrite snapshot pointers. O(live_entries) — runs
-    /// at most once per ~N writes given `COMPACT_RATIO = 2`.
+    /// arena, and rewrite snapshot pointers. O(live) — runs at most
+    /// once per ~N writes given `COMPACT_RATIO = 2`.
     fn compact(&mut self) {
-        let Self {
-            desired_arena,
-            text_arena,
-            available_arena,
-            hugs_arena,
-            snapshots,
-            live_entries,
-            tmp_hugs: _,
-        } = self;
-        let mut new_desired: Vec<Size> = Vec::with_capacity(*live_entries);
-        let mut new_text: Vec<Option<ShapedText>> = Vec::with_capacity(*live_entries);
-        let mut new_avail: Vec<AvailableKey> = Vec::with_capacity(*live_entries);
-        let mut new_hugs: Vec<f32> = Vec::with_capacity(hugs_arena.len());
-        for snap in snapshots.values_mut() {
+        let mut new_desired: Vec<Size> = Vec::with_capacity(self.desired.live);
+        let mut new_text: Vec<Option<ShapedText>> = Vec::with_capacity(self.desired.live);
+        let mut new_avail: Vec<AvailableKey> = Vec::with_capacity(self.desired.live);
+        let mut new_hugs: Vec<f32> = Vec::with_capacity(self.hugs.live);
+        for snap in self.snapshots.values_mut() {
             let nodes = snap.nodes.range();
             snap.nodes.start = new_desired.len() as u32;
-            new_desired.extend_from_slice(&desired_arena[nodes.clone()]);
-            new_text.extend_from_slice(&text_arena[nodes.clone()]);
-            new_avail.extend_from_slice(&available_arena[nodes]);
+            new_desired.extend_from_slice(&self.desired.items[nodes.clone()]);
+            new_text.extend_from_slice(&self.text[nodes.clone()]);
+            new_avail.extend_from_slice(&self.available[nodes]);
             let hugs = snap.hugs.range();
             snap.hugs.start = new_hugs.len() as u32;
-            new_hugs.extend_from_slice(&hugs_arena[hugs]);
+            new_hugs.extend_from_slice(&self.hugs.items[hugs]);
         }
-        *desired_arena = new_desired;
-        *text_arena = new_text;
-        *available_arena = new_avail;
-        *hugs_arena = new_hugs;
+        self.desired.items = new_desired;
+        self.text = new_text;
+        self.available = new_avail;
+        self.hugs.items = new_hugs;
     }
 }
 

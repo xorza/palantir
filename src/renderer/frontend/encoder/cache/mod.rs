@@ -29,9 +29,9 @@
 //! [`ComposeCache`]: crate::renderer::frontend::composer::cache::ComposeCache
 //! [`EncodeSnapshot`]: EncodeSnapshot
 
+use crate::common::cache_arena::LiveArena;
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::span::Span;
-use crate::renderer::frontend::cache_arena::LiveArena;
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };

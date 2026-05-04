@@ -20,14 +20,16 @@ Code lives in `cache/` (this directory's sibling).
   recursion. `available_q` (integer-px-quantized) gates `Hug` / `Fill`
   variance.
 - **Single-arena storage.** Three flat node-indexed arenas
-  (`desired_arena`, `text_arena`, `available_arena`) shared across all
-  snapshots, plus a per-`WidgetId` map of 24-byte
-  `ArenaSnapshot { subtree_hash, nodes: Span, hugs: Span }`. Per-grid
-  hug arrays for `LayoutMode::Grid` descendants live in a separate
-  `hugs_arena`. In-place rewrite on same-len writes; append +
-  mark-garbage on size changes; lazy compaction when
-  `arena_len > live_entries × COMPACT_RATIO` (= 2) and `live_entries
-  > COMPACT_FLOOR` (= 64).
+  (`desired`, `text`, `available`) shared across all snapshots, plus
+  a per-`WidgetId` map of 24-byte `ArenaSnapshot { subtree_hash,
+  nodes: Span, hugs: Span }`. Per-grid hug arrays for
+  `LayoutMode::Grid` descendants live in a separate `hugs` arena.
+  Liveness bookkeeping rides on the shared [`LiveArena`] primitive
+  (`src/common/cache_arena.rs`); the three node-indexed arenas share
+  `desired.live`, `hugs` tracks its own. In-place rewrite on same-len
+  writes; append + mark-garbage on size changes; lazy compaction when
+  `arena.len() > live × COMPACT_RATIO` (= 2) and `live > COMPACT_FLOOR`
+  (= 64).
 - **Lifecycle hooks.** Eviction via `SeenIds.removed` →
   `MeasureCache::sweep_removed`, called from `Ui::end_frame`.
   `MeasureCache::clear` exposed via `internals::clear_measure_cache`
