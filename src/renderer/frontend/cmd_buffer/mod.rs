@@ -173,7 +173,7 @@ impl RenderCmdBuffer {
     /// read payloads with the typed `read::<T>()` helper — avoids
     /// materializing a per-command enum.
     #[inline]
-    pub(crate) fn raw_iter(&self) -> impl Iterator<Item = (CmdKind, u32)> + '_ {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (CmdKind, u32)> + '_ {
         self.kinds.iter().copied().zip(self.starts.iter().copied())
     }
 
