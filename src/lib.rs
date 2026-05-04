@@ -1,4 +1,4 @@
-pub mod cascade;
+pub(crate) mod cascade;
 pub mod element;
 pub mod input;
 pub mod layout;
@@ -13,7 +13,6 @@ pub mod widgets;
 #[cfg(test)]
 mod test_support;
 
-pub use cascade::Cascades;
 pub use element::{Configure, Element, LayoutCore, LayoutMode, PaintAttrs, PaintCore};
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use primitives::align::{Align, HAlign, VAlign};

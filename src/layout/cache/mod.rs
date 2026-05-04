@@ -35,11 +35,11 @@ pub(crate) struct ArenaSnapshot {
     /// Rolled subtree hash from last frame. The rollup includes child
     /// count and per-child subtree hashes, so any structural or
     /// authoring change anywhere in the subtree busts the key.
-    pub subtree_hash: NodeHash,
+    pub(crate) subtree_hash: NodeHash,
     /// Range over the three node-indexed arenas. `desired_arena[nodes.range()]`
     /// is the subtree's `desired` in pre-order; index 0 is the
     /// snapshot root's own size.
-    pub nodes: Span,
+    pub(crate) nodes: Span,
     /// Range over `hugs_arena`. Per-grid hug arrays for every
     /// `LayoutMode::Grid` descendant of the subtree, in pre-order.
     /// Each grid contributes four arrays in fixed order:
@@ -47,7 +47,7 @@ pub(crate) struct ArenaSnapshot {
     /// grid-free subtrees. Length stable across frames as long as
     /// `subtree_hash` is unchanged because the hash includes every
     /// descendant `GridDef` (track count + sizing).
-    pub hugs: Span,
+    pub(crate) hugs: Span,
 }
 
 /// Quantized `available` size — the dimensional half of the cache
@@ -63,8 +63,8 @@ pub(crate) struct ArenaSnapshot {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct AvailableKey {
-    pub w: i32,
-    pub h: i32,
+    pub(crate) w: i32,
+    pub(crate) h: i32,
 }
 
 impl Default for AvailableKey {
@@ -95,14 +95,14 @@ impl AvailableKey {
 /// the caller's destination columns. `root` is the snapshot root's
 /// own `desired` — the value `measure` returns up the recursion.
 pub(crate) struct CachedSubtree<'a> {
-    pub root: Size,
-    pub desired: &'a [Size],
-    pub text_shapes: &'a [Option<ShapedText>],
-    pub available_q: &'a [AvailableKey],
+    pub(crate) root: Size,
+    pub(crate) desired: &'a [Size],
+    pub(crate) text_shapes: &'a [Option<ShapedText>],
+    pub(crate) available_q: &'a [AvailableKey],
     /// Sequential slice of f32s; consumed in pre-order by walking
     /// the subtree and pulling `2 * (n_cols + n_rows)` per
     /// `LayoutMode::Grid` descendant. Empty for grid-free subtrees.
-    pub hugs: &'a [f32],
+    pub(crate) hugs: &'a [f32],
 }
 
 #[inline]
@@ -135,16 +135,16 @@ pub(crate) struct MeasureCache {
     /// Backing storage for every snapshot's `desired` data. Live
     /// regions are pointed at by `snapshots`; freed regions sit as
     /// garbage until the next [`Self::compact`].
-    pub desired_arena: Vec<Size>,
+    pub(crate) desired_arena: Vec<Size>,
     /// Parallel to `desired_arena`. Same indexing.
-    pub text_arena: Vec<Option<ShapedText>>,
+    pub(crate) text_arena: Vec<Option<ShapedText>>,
     /// Parallel to `desired_arena`. Same indexing. Per-descendant
     /// quantized `available`, snapshotted so a measure-cache hit can
     /// restore the full subtree's `available_q` column on
     /// `LayoutScratch`. The encode cache reads it at every node it
     /// visits, so descendants must remain correct even when the
     /// measure pass short-circuits and never visits them.
-    pub available_arena: Vec<AvailableKey>,
+    pub(crate) available_arena: Vec<AvailableKey>,
     /// Per-grid hug arrays for every `LayoutMode::Grid` descendant
     /// of every cached subtree, packed in pre-order. Snapshot
     /// records `(hugs_start, hugs_len)` into this arena. Lets a
@@ -153,13 +153,13 @@ pub(crate) struct MeasureCache {
     /// `grid::arrange` then resolves track sizes correctly. Without
     /// this, a cache hit at any ancestor of a Grid would leave `hugs`
     /// zeroed and the grid would collapse every cell to (0, 0).
-    pub hugs_arena: Vec<f32>,
+    pub(crate) hugs_arena: Vec<f32>,
     /// Per-`WidgetId` snapshot index. Each value points at a range in
     /// the two arenas above.
-    pub snapshots: FxHashMap<WidgetId, ArenaSnapshot>,
+    pub(crate) snapshots: FxHashMap<WidgetId, ArenaSnapshot>,
     /// Sum of `snap.len` across `snapshots` — the total live data in
     /// the arenas. Garbage = `desired_arena.len() - live_entries`.
-    pub live_entries: usize,
+    pub(crate) live_entries: usize,
     /// Reusable buffer for the next snapshot's hug payload. Caller
     /// fills via [`GridHugStore::snapshot_subtree`] before invoking
     /// [`Self::write_subtree`]; `write_subtree` consumes it. Capacity
@@ -173,7 +173,7 @@ impl MeasureCache {
     /// [`CachedSubtree`] with the root's `desired` and the two
     /// arena slices ready to copy. On miss, `None`.
     #[inline]
-    pub fn try_lookup(
+    pub(crate) fn try_lookup(
         &self,
         wid: WidgetId,
         curr_hash: NodeHash,
@@ -204,7 +204,7 @@ impl MeasureCache {
     /// state, since `subtree_hash` includes structure (same hash →
     /// same subtree size). Size mismatches mark the old range as
     /// garbage and append a fresh range to the arena.
-    pub fn write_subtree(
+    pub(crate) fn write_subtree(
         &mut self,
         wid: WidgetId,
         subtree_hash: NodeHash,
@@ -280,7 +280,7 @@ impl MeasureCache {
     /// arena slots they referenced become garbage; a future
     /// `write_subtree` will compact them out once fragmentation
     /// crosses the threshold.
-    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
+    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
                 self.live_entries -= snap.nodes.len as usize;
@@ -290,7 +290,7 @@ impl MeasureCache {
 
     /// Drop every cross-frame snapshot. Public via
     /// `Ui::__clear_measure_cache` for benchmarks.
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.desired_arena.clear();
         self.text_arena.clear();
         self.available_arena.clear();

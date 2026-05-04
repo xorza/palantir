@@ -62,12 +62,12 @@ pub struct Tree {
     /// Tip of the currently-open path while recording. `Some(n)` between an
     /// `open_node` returning `n` and the matching `close_node`. Cleared in
     /// `clear`.
-    current_open: Option<NodeId>,
+    pub(crate) current_open: Option<NodeId>,
     /// Frame-scoped grid storage: track defs (addressed by
     /// `LayoutMode::Grid(u16)`). Per-track hug arrays live on `LayoutResult`
     /// since the tree is read-only after recording. Cleared per frame,
     /// capacity retained.
-    grid: GridArena,
+    pub(crate) grid: GridArena,
 
     /// Per-node authoring hash, computed by [`Tree::compute_hashes`] after
     /// recording is complete. Captures the inputs that affect rendering
@@ -136,22 +136,8 @@ impl Tree {
         self.subtree_has_grid.clear();
     }
 
-    /// Tip of the currently-open recording path, or `None` if no node is
-    /// open.
-    pub fn current_open(&self) -> Option<NodeId> {
-        self.current_open
-    }
-
     pub(crate) fn push_grid_def(&mut self, def: GridDef) -> u16 {
         self.grid.push_def(def)
-    }
-
-    pub(crate) fn grid_def(&self, idx: u16) -> &GridDef {
-        self.grid.def(idx)
-    }
-
-    pub(crate) fn grid_defs(&self) -> &[GridDef] {
-        &self.grid.defs
     }
 
     /// Push a node as a child of the currently-open node (or as the root if
@@ -179,7 +165,7 @@ impl Tree {
         if let Some(parent_id) = parent
             && let LayoutMode::Grid(grid_idx) = self.layout[parent_id.0 as usize].mode
         {
-            let def = self.grid.def(grid_idx);
+            let def = &self.grid.defs[grid_idx as usize];
             let n_rows = def.rows.len();
             let n_cols = def.cols.len();
             if n_rows > 0 && n_cols > 0 {
@@ -274,34 +260,18 @@ impl Tree {
     }
 
     pub fn is_collapsed(&self, id: NodeId) -> bool {
-        self.layout[id.0 as usize].is_collapsed()
+        self.layout[id.0 as usize].visibility.is_collapsed()
     }
 
     pub fn node_count(&self) -> usize {
         self.layout.len()
     }
 
-    /// Direct access to the layout column. Use when you need to iterate every
-    /// node's layout fields in storage order.
-    pub fn layouts(&self) -> &[LayoutCore] {
-        &self.layout
-    }
-
-    /// Direct access to the paint column.
-    pub fn paints(&self) -> &[PaintCore] {
-        &self.paint
-    }
-
-    /// Direct access to the subtree-end column.
-    pub fn subtree_ends(&self) -> &[u32] {
-        &self.subtree_end
-    }
-
     /// Read extras for a node, returning a borrow of `ElementExtras::DEFAULT`
     /// when the node has no side-table entry. Use this when you want to read
     /// individual fields (`gap`, `child_align`, `position`, …) without
     /// duplicating defaults at every call site.
-    pub fn read_extras(&self, id: NodeId) -> &ElementExtras {
+    pub(crate) fn read_extras(&self, id: NodeId) -> &ElementExtras {
         match self.paint[id.0 as usize].extras {
             Some(i) => &self.node_extras[i as usize],
             None => &ElementExtras::DEFAULT,
@@ -361,21 +331,10 @@ impl Tree {
         })
     }
 
-    /// Authoring hash for `id`. `NodeHash::UNCOMPUTED` if
-    /// [`Self::compute_hashes`] hasn't run yet this frame. Damage and
-    /// text-reuse compare this against last frame's hash for the same
-    /// `WidgetId` to detect per-node authoring changes.
-    pub fn node_hash(&self, id: NodeId) -> NodeHash {
-        self.hashes
-            .get(id.index())
-            .copied()
-            .unwrap_or(NodeHash::UNCOMPUTED)
-    }
-
     /// Subtree authoring hash for `id`: rolls this node's hash with
     /// its descendants' (in declaration order). `NodeHash::UNCOMPUTED`
     /// before [`Self::compute_hashes`] runs.
-    pub fn subtree_hash(&self, id: NodeId) -> NodeHash {
+    pub(crate) fn subtree_hash(&self, id: NodeId) -> NodeHash {
         self.subtree_hashes
             .get(id.index())
             .copied()
@@ -489,10 +448,6 @@ impl GridArena {
         let idx = self.defs.len() as u16;
         self.defs.push(def);
         idx
-    }
-
-    fn def(&self, idx: u16) -> &GridDef {
-        &self.defs[idx as usize]
     }
 }
 

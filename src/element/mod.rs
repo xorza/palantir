@@ -81,31 +81,31 @@ pub enum LayoutMode {
 /// Leaves vastly outnumber panels, so paying ~36B once per panel beats
 /// carrying these fields inline on every leaf.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ElementExtras {
-    pub transform: Option<TranslateScale>,
-    pub position: Vec2,
-    pub grid: GridCell,
+pub(crate) struct ElementExtras {
+    pub(crate) transform: Option<TranslateScale>,
+    pub(crate) position: Vec2,
+    pub(crate) grid: GridCell,
     /// Lower clamp on the resolved outer size. Default `Size::ZERO`.
-    pub min_size: Size,
+    pub(crate) min_size: Size,
     /// Upper clamp on the resolved outer size. Default `Size::INF`.
-    pub max_size: Size,
+    pub(crate) max_size: Size,
     /// Logical-px space between siblings within a line. Read by
     /// HStack/VStack (single line) and WrapHStack/WrapVStack (within
     /// each wrap row/column).
-    pub gap: f32,
+    pub(crate) gap: f32,
     /// Logical-px space between lines for WrapHStack/WrapVStack only.
     /// Inert in HStack/VStack/ZStack/Canvas/Grid.
-    pub line_gap: f32,
+    pub(crate) line_gap: f32,
     /// Main-axis distribution of leftover space (HStack/VStack only).
-    pub justify: Justify,
+    pub(crate) justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
-    pub child_align: Align,
+    pub(crate) child_align: Align,
 }
 
 impl ElementExtras {
     /// All-defaults instance. Single source of truth — `Default` and
     /// `Tree::read_extras`'s "missing extras" fallback both go through this.
-    pub const DEFAULT: Self = Self {
+    pub(crate) const DEFAULT: Self = Self {
         transform: None,
         position: Vec2::ZERO,
         grid: GridCell {
@@ -134,7 +134,7 @@ impl ElementExtras {
     /// allocation in this case. Compared exactly against `DEFAULT` so adding
     /// a field only requires updating `DEFAULT`; no separate predicate to
     /// keep in sync.
-    pub fn is_default(&self) -> bool {
+    pub(crate) fn is_default(&self) -> bool {
         self == &Self::DEFAULT
     }
 }
@@ -152,15 +152,6 @@ pub struct LayoutCore {
     pub margin: Spacing,
     pub align: Align,
     pub visibility: Visibility,
-}
-
-impl LayoutCore {
-    pub fn is_collapsed(&self) -> bool {
-        matches!(self.visibility, Visibility::Collapsed)
-    }
-    pub fn is_visible(&self) -> bool {
-        matches!(self.visibility, Visibility::Visible)
-    }
 }
 
 /// Paint-and-input-side per-node columns, stored in `Tree::paint`. Read by
@@ -279,7 +270,7 @@ impl Element {
     /// `Tree::push_node` stamps the extras side-table slot if any extras
     /// differ from default and writes the resulting `extras` index into
     /// `PaintCore`.
-    pub fn split(self) -> ElementSplit {
+    pub(crate) fn split(self) -> ElementSplit {
         let layout = LayoutCore {
             mode: self.mode,
             size: self.size,
@@ -313,11 +304,11 @@ impl Element {
 }
 
 /// Output of [`Element::split`] — the four storage columns of an `Element`.
-pub struct ElementSplit {
-    pub layout: LayoutCore,
-    pub paint: PaintCore,
-    pub id: WidgetId,
-    pub extras: ElementExtras,
+pub(crate) struct ElementSplit {
+    pub(crate) layout: LayoutCore,
+    pub(crate) paint: PaintCore,
+    pub(crate) id: WidgetId,
+    pub(crate) extras: ElementExtras,
 }
 
 /// Mixin: any widget builder that holds an `Element` gets the chained

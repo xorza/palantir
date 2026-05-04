@@ -26,14 +26,14 @@ use std::hash::{Hash, Hasher};
 /// confusion with `WidgetId` / other 64-bit handles in signatures
 /// like `shape_unbounded(wid: WidgetId, hash: NodeHash, …)`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct NodeHash(u64);
+pub(crate) struct NodeHash(u64);
 
 impl NodeHash {
     /// Sentinel returned by `Tree::node_hash` before
     /// `compute_hashes` runs. Distinguishable from any real hash only
     /// probabilistically (collisions are 2⁻⁶⁴), but adequate as an
     /// "uninitialized" marker.
-    pub const UNCOMPUTED: Self = Self(0);
+    pub(crate) const UNCOMPUTED: Self = Self(0);
 
     /// Raw 64-bit hash value. Exposed so `Tree::compute_hashes` can
     /// fold per-node hashes into the subtree-hash rollup without

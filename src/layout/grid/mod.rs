@@ -47,7 +47,7 @@ fn prepare_axis_scratch_at(
     idx: u16,
     depth: usize,
 ) -> GridShape {
-    let def = tree.grid_def(idx);
+    let def = &tree.grid.defs[idx as usize];
     let n_rows = def.rows.len();
     let n_cols = def.cols.len();
     let rows = def.rows.clone();
@@ -74,10 +74,10 @@ fn prepare_axis_scratch_at(
 /// `GridHugStore` (durable across the whole layout pass); they're passed
 /// into `resolve_axis` as slices alongside this scratch.
 pub(crate) struct AxisScratch {
-    pub tracks: Rc<[Track]>,
-    pub sizes: Vec<f32>,
-    pub resolved: Vec<bool>,
-    pub offsets: Vec<f32>,
+    pub(crate) tracks: Rc<[Track]>,
+    pub(crate) sizes: Vec<f32>,
+    pub(crate) resolved: Vec<bool>,
+    pub(crate) offsets: Vec<f32>,
     flexible: Vec<usize>,
 }
 
@@ -114,8 +114,8 @@ impl AxisScratch {
 /// their own slot. Pushed on first descent to a new depth.
 #[derive(Default)]
 pub(crate) struct GridScratch {
-    pub col: AxisScratch,
-    pub row: AxisScratch,
+    pub(crate) col: AxisScratch,
+    pub(crate) row: AxisScratch,
 }
 
 /// All grid-layout scratch held by `LayoutEngine`, in one bag. `depth_stack`
@@ -138,14 +138,10 @@ pub(crate) struct GridContext {
 #[derive(Default)]
 pub(crate) struct GridDepthStack {
     scratch: Vec<GridScratch>,
-    depth: usize,
+    pub(crate) depth: usize,
 }
 
 impl GridDepthStack {
-    pub(crate) fn depth(&self) -> usize {
-        self.depth
-    }
-
     /// Reserve a scratch slot for the next nesting depth. Grows on first
     /// descent; reuses thereafter.
     fn enter(&mut self) -> usize {
@@ -196,7 +192,7 @@ impl GridHugStore {
         self.max_pool.clear();
         self.min_pool.clear();
         self.slots.clear();
-        for def in tree.grid_defs() {
+        for def in &tree.grid.defs {
             let rows = self.alloc(def.rows.len());
             let cols = self.alloc(def.cols.len());
             self.slots.push(GridHugSlot { rows, cols });
@@ -864,7 +860,7 @@ pub(crate) fn intrinsic(
     req: LenReq,
     text: &mut TextMeasurer,
 ) -> f32 {
-    let def = tree.grid_def(idx);
+    let def = &tree.grid.defs[idx as usize];
     let (tracks, gap, n_tracks) = match axis {
         Axis::X => (def.cols.clone(), def.col_gap, def.cols.len()),
         Axis::Y => (def.rows.clone(), def.row_gap, def.rows.len()),

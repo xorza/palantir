@@ -18,25 +18,23 @@ use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 
-/// Resolved cascade row for one node: the transform/clip/disabled/invisible
-/// state the node consumes for its own paint and hit-test, with ancestor
-/// state already folded in.
+/// Resolved cascade row for one node: the transform/clip/invisible state
+/// the node consumes for its own paint and hit-test, with ancestor state
+/// already folded in.
 #[derive(Clone, Copy, Debug)]
-pub struct Cascade {
+pub(crate) struct Cascade {
     /// Cumulative transform that places this node's own rect into screen
     /// space.
-    pub transform: TranslateScale,
+    pub(crate) transform: TranslateScale,
     /// Ancestor clip (screen space) the node's own rect/sense must be
     /// intersected with.
-    pub clip: Option<Rect>,
+    pub(crate) clip: Option<Rect>,
     /// Node's layout rect projected into screen space via `transform`.
     /// Cached here so encoder, hit-index, damage diff, and prev_frame
     /// snapshot all read the same value without re-running the math.
-    pub screen_rect: Rect,
-    /// True if any ancestor (or self) is disabled.
-    pub disabled: bool,
+    pub(crate) screen_rect: Rect,
     /// True if any ancestor (or self) is non-`Visible`.
-    pub invisible: bool,
+    pub(crate) invisible: bool,
 }
 
 /// One widget's hit-test entry: identity, screen-space rect (clipped by
@@ -44,10 +42,10 @@ pub struct Cascade {
 /// applied). Stored on `CascadeResult`'s internal hit index, in
 /// pre-order so reverse iteration yields topmost-first lookups.
 #[derive(Clone, Copy, Debug)]
-struct HitEntry {
-    id: WidgetId,
-    rect: Rect,
-    sense: Sense,
+pub(crate) struct HitEntry {
+    pub(crate) id: WidgetId,
+    pub(crate) rect: Rect,
+    pub(crate) sense: Sense,
 }
 
 /// Open-ancestor frame on the rebuild walk's stack. Carries the resolved
@@ -66,31 +64,18 @@ struct Frame {
 /// rows and a `WidgetId`-keyed hit index. Downstream phases (damage,
 /// input, renderer) take `&CascadeResult` and never mutate it.
 #[derive(Default)]
-pub struct CascadeResult {
-    rows: Vec<Cascade>,
+pub(crate) struct CascadeResult {
+    /// Per-node cascade rows in storage order (== pre-order).
+    pub(crate) rows: Vec<Cascade>,
     /// Pre-order rect/sense snapshot in the form hit-testing needs.
-    /// Indexed by pre-order position; `by_id` lets `rect_for` /
-    /// `contains_id` resolve a `WidgetId` in O(1).
-    entries: Vec<HitEntry>,
+    /// Indexed by pre-order position; `by_id` resolves a `WidgetId` in O(1).
+    pub(crate) entries: Vec<HitEntry>,
     /// `WidgetId → entries[idx]`. Capacity reused across frames;
     /// uniqueness is enforced upstream by `Ui::node`'s collision assert.
-    by_id: FxHashMap<WidgetId, u32>,
+    pub(crate) by_id: FxHashMap<WidgetId, u32>,
 }
 
 impl CascadeResult {
-    /// Per-node cascade rows in storage order (== pre-order).
-    pub fn rows(&self) -> &[Cascade] {
-        &self.rows
-    }
-
-    pub fn is_invisible(&self, id: NodeId) -> bool {
-        self.rows[id.index()].invisible
-    }
-
-    pub fn is_disabled(&self, id: NodeId) -> bool {
-        self.rows[id.index()].disabled
-    }
-
     /// Reverse-iter entries → topmost-first under pre-order paint walk.
     /// `filter` decides which `Sense` values participate (hoverable for
     /// hover, clickable for press/release).
@@ -102,14 +87,6 @@ impl CascadeResult {
         }
         None
     }
-
-    pub(crate) fn rect_for(&self, id: WidgetId) -> Option<Rect> {
-        self.by_id.get(&id).map(|&i| self.entries[i as usize].rect)
-    }
-
-    pub(crate) fn contains_id(&self, id: WidgetId) -> bool {
-        self.by_id.contains_key(&id)
-    }
 }
 
 /// Per-frame engine that produces a `CascadeResult` from `(&Tree,
@@ -117,27 +94,18 @@ impl CascadeResult {
 /// capacities (stack, rows, entries, by_id) are retained across frames
 /// so steady-state runs are alloc-free.
 #[derive(Default)]
-pub struct Cascades {
+pub(crate) struct Cascades {
     stack: Vec<Frame>,
-    result: CascadeResult,
+    pub(crate) result: CascadeResult,
 }
 
 impl Cascades {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Read-only view of the most recent run.
-    pub fn result(&self) -> &CascadeResult {
-        &self.result
-    }
-
     /// Walk `tree.nodes` in storage order (== pre-order) and produce
     /// one `Cascade` row + one hit entry per node. Threads the
     /// descendant transform/clip/disabled/invisible through an
     /// open-ancestor stack; hit-entry derivation (clip-intersected rect
     /// + sense-cascaded effective sense) rides along the same loop.
-    pub fn run(&mut self, tree: &Tree, layout: &LayoutResult) -> &CascadeResult {
+    pub(crate) fn run(&mut self, tree: &Tree, layout: &LayoutResult) -> &CascadeResult {
         let n = tree.node_count();
         let r = &mut self.result;
         r.rows.clear();
@@ -148,9 +116,9 @@ impl Cascades {
         r.by_id.reserve(n);
         self.stack.clear();
 
-        let paint = tree.paints();
-        let layout_col = tree.layouts();
-        let subtree_end = tree.subtree_ends();
+        let paint = &tree.paint;
+        let layout_col = &tree.layout;
+        let subtree_end = &tree.subtree_end;
         let widget_ids = &tree.widget_ids;
 
         for i in 0..n {
@@ -169,14 +137,13 @@ impl Cascades {
             let attrs = paint[i].attrs;
 
             let disabled = parent_dis || attrs.is_disabled();
-            let invisible = parent_inv || !layout_col[i].is_visible();
+            let invisible = parent_inv || !layout_col[i].visibility.is_visible();
 
             let screen_rect = parent_transform.apply_rect(layout.rect(id));
             let row = Cascade {
                 transform: parent_transform,
                 clip: parent_clip,
                 screen_rect,
-                disabled,
                 invisible,
             };
 

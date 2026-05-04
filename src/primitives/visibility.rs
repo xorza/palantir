@@ -19,9 +19,6 @@ impl Visibility {
     pub const fn is_visible(self) -> bool {
         matches!(self, Visibility::Visible)
     }
-    pub const fn is_hidden(self) -> bool {
-        matches!(self, Visibility::Hidden)
-    }
     pub const fn is_collapsed(self) -> bool {
         matches!(self, Visibility::Collapsed)
     }

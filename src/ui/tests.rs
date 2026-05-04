@@ -181,7 +181,7 @@ fn prev_frame_captures_authoring_hash() {
     ui.end_frame();
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
-    assert_eq!(snap.hash, ui.tree.node_hash(frame_node));
+    assert_eq!(snap.hash, ui.tree.hashes[frame_node.index()]);
 }
 
 #[test]

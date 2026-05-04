@@ -187,8 +187,7 @@ impl LayoutEngine {
         text: &mut TextMeasurer,
     ) -> &LayoutResult {
         assert_eq!(
-            self.scratch.grid.depth_stack.depth(),
-            0,
+            self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
         self.scratch.resize_for(tree);
@@ -197,17 +196,11 @@ impl LayoutEngine {
         // `tree.node_count() == 0`, so downstream consumers walk zero
         // entries — return the freshly-cleared result without measuring.
         if let Some(root) = root {
-            self.measure(
-                tree,
-                root,
-                Size::new(surface.width(), surface.height()),
-                text,
-            );
+            self.measure(tree, root, surface.size, text);
             self.arrange(tree, root, surface);
         }
         assert_eq!(
-            self.scratch.grid.depth_stack.depth(),
-            0,
+            self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
         &self.result

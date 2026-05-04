@@ -62,7 +62,7 @@ impl Ui {
             ids: SeenIds::default(),
             input: InputState::new(),
             layout_engine: LayoutEngine::new(),
-            cascades: Cascades::new(),
+            cascades: Cascades::default(),
             display: Display::default(),
             text: TextMeasurer::new(),
             // First frame must render so the host has something to
@@ -92,12 +92,6 @@ impl Ui {
         self.display = display;
         self.tree.clear();
         self.ids.begin_frame();
-    }
-
-    /// Read-only access to the recorded tree for benchmarks and
-    /// inspection tools.
-    pub fn tree(&self) -> &Tree {
-        &self.tree
     }
 
     /// Finalize the just-recorded frame: measure + arrange, rebuild cascades
@@ -137,7 +131,7 @@ impl Ui {
     /// event itself looks like a no-op. Refining this needs a hit-test
     /// inside `on_input`.
     pub fn on_input(&mut self, event: InputEvent) {
-        self.input.on_input(event, self.cascades.result());
+        self.input.on_input(event, &self.cascades.result);
         self.repaint_requested = true;
     }
 
@@ -173,7 +167,7 @@ impl Ui {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
-        self.input.response_for(id, self.cascades.result())
+        self.input.response_for(id, &self.cascades.result)
     }
 
     pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
@@ -194,7 +188,7 @@ impl Ui {
         }
         let node = self
             .tree
-            .current_open()
+            .current_open
             .expect("add_shape called outside any open node");
         self.tree.add_shape(node, shape);
     }

@@ -103,7 +103,7 @@ fn encode_node(
     // Hidden / Collapsed: paint nothing for this node or its subtree.
     // The cascade table already composed self + ancestors; recursing skips
     // the whole subtree because we early-return at the top of every node.
-    if cascades.is_invisible(id) {
+    if cascades.rows[id.index()].invisible {
         return;
     }
 
@@ -163,8 +163,7 @@ fn encode_node(
     // Push/PopClip and Push/PopTransform are still emitted (above and
     // below) so scissor groups and child transforms stay coherent.
     // `None` filter ⇒ paint everything.
-    let paints =
-        damage_filter.is_none_or(|d| cascades.rows()[id.index()].screen_rect.intersects(d));
+    let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
 
     if paints {
         for shape in tree.shapes_of(id) {

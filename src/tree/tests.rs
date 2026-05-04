@@ -35,7 +35,7 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = ui_at(UVec2::new(200, 200));
     let target = f(&mut ui);
     ui.end_frame();
-    ui.tree.node_hash(target)
+    ui.tree.hashes[target.index()]
 }
 
 #[test]
@@ -134,8 +134,8 @@ fn changing_fill_color_changes_hash() {
     ui2.end_frame();
 
     assert_ne!(
-        ui1.tree.node_hash(child1.unwrap()),
-        ui2.tree.node_hash(child2.unwrap()),
+        ui1.tree.hashes[child1.unwrap().index()],
+        ui2.tree.hashes[child2.unwrap().index()],
         "different fill must produce different hash",
     );
 }
@@ -241,8 +241,8 @@ fn shape_order_matters_for_hash() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.node_hash(n1.unwrap()),
-        ui2.tree.node_hash(n2.unwrap()),
+        ui1.tree.hashes[n1.unwrap().index()],
+        ui2.tree.hashes[n2.unwrap().index()],
     );
 }
 
@@ -269,8 +269,8 @@ fn changing_text_content_changes_hash() {
     ui2.end_frame();
 
     assert_ne!(
-        ui1.tree.node_hash(a.unwrap()),
-        ui2.tree.node_hash(b.unwrap())
+        ui1.tree.hashes[a.unwrap().index()],
+        ui2.tree.hashes[b.unwrap().index()]
     );
 }
 
@@ -304,8 +304,8 @@ fn child_hash_does_not_affect_parent_hash() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.node_hash(parent1),
-        ui2.tree.node_hash(parent2),
+        ui1.tree.hashes[parent1.index()],
+        ui2.tree.hashes[parent2.index()],
         "parent hash captures only its own fields, not children's",
     );
 }
@@ -432,6 +432,9 @@ fn leaf_subtree_hash_depends_on_node_hash() {
         .node;
     ui2.end_frame();
 
-    assert_eq!(ui1.tree.node_hash(leaf1), ui2.tree.node_hash(leaf2));
+    assert_eq!(
+        ui1.tree.hashes[leaf1.index()],
+        ui2.tree.hashes[leaf2.index()]
+    );
     assert_eq!(ui1.tree.subtree_hash(leaf1), ui2.tree.subtree_hash(leaf2));
 }

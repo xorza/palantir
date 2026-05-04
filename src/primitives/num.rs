@@ -1,6 +1,6 @@
 /// Marker trait for primitive numeric types accepted by `From` impls on
 /// `Sizing`, `Size`, `Corners`, `Spacing`, etc.
-pub trait Num: Copy {
+pub(crate) trait Num: Copy {
     fn as_f32(self) -> f32;
 }
 

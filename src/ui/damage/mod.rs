@@ -27,9 +27,9 @@ use rustc_hash::FxHashMap;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
     /// Screen-space rect from last frame's `Cascade.screen_rect`.
-    pub rect: Rect,
+    pub(crate) rect: Rect,
     /// Authoring hash from last frame's `Tree.hashes`.
-    pub hash: NodeHash,
+    pub(crate) hash: NodeHash,
 }
 
 /// Output of one frame's damage pass plus the cross-frame state it
@@ -49,11 +49,11 @@ pub(crate) struct NodeSnapshot {
 /// Capacities on `dirty` and `prev` are retained across frames.
 #[derive(Default)]
 pub(crate) struct Damage {
-    pub dirty: Vec<NodeId>,
-    pub rect: Option<Rect>,
+    pub(crate) dirty: Vec<NodeId>,
+    pub(crate) rect: Option<Rect>,
     /// Last frame's per-widget `(rect, hash)` snapshot. Read by the
     /// diff in `compute`, then rolled forward in the same pass.
-    pub prev: FxHashMap<WidgetId, NodeSnapshot>,
+    pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
 }
 
 /// Damage-area ratio above which the renderer should skip the
@@ -82,7 +82,7 @@ impl Damage {
     /// frame. A degenerate zero-area surface short-circuits to full
     /// repaint; it shouldn't happen in practice (host filters
     /// resize-to-zero), but cheap to handle.
-    pub fn compute(
+    pub(crate) fn compute(
         &mut self,
         tree: &Tree,
         cascades: &CascadeResult,
@@ -92,7 +92,7 @@ impl Damage {
         self.dirty.clear();
         let mut acc: Option<Rect> = None;
 
-        let cascade_rows = cascades.rows();
+        let cascade_rows = &cascades.rows;
         let n = tree.node_count();
         let widget_ids = &tree.widget_ids;
         for i in 0..n {
