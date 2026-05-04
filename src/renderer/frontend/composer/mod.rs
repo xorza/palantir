@@ -105,7 +105,9 @@ impl Composer {
                     last_was_text = false;
                 }
                 CmdKind::PopClip => {
-                    self.clip_stack.pop();
+                    self.clip_stack
+                        .pop()
+                        .expect("PopClip without matching PushClip");
                     switch_group(
                         self.clip_stack.last().copied(),
                         &mut current,
@@ -126,7 +128,7 @@ impl Composer {
                     current_transform = self
                         .transform_stack
                         .pop()
-                        .unwrap_or(TranslateScale::IDENTITY);
+                        .expect("PopTransform without matching PushTransform");
                 }
                 kind @ (CmdKind::DrawRect | CmdKind::DrawRectStroked) => {
                     let (rect, radius, fill, stroke) = match kind {

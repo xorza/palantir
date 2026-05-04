@@ -88,11 +88,6 @@ impl Encoder {
         }
         &self.cmds
     }
-
-    /// Drop cache entries for `WidgetId`s that vanished this frame.
-    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        self.cache.sweep_removed(removed);
-    }
 }
 
 fn encode_node(
