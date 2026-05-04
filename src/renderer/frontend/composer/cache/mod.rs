@@ -154,36 +154,43 @@ impl ComposeCache {
         let t_len = tail_texts.len() as u32;
         let g_len = tail_groups.len() as u32;
 
-        if let Some(prev) = self.snapshots.get_mut(&wid)
-            && prev.quads.len == q_len
-            && prev.texts.len == t_len
-            && prev.groups.len == g_len
-        {
-            let q_range = prev.quads.range();
-            let t_range = prev.texts.range();
-            let g_range = prev.groups.range();
-            prev.subtree_hash = subtree_hash;
-            prev.available_q = available_q;
-            prev.cascade_fp = cascade_fp;
-            self.quads_arena[q_range].copy_from_slice(tail_quads);
-            self.texts_arena[t_range].copy_from_slice(tail_texts);
-            for (dst, src) in self.groups_arena[g_range]
-                .iter_mut()
-                .zip(tail_groups.iter())
-            {
-                *dst = DrawGroup {
-                    scissor: src.scissor,
-                    quads: (src.quads.start - rebase_q)..(src.quads.end - rebase_q),
-                    texts: (src.texts.start - rebase_t)..(src.texts.end - rebase_t),
-                };
+        // Single hashmap probe: hot path takes it for in-place rewrite,
+        // slow path captures the prior snapshot's lengths so we can
+        // decrement live counters without re-probing before the append.
+        let prev_lens = if let Some(prev) = self.snapshots.get_mut(&wid) {
+            if prev.quads.len == q_len && prev.texts.len == t_len && prev.groups.len == g_len {
+                let q_range = prev.quads.range();
+                let t_range = prev.texts.range();
+                let g_range = prev.groups.range();
+                prev.subtree_hash = subtree_hash;
+                prev.available_q = available_q;
+                prev.cascade_fp = cascade_fp;
+                self.quads_arena[q_range].copy_from_slice(tail_quads);
+                self.texts_arena[t_range].copy_from_slice(tail_texts);
+                for (dst, src) in self.groups_arena[g_range]
+                    .iter_mut()
+                    .zip(tail_groups.iter())
+                {
+                    *dst = DrawGroup {
+                        scissor: src.scissor,
+                        quads: (src.quads.start - rebase_q)..(src.quads.end - rebase_q),
+                        texts: (src.texts.start - rebase_t)..(src.texts.end - rebase_t),
+                    };
+                }
+                return;
             }
-            return;
-        }
+            Some((prev.quads.len, prev.texts.len, prev.groups.len))
+        } else {
+            None
+        };
 
-        if let Some(prev) = self.snapshots.get(&wid) {
-            self.live_quads -= prev.quads.len as usize;
-            self.live_texts -= prev.texts.len as usize;
-            self.live_groups -= prev.groups.len as usize;
+        if let Some((q, t, g)) = prev_lens {
+            debug_assert!(self.live_quads >= q as usize);
+            debug_assert!(self.live_texts >= t as usize);
+            debug_assert!(self.live_groups >= g as usize);
+            self.live_quads -= q as usize;
+            self.live_texts -= t as usize;
+            self.live_groups -= g as usize;
         }
         let q_span = Span::new(self.quads_arena.len() as u32, q_len);
         let t_span = Span::new(self.texts_arena.len() as u32, t_len);

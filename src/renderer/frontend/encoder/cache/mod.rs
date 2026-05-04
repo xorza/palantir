@@ -146,50 +146,56 @@ impl EncodeCache {
         let src_cmd_range = src_cmds.range();
         let src_data_range = src_data.range();
 
-        if let Some(prev) = self.snapshots.get_mut(&wid)
-            && prev.cmds.len == src_cmds.len
-            && prev.data.len == src_data.len
-        {
-            // In-place: hot path. Same subtree_hash → identical layout.
-            let cmds = prev.cmds.range();
-            let data = prev.data.range();
-            prev.subtree_hash = subtree_hash;
-            prev.available_q = available_q;
-            let Self {
-                kinds_arena,
-                starts_arena,
-                data_arena,
-                ..
-            } = self;
-            let src_kinds = &src.kinds[src_cmd_range.clone()];
-            // Same `subtree_hash` ⇒ same authoring ⇒ same cmd shape.
-            // A 64-bit hash collision (or future hash bug) would break
-            // this; pay one slice compare per write to catch it.
-            assert_eq!(&kinds_arena[cmds.clone()], src_kinds);
-            kinds_arena[cmds.clone()].copy_from_slice(src_kinds);
-            for (dst, &abs) in starts_arena[cmds]
-                .iter_mut()
-                .zip(src.starts[src_cmd_range].iter())
-            {
-                *dst = abs - src_data.start;
+        // Single hashmap probe: hot path takes it for in-place rewrite,
+        // slow path captures the prior snapshot's lengths so we can
+        // decrement live counters without re-probing before the append.
+        let prev_lens = if let Some(prev) = self.snapshots.get_mut(&wid) {
+            if prev.cmds.len == src_cmds.len && prev.data.len == src_data.len {
+                // In-place: hot path. Same subtree_hash → identical layout.
+                let cmds = prev.cmds.range();
+                let data = prev.data.range();
+                prev.subtree_hash = subtree_hash;
+                prev.available_q = available_q;
+                let Self {
+                    kinds_arena,
+                    starts_arena,
+                    data_arena,
+                    ..
+                } = self;
+                let src_kinds = &src.kinds[src_cmd_range.clone()];
+                // Same `subtree_hash` ⇒ same authoring ⇒ same cmd shape.
+                // A 64-bit hash collision (or future hash bug) would break
+                // this; pay one slice compare per write to catch it.
+                assert_eq!(&kinds_arena[cmds.clone()], src_kinds);
+                kinds_arena[cmds.clone()].copy_from_slice(src_kinds);
+                for (dst, &abs) in starts_arena[cmds.clone()]
+                    .iter_mut()
+                    .zip(src.starts[src_cmd_range].iter())
+                {
+                    *dst = abs - src_data.start;
+                }
+                data_arena[data.clone()].copy_from_slice(&src.data[src_data_range]);
+                bump_rect_min(
+                    &kinds_arena[cmds.clone()],
+                    &starts_arena[cmds],
+                    &mut data_arena[data],
+                    neg_origin,
+                );
+                return;
             }
-            data_arena[data.clone()].copy_from_slice(&src.data[src_data_range]);
-            bump_rect_min(
-                &kinds_arena[prev.cmds.range()],
-                &starts_arena[prev.cmds.range()],
-                &mut data_arena[data],
-                neg_origin,
-            );
-            return;
-        }
+            Some((prev.cmds.len, prev.data.len))
+        } else {
+            None
+        };
 
         // Different len (or first write): mark old ranges as garbage,
-        // append new ones.
-        if let Some(prev) = self.snapshots.get(&wid) {
-            debug_assert!(self.live_cmds >= prev.cmds.len as usize);
-            debug_assert!(self.live_data >= prev.data.len as usize);
-            self.live_cmds -= prev.cmds.len as usize;
-            self.live_data -= prev.data.len as usize;
+        // append new ones. The trailing `insert` overwrites any prior
+        // snapshot at this wid in a single probe.
+        if let Some((cmds_len, data_len)) = prev_lens {
+            debug_assert!(self.live_cmds >= cmds_len as usize);
+            debug_assert!(self.live_data >= data_len as usize);
+            self.live_cmds -= cmds_len as usize;
+            self.live_data -= data_len as usize;
         }
         let cmds_span = Span::new(self.kinds_arena.len() as u32, src_cmds.len);
         let data_span = Span::new(self.data_arena.len() as u32, src_data.len);
