@@ -80,9 +80,8 @@ fn write_full(
 }
 
 fn replay(cache: &EncodeCache, w: WidgetId, h: NodeHash, current_origin: Vec2) -> RenderCmdBuffer {
-    let hit = cache.try_lookup(w, h, avail()).expect("cache miss");
     let mut out = RenderCmdBuffer::default();
-    extend_from_cached(&mut out, hit.kinds, hit.starts, hit.data, current_origin);
+    assert!(cache.try_replay(w, h, avail(), &mut out, current_origin));
     out
 }
 
@@ -279,134 +278,50 @@ fn clear_drops_everything() {
     assert!(cache.try_lookup(wid(1), hash(1), avail()).is_none());
 }
 
-/// Direct unit tests for `extend_from_cached` / `bump_rect_min`. The
-/// `replay_at_*` tests above exercise these via the full cache write +
-/// lookup; these isolate the rect-shift behavior.
-mod extend {
-    use super::super::{bump_rect_min, extend_from_cached};
-    use super::{buf_at, rect_of};
-    use crate::primitives::transform::TranslateScale;
-    use crate::renderer::frontend::cmd_buffer::{CmdKind, RenderCmdBuffer};
-    use glam::Vec2;
+/// Two consecutive `try_replay` calls for the same widget must
+/// concatenate cleanly: each appended slice's `start`s rebased onto the
+/// growing data arena, and each segment's `rect.min` shifted by its own
+/// offset. Pins the `dest_data_base` math under repeated replay.
+#[test]
+fn try_replay_twice_concatenates_with_correct_starts() {
+    let src = buf_at(Vec2::ZERO);
+    let mut cache = EncodeCache::default();
+    write_full(&mut cache, wid(1), hash(1), &src, Vec2::ZERO);
 
-    #[test]
-    fn shifts_rect_min_on_rect_bearing_payloads() {
-        let src = buf_at(Vec2::ZERO);
-        let mut dst = RenderCmdBuffer::default();
-        let offset = Vec2::new(10.0, 20.0);
-        extend_from_cached(&mut dst, &src.kinds, &src.starts, &src.data, offset);
+    let mut dst = RenderCmdBuffer::default();
+    assert!(cache.try_replay(wid(1), hash(1), avail(), &mut dst, Vec2::new(1.0, 0.0)));
+    assert!(cache.try_replay(wid(1), hash(1), avail(), &mut dst, Vec2::new(0.0, 1.0)));
 
-        assert_eq!(dst.kinds, src.kinds);
-        for i in 0..src.kinds.len() {
-            match src.kinds[i] {
-                CmdKind::PushClip
-                | CmdKind::DrawRect
-                | CmdKind::DrawRectStroked
-                | CmdKind::DrawText => {
-                    let s = rect_of(&src, i).unwrap();
-                    let d = rect_of(&dst, i).unwrap();
-                    assert_eq!(d.min.x, s.min.x + offset.x);
-                    assert_eq!(d.min.y, s.min.y + offset.y);
-                    assert_eq!(d.size, s.size);
-                }
-                CmdKind::PushTransform => {
-                    let d: TranslateScale = dst.read(dst.starts[i]);
-                    let s: TranslateScale = src.read(src.starts[i]);
-                    assert_eq!(d, s);
-                }
-                _ => {}
-            }
+    assert_eq!(dst.kinds.len(), 2 * src.kinds.len());
+    assert_eq!(dst.data.len(), 2 * src.data.len());
+
+    let n = src.kinds.len();
+    for i in 0..n {
+        if let (Some(s), Some(a), Some(b)) =
+            (rect_of(&src, i), rect_of(&dst, i), rect_of(&dst, i + n))
+        {
+            assert_eq!(a.min, Vec2::new(s.min.x + 1.0, s.min.y));
+            assert_eq!(b.min, Vec2::new(s.min.x, s.min.y + 1.0));
         }
+        let s2 = dst.starts[i + n] as usize;
+        assert!(s2 >= src.data.len() && s2 <= dst.data.len());
     }
+}
 
-    #[test]
-    fn round_trip_offset_is_identity() {
-        let src = buf_at(Vec2::ZERO);
-        let mut mid = RenderCmdBuffer::default();
-        extend_from_cached(
-            &mut mid,
-            &src.kinds,
-            &src.starts,
-            &src.data,
-            Vec2::new(7.5, -3.25),
-        );
-
-        let mut back = RenderCmdBuffer::default();
-        extend_from_cached(
-            &mut back,
-            &mid.kinds,
-            &mid.starts,
-            &mid.data,
-            Vec2::new(-7.5, 3.25),
-        );
-
-        assert_eq!(back.kinds, src.kinds);
-        assert_eq!(back.starts, src.starts);
-        assert_eq!(back.data, src.data);
-    }
-
-    #[test]
-    fn multi_segment_concatenates_with_correct_starts() {
-        let src = buf_at(Vec2::ZERO);
-        let mut dst = RenderCmdBuffer::default();
-        extend_from_cached(
-            &mut dst,
-            &src.kinds,
-            &src.starts,
-            &src.data,
-            Vec2::new(1.0, 0.0),
-        );
-        extend_from_cached(
-            &mut dst,
-            &src.kinds,
-            &src.starts,
-            &src.data,
-            Vec2::new(0.0, 1.0),
-        );
-
-        assert_eq!(dst.kinds.len(), 2 * src.kinds.len());
-        assert_eq!(dst.data.len(), 2 * src.data.len());
-
-        let n = src.kinds.len();
-        for i in 0..n {
-            if matches!(
-                src.kinds[i],
-                CmdKind::PushClip
-                    | CmdKind::DrawRect
-                    | CmdKind::DrawRectStroked
-                    | CmdKind::DrawText
-            ) {
-                let s = rect_of(&src, i).unwrap();
-                let a = rect_of(&dst, i).unwrap();
-                let b = rect_of(&dst, i + n).unwrap();
-                assert_eq!(a.min, Vec2::new(s.min.x + 1.0, s.min.y));
-                assert_eq!(b.min, Vec2::new(s.min.x, s.min.y + 1.0));
-            }
-        }
-
-        for i in 0..n {
-            let s2 = dst.starts[i + n] as usize;
-            assert!(s2 >= src.data.len());
-            assert!(s2 <= dst.data.len());
-        }
-    }
-
-    /// `bump_rect_min` must not touch payloads of kinds that don't
-    /// start with a `Rect` (Pop*, Push/ExitSubtree). Round-trips a
-    /// PushTransform's `TranslateScale` through a no-op shift and
-    /// asserts byte-identity.
-    #[test]
-    fn leaves_non_rect_payloads_untouched() {
-        let mut buf = RenderCmdBuffer::default();
-        buf.push_transform(TranslateScale::new(Vec2::new(3.0, 5.0), 2.0));
-        buf.pop_transform();
-        let before = buf.data.clone();
-        bump_rect_min(
-            &buf.kinds,
-            &buf.starts,
-            &mut buf.data,
-            Vec2::new(99.0, 99.0),
-        );
-        assert_eq!(buf.data, before);
-    }
+/// `bump_rect_min` must not touch payloads of kinds that don't start
+/// with a `Rect` (Pop*, Push/ExitSubtree). Pin via a buffer of
+/// PushTransform + Pop and a no-op-shift round trip.
+#[test]
+fn bump_rect_min_leaves_non_rect_payloads_untouched() {
+    let mut buf = RenderCmdBuffer::default();
+    buf.push_transform(TranslateScale::new(Vec2::new(3.0, 5.0), 2.0));
+    buf.pop_transform();
+    let before = buf.data.clone();
+    super::bump_rect_min(
+        &buf.kinds,
+        &buf.starts,
+        &mut buf.data,
+        Vec2::new(99.0, 99.0),
+    );
+    assert_eq!(buf.data, before);
 }

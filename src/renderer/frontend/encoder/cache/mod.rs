@@ -45,13 +45,12 @@ pub(crate) struct EncodeSnapshot {
 }
 
 /// What [`EncodeCache::try_lookup`] returns on a hit. Slices borrow
-/// directly into the cache arenas — caller threads them into
-/// [`RenderCmdBuffer::extend_from_cached`] with the current root's
-/// origin to replay.
-pub(crate) struct CachedEncode<'a> {
-    pub(crate) kinds: &'a [CmdKind],
-    pub(crate) starts: &'a [u32],
-    pub(crate) data: &'a [u32],
+/// directly into the cache arenas. Internal — production calls go
+/// through [`EncodeCache::try_replay`].
+struct CachedEncode<'a> {
+    kinds: &'a [CmdKind],
+    starts: &'a [u32],
+    data: &'a [u32],
 }
 
 const COMPACT_RATIO: usize = 2;
@@ -69,7 +68,7 @@ pub(crate) struct EncodeCache {
 
 impl EncodeCache {
     #[inline]
-    pub(crate) fn try_lookup(
+    fn try_lookup(
         &self,
         wid: WidgetId,
         curr_hash: NodeHash,
@@ -84,6 +83,42 @@ impl EncodeCache {
             starts: &self.starts_arena[snap.cmds.range()],
             data: &self.data_arena[snap.data.range()],
         })
+    }
+
+    /// Replay `wid`'s cached subtree into `buf` at `offset`. Returns
+    /// `true` on hit (cmds appended), `false` on miss (`buf`
+    /// untouched). Single-method replay — encoder doesn't need to see
+    /// the [`CachedEncode`] borrow.
+    ///
+    /// On a hit: appends `kinds` / `starts` / `data` to `buf`,
+    /// rebasing each `start` onto `buf`'s data arena and shifting
+    /// every rect-bearing payload's `rect.min` by `offset`. Pops carry
+    /// no payload; PushTransform carries a `TranslateScale` that is
+    /// subtree-local — both pass through untouched.
+    #[inline]
+    pub(crate) fn try_replay(
+        &self,
+        wid: WidgetId,
+        hash: NodeHash,
+        avail: AvailableKey,
+        buf: &mut RenderCmdBuffer,
+        offset: Vec2,
+    ) -> bool {
+        let Some(hit) = self.try_lookup(wid, hash, avail) else {
+            return false;
+        };
+        let dest_data_base = buf.data.len() as u32;
+        buf.data.extend_from_slice(hit.data);
+        buf.kinds.extend_from_slice(hit.kinds);
+        buf.starts.reserve(hit.starts.len());
+        for &s in hit.starts {
+            debug_assert!(s as usize <= hit.data.len());
+            buf.starts.push(s + dest_data_base);
+        }
+        let n = hit.kinds.len();
+        let appended_starts = &buf.starts[buf.starts.len() - n..];
+        bump_rect_min(hit.kinds, appended_starts, &mut buf.data, offset);
+        true
     }
 
     /// Insert or overwrite `wid`'s snapshot from `src`'s freshly-encoded
@@ -245,38 +280,6 @@ impl EncodeCache {
         *starts_arena = new_starts;
         *data_arena = new_data;
     }
-}
-
-// --- replay helpers (encode-cache-specific knowledge of cmd payload layout) -
-
-/// Append a cached subtree's cmd slice into `buf`, shifting `rect.min`
-/// by `offset` on every payload that begins with a `Rect` (PushClip,
-/// DrawRect, DrawRectStroked, DrawText). Pops carry no payload;
-/// PushTransform carries a `TranslateScale` that is subtree-local — both
-/// pass through untouched and compose with the parent at composer-time.
-///
-/// `starts` are subtree-relative offsets (0-based into `data`); they
-/// get rebased onto `buf`'s data arena during append.
-pub(crate) fn extend_from_cached(
-    buf: &mut RenderCmdBuffer,
-    kinds: &[CmdKind],
-    starts: &[u32],
-    data: &[u32],
-    offset: Vec2,
-) {
-    let dest_data_base = buf.data.len() as u32;
-    buf.data.extend_from_slice(data);
-
-    buf.kinds.extend_from_slice(kinds);
-    buf.starts.reserve(starts.len());
-    for &s in starts {
-        debug_assert!(s as usize <= data.len());
-        buf.starts.push(s + dest_data_base);
-    }
-
-    let n = kinds.len();
-    let appended_starts = &buf.starts[buf.starts.len() - n..];
-    bump_rect_min(kinds, appended_starts, &mut buf.data, offset);
 }
 
 /// Add `offset` to `rect.min` for every rect-bearing cmd in `kinds`,
