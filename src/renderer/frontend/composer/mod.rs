@@ -2,12 +2,13 @@ use super::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, EnterSubtreePayload,
     RenderCmdBuffer,
 };
+use crate::common::hash::Hasher;
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::display::Display;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
-use crate::tree::hash::{Hasher, NodeHash};
+use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use cache::ComposeCache;
 use glam::UVec2;
