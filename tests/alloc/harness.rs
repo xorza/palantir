@@ -98,7 +98,8 @@ fn user_frames(bt: &mut Backtrace) -> String {
 
     let mut out = String::new();
     let mut idx = 0u32;
-    for frame in bt.frames() {
+    let mut seen_test_frame = false;
+    'outer: for frame in bt.frames() {
         for symbol in frame.symbols() {
             let Some(filename) = symbol.filename() else {
                 continue;
@@ -108,9 +109,21 @@ fn user_frames(bt: &mut Backtrace) -> String {
                 continue;
             }
             let rel = user_relative(&path).unwrap_or(&path);
+            // Stop after the first `tests/` frame — that's the entry point
+            // into the fixture closure; further frames are #[test] wrappers
+            // (the test fn body, the outer test-macro closure) which all
+            // point at the same file with no extra signal.
+            let in_test = rel.starts_with("tests/");
+            if in_test && seen_test_frame {
+                break 'outer;
+            }
+            if in_test {
+                seen_test_frame = true;
+            }
             let name = symbol
                 .name()
                 .map(|n| format!("{n:#}"))
+                .map(strip_test_crate_prefix)
                 .unwrap_or_else(|| String::from("<unknown>"));
             let line = symbol.lineno().unwrap_or(0);
             let col = symbol.colno().unwrap_or(0);
@@ -124,6 +137,16 @@ fn user_frames(bt: &mut Backtrace) -> String {
         let _ = write!(out, "{bt:?}");
     }
     out
+}
+
+/// Drop the `alloc::` test-binary-crate prefix from a demangled symbol
+/// name. The test binary built from `tests/alloc/main.rs` is named
+/// `alloc`, so every fixture/harness symbol starts with `alloc::`; that
+/// prefix is the same on every line and adds no information.
+fn strip_test_crate_prefix(name: String) -> String {
+    name.strip_prefix("alloc::")
+        .map(String::from)
+        .unwrap_or(name)
 }
 
 /// Workspace-relative tail of a captured filename, or `None` if the path
