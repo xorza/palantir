@@ -6,7 +6,7 @@
 use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::{color::Color, stroke::Stroke};
-use crate::renderer::frontend::cmd_buffer::{Cmd, CmdKind, DrawTextPayload};
+use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::test_support::{encode_cmds, ui_with_text};
 use crate::tree::element::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, styled::Styled, text::Text};
@@ -194,9 +194,9 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 
     let cmds = encode_cmds(&ui);
     let mut text_xs: Vec<f32> = Vec::new();
-    for Cmd { kind, start } in cmds.iter() {
-        if kind == CmdKind::DrawText {
-            text_xs.push(cmds.read::<DrawTextPayload>(start).rect.min.x);
+    for i in 0..cmds.kinds.len() {
+        if cmds.kinds[i] == CmdKind::DrawText {
+            text_xs.push(cmds.read::<DrawTextPayload>(cmds.starts[i]).rect.min.x);
         }
     }
     assert!(
@@ -292,9 +292,9 @@ fn text_layouts_full_showcase_drawtext_dump() {
 
     let cmds = encode_cmds(&ui);
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
-    for Cmd { kind, start } in cmds.iter() {
-        if kind == CmdKind::DrawText {
-            let p: DrawTextPayload = cmds.read(start);
+    for i in 0..cmds.kinds.len() {
+        if cmds.kinds[i] == CmdKind::DrawText {
+            let p: DrawTextPayload = cmds.read(cmds.starts[i]);
             entries.push((p.rect.min.x, p.rect.min.y, p.key.text_hash));
         }
     }

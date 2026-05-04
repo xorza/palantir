@@ -1,5 +1,5 @@
 use super::super::cmd_buffer::{
-    Cmd, CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
+    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
 use super::align_text_in;
 use crate::Ui;
@@ -140,7 +140,9 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
     let mut clip: Option<Rect> = None;
     let mut clip_stack: Vec<Option<Rect>> = Vec::new();
     let mut out = Vec::new();
-    for Cmd { kind, start } in cmds.iter() {
+    for i in 0..cmds.kinds.len() {
+        let kind = cmds.kinds[i];
+        let start = cmds.starts[i];
         match kind {
             CmdKind::PushTransform => {
                 let child: TranslateScale = cmds.read(start);
@@ -454,10 +456,9 @@ fn encoder_text_alignment_respects_leaf_padding() {
     ui.end_frame();
 
     let cmds = encode_cmds(&ui);
-    let text_rect = cmds
-        .iter()
-        .find_map(|Cmd { kind, start }| match kind {
-            CmdKind::DrawText => Some(cmds.read::<DrawTextPayload>(start).rect),
+    let text_rect = (0..cmds.kinds.len())
+        .find_map(|i| match cmds.kinds[i] {
+            CmdKind::DrawText => Some(cmds.read::<DrawTextPayload>(cmds.starts[i]).rect),
             _ => None,
         })
         .expect("button must emit one DrawText");
