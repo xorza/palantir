@@ -241,6 +241,8 @@ impl EncodeCache {
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
+                debug_assert!(self.live_cmds >= snap.cmds.len as usize);
+                debug_assert!(self.live_data >= snap.data.len as usize);
                 self.live_cmds -= snap.cmds.len as usize;
                 self.live_data -= snap.data.len as usize;
             }
