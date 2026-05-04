@@ -1,24 +1,29 @@
 //! Headless wgpu device + one-frame render + texture readback into
 //! an `image::RgbaImage`.
 
+use std::sync::OnceLock;
+
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, CosmicMeasure, Display, Ui, WgpuBackend, share};
+use palantir::{Color, CosmicMeasure, Display, SharedCosmic, Ui, WgpuBackend, share};
 use pollster::FutureExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 const BPP: u32 = 4;
 
-pub struct Harness {
+/// One wgpu device + queue per test process. Both are `Send + Sync` and
+/// internally `Arc`-backed, so cloning is cheap. `request_adapter` /
+/// `request_device` dominate per-harness setup — sharing them turns
+/// per-test wgpu init from "tens of ms" into "one clone".
+struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    backend: WgpuBackend,
-    ui: Ui,
 }
 
-impl Harness {
-    pub fn new() -> Self {
+fn gpu() -> &'static Gpu {
+    static G: OnceLock<Gpu> = OnceLock::new();
+    G.get_or_init(|| {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -39,16 +44,37 @@ impl Harness {
             })
             .block_on()
             .expect("request device");
+        Gpu { device, queue }
+    })
+}
 
-        let mut backend = WgpuBackend::new(device.clone(), queue.clone(), FORMAT);
+thread_local! {
+    /// `SharedCosmic` is `Rc<RefCell<CosmicMeasure>>` — not `Send`, so
+    /// we keep one per worker thread instead of globally. Fonts load
+    /// once per thread; cargo test reuses workers across tests so the
+    /// cost amortizes.
+    static COSMIC: SharedCosmic = share(CosmicMeasure::with_bundled_fonts());
+}
+
+pub struct Harness {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    backend: WgpuBackend,
+    ui: Ui,
+}
+
+impl Harness {
+    pub fn new() -> Self {
+        let g = gpu();
+        let mut backend = WgpuBackend::new(g.device.clone(), g.queue.clone(), FORMAT);
         let mut ui = Ui::new();
-        let cosmic = share(CosmicMeasure::with_bundled_fonts());
+        let cosmic = COSMIC.with(|c| c.clone());
         ui.set_cosmic(cosmic.clone());
         backend.set_cosmic(cosmic);
 
         Self {
-            device,
-            queue,
+            device: g.device.clone(),
+            queue: g.queue.clone(),
             backend,
             ui,
         }

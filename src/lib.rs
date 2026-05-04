@@ -32,7 +32,7 @@ pub use renderer::backend::WgpuBackend;
 pub use renderer::frontend::FrameOutput;
 pub use shape::Shape;
 pub use text::cosmic::CosmicMeasure;
-pub use text::share;
+pub use text::{SharedCosmic, share};
 pub use tree::element::{Configure, Element, LayoutCore, LayoutMode, PaintAttrs, PaintCore};
 pub use tree::widget_id::WidgetId;
 pub use tree::{NodeId, Tree};
