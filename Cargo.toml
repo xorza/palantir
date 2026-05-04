@@ -6,7 +6,8 @@ exclude = ["tmp/", "references/"]
 
 [dependencies]
 bytemuck = { version = "*", features = ["derive"] }
-glam = { version = "*", features = ["bytemuck"] }
+encase = "*"
+glam = { version = "*", features = ["bytemuck", "encase"] }
 glyphon = "*"
 rustc-hash = "*"
 tracing = "*"
