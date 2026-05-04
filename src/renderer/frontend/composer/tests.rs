@@ -344,8 +344,8 @@ mod cache_integration {
         let warm = ui.frontend.composer.buffer.clone();
 
         // Frame 3: clear both caches → cold compose under same inputs.
-        crate::bench_support::clear_encode_cache(&mut ui);
-        crate::bench_support::clear_compose_cache(&mut ui);
+        crate::internals::clear_encode_cache(&mut ui);
+        crate::internals::clear_compose_cache(&mut ui);
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
@@ -409,9 +409,9 @@ mod cache_integration {
         big(&mut ui);
         ui.end_frame();
         assert!(
-            crate::bench_support::compose_cache_snapshot_count(&ui) > 0,
+            crate::internals::compose_cache_snapshot_count(&ui) > 0,
             "compose cache should have populated, got {}",
-            crate::bench_support::compose_cache_snapshot_count(&ui)
+            crate::internals::compose_cache_snapshot_count(&ui)
         );
     }
 
@@ -429,7 +429,7 @@ mod cache_integration {
         ui.end_frame();
         let warm = ui.frontend.composer.buffer.clone();
 
-        crate::bench_support::clear_compose_cache(&mut ui);
+        crate::internals::clear_compose_cache(&mut ui);
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();

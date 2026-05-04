@@ -266,9 +266,9 @@ impl MeasureCache {
     }
 
     /// Drop every cross-frame snapshot. Reachable only via
-    /// `bench_support::clear_measure_cache` (gated to tests + the
-    /// `bench-support` feature) — not part of any production code path.
-    #[cfg(any(test, feature = "bench-support"))]
+    /// `internals::clear_measure_cache` (gated to tests + the
+    /// `internals` feature) — not part of any production code path.
+    #[cfg(any(test, feature = "internals"))]
     pub(crate) fn clear(&mut self) {
         self.desired_arena.clear();
         self.text_arena.clear();
