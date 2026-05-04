@@ -194,6 +194,7 @@ impl ApplicationHandler for App {
                 state.surface.configure(&state.device, &state.config);
                 state.display.physical = glam::UVec2::new(state.config.width, state.config.height);
                 state.ui.request_repaint();
+                state.draw();
             }
             WindowEvent::RedrawRequested => state.draw(),
             // Other events (cursor / button) flow through `on_input`
