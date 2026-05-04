@@ -9,7 +9,7 @@
 //!   root every frame (in steady state, the root itself).
 //! - `forced_miss`: warm-up primes the measure + encode caches; each
 //!   iteration then clears *only* the compose cache via
-//!   `bench_support::clear_compose_cache` before `end_frame`, so the composer
+//!   `internals::clear_compose_cache` before `end_frame`, so the composer
 //!   rebuilds every group/quad/text from scratch while measure +
 //!   encode stay pure cache hits.
 //!
@@ -112,7 +112,7 @@ fn bench(c: &mut Criterion) {
             build(&mut ui);
             let _ = ui.end_frame();
             b.iter(|| {
-                palantir::bench_support::clear_compose_cache(&mut ui);
+                palantir::internals::clear_compose_cache(&mut ui);
                 ui.begin_frame(display);
                 build(&mut ui);
                 black_box(ui.end_frame());
@@ -141,7 +141,7 @@ fn bench(c: &mut Criterion) {
             build(&mut ui);
             let _ = ui.end_frame();
             b.iter(|| {
-                palantir::bench_support::clear_compose_cache(&mut ui);
+                palantir::internals::clear_compose_cache(&mut ui);
                 ui.__recompose();
                 black_box(());
             });

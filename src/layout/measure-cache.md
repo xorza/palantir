@@ -30,8 +30,8 @@ Code lives in `cache/` (this directory's sibling).
   > COMPACT_FLOOR` (= 64).
 - **Lifecycle hooks.** Eviction via `SeenIds.removed` →
   `MeasureCache::sweep_removed`, called from `Ui::end_frame`.
-  `MeasureCache::clear` exposed via `bench_support::clear_measure_cache`
-  (gated to `cfg(test)` + `bench-support` feature).
+  `MeasureCache::clear` exposed via `internals::clear_measure_cache`
+  (gated to `cfg(test)` + `internals` feature).
 
 ## Tests
 

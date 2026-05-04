@@ -67,7 +67,7 @@ owns the cache + cmd buffer and is the entry point from
 ## Bench
 
 `benches/encode_cache.rs`, A/B'd against an otherwise-identical
-warm-cache frame with `bench_support::clear_encode_cache()` between iterations
+warm-cache frame with `internals::clear_encode_cache()` between iterations
 (measure cache held hot in both arms, so the delta is purely
 encoder work). Times are `end_frame()` end-to-end.
 

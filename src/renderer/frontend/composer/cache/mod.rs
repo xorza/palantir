@@ -237,9 +237,9 @@ impl ComposeCache {
     }
 
     /// Drop every snapshot and free all arena storage. Reachable only
-    /// via `bench_support::clear_compose_cache` (gated to tests + the
-    /// `bench-support` feature) — not part of any production code path.
-    #[cfg(any(test, feature = "bench-support"))]
+    /// via `internals::clear_compose_cache` (gated to tests + the
+    /// `internals` feature) — not part of any production code path.
+    #[cfg(any(test, feature = "internals"))]
     pub(crate) fn clear(&mut self) {
         self.quads.clear();
         self.texts.clear();

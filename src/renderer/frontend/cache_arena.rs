@@ -47,9 +47,9 @@ impl<T> LiveArena<T> {
     }
 
     /// Reachable only from the cache `clear()` methods, themselves
-    /// reachable only from `bench_support` (tests + `bench-support`
+    /// reachable only from `internals` (tests + `internals`
     /// feature). Same gate so the production build sees no dead code.
-    #[cfg(any(test, feature = "bench-support"))]
+    #[cfg(any(test, feature = "internals"))]
     pub(crate) fn clear(&mut self) {
         self.items.clear();
         self.live = 0;

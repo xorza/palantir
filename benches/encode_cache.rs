@@ -7,7 +7,7 @@
 //!   hit the encode cache at the highest stable subtree root every
 //!   frame (in steady state, the root itself).
 //! - `forced_miss`: warm-up primes the measure cache; each iteration
-//!   then clears *only* the encode cache via `bench_support::clear_encode_cache`
+//!   then clears *only* the encode cache via `internals::clear_encode_cache`
 //!   before `end_frame`, so the encoder rebuilds every cmd from
 //!   scratch while measure stays a pure cache hit.
 //!
@@ -117,7 +117,7 @@ fn bench(c: &mut Criterion) {
             build(&mut ui);
             let _ = ui.end_frame();
             b.iter(|| {
-                palantir::bench_support::clear_encode_cache(&mut ui);
+                palantir::internals::clear_encode_cache(&mut ui);
                 ui.begin_frame(display);
                 build(&mut ui);
                 black_box(ui.end_frame());

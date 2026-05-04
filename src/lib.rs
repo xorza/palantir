@@ -1,7 +1,7 @@
-#[cfg(any(test, feature = "bench-support"))]
-pub mod bench_support;
 pub(crate) mod common;
 pub mod input;
+#[cfg(any(test, feature = "internals"))]
+pub mod internals;
 pub mod layout;
 pub mod primitives;
 pub mod renderer;
