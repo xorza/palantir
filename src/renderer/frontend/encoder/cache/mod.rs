@@ -27,11 +27,23 @@
 
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::span::Span;
-use crate::renderer::frontend::cmd_buffer::{CmdKind, RenderCmdBuffer};
+use crate::renderer::frontend::cmd_buffer::{
+    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
+};
 use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
+
+// `bump_rect_min` indexes `data[start..start+2]` as `rect.min.{x,y}` for
+// every rect-bearing payload kind. Pin the layout invariant: `Rect`
+// must be the leading field of each such payload, and `PushClip`'s
+// payload is a bare `Rect` (offset 0 by definition).
+const _: () = {
+    assert!(std::mem::offset_of!(DrawRectPayload, rect) == 0);
+    assert!(std::mem::offset_of!(DrawRectStrokedPayload, rect) == 0);
+    assert!(std::mem::offset_of!(DrawTextPayload, rect) == 0);
+};
 
 /// 32-byte snapshot. `cmds` indexes the parallel
 /// (`kinds_arena`, `starts_arena`); `data` indexes `data_arena`. Both

@@ -143,8 +143,9 @@ fn encode_node(
     // markers. The markers go *inside* the snapshot range (cmd_lo is
     // captured before `push_enter_subtree` so the open cmd is at index
     // `cmd_lo`; the close is the last cmd in the range). Composer
-    // treats both as no-ops today — they exist to anchor the upcoming
-    // composer cache.
+    // reads `EnterSubtree` to attempt a splice (fast-forwarding past
+    // the matching `ExitSubtree` on a hit) and uses `ExitSubtree` to
+    // write the snapshot back on a miss.
     let cache_pending = if let Some((wid, hash, avail)) = cache_key {
         let cmd_lo = out.kinds.len() as u32;
         let data_lo = out.data.len() as u32;
