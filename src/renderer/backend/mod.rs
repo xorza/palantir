@@ -226,6 +226,10 @@ impl WgpuBackend {
                 multiview_mask: None,
             });
             let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
+            // Quad pipeline binding survives across groups, but glyphon's
+            // `render_group` clobbers it. Re-bind lazily: set on first
+            // quad draw, then again after any text group.
+            let mut quad_bound = false;
             for (i, g) in buffer.groups.iter().enumerate() {
                 let group_scissor = g.scissor.unwrap_or(full_viewport);
                 // Intersect with damage when partial-repainting. If
@@ -243,6 +247,10 @@ impl WgpuBackend {
                 }
                 pass.set_scissor_rect(effective.x, effective.y, effective.w, effective.h);
                 if g.quads.len != 0 {
+                    if !quad_bound {
+                        self.quad.bind(&mut pass);
+                        quad_bound = true;
+                    }
                     self.quad.draw_range(&mut pass, g.quads);
                 }
                 if g.texts.len != 0 {
@@ -261,6 +269,7 @@ impl WgpuBackend {
                         text_scissor.h,
                     );
                     self.text.render_group(i, &mut pass);
+                    quad_bound = false;
                 }
             }
         }
