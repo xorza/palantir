@@ -184,7 +184,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
     let q = &buf.quads[0];
     assert_eq!(q.rect.size, Size::new(100.0, 100.0));
     assert_eq!(q.radius.tl, 16.0);
-    assert_eq!(q.stroke_width, 3.0);
+    assert_eq!(q.stroke.width, 3.0);
 }
 
 #[test]

@@ -81,8 +81,8 @@ impl QuadPipeline {
                 1 => Float32x2,   // size
                 2 => Float32x4,   // fill
                 3 => Float32x4,   // radius
-                4 => Float32x4,   // stroke_color
-                5 => Float32,     // stroke_width
+                4 => Float32x4,   // stroke.color
+                5 => Float32,     // stroke.width
             ],
         };
 
