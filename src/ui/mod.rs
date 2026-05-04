@@ -102,8 +102,7 @@ impl Ui {
         let surface = self.display.logical_rect();
         // Hashes are pure functions of recorded inputs and don't depend on
         // layout output, so we compute them up front. Layout reads them to
-        // skip text reshape for unchanged Text nodes (see
-        // `docs/text-reshape-skip.md`); damage reads them after.
+        // skip text reshape for unchanged Text nodes; damage reads them after.
         self.tree.compute_hashes();
         let removed = self.ids.end_frame();
         self.text.sweep_removed(removed);

@@ -1,7 +1,7 @@
 # Todo
 
 
-## Damage rendering (`docs/damage-rendering.md`)
+## Damage rendering
 
 - **Multi-rect damage.** Replace the single union rect with N disjoint regions (clustered from the per-node dirty set). Avoids the 50% heuristic tripping when two unrelated corners change.
 - **Incremental hit-index rebuild.** Only update `HitIndex` entries for dirty nodes (and any whose cascade row changed) instead of walking every node every frame.
@@ -9,7 +9,7 @@
 - **Tighter damage on parent-transform animation.** A dedicated transform-cascade pass to collapse deep-subtree damage to a tight bound; only worth it if profiling shows the current union is too coarse.
 - **Manual damage verification.** Visual A/B against `damage = None` to catch the case where the diff misses something.
 
-## Text (`docs/text.md`, `docs/text-reshape-skip.md`)
+## Text
 
 - **Layer B — `CosmicMeasure.cache` eviction.** Refcount `TextCacheKey` by live `WidgetId`s; sweep via `SeenIds.removed()` so the shaped-buffer table doesn't leak. Defer until a string-churn workload demonstrates the leak.
 - **Wallclock bench for the reuse cache.** `benches/layout.rs` runs without cosmic, so it can't see the Layer A win. Add a cosmic-enabled variant with N=100 static labels and quote real µs/frame numbers.

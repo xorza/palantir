@@ -1,8 +1,7 @@
-//! Per-frame damage detection. Stage 3 of the damage-rendering plan
-//! (see `docs/damage-rendering.md`). Computed in [`Ui::end_frame`]
-//! after `compute_hashes`; rebuilds the prev-frame snapshot in the
-//! same pass so the diff reads the old entry and writes the new one
-//! per node.
+//! Per-frame damage detection. Computed in [`Ui::end_frame`] after
+//! `compute_hashes`; rebuilds the prev-frame snapshot in the same
+//! pass so the diff reads the old entry and writes the new one per
+//! node.
 //!
 //! A node is **dirty** if its `(rect, authoring-hash)` differs from
 //! the entry keyed by the same `WidgetId` in `Damage.prev`, OR it
@@ -11,10 +10,10 @@
 //! (removed). The damage rect is the union of every contribution.
 //!
 //! `Damage.dirty` is the per-node dirty list (added / hash-changed /
-//! rect-changed). Currently consumed only by tests; reserved for the
-//! identity-based reuse work in `docs/damage-rendering.md`
-//! ("Wanted: per-node command cache, text-shape cache,
-//! multi-rect damage, incremental hit-index, debug overlay").
+//! rect-changed). Currently consumed only by tests; reserved for
+//! identity-based reuse (per-node command cache, text-shape cache,
+//! multi-rect damage, incremental hit-index, debug overlay — see
+//! `docs/todo.md` "Damage rendering").
 
 use crate::primitives::rect::Rect;
 use crate::tree::widget_id::WidgetId;
