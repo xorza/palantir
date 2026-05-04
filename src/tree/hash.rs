@@ -14,10 +14,10 @@
 //! in builders enforce non-negative sizes etc.).
 
 use super::GridDef;
+use crate::common::hash::Hasher;
 use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
 use crate::shape::Shape;
 use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintCore};
-use rustc_hash::FxHasher;
 use std::hash::Hash;
 use std::hash::Hasher as _;
 
@@ -50,47 +50,6 @@ impl NodeHash {
     #[inline]
     pub(crate) fn from_u64(v: u64) -> Self {
         Self(v)
-    }
-}
-
-/// `FxHasher` wrapper that adds `pod()` for whole-value byte writes.
-/// Use this everywhere we'd otherwise reach for `FxHasher::default()`
-/// directly so the `pod` shortcut and `std::hash::Hasher` trait are
-/// always in scope at the same time.
-///
-/// Implements `std::hash::Hasher` so `value.hash(&mut h)` and
-/// `h.write_u8(...)` etc. work unchanged.
-pub(crate) struct Hasher(FxHasher);
-
-impl Hasher {
-    #[inline]
-    pub(crate) fn new() -> Self {
-        Self(FxHasher::default())
-    }
-
-    /// Hash a value as its raw bytes in one `Hasher::write` call. The
-    /// `NoUninit` bound proves at compile time that `T` has no padding
-    /// so `bytes_of` is sound.
-    ///
-    /// Why this is faster than per-field writes: `FxHasher::write(&[u8])`
-    /// consumes 8 bytes per loop iteration and amortizes the
-    /// rotate/multiply/xor cost across the whole slice. Replacing
-    /// N×`write_u32`/`write_u16` calls with one `write` cuts per-call
-    /// overhead and lets the compiler keep more state in registers.
-    #[inline]
-    pub(crate) fn pod<T: bytemuck::NoUninit>(&mut self, v: &T) {
-        self.0.write(bytemuck::bytes_of(v));
-    }
-}
-
-impl std::hash::Hasher for Hasher {
-    #[inline]
-    fn write(&mut self, bytes: &[u8]) {
-        self.0.write(bytes);
-    }
-    #[inline]
-    fn finish(&self) -> u64 {
-        self.0.finish()
     }
 }
 
