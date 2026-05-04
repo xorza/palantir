@@ -20,8 +20,12 @@
 
 ## Persistent state
 
-- **`Id → Any` state map.** Cross-frame storage keyed by `WidgetId` for scroll, focus, animation, editor state. Gates `TextEdit`, drag tracking, persistent scroll position, and any "remembered between frames" widget concern.
-- **Drag tracking.** Build on the existing `Active`-capture so `drag_delta` works rect-independent (pointer can leave the originating widget mid-drag).
+`Ui::state_mut::<T>(id)` lands the `Id → Any` map (`src/ui/state.rs`) — eviction tied to `SeenIds.removed`, alloc-clean steady state pinned by `state_map_counter` in `tests/alloc`. Consumers next:
+
+- **ScrollView v1.** Plan in `docs/scrollview.md`. `InputEvent::Scroll` from winit, vertical-only widget, offset stored via `state_mut`.
+- **Drag tracking.** Build on the existing `Active`-capture so `drag_delta` works rect-independent (pointer can leave the originating widget mid-drag). Pre-req for scrollbars + touch-drag.
+- **Focus subsystem.** Tab order, focus ring, keyboard-nav. Distinct from the state map — needs its own pass.
+- **`TextEdit` widget.** One `cosmic_text::Editor` per `WidgetId` via `state_mut_with` (add the public API when this lands), glyph-level hit-test, IME, selection rendering as sibling shapes.
 
 ## Measure cache (`src/layout/measure-cache.md`)
 
