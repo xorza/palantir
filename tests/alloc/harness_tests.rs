@@ -52,21 +52,31 @@ fn allocs_outside_audit_are_silent() {
 #[test]
 fn sibling_thread_allocs_do_not_pollute_audit() {
     // Spawn the worker *before* entering audit (thread::spawn allocates
-    // on the caller). A barrier signals the worker to start its burst
-    // once we're inside the audit window. `t.join()` is the trailing
-    // happens-before barrier — no second wait needed.
-    use std::sync::{Arc, Barrier};
-    let barrier = Arc::new(Barrier::new(2));
-    let b2 = barrier.clone();
+    // on the caller). An AtomicBool start flag signals the worker to
+    // begin its burst once we're inside the audit window; `t.join()` is
+    // the trailing happens-before barrier — no second wait needed.
+    //
+    // Why not `std::sync::Barrier`: on macOS, the first
+    // `Barrier::wait` lazily heap-allocates the underlying pthread
+    // `Mutex` (via `OnceBox<Mutex>::get_or_init` → `Box::pin`), which
+    // would land on the auditing thread inside `with_audit` and pollute
+    // the delta. Linux uses futex-based mutexes with no lazy alloc.
+    // Atomics never allocate.
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let go = Arc::new(AtomicBool::new(false));
+    let g2 = go.clone();
     let t = std::thread::spawn(move || {
-        b2.wait();
+        while !g2.load(Ordering::Acquire) {
+            std::hint::spin_loop();
+        }
         for _ in 0..1_000 {
             one_alloc();
         }
     });
 
     let r = with_audit(|| {
-        barrier.wait();
+        go.store(true, Ordering::Release);
         t.join().unwrap();
     });
 

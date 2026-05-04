@@ -94,10 +94,11 @@ fn strip_test_crate_prefix(name: String) -> String {
 
 /// Workspace-relative tail of a captured filename, or `None` if the path
 /// isn't inside this crate. `backtrace`'s symbol resolver returns absolute
-/// paths (`/home/.../palantir/src/widgets/button.rs`), so we strip the
-/// crate-root anchor to compare against the user-code prefixes we know.
+/// paths (`/home/.../palantir/src/widgets/button.rs`); strip the crate
+/// root resolved at compile time so we don't depend on the project
+/// directory's case or name (`Palantir` vs `palantir`, etc.).
 fn user_relative(path: &str) -> Option<&str> {
-    const ANCHOR: &str = "/palantir/";
-    let idx = path.rfind(ANCHOR)?;
-    Some(&path[idx + ANCHOR.len()..])
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let stripped = path.strip_prefix(manifest)?;
+    Some(stripped.strip_prefix('/').unwrap_or(stripped))
 }
