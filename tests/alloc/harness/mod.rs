@@ -78,7 +78,7 @@ pub(crate) fn run_audit<S>(
 /// over-budget frame in that window fails.
 ///
 /// Use this for new fixtures so you don't have to eyeball a warmup count.
-pub(crate) fn audit_until_stable<S>(name: &str, budget: AllocBudget, mut scene: S)
+pub(crate) fn audit_steady_state<S>(name: &str, budget: AllocBudget, mut scene: S)
 where
     S: FnMut(&mut Ui),
 {
