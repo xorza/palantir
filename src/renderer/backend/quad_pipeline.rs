@@ -161,16 +161,23 @@ impl QuadPipeline {
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(quads));
     }
 
-    /// Draw a contiguous slice of the uploaded instance buffer. Used to
-    /// segment quads by scissor region; caller is responsible for setting
-    /// `RenderPass::set_scissor_rect` before each call.
-    pub(crate) fn draw_range<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
-        if instances.len == 0 {
-            return;
-        }
+    /// Bind pipeline + viewport bind group + instance buffer once per
+    /// pass. Call before the per-group `draw_range` loop so we don't
+    /// re-issue these every group.
+    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+    }
+
+    /// Draw a contiguous slice of the uploaded instance buffer. Used to
+    /// segment quads by scissor region; caller is responsible for
+    /// calling [`Self::bind`] once and setting
+    /// `RenderPass::set_scissor_rect` before each call.
+    pub(crate) fn draw_range(&self, pass: &mut wgpu::RenderPass<'_>, instances: Span) {
+        if instances.len == 0 {
+            return;
+        }
         pass.draw(0..4, instances.into());
     }
 }
