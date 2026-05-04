@@ -7,12 +7,12 @@ use crate::layout::types::display::Display;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
-use crate::tree::hash::NodeHash;
+use crate::tree::hash::{NodeHash, pod};
 use crate::tree::widget_id::WidgetId;
 use cache::ComposeCache;
 use glam::UVec2;
 use rustc_hash::FxHasher;
-use std::hash::{Hash, Hasher};
+use std::hash::Hasher;
 
 pub(crate) mod cache;
 
@@ -305,25 +305,20 @@ fn cascade_fingerprint(
     snap: bool,
     viewport: UVec2,
 ) -> u64 {
-    // todo reuse hash.rs
     let mut h = FxHasher::default();
-    t.translation.x.to_bits().hash(&mut h);
-    t.translation.y.to_bits().hash(&mut h);
-    t.scale.to_bits().hash(&mut h);
+    pod(&mut h, &t);
     match parent_scissor {
-        None => 0u8.hash(&mut h),
+        None => h.write_u8(0),
+        // `URect` lacks bytemuck derives; pod a fixed-size view of its
+        // four u32s instead.
         Some(r) => {
-            1u8.hash(&mut h);
-            r.x.hash(&mut h);
-            r.y.hash(&mut h);
-            r.w.hash(&mut h);
-            r.h.hash(&mut h);
+            h.write_u8(1);
+            pod(&mut h, &[r.x, r.y, r.w, r.h]);
         }
     }
-    scale.to_bits().hash(&mut h);
-    snap.hash(&mut h);
-    viewport.x.hash(&mut h);
-    viewport.y.hash(&mut h);
+    h.write_u32(scale.to_bits());
+    h.write_u8(snap as u8);
+    pod(&mut h, &viewport);
     h.finish()
 }
 

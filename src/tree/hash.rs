@@ -62,7 +62,7 @@ impl NodeHash {
 /// N×`write_u32`/`write_u16` calls with one `write` cuts the per-call
 /// overhead and lets the compiler keep more state in registers.
 #[inline]
-fn pod<T: bytemuck::NoUninit>(h: &mut impl Hasher, v: &T) {
+pub(crate) fn pod<T: bytemuck::NoUninit>(h: &mut impl Hasher, v: &T) {
     h.write(bytemuck::bytes_of(v));
 }
 
