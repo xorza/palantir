@@ -25,8 +25,9 @@ Catches the regression where someone introduces a per-frame `Vec::new()`
 ```
 tests/alloc/
 ├── main.rs              entry: #[global_allocator] + mod decls
-├── allocator.rs         CountingAllocator + snapshot/delta
-├── harness.rs           run_audit(name, warmup, audit, budget, scene)
+├── allocator.rs         CountingAllocator + with_audit
+├── harness.rs           run_audit + user_frames trace filter
+├── harness_tests.rs     unit tests for the harness itself
 ├── fixtures.rs          mod decls
 ├── fixtures/
 │   └── widgets.rs       per-widget minimal scenes
@@ -39,8 +40,9 @@ Single test binary (`cargo test --test alloc`); Cargo auto-discovers
 ## How it works
 
 `#[global_allocator]` installs `CountingAllocator`, which delegates to
-`System` and — only when the calling thread has `IN_AUDIT` set —
-increments thread-local `ALLOCS`/`BYTES` and pushes a `Backtrace`.
+`System` and — only when the calling thread is inside `with_audit` —
+increments thread-local counters and pushes a `backtrace::Backtrace`
+(captured unresolved; resolution is lazy on the failure path).
 `dealloc` is delegated unchanged; we count heap *operations*, not
 residency.
 
@@ -51,33 +53,48 @@ Gating on the per-thread `IN_AUDIT` flag means only the auditing
 thread's audit-window allocs ever count — no cross-test interference,
 no global mutex.
 
-`run_audit(name, warmup, audit, budget, scene)`:
+`with_audit(F)` is the load-bearing API in `allocator.rs`: it sets
+`IN_AUDIT` via an RAII guard (so a panic inside `F` can't strand the
+flag), drains stale traces, runs `F`, and returns the `(allocs,
+bytes, traces)` delta. `run_audit(name, warmup, audit, budget,
+scene)` in `harness.rs` is the test-facing wrapper:
 
 1. Construct `Ui::new()` with a fixed 800×600 logical display.
 2. Run `warmup` frames untracked — lets measure cache, encode cache,
    scratch `Vec`s reach steady-state capacity.
-3. Set `IN_AUDIT`, snapshot the per-thread counter.
-4. Run `audit` frames — every alloc on this thread bumps the counter
-   and (with `RUST_BACKTRACE=1`) records a backtrace.
-5. Clear `IN_AUDIT`, take delta + drained traces.
-6. Print per-frame averages. On budget violation, dump captured
-   backtraces (or hint at `RUST_BACKTRACE=1` if disabled), then panic.
+3. Drive `audit` frames inside `with_audit`.
+4. Print per-frame averages. On budget violation, dump the captured
+   backtraces (filtered to user code via `user_frames`), then panic.
 
-Capture is free by default — `Backtrace::capture` is a no-op unless
-`RUST_BACKTRACE` is set, so traces only cost when you ask for them.
+## Trace filtering
+
+`user_frames` resolves the captured backtrace and emits only:
+- `src/...` frames (palantir library code), and
+- the *first* `tests/alloc/fixtures/...` frame (the entry point into
+  the scene closure).
+
+Everything else — std/runtime, hashbrown/cosmic-text/etc., the
+harness machinery itself — is dropped. Demangled names are stripped
+of the `alloc::` test-binary-crate prefix and the `::h<hash>` suffix.
+
+Set `PALANTIR_ALLOC_FULL_BT=1` to bypass the filter and dump the raw
+unfiltered backtrace; useful when the filter rejects something it
+shouldn't.
 
 ## Status
 
 ### Infrastructure ✅
-- `allocator.rs` — counting wrapper around `System`.
-- `harness.rs` — `run_audit` with `AllocBudget`, parallel-test mutex.
+- `allocator.rs` — counting wrapper around `System` + `with_audit`.
+- `harness.rs` — `run_audit` with `AllocBudget`, trace filter.
+- `harness_tests.rs` — unit tests for the harness itself.
 
 ### Fixtures
 - `empty_frame` ✅ — `Ui` with no widgets, budget 0. Sanity baseline.
-- `button_only` ✅ — single `Button::label("hello")`, budget 0. Pins the
-  static-string label round-trip at zero allocs; uses 16 warmup / 64
-  audit frames (the extra warmup absorbs scratch-Vec capacity growth
-  that takes longer than the empty scene to settle).
+  0 warmup / 32 audit.
+- `button_only` ✅ — single `Button::label("hello")`, budget 0. Pins
+  the static-string label round-trip at zero allocs. 2 warmup / 64
+  audit (the warmup absorbs scratch-Vec capacity growth that takes
+  longer than the empty scene to settle).
 
 ### Planned
 - `nested_vstack_64` — past scratch-Vec growth; budget 0.
@@ -93,16 +110,13 @@ once a flake or a second platform appears.
 
 Don't raise the budget. Find the alloc:
 
-1. Re-run with `RUST_BACKTRACE=1` — the harness captures one
-   backtrace per audit-window alloc and dumps them all on failure,
-   so you usually see the offending call site directly.
-2. If the trace is ambiguous (deep inside a generic), add
-   `dbg!(snapshot())` around suspect spans inside the frame loop
-   to bisect which pass introduced it.
+1. Re-run the failing test — the harness captures one backtrace per
+   audit-window alloc and dumps them all on failure, filtered to
+   user code, so you usually see the offending call site directly.
+2. If the trace is ambiguous (deep inside a generic), set
+   `PALANTIR_ALLOC_FULL_BT=1` to see the unfiltered stack, or add
+   `dbg!(...)` around suspect spans inside the frame loop to bisect
+   which pass introduced it.
 3. The fix is almost always: lift a `Vec::new()` to a retained scratch
    field, `.clear()` instead of replacing, or `with_capacity` with a
    sane initial size at construction time.
-
-Raising a budget is the right call only when the alloc comes from a
-dependency we don't control (cosmic-text, glyphon atlas growth) — and
-even then, document why in the fixture.

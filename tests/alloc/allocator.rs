@@ -1,9 +1,9 @@
 //! Per-thread counting allocator. Wraps `System`; while a thread is
-//! "in audit" (set by the harness around the measured frames),
-//! increments thread-local `ALLOCS`/`BYTES` on every `alloc` /
-//! `realloc` and optionally captures a `Backtrace` so failures can
-//! point at the offending call site. `dealloc` is always delegated
-//! unchanged — we count heap *operations*, not residency.
+//! "in audit" (set by [`with_audit`] around the measured frames),
+//! increments thread-local counters on every `alloc` / `realloc` and
+//! captures a `backtrace::Backtrace` so failures can point at the
+//! offending call site. `dealloc` is always delegated unchanged — we
+//! count heap *operations*, not residency.
 //!
 //! Per-thread (not global) counters are deliberate: cargo runs tests
 //! in parallel on the same process, and a global counter would let
@@ -15,20 +15,16 @@
 //! allocs (Vec growth in `TRACES`, backtrace internals) neither
 //! recurse forever nor get counted.
 //!
-//! We use the lower-level `backtrace::Backtrace` (rather than
-//! `std::backtrace::Backtrace`) for the captured value because the
-//! `Frame`/`Symbol` API exposes filename and line directly, which the
-//! harness uses to drop std/runtime/dep frames structurally. Capture
-//! is unresolved (`new_unresolved`) so the hot path is just a stack
-//! walk; symbol resolution runs lazily inside the harness when a
-//! fixture fails. Capture is unconditional — the cost is negligible
-//! for passing tests (steady-state audits allocate zero times) and
-//! we want traces always available on failure.
+//! Capture is unconditional and unresolved (`new_unresolved`) so the
+//! hot path is just a stack walk; symbol resolution runs lazily
+//! inside the harness when a fixture fails. Cost is negligible for
+//! passing tests (steady-state audits allocate zero times) and we
+//! want traces always available on failure.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::{Cell, RefCell};
 
-pub(crate) use backtrace::Backtrace;
+use backtrace::Backtrace;
 
 pub(crate) struct CountingAllocator;
 
@@ -41,12 +37,12 @@ thread_local! {
 }
 
 #[inline]
-fn track(layout: Layout) {
+fn track(size: usize) {
     if !IN_AUDIT.with(Cell::get) || CAPTURING.with(Cell::get) {
         return;
     }
     ALLOCS.with(|c| c.set(c.get() + 1));
-    BYTES.with(|c| c.set(c.get() + layout.size() as u64));
+    BYTES.with(|c| c.set(c.get() + size as u64));
     CAPTURING.with(|f| f.set(true));
     let bt = Backtrace::new_unresolved();
     TRACES.with(|t| t.borrow_mut().push(bt));
@@ -55,7 +51,7 @@ fn track(layout: Layout) {
 
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        track(layout);
+        track(layout.size());
         unsafe { System.alloc(layout) }
     }
 
@@ -64,46 +60,58 @@ unsafe impl GlobalAlloc for CountingAllocator {
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        track(layout);
+        track(layout.size());
         unsafe { System.alloc_zeroed(layout) }
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        track(unsafe { Layout::from_size_align_unchecked(new_size, layout.align()) });
+        track(new_size);
         unsafe { System.realloc(ptr, layout, new_size) }
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Snapshot {
+#[derive(Debug)]
+pub(crate) struct AuditResult {
     pub(crate) allocs: u64,
     pub(crate) bytes: u64,
+    pub(crate) traces: Vec<Backtrace>,
 }
 
-pub(crate) fn snapshot() -> Snapshot {
-    Snapshot {
-        allocs: ALLOCS.with(Cell::get),
-        bytes: BYTES.with(Cell::get),
+/// RAII guard: clears `IN_AUDIT` on drop so a panic mid-audit can't
+/// strand the flag and poison subsequent operations on this thread.
+struct AuditGuard;
+
+impl AuditGuard {
+    fn enter() -> Self {
+        IN_AUDIT.with(|f| f.set(true));
+        Self
     }
 }
 
-pub(crate) fn delta(prev: Snapshot) -> Snapshot {
-    let now = snapshot();
-    Snapshot {
-        allocs: now.allocs - prev.allocs,
-        bytes: now.bytes - prev.bytes,
+impl Drop for AuditGuard {
+    fn drop(&mut self) {
+        IN_AUDIT.with(|f| f.set(false));
     }
 }
 
-/// Enable per-thread alloc counting (and backtrace capture if
-/// `RUST_BACKTRACE` is set). Each subsequent alloc on this thread
-/// increments thread-local counters and pushes one `Backtrace` onto
-/// a thread-local buffer until [`set_in_audit(false)`] is called.
-pub(crate) fn set_in_audit(on: bool) {
-    IN_AUDIT.with(|f| f.set(on));
-}
-
-/// Drain captured backtraces from this thread's buffer.
-pub(crate) fn take_traces() -> Vec<Backtrace> {
-    TRACES.with(|t| std::mem::take(&mut *t.borrow_mut()))
+/// Run `f` with allocation counting + backtrace capture enabled on
+/// the current thread. Returns the allocation delta and drained
+/// `TRACES` buffer scoped to `f`. On panic inside `f`, the guard's
+/// `Drop` clears `IN_AUDIT` so the thread is left in a clean state
+/// before the panic continues unwinding.
+///
+/// Drains any stale `TRACES` from a previous call on this thread
+/// before entering, so callers don't have to remember.
+pub(crate) fn with_audit<F: FnOnce()>(f: F) -> AuditResult {
+    TRACES.with(|t| t.borrow_mut().clear());
+    let allocs0 = ALLOCS.with(Cell::get);
+    let bytes0 = BYTES.with(Cell::get);
+    let guard = AuditGuard::enter();
+    f();
+    drop(guard);
+    AuditResult {
+        allocs: ALLOCS.with(Cell::get) - allocs0,
+        bytes: BYTES.with(Cell::get) - bytes0,
+        traces: TRACES.with(|t| std::mem::take(&mut *t.borrow_mut())),
+    }
 }
