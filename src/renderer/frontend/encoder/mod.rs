@@ -11,10 +11,12 @@ use cache::EncodeCache;
 /// Bookkeeping captured before recursing so we can write the cached
 /// subtree back after children have appended their cmds. `cmd_lo` /
 /// `data_lo` snapshot `out`'s arena lengths at entry; the hi ends are
-/// read after recursion to form the subtree's spans.
-struct CachePending {
+/// read after recursion to form the subtree's spans. Mirrors
+/// `composer::SubtreeFrame` (same shape, different per-cache key
+/// fields).
+struct SubtreeFrame {
     wid: WidgetId,
-    hash: NodeHash,
+    subtree_hash: NodeHash,
     avail: AvailableKey,
     cmd_lo: u32,
     data_lo: u32,
@@ -141,13 +143,13 @@ fn encode_node(
     // reads `EnterSubtree` to attempt a splice (fast-forwarding past
     // the matching `ExitSubtree` on a hit) and uses `ExitSubtree` to
     // write the snapshot back on a miss.
-    let cache_pending = if let Some((wid, hash, avail)) = cache_key {
+    let cache_pending = if let Some((wid, subtree_hash, avail)) = cache_key {
         let cmd_lo = out.kinds.len() as u32;
         let data_lo = out.data.len() as u32;
-        let enter_patch = out.push_enter_subtree(wid, hash, avail);
-        Some(CachePending {
+        let enter_patch = out.push_enter_subtree(wid, subtree_hash, avail);
+        Some(SubtreeFrame {
             wid,
-            hash,
+            subtree_hash,
             avail,
             cmd_lo,
             data_lo,
@@ -248,7 +250,7 @@ fn encode_node(
         let data_hi = out.data.len() as u32;
         cache.write_subtree(
             p.wid,
-            p.hash,
+            p.subtree_hash,
             p.avail,
             out,
             Span::new(p.cmd_lo, cmd_hi - p.cmd_lo),

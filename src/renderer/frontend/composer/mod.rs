@@ -16,8 +16,9 @@ use std::hash::{Hash, Hasher};
 pub(crate) mod cache;
 
 /// Cold-frame state captured at `EnterSubtree` so `ExitSubtree` can
-/// write the snapshot back. Mirrors the encoder's `CachePending`.
-struct ComposeFrame {
+/// write the snapshot back. Mirrors `encoder::SubtreeFrame` (same
+/// shape, different per-cache key fields).
+struct SubtreeFrame {
     wid: WidgetId,
     subtree_hash: NodeHash,
     avail: AvailableKey,
@@ -39,7 +40,7 @@ pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
     clip_stack: Vec<URect>,
     transform_stack: Vec<TranslateScale>,
-    subtree_stack: Vec<ComposeFrame>,
+    subtree_stack: Vec<SubtreeFrame>,
     pub(crate) cache: ComposeCache,
     pub(crate) buffer: RenderBuffer,
 }
@@ -213,7 +214,7 @@ impl Composer {
 
                     // Miss: record where the subtree's contributions
                     // start so `ExitSubtree` can snapshot them.
-                    self.subtree_stack.push(ComposeFrame {
+                    self.subtree_stack.push(SubtreeFrame {
                         wid,
                         subtree_hash,
                         avail,

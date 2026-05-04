@@ -198,7 +198,7 @@ impl RenderCmdBuffer {
                 subtree_hash,
                 avail,
                 exit_idx: 0,
-                ..bytemuck::Zeroable::zeroed()
+                _pad: 0,
             },
         );
         EnterPatch {
