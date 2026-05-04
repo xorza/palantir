@@ -139,16 +139,14 @@ fn changing_available_forces_miss_and_remeasure() {
     ui.end_frame();
 
     let wid = WidgetId::from_hash("fill");
-    let avail1 =
-        ui.layout_engine.cache.available[snap_for(&ui, wid).unwrap().0.nodes.start as usize];
+    let avail1 = snap_for(&ui, wid).unwrap().0.available_q;
     let d1 = snap_for(&ui, wid).unwrap().1[0];
 
     begin(&mut ui, UVec2::new(80, 80));
     Panel::hstack_with_id("root").show(&mut ui, build);
     ui.end_frame();
 
-    let avail2 =
-        ui.layout_engine.cache.available[snap_for(&ui, wid).unwrap().0.nodes.start as usize];
+    let avail2 = snap_for(&ui, wid).unwrap().0.available_q;
     let desired2 = snap_for(&ui, wid).unwrap().1[0];
     assert_ne!(
         avail1, avail2,
