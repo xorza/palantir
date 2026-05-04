@@ -170,13 +170,14 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
     );
 }
 
-/// Today's behavior pin: when a Stack's Fill child clamps to its
-/// `MinContent` floor during pass-2 measure, `arrange` recomputes
-/// leftover from non-Fill `desired` and places the Fill child at
-/// `leftover * weight / total_weight`. That arranged size can be less
-/// than the child's measured size — measure floored, arrange did not.
+/// Pin: when a Stack's Fill child clamps to its `MinContent` floor
+/// during pass-2 measure, the Fill HStack parent reports `max(available,
+/// hug_with_margin)` so its own desired size includes the floored
+/// child. Arrange then sees an inner span that fits, and the Fill
+/// child's arranged width matches its measured width — parent stays
+/// at-least-as-big-as-child instead of cropping the measure floor.
 #[test]
-fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
+fn hstack_fill_clamped_to_min_content_arranges_at_measured_floor() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
@@ -192,13 +193,9 @@ fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
         "measure must floor at MinContent; got shaped_w={shaped_w}"
     );
     assert!(
-        rect_w < shaped_w,
-        "arrange leftover should fall below measured floor; \
+        (rect_w - shaped_w).abs() < 0.5,
+        "arrange should match the measured floor now that the Fill \
+         parent grows past `available` to contain it; \
          shaped_w={shaped_w} rect_w={rect_w}"
-    );
-    assert!(
-        rect_w < 30.0,
-        "rect should reflect ~20 px leftover share, not the floor; \
-         got rect_w={rect_w}"
     );
 }

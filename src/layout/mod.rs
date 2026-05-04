@@ -195,8 +195,19 @@ impl LayoutEngine {
         // `tree.node_count() == 0`, so downstream consumers walk zero
         // entries — return the freshly-cleared result without measuring.
         if let Some(root) = root {
-            self.measure(tree, root, surface.size, text);
-            self.arrange(tree, root, surface);
+            // Root slot grows past the surface when measured content
+            // exceeds it, so the parent-≥-child invariant from
+            // `resolve_axis_size` (Fill/Hug ≥ hug_with_margin) holds
+            // at the root too. Downstream (cascade/composer/backend)
+            // tolerates out-of-surface rects; the GPU scissor clips at
+            // the viewport. `Fixed` is unaffected: it short-circuits
+            // in `resolve_axis_size` and never reads `hug_with_margin`.
+            let desired = self.measure(tree, root, surface.size, text);
+            let slot = Rect {
+                min: surface.min,
+                size: surface.size.max(desired),
+            };
+            self.arrange(tree, root, slot);
         }
         assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
