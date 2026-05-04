@@ -10,10 +10,10 @@
 //! semantics conflict with "consume row leftover" and need explicit
 //! per-line distribution that's outside this MVP. Cross-axis Fill works
 //! identically to Stack: each line's cross size = max child cross, and
-//! `place_axis` with `AutoBias::StretchIfFill` makes Fill children grow
-//! to that height (CSS `align-items: stretch` default).
+//! `place_axis` with the `Auto-stretches-Fill` rule makes Fill children
+//! grow to that height (CSS `align-items: stretch` default).
 
-use super::support::{AutoBias, AxisAlignPair, place_axis, resolved_axis_align, zero_subtree};
+use super::support::{cross_place, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size};
@@ -210,23 +210,9 @@ pub(crate) fn arrange(
             let d = layout.scratch.desired[c.index()];
             let s = *tree.layout(c);
             // Cross axis: each child placed within the line's cross
-            // extent via `place_axis`. Same rule as Stack cross —
-            // Fill stretches to line_cross, Hug aligns per child.
-            let AxisAlignPair {
-                h: h_align,
-                v: v_align,
-            } = resolved_axis_align(&s, parent_child_align);
-            let cross_align = match axis {
-                Axis::X => v_align,
-                Axis::Y => h_align,
-            };
-            let cross_p = place_axis(
-                cross_align,
-                axis.cross_sizing(s.size),
-                axis.cross(d),
-                line_cross,
-                AutoBias::StretchIfFill,
-            );
+            // extent. Same rule as Stack cross — Fill stretches to
+            // line_cross, Hug aligns per child.
+            let cross_p = cross_place(axis, &s, parent_child_align, d, line_cross);
             let main_size = axis.main(d);
             let child_rect = axis.compose_rect(
                 main_cursor,

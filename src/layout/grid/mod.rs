@@ -1,6 +1,6 @@
-use super::support::{AutoBias, place_two_axis, zero_subtree};
+use super::support::{AxisAlignPair, place_axis, resolved_axis_align, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
-use crate::layout::types::{sizing::Sizing, span::Span, track::Track};
+use crate::layout::types::{align::AxisAlign, sizing::Sizing, span::Span, track::Track};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
 use crate::tree::element::LayoutMode;
@@ -606,19 +606,25 @@ fn arrange_inner(
         };
 
         // Grid: a child with no explicit alignment stretches to fill its cell
-        // (WPF default) — `AutoBias::AlwaysStretch` collapses Auto to Stretch
-        // even when the child isn't `Sizing::Fill`.
-        let slot = Size::new(slot_w, slot_h);
-        let p = place_two_axis(
-            &s_node,
-            parent_child_align,
-            d,
-            slot,
-            AutoBias::AlwaysStretch,
-        );
+        // (WPF default). Substitute `Auto → Stretch` on each resolved axis
+        // before placing — same effect as the deleted `AutoBias::AlwaysStretch`
+        // flag had, but local to the one driver that needs it.
+        let AxisAlignPair { h, v } = resolved_axis_align(&s_node, parent_child_align);
+        let h = if matches!(h, AxisAlign::Auto) {
+            AxisAlign::Stretch
+        } else {
+            h
+        };
+        let v = if matches!(v, AxisAlign::Auto) {
+            AxisAlign::Stretch
+        } else {
+            v
+        };
+        let x = place_axis(h, s_node.size.w, d.w, slot_w);
+        let y = place_axis(v, s_node.size.h, d.h, slot_h);
         let child_rect = Rect {
-            min: inner.min + Vec2::new(slot_x, slot_y) + p.offset,
-            size: p.size,
+            min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
+            size: Size::new(x.size, y.size),
         };
         layout.arrange(tree, c, child_rect);
     }

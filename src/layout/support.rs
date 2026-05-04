@@ -137,15 +137,6 @@ pub(crate) fn child_avail_per_axis_hug(size: Sizes, inner_avail: Size) -> Size {
     )
 }
 
-/// How `place_axis` interprets `AxisAlign::Auto`.
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub(crate) enum AutoBias {
-    /// Stack/ZStack: Auto stretches only when the child is `Sizing::Fill`.
-    StretchIfFill,
-    /// Grid: Auto stretches unconditionally (WPF cell default).
-    AlwaysStretch,
-}
-
 /// Resolved horizontal/vertical alignment after the cascade.
 pub(crate) struct AxisAlignPair {
     pub(crate) h: AxisAlign,
@@ -156,12 +147,6 @@ pub(crate) struct AxisAlignPair {
 pub(crate) struct AxisPlacement {
     pub(crate) size: f32,
     pub(crate) offset: f32,
-}
-
-/// Two-axis placement: chosen size + offset within the parent's inner rect.
-pub(crate) struct Placement {
-    pub(crate) size: Size,
-    pub(crate) offset: Vec2,
 }
 
 /// Resolve a child's alignment on both axes: child's own value if not `Auto`,
@@ -180,17 +165,20 @@ pub(crate) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align)
 /// Compute size + offset along one axis given the child's alignment, its
 /// declared sizing, intrinsic desired size, and the inner span available.
 /// Used for stack cross-axis, ZStack per-axis, and Grid per-cell placement.
-/// `bias` selects the per-driver `AxisAlign::Auto` rule (see `AutoBias`).
+///
+/// `Auto` stretches only when the child is `Sizing::Fill` — the default
+/// for stack / wrapstack / zstack. Grid wants `Auto` to stretch
+/// unconditionally (WPF cell default); it pre-substitutes `Auto →
+/// Stretch` at its call site rather than threading a per-driver flag
+/// here.
 pub(crate) fn place_axis(
     align: AxisAlign,
     sizing: Sizing,
     desired: f32,
     inner: f32,
-    bias: AutoBias,
 ) -> AxisPlacement {
     let stretch = matches!(align, AxisAlign::Stretch)
-        || matches!(align, AxisAlign::Auto)
-            && (matches!(bias, AutoBias::AlwaysStretch) || matches!(sizing, Sizing::Fill(_)));
+        || matches!(align, AxisAlign::Auto) && matches!(sizing, Sizing::Fill(_));
     let size = if stretch { inner } else { desired };
     let offset = match align {
         AxisAlign::Center => ((inner - size) * 0.5).max(0.0),
@@ -200,26 +188,28 @@ pub(crate) fn place_axis(
     AxisPlacement { size, offset }
 }
 
-/// Resolve a child's two-axis size + offset inside `inner`, applying the
-/// alignment cascade and the per-driver `AutoBias` rule. Used by ZStack and
-/// Grid arrange — both place each child independently per axis using the
-/// same rule. Stack does cross-axis placement only (different main-axis
-/// rule) so it still calls `place_axis` directly on cross.
-pub(crate) fn place_two_axis(
+/// Cross-axis placement for a child of a main-axis stack (Stack /
+/// WrapStack). Resolves the alignment cascade, picks the cross axis
+/// from the resolved (h, v) pair, and runs `place_axis` against the
+/// child's cross sizing + desired + the parent's cross extent. Single
+/// source of truth so the cascade rule can't drift between Stack and
+/// WrapStack.
+pub(crate) fn cross_place(
+    main_axis: Axis,
     child: &LayoutCore,
     parent_child_align: Align,
     desired: Size,
-    inner: Size,
-    bias: AutoBias,
-) -> Placement {
-    let AxisAlignPair {
-        h: h_align,
-        v: v_align,
-    } = resolved_axis_align(child, parent_child_align);
-    let x = place_axis(h_align, child.size.w, desired.w, inner.w, bias);
-    let y = place_axis(v_align, child.size.h, desired.h, inner.h, bias);
-    Placement {
-        size: Size::new(x.size, y.size),
-        offset: Vec2::new(x.offset, y.offset),
-    }
+    inner_cross: f32,
+) -> AxisPlacement {
+    let AxisAlignPair { h, v } = resolved_axis_align(child, parent_child_align);
+    let cross_align = match main_axis {
+        Axis::X => v,
+        Axis::Y => h,
+    };
+    place_axis(
+        cross_align,
+        main_axis.cross_sizing(child.size),
+        main_axis.cross(desired),
+        inner_cross,
+    )
 }

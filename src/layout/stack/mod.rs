@@ -1,25 +1,9 @@
-use super::support::{
-    AutoBias, AxisAlignPair, children_max_intrinsic, place_axis, resolved_axis_align, zero_subtree,
-};
+use super::support::{children_max_intrinsic, cross_place, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
-use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
+use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
-use crate::tree::element::LayoutCore;
 use crate::tree::{Child, NodeId, Tree};
-
-/// Cross-axis alignment of a child, picked from the shared two-axis
-/// `resolved_axis_align` so HStack/VStack share the cascade rule with
-/// ZStack/Grid. The unused main axis is computed and discarded — cheap.
-fn cross_align(axis: Axis, child: &LayoutCore, parent_child_align: Align) -> AxisAlign {
-    let AxisAlignPair { h, v } = resolved_axis_align(child, parent_child_align);
-    match axis {
-        // HStack: cross = vertical
-        Axis::X => v,
-        // VStack: cross = horizontal
-        Axis::Y => h,
-    }
-}
 
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
@@ -179,16 +163,7 @@ pub(crate) fn arrange(
             _ => axis.main(d),
         };
 
-        let cross_align = cross_align(axis, &s, parent_child_align);
-        let cross_sizing = axis.cross_sizing(s.size);
-        let cross_desired = axis.cross(d);
-        let cross_p = place_axis(
-            cross_align,
-            cross_sizing,
-            cross_desired,
-            cross,
-            AutoBias::StretchIfFill,
-        );
+        let cross_p = cross_place(axis, &s, parent_child_align, d, cross);
 
         let child_rect =
             axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
