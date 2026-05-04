@@ -217,11 +217,7 @@ impl ComposeCache {
             },
         );
 
-        let any_over =
-            self.quads.is_overgrown() || self.texts.is_overgrown() || self.groups.is_overgrown();
-        let any_floor =
-            self.quads.over_floor() || self.texts.over_floor() || self.groups.over_floor();
-        if any_over && any_floor {
+        if self.quads.needs_compact() || self.texts.needs_compact() || self.groups.needs_compact() {
             self.compact();
         }
     }

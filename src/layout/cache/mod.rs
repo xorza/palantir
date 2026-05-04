@@ -244,7 +244,7 @@ impl MeasureCache {
             },
         );
 
-        if self.desired.is_overgrown() && self.desired.over_floor() {
+        if self.desired.needs_compact() || self.hugs.needs_compact() {
             self.compact();
         }
     }

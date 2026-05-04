@@ -40,14 +40,13 @@ impl<T> LiveArena<T> {
         self.live -= len as usize;
     }
 
-    /// At least half the arena is garbage.
-    pub(crate) fn is_overgrown(&self) -> bool {
-        self.items.len() > self.live.saturating_mul(COMPACT_RATIO)
-    }
-
-    /// Arena is large enough for compaction to be worth the rebuild.
-    pub(crate) fn over_floor(&self) -> bool {
-        self.live > COMPACT_FLOOR
+    /// At least half the arena is garbage AND the arena holds enough
+    /// live items for the rebuild to pay for itself. Caches with
+    /// multiple independent arenas should compact when ANY of them
+    /// reports `true` — the per-arena form keeps a tiny-but-overgrown
+    /// arena from triggering on a co-resident large arena's account.
+    pub(crate) fn needs_compact(&self) -> bool {
+        self.items.len() > self.live.saturating_mul(COMPACT_RATIO) && self.live > COMPACT_FLOOR
     }
 
     /// Reachable only from the cache `clear()` methods, themselves
