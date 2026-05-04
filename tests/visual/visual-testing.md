@@ -1,4 +1,4 @@
-# Visual Testing Suite — Plan
+# Visual Testing Suite
 
 Headless wgpu renderer → PNG → diff against committed golden images.
 
@@ -8,7 +8,7 @@ Status legend: ✅ done · 🟡 partial · ⏳ not started
 
 - Pin visual output of representative scenes (widgets, layout drivers, text).
 - Catch unintended rendering/layout regressions in PRs.
-- Stay opt-in on CI initially (GPU/driver variance — see Step 6).
+- Stay opt-in on CI initially (GPU/driver variance — see CI posture).
 
 ## Non-goals
 
@@ -16,57 +16,84 @@ Status legend: ✅ done · 🟡 partial · ⏳ not started
 - Replacing layout/unit tests.
 - Animation / multi-frame capture (single static frame per fixture for now).
 
-## Steps
+## Layout
 
-### 1. Add dev-deps ✅
-- `image` added with PNG-only features (`default-features = false, features = ["png"]`).
-- `pollster` reused — already a regular dep.
+```
+tests/visual/
+├── main.rs              entry: mod decls + harness sanity test
+├── harness.rs           wgpu setup + render + readback
+├── diff.rs              Tolerance, DiffReport, parallel diff
+├── golden.rs            assert_matches_golden + auto-create + UPDATE_GOLDEN
+├── fixtures.rs          mod decls + shared DARK_BG const
+├── fixtures/
+│   ├── widgets.rs       per-widget minimal scenes
+│   ├── layout.rs        vstack/grid/zstack drivers
+│   ├── text.rs          text rendering
+│   └── hidpi.rs         scale > 1.0 scenes
+├── golden/              committed PNG references
+├── output/              gitignored — written on failure
+└── visual-testing.md    this file
+```
 
-### 2. Headless harness ✅
-Lives at `tests/visual/harness.rs` (not `src/support/`; integration-test-only, no need to ship it).
-- `Harness::new()` — `LowPower` adapter, no surface, `Rgba8UnormSrgb`, wires `CosmicMeasure` into both `Ui` and `WgpuBackend`.
-- `Harness::render(physical, scale, clear, scene)` → `RgbaImage`.
-- Private `readback()` honors the 256-byte row alignment, returns via `RgbaImage::from_raw`.
+Single test binary (`cargo test --test visual`); Cargo auto-discovers
+`tests/visual/main.rs` per the [project-layout][] convention.
 
-### 3. Diff utility ✅
-`tests/visual/diff.rs`:
-- `Tolerance { per_channel: u8, max_ratio: f32 }` — defaults `(2, 0.001)`.
-- `DiffReport { max_channel_delta, differing_pixels, differing_ratio, diff_image }`.
-- `diff(actual, expected, tol)` — passing pixels dimmed to 25%, failing pixels solid red.
-- 6 unit tests cover identical / within-channel / sparse-outlier-ratio / saturated-fail / strict-zero / dimension-mismatch.
+[project-layout]: https://doc.rust-lang.org/cargo/guide/project-layout.html
 
-### 4. Test entry ✅ (with deviations)
-Cargo's documented multi-file pattern: `tests/visual/main.rs` + sibling modules, auto-discovered as `--test visual`. No `[[test]]` or `#[path]`.
+## Status
 
-Deviations from the original plan:
-- **Not `#[ignore]` by default.** One fixture passes deterministically on dev machines; revisit once we have more fixtures or a CI baseline.
-- **Auto-create on missing golden** (in addition to `UPDATE_GOLDEN=1` force-rewrite). First run prints `NEW GOLDEN (no prior image)` and passes.
-- No fixture table yet — fixtures are individual `#[test]` fns. Will introduce a table if/when count justifies.
+### Infrastructure ✅
+- **Dev-deps** — `image` (PNG-only features). `pollster` reused from regular deps.
+- **Harness** (`harness.rs`) — `LowPower` adapter, no surface, `Rgba8UnormSrgb`. `Harness::new()` clones a process-global `OnceLock<Gpu>` (device + queue) and a per-thread `SharedCosmic` (fonts loaded once per worker thread). `Harness::render(physical, scale, clear, scene)` returns an `RgbaImage`. Private `readback()` honors the 256-byte row alignment via `RgbaImage::from_raw`.
+- **Diff** (`diff.rs`) — `Tolerance { per_channel, max_ratio }` defaults `(2, 0.001)`. `diff(actual, expected, tol)` is row-parallel via rayon; reduces to a `RowStats { max_delta, differing }`. Diff image dims passing pixels to 25%, marks failing pixels solid red. 6 unit tests pin the contract (identical / within-channel / sparse-outlier-ratio / saturated-fail / strict-zero / dimension-mismatch).
+- **Golden workflow** (`golden.rs`) — `assert_matches_golden(name, &actual, tol)`. Missing golden → auto-write + pass with `NEW GOLDEN (no prior image)` notice. `UPDATE_GOLDEN=1` force-rewrites. On failure dumps `actual.png`, `expected.png`, `diff.png` into `tests/visual/output/<name>/`.
 
-### 5. Initial fixtures 🟡
-- ✅ `button_hello` — 256×96, single `Button` with label.
-- ⏳ `grid_3x3` — small grid with colored frames, 400×400.
-- ⏳ `text_paragraph` — multi-line `Text`, 400×200.
-- ✅ Bonus: `readback_returns_clear_color_for_empty_scene` — round-trips clear color through wgpu/sRGB pipeline (no golden, asserts pixel values directly).
+### Fixtures ✅ (7 + 1 sanity)
+- `widgets`: `button_hello`, `frame_filled_with_stroke`.
+- `layout`: `vstack_fill_weights`, `grid_mixed_tracks`, `zstack_centered_button`.
+- `text`: `text_paragraph` (looser tolerance for glyph AA).
+- `hidpi`: `dashboard` — complex multi-region scene at scale 2.0 (header / sidebar / 2×2 cards / footer).
+- `main`: `readback_returns_clear_color_for_empty_scene` — sRGB round-trip sanity, no golden.
 
-### 6. CI posture ⏳
-Local-only for now. No GitHub Actions job yet.
+### CI ⏳
+Local-only. No GitHub Actions job yet. Once we have a second hidpi fixture or any flake reports, gate the suite behind `#[ignore]` and wire one pinned-runner job that runs `cargo test --test visual -- --ignored`.
 
-### 7. Later (deferred) ⏳
+### Adding a fixture
+
+```rust
+#[test]
+fn my_scene_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(W, H), SCALE, DARK_BG, |ui| {
+        // build scene
+    });
+    assert_matches_golden("my_scene", &img, Tolerance::default());
+}
+```
+
+Drop in the appropriate `fixtures/*.rs` (or create a new file + add a
+`mod` to `fixtures.rs`). First run auto-creates the golden — eyeball it
+before committing. Per-fixture tolerance overrides via the `Tolerance`
+arg.
+
+## Deviations from the original plan
+
+- Harness lives in `tests/visual/`, not `src/support/visual_test.rs`. Integration-test-only, no need to ship in the public crate.
+- Not `#[ignore]` by default. Suite is fast (~1.2s) and currently deterministic on dev machines.
+- Auto-create on missing golden (added to the original `UPDATE_GOLDEN=1` workflow).
+- No fixture table — individual `#[test]` fns. Topical grouping under `fixtures/` covers organization without macros.
+
+## Deferred
+
 - Auto-import `examples/showcase/` tabs as fixtures.
-- Per-fixture tolerance overrides.
 - HTML diff report (gallery of failures).
 - Multi-frame / interaction capture (hover, focus).
-- Hidpi (scale 2.0) variants.
+- Additional hidpi variants (scale 1.5, 3.0).
+- Promote harness to its own internal crate if/when benches or other
+  test binaries want to reuse it (current scale doesn't justify).
 
 ## Open questions
 
-- **Adapter selection** — currently `LowPower`. Revisit if dev-machine vs CI runners diverge.
-- **Golden storage** — raw PNG in repo (1.5 KB for current fixture). Re-evaluate at ~50+ fixtures or if any single golden exceeds ~100 KB.
-- **Scale factor** — pinned at 1.0. No 2.0 fixtures yet.
-
-## What's left, prioritized
-
-1. Add `grid_3x3` and `text_paragraph` fixtures (Step 5).
-2. Decide CI posture (Step 6) — probably gate behind `--ignored` once a second fixture exists, then wire one CI job.
-3. Tackle deferred items (Step 7) opportunistically.
+- **Adapter selection** — `LowPower`. Revisit if dev-machine vs CI runners diverge.
+- **Golden storage** — raw PNG in repo. Largest current golden is `dashboard_hidpi` at 53 KB. Re-evaluate at ~50+ fixtures or if any single golden exceeds ~200 KB.
+- **CI gating** — `#[ignore]` + pinned runner is the safe default; the alternative is per-platform goldens (`golden/<arch>/...`) which is more work but catches more.
