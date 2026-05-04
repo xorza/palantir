@@ -138,8 +138,8 @@ fn same_len_rewrite_is_in_place() {
     let src1 = buf_at(Vec2::new(10.0, 20.0));
     write_full(&mut cache, wid(1), hash(1), &src1, Vec2::new(10.0, 20.0));
     let snap_before = *cache.snapshots.get(&wid(1)).unwrap();
-    let kinds_arena_len = cache.kinds_arena.len();
-    let data_arena_len = cache.data_arena.len();
+    let kinds_arena_len = cache.kinds.items.len();
+    let data_arena_len = cache.data.items.len();
 
     let src2 = buf_at(Vec2::new(99.0, 88.0));
     write_full(&mut cache, wid(1), hash(1), &src2, Vec2::new(99.0, 88.0));
@@ -149,8 +149,8 @@ fn same_len_rewrite_is_in_place() {
     assert_eq!(snap_before.cmds.len, snap_after.cmds.len);
     assert_eq!(snap_before.data.start, snap_after.data.start);
     assert_eq!(snap_before.data.len, snap_after.data.len);
-    assert_eq!(cache.kinds_arena.len(), kinds_arena_len);
-    assert_eq!(cache.data_arena.len(), data_arena_len);
+    assert_eq!(cache.kinds.items.len(), kinds_arena_len);
+    assert_eq!(cache.data.items.len(), data_arena_len);
 
     // Replay at the new origin should match a fresh cold build.
     let replayed = replay(&cache, wid(1), hash(1), Vec2::new(99.0, 88.0));
@@ -166,8 +166,8 @@ fn size_change_appends_and_marks_garbage() {
     write_full(&mut cache, wid(1), hash(1), &big, Vec2::ZERO);
     let big_cmds = big.kinds.len();
     let big_data = big.data.len();
-    assert_eq!(cache.live_cmds, big_cmds);
-    assert_eq!(cache.live_data, big_data);
+    assert_eq!(cache.kinds.live, big_cmds);
+    assert_eq!(cache.data.live, big_data);
 
     // Second snapshot: just one DrawRect. Different hash → caller would
     // see a miss before write, but write_subtree itself still rewrites
@@ -192,11 +192,11 @@ fn size_change_appends_and_marks_garbage() {
     );
 
     // Live counters reflect only the new payload.
-    assert_eq!(cache.live_cmds, small.kinds.len());
-    assert_eq!(cache.live_data, small.data.len());
+    assert_eq!(cache.kinds.live, small.kinds.len());
+    assert_eq!(cache.data.live, small.data.len());
     // But the old range is still in the arena as garbage.
-    assert!(cache.kinds_arena.len() > cache.live_cmds);
-    assert!(cache.data_arena.len() > cache.live_data);
+    assert!(cache.kinds.items.len() > cache.kinds.live);
+    assert!(cache.data.items.len() > cache.data.live);
 
     // Lookup with the new hash hits and replays correctly.
     let hit = cache.try_lookup(wid(1), hash(2), avail()).unwrap();
@@ -209,14 +209,14 @@ fn sweep_removed_evicts_and_decrements_live() {
     let src = buf_at(Vec2::ZERO);
     write_full(&mut cache, wid(1), hash(1), &src, Vec2::ZERO);
     write_full(&mut cache, wid(2), hash(2), &src, Vec2::ZERO);
-    let total_cmds = cache.live_cmds;
-    let total_data = cache.live_data;
+    let total_cmds = cache.kinds.live;
+    let total_data = cache.data.live;
 
     cache.sweep_removed(&[wid(1)]);
     assert!(!cache.snapshots.contains_key(&wid(1)));
     assert!(cache.snapshots.contains_key(&wid(2)));
-    assert_eq!(cache.live_cmds, total_cmds / 2);
-    assert_eq!(cache.live_data, total_data / 2);
+    assert_eq!(cache.kinds.live, total_cmds / 2);
+    assert_eq!(cache.data.live, total_data / 2);
 }
 
 #[test]
@@ -270,11 +270,11 @@ fn clear_drops_everything() {
     let src = buf_at(Vec2::ZERO);
     write_full(&mut cache, wid(1), hash(1), &src, Vec2::ZERO);
     cache.clear();
-    assert_eq!(cache.live_cmds, 0);
-    assert_eq!(cache.live_data, 0);
+    assert_eq!(cache.kinds.live, 0);
+    assert_eq!(cache.data.live, 0);
     assert!(cache.snapshots.is_empty());
-    assert!(cache.kinds_arena.is_empty());
-    assert!(cache.data_arena.is_empty());
+    assert!(cache.kinds.items.is_empty());
+    assert!(cache.data.items.is_empty());
     assert!(cache.try_lookup(wid(1), hash(1), avail()).is_none());
 }
 

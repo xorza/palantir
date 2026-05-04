@@ -145,16 +145,16 @@ fn sweep_removed_evicts_and_decrements_live() {
     let mut cache = ComposeCache::default();
     write(&mut cache, wid(1), hash(1), 0, 0, 0, 0);
     write(&mut cache, wid(2), hash(2), 0, 0, 0, 0);
-    let total_q = cache.live_quads;
-    let total_t = cache.live_texts;
-    let total_g = cache.live_groups;
+    let total_q = cache.quads.live;
+    let total_t = cache.texts.live;
+    let total_g = cache.groups.live;
 
     cache.sweep_removed(&[wid(1)]);
     assert!(!cache.snapshots.contains_key(&wid(1)));
     assert!(cache.snapshots.contains_key(&wid(2)));
-    assert_eq!(cache.live_quads, total_q / 2);
-    assert_eq!(cache.live_texts, total_t / 2);
-    assert_eq!(cache.live_groups, total_g / 2);
+    assert_eq!(cache.quads.live, total_q / 2);
+    assert_eq!(cache.texts.live, total_t / 2);
+    assert_eq!(cache.groups.live, total_g / 2);
 }
 
 #[test]
@@ -162,9 +162,9 @@ fn clear_drops_everything() {
     let mut cache = ComposeCache::default();
     write(&mut cache, wid(1), hash(1), 0, 0, 0, 0);
     cache.clear();
-    assert_eq!(cache.live_quads, 0);
-    assert_eq!(cache.live_texts, 0);
-    assert_eq!(cache.live_groups, 0);
+    assert_eq!(cache.quads.live, 0);
+    assert_eq!(cache.texts.live, 0);
+    assert_eq!(cache.groups.live, 0);
     assert!(cache.snapshots.is_empty());
     assert!(cache.try_lookup(wid(1), hash(1), avail(), 0).is_none());
 }

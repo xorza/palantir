@@ -5,28 +5,33 @@
 //! `src/renderer/frontend/encoder/encode-cache.md` and
 //! `src/layout/measure-cache.md`.
 //!
-//! Storage layout: three SoA arenas — `kinds_arena`, `starts_arena`
-//! (parallel, length = total cached cmds across all snapshots) and
-//! `data_arena` (length = total cached payload words). Per-`WidgetId`
+//! Storage layout: three SoA arenas — `kinds` and `starts` (parallel,
+//! length = total cached cmds across all snapshots) and `data`
+//! (length = total cached payload words). Per-`WidgetId`
 //! [`EncodeSnapshot`] picks two contiguous ranges out of those.
+//! Bookkeeping (`live` count, compaction trigger) is shared with
+//! [`ComposeCache`] via [`LiveArena`]; `starts` rides on `kinds`'s
+//! live count by the parallel-length invariant.
 //!
-//! **Subtree-relative storage**: `data_arena` stores `rect.min` with
-//! the snapshot root's `origin` already subtracted. On replay the
-//! caller (encoder) translates back by the *current* frame's root
-//! origin, so a cached subtree survives parent origin shifts (scroll,
-//! resize, reflowed siblings) without invalidating. Net offset over an
+//! **Subtree-relative storage**: `data` stores `rect.min` with the
+//! snapshot root's `origin` already subtracted. On replay the caller
+//! (encoder) translates back by the *current* frame's root origin, so
+//! a cached subtree survives parent origin shifts (scroll, resize,
+//! reflowed siblings) without invalidating. Net offset over an
 //! unchanged frame is zero — replay is byte-identical to a cold encode.
 //!
-//! `starts_arena` stores **subtree-relative** payload offsets — i.e.
-//! offsets into `data_arena[snap.data.range()]` rather than into the
-//! whole arena. Compaction can therefore move a snapshot's range
-//! without touching the starts.
+//! `starts` stores **subtree-relative** payload offsets — i.e. offsets
+//! into `data[snap.data.range()]` rather than into the whole arena.
+//! Compaction can therefore move a snapshot's range without touching
+//! the starts.
 //!
 //! [`MeasureCache`]: crate::layout::cache::MeasureCache
+//! [`ComposeCache`]: crate::renderer::frontend::composer::cache::ComposeCache
 //! [`EncodeSnapshot`]: EncodeSnapshot
 
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::span::Span;
+use crate::renderer::frontend::cache_arena::LiveArena;
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
@@ -45,9 +50,9 @@ const _: () = {
     assert!(std::mem::offset_of!(DrawTextPayload, rect) == 0);
 };
 
-/// 32-byte snapshot. `cmds` indexes the parallel
-/// (`kinds_arena`, `starts_arena`); `data` indexes `data_arena`. Both
-/// `subtree_hash` and `available_q` are required equal at lookup time.
+/// 32-byte snapshot. `cmds` indexes the parallel (`kinds`, `starts`);
+/// `data` indexes `data`. Both `subtree_hash` and `available_q` are
+/// required equal at lookup time.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodeSnapshot {
     pub(crate) subtree_hash: NodeHash,
@@ -65,17 +70,14 @@ struct CachedEncode<'a> {
     data: &'a [u32],
 }
 
-const COMPACT_RATIO: usize = 2;
-const COMPACT_FLOOR: usize = 64;
-
 #[derive(Default)]
 pub(crate) struct EncodeCache {
-    kinds_arena: Vec<CmdKind>,
-    starts_arena: Vec<u32>,
-    data_arena: Vec<u32>,
-    snapshots: FxHashMap<WidgetId, EncodeSnapshot>,
-    live_cmds: usize,
-    live_data: usize,
+    pub(crate) kinds: LiveArena<CmdKind>,
+    // `starts.items` is parallel to `kinds.items` (same length always);
+    // its `live` count rides on `kinds.live` by invariant.
+    pub(crate) starts: Vec<u32>,
+    pub(crate) data: LiveArena<u32>,
+    pub(crate) snapshots: FxHashMap<WidgetId, EncodeSnapshot>,
 }
 
 impl EncodeCache {
@@ -91,9 +93,9 @@ impl EncodeCache {
             return None;
         }
         Some(CachedEncode {
-            kinds: &self.kinds_arena[snap.cmds.range()],
-            starts: &self.starts_arena[snap.cmds.range()],
-            data: &self.data_arena[snap.data.range()],
+            kinds: &self.kinds.items[snap.cmds.range()],
+            starts: &self.starts[snap.cmds.range()],
+            data: &self.data.items[snap.data.range()],
         })
     }
 
@@ -168,29 +170,23 @@ impl EncodeCache {
                 let data = prev.data.range();
                 prev.subtree_hash = subtree_hash;
                 prev.available_q = available_q;
-                let Self {
-                    kinds_arena,
-                    starts_arena,
-                    data_arena,
-                    ..
-                } = self;
                 let src_kinds = &src.kinds[src_cmd_range.clone()];
                 // Same `subtree_hash` ⇒ same authoring ⇒ same cmd shape.
                 // A 64-bit hash collision (or future hash bug) would break
                 // this; pay one slice compare per write to catch it.
-                assert_eq!(&kinds_arena[cmds.clone()], src_kinds);
-                kinds_arena[cmds.clone()].copy_from_slice(src_kinds);
-                for (dst, &abs) in starts_arena[cmds.clone()]
+                assert_eq!(&self.kinds.items[cmds.clone()], src_kinds);
+                self.kinds.items[cmds.clone()].copy_from_slice(src_kinds);
+                for (dst, &abs) in self.starts[cmds.clone()]
                     .iter_mut()
                     .zip(src.starts[src_cmd_range].iter())
                 {
                     *dst = abs - src_data.start;
                 }
-                data_arena[data.clone()].copy_from_slice(&src.data[src_data_range]);
+                self.data.items[data.clone()].copy_from_slice(&src.data[src_data_range]);
                 bump_rect_min(
-                    &kinds_arena[cmds.clone()],
-                    &starts_arena[cmds],
-                    &mut data_arena[data],
+                    &self.kinds.items[cmds.clone()],
+                    &self.starts[cmds],
+                    &mut self.data.items[data],
                     neg_origin,
                 );
                 return;
@@ -204,33 +200,30 @@ impl EncodeCache {
         // append new ones. The trailing `insert` overwrites any prior
         // snapshot at this wid in a single probe.
         if let Some((cmds_len, data_len)) = prev_lens {
-            assert!(self.live_cmds >= cmds_len as usize);
-            assert!(self.live_data >= data_len as usize);
-            self.live_cmds -= cmds_len as usize;
-            self.live_data -= data_len as usize;
+            self.kinds.release(cmds_len);
+            self.data.release(data_len);
         }
-        let cmds_span = Span::new(self.kinds_arena.len() as u32, src_cmds.len);
-        let data_span = Span::new(self.data_arena.len() as u32, src_data.len);
+        let cmds_span = Span::new(self.kinds.items.len() as u32, src_cmds.len);
+        let data_span = Span::new(self.data.items.len() as u32, src_data.len);
 
-        self.kinds_arena
+        self.kinds
+            .items
             .extend_from_slice(&src.kinds[src_cmd_range.clone()]);
-        self.starts_arena.reserve(src_cmds.len as usize);
+        self.starts.reserve(src_cmds.len as usize);
         for &abs in &src.starts[src_cmd_range.clone()] {
-            self.starts_arena.push(abs - src_data.start);
+            self.starts.push(abs - src_data.start);
         }
-        self.data_arena.extend_from_slice(&src.data[src_data_range]);
+        self.data.items.extend_from_slice(&src.data[src_data_range]);
 
-        let appended_kinds = &self.kinds_arena[cmds_span.range()];
-        let appended_starts = &self.starts_arena[cmds_span.range()];
         bump_rect_min(
-            appended_kinds,
-            appended_starts,
-            &mut self.data_arena[data_span.range()],
+            &self.kinds.items[cmds_span.range()],
+            &self.starts[cmds_span.range()],
+            &mut self.data.items[data_span.range()],
             neg_origin,
         );
 
-        self.live_cmds += src_cmds.len as usize;
-        self.live_data += src_data.len as usize;
+        self.kinds.live += src_cmds.len as usize;
+        self.data.live += src_data.len as usize;
         self.snapshots.insert(
             wid,
             EncodeSnapshot {
@@ -241,10 +234,8 @@ impl EncodeCache {
             },
         );
 
-        let cmds_overgrown = self.kinds_arena.len() > self.live_cmds.saturating_mul(COMPACT_RATIO);
-        let data_overgrown = self.data_arena.len() > self.live_data.saturating_mul(COMPACT_RATIO);
-        if (cmds_overgrown || data_overgrown)
-            && (self.live_cmds > COMPACT_FLOOR || self.live_data > COMPACT_FLOOR)
+        if (self.kinds.is_overgrown() || self.data.is_overgrown())
+            && (self.kinds.over_floor() || self.data.over_floor())
         {
             self.compact();
         }
@@ -253,10 +244,8 @@ impl EncodeCache {
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
-                assert!(self.live_cmds >= snap.cmds.len as usize);
-                assert!(self.live_data >= snap.data.len as usize);
-                self.live_cmds -= snap.cmds.len as usize;
-                self.live_data -= snap.data.len as usize;
+                self.kinds.release(snap.cmds.len);
+                self.data.release(snap.data.len);
             }
         }
     }
@@ -264,27 +253,17 @@ impl EncodeCache {
     /// Drop every snapshot and free all arena storage. Used by
     /// `Ui::__clear_encode_cache` for benches.
     pub(crate) fn clear(&mut self) {
-        self.kinds_arena.clear();
-        self.starts_arena.clear();
-        self.data_arena.clear();
+        self.kinds.clear();
+        self.starts.clear();
+        self.data.clear();
         self.snapshots.clear();
-        self.live_cmds = 0;
-        self.live_data = 0;
     }
 
     fn compact(&mut self) {
-        let Self {
-            kinds_arena,
-            starts_arena,
-            data_arena,
-            snapshots,
-            live_cmds,
-            live_data,
-        } = self;
-        let mut new_kinds: Vec<CmdKind> = Vec::with_capacity(*live_cmds);
-        let mut new_starts: Vec<u32> = Vec::with_capacity(*live_cmds);
-        let mut new_data: Vec<u32> = Vec::with_capacity(*live_data);
-        for snap in snapshots.values_mut() {
+        let mut new_kinds: Vec<CmdKind> = Vec::with_capacity(self.kinds.live);
+        let mut new_starts: Vec<u32> = Vec::with_capacity(self.kinds.live);
+        let mut new_data: Vec<u32> = Vec::with_capacity(self.data.live);
+        for snap in self.snapshots.values_mut() {
             let cmds = snap.cmds.range();
             let data = snap.data.range();
             // Starts are subtree-relative — copying without rewrite is
@@ -292,13 +271,13 @@ impl EncodeCache {
             // intra-range offsets.
             snap.cmds.start = new_kinds.len() as u32;
             snap.data.start = new_data.len() as u32;
-            new_kinds.extend_from_slice(&kinds_arena[cmds.clone()]);
-            new_starts.extend_from_slice(&starts_arena[cmds]);
-            new_data.extend_from_slice(&data_arena[data]);
+            new_kinds.extend_from_slice(&self.kinds.items[cmds.clone()]);
+            new_starts.extend_from_slice(&self.starts[cmds]);
+            new_data.extend_from_slice(&self.data.items[data]);
         }
-        *kinds_arena = new_kinds;
-        *starts_arena = new_starts;
-        *data_arena = new_data;
+        self.kinds.items = new_kinds;
+        self.starts = new_starts;
+        self.data.items = new_data;
     }
 }
 

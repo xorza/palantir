@@ -4,8 +4,8 @@
 //! write path, same `live × COMPACT_RATIO` compaction trigger. See
 //! `src/renderer/frontend/composer/compose-cache.md`.
 //!
-//! Storage layout: three SoA arenas — `quads_arena`, `texts_arena`,
-//! `groups_arena`. Per-`WidgetId` [`ComposeSnapshot`] picks a
+//! Storage layout: three SoA arenas — `quads`, `texts`, `groups` (each
+//! a [`LiveArena`]). Per-`WidgetId` [`ComposeSnapshot`] picks a
 //! contiguous range out of each.
 //!
 //! **Cascade-keyed.** Unlike the encode cache, the snapshot key
@@ -16,17 +16,18 @@
 //! misses; the encoder still hits because its subtree-relative
 //! storage absorbs origin shifts.
 //!
-//! **Subtree-relative groups.** `groups_arena` stores each
-//! [`DrawGroup`]'s `quads`/`texts` ranges with the snapshot's start
-//! offsets already subtracted. On replay the splicer adds the
-//! current frame's `out.quads.len()` / `out.texts.len()` back, so a
-//! cached snapshot survives changes to the *number* of quads/texts
-//! the parent emitted before it.
+//! **Subtree-relative groups.** `groups` stores each [`DrawGroup`]'s
+//! `quads`/`texts` ranges with the snapshot's start offsets already
+//! subtracted. On replay the splicer adds the current frame's
+//! `out.quads.len()` / `out.texts.len()` back, so a cached snapshot
+//! survives changes to the *number* of quads/texts the parent emitted
+//! before it.
 //!
 //! [`EncodeCache`]: crate::renderer::frontend::encoder::cache::EncodeCache
 
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::span::Span;
+use crate::renderer::frontend::cache_arena::LiveArena;
 use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
 use crate::tree::hash::NodeHash;
@@ -54,18 +55,12 @@ struct CachedCompose<'a> {
     groups: &'a [DrawGroup],
 }
 
-const COMPACT_RATIO: usize = 2;
-const COMPACT_FLOOR: usize = 64;
-
 #[derive(Default)]
 pub(crate) struct ComposeCache {
-    quads_arena: Vec<Quad>,
-    texts_arena: Vec<TextRun>,
-    groups_arena: Vec<DrawGroup>,
+    pub(crate) quads: LiveArena<Quad>,
+    pub(crate) texts: LiveArena<TextRun>,
+    pub(crate) groups: LiveArena<DrawGroup>,
     pub(crate) snapshots: FxHashMap<WidgetId, ComposeSnapshot>,
-    pub(crate) live_quads: usize,
-    pub(crate) live_texts: usize,
-    pub(crate) live_groups: usize,
 }
 
 impl ComposeCache {
@@ -82,9 +77,9 @@ impl ComposeCache {
             return None;
         }
         Some(CachedCompose {
-            quads: &self.quads_arena[snap.quads.range()],
-            texts: &self.texts_arena[snap.texts.range()],
-            groups: &self.groups_arena[snap.groups.range()],
+            quads: &self.quads.items[snap.quads.range()],
+            texts: &self.texts.items[snap.texts.range()],
+            groups: &self.groups.items[snap.groups.range()],
         })
     }
 
@@ -165,9 +160,9 @@ impl ComposeCache {
                 prev.subtree_hash = subtree_hash;
                 prev.available_q = available_q;
                 prev.cascade_fp = cascade_fp;
-                self.quads_arena[q_range].copy_from_slice(tail_quads);
-                self.texts_arena[t_range].copy_from_slice(tail_texts);
-                for (dst, src) in self.groups_arena[g_range]
+                self.quads.items[q_range].copy_from_slice(tail_quads);
+                self.texts.items[t_range].copy_from_slice(tail_texts);
+                for (dst, src) in self.groups.items[g_range]
                     .iter_mut()
                     .zip(tail_groups.iter())
                 {
@@ -185,30 +180,27 @@ impl ComposeCache {
         };
 
         if let Some((q, t, g)) = prev_lens {
-            assert!(self.live_quads >= q as usize);
-            assert!(self.live_texts >= t as usize);
-            assert!(self.live_groups >= g as usize);
-            self.live_quads -= q as usize;
-            self.live_texts -= t as usize;
-            self.live_groups -= g as usize;
+            self.quads.release(q);
+            self.texts.release(t);
+            self.groups.release(g);
         }
-        let q_span = Span::new(self.quads_arena.len() as u32, q_len);
-        let t_span = Span::new(self.texts_arena.len() as u32, t_len);
-        let g_span = Span::new(self.groups_arena.len() as u32, g_len);
+        let q_span = Span::new(self.quads.items.len() as u32, q_len);
+        let t_span = Span::new(self.texts.items.len() as u32, t_len);
+        let g_span = Span::new(self.groups.items.len() as u32, g_len);
 
-        self.quads_arena.extend_from_slice(tail_quads);
-        self.texts_arena.extend_from_slice(tail_texts);
-        self.groups_arena.reserve(g_len as usize);
+        self.quads.items.extend_from_slice(tail_quads);
+        self.texts.items.extend_from_slice(tail_texts);
+        self.groups.items.reserve(g_len as usize);
         for src in tail_groups {
-            self.groups_arena.push(DrawGroup {
+            self.groups.items.push(DrawGroup {
                 scissor: src.scissor,
                 quads: (src.quads.start - rebase_q)..(src.quads.end - rebase_q),
                 texts: (src.texts.start - rebase_t)..(src.texts.end - rebase_t),
             });
         }
-        self.live_quads += q_len as usize;
-        self.live_texts += t_len as usize;
-        self.live_groups += g_len as usize;
+        self.quads.live += q_len as usize;
+        self.texts.live += t_len as usize;
+        self.groups.live += g_len as usize;
         self.snapshots.insert(
             wid,
             ComposeSnapshot {
@@ -221,14 +213,11 @@ impl ComposeCache {
             },
         );
 
-        let q_over = self.quads_arena.len() > self.live_quads.saturating_mul(COMPACT_RATIO);
-        let t_over = self.texts_arena.len() > self.live_texts.saturating_mul(COMPACT_RATIO);
-        let g_over = self.groups_arena.len() > self.live_groups.saturating_mul(COMPACT_RATIO);
-        if (q_over || t_over || g_over)
-            && (self.live_quads > COMPACT_FLOOR
-                || self.live_texts > COMPACT_FLOOR
-                || self.live_groups > COMPACT_FLOOR)
-        {
+        let any_over =
+            self.quads.is_overgrown() || self.texts.is_overgrown() || self.groups.is_overgrown();
+        let any_floor =
+            self.quads.over_floor() || self.texts.over_floor() || self.groups.over_floor();
+        if any_over && any_floor {
             self.compact();
         }
     }
@@ -236,12 +225,9 @@ impl ComposeCache {
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
-                assert!(self.live_quads >= snap.quads.len as usize);
-                assert!(self.live_texts >= snap.texts.len as usize);
-                assert!(self.live_groups >= snap.groups.len as usize);
-                self.live_quads -= snap.quads.len as usize;
-                self.live_texts -= snap.texts.len as usize;
-                self.live_groups -= snap.groups.len as usize;
+                self.quads.release(snap.quads.len);
+                self.texts.release(snap.texts.len);
+                self.groups.release(snap.groups.len);
             }
         }
     }
@@ -249,29 +235,17 @@ impl ComposeCache {
     /// Drop every snapshot and free all arena storage. Used by
     /// `Ui::__clear_compose_cache` for benches.
     pub(crate) fn clear(&mut self) {
-        self.quads_arena.clear();
-        self.texts_arena.clear();
-        self.groups_arena.clear();
+        self.quads.clear();
+        self.texts.clear();
+        self.groups.clear();
         self.snapshots.clear();
-        self.live_quads = 0;
-        self.live_texts = 0;
-        self.live_groups = 0;
     }
 
     fn compact(&mut self) {
-        let Self {
-            quads_arena,
-            texts_arena,
-            groups_arena,
-            snapshots,
-            live_quads,
-            live_texts,
-            live_groups,
-        } = self;
-        let mut new_q: Vec<Quad> = Vec::with_capacity(*live_quads);
-        let mut new_t: Vec<TextRun> = Vec::with_capacity(*live_texts);
-        let mut new_g: Vec<DrawGroup> = Vec::with_capacity(*live_groups);
-        for snap in snapshots.values_mut() {
+        let mut new_q: Vec<Quad> = Vec::with_capacity(self.quads.live);
+        let mut new_t: Vec<TextRun> = Vec::with_capacity(self.texts.live);
+        let mut new_g: Vec<DrawGroup> = Vec::with_capacity(self.groups.live);
+        for snap in self.snapshots.values_mut() {
             let q = snap.quads.range();
             let t = snap.texts.range();
             let g = snap.groups.range();
@@ -280,13 +254,13 @@ impl ComposeCache {
             snap.quads.start = new_q.len() as u32;
             snap.texts.start = new_t.len() as u32;
             snap.groups.start = new_g.len() as u32;
-            new_q.extend_from_slice(&quads_arena[q]);
-            new_t.extend_from_slice(&texts_arena[t]);
-            new_g.extend_from_slice(&groups_arena[g]);
+            new_q.extend_from_slice(&self.quads.items[q]);
+            new_t.extend_from_slice(&self.texts.items[t]);
+            new_g.extend_from_slice(&self.groups.items[g]);
         }
-        *quads_arena = new_q;
-        *texts_arena = new_t;
-        *groups_arena = new_g;
+        self.quads.items = new_q;
+        self.texts.items = new_t;
+        self.groups.items = new_g;
     }
 }
 
