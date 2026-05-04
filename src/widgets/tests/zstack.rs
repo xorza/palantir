@@ -42,13 +42,13 @@ fn zstack_layers_children_without_painting_background() {
     assert!(ui.tree.shapes_of(z).is_empty());
 
     // ZStack hugs to max(child sizes) = (120, 80).
-    let zr = ui.layout_engine.result.rect(z);
+    let zr = ui.layout_engine.result.rect[z.index()];
     assert_eq!(zr.size.w, 120.0);
     assert_eq!(zr.size.h, 80.0);
 
     // Both children placed at ZStack's top-left (no padding), at their own size.
-    let bg = ui.layout_engine.result.rect(bg_node.unwrap());
-    let fg = ui.layout_engine.result.rect(fg_node.unwrap());
+    let bg = ui.layout_engine.result.rect[bg_node.unwrap().index()];
+    let fg = ui.layout_engine.result.rect[fg_node.unwrap().index()];
     assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
     assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
     assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
@@ -75,7 +75,7 @@ fn zstack_centers_child_when_align_center() {
     });
     ui.end_frame();
 
-    let r = ui.layout_engine.result.rect(child_node.unwrap());
+    let r = ui.layout_engine.result.rect[child_node.unwrap().index()];
     // ZStack inner = 200×100, child = 40×20 → centered at (80, 40).
     assert_eq!((r.min.x, r.min.y), (80.0, 40.0));
     assert_eq!((r.size.w, r.size.h), (40.0, 20.0));
@@ -101,7 +101,7 @@ fn zstack_aligns_independently_per_axis() {
     });
     ui.end_frame();
 
-    let r = ui.layout_engine.result.rect(child_node.unwrap());
+    let r = ui.layout_engine.result.rect[child_node.unwrap().index()];
     // x: End → 200-40 = 160. y: Center → (100-20)/2 = 40.
     assert_eq!((r.min.x, r.min.y), (160.0, 40.0));
 }

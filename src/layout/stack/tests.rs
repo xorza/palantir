@@ -22,7 +22,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
     ui.end_frame();
 
     assert_eq!(
-        ui.layout_engine.result.rect(root),
+        ui.layout_engine.result.rect[root.index()],
         Rect::new(0.0, 0.0, 800.0, 600.0)
     );
 
@@ -31,13 +31,13 @@ fn hstack_arranges_two_buttons_side_by_side() {
 
     // "Hi" measures 2*8=16 wide, 16 tall via the placeholder text metrics.
     // Button has no default padding, so its desired size matches the label.
-    let a = ui.layout_engine.result.rect(kids[0]);
+    let a = ui.layout_engine.result.rect[kids[0].index()];
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.min.y, 0.0);
     assert_eq!(a.size.w, 16.0);
     assert_eq!(a.size.h, 16.0);
 
-    let b = ui.layout_engine.result.rect(kids[1]);
+    let b = ui.layout_engine.result.rect[kids[1].index()];
     assert_eq!(b.min.x, 16.0);
     assert_eq!(b.size.w, 100.0);
     assert_eq!(b.size.h, 16.0);
@@ -57,8 +57,8 @@ fn vstack_with_fill_distributes_remainder() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let fixed = ui.layout_engine.result.rect(kids[0]);
-    let filler = ui.layout_engine.result.rect(kids[1]);
+    let fixed = ui.layout_engine.result.rect[kids[0].index()];
+    let filler = ui.layout_engine.result.rect[kids[1].index()];
 
     assert_eq!(fixed.size.h, 50.0);
     assert_eq!(filler.min.y, 50.0);
@@ -81,8 +81,8 @@ fn hstack_fill_weights_split_remainder_proportionally() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.layout_engine.result.rect(kids[0]);
-    let b = ui.layout_engine.result.rect(kids[1]);
+    let a = ui.layout_engine.result.rect[kids[0].index()];
+    let b = ui.layout_engine.result.rect[kids[1].index()];
     // 400 leftover / 4 weight = 100 per weight unit → a=100, b=300.
     assert_eq!(a.size.w, 100.0);
     assert_eq!(b.size.w, 300.0);
@@ -107,8 +107,8 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.layout_engine.result.rect(kids[0]);
-    let b = ui.layout_engine.result.rect(kids[1]);
+    let a = ui.layout_engine.result.rect[kids[0].index()];
+    let b = ui.layout_engine.result.rect[kids[1].index()];
     assert_eq!(a.size.w, 200.0);
     assert_eq!(b.size.w, 200.0);
     assert_eq!(a.min.x, 0.0);
@@ -131,8 +131,8 @@ fn hstack_justify_center_centers_content_block() {
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Two 40-wide children, no gap → content width = 80. Leftover = 120,
     // half = 60 padding on the leading edge.
-    assert_eq!(ui.layout_engine.result.rect(kids[0]).min.x, 60.0);
-    assert_eq!(ui.layout_engine.result.rect(kids[1]).min.x, 100.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].min.x, 60.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].min.x, 100.0);
 }
 
 #[test]
@@ -150,8 +150,8 @@ fn hstack_justify_end_packs_to_trailing_edge() {
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Last child ends at 200; 40 wide → starts at 160. First at 120.
-    assert_eq!(ui.layout_engine.result.rect(kids[0]).min.x, 120.0);
-    assert_eq!(ui.layout_engine.result.rect(kids[1]).min.x, 160.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].min.x, 120.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].min.x, 160.0);
 }
 
 #[test]
@@ -170,9 +170,9 @@ fn hstack_justify_space_between_distributes_leftover_between() {
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Leftover = 200 - 120 = 80, split into 2 gaps of 40.
-    assert_eq!(ui.layout_engine.result.rect(kids[0]).min.x, 0.0);
-    assert_eq!(ui.layout_engine.result.rect(kids[1]).min.x, 80.0);
-    assert_eq!(ui.layout_engine.result.rect(kids[2]).min.x, 160.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].min.x, 0.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].min.x, 80.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[2].index()].min.x, 160.0);
 }
 
 #[test]
@@ -191,9 +191,9 @@ fn hstack_justify_space_around_distributes_with_half_pads() {
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Leftover = 120, /count(2) = 60 per slot. Half (30) padding before first,
     // full 60 between, half (30) after last.
-    assert_eq!(ui.layout_engine.result.rect(kids[0]).min.x, 30.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].min.x, 30.0);
     // 30 + 40 + 60 = 130
-    assert_eq!(ui.layout_engine.result.rect(kids[1]).min.x, 130.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].min.x, 130.0);
 }
 
 #[test]
@@ -214,10 +214,10 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
 
     let kids: Vec<_> = ui.tree.children(root).collect();
     // Fill consumes leftover → first child still pinned to start.
-    assert_eq!(ui.layout_engine.result.rect(kids[0]).min.x, 0.0);
-    assert_eq!(ui.layout_engine.result.rect(kids[1]).min.x, 40.0);
-    assert_eq!(ui.layout_engine.result.rect(kids[1]).size.w, 120.0);
-    assert_eq!(ui.layout_engine.result.rect(kids[2]).min.x, 160.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].min.x, 0.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].min.x, 40.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].size.w, 120.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[2].index()].min.x, 160.0);
 }
 
 #[test]
@@ -234,9 +234,9 @@ fn hstack_gap_inserts_space_between_children() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    assert_eq!(ui.layout_engine.result.rect(kids[0]).min.x, 0.0);
-    assert_eq!(ui.layout_engine.result.rect(kids[1]).min.x, 50.0);
-    assert_eq!(ui.layout_engine.result.rect(kids[2]).min.x, 100.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].min.x, 0.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].min.x, 50.0);
+    assert_eq!(ui.layout_engine.result.rect[kids[2].index()].min.x, 100.0);
 }
 
 #[test]
@@ -254,7 +254,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let r = ui.layout_engine.result.rect(kids[0]);
+    let r = ui.layout_engine.result.rect[kids[0].index()];
     // Cross axis is height (100); child is 20 tall → centered at (100-20)/2 = 40.
     assert_eq!(r.min.y, 40.0);
     assert_eq!(r.size.h, 20.0);
@@ -285,7 +285,7 @@ fn negative_left_margin_spills_outside_slot() {
 
     // Rendered rect (what the renderer paints, what hit-test uses) is shifted
     // 10px left of the slot and full Fixed-50 wide — i.e. spilled.
-    let r = ui.layout_engine.result.rect(button_node.unwrap());
+    let r = ui.layout_engine.result.rect[button_node.unwrap().index()];
     assert_eq!(r.min.x, -10.0, "rendered rect spills 10px left of slot");
     assert_eq!(r.min.y, 0.0);
     assert_eq!(
@@ -347,9 +347,9 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.layout_engine.result.rect(kids[0]);
-    let hidden = ui.layout_engine.result.rect(kids[1]);
-    let b = ui.layout_engine.result.rect(kids[2]);
+    let a = ui.layout_engine.result.rect[kids[0].index()];
+    let hidden = ui.layout_engine.result.rect[kids[1].index()];
+    let b = ui.layout_engine.result.rect[kids[2].index()];
 
     assert_eq!((a.min.x, a.size.w), (0.0, 20.0));
     // collapsed: zero-size rect at cursor (= a.right). Cursor stays here.

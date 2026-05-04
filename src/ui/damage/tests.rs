@@ -88,7 +88,10 @@ fn fill_change_marks_only_the_changed_leaf() {
     // Damage rect = Frame's rect (50x50 at (0,0)). Color change
     // doesn't move the rect, so prev == curr; the union is the
     // single rect.
-    assert_eq!(ui.damage.rect, Some(ui.layout_engine.result.rect(dirty_id)));
+    assert_eq!(
+        ui.damage.rect,
+        Some(ui.layout_engine.result.rect[dirty_id.index()])
+    );
 }
 
 /// Pin: a sibling reflow (Fixed-width sibling resizes) shifts
@@ -259,7 +262,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     // in this layout). Screen rect after the parent's translate is at
     // (100, 0) — that's where the GPU actually paints. The damage
     // rect must cover *that* position, not the layout one.
-    let child_layout_rect = ui.layout_engine.result.rect(child_node.unwrap());
+    let child_layout_rect = ui.layout_engine.result.rect[child_node.unwrap().index()];
     let expected_screen_rect = Rect {
         min: child_layout_rect.min + translate,
         size: child_layout_rect.size,
@@ -419,7 +422,7 @@ fn button_hover_damage_covers_only_the_button() {
         "off-button pointer should reach a no-diff steady state"
     );
 
-    let hot_rect = ui.layout_engine.result.rect(hot_node.unwrap());
+    let hot_rect = ui.layout_engine.result.rect[hot_node.unwrap().index()];
     let target = hot_rect.min + Vec2::new(5.0, 5.0);
 
     // Move pointer onto the hot button. The *next* end_frame computes
@@ -474,7 +477,7 @@ fn button_unhover_damage_covers_only_the_button() {
 
     // Settle two frames with cursor over the hot button.
     build(&mut ui, &mut hot_node, &mut cold_node);
-    let hot_rect = ui.layout_engine.result.rect(hot_node.unwrap());
+    let hot_rect = ui.layout_engine.result.rect[hot_node.unwrap().index()];
     ui.on_input(InputEvent::PointerMoved(hot_rect.min + Vec2::new(5.0, 5.0)));
     build(&mut ui, &mut hot_node, &mut cold_node);
     build(&mut ui, &mut hot_node, &mut cold_node);

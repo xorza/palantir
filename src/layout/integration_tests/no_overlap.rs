@@ -71,8 +71,8 @@ fn two_hug_columns_with_wrapping_text_do_not_overlap() {
     ui.end_frame();
 
     let layout = &ui.layout_engine.result;
-    let lr = layout.rect(left.unwrap());
-    let rr = layout.rect(right.unwrap());
+    let lr = layout.rect[left.unwrap().index()];
+    let rr = layout.rect[right.unwrap().index()];
     assert!(lr.size.w > 0.0, "left column must have a positive width");
     assert!(
         rr.min.x >= lr.max().x - 0.5,
@@ -146,10 +146,10 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
     ui.end_frame();
 
     let layout = &ui.layout_engine.result;
-    let l1 = layout.rect(hug_left.unwrap());
-    let r1 = layout.rect(hug_right.unwrap());
-    let l2 = layout.rect(prop_label.unwrap());
-    let r2 = layout.rect(prop_value.unwrap());
+    let l1 = layout.rect[hug_left.unwrap().index()];
+    let r1 = layout.rect[hug_right.unwrap().index()];
+    let l2 = layout.rect[prop_label.unwrap().index()];
+    let r2 = layout.rect[prop_value.unwrap().index()];
 
     assert!(l1.size.w > 0.0);
     assert!(l2.size.w > 0.0);
@@ -348,8 +348,8 @@ fn property_grid_hug_label_does_not_overlap_fill_value() {
     ui.end_frame();
 
     let layout = &ui.layout_engine.result;
-    let lr = layout.rect(label.unwrap());
-    let vr = layout.rect(value.unwrap());
+    let lr = layout.rect[label.unwrap().index()];
+    let vr = layout.rect[value.unwrap().index()];
     assert!(lr.size.w > 0.0, "label cell must have a positive width");
     assert!(
         vr.min.x >= lr.max().x - 0.5,

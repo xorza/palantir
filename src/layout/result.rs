@@ -11,10 +11,10 @@ use std::ops::Range;
 /// `resize_for`.
 #[derive(Default)]
 pub(crate) struct LayoutResult {
-    rect: Vec<Rect>,
+    pub(crate) rect: Vec<Rect>,
     /// Per-node shape result for `Shape::Text` leaves. `None` for any
     /// node the layout pass didn't shape text for.
-    text_shapes: Vec<Option<ShapedText>>,
+    pub(crate) text_shapes: Vec<Option<ShapedText>>,
     /// Per-node quantized `available` size, the dimensional half of
     /// the cross-frame cache key. Written on every measure entry,
     /// restored from a snapshot on cache-hit subtrees. Read by the
@@ -42,11 +42,6 @@ impl LayoutResult {
         self.available_q.resize(n, AvailableKey::UNSET);
     }
 
-    #[inline]
-    pub(crate) fn rect(&self, id: NodeId) -> Rect {
-        self.rect[id.index()]
-    }
-
     /// Per-node quantized `available` size last passed to this node's
     /// measure. `None` when this node was never visited by the current
     /// frame's layout `run` (collapsed root, empty frame, or — defensively
@@ -60,21 +55,6 @@ impl LayoutResult {
         } else {
             Some(v)
         }
-    }
-
-    #[inline]
-    pub(crate) fn set_rect(&mut self, id: NodeId, v: Rect) {
-        self.rect[id.index()] = v;
-    }
-
-    #[inline]
-    pub(crate) fn text_shape(&self, id: NodeId) -> Option<ShapedText> {
-        self.text_shapes[id.index()]
-    }
-
-    #[inline]
-    pub(crate) fn set_text_shape(&mut self, id: NodeId, s: ShapedText) {
-        self.text_shapes[id.index()] = Some(s);
     }
 
     #[inline]

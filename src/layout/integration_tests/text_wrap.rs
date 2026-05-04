@@ -21,7 +21,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     ui.end_frame();
 
     let node = text_node.unwrap();
-    let r = ui.layout_engine.result.rect(node);
+    let r = ui.layout_engine.result.rect[node.index()];
     assert!(
         r.size.h > 32.0,
         "wrapped paragraph should span multiple lines, got h={}",
@@ -33,10 +33,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         _ => panic!("expected Shape::Text"),
     };
     assert_eq!(wrap, TextWrap::Wrap);
-    let shaped = ui
-        .layout_engine
-        .result
-        .text_shape(node)
+    let shaped = ui.layout_engine.result.text_shapes[node.index()]
         .expect("layout should have shaped the text");
     assert!(shaped.measured.h > 32.0);
 }
@@ -58,7 +55,7 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
         });
     ui.end_frame();
 
-    let r = ui.layout_engine.result.rect(text_node.unwrap());
+    let r = ui.layout_engine.result.rect[text_node.unwrap().index()];
     // The single word can't break — its width must overflow the 8 px slot.
     assert!(
         r.size.w > 8.0,
@@ -79,11 +76,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     let node = two_hug_cols_with_wrap(&mut ui, PARAGRAPH);
     ui.end_frame();
 
-    let shaped = ui
-        .layout_engine
-        .result
-        .text_shape(node)
-        .expect("text was shaped");
+    let shaped = ui.layout_engine.result.text_shapes[node.index()].expect("text was shaped");
     // Multi-line height (a 16 px font wraps to 3 lines at the resolved
     // column width — h ≈ 58 px in practice; assert > 32 to allow for
     // line-height variation).
@@ -146,11 +139,7 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     let msg = chat_message(&mut ui, 40.0, PARAGRAPH, 14.0);
     ui.end_frame();
 
-    let shaped = ui
-        .layout_engine
-        .result
-        .text_shape(msg)
-        .expect("text was shaped");
+    let shaped = ui.layout_engine.result.text_shapes[msg.index()].expect("text was shaped");
     assert!(
         shaped.measured.h > 32.0,
         "Fill message should wrap inside its resolved share; got h={}",
@@ -173,11 +162,7 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
 
-    let shaped = ui
-        .layout_engine
-        .result
-        .text_shape(msg)
-        .expect("text was shaped");
+    let shaped = ui.layout_engine.result.text_shapes[msg.index()].expect("text was shaped");
     assert!(
         shaped.measured.w > 20.0,
         "min-content floor should keep message wider than the cramped slot; got w={}",
@@ -196,14 +181,11 @@ fn hstack_fill_clamped_to_min_content_arranges_at_leftover_share() {
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
 
-    let shaped_w = ui
-        .layout_engine
-        .result
-        .text_shape(msg)
+    let shaped_w = ui.layout_engine.result.text_shapes[msg.index()]
         .expect("text was shaped")
         .measured
         .w;
-    let rect_w = ui.layout_engine.result.rect(msg).size.w;
+    let rect_w = ui.layout_engine.result.rect[msg.index()].size.w;
 
     assert!(
         shaped_w > 50.0,

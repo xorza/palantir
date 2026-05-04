@@ -1,7 +1,7 @@
 use crate::layout::axis::Axis;
 use crate::layout::cache::{MeasureCache, quantize_available};
 use crate::layout::grid::GridContext;
-use crate::layout::intrinsic::{IntrinsicBounds, LenReq};
+use crate::layout::intrinsic::{IntrinsicBounds, LenReq, SLOT_COUNT};
 use crate::layout::result::{LayoutResult, ShapedText};
 use crate::layout::support::{leaf_text_shapes, resolve_axis_size, zero_subtree};
 use crate::layout::types::sizing::Sizing;
@@ -51,7 +51,7 @@ pub(crate) struct LayoutScratch {
     pub(crate) grid: GridContext,
     pub(crate) wrap: WrapScratch,
     pub(crate) desired: Vec<Size>,
-    pub(crate) intrinsics: Vec<[f32; 4]>,
+    pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
 }
 
 impl LayoutScratch {
@@ -60,7 +60,7 @@ impl LayoutScratch {
         self.desired.clear();
         self.desired.resize(n, Size::ZERO);
         self.intrinsics.clear();
-        self.intrinsics.resize(n, [f32::NAN; 4]);
+        self.intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
         self.grid.hugs.reset_for(tree);
     }
 }
@@ -365,7 +365,7 @@ impl LayoutEngine {
         let mode = style.mode;
 
         let rendered = slot.deflated_by(style.margin);
-        self.result.set_rect(node, rendered);
+        self.result.rect[node.index()] = rendered;
         let inner = rendered.deflated_by(style.padding);
 
         match mode {
@@ -432,13 +432,10 @@ impl LayoutEngine {
             unbounded
         };
 
-        self.result.set_text_shape(
-            node,
-            ShapedText {
-                measured: result.size,
-                key: result.key,
-            },
-        );
+        self.result.text_shapes[node.index()] = Some(ShapedText {
+            measured: result.size,
+            key: result.key,
+        });
         result.size
     }
 }

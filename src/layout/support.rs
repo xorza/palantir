@@ -82,7 +82,7 @@ pub(crate) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
     let start = node.index();
     let end = tree.subtree_end[start] as usize;
     for i in start..end {
-        layout.result.set_rect(NodeId(i as u32), zero);
+        layout.result.rect[i] = zero;
     }
 }
 
