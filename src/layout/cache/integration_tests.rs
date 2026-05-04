@@ -268,7 +268,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
 /// Stress test: alternating surface widths force the cache through
 /// repeated hit/replace transitions. At each step, the warm cache's
 /// rects must equal what a cold remeasure produces — a forced miss
-/// via `__clear_measure_cache()` is the ground-truth oracle.
+/// via `bench_support::clear_measure_cache()` is the ground-truth oracle.
 #[test]
 fn cache_rects_match_cold_oracle_across_width_changes() {
     let build = |ui: &mut Ui, capture: &mut Vec<NodeId>| {
@@ -320,7 +320,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             .map(|n| ui.layout_engine.result.rect[n.index()])
             .collect();
 
-        ui.__clear_measure_cache();
+        crate::bench_support::clear_measure_cache(&mut ui);
         begin(&mut ui, UVec2::new(w, 600));
         let mut cold_nodes = Vec::new();
         build(&mut ui, &mut cold_nodes);

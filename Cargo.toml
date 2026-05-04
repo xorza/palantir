@@ -27,11 +27,21 @@ harness = false
 [[bench]]
 name = "measure_cache"
 harness = false
+required-features = ["bench-support"]
 
 [[bench]]
 name = "encode_cache"
 harness = false
+required-features = ["bench-support"]
 
 [[bench]]
 name = "compose_cache"
 harness = false
+required-features = ["bench-support"]
+
+[features]
+# Exposes `bench_support::*` (cache reset + introspection helpers used by
+# `benches/`). Enabled automatically for the cache benches via their
+# `required-features`. Tests get the same module without the feature
+# because `cfg(test)` is also gated on.
+bench-support = []

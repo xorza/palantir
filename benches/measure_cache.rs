@@ -4,7 +4,7 @@
 //! - `cached`: every frame after the first hits the cache for every
 //!   leaf — the steady state we're optimizing for.
 //! - `forced_miss`: clears the cache between frames via the
-//!   `__clear_measure_cache` doc-hidden helper, so every frame
+//!   `bench_support::clear_measure_cache` helper, so every frame
 //!   re-measures every leaf. Models a worst case where nothing
 //!   carries forward.
 //!
@@ -124,7 +124,7 @@ fn bench(c: &mut Criterion) {
         group.bench_function(format!("{name}/forced_miss"), |b| {
             let mut ui = Ui::new();
             b.iter(|| {
-                ui.__clear_measure_cache();
+                palantir::bench_support::clear_measure_cache(&mut ui);
                 ui.begin_frame(display);
                 build(&mut ui);
                 black_box(ui.end_frame());

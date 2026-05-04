@@ -279,9 +279,7 @@ impl Drop for TransientTextAreas<'_> {
 /// returns *to its parent caller* — the `Drop` impl on the returned
 /// guard handles that, so the call site only needs to keep the guard
 /// alive until it's done with the borrows.
-fn with_transient_textareas<'a>(
-    scratch: &'a mut Vec<TextArea<'static>>,
-) -> TransientTextAreas<'a> {
+fn with_transient_textareas<'a>(scratch: &'a mut Vec<TextArea<'static>>) -> TransientTextAreas<'a> {
     scratch.clear();
     let inner: &mut Vec<TextArea<'_>> = unsafe { std::mem::transmute(scratch) };
     TransientTextAreas { inner }

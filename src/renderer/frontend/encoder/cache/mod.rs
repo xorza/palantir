@@ -254,8 +254,10 @@ impl EncodeCache {
         }
     }
 
-    /// Drop every snapshot and free all arena storage. Used by
-    /// `Ui::__clear_encode_cache` for benches.
+    /// Drop every snapshot and free all arena storage. Reachable only
+    /// via `bench_support::clear_encode_cache` (gated to tests + the
+    /// `bench-support` feature) — not part of any production code path.
+    #[cfg(any(test, feature = "bench-support"))]
     pub(crate) fn clear(&mut self) {
         self.kinds.clear();
         self.starts.clear();

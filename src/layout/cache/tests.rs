@@ -545,7 +545,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
     let warm_desired = ui.layout_engine.cache.desired_arena[warm_snap.nodes.range()].to_vec();
     let warm_live = ui.layout_engine.cache.live_entries;
 
-    ui.__clear_measure_cache();
+    crate::bench_support::clear_measure_cache(&mut ui);
     run_frame(&mut ui, with_widget);
 
     let cold_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();
