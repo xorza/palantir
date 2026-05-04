@@ -1,4 +1,4 @@
-use crate::primitives::{Color, Corners, Stroke};
+use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::shape::Shape;
 use crate::ui::Ui;
 

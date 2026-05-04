@@ -12,16 +12,17 @@
 //! level up so it sits at the frontend↔backend contract line).
 
 pub(crate) mod cmd_buffer;
-mod composer;
-mod encoder;
-
-pub(crate) use composer::Composer;
-pub(crate) use encoder::Encoder;
+pub(crate) mod composer;
+pub(crate) mod encoder;
 
 use crate::cascade::CascadeResult;
-use crate::layout::LayoutResult;
-use crate::primitives::{Display, Rect, WidgetId};
+use crate::layout::result::LayoutResult;
+use crate::primitives::display::Display;
+use crate::primitives::rect::Rect;
+use crate::primitives::widget_id::WidgetId;
 use crate::renderer::buffer::RenderBuffer;
+use crate::renderer::frontend::composer::Composer;
+use crate::renderer::frontend::encoder::Encoder;
 use crate::tree::Tree;
 
 /// One frame's CPU output: the composed render buffer and the damage

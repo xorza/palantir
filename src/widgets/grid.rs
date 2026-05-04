@@ -1,8 +1,10 @@
 use crate::element::{Configure, Element, LayoutMode};
-use crate::primitives::{Sizing, Track, TranslateScale, WidgetId};
-use crate::tree::GridDef;
+use crate::primitives::{
+    sizing::Sizing, track::Track, transform::TranslateScale, widget_id::WidgetId,
+};
+use crate::tree::grid_def::GridDef;
 use crate::ui::Ui;
-use crate::widgets::{Background, Response, Styled};
+use crate::widgets::{Response, styled::Background, styled::Styled};
 use std::hash::Hash;
 use std::rc::Rc;
 use std::sync::OnceLock;

@@ -12,8 +12,6 @@ pub struct Span {
 }
 
 impl Span {
-    pub const EMPTY: Self = Self { start: 0, len: 0 };
-
     #[inline]
     pub fn new(start: u32, len: u32) -> Self {
         Self { start, len }
@@ -27,10 +25,5 @@ impl Span {
     #[inline]
     pub fn range(self) -> Range<usize> {
         self.start as usize..self.end() as usize
-    }
-
-    #[inline]
-    pub fn is_empty(self) -> bool {
-        self.len == 0
     }
 }

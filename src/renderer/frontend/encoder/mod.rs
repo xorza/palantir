@@ -1,9 +1,12 @@
 use super::cmd_buffer::RenderCmdBuffer;
 use crate::cascade::CascadeResult;
-use crate::layout::{AvailableKey, LayoutResult};
-use crate::primitives::{Align, HAlign, Rect, Size, Span, TranslateScale, VAlign, WidgetId};
+use crate::layout::{cache::AvailableKey, result::LayoutResult};
+use crate::primitives::{
+    align::Align, align::HAlign, align::VAlign, rect::Rect, size::Size, span::Span,
+    transform::TranslateScale, widget_id::WidgetId,
+};
 use crate::shape::Shape;
-use crate::tree::{NodeHash, NodeId, Tree};
+use crate::tree::{NodeId, Tree, hash::NodeHash};
 use cache::EncodeCache;
 
 /// Bookkeeping captured before recursing so we can write the cached
@@ -41,7 +44,7 @@ const TINY_SUBTREE_THRESHOLD: u32 = 1;
 ///
 /// Owns the cross-frame subtree-skip cache (`EncodeCache`) and exposes
 /// the encode entry point. The output [`RenderCmdBuffer`] stays on
-/// [`Frontend`](crate::renderer::Frontend) since the composer also reads
+/// [`Frontend`](crate::renderer::frontend::Frontend) since the composer also reads
 /// it; the cache lives here because nothing else in the frontend touches
 /// it.
 ///

@@ -1,4 +1,5 @@
-use super::{Rect, Size};
+use super::rect::Rect;
+use super::size::Size;
 use glam::UVec2;
 
 /// Display state read by the renderer at submit time and by hosts

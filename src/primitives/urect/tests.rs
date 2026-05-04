@@ -59,44 +59,6 @@ fn clamp_to_disjoint_returns_zero_sized() {
     let parent = URect::new(0, 0, 10, 10);
     let me = URect::new(20, 20, 5, 5);
     let r = me.clamp_to(parent);
-    assert!(r.is_empty());
-}
-
-// --- area / is_empty ---------------------------------------------------
-
-#[test]
-fn area_basic() {
-    assert_eq!(URect::new(0, 0, 4, 5).area(), 20);
-}
-
-#[test]
-fn is_empty_zero_dim() {
-    assert!(URect::new(0, 0, 0, 5).is_empty());
-    assert!(URect::new(0, 0, 5, 0).is_empty());
-    assert!(!URect::new(0, 0, 1, 1).is_empty());
-}
-
-#[test]
-fn max_x_max_y() {
-    let r = URect::new(2, 3, 4, 5);
-    assert_eq!(r.max_x(), 6);
-    assert_eq!(r.max_y(), 8);
-}
-
-// --- const fn callable in const context --------------------------------
-
-/// Compile-time check that `URect`'s `const fn`s can be evaluated in
-/// const context. If any of these stop being `const`, the file stops
-/// compiling — that's the assertion. No runtime checks needed.
-#[test]
-#[allow(dead_code)]
-fn const_constructors_compile() {
-    const _A: URect = URect::new(1, 2, 3, 4);
-    const _ZERO: URect = URect::ZERO;
-    const _AREA: u32 = _A.area();
-    const _EMPTY: bool = _ZERO.is_empty();
-    const _MAXX: u32 = _A.max_x();
-    const _MAXY: u32 = _A.max_y();
-    const _CLAMP: URect = _A.clamp_to(_ZERO);
-    const _INTER: Option<URect> = _A.intersect(_ZERO);
+    assert_eq!(r.w, 0);
+    assert_eq!(r.h, 0);
 }

@@ -12,7 +12,7 @@
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
 use super::{MeasureResult, TextCacheKey};
-use crate::primitives::Size;
+use crate::primitives::size::Size;
 use glyphon::cosmic_text::{
     Attrs, AttrsOwned, Buffer, Family, FontSystem, Metrics, Shaping, fontdb,
 };

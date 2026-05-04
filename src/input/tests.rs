@@ -1,9 +1,9 @@
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
-use crate::primitives::{Display, Sense, Sizing};
+use crate::primitives::{display::Display, sense::Sense, sizing::Sizing};
 use crate::test_support::{begin, click_at, press_at, release_left, ui_at};
-use crate::widgets::{Button, Panel};
+use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
 #[test]
@@ -250,7 +250,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
 
 #[test]
 fn zoom_panel_routes_clicks_to_world_rendered_button() {
-    use crate::primitives::TranslateScale;
+    use crate::primitives::transform::TranslateScale;
 
     // ZStack with transform=scale(2) wrapping a 50x50 button. The button's
     // logical rect is (0,0,50,50) but its world (rendered) rect is
@@ -295,7 +295,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
 
 #[test]
 fn click_outside_zoomed_bounds_does_not_hit() {
-    use crate::primitives::TranslateScale;
+    use crate::primitives::transform::TranslateScale;
 
     let mut ui = ui_at(UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {

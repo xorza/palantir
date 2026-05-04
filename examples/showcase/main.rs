@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use palantir::renderer::WgpuBackend;
+use palantir::WgpuBackend;
 use palantir::{Button, Color, Configure, InputEvent, Panel, Sizing, Stroke, Styled, Ui};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -71,7 +71,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     backend: WgpuBackend,
     ui: Ui,
-    display: palantir::primitives::Display,
+    display: palantir::Display,
     first_paint: bool,
     active: usize,
 }
@@ -133,11 +133,11 @@ impl ApplicationHandler for App {
         let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         let mut ui = Ui::new();
-        let display = palantir::primitives::Display::from_physical(
+        let display = palantir::Display::from_physical(
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
         );
-        let cosmic = palantir::text::share(palantir::text::CosmicMeasure::with_bundled_fonts());
+        let cosmic = palantir::share(palantir::CosmicMeasure::with_bundled_fonts());
         ui.set_cosmic(cosmic.clone());
         backend.set_cosmic(cosmic);
 

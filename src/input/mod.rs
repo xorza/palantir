@@ -1,5 +1,5 @@
 use crate::cascade::CascadeResult;
-use crate::primitives::{Rect, Sense, WidgetId};
+use crate::primitives::{rect::Rect, sense::Sense, widget_id::WidgetId};
 use glam::Vec2;
 use rustc_hash::FxHashSet;
 

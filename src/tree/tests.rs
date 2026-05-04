@@ -1,10 +1,10 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Display, Justify, Sizing};
+use crate::primitives::{color::Color, display::Display, justify::Justify, sizing::Sizing};
 use crate::shape::Shape;
 use crate::test_support::ui_at;
-use crate::tree::{NodeHash, NodeId};
-use crate::widgets::{Button, Frame, Panel, Styled};
+use crate::tree::{NodeId, hash::NodeHash};
+use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 
 #[test]
@@ -185,7 +185,7 @@ fn changing_padding_changes_hash() {
 
 #[test]
 fn changing_visibility_changes_hash() {
-    use crate::primitives::Visibility;
+    use crate::primitives::visibility::Visibility;
     let h1 = record_hash(|ui| {
         Panel::hstack_with_id("root")
             .visibility(Visibility::Visible)
@@ -251,7 +251,7 @@ fn shape_order_matters_for_hash() {
 /// the text content."
 #[test]
 fn changing_text_content_changes_hash() {
-    use crate::widgets::Text;
+    use crate::widgets::text::Text;
     let mut ui1 = Ui::new();
     ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut a = None;

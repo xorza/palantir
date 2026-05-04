@@ -18,16 +18,16 @@
 //!
 //! [`Ui`]: crate::Ui
 
-use crate::primitives::{Size, WidgetId};
-use crate::tree::NodeHash;
+use crate::primitives::{size::Size, widget_id::WidgetId};
+use crate::tree::hash::NodeHash;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
 
-mod cosmic;
+pub(crate) mod cosmic;
 
-pub use cosmic::CosmicMeasure;
+use crate::text::cosmic::CosmicMeasure;
 
 /// Shared handle to a [`CosmicMeasure`], cloned into both [`TextMeasurer`]
 /// (Ui-side measurement) and the renderer's `TextRenderer` (wgpu-side

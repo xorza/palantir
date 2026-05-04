@@ -3,7 +3,7 @@
 //! Lives at the renderer root alongside `RenderBuffer`: both are the
 //! frontend↔backend contract, so neither side owns them.
 
-use crate::primitives::{Color, Corners, Rect, Stroke};
+use crate::primitives::{color::Color, corners::Corners, rect::Rect, stroke::Stroke};
 use bytemuck::{Pod, Zeroable};
 
 /// Per-instance quad data (68 B). Layout is `pos, size, fill, radius,

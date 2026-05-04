@@ -12,8 +12,8 @@
 //! scratch capacities across frames; the result is the read-only
 //! artifact downstream consumes.
 
-use crate::layout::LayoutResult;
-use crate::primitives::{Rect, Sense, TranslateScale, WidgetId};
+use crate::layout::result::LayoutResult;
+use crate::primitives::{rect::Rect, sense::Sense, transform::TranslateScale, widget_id::WidgetId};
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 use rustc_hash::FxHashMap;

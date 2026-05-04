@@ -1,5 +1,5 @@
-use crate::layout::AvailableKey;
-use crate::primitives::{Rect, Size};
+use crate::layout::cache::AvailableKey;
+use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
 use std::ops::Range;

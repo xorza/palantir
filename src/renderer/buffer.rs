@@ -1,5 +1,5 @@
 use super::quad::Quad;
-use crate::primitives::{Color, URect};
+use crate::primitives::{color::Color, urect::URect};
 use crate::text::TextCacheKey;
 use glam::Vec2;
 use std::ops::Range;

@@ -16,7 +16,7 @@ use super::support::leaf_text_shapes;
 use super::{
     Axis, LayoutEngine, LayoutMode, canvas, grid, resolve_axis_size, stack, wrapstack, zstack,
 };
-use crate::primitives::Sizing;
+use crate::primitives::sizing::Sizing;
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
 
@@ -272,8 +272,8 @@ mod tests {
     use super::*;
     use crate::Ui;
     use crate::element::Configure;
-    use crate::primitives::{Display, Sizing};
-    use crate::widgets::{Panel, Text};
+    use crate::primitives::{display::Display, sizing::Sizing};
+    use crate::widgets::{panel::Panel, text::Text};
     use glam::UVec2;
 
     /// Driver-triggered intrinsic queries during `run` must populate

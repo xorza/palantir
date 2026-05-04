@@ -6,10 +6,12 @@
 
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Sizing, Stroke, Track, TranslateScale};
+use crate::primitives::{
+    color::Color, sizing::Sizing, stroke::Stroke, track::Track, transform::TranslateScale,
+};
 use crate::test_support::{begin, encode_cmds, new_ui_text, ui_with_text};
 use crate::tree::NodeId;
-use crate::widgets::{Frame, Grid, Panel, Styled, Text};
+use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, styled::Styled, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 

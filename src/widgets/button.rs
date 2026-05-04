@@ -1,8 +1,11 @@
 use crate::element::{Configure, Element, LayoutMode};
-use crate::primitives::{Align, Color, Corners, Sense, Visuals, WidgetId};
+use crate::primitives::{
+    align::Align, color::Color, corners::Corners, sense::Sense, visuals::Visuals,
+    widget_id::WidgetId,
+};
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
-use crate::widgets::{Frame, Response, Styled};
+use crate::widgets::{Response, frame::Frame, styled::Styled};
 use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

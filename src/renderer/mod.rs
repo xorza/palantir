@@ -13,11 +13,7 @@
 //! since pixel snap and scissor rects don't apply.
 //!
 //! [`Ui`]: crate::ui::Ui
-mod backend;
-mod buffer;
+pub(crate) mod backend;
+pub(crate) mod buffer;
 pub(crate) mod frontend;
-mod quad;
-
-pub use backend::WgpuBackend;
-pub use frontend::FrameOutput;
-pub(crate) use frontend::Frontend;
+pub(crate) mod quad;

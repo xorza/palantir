@@ -6,11 +6,11 @@
 //! Glyph data is shared via a single [`TextAtlas`] across all renderers in
 //! the pool, so the cache is hit for free across groups.
 //!
-//! [`CosmicMeasure`]: crate::text::CosmicMeasure
+//! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
 //! [`TextRun`]: super::super::buffer::TextRun
 
 use super::super::buffer::TextRun;
-use crate::primitives::URect;
+use crate::primitives::urect::URect;
 use crate::text::SharedCosmic;
 use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
@@ -249,7 +249,7 @@ fn text_bounds(b: URect) -> TextBounds {
     }
 }
 
-fn glyphon_color(c: crate::primitives::Color) -> glyphon::Color {
+fn glyphon_color(c: crate::primitives::color::Color) -> glyphon::Color {
     let r = (c.r.clamp(0.0, 1.0) * 255.0).round() as u8;
     let g = (c.g.clamp(0.0, 1.0) * 255.0).round() as u8;
     let b = (c.b.clamp(0.0, 1.0) * 255.0).round() as u8;

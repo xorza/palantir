@@ -21,8 +21,8 @@
 //! until the next compact.
 
 use crate::layout::result::ShapedText;
-use crate::primitives::{Size, Span, WidgetId};
-use crate::tree::NodeHash;
+use crate::primitives::{size::Size, span::Span, widget_id::WidgetId};
+use crate::tree::hash::NodeHash;
 use rustc_hash::FxHashMap;
 
 /// 24-byte snapshot. `nodes` indexes the three node-indexed arenas

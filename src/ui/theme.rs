@@ -1,4 +1,4 @@
-use crate::widgets::ButtonTheme;
+use crate::widgets::button::ButtonTheme;
 
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.

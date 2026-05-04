@@ -1,8 +1,8 @@
 use super::{AxisScratch, resolve_axis};
 use crate::element::Configure;
-use crate::primitives::{Sizing, Track};
+use crate::primitives::{sizing::Sizing, track::Track};
 use crate::test_support::ui_at;
-use crate::widgets::{Button, Frame, Grid, Panel};
+use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel};
 use glam::UVec2;
 use std::rc::Rc;
 
@@ -227,7 +227,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
     // Default grid placement is auto-stretch (WPF cell behaviour). A child
     // with an explicit non-stretch align should size to its own intrinsic and
     // park at the requested corner of the cell.
-    use crate::primitives::{Align, HAlign, VAlign};
+    use crate::primitives::{align::Align, align::HAlign, align::VAlign};
 
     let mut ui = ui_at(UVec2::new(200, 200));
     let root = Grid::new()

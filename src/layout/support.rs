@@ -5,7 +5,9 @@
 
 use super::{Axis, LayoutEngine, LenReq};
 use crate::element::LayoutCore;
-use crate::primitives::{Align, AxisAlign, Rect, Size, Sizes, Sizing};
+use crate::primitives::{
+    align::Align, align::AxisAlign, rect::Rect, size::Size, sizing::Sizes, sizing::Sizing,
+};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};

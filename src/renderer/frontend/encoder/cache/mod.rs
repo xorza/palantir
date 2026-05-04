@@ -25,10 +25,10 @@
 //! [`MeasureCache`]: crate::layout::cache::MeasureCache
 //! [`EncodeSnapshot`]: EncodeSnapshot
 
-use crate::layout::AvailableKey;
-use crate::primitives::{Span, WidgetId};
+use crate::layout::cache::AvailableKey;
+use crate::primitives::{span::Span, widget_id::WidgetId};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, RenderCmdBuffer, bump_rect_min};
-use crate::tree::NodeHash;
+use crate::tree::hash::NodeHash;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 

@@ -1,5 +1,5 @@
 use crate::element::{Configure, Element, LayoutMode};
-use crate::primitives::{Align, Color, WidgetId};
+use crate::primitives::{align::Align, color::Color, widget_id::WidgetId};
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;

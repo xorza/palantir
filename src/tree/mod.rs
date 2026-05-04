@@ -1,13 +1,13 @@
 use crate::element::{Element, ElementExtras, LayoutCore, LayoutMode, PaintCore};
-use crate::primitives::WidgetId;
+use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
+use crate::tree::grid_def::GridDef;
+use crate::tree::hash::NodeHash;
 use rustc_hash::FxHasher;
 use std::hash::Hasher;
 
-mod grid_def;
-mod hash;
-pub(crate) use grid_def::GridDef;
-pub use hash::NodeHash;
+pub(crate) mod grid_def;
+pub(crate) mod hash;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub(crate) u32);

@@ -7,13 +7,13 @@
 //!    per-id store (focus, scroll, click capture, hit-test).
 //! 2. **Removed-widget diff.** At `end_frame`, computes which ids
 //!    were present last frame but absent this frame. Both
-//!    [`crate::ui::Damage`] and [`crate::text::TextMeasurer`]
+//!    [`crate::ui::damage::Damage`] and [`crate::text::TextMeasurer`]
 //!    consume this list to evict per-widget state — sharing the diff
 //!    keeps each consumer at `O(removed)` instead of `O(map)`.
 //! 3. **Frame rollover.** `begin_frame` swaps `curr → prev` and
 //!    clears `curr` — no clone, capacity retained both sides.
 
-use crate::primitives::WidgetId;
+use crate::primitives::widget_id::WidgetId;
 use rustc_hash::FxHashSet;
 
 #[derive(Default)]

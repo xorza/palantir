@@ -2,7 +2,7 @@
 //! intrinsic query. Lifted out of `stack` so non-stack code (intrinsics,
 //! cache keys) can refer to it.
 
-use crate::primitives::{Rect, Size, Sizes, Sizing, Spacing};
+use crate::primitives::{rect::Rect, size::Size, sizing::Sizes, sizing::Sizing, spacing::Spacing};
 use glam::Vec2;
 
 /// Which axis a layout distributes children along (or which axis a query

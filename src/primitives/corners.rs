@@ -1,4 +1,5 @@
-use super::{Num, Size};
+use super::num::Num;
+use super::size::Size;
 use glam::Vec2;
 
 /// Per-corner radii. `Vec2`/`Size` map to (top, bottom) pairs; `f32` is uniform.

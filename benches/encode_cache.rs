@@ -20,7 +20,7 @@
 //! `benches/layout.rs` and `benches/measure_cache.rs`.
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use palantir::primitives::Display;
+use palantir::Display;
 use palantir::{Configure, Frame, Panel, Sizing, Text, Ui};
 use std::hint::black_box;
 

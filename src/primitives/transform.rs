@@ -1,4 +1,4 @@
-use crate::primitives::{Rect, Size};
+use crate::primitives::{rect::Rect, size::Size};
 use glam::Vec2;
 
 /// A 2D transform with uniform scale and translation — same shape as

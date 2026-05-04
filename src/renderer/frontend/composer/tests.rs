@@ -2,8 +2,8 @@ use super::super::cmd_buffer::{
     DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
 use super::Composer;
-use crate::primitives::Display;
-use crate::primitives::{Color, Corners, Rect, URect};
+use crate::primitives::display::Display;
+use crate::primitives::{color::Color, corners::Corners, rect::Rect, urect::URect};
 use crate::renderer::buffer::RenderBuffer;
 use crate::test_support::RenderCmd;
 use crate::text::TextCacheKey;
@@ -170,12 +170,13 @@ fn intersect_disjoint_yields_zero_size() {
     // The composer uses `URect::clamp_to` for child↔parent scissor
     // intersection — disjoint rects collapse to a zero-sized result.
     let r = b.clamp_to(a);
-    assert!(r.is_empty());
+    assert_eq!(r.w, 0);
+    assert_eq!(r.h, 0);
 }
 
 #[test]
 fn compose_translates_under_push_transform() {
-    use crate::primitives::TranslateScale;
+    use crate::primitives::transform::TranslateScale;
     let buf = run(
         &[
             RenderCmd::PushTransform(TranslateScale::from_translation(glam::Vec2::new(
@@ -194,7 +195,7 @@ fn compose_translates_under_push_transform() {
 
 #[test]
 fn compose_scales_radius_and_stroke_under_transform() {
-    use crate::primitives::{Stroke, TranslateScale};
+    use crate::primitives::{stroke::Stroke, transform::TranslateScale};
     let buf = run(
         &[
             RenderCmd::PushTransform(TranslateScale::from_scale(2.0)),
@@ -219,7 +220,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
 
 #[test]
 fn compose_composes_nested_transforms() {
-    use crate::primitives::TranslateScale;
+    use crate::primitives::transform::TranslateScale;
     let buf = run(
         &[
             RenderCmd::PushTransform(TranslateScale::from_scale(2.0)),
@@ -237,7 +238,7 @@ fn compose_composes_nested_transforms() {
 
 #[test]
 fn compose_transforms_clip_rects_to_screen_space() {
-    use crate::primitives::TranslateScale;
+    use crate::primitives::transform::TranslateScale;
     let buf = run(
         &[
             RenderCmd::PushTransform(TranslateScale::from_scale(2.0)),

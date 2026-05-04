@@ -1,31 +1,32 @@
 use crate::element::LayoutMode;
-use crate::primitives::{Rect, Size, Sizing, WidgetId};
+use crate::layout::axis::Axis;
+use crate::layout::cache::{AvailableKey, MeasureCache, quantize_available};
+use crate::layout::grid::GridContext;
+use crate::layout::intrinsic::{IntrinsicBounds, LenReq};
+use crate::layout::result::{LayoutResult, ShapedText};
+use crate::layout::support::{leaf_text_shapes, resolve_axis_size, zero_subtree};
+use crate::layout::wrapstack::WrapScratch;
+use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
+use crate::primitives::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
 use crate::text::TextMeasurer;
 use crate::tree::{NodeId, Tree};
-use cache::MeasureCache;
-use grid::GridContext;
-use support::{leaf_text_shapes, resolve_axis_size, zero_subtree};
-use wrapstack::WrapScratch;
 
-mod axis;
-mod cache;
-mod canvas;
-mod grid;
-mod intrinsic;
-mod result;
-mod stack;
-mod support;
-mod wrapstack;
-mod zstack;
+pub(crate) mod axis;
+pub(crate) mod cache;
+pub(crate) mod canvas;
+pub(crate) mod grid;
+pub(crate) mod intrinsic;
+pub(crate) mod result;
+pub(crate) mod stack;
+pub(crate) mod support;
+pub(crate) mod wrapstack;
+pub(crate) mod zstack;
 
 #[cfg(test)]
 mod integration_tests;
-
-pub use axis::Axis;
-pub use cache::{AvailableKey, quantize_available};
-pub use intrinsic::{IntrinsicBounds, LenReq};
-pub use result::{LayoutResult, ShapedText};
 
 /// Per-frame intermediate state: every field is reset / overwritten at
 /// the top of [`LayoutEngine::run`] and exists only for the duration of

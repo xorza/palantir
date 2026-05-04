@@ -1,4 +1,4 @@
-use palantir::primitives::Track;
+use palantir::Track;
 use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Text, Ui};
 use std::rc::Rc;
 

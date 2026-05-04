@@ -1,4 +1,4 @@
-use super::Num;
+use super::num::Num;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]

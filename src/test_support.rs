@@ -5,14 +5,14 @@
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
-use crate::primitives::{Display, Rect, Sizing, TranslateScale};
-use crate::renderer::frontend::Encoder;
+use crate::primitives::{display::Display, rect::Rect, sizing::Sizing, transform::TranslateScale};
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
-use crate::text::{CosmicMeasure, share};
+use crate::renderer::frontend::encoder::Encoder;
+use crate::text::{cosmic::CosmicMeasure, share};
 use crate::tree::NodeId;
-use crate::widgets::Panel;
+use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
 /// Decoded view of one command — test-only mirror of the SoA storage in
@@ -109,7 +109,7 @@ pub(crate) fn encode_cmds(ui: &Ui) -> RenderCmdBuffer {
 
 pub(crate) fn encode_cmds_filtered(
     ui: &Ui,
-    filter: Option<crate::primitives::Rect>,
+    filter: Option<crate::primitives::rect::Rect>,
 ) -> RenderCmdBuffer {
     // Fresh `Encoder` per call → empty cache, every encode is a cold
     // build. Tests that want to verify cache-replay output use
