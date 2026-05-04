@@ -1529,6 +1529,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "padding-struct"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58209c5739149c742a36d77ebfff339c35269cf014df9560b03974e37bdee6bf"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "page_size"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1547,6 +1558,7 @@ dependencies = [
  "encase",
  "glam",
  "glyphon",
+ "padding-struct",
  "pollster",
  "rayon",
  "rustc-hash 2.1.2",
