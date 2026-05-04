@@ -180,6 +180,9 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
             CmdKind::DrawText => {
                 // Test rasterizer ignores text — encoder tests only assert on rect output.
             }
+            CmdKind::EnterSubtree | CmdKind::ExitSubtree => {
+                // Composer-cache markers are no-ops for this rasterizer.
+            }
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");

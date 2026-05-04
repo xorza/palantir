@@ -70,6 +70,7 @@ fn extend_from_cached_shifts_rect_min() {
                 let s: TranslateScale = src.read(src.starts[i]);
                 assert_eq!(d, s);
             }
+            CmdKind::EnterSubtree | CmdKind::ExitSubtree => {}
         }
     }
 }

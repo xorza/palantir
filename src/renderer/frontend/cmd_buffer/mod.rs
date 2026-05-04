@@ -25,6 +25,7 @@ use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
 use crate::text::TextCacheKey;
+use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 
 #[repr(u8)]
@@ -37,6 +38,14 @@ pub(crate) enum CmdKind {
     DrawRect,
     DrawRectStroked,
     DrawText,
+    /// Brackets a subtree the encoder considered cache-eligible. Carries
+    /// the subtree's `WidgetId` plus the kinds-array index of its
+    /// matching [`CmdKind::ExitSubtree`] (patched by `push_exit_subtree`)
+    /// so a future composer-cache hit can fast-forward past the cmd
+    /// range. Composer treats both markers as no-ops today — they exist
+    /// only to anchor the upcoming cache.
+    EnterSubtree,
+    ExitSubtree,
 }
 
 /// One command yielded by [`RenderCmdBuffer::iter`]: the kind tag plus
@@ -72,6 +81,38 @@ pub(crate) struct DrawTextPayload {
     pub(crate) rect: Rect,
     pub(crate) color: Color,
     pub(crate) key: TextCacheKey,
+}
+
+/// 12 bytes, align 4. WidgetId is split into two u32s so the struct
+/// has no padding (a `u64` field would force struct align 8 + 4 bytes
+/// trailing pad, which `bytemuck::Pod` forbids). `exit_idx` is patched
+/// by [`RenderCmdBuffer::push_exit_subtree`] once the matching close
+/// is recorded.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct EnterSubtreePayload {
+    pub(crate) wid_lo: u32,
+    pub(crate) wid_hi: u32,
+    pub(crate) exit_idx: u32,
+}
+
+impl EnterSubtreePayload {
+    /// Reconstruct the `WidgetId` from the split halves. Unused by the
+    /// spike (composer treats EnterSubtree as a no-op); the upcoming
+    /// composer cache reads this to key its lookup.
+    #[allow(dead_code)]
+    #[inline]
+    pub(crate) fn wid(self) -> WidgetId {
+        WidgetId(((self.wid_hi as u64) << 32) | self.wid_lo as u64)
+    }
+}
+
+/// Returned by [`RenderCmdBuffer::push_enter_subtree`]; threaded into
+/// [`RenderCmdBuffer::push_exit_subtree`] so the close cmd can patch
+/// the matching open cmd's `exit_idx` field in-place.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EnterPatch {
+    payload_word_offset: u32,
 }
 
 /// Append-only command buffer. See module docs.
@@ -143,6 +184,37 @@ impl RenderCmdBuffer {
     pub(crate) fn draw_text(&mut self, rect: Rect, color: Color, key: TextCacheKey) {
         self.record_start(CmdKind::DrawText);
         write_pod(&mut self.data, DrawTextPayload { rect, color, key });
+    }
+
+    /// Open a subtree marker. Returns a patch handle the caller threads
+    /// into [`Self::push_exit_subtree`] so the open's `exit_idx` field
+    /// is rewritten to point at the matching close once known.
+    #[inline]
+    pub(crate) fn push_enter_subtree(&mut self, wid: WidgetId) -> EnterPatch {
+        self.record_start(CmdKind::EnterSubtree);
+        let payload_word_offset = self.data.len() as u32;
+        write_pod(
+            &mut self.data,
+            EnterSubtreePayload {
+                wid_lo: wid.0 as u32,
+                wid_hi: (wid.0 >> 32) as u32,
+                exit_idx: 0,
+            },
+        );
+        EnterPatch {
+            payload_word_offset,
+        }
+    }
+
+    /// Close a subtree marker, patching `patch.exit_idx` of the matching
+    /// open to the kinds-array index of this close.
+    #[inline]
+    pub(crate) fn push_exit_subtree(&mut self, patch: EnterPatch) {
+        self.record_start(CmdKind::ExitSubtree);
+        let exit_idx = (self.kinds.len() - 1) as u32;
+        // exit_idx is the 3rd u32 word in EnterSubtreePayload after
+        // wid_lo (word 0) and wid_hi (word 1).
+        self.data[patch.payload_word_offset as usize + 2] = exit_idx;
     }
 
     /// Append a cached subtree's cmd slice into this buffer, shifting
@@ -249,7 +321,11 @@ pub(crate) fn bump_rect_min(kinds: &[CmdKind], starts: &[u32], data: &mut [u32],
                 data[off] = x.to_bits();
                 data[off + 1] = y.to_bits();
             }
-            CmdKind::PopClip | CmdKind::PushTransform | CmdKind::PopTransform => {}
+            CmdKind::PopClip
+            | CmdKind::PushTransform
+            | CmdKind::PopTransform
+            | CmdKind::EnterSubtree
+            | CmdKind::ExitSubtree => {}
         }
     }
 }
