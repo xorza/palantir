@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use palantir::Align;
-use palantir::renderer::WgpuBackend;
+use palantir::WgpuBackend;
 use palantir::{
     Button, ButtonTheme, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke, Styled, Ui,
     Visuals,
@@ -70,7 +70,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     backend: WgpuBackend,
     ui: Ui,
-    display: palantir::primitives::Display,
+    display: palantir::Display,
     first_paint: bool,
     click_count: u32,
 }
@@ -140,11 +140,11 @@ impl ApplicationHandler for App {
         );
 
         let mut ui = Ui::new();
-        let display = palantir::primitives::Display::from_physical(
+        let display = palantir::Display::from_physical(
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
         );
-        let cosmic = palantir::text::share(palantir::text::CosmicMeasure::with_bundled_fonts());
+        let cosmic = palantir::share(palantir::CosmicMeasure::with_bundled_fonts());
         ui.set_cosmic(cosmic.clone());
         backend.set_cosmic(cosmic);
 

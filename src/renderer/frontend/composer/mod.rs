@@ -1,7 +1,9 @@
 use super::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
-use crate::primitives::{Display, Rect, Stroke, TranslateScale, URect};
+use crate::primitives::{
+    display::Display, rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect,
+};
 use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::quad::Quad;
 
@@ -10,7 +12,7 @@ use crate::renderer::quad::Quad;
 /// + compose-time scratch stacks so steady-state rendering is alloc-free.
 ///
 /// Composer doesn't know about `Tree` or `encode` — it's pure algorithm +
-/// scratch + output. [`Frontend`](crate::renderer::Frontend) orchestrates
+/// scratch + output. [`Frontend`](crate::renderer::frontend::Frontend) orchestrates
 /// encode + compose.
 #[derive(Default)]
 pub(crate) struct Composer {

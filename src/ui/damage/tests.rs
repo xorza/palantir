@@ -2,9 +2,12 @@ use super::Damage;
 use crate::Ui;
 use crate::element::Configure;
 use crate::input::InputEvent;
-use crate::primitives::{Color, Display, Rect, Sizing, TranslateScale, WidgetId};
+use crate::primitives::{
+    color::Color, display::Display, rect::Rect, sizing::Sizing, transform::TranslateScale,
+    widget_id::WidgetId,
+};
 use crate::test_support::begin;
-use crate::widgets::{Button, Frame, Panel, Styled};
+use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
 use glam::{UVec2, Vec2};
 
 #[allow(dead_code)]

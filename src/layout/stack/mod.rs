@@ -3,7 +3,9 @@ use super::support::{
 };
 use super::{Axis, LayoutEngine, LenReq};
 use crate::element::LayoutCore;
-use crate::primitives::{Align, AxisAlign, Justify, Rect, Size, Sizing};
+use crate::primitives::{
+    align::Align, align::AxisAlign, justify::Justify, rect::Rect, size::Size, sizing::Sizing,
+};
 use crate::text::TextMeasurer;
 use crate::tree::{Child, NodeId, Tree};
 

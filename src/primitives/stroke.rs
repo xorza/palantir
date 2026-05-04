@@ -1,4 +1,4 @@
-use crate::primitives::Color;
+use crate::primitives::color::Color;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]

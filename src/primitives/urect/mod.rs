@@ -16,30 +16,8 @@ pub struct URect {
 }
 
 impl URect {
-    pub const ZERO: Self = Self {
-        x: 0,
-        y: 0,
-        w: 0,
-        h: 0,
-    };
-
     pub const fn new(x: u32, y: u32, w: u32, h: u32) -> Self {
         Self { x, y, w, h }
-    }
-
-    pub const fn max_x(self) -> u32 {
-        self.x + self.w
-    }
-    pub const fn max_y(self) -> u32 {
-        self.y + self.h
-    }
-    pub const fn area(self) -> u32 {
-        self.w * self.h
-    }
-
-    /// True if either dimension is zero — the rect paints/clips nothing.
-    pub const fn is_empty(self) -> bool {
-        self.w == 0 || self.h == 0
     }
 
     /// Strict axis-aligned intersection. Returns `None` when the inputs

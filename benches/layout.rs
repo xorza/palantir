@@ -216,7 +216,7 @@ fn build_ui(ui: &mut Ui, scale: usize) {
 }
 
 fn bench_layout(c: &mut Criterion) {
-    use palantir::primitives::Display;
+    use palantir::Display;
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
     let mut group = c.benchmark_group("layout");
 

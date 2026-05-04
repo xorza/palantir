@@ -1,7 +1,7 @@
 use crate::element::Configure;
-use crate::primitives::Sizing;
+use crate::primitives::sizing::Sizing;
 use crate::test_support::ui_at;
-use crate::widgets::{Frame, Panel};
+use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
 #[test]

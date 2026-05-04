@@ -1,4 +1,4 @@
-use crate::primitives::Track;
+use crate::primitives::track::Track;
 use std::rc::Rc;
 
 /// Track definitions + axis gaps for a `Grid` panel. Stored on `GridArena`

@@ -1,4 +1,4 @@
-use super::Num;
+use super::num::Num;
 
 /// WPF-style sizing. Maps to: Fixed = exact px, Hug = Auto (use desired),
 /// Fill = Star (take remainder, distributed by `weight` across Fill siblings).

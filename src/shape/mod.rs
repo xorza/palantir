@@ -1,4 +1,6 @@
-use crate::primitives::{Align, Color, Corners, Stroke, approx_zero};
+use crate::primitives::{
+    align::Align, approx::approx_zero, color::Color, corners::Corners, stroke::Stroke,
+};
 use glam::Vec2;
 
 #[derive(Clone, Debug)]

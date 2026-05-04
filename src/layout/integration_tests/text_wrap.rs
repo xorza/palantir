@@ -1,10 +1,10 @@
 use super::scaffold::{chat_message, two_hug_cols_with_wrap};
 use crate::element::Configure;
-use crate::layout::{Axis, LenReq};
-use crate::primitives::Sizing;
+use crate::layout::{axis::Axis, intrinsic::LenReq};
+use crate::primitives::sizing::Sizing;
 use crate::shape::{Shape, TextWrap};
 use crate::test_support::ui_with_text;
-use crate::widgets::{Panel, Text};
+use crate::widgets::{panel::Panel, text::Text};
 use glam::UVec2;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";

@@ -5,9 +5,9 @@
 
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Sizing, Track};
+use crate::primitives::{sizing::Sizing, track::Track};
 use crate::tree::NodeId;
-use crate::widgets::{Frame, Grid, Panel, Text};
+use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use std::rc::Rc;
 
 /// `Grid` with two `Hug` columns × one `Hug` row. The wrapping `Text`

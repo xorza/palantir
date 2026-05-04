@@ -20,7 +20,9 @@
 //! align >4 (`DrawTextPayload`) work even when the arena slot starts at
 //! a 4-byte-only-aligned offset.
 
-use crate::primitives::{Color, Corners, Rect, Stroke, TranslateScale};
+use crate::primitives::{
+    color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
+};
 use crate::text::TextCacheKey;
 use glam::Vec2;
 

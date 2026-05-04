@@ -16,7 +16,7 @@
 //! `benches/layout.rs`, so the numbers are comparable.
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use palantir::primitives::Display;
+use palantir::Display;
 use palantir::{Configure, Frame, Panel, Sizing, Text, Ui};
 use std::hint::black_box;
 

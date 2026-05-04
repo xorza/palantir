@@ -2,7 +2,7 @@ mod quad_pipeline;
 
 use self::quad_pipeline::QuadPipeline;
 use super::frontend::FrameOutput;
-use crate::primitives::{Color, URect};
+use crate::primitives::{color::Color, urect::URect};
 use crate::text::SharedCosmic;
 
 /// Pad the damage scissor by this many physical pixels on every

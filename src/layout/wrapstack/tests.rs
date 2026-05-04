@@ -1,9 +1,9 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Justify, Sizing};
+use crate::primitives::{color::Color, justify::Justify, sizing::Sizing};
 use crate::test_support::under_outer;
 use crate::tree::NodeId;
-use crate::widgets::{Frame, Panel, Styled};
+use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 
 fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {

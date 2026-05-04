@@ -5,9 +5,9 @@
 
 use super::scaffold::two_hug_cols_with_wrap;
 use crate::element::Configure;
-use crate::primitives::{Color, Sizing, Track};
+use crate::primitives::{color::Color, sizing::Sizing, track::Track};
 use crate::test_support::{ui_at, ui_with_text};
-use crate::widgets::{Frame, Grid, Panel, Styled, Text};
+use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, styled::Styled, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 

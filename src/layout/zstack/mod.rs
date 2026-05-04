@@ -2,7 +2,7 @@ use super::support::{
     AutoBias, child_avail_per_axis_hug, children_max_intrinsic, place_two_axis, zero_subtree,
 };
 use super::{Axis, LayoutEngine, LenReq};
-use crate::primitives::{Rect, Size};
+use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
 use crate::tree::{Child, NodeId, Tree};
 

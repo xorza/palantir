@@ -1,7 +1,7 @@
 use crate::element::{Configure, Element, LayoutMode};
-use crate::primitives::{TranslateScale, WidgetId};
+use crate::primitives::{transform::TranslateScale, widget_id::WidgetId};
 use crate::ui::Ui;
-use crate::widgets::{Background, Response, Styled};
+use crate::widgets::{Response, styled::Background, styled::Styled};
 use std::hash::Hash;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`

@@ -1,19 +1,12 @@
-mod button;
-mod frame;
-mod grid;
-mod panel;
-mod styled;
-mod text;
-
-pub use button::{Button, ButtonTheme};
-pub use frame::Frame;
-pub use grid::Grid;
-pub use panel::Panel;
-pub use styled::{Background, Styled};
-pub use text::Text;
+pub(crate) mod button;
+pub(crate) mod frame;
+pub(crate) mod grid;
+pub(crate) mod panel;
+pub(crate) mod styled;
+pub(crate) mod text;
 
 use crate::input::ResponseState;
-use crate::primitives::Rect;
+use crate::primitives::rect::Rect;
 use crate::tree::NodeId;
 
 #[cfg(test)]

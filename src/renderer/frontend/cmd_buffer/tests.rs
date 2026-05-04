@@ -1,5 +1,5 @@
 use super::*;
-use crate::primitives::Color;
+use crate::primitives::color::Color;
 use crate::test_support::{RenderCmd, cmd_at};
 use crate::text::TextCacheKey;
 

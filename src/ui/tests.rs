@@ -1,8 +1,8 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Display, Rect, WidgetId};
+use crate::primitives::{color::Color, display::Display, rect::Rect, widget_id::WidgetId};
 use crate::test_support::{begin, new_ui_text, ui_at};
-use crate::widgets::{Button, Frame, Panel, Styled};
+use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 
 #[test]
@@ -226,7 +226,7 @@ fn prev_frame_updates_on_authoring_change() {
 /// does *not* dispatch through `TextMeasurer::measure` again.
 #[test]
 fn text_reshape_skipped_when_unchanged_across_frames() {
-    use crate::widgets::Text;
+    use crate::widgets::text::Text;
 
     let mut ui = new_ui_text();
 
@@ -260,7 +260,7 @@ fn text_reshape_skipped_when_unchanged_across_frames() {
 /// drives a fresh measure.
 #[test]
 fn text_reshape_runs_when_content_changes() {
-    use crate::widgets::Text;
+    use crate::widgets::text::Text;
 
     let mut ui = new_ui_text();
 
@@ -289,8 +289,8 @@ fn text_reshape_runs_when_content_changes() {
 /// not at all on frame 2.
 #[test]
 fn wrapping_text_reshape_skipped_when_unchanged() {
-    use crate::primitives::Sizing;
-    use crate::widgets::Text;
+    use crate::primitives::sizing::Sizing;
+    use crate::widgets::text::Text;
 
     let mut ui = new_ui_text();
 
@@ -322,8 +322,8 @@ fn wrapping_text_reshape_skipped_when_unchanged() {
 /// Pin: intrinsic-query path also reuses the per-widget cache.
 #[test]
 fn intrinsic_query_reuses_cached_text_measure() {
-    use crate::primitives::{Sizing, Track};
-    use crate::widgets::{Grid, Text};
+    use crate::primitives::{sizing::Sizing, track::Track};
+    use crate::widgets::{grid::Grid, text::Text};
 
     let mut ui = new_ui_text();
 
@@ -363,7 +363,7 @@ fn intrinsic_query_reuses_cached_text_measure() {
 /// entry is evicted on the same frame.
 #[test]
 fn text_reuse_evicts_disappeared_widgets() {
-    use crate::widgets::Text;
+    use crate::widgets::text::Text;
 
     let mut ui = new_ui_text();
 
@@ -393,8 +393,8 @@ fn text_reuse_evicts_disappeared_widgets() {
 /// again.
 #[test]
 fn wrap_target_change_preserves_unbounded_cache() {
-    use crate::primitives::Sizing;
-    use crate::widgets::Text;
+    use crate::primitives::sizing::Sizing;
+    use crate::widgets::text::Text;
 
     let mut ui = new_ui_text();
 

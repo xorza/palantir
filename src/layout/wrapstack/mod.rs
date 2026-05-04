@@ -15,7 +15,7 @@
 
 use super::support::{AutoBias, place_axis, resolved_axis_align, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
-use crate::primitives::{Justify, Rect, Size, Sizing};
+use crate::primitives::{justify::Justify, rect::Rect, size::Size, sizing::Sizing};
 use crate::text::TextMeasurer;
 use crate::tree::{Child, NodeId, Tree};
 

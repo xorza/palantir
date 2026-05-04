@@ -34,8 +34,9 @@
 //! one chained setter per row.
 
 use crate::primitives::{
-    Align, GridCell, HAlign, Justify, Sense, Size, Sizes, Spacing, TranslateScale, VAlign,
-    Visibility, WidgetId,
+    align::Align, align::HAlign, align::VAlign, grid::GridCell, justify::Justify, sense::Sense,
+    size::Size, sizing::Sizes, spacing::Spacing, transform::TranslateScale, visibility::Visibility,
+    widget_id::WidgetId,
 };
 use glam::Vec2;
 

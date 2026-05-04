@@ -1,4 +1,4 @@
-use crate::primitives::{Color, Stroke};
+use crate::primitives::{color::Color, stroke::Stroke};
 
 /// One visual state's paint vocabulary. Shared across widget styles
 /// (e.g. `ButtonTheme::{normal, hovered, pressed}` are each `Visuals`).

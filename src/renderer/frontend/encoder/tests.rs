@@ -4,10 +4,11 @@ use crate::Ui;
 use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
 use crate::primitives::{
-    Align, Color, Display, HAlign, Rect, Sense, Size, Sizing, TranslateScale, VAlign, WidgetId,
+    align::Align, align::HAlign, align::VAlign, color::Color, display::Display, rect::Rect,
+    sense::Sense, size::Size, sizing::Sizing, transform::TranslateScale, widget_id::WidgetId,
 };
 use crate::test_support::{RenderCmd, begin, encode_cmds, encode_cmds_filtered, iter_cmds, ui_at};
-use crate::widgets::{Frame, Panel, Styled};
+use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::{UVec2, Vec2};
 
 fn count_clip_pairs(cmds: &RenderCmdBuffer) -> (usize, usize) {
@@ -417,8 +418,8 @@ fn align_text_in_clamps_negative_slack_to_top_left() {
 /// deflated by padding), not in the padding-inclusive outer rect.
 #[test]
 fn encoder_text_alignment_respects_leaf_padding() {
-    use crate::text::{CosmicMeasure, share};
-    use crate::widgets::Button;
+    use crate::text::{cosmic::CosmicMeasure, share};
+    use crate::widgets::button::Button;
 
     let mut ui = Ui::new();
     // Real shaper required so the encoder doesn't drop the text run as

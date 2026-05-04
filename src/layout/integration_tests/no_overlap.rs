@@ -5,9 +5,9 @@
 
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Sizing, Stroke, Track};
+use crate::primitives::{color::Color, sizing::Sizing, stroke::Stroke, track::Track};
 use crate::test_support::{RenderCmd, cmd_at, encode_cmds, ui_with_text};
-use crate::widgets::{Grid, Panel, Styled, Text};
+use crate::widgets::{grid::Grid, panel::Panel, styled::Styled, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 

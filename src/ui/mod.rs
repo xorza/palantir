@@ -1,20 +1,20 @@
-mod damage;
-mod seen_ids;
-mod theme;
-pub use theme::Theme;
-
-pub(crate) use damage::Damage;
-pub(crate) use seen_ids::SeenIds;
+pub(crate) mod damage;
+pub(crate) mod seen_ids;
+pub(crate) mod theme;
 
 use crate::cascade::Cascades;
 use crate::element::Element;
 use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
-use crate::primitives::{Display, WidgetId};
-use crate::renderer::{FrameOutput, Frontend};
+use crate::primitives::display::Display;
+use crate::primitives::widget_id::WidgetId;
+use crate::renderer::frontend::{FrameOutput, Frontend};
 use crate::shape::Shape;
 use crate::text::{SharedCosmic, TextMeasurer};
 use crate::tree::{NodeId, Tree};
+use crate::ui::damage::Damage;
+use crate::ui::seen_ids::SeenIds;
+use crate::ui::theme::Theme;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].

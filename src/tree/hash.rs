@@ -15,7 +15,7 @@
 
 use super::GridDef;
 use crate::element::{ElementExtras, LayoutCore, LayoutMode, PaintCore};
-use crate::primitives::{Sizes, Sizing, Track};
+use crate::primitives::{sizing::Sizes, sizing::Sizing, track::Track};
 use crate::shape::Shape;
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};

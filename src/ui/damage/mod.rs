@@ -17,8 +17,8 @@
 //! multi-rect damage, incremental hit-index, debug overlay").
 
 use crate::cascade::CascadeResult;
-use crate::primitives::{Rect, WidgetId};
-use crate::tree::{NodeHash, NodeId, Tree};
+use crate::primitives::{rect::Rect, widget_id::WidgetId};
+use crate::tree::{NodeId, Tree, hash::NodeHash};
 use rustc_hash::FxHashMap;
 
 /// Per-widget snapshot retained across frames so the next frame's
@@ -71,7 +71,7 @@ impl Damage {
     /// `surface`). `self.prev` is rolled forward in the same pass —
     /// the diff reads each `WidgetId`'s old entry via `insert`, then
     /// evicts last-frame entries listed in `removed` (precomputed by
-    /// [`crate::ui::SeenIds`] so damage and `text` reuse the diff).
+    /// [`crate::ui::seen_ids::SeenIds`] so damage and `text` reuse the diff).
     ///
     /// Rects are tracked in **screen space** (read straight off
     /// `Cascade.screen_rect`). This makes damage match where the GPU

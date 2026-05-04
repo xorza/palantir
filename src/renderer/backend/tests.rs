@@ -3,8 +3,8 @@
 //! draw-ordering logic in the pure `render_schedule` helper here and
 //! pin the order against expected sequences.
 
-use crate::primitives::Color;
-use crate::primitives::URect;
+use crate::primitives::color::Color;
+use crate::primitives::urect::URect;
 use crate::renderer::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::quad::Quad;
 use crate::text::TextCacheKey;
@@ -37,9 +37,9 @@ fn render_schedule(buffer: &RenderBuffer) -> Vec<RenderStep> {
 
 fn dummy_quad() -> Quad {
     Quad::new(
-        crate::primitives::Rect::new(0.0, 0.0, 10.0, 10.0),
+        crate::primitives::rect::Rect::new(0.0, 0.0, 10.0, 10.0),
         Color::WHITE,
-        crate::primitives::Corners::ZERO,
+        crate::primitives::corners::Corners::ZERO,
         None,
     )
 }

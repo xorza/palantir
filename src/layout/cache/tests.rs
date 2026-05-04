@@ -1,8 +1,8 @@
 use crate::Ui;
 use crate::element::Configure;
-use crate::primitives::{Color, Size, WidgetId};
+use crate::primitives::{color::Color, size::Size, widget_id::WidgetId};
 use crate::test_support::{begin, ui_at};
-use crate::widgets::{Frame, Panel, Styled};
+use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 
 fn run_frame(ui: &mut Ui, build: impl FnOnce(&mut Ui)) {
@@ -123,7 +123,7 @@ fn changing_available_forces_miss_and_remeasure() {
     // Same authoring (Fill child) but the parent's available size
     // shrinks between frames → `available_q` arm of the cache key
     // diverges. The snapshot must be replaced, not stale.
-    use crate::primitives::Sizing;
+    use crate::primitives::sizing::Sizing;
     let mut ui = Ui::new();
     let build = |ui: &mut Ui| {
         Panel::hstack_with_id("inner").show(ui, |ui| {
