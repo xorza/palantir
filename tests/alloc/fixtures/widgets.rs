@@ -1,14 +1,14 @@
-use crate::harness::{AllocBudget, run_audit};
+use crate::harness::{AllocBudget, audit_until_stable};
 use palantir::{Button, Configure, Sizing};
 
 #[test]
 fn empty_frame_alloc_free() {
-    run_audit("empty_frame", 0, 32, AllocBudget::ZERO, |_ui| {});
+    audit_until_stable("empty_frame", AllocBudget::ZERO, |_ui| {});
 }
 
 #[test]
 fn button_only_alloc_free() {
-    run_audit("button_only", 2, 64, AllocBudget::ZERO, |ui| {
+    audit_until_stable("button_only", AllocBudget::ZERO, |ui| {
         Button::new()
             .label("hello")
             .size((Sizing::FILL, Sizing::FILL))

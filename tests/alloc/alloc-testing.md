@@ -26,7 +26,9 @@ Catches the regression where someone introduces a per-frame `Vec::new()`
 tests/alloc/
 ├── main.rs              entry: #[global_allocator] + mod decls
 ├── allocator.rs         CountingAllocator + with_audit
-├── harness.rs           run_audit + user_frames trace filter
+├── harness/
+│   ├── mod.rs           run_audit + audit_until_stable
+│   └── format.rs        user_frames backtrace filter
 ├── harness_tests.rs     unit tests for the harness itself
 ├── fixtures.rs          mod decls
 ├── fixtures/
@@ -56,15 +58,23 @@ no global mutex.
 `with_audit(F)` is the load-bearing API in `allocator.rs`: it sets
 `IN_AUDIT` via an RAII guard (so a panic inside `F` can't strand the
 flag), drains stale traces, runs `F`, and returns the `(allocs,
-bytes, traces)` delta. `run_audit(name, warmup, audit, budget,
-scene)` in `harness.rs` is the test-facing wrapper:
+bytes, traces)` delta.
 
-1. Construct `Ui::new()` with a fixed 800×600 logical display.
-2. Run `warmup` frames untracked — lets measure cache, encode cache,
-   scratch `Vec`s reach steady-state capacity.
-3. Drive `audit` frames inside `with_audit`.
-4. Print per-frame averages. On budget violation, dump the captured
-   backtraces (filtered to user code via `user_frames`), then panic.
+Two test-facing wrappers in `harness/mod.rs`:
+
+- **`audit_until_stable(name, budget, scene)`** — auto-discovers the
+  warmup count. Probes one frame at a time until `STABLE_RUN`
+  consecutive frames have stayed within budget, then audits a fixed
+  64-frame window. **Use this for new fixtures** so warmup numbers
+  don't have to be eyeballed per scene; cache settling rates differ
+  across scenes and machines.
+- **`run_audit(name, warmup, audit, budget, scene)`** — explicit
+  warmup count. Use when debugging the harness itself or pinning a
+  specific multi-phase behavior.
+
+Both run a fixed 800×600 logical display, drive `Ui::new()`, and on
+budget violation dump captured backtraces (filtered to user code via
+`format::user_frames`) before panicking.
 
 ## Trace filtering
 
@@ -85,16 +95,17 @@ shouldn't.
 
 ### Infrastructure ✅
 - `allocator.rs` — counting wrapper around `System` + `with_audit`.
-- `harness.rs` — `run_audit` with `AllocBudget`, trace filter.
+- `harness/mod.rs` — `run_audit` + `audit_until_stable` with
+  `AllocBudget`.
+- `harness/format.rs` — `user_frames` backtrace filter.
 - `harness_tests.rs` — unit tests for the harness itself.
 
 ### Fixtures
 - `empty_frame` ✅ — `Ui` with no widgets, budget 0. Sanity baseline.
-  0 warmup / 32 audit.
 - `button_only` ✅ — single `Button::label("hello")`, budget 0. Pins
-  the static-string label round-trip at zero allocs. 2 warmup / 64
-  audit (the warmup absorbs scratch-Vec capacity growth that takes
-  longer than the empty scene to settle).
+  the static-string label round-trip at zero allocs.
+
+Both use `audit_until_stable`, so warmup is auto-discovered.
 
 ### Planned
 - `nested_vstack_64` — past scratch-Vec growth; budget 0.
