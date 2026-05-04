@@ -195,10 +195,10 @@ impl WgpuBackend {
         // pool — they share the atlas-bound pipeline + viewport state.
         self.text.update_viewport(&self.queue, buffer.viewport_phys);
         for (i, g) in buffer.groups.iter().enumerate() {
-            if g.texts.is_empty() {
+            if g.texts.len == 0 {
                 continue;
             }
-            let runs = &buffer.texts[g.texts.start as usize..g.texts.end as usize];
+            let runs = &buffer.texts[g.texts.range()];
             self.text
                 .prepare_group(&self.device, &self.queue, buffer.scale, i, runs);
         }
@@ -242,10 +242,10 @@ impl WgpuBackend {
                     continue;
                 }
                 pass.set_scissor_rect(effective.x, effective.y, effective.w, effective.h);
-                if !g.quads.is_empty() {
-                    self.quad.draw_range(&mut pass, g.quads.clone());
+                if g.quads.len != 0 {
+                    self.quad.draw_range(&mut pass, g.quads);
                 }
-                if !g.texts.is_empty() {
+                if g.texts.len != 0 {
                     // Text uses a full-viewport scissor + per-area `bounds`
                     // for clipping (set in compose). Under partial repaint
                     // we narrow that to the damage rect so glyph fringe

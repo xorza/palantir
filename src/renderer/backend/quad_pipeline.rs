@@ -2,6 +2,7 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
+use crate::layout::types::span::Span;
 use crate::renderer::gpu::quad::Quad;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
@@ -161,17 +162,13 @@ impl QuadPipeline {
     /// Draw a contiguous slice of the uploaded instance buffer. Used to
     /// segment quads by scissor region; caller is responsible for setting
     /// `RenderPass::set_scissor_rect` before each call.
-    pub(crate) fn draw_range<'a>(
-        &'a self,
-        pass: &mut wgpu::RenderPass<'a>,
-        instances: std::ops::Range<u32>,
-    ) {
-        if instances.is_empty() {
+    pub(crate) fn draw_range<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
+        if instances.len == 0 {
             return;
         }
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-        pass.draw(0..4, instances);
+        pass.draw(0..4, instances.start..instances.start + instances.len);
     }
 }

@@ -5,7 +5,7 @@ use std::ops::Range;
 /// these and we want to keep the per-entry footprint small. Use
 /// `Range<u32>` (start..end) wherever start+end is a more natural
 /// representation; this type is for the count-based form.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Span {
     pub(crate) start: u32,
     pub(crate) len: u32,

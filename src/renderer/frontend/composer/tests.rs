@@ -1,6 +1,6 @@
 use super::super::cmd_buffer::RenderCmdBuffer;
 use super::Composer;
-use crate::layout::types::display::Display;
+use crate::layout::types::{display::Display, span::Span};
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
     urect::URect,
@@ -49,7 +49,7 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
     assert_eq!(buf.quads.len(), 2);
     assert_eq!(buf.groups.len(), 1);
     assert!(buf.groups[0].scissor.is_none());
-    assert_eq!(buf.groups[0].quads, 0..2);
+    assert_eq!(buf.groups[0].quads, Span::new(0, 2));
 }
 
 #[test]
@@ -69,16 +69,16 @@ fn compose_with_clip_groups_inner_draws_under_scissor() {
     assert_eq!(buf.groups.len(), 3);
 
     assert!(buf.groups[0].scissor.is_none());
-    assert_eq!(buf.groups[0].quads, 0..1);
+    assert_eq!(buf.groups[0].quads, Span::new(0, 1));
 
     let s = buf.groups[1]
         .scissor
         .expect("clipped group must have a scissor");
     assert_eq!((s.x, s.y, s.w, s.h), (50, 50, 100, 100));
-    assert_eq!(buf.groups[1].quads, 1..3);
+    assert_eq!(buf.groups[1].quads, Span::new(1, 2));
 
     assert!(buf.groups[2].scissor.is_none());
-    assert_eq!(buf.groups[2].quads, 3..4);
+    assert_eq!(buf.groups[2].quads, Span::new(3, 1));
 }
 
 #[test]
@@ -246,11 +246,11 @@ fn compose_splits_group_on_text_to_quad_transition() {
         "text→quad transition must start a new group"
     );
     // First group: quad #0 + text #0.
-    assert_eq!(buf.groups[0].quads, 0..1);
-    assert_eq!(buf.groups[0].texts, 0..1);
+    assert_eq!(buf.groups[0].quads, Span::new(0, 1));
+    assert_eq!(buf.groups[0].texts, Span::new(0, 1));
     // Second group: quad #1 only — renders after group 0's text.
-    assert_eq!(buf.groups[1].quads, 1..2);
-    assert_eq!(buf.groups[1].texts, 1..1);
+    assert_eq!(buf.groups[1].quads, Span::new(1, 1));
+    assert_eq!(buf.groups[1].texts, Span::new(1, 0));
 }
 
 /// Pin: consecutive `Text → Text` should NOT split (both go into the
@@ -269,8 +269,8 @@ fn compose_does_not_split_consecutive_texts() {
     assert_eq!(buf.quads.len(), 1);
     assert_eq!(buf.texts.len(), 2);
     assert_eq!(buf.groups.len(), 1);
-    assert_eq!(buf.groups[0].quads, 0..1);
-    assert_eq!(buf.groups[0].texts, 0..2);
+    assert_eq!(buf.groups[0].quads, Span::new(0, 1));
+    assert_eq!(buf.groups[0].texts, Span::new(0, 2));
 }
 
 /// Pin: `Quad → Quad → Text` fits in one group. The text comes after
@@ -287,8 +287,8 @@ fn compose_keeps_quads_then_text_in_one_group() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.groups.len(), 1);
-    assert_eq!(buf.groups[0].quads, 0..2);
-    assert_eq!(buf.groups[0].texts, 0..1);
+    assert_eq!(buf.groups[0].quads, Span::new(0, 2));
+    assert_eq!(buf.groups[0].texts, Span::new(0, 1));
 }
 
 mod cache_integration {
