@@ -18,7 +18,7 @@ fn run_frame(ui: &mut Ui, build: impl FnOnce(&mut Ui)) {
 fn snap_for(ui: &Ui, wid: WidgetId) -> Option<(super::ArenaSnapshot, &[Size])> {
     let cache = &ui.layout_engine.cache;
     let snap = *cache.snapshots.get(&wid)?;
-    Some((snap, &cache.desired_arena[snap.nodes.range()]))
+    Some((snap, &cache.desired.items[snap.nodes.range()]))
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn changing_available_forces_miss_and_remeasure() {
 
     let wid = WidgetId::from_hash("fill");
     let avail1 =
-        ui.layout_engine.cache.available_arena[snap_for(&ui, wid).unwrap().0.nodes.start as usize];
+        ui.layout_engine.cache.available[snap_for(&ui, wid).unwrap().0.nodes.start as usize];
     let d1 = snap_for(&ui, wid).unwrap().1[0];
 
     begin(&mut ui, UVec2::new(80, 80));
@@ -148,7 +148,7 @@ fn changing_available_forces_miss_and_remeasure() {
     ui.end_frame();
 
     let avail2 =
-        ui.layout_engine.cache.available_arena[snap_for(&ui, wid).unwrap().0.nodes.start as usize];
+        ui.layout_engine.cache.available[snap_for(&ui, wid).unwrap().0.nodes.start as usize];
     let desired2 = snap_for(&ui, wid).unwrap().1[0];
     assert_ne!(
         avail1, avail2,
@@ -302,7 +302,7 @@ fn arena_invariant_holds_under_fragmentation() {
     // once we're past the floor. Compaction is triggered lazily
     // inside `write_subtree`; we don't assert *which* write fired
     // it, only that the invariant holds at the end.
-    use super::{COMPACT_FLOOR, COMPACT_RATIO};
+    use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO};
     let mut ui = Ui::new();
 
     let n_first = (COMPACT_FLOOR) * 4;
@@ -328,12 +328,12 @@ fn arena_invariant_holds_under_fragmentation() {
     ui.end_frame();
 
     let cache = &ui.layout_engine.cache;
-    if cache.live_entries > COMPACT_FLOOR {
+    if cache.desired.live > COMPACT_FLOOR {
         assert!(
-            cache.desired_arena.len() <= cache.live_entries.saturating_mul(COMPACT_RATIO),
+            cache.desired.items.len() <= cache.desired.live.saturating_mul(COMPACT_RATIO),
             "arena {} > live {} × {}x",
-            cache.desired_arena.len(),
-            cache.live_entries,
+            cache.desired.items.len(),
+            cache.desired.live,
             COMPACT_RATIO,
         );
     }
@@ -345,7 +345,7 @@ fn cache_hits_remain_valid_after_compaction() {
     // widget which survives compaction still produces correct
     // `desired` data on subsequent cache hits — i.e. the snapshot's
     // new arena range still contains the right bytes.
-    use super::{COMPACT_FLOOR, COMPACT_RATIO};
+    use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO};
     let mut ui = Ui::new();
 
     // Frame 1: enough widgets to clear the floor; remember one that
@@ -381,15 +381,15 @@ fn cache_hits_remain_valid_after_compaction() {
         .get(&kept_wid)
         .expect("kept widget must still have a snapshot");
     let s = snap.nodes.start as usize;
-    let kept_desired_post = cache.desired_arena[s];
+    let kept_desired_post = cache.desired.items[s];
     assert_eq!(
         kept_desired_pre, kept_desired_post,
         "kept widget's `desired` must survive compaction unchanged",
     );
 
     // And the global invariant should still hold past the floor.
-    if cache.live_entries > COMPACT_FLOOR {
-        assert!(cache.desired_arena.len() <= cache.live_entries.saturating_mul(COMPACT_RATIO),);
+    if cache.desired.live > COMPACT_FLOOR {
+        assert!(cache.desired.items.len() <= cache.desired.live.saturating_mul(COMPACT_RATIO),);
     }
 }
 
@@ -510,7 +510,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
 
     // Frame 1: present.
     run_frame(&mut ui, with_widget);
-    let live_before = ui.layout_engine.cache.live_entries;
+    let live_before = ui.layout_engine.cache.desired.live;
     assert!(
         ui.layout_engine.cache.snapshots.contains_key(&blip),
         "widget must be cached after first frame",
@@ -523,10 +523,10 @@ fn cache_handles_widget_reappearance_after_eviction() {
         !ui.layout_engine.cache.snapshots.contains_key(&blip),
         "vanished widget must be evicted via sweep_removed",
     );
-    let live_after_evict = ui.layout_engine.cache.live_entries;
+    let live_after_evict = ui.layout_engine.cache.desired.live;
     assert!(
         live_after_evict < live_before,
-        "live_entries must decrease after eviction",
+        "live count must decrease after eviction",
     );
 
     // Frame 3: reappears with same id. Re-insertion runs the
@@ -542,15 +542,15 @@ fn cache_handles_widget_reappearance_after_eviction() {
     // Cold oracle: clear and run again. live_entries and the
     // snapshot's payload must match the warm reappearance.
     let warm_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();
-    let warm_desired = ui.layout_engine.cache.desired_arena[warm_snap.nodes.range()].to_vec();
-    let warm_live = ui.layout_engine.cache.live_entries;
+    let warm_desired = ui.layout_engine.cache.desired.items[warm_snap.nodes.range()].to_vec();
+    let warm_live = ui.layout_engine.cache.desired.live;
 
     crate::support::internals::clear_measure_cache(&mut ui);
     run_frame(&mut ui, with_widget);
 
     let cold_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();
-    let cold_desired = ui.layout_engine.cache.desired_arena[cold_snap.nodes.range()].to_vec();
-    let cold_live = ui.layout_engine.cache.live_entries;
+    let cold_desired = ui.layout_engine.cache.desired.items[cold_snap.nodes.range()].to_vec();
+    let cold_live = ui.layout_engine.cache.desired.live;
 
     assert_eq!(
         warm_snap.subtree_hash, cold_snap.subtree_hash,
@@ -564,8 +564,5 @@ fn cache_handles_widget_reappearance_after_eviction() {
         warm_desired, cold_desired,
         "reappeared snapshot's desired payload must equal cold-rebuild's",
     );
-    assert_eq!(
-        warm_live, cold_live,
-        "live_entries accounting must match cold rebuild",
-    );
+    assert_eq!(warm_live, cold_live, "live count must match cold rebuild",);
 }

@@ -25,9 +25,9 @@
 //!
 //! [`EncodeCache`]: crate::renderer::frontend::encoder::cache::EncodeCache
 
+use crate::common::cache_arena::LiveArena;
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::span::Span;
-use crate::renderer::frontend::cache_arena::LiveArena;
 use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
 use crate::tree::node_hash::NodeHash;

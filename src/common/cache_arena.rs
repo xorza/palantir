@@ -1,16 +1,20 @@
-//! Bookkeeping primitive shared by `EncodeCache` and `ComposeCache`: a
-//! `Vec<T>` arena paired with a `live: usize` byte count, plus the
-//! compaction-trigger heuristics. Each cache holds one `LiveArena<T>`
-//! per element type and coordinates them at the snapshot level (the
-//! per-snapshot type and the in-place rewrite work stay cache-specific).
+//! Bookkeeping primitive shared by `MeasureCache`, `EncodeCache`, and
+//! `ComposeCache`: a `Vec<T>` arena paired with a `live: usize`
+//! element count, plus the compaction-trigger heuristics. Each cache
+//! holds one `LiveArena<T>` per independently-tracked element type and
+//! coordinates them at the snapshot level (the per-snapshot type and
+//! the in-place rewrite work stay cache-specific).
+//!
+//! Multiple parallel arenas of identical length share a single live
+//! counter (e.g. encode-cache `starts` rides on `kinds.live`,
+//! measure-cache `text` and `available` ride on `desired.live`).
 
 /// Compact when arena length exceeds `live × COMPACT_RATIO` — i.e. at
-/// least half the arena is garbage. Tuned in lockstep with
-/// `MeasureCache`; revisit there before changing here.
-const COMPACT_RATIO: usize = 2;
+/// least half the arena is garbage.
+pub(crate) const COMPACT_RATIO: usize = 2;
 /// Floor below which compaction never triggers — small caches don't
 /// repay the rebuild cost.
-const COMPACT_FLOOR: usize = 64;
+pub(crate) const COMPACT_FLOOR: usize = 64;
 
 pub(crate) struct LiveArena<T> {
     pub(crate) items: Vec<T>,
