@@ -6,7 +6,7 @@
 use crate::Ui;
 use crate::element::Configure;
 use crate::primitives::{color::Color, sizing::Sizing, stroke::Stroke, track::Track};
-use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
+use crate::renderer::frontend::cmd_buffer::{Cmd, CmdKind, DrawTextPayload};
 use crate::test_support::{encode_cmds, ui_with_text};
 use crate::widgets::{grid::Grid, panel::Panel, styled::Styled, text::Text};
 use glam::UVec2;
@@ -193,7 +193,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 
     let cmds = encode_cmds(&ui);
     let mut text_xs: Vec<f32> = Vec::new();
-    for (kind, start) in cmds.iter() {
+    for Cmd { kind, start } in cmds.iter() {
         if kind == CmdKind::DrawText {
             text_xs.push(cmds.read::<DrawTextPayload>(start).rect.min.x);
         }
@@ -291,7 +291,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
 
     let cmds = encode_cmds(&ui);
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
-    for (kind, start) in cmds.iter() {
+    for Cmd { kind, start } in cmds.iter() {
         if kind == CmdKind::DrawText {
             let p: DrawTextPayload = cmds.read(start);
             entries.push((p.rect.min.x, p.rect.min.y, p.key.text_hash));

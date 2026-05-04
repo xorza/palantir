@@ -3,7 +3,7 @@
 //! Three columns: a 1-byte kind discriminant per command, a `u32` start
 //! offset into a payload arena, and the arena itself. Consumers (the
 //! composer, the encode cache, tests) dispatch on `CmdKind` via
-//! `raw_iter()` and read each payload with the typed `read::<T>()`
+//! `iter()` and read each payload with the typed `read::<T>()`
 //! helper — no command-enum is ever materialized.
 //!
 //! Memory: a tagged-enum representation would size to its largest
@@ -37,6 +37,16 @@ pub(crate) enum CmdKind {
     DrawRect,
     DrawRectStroked,
     DrawText,
+}
+
+/// One command yielded by [`RenderCmdBuffer::iter`]: the kind tag plus
+/// the offset (in `u32` words) at which its payload begins in the
+/// arena. Read with [`RenderCmdBuffer::read::<T>(start)`] using the
+/// payload type matching `kind`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Cmd {
+    pub(crate) kind: CmdKind,
+    pub(crate) start: u32,
 }
 
 #[repr(C)]
@@ -168,13 +178,17 @@ impl RenderCmdBuffer {
         bump_rect_min(kinds, appended_starts, &mut self.data, offset);
     }
 
-    /// Raw iterator over `(kind, payload-start)` pairs, in order. Used by
-    /// the composer hot path (and tests) to dispatch on `CmdKind` and
-    /// read payloads with the typed `read::<T>()` helper — avoids
-    /// materializing a per-command enum.
+    /// Iterator over [`Cmd`]s in record order. Used by the composer hot
+    /// path (and tests) to dispatch on `CmdKind` and read payloads with
+    /// the typed `read::<T>()` helper — avoids materializing a
+    /// per-command enum.
     #[inline]
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (CmdKind, u32)> + '_ {
-        self.kinds.iter().copied().zip(self.starts.iter().copied())
+    pub(crate) fn iter(&self) -> impl Iterator<Item = Cmd> + '_ {
+        self.kinds
+            .iter()
+            .copied()
+            .zip(self.starts.iter().copied())
+            .map(|(kind, start)| Cmd { kind, start })
     }
 
     #[inline]
