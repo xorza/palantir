@@ -2,7 +2,7 @@
 //! Subtree-skip on the composer, mirroring [`EncodeCache`]: same
 //! arena+snapshot shape, same in-place-on-match / append-on-mismatch
 //! write path, same `live × COMPACT_RATIO` compaction trigger. See
-//! `docs/composer-cache.md`.
+//! `src/renderer/frontend/composer/compose-cache.md`.
 //!
 //! Storage layout: three SoA arenas — `quads_arena`, `texts_arena`,
 //! `groups_arena`. Per-`WidgetId` [`ComposeSnapshot`] picks a
