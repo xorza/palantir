@@ -80,10 +80,13 @@ The end-to-end percentage is diluted by the composer pass, which runs
 in both arms; the encoder pass itself saves substantially more in
 absolute terms.
 
-`TINY_SUBTREE_THRESHOLD = 1` skips cache lookup + write for size-1
-leaves: one `draw_rect`/`draw_text` is cheaper to re-emit than the
-hashmap miss + insert that would replace it. K=2 was tried and
-regressed `nested/forced_miss` by 7 %, so the threshold stays at 1.
+`TINY_SUBTREE_THRESHOLD = 4` skips cache lookup + write (and gates
+`EnterSubtree` / `ExitSubtree` marker emission) for subtrees of `<=` 4
+nodes: a handful of `draw_rect` / `draw_text` calls is cheaper to
+re-emit than the hashmap miss + insert + marker pair it would replace,
+and tiny subtrees never benefit from the composer-cache splice. The
+threshold was raised from 1 when the markers landed; see
+`composer/compose-cache.md` for the bench that motivated the change.
 
 Future-work items (composer cache, hit-hint propagation,
 damage-aware encode replay, SIMD `bump_rect_min`, coarser

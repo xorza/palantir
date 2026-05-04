@@ -43,9 +43,9 @@ pub(crate) enum CmdKind {
     /// Brackets a subtree the encoder considered cache-eligible. Carries
     /// the subtree's `WidgetId` plus the kinds-array index of its
     /// matching [`CmdKind::ExitSubtree`] (patched by `push_exit_subtree`)
-    /// so a future composer-cache hit can fast-forward past the cmd
-    /// range. Composer treats both markers as no-ops today — they exist
-    /// only to anchor the upcoming cache.
+    /// so a composer-cache hit can fast-forward past the cmd range.
+    /// `EnterSubtree` drives `ComposeCache::try_splice`; `ExitSubtree`
+    /// drives `ComposeCache::write_subtree` on the miss path.
     EnterSubtree,
     ExitSubtree,
 }
