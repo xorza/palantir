@@ -45,6 +45,12 @@ pub(crate) fn leaf_text_shapes(
 /// Also reused by `intrinsic::compute` with `available = INFINITY`,
 /// which collapses Fill to its content size — the parent-independent
 /// rule for intrinsic queries (CSS Grid `1fr`-in-auto-context).
+///
+/// `Fill` floors at `hug_with_margin` so a Fill panel never reports
+/// smaller than its measured children — a cramped window still gets a
+/// parent rect that contains its content (which then overflows the
+/// surface, by design). `Fixed` is a hard contract and does *not*
+/// grow past `v` even if children measure larger.
 pub(crate) fn resolve_axis_size(
     s: Sizing,
     hug_with_margin: f32,
@@ -61,7 +67,7 @@ pub(crate) fn resolve_axis_size(
             // (matches CSS Grid: a `1fr` track with `width: auto` parent
             // resolves to its content size, not infinity).
             let outer = if available.is_finite() {
-                available
+                available.max(hug_with_margin)
             } else {
                 hug_with_margin
             };
