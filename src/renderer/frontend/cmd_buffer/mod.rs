@@ -86,13 +86,13 @@ pub(crate) struct DrawTextPayload {
 /// Size + align are pinned by a `const` assert so the field-offset math
 /// in `push_exit_subtree` (via `offset_of!`) stays in sync.
 #[repr(C)]
+#[padding_struct::padding_struct]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct EnterSubtreePayload {
     pub(crate) wid: WidgetId,
     pub(crate) subtree_hash: NodeHash,
     pub(crate) avail: AvailableKey,
     pub(crate) exit_idx: u32,
-    _pad: u32,
 }
 
 const _: () = {
@@ -201,7 +201,7 @@ impl RenderCmdBuffer {
                 subtree_hash,
                 avail,
                 exit_idx: 0,
-                _pad: 0,
+                ..bytemuck::Zeroable::zeroed()
             },
         );
         EnterPatch {
