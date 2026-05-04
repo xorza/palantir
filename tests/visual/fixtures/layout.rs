@@ -22,15 +22,18 @@ fn vstack_fill_weights_matches_golden() {
             .gap(4.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size((Sizing::FILL, Sizing::Fill(1.0)))
                     .fill(Color::rgb(0.85, 0.30, 0.30))
                     .show(ui);
-                Frame::with_id("b")
+                Frame::new()
+                    .with_id("b")
                     .size((Sizing::FILL, Sizing::Fill(2.0)))
                     .fill(Color::rgb(0.30, 0.85, 0.40))
                     .show(ui);
-                Frame::with_id("c")
+                Frame::new()
+                    .with_id("c")
                     .size((Sizing::FILL, Sizing::Fill(1.0)))
                     .fill(Color::rgb(0.30, 0.50, 0.95))
                     .show(ui);
@@ -45,30 +48,35 @@ fn vstack_fill_weights_matches_golden() {
 fn grid_mixed_tracks_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(320, 200), 1.0, DARK_BG, |ui| {
-        Grid::with_id("g")
+        Grid::new()
+            .with_id("g")
             .cols([Track::fixed(80.0), Track::fill(), Track::fixed(60.0)])
             .rows([Track::fixed(40.0), Track::fill()])
             .gap(6.0)
             .padding(10.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Frame::with_id("header")
+                Frame::new()
+                    .with_id("header")
                     .grid_cell((0, 0))
                     .grid_span((1, 3))
                     .fill(Color::rgb(0.25, 0.30, 0.45))
                     .radius(4.0)
                     .show(ui);
-                Frame::with_id("side")
+                Frame::new()
+                    .with_id("side")
                     .grid_cell((1, 0))
                     .fill(Color::rgb(0.35, 0.45, 0.30))
                     .radius(4.0)
                     .show(ui);
-                Frame::with_id("body")
+                Frame::new()
+                    .with_id("body")
                     .grid_cell((1, 1))
                     .fill(Color::rgb(0.20, 0.20, 0.28))
                     .radius(4.0)
                     .show(ui);
-                Frame::with_id("aside")
+                Frame::new()
+                    .with_id("aside")
                     .grid_cell((1, 2))
                     .fill(Color::rgb(0.50, 0.30, 0.45))
                     .radius(4.0)
@@ -95,7 +103,8 @@ fn zstack_centered_button_matches_golden() {
             })
             .radius(10.0)
             .show(ui, |ui| {
-                Button::with_id("btn")
+                Button::new()
+                    .with_id("btn")
                     .align(Align::CENTER)
                     .label("centered")
                     .show(ui);

@@ -12,7 +12,8 @@ fn frame_paints_a_single_rounded_rect() {
     let mut frame_node = None;
     Panel::hstack().show(&mut ui, |ui| {
         frame_node = Some(
-            Frame::with_id("decoration")
+            Frame::new()
+                .with_id("decoration")
                 .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                 .fill(Color::rgb(0.2, 0.4, 0.8))
                 .radius(6.0)
@@ -39,7 +40,8 @@ fn frame_with_sense_click_is_clickable() {
 
     let mut ui = ui_at(UVec2::new(200, 100));
     Panel::hstack().show(&mut ui, |ui| {
-        Frame::with_id("hitbox")
+        Frame::new()
+            .with_id("hitbox")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
             .sense(Sense::CLICK)
             .show(ui);
@@ -51,7 +53,8 @@ fn frame_with_sense_click_is_clickable() {
     ui.begin_frame(Display::default());
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
-        clicked = Frame::with_id("hitbox")
+        clicked = Frame::new()
+            .with_id("hitbox")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
             .sense(Sense::CLICK)
             .show(ui)

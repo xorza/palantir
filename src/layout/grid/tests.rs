@@ -14,8 +14,8 @@ fn grid_fixed_and_fill_columns_split_remainder() {
         .rows([Track::fill()])
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
-            Frame::with_id("left").grid_cell((0, 0)).show(ui);
-            Frame::with_id("right").grid_cell((0, 1)).show(ui);
+            Frame::new().with_id("left").grid_cell((0, 0)).show(ui);
+            Frame::new().with_id("right").grid_cell((0, 1)).show(ui);
         })
         .node;
     ui.end_frame();
@@ -40,15 +40,18 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
         .rows([Track::hug(), Track::hug()])
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
-            Button::with_id("short")
+            Button::new()
+                .with_id("short")
                 .label("ok")
                 .grid_cell((0, 0))
                 .show(ui); // 16w
-            Button::with_id("long")
+            Button::new()
+                .with_id("long")
                 .label("hello!!")
                 .grid_cell((1, 0))
                 .show(ui); // 56w
-            Frame::with_id("body")
+            Frame::new()
+                .with_id("body")
                 .grid_cell((0, 1))
                 .grid_span((2, 1))
                 .show(ui);
@@ -75,8 +78,8 @@ fn grid_fill_weights_split_remainder_proportionally() {
         .rows([Track::fill()])
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
-            Frame::with_id("a").grid_cell((0, 0)).show(ui);
-            Frame::with_id("b").grid_cell((0, 1)).show(ui);
+            Frame::new().with_id("a").grid_cell((0, 0)).show(ui);
+            Frame::new().with_id("b").grid_cell((0, 1)).show(ui);
         })
         .node;
     ui.end_frame();
@@ -95,8 +98,8 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
         .rows([Track::fill()])
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
-            Frame::with_id("a").grid_cell((0, 0)).show(ui);
-            Frame::with_id("b").grid_cell((0, 1)).show(ui);
+            Frame::new().with_id("a").grid_cell((0, 0)).show(ui);
+            Frame::new().with_id("b").grid_cell((0, 1)).show(ui);
         })
         .node;
     ui.end_frame();
@@ -114,8 +117,8 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
         .rows([Track::fill()])
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
-            Frame::with_id("a").grid_cell((0, 0)).show(ui);
-            Frame::with_id("b").grid_cell((0, 1)).show(ui);
+            Frame::new().with_id("a").grid_cell((0, 0)).show(ui);
+            Frame::new().with_id("b").grid_cell((0, 1)).show(ui);
         })
         .node;
     ui.end_frame();
@@ -137,11 +140,12 @@ fn grid_col_span_covers_multiple_columns_with_gap() {
         .rows([Track::fixed(40.0), Track::fixed(40.0)])
         .gap(10.0)
         .show(&mut ui, |ui| {
-            Frame::with_id("header")
+            Frame::new()
+                .with_id("header")
                 .grid_cell((0, 0))
                 .grid_span((1, 3))
                 .show(ui);
-            Frame::with_id("body").grid_cell((1, 1)).show(ui);
+            Frame::new().with_id("body").grid_cell((1, 1)).show(ui);
         })
         .node;
     ui.end_frame();
@@ -168,13 +172,14 @@ fn grid_hug_grid_collapses_fill_tracks() {
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             grid_node = Some(
-                Grid::with_id("hug-grid")
+                Grid::new()
+                    .with_id("hug-grid")
                     .cols([Track::fixed(80.0), Track::fill()])
                     .rows([Track::fixed(40.0)])
                     .size((Sizing::Hug, Sizing::Hug))
                     .show(ui, |ui| {
-                        Frame::with_id("a").grid_cell((0, 0)).show(ui);
-                        Frame::with_id("b").grid_cell((0, 1)).show(ui);
+                        Frame::new().with_id("a").grid_cell((0, 0)).show(ui);
+                        Frame::new().with_id("b").grid_cell((0, 1)).show(ui);
                     })
                     .node,
             );
@@ -201,11 +206,12 @@ fn grid_row_span_covers_multiple_rows_with_gap() {
         .cols([Track::fixed(40.0), Track::fixed(40.0)])
         .gap(10.0)
         .show(&mut ui, |ui| {
-            Frame::with_id("sidebar")
+            Frame::new()
+                .with_id("sidebar")
                 .grid_cell((0, 0))
                 .grid_span((3, 1))
                 .show(ui);
-            Frame::with_id("body").grid_cell((1, 1)).show(ui);
+            Frame::new().with_id("body").grid_cell((1, 1)).show(ui);
         })
         .node;
     ui.end_frame();
@@ -234,7 +240,8 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
         .cols([Track::fixed(100.0)])
         .rows([Track::fixed(100.0)])
         .show(&mut ui, |ui| {
-            Frame::with_id("pinned")
+            Frame::new()
+                .with_id("pinned")
                 .grid_cell((0, 0))
                 .size((20.0, 20.0))
                 .align(Align::new(HAlign::Right, VAlign::Bottom))
@@ -291,11 +298,12 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
         .rows([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
         .gap(10.0)
         .show(&mut ui, |ui| {
-            Frame::with_id("big")
+            Frame::new()
+                .with_id("big")
                 .grid_cell((0, 0))
                 .grid_span((2, 2))
                 .show(ui);
-            Frame::with_id("corner").grid_cell((2, 2)).show(ui);
+            Frame::new().with_id("corner").grid_cell((2, 2)).show(ui);
         })
         .node;
     ui.end_frame();
@@ -331,12 +339,19 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             grid_node = Some(
-                Grid::with_id("empty-grid")
+                Grid::new()
+                    .with_id("empty-grid")
                     .cols([Track::fixed(50.0)])
                     .rows(empty)
                     .size((Sizing::Hug, Sizing::Hug))
                     .show(ui, |ui| {
-                        ghost_node = Some(Frame::with_id("ghost").size((20.0, 20.0)).show(ui).node);
+                        ghost_node = Some(
+                            Frame::new()
+                                .with_id("ghost")
+                                .size((20.0, 20.0))
+                                .show(ui)
+                                .node,
+                        );
                     })
                     .node,
             );
@@ -367,27 +382,31 @@ fn grid_multi_row_hug_heights_resolve_independently() {
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             grid_node = Some(
-                Grid::with_id("multi-row")
+                Grid::new()
+                    .with_id("multi-row")
                     .cols([Track::fixed(50.0)])
                     .rows([Track::hug(), Track::hug(), Track::hug()])
                     .size((Sizing::Hug, Sizing::Hug))
                     .show(ui, |ui| {
                         kids.push(
-                            Frame::with_id("short")
+                            Frame::new()
+                                .with_id("short")
                                 .size((50.0, 10.0))
                                 .grid_cell((0, 0))
                                 .show(ui)
                                 .node,
                         );
                         kids.push(
-                            Frame::with_id("tall")
+                            Frame::new()
+                                .with_id("tall")
                                 .size((50.0, 80.0))
                                 .grid_cell((1, 0))
                                 .show(ui)
                                 .node,
                         );
                         kids.push(
-                            Frame::with_id("med")
+                            Frame::new()
+                                .with_id("med")
                                 .size((50.0, 30.0))
                                 .grid_cell((2, 0))
                                 .show(ui)

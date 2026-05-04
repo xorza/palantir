@@ -1,8 +1,6 @@
 use crate::tree::element::{Configure, Element, LayoutMode};
-use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::{Response, styled::Background, styled::Styled};
-use std::hash::Hash;
 
 /// A simple decorated rectangle: configurable fill / stroke / radius / size /
 /// margin + an optional `Sense`. Used directly for dividers / hit-areas / bg
@@ -16,11 +14,7 @@ impl Frame {
     #[track_caller]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self::for_element(Element::new(WidgetId::auto_stable(), LayoutMode::Leaf))
-    }
-
-    pub fn with_id(id: impl Hash) -> Self {
-        Self::for_element(Element::new(WidgetId::from_hash(id), LayoutMode::Leaf))
+        Self::for_element(Element::new_auto(LayoutMode::Leaf))
     }
 
     pub fn for_element(element: Element) -> Self {

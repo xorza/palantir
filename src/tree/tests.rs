@@ -56,9 +56,11 @@ fn empty_tree_has_no_hashes() {
 #[test]
 fn same_authoring_produces_same_hash() {
     let h1 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .show(ui, |ui| {
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size(50.0)
                     .fill(Color::rgb(0.2, 0.4, 0.8))
                     .show(ui);
@@ -66,9 +68,11 @@ fn same_authoring_produces_same_hash() {
             .node
     });
     let h2 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .show(ui, |ui| {
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size(50.0)
                     .fill(Color::rgb(0.2, 0.4, 0.8))
                     .show(ui);
@@ -81,9 +85,11 @@ fn same_authoring_produces_same_hash() {
 #[test]
 fn changing_fill_color_changes_hash() {
     let h1 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .show(ui, |ui| {
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size(50.0)
                     .fill(Color::rgb(0.2, 0.4, 0.8))
                     .show(ui);
@@ -91,9 +97,11 @@ fn changing_fill_color_changes_hash() {
             .node
     });
     let h2 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .show(ui, |ui| {
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size(50.0)
                     .fill(Color::rgb(0.9, 0.4, 0.8)) // different red
                     .show(ui);
@@ -109,9 +117,10 @@ fn changing_fill_color_changes_hash() {
     let mut ui1 = Ui::new();
     ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut child1 = None;
-    Panel::hstack_with_id("root").show(&mut ui1, |ui| {
+    Panel::hstack().with_id("root").show(&mut ui1, |ui| {
         child1 = Some(
-            Frame::with_id("a")
+            Frame::new()
+                .with_id("a")
                 .size(50.0)
                 .fill(Color::rgb(0.2, 0.4, 0.8))
                 .show(ui)
@@ -123,9 +132,10 @@ fn changing_fill_color_changes_hash() {
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let mut child2 = None;
-    Panel::hstack_with_id("root").show(&mut ui2, |ui| {
+    Panel::hstack().with_id("root").show(&mut ui2, |ui| {
         child2 = Some(
-            Frame::with_id("a")
+            Frame::new()
+                .with_id("a")
                 .size(50.0)
                 .fill(Color::rgb(0.9, 0.4, 0.8))
                 .show(ui)
@@ -145,21 +155,23 @@ fn changing_fill_color_changes_hash() {
 fn widget_id_does_not_affect_hash() {
     // Same authoring, different ids → same hash. The hash captures
     // *value*, the WidgetId is the *key* into the prev-map.
-    let h1 = record_hash(|ui| Panel::hstack_with_id("a").show(ui, |_| {}).node);
-    let h2 = record_hash(|ui| Panel::hstack_with_id("b").show(ui, |_| {}).node);
+    let h1 = record_hash(|ui| Panel::hstack().with_id("a").show(ui, |_| {}).node);
+    let h2 = record_hash(|ui| Panel::hstack().with_id("b").show(ui, |_| {}).node);
     assert_eq!(h1, h2);
 }
 
 #[test]
 fn changing_layout_size_changes_hash() {
     let h1 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
             .show(ui, |_| {})
             .node
     });
     let h2 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .size((Sizing::Fixed(101.0), Sizing::Fixed(50.0)))
             .show(ui, |_| {})
             .node
@@ -170,13 +182,15 @@ fn changing_layout_size_changes_hash() {
 #[test]
 fn changing_padding_changes_hash() {
     let h1 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .padding(8.0)
             .show(ui, |_| {})
             .node
     });
     let h2 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .padding(12.0)
             .show(ui, |_| {})
             .node
@@ -188,13 +202,15 @@ fn changing_padding_changes_hash() {
 fn changing_visibility_changes_hash() {
     use crate::layout::types::visibility::Visibility;
     let h1 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .visibility(Visibility::Visible)
             .show(ui, |_| {})
             .node
     });
     let h2 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .visibility(Visibility::Hidden)
             .show(ui, |_| {})
             .node
@@ -205,13 +221,15 @@ fn changing_visibility_changes_hash() {
 #[test]
 fn changing_justify_changes_hash() {
     let h1 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .justify(Justify::Start)
             .show(ui, |_| {})
             .node
     });
     let h2 = record_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .justify(Justify::Center)
             .show(ui, |_| {})
             .node
@@ -228,7 +246,7 @@ fn shape_order_matters_for_hash() {
     let mut n1 = None;
     Panel::hstack().show(&mut ui1, |ui| {
         // Push a Frame then add a manual Text shape via a Button.
-        n1 = Some(Button::with_id("a").label("X").show(ui).node);
+        n1 = Some(Button::new().with_id("a").label("X").show(ui).node);
     });
     ui1.end_frame();
 
@@ -237,7 +255,7 @@ fn shape_order_matters_for_hash() {
     ui2.begin_frame(Display::default());
     let mut n2 = None;
     Panel::hstack().show(&mut ui2, |ui| {
-        n2 = Some(Button::with_id("a").label("X").show(ui).node);
+        n2 = Some(Button::new().with_id("a").label("X").show(ui).node);
     });
     ui2.end_frame();
 
@@ -257,7 +275,7 @@ fn changing_text_content_changes_hash() {
     ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut a = None;
     Panel::hstack().show(&mut ui1, |ui| {
-        a = Some(Text::with_id("t", "Hello").show(ui).node);
+        a = Some(Text::new("Hello").with_id("t").show(ui).node);
     });
     ui1.end_frame();
 
@@ -265,7 +283,7 @@ fn changing_text_content_changes_hash() {
     ui2.begin_frame(Display::default());
     let mut b = None;
     Panel::hstack().show(&mut ui2, |ui| {
-        b = Some(Text::with_id("t", "World").show(ui).node);
+        b = Some(Text::new("World").with_id("t").show(ui).node);
     });
     ui2.end_frame();
 
@@ -282,9 +300,11 @@ fn changing_text_content_changes_hash() {
 fn child_hash_does_not_affect_parent_hash() {
     let mut ui1 = Ui::new();
     ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
-    let parent1 = Panel::hstack_with_id("root")
+    let parent1 = Panel::hstack()
+        .with_id("root")
         .show(&mut ui1, |ui| {
-            Frame::with_id("c")
+            Frame::new()
+                .with_id("c")
                 .size(50.0)
                 .fill(Color::rgb(0.2, 0.4, 0.8))
                 .show(ui);
@@ -294,9 +314,11 @@ fn child_hash_does_not_affect_parent_hash() {
 
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
-    let parent2 = Panel::hstack_with_id("root")
+    let parent2 = Panel::hstack()
+        .with_id("root")
         .show(&mut ui2, |ui| {
-            Frame::with_id("c")
+            Frame::new()
+                .with_id("c")
                 .size(50.0)
                 .fill(Color::rgb(0.9, 0.4, 0.8)) // different child fill
                 .show(ui);
@@ -327,13 +349,16 @@ fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
 #[test]
 fn subtree_hash_stable_across_frames() {
     let build = |ui: &mut Ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .show(ui, |ui| {
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size(50.0)
                     .fill(Color::rgb(0.2, 0.4, 0.8))
                     .show(ui);
-                Frame::with_id("b")
+                Frame::new()
+                    .with_id("b")
                     .size(30.0)
                     .fill(Color::rgb(0.9, 0.1, 0.1))
                     .show(ui);
@@ -348,9 +373,11 @@ fn subtree_hash_stable_across_frames() {
 #[test]
 fn subtree_hash_changes_when_descendant_changes() {
     let h1 = record_subtree_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .show(ui, |ui| {
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size(50.0)
                     .fill(Color::rgb(0.2, 0.4, 0.8))
                     .show(ui);
@@ -358,9 +385,11 @@ fn subtree_hash_changes_when_descendant_changes() {
             .node
     });
     let h2 = record_subtree_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .show(ui, |ui| {
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size(50.0)
                     .fill(Color::rgb(0.9, 0.4, 0.8)) // changed leaf fill
                     .show(ui);
@@ -376,13 +405,16 @@ fn subtree_hash_changes_when_descendant_changes() {
 #[test]
 fn subtree_hash_changes_on_sibling_reorder() {
     let h_ab = record_subtree_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .show(ui, |ui| {
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size(50.0)
                     .fill(Color::rgb(0.2, 0.4, 0.8))
                     .show(ui);
-                Frame::with_id("b")
+                Frame::new()
+                    .with_id("b")
                     .size(30.0)
                     .fill(Color::rgb(0.9, 0.1, 0.1))
                     .show(ui);
@@ -390,13 +422,16 @@ fn subtree_hash_changes_on_sibling_reorder() {
             .node
     });
     let h_ba = record_subtree_hash(|ui| {
-        Panel::hstack_with_id("root")
+        Panel::hstack()
+            .with_id("root")
             .show(ui, |ui| {
-                Frame::with_id("b")
+                Frame::new()
+                    .with_id("b")
                     .size(30.0)
                     .fill(Color::rgb(0.9, 0.1, 0.1))
                     .show(ui);
-                Frame::with_id("a")
+                Frame::new()
+                    .with_id("a")
                     .size(50.0)
                     .fill(Color::rgb(0.2, 0.4, 0.8))
                     .show(ui);
@@ -417,7 +452,8 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     // again. Pin: equal node hashes ⇒ equal subtree hashes.
     let mut ui1 = Ui::new();
     ui1.begin_frame(Display::default());
-    let leaf1 = Frame::with_id("a")
+    let leaf1 = Frame::new()
+        .with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui1)
@@ -426,7 +462,8 @@ fn leaf_subtree_hash_depends_on_node_hash() {
 
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
-    let leaf2 = Frame::with_id("a")
+    let leaf2 = Frame::new()
+        .with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui2)

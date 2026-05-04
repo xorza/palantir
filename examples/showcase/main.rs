@@ -262,7 +262,8 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
                         } else {
                             outlined_button_style()
                         };
-                        let r = Button::with_id(*label)
+                        let r = Button::new()
+                            .with_id(*label)
                             .label(*label)
                             .style(style)
                             .padding((10.0, 6.0, 10.0, 6.0))

@@ -8,7 +8,8 @@ use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 
 fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
-    Frame::with_id(id)
+    Frame::new()
+        .with_id(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(h)))
         .fill(Color::WHITE)
         .show(ui)
@@ -22,7 +23,8 @@ fn wrap_hstack_packs_into_single_line_when_fits() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
             .line_gap(8.0)
@@ -51,7 +53,8 @@ fn wrap_hstack_wraps_when_next_child_overflows() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
             .line_gap(8.0)
@@ -80,7 +83,8 @@ fn wrap_hstack_oversize_child_owns_its_line() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(100.0), Sizing::Hug))
             .gap(10.0)
             .line_gap(8.0)
@@ -109,7 +113,8 @@ fn wrap_hstack_line_height_is_max_child_cross() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(0.0)
             .line_gap(0.0)
@@ -137,7 +142,8 @@ fn wrap_hstack_justify_center_per_line() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
             .line_gap(0.0)
@@ -161,7 +167,8 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_vstack_with_id("w")
+        Panel::wrap_vstack()
+            .with_id("w")
             .size((Sizing::Hug, Sizing::Fixed(100.0)))
             .gap(10.0)
             .line_gap(8.0)
@@ -197,7 +204,8 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
     let mut wrap_node = None;
     let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         wrap_node = Some(
-            Panel::wrap_hstack_with_id("w")
+            Panel::wrap_hstack()
+                .with_id("w")
                 .size((Sizing::Fixed(200.0), Sizing::Hug))
                 .gap(10.0)
                 .line_gap(8.0)
@@ -225,7 +233,8 @@ fn wrap_hstack_justify_space_between_per_line() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
             .justify(Justify::SpaceBetween)
@@ -251,7 +260,8 @@ fn wrap_hstack_justify_space_around_per_line() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
             .justify(Justify::SpaceAround)
@@ -275,7 +285,8 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(300.0), Sizing::Hug))
             .gap(10.0)
             .show(ui, |ui| {
@@ -284,7 +295,8 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                 // Fill-on-cross child should stretch to 60 (not stay at its
                 // intrinsic).
                 kids.push(
-                    Frame::with_id("filler")
+                    Frame::new()
+                        .with_id("filler")
                         .size((Sizing::Fixed(100.0), Sizing::FILL))
                         .fill(Color::rgb(0.5, 0.5, 0.5))
                         .show(ui)
@@ -312,13 +324,15 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
     let mut ui = Ui::new();
     let mut kids = Vec::new();
     let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .gap(10.0)
             .show(ui, |ui| {
                 kids.push(cell(ui, "a", 60.0, 20.0));
                 kids.push(
-                    Frame::with_id("hidden")
+                    Frame::new()
+                        .with_id("hidden")
                         .size((Sizing::Fixed(60.0), Sizing::Fixed(20.0)))
                         .collapsed()
                         .show(ui)
@@ -348,13 +362,15 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     let mut ui = Ui::new();
     let mut filler_node = None;
     let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack_with_id("w")
+        Panel::wrap_hstack()
+            .with_id("w")
             .size((Sizing::Fixed(300.0), Sizing::Hug))
             .gap(10.0)
             .show(ui, |ui| {
                 cell(ui, "fixed-a", 60.0, 20.0);
                 filler_node = Some(
-                    Frame::with_id("filler")
+                    Frame::new()
+                        .with_id("filler")
                         .size((Sizing::FILL, Sizing::Fixed(20.0)))
                         // min_size makes Fill measurable as a positive
                         // number even with no row-leftover distribution.
@@ -386,14 +402,16 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
     let mut inner_b = None;
     let mut outer_b = None;
     let _ = under_outer(&mut ui, UVec2::new(600, 400), |ui| {
-        Panel::wrap_hstack_with_id("outer")
+        Panel::wrap_hstack()
+            .with_id("outer")
             .size((Sizing::Fixed(500.0), Sizing::Hug))
             .gap(10.0)
             .line_gap(10.0)
             .show(ui, |ui| {
                 // First outer-row child: an inner WrapHStack with two
                 // cells.
-                Panel::wrap_hstack_with_id("inner-card")
+                Panel::wrap_hstack()
+                    .with_id("inner-card")
                     .size((Sizing::Fixed(120.0), Sizing::Hug))
                     .gap(5.0)
                     .show(ui, |ui| {

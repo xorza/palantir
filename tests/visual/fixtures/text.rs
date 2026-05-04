@@ -16,15 +16,18 @@ fn text_paragraph_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(360, 140), 1.0, DARK_BG, |ui| {
         Panel::vstack().padding(16.0).gap(6.0).show(ui, |ui| {
-            Text::with_id("title", "Palantir")
+            Text::new("Palantir")
+                .with_id("title")
                 .size_px(20.0)
                 .color(Color::rgb(0.92, 0.94, 1.00))
                 .show(ui);
-            Text::with_id("body", "Immediate-mode UI with WPF-style layout.")
+            Text::new("Immediate-mode UI with WPF-style layout.")
+                .with_id("body")
                 .size_px(13.0)
                 .color(Color::rgb(0.72, 0.76, 0.84))
                 .show(ui);
-            Text::with_id("body2", "Rendered headlessly through wgpu.")
+            Text::new("Rendered headlessly through wgpu.")
+                .with_id("body2")
                 .size_px(13.0)
                 .color(Color::rgb(0.72, 0.76, 0.84))
                 .show(ui);

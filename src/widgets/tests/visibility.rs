@@ -11,9 +11,9 @@ fn collapsed_child_consumes_no_space_in_hstack() {
     let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
-            Frame::with_id("a").size(40.0).show(ui);
-            Frame::with_id("gone").size(40.0).collapsed().show(ui);
-            Frame::with_id("b").size(40.0).show(ui);
+            Frame::new().with_id("a").size(40.0).show(ui);
+            Frame::new().with_id("gone").size(40.0).collapsed().show(ui);
+            Frame::new().with_id("b").size(40.0).show(ui);
         })
         .node;
     ui.end_frame();
@@ -37,14 +37,17 @@ fn collapsed_does_not_consume_fill_weight() {
     let mut ui = ui_at(UVec2::new(400, 100));
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
-            Frame::with_id("a")
+            Frame::new()
+                .with_id("a")
                 .size((Sizing::Fill(1.0), Sizing::Hug))
                 .show(ui);
-            Frame::with_id("gone")
+            Frame::new()
+                .with_id("gone")
                 .size((Sizing::Fill(3.0), Sizing::Hug))
                 .collapsed()
                 .show(ui);
-            Frame::with_id("b")
+            Frame::new()
+                .with_id("b")
                 .size((Sizing::Fill(1.0), Sizing::Hug))
                 .show(ui);
         })
@@ -68,16 +71,19 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
-            Frame::with_id("a")
+            Frame::new()
+                .with_id("a")
                 .size(40.0)
                 .fill(Color::rgb(1.0, 0.0, 0.0))
                 .show(ui);
-            Frame::with_id("hid")
+            Frame::new()
+                .with_id("hid")
                 .size(40.0)
                 .fill(Color::rgb(0.0, 1.0, 0.0))
                 .hidden()
                 .show(ui);
-            Frame::with_id("b")
+            Frame::new()
+                .with_id("b")
                 .size(40.0)
                 .fill(Color::rgb(0.0, 0.0, 1.0))
                 .show(ui);
@@ -110,7 +116,8 @@ fn hidden_button_does_not_click() {
 
     let mut ui = ui_at(UVec2::new(400, 200));
     Panel::hstack().show(&mut ui, |ui| {
-        Button::with_id("invisible")
+        Button::new()
+            .with_id("invisible")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .hidden()
             .show(ui);
@@ -122,7 +129,8 @@ fn hidden_button_does_not_click() {
     ui.begin_frame(Display::default());
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
-        clicked = Button::with_id("invisible")
+        clicked = Button::new()
+            .with_id("invisible")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .hidden()
             .show(ui)
@@ -138,10 +146,12 @@ fn hstack_child_align_y_centers_all_children_by_default() {
         .size((Sizing::FILL, Sizing::Fixed(100.0)))
         .child_align(Align::v(VAlign::Center))
         .show(&mut ui, |ui| {
-            Frame::with_id("a")
+            Frame::new()
+                .with_id("a")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                 .show(ui);
-            Frame::with_id("b")
+            Frame::new()
+                .with_id("b")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                 .show(ui);
         })
@@ -165,11 +175,13 @@ fn child_align_self_overrides_parent_default() {
         .size((Sizing::FILL, Sizing::Fixed(100.0)))
         .child_align(Align::v(VAlign::Center))
         .show(&mut ui, |ui| {
-            Frame::with_id("centered")
+            Frame::new()
+                .with_id("centered")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                 .show(ui);
             // Explicit Bottom on the child wins over the parent's default.
-            Frame::with_id("bottom")
+            Frame::new()
+                .with_id("bottom")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                 .align(Align::v(VAlign::Bottom))
                 .show(ui);

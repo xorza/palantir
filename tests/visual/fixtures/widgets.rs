@@ -28,7 +28,8 @@ fn frame_filled_with_stroke_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
         Panel::vstack().padding(20.0).show(ui, |ui| {
-            Frame::with_id("card")
+            Frame::new()
+                .with_id("card")
                 .size((Sizing::FILL, Sizing::FILL))
                 .fill(Color::rgb(0.20, 0.30, 0.55))
                 .stroke(Stroke {

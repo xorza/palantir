@@ -2,11 +2,9 @@ use crate::layout::types::{align::Align, sense::Sense};
 use crate::primitives::{color::Color, corners::Corners, visuals::Visuals};
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
-use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::{Response, frame::Frame, styled::Styled};
 use std::borrow::Cow;
-use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ButtonTheme {
@@ -43,11 +41,7 @@ impl Button {
     #[track_caller]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self::with_id(WidgetId::auto_stable())
-    }
-
-    pub fn with_id(id: impl Hash) -> Self {
-        let mut element = Element::new(WidgetId::from_hash(id), LayoutMode::Leaf);
+        let mut element = Element::new_auto(LayoutMode::Leaf);
         element.sense = Sense::CLICK;
         Self {
             element,

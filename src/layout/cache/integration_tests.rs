@@ -60,7 +60,8 @@ fn grid_cells_arranged_correctly_on_cache_hit_frame() {
             Panel::vstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Grid::with_id("g")
+                    Grid::new()
+                        .with_id("g")
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug()]))
@@ -101,7 +102,8 @@ fn cache_hit_restores_hugs_for_nested_grids() {
             Panel::vstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Grid::with_id("outer")
+                    Grid::new()
+                        .with_id("outer")
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug()]))
@@ -113,17 +115,20 @@ fn cache_hit_restores_hugs_for_nested_grids() {
                                     .show(ui)
                                     .node,
                             );
-                            Panel::vstack_with_id("inner-host")
+                            Panel::vstack()
+                                .with_id("inner-host")
                                 .grid_cell((0, 1))
                                 .show(ui, |ui| {
-                                    Grid::with_id("inner")
+                                    Grid::new()
+                                        .with_id("inner")
                                         .size((Sizing::FILL, Sizing::Hug))
                                         .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
                                         .rows(Rc::from([Track::hug()]))
                                         .show(ui, |ui| {
                                             for (col, label) in [(0, "a"), (1, "bb"), (2, "end")] {
                                                 capture.push(
-                                                    Text::with_id(("inner-cell", col), label)
+                                                    Text::new(label)
+                                                        .with_id(("inner-cell", col))
                                                         .size_px(14.0)
                                                         .grid_cell((0, col))
                                                         .show(ui)
@@ -151,7 +156,8 @@ fn cache_hit_restores_hugs_for_multiple_sibling_grids() {
             Panel::vstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Grid::with_id("g1")
+                    Grid::new()
+                        .with_id("g1")
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug()]))
@@ -171,7 +177,8 @@ fn cache_hit_restores_hugs_for_multiple_sibling_grids() {
                                     .node,
                             );
                         });
-                    Grid::with_id("g2")
+                    Grid::new()
+                        .with_id("g2")
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug()]))
@@ -208,7 +215,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
             .padding(8.0)
             .gap(6.0)
             .show(ui, |ui| {
-                Panel::zstack_with_id("transformed")
+                Panel::zstack()
+                    .with_id("transformed")
                     .transform(TranslateScale::new(glam::Vec2::new(4.0, 2.0), 1.0))
                     .clip(true)
                     .size((Sizing::FILL, Sizing::Hug))
@@ -220,7 +228,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     })
                     .radius(4.0)
                     .show(ui, |ui| {
-                        Grid::with_id("grid")
+                        Grid::new()
+                            .with_id("grid")
                             .size((Sizing::FILL, Sizing::Hug))
                             .cols(Rc::from([Track::hug(), Track::fill()]))
                             .rows(Rc::from([Track::hug(), Track::hug()]))
@@ -243,7 +252,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                                     .show(ui);
                             });
                     });
-                Frame::with_id("under")
+                Frame::new()
+                    .with_id("under")
                     .size((Sizing::FILL, Sizing::Fixed(20.0)))
                     .fill(Color::rgb(0.4, 0.4, 0.5))
                     .show(ui);
@@ -276,11 +286,13 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         Panel::vstack()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Panel::zstack_with_id("xform")
+                Panel::zstack()
+                    .with_id("xform")
                     .transform(TranslateScale::new(glam::Vec2::new(2.0, 2.0), 1.0))
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui, |ui| {
-                        Grid::with_id("g")
+                        Grid::new()
+                            .with_id("g")
                             .size((Sizing::FILL, Sizing::Hug))
                             .cols(Rc::from([Track::hug(), Track::fill()]))
                             .rows(Rc::from([Track::hug()]))

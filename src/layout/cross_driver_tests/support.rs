@@ -45,7 +45,8 @@ pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
         Panel::hstack()
             .size((Sizing::FILL, Sizing::Hug))
             .show(ui, |ui| {
-                Frame::with_id("avatar")
+                Frame::new()
+                    .with_id("avatar")
                     .size((Sizing::Fixed(avatar_w), Sizing::Fixed(40.0)))
                     .show(ui);
                 message_node = Some(

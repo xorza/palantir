@@ -12,19 +12,18 @@ pub fn build(ui: &mut Ui) {
         .gap(20.0)
         .padding(16.0)
         .show(ui, |ui| {
-            Text::with_id(("hdr", "title"), "WrapHStack / WrapVStack")
+            Text::new("WrapHStack / WrapVStack")
+                .with_id(("hdr", "title"))
                 .size_px(14.0)
                 .color(Color::rgb(0.78, 0.82, 0.90))
                 .show(ui);
 
-            Text::with_id(
-                ("hdr", "sub"),
-                concat!(
-                    "Children flow along main axis; when the next child wouldn't fit, ",
-                    "wrap to a new line. `.gap` spaces siblings within a line; ",
-                    "`.line_gap` spaces lines. `.justify(...)` applies per-line.",
-                ),
-            )
+            Text::new(concat!(
+                "Children flow along main axis; when the next child wouldn't fit, ",
+                "wrap to a new line. `.gap` spaces siblings within a line; ",
+                "`.line_gap` spaces lines. `.justify(...)` applies per-line.",
+            ))
+            .with_id(("hdr", "sub"))
             .size_px(12.0)
             .color(Color::rgb(0.62, 0.68, 0.78))
             .wrapping()
@@ -36,7 +35,8 @@ pub fn build(ui: &mut Ui) {
                 "tag-cloud",
                 "WrapHStack: tag cloud (Justify::Start)",
                 |ui| {
-                    Panel::wrap_hstack_with_id("tags")
+                    Panel::wrap_hstack()
+                        .with_id("tags")
                         .size((Sizing::FILL, Sizing::Hug))
                         .gap(8.0)
                         .line_gap(8.0)
@@ -54,7 +54,8 @@ pub fn build(ui: &mut Ui) {
                 "centered",
                 "WrapHStack: per-line Justify::Center, equal-size badges",
                 |ui| {
-                    Panel::wrap_hstack_with_id("centered-row")
+                    Panel::wrap_hstack()
+                        .with_id("centered-row")
                         .size((Sizing::FILL, Sizing::Hug))
                         .gap(10.0)
                         .line_gap(10.0)
@@ -73,7 +74,8 @@ pub fn build(ui: &mut Ui) {
                 "vwrap",
                 "WrapVStack: vertical flow, wraps to new column",
                 |ui| {
-                    Panel::wrap_vstack_with_id("vwrap-col")
+                    Panel::wrap_vstack()
+                        .with_id("vwrap-col")
                         .size((Sizing::Hug, Sizing::Fixed(160.0)))
                         .gap(6.0)
                         .line_gap(12.0)
@@ -113,7 +115,8 @@ const TAGS: &[&str] = &[
 fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
     use palantir::WidgetId;
     let id = WidgetId::from_hash(key);
-    Panel::hstack_with_id(("chip-row", id))
+    Panel::hstack()
+        .with_id(("chip-row", id))
         .padding((10.0, 4.0))
         .fill(Color::rgb(0.22, 0.30, 0.45))
         .stroke(Stroke {
@@ -122,7 +125,8 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
         })
         .radius(10.0)
         .show(ui, |ui| {
-            Text::with_id(("chip-label", id), label)
+            Text::new(label)
+                .with_id(("chip-label", id))
                 .size_px(12.0)
                 .color(Color::rgb(0.86, 0.90, 0.98))
                 .show(ui);
@@ -132,7 +136,8 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
 fn badge<H: std::hash::Hash>(ui: &mut Ui, key: H) {
     use palantir::WidgetId;
     let id = WidgetId::from_hash(key);
-    Frame::with_id(("badge", id))
+    Frame::new()
+        .with_id(("badge", id))
         .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))
         .fill(Color::rgb(0.22, 0.46, 0.84))
         .radius(4.0)
@@ -140,7 +145,8 @@ fn badge<H: std::hash::Hash>(ui: &mut Ui, key: H) {
 }
 
 fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack_with_id(id)
+    Panel::vstack()
+        .with_id(id)
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
         .padding(8.0)
@@ -151,7 +157,8 @@ fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce
         })
         .radius(4.0)
         .show(ui, |ui| {
-            Text::with_id(("section-title", id), title)
+            Text::new(title)
+                .with_id(("section-title", id))
                 .size_px(12.0)
                 .color(Color::rgb(0.70, 0.74, 0.82))
                 .show(ui);

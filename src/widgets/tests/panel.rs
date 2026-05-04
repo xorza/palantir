@@ -16,13 +16,15 @@ fn clip_flag_is_recorded_on_panel_node() {
     let mut opt_in = None;
     Panel::hstack().show(&mut ui, |ui| {
         default_panel = Some(
-            Panel::zstack_with_id("default")
+            Panel::zstack()
+                .with_id("default")
                 .size(50.0)
                 .show(ui, |_| {})
                 .node,
         );
         opt_in = Some(
-            Panel::zstack_with_id("opt-in")
+            Panel::zstack()
+                .with_id("opt-in")
                 .size(50.0)
                 .clip(true)
                 .show(ui, |_| {})
@@ -43,19 +45,22 @@ fn panel_hugs_largest_child_and_layers_them() {
     let mut b_node = None;
     Panel::hstack().show(&mut ui, |ui| {
         panel_node = Some(
-            Panel::zstack_with_id("card")
+            Panel::zstack()
+                .with_id("card")
                 .padding(10.0)
                 .fill(Color::rgb(0.1, 0.1, 0.15))
                 .radius(8.0)
                 .show(ui, |ui| {
                     a_node = Some(
-                        Button::with_id("a")
+                        Button::new()
+                            .with_id("a")
                             .size((Sizing::Fixed(80.0), Sizing::Fixed(30.0)))
                             .show(ui)
                             .node,
                     );
                     b_node = Some(
-                        Button::with_id("b")
+                        Button::new()
+                            .with_id("b")
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(50.0)))
                             .show(ui)
                             .node,
@@ -93,12 +98,14 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     let mut ui = ui_at(UVec2::new(400, 400));
     let mut child_node = None;
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("p")
+        Panel::zstack()
+            .with_id("p")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
             .padding(10.0)
             .show(ui, |ui| {
                 child_node = Some(
-                    Frame::with_id("filler")
+                    Frame::new()
+                        .with_id("filler")
                         .size((Sizing::FILL, Sizing::FILL))
                         .fill(Color::rgb(0.5, 0.5, 0.5))
                         .show(ui)
@@ -123,13 +130,15 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 
     let mut ui = ui_at(UVec2::new(400, 200));
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("locked")
+        Panel::zstack()
+            .with_id("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
             .fill(Color::rgb(0.2, 0.2, 0.2))
             .disabled(true)
             .show(ui, |ui| {
-                Button::with_id("inside")
+                Button::new()
+                    .with_id("inside")
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                     .show(ui);
             });
@@ -141,13 +150,15 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
     ui.begin_frame(Display::default());
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("locked")
+        Panel::zstack()
+            .with_id("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
             .fill(Color::rgb(0.2, 0.2, 0.2))
             .disabled(true)
             .show(ui, |ui| {
-                clicked = Button::with_id("inside")
+                clicked = Button::new()
+                    .with_id("inside")
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                     .show(ui)
                     .clicked();

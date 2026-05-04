@@ -179,6 +179,12 @@ pub struct Element {
     // ---- Identity + layout-algorithm selector --------------------------------
     pub id: WidgetId,
     pub mode: LayoutMode,
+    /// `true` when `id` was synthesized by [`WidgetId::auto_stable`] (i.e. the
+    /// caller used `Foo::new()` without an explicit key). `Ui::node` silently
+    /// disambiguates colliding auto ids by mixing in a per-id occurrence
+    /// counter; explicit-key collisions still hard-assert as caller bugs.
+    /// Cleared by [`Configure::with_id`].
+    pub(crate) auto_id: bool,
 
     // ---- Own size + alignment (read by every parent layout) ------------------
     pub size: Sizes,
@@ -244,9 +250,22 @@ pub struct Element {
 
 impl Element {
     pub fn new(id: WidgetId, mode: LayoutMode) -> Self {
+        Self::new_inner(id, mode, false)
+    }
+
+    /// Like [`Self::new`] but marks the id as auto-generated (see
+    /// [`Self::auto_id`]). Used by `*::new()` widget constructors that derive
+    /// the id from `WidgetId::auto_stable()`.
+    #[track_caller]
+    pub(crate) fn new_auto(mode: LayoutMode) -> Self {
+        Self::new_inner(WidgetId::auto_stable(), mode, true)
+    }
+
+    fn new_inner(id: WidgetId, mode: LayoutMode, auto_id: bool) -> Self {
         Self {
             id,
             mode,
+            auto_id,
             size: Sizes::default(),
             min_size: Size::ZERO,
             max_size: Size::INF,
@@ -317,6 +336,19 @@ pub(crate) struct ElementSplit {
 /// free by impl'ing just `element_mut`.
 pub trait Configure: Sized {
     fn element_mut(&mut self) -> &mut Element;
+
+    /// Override this widget's id with a hash of `key`. Use whenever the
+    /// default call-site-derived id wouldn't survive across frames or across
+    /// loop iterations — e.g. a `for` loop where each iteration must keep
+    /// per-widget state separate. Clears the `auto_id` flag, so explicit-key
+    /// collisions surface as hard asserts in `Ui::node` rather than getting
+    /// silently disambiguated.
+    fn with_id(mut self, key: impl std::hash::Hash) -> Self {
+        let e = self.element_mut();
+        e.id = WidgetId::from_hash(key);
+        e.auto_id = false;
+        self
+    }
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
         let s = s.into();
