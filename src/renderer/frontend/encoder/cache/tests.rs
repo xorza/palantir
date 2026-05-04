@@ -4,7 +4,7 @@ use crate::primitives::{
 };
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::text::TextCacheKey;
-use crate::tree::hash::NodeHash;
+use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use glam::{IVec2, Vec2};
 

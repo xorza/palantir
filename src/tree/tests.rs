@@ -4,7 +4,7 @@ use crate::primitives::color::Color;
 use crate::shape::Shape;
 use crate::test_support::ui_at;
 use crate::tree::element::Configure;
-use crate::tree::{NodeId, hash::NodeHash};
+use crate::tree::{NodeId, node_hash::NodeHash};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 

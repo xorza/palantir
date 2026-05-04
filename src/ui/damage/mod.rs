@@ -18,7 +18,7 @@
 
 use crate::primitives::rect::Rect;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{NodeId, Tree, hash::NodeHash};
+use crate::tree::{NodeId, Tree, node_hash::NodeHash};
 use crate::ui::cascade::CascadeResult;
 use rustc_hash::FxHashMap;
 

@@ -30,7 +30,7 @@ use crate::layout::types::span::Span;
 use crate::renderer::frontend::cache_arena::LiveArena;
 use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
-use crate::tree::hash::NodeHash;
+use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use rustc_hash::FxHashMap;
 

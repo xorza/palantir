@@ -4,7 +4,7 @@ use crate::layout::{cache::AvailableKey, result::LayoutResult};
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale};
 use crate::shape::Shape;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{NodeId, Tree, hash::NodeHash};
+use crate::tree::{NodeId, Tree, node_hash::NodeHash};
 use crate::ui::cascade::CascadeResult;
 use cache::EncodeCache;
 
