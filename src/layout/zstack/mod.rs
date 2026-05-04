@@ -1,10 +1,12 @@
 use super::support::{
-    AutoBias, child_avail_per_axis_hug, children_max_intrinsic, place_two_axis, zero_subtree,
+    AxisAlignPair, child_avail_per_axis_hug, children_max_intrinsic, place_axis,
+    resolved_axis_align, zero_subtree,
 };
 use super::{Axis, LayoutEngine, LenReq};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
 use crate::tree::{Child, NodeId, Tree};
+use glam::Vec2;
 
 #[cfg(test)]
 mod tests;
@@ -71,16 +73,12 @@ pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
         let d = layout.scratch.desired[c.index()];
         let s = *tree.layout(c);
 
-        let p = place_two_axis(
-            &s,
-            parent_child_align,
-            d,
-            inner.size,
-            AutoBias::StretchIfFill,
-        );
+        let AxisAlignPair { h, v } = resolved_axis_align(&s, parent_child_align);
+        let x = place_axis(h, s.size.w, d.w, inner.size.w);
+        let y = place_axis(v, s.size.h, d.h, inner.size.h);
         let child_rect = Rect {
-            min: inner.min + p.offset,
-            size: p.size,
+            min: inner.min + Vec2::new(x.offset, y.offset),
+            size: Size::new(x.size, y.size),
         };
         layout.arrange(tree, c, child_rect);
     }
