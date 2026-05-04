@@ -24,19 +24,16 @@ exist:
 
 In rough dependency order:
 
-1. **Persistent state map** (`Id → Any` keyed by `WidgetId`). Status
-   listed as TODO in `CLAUDE.md`. Scroll offset is the canonical first
-   consumer; `Focus` and animation will follow. **This is the gate.**
-2. **Scroll-wheel input**. `InputEvent` (`src/input/mod.rs:21`) has no
+1. **Scroll-wheel input**. `InputEvent` (`src/input/mod.rs:21`) has no
    `Scroll` variant; `from_winit` ignores `WindowEvent::MouseWheel`.
    Add `InputEvent::Scroll(Vec2)` (logical-pixel delta after
    `LineDelta` → pixel conversion using font metrics or a fixed step),
    route through `on_input` to the hovered scroll-capable widget.
-3. **Drag delta on `Active` capture** (TODO in CLAUDE.md). Needed for
+2. **Drag delta on `Active` capture** (TODO in CLAUDE.md). Needed for
    touch / scrollbar-thumb dragging. Track `press_pos` + `last_pos` on
    `InputState`; expose `drag_delta()` rect-independent. Independent of
    scroll itself but enables scrollbar interaction.
-4. **Content-size negotiation**. ScrollView's measure must pass
+3. **Content-size negotiation**. ScrollView's measure must pass
    `LenReq::Unbounded` along the scrolled axis to its child so the
    child reports its full intrinsic size; ScrollView returns its own
    `Hug`/`Fixed` size to the parent. Cross axis behaves like a normal
@@ -71,22 +68,18 @@ us add scroll without touching the layout drivers. The cascade reads
 
 Each step lands with tests + (where visible) a showcase tab.
 
-1. **State map skeleton.** `StateMap: FxHashMap<WidgetId, Box<dyn Any>>`
-   on `Ui`. Eviction = mark-and-sweep against ids touched this frame.
-   Test: a widget can read/write its row across frames; a removed widget
-   is collected.
-2. **`InputEvent::Scroll` + winit translation.** Unit-test
+1. **`InputEvent::Scroll` + winit translation.** Unit-test
    `LineDelta`/`PixelDelta` mapping. `InputState` exposes
    `frame_scroll_delta(): Vec2`, cleared each frame.
-3. **`Scroll` widget — vertical only, no scrollbar.** Clip + transform
+2. **`Scroll` widget — vertical only, no scrollbar.** Clip + transform
    trick, offset clamp, consumes wheel when hovered. Showcase tab: tall
    text column inside a fixed-height scroll. Test: arrange produces
    expected `transform` for a given offset; offset clamps when content
    shrinks.
-4. **Horizontal axis + both-axes.** Same widget, axis flag.
-5. **Drag delta on `Active`.** Plumbing only; reuse for touch-drag
+3. **Horizontal axis + both-axes.** Same widget, axis flag.
+4. **Drag delta on `Active`.** Plumbing only; reuse for touch-drag
    scroll on the existing widget.
-6. **Scrollbars.** Separate widget overlay drawn on top of the scroll
+5. **Scrollbars.** Separate widget overlay drawn on top of the scroll
    node; reads offset/content/viewport from its parent's state row.
    Thumb drag uses `drag_delta`.
 
@@ -140,12 +133,6 @@ correct; clip-cull #1 above buys another order of magnitude on encode.
 
 ## Open questions
 
-- **Where does the state map live?** Hung off `Ui`, or a sibling of
-  `InputState`? Leaning `Ui`-owned since it must outlive
-  record/measure/arrange.
-- **Do we type the state row?** `Box<dyn Any>` is simplest;
-  `TypeId`-keyed second-level lookup avoids the box but complicates the
-  API. Start with `Any`, optimize once the second consumer lands.
 - **First-frame size**: scroll content desired size is unknown frame 0
   → offset clamp is wrong frame 0. Acceptable (one-frame visual blip)
   or trigger a `request_discard`-style invisible re-run? Defer; couple
