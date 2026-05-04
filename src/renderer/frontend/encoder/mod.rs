@@ -1,5 +1,5 @@
 use super::cmd_buffer::{EnterPatch, RenderCmdBuffer};
-use crate::layout::types::{align::Align, align::HAlign, align::VAlign, span::Span};
+use crate::layout::types::{align::Align, align::HAlign, align::VAlign};
 use crate::layout::{cache::AvailableKey, result::LayoutResult};
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale};
 use crate::shape::Shape;
@@ -253,8 +253,8 @@ fn encode_node(
             p.subtree_hash,
             p.avail,
             out,
-            Span::new(p.cmd_lo, cmd_hi - p.cmd_lo),
-            Span::new(p.data_lo, data_hi - p.data_lo),
+            (p.cmd_lo..cmd_hi).into(),
+            (p.data_lo..data_hi).into(),
             layout.rect[id.index()].min,
         );
     }

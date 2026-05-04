@@ -169,6 +169,6 @@ impl QuadPipeline {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
-        pass.draw(0..4, instances.start..instances.start + instances.len);
+        pass.draw(0..4, instances.into());
     }
 }

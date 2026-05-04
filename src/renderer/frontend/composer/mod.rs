@@ -5,7 +5,6 @@ use super::cmd_buffer::{
 use crate::common::hash::Hasher;
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::display::Display;
-use crate::layout::types::span::Span;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
@@ -62,8 +61,8 @@ impl GroupBuilder {
         if q_end > self.quads_start || t_end > self.texts_start {
             out.groups.push(DrawGroup {
                 scissor: self.current,
-                quads: Span::new(self.quads_start, q_end - self.quads_start),
-                texts: Span::new(self.texts_start, t_end - self.texts_start),
+                quads: (self.quads_start..q_end).into(),
+                texts: (self.texts_start..t_end).into(),
             });
         }
         self.quads_start = q_end;
