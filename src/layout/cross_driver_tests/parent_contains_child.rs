@@ -238,6 +238,209 @@ fn root_grows_past_surface_when_content_exceeds_it() {
     );
 }
 
+/// Pin (regression for the wrap-toolbar visual bug): a Fill-on-cross
+/// child of a parent that grows past `available` (because of a
+/// Fixed-content sibling) must be measured against its *post-grow*
+/// inner — not the pre-grow surface-derived inner. Without two-pass
+/// measure, a WrapHStack toolbar packs many rows at the narrow
+/// pre-grow width (large `desired.h`) but arranges only a few at the
+/// wider post-grow width, leaving a tall empty band between the
+/// toolbar and its next sibling.
+#[test]
+fn wrap_toolbar_packs_at_post_grow_width() {
+    use crate::primitives::color::Color;
+    use crate::widgets::styled::Styled;
+    let mut ui = ui_at(UVec2::new(150, 800));
+    let mut toolbar_node = None;
+    Panel::vstack()
+        .with_id("root")
+        .size((Sizing::FILL, Sizing::FILL))
+        .padding(12.0)
+        .gap(12.0)
+        .show(&mut ui, |ui| {
+            // Toolbar: WrapHStack with several wide buttons.
+            toolbar_node = Some(
+                Panel::wrap_hstack()
+                    .with_id("toolbar")
+                    .gap(6.0)
+                    .line_gap(6.0)
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .show(ui, |ui| {
+                        for i in 0..16u32 {
+                            Frame::new()
+                                .with_id(("btn", i))
+                                .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))
+                                .fill(Color::rgb(0.3, 0.3, 0.5))
+                                .show(ui);
+                        }
+                    })
+                    .node,
+            );
+            // Sibling: a Fill panel containing a Fixed-width Frame
+            // bigger than the surface. Forces root to grow on width.
+            Panel::zstack()
+                .with_id("central")
+                .size((Sizing::FILL, Sizing::FILL))
+                .padding(16.0)
+                .show(ui, |ui| {
+                    Frame::new()
+                        .with_id("body")
+                        .size((Sizing::Fixed(360.0), Sizing::Fixed(60.0)))
+                        .show(ui);
+                });
+        });
+    ui.end_frame();
+
+    let toolbar_rect = ui.layout_engine.result.rect[toolbar_node.unwrap().index()];
+    // Buttons are 28 px tall. With root grown so toolbar.inner.w fits
+    // 4 buttons per row (80 + 6 gap each), 16 buttons → 4 rows. That's
+    // 4 × 28 + 3 × 6 = 130 px. Without the two-pass measure, toolbar's
+    // desired.h was computed from packing at the original narrow
+    // surface width (1–2 buttons per row, ~14 rows ≈ 526 px), so
+    // arrange would allocate ~526 px and leave a tall empty band.
+    assert!(
+        toolbar_rect.size.h < 200.0,
+        "toolbar packed at post-grow width should be ~130 px tall, \
+         got {} (likely the pre-grow narrow-surface packing)",
+        toolbar_rect.size.h,
+    );
+}
+
+/// Pin (regression for grid-section drift bug): a Hug grid containing
+/// a wrapping-text cell + label cell, inside a Hug section, inside a
+/// Fill chain that grows past the surface. Pre-fix: the grid's row
+/// height was accumulated via `.max()` into `GridHugStore` during the
+/// pre-grow first measure (with narrow column widths → tall wrapped
+/// text). The post-grow second measure (wider columns → shorter
+/// wrapped text) couldn't shrink the row because `.max()` kept the
+/// older taller value. Section.rect.h ended up taller than the
+/// rendered text, leaving a tall empty band before the next sibling
+/// — the user-visible "panel drifts down" effect.
+#[test]
+fn two_hug_cols_section_height_matches_post_grow_text() {
+    use crate::layout::types::track::Track;
+    use crate::primitives::color::Color;
+    use crate::widgets::grid::Grid;
+    use crate::widgets::styled::Styled;
+    use crate::widgets::text::Text;
+    use std::rc::Rc;
+    let mut ui = crate::support::testing::ui_with_text(UVec2::new(200, 1100));
+    let mut section_node = None;
+    let mut grid_node = None;
+    let mut text_node = None;
+    // Mimic showcase root → central ZStack (FILL × FILL, padding 16) →
+    // text-layouts vstack (FILL × FILL, gap 16).
+    Panel::vstack()
+        .with_id("root")
+        .size((Sizing::FILL, Sizing::FILL))
+        .padding(12.0)
+        .show(&mut ui, |ui| {
+            Panel::zstack()
+                .with_id("central")
+                .size((Sizing::FILL, Sizing::FILL))
+                .padding(16.0)
+                .show(ui, |ui| {
+                    Panel::vstack()
+                        .with_id("text-layouts")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .gap(16.0)
+                        .show(ui, |ui| {
+                            section_node = Some(
+                                Panel::vstack()
+                                    .with_id("section1")
+                                    .size((Sizing::FILL, Sizing::Hug))
+                                    .padding(8.0)
+                                    .gap(6.0)
+                                    .fill(Color::rgb(0.16, 0.18, 0.22))
+                                    .show(ui, |ui| {
+                                        Text::new("two Hug columns")
+                                            .with_id("title")
+                                            .size_px(12.0)
+                                            .show(ui);
+                                        grid_node = Some(
+                                            Grid::new()
+                                                .with_id("grid")
+                                                .cols(Rc::from([Track::hug(), Track::hug()]))
+                                                .rows(Rc::from([Track::hug()]))
+                                                .gap_xy(0.0, 16.0)
+                                                .show(ui, |ui| {
+                                                    text_node = Some(
+                                        Text::new(
+                                            "The quick brown fox jumps over the lazy dog. \
+                                             Pack my box with five dozen liquor jugs. \
+                                             How vexingly quick daft zebras jump!",
+                                        )
+                                        .with_id("para")
+                                        .size_px(14.0)
+                                        .wrapping()
+                                        .grid_cell((0, 0))
+                                        .show(ui)
+                                        .node,
+                                    );
+                                                    Text::new("right column")
+                                                        .with_id("right")
+                                                        .size_px(14.0)
+                                                        .grid_cell((0, 1))
+                                                        .show(ui);
+                                                })
+                                                .node,
+                                        );
+                                    })
+                                    .node,
+                            );
+                            // Sibling section with a Fixed-wide Frame: forces the
+                            // text-layouts/central/root chain to grow past the surface
+                            // (Fill-grow), which in turn re-measures section1 with a
+                            // wider available — the chain that exposed the hug-store
+                            // staleness bug.
+                            Panel::vstack()
+                                .with_id("section2")
+                                .size((Sizing::FILL, Sizing::Hug))
+                                .padding(8.0)
+                                .fill(Color::rgb(0.16, 0.18, 0.22))
+                                .show(ui, |ui| {
+                                    Frame::new()
+                                        .with_id("wide-frame")
+                                        .size((Sizing::Fixed(400.0), Sizing::Fixed(20.0)))
+                                        .show(ui);
+                                });
+                        });
+                });
+        });
+    ui.end_frame();
+
+    let section = ui.layout_engine.result.rect[section_node.unwrap().index()];
+    let grid = ui.layout_engine.result.rect[grid_node.unwrap().index()];
+    let text = ui.layout_engine.result.rect[text_node.unwrap().index()];
+    let shaped = ui.layout_engine.result.text_shapes[text_node.unwrap().index()]
+        .expect("para text was shaped");
+
+    // Section's rect.h must match the post-grow text wrap, not the
+    // pre-grow narrow-column wrap. With root growing to ~440 (to fit
+    // the 400-wide Fixed sibling), section1's grid post-grow column 0
+    // is ~280 px wide — text wraps to ~3 lines (~50 px), grid.h ≈ 50,
+    // section.h ≈ 90. Pre-fix: hug-store kept the narrow-column row
+    // height (~250+ px), section.h was 280+.
+    assert!(
+        section.size.h < 120.0,
+        "section.h should match post-grow text height (~3 lines), got {}",
+        section.size.h,
+    );
+    assert!(
+        (grid.size.h - shaped.measured.h).abs() < 4.0,
+        "grid.h ({}) should match the post-grow text-shape height ({}) — \
+         hug-store stale row height kept the pre-grow narrow-column wrap",
+        grid.size.h,
+        shaped.measured.h,
+    );
+    assert!(
+        text.size.w > 100.0,
+        "text shaped at post-grow column width should be wide (paragraph \
+         wrapped to several columns), not the narrow intrinsic-min, got w={}",
+        text.size.w,
+    );
+}
+
 /// Negative case: parent stays at the surface size when children fit.
 /// The floor is `max(available, hug)`, so available wins when bigger.
 #[test]
