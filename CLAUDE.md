@@ -4,139 +4,82 @@ A Rust GUI crate. **Immediate-mode authoring API**, **WPF-style two-pass layout*
 
 Read `DESIGN.md` for the full design rationale before making non-trivial changes.
 
-## Project goal & posture
+## Posture
 
-State-of-the-art UI framework, craft-driven. **No external consumers, no published API.** Optimize hard, keep the authoring API a pleasure to use. Treat it as sports programming.
+State-of-the-art UI framework, craft-driven. **No external consumers, no published API** — treat it as sports programming.
 
-- **Break things freely.** Rename, refactor, big-bang migrations welcome — no deprecation shims, compat aliases, or feature flags. Bar is "fmt + clippy + tests pass and the showcase still feels right by eye."
+- **Break things freely.** Rename, refactor, big-bang migrations welcome — no deprecation shims, compat aliases, feature flags, or migration helpers. Bar is "fmt + clippy + tests pass and the showcase still feels right by eye."
 - **Per-frame allocation is a real metric.** Steady-state must be heap-alloc-free after warmup. New per-frame `Vec::new()` / `HashMap` rebuild = regression; push onto retained scratch with capacity reuse.
 - **API ergonomics matter.** Builder chains read like prose, defaults are right, surprise behavior gets a pinning test. When in doubt, prioritize call-site readability.
 - **Optimize aggressively when motivated.** Micro-wins (struct packing, const fns, scratch reuse, cache layout) are encouraged even without a workload demanding them.
 - **Ship in measurable slices.** One feature with tests + a showcase tab beats a half-finished cluster. If a change is structurally complex with no motivating workload, say "too early" and shelve with a note rather than ship speculation.
+- **Docs are starting positions, not commitments.** Treat `docs/*.md`, `DESIGN.md`, `references/*` as evolving and possibly wrong. When a doc contradicts user intent or current code, double-question rather than defer — flag the conflict, ask, and update the doc.
 
-## Core architecture
+## Code style
 
-Five passes per frame:
+- **Comments:** none except non-obvious *why*. Code is short and self-explanatory; keep it that way.
+- **Asserts:** default to release `assert!` for invariants, not `debug_assert!` — `debug_assert!` is stripped in release and hides logic bugs in the build users actually run. Reserve it for checks too expensive for release (e.g. O(n) inside a hot loop), and call out the tradeoff.
+- **Edition 2024.** Dependencies pinned to `*` for now (lockfile pins actual versions) — fine for prototype, pin before publishing.
+- **Tests in `lib.rs` pin layout semantics.** Add a test whenever you change measure/arrange behavior. Don't add wgpu code paths to the layout/tree modules.
+- **All test-only code lives in test modules.** No `#[cfg(test)] pub(crate) fn …` on production types. If a test needs internals, expose the field as `pub(crate)` and call production code paths, OR move the test inside the module's `#[cfg(test)] mod tests`. Test-only methods on production types creep, drift, and signal a "real consumer coming any day" that never arrives.
+- **Split fat-test files** into `foo/{mod.rs, tests.rs}` when tests dominate (>40% or >150 lines).
+- **Visibility:** default to narrowest; demote `pub` → `pub(crate)` → private whenever nothing outside uses the item. `pub(crate)` on fields is fine — invariants live in the mutating methods, not in encapsulation theater. No `pub(in path)` / `pub(super)` — exotic noise; use `pub(crate)` for any cross-module access.
+- **No trivial accessors.** If a method body is just `self.field` / `&self.field` / `self.field = v`, delete it and make the field `pub(crate)`. Inline accessors are fine when they do real work.
+- **No tuple returns.** Give a named result struct next to the function. `Option`/`Result` excepted.
+- **No inline `crate::foo::bar::Type` paths** in expressions or patterns. Add a `use` at the top — surface dependencies in the imports block, don't bury them.
+- **No re-exports inside the crate.** Only `lib.rs` `pub use`s items to define the published surface. Intermediate `mod.rs` files don't re-export — make submodules `pub(crate)` and import via the canonical path (`use crate::primitives::color::Color`, not `use crate::primitives::Color`). One canonical path per item.
+- **`WidgetId`** is hashed from a user-supplied key — keep IDs stable across frames so persistent state survives. Auto-deriving constructors (`Button::new`, `Text::new`, …) use `WidgetId::auto_stable()` + `#[track_caller]` so calls at different source lines get distinct ids. **`#[track_caller]` does not propagate through closure bodies** — helpers that build widgets inside a closure passed to e.g. `Panel::show(ui, |ui| { ... })` resolve every call site to the same closure literal, producing collisions. Inside such helpers, give widgets explicit ids (`Text::with_id((tag, key), text)`, `Button::with_id(...)`); annotating the helper with `#[track_caller]` doesn't help.
 
-1. **Record** — user code (`Button::new().label("x").show(&mut ui)`) appends per-node columns (`LayoutCore`, `PaintCore`, `WidgetId`, `subtree_end`) and `Shape`s into an arena `Tree`. No painting yet.
-2. **Measure** — post-order. Each node returns desired size given available size.
-3. **Arrange** — pre-order. Parent assigns final `Rect` to each child.
-4. **Cascade** — pre-order. `Cascades::rebuild` resolves disabled/invisible/clip/transform per node into a flat table; consumed by both encoder and hit-index so they can't drift.
-5. **Encode + Paint** — pre-order. `renderer::encode` walks the tree → `Vec<RenderCmd>`; `Composer` groups by scissor and snaps to physical pixels; `WgpuBackend` submits instanced quad draws.
+## Architecture
 
-The tree is rebuilt every frame; widget *state* (scroll, focus, animation) will live in a separate `Id → Any` map keyed by `WidgetId` (hashed call-site/user key). See Status for what's shipped.
+Five passes per frame on an arena `Tree` rebuilt every frame:
 
-### Node columns vs Shape — the key split
+1. **Record** — user code (`Button::new().label("x").show(&mut ui)`) appends per-node columns + `Shape`s.
+2. **Measure** (post-order) — node returns desired size given available size.
+3. **Arrange** (pre-order) — parent assigns final `Rect` to each child.
+4. **Cascade** (pre-order) — `Cascades::rebuild` flattens disabled/invisible/clip/transform; consumed by encoder *and* hit-index so they can't drift.
+5. **Encode + Paint** (pre-order) — `renderer::encode` → `Vec<RenderCmd>`; `Composer` groups by scissor, snaps to physical pixels; `WgpuBackend` submits instanced quads.
 
-Per-node data is stored as parallel SoA columns on `Tree`, all indexed by `NodeId.0`:
+Widget *state* (scroll, focus, animation) will live in a separate `Id → Any` map keyed by `WidgetId` — see Status.
 
-- **`Tree.layout: Vec<LayoutCore>`** — mode, size, padding, margin, align, visibility. Read by measure/arrange/alignment math.
-- **`Tree.paint: Vec<PaintCore>`** — `PaintAttrs` (sense/disabled/clip, packed in 1 byte) + extras index. Read by cascade/encoder/hit-test.
-- **`Tree.widget_ids: Vec<WidgetId>`** — read only by hit-test and (future) state map.
-- **`Tree.subtree_end: Vec<u32>`** — pre-order topology; `i + 1 == subtree_end[i]` for a leaf. Read by every walk.
+**Tree = SoA columns indexed by `NodeId.0`:** `layout: Vec<LayoutCore>` (mode/size/padding/margin/align/visibility — measure/arrange), `paint: Vec<PaintCore>` (`PaintAttrs` 1-byte sense/disabled/clip + extras index — cascade/encoder/hit-test), `widget_ids: Vec<WidgetId>` (hit-test + future state map), `subtree_end: Vec<u32>` (pre-order topology; `i + 1 == subtree_end[i]` for a leaf — every walk). Splitting by reader keeps each pass touching only the columns it needs. Measured `desired`/`rect` live on `LayoutResult` keyed by `NodeId`, not on the tree.
 
-Splitting by reader keeps each pass touching only the columns it needs. Measured size (`desired`, `rect`) lives on `LayoutResult` keyed by `NodeId`, not on the tree.
+**`Shape`** (paint primitive: `RoundedRect`, `Text`, `Line`, …) stored flat in `Tree.shapes`, sliced per-node via `Tree.shape_starts` (length `node_count() + 1`). `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. Layout passes ignore Shapes and `PaintCore`; paint pass ignores hierarchy beyond `subtree_end`. **This decoupling is load-bearing — keep it.**
 
-- **`Shape`** = paint primitive (`RoundedRect`, `Text`, `Line`, …). Stored flat in `Tree.shapes`, sliced per-node via `Tree.shape_starts` (length `node_count() + 1`, so node `i`'s shapes are `shapes[shape_starts[i]..shape_starts[i+1]]`). `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning today.
+**Sizing (WPF-aligned):** `Fixed(n)` outer = exactly `n` (incl. padding); `Hug` outer = content + padding (WPF `Auto`); `Fill(weight)` takes leftover, distributed by weight across `Fill` siblings (WPF `*`). Canonical impl: `resolve_axis_size` in `src/layout/mod.rs`; pinned by `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs`.
 
-Layout passes ignore Shapes and `PaintCore`; paint pass ignores hierarchy beyond walking `subtree_end`. This decoupling is load-bearing — keep it.
+## Project layout
 
-### Sizing semantics (WPF-aligned)
+- `src/cascade.rs` — disabled/invisible/clip/transform table
+- `src/element/` — Element builder, LayoutCore + PaintCore columns, PaintAttrs, Configure
+- `src/shape/` — Shape enum (RoundedRect, Line, Text)
+- `src/tree/` — Tree (SoA + subtree_end), NodeId, GridDef, hash
+- `src/ui/` — Ui recorder, theme, seen-id tracking, damage
+- `src/layout/` — LayoutEngine + drivers (stack/wrapstack/zstack/canvas/grid), intrinsic, cache
+- `src/primitives/` — Vec2/Size/Rect/Color/Stroke/Corners/Spacing/Sizing/Track/Align/Transform/…
+- `src/text/` — cosmic-text measurement + glyphon rendering glue
+- `src/input/` — InputState, HitIndex (O(1) by-id lookup over Cascades)
+- `src/renderer/` — frontend (encode/compose) + backend (wgpu), instanced quads
+- `src/widgets/` — Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, Styled
+- `examples/{helloworld.rs, showcase/}` — minimal driver + multi-page demo
+- `benches/` — criterion (layout, measure_cache); `docs/` — in-flight notes; `DESIGN.md` — full rationale
 
-- `Sizing::Fixed(n)` — outer dimension is exactly `n` (includes padding).
-- `Sizing::Hug` — outer dimension = content + padding (WPF's `Auto`).
-- `Sizing::Fill(weight)` — take available space, distribute leftover by weight across `Fill` siblings (WPF's `*`).
+Key deps: `wgpu`+`winit`, `glyphon`+`cosmic-text`, `glam`, `rustc-hash`, `rayon`, `bytemuck`. Pinned `*` (lockfile is source of truth).
 
-`resolve_axis_size` in `src/layout/mod.rs` is the canonical implementation; `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs` pin it.
+## References
 
-### Tree topology
+`./references/` has 29 per-framework notes + a cross-cutting synthesis. **Read `references/SUMMARY.md` first** — it indexes every doc, takes positions on Palantir's design choices, lists anti-patterns + open questions. Each per-framework doc cites `tmp/` source with `file:line` and ends with copy/avoid/simplify recommendations. SUMMARY's "Quick-lookup matrix" (§13) maps task → docs.
 
-Pre-order arena: nodes are stored in pre-order paint order, so node `i`'s children start at `i + 1` and its whole subtree spans `i..subtree_end[i]`. To iterate direct children, jump from `i + 1` past each child's own `subtree_end` until reaching the parent's. No `parent` / `first_child` / `next_sibling` links — `subtree_end` (4 bytes per node) is the only topology field. Inspired by Clay (`tmp/clay`) and `indextree`. `Tree::push_node` is O(depth): it appends the new node and walks up the ancestor chain bumping each ancestor's `subtree_end`.
-
-## Project structure
-
-```
-src/
-  cascade.rs       per-node disabled/invisible/clip/transform table
-  element/         Element builder, LayoutCore + PaintCore columns, PaintAttrs, Configure
-  shape/           Shape enum (RoundedRect, Line, Text)
-  tree/            Tree (SoA columns + subtree_end), NodeId, GridDef, hash
-  ui/              Ui recorder, theme, seen-id tracking, damage
-  layout/          LayoutEngine + drivers (stack, wrapstack, zstack, canvas, grid), intrinsic, cache
-  primitives/      Vec2/Size/Rect/Color/Stroke/Corners/Spacing/Sizing/Track/Align/Transform/…
-  text/            cosmic-text measurement + glyphon-backed rendering glue
-  input/           InputState, HitIndex (O(1) by-id lookup over Cascades output)
-  renderer/        frontend (encode/compose) + backend (wgpu), instanced quads
-  widgets/         Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, Styled mixin
-
-examples/
-  helloworld.rs    minimal wgpu-backed driver
-  showcase/        multi-page demo of every layout / clip / transform / disabled / button style
-
-scripts/
-  fetch-refs.sh    clones reference UI/layout/renderer projects into ./tmp
-
-benches/           criterion benches (layout, measure_cache)
-docs/              in-flight design notes (todo, layouts-todo, measure-cache, proposed-features)
-DESIGN.md          full design rationale — read before non-trivial changes
-```
-
-Key deps: `wgpu` + `winit` (windowing/render), `glyphon` + cosmic-text (text), `glam` (math), `rustc-hash` (id hashing), `rayon` (parallel passes), `bytemuck` (gpu pod). All pinned `*` (lockfile is source of truth).
-
-## Reference notes in `./references/`
-
-29 dense per-framework notes plus a cross-cutting synthesis. **Read `references/SUMMARY.md` first** — it indexes every other doc, takes positions on the design choices Palantir must make, and lists anti-patterns + open questions across the corpus. Each per-framework doc cites source code under `tmp/` with `file:line` and ends with explicit copy/avoid/simplify recommendations for Palantir.
-
-Use the SUMMARY's "Quick-lookup matrix" (§13) to find which docs to read for a given task (HStack semantics, text widget, hit-testing, persistent state, etc.).
-
-## Reference sources in `./tmp/`
-
-`./tmp/` is gitignored and populated on demand by `./scripts/fetch-refs.sh` (shallow clones, re-runnable). The `references/*.md` notes already digest these — go to `tmp/` only when a note doesn't cover the specific question.
-
-Most relevant when working on:
+`./tmp/` (gitignored) holds the source clones, populated by `./scripts/fetch-refs.sh` (re-runnable). Go to `tmp/` only when a reference note doesn't cover the question. Most relevant by topic:
 
 - **Layout / measure-arrange** → `tmp/wpf` (the model we emulate), `tmp/taffy`, `tmp/morphorm`, `tmp/yoga`, `tmp/clay` (arena tree)
 - **Immediate-mode patterns** → `tmp/egui`, `tmp/imgui`, `tmp/clay`, `tmp/nuklear`
 - **wgpu renderer / batching** → `tmp/egui` (`crates/egui-wgpu`), `tmp/iced` (`wgpu` crate), `tmp/quirky`, `tmp/vello`, `tmp/wgpu`
 - **Text** → `tmp/glyphon`, `tmp/cosmic-text`, `tmp/parley`
 - **Vector shapes** → `tmp/lyon`, `tmp/kurbo`, `tmp/vello`
-- **Reactive / retained Rust UIs for contrast** → `tmp/iced`, `tmp/xilem`, `tmp/dioxus`, `tmp/floem`, `tmp/slint`, `tmp/makepad`
+- **Reactive / retained Rust UIs (contrast)** → `tmp/iced`, `tmp/xilem`, `tmp/dioxus`, `tmp/floem`, `tmp/slint`, `tmp/makepad`
 
-If the directory is missing or stale, run the script before doing research:
-```sh
-./scripts/fetch-refs.sh
-```
-
-When you need to look up a dependency's API (signatures, version-specific
-behavior, internal types), grep `tmp/<crate>/src` first — that source is at
-the same version Palantir builds against and is faster than `cargo doc`. Only
-fall back to `~/.cargo/registry/src/...` if the crate isn't listed in
-`fetch-refs.sh`.
-
-## Conventions
-
-- Early-stage project. No external users, no published API. Prefer correctness, simplicity, and structural improvements over preserving the current API shape — rename, restructure, or break things freely when it makes the code better. Don't add deprecation shims, compatibility aliases, or migration helpers.
-- No comments except for non-obvious *why*. Code is short and self-explanatory; keep it that way.
-- Default to release `assert!` for invariant checks, not `debug_assert!` — `debug_assert!` is stripped in release and hides logic bugs in the build users actually run. Reserve `debug_assert!` for checks that are genuinely too expensive for release (e.g. O(n) inside a hot loop), and call out the tradeoff when choosing it.
-- Edition 2024. Dependencies pinned to `*` for now (lockfile pins actual versions) — fine for prototype, pin before publishing.
-- Tests in `lib.rs` pin layout semantics. Add a test whenever you change measure/arrange behavior.
-- Don't add wgpu code paths to the layout/tree modules.
-- `WidgetId` is built from a hash of a user-supplied key. Keep IDs stable across frames so persistent state survives.
-- Widget constructors that auto-derive ids (`Button::new`, `Text::new`, etc.) use `WidgetId::auto_stable()` + `#[track_caller]` so two calls at different source lines get distinct ids. **`#[track_caller]` does not propagate through closure bodies** — if a helper function builds widgets inside a closure passed to e.g. `Panel::show(ui, |ui| { ... })`, every call site of the helper resolves the inner widget's location to the closure literal, producing colliding ids. Inside helpers that build widgets through closures, give those widgets explicit ids (`Text::with_id((tag, key), text)`, `Button::with_id(...)`). Annotating the helper with `#[track_caller]` doesn't help — the closure breaks the chain.
-- Treat all docs (`docs/*.md`, `DESIGN.md`, `references/*`) as evolving and possibly wrong. They may lag the code or encode decisions that have been re-litigated. When a doc statement contradicts the user's intent or current code, double-question rather than deferring — flag the conflict, ask the user, and update the doc to reflect the resolution. Documented decisions are starting positions, not commitments; re-evaluate when context changes.
-- **All code used only by tests lives in test modules.** No `#[cfg(test)] pub(crate) fn …` methods on production types as a "tests-only API". If a test needs to reach production internals, expose the underlying field as `pub(crate)` (so disjoint field borrows compose) and have the test call the production code paths directly, OR move the test inside the relevant module's `#[cfg(test)] mod tests` where it has access to private items. Test-only methods on production types creep, drift, and signal "real consumer coming any day" that never arrives.
-
-## Style preferences
-
-- No trivial field-exposing accessors. If a method body is just `self.field` / `&self.field` / `self.field = v`, delete it and make the field `pub(crate)`. Inline accessors are fine when they do real work.
-- `pub(crate)` on fields is fine for convenient cross-module access — invariants live in the methods that mutate, not in encapsulation theater.
-- No tuple returns. Even single-use, give it a named result struct next to the function. `Option`/`Result` excepted.
-- Default to the narrowest visibility. Demote `pub` → `pub(crate)` → private whenever nothing outside that scope uses the item; this crate has no external consumers.
-- No `pub(in path)` or `pub(super)`. They're noise — exotic syntax that forces the reader to compute the actual reach and gain nothing in a single-crate codebase. Use `pub(crate)` for any cross-module access; drop to private when no other module needs it.
-- No inline `crate::foo::bar::Type` paths in expressions or patterns. Add a `use` at the top of the file and refer to the type by its short name. Inline crate paths are read-once / grep-twice and bury the dependency in the middle of the body — surface it in the imports block instead.
-- Small refactors to shrink the public surface are welcome.
-- Split fat-test files into `foo/{mod.rs, tests.rs}` when tests dominate the file (>40% or >150 lines).
-- **No re-exports inside the crate.** Only `lib.rs` is allowed to `pub use` items to define the published API surface. Intermediate `mod.rs` files do not re-export — make submodules `pub(crate)` and have callers import via the canonical path (`use crate::primitives::color::Color`, not `use crate::primitives::Color`). Re-exports flatten paths, but they hurt grep-ability ("where does `Color` actually live?") and create cycles of "do I import from the leaf or the parent?". One canonical path per item.
+For dependency API lookups (signatures, version-specific behavior, internal types), grep `tmp/<crate>/src` first — same version Palantir builds against, faster than `cargo doc`. Fall back to `~/.cargo/registry/src/...` only if not in `fetch-refs.sh`.
 
 ## Before reporting work as done
 
@@ -159,40 +102,3 @@ npm_config_cache="$TMPDIR/npm-cache" npx --yes jscpd src/ --min-lines 5 --min-to
 ```
 
 Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each clone pair.
-
-## Status
-
-- [x] Geometry, tree, shape, recorder, measure/arrange
-- [x] Layouts: HStack, VStack, ZStack, Canvas, Grid (WPF-style tracks + spans)
-- [x] Widgets: Button (with state-driven `ButtonStyle`), Frame, Panel, Grid; `Styled` mixin
-- [x] Tests pinning Hug/Fixed/Fill, alignment cascade, justify, padding/margin, span, collapsed children
-- [x] wgpu paint pass: `WgpuBackend`, instanced rounded-rect quads, scissor + transform composition
-- [x] winit event loop integration (showcase example)
-- [x] Hit-testing against last frame's rects → `Response { hovered, pressed, clicked }`, with disabled/invisible/clip/transform cascade
-- [x] Per-frame `Cascades` table shared by encoder + hit-index
-- [x] Real text measurement + rendering via cosmic-text + glyphon (`TextMeasurer` Ui-side, `TextRenderer` wgpu-side, shared `CosmicMeasure` via `Rc<RefCell<…>>`)
-- [x] Glyph atlas + text rendering in the wgpu pipeline
-- [x] Wrapping text: `TextWrap::Wrap` opt-in, intrinsic_min from cosmic glyphs, single-pass reshape during measure.
-- [x] Intrinsic-dimensions protocol: `LenReq`-based on-demand intrinsic queries, Grid Auto under constraint, Stack Fill resolved during measure. Per-axis ZStack/Canvas constraint propagation. See `src/layout/intrinsic.md`.
-- [x] WrapStack (flow layout, line-wrapped HStack-style). `src/layout/wrapstack/`.
-- [x] Measure cache: full-subtree skip across frames, flat arena storage. See `src/layout/measure-cache.md`.
-- [x] Encode cache: full-subtree skip on the encoder, mirrors measure cache. See `src/renderer/frontend/encoder/encode-cache.md`.
-- [x] Damage tracking: per-frame dirty-region collection in `src/ui/damage/`.
-- [ ] Persistent state map (`Id → Any`) for scroll, focus, animation
-- [ ] Drag tracking on top of `Active`-capture (rect-independent `drag_delta`)
-
-## Layout vocabulary (decided)
-
-The committed native panel set is **`HStack`, `VStack`, `ZStack`,
-`Canvas`, and `Grid`**. `src/layout/intrinsic.md` describes the
-intrinsic-aware extensions to `Grid` Auto and `H/VStack` Fill. The
-native set is "done" for the foreseeable future.
-
-Open future decision (deferred until first concrete user demand): whether
-richer flex/grid features arrive via Taffy as an opt-in feature flag
-(α — corpus-preferred), Taffy replacing native Grid (β), Taffy replacing
-both Stack flex and Grid (γ), or hand-grown in-tree (δ). Until that
-trigger, native panels are the authoring surface; Stack flex stops at
-"min-floor + weight + max-size" and any feature beyond it triggers the
-α/β/γ/δ conversation, not "add a case to `stack::measure`". See
-`src/layout/intrinsic.md` "Future direction" for context.
