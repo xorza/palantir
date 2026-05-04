@@ -112,7 +112,7 @@ fn bench(c: &mut Criterion) {
             build(&mut ui);
             let _ = ui.end_frame();
             b.iter(|| {
-                palantir::internals::clear_compose_cache(&mut ui);
+                palantir::support::internals::clear_compose_cache(&mut ui);
                 ui.begin_frame(display);
                 build(&mut ui);
                 black_box(ui.end_frame());
@@ -141,7 +141,7 @@ fn bench(c: &mut Criterion) {
             build(&mut ui);
             let _ = ui.end_frame();
             b.iter(|| {
-                palantir::internals::clear_compose_cache(&mut ui);
+                palantir::support::internals::clear_compose_cache(&mut ui);
                 ui.__recompose();
                 black_box(());
             });

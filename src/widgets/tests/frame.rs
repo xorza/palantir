@@ -1,7 +1,7 @@
 use crate::layout::types::{sense::Sense, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::shape::Shape;
-use crate::test_support::{click_at, ui_at};
+use crate::support::testing::{click_at, ui_at};
 use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;

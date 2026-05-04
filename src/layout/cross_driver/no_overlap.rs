@@ -7,7 +7,7 @@ use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::{color::Color, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
-use crate::test_support::{encode_cmds, ui_with_text};
+use crate::support::testing::{encode_cmds, ui_with_text};
 use crate::tree::element::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, styled::Styled, text::Text};
 use glam::UVec2;

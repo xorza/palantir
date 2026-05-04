@@ -7,7 +7,7 @@
 use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::{color::Color, stroke::Stroke, transform::TranslateScale};
-use crate::test_support::{begin, encode_cmds, new_ui_text, ui_with_text};
+use crate::support::testing::{begin, encode_cmds, new_ui_text, ui_with_text};
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, styled::Styled, text::Text};
@@ -320,7 +320,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             .map(|n| ui.layout_engine.result.rect[n.index()])
             .collect();
 
-        crate::internals::clear_measure_cache(&mut ui);
+        crate::support::internals::clear_measure_cache(&mut ui);
         begin(&mut ui, UVec2::new(w, 600));
         let mut cold_nodes = Vec::new();
         build(&mut ui, &mut cold_nodes);
