@@ -258,7 +258,8 @@ impl LayoutEngine {
             // so a length mismatch here would mean the rollup is broken.
             assert_eq!(curr_end, tree.subtree_end[curr_start] as usize);
             self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
-            self.result.restore_text_shapes(curr_start, hit.text_shapes);
+            self.result.text_shapes[curr_start..curr_start + hit.text_shapes.len()]
+                .copy_from_slice(hit.text_shapes);
             self.result.available_q[curr_start..curr_end].copy_from_slice(hit.available_q);
             // Restore per-grid hug arrays. `grid::arrange` reads
             // `LayoutEngine.scratch.grid.hugs`, populated only by
@@ -351,7 +352,7 @@ impl LayoutEngine {
                 cache_wid,
                 cache_hash,
                 &self.scratch.desired[start..end],
-                self.result.text_shapes_slice(start..end),
+                &self.result.text_shapes[start..end],
                 &self.result.available_q[start..end],
                 &self.scratch.tmp_hugs,
             );

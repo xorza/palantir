@@ -2,7 +2,6 @@ use crate::layout::cache::{AVAIL_UNSET, AvailableKey};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
-use std::ops::Range;
 
 /// Per-frame layout *output* — strictly the state read after the layout
 /// pass by the encoder + hit-index. Intermediate scratch (desired
@@ -51,16 +50,5 @@ impl LayoutResult {
     pub(crate) fn available_q(&self, id: NodeId) -> Option<AvailableKey> {
         let v = self.available_q[id.index()];
         if v == AVAIL_UNSET { None } else { Some(v) }
-    }
-
-    #[inline]
-    pub(crate) fn text_shapes_slice(&self, range: Range<usize>) -> &[Option<ShapedText>] {
-        &self.text_shapes[range]
-    }
-
-    #[inline]
-    pub(crate) fn restore_text_shapes(&mut self, start: usize, src: &[Option<ShapedText>]) {
-        let end = start + src.len();
-        self.text_shapes[start..end].copy_from_slice(src);
     }
 }

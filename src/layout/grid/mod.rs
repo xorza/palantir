@@ -10,7 +10,7 @@ use std::ops::Range;
 use std::rc::Rc;
 
 #[derive(Copy, Clone)]
-enum HugKind {
+pub(crate) enum HugKind {
     Max,
     Min,
 }
@@ -41,7 +41,7 @@ struct GridShape {
 /// per-axis `AxisScratch`. Returns the grid's track counts + gaps for
 /// the caller. Hug arrays live on `GridHugStore` (durable across the
 /// layout pass) and are read/written separately via
-/// `hugs.min/max(idx, axis)`. Hugs are NOT reset here: arrange also
+/// `hugs.slice(idx, axis, kind)`. Hugs are NOT reset here: arrange also
 /// calls this to re-snapshot tracks/gaps and must preserve the hug
 /// values written during measure. Measure-side hug reset lives in
 /// `reset_hugs_for`.
@@ -79,10 +79,11 @@ fn prepare_axis_scratch_at(
 /// preserve these. Pinned by
 /// `cross_driver_tests::parent_contains_child::two_hug_cols_section_height_matches_post_grow_text`.
 fn reset_hugs_for(layout: &mut LayoutEngine, idx: u16) {
-    layout.scratch.grid.hugs.max_mut(idx, Axis::X).fill(0.0);
-    layout.scratch.grid.hugs.min_mut(idx, Axis::X).fill(0.0);
-    layout.scratch.grid.hugs.max_mut(idx, Axis::Y).fill(0.0);
-    layout.scratch.grid.hugs.min_mut(idx, Axis::Y).fill(0.0);
+    let hugs = &mut layout.scratch.grid.hugs;
+    hugs.slice_mut(idx, Axis::X, HugKind::Max).fill(0.0);
+    hugs.slice_mut(idx, Axis::X, HugKind::Min).fill(0.0);
+    hugs.slice_mut(idx, Axis::Y, HugKind::Max).fill(0.0);
+    hugs.slice_mut(idx, Axis::Y, HugKind::Min).fill(0.0);
 }
 
 /// Per-axis scratch for one nesting depth. `tracks` shares the user's
@@ -191,9 +192,9 @@ impl GridDepthStack {
 /// the pool persists for the whole layout pass instead.
 ///
 /// `reset_for` zeroes every slot at the top of each pass — load-bearing,
-/// because `record_hug` and the Phase 1 column loop both accumulate via
-/// `slot[i] = slot[i].max(...)` and assume a 0.0 starting state.
-/// Capacity retained across frames.
+/// because the Phase 1 column loop and the Phase 2 cell-height accumulator
+/// both merge via `slot[i] = slot[i].max(...)` and assume a 0.0 starting
+/// state. Capacity retained across frames.
 #[derive(Default)]
 pub(crate) struct GridHugStore {
     max_pool: Vec<f32>,
@@ -235,19 +236,20 @@ impl GridHugStore {
         s.range()
     }
 
-    pub(crate) fn max(&self, idx: u16, axis: Axis) -> &[f32] {
-        &self.max_pool[self.axis_slice(idx, axis)]
-    }
-    pub(crate) fn min(&self, idx: u16, axis: Axis) -> &[f32] {
-        &self.min_pool[self.axis_slice(idx, axis)]
-    }
-    pub(crate) fn max_mut(&mut self, idx: u16, axis: Axis) -> &mut [f32] {
+    pub(crate) fn slice(&self, idx: u16, axis: Axis, kind: HugKind) -> &[f32] {
         let r = self.axis_slice(idx, axis);
-        &mut self.max_pool[r]
+        match kind {
+            HugKind::Max => &self.max_pool[r],
+            HugKind::Min => &self.min_pool[r],
+        }
     }
-    pub(crate) fn min_mut(&mut self, idx: u16, axis: Axis) -> &mut [f32] {
+
+    pub(crate) fn slice_mut(&mut self, idx: u16, axis: Axis, kind: HugKind) -> &mut [f32] {
         let r = self.axis_slice(idx, axis);
-        &mut self.min_pool[r]
+        match kind {
+            HugKind::Max => &mut self.max_pool[r],
+            HugKind::Min => &mut self.min_pool[r],
+        }
     }
 
     /// Pack per-grid hug arrays for every `LayoutMode::Grid` descendant
@@ -260,7 +262,7 @@ impl GridHugStore {
         for i in subtree {
             if let LayoutMode::Grid(idx) = tree.layout[i].mode {
                 for (axis, kind) in HUG_ORDER {
-                    out.extend_from_slice(self.axis_array(idx, axis, kind));
+                    out.extend_from_slice(self.slice(idx, axis, kind));
                 }
             }
         }
@@ -276,7 +278,7 @@ impl GridHugStore {
         for i in subtree {
             if let LayoutMode::Grid(idx) = tree.layout[i].mode {
                 for (axis, kind) in HUG_ORDER {
-                    let dst = self.axis_array_mut(idx, axis, kind);
+                    let dst = self.slice_mut(idx, axis, kind);
                     let n = dst.len();
                     dst.copy_from_slice(&hugs[pos..pos + n]);
                     pos += n;
@@ -289,20 +291,6 @@ impl GridHugStore {
             "snapshot hug slice length disagrees with current subtree's grid descendants \
              (cache key let through a structural change?)",
         );
-    }
-
-    fn axis_array(&self, idx: u16, axis: Axis, kind: HugKind) -> &[f32] {
-        match kind {
-            HugKind::Max => self.max(idx, axis),
-            HugKind::Min => self.min(idx, axis),
-        }
-    }
-
-    fn axis_array_mut(&mut self, idx: u16, axis: Axis, kind: HugKind) -> &mut [f32] {
-        match kind {
-            HugKind::Max => self.max_mut(idx, axis),
-            HugKind::Min => self.min_mut(idx, axis),
-        }
     }
 }
 
@@ -362,8 +350,10 @@ fn measure_inner(
     // Resolves the col axis without measuring children — the whole
     // point is to give cells a committed column width before they
     // shape (otherwise wrap text in Hug cols would always shape at INF
-    // and never wrap).
-    let col_tracks = tracks_at(layout, depth, Axis::X);
+    // and never wrap). Refcount-clone the col tracks so the
+    // `&mut depth_stack[depth]` borrow is released before the
+    // `layout.intrinsic` calls below (which need `&mut layout`).
+    let col_tracks = layout.scratch.grid.depth_stack.at(depth).col.tracks.clone();
     for c in tree.children_active(node) {
         let cell = tree.read_extras(c).grid;
         if cell.col_span != 1 {
@@ -376,9 +366,17 @@ fn measure_inner(
         let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, text);
         let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, text);
         let i = cell.col as usize;
-        let cols_min = layout.scratch.grid.hugs.min_mut(idx, Axis::X);
+        let cols_min = layout
+            .scratch
+            .grid
+            .hugs
+            .slice_mut(idx, Axis::X, HugKind::Min);
         cols_min[i] = cols_min[i].max(min);
-        let cols_max = layout.scratch.grid.hugs.max_mut(idx, Axis::X);
+        let cols_max = layout
+            .scratch
+            .grid
+            .hugs
+            .slice_mut(idx, Axis::X, HugKind::Max);
         cols_max[i] = cols_max[i].max(max);
     }
 
@@ -404,8 +402,8 @@ fn measure_inner(
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.col,
-            hugs.min(idx, Axis::X),
-            hugs.max(idx, Axis::X),
+            hugs.slice(idx, Axis::X, HugKind::Min),
+            hugs.slice(idx, Axis::X, HugKind::Max),
             inner_avail.w,
             col_gap,
             grid_sizing_w,
@@ -453,17 +451,19 @@ fn measure_inner(
         // Row Hug accumulates from cell's measured height. Row min-content
         // could come from a Y intrinsic query, but it'd be the single-line
         // height — the wrapped height (in `desired.h`) is what actually
-        // matters, so leave row hug_min at zero for now.
-        let GridContext {
-            depth_stack, hugs, ..
-        } = &mut layout.scratch.grid;
-        record_hug(
-            &depth_stack.at(depth).row.tracks,
-            hugs.max_mut(idx, Axis::Y),
-            cell.row,
-            cell.row_span,
-            d.h,
-        );
+        // matters, so leave row hug_min at zero for now. Skip multi-row
+        // spans: their height is distributed across rows, not attributable
+        // to one Hug row.
+        if cell.row_span == 1 {
+            let GridContext {
+                depth_stack, hugs, ..
+            } = &mut layout.scratch.grid;
+            let row = cell.row as usize;
+            if matches!(depth_stack.at(depth).row.tracks[row].size, Sizing::Hug) {
+                let hug_max = hugs.slice_mut(idx, Axis::Y, HugKind::Max);
+                hug_max[row] = hug_max[row].max(d.h);
+            }
+        }
     }
 
     // Resolve row heights. Same Fill-marking rule as cols above —
@@ -478,8 +478,8 @@ fn measure_inner(
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.row,
-            hugs.min(idx, Axis::Y),
-            hugs.max(idx, Axis::Y),
+            hugs.slice(idx, Axis::Y, HugKind::Min),
+            hugs.slice(idx, Axis::Y, HugKind::Max),
             inner_avail.h,
             row_gap,
             grid_sizing_h,
@@ -511,36 +511,12 @@ fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
         .sum()
 }
 
-/// Refcount-clone the per-axis tracks at `depth` so the caller can hold
-/// `&[Track]` while also calling `layout.intrinsic(...)` on the same
-/// engine — releasing the `&mut depth_stack[depth]` borrow that the
-/// intrinsic call would conflict with. Single caller (Phase 1 column
-/// loop in `measure_inner`); kept as a named helper to keep the borrow
-/// dance off the hot path.
-fn tracks_at(layout: &mut LayoutEngine, depth: usize, axis: Axis) -> Rc<[Track]> {
-    let s = layout.scratch.grid.depth_stack.at(depth);
-    match axis {
-        Axis::X => s.col.tracks.clone(),
-        Axis::Y => s.row.tracks.clone(),
-    }
-}
-
 fn resolve_fixed(a: &mut AxisScratch) {
     for (i, t) in a.tracks.iter().enumerate() {
         if let Sizing::Fixed(v) = t.size {
             a.sizes[i] = v.clamp(t.min, t.max);
             a.resolved[i] = true;
         }
-    }
-}
-
-fn record_hug(tracks: &[Track], hug_max: &mut [f32], idx: u16, span: u16, desired: f32) {
-    if span != 1 {
-        return;
-    }
-    let i = idx as usize;
-    if matches!(tracks[i].size, Sizing::Hug) {
-        hug_max[i] = hug_max[i].max(desired);
     }
 }
 
@@ -589,16 +565,16 @@ fn arrange_inner(
         let s = depth_stack.at(depth);
         resolve_axis(
             &mut s.col,
-            hugs.min(idx, Axis::X),
-            hugs.max(idx, Axis::X),
+            hugs.slice(idx, Axis::X, HugKind::Min),
+            hugs.slice(idx, Axis::X, HugKind::Max),
             inner.size.w,
             col_gap,
             grid_size.w,
         );
         resolve_axis(
             &mut s.row,
-            hugs.min(idx, Axis::Y),
-            hugs.max(idx, Axis::Y),
+            hugs.slice(idx, Axis::Y, HugKind::Min),
+            hugs.slice(idx, Axis::Y, HugKind::Max),
             inner.size.h,
             row_gap,
             grid_size.h,
