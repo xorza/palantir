@@ -7,12 +7,11 @@ use crate::layout::types::display::Display;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
-use crate::tree::hash::{NodeHash, pod};
+use crate::tree::hash::{Hasher, NodeHash};
 use crate::tree::widget_id::WidgetId;
 use cache::ComposeCache;
 use glam::UVec2;
-use rustc_hash::FxHasher;
-use std::hash::Hasher;
+use std::hash::Hasher as _;
 
 pub(crate) mod cache;
 
@@ -305,20 +304,20 @@ fn cascade_fingerprint(
     snap: bool,
     viewport: UVec2,
 ) -> u64 {
-    let mut h = FxHasher::default();
-    pod(&mut h, &t);
+    let mut h = Hasher::new();
+    h.pod(&t);
     match parent_scissor {
         None => h.write_u8(0),
         // `URect` lacks bytemuck derives; pod a fixed-size view of its
         // four u32s instead.
         Some(r) => {
             h.write_u8(1);
-            pod(&mut h, &[r.x, r.y, r.w, r.h]);
+            h.pod(&[r.x, r.y, r.w, r.h]);
         }
     }
     h.write_u32(scale.to_bits());
     h.write_u8(snap as u8);
-    pod(&mut h, &viewport);
+    h.pod(&viewport);
     h.finish()
 }
 
