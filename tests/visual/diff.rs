@@ -1,6 +1,9 @@
-//! Pixel-diff with per-channel + ratio tolerance.
+//! Pixel-diff with per-channel + ratio tolerance. Per-row parallel
+//! via rayon; rows are independent so the reduction is a trivial
+//! `(max, sum)`.
 
-use image::{Rgba, RgbaImage};
+use image::RgbaImage;
+use rayon::prelude::*;
 
 /// Per-channel + ratio thresholds for [`diff`]. A pixel "differs" when
 /// any of its R/G/B/A channels deviates by more than `per_channel`;
@@ -48,34 +51,70 @@ pub fn diff(actual: &RgbaImage, expected: &RgbaImage, tol: Tolerance) -> DiffRep
     );
     let (w, h) = actual.dimensions();
     let mut diff_image = RgbaImage::new(w, h);
-    let mut max_delta: u8 = 0;
-    let mut differing: u32 = 0;
-    for ((a, e), d) in actual
-        .pixels()
-        .zip(expected.pixels())
-        .zip(diff_image.pixels_mut())
-    {
-        let pixel_delta = (0..4).map(|c| a.0[c].abs_diff(e.0[c])).max().unwrap();
-        if pixel_delta > max_delta {
-            max_delta = pixel_delta;
-        }
-        if pixel_delta > tol.per_channel {
-            differing += 1;
-            *d = Rgba([255, 0, 0, 255]);
-        } else {
-            *d = Rgba([a.0[0] / 4, a.0[1] / 4, a.0[2] / 4, 255]);
-        }
-    }
+
+    let row_bytes = w as usize * 4;
+    let per_channel = tol.per_channel;
+    let totals = actual
+        .as_raw()
+        .par_chunks_exact(row_bytes)
+        .zip(expected.as_raw().par_chunks_exact(row_bytes))
+        .zip(diff_image.par_chunks_exact_mut(row_bytes))
+        .map(|((a_row, e_row), d_row)| diff_row(a_row, e_row, d_row, per_channel))
+        .reduce(RowStats::default, RowStats::merge);
+
     DiffReport {
-        max_channel_delta: max_delta,
-        differing_pixels: differing,
-        differing_ratio: differing as f32 / (w * h) as f32,
+        max_channel_delta: totals.max_delta,
+        differing_pixels: totals.differing,
+        differing_ratio: totals.differing as f32 / (w * h) as f32,
         diff_image,
     }
 }
 
+#[derive(Default, Clone, Copy)]
+struct RowStats {
+    max_delta: u8,
+    differing: u32,
+}
+
+impl RowStats {
+    fn merge(a: Self, b: Self) -> Self {
+        Self {
+            max_delta: a.max_delta.max(b.max_delta),
+            differing: a.differing + b.differing,
+        }
+    }
+}
+
+/// Scan one row: writes each diff pixel into `d_row` (red on miss,
+/// dimmed actual on match) and returns the row's `(max_delta, count)`.
+fn diff_row(a_row: &[u8], e_row: &[u8], d_row: &mut [u8], per_channel: u8) -> RowStats {
+    let mut stats = RowStats::default();
+    for ((a, e), d) in a_row
+        .chunks_exact(4)
+        .zip(e_row.chunks_exact(4))
+        .zip(d_row.chunks_exact_mut(4))
+    {
+        let delta = (0..4).map(|c| a[c].abs_diff(e[c])).max().unwrap();
+        if delta > stats.max_delta {
+            stats.max_delta = delta;
+        }
+        if delta > per_channel {
+            stats.differing += 1;
+            d.copy_from_slice(&[255, 0, 0, 255]);
+        } else {
+            d[0] = a[0] / 4;
+            d[1] = a[1] / 4;
+            d[2] = a[2] / 4;
+            d[3] = 255;
+        }
+    }
+    stats
+}
+
 #[cfg(test)]
 mod tests {
+    use image::Rgba;
+
     use super::*;
 
     #[test]
