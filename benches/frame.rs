@@ -220,6 +220,23 @@ fn bench_frame(c: &mut Criterion) {
             black_box(ui.end_frame());
         });
     });
+
+    // Same workload, but the window resizes every iteration so the
+    // measure/encode caches see a fresh `available` quantization each frame.
+    // Approximates a live drag-resize.
+    let mut ui = Ui::new();
+    let mut frame = 0u32;
+    c.bench_function("frame/end_frame_resizing", |b| {
+        b.iter(|| {
+            let w = 1024 + (frame % 512);
+            let h = 640 + ((frame / 7) % 320);
+            frame = frame.wrapping_add(1);
+            let display = Display::from_physical(glam::UVec2::new(w, h), 2.0);
+            ui.begin_frame(display);
+            build_ui(&mut ui);
+            black_box(ui.end_frame());
+        });
+    });
 }
 
 criterion_group!(benches, bench_frame);

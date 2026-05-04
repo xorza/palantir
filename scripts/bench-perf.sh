@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the layout bench with debug symbols, wipe old perf data, and
+# Build a criterion bench with debug symbols, wipe old perf data, and
 # record a fresh profile alongside hardware-counter aggregates.
 #
 # Pinned to a single P-core (CPU 0) on the i9-13980HX hybrid layout so
@@ -11,8 +11,13 @@
 #   /tmp/palantir-perf-stat.txt     - perf stat counters (IPC, cache, branch, faults)
 #
 # Usage:
-#   scripts/bench-perf.sh                   # default: --profile-time 5
-#   scripts/bench-perf.sh --profile-time 2  # pass-through extra args
+#   scripts/bench-perf.sh                              # default: layout bench, --profile-time 5
+#   scripts/bench-perf.sh --profile-time 2             # override criterion args
+#   BENCH=frame FILTER=frame/end_frame_resizing scripts/bench-perf.sh
+#
+# Env:
+#   BENCH   bench target name from Cargo.toml (default: layout)
+#   FILTER  criterion filter, prepended to bench args (default: empty = all)
 #
 # For allocations (the project's "alloc-free per frame after warmup" claim),
 # use dhat instead — perf isn't well-suited:
@@ -26,10 +31,17 @@ cd "$(dirname "$0")/.."
 PERF_DATA=/tmp/palantir-perf.data
 PERF_REPORT=/tmp/palantir-perf-report.txt
 PERF_STAT=/tmp/palantir-perf-stat.txt
+BENCH_NAME="${BENCH:-layout}"
+FILTER_ARG="${FILTER:-}"
 EXTRA_ARGS=("$@")
 if [ ${#EXTRA_ARGS[@]} -eq 0 ]; then
     EXTRA_ARGS=(--profile-time 5)
 fi
+BENCH_ARGS=(--bench)
+if [ -n "$FILTER_ARG" ]; then
+    BENCH_ARGS+=("$FILTER_ARG")
+fi
+BENCH_ARGS+=("${EXTRA_ARGS[@]}")
 
 # Sampling frequency. Cap is /proc/sys/kernel/perf_event_max_sample_rate
 # (50000 on this box). 4999 gives ~2.5x the previous data density without
@@ -49,18 +61,21 @@ if ! command -v taskset >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "==> Building bench with debug symbols"
+echo "==> Building bench '$BENCH_NAME' with debug symbols"
 CARGO_PROFILE_BENCH_DEBUG=line-tables-only \
-    cargo bench --bench layout --no-run 2>&1 \
+    cargo bench --bench "$BENCH_NAME" --no-run 2>&1 \
     | tail -3
 
-BENCH=$(ls -t target/release/deps/layout-* | grep -v '\.d$' | head -1)
-if [ -z "$BENCH" ] || [ ! -x "$BENCH" ]; then
-    echo "error: could not locate built bench binary" >&2
+BENCH_BIN=$(ls -t "target/release/deps/${BENCH_NAME}"-* 2>/dev/null | grep -v '\.d$' | head -1)
+if [ -z "$BENCH_BIN" ] || [ ! -x "$BENCH_BIN" ]; then
+    echo "error: could not locate built bench binary for '$BENCH_NAME'" >&2
     exit 1
 fi
-echo "    binary: $BENCH"
+echo "    binary: $BENCH_BIN"
 echo "    pinned to CPU $PIN_CPU (P-core)"
+if [ -n "$FILTER_ARG" ]; then
+    echo "    filter: $FILTER_ARG"
+fi
 
 echo "==> Removing old perf data"
 rm -f "$PERF_DATA" "$PERF_REPORT" "$PERF_STAT" "$PERF_DATA.old"
@@ -76,12 +91,12 @@ SW_EVENTS="task-clock,context-switches,cpu-migrations,page-faults,minor-faults,m
 echo "==> perf stat (hardware counters)"
 taskset -c "$PIN_CPU" \
     perf stat -e "$HW_EVENTS" -e "$SW_EVENTS" -o "$PERF_STAT" -- \
-    "$BENCH" --bench "${EXTRA_ARGS[@]}" >/dev/null 2>&1 || true
+    "$BENCH_BIN" "${BENCH_ARGS[@]}" >/dev/null 2>&1 || true
 
 echo "==> perf record (-F $PERF_FREQ --call-graph dwarf,16384)"
 taskset -c "$PIN_CPU" \
     perf record -F "$PERF_FREQ" --call-graph dwarf,16384 -o "$PERF_DATA" -- \
-    "$BENCH" --bench "${EXTRA_ARGS[@]}"
+    "$BENCH_BIN" "${BENCH_ARGS[@]}"
 
 echo "==> Writing flat report to $PERF_REPORT"
 perf report -i "$PERF_DATA" --stdio --no-children -g none --percent-limit 1.0 \
