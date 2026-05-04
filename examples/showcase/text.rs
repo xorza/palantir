@@ -26,7 +26,8 @@ pub fn build(ui: &mut Ui) {
             );
 
             section(ui, "wide", "wrapping paragraph in a 360 px panel", |ui| {
-                Panel::vstack_with_id("wide-inner")
+                Panel::vstack()
+                    .with_id("wide-inner")
                     .size((Sizing::Fixed(360.0), Sizing::Hug))
                     .padding(8.0)
                     .show(ui, |ui| {
@@ -39,7 +40,8 @@ pub fn build(ui: &mut Ui) {
                 "narrow",
                 "same text in a 140 px panel — wraps to more lines",
                 |ui| {
-                    Panel::vstack_with_id("narrow-inner")
+                    Panel::vstack()
+                        .with_id("narrow-inner")
                         .size((Sizing::Fixed(140.0), Sizing::Hug))
                         .padding(8.0)
                         .show(ui, |ui| {
@@ -53,7 +55,8 @@ pub fn build(ui: &mut Ui) {
                 "overflow",
                 "unbreakable word in a 40 px slot — overflows at intrinsic_min",
                 |ui| {
-                    Panel::vstack_with_id("overflow-inner")
+                    Panel::vstack()
+                        .with_id("overflow-inner")
                         .size((Sizing::Fixed(40.0), Sizing::Hug))
                         .padding(4.0)
                         .show(ui, |ui| {
@@ -85,7 +88,8 @@ pub fn build_layouts(ui: &mut Ui) {
                 "two-hug-columns",
                 "two Hug columns: paragraph wraps to fit, label stays natural",
                 |ui| {
-                    Grid::with_id("two-hug-inner")
+                    Grid::new()
+                        .with_id("two-hug-inner")
                         .cols(Rc::from([Track::hug(), Track::hug()]))
                         .rows(Rc::from([Track::hug()]))
                         .gap_xy(0.0, 16.0)
@@ -119,7 +123,8 @@ pub fn build_layouts(ui: &mut Ui) {
                 "property-grid",
                 "property grid: Hug label column + Fill value column with wrapping",
                 |ui| {
-                    Grid::with_id("property-grid-inner")
+                    Grid::new()
+                        .with_id("property-grid-inner")
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
@@ -160,7 +165,8 @@ pub fn build_layouts(ui: &mut Ui) {
                 "chat-message",
                 "chat: Fixed avatar + Fill wrapping message",
                 |ui| {
-                    Panel::vstack_with_id("chat-list")
+                    Panel::vstack()
+                        .with_id("chat-list")
                         .size((Sizing::FILL, Sizing::Hug))
                         .gap(8.0)
                         .show(ui, |ui| {
@@ -198,7 +204,8 @@ pub fn build_layouts(ui: &mut Ui) {
 /// the explicit id, every section's title would resolve to the same call
 /// site inside `section()` and collide.
 fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack_with_id(id)
+    Panel::vstack()
+        .with_id(id)
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
         .padding(8.0)
@@ -209,7 +216,8 @@ fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce
         })
         .radius(4.0)
         .show(ui, |ui| {
-            Text::with_id(("section-title", id), title)
+            Text::new(title)
+                .with_id(("section-title", id))
                 .size_px(12.0)
                 .color(Color::rgb(0.70, 0.74, 0.82))
                 .show(ui);
@@ -222,16 +230,19 @@ fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce
 /// bodies — explicit ids derived from `key` keep the three rows
 /// distinct. Caller must pass a unique `key` per row.
 fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'static str) {
-    Panel::hstack_with_id(("chat-row", key))
+    Panel::hstack()
+        .with_id(("chat-row", key))
         .size((Sizing::FILL, Sizing::Hug))
         .gap(10.0)
         .show(ui, |ui| {
-            Frame::with_id(("avatar", key))
+            Frame::new()
+                .with_id(("avatar", key))
                 .size((Sizing::Fixed(36.0), Sizing::Fixed(36.0)))
                 .fill(avatar_color)
                 .radius(18.0)
                 .show(ui);
-            Text::with_id(("message", key), message)
+            Text::new(message)
+                .with_id(("message", key))
                 .size_px(14.0)
                 .size((Sizing::FILL, Sizing::Hug))
                 .wrapping()

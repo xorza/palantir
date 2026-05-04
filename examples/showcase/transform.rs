@@ -30,10 +30,12 @@ pub fn build(ui: &mut Ui) {
 
             // Composed: outer scale 1.25, inner translate (20, 0). Order matters.
             cell(ui, "composed", |ui| {
-                Panel::zstack_with_id("outer")
+                Panel::zstack()
+                    .with_id("outer")
                     .transform(TranslateScale::from_scale(1.25))
                     .show(ui, |ui| {
-                        Panel::zstack_with_id("inner")
+                        Panel::zstack()
+                            .with_id("inner")
                             .transform(TranslateScale::from_translation(Vec2::new(20.0, 10.0)))
                             .show(ui, |ui| {
                                 tile(ui, "c-tile");
@@ -44,7 +46,8 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack_with_id(id)
+    Panel::vstack()
+        .with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .fill(Color::rgb(0.16, 0.18, 0.24))
@@ -53,7 +56,8 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
 }
 
 fn tile(ui: &mut Ui, id: &'static str) {
-    Frame::with_id(id)
+    Frame::new()
+        .with_id(id)
         .size((Sizing::Fixed(60.0), Sizing::Fixed(60.0)))
         .fill(tile_color())
         .radius(4.0)

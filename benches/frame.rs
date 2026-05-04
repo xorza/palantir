@@ -33,14 +33,14 @@ fn build_ui(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::Hug))
                 .child_align(Align::CENTER)
                 .show(ui, |ui| {
-                    Text::with_id("title", "Complex Layout Showcase")
+                    Text::new("Complex Layout Showcase").with_id("title")
                         .size_px(20.0)
                         .show(ui);
-                    Frame::with_id("title-spacer")
+                    Frame::new().with_id("title-spacer")
                         .size((Sizing::FILL, Sizing::Fixed(1.0)))
                         .show(ui);
                     for i in 0..5 {
-                        Button::with_id(("hdr", i))
+                        Button::new().with_id(("hdr", i))
                             .label(format!("Action {i}"))
                             .show(ui);
                     }
@@ -59,12 +59,12 @@ fn build_ui(ui: &mut Ui) {
                         .size((Sizing::Fixed(220.0), Sizing::FILL))
                         .show(ui, |ui| {
                             for i in 0..sidebar_items {
-                                Button::with_id(("side", i))
+                                Button::new().with_id(("side", i))
                                     .label(format!("Sidebar item {i}"))
                                     .size((Sizing::FILL, Sizing::Hug))
                                     .show(ui);
                             }
-                            Frame::with_id("sb-divider")
+                            Frame::new().with_id("sb-divider")
                                 .size((Sizing::FILL, Sizing::Fixed(1.0)))
                                 .margin(4.0)
                                 .show(ui);
@@ -74,7 +74,7 @@ fn build_ui(ui: &mut Ui) {
                                 .size((Sizing::FILL, Sizing::Hug))
                                 .show(ui, |ui| {
                                     for i in 0..3 {
-                                        Button::with_id(("sb-foot", i))
+                                        Button::new().with_id(("sb-foot", i))
                                             .label(format!("F{i}"))
                                             .show(ui);
                                     }
@@ -91,7 +91,7 @@ fn build_ui(ui: &mut Ui) {
                             // with wrapping text. The motivating Step B
                             // pattern from intrinsic.md.
                             let rows: Vec<Track> = (0..prop_rows).map(|_| Track::hug()).collect();
-                            Grid::with_id("props")
+                            Grid::new().with_id("props")
                                 .cols(Rc::from([
                                     Track::hug().min(80.0),
                                     Track::fill(),
@@ -120,16 +120,16 @@ fn build_ui(ui: &mut Ui) {
                                     ];
                                     for row in 0..prop_rows {
                                         let r = row as u16;
-                                        Text::with_id(("plbl", row), labels[row % labels.len()])
+                                        Text::new(labels[row % labels.len()]).with_id(("plbl", row))
                                             .size_px(14.0)
                                             .grid_cell((r, 0))
                                             .show(ui);
-                                        Text::with_id(("pval", row), values[row % values.len()])
+                                        Text::new(values[row % values.len()]).with_id(("pval", row))
                                             .size_px(14.0)
                                             .wrapping()
                                             .grid_cell((r, 1))
                                             .show(ui);
-                                        Button::with_id(("pact", row))
+                                        Button::new().with_id(("pact", row))
                                             .label("Edit")
                                             .grid_cell((r, 2))
                                             .show(ui);
@@ -143,24 +143,21 @@ fn build_ui(ui: &mut Ui) {
                             // the closure body, so every iter would resolve
                             // to the same source location and collide.
                             for i in 0..chat_messages {
-                                Panel::hstack_with_id(("chat-row", i))
+                                Panel::hstack().with_id(("chat-row", i))
                                     .gap(8.0)
                                     .size((Sizing::FILL, Sizing::Hug))
                                     .show(ui, |ui| {
-                                        Frame::with_id(("avatar", i))
+                                        Frame::new().with_id(("avatar", i))
                                             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                                             .show(ui);
-                                        Panel::vstack_with_id(("chat-text", i))
+                                        Panel::vstack().with_id(("chat-text", i))
                                             .gap(2.0)
                                             .size((Sizing::FILL, Sizing::Hug))
                                             .show(ui, |ui| {
-                                                Text::with_id(("from", i), format!("user_{i}"))
+                                                Text::new(format!("user_{i}")).with_id(("from", i))
                                                     .size_px(12.0)
                                                     .show(ui);
-                                                Text::with_id(
-                                                    ("msg", i),
-                                                    "This is a longer message body that should wrap inside the Fill stack column without breaking words inside any single token.",
-                                                )
+                                                Text::new("This is a longer message body that should wrap inside the Fill stack column without breaking words inside any single token.",).with_id(("msg", i))
                                                 .size_px(13.0)
                                                 .wrapping()
                                                 .size((Sizing::FILL, Sizing::Hug))
@@ -175,7 +172,7 @@ fn build_ui(ui: &mut Ui) {
                                 .size((Sizing::FILL, Sizing::Fixed(80.0)))
                                 .show(ui, |ui| {
                                     for i in 0..canvas_dots {
-                                        Frame::with_id(("dot", i))
+                                        Frame::new().with_id(("dot", i))
                                             .size((Sizing::Fixed(16.0), Sizing::Fixed(16.0)))
                                             .position((i as f32 * 22.0, 12.0 + (i % 3) as f32 * 18.0))
                                             .show(ui);
@@ -188,7 +185,7 @@ fn build_ui(ui: &mut Ui) {
             Panel::zstack()
                 .size((Sizing::FILL, Sizing::Fixed(36.0)))
                 .show(ui, |ui| {
-                    Frame::with_id("footer-bg")
+                    Frame::new().with_id("footer-bg")
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui);
                     Panel::hstack()
@@ -197,13 +194,13 @@ fn build_ui(ui: &mut Ui) {
                         .child_align(Align::CENTER)
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
-                            Text::with_id("footer-status", "Ready")
+                            Text::new("Ready").with_id("footer-status")
                                 .size_px(12.0)
                                 .show(ui);
-                            Frame::with_id("footer-spacer")
+                            Frame::new().with_id("footer-spacer")
                                 .size((Sizing::FILL, Sizing::Fixed(1.0)))
                                 .show(ui);
-                            Text::with_id("footer-meta", "v1.2.3 · 42 nodes")
+                            Text::new("v1.2.3 · 42 nodes").with_id("footer-meta")
                                 .size_px(12.0)
                                 .show(ui);
                         });

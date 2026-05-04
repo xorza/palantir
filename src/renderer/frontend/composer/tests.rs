@@ -307,18 +307,21 @@ mod cache_integration {
             .padding(8.0)
             .gap(6.0)
             .show(ui, |ui| {
-                Panel::zstack_with_id("inner")
+                Panel::zstack()
+                    .with_id("inner")
                     .clip(true)
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .fill(Color::rgb(0.16, 0.18, 0.22))
                     .transform(TranslateScale::new(Vec2::new(2.0, 1.0), 1.0))
                     .show(ui, |ui| {
-                        Frame::with_id("a")
+                        Frame::new()
+                            .with_id("a")
                             .size((Sizing::FILL, Sizing::Fixed(20.0)))
                             .fill(Color::rgb(0.4, 0.4, 0.5))
                             .show(ui);
-                        Frame::with_id("b")
+                        Frame::new()
+                            .with_id("b")
                             .size((Sizing::FILL, Sizing::Fixed(10.0)))
                             .fill(Color::rgb(0.5, 0.4, 0.4))
                             .show(ui);
@@ -374,26 +377,32 @@ mod cache_integration {
     fn compose_cache_populates_on_warm_frame() {
         let surface = UVec2::new(400, 400);
         let big = |ui: &mut Ui| {
-            Panel::vstack_with_id("root")
+            Panel::vstack()
+                .with_id("root")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for i in 0..10 {
-                        Panel::hstack_with_id(("row", i))
+                        Panel::hstack()
+                            .with_id(("row", i))
                             .size((Sizing::FILL, Sizing::Hug))
                             .show(ui, |ui| {
-                                Frame::with_id(("a", i))
+                                Frame::new()
+                                    .with_id(("a", i))
                                     .size(Sizing::Fixed(10.0))
                                     .fill(Color::WHITE)
                                     .show(ui);
-                                Frame::with_id(("b", i))
+                                Frame::new()
+                                    .with_id(("b", i))
                                     .size(Sizing::Fixed(10.0))
                                     .fill(Color::WHITE)
                                     .show(ui);
-                                Frame::with_id(("c", i))
+                                Frame::new()
+                                    .with_id(("c", i))
                                     .size(Sizing::Fixed(10.0))
                                     .fill(Color::WHITE)
                                     .show(ui);
-                                Frame::with_id(("d", i))
+                                Frame::new()
+                                    .with_id(("d", i))
                                     .size(Sizing::Fixed(10.0))
                                     .fill(Color::WHITE)
                                     .show(ui);

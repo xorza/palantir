@@ -16,17 +16,20 @@ fn zstack_layers_children_without_painting_background() {
     let mut fg_node = None;
     Panel::hstack().show(&mut ui, |ui| {
         zstack_node = Some(
-            Panel::zstack_with_id("layered")
+            Panel::zstack()
+                .with_id("layered")
                 .show(ui, |ui| {
                     bg_node = Some(
-                        Frame::with_id("bg")
+                        Frame::new()
+                            .with_id("bg")
                             .size((Sizing::Fixed(120.0), Sizing::Fixed(80.0)))
                             .fill(Color::rgb(0.1, 0.1, 0.2))
                             .show(ui)
                             .node,
                     );
                     fg_node = Some(
-                        Button::with_id("fg")
+                        Button::new()
+                            .with_id("fg")
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
                             .show(ui)
                             .node,
@@ -60,11 +63,13 @@ fn zstack_centers_child_when_align_center() {
     let mut ui = ui_at(UVec2::new(400, 400));
     let mut child_node = None;
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("box")
+        Panel::zstack()
+            .with_id("box")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
             .show(ui, |ui| {
                 child_node = Some(
-                    Frame::with_id("c")
+                    Frame::new()
+                        .with_id("c")
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                         .align(Align::CENTER)
                         .fill(Color::rgb(0.5, 0.5, 0.5))
@@ -86,11 +91,13 @@ fn zstack_aligns_independently_per_axis() {
     let mut ui = ui_at(UVec2::new(400, 400));
     let mut child_node = None;
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("box")
+        Panel::zstack()
+            .with_id("box")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
             .show(ui, |ui| {
                 child_node = Some(
-                    Frame::with_id("c")
+                    Frame::new()
+                        .with_id("c")
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                         .align(Align::new(HAlign::Right, VAlign::Center))
                         .fill(Color::rgb(0.5, 0.5, 0.5))

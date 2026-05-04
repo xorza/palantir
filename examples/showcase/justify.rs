@@ -18,7 +18,8 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn row(ui: &mut Ui, id: &'static str, j: Justify) {
-    Panel::hstack_with_id(id)
+    Panel::hstack()
+        .with_id(id)
         .size((Sizing::FILL, Sizing::Fixed(40.0)))
         .padding((6.0, 4.0, 6.0, 4.0))
         .justify(j)
@@ -26,7 +27,8 @@ fn row(ui: &mut Ui, id: &'static str, j: Justify) {
         .radius(4.0)
         .show(ui, |ui| {
             for i in 0..3 {
-                Frame::with_id((id, i))
+                Frame::new()
+                    .with_id((id, i))
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(28.0)))
                     .fill(tile())
                     .radius(4.0)

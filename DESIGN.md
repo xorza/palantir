@@ -69,9 +69,10 @@ Native panels only — no Taffy, no flex/grid backend dependency. Grid is implem
 
 `WidgetId` is hashed from a user-supplied key. Stability across frames is what makes persistent state survive.
 
-- Auto-deriving constructors (`Button::new`, `Text::new`, …) use `WidgetId::auto_stable()` + `#[track_caller]` so calls at different source lines get distinct ids.
-- **`#[track_caller]` does not propagate through closure bodies** — helpers that build widgets inside a closure passed to e.g. `Panel::show(ui, |ui| { ... })` resolve every call site to the same closure literal, producing collisions. Inside such helpers, give widgets explicit ids (`Text::with_id((tag, key), text)`, `Button::with_id(...)`); annotating the helper with `#[track_caller]` doesn't help.
-- Collisions are detected in debug via `SeenIds` tracking on `Ui`.
+- Auto-deriving constructors (`Button::new`, `Text::new`, `Panel::hstack`, …) use `WidgetId::auto_stable()` + `#[track_caller]` so calls at different source lines get distinct ids.
+- `#[track_caller]` does not propagate through closure bodies, so a helper that builds widgets inside a closure passed to e.g. `Panel::show(ui, |ui| { ... })` resolves every call to the same source location. `Ui::node` handles this by silently disambiguating auto-id collisions via a per-id occurrence counter — loops and closure helpers Just Work. Per-widget state then keys on the disambiguated id and is positional within that callsite, so reordering or conditional insertion re-keys state for the colliding slots. When call order isn't stable across frames, override with `.with_id(key)` (the builder method on `Configure`) where `key` is something stable like a domain id.
+- Explicit-key collisions (two `.with_id("same")` calls) hard-assert in `Ui::node` — they're always caller bugs. Auto/explicit is tracked by `Element::auto_id`.
+- Collisions and removed-widget diff are tracked by `SeenIds` on `Ui`.
 
 ## State outside the tree (planned)
 

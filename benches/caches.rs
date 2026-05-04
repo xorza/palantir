@@ -31,37 +31,45 @@ const GROUPS: usize = 100;
 const ROWS_PER_GROUP: usize = 10;
 
 fn build(ui: &mut Ui) {
-    Panel::vstack_with_id("nested-root")
+    Panel::vstack()
+        .with_id("nested-root")
         .gap(4.0)
         .padding(8.0)
         .size((Sizing::FILL, Sizing::Hug))
         .show(ui, |ui| {
             for g in 0..GROUPS {
-                Panel::vstack_with_id(("group", g))
+                Panel::vstack()
+                    .with_id(("group", g))
                     .gap(2.0)
                     .padding(4.0)
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui, |ui| {
-                        Text::with_id(("g-hdr", g), "Group header")
+                        Text::new("Group header")
+                            .with_id(("g-hdr", g))
                             .size_px(14.0)
                             .show(ui);
                         for r in 0..ROWS_PER_GROUP {
-                            Panel::hstack_with_id(("row", g, r))
+                            Panel::hstack()
+                                .with_id(("row", g, r))
                                 .gap(6.0)
                                 .size((Sizing::FILL, Sizing::Hug))
                                 .show(ui, |ui| {
-                                    Frame::with_id(("avatar", g, r))
+                                    Frame::new()
+                                        .with_id(("avatar", g, r))
                                         .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
                                         .show(ui);
-                                    Text::with_id(("name", g, r), "row name")
+                                    Text::new("row name")
+                                        .with_id(("name", g, r))
                                         .size_px(12.0)
                                         .show(ui);
-                                    Text::with_id(("meta", g, r), "meta info")
+                                    Text::new("meta info")
+                                        .with_id(("meta", g, r))
                                         .size_px(11.0)
                                         .show(ui);
                                 });
                         }
-                        Frame::with_id(("g-ftr", g))
+                        Frame::new()
+                            .with_id(("g-ftr", g))
                             .size((Sizing::FILL, Sizing::Fixed(2.0)))
                             .show(ui);
                     });

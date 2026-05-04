@@ -53,7 +53,8 @@ fn empty_tree_encodes_to_nothing() {
 fn frame_with_fill_emits_one_draw_rect() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
-        Frame::with_id("a")
+        Frame::new()
+            .with_id("a")
             .size(50.0)
             .fill(Color::rgb(1.0, 0.0, 0.0))
             .show(ui);
@@ -70,7 +71,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
     // RoundedRect in the tree, hence no DrawRect command.
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
-        Frame::with_id("invisible").size(50.0).show(ui);
+        Frame::new().with_id("invisible").size(50.0).show(ui);
     });
     ui.end_frame();
     let cmds = encode_cmds(&ui);
@@ -84,11 +85,13 @@ fn clip_emits_balanced_push_pop() {
     // Outer HStack opts out of the default-on clip so we can count just the
     // ZStack's pair under test.
     Panel::hstack().clip(false).show(&mut ui, |ui| {
-        Panel::zstack_with_id("clip")
+        Panel::zstack()
+            .with_id("clip")
             .size(50.0)
             .clip(true)
             .show(ui, |ui| {
-                Frame::with_id("inner")
+                Frame::new()
+                    .with_id("inner")
                     .size(40.0)
                     .fill(Color::rgb(0.5, 0.5, 0.5))
                     .show(ui);
@@ -215,25 +218,29 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     // Frame 1: build, layout, end_frame so the hit index is populated.
     begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().clip(false).show(&mut ui, |ui| {
-        Panel::canvas_with_id("mid")
+        Panel::canvas()
+            .with_id("mid")
             .size(200.0)
             .clip(true)
             .transform(xform)
             .show(ui, |ui| {
-                Frame::with_id("V")
+                Frame::new()
+                    .with_id("V")
                     .position((0.0, 0.0))
                     .size(30.0)
                     .fill(v_color)
                     .sense(Sense::CLICK)
                     .show(ui);
-                Frame::with_id("D")
+                Frame::new()
+                    .with_id("D")
                     .position((40.0, 0.0))
                     .size(30.0)
                     .fill(d_color)
                     .sense(Sense::CLICK)
                     .disabled(true)
                     .show(ui);
-                Frame::with_id("H")
+                Frame::new()
+                    .with_id("H")
                     .position((80.0, 0.0))
                     .size(30.0)
                     .fill(h_color)
@@ -309,19 +316,22 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     ui.begin_frame(Display::default());
     let mut got = (false, false, false);
     Panel::hstack().clip(false).show(&mut ui, |ui| {
-        Panel::canvas_with_id("mid")
+        Panel::canvas()
+            .with_id("mid")
             .size(200.0)
             .clip(true)
             .transform(xform)
             .show(ui, |ui| {
-                got.0 = Frame::with_id("V")
+                got.0 = Frame::new()
+                    .with_id("V")
                     .position((0.0, 0.0))
                     .size(30.0)
                     .fill(v_color)
                     .sense(Sense::CLICK)
                     .show(ui)
                     .clicked();
-                got.1 = Frame::with_id("D")
+                got.1 = Frame::new()
+                    .with_id("D")
                     .position((40.0, 0.0))
                     .size(30.0)
                     .fill(d_color)
@@ -329,7 +339,8 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .disabled(true)
                     .show(ui)
                     .clicked();
-                got.2 = Frame::with_id("H")
+                got.2 = Frame::new()
+                    .with_id("H")
                     .position((80.0, 0.0))
                     .size(30.0)
                     .fill(h_color)
@@ -349,11 +360,13 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 fn nested_clips_each_emit_their_own_pair() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().clip(false).show(&mut ui, |ui| {
-        Panel::zstack_with_id("outer")
+        Panel::zstack()
+            .with_id("outer")
             .size(Sizing::Fixed(100.0))
             .clip(true)
             .show(ui, |ui| {
-                Panel::zstack_with_id("inner")
+                Panel::zstack()
+                    .with_id("inner")
                     .size(Sizing::Fixed(50.0))
                     .clip(true)
                     .show(ui, |_| {});
@@ -447,7 +460,8 @@ fn encoder_text_alignment_respects_leaf_padding() {
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
     begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
-        Button::with_id("padded")
+        Button::new()
+            .with_id("padded")
             .label("ok")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
@@ -494,11 +508,13 @@ fn encoder_text_alignment_respects_leaf_padding() {
 fn damage_filter_skips_drawrect_outside_dirty_region() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
-        Frame::with_id("a")
+        Frame::new()
+            .with_id("a")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .fill(Color::rgb(1.0, 0.0, 0.0))
             .show(ui);
-        Frame::with_id("b")
+        Frame::new()
+            .with_id("b")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .fill(Color::rgb(0.0, 1.0, 0.0))
             .show(ui);
@@ -525,7 +541,8 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
 fn damage_filter_keeps_drawrect_inside_dirty_region() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
-        Frame::with_id("a")
+        Frame::new()
+            .with_id("a")
             .size(50.0)
             .fill(Color::rgb(1.0, 0.0, 0.0))
             .show(ui);
@@ -542,14 +559,17 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
 #[test]
 fn damage_filter_preserves_clip_pushpop() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack_with_id("outer")
+    Panel::hstack()
+        .with_id("outer")
         .clip(false)
         .show(&mut ui, |ui| {
-            Panel::hstack_with_id("clipped")
+            Panel::hstack()
+                .with_id("clipped")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .clip(true)
                 .show(ui, |ui| {
-                    Frame::with_id("inner")
+                    Frame::new()
+                        .with_id("inner")
                         .size(20.0)
                         .fill(Color::rgb(1.0, 0.0, 0.0))
                         .show(ui);
@@ -579,11 +599,13 @@ fn damage_filter_preserves_clip_pushpop() {
 fn damage_filter_preserves_transform_pushpop() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::hstack_with_id("transformed")
+        Panel::hstack()
+            .with_id("transformed")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .transform(TranslateScale::from_translation(Vec2::new(5.0, 5.0)))
             .show(ui, |ui| {
-                Frame::with_id("inner")
+                Frame::new()
+                    .with_id("inner")
                     .size(20.0)
                     .fill(Color::rgb(1.0, 0.0, 0.0))
                     .show(ui);
@@ -623,18 +645,21 @@ fn encode_cache_warm_frame_matches_cold_encode() {
             .padding(8.0)
             .gap(6.0)
             .show(ui, |ui| {
-                Panel::zstack_with_id("inner")
+                Panel::zstack()
+                    .with_id("inner")
                     .clip(true)
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .fill(Color::rgb(0.16, 0.18, 0.22))
                     .transform(TranslateScale::new(Vec2::new(2.0, 1.0), 1.0))
                     .show(ui, |ui| {
-                        Frame::with_id("a")
+                        Frame::new()
+                            .with_id("a")
                             .size((Sizing::FILL, Sizing::Fixed(20.0)))
                             .fill(Color::rgb(0.4, 0.4, 0.5))
                             .show(ui);
-                        Frame::with_id("b")
+                        Frame::new()
+                            .with_id("b")
                             .size((Sizing::FILL, Sizing::Fixed(10.0)))
                             .fill(Color::rgb(0.5, 0.4, 0.4))
                             .show(ui);

@@ -2,11 +2,9 @@ use crate::layout::types::align::Align;
 use crate::primitives::color::Color;
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
-use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use std::borrow::Cow;
-use std::hash::Hash;
 
 /// Default font size when no `.size(px)` was set. 16 px lines up with
 /// `Button`'s historical default and with the `mono_measure` fallback's
@@ -29,17 +27,9 @@ pub struct Text {
 impl Text {
     #[track_caller]
     pub fn new(text: impl Into<Cow<'static, str>>) -> Self {
-        Self::with_id_inner(WidgetId::auto_stable(), text.into())
-    }
-
-    pub fn with_id(id: impl Hash, text: impl Into<Cow<'static, str>>) -> Self {
-        Self::with_id_inner(WidgetId::from_hash(id), text.into())
-    }
-
-    fn with_id_inner(id: WidgetId, text: Cow<'static, str>) -> Self {
         Self {
-            element: Element::new(id, LayoutMode::Leaf),
-            text,
+            element: Element::new_auto(LayoutMode::Leaf),
+            text: text.into(),
             size_px: DEFAULT_SIZE_PX,
             color: Color::WHITE,
             wrap: TextWrap::Single,

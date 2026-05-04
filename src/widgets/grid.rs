@@ -2,10 +2,8 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::transform::TranslateScale;
 use crate::tree::GridDef;
 use crate::tree::element::{Configure, Element, LayoutMode};
-use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::{Response, styled::Background, styled::Styled};
-use std::hash::Hash;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -36,20 +34,12 @@ impl Grid {
     #[track_caller]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self::for_id(WidgetId::auto_stable())
-    }
-
-    pub fn with_id(id: impl Hash) -> Self {
-        Self::for_id(WidgetId::from_hash(id))
-    }
-
-    fn for_id(id: WidgetId) -> Self {
         // Mode is patched at `show()` time once `push_grid_def` returns the
         // real index. Initialize with a placeholder that `Tree::push_node`'s
         // bounds-check rejects, so any code path that reaches the tree
         // without going through `show()` panics loudly.
         Self {
-            element: Element::new(id, LayoutMode::Grid(PENDING_GRID_IDX)),
+            element: Element::new_auto(LayoutMode::Grid(PENDING_GRID_IDX)),
             background: Background::default(),
             def: GridDef {
                 rows: empty_tracks(),

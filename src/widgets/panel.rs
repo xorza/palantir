@@ -1,9 +1,7 @@
 use crate::primitives::transform::TranslateScale;
 use crate::tree::element::{Configure, Element, LayoutMode};
-use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::{Response, styled::Background, styled::Styled};
-use std::hash::Hash;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints a background rect
@@ -19,9 +17,10 @@ pub struct Panel {
 }
 
 impl Panel {
-    fn from_id(id: WidgetId, mode: LayoutMode) -> Self {
+    #[track_caller]
+    fn auto(mode: LayoutMode) -> Self {
         Self {
-            element: Element::new(id, mode),
+            element: Element::new_auto(mode),
             background: Background::default(),
         }
     }
@@ -57,18 +56,12 @@ impl Panel {
 
     #[track_caller]
     pub fn hstack() -> Self {
-        Self::from_id(WidgetId::auto_stable(), LayoutMode::HStack)
-    }
-    pub fn hstack_with_id(id: impl Hash) -> Self {
-        Self::from_id(WidgetId::from_hash(id), LayoutMode::HStack)
+        Self::auto(LayoutMode::HStack)
     }
 
     #[track_caller]
     pub fn vstack() -> Self {
-        Self::from_id(WidgetId::auto_stable(), LayoutMode::VStack)
-    }
-    pub fn vstack_with_id(id: impl Hash) -> Self {
-        Self::from_id(WidgetId::from_hash(id), LayoutMode::VStack)
+        Self::auto(LayoutMode::VStack)
     }
 
     /// HStack with overflow wrap: children flow left-to-right; when the
@@ -80,10 +73,7 @@ impl Panel {
     /// to row height.
     #[track_caller]
     pub fn wrap_hstack() -> Self {
-        Self::from_id(WidgetId::auto_stable(), LayoutMode::WrapHStack)
-    }
-    pub fn wrap_hstack_with_id(id: impl Hash) -> Self {
-        Self::from_id(WidgetId::from_hash(id), LayoutMode::WrapHStack)
+        Self::auto(LayoutMode::WrapHStack)
     }
 
     /// VStack with overflow wrap: children flow top-to-bottom; when the
@@ -92,20 +82,14 @@ impl Panel {
     /// axes swapped.
     #[track_caller]
     pub fn wrap_vstack() -> Self {
-        Self::from_id(WidgetId::auto_stable(), LayoutMode::WrapVStack)
-    }
-    pub fn wrap_vstack_with_id(id: impl Hash) -> Self {
-        Self::from_id(WidgetId::from_hash(id), LayoutMode::WrapVStack)
+        Self::auto(LayoutMode::WrapVStack)
     }
 
     /// Layered children: each child placed at the parent's inner top-left,
     /// sized per its own `Sizing`. Last sibling paints on top.
     #[track_caller]
     pub fn zstack() -> Self {
-        Self::from_id(WidgetId::auto_stable(), LayoutMode::ZStack)
-    }
-    pub fn zstack_with_id(id: impl Hash) -> Self {
-        Self::from_id(WidgetId::from_hash(id), LayoutMode::ZStack)
+        Self::auto(LayoutMode::ZStack)
     }
 
     /// Children placed at their declared `Layout.position` (parent-inner
@@ -113,10 +97,7 @@ impl Panel {
     /// box of placed children.
     #[track_caller]
     pub fn canvas() -> Self {
-        Self::from_id(WidgetId::auto_stable(), LayoutMode::Canvas)
-    }
-    pub fn canvas_with_id(id: impl Hash) -> Self {
-        Self::from_id(WidgetId::from_hash(id), LayoutMode::Canvas)
+        Self::auto(LayoutMode::Canvas)
     }
 }
 

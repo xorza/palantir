@@ -14,7 +14,8 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn panel(ui: &mut Ui, id: &'static str, disabled: bool) {
-    Panel::zstack_with_id(id)
+    Panel::zstack()
+        .with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .fill(Color::rgb(0.16, 0.18, 0.24))
@@ -25,12 +26,16 @@ fn panel(ui: &mut Ui, id: &'static str, disabled: bool) {
         .radius(8.0)
         .disabled(disabled)
         .show(ui, |ui| {
-            Panel::vstack_with_id((id, "stack"))
+            Panel::vstack()
+                .with_id((id, "stack"))
                 .size((Sizing::FILL, Sizing::Hug))
                 .gap(8.0)
                 .show(ui, |ui| {
-                    Button::with_id((id, "btn1")).label("click me").show(ui);
-                    Button::with_id((id, "btn2")).label("or me").show(ui);
+                    Button::new()
+                        .with_id((id, "btn1"))
+                        .label("click me")
+                        .show(ui);
+                    Button::new().with_id((id, "btn2")).label("or me").show(ui);
                 });
         });
 }

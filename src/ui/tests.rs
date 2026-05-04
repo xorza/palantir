@@ -10,16 +10,36 @@ use glam::UVec2;
 #[test]
 #[should_panic(expected = "WidgetId collision")]
 fn duplicate_widget_id_panics() {
-    // Two `Button::with_id("dup")` calls in one frame produce the same
+    // Two `Button::new().with_id("dup")` calls in one frame produce the same
     // `WidgetId`, which would silently corrupt every per-id store (focus,
     // scroll, click capture, hit-testing). `Ui::node` enforces uniqueness
     // with a release `assert!`.
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
     Panel::hstack().show(&mut ui, |ui| {
-        Button::with_id("dup").show(ui);
-        Button::with_id("dup").show(ui);
+        Button::new().with_id("dup").show(ui);
+        Button::new().with_id("dup").show(ui);
     });
+}
+
+/// Auto-generated ids (call-site hash) silently disambiguate when the same
+/// site fires more than once per frame — that's the "loop / closure helper"
+/// case where `Foo::new()` would otherwise collide. Each occurrence must
+/// produce a distinct `WidgetId` so per-id state stays separate.
+#[test]
+fn auto_id_collisions_disambiguate() {
+    fn chip(ui: &mut crate::Ui) {
+        Frame::new().show(ui);
+    }
+    let mut ui = Ui::new();
+    ui.begin_frame(Display::default());
+    Panel::hstack().show(&mut ui, |ui| {
+        chip(ui);
+        chip(ui);
+        chip(ui);
+    });
+    // 1 panel + 3 chips = 4 distinct ids, no panic.
+    assert_eq!(ui.tree.node_count(), 4);
 }
 
 /// Helper: drive one full frame with an empty root so we can inspect
@@ -142,8 +162,9 @@ fn prev_frame_empty_before_first_end_frame() {
 #[test]
 fn prev_frame_populated_after_end_frame() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack_with_id("root").show(&mut ui, |ui| {
-        Frame::with_id("a")
+    Panel::hstack().with_id("root").show(&mut ui, |ui| {
+        Frame::new()
+            .with_id("a")
             .size(50.0)
             .fill(Color::rgb(0.2, 0.4, 0.8))
             .show(ui);
@@ -160,7 +181,8 @@ fn prev_frame_populated_after_end_frame() {
 #[test]
 fn prev_frame_captures_arranged_rect() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    let frame_node = Frame::with_id("a")
+    let frame_node = Frame::new()
+        .with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui)
@@ -175,7 +197,8 @@ fn prev_frame_captures_arranged_rect() {
 #[test]
 fn prev_frame_captures_authoring_hash() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    let frame_node = Frame::with_id("a")
+    let frame_node = Frame::new()
+        .with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui)
@@ -189,14 +212,14 @@ fn prev_frame_captures_authoring_hash() {
 #[test]
 fn prev_frame_drops_disappeared_widgets() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack_with_id("root").show(&mut ui, |ui| {
-        Button::with_id("gone").label("X").show(ui);
+    Panel::hstack().with_id("root").show(&mut ui, |ui| {
+        Button::new().with_id("gone").label("X").show(ui);
     });
     ui.end_frame();
     assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
 
     ui.begin_frame(Display::default());
-    Panel::hstack_with_id("root").show(&mut ui, |_| {});
+    Panel::hstack().with_id("root").show(&mut ui, |_| {});
     ui.end_frame();
     assert!(!ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
     assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("root")));
@@ -205,7 +228,8 @@ fn prev_frame_drops_disappeared_widgets() {
 #[test]
 fn prev_frame_updates_on_authoring_change() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Frame::with_id("a")
+    Frame::new()
+        .with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.2, 0.4, 0.8))
         .show(&mut ui);
@@ -213,7 +237,8 @@ fn prev_frame_updates_on_authoring_change() {
     let h1 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
     ui.begin_frame(Display::default());
-    Frame::with_id("a")
+    Frame::new()
+        .with_id("a")
         .size(50.0)
         .fill(Color::rgb(0.9, 0.4, 0.8))
         .show(&mut ui);
@@ -235,7 +260,7 @@ fn text_reshape_skipped_when_unchanged_across_frames() {
     let render = |ui: &mut Ui| {
         begin(ui, UVec2::new(400, 200));
         Panel::vstack().show(ui, |ui| {
-            Text::with_id("hello", "the quick brown fox").show(ui);
+            Text::new("the quick brown fox").with_id("hello").show(ui);
         });
         ui.end_frame();
     };
@@ -268,14 +293,14 @@ fn text_reshape_runs_when_content_changes() {
 
     begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().show(&mut ui, |ui| {
-        Text::with_id("changing", "first").show(ui);
+        Text::new("first").with_id("changing").show(ui);
     });
     ui.end_frame();
     let before = ui.text.measure_calls;
 
     begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().show(&mut ui, |ui| {
-        Text::with_id("changing", "second").show(ui);
+        Text::new("second").with_id("changing").show(ui);
     });
     ui.end_frame();
     let after = ui.text.measure_calls;
@@ -301,7 +326,8 @@ fn wrapping_text_reshape_skipped_when_unchanged() {
         Panel::vstack()
             .size((Sizing::Fixed(60.0), Sizing::Hug))
             .show(ui, |ui| {
-                Text::with_id("wrapped", "the quick brown fox jumps over the lazy dog")
+                Text::new("the quick brown fox jumps over the lazy dog")
+                    .with_id("wrapped")
                     .size_px(16.0)
                     .wrapping()
                     .show(ui);
@@ -331,20 +357,20 @@ fn intrinsic_query_reuses_cached_text_measure() {
 
     let render = |ui: &mut Ui| {
         begin(ui, UVec2::new(400, 200));
-        Grid::with_id("g")
+        Grid::new()
+            .with_id("g")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .cols(std::rc::Rc::from([Track::hug(), Track::fill()]))
             .show(ui, |ui| {
-                Text::with_id("hug-col-text", "label")
+                Text::new("label")
+                    .with_id("hug-col-text")
                     .grid_cell((0, 0))
                     .show(ui);
-                Text::with_id(
-                    "fill-col-text",
-                    "the quick brown fox jumps over the lazy dog",
-                )
-                .wrapping()
-                .grid_cell((0, 1))
-                .show(ui);
+                Text::new("the quick brown fox jumps over the lazy dog")
+                    .with_id("fill-col-text")
+                    .wrapping()
+                    .grid_cell((0, 1))
+                    .show(ui);
             });
         ui.end_frame();
     };
@@ -371,7 +397,7 @@ fn text_reuse_evicts_disappeared_widgets() {
 
     begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().show(&mut ui, |ui| {
-        Text::with_id("transient", "hello").show(ui);
+        Text::new("hello").with_id("transient").show(ui);
     });
     ui.end_frame();
     let wid = WidgetId::from_hash("transient");
@@ -405,7 +431,8 @@ fn wrap_target_change_preserves_unbounded_cache() {
         Panel::vstack()
             .size((Sizing::Fixed(slot_w), Sizing::Hug))
             .show(ui, |ui| {
-                Text::with_id("p", "the quick brown fox jumps over the lazy dog")
+                Text::new("the quick brown fox jumps over the lazy dog")
+                    .with_id("p")
                     .size_px(16.0)
                     .wrapping()
                     .show(ui);
@@ -437,19 +464,19 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     let id_b = WidgetId::from_hash("b");
 
     begin(&mut ui, UVec2::new(100, 100));
-    Frame::with_id("a").show(&mut ui);
-    Frame::with_id("b").show(&mut ui);
+    Frame::new().with_id("a").show(&mut ui);
+    Frame::new().with_id("b").show(&mut ui);
     *ui.state_mut::<u32>(id_a) = 11;
     *ui.state_mut::<u32>(id_b) = 22;
     ui.end_frame();
 
     begin(&mut ui, UVec2::new(100, 100));
-    Frame::with_id("a").show(&mut ui);
+    Frame::new().with_id("a").show(&mut ui);
     assert_eq!(*ui.state_mut::<u32>(id_a), 11);
     ui.end_frame();
 
     begin(&mut ui, UVec2::new(100, 100));
-    Frame::with_id("b").show(&mut ui);
+    Frame::new().with_id("b").show(&mut ui);
     assert_eq!(
         *ui.state_mut::<u32>(id_b),
         0,

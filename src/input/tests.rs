@@ -17,7 +17,8 @@ fn input_state_press_release_emits_click() {
     begin(&mut ui, UVec2::new(200, 80));
     let _root = Panel::hstack()
         .show(&mut ui, |ui| {
-            Button::with_id("target")
+            Button::new()
+                .with_id("target")
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -32,7 +33,8 @@ fn input_state_press_release_emits_click() {
     begin(&mut ui, UVec2::new(200, 80));
     let mut got_click = false;
     Panel::hstack().show(&mut ui, |ui| {
-        let r = Button::with_id("target")
+        let r = Button::new()
+            .with_id("target")
             .label("hi")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
@@ -45,7 +47,8 @@ fn input_state_press_release_emits_click() {
     begin(&mut ui, UVec2::new(200, 80));
     let mut still_clicking = false;
     Panel::hstack().show(&mut ui, |ui| {
-        still_clicking = Button::with_id("target")
+        still_clicking = Button::new()
+            .with_id("target")
             .label("hi")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui)
@@ -62,7 +65,8 @@ fn stack_with_sense_none_passes_clicks_through() {
     let _stack_node = Panel::hstack()
         .padding(20.0) // creates "background" area to click
         .show(&mut ui, |ui| {
-            Button::with_id("inside")
+            Button::new()
+                .with_id("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui);
         })
@@ -75,7 +79,8 @@ fn stack_with_sense_none_passes_clicks_through() {
     ui.begin_frame(Display::default());
     let mut child_clicked = false;
     let stack_resp = Panel::hstack().padding(20.0).show(&mut ui, |ui| {
-        child_clicked = Button::with_id("inside")
+        child_clicked = Button::new()
+            .with_id("inside")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .show(ui)
             .clicked();
@@ -96,11 +101,13 @@ fn stack_with_sense_click_captures_clicks() {
     // Use `with_id` so the stack has the same WidgetId on both frames; otherwise
     // `auto_stable` would give different ids (different call sites in the test).
     let mut ui = ui_at(UVec2::new(200, 100));
-    let _stack_node = Panel::hstack_with_id("clickable_card")
+    let _stack_node = Panel::hstack()
+        .with_id("clickable_card")
         .padding(20.0)
         .sense(Sense::CLICK)
         .show(&mut ui, |ui| {
-            Button::with_id("inside")
+            Button::new()
+                .with_id("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui);
         })
@@ -110,11 +117,13 @@ fn stack_with_sense_click_captures_clicks() {
     click_at(&mut ui, Vec2::new(5.0, 5.0));
 
     ui.begin_frame(Display::default());
-    let stack_resp = Panel::hstack_with_id("clickable_card")
+    let stack_resp = Panel::hstack()
+        .with_id("clickable_card")
         .padding(20.0)
         .sense(Sense::CLICK)
         .show(&mut ui, |ui| {
-            Button::with_id("inside")
+            Button::new()
+                .with_id("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -129,11 +138,13 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
     // Sense::HOVER: visible to hover state but transparent to click capture.
     // Useful for tooltips, cursor changes, row highlights.
     let mut ui = ui_at(UVec2::new(200, 100));
-    let _stack_node = Panel::hstack_with_id("hover_only")
+    let _stack_node = Panel::hstack()
+        .with_id("hover_only")
         .padding(20.0)
         .sense(Sense::HOVER)
         .show(&mut ui, |ui| {
-            Button::with_id("inside")
+            Button::new()
+                .with_id("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui);
         })
@@ -149,11 +160,13 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
 
     ui.begin_frame(Display::default());
     let mut child_clicked = false;
-    let stack_resp = Panel::hstack_with_id("hover_only")
+    let stack_resp = Panel::hstack()
+        .with_id("hover_only")
         .padding(20.0)
         .sense(Sense::HOVER)
         .show(&mut ui, |ui| {
-            child_clicked = Button::with_id("inside")
+            child_clicked = Button::new()
+                .with_id("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui)
                 .clicked();
@@ -178,7 +191,8 @@ fn input_state_release_outside_does_not_click() {
     let mut ui = ui_at(UVec2::new(400, 80));
     let _root = Panel::hstack()
         .show(&mut ui, |ui| {
-            Button::with_id("target")
+            Button::new()
+                .with_id("target")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         })
@@ -192,7 +206,8 @@ fn input_state_release_outside_does_not_click() {
     ui.begin_frame(Display::default());
     let mut got_click = false;
     Panel::hstack().show(&mut ui, |ui| {
-        got_click = Button::with_id("target")
+        got_click = Button::new()
+            .with_id("target")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui)
             .clicked();
@@ -213,11 +228,13 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     // Frame 1: build + layout so last_rects gets populated.
     begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("clipper")
+        Panel::zstack()
+            .with_id("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .clip(true)
             .show(ui, |ui| {
-                Button::with_id("inner")
+                Button::new()
+                    .with_id("inner")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui);
             });
@@ -232,11 +249,13 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     ui.begin_frame(Display::default());
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("clipper")
+        Panel::zstack()
+            .with_id("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .clip(true)
             .show(ui, |ui| {
-                clicked = Button::with_id("inner")
+                clicked = Button::new()
+                    .with_id("inner")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui)
                     .clicked();
@@ -258,12 +277,14 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
     // (inside world bounds, outside logical bounds) must also hit.
     let mut ui = ui_at(UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("zoomer")
+        Panel::zstack()
+            .with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
             .clip(false)
             .show(ui, |ui| {
-                Button::with_id("inner")
+                Button::new()
+                    .with_id("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui);
             });
@@ -276,12 +297,14 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
     ui.begin_frame(Display::default());
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("zoomer")
+        Panel::zstack()
+            .with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
             .clip(false)
             .show(ui, |ui| {
-                clicked = Button::with_id("inner")
+                clicked = Button::new()
+                    .with_id("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui)
                     .clicked();
@@ -299,11 +322,13 @@ fn click_outside_zoomed_bounds_does_not_hit() {
 
     let mut ui = ui_at(UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("zoomer")
+        Panel::zstack()
+            .with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(0.5))
             .show(ui, |ui| {
-                Button::with_id("inner")
+                Button::new()
+                    .with_id("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui);
             });
@@ -317,11 +342,13 @@ fn click_outside_zoomed_bounds_does_not_hit() {
     ui.begin_frame(Display::default());
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack_with_id("zoomer")
+        Panel::zstack()
+            .with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(0.5))
             .show(ui, |ui| {
-                clicked = Button::with_id("inner")
+                clicked = Button::new()
+                    .with_id("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui)
                     .clicked();

@@ -33,17 +33,20 @@ pub fn build(ui: &mut Ui) {
                 Panel::canvas()
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Frame::with_id("p1")
+                        Frame::new()
+                            .with_id("p1")
                             .position((10.0, 10.0))
                             .size(40.0)
                             .fill(tile())
                             .show(ui);
-                        Frame::with_id("p2")
+                        Frame::new()
+                            .with_id("p2")
                             .position((60.0, 30.0))
                             .size(40.0)
                             .fill(Color::rgb(0.85, 0.45, 0.30))
                             .show(ui);
-                        Frame::with_id("p3")
+                        Frame::new()
+                            .with_id("p3")
                             .position((30.0, 70.0))
                             .size(40.0)
                             .fill(Color::rgb(0.45, 0.80, 0.55))
@@ -54,7 +57,8 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn swatch(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
-    Frame::with_id(id)
+    Frame::new()
+        .with_id(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(h)))
         .fill(c)
         .radius(4.0)
@@ -62,7 +66,8 @@ fn swatch(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
 }
 
 fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack_with_id(id)
+    Panel::vstack()
+        .with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .gap(8.0)

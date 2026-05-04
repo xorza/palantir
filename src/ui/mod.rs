@@ -181,12 +181,18 @@ impl Ui {
         self.input.response_for(id, &self.cascades.result)
     }
 
-    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
-        let id = element.id;
-        assert!(
-            self.ids.record(id),
-            "WidgetId collision — id {id:?} recorded twice this frame. Use `with_id(key)` (or `WidgetId::with`) to disambiguate widgets at the same call site, e.g. inside a loop. Duplicate ids silently corrupt focus, scroll, click capture, and hit-testing.",
-        );
+    pub(crate) fn node(&mut self, mut element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
+        if !self.ids.record(element.id) {
+            assert!(
+                element.auto_id,
+                "WidgetId collision — id {:?} recorded twice this frame. \
+                 Two explicit `.with_id(key)` calls produced the same hash; \
+                 pick distinct keys. Duplicate ids silently corrupt focus, \
+                 scroll, click capture, and hit-testing.",
+                element.id,
+            );
+            element.id = self.ids.next_dup(element.id);
+        }
         let node = self.tree.open_node(element);
         f(self);
         self.tree.close_node();
