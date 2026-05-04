@@ -3,9 +3,6 @@
 
 automate padding in structs
 
-restruct benches
-
-
 
 
 ## Damage rendering (`docs/damage-rendering.md`)
