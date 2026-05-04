@@ -2,11 +2,10 @@ use super::support::{
     AutoBias, AxisAlignPair, children_max_intrinsic, place_axis, resolved_axis_align, zero_subtree,
 };
 use super::{Axis, LayoutEngine, LenReq};
-use crate::element::LayoutCore;
-use crate::primitives::{
-    align::Align, align::AxisAlign, justify::Justify, rect::Rect, size::Size, sizing::Sizing,
-};
+use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
+use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
+use crate::tree::element::LayoutCore;
 use crate::tree::{Child, NodeId, Tree};
 
 /// Cross-axis alignment of a child, picked from the shared two-axis

@@ -14,9 +14,9 @@
 //! in builders enforce non-negative sizes etc.).
 
 use super::GridDef;
-use crate::element::{ElementExtras, LayoutCore, LayoutMode, PaintCore};
-use crate::primitives::{sizing::Sizes, sizing::Sizing, track::Track};
+use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
 use crate::shape::Shape;
+use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintCore};
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 

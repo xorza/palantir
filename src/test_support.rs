@@ -3,13 +3,14 @@
 #![cfg(test)]
 
 use crate::Ui;
-use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
-use crate::primitives::{display::Display, rect::Rect, sizing::Sizing};
+use crate::layout::types::{display::Display, sizing::Sizing};
+use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::text::{cosmic::CosmicMeasure, share};
 use crate::tree::NodeId;
+use crate::tree::element::Configure;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 

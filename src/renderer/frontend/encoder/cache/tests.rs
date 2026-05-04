@@ -1,11 +1,11 @@
 use super::*;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
-    widget_id::WidgetId,
 };
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::text::TextCacheKey;
 use crate::tree::hash::NodeHash;
+use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 
 fn buf_at(origin: Vec2) -> RenderCmdBuffer {

@@ -1,7 +1,8 @@
-use crate::element::Configure;
-use crate::primitives::{color::Color, sizing::Sizing};
+use crate::layout::types::sizing::Sizing;
+use crate::primitives::color::Color;
 use crate::shape::Shape;
 use crate::test_support::{click_at, ui_at};
+use crate::tree::element::Configure;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 
@@ -117,7 +118,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
 
 #[test]
 fn disabled_panel_suppresses_clicks_on_descendants() {
-    use crate::primitives::display::Display;
+    use crate::layout::types::display::Display;
     use glam::Vec2;
 
     let mut ui = ui_at(UVec2::new(400, 200));

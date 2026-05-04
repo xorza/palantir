@@ -1,6 +1,7 @@
-use crate::element::Configure;
-use crate::primitives::{align::Align, align::HAlign, align::VAlign, color::Color, sizing::Sizing};
+use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
+use crate::primitives::color::Color;
 use crate::test_support::ui_at;
+use crate::tree::element::Configure;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 

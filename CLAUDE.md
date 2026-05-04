@@ -50,17 +50,15 @@ Widget *state* (scroll, focus, animation) will live in a separate `Id → Any` m
 
 ## Project layout
 
-- `src/cascade.rs` — disabled/invisible/clip/transform table
-- `src/element/` — Element builder, LayoutCore + PaintCore columns, PaintAttrs, Configure
-- `src/shape/` — Shape enum (RoundedRect, Line, Text)
-- `src/tree/` — Tree (SoA + subtree_end), NodeId, GridDef, hash
-- `src/ui/` — Ui recorder, theme, seen-id tracking, damage
-- `src/layout/` — LayoutEngine + drivers (stack/wrapstack/zstack/canvas/grid), intrinsic, cache
-- `src/primitives/` — Vec2/Size/Rect/Color/Stroke/Corners/Spacing/Sizing/Track/Align/Transform/…
+- `src/primitives/` — pure geometry: Rect/Size/Color/Stroke/Corners/Spacing/Transform/Visuals/num/approx/urect
+- `src/shape.rs` — Shape enum (RoundedRect, Line, Text)
+- `src/tree/` — Tree (SoA + subtree_end), NodeId, GridDef, hash; `tree/element/` (Element builder, LayoutCore/PaintCore columns, PaintAttrs, Configure); `tree/widget_id.rs`
 - `src/text/` — cosmic-text measurement + glyphon rendering glue
+- `src/layout/` — LayoutEngine + drivers (stack/wrapstack/zstack/canvas/grid), intrinsic, cache; `layout/types/` (Sizing/Align/Justify/Sense/Visibility/Display/Track/Span/GridCell — layout vocabulary)
 - `src/input/` — InputState, HitIndex (O(1) by-id lookup over Cascades)
-- `src/renderer/` — frontend (encode/compose) + backend (wgpu), instanced quads
-- `src/widgets/` — Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, Styled
+- `src/renderer/` — frontend (encode/compose) + backend (wgpu) + gpu (Quad/RenderBuffer)
+- `src/ui/` — Ui recorder, cascade pass, seen-id tracking, damage
+- `src/widgets/` — Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, Styled, Theme
 - `examples/{helloworld.rs, showcase/}` — minimal driver + multi-page demo
 - `benches/` — criterion (layout, measure_cache); `docs/` — in-flight notes; `DESIGN.md` — full rationale
 

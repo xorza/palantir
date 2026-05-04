@@ -1,8 +1,8 @@
 use crate::Ui;
-use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
-use crate::primitives::{display::Display, sense::Sense, sizing::Sizing};
+use crate::layout::types::{display::Display, sense::Sense, sizing::Sizing};
 use crate::test_support::{begin, click_at, press_at, release_left, ui_at};
+use crate::tree::element::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 

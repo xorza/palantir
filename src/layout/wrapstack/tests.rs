@@ -1,8 +1,9 @@
 use crate::Ui;
-use crate::element::Configure;
-use crate::primitives::{color::Color, justify::Justify, sizing::Sizing};
+use crate::layout::types::{justify::Justify, sizing::Sizing};
+use crate::primitives::color::Color;
 use crate::test_support::under_outer;
 use crate::tree::NodeId;
+use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 

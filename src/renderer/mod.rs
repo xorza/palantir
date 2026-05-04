@@ -15,6 +15,5 @@
 //!
 //! [`Ui`]: crate::ui::Ui
 pub(crate) mod backend;
-pub(crate) mod buffer;
 pub(crate) mod frontend;
-pub(crate) mod quad;
+pub(crate) mod gpu;

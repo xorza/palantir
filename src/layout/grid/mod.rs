@@ -1,8 +1,9 @@
 use super::support::{AutoBias, place_two_axis, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
-use crate::element::LayoutMode;
-use crate::primitives::{rect::Rect, size::Size, sizing::Sizing, span::Span, track::Track};
+use crate::layout::types::{sizing::Sizing, span::Span, track::Track};
+use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
+use crate::tree::element::LayoutMode;
 use crate::tree::{Child, NodeId, Tree};
 use glam::Vec2;
 use std::ops::Range;

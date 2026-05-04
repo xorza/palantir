@@ -3,13 +3,14 @@ use super::super::cmd_buffer::{
 };
 use super::align_text_in;
 use crate::Ui;
-use crate::element::Configure;
 use crate::input::{InputEvent, PointerButton};
-use crate::primitives::{
-    align::Align, align::HAlign, align::VAlign, color::Color, display::Display, rect::Rect,
-    sense::Sense, size::Size, sizing::Sizing, transform::TranslateScale, widget_id::WidgetId,
+use crate::layout::types::{
+    align::Align, align::HAlign, align::VAlign, display::Display, sense::Sense, sizing::Sizing,
 };
+use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
 use crate::test_support::{begin, encode_cmds, encode_cmds_filtered, ui_at};
+use crate::tree::element::Configure;
+use crate::tree::widget_id::WidgetId;
 use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::{UVec2, Vec2};
 

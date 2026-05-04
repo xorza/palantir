@@ -1,8 +1,9 @@
 use crate::Ui;
-use crate::element::Configure;
-use crate::primitives::{color::Color, display::Display, justify::Justify, sizing::Sizing};
+use crate::layout::types::{display::Display, justify::Justify, sizing::Sizing};
+use crate::primitives::color::Color;
 use crate::shape::Shape;
 use crate::test_support::ui_at;
+use crate::tree::element::Configure;
 use crate::tree::{NodeId, hash::NodeHash};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
@@ -185,7 +186,7 @@ fn changing_padding_changes_hash() {
 
 #[test]
 fn changing_visibility_changes_hash() {
-    use crate::primitives::visibility::Visibility;
+    use crate::layout::types::visibility::Visibility;
     let h1 = record_hash(|ui| {
         Panel::hstack_with_id("root")
             .visibility(Visibility::Visible)

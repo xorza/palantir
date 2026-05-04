@@ -16,15 +16,15 @@ pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 
-use crate::cascade::CascadeResult;
 use crate::layout::result::LayoutResult;
-use crate::primitives::display::Display;
+use crate::layout::types::display::Display;
 use crate::primitives::rect::Rect;
-use crate::primitives::widget_id::WidgetId;
-use crate::renderer::buffer::RenderBuffer;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
+use crate::renderer::gpu::buffer::RenderBuffer;
 use crate::tree::Tree;
+use crate::tree::widget_id::WidgetId;
+use crate::ui::cascade::CascadeResult;
 
 /// One frame's CPU output: the composed render buffer and the damage
 /// rect to scissor it to. Returned from [`Ui::frame`] after

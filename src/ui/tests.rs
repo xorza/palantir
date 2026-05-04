@@ -1,7 +1,9 @@
 use crate::Ui;
-use crate::element::Configure;
-use crate::primitives::{color::Color, display::Display, rect::Rect, widget_id::WidgetId};
+use crate::layout::types::display::Display;
+use crate::primitives::{color::Color, rect::Rect};
 use crate::test_support::{begin, new_ui_text, ui_at};
+use crate::tree::element::Configure;
+use crate::tree::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
 use glam::UVec2;
 
@@ -289,7 +291,7 @@ fn text_reshape_runs_when_content_changes() {
 /// not at all on frame 2.
 #[test]
 fn wrapping_text_reshape_skipped_when_unchanged() {
-    use crate::primitives::sizing::Sizing;
+    use crate::layout::types::sizing::Sizing;
     use crate::widgets::text::Text;
 
     let mut ui = new_ui_text();
@@ -322,7 +324,7 @@ fn wrapping_text_reshape_skipped_when_unchanged() {
 /// Pin: intrinsic-query path also reuses the per-widget cache.
 #[test]
 fn intrinsic_query_reuses_cached_text_measure() {
-    use crate::primitives::{sizing::Sizing, track::Track};
+    use crate::layout::types::{sizing::Sizing, track::Track};
     use crate::widgets::{grid::Grid, text::Text};
 
     let mut ui = new_ui_text();
@@ -393,7 +395,7 @@ fn text_reuse_evicts_disappeared_widgets() {
 /// again.
 #[test]
 fn wrap_target_change_preserves_unbounded_cache() {
-    use crate::primitives::sizing::Sizing;
+    use crate::layout::types::sizing::Sizing;
     use crate::widgets::text::Text;
 
     let mut ui = new_ui_text();

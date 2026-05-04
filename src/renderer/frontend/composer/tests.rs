@@ -1,11 +1,11 @@
 use super::super::cmd_buffer::RenderCmdBuffer;
 use super::Composer;
-use crate::primitives::display::Display;
+use crate::layout::types::display::Display;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
     urect::URect,
 };
-use crate::renderer::buffer::RenderBuffer;
+use crate::renderer::gpu::buffer::RenderBuffer;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 

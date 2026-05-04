@@ -5,10 +5,11 @@
 
 use super::scaffold::two_hug_cols_with_wrap;
 use crate::Ui;
-use crate::element::Configure;
-use crate::primitives::{color::Color, sizing::Sizing, track::Track};
+use crate::layout::types::{sizing::Sizing, track::Track};
+use crate::primitives::color::Color;
 use crate::test_support::{ui_at, ui_with_text};
 use crate::tree::NodeId;
+use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, styled::Styled, text::Text};
 use glam::UVec2;
 use std::rc::Rc;

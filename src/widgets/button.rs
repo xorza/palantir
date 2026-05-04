@@ -1,9 +1,8 @@
-use crate::element::{Configure, Element, LayoutMode};
-use crate::primitives::{
-    align::Align, color::Color, corners::Corners, sense::Sense, visuals::Visuals,
-    widget_id::WidgetId,
-};
+use crate::layout::types::{align::Align, sense::Sense};
+use crate::primitives::{color::Color, corners::Corners, visuals::Visuals};
 use crate::shape::{Shape, TextWrap};
+use crate::tree::element::{Configure, Element, LayoutMode};
+use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::{Response, frame::Frame, styled::Styled};
 use std::hash::Hash;

@@ -1,13 +1,33 @@
-use crate::element::{Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintCore};
-use crate::primitives::widget_id::WidgetId;
+use crate::layout::types::track::Track;
 use crate::shape::Shape;
-use crate::tree::grid_def::GridDef;
+use crate::tree::element::{
+    Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintCore,
+};
 use crate::tree::hash::NodeHash;
+use crate::tree::widget_id::WidgetId;
 use rustc_hash::FxHasher;
 use std::hash::Hasher;
+use std::rc::Rc;
 
-pub(crate) mod grid_def;
+pub mod element;
 pub(crate) mod hash;
+pub mod widget_id;
+
+/// Track definitions + axis gaps for a `Grid` panel. Stored on `GridArena`
+/// (a `Tree`-owned `Vec<GridDef>`) and addressed from
+/// `LayoutMode::Grid(u16)`. Track defs live behind `Rc<[Track]>` so callers
+/// can cache and share them across frames without the framework copying —
+/// the builder stores the `Rc`, the layout pass reads through it directly.
+/// Per-track hug sizes (computed in measure, read in arrange) live on
+/// `LayoutResult` keyed by grid def index — the tree is read-only after
+/// recording.
+#[derive(Clone, Debug)]
+pub(crate) struct GridDef {
+    pub rows: Rc<[Track]>,
+    pub cols: Rc<[Track]>,
+    pub row_gap: f32,
+    pub col_gap: f32,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub(crate) u32);

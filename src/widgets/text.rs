@@ -1,6 +1,8 @@
-use crate::element::{Configure, Element, LayoutMode};
-use crate::primitives::{align::Align, color::Color, widget_id::WidgetId};
+use crate::layout::types::align::Align;
+use crate::primitives::color::Color;
 use crate::shape::{Shape, TextWrap};
+use crate::tree::element::{Configure, Element, LayoutMode};
+use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use std::borrow::Cow;
