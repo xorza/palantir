@@ -155,10 +155,10 @@ impl WgpuBackend {
             let phys = r.scaled_by(buffer.scale, true);
             let mins_x = (phys.min.x as i64 - DAMAGE_AA_PADDING as i64).max(0) as u32;
             let mins_y = (phys.min.y as i64 - DAMAGE_AA_PADDING as i64).max(0) as u32;
-            let maxs_x = ((phys.min.x + phys.size.w) as u32 + DAMAGE_AA_PADDING)
-                .min(buffer.viewport_phys[0]);
-            let maxs_y = ((phys.min.y + phys.size.h) as u32 + DAMAGE_AA_PADDING)
-                .min(buffer.viewport_phys[1]);
+            let maxs_x =
+                ((phys.min.x + phys.size.w) as u32 + DAMAGE_AA_PADDING).min(buffer.viewport_phys.x);
+            let maxs_y =
+                ((phys.min.y + phys.size.h) as u32 + DAMAGE_AA_PADDING).min(buffer.viewport_phys.y);
             if maxs_x > mins_x && maxs_y > mins_y {
                 Some(URect::new(mins_x, mins_y, maxs_x - mins_x, maxs_y - mins_y))
             } else {
@@ -224,7 +224,7 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            let full_viewport = URect::new(0, 0, buffer.viewport_phys[0], buffer.viewport_phys[1]);
+            let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
             for (i, g) in buffer.groups.iter().enumerate() {
                 let group_scissor = g.scissor.unwrap_or(full_viewport);
                 // Intersect with damage when partial-repainting. If
