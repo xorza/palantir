@@ -3,9 +3,8 @@
 //! "what the user typed" snapshot for a node — the inputs, not the
 //! derived layout output (`rect`, `desired`).
 //!
-//! Step 1 of the damage-rect rendering plan (see `docs/damage-rendering.md`).
-//! Currently *computed but not consumed*: the hashes ship as a column on
-//! `Tree` so future steps (persistent prev-map, dirty-set) can read them.
+//! Feeds the damage pass in `src/ui/damage/`: each frame's hash is
+//! diffed against the prev-frame snapshot keyed by `WidgetId`.
 //!
 //! All `f32` fields hash via `to_bits()` — exact bit equality, not
 //! `==`-equality, so `0.0` vs `-0.0` hash differently (over-eager dirty

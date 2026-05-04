@@ -1,7 +1,6 @@
 # Layouts todo
 
-Open layout work pulled from `docs/layout-potential-features.md`.
-Each item is shipped-when-conditions-merit; no committed roadmap.
+Open layout work — shipped-when-conditions-merit; no committed roadmap.
 
 ## Stack
 
