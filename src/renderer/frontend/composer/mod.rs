@@ -36,16 +36,17 @@ struct SubtreeFrame {
 /// this struct so the rule is enforced in one place.
 ///
 /// Reset rule: every flush / scissor switch clears `last_was_text`.
-/// The flag is only ever set true via direct field write after
-/// pushing a `TextRun`.
+/// The flag is set only by `push_text`, the sole text-emission entry
+/// point.
 #[derive(Default)]
 struct GroupBuilder {
     current: Option<URect>,
     quads_start: u32,
     texts_start: u32,
     /// `true` iff the most recent draw appended to the in-flight
-    /// group was a text run. Set by `compose` after each text push;
-    /// cleared by every method below.
+    /// group was a text run. Mutated only by `GroupBuilder` methods —
+    /// keep private so the text-then-quad split rule stays a struct
+    /// invariant rather than caller discipline.
     last_was_text: bool,
 }
 
@@ -101,6 +102,15 @@ impl GroupBuilder {
         if self.last_was_text {
             self.flush(out);
         }
+    }
+
+    /// Sole entry point for emitting a text run — appends to
+    /// `out.texts` and flags `last_was_text` so the next quad triggers
+    /// the text-then-quad split. Routing through this method keeps the
+    /// flag a struct invariant.
+    fn push_text(&mut self, out: &mut RenderBuffer, run: TextRun) {
+        out.texts.push(run);
+        self.last_was_text = true;
     }
 }
 
@@ -273,13 +283,15 @@ impl Composer {
                     let world_rect = current_transform.apply_rect(t.rect);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
-                    out.texts.push(TextRun {
-                        origin: phys_rect.min,
-                        bounds,
-                        color: t.color,
-                        key: t.key,
-                    });
-                    group.last_was_text = true;
+                    group.push_text(
+                        out,
+                        TextRun {
+                            origin: phys_rect.min,
+                            bounds,
+                            color: t.color,
+                            key: t.key,
+                        },
+                    );
                 }
             }
             i += 1;
