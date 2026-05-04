@@ -251,12 +251,11 @@ impl Composer {
                             frame.subtree_hash,
                             frame.avail,
                             frame.cascade_fp,
-                            &out.quads,
-                            &out.texts,
-                            &out.groups,
+                            &out.quads[frame.quads_lo as usize..],
+                            &out.texts[frame.texts_lo as usize..],
+                            &out.groups[frame.groups_lo as usize..],
                             frame.quads_lo,
                             frame.texts_lo,
-                            frame.groups_lo,
                         );
                     }
                 }

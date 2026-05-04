@@ -89,11 +89,12 @@ impl ComposeCache {
         })
     }
 
-    /// Insert or overwrite `wid`'s snapshot from the live buffer's
-    /// tail. `*_lo` are the live-buffer `len()`s captured at
-    /// `EnterSubtree`; the tail beyond each is exactly what this
-    /// subtree contributed. Group ranges are stored subtree-relative
-    /// (each minus the corresponding `*_lo`).
+    /// Insert or overwrite `wid`'s snapshot from the subtree's tail
+    /// slices. `tail_*` are exactly what the subtree contributed (the
+    /// caller has already sliced past the parent's pre-subtree output).
+    /// `rebase_q` / `rebase_t` are the live-buffer `len()`s captured at
+    /// `EnterSubtree`; group ranges are stored subtree-relative by
+    /// subtracting these.
     ///
     /// Hot path: same length triple ⇒ in-place rewrite. Length change
     /// (rare — only when the subtree's group count, quad count, or
@@ -107,16 +108,15 @@ impl ComposeCache {
         subtree_hash: NodeHash,
         available_q: AvailableKey,
         cascade_fp: u64,
-        out_quads: &[Quad],
-        out_texts: &[TextRun],
-        out_groups: &[DrawGroup],
-        quads_lo: u32,
-        texts_lo: u32,
-        groups_lo: u32,
+        tail_quads: &[Quad],
+        tail_texts: &[TextRun],
+        tail_groups: &[DrawGroup],
+        rebase_q: u32,
+        rebase_t: u32,
     ) {
-        let q_len = out_quads.len() as u32 - quads_lo;
-        let t_len = out_texts.len() as u32 - texts_lo;
-        let g_len = out_groups.len() as u32 - groups_lo;
+        let q_len = tail_quads.len() as u32;
+        let t_len = tail_texts.len() as u32;
+        let g_len = tail_groups.len() as u32;
 
         if let Some(prev) = self.snapshots.get_mut(&wid)
             && prev.quads.len == q_len
@@ -129,16 +129,16 @@ impl ComposeCache {
             prev.subtree_hash = subtree_hash;
             prev.available_q = available_q;
             prev.cascade_fp = cascade_fp;
-            self.quads_arena[q_range].copy_from_slice(&out_quads[quads_lo as usize..]);
-            self.texts_arena[t_range].copy_from_slice(&out_texts[texts_lo as usize..]);
+            self.quads_arena[q_range].copy_from_slice(tail_quads);
+            self.texts_arena[t_range].copy_from_slice(tail_texts);
             for (dst, src) in self.groups_arena[g_range]
                 .iter_mut()
-                .zip(out_groups[groups_lo as usize..].iter())
+                .zip(tail_groups.iter())
             {
                 *dst = DrawGroup {
                     scissor: src.scissor,
-                    quads: (src.quads.start - quads_lo)..(src.quads.end - quads_lo),
-                    texts: (src.texts.start - texts_lo)..(src.texts.end - texts_lo),
+                    quads: (src.quads.start - rebase_q)..(src.quads.end - rebase_q),
+                    texts: (src.texts.start - rebase_t)..(src.texts.end - rebase_t),
                 };
             }
             return;
@@ -153,16 +153,14 @@ impl ComposeCache {
         let t_span = Span::new(self.texts_arena.len() as u32, t_len);
         let g_span = Span::new(self.groups_arena.len() as u32, g_len);
 
-        self.quads_arena
-            .extend_from_slice(&out_quads[quads_lo as usize..]);
-        self.texts_arena
-            .extend_from_slice(&out_texts[texts_lo as usize..]);
+        self.quads_arena.extend_from_slice(tail_quads);
+        self.texts_arena.extend_from_slice(tail_texts);
         self.groups_arena.reserve(g_len as usize);
-        for src in &out_groups[groups_lo as usize..] {
+        for src in tail_groups {
             self.groups_arena.push(DrawGroup {
                 scissor: src.scissor,
-                quads: (src.quads.start - quads_lo)..(src.quads.end - quads_lo),
-                texts: (src.texts.start - texts_lo)..(src.texts.end - texts_lo),
+                quads: (src.quads.start - rebase_q)..(src.quads.end - rebase_q),
+                texts: (src.texts.start - rebase_t)..(src.texts.end - rebase_t),
             });
         }
         self.live_quads += q_len as usize;

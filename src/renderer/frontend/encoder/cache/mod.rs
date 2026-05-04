@@ -27,7 +27,7 @@
 
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::span::Span;
-use crate::renderer::frontend::cmd_buffer::{CmdKind, RenderCmdBuffer, bump_rect_min};
+use crate::renderer::frontend::cmd_buffer::{CmdKind, RenderCmdBuffer};
 use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
@@ -127,7 +127,10 @@ impl EncodeCache {
                 ..
             } = self;
             let src_kinds = &src.kinds[src_cmd_range.clone()];
-            debug_assert_eq!(&kinds_arena[cmds.clone()], src_kinds);
+            // Same `subtree_hash` ⇒ same authoring ⇒ same cmd shape.
+            // A 64-bit hash collision (or future hash bug) would break
+            // this; pay one slice compare per write to catch it.
+            assert_eq!(&kinds_arena[cmds.clone()], src_kinds);
             kinds_arena[cmds.clone()].copy_from_slice(src_kinds);
             for (dst, &abs) in starts_arena[cmds]
                 .iter_mut()
@@ -241,6 +244,71 @@ impl EncodeCache {
         *kinds_arena = new_kinds;
         *starts_arena = new_starts;
         *data_arena = new_data;
+    }
+}
+
+// --- replay helpers (encode-cache-specific knowledge of cmd payload layout) -
+
+/// Append a cached subtree's cmd slice into `buf`, shifting `rect.min`
+/// by `offset` on every payload that begins with a `Rect` (PushClip,
+/// DrawRect, DrawRectStroked, DrawText). Pops carry no payload;
+/// PushTransform carries a `TranslateScale` that is subtree-local — both
+/// pass through untouched and compose with the parent at composer-time.
+///
+/// `starts` are subtree-relative offsets (0-based into `data`); they
+/// get rebased onto `buf`'s data arena during append.
+pub(crate) fn extend_from_cached(
+    buf: &mut RenderCmdBuffer,
+    kinds: &[CmdKind],
+    starts: &[u32],
+    data: &[u32],
+    offset: Vec2,
+) {
+    let dest_data_base = buf.data.len() as u32;
+    buf.data.extend_from_slice(data);
+
+    buf.kinds.extend_from_slice(kinds);
+    buf.starts.reserve(starts.len());
+    for &s in starts {
+        debug_assert!(s as usize <= data.len());
+        buf.starts.push(s + dest_data_base);
+    }
+
+    let n = kinds.len();
+    let appended_starts = &buf.starts[buf.starts.len() - n..];
+    bump_rect_min(kinds, appended_starts, &mut buf.data, offset);
+}
+
+/// Add `offset` to `rect.min` for every rect-bearing cmd in `kinds`,
+/// reading the payload offset from the parallel `starts` slice.
+///
+/// `rect.min` lives at the first 8 bytes (= 2 u32 words) of every
+/// payload that begins with `rect: Rect` — `Rect` is `#[repr(C)]
+/// { min: Vec2, size: Size }`. Read/write through `f32::{from,to}_bits`
+/// so we don't depend on the arena's u32 alignment lining up with f32
+/// (it does, but staying bits-only matches the rest of the buffer's
+/// discipline).
+#[inline]
+fn bump_rect_min(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], offset: Vec2) {
+    debug_assert_eq!(kinds.len(), starts.len());
+    for (kind, &start) in kinds.iter().zip(starts.iter()) {
+        match kind {
+            CmdKind::PushClip
+            | CmdKind::DrawRect
+            | CmdKind::DrawRectStroked
+            | CmdKind::DrawText => {
+                let off = start as usize;
+                let x = f32::from_bits(data[off]) + offset.x;
+                let y = f32::from_bits(data[off + 1]) + offset.y;
+                data[off] = x.to_bits();
+                data[off + 1] = y.to_bits();
+            }
+            CmdKind::PopClip
+            | CmdKind::PushTransform
+            | CmdKind::PopTransform
+            | CmdKind::EnterSubtree
+            | CmdKind::ExitSubtree => {}
+        }
     }
 }
 
