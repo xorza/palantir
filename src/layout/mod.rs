@@ -367,6 +367,40 @@ impl LayoutEngine {
     /// Fill axis grows past `available` so the children see their
     /// actual post-grow inner. The caller folds content into a
     /// margin-inclusive `desired` via `resolve_desired`.
+    ///
+    /// ## Driver contract
+    ///
+    /// Every layout driver (`stack`, `wrapstack`, `zstack`, `canvas`,
+    /// `grid`) is a free module exporting three `pub(crate) fn`s,
+    /// matched into here and into [`Self::arrange`] / `intrinsic::compute`:
+    ///
+    /// - `measure(layout, tree, node, [variant_payload,] inner_avail, text) -> Size`
+    ///   — bottom-up. Recurses into children via `layout.measure(...)`.
+    ///   Returns the driver's content size (pre-padding/margin/clamp;
+    ///   the caller in [`Self::measure`] folds those in).
+    /// - `arrange(layout, tree, node, [variant_payload,] inner)`
+    ///   — top-down. Assigns each child a final rect and recurses via
+    ///   `layout.arrange(...)`.
+    /// - `intrinsic(layout, tree, node, [variant_payload,] axis, req, text) -> f32`
+    ///   — pure on-demand query. Used by `grid::measure` Phase-1 column
+    ///   resolution and `stack::measure` Fill min-content floor.
+    ///
+    /// `variant_payload` carries any per-instance config the driver
+    /// needs from `LayoutMode`: `Axis::X`/`Axis::Y` for HStack/VStack
+    /// and WrapHStack/WrapVStack (a single function pair per pack
+    /// orientation), `idx: u16` for `Grid(idx)`. ZStack and Canvas have
+    /// no payload.
+    ///
+    /// Stack and WrapStack `intrinsic` additionally take both a
+    /// `main_axis` and `query_axis` because the answer genuinely depends
+    /// on both ("size on Y given you pack on X"). ZStack/Canvas/Grid
+    /// take only `axis` — they have no main axis to ask about.
+    ///
+    /// Adding a new driver = (1) new `LayoutMode` variant, (2) new
+    /// module exporting the triple, (3) match arms in this dispatcher,
+    /// `arrange`, and `intrinsic::content_intrinsic`. The compiler
+    /// flags the missing arms because `LayoutMode` matches are
+    /// exhaustive.
     fn measure_dispatch(
         &mut self,
         tree: &Tree,
