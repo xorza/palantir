@@ -48,7 +48,7 @@ fn empty_tree_has_no_hashes() {
     // intentionally skip them; just call compute_hashes directly to
     // verify the empty-tree case.)
     ui.tree.end_frame();
-    
+
     assert_eq!(ui.tree.node_count(), 0);
     assert!(ui.tree.hashes.is_empty());
     assert!(ui.tree.subtree_hashes.is_empty());
