@@ -1,9 +1,5 @@
 # Todo
 
-verify project structure
-move cascades into ui/
-remove rendercmd from tests
-
 
 Open work pulled from `docs/`. Each item is shipped-when-conditions-merit;
 no committed roadmap.
