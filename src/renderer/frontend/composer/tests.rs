@@ -296,7 +296,6 @@ mod cache_integration {
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::color::Color;
     use crate::primitives::transform::TranslateScale;
-    use crate::renderer::gpu::buffer::RenderBuffer;
     use crate::test_support::{begin, ui_at};
     use crate::tree::element::Configure;
     use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
@@ -327,17 +326,6 @@ mod cache_integration {
             });
     }
 
-    fn snapshot(rb: &RenderBuffer) -> RenderBuffer {
-        RenderBuffer {
-            quads: rb.quads.clone(),
-            texts: rb.texts.clone(),
-            groups: rb.groups.clone(),
-            viewport_phys: rb.viewport_phys,
-            viewport_phys_f: rb.viewport_phys_f,
-            scale: rb.scale,
-        }
-    }
-
     /// Warm-frame `RenderBuffer` (encode-cache + compose-cache both
     /// active) must be byte-identical to a cold compose with both
     /// caches cleared. Pins both the splice rebasing and the cascade
@@ -353,7 +341,7 @@ mod cache_integration {
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
-        let warm = snapshot(&ui.frontend.composer.buffer);
+        let warm = ui.frontend.composer.buffer.clone();
 
         // Frame 3: clear both caches → cold compose under same inputs.
         ui.__clear_encode_cache();
@@ -361,7 +349,7 @@ mod cache_integration {
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
-        let cold = snapshot(&ui.frontend.composer.buffer);
+        let cold = ui.frontend.composer.buffer.clone();
 
         assert_eq!(
             bytemuck::cast_slice::<_, u8>(&warm.quads),
@@ -439,13 +427,13 @@ mod cache_integration {
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
-        let warm = snapshot(&ui.frontend.composer.buffer);
+        let warm = ui.frontend.composer.buffer.clone();
 
         ui.__clear_compose_cache();
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
-        let cold_compose = snapshot(&ui.frontend.composer.buffer);
+        let cold_compose = ui.frontend.composer.buffer.clone();
 
         assert_eq!(
             bytemuck::cast_slice::<_, u8>(&warm.quads),

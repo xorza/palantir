@@ -11,6 +11,7 @@ use std::ops::Range;
 /// its allocations across frames so steady-state composing is alloc-free for
 /// the output; reuse a single `RenderBuffer` and call
 /// `compose(.., &mut buffer)` each frame.
+#[derive(Clone)]
 pub(crate) struct RenderBuffer {
     pub(crate) quads: Vec<Quad>,
     pub(crate) texts: Vec<TextRun>,
