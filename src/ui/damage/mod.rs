@@ -13,7 +13,7 @@
 //! rect-changed). Currently consumed only by tests; reserved for
 //! identity-based reuse (per-node command cache, text-shape cache,
 //! multi-rect damage, incremental hit-index, debug overlay — see
-//! `docs/todo.md` "Damage rendering").
+//! `docs/roadmap.md` "Damage rendering").
 
 use crate::primitives::rect::Rect;
 use crate::tree::widget_id::WidgetId;

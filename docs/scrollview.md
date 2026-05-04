@@ -84,7 +84,7 @@ Each step lands with tests + (where visible) a showcase tab.
    Thumb drag uses `drag_delta`.
 
 Out of scope for v1: momentum/overscroll/elastic, virtualization (see
-`docs/proposed-features.md` "Long-list / scroll"), nested
+`docs/roadmap.md` "Virtualization / windowed children"), nested
 scroll-chaining policy, sticky headers.
 
 ## Off-screen cost — what each pass does
@@ -127,7 +127,7 @@ the emitted instances. Correct, but only fine up to hundreds of items.
    off-screen rects to stay live. Defer until a workload asks.
 
 Real virtualization (the "virtual children" hook in
-`proposed-features.md`) is the only path to O(viewport) measure cost,
+`roadmap.md`) is the only path to O(viewport) measure cost,
 and is a separate, larger project. v1 ships unvirtualized scroll that's
 correct; clip-cull #1 above buys another order of magnitude on encode.
 
@@ -136,7 +136,7 @@ correct; clip-cull #1 above buys another order of magnitude on encode.
 - **First-frame size**: scroll content desired size is unknown frame 0
   → offset clamp is wrong frame 0. Acceptable (one-frame visual blip)
   or trigger a `request_discard`-style invisible re-run? Defer; couple
-  to the request-discard work in `proposed-features.md`.
+  to the request-discard work in `roadmap.md`.
 - **Scroll capture vs hover**: should a scrolled-into widget keep
   focus/hover during the scroll, or does the gesture suppress hover?
   Match egui (suppress) unless a workload says otherwise.
