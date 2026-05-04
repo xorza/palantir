@@ -28,7 +28,7 @@ pub(crate) fn leaf_text_shapes(
             font_size_px,
             wrap,
             ..
-        } => Some((text.as_str(), *font_size_px, *wrap)),
+        } => Some((text.as_ref(), *font_size_px, *wrap)),
         _ => None,
     })
 }

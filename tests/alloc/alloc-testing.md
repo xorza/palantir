@@ -46,15 +46,17 @@ Single test binary (`cargo test --test alloc`); Cargo auto-discovers
 `run_audit(name, warmup, audit, budget, scene)`:
 
 1. Construct `Ui::new()` with a fixed 800×600 logical display.
-2. Run `warmup` frames (default 8) — lets measure cache, encode cache,
+2. Acquire `AUDIT_LOCK` (process-global `Mutex`) — held through warmup
+   and the audited region so a sibling fixture's warmup allocs can't
+   leak into our measured window. The counter is process-global; the
+   lock is the only barrier.
+3. Run `warmup` frames — lets measure cache, encode cache,
    scratch `Vec`s reach steady-state capacity.
-3. Acquire `AUDIT_LOCK` (process-global `Mutex`) to serialize the
-   measured region against parallel cargo test threads.
 4. Snapshot counters → run `audit` frames → snapshot delta.
 5. Print per-frame averages. Assert delta ≤ `budget × audit`.
 
-The lock only guards the measured region; warmup and assertion still
-parallelize across fixtures.
+Setup, `Ui::new()`, and assertion still parallelize across fixtures —
+only the counter-sensitive region serializes.
 
 ## Status
 
@@ -64,10 +66,10 @@ parallelize across fixtures.
 
 ### Fixtures
 - `empty_frame` ✅ — `Ui` with no widgets, budget 0. Sanity baseline.
-- `button_only` 🟡 `#[ignore]` — single `Button::label("hello")` allocates
-  exactly 2× per frame in steady state. Budget pinned at 2 to capture
-  the regression; ignored so the green suite stays green. Hunt + fix
-  → flip budget to 0 → drop `#[ignore]`.
+- `button_only` ✅ — single `Button::label("hello")`, budget 0. Pins the
+  static-string label round-trip at zero allocs; uses 16 warmup / 64
+  audit frames (the extra warmup absorbs scratch-Vec capacity growth
+  that takes longer than the empty scene to settle).
 
 ### Planned
 - `nested_vstack_64` — past scratch-Vec growth; budget 0.

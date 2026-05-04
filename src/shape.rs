@@ -1,6 +1,7 @@
 use crate::layout::types::align::Align;
 use crate::primitives::{approx::approx_zero, color::Color, corners::Corners, stroke::Stroke};
 use glam::Vec2;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub enum Shape {
@@ -29,7 +30,11 @@ pub enum Shape {
     /// `VAlign::Auto`/`Stretch` collapse to top-left for text (glyphs
     /// don't stretch).
     Text {
-        text: String,
+        /// `Cow<'static, str>` so static-string labels (the common case via
+        /// `&'static str → Into<Cow<…>>`) round-trip with only pointer-copy
+        /// `Clone`s — no per-frame heap alloc. Dynamic strings still allocate
+        /// once into `Cow::Owned` at the authoring boundary.
+        text: Cow<'static, str>,
         color: Color,
         font_size_px: f32,
         wrap: TextWrap,
