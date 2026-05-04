@@ -238,9 +238,7 @@ impl EncodeCache {
             },
         );
 
-        if (self.kinds.is_overgrown() || self.data.is_overgrown())
-            && (self.kinds.over_floor() || self.data.over_floor())
-        {
+        if self.kinds.needs_compact() || self.data.needs_compact() {
             self.compact();
         }
     }
