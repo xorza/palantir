@@ -15,7 +15,7 @@
 //!
 //! Ratio of `cached / forced_miss` quantifies the Phase-4 win on the
 //! same workloads the encode-cache bench uses — directly comparable.
-//! See `docs/composer-cache.md`.
+//! See `src/renderer/frontend/composer/compose-cache.md`.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use palantir::Display;

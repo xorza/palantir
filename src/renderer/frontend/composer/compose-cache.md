@@ -1,11 +1,11 @@
-# Composer cache
+# Compose cache
 
 Subtree-skip on the composer, mirroring the
-[encode cache](../src/renderer/frontend/encoder/encode-cache.md). Same
-arena pattern, but stores per-subtree `RenderBuffer` slices (`Quad`s,
-`TextRun`s, `DrawGroup`s) instead of `RenderCmdBuffer` cmds.
+[encode cache](../encoder/encode-cache.md). Same arena pattern, but
+stores per-subtree `RenderBuffer` slices (`Quad`s, `TextRun`s,
+`DrawGroup`s) instead of `RenderCmdBuffer` cmds.
 
-Code lives in `src/renderer/frontend/composer/cache/`. The `Composer`
+Code lives in `cache/` (this directory's sibling). The `Composer`
 struct owns the cache + output buffer and is the entry point from
 `Frontend::build`.
 
@@ -28,6 +28,10 @@ struct owns the cache + output buffer and is the entry point from
   snapshot survives changes to the *number* of quads / texts the
   parent emitted before it (pinned by
   `compose_cache_warm_frame_matches_cold_compose`).
+- **Single splice entry point.** `ComposeCache::try_splice` does
+  lookup + extend + group-rebase in one call, returning `bool`. The
+  `try_lookup` helper and the `CachedCompose<'a>` borrow type are
+  private to the cache module — production code never sees them.
 
 ## Subtree marker mechanism
 
@@ -38,21 +42,25 @@ EnterSubtree(EnterSubtreePayload { wid, subtree_hash, avail, exit_idx, .. })
 ExitSubtree
 ```
 
-`EnterSubtreePayload` is 32 bytes (`bytemuck::Pod`-clean — `wid` /
-`subtree_hash` are repr-transparent newtypes around `u64`, plus
-`AvailableKey { i32, i32 }`, `exit_idx: u32`, and a 4-byte trailing
-`_pad` for u64 alignment). `exit_idx` is patched in-place when the
-matching close is recorded — `RenderCmdBuffer::push_exit_subtree`
-rewrites the payload word — so a cache hit fast-forwards the cmd
-iterator past the cached range without re-scanning.
+`EnterSubtreePayload` is 32 bytes, align 8 (`bytemuck::Pod`-clean —
+`wid` / `subtree_hash` are repr-transparent newtypes around `u64`,
+plus `AvailableKey { i32, i32 }`, `exit_idx: u32`, and a 4-byte
+trailing `_pad` for u64 alignment). Size + align are pinned by a
+`const _: () = assert!(...)` next to the struct.
 
-The composer iterates by index over `kinds`/`starts` (not via the
-`Cmd` iterator) so it can jump straight to `exit_idx + 1` on a hit.
-At every marker (hit or miss) the composer flushes the current group
-and resets `last_was_text = false` so the cached subtree's first
-group doesn't merge with the parent's tail and the parent's first
-post-splice quad doesn't trip the text-then-quad split rule against
-the inner subtree's last text.
+`exit_idx` is patched in-place when the matching close is recorded —
+`RenderCmdBuffer::push_exit_subtree` rewrites the payload word using
+`std::mem::offset_of!(EnterSubtreePayload, exit_idx) / size_of::<u32>()`
+so a future field reorder can't silently corrupt the patch. A cache
+hit reads `exit_idx` and fast-forwards the cmd iterator past the
+cached range without re-scanning.
+
+The composer iterates by index over `kinds` / `starts` so it can jump
+straight to `exit_idx + 1` on a hit. At every marker (hit or miss)
+the composer flushes the current group and resets `last_was_text =
+false` so the cached subtree's first group doesn't merge with the
+parent's tail and the parent's first post-splice quad doesn't trip
+the text-then-quad split rule against the inner subtree's last text.
 
 ## Storage
 
@@ -68,7 +76,13 @@ the inner subtree's last text.
   triple `(quads_len, texts_len, groups_len)` ⇒ in-place rewrite
   preserves snapshot positions. Length mismatch appends and marks the
   old range as garbage; tracked via `live_quads` / `live_texts` /
-  `live_groups` for the compaction trigger.
+  `live_groups` for the compaction trigger. `write_subtree` does a
+  single `get_mut` probe — the slow path captures the prior
+  snapshot's lengths from that probe and the trailing `insert`
+  overwrites in one operation.
+- `write_subtree` takes the subtree's *tail slices* directly
+  (`tail_quads`, `tail_texts`, `tail_groups`) plus `rebase_q` /
+  `rebase_t`. The cache never sees the parent's pre-subtree output.
 
 ## Tests
 
@@ -105,14 +119,14 @@ purely composer work). Two arm pairs:
 | `flat`   (~1000 leaves)            | 11.5 ns | 24.6 ns | 2.1× |
 | `nested` (100 × 32 nodes ≈ 3200)   | 12.0 ns | 1697 ns | **141×** |
 
-On a cache hit at root the composer reads one `EnterSubtree`, looks
-up, splices the cached arrays, and fast-forwards to `ExitSubtree + 1`
-— ~12 ns total.
+On a cache hit at root the composer reads one `EnterSubtree`, calls
+`try_splice` (looks up, splices the cached arrays), and fast-forwards
+to `ExitSubtree + 1` — ~12 ns total.
 
 ## Threshold
 
 `TINY_SUBTREE_THRESHOLD = 4` (raised from 1 when the markers landed):
-gates both encode-cache eligibility and `EnterSubtree`/`ExitSubtree`
+gates both encode-cache eligibility and `EnterSubtree` / `ExitSubtree`
 emission. Subtrees smaller than this aren't worth the
 hashmap-probe + marker-emission tax against re-composing 1–4 quads.
 Verified by bench against the pre-Step-1 baseline:
@@ -124,7 +138,7 @@ out faster than the original threshold-1 baseline; `flat` and
 
 The original plan considered a "translate-aware" variant B that
 stores quads ancestor-relative and rebases by the parent's translate
-on replay, surviving ancestor scroll/translate animations. Skipped:
+on replay, surviving ancestor scroll / translate animations. Skipped:
 re-snapping pre-snap floats per replay quad doubles the per-quad
 work, and the snap-handling tests are nontrivial. Revisit if a
 real workload (scroll-heavy app, animated parent) shows
