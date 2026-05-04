@@ -2,8 +2,8 @@ use super::super::cmd_buffer::RenderCmdBuffer;
 use super::Composer;
 use crate::layout::types::{display::Display, span::Span};
 use crate::primitives::{
-    color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
-    urect::URect,
+    color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
+    transform::TranslateScale, urect::URect,
 };
 use crate::renderer::gpu::buffer::RenderBuffer;
 use crate::text::TextCacheKey;
@@ -122,8 +122,8 @@ fn compose_scales_rects_for_dpr() {
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
-    assert_eq!(q.pos, [20.0, 40.0]);
-    assert_eq!(q.size, [60.0, 80.0]);
+    assert_eq!(q.pos, Vec2::new(20.0, 40.0));
+    assert_eq!(q.size, Size::new(60.0, 80.0));
 }
 
 #[test]
@@ -159,8 +159,8 @@ fn compose_translates_under_push_transform() {
     );
     assert_eq!(buf.quads.len(), 1);
     let q = &buf.quads[0];
-    assert_eq!(q.pos, [110.0, 70.0]);
-    assert_eq!(q.size, [30.0, 40.0]);
+    assert_eq!(q.pos, Vec2::new(110.0, 70.0));
+    assert_eq!(q.size, Size::new(30.0, 40.0));
 }
 
 #[test]
@@ -182,8 +182,8 @@ fn compose_scales_radius_and_stroke_under_transform() {
         &params(1.0, UVec2::new(400, 400)),
     );
     let q = &buf.quads[0];
-    assert_eq!(q.size, [100.0, 100.0]);
-    assert_eq!(q.radius[0], 16.0);
+    assert_eq!(q.size, Size::new(100.0, 100.0));
+    assert_eq!(q.radius.tl, 16.0);
     assert_eq!(q.stroke_width, 3.0);
 }
 
@@ -200,8 +200,8 @@ fn compose_composes_nested_transforms() {
         &params(1.0, UVec2::new(400, 400)),
     );
     let q = &buf.quads[0];
-    assert_eq!(q.pos, [30.0, 0.0]);
-    assert_eq!(q.size, [20.0, 20.0]);
+    assert_eq!(q.pos, Vec2::new(30.0, 0.0));
+    assert_eq!(q.size, Size::new(20.0, 20.0));
 }
 
 #[test]
