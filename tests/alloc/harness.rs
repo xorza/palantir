@@ -3,9 +3,10 @@
 //!
 //! `run_audit` runs `warmup` frames untracked, then snapshots the
 //! global counter, runs `audit` frames, and asserts the delta is
-//! within `budget`. The audited region is serialized via `AUDIT_LOCK`
-//! so cargo's parallel test runner can't interleave fixtures' frame
-//! loops and pollute each other's counts.
+//! within `budget`. Warmup *and* the audited region are serialized
+//! via `AUDIT_LOCK` so cargo's parallel test runner can't have one
+//! fixture's warmup allocs leak into another's measured window
+//! (the counter is process-global, the lock is the only barrier).
 
 use crate::allocator::{Snapshot, delta, snapshot};
 use palantir::{Display, Ui};
@@ -38,15 +39,14 @@ pub(crate) fn run_audit<S>(
     let display = Display::from_physical(glam::UVec2::new(800, 600), 1.0);
     let mut ui = Ui::new();
 
-    for _ in 0..warmup {
-        ui.begin_frame(display);
-        scene(&mut ui);
-        let _ = ui.end_frame();
-    }
-
     let measured: Snapshot;
     {
         let _guard = AUDIT_LOCK.lock().unwrap();
+        for _ in 0..warmup {
+            ui.begin_frame(display);
+            scene(&mut ui);
+            let _ = ui.end_frame();
+        }
         let before = snapshot();
         for _ in 0..audit {
             ui.begin_frame(display);

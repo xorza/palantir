@@ -86,7 +86,7 @@ impl Text {
         let id = self.element.id;
         let node = ui.node(self.element, |ui| {
             ui.add_shape(Shape::Text {
-                text: self.text.into_owned(),
+                text: self.text,
                 color: self.color,
                 font_size_px: self.size_px,
                 wrap: self.wrap,

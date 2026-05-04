@@ -5,6 +5,7 @@ use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::{Response, frame::Frame, styled::Styled};
+use std::borrow::Cow;
 use std::hash::Hash;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,7 +35,7 @@ impl Default for ButtonTheme {
 pub struct Button {
     element: Element,
     style: Option<ButtonTheme>,
-    label: String,
+    label: Cow<'static, str>,
     label_align: Align,
 }
 
@@ -51,7 +52,7 @@ impl Button {
         Self {
             element,
             style: None,
-            label: String::new(),
+            label: Cow::Borrowed(""),
             // Buttons center their labels by convention. Override with
             // `.text_align(...)` for left/right-aligned labels.
             label_align: Align::CENTER,
@@ -62,7 +63,7 @@ impl Button {
         self.style = Some(s);
         self
     }
-    pub fn label(mut self, s: impl Into<String>) -> Self {
+    pub fn label(mut self, s: impl Into<Cow<'static, str>>) -> Self {
         self.label = s.into();
         self
     }
