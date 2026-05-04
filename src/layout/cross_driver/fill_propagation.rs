@@ -3,7 +3,7 @@
 //! parent has a finite slot — that would make any nested grid fall
 //! back to max-content and break wrapping under constrained widths.
 
-use super::scaffold::two_hug_cols_with_wrap;
+use super::support::two_hug_cols_with_wrap;
 use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::color::Color;
