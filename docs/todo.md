@@ -1,6 +1,18 @@
 # Todo
 
 
+## Per-frame allocation audit (`tests/alloc/alloc-testing.md`)
+
+- **Hunt the 2 allocs/frame in `Button` steady state.** First widget
+  fixture (`button_only`) caught a clean 2.00 allocs/frame; currently
+  `#[ignore]`d with budget pinned at 2. Likely culprits: `Shape::Text.text:
+  String` clone on every `Text::show` (already noted in Text section), plus
+  one more. Fix → flip budget to 0 → drop `#[ignore]`.
+- **More fixtures.** Add `nested_vstack_64`, `grid_8x8`, `damage_animated_rect`
+  (all budget 0), plus `static_text_label` with a measured baseline.
+- **CI gating.** Local-only today, same posture as `tests/visual`. Wire one
+  pinned-runner job once the suite stabilizes.
+
 ## Damage rendering
 
 - **Multi-rect damage.** Replace the single union rect with N disjoint regions (clustered from the per-node dirty set). Avoids the 50% heuristic tripping when two unrelated corners change.
