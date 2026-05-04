@@ -3,14 +3,14 @@ use crate::shape::Shape;
 use crate::tree::element::{
     Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintCore,
 };
-use crate::tree::hash::NodeHash;
+use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use rustc_hash::FxHasher;
 use std::hash::Hasher;
 use std::rc::Rc;
 
 pub mod element;
-pub(crate) mod hash;
+pub(crate) mod node_hash;
 pub mod widget_id;
 
 /// Track definitions + axis gaps for a `Grid` panel. Stored on `GridArena`
@@ -380,7 +380,7 @@ impl Tree {
                 LayoutMode::Grid(idx) => Some(&self.grid.defs[idx as usize]),
                 _ => None,
             };
-            self.hashes.push(hash::compute_node_hash(
+            self.hashes.push(node_hash::compute_node_hash(
                 layout, paint, extras, shapes, grid_def,
             ));
         }

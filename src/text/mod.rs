@@ -19,7 +19,7 @@
 //! [`Ui`]: crate::Ui
 
 use crate::primitives::size::Size;
-use crate::tree::hash::NodeHash;
+use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;

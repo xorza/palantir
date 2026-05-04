@@ -35,7 +35,7 @@ use crate::renderer::frontend::cache_arena::LiveArena;
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
 };
-use crate::tree::hash::NodeHash;
+use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 use rustc_hash::FxHashMap;

@@ -23,7 +23,7 @@
 use crate::layout::result::ShapedText;
 use crate::layout::types::span::Span;
 use crate::primitives::size::Size;
-use crate::tree::hash::NodeHash;
+use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use glam::IVec2;
 use rustc_hash::FxHashMap;

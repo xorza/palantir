@@ -27,7 +27,7 @@ use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
 use crate::text::TextCacheKey;
-use crate::tree::hash::NodeHash;
+use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 
 #[repr(u8)]
