@@ -265,8 +265,10 @@ impl MeasureCache {
         }
     }
 
-    /// Drop every cross-frame snapshot. Public via
-    /// `Ui::__clear_measure_cache` for benchmarks.
+    /// Drop every cross-frame snapshot. Reachable only via
+    /// `bench_support::clear_measure_cache` (gated to tests + the
+    /// `bench-support` feature) — not part of any production code path.
+    #[cfg(any(test, feature = "bench-support"))]
     pub(crate) fn clear(&mut self) {
         self.desired_arena.clear();
         self.text_arena.clear();

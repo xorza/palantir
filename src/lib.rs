@@ -1,3 +1,5 @@
+#[cfg(any(test, feature = "bench-support"))]
+pub mod bench_support;
 pub(crate) mod common;
 pub mod input;
 pub mod layout;

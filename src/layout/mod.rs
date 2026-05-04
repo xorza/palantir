@@ -108,13 +108,6 @@ impl LayoutEngine {
         self.cache.sweep_removed(removed);
     }
 
-    /// Drop every cross-frame measure-cache entry. `#[doc(hidden)]` —
-    /// see [`crate::Ui::__clear_measure_cache`].
-    #[doc(hidden)]
-    pub(crate) fn __clear_cache(&mut self) {
-        self.cache.clear();
-    }
-
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
     /// `axis` under content-sizing `req`. See `intrinsic.md`.
     ///

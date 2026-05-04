@@ -93,14 +93,14 @@ the text-then-quad split rule against the inner subtree's last text.
   live counters, `clear`.
 - `src/renderer/frontend/composer/tests.rs::cache_integration` —
   integration tests: warm-cache replay through `Frontend::build` is
-  byte-identical to a fresh cold compose; a `__clear_compose_cache()`
+  byte-identical to a fresh cold compose; a `bench_support::clear_compose_cache()`
   between two warm frames also reproduces byte-identical output;
   cache populates non-trivially on a 50-node workload.
 
 ## Bench
 
 `benches/compose_cache.rs`, A/B'd against an otherwise-identical
-warm-cache frame with `__clear_compose_cache()` between iterations
+warm-cache frame with `bench_support::clear_compose_cache()` between iterations
 (measure + encode caches held hot in both arms, so the delta is
 purely composer work). Two arm pairs:
 

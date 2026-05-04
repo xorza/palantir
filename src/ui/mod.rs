@@ -148,41 +148,6 @@ impl Ui {
         self.repaint_requested = true;
     }
 
-    /// Drop every cross-frame measure-cache entry, forcing the next
-    /// frame to re-measure every leaf from scratch. `#[doc(hidden)]`
-    /// — exists only so `benches/measure_cache.rs` can A/B
-    /// cache-enabled vs forced-miss frames against the public API.
-    #[doc(hidden)]
-    pub fn __clear_measure_cache(&mut self) {
-        self.layout_engine.__clear_cache();
-    }
-
-    /// Drop every cross-frame encode-cache entry, forcing the next
-    /// frame's encoder to re-encode every subtree from scratch.
-    /// `#[doc(hidden)]` — exists only so `benches/encode_cache.rs`
-    /// can A/B cache-enabled vs forced-miss frames against the public API.
-    #[doc(hidden)]
-    pub fn __clear_encode_cache(&mut self) {
-        self.frontend.encoder.cache.clear();
-    }
-
-    /// Drop every cross-frame compose-cache entry, forcing the next
-    /// frame's composer to re-compose every subtree from scratch.
-    /// `#[doc(hidden)]` — exists only so `benches/compose_cache.rs`
-    /// can A/B cache-enabled vs forced-miss frames against the public API.
-    #[doc(hidden)]
-    pub fn __clear_compose_cache(&mut self) {
-        self.frontend.composer.cache.clear();
-    }
-
-    /// Number of widgets currently snapshotted in the compose cache.
-    /// `#[doc(hidden)]` — exists only so `benches/compose_cache.rs`
-    /// can confirm the cache populated under each workload.
-    #[doc(hidden)]
-    pub fn __compose_cache_snapshot_count(&self) -> usize {
-        self.frontend.composer.cache.snapshots.len()
-    }
-
     /// Re-run only the composer over the encoder's last cmd buffer,
     /// returning the resulting snapshot count change. `#[doc(hidden)]`
     /// — exists only so `benches/compose_cache.rs` can isolate
