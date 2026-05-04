@@ -3,6 +3,7 @@
 //! draw-ordering logic in the pure `render_schedule` helper here and
 //! pin the order against expected sequences.
 
+use crate::layout::types::span::Span;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
@@ -28,10 +29,10 @@ enum RenderStep {
 fn render_schedule(buffer: &RenderBuffer) -> Vec<RenderStep> {
     let mut steps = Vec::new();
     for (i, g) in buffer.groups.iter().enumerate() {
-        if !g.quads.is_empty() {
+        if g.quads.len != 0 {
             steps.push(RenderStep::Quads(i));
         }
-        if !g.texts.is_empty() {
+        if g.texts.len != 0 {
             steps.push(RenderStep::Text(i));
         }
     }
@@ -74,14 +75,14 @@ fn render_schedule_interleaves_text_per_group() {
             // Group 0: 2 quads + 1 text
             DrawGroup {
                 scissor: None,
-                quads: 0..2,
-                texts: 0..1,
+                quads: Span::new(0, 2),
+                texts: Span::new(0, 1),
             },
             // Group 1: 1 quad, no text
             DrawGroup {
                 scissor: None,
-                quads: 2..3,
-                texts: 1..1,
+                quads: Span::new(2, 1),
+                texts: Span::new(1, 0),
             },
         ],
         viewport_phys: UVec2::new(100, 100),
@@ -109,14 +110,14 @@ fn render_schedule_emits_text_for_quadless_group() {
             // Group 0: 1 quad only
             DrawGroup {
                 scissor: None,
-                quads: 0..1,
-                texts: 0..0,
+                quads: Span::new(0, 1),
+                texts: Span::new(0, 0),
             },
             // Group 1: text only, no quads
             DrawGroup {
                 scissor: None,
-                quads: 1..1,
-                texts: 0..2,
+                quads: Span::new(1, 0),
+                texts: Span::new(0, 2),
             },
         ],
         viewport_phys: UVec2::new(100, 100),

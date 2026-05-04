@@ -56,8 +56,8 @@ fn write(
     let mut groups = vec![
         DrawGroup {
             scissor: None,
-            quads: 0..0,
-            texts: 0..0,
+            quads: Span::new(0, 0),
+            texts: Span::new(0, 0),
         };
         groups_lo as usize
     ];
@@ -67,8 +67,8 @@ fn write(
     texts.push(text_run());
     groups.push(DrawGroup {
         scissor: Some(URect::new(0, 0, 100, 100)),
-        quads: quads_lo..(quads_lo + 2),
-        texts: texts_lo..(texts_lo + 1),
+        quads: Span::new(quads_lo, 2),
+        texts: Span::new(texts_lo, 1),
     });
 
     cache.write_subtree(
@@ -95,8 +95,8 @@ fn round_trip_lookup_returns_subtree_relative_groups() {
     assert_eq!(hit.texts.len(), 1);
     assert_eq!(hit.groups.len(), 1);
     // Group ranges stored as 0-based (subtree-relative).
-    assert_eq!(hit.groups[0].quads, 0..2);
-    assert_eq!(hit.groups[0].texts, 0..1);
+    assert_eq!(hit.groups[0].quads, Span::new(0, 2));
+    assert_eq!(hit.groups[0].texts, Span::new(0, 1));
 }
 
 #[test]
@@ -158,8 +158,8 @@ fn size_change_appends_and_marks_garbage() {
     let small_quads = vec![quad(0.0)];
     let small_groups = vec![DrawGroup {
         scissor: None,
-        quads: 0..1,
-        texts: 0..0,
+        quads: Span::new(0, 1),
+        texts: Span::new(0, 0),
     }];
     cache.write_subtree(
         wid(1),

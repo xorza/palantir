@@ -117,8 +117,8 @@ impl ComposeCache {
         for g in hit.groups {
             out.groups.push(DrawGroup {
                 scissor: g.scissor,
-                quads: (g.quads.start + base_q)..(g.quads.end + base_q),
-                texts: (g.texts.start + base_t)..(g.texts.end + base_t),
+                quads: Span::new(g.quads.start + base_q, g.quads.len),
+                texts: Span::new(g.texts.start + base_t, g.texts.len),
             });
         }
         true
@@ -172,8 +172,8 @@ impl ComposeCache {
                 {
                     *dst = DrawGroup {
                         scissor: src.scissor,
-                        quads: (src.quads.start - rebase_q)..(src.quads.end - rebase_q),
-                        texts: (src.texts.start - rebase_t)..(src.texts.end - rebase_t),
+                        quads: Span::new(src.quads.start - rebase_q, src.quads.len),
+                        texts: Span::new(src.texts.start - rebase_t, src.texts.len),
                     };
                 }
                 return;
@@ -198,8 +198,8 @@ impl ComposeCache {
         for src in tail_groups {
             self.groups.items.push(DrawGroup {
                 scissor: src.scissor,
-                quads: (src.quads.start - rebase_q)..(src.quads.end - rebase_q),
-                texts: (src.texts.start - rebase_t)..(src.texts.end - rebase_t),
+                quads: Span::new(src.quads.start - rebase_q, src.quads.len),
+                texts: Span::new(src.texts.start - rebase_t, src.texts.len),
             });
         }
         self.quads.live += q_len as usize;

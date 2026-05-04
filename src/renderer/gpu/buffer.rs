@@ -1,8 +1,8 @@
 use super::quad::Quad;
+use crate::layout::types::span::Span;
 use crate::primitives::{color::Color, urect::URect};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
-use std::ops::Range;
 
 /// Pure output of `compose`: physical-px instances grouped by scissor region,
 /// ready for any rasterizing backend (wgpu, software, headless test capture).
@@ -40,11 +40,11 @@ impl Default for RenderBuffer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawGroup {
     pub(crate) scissor: Option<URect>,
-    pub(crate) quads: Range<u32>,
-    pub(crate) texts: Range<u32>,
+    pub(crate) quads: Span,
+    pub(crate) texts: Span,
 }
 
 /// One shaped text run placed in physical-px space. The buffer it references
