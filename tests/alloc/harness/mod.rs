@@ -72,47 +72,29 @@ pub(crate) fn run_audit<S>(
     finish_audit(name, audit, warmup, budget, result);
 }
 
-/// Like `run_audit` but discovers the warmup point on its own. Probes
-/// up to `MAX_PROBE` frames; the warmup phase ends as soon as
-/// `STABLE_RUN` consecutive frames have stayed within `budget`. The
-/// audit window is always `AUDIT_FRAMES` frames after that.
+/// Probes up to `MAX_WARMUP` frames; as soon as one frame stays within
+/// budget, the warmup phase ends and the audit window starts. Then
+/// `AUDIT_FRAMES` frames run inside one `with_audit` window — any
+/// over-budget frame in that window fails.
 ///
-/// Use this for new fixtures — eliminates the eyeballed-warmup
-/// problem (caches in `Ui` settle at different rates depending on the
-/// scene; a hardcoded warmup either over-pads passing tests or
-/// under-pads scenes whose scratch Vecs grow at non-power-of-two
-/// thresholds).
-///
-/// Panics with a diagnostic if no stable run is found in `MAX_PROBE`
-/// frames — that's a real regression, not a flake.
+/// Use this for new fixtures so you don't have to eyeball a warmup count.
 pub(crate) fn audit_until_stable<S>(name: &str, budget: AllocBudget, mut scene: S)
 where
     S: FnMut(&mut Ui),
 {
-    const STABLE_RUN: usize = 8;
-    const MAX_PROBE: usize = 256;
+    const MAX_WARMUP: usize = 4;
     const AUDIT_FRAMES: usize = 64;
 
     let display = display();
     let mut ui = Ui::new();
 
-    let mut consecutive = 0usize;
     let mut warmup = 0usize;
-    while consecutive < STABLE_RUN {
-        if warmup >= MAX_PROBE {
-            panic!(
-                "alloc audit `{name}`: no stable run of {STABLE_RUN} frames \
-                 within budget of {} alloc(s)/frame in {MAX_PROBE} probe frames",
-                budget.allocs_per_frame,
-            );
-        }
+    while warmup < MAX_WARMUP {
         let r = with_audit(|| run_frame(&mut ui, display, &mut scene));
-        if r.allocs <= budget.allocs_per_frame {
-            consecutive += 1;
-        } else {
-            consecutive = 0;
-        }
         warmup += 1;
+        if r.allocs <= budget.allocs_per_frame {
+            break;
+        }
     }
 
     let result = with_audit(|| {

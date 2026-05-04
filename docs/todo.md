@@ -3,12 +3,18 @@
 
 ## Per-frame allocation audit (`tests/alloc/alloc-testing.md`)
 
-- **More fixtures.** `empty_frame` and `button_only` pin budget 0. Next:
-  `nested_vstack_64` (scratch-Vec growth), `grid_8x8` (grid driver scratch
-  + track-list), `damage_animated_rect` (damage diff path). All budget 0.
-- **`static_text_label` baseline.** cosmic-text isn't ours — pin a measured
-  non-zero number rather than chasing it to 0, so a regression in *our*
-  text path is still visible.
+Six fixtures pin budget 0: `empty_frame`, `button_only`, `nested_vstack_64`,
+`grid_8x8`, `damage_animated_rect`, `static_text_label`. Pipeline is fully
+alloc-clean in steady state from the audit's perspective (`Ui::end_frame`).
+
+- **Showcase-shaped fixtures.** Real workloads, not microscenes — a fixture
+  matching one tab of `examples/showcase` would catch regressions the
+  unit-shaped ones miss (interactions between widgets, larger trees, mixed
+  layout modes).
+- **Input-driven fixture.** Drive a synthetic pointer through a `Panel`
+  with `Sense::Click` and a hovered `Button`; verifies hit-index +
+  response-state paths are alloc-clean. None of the current fixtures
+  inject events.
 - **CI gating.** Local-only today, same posture as `tests/visual`. Wire one
   pinned-runner job once the suite stabilizes.
 
