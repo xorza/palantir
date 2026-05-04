@@ -5,6 +5,8 @@
 //!
 //! Single smoke test for now — just exercises the plumbing.
 
+use std::path::{Path, PathBuf};
+
 use glam::UVec2;
 use image::{Rgba, RgbaImage};
 use palantir::{Button, Color, Configure, CosmicMeasure, Display, Sizing, Ui, WgpuBackend, share};
@@ -296,33 +298,85 @@ fn diff_too_many_outliers_fails() {
     assert!(!report.passes(Tolerance::default()));
 }
 
-#[test]
-fn headless_renders_button_scene() {
-    let mut h = Harness::new();
-    let size = UVec2::new(256, 96);
-    let clear = Color::rgb(0.08, 0.08, 0.10);
-    let img = h.render(size, 1.0, clear, |ui| {
+fn golden_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/visual/golden")
+}
+
+fn output_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/visual/output")
+}
+
+fn update_mode() -> bool {
+    std::env::var_os("UPDATE_GOLDEN").is_some_and(|v| !v.is_empty())
+}
+
+/// Compare `actual` against the golden PNG for `name`. With
+/// `UPDATE_GOLDEN=1` set, writes `actual` to the golden path
+/// instead and returns. On failure, dumps `actual.png`,
+/// `expected.png`, and `diff.png` under
+/// `tests/visual/output/<name>/` for inspection.
+fn assert_matches_golden(name: &str, actual: &RgbaImage, tol: Tolerance) {
+    let golden = golden_dir().join(format!("{name}.png"));
+
+    let force_update = update_mode();
+    if force_update || !golden.exists() {
+        std::fs::create_dir_all(golden.parent().unwrap()).expect("mkdir golden");
+        actual.save(&golden).expect("save golden");
+        eprintln!(
+            "{}: wrote {}",
+            if force_update {
+                "UPDATE_GOLDEN"
+            } else {
+                "NEW GOLDEN (no prior image)"
+            },
+            golden.display(),
+        );
+        return;
+    }
+
+    let expected = image::open(&golden)
+        .unwrap_or_else(|e| panic!("read golden {}: {e}", golden.display()))
+        .to_rgba8();
+
+    let report = diff(actual, &expected, tol);
+    if report.passes(tol) {
+        return;
+    }
+
+    let out = output_dir().join(name);
+    std::fs::create_dir_all(&out).expect("mkdir output");
+    actual.save(out.join("actual.png")).expect("save actual");
+    expected
+        .save(out.join("expected.png"))
+        .expect("save expected");
+    report
+        .diff_image
+        .save(out.join("diff.png"))
+        .expect("save diff");
+
+    panic!(
+        "visual diff failed for `{name}`:\n  max_channel_delta = {}\n  differing_pixels  = {}\n  differing_ratio   = {:.4}\n  tolerance         = per_channel {}, max_ratio {}\n  artifacts written to {}",
+        report.max_channel_delta,
+        report.differing_pixels,
+        report.differing_ratio,
+        tol.per_channel,
+        tol.max_ratio,
+        out.display(),
+    );
+}
+
+fn render_button_scene(h: &mut Harness, size: UVec2) -> RgbaImage {
+    h.render(size, 1.0, Color::rgb(0.08, 0.08, 0.10), |ui| {
         Button::new()
             .label("hello")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui);
-    });
+    })
+}
 
-    assert_eq!(img.width(), size.x);
-    assert_eq!(img.height(), size.y);
-
-    // Centre pixel should differ from the clear colour — i.e. the
-    // button actually painted something.
-    let centre = img.get_pixel(size.x / 2, size.y / 2);
-    let clear_srgb = [
-        (clear.r * 255.0).round() as u8,
-        (clear.g * 255.0).round() as u8,
-        (clear.b * 255.0).round() as u8,
-    ];
-    let differs = centre.0[..3] != clear_srgb;
-    assert!(
-        differs,
-        "centre pixel {:?} matches clear {:?} — scene didn't paint",
-        centre, clear_srgb
-    );
+#[test]
+fn headless_renders_button_scene() {
+    let mut h = Harness::new();
+    let img = render_button_scene(&mut h, UVec2::new(256, 96));
+    assert_matches_golden("button_hello", &img, Tolerance::default());
 }
