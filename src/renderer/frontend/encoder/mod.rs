@@ -149,7 +149,7 @@ fn encode_node(
     let cache_pending = if let Some((wid, hash, avail)) = cache_key {
         let cmd_lo = out.kinds.len() as u32;
         let data_lo = out.data.len() as u32;
-        let enter_patch = out.push_enter_subtree(wid);
+        let enter_patch = out.push_enter_subtree(wid, hash, avail);
         Some(CachePending {
             wid,
             hash,

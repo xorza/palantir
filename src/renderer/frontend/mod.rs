@@ -55,7 +55,7 @@ pub struct FrameOutput<'a> {
 #[derive(Default)]
 pub(crate) struct Frontend {
     pub(crate) encoder: Encoder,
-    composer: Composer,
+    pub(crate) composer: Composer,
 }
 
 impl Frontend {
@@ -80,10 +80,12 @@ impl Frontend {
         self.composer.compose(cmds, display)
     }
 
-    /// Drop encoder cache entries for `WidgetId`s that vanished this
-    /// frame. Called from `Ui::end_frame` with the same `removed` slice
-    /// that the measure cache and text reuse map consume.
+    /// Drop encoder + composer cache entries for `WidgetId`s that
+    /// vanished this frame. Called from `Ui::end_frame` with the same
+    /// `removed` slice that the measure cache and text reuse map
+    /// consume; keeps every cross-frame cache eviction-locked.
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         self.encoder.sweep_removed(removed);
+        self.composer.cache.sweep_removed(removed);
     }
 }

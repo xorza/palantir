@@ -1,10 +1,31 @@
 use super::cmd_buffer::{
-    Cmd, CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
+    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, EnterSubtreePayload,
+    RenderCmdBuffer,
 };
+use crate::layout::cache::AvailableKey;
 use crate::layout::types::display::Display;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
+use crate::tree::hash::NodeHash;
+use crate::tree::widget_id::WidgetId;
+use cache::ComposeCache;
+use rustc_hash::FxHasher;
+use std::hash::{Hash, Hasher};
+
+pub(crate) mod cache;
+
+/// Cold-frame state captured at `EnterSubtree` so `ExitSubtree` can
+/// write the snapshot back. Mirrors the encoder's `CachePending`.
+struct ComposeFrame {
+    wid: WidgetId,
+    subtree_hash: NodeHash,
+    avail: AvailableKey,
+    cascade_fp: u64,
+    quads_lo: u32,
+    texts_lo: u32,
+    groups_lo: u32,
+}
 
 /// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups). Owns its output buffer
@@ -18,6 +39,8 @@ pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
     clip_stack: Vec<URect>,
     transform_stack: Vec<TranslateScale>,
+    subtree_stack: Vec<ComposeFrame>,
+    pub(crate) cache: ComposeCache,
     pub(crate) buffer: RenderBuffer,
 }
 
@@ -42,6 +65,7 @@ impl Composer {
 
         self.clip_stack.clear();
         self.transform_stack.clear();
+        self.subtree_stack.clear();
         let mut current_transform = TranslateScale::IDENTITY;
         let mut current: Option<URect> = None;
         let mut quads_start: u32 = 0;
@@ -54,7 +78,11 @@ impl Composer {
         // flushed) and on flush.
         let mut last_was_text = false;
 
-        for Cmd { kind, start } in cmds.iter() {
+        let n = cmds.kinds.len();
+        let mut i = 0usize;
+        while i < n {
+            let kind = cmds.kinds[i];
+            let start = cmds.starts[i];
             match kind {
                 CmdKind::PushClip => {
                     let r: Rect = cmds.read(start);
@@ -138,12 +166,99 @@ impl Composer {
                     out.quads
                         .push(Quad::new(phys_rect, fill, phys_radius, phys_stroke));
                 }
-                CmdKind::EnterSubtree | CmdKind::ExitSubtree => {
-                    // Subtree-bracket markers from the encoder. No-op
-                    // today — anchor for the upcoming composer cache.
-                    // Group flow / `last_was_text` deliberately
-                    // unchanged so cold-frame compose output stays
-                    // byte-identical to the pre-marker baseline.
+                CmdKind::EnterSubtree => {
+                    let payload: EnterSubtreePayload = cmds.read(start);
+                    let wid = payload.wid;
+                    let subtree_hash = payload.subtree_hash;
+                    let avail = payload.avail;
+                    let cascade_fp = cascade_fingerprint(
+                        current_transform,
+                        self.clip_stack.last().copied(),
+                        scale,
+                        snap,
+                    );
+
+                    // Finalize the parent's accumulated group BEFORE we
+                    // either splice cached output or start recording a
+                    // fresh subtree. Without this, the cached subtree's
+                    // first group would be merged with the parent's
+                    // tail, breaking the splice's group ranges.
+                    flush_group(
+                        current,
+                        quads_start,
+                        out.quads.len() as u32,
+                        texts_start,
+                        out.texts.len() as u32,
+                        &mut out.groups,
+                    );
+                    quads_start = out.quads.len() as u32;
+                    texts_start = out.texts.len() as u32;
+                    last_was_text = false;
+
+                    if let Some(hit) = self.cache.try_lookup(wid, subtree_hash, avail, cascade_fp) {
+                        let base_q = out.quads.len() as u32;
+                        let base_t = out.texts.len() as u32;
+                        out.quads.extend_from_slice(hit.quads);
+                        out.texts.extend_from_slice(hit.texts);
+                        out.groups.reserve(hit.groups.len());
+                        for g in hit.groups {
+                            out.groups.push(DrawGroup {
+                                scissor: g.scissor,
+                                quads: (g.quads.start + base_q)..(g.quads.end + base_q),
+                                texts: (g.texts.start + base_t)..(g.texts.end + base_t),
+                            });
+                        }
+                        // Open group continues from the splice tail
+                        // under the parent's `current` scissor.
+                        quads_start = out.quads.len() as u32;
+                        texts_start = out.texts.len() as u32;
+                        // Fast-forward past the cached cmd range — the
+                        // matching `ExitSubtree` is at `payload.exit_idx`.
+                        i = payload.exit_idx as usize + 1;
+                        continue;
+                    }
+
+                    // Miss: record where the subtree's contributions
+                    // start so `ExitSubtree` can snapshot them.
+                    self.subtree_stack.push(ComposeFrame {
+                        wid,
+                        subtree_hash,
+                        avail,
+                        cascade_fp,
+                        quads_lo: out.quads.len() as u32,
+                        texts_lo: out.texts.len() as u32,
+                        groups_lo: out.groups.len() as u32,
+                    });
+                }
+                CmdKind::ExitSubtree => {
+                    // Finalize the inner subtree's last open group so
+                    // its full output is captured before snapshotting.
+                    flush_group(
+                        current,
+                        quads_start,
+                        out.quads.len() as u32,
+                        texts_start,
+                        out.texts.len() as u32,
+                        &mut out.groups,
+                    );
+                    quads_start = out.quads.len() as u32;
+                    texts_start = out.texts.len() as u32;
+                    last_was_text = false;
+
+                    if let Some(frame) = self.subtree_stack.pop() {
+                        self.cache.write_subtree(
+                            frame.wid,
+                            frame.subtree_hash,
+                            frame.avail,
+                            frame.cascade_fp,
+                            &out.quads,
+                            &out.texts,
+                            &out.groups,
+                            frame.quads_lo,
+                            frame.texts_lo,
+                            frame.groups_lo,
+                        );
+                    }
                 }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
@@ -159,6 +274,7 @@ impl Composer {
                     last_was_text = true;
                 }
             }
+            i += 1;
         }
         flush_group(
             current,
@@ -171,6 +287,36 @@ impl Composer {
 
         &self.buffer
     }
+}
+
+/// Hash the cascade inputs that the subtree's physical-px output
+/// depends on. Any change here misses the cache; equality round-trips
+/// to a byte-identical splice. `f32` fields hash by bit-pattern so
+/// `-0.0 != 0.0` distinctions don't get folded.
+#[inline]
+fn cascade_fingerprint(
+    t: TranslateScale,
+    parent_scissor: Option<URect>,
+    scale: f32,
+    snap: bool,
+) -> u64 {
+    let mut h = FxHasher::default();
+    t.translation.x.to_bits().hash(&mut h);
+    t.translation.y.to_bits().hash(&mut h);
+    t.scale.to_bits().hash(&mut h);
+    match parent_scissor {
+        None => 0u8.hash(&mut h),
+        Some(r) => {
+            1u8.hash(&mut h);
+            r.x.hash(&mut h);
+            r.y.hash(&mut h);
+            r.w.hash(&mut h);
+            r.h.hash(&mut h);
+        }
+    }
+    scale.to_bits().hash(&mut h);
+    snap.hash(&mut h);
+    h.finish()
 }
 
 #[allow(clippy::too_many_arguments)]

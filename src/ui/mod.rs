@@ -166,6 +166,34 @@ impl Ui {
         self.frontend.encoder.cache.clear();
     }
 
+    /// Drop every cross-frame compose-cache entry, forcing the next
+    /// frame's composer to re-compose every subtree from scratch.
+    /// `#[doc(hidden)]` — exists only so `benches/compose_cache.rs`
+    /// can A/B cache-enabled vs forced-miss frames against the public API.
+    #[doc(hidden)]
+    pub fn __clear_compose_cache(&mut self) {
+        self.frontend.composer.cache.clear();
+    }
+
+    /// Number of widgets currently snapshotted in the compose cache.
+    /// `#[doc(hidden)]` — exists only so `benches/compose_cache.rs`
+    /// can confirm the cache populated under each workload.
+    #[doc(hidden)]
+    pub fn __compose_cache_snapshot_count(&self) -> usize {
+        self.frontend.composer.cache.snapshots.len()
+    }
+
+    /// Re-run only the composer over the encoder's last cmd buffer,
+    /// returning the resulting snapshot count change. `#[doc(hidden)]`
+    /// — exists only so `benches/compose_cache.rs` can isolate
+    /// compose-only timing from the rest of `end_frame`.
+    #[doc(hidden)]
+    pub fn __recompose(&mut self) {
+        self.frontend
+            .composer
+            .compose(&self.frontend.encoder.cmds, &self.display);
+    }
+
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
         self.input.response_for(id, &self.cascades.result)
     }
