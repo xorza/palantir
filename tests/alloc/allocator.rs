@@ -12,14 +12,23 @@
 //! the auditing thread's audit-window allocs ever increment.
 //!
 //! `CAPTURING` is a per-thread re-entry guard so the bookkeeping
-//! allocs (Vec growth in `TRACES`, `Backtrace::capture` internals)
-//! neither recurse forever nor get counted. `Backtrace::capture` is
-//! a no-op unless `RUST_BACKTRACE=1`, so trace collection is
-//! free-by-default; set the env var when hunting a regression.
+//! allocs (Vec growth in `TRACES`, backtrace internals) neither
+//! recurse forever nor get counted.
+//!
+//! We use the lower-level `backtrace::Backtrace` (rather than
+//! `std::backtrace::Backtrace`) for the captured value because the
+//! `Frame`/`Symbol` API exposes filename and line directly, which the
+//! harness uses to drop std/runtime/dep frames structurally. Capture
+//! is unresolved (`new_unresolved`) so the hot path is just a stack
+//! walk; symbol resolution runs lazily inside the harness when a
+//! fixture fails. Capture is unconditional — the cost is negligible
+//! for passing tests (steady-state audits allocate zero times) and
+//! we want traces always available on failure.
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::backtrace::Backtrace;
 use std::cell::{Cell, RefCell};
+
+pub(crate) use backtrace::Backtrace;
 
 pub(crate) struct CountingAllocator;
 
@@ -39,7 +48,7 @@ fn track(layout: Layout) {
     ALLOCS.with(|c| c.set(c.get() + 1));
     BYTES.with(|c| c.set(c.get() + layout.size() as u64));
     CAPTURING.with(|f| f.set(true));
-    let bt = Backtrace::capture();
+    let bt = Backtrace::new_unresolved();
     TRACES.with(|t| t.borrow_mut().push(bt));
     CAPTURING.with(|f| f.set(false));
 }

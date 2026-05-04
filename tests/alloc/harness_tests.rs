@@ -8,7 +8,6 @@
 use crate::allocator::{delta, set_in_audit, snapshot, take_traces};
 use crate::harness::{AllocBudget, run_audit};
 use palantir::Ui;
-use std::backtrace::BacktraceStatus;
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -146,21 +145,17 @@ fn run_audit_panics_with_diagnostic_message_on_budget_violation() {
 }
 
 #[test]
-fn captured_traces_include_caller_when_backtrace_enabled() {
-    // Capture is a no-op without RUST_BACKTRACE. Skip the assertion
-    // path then — the smoke part (no panic, no count drift) still runs.
+fn captured_traces_include_caller_after_resolve() {
     let _ = take_traces();
     set_in_audit(true);
     one_alloc();
     set_in_audit(false);
-    let traces = take_traces();
+    let mut traces = take_traces();
     assert_eq!(traces.len(), 1);
-    let bt = &traces[0];
-    if matches!(bt.status(), BacktraceStatus::Captured) {
-        let s = format!("{bt}");
-        assert!(
-            s.contains("harness_tests"),
-            "captured backtrace should mention the test module, got:\n{s}",
-        );
-    }
+    traces[0].resolve();
+    let dump = format!("{:?}", traces[0]);
+    assert!(
+        dump.contains("harness_tests"),
+        "resolved backtrace should mention the test module, got:\n{dump}",
+    );
 }
