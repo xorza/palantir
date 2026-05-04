@@ -14,6 +14,7 @@ use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
 use crate::text::SharedCosmic;
 use crate::text::cosmic::RenderSplit;
+use glam::UVec2;
 use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
     TextRenderer as GlyphonRenderer, Viewport,
@@ -118,12 +119,12 @@ impl TextRenderer {
 
     /// Update the viewport uniform. Called once per frame before the
     /// per-group prepares so all renderers see the same viewport.
-    pub fn update_viewport(&mut self, queue: &wgpu::Queue, viewport_phys: [u32; 2]) {
+    pub fn update_viewport(&mut self, queue: &wgpu::Queue, viewport_phys: UVec2) {
         self.viewport.update(
             queue,
             Resolution {
-                width: viewport_phys[0],
-                height: viewport_phys[1],
+                width: viewport_phys.x,
+                height: viewport_phys.y,
             },
         );
     }

@@ -1,7 +1,7 @@
 use super::quad::Quad;
 use crate::primitives::{color::Color, urect::URect};
 use crate::text::TextCacheKey;
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 use std::ops::Range;
 
 /// Pure output of `compose`: physical-px instances grouped by scissor region,
@@ -18,9 +18,9 @@ pub(crate) struct RenderBuffer {
     pub(crate) groups: Vec<DrawGroup>,
     /// Physical-px viewport, ceil'd. Backends use this as the default scissor
     /// when a group has no clip.
-    pub(crate) viewport_phys: [u32; 2],
+    pub(crate) viewport_phys: UVec2,
     /// Same viewport in float — needed by the wgpu vertex shader uniform.
-    pub(crate) viewport_phys_f: [f32; 2],
+    pub(crate) viewport_phys_f: Vec2,
     /// Logical→physical conversion factor, propagated from `Display`.
     /// Glyph rasterization needs it: shaped buffers are sized in logical px,
     /// so glyphon scales by this when emitting glyph quads.
@@ -33,8 +33,8 @@ impl Default for RenderBuffer {
             quads: Vec::new(),
             texts: Vec::new(),
             groups: Vec::new(),
-            viewport_phys: [0, 0],
-            viewport_phys_f: [0.0, 0.0],
+            viewport_phys: UVec2::ZERO,
+            viewport_phys_f: Vec2::ZERO,
             scale: 1.0,
         }
     }

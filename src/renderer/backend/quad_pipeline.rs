@@ -4,6 +4,7 @@
 
 use crate::renderer::gpu::quad::Quad;
 use bytemuck::{Pod, Zeroable};
+use glam::Vec2;
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -129,14 +130,14 @@ impl QuadPipeline {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        viewport: [f32; 2],
+        viewport: Vec2,
         quads: &[Quad],
     ) {
         queue.write_buffer(
             &self.viewport_buffer,
             0,
             bytemuck::cast_slice(&[ViewportUniform {
-                size: viewport,
+                size: viewport.to_array(),
                 _pad: [0.0, 0.0],
             }]),
         );

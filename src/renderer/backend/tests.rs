@@ -10,6 +10,7 @@ use crate::primitives::urect::URect;
 use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
 use crate::text::TextCacheKey;
+use glam::{UVec2, Vec2};
 
 /// One step of the backend's per-frame draw schedule. Used here to pin
 /// draw ordering without a GPU. `Quads(i)` draws group `i`'s quads;
@@ -83,8 +84,8 @@ fn render_schedule_interleaves_text_per_group() {
                 texts: 1..1,
             },
         ],
-        viewport_phys: [100, 100],
-        viewport_phys_f: [100.0, 100.0],
+        viewport_phys: UVec2::new(100, 100),
+        viewport_phys_f: Vec2::new(100.0, 100.0),
         scale: 1.0,
     };
     assert_eq!(
@@ -118,8 +119,8 @@ fn render_schedule_emits_text_for_quadless_group() {
                 texts: 0..2,
             },
         ],
-        viewport_phys: [100, 100],
-        viewport_phys_f: [100.0, 100.0],
+        viewport_phys: UVec2::new(100, 100),
+        viewport_phys_f: Vec2::new(100.0, 100.0),
         scale: 1.0,
     };
     assert_eq!(

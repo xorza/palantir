@@ -10,6 +10,7 @@ use crate::renderer::gpu::quad::Quad;
 use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use cache::ComposeCache;
+use glam::UVec2;
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
@@ -129,8 +130,8 @@ impl Composer {
         let out = &mut self.buffer;
         let scale = display.scale_factor;
         let snap = display.pixel_snap;
-        let viewport_phys_f = [display.physical.x as f32, display.physical.y as f32];
-        let viewport_phys = [display.physical.x, display.physical.y];
+        let viewport_phys = display.physical;
+        let viewport_phys_f = viewport_phys.as_vec2();
 
         out.quads.clear();
         out.texts.clear();
@@ -318,12 +319,12 @@ fn cascade_fingerprint(
     h.finish()
 }
 
-fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: [u32; 2]) -> URect {
+fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {
     let phys = r.scaled_by(scale, snap);
-    let x = (phys.min.x.max(0.0) as u32).min(viewport[0]);
-    let y = (phys.min.y.max(0.0) as u32).min(viewport[1]);
-    let right = ((phys.min.x + phys.size.w).max(0.0) as u32).min(viewport[0]);
-    let bottom = ((phys.min.y + phys.size.h).max(0.0) as u32).min(viewport[1]);
+    let x = (phys.min.x.max(0.0) as u32).min(viewport.x);
+    let y = (phys.min.y.max(0.0) as u32).min(viewport.y);
+    let right = ((phys.min.x + phys.size.w).max(0.0) as u32).min(viewport.x);
+    let bottom = ((phys.min.y + phys.size.h).max(0.0) as u32).min(viewport.y);
     URect {
         x,
         y,
