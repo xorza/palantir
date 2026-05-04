@@ -35,17 +35,22 @@ use crate::tree::widget_id::WidgetId;
 use glam::IVec2;
 use rustc_hash::FxHashMap;
 
-/// 24-byte snapshot. `nodes` indexes the three node-indexed arenas
+/// 32-byte snapshot. `nodes` indexes the three node-indexed arenas
 /// (`desired`, `text`, `available`); `hugs` indexes `hugs`. The
-/// snapshot's quantized `available` is recoverable as
-/// `available[nodes.start]` (always the snapshot root's per-node
-/// entry) — no separate field.
+/// snapshot key is `(subtree_hash, available_q)` — both fields are
+/// compared at lookup time.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ArenaSnapshot {
     /// Rolled subtree hash from last frame. The rollup includes child
     /// count and per-child subtree hashes, so any structural or
     /// authoring change anywhere in the subtree busts the key.
     pub(crate) subtree_hash: NodeHash,
+    /// Quantized `available` size the snapshot was measured under —
+    /// the dimensional half of the cache key. Matches
+    /// `available[nodes.start]` (the per-node entry is still
+    /// populated for descendant restoration on a hit) but the key
+    /// check reads this field directly.
+    pub(crate) available_q: AvailableKey,
     /// Range over the three node-indexed arenas. `desired.items[nodes.range()]`
     /// is the subtree's `desired` in pre-order; index 0 is the
     /// snapshot root's own size.
@@ -148,13 +153,10 @@ impl MeasureCache {
         curr_avail: AvailableKey,
     ) -> Option<CachedSubtree<'_>> {
         let snap = self.snapshots.get(&wid)?;
-        let nodes = snap.nodes.range();
-        // Snapshot's `available_q` lives at `available[nodes.start]` —
-        // the per-node entry for the snapshot root, written at the
-        // same time as the field used to live.
-        if snap.subtree_hash != curr_hash || self.available[nodes.start] != curr_avail {
+        if snap.subtree_hash != curr_hash || snap.available_q != curr_avail {
             return None;
         }
+        let nodes = snap.nodes.range();
         Some(CachedSubtree {
             root: self.desired.items[nodes.start],
             desired: &self.desired.items[nodes.clone()],
@@ -200,6 +202,7 @@ impl MeasureCache {
             let nodes = prev.nodes.range();
             let hugs_range = prev.hugs.range();
             prev.subtree_hash = subtree_hash;
+            prev.available_q = available_qs[0];
             self.desired.items[nodes.clone()].copy_from_slice(desired);
             self.text[nodes.clone()].copy_from_slice(text_shapes);
             self.available[nodes].copy_from_slice(available_qs);
@@ -226,6 +229,7 @@ impl MeasureCache {
             wid,
             ArenaSnapshot {
                 subtree_hash,
+                available_q: available_qs[0],
                 nodes,
                 hugs: hugs_span,
             },
