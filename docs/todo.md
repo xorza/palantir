@@ -1,9 +1,6 @@
 # Todo
 
 
-automate padding in structs
-
-
 
 ## Damage rendering (`docs/damage-rendering.md`)
 
