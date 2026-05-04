@@ -1,15 +1,15 @@
 //! Frame-loop driver around `Ui` that measures heap allocations
 //! attributable to one scene's per-frame work.
 //!
-//! `run_audit` runs `warmup` frames untracked, snapshots the
-//! per-thread counter, runs `audit` frames, and asserts the delta is
-//! within `budget`. The counter is per-thread (see `allocator.rs`),
-//! so cargo's parallel test runner can't pollute one fixture's
-//! window with another's allocations — no global lock needed.
-//! With `RUST_BACKTRACE=1`, every audit-window alloc is captured
-//! and dumped on budget failure.
+//! `run_audit` runs `warmup` frames untracked, then drives `audit`
+//! frames inside [`with_audit`] so per-thread counters + backtrace
+//! capture stay scoped to that window. The counter is per-thread
+//! (see `allocator.rs`), so cargo's parallel test runner can't
+//! pollute one fixture's window with another's allocations — no
+//! global lock needed.
 
-use crate::allocator::{Backtrace, delta, set_in_audit, snapshot, take_traces};
+use crate::allocator::{AuditResult, with_audit};
+use backtrace::Backtrace;
 use palantir::{Display, Ui};
 use std::fmt::Write as _;
 
@@ -43,53 +43,54 @@ pub(crate) fn run_audit<S>(
         scene(&mut ui);
         let _ = ui.end_frame();
     }
-    let before = snapshot();
-    set_in_audit(true);
-    for _ in 0..audit {
-        ui.begin_frame(display);
-        scene(&mut ui);
-        let _ = ui.end_frame();
-    }
-    set_in_audit(false);
-    let measured = delta(before);
-    let mut traces = take_traces();
+
+    let mut result = with_audit(|| {
+        for _ in 0..audit {
+            ui.begin_frame(display);
+            scene(&mut ui);
+            let _ = ui.end_frame();
+        }
+    });
 
     let budget_total = budget.allocs_per_frame * audit as u64;
-    let per_frame_allocs = measured.allocs as f64 / audit as f64;
-    let per_frame_bytes = measured.bytes as f64 / audit as f64;
+    let per_frame_allocs = result.allocs as f64 / audit as f64;
+    let per_frame_bytes = result.bytes as f64 / audit as f64;
     println!(
         "alloc-audit {name}: {per_frame_allocs:.2} allocs/frame, {per_frame_bytes:.0} B/frame \
          (total {} allocs / {} B over {audit} frames after {warmup} warmup)",
-        measured.allocs, measured.bytes,
+        result.allocs, result.bytes,
     );
 
-    if measured.allocs > budget_total {
-        for (i, bt) in traces.iter_mut().enumerate() {
-            eprintln!("--- alloc #{i} backtrace ---\n{}", user_frames(bt));
-        }
-        eprintln!(
-            "(set PALANTIR_ALLOC_FULL_BT=1 to disable user-code filtering and see full stacks)",
-        );
+    if result.allocs > budget_total {
+        dump_traces(&mut result);
         panic!(
             "alloc budget exceeded for `{name}`: {} allocs over {} frames \
-             (budget {}/frame = {} total, {:.2} actual/frame)",
-            measured.allocs, audit, budget.allocs_per_frame, budget_total, per_frame_allocs,
+             (budget {}/frame = {} total)",
+            result.allocs, audit, budget.allocs_per_frame, budget_total,
         );
     }
 }
 
+fn dump_traces(result: &mut AuditResult) {
+    for (i, bt) in result.traces.iter_mut().enumerate() {
+        eprintln!("--- alloc #{i} backtrace ---\n{}", user_frames(bt));
+    }
+    eprintln!("(set PALANTIR_ALLOC_FULL_BT=1 to disable user-code filtering and see full stacks)",);
+}
+
 /// Trim a captured backtrace to just the frames a debug-this reader
-/// cares about: `palantir/src/**` (the bug source) and the fixture
-/// closure (the call site). Drops std/runtime, external deps, and the
-/// audit machinery itself (allocator/harness/main). Frames are
-/// renumbered top-to-bottom so the result reads as a clean call stack
-/// from fixture closure down to the allocating call site.
+/// cares about: `palantir/src/**` (the bug source) plus the entry
+/// point inside `tests/alloc/fixtures/**` (the call site). Drops
+/// std/runtime, external deps, and the audit machinery itself.
+/// Frames are renumbered top-to-bottom so the result reads as a
+/// clean call stack from fixture closure down to the allocating
+/// call site.
 ///
 /// Resolution is lazy — capture used `Backtrace::new_unresolved`, so
 /// symbols/files are only resolved here, on the failure path.
 ///
 /// Set `PALANTIR_ALLOC_FULL_BT=1` to bypass and emit the raw backtrace.
-fn user_frames(bt: &mut Backtrace) -> String {
+pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
     if std::env::var_os("PALANTIR_ALLOC_FULL_BT").is_some() {
         bt.resolve();
         return format!("{bt:?}");
@@ -98,27 +99,31 @@ fn user_frames(bt: &mut Backtrace) -> String {
 
     let mut out = String::new();
     let mut idx = 0u32;
-    let mut seen_test_frame = false;
+    let mut seen_fixture_frame = false;
     'outer: for frame in bt.frames() {
         for symbol in frame.symbols() {
             let Some(filename) = symbol.filename() else {
                 continue;
             };
             let path = filename.to_string_lossy();
-            if !is_user_path(&path) {
+            let Some(rel) = user_relative(&path) else {
                 continue;
-            }
-            let rel = user_relative(&path).unwrap_or(&path);
-            // Stop after the first `tests/` frame — that's the entry point
-            // into the fixture closure; further frames are #[test] wrappers
-            // (the test fn body, the outer test-macro closure) which all
-            // point at the same file with no extra signal.
-            let in_test = rel.starts_with("tests/");
-            if in_test && seen_test_frame {
+            };
+            let kind = classify(rel);
+            let in_fixture = match kind {
+                FrameKind::Src => false,
+                FrameKind::Fixture => true,
+                FrameKind::Other => continue,
+            };
+            // Stop after the first fixture frame — that's the entry
+            // point into the scene closure; further frames are
+            // #[test] wrappers that all point at the same file with
+            // no extra signal.
+            if in_fixture && seen_fixture_frame {
                 break 'outer;
             }
-            if in_test {
-                seen_test_frame = true;
+            if in_fixture {
+                seen_fixture_frame = true;
             }
             let name = symbol
                 .name()
@@ -139,6 +144,28 @@ fn user_frames(bt: &mut Backtrace) -> String {
     out
 }
 
+#[derive(Clone, Copy)]
+enum FrameKind {
+    /// Library code under `src/...` — interesting; the bug usually lives here.
+    Src,
+    /// Fixture entry point under `tests/alloc/fixtures/...` — interesting once
+    /// per trace as the call site that triggered the alloc trail.
+    Fixture,
+    /// Anything else (harness internals under `tests/alloc/`, plus everything
+    /// that's not part of the user crate at all) — rejected.
+    Other,
+}
+
+fn classify(rel: &str) -> FrameKind {
+    if rel.starts_with("src/") {
+        FrameKind::Src
+    } else if rel.starts_with("tests/alloc/fixtures/") {
+        FrameKind::Fixture
+    } else {
+        FrameKind::Other
+    }
+}
+
 /// Drop the `alloc::` test-binary-crate prefix from a demangled symbol
 /// name. The test binary built from `tests/alloc/main.rs` is named
 /// `alloc`, so every fixture/harness symbol starts with `alloc::`; that
@@ -157,19 +184,4 @@ fn user_relative(path: &str) -> Option<&str> {
     const ANCHOR: &str = "/palantir/";
     let idx = path.rfind(ANCHOR)?;
     Some(&path[idx + ANCHOR.len()..])
-}
-
-fn is_user_path(path: &str) -> bool {
-    // Allow `src/...` and `tests/...` in this crate; reject the audit
-    // plumbing inside `tests/alloc/`. Anything outside the crate
-    // (rustc, rustup, `.cargo/registry`, hashbrown, etc.) is rejected
-    // by the anchor check.
-    let Some(rel) = user_relative(path) else {
-        return false;
-    };
-    let user = rel.starts_with("src/") || rel.starts_with("tests/");
-    let plumbing = rel.starts_with("tests/alloc/allocator.rs")
-        || rel.starts_with("tests/alloc/harness.rs")
-        || rel.starts_with("tests/alloc/main.rs");
-    user && !plumbing
 }
