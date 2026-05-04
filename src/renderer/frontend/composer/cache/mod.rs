@@ -34,8 +34,12 @@ use crate::tree::hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use rustc_hash::FxHashMap;
 
-/// Per-`WidgetId` snapshot. `subtree_hash` and `available_q` and
-/// `cascade_fp` must all match at lookup time for a hit.
+/// Per-`WidgetId` snapshot. `subtree_hash`, `available_q`, and
+/// `cascade_fp` must all match at lookup time for a hit. A snapshot
+/// exists only for nodes the encoder bracketed with
+/// `EnterSubtree`/`ExitSubtree` markers — i.e. the encoder confirmed
+/// layout had a known `available_q` — so a `wid` being present in
+/// `snapshots` implies layout has a known available size.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ComposeSnapshot {
     pub(crate) subtree_hash: NodeHash,
@@ -241,6 +245,8 @@ impl ComposeCache {
         self.snapshots.clear();
     }
 
+    /// Rare path; same reuse-vs-fresh tradeoff as
+    /// `EncodeCache::compact` — revisit only if profile shows it.
     fn compact(&mut self) {
         let mut new_q: Vec<Quad> = Vec::with_capacity(self.quads.live);
         let mut new_t: Vec<TextRun> = Vec::with_capacity(self.texts.live);
