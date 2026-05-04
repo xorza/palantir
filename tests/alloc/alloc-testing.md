@@ -101,17 +101,20 @@ shouldn't.
 - `harness_tests.rs` — unit tests for the harness itself.
 
 ### Fixtures
-- `empty_frame` ✅ — `Ui` with no widgets, budget 0. Sanity baseline.
-- `button_only` ✅ — single `Button::label("hello")`, budget 0. Pins
-  the static-string label round-trip at zero allocs.
+All use `audit_until_stable` (warmup auto-discovered) and pin **budget 0**.
 
-Both use `audit_until_stable`, so warmup is auto-discovered.
-
-### Planned
-- `nested_vstack_64` — past scratch-Vec growth; budget 0.
-- `grid_8x8` — grid driver scratch + track-list; budget 0.
-- `static_text_label` — pin honest baseline (cosmic-text isn't ours).
-- `damage_animated_rect` — rect-mutating widget, exercises damage diff.
+- `empty_frame` ✅ — `Ui` with no widgets. Sanity baseline.
+- `button_only` ✅ — single `Button::label("hello")` with FILL/FILL.
+  Pins the static-string label round-trip.
+- `nested_vstack_64` ✅ — 64-deep `Panel::vstack_with_id` recursion,
+  exercises layout scratch growth at depth.
+- `grid_8x8` ✅ — `Grid` with 8×8 `Track::fill` and a `Frame` per cell;
+  exercises grid driver scratch + track-list `Rc` reuse.
+- `damage_animated_rect` ✅ — `Frame` whose width changes every frame,
+  exercising the damage diff + cascade rebuild on a mutating tree.
+- `static_text_label` ✅ — `Text::new("hello world")`. Held the
+  surprise: cosmic shaping caches across frames and `Cow<'static, str>`
+  storage means the audit window stays at 0 once warmed.
 
 ### CI ⏳
 Local-only. Same posture as `tests/visual` — wire one pinned-runner job
