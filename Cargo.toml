@@ -16,6 +16,7 @@ thiserror = "*"
 wgpu = "*"
 winit = "*"
 rayon = "*"
+padding-struct = "*"
 
 [dev-dependencies]
 criterion = "*"
