@@ -16,7 +16,7 @@ mod tests;
 /// trigger recursive sizing of Fill children. Same per-axis pattern Stack
 /// uses on its cross axis. Content size =
 /// `max(child_pos + child_desired)` per axis.
-pub(super) fn measure(
+pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -43,7 +43,7 @@ pub(super) fn measure(
 /// Each child gets a slot at `inner.min + style.position`, sized per its
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `measure`.
-pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
+pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
     for child in tree.children_with_state(node) {
         let c = match child {
             Child::Collapsed(c) => {
@@ -65,7 +65,7 @@ pub(super) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
 /// Intrinsic size of a Canvas: max over `(child.position +
 /// child.intrinsic)` on the queried axis. Matches how `measure` computes
 /// the canvas's content size.
-pub(super) fn intrinsic(
+pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,

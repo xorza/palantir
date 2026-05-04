@@ -22,7 +22,7 @@ fn cross_align(axis: Axis, child: &LayoutCore, parent_child_align: Align) -> Axi
     }
 }
 
-pub(super) fn measure(
+pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -104,7 +104,7 @@ pub(super) fn measure(
     axis.compose_size(sum_non_fill_main + fill_main + total_gap, max_cross)
 }
 
-pub(super) fn arrange(
+pub(crate) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -201,7 +201,7 @@ pub(super) fn arrange(
 /// Intrinsic size of a stack on `query_axis` under `req`. When the query
 /// axis matches the stack's `main_axis`, sum children's intrinsic on
 /// that axis plus gaps; otherwise (cross axis), max over children.
-pub(super) fn intrinsic(
+pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,

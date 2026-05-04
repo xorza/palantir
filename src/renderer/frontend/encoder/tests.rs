@@ -11,7 +11,12 @@ use crate::test_support::{RenderCmd, begin, encode_cmds, encode_cmds_filtered, i
 use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
 use glam::{UVec2, Vec2};
 
-fn count_clip_pairs(cmds: &RenderCmdBuffer) -> (usize, usize) {
+struct ClipPairs {
+    pushes: usize,
+    pops: usize,
+}
+
+fn count_clip_pairs(cmds: &RenderCmdBuffer) -> ClipPairs {
     let mut pushes = 0;
     let mut pops = 0;
     for c in iter_cmds(cmds) {
@@ -21,7 +26,7 @@ fn count_clip_pairs(cmds: &RenderCmdBuffer) -> (usize, usize) {
             _ => {}
         }
     }
-    (pushes, pops)
+    ClipPairs { pushes, pops }
 }
 
 #[test]
@@ -90,7 +95,7 @@ fn clip_emits_balanced_push_pop() {
     ui.end_frame();
     let cmds = encode_cmds(&ui);
 
-    let (pushes, pops) = count_clip_pairs(&cmds);
+    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
     assert_eq!(pops, 1);
 
@@ -341,7 +346,7 @@ fn nested_clips_each_emit_their_own_pair() {
     });
     ui.end_frame();
     let cmds = encode_cmds(&ui);
-    let (pushes, pops) = count_clip_pairs(&cmds);
+    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
     assert_eq!(pops, 2);
 }
@@ -545,7 +550,7 @@ fn damage_filter_preserves_clip_pushpop() {
     // Filter misses the clipped panel entirely.
     let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
-    let (pushes, pops) = count_clip_pairs(&cmds);
+    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, pops, "clip push/pop must be balanced");
     assert!(
         pushes >= 1,

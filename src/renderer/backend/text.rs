@@ -10,8 +10,10 @@
 //! [`TextRun`]: super::super::buffer::TextRun
 
 use super::super::buffer::TextRun;
+use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
 use crate::text::SharedCosmic;
+use crate::text::cosmic::RenderSplit;
 use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
     TextRenderer as GlyphonRenderer, Viewport,
@@ -150,7 +152,10 @@ impl TextRenderer {
         let scratch: &mut Vec<TextArea<'_>> = unsafe { std::mem::transmute(&mut self.scratch) };
         scratch.clear();
 
-        let (font_system, lookup) = cosmic.split_for_render();
+        let RenderSplit {
+            font_system,
+            lookup,
+        } = cosmic.split_for_render();
         for r in runs {
             let Some(buffer) = lookup.get(r.key) else {
                 continue;
@@ -249,7 +254,7 @@ fn text_bounds(b: URect) -> TextBounds {
     }
 }
 
-fn glyphon_color(c: crate::primitives::color::Color) -> glyphon::Color {
+fn glyphon_color(c: Color) -> glyphon::Color {
     let r = (c.r.clamp(0.0, 1.0) * 255.0).round() as u8;
     let g = (c.g.clamp(0.0, 1.0) * 255.0).round() as u8;
     let b = (c.b.clamp(0.0, 1.0) * 255.0).round() as u8;

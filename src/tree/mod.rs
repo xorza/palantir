@@ -1,4 +1,4 @@
-use crate::element::{Element, ElementExtras, LayoutCore, LayoutMode, PaintCore};
+use crate::element::{Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintCore};
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::tree::grid_def::GridDef;
@@ -165,7 +165,12 @@ impl Tree {
                 "LayoutMode::Grid({idx}) references no grid_def — only Grid::show should push grid nodes",
             );
         }
-        let (layout, mut paint, widget_id, extras) = element.split();
+        let ElementSplit {
+            layout,
+            mut paint,
+            id: widget_id,
+            extras,
+        } = element.split();
 
         // If the parent is a `Grid`, validate the child's `GridCell` against
         // the grid's track counts now — once at recording time — instead of
@@ -465,7 +470,7 @@ impl<'a> Iterator for ChildIter<'a> {
 /// is retained across frames; data is cleared per frame.
 #[derive(Default)]
 pub(crate) struct GridArena {
-    pub(super) defs: Vec<GridDef>,
+    pub(crate) defs: Vec<GridDef>,
 }
 
 impl GridArena {

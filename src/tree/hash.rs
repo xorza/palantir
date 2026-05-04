@@ -211,7 +211,7 @@ fn hash_grid_def(h: &mut impl Hasher, def: &GridDef) {
 /// pure function of (LayoutCore, PaintCore, ElementExtras, shapes,
 /// optional GridDef) at this `NodeId`.
 #[inline]
-pub(super) fn compute_node_hash(
+pub(crate) fn compute_node_hash(
     layout: &LayoutCore,
     paint: PaintCore,
     extras: Option<&ElementExtras>,
