@@ -2,3 +2,5 @@
 **/tmp/
 **/.tmp/
 **/.DS_Store
+tests/visual/golden/
+tests/visual/output/
