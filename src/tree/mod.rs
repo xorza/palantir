@@ -211,6 +211,29 @@ impl Tree {
         }
     }
 
+    /// Roll `subtree_end` up from leaves to roots so every internal
+    /// node's slot points one past its last descendant. After recording,
+    /// `subtree_end[i]` is the per-node leaf marker `i + 1` (set in
+    /// `open_node`); this single reverse pass uses `recording_parent` to
+    /// propagate each child's `subtree_end` up to its parent. Pre-order
+    /// arena → children always have higher indices than their parent →
+    /// reverse iteration visits children first. Idempotent.
+    pub(crate) fn finalize_subtree_end(&mut self) {
+        let n = self.layout.len();
+        let parents = &self.recording_parent[..n];
+        let ends = &mut self.subtree_end[..n];
+        for i in (1..n).rev() {
+            let p = parents[i];
+            if p == Self::NO_PARENT {
+                continue;
+            }
+            let pi = p as usize;
+            if ends[pi] < ends[i] {
+                ends[pi] = ends[i];
+            }
+        }
+    }
+
     /// Push a node as a child of the currently-open node (or as the root if
     /// no node is open) and make it the new tip. Pair with `close_node`.
     pub(crate) fn open_node(&mut self, element: Element) -> NodeId {
@@ -281,33 +304,6 @@ impl Tree {
         new_id
     }
 
-    pub(crate) fn push_grid_def(&mut self, def: GridDef) -> u16 {
-        self.grid.push_def(def)
-    }
-
-    /// Roll `subtree_end` up from leaves to roots so every internal
-    /// node's slot points one past its last descendant. After recording,
-    /// `subtree_end[i]` is the per-node leaf marker `i + 1` (set in
-    /// `open_node`); this single reverse pass uses `recording_parent` to
-    /// propagate each child's `subtree_end` up to its parent. Pre-order
-    /// arena → children always have higher indices than their parent →
-    /// reverse iteration visits children first. Idempotent.
-    pub(crate) fn finalize_subtree_end(&mut self) {
-        let n = self.layout.len();
-        let parents = &self.recording_parent[..n];
-        let ends = &mut self.subtree_end[..n];
-        for i in (1..n).rev() {
-            let p = parents[i];
-            if p == Self::NO_PARENT {
-                continue;
-            }
-            let pi = p as usize;
-            if ends[pi] < ends[i] {
-                ends[pi] = ends[i];
-            }
-        }
-    }
-
     /// Pop the currently-open node back to its parent. Panics if no node is
     /// open.
     pub(crate) fn close_node(&mut self) {
@@ -320,6 +316,10 @@ impl Tree {
         } else {
             Some(NodeId(p))
         };
+    }
+
+    pub(crate) fn push_grid_def(&mut self, def: GridDef) -> u16 {
+        self.grid.push_def(def)
     }
 
     pub(crate) fn add_shape(&mut self, node: NodeId, shape: Shape) {
