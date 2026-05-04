@@ -21,27 +21,19 @@ criterion = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
 
 [[bench]]
-name = "layout"
+name = "frame"
 harness = false
 
 [[bench]]
-name = "measure_cache"
+name = "caches"
 harness = false
-required-features = ["internals"]
-
-[[bench]]
-name = "encode_cache"
-harness = false
-required-features = ["internals"]
-
-[[bench]]
-name = "compose_cache"
-harness = false
-required-features = ["internals"]
+required-features = ["internals", "bench-deep"]
 
 [features]
 # Exposes `internals::*` (cache reset + introspection helpers used by
-# `benches/`). Enabled automatically for the cache benches via their
-# `required-features`. Tests get the same module without the feature
-# because `cfg(test)` is also gated on.
+# `benches/`). Tests get the same module without the feature because
+# `cfg(test)` is also gated on.
 internals = []
+# Opt-in cache A/B benches. Default `cargo bench` runs only `frame.rs`;
+# `cargo bench --features "internals bench-deep"` adds `caches.rs`.
+bench-deep = []
