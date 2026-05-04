@@ -27,7 +27,7 @@ pub(crate) mod wrapstack;
 pub(crate) mod zstack;
 
 #[cfg(test)]
-mod cross_driver;
+mod cross_driver_tests;
 
 /// Per-frame intermediate state: every field is reset / overwritten at
 /// the top of [`LayoutEngine::run`] and exists only for the duration of
