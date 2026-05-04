@@ -42,6 +42,10 @@ mod cross_driver;
 ///   memoize within a frame. Flat `Vec` indexed by node, four slots
 ///   per node (one per `(axis, req)` combination). NaN means "not yet
 ///   computed".
+/// - `tmp_hugs` — staging buffer for the next [`MeasureCache`]
+///   snapshot's per-grid hug payload. Filled by
+///   `GridHugStore::snapshot_subtree` then handed to
+///   `MeasureCache::write_subtree`.
 ///
 /// Module-internal tests (e.g. `stack/tests.rs`) reach in via
 /// `pub(crate)` to pin measure output independently of
@@ -52,6 +56,7 @@ pub(crate) struct LayoutScratch {
     pub(crate) wrap: WrapScratch,
     pub(crate) desired: Vec<Size>,
     pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
+    pub(crate) tmp_hugs: Vec<f32>,
 }
 
 impl LayoutScratch {
@@ -323,17 +328,18 @@ impl LayoutEngine {
         // contiguous in both `desired` and `text_shapes`. Capacity
         // retains across frames via `clear() + extend_from_slice`
         // inside `MeasureCache::write_subtree`. Per-grid hug arrays
-        // for descendant Grids land in the cache's own
-        // `tmp_hugs` buffer first; empty for grid-free subtrees.
+        // for descendant Grids land in `scratch.tmp_hugs` first;
+        // empty for grid-free subtrees.
         {
             let start = node.index();
             let end = tree.subtree_end[start] as usize;
-            self.cache.tmp_hugs.clear();
+            self.scratch.tmp_hugs.clear();
             if tree.subtree_has_grid[start] {
-                self.scratch
-                    .grid
-                    .hugs
-                    .snapshot_subtree(tree, start..end, &mut self.cache.tmp_hugs);
+                self.scratch.grid.hugs.snapshot_subtree(
+                    tree,
+                    start..end,
+                    &mut self.scratch.tmp_hugs,
+                );
             }
             self.cache.write_subtree(
                 cache_wid,
@@ -341,6 +347,7 @@ impl LayoutEngine {
                 &self.scratch.desired[start..end],
                 self.result.text_shapes_slice(start..end),
                 &self.result.available_q[start..end],
+                &self.scratch.tmp_hugs,
             );
         }
 

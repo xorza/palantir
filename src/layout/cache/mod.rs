@@ -133,11 +133,6 @@ pub(crate) struct MeasureCache {
     /// Per-`WidgetId` snapshot index. Each value points at a range in
     /// the arenas above.
     pub(crate) snapshots: FxHashMap<WidgetId, ArenaSnapshot>,
-    /// Reusable buffer for the next snapshot's hug payload. Caller
-    /// fills via [`GridHugStore::snapshot_subtree`] before invoking
-    /// [`Self::write_subtree`]; `write_subtree` consumes it. Capacity
-    /// retained across frames so steady-state writes don't allocate.
-    pub(crate) tmp_hugs: Vec<f32>,
 }
 
 impl MeasureCache {
@@ -169,14 +164,14 @@ impl MeasureCache {
         })
     }
 
-    /// Overwrite (or insert) `wid`'s snapshot. Caller must have first
-    /// populated [`Self::tmp_hugs`] with the per-grid hug arrays for
-    /// every Grid descendant, in `HUG_ORDER` (see grid module). Hot
-    /// path is in-place memcpy when the existing range has the same
-    /// length — expected to hit ~always once a widget reaches steady
-    /// state, since `subtree_hash` includes structure (same hash →
-    /// same subtree size). Size mismatches mark the old range as
-    /// garbage and append a fresh range to the arena.
+    /// Overwrite (or insert) `wid`'s snapshot. `hugs` is the per-grid
+    /// hug payload for every Grid descendant of the subtree, packed
+    /// in `HUG_ORDER` (see grid module); empty for grid-free
+    /// subtrees. Hot path is in-place memcpy when the existing range
+    /// has the same length — expected to hit ~always once a widget
+    /// reaches steady state, since `subtree_hash` includes structure
+    /// (same hash → same subtree size). Size mismatches mark the old
+    /// range as garbage and append a fresh range to the arena.
     pub(crate) fn write_subtree(
         &mut self,
         wid: WidgetId,
@@ -184,6 +179,7 @@ impl MeasureCache {
         desired: &[Size],
         text_shapes: &[Option<ShapedText>],
         available_qs: &[AvailableKey],
+        hugs: &[f32],
     ) {
         assert_eq!(desired.len(), text_shapes.len());
         assert_eq!(desired.len(), available_qs.len());
@@ -192,7 +188,7 @@ impl MeasureCache {
             "snapshot must include the root's own per-node available_q",
         );
         let new_len = desired.len() as u32;
-        let new_hugs_len = self.tmp_hugs.len() as u32;
+        let new_hugs_len = hugs.len() as u32;
 
         if let Some(prev) = self.snapshots.get_mut(&wid)
             && prev.nodes.len == new_len
@@ -204,19 +200,10 @@ impl MeasureCache {
             let nodes = prev.nodes.range();
             let hugs_range = prev.hugs.range();
             prev.subtree_hash = subtree_hash;
-            // Disjoint-field borrows: arenas vs. tmp_hugs.
-            let Self {
-                desired: desired_arena,
-                text,
-                available,
-                hugs,
-                tmp_hugs,
-                ..
-            } = self;
-            desired_arena.items[nodes.clone()].copy_from_slice(desired);
-            text[nodes.clone()].copy_from_slice(text_shapes);
-            available[nodes].copy_from_slice(available_qs);
-            hugs.items[hugs_range].copy_from_slice(tmp_hugs);
+            self.desired.items[nodes.clone()].copy_from_slice(desired);
+            self.text[nodes.clone()].copy_from_slice(text_shapes);
+            self.available[nodes].copy_from_slice(available_qs);
+            self.hugs.items[hugs_range].copy_from_slice(hugs);
             return;
         }
 
@@ -232,7 +219,7 @@ impl MeasureCache {
         self.text.extend_from_slice(text_shapes);
         self.available.extend_from_slice(available_qs);
         let hugs_span = Span::new(self.hugs.items.len() as u32, new_hugs_len);
-        self.hugs.items.extend_from_slice(&self.tmp_hugs);
+        self.hugs.items.extend_from_slice(hugs);
         self.desired.live += new_len as usize;
         self.hugs.live += new_hugs_len as usize;
         self.snapshots.insert(
@@ -271,7 +258,6 @@ impl MeasureCache {
         self.text.clear();
         self.available.clear();
         self.hugs.clear();
-        self.tmp_hugs.clear();
         self.snapshots.clear();
     }
 
