@@ -1,7 +1,7 @@
-//! Builders for the recurring widget patterns used by the integration
-//! tests in this directory: chat-message HStacks, two-column grids
-//! with wrapping text. Local helpers — keep narrow, only generalize
-//! when a third caller appears.
+//! Builders for the recurring widget patterns used by the cross-driver
+//! tests in this directory: chat-message HStacks, two-column grids with
+//! wrapping text. Local helpers — keep narrow, only generalize when a
+//! third caller appears.
 
 use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};

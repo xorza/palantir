@@ -1,4 +1,4 @@
-use super::scaffold::{chat_message, two_hug_cols_with_wrap};
+use super::support::{chat_message, two_hug_cols_with_wrap};
 use crate::layout::types::sizing::Sizing;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::shape::{Shape, TextWrap};
