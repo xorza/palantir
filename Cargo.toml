@@ -19,6 +19,7 @@ rayon = "*"
 padding-struct = "*"
 
 [dev-dependencies]
+backtrace = "*"
 criterion = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
 image = { version = "*", default-features = false, features = ["png"] }
