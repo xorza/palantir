@@ -34,7 +34,9 @@ fn grid_fixed_and_fill_columns_split_remainder() {
 #[test]
 fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let mut ui = ui_at(UVec2::new(400, 200));
-    // Hug col 0: max(label widths). Buttons measure label text at 8px/char × 16h.
+    // Hug col 0: max(button widths). Buttons measure label at 8px/char,
+    // plus default `ButtonTheme.padding = Spacing::xy(12.0, 6.0)`, so
+    // the button width is `label_w + 24`.
     let root = Grid::new()
         .cols([Track::hug(), Track::fill()])
         .rows([Track::hug(), Track::hug()])
@@ -44,12 +46,12 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                 .with_id("short")
                 .label("ok")
                 .grid_cell((0, 0))
-                .show(ui); // 16w
+                .show(ui); // 16 + 24 = 40w
             Button::new()
                 .with_id("long")
                 .label("hello!!")
                 .grid_cell((1, 0))
-                .show(ui); // 56w
+                .show(ui); // 56 + 24 = 80w
             Frame::new()
                 .with_id("body")
                 .grid_cell((0, 1))
@@ -63,9 +65,9 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let short_btn = ui.pipeline.layout.result.rect[kids[0].index()];
     let long_btn = ui.pipeline.layout.result.rect[kids[1].index()];
     let body = ui.pipeline.layout.result.rect[kids[2].index()];
-    // Hug col = max(16, 56) = 56 → x boundary at 56.
-    assert_eq!(body.min.x, 56.0);
-    assert_eq!(body.size.w, 344.0);
+    // Hug col = max(40, 80) = 80 → x boundary at 80.
+    assert_eq!(body.min.x, 80.0);
+    assert_eq!(body.size.w, 320.0);
     assert_eq!(short_btn.min.x, 0.0);
     assert_eq!(long_btn.min.x, 0.0);
 }

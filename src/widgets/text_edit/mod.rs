@@ -54,11 +54,10 @@ impl<'a> TextEdit<'a> {
         let mut element = Element::new_auto(LayoutMode::Leaf);
         element.sense = Sense::CLICK;
         element.focusable = true;
-        // Sensible default; override via `Configure::padding(...)`.
-        // `Element::padding` is what the renderer deflates by when
-        // laying text inside the leaf, so this is the only padding the
-        // widget tracks.
-        element.padding = Spacing::xy(8.0, 6.0);
+        // `Element::padding` left at zero — `show()` substitutes
+        // `theme.text_edit.padding` when the user didn't call
+        // `.padding(...)`. Same renderer semantics as before; the
+        // value just lives on the theme instead of hard-coded here.
         Self {
             element,
             text,
@@ -83,19 +82,30 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(mut self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         let is_focused = ui.input.focused == Some(id);
         let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
+        // Apply theme padding/margin when the builder hasn't set
+        // anything (sentinel: `Spacing::ZERO` == "use theme"). The
+        // renderer reads `element.padding` to deflate the buffer
+        // layout, and the caret hit-test reads it back below — both
+        // see the resolved value.
+        if self.element.padding == Spacing::ZERO {
+            self.element.padding = theme.padding;
+        }
+        if self.element.margin == Spacing::ZERO {
+            self.element.margin = theme.margin;
+        }
         // Pick the per-state style. Disabled wins over focus — a
         // disabled editor that still happens to hold focus paints with
         // its disabled visuals (mirrors Button).
         let state = if self.element.disabled {
-            theme.disabled
+            theme.disabled.clone()
         } else if is_focused {
-            theme.focused
+            theme.focused.clone()
         } else {
-            theme.normal
+            theme.normal.clone()
         };
         // `None` text inherits the global `Theme::text` (same rule as
         // Button's per-state `text`). Apps changing `theme.text.color`

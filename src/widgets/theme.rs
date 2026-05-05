@@ -1,5 +1,6 @@
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -211,10 +212,14 @@ pub struct TextEditStateStyle {
 /// based on `Element::disabled` and focus.
 ///
 /// State-independent fields (`caret`, `caret_width`, `placeholder`,
-/// `selection`) live flat on the theme — they aren't state-varying in
-/// any plausible v1.x design (the caret only paints when focused, the
-/// placeholder only when the buffer is empty), so giving them per-state
-/// slots would be ceremony.
+/// `selection`, `padding`, `margin`) live flat on the theme — they
+/// aren't state-varying in any plausible v1.x design.
+///
+/// `padding`/`margin` apply when the user didn't call
+/// `.padding(...)` / `.margin(...)` on the builder. The "user didn't
+/// override" check is `element.padding == Spacing::ZERO` — so if you
+/// want a TextEdit with no padding while the theme has padding, set a
+/// custom theme rather than passing zero.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TextEditTheme {
     pub normal: TextEditStateStyle,
@@ -230,6 +235,11 @@ pub struct TextEditTheme {
     /// but kept on the theme so enabling selection later doesn't
     /// require a theme migration.
     pub selection: Color,
+    /// Default padding inside the editor (around the buffer text).
+    /// Applied at `show()` time when the builder hasn't set padding.
+    pub padding: Spacing,
+    /// Default margin around the editor.
+    pub margin: Spacing,
 }
 
 impl Default for TextEditTheme {
@@ -280,6 +290,8 @@ impl Default for TextEditTheme {
             caret: palette::TEXT,
             caret_width: 1.5,
             selection,
+            padding: Spacing::xy(8.0, 6.0),
+            margin: Spacing::ZERO,
         }
     }
 }
@@ -301,12 +313,23 @@ pub struct ButtonStateStyle {
 /// Four-state button theme. The leaf type ([`ButtonStateStyle`]) lives
 /// next to it; widget reads `theme.{normal,hovered,pressed,disabled}`
 /// based on the live response state and `Element::disabled`.
+///
+/// `padding`/`margin` apply when the user didn't call `.padding(...)`
+/// / `.margin(...)` on the builder. The "user didn't override" check
+/// is `element.padding == Spacing::ZERO` — so if you want a button
+/// with no padding while the theme has padding, set a custom theme
+/// rather than passing zero.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
     pub normal: ButtonStateStyle,
     pub hovered: ButtonStateStyle,
     pub pressed: ButtonStateStyle,
     pub disabled: ButtonStateStyle,
+    /// Default padding inside the button (around the label).
+    /// Applied at `show()` time when the builder hasn't set padding.
+    pub padding: Spacing,
+    /// Default margin around the button.
+    pub margin: Spacing,
 }
 
 impl Default for ButtonTheme {
@@ -341,6 +364,8 @@ impl Default for ButtonTheme {
                 background: bg(palette::ELEM),
                 text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
             },
+            padding: Spacing::xy(12.0, 6.0),
+            margin: Spacing::ZERO,
         }
     }
 }
