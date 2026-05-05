@@ -62,16 +62,19 @@ impl InputEvent {
                 ElementState::Pressed => InputEvent::PointerPressed(PointerButton::Left),
                 ElementState::Released => InputEvent::PointerReleased(PointerButton::Left),
             }),
-            // Convert to "positive y = scroll content down" so widgets can
-            // do `offset += delta_y` directly. winit reports +y when the
-            // wheel rotates *away* from the user (scroll up); flip it.
+            // Convert to "positive delta = pan offset forward" so widgets can
+            // do `offset += delta` directly. winit reports +y when the wheel
+            // rotates *away* from the user (scroll up) and +x when it rotates
+            // / swipes right (reveal content to the right means panning
+            // *into* it, i.e. content shifts left); flip both so positive
+            // means "advance the scroll offset."
             WindowEvent::MouseWheel { delta, .. } => Some(match *delta {
                 MouseScrollDelta::LineDelta(x, y) => {
-                    InputEvent::Scroll(Vec2::new(x, -y) * SCROLL_LINE_PIXELS)
+                    InputEvent::Scroll(Vec2::new(-x, -y) * SCROLL_LINE_PIXELS)
                 }
                 MouseScrollDelta::PixelDelta(p) => {
                     let s = scale_factor.max(f32::EPSILON);
-                    InputEvent::Scroll(Vec2::new(p.x as f32 / s, -p.y as f32 / s))
+                    InputEvent::Scroll(Vec2::new(-p.x as f32 / s, -p.y as f32 / s))
                 }
             }),
             _ => None,
