@@ -135,6 +135,14 @@ impl ApplicationHandler for App {
         let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         let mut ui = Ui::new();
+        // Showcase cards are dark — flip the scrollbar thumb to a
+        // light translucent fill so it shows up against them.
+        ui.theme.scrollbar = palantir::ScrollbarTheme {
+            thumb: Color::rgba(1.0, 1.0, 1.0, 0.55),
+            thumb_hover: Color::rgba(1.0, 1.0, 1.0, 0.75),
+            thumb_active: Color::rgba(1.0, 1.0, 1.0, 0.9),
+            ..Default::default()
+        };
         let display = palantir::Display::from_physical(
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,

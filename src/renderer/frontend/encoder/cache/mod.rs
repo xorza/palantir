@@ -124,6 +124,7 @@ impl EncodeCache {
         let Some(hit) = self.try_lookup(wid, hash, avail) else {
             return false;
         };
+        let kinds_base = buf.kinds.len() as u32;
         let dest_data_base = buf.data.len() as u32;
         buf.data.extend_from_slice(hit.data);
         buf.kinds.extend_from_slice(hit.kinds);
@@ -139,6 +140,9 @@ impl EncodeCache {
         let n = hit.kinds.len();
         let appended_starts = &buf.starts[buf.starts.len() - n..];
         bump_rect_min(hit.kinds, appended_starts, &mut buf.data, offset);
+        // Snapshot stores exit_idx as snapshot-relative; rebase to live
+        // kind-index by adding the position the snapshot was appended at.
+        bump_exit_idx(hit.kinds, appended_starts, &mut buf.data, kinds_base as i64);
         true
     }
 
@@ -195,9 +199,15 @@ impl EncodeCache {
                 self.data.items[data.clone()].copy_from_slice(&src.data[src_data_range]);
                 bump_rect_min(
                     &self.kinds.items[cmds.clone()],
+                    &self.starts[cmds.clone()],
+                    &mut self.data.items[data.clone()],
+                    neg_origin,
+                );
+                bump_exit_idx(
+                    &self.kinds.items[cmds.clone()],
                     &self.starts[cmds],
                     &mut self.data.items[data],
-                    neg_origin,
+                    -(src_cmds.start as i64),
                 );
                 return;
             }
@@ -230,6 +240,12 @@ impl EncodeCache {
             &self.starts[cmds_span.range()],
             &mut self.data.items[data_span.range()],
             neg_origin,
+        );
+        bump_exit_idx(
+            &self.kinds.items[cmds_span.range()],
+            &self.starts[cmds_span.range()],
+            &mut self.data.items[data_span.range()],
+            -(src_cmds.start as i64),
         );
 
         self.kinds.acquire(src_cmds.len);
@@ -325,6 +341,35 @@ fn bump_rect_min(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], offset: Ve
             | CmdKind::PopTransform
             | CmdKind::EnterSubtree
             | CmdKind::ExitSubtree => {}
+        }
+    }
+}
+
+/// Shift every `EnterSubtree`'s `exit_idx` payload field by `delta`.
+/// Used when moving cached cmds between buffers: the exit_idx is stored
+/// as an absolute kind-index in the source buffer, so it must be
+/// rebased on every write/replay so the composer's fast-forward lands
+/// on the matching ExitSubtree in the destination buffer.
+///
+/// Storage convention: snapshots store exit_idx as **snapshot-relative**
+/// (subtract `cmd_start_at_write` at write time, add `kinds_start_at_replay`
+/// at replay time). Without this, a cached subtree replayed at a different
+/// absolute buffer position fast-forwards to the wrong cmd, leaving
+/// unmatched `Push/PopClip` pairs and panicking the composer.
+fn bump_exit_idx(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], delta: i64) {
+    assert_eq!(kinds.len(), starts.len());
+    if delta == 0 {
+        return;
+    }
+    const EXIT_IDX_WORD: usize = std::mem::offset_of!(
+        crate::renderer::frontend::cmd_buffer::EnterSubtreePayload,
+        exit_idx
+    ) / size_of::<u32>();
+    for (kind, &start) in kinds.iter().zip(starts.iter()) {
+        if matches!(kind, CmdKind::EnterSubtree) {
+            let off = start as usize + EXIT_IDX_WORD;
+            let cur = data[off] as i64;
+            data[off] = (cur + delta) as u32;
         }
     }
 }

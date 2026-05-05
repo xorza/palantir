@@ -185,6 +185,12 @@ fn hash_shape(h: &mut Hasher, shape: &Shape) {
                 }
             }
         }
+        Shape::Overlay { rect, radius, fill } => {
+            h.write_u8(3);
+            h.pod(rect);
+            h.pod(radius);
+            h.pod(fill);
+        }
         Shape::Line { a, b, width, color } => {
             h.write_u8(1);
             h.pod(a);

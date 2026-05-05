@@ -1,41 +1,28 @@
 # Scroll — roadmap
 
-Status: v1 shipped (`Scroll::vertical/horizontal/both`, wheel input, state
-persistence, clip-cull at composer). What's left, ranked by impact.
+Status: v1 + v1a (scrollbar visuals) shipped. `Scroll::vertical/horizontal/both`,
+wheel input, state persistence, clip-cull at composer, and overlay
+indicator bars (track + thumb, themed via `Theme::scrollbar`) drawn
+automatically when content overflows on a panned axis. What's left,
+ranked by impact.
 
-## P1 — Scrollbars
+## P1 — Drag-to-pan on the thumb (v1.1 of scrollbars)
 
-Single missing affordance with the largest UX impact. Without bars, users
-have no visible signal that content is scrollable, no position indicator,
-no drag-to-pan, no click-on-track to page.
+Scrollbars draw today but aren't interactive. To make the thumb grabbable,
+the `Scroll` widget needs a tree restructure (see `scrollbars.md`):
 
-Scope:
+- Wrapper node holds `Sense::Scroll` and the user's sizing.
+- Inner content node carries the pan transform + clip + the underlying
+  `LayoutMode::Scroll(axes)` measure semantics.
+- Per-axis bar leaves as siblings of the content node, with
+  `Sense::Drag` and stable derived ids — `drag_delta(bar_id) *
+  (content - viewport) / (track - thumb)` accumulates into
+  `ScrollState.offset` alongside the existing wheel pan.
 
-- A thin overlay scrollbar per panned axis, drawn by `Scroll` itself
-  using `Shape::RoundedRect` (track + thumb).
-- Thumb size = `viewport / content`, position = `offset / (content - viewport)`.
-  Both already on `ScrollState`.
-- v1 always-visible overlay. Auto-hide (macOS-style fade) needs an
-  animation tick — defer until something else wants the same infra.
-- v1 reads-only (no drag): just the position indicator. Drag-on-thumb +
-  click-on-track to page come second once `drag_delta` plumbing is wired
-  through to a generic capture target (already exists on `InputState`,
-  just needs a `Scroll`-side consumer).
-
-Design questions to resolve up front:
-
-- **Overlay vs reservation** — overlay (drawn over content) is simpler
-  and modern-default; reservation (viewport shrinks) needs measure-pass
-  changes. Pick overlay.
-- **Style hooks** — colors via `Theme::scrollbar_*`, width as a constant
-  for now.
-- **Cross-axis behavior on `ScrollXY`** — two perpendicular bars; the
-  corner where they meet stays empty (or a small gutter swatch).
-
-Tests: thumb position/size for known offset+content, drag pans by
-`viewport / content` ratio, click-on-track jumps a page.
-
-Showcase: a tab with all three scroll flavors and visible bars.
+Design questions resolved in `scrollbars.md`. Cost: real refactor of the
+Scroll widget's tree; modest change to `Ui::end_frame` (wrapper rect for
+viewport, inner-node `scroll_content` for content). Click-on-track-to-
+page falls out for free once bar leaves exist.
 
 ## P2 — `Scroll::scroll_to(WidgetId)` / `scroll_into_view`
 
