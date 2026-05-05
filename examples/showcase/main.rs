@@ -175,14 +175,10 @@ impl ApplicationHandler for App {
         });
     }
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // Free-running render loop: redraw every iteration regardless of
-        // input or repaint gate, so we can measure raw frame throughput
-        // with vsync off.
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(state) = self.state.as_ref() {
             state.window.request_redraw();
         }
-        event_loop.set_control_flow(ControlFlow::Poll);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
