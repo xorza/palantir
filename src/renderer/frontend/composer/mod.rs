@@ -282,7 +282,15 @@ impl Composer {
                     let t: DrawTextPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(t.rect);
                     let phys_rect = world_rect.scaled_by(scale, snap);
-                    let bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    // Glyphon clips per-`TextArea` against the run's own
+                    // `bounds`, ignoring whatever `wgpu` scissor is active.
+                    // Quads ride the `DrawGroup.scissor`; text needs its
+                    // bounds intersected with the active clip-stack top so
+                    // ancestor `clip = true` panels actually clip glyphs.
+                    let mut bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    if let Some(parent_clip) = self.clip_stack.last() {
+                        bounds = bounds.clamp_to(*parent_clip);
+                    }
                     group.push_text(
                         out,
                         TextRun {
