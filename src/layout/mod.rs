@@ -293,65 +293,15 @@ impl LayoutEngine {
             self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, text),
         );
 
-        // First dispatch: children see `inner_avail` derived from the
-        // parent-passed `available`. May grow on a Fill axis when a
-        // Fixed/Hug descendant's hug exceeds `available`.
+        // Single dispatch. When `desired` exceeds `available` on a
+        // non-Fixed axis it's because a rigid descendant pinned the
+        // floor (`intrinsic_min` / `min_size` / `Sizing::Fixed`); a
+        // re-dispatch against the grown outer would converge to the
+        // same value because every driver's content size is monotone
+        // in `available` and pass-1 already saturated at the floor.
+        // Pinned by `cross_driver_tests::convergence`.
         let content = self.measure_dispatch(tree, node, style, available, text);
         let desired = resolve_desired(style, content, available, intrinsic_min, min_size, max_size);
-
-        // Re-dispatch when desired exceeded available — happens under
-        // flex semantics only when a rigid descendant pushes desired
-        // past available: `intrinsic_min > available`, an explicit
-        // `min_size`, or a `Sizing::Fixed(v)` parent (filtered out
-        // below — Fixed doesn't read `available` so pass 2 would
-        // measure the same thing). Pass 1 measured children against
-        // the pre-grow `inner_avail`, so e.g. a wrap-stack inside the
-        // grown parent packed into the smaller width and produced
-        // more rows than fit. Pass 2 re-measures with the grown
-        // outer so children's internal layout (wrap row count, Fill
-        // distribution) reflects the slot they'll actually arrange
-        // into.
-        //
-        // Convergence: pass-2 desired equals pass-1 desired by
-        // construction — both pin to the floor that triggered the
-        // grow (`intrinsic_min` / `min_size` / Fixed value). The
-        // clamp below is defensive against a hypothetical future
-        // driver whose pass-2 content grows further; it's a no-op
-        // under current semantics. Pinned by
-        // `cross_driver_tests::convergence`.
-        //
-        // Cost: O(grown subtree) on frames a grow happens; the
-        // measure cache absorbs unaffected descendants on subsequent
-        // frames.
-        let grew_w = available.w.is_finite()
-            && desired.w > available.w
-            && !matches!(style.size.w, Sizing::Fixed(_));
-        let grew_h = available.h.is_finite()
-            && desired.h > available.h
-            && !matches!(style.size.h, Sizing::Fixed(_));
-        let new_available = Size::new(
-            if grew_w { desired.w } else { available.w },
-            if grew_h { desired.h } else { available.h },
-        );
-        let desired = if grew_w || grew_h {
-            let content = self.measure_dispatch(tree, node, style, new_available, text);
-            let final_desired = resolve_desired(
-                style,
-                content,
-                new_available,
-                intrinsic_min,
-                min_size,
-                max_size,
-            );
-            // Defensive clamp: see the "Convergence" paragraph above.
-            // No-op under current semantics; here as a safety net.
-            Size::new(
-                final_desired.w.min(new_available.w),
-                final_desired.h.min(new_available.h),
-            )
-        } else {
-            desired
-        };
 
         self.scratch.desired[node.index()] = desired;
 
