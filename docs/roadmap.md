@@ -6,13 +6,24 @@ ecs for soa?
 ## Now — concrete, motivated, ready to start
 
 - **Drag-to-pan on scrollbar thumb.** Bars draw + reserve space today
-  but aren't grabbable. Needs a tree restructure on `Scroll` — wrapper
-  carries `Sense::Scroll` + sizing, inner content node carries clip +
-  pan transform + `LayoutMode::Scroll(axes)` measure semantics, per-axis
-  bar leaves with `Sense::Drag` and stable derived ids accumulate
-  `drag_delta(bar_id) * (content - viewport) / (track - thumb)` into
-  `ScrollState.offset`. Click-on-track-to-page falls out for free once
-  bar leaves exist. Design in `docs/scrollbars.md`.
+  via `Shape::Overlay` painted on the scroll node itself (single-node
+  design — the doc's old 2-level wrapper-plus-content restructure is
+  obsolete). To make them grabbable, replace the overlay shapes with
+  per-axis bar **leaf nodes** carrying `Sense::Drag` and stable derived
+  ids (`("scroll-vbar", parent_id)` etc.) so `drag_delta(bar_id)` is
+  defined. Each frame:
+
+  ```
+  let scale = (content.main - viewport.main) / (track_len - thumb_size).max(1.0);
+  state.offset.main += drag_delta(bar_id).main * scale;
+  state.offset.main = state.offset.main.clamp(0.0, max);
+  ```
+
+  Same one-frame-stale clamp as wheel pan. Wheel + drag deltas sum
+  into `ScrollState.offset` in record-time order. Click-on-track-to-page
+  falls out for free once the bar leaves exist (`Sense::ClickAndDrag`,
+  click-minus-thumb pages by `viewport`). Hover-grow thumb is also
+  cheap once the leaves carry hover state.
 - **`Scroll::scroll_to(WidgetId)` / `scroll_into_view`.** List-with-
   selection wants "ensure selected row is visible." Cheap: compute
   target rect from `LayoutResult.rect`, set `ScrollState.offset`, clamp.
