@@ -1,6 +1,8 @@
 pub(crate) mod keyboard;
 
-use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit, modifiers_from_winit};
+use crate::input::keyboard::{
+    Key, KeyPress, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
+};
 use crate::layout::types::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::tree::widget_id::WidgetId;
@@ -14,6 +16,22 @@ pub enum PointerButton {
     Left,
     Right,
     Middle,
+}
+
+/// What happens to the currently-focused widget when the user presses
+/// the pointer somewhere that *isn't* a focusable widget. Set via
+/// [`crate::Ui::set_focus_policy`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FocusPolicy {
+    /// Pressing on a non-focusable widget or empty surface preserves
+    /// the current focus. Friendlier for sketches and tooling UIs
+    /// where every other widget is a Button — clicking a Button while
+    /// editing a field keeps the cursor in the field. Default.
+    PreserveOnMiss,
+    /// Pressing anywhere that isn't a focusable widget clears focus.
+    /// Native-app convention on most platforms (click-outside-to-blur).
+    #[default]
+    ClearOnMiss,
 }
 
 /// Palantir-native input event. Independent of any windowing toolkit.
@@ -165,6 +183,30 @@ pub struct InputState {
     /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
     /// in [`Self::end_frame`]. Read by scroll widgets at record time.
     pub(crate) frame_scroll_delta: Vec2,
+    /// Keystrokes accumulated this frame, awaiting drain by the focused
+    /// widget at record time. Capacity-retained across frames; cleared
+    /// in [`Self::end_frame`] regardless of whether anything consumed
+    /// them. Step-3 focus dispatch reads this; today nothing does.
+    pub(crate) frame_keys: Vec<KeyPress>,
+    /// Committed text accumulated this frame from `Text(chunk)` events.
+    /// One `String` rather than `Vec<TextChunk>` so consumers can splice
+    /// directly into their buffer without re-concatenating; chunks are
+    /// already grapheme-aligned at the translation boundary so byte
+    /// concatenation is safe. Capacity-retained, cleared in `end_frame`.
+    pub(crate) frame_text: String,
+    /// Latest modifier-key snapshot. Persists across `end_frame` —
+    /// modifier *state* is not a per-frame thing the way keystrokes
+    /// are. Updated only on `ModifiersChanged` events.
+    pub(crate) modifiers: Modifiers,
+    /// Currently focused widget, or `None`. Set on `PointerPressed(Left)`
+    /// when the press lands on a focusable widget. Evicted in
+    /// [`Self::end_frame`] when the focused widget vanishes from the
+    /// tree (matches the per-id state map's eviction model). Read by
+    /// keyboard consumers to decide whether to drain `frame_keys` /
+    /// `frame_text` (step 5 of the TextEdit plan).
+    pub(crate) focused: Option<WidgetId>,
+    /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
+    pub focus_policy: FocusPolicy,
 }
 
 impl Default for InputState {
@@ -183,6 +225,11 @@ impl InputState {
             press_pos: None,
             clicked_this_frame: FxHashSet::default(),
             frame_scroll_delta: Vec2::ZERO,
+            frame_keys: Vec::new(),
+            frame_text: String::new(),
+            modifiers: Modifiers::NONE,
+            focused: None,
+            focus_policy: FocusPolicy::PreserveOnMiss,
         }
     }
 
@@ -208,6 +255,19 @@ impl InputState {
                     .pos
                     .and_then(|p| cascades.hit_test(p, Sense::click));
                 self.press_pos = self.active.and(self.pointer.pos);
+                // Focus updates on a separate hit-test: focusability is
+                // orthogonal to clickability (clicking a Button shouldn't
+                // steal focus from a TextEdit). Press on empty surface or
+                // on a non-focusable widget defers to `focus_policy`.
+                let focus_hit = self
+                    .pointer
+                    .pos
+                    .and_then(|p| cascades.hit_test_focusable(p));
+                match (focus_hit, self.focus_policy) {
+                    (Some(id), _) => self.focused = Some(id),
+                    (None, FocusPolicy::ClearOnMiss) => self.focused = None,
+                    (None, FocusPolicy::PreserveOnMiss) => {} // hold focus
+                }
             }
             InputEvent::PointerReleased(PointerButton::Left) => {
                 if let Some(a) = self.active.take() {
@@ -226,14 +286,23 @@ impl InputState {
             }
             // Right/Middle: not yet wired through to widgets. Silently drop.
             InputEvent::PointerPressed(_) | InputEvent::PointerReleased(_) => {}
-            // Step 1 of the TextEdit plan only adds the event vocabulary;
-            // the consumers (frame queues, focus dispatch) land in steps
-            // 2 and 3. Drop on the floor for now — adding a real arm
-            // before then would invent state we don't yet need.
-            InputEvent::KeyDown { .. }
-            | InputEvent::KeyUp { .. }
-            | InputEvent::Text(_)
-            | InputEvent::ModifiersChanged(_) => {}
+            InputEvent::KeyDown { key, repeat } => {
+                self.frame_keys.push(KeyPress {
+                    key,
+                    mods: self.modifiers,
+                    repeat,
+                });
+            }
+            InputEvent::Text(chunk) => {
+                self.frame_text.push_str(chunk.as_str());
+            }
+            InputEvent::ModifiersChanged(m) => {
+                self.modifiers = m;
+            }
+            // Releases aren't queued — editors consume presses, and a
+            // release queue without a reader would invent state we
+            // don't yet need.
+            InputEvent::KeyUp { .. } => {}
         }
     }
 
@@ -243,11 +312,27 @@ impl InputState {
     pub(crate) fn end_frame(&mut self, cascades: &CascadeResult) {
         self.clicked_this_frame.clear();
         self.frame_scroll_delta = Vec2::ZERO;
+        // Capacity-retained — `Vec::clear` and `String::clear` keep the
+        // backing buffer so steady-state typing stays alloc-free.
+        self.frame_keys.clear();
+        self.frame_text.clear();
+        // `modifiers` deliberately persists: modifier state is a running
+        // snapshot, not per-frame. Held shift across multiple frames must
+        // stay `true`.
         if let Some(active) = self.active
             && !cascades.by_id.contains_key(&active)
         {
             self.active = None;
             self.press_pos = None;
+        }
+        // Focus eviction: same model as the active-capture eviction
+        // above. A focused widget that vanished from the tree (was not
+        // recorded this frame) drops focus to None; otherwise next
+        // frame's keystrokes would route to a ghost.
+        if let Some(focused) = self.focused
+            && !cascades.by_id.contains_key(&focused)
+        {
+            self.focused = None;
         }
         self.recompute_hover(cascades);
         self.recompute_scroll_target(cascades);

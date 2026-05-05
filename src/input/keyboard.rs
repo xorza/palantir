@@ -133,6 +133,28 @@ impl PartialEq for TextChunk {
 
 impl Eq for TextChunk {}
 
+/// One captured `KeyDown` event sitting on
+/// [`InputState::frame_keys`] waiting for a focused widget to drain
+/// it. Modifiers are captured at the moment the event was pushed —
+/// modifier state and key events arrive interleaved over the wire, so
+/// snapshotting at drain time would mis-attribute mods on rapid
+/// chord input.
+///
+/// Releases (`KeyUp`) aren't queued: editors care about presses, and
+/// adding a release queue without a consumer would invent state we
+/// don't yet need.
+///
+/// [`InputState::frame_keys`]: crate::input::InputState
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyPress {
+    pub key: Key,
+    pub mods: Modifiers,
+    /// `true` for OS-level key-repeat re-emissions; `false` for the
+    /// initial press. Editors typically treat both the same; some
+    /// commands (e.g. focus-cycle on Tab) only fire on `!repeat`.
+    pub repeat: bool,
+}
+
 /// Translate a winit logical key into our [`Key`]. `Other` is the
 /// catch-all so unrecognized keys still surface as a press without
 /// dropping the event entirely.

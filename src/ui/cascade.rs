@@ -40,14 +40,16 @@ pub(crate) struct Cascade {
 }
 
 /// One widget's hit-test entry: identity, screen-space rect (clipped by
-/// ancestors), and effective `Sense` (with disabled/visibility cascade
-/// applied). Stored on `CascadeResult`'s internal hit index, in
-/// pre-order so reverse iteration yields topmost-first lookups.
+/// ancestors), effective `Sense`, and focus eligibility — all with the
+/// disabled/visibility cascade applied. Stored on `CascadeResult`'s
+/// internal hit index, in pre-order so reverse iteration yields
+/// topmost-first lookups.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HitEntry {
     pub(crate) id: WidgetId,
     pub(crate) rect: Rect,
     pub(crate) sense: Sense,
+    pub(crate) focusable: bool,
 }
 
 /// Open-ancestor frame on the rebuild walk's stack. Carries the resolved
@@ -84,6 +86,19 @@ impl CascadeResult {
     pub(crate) fn hit_test(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<WidgetId> {
         for e in self.entries.iter().rev() {
             if filter(e.sense) && e.rect.contains(pos) {
+                return Some(e.id);
+            }
+        }
+        None
+    }
+
+    /// Topmost focusable widget under `pos`, or `None`. Independent of
+    /// `Sense` — a widget can be focusable without being clickable, and
+    /// vice versa. Disabled / invisible nodes are excluded by the same
+    /// cascade that nulls their `Sense`.
+    pub(crate) fn hit_test_focusable(&self, pos: Vec2) -> Option<WidgetId> {
+        for e in self.entries.iter().rev() {
+            if e.focusable && e.rect.contains(pos) {
                 return Some(e.id);
             }
         }
@@ -168,17 +183,20 @@ impl Cascades {
                 Some(c) => screen_rect.intersect(c),
                 None => screen_rect,
             };
-            let sense = if disabled || invisible {
+            let cascaded_off = disabled || invisible;
+            let sense = if cascaded_off {
                 Sense::NONE
             } else {
                 attrs.sense()
             };
+            let focusable = !cascaded_off && attrs.is_focusable();
             let widget_id = widget_ids[i];
             r.by_id.insert(widget_id, r.entries.len() as u32);
             r.entries.push(HitEntry {
                 id: widget_id,
                 rect: visible_rect,
                 sense,
+                focusable,
             });
 
             r.rows.push(row);
