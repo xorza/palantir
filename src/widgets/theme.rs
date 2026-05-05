@@ -1,6 +1,5 @@
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::button::ButtonTheme;
 
@@ -79,7 +78,6 @@ pub struct TextEditTheme {
     pub stroke: Option<Stroke>,
     pub stroke_focused: Option<Stroke>,
     pub radius: Corners,
-    pub padding: Spacing,
     pub text: Color,
     pub placeholder: Color,
     pub caret: Color,
@@ -110,7 +108,6 @@ impl Default for TextEditTheme {
                 color: Color::rgb(0.30, 0.52, 0.92),
             }),
             radius: Corners::all(4.0),
-            padding: Spacing::xy(8.0, 6.0),
             text: Color::WHITE,
             placeholder: Color::rgba(1.0, 1.0, 1.0, 0.40),
             caret: Color::WHITE,

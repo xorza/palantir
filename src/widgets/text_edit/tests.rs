@@ -1,4 +1,5 @@
 use super::{apply_key, next_char_boundary, prev_char_boundary};
+use crate::Spacing;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::sizing::Sizing;
@@ -601,23 +602,20 @@ fn click_lands_caret_at_pressed_position() {
 }
 
 #[test]
-fn click_uses_per_widget_style_padding_not_theme_padding() {
-    // Pin the bug fix: when a per-widget `.style()` override changes
-    // padding, the click hit-test must use that padding. Theme leaves
-    // 8 px left, override gives 24 px. Press at x=32 should now hit
-    // offset 1 (24 + 1*8 = 32) instead of offset 3.
+fn click_uses_overridden_padding() {
+    // Pin: `.padding(...)` on TextEdit shifts both rendering and the
+    // click hit-test consistently. Default 8 px left → press at x=32
+    // hits offset 3; with override 24 px left → x=32 hits offset 1
+    // (24 + 1*8 = 32). The renderer deflates by `element.padding` and
+    // the widget reads the same field for its caret math, so the two
+    // can't drift.
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hello world");
-
-    let style = crate::TextEditTheme {
-        padding: crate::Spacing::xy(24.0, 6.0),
-        ..crate::TextEditTheme::default()
-    };
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .with_id("ed")
-            .style(style.clone())
+            .padding(Spacing::xy(24.0, 6.0))
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -630,7 +628,7 @@ fn click_uses_per_widget_style_padding_not_theme_padding() {
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .with_id("ed")
-            .style(style.clone())
+            .padding(Spacing::xy(24.0, 6.0))
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -644,7 +642,7 @@ fn click_uses_per_widget_style_padding_not_theme_padding() {
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .with_id("ed")
-            .style(style.clone())
+            .padding(Spacing::xy(24.0, 6.0))
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
