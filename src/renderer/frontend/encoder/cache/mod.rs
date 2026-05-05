@@ -175,14 +175,18 @@ impl EncodeCache {
         // slow path captures the prior snapshot's lengths so we can
         // decrement live counters without re-probing before the append.
         let prev_lens = if let Some(prev) = self.snapshots.get_mut(&wid) {
-            if prev.cmds.len == src_cmds.len && prev.data.len == src_data.len {
-                // In-place: hot path. Same `(subtree_hash, available_q)`
-                // ⇒ same wrap targets ⇒ same cmd shape and payload sizes,
-                // so the existing arena ranges fit byte-for-byte.
+            // Hot path: same `(subtree_hash, available_q)` ⇒ same wrap
+            // targets ⇒ same cmd shape and payload sizes, so the
+            // existing arena ranges fit byte-for-byte. Hash equality
+            // is the invariant the kind-shape match relies on; with
+            // different hash, kinds may legitimately swap (e.g. a
+            // TextEdit replacing its placeholder Text with a focused-
+            // caret Overlay — same count, different variants), so we
+            // must fall through to the slow append.
+            let same_key = prev.subtree_hash == subtree_hash && prev.available_q == available_q;
+            if same_key && prev.cmds.len == src_cmds.len && prev.data.len == src_data.len {
                 let cmds = prev.cmds.range();
                 let data = prev.data.range();
-                prev.subtree_hash = subtree_hash;
-                prev.available_q = available_q;
                 let src_kinds = &src.kinds[src_cmd_range.clone()];
                 // Debug-only kind-shape check. The only failure mode is a
                 // 64-bit FxHash collision (~1 in 2^64) or a future hash
