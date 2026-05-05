@@ -177,3 +177,196 @@ impl From<Size> for Corners {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Wrap in a tiny struct so we can use TOML — top-level must be a table.
+    fn ser(c: Corners) -> String {
+        #[derive(serde::Serialize)]
+        struct W {
+            v: Corners,
+        }
+        toml::to_string(&W { v: c }).expect("serialize")
+    }
+
+    fn de(toml_str: &str) -> Corners {
+        #[derive(serde::Deserialize)]
+        struct W {
+            v: Corners,
+        }
+        toml::from_str::<W>(toml_str).expect("parse").v
+    }
+
+    #[test]
+    fn uniform_corners_emit_scalar() {
+        let s = ser(Corners::all(4.0));
+        assert_eq!(s.trim(), "v = 4.0");
+    }
+
+    #[test]
+    fn matched_pairs_emit_two_element_array() {
+        // tl=tr=top, br=bl=bottom, top != bottom.
+        let s = ser(Corners {
+            tl: 4.0,
+            tr: 4.0,
+            br: 8.0,
+            bl: 8.0,
+        });
+        assert_eq!(s.trim(), "v = [4.0, 8.0]");
+    }
+
+    #[test]
+    fn asymmetric_emit_four_element_array() {
+        let s = ser(Corners {
+            tl: 1.0,
+            tr: 2.0,
+            br: 3.0,
+            bl: 4.0,
+        });
+        assert_eq!(s.trim(), "v = [1.0, 2.0, 3.0, 4.0]");
+    }
+
+    /// "Matched pair" check is exact equality, not "looks symmetric": a
+    /// corners value with `tl == br` but `tr != bl` must NOT collapse
+    /// to the 2-array form.
+    #[test]
+    fn near_matched_does_not_collapse() {
+        let s = ser(Corners {
+            tl: 1.0,
+            tr: 2.0,
+            br: 1.0,
+            bl: 2.0,
+        });
+        assert_eq!(s.trim(), "v = [1.0, 2.0, 1.0, 2.0]");
+    }
+
+    #[test]
+    fn deserialize_scalar_form() {
+        assert_eq!(de("v = 4.0"), Corners::all(4.0));
+    }
+
+    #[test]
+    fn deserialize_integer_scalar_via_visit_i64() {
+        // Hand-written configs may use `radius = 4` rather than `4.0`.
+        // visit_i64 / visit_u64 must accept it.
+        assert_eq!(de("v = 4"), Corners::all(4.0));
+    }
+
+    #[test]
+    fn deserialize_two_element_array() {
+        assert_eq!(
+            de("v = [4.0, 8.0]"),
+            Corners {
+                tl: 4.0,
+                tr: 4.0,
+                br: 8.0,
+                bl: 8.0,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_four_element_array() {
+        assert_eq!(
+            de("v = [1.0, 2.0, 3.0, 4.0]"),
+            Corners {
+                tl: 1.0,
+                tr: 2.0,
+                br: 3.0,
+                bl: 4.0,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_one_element_array_treated_as_uniform() {
+        // Edge case: visit_seq's first-element-only path.
+        assert_eq!(de("v = [4.0]"), Corners::all(4.0));
+    }
+
+    #[test]
+    fn deserialize_struct_form() {
+        // Round-trips configs that hand-typed the struct shape (or
+        // configs predating the array compaction).
+        let toml_str = r#"
+[v]
+tl = 1.0
+tr = 2.0
+br = 3.0
+bl = 4.0
+"#;
+        assert_eq!(
+            de(toml_str),
+            Corners {
+                tl: 1.0,
+                tr: 2.0,
+                br: 3.0,
+                bl: 4.0,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_struct_form_with_missing_fields_defaults_to_zero() {
+        // Partial struct → omitted corners default to 0. Useful when
+        // a config wants only some corners rounded.
+        let toml_str = r#"
+[v]
+tl = 4.0
+tr = 4.0
+"#;
+        assert_eq!(
+            de(toml_str),
+            Corners {
+                tl: 4.0,
+                tr: 4.0,
+                br: 0.0,
+                bl: 0.0,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_rejects_unknown_field() {
+        #[derive(serde::Deserialize)]
+        struct W {
+            #[allow(dead_code)]
+            v: Corners,
+        }
+        // Typo'd field names should fail loudly rather than silently
+        // dropping the value.
+        let result: Result<W, _> = toml::from_str(
+            r#"
+[v]
+tl = 1.0
+typo = 2.0
+"#,
+        );
+        assert!(result.is_err(), "unknown field should be rejected");
+    }
+
+    /// Round-trip through TOML for each of the three serialize paths.
+    #[test]
+    fn serialize_then_parse_round_trips() {
+        for c in [
+            Corners::all(4.0),
+            Corners {
+                tl: 4.0,
+                tr: 4.0,
+                br: 8.0,
+                bl: 8.0,
+            },
+            Corners {
+                tl: 1.0,
+                tr: 2.0,
+                br: 3.0,
+                bl: 4.0,
+            },
+        ] {
+            let s = ser(c);
+            assert_eq!(de(&s), c, "round-trip failed for {c:?} -> {s}");
+        }
+    }
+}
