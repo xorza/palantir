@@ -10,58 +10,83 @@ use crate::widgets::button::ButtonTheme;
 /// app/theme concern. Widgets that want disabled-state visuals read the
 /// disabled flag themselves and pick their own colors at recording
 /// time.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Theme {
     pub button: ButtonTheme,
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
-    /// Default font size in logical px for text-rendering widgets that
-    /// don't have a per-widget override (Button labels read this
+    /// Global text defaults (font size, color, leading) that every
+    /// text-rendering widget falls back to when its builder didn't set
+    /// a per-widget override. See [`TextStyle`].
+    pub text: TextStyle,
+}
+
+/// Default text-rendering inputs grouped together so apps can swap the
+/// whole "text look" with one assignment, and so future axes (font
+/// family, weight, italic, letter-spacing) extend a single struct
+/// rather than scattering across [`Theme`].
+#[derive(Clone, Copy, Debug)]
+pub struct TextStyle {
+    /// Default font size in logical px. Button labels read this
     /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
-    /// when their builder didn't set a size). Apps changing this once
-    /// at startup move every text widget that hasn't been individually
-    /// customized.
+    /// when their builder didn't set a size.
     pub font_size_px: f32,
     /// Default fill color for [`crate::Text`] runs that didn't call
-    /// `.color(...)`. Other text-rendering widgets (Button, TextEdit)
-    /// have their own per-state colors on their respective themes
-    /// (state-dependent: hover/pressed/focused) so they don't read this.
-    pub text_color: Color,
-    /// Line-height-to-font-size ratio used by every text-rendering
-    /// widget (Button label, [`crate::Text`], [`crate::TextEdit`]).
-    /// Drives the shaper's leading and the caret rect height (locked
-    /// together via `Shape::Text.line_height_px`). Default matches
-    /// cosmic-text's natural leading
-    /// ([`crate::text::LINE_HEIGHT_MULT`], 1.2). Apps that want a
-    /// different global look set this once at startup; per-widget
-    /// override on TextEdit lives on the builder
+    /// `.color(...)`. Button / TextEdit have their own state-dependent
+    /// colors on their respective themes and don't read this.
+    pub color: Color,
+    /// Line-height-to-font-size ratio. Drives the shaper's leading and
+    /// the caret rect height (locked together via
+    /// `Shape::Text.line_height_px`). Default matches cosmic-text's
+    /// natural leading ([`crate::text::LINE_HEIGHT_MULT`], 1.2). Per-
+    /// widget override on TextEdit lives on the builder
     /// (`TextEdit::line_height_mult`).
     pub line_height_mult: f32,
 }
 
-impl Default for Theme {
+impl Default for TextStyle {
     fn default() -> Self {
         Self {
-            button: ButtonTheme::default(),
-            scrollbar: ScrollbarTheme::default(),
-            text_edit: TextEditTheme::default(),
             font_size_px: 16.0,
-            text_color: Color::WHITE,
+            color: Color::WHITE,
             line_height_mult: crate::text::LINE_HEIGHT_MULT,
         }
     }
 }
 
-impl Theme {
+impl TextStyle {
     /// Resolve the absolute line-height-in-px the shaper will use for
     /// text rendered at `font_size_px`. Single call site that owns the
     /// `line_height_mult` formula; widgets call this instead of doing
-    /// `font_size * theme.line_height_mult` inline so the formula can
-    /// evolve (font-dependent leading, etc.) without a sweep through
-    /// every text-rendering widget.
+    /// `font_size * line_height_mult` inline so the formula can evolve
+    /// (font-dependent leading, etc.) without a sweep through every
+    /// text-rendering widget.
     #[inline]
     pub fn line_height_for(&self, font_size_px: f32) -> f32 {
         font_size_px * self.line_height_mult
+    }
+
+    /// Chainable single-axis tweak. Lets callers write
+    /// `theme.text.with_font_size(14.0)` instead of `TextStyle {
+    /// font_size_px: 14.0, ..theme.text }`. All widget setters take a
+    /// whole `TextStyle` (all-or-nothing), so the common case of
+    /// "theme defaults, but smaller" goes through one of these.
+    #[inline]
+    pub const fn with_font_size(mut self, px: f32) -> Self {
+        self.font_size_px = px;
+        self
+    }
+
+    #[inline]
+    pub const fn with_color(mut self, c: Color) -> Self {
+        self.color = c;
+        self
+    }
+
+    #[inline]
+    pub const fn with_line_height_mult(mut self, mult: f32) -> Self {
+        self.line_height_mult = mult;
+        self
     }
 }
 
@@ -115,10 +140,11 @@ impl Default for ScrollbarTheme {
 }
 
 /// Visuals for [`crate::TextEdit`]. Read from [`Theme::text_edit`]
-/// each frame; per-widget overrides via [`crate::TextEdit::style`].
-/// v1 has unfocused/focused background + stroke pairs, a caret color,
-/// and a selection color (selection rendering is deferred but the slot
-/// exists so a future enable doesn't require a theme change).
+/// each frame; per-widget overrides via [`crate::TextEdit::style`] —
+/// all-or-nothing, the whole theme is replaced when set.
+///
+/// `text` is a [`TextStyle`] bundle so font size, color, and leading
+/// for the buffer text live in one slot rather than scattered fields.
 #[derive(Clone, Debug)]
 pub struct TextEditTheme {
     pub background: Color,
@@ -126,7 +152,10 @@ pub struct TextEditTheme {
     pub stroke: Option<Stroke>,
     pub stroke_focused: Option<Stroke>,
     pub radius: Corners,
-    pub text: Color,
+    /// Font/leading/color for the buffer text in the *unfocused-or-
+    /// focused-non-empty* state. Placeholder uses [`Self::placeholder`]
+    /// instead.
+    pub text: TextStyle,
     pub placeholder: Color,
     pub caret: Color,
     /// Width of the caret rect in logical px. The caret is painted as
@@ -153,7 +182,7 @@ impl Default for TextEditTheme {
                 color: Color::rgb(0.30, 0.52, 0.92),
             }),
             radius: Corners::all(4.0),
-            text: Color::WHITE,
+            text: TextStyle::default(),
             placeholder: Color::rgba(1.0, 1.0, 1.0, 0.40),
             caret: Color::WHITE,
             caret_width: 1.5,

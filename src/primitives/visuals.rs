@@ -6,6 +6,7 @@ use crate::primitives::{color::Color, stroke::Stroke};
 pub struct Visuals {
     pub fill: Color,
     pub stroke: Option<Stroke>,
+    // todo textstyle
     pub text: Color,
 }
 

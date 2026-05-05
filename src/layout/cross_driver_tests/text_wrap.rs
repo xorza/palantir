@@ -1,4 +1,5 @@
 use super::support::{chat_message, two_hug_cols_with_wrap};
+use crate::TextStyle;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::shape::{Shape, TextWrap};
@@ -16,7 +17,13 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     Panel::vstack()
         .size((Sizing::Fixed(60.0), Sizing::Hug))
         .show(&mut ui, |ui| {
-            text_node = Some(Text::new(PARAGRAPH).size_px(16.0).wrapping().show(ui).node);
+            text_node = Some(
+                Text::new(PARAGRAPH)
+                    .style(TextStyle::default().with_font_size(16.0))
+                    .wrapping()
+                    .show(ui)
+                    .node,
+            );
         });
     ui.end_frame();
 
@@ -52,7 +59,7 @@ fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
         .show(&mut ui, |ui| {
             text_node = Some(
                 Text::new("supercalifragilisticexpialidocious")
-                    .size_px(16.0)
+                    .style(TextStyle::default().with_font_size(16.0))
                     .wrapping()
                     .show(ui)
                     .node,

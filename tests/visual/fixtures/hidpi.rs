@@ -2,7 +2,9 @@
 //! diverge from the 1.0-scale path here.
 
 use glam::UVec2;
-use palantir::{Button, Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Text, Track};
+use palantir::{
+    Button, Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Text, TextStyle, Track,
+};
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
@@ -46,8 +48,11 @@ fn dashboard_matches_golden() {
                     .show(ui, |ui| {
                         Text::new("Palantir")
                             .with_id("brand")
-                            .size_px(16.0)
-                            .color(Color::rgb(0.92, 0.94, 1.00))
+                            .style(
+                                TextStyle::default()
+                                    .with_font_size(16.0)
+                                    .with_color(Color::rgb(0.92, 0.94, 1.00)),
+                            )
                             .show(ui);
                         Frame::new()
                             .with_id("spacer")
@@ -112,13 +117,19 @@ fn dashboard_matches_golden() {
                                 .show(ui, |ui| {
                                     Text::new("Card")
                                         .with_id(("card-title", i))
-                                        .size_px(14.0)
-                                        .color(Color::rgb(0.95, 0.96, 1.00))
+                                        .style(
+                                            TextStyle::default()
+                                                .with_font_size(14.0)
+                                                .with_color(Color::rgb(0.95, 0.96, 1.00)),
+                                        )
                                         .show(ui);
                                     Text::new("Some metric here")
                                         .with_id(("card-body", i))
-                                        .size_px(11.0)
-                                        .color(Color::rgba(1.0, 1.0, 1.0, 0.75))
+                                        .style(
+                                            TextStyle::default()
+                                                .with_font_size(11.0)
+                                                .with_color(Color::rgba(1.0, 1.0, 1.0, 0.75)),
+                                        )
                                         .show(ui);
                                 });
                         }
@@ -135,8 +146,11 @@ fn dashboard_matches_golden() {
                     .show(ui, |ui| {
                         Text::new("ready · 4 cards · scale 2.0")
                             .with_id("status")
-                            .size_px(11.0)
-                            .color(Color::rgb(0.65, 0.70, 0.80))
+                            .style(
+                                TextStyle::default()
+                                    .with_font_size(11.0)
+                                    .with_color(Color::rgb(0.65, 0.70, 0.80)),
+                            )
                             .show(ui);
                     });
             });

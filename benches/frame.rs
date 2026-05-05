@@ -34,7 +34,7 @@ fn build_ui(ui: &mut Ui) {
                 .child_align(Align::CENTER)
                 .show(ui, |ui| {
                     Text::new("Complex Layout Showcase").with_id("title")
-                        .size_px(20.0)
+                        .style(palantir::TextStyle::default().with_font_size(20.0))
                         .show(ui);
                     Frame::new().with_id("title-spacer")
                         .size((Sizing::FILL, Sizing::Fixed(1.0)))
@@ -121,11 +121,11 @@ fn build_ui(ui: &mut Ui) {
                                     for row in 0..prop_rows {
                                         let r = row as u16;
                                         Text::new(labels[row % labels.len()]).with_id(("plbl", row))
-                                            .size_px(14.0)
+                                            .style(palantir::TextStyle::default().with_font_size(14.0))
                                             .grid_cell((r, 0))
                                             .show(ui);
                                         Text::new(values[row % values.len()]).with_id(("pval", row))
-                                            .size_px(14.0)
+                                            .style(palantir::TextStyle::default().with_font_size(14.0))
                                             .wrapping()
                                             .grid_cell((r, 1))
                                             .show(ui);
@@ -155,10 +155,10 @@ fn build_ui(ui: &mut Ui) {
                                             .size((Sizing::FILL, Sizing::Hug))
                                             .show(ui, |ui| {
                                                 Text::new(format!("user_{i}")).with_id(("from", i))
-                                                    .size_px(12.0)
+                                                    .style(palantir::TextStyle::default().with_font_size(12.0))
                                                     .show(ui);
                                                 Text::new("This is a longer message body that should wrap inside the Fill stack column without breaking words inside any single token.",).with_id(("msg", i))
-                                                .size_px(13.0)
+                                                .style(palantir::TextStyle::default().with_font_size(13.0))
                                                 .wrapping()
                                                 .size((Sizing::FILL, Sizing::Hug))
                                                 .show(ui);
@@ -195,13 +195,13 @@ fn build_ui(ui: &mut Ui) {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             Text::new("Ready").with_id("footer-status")
-                                .size_px(12.0)
+                                .style(palantir::TextStyle::default().with_font_size(12.0))
                                 .show(ui);
                             Frame::new().with_id("footer-spacer")
                                 .size((Sizing::FILL, Sizing::Fixed(1.0)))
                                 .show(ui);
                             Text::new("v1.2.3 · 42 nodes").with_id("footer-meta")
-                                .size_px(12.0)
+                                .style(palantir::TextStyle::default().with_font_size(12.0))
                                 .show(ui);
                         });
                 });

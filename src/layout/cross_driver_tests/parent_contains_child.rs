@@ -318,6 +318,7 @@ fn wrap_toolbar_packs_at_post_grow_width() {
 /// — the user-visible "panel drifts down" effect.
 #[test]
 fn two_hug_cols_section_height_matches_post_grow_text() {
+    use crate::TextStyle;
     use crate::layout::types::track::Track;
     use crate::primitives::color::Color;
     use crate::widgets::grid::Grid;
@@ -355,7 +356,7 @@ fn two_hug_cols_section_height_matches_post_grow_text() {
                                     .show(ui, |ui| {
                                         Text::new("two Hug columns")
                                             .with_id("title")
-                                            .size_px(12.0)
+                                            .style(TextStyle::default().with_font_size(12.0))
                                             .show(ui);
                                         grid_node = Some(
                                             Grid::new()
@@ -371,7 +372,7 @@ fn two_hug_cols_section_height_matches_post_grow_text() {
                                              How vexingly quick daft zebras jump!",
                                         )
                                         .with_id("para")
-                                        .size_px(14.0)
+                                        .style(TextStyle::default().with_font_size(14.0))
                                         .wrapping()
                                         .grid_cell((0, 0))
                                         .show(ui)
@@ -379,7 +380,10 @@ fn two_hug_cols_section_height_matches_post_grow_text() {
                                     );
                                                     Text::new("right column")
                                                         .with_id("right")
-                                                        .size_px(14.0)
+                                                        .style(
+                                                            TextStyle::default()
+                                                                .with_font_size(14.0),
+                                                        )
                                                         .grid_cell((0, 1))
                                                         .show(ui);
                                                 })

@@ -1,3 +1,4 @@
+use crate::TextStyle;
 use crate::Ui;
 use crate::layout::types::display::Display;
 use crate::primitives::{color::Color, rect::Rect};
@@ -328,7 +329,7 @@ fn wrapping_text_reshape_skipped_when_unchanged() {
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog")
                     .with_id("wrapped")
-                    .size_px(16.0)
+                    .style(TextStyle::default().with_font_size(16.0))
                     .wrapping()
                     .show(ui);
             });
@@ -433,7 +434,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog")
                     .with_id("p")
-                    .size_px(16.0)
+                    .style(TextStyle::default().with_font_size(16.0))
                     .wrapping()
                     .show(ui);
             });

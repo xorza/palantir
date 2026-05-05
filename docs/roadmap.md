@@ -3,6 +3,8 @@
 impl widgetid instead of impl hash?
 ecs for soa?
 
+cornders stroke and bg - into one style
+
 ## Now — concrete, motivated, ready to start
 
 - **Drag-to-pan on scrollbar thumb.** Bars draw + reserve space today

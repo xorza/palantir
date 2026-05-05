@@ -93,6 +93,7 @@ fn outlined_style() -> ButtonTheme {
             text: Color::rgba(0.85, 0.88, 0.95, 0.45),
         },
         radius: Corners::all(4.0),
+        ..ButtonTheme::default()
     }
 }
 
@@ -120,5 +121,6 @@ fn danger_style() -> ButtonTheme {
             text: Color::rgba(1.0, 1.0, 1.0, 0.55),
         },
         radius: Corners::all(2.0),
+        ..ButtonTheme::default()
     }
 }

@@ -46,7 +46,7 @@ fn build(ui: &mut Ui) {
                     .show(ui, |ui| {
                         Text::new("Group header")
                             .with_id(("g-hdr", g))
-                            .size_px(14.0)
+                            .style(palantir::TextStyle::default().with_font_size(14.0))
                             .show(ui);
                         for r in 0..ROWS_PER_GROUP {
                             Panel::hstack()
@@ -60,11 +60,11 @@ fn build(ui: &mut Ui) {
                                         .show(ui);
                                     Text::new("row name")
                                         .with_id(("name", g, r))
-                                        .size_px(12.0)
+                                        .style(palantir::TextStyle::default().with_font_size(12.0))
                                         .show(ui);
                                     Text::new("meta info")
                                         .with_id(("meta", g, r))
-                                        .size_px(11.0)
+                                        .style(palantir::TextStyle::default().with_font_size(11.0))
                                         .show(ui);
                                 });
                         }

@@ -46,12 +46,6 @@ pub struct TextEdit<'a> {
     text: &'a mut String,
     style: Option<TextEditTheme>,
     placeholder: Cow<'static, str>,
-    /// Per-widget font-size override; falls back to
-    /// [`crate::Theme::font_size_px`] when `None`.
-    size_px: Option<f32>,
-    /// Per-widget caret-height multiplier; falls back to
-    /// `Theme::text_edit.line_height_mult` when `None`.
-    line_height_mult: Option<f32>,
 }
 
 impl<'a> TextEdit<'a> {
@@ -64,15 +58,12 @@ impl<'a> TextEdit<'a> {
         // `Element::padding` is what the renderer deflates by when
         // laying text inside the leaf, so this is the only padding the
         // widget tracks.
-        // todo theme
         element.padding = Spacing::xy(8.0, 6.0);
         Self {
             element,
             text,
             style: None,
             placeholder: Cow::Borrowed(""),
-            size_px: None,
-            line_height_mult: None,
         }
     }
 
@@ -81,30 +72,13 @@ impl<'a> TextEdit<'a> {
         self
     }
 
+    /// Override the whole TextEdit theme — all-or-nothing. To tweak
+    /// one axis, build the bundle from the theme:
+    /// `TextEditTheme { caret: red, ..ui.theme.text_edit.clone() }`.
+    /// Buffer font/leading/color live on the bundle's `text` field
+    /// (a [`crate::TextStyle`]).
     pub fn style(mut self, s: TextEditTheme) -> Self {
         self.style = Some(s);
-        self
-    }
-
-    /// Override the font size used for the buffer this frame. Defaults
-    /// to [`crate::Theme::font_size_px`] (16 px).
-    pub fn size_px(mut self, px: f32) -> Self {
-        assert!(px > 0.0, "TextEdit size_px must be positive, got {px}");
-        self.size_px = Some(px);
-        self
-    }
-
-    /// Override the line-height multiplier. Drives both the rendered
-    /// text's leading (fed to cosmic-text's `Metrics::new` via
-    /// `Shape::Text.line_height_px`) and the caret rect's height — the
-    /// two stay locked. Defaults to `Theme::text_edit.line_height_mult`
-    /// (1.2, matching cosmic's natural leading).
-    pub fn line_height_mult(mut self, mult: f32) -> Self {
-        assert!(
-            mult > 0.0,
-            "TextEdit line_height_mult must be positive, got {mult}",
-        );
-        self.line_height_mult = Some(mult);
         self
     }
 
@@ -115,8 +89,8 @@ impl<'a> TextEdit<'a> {
             .style
             .clone()
             .unwrap_or_else(|| ui.theme.text_edit.clone());
-        let font_size = self.size_px.unwrap_or(ui.theme.font_size_px);
-        let line_height_mult = self.line_height_mult.unwrap_or(ui.theme.line_height_mult);
+        let font_size = style.text.font_size_px;
+        let line_height_mult = style.text.line_height_mult;
         // The renderer deflates by `element.padding` when laying out
         // `Shape::Text` (see `encoder::mod.rs`). Reading the same value
         // here keeps the caret rect aligned with the glyphs.
@@ -169,7 +143,7 @@ impl<'a> TextEdit<'a> {
             let (display, color) = if text_ptr.is_empty() && !is_focused {
                 (placeholder.clone(), style.placeholder)
             } else {
-                (Cow::Owned(text_ptr.clone()), style.text)
+                (Cow::Owned(text_ptr.clone()), style.text.color)
             };
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {

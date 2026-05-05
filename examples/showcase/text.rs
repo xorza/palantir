@@ -1,5 +1,5 @@
 use palantir::Track;
-use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Text, Ui};
+use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Text, TextStyle, Ui};
 use std::rc::Rc;
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
@@ -20,7 +20,7 @@ pub fn build(ui: &mut Ui) {
                 "single-line label, hugs natural width",
                 |ui| {
                     Text::new("The quick brown fox jumps over the lazy dog")
-                        .size_px(16.0)
+                        .style(TextStyle::default().with_font_size(16.0))
                         .show(ui);
                 },
             );
@@ -31,7 +31,10 @@ pub fn build(ui: &mut Ui) {
                     .size((Sizing::Fixed(360.0), Sizing::Hug))
                     .padding(8.0)
                     .show(ui, |ui| {
-                        Text::new(PARAGRAPH).size_px(14.0).wrapping().show(ui);
+                        Text::new(PARAGRAPH)
+                            .style(TextStyle::default().with_font_size(14.0))
+                            .wrapping()
+                            .show(ui);
                     });
             });
 
@@ -45,7 +48,10 @@ pub fn build(ui: &mut Ui) {
                         .size((Sizing::Fixed(140.0), Sizing::Hug))
                         .padding(8.0)
                         .show(ui, |ui| {
-                            Text::new(PARAGRAPH).size_px(14.0).wrapping().show(ui);
+                            Text::new(PARAGRAPH)
+                                .style(TextStyle::default().with_font_size(14.0))
+                                .wrapping()
+                                .show(ui);
                         });
                 },
             );
@@ -61,7 +67,7 @@ pub fn build(ui: &mut Ui) {
                         .padding(4.0)
                         .show(ui, |ui| {
                             Text::new("supercalifragilistic")
-                                .size_px(14.0)
+                                .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .show(ui);
                         });
@@ -95,12 +101,12 @@ pub fn build_layouts(ui: &mut Ui) {
                         .gap_xy(0.0, 16.0)
                         .show(ui, |ui| {
                             Text::new(PARAGRAPH)
-                                .size_px(14.0)
+                                .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 0))
                                 .show(ui);
                             Text::new("right column")
-                                .size_px(14.0)
+                                .style(TextStyle::default().with_font_size(14.0))
                                 .grid_cell((0, 1))
                                 .show(ui);
                         });
@@ -130,24 +136,30 @@ pub fn build_layouts(ui: &mut Ui) {
                         .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
                         .gap_xy(6.0, 16.0)
                         .show(ui, |ui| {
-                            Text::new("Title:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                            Text::new("Title:")
+                                .style(TextStyle::default().with_font_size(14.0))
+                                .grid_cell((0, 0))
+                                .show(ui);
                             Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
-                                .size_px(14.0)
+                                .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 1))
                                 .show(ui);
                             Text::new("Description:")
-                                .size_px(14.0)
+                                .style(TextStyle::default().with_font_size(14.0))
                                 .grid_cell((1, 0))
                                 .show(ui);
                             Text::new(PARAGRAPH)
-                                .size_px(14.0)
+                                .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((1, 1))
                                 .show(ui);
-                            Text::new("Tags:").size_px(14.0).grid_cell((2, 0)).show(ui);
+                            Text::new("Tags:")
+                                .style(TextStyle::default().with_font_size(14.0))
+                                .grid_cell((2, 0))
+                                .show(ui);
                             Text::new("layout, grid, intrinsic, wrapping, css")
-                                .size_px(14.0)
+                                .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((2, 1))
                                 .show(ui);
@@ -218,8 +230,11 @@ fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce
         .show(ui, |ui| {
             Text::new(title)
                 .with_id(("section-title", id))
-                .size_px(12.0)
-                .color(Color::rgb(0.70, 0.74, 0.82))
+                .style(
+                    TextStyle::default()
+                        .with_font_size(12.0)
+                        .with_color(Color::rgb(0.70, 0.74, 0.82)),
+                )
                 .show(ui);
             body(ui);
         });
@@ -243,7 +258,7 @@ fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'stat
                 .show(ui);
             Text::new(message)
                 .with_id(("message", key))
-                .size_px(14.0)
+                .style(TextStyle::default().with_font_size(14.0))
                 .size((Sizing::FILL, Sizing::Hug))
                 .wrapping()
                 .show(ui);
