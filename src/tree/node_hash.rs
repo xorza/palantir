@@ -152,6 +152,11 @@ fn hash_node_extras(h: &mut Hasher, e: &ElementExtras) {
     // descendants' screen rects via `Cascades`). A parent transform
     // change shows up as descendant screen-rect diffs in
     // `Damage::compute`, which is the right granularity.
+    //
+    // Transform IS folded into `subtree_hash` separately (in the tree's
+    // rollup loop) so the encode cache — which replays cached command
+    // buffers with the original `PushTransform` baked in — invalidates
+    // on transform-only changes.
     h.pod(&e.position);
     h.pod(&e.grid);
     h.pod(&[e.min_size, e.max_size]);

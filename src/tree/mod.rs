@@ -199,6 +199,18 @@ impl Tree {
             let end = self.subtree_end[i];
             let mut h = FxHasher::default();
             h.write_u64(self.hashes[i].as_u64());
+            // Fold `transform` into `subtree_hash` (but not `hashes[i]`):
+            // damage diffs descendants' screen rects, so the per-node
+            // hash stays transform-insensitive. The encode cache, which
+            // keys on `subtree_hash` and replays cached `PushTransform`
+            // bytes verbatim, must invalidate on transform changes.
+            if let Some(t) = self.read_extras(NodeId(i as u32)).transform {
+                h.write_u8(1);
+                let bytes = bytemuck::bytes_of(&t);
+                h.write(bytes);
+            } else {
+                h.write_u8(0);
+            }
             let mut has_grid = matches!(self.layout[i].mode, LayoutMode::Grid(_));
             let mut next = (i as u32) + 1;
             while next < end {

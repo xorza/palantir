@@ -1,17 +1,21 @@
 use palantir::{Color, Configure, Panel, Scroll, Sizing, Stroke, Styled, Text, Ui};
 
 pub fn build(ui: &mut Ui) {
-    Panel::hstack()
-        .gap(16.0)
+    Panel::vstack()
+        .gap(8.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            // Left: scrollable column of colored rows. Wheel/touchpad over
-            // this panel pans the rows.
+            Text::new(
+                "Scroll (vertical) — hover the card and pan with the wheel / two-finger scroll.",
+            )
+            .size_px(13.0)
+            .color(Color::rgb(0.78, 0.82, 0.92))
+            .show(ui);
+
             Panel::vstack()
                 .with_id("scroll-card")
                 .size((Sizing::FILL, Sizing::FILL))
                 .padding(8.0)
-                .gap(6.0)
                 .fill(Color::rgb(0.16, 0.20, 0.28))
                 .stroke(Stroke {
                     width: 1.5,
@@ -19,57 +23,20 @@ pub fn build(ui: &mut Ui) {
                 })
                 .radius(8.0)
                 .show(ui, |ui| {
-                    Text::new("Scroll (vertical) — hover and use the wheel:")
-                        .size_px(13.0)
-                        .color(Color::rgb(0.78, 0.82, 0.92))
-                        .show(ui);
-
                     Scroll::vertical()
                         .with_id("rows-scroll")
                         .size((Sizing::FILL, Sizing::FILL))
                         .gap(4.0)
                         .show(ui, |ui| {
                             for i in 0..40 {
-                                row(ui, "scroll", i);
-                            }
-                        });
-                });
-
-            // Right: the same content without a scroll wrapper — overflows
-            // into the gap between the panel border and the surface so the
-            // contrast with the clipped left side is obvious.
-            Panel::vstack()
-                .with_id("noscroll-card")
-                .size((Sizing::FILL, Sizing::FILL))
-                .padding(8.0)
-                .gap(6.0)
-                .clip(true)
-                .fill(Color::rgb(0.16, 0.20, 0.28))
-                .stroke(Stroke {
-                    width: 1.5,
-                    color: Color::rgb(0.30, 0.36, 0.46),
-                })
-                .radius(8.0)
-                .show(ui, |ui| {
-                    Text::new("Plain VStack — content clips, no panning:")
-                        .size_px(13.0)
-                        .color(Color::rgb(0.78, 0.82, 0.92))
-                        .show(ui);
-
-                    Panel::vstack()
-                        .with_id("rows-noscroll")
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .gap(4.0)
-                        .show(ui, |ui| {
-                            for i in 0..40 {
-                                row(ui, "noscroll", i);
+                                row(ui, i);
                             }
                         });
                 });
         });
 }
 
-fn row(ui: &mut Ui, ns: &'static str, i: u32) {
+fn row(ui: &mut Ui, i: u32) {
     // HSV-ish hue sweep so the rows are visually distinct as they pan.
     let t = i as f32 / 40.0;
     let r = 0.30 + 0.50 * t;
@@ -77,14 +44,14 @@ fn row(ui: &mut Ui, ns: &'static str, i: u32) {
     let b = 0.85 - 0.55 * t;
 
     Panel::hstack()
-        .with_id((ns, "scroll-row", i))
+        .with_id(("scroll-row", i))
         .size((Sizing::FILL, Sizing::Fixed(28.0)))
         .padding((10.0, 6.0))
         .fill(Color::rgb(r, g, b))
         .radius(4.0)
         .show(ui, |ui| {
             Text::new(label_for(i))
-                .with_id((ns, "scroll-row-label", i))
+                .with_id(("scroll-row-label", i))
                 .size_px(13.0)
                 .color(Color::rgb(0.10, 0.10, 0.14))
                 .show(ui);
