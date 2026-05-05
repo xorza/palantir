@@ -1,5 +1,5 @@
 use crate::layout::axis::Axis;
-use crate::layout::cache::{MeasureCache, quantize_available};
+use crate::layout::cache::{MeasureCache, SubtreeArenas, quantize_available};
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::result::{LayoutResult, ShapedText};
@@ -254,15 +254,16 @@ impl LayoutEngine {
         self.result.available_q[node.index()] = cache_avail;
         if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
             let curr_start = node.index();
-            let curr_end = curr_start + hit.desired.len();
+            let curr_end = curr_start + hit.arenas.desired.len();
             // Subtree hash includes child count + per-child rollups,
             // so a length mismatch here would mean the rollup is broken.
             assert_eq!(curr_end, tree.subtree_end[curr_start] as usize);
-            self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.desired);
-            self.result.text_shapes[curr_start..curr_start + hit.text_shapes.len()]
-                .copy_from_slice(hit.text_shapes);
-            self.result.available_q[curr_start..curr_end].copy_from_slice(hit.available_q);
-            self.result.scroll_content[curr_start..curr_end].copy_from_slice(hit.scroll_content);
+            self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
+            self.result.text_shapes[curr_start..curr_start + hit.arenas.text_shapes.len()]
+                .copy_from_slice(hit.arenas.text_shapes);
+            self.result.available_q[curr_start..curr_end].copy_from_slice(hit.arenas.available_q);
+            self.result.scroll_content[curr_start..curr_end]
+                .copy_from_slice(hit.arenas.scroll_content);
             // Restore per-grid hug arrays. `grid::arrange` reads
             // `LayoutEngine.scratch.grid.hugs`, populated only by
             // `grid::measure`. Without this restore, a cache hit at
@@ -273,7 +274,7 @@ impl LayoutEngine {
                 self.scratch
                     .grid
                     .hugs
-                    .restore_subtree(tree, curr_start..curr_end, hit.hugs);
+                    .restore_subtree(tree, curr_start..curr_end, hit.arenas.hugs);
             }
             return hit.root;
         }
@@ -326,11 +327,13 @@ impl LayoutEngine {
             self.cache.write_subtree(
                 cache_wid,
                 cache_hash,
-                &self.scratch.desired[start..end],
-                &self.result.text_shapes[start..end],
-                &self.result.available_q[start..end],
-                &self.result.scroll_content[start..end],
-                &self.scratch.tmp_hugs,
+                SubtreeArenas {
+                    desired: &self.scratch.desired[start..end],
+                    text_shapes: &self.result.text_shapes[start..end],
+                    available_q: &self.result.available_q[start..end],
+                    scroll_content: &self.result.scroll_content[start..end],
+                    hugs: &self.scratch.tmp_hugs,
+                },
             );
         }
 
