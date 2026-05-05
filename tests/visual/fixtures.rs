@@ -5,6 +5,7 @@
 
 mod hidpi;
 mod layout;
+mod scroll;
 mod text;
 mod widgets;
 

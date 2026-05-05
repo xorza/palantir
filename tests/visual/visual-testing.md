@@ -48,11 +48,21 @@ Single test binary (`cargo test --test visual`); Cargo auto-discovers
 - **Diff** (`diff.rs`) — `Tolerance { per_channel, max_ratio }` defaults `(2, 0.001)`. `diff(actual, expected, tol)` is row-parallel via rayon; reduces to a `RowStats { max_delta, differing }`. Diff image dims passing pixels to 25%, marks failing pixels solid red. 6 unit tests pin the contract (identical / within-channel / sparse-outlier-ratio / saturated-fail / strict-zero / dimension-mismatch).
 - **Golden workflow** (`golden.rs`) — `assert_matches_golden(name, &actual, tol)`. Missing golden → auto-write + pass with `NEW GOLDEN (no prior image)` notice. `UPDATE_GOLDEN=1` force-rewrites. On failure dumps `actual.png`, `expected.png`, `diff.png` into `tests/visual/output/<name>/`.
 
-### Fixtures ✅ (7 + 1 sanity)
+### Fixtures ✅ (12 + 1 sanity)
 - `widgets`: `button_hello`, `frame_filled_with_stroke`.
 - `layout`: `vstack_fill_weights`, `grid_mixed_tracks`, `zstack_centered_button`.
 - `text`: `text_paragraph` (looser tolerance for glyph AA).
 - `hidpi`: `dashboard` — complex multi-region scene at scale 2.0 (header / sidebar / 2×2 cards / footer).
+- `scroll`: `scroll_vertical_overflow`, `scroll_horizontal_overflow`,
+  `scroll_xy_overflow` (corner avoidance), `scroll_no_bar_when_fits`,
+  `scroll_with_user_padding` (bar lands in reserved strip, not user
+  padding). Each renders the scene twice from the same `Harness` so
+  frame 2 sees the populated `ScrollState` and emits the bar — the
+  golden captures frame 2. Plus
+  `scroll_warm_cache_matches_cold_encoded_second_frame` — three
+  renders, asserts frame 3 is byte-identical to frame 2 (catches
+  encoder-cache-replay corruption like the `exit_idx` bug we hit;
+  no golden, pure intra-test invariant).
 - `main`: `readback_returns_clear_color_for_empty_scene` — sRGB round-trip sanity, no golden.
 
 ### CI ⏳
