@@ -1,5 +1,7 @@
 # Roadmap
 
+impl widgetid instead of impl hash?
+
 
 ## Now — concrete, motivated, ready to start
 
