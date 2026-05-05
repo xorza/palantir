@@ -59,7 +59,7 @@ thread_local! {
 pub struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    backend: WgpuBackend,
+    pub backend: WgpuBackend,
     ui: Ui,
 }
 

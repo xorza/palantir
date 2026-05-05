@@ -1,4 +1,4 @@
-use super::Damage;
+use super::{Damage, DamagePaint};
 use crate::Ui;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};
@@ -203,27 +203,30 @@ fn added_widget_contributes_curr_rect_to_damage() {
 
 // --- Ui::damage_filter ---------------------------------------------------
 
-/// Pin: `damage_filter()` returns `None` when the damage rect covers
-/// most of the surface — the encoder + backend treat `None` as
+/// Pin: `filter()` returns `Full` when the damage rect covers
+/// most of the surface — the encoder + backend treat that as
 /// "paint everything" so they don't pay per-node filter cost on what
 /// would be a full repaint anyway.
 #[test]
-fn damage_filter_returns_none_on_full_repaint() {
+fn damage_filter_returns_full_on_first_frame() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
     // First frame: every node is "added" → damage rect is the union
-    // of every screen rect → ratio > 0.5 → filter returns None.
+    // of every screen rect → ratio > 0.5 → filter returns Full.
     assert!(ui.damage.rect.is_some());
-    assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
+    assert_eq!(
+        ui.damage.filter(ui.display.logical_rect()),
+        DamagePaint::Full
+    );
 }
 
 /// Pin: a single-leaf fill flip stays in the partial-repaint regime —
-/// `filter(surface)` returns the damage rect, because the rect is well
+/// `filter(surface)` returns `Partial(rect)`, because the rect is well
 /// below the full-repaint threshold (50×50 = 2500 ≪ 200×200 surface).
 #[test]
-fn damage_filter_returns_rect_when_partial() {
+fn damage_filter_returns_partial_when_small() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
@@ -231,15 +234,19 @@ fn damage_filter_returns_rect_when_partial() {
     frame(&mut ui, |ui| {
         one_frame(ui, RED);
     });
-    assert!(ui.damage.rect.is_some());
-    assert_eq!(ui.damage.filter(ui.display.logical_rect()), ui.damage.rect);
-    assert!(ui.damage.filter(ui.display.logical_rect()).is_some());
+    let r = ui.damage.rect.expect("single-leaf change → some damage");
+    assert_eq!(
+        ui.damage.filter(ui.display.logical_rect()),
+        DamagePaint::Partial(r)
+    );
 }
 
-/// Pin: `damage_filter()` returns `None` when nothing changed at all
-/// (no rect). Matches the steady-state idle case.
+/// Pin: `filter()` returns `Skip` when nothing changed at all (no
+/// damage rect). The steady-state idle case must opt out of the GPU
+/// pass entirely so the backbuffer's existing pixels carry forward
+/// untouched.
 #[test]
-fn damage_filter_returns_none_when_nothing_dirty() {
+fn damage_filter_returns_skip_when_nothing_dirty() {
     let mut ui = Ui::new();
     let build = |ui: &mut Ui| {
         one_frame(ui, BLUE);
@@ -247,7 +254,10 @@ fn damage_filter_returns_none_when_nothing_dirty() {
     frame(&mut ui, build);
     frame(&mut ui, build);
     assert!(ui.damage.dirty.is_empty());
-    assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
+    assert_eq!(
+        ui.damage.filter(ui.display.logical_rect()),
+        DamagePaint::Skip
+    );
 }
 
 // --- transforms ---------------------------------------------------------
@@ -367,12 +377,12 @@ fn animated_parent_transform_unions_old_and_new_positions() {
 const TEST_SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);
 
 #[test]
-fn no_damage_means_partial_repaint() {
+fn no_damage_means_skip() {
     let d = Damage::default();
-    // No damage rect → `filter` returns None for the "nothing to do"
-    // reason, not for "force full repaint." Both reasons collapse to
-    // the same return value; the host is gated by `should_repaint`.
-    assert!(d.filter(TEST_SURFACE).is_none());
+    // No damage rect → `filter` returns `Skip` (no work to do; the
+    // backbuffer already holds the right pixels). Distinct from
+    // `Full` ("everything changed"), which is what `>50%` produces.
+    assert_eq!(d.filter(TEST_SURFACE), DamagePaint::Skip);
 }
 
 fn damage_with(r: Rect) -> Damage {
@@ -388,7 +398,7 @@ fn small_damage_stays_partial() {
     let d = damage_with(Rect::new(0.0, 0.0, 10.0, 10.0));
     assert_eq!(
         d.filter(TEST_SURFACE),
-        Some(Rect::new(0.0, 0.0, 10.0, 10.0))
+        DamagePaint::Partial(Rect::new(0.0, 0.0, 10.0, 10.0))
     );
 }
 
@@ -396,7 +406,7 @@ fn small_damage_stays_partial() {
 fn large_damage_falls_back_to_full() {
     // 80x80 = 6400, surface 100x100 = 10000 → 64% > 50%.
     let d = damage_with(Rect::new(0.0, 0.0, 80.0, 80.0));
-    assert!(d.filter(TEST_SURFACE).is_none());
+    assert_eq!(d.filter(TEST_SURFACE), DamagePaint::Full);
 }
 
 #[test]
@@ -405,25 +415,28 @@ fn at_threshold_stays_partial() {
     let d = damage_with(Rect::new(0.0, 0.0, 50.0, 100.0));
     assert_eq!(
         d.filter(TEST_SURFACE),
-        Some(Rect::new(0.0, 0.0, 50.0, 100.0))
+        DamagePaint::Partial(Rect::new(0.0, 0.0, 50.0, 100.0))
     );
 }
 
 #[test]
 fn zero_area_surface_forces_full() {
     let d = damage_with(Rect::new(0.0, 0.0, 1.0, 1.0));
-    assert!(d.filter(Rect::ZERO).is_none());
+    assert_eq!(d.filter(Rect::ZERO), DamagePaint::Full);
 }
 
-/// Pin: on the first frame `Damage::filter` returns `None` — every
+/// Pin: on the first frame `Damage::filter` returns `Full` — every
 /// node is "added," damage = full surface, ratio = 1.0 > 0.5.
 #[test]
-fn first_frame_filter_is_none() {
+fn first_frame_filter_is_full() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
-    assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
+    assert_eq!(
+        ui.damage.filter(ui.display.logical_rect()),
+        DamagePaint::Full
+    );
 }
 
 /// Pin: when the surface size changes between frames, `compute`
@@ -445,22 +458,20 @@ fn surface_resize_forces_full_repaint() {
     ui.begin_frame(DISPLAY);
     build(&mut ui);
     let d1 = ui.end_frame().damage;
-    assert!(d1.is_none());
+    assert_eq!(d1, DamagePaint::Full);
 
     // Frame 2: same surface, identical authoring. Steady state ⇒
-    // no dirty nodes ⇒ damage = None (no diff to repaint).
+    // no dirty nodes ⇒ Skip (backbuffer carries forward).
     ui.begin_frame(DISPLAY);
     build(&mut ui);
     let d2 = ui.end_frame().damage;
-    assert!(d2.is_none());
+    assert_eq!(d2, DamagePaint::Skip);
     assert!(ui.damage.dirty.is_empty());
 
     // Frame 3: surface narrows by 1 px, identical authoring. With
     // `Sizing::FILL` root, every node's screen_rect shifts ⇒ many
     // dirty nodes, but even if only one were dirty the surface
-    // change must force `damage = None`. Pin both: dirty list has
-    // entries (would otherwise be a small partial repaint), and
-    // damage = None.
+    // change must force `Full`.
     let smaller = Display {
         physical: UVec2::new(199, 200),
         ..DISPLAY
@@ -472,9 +483,10 @@ fn surface_resize_forces_full_repaint() {
         !ui.damage.dirty.is_empty(),
         "resize should mark some nodes dirty (rect changed)",
     );
-    assert!(
-        d3.is_none(),
-        "surface change must short-circuit to full repaint, got {d3:?}",
+    assert_eq!(
+        d3,
+        DamagePaint::Full,
+        "surface change must short-circuit to full repaint",
     );
 
     // Frame 4: surface stable at the new size, identical authoring.
@@ -482,7 +494,7 @@ fn surface_resize_forces_full_repaint() {
     ui.begin_frame(smaller);
     build(&mut ui);
     let d4 = ui.end_frame().damage;
-    assert!(d4.is_none());
+    assert_eq!(d4, DamagePaint::Skip);
     assert!(ui.damage.dirty.is_empty());
 }
 
@@ -505,7 +517,7 @@ fn scale_factor_change_forces_full_repaint() {
     ui.begin_frame(DISPLAY);
     build(&mut ui);
     let steady = ui.end_frame().damage;
-    assert!(steady.is_none());
+    assert_eq!(steady, DamagePaint::Skip);
     assert!(ui.damage.dirty.is_empty());
 
     let scaled = Display {
@@ -515,9 +527,10 @@ fn scale_factor_change_forces_full_repaint() {
     ui.begin_frame(scaled);
     build(&mut ui);
     let after_scale = ui.end_frame().damage;
-    assert!(
-        after_scale.is_none(),
-        "scale-factor change must short-circuit to full repaint, got {after_scale:?}",
+    assert_eq!(
+        after_scale,
+        DamagePaint::Full,
+        "scale-factor change must short-circuit to full repaint",
     );
 }
 
@@ -609,9 +622,10 @@ fn small_damage_with_surface_change_forces_full_repaint() {
          otherwise pass the threshold without exercising the surface check), \
          got rect={r:?}",
     );
-    assert!(
-        damage.is_none(),
-        "small-damage + surface-change must force full repaint, got {damage:?} \
+    assert_eq!(
+        damage,
+        DamagePaint::Full,
+        "small-damage + surface-change must force full repaint \
          (this is the showcase resize-flicker case — encoder would emit a \
          damage-filtered partial paint over a backend-cleared backbuffer)",
     );
@@ -638,20 +652,21 @@ fn stable_surface_does_not_short_circuit() {
     ui.begin_frame(DISPLAY);
     build(&mut ui, BLUE);
     let warm = ui.end_frame().damage;
-    assert!(warm.is_none(), "warm steady-state with no diff is None");
+    assert_eq!(warm, DamagePaint::Skip, "warm steady-state with no diff");
     assert!(ui.damage.dirty.is_empty());
 
     // Frame 3: same surface, *one leaf* changes color. Diff must
-    // produce a partial repaint (Some(small_rect)), not None — that
+    // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
     ui.begin_frame(DISPLAY);
     build(&mut ui, RED);
     let partial = ui.end_frame().damage;
-    let r = partial.expect(
-        "stable surface + one-leaf change should produce a partial \
-         repaint, but damage was None — surface-change short-circuit \
-         fired incorrectly",
-    );
+    let DamagePaint::Partial(r) = partial else {
+        panic!(
+            "stable surface + one-leaf change should produce a partial \
+             repaint, got {partial:?} — surface-change short-circuit fired incorrectly",
+        );
+    };
     // Damage rect = the 50×50 frame's rect. Well below 50% of 200×200.
     assert!(
         r.area() / DISPLAY.logical_rect().area() < 0.5,
@@ -716,7 +731,7 @@ fn button_hover_damage_covers_only_the_button() {
     assert_eq!(ui.damage.rect, Some(hot_rect));
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
-        Some(hot_rect),
+        DamagePaint::Partial(hot_rect),
         "small per-button damage must not trip the full-repaint heuristic",
     );
 
@@ -761,5 +776,8 @@ fn button_unhover_damage_covers_only_the_button() {
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));
-    assert_eq!(ui.damage.filter(ui.display.logical_rect()), Some(hot_rect),);
+    assert_eq!(
+        ui.damage.filter(ui.display.logical_rect()),
+        DamagePaint::Partial(hot_rect),
+    );
 }

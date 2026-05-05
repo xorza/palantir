@@ -25,21 +25,20 @@ use crate::renderer::gpu::buffer::RenderBuffer;
 use crate::tree::Tree;
 use crate::tree::widget_id::WidgetId;
 use crate::ui::cascade::CascadeResult;
+use crate::ui::damage::DamagePaint;
 
-/// One frame's CPU output: the composed render buffer and the damage
-/// rect to scissor it to. Returned from [`Ui::frame`] after
-/// [`Ui::end_frame`] has run, consumed by [`WgpuBackend::submit`].
+/// One frame's CPU output: the composed render buffer and what the
+/// GPU should do with it. Returned from [`Ui::end_frame`], consumed
+/// by [`WgpuBackend::submit`]. The three [`DamagePaint`] variants —
+/// `Full`, `Partial`, `Skip` — replace the old `Option<Rect>` so the
+/// no-changes case can opt out of the GPU pass entirely instead of
+/// being forced through a full clear+repaint.
 ///
-/// `damage = None` means full repaint (first frame, post-resize, no
-/// diff, or damage area exceeds the 50% threshold).
-/// `damage = Some(rect)` means partial repaint scissored to that rect.
-///
-/// [`Ui::frame`]: crate::ui::Ui::frame
 /// [`Ui::end_frame`]: crate::ui::Ui::end_frame
 /// [`WgpuBackend::submit`]: crate::renderer::WgpuBackend::submit
 pub struct FrameOutput<'a> {
     pub(crate) buffer: &'a RenderBuffer,
-    pub(crate) damage: Option<Rect>,
+    pub(crate) damage: DamagePaint,
 }
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns

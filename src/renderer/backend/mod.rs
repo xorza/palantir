@@ -4,6 +4,7 @@ use self::quad_pipeline::QuadPipeline;
 use super::frontend::FrameOutput;
 use crate::primitives::{color::Color, urect::URect};
 use crate::text::SharedCosmic;
+use crate::ui::damage::DamagePaint;
 
 /// Pad the damage scissor by this many physical pixels on every
 /// side. Quads and glyphs may anti-alias slightly outside their
@@ -48,6 +49,13 @@ pub struct WgpuBackend {
     /// Stage 3 / Step 6 of the damage-rendering plan: we render here
     /// so future frames can `LoadOp::Load` last frame's pixels.
     backbuffer: Option<Backbuffer>,
+    /// Debug visualization: when `true`, every frame loads with
+    /// `LoadOp::Clear` (the submit-time clear color) even on partial
+    /// repaints. The damage scissor still applies to draws, so only
+    /// the dirty region paints — surrounding pixels flash the clear
+    /// color. Toggled via [`crate::support::internals::set_clear_on_damage`]
+    /// (gated on `cfg(any(test, feature = "internals"))`).
+    pub(crate) debug_clear_on_damage: bool,
 }
 
 impl WgpuBackend {
@@ -60,6 +68,7 @@ impl WgpuBackend {
             quad,
             text,
             backbuffer: None,
+            debug_clear_on_damage: false,
         }
     }
 
@@ -115,19 +124,21 @@ impl WgpuBackend {
     /// group runs. So a child quad declared *after* a label correctly
     /// occludes that label.
     ///
-    /// Step 6 of the damage-rendering plan. `damage`, when `Some`,
-    /// switches the pass to `LoadOp::Load` (last frame's pixels stay) and
-    /// intersects every group's scissor with the damage rect, so only the
-    /// dirty region is repainted. `None` ⇒ `LoadOp::Clear` + paint normally
-    /// (used on the first frame, after resize, and when the dirty area
-    /// exceeds the heuristic threshold).
+    /// Three damage paths, branching on `frame.damage`:
     ///
-    /// `frame.damage` is in *logical* pixels matching
-    /// `frame.buffer.scale`; the backend handles physical-px
-    /// conversion, AA padding, and surface-bounds clamping. A
-    /// degenerate damage rect that clamps to zero area is treated
-    /// as "nothing to paint" — pass returns having loaded but not
-    /// drawn.
+    /// - [`DamagePaint::Full`]: `LoadOp::Clear(clear)` + paint every
+    ///   group at its native scissor. First frame, post-resize, post-
+    ///   format-change, and area-over-threshold all land here.
+    /// - [`DamagePaint::Partial(rect)`][DamagePaint::Partial]:
+    ///   `LoadOp::Load` (preserves last frame) + intersects every
+    ///   group's scissor with the damage rect. Logical-px in;
+    ///   the backend pads for AA bleed and clamps to surface.
+    /// - [`DamagePaint::Skip`]: render pass is skipped entirely.
+    ///   The persistent backbuffer already holds last frame's pixels,
+    ///   so submit just copies it to the swapchain texture and returns.
+    ///
+    /// A `Partial` rect that clamps to zero physical-px area
+    /// degrades to "loaded but not drawn" inside the pass.
     pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, frame: FrameOutput<'_>) {
         let buffer = frame.buffer;
         let damage = frame.damage;
@@ -140,41 +151,57 @@ impl WgpuBackend {
             "wgpu_backend.submit"
         );
 
-        // Match backbuffer to the swapchain texture; a freshly
+        // Match backbuffer to the swapchain texture. A freshly
         // (re)created backbuffer has undefined contents, so any
-        // requested partial repaint must escalate to a full clear
-        // this frame. Same for the very first frame after backend
-        // construction.
+        // requested Partial / Skip must escalate to a full clear+paint
+        // this frame.
         let backbuffer_recreated = self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
-        let damage = if backbuffer_recreated { None } else { damage };
+        let damage = if backbuffer_recreated {
+            DamagePaint::Full
+        } else {
+            damage
+        };
 
-        // Convert the logical damage rect to a physical-px scissor,
-        // padded for AA bleed and clamped to the surface. `None`
-        // here means "full repaint" (clear + no scissor override).
-        let damage_scissor = damage.and_then(|r| {
-            let phys = r.scaled_by(buffer.scale, true);
-            let pad = DAMAGE_AA_PADDING as f32;
-            let mins_x = (phys.min.x - pad).max(0.0) as u32;
-            let mins_y = (phys.min.y - pad).max(0.0) as u32;
-            let maxs_x =
-                ((phys.min.x + phys.size.w + pad).max(0.0) as u32).min(buffer.viewport_phys.x);
-            let maxs_y =
-                ((phys.min.y + phys.size.h + pad).max(0.0) as u32).min(buffer.viewport_phys.y);
-            if maxs_x > mins_x && maxs_y > mins_y {
-                Some(URect::new(mins_x, mins_y, maxs_x - mins_x, maxs_y - mins_y))
-            } else {
-                None
+        // Skip: nothing changed and the backbuffer already holds the
+        // right pixels. Bypass the render pass entirely and just copy
+        // backbuffer → swapchain so something gets presented.
+        if let DamagePaint::Skip = damage {
+            self.copy_backbuffer_to_surface(surface_tex);
+            return;
+        }
+
+        // Convert the logical damage rect (Partial only) to a
+        // physical-px scissor, padded for AA bleed and clamped to the
+        // surface. `Full` skips this and paints the whole viewport.
+        let damage_scissor = match damage {
+            DamagePaint::Partial(r) => {
+                let phys = r.scaled_by(buffer.scale, true);
+                let pad = DAMAGE_AA_PADDING as f32;
+                let mins_x = (phys.min.x - pad).max(0.0) as u32;
+                let mins_y = (phys.min.y - pad).max(0.0) as u32;
+                let maxs_x =
+                    ((phys.min.x + phys.size.w + pad).max(0.0) as u32).min(buffer.viewport_phys.x);
+                let maxs_y =
+                    ((phys.min.y + phys.size.h + pad).max(0.0) as u32).min(buffer.viewport_phys.y);
+                if maxs_x > mins_x && maxs_y > mins_y {
+                    Some(URect::new(mins_x, mins_y, maxs_x - mins_x, maxs_y - mins_y))
+                } else {
+                    None
+                }
             }
+            DamagePaint::Full => None,
+            DamagePaint::Skip => unreachable!("handled above"),
+        };
+        let clear_op = wgpu::LoadOp::Clear(wgpu::Color {
+            r: clear.r as f64,
+            g: clear.g as f64,
+            b: clear.b as f64,
+            a: clear.a as f64,
         });
-        let load_op = if damage_scissor.is_some() {
+        let load_op = if damage_scissor.is_some() && !self.debug_clear_on_damage {
             wgpu::LoadOp::Load
         } else {
-            wgpu::LoadOp::Clear(wgpu::Color {
-                r: clear.r as f64,
-                g: clear.g as f64,
-                b: clear.b as f64,
-                a: clear.a as f64,
-            })
+            clear_op
         };
 
         let backbuffer = self
@@ -304,6 +331,38 @@ impl WgpuBackend {
     pub fn surface_format_changed(&mut self, format: wgpu::TextureFormat) {
         self.text
             .rebuild_for_format(&self.device, &self.queue, format);
+    }
+
+    /// Copy the persistent backbuffer onto the swapchain texture
+    /// without running a render pass. Used on `DamagePaint::Skip`
+    /// frames: the backbuffer already holds last frame's pixels and
+    /// nothing changed, so we just need something on screen.
+    fn copy_backbuffer_to_surface(&self, surface_tex: &wgpu::Texture) {
+        let backbuffer = self
+            .backbuffer
+            .as_ref()
+            .expect("ensure_backbuffer just succeeded");
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("palantir.renderer.skip_copy"),
+            });
+        encoder.copy_texture_to_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &backbuffer.tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture: surface_tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            backbuffer.size,
+        );
+        self.queue.submit(std::iter::once(encoder.finish()));
     }
 }
 
