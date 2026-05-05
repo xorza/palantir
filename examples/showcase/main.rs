@@ -15,6 +15,7 @@ mod gap;
 mod grid;
 mod justify;
 mod panels;
+mod scroll;
 mod sizing;
 mod spacing;
 mod text;
@@ -32,6 +33,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("text layouts", text::build_layouts),
     ("z-order", text_zorder::build),
     ("panels", panels::build),
+    ("scroll", scroll::build),
     ("wrap", wrap::build),
     ("grid", grid::build),
     ("sizing", sizing::build),
