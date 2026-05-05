@@ -26,18 +26,16 @@
 //! and releases its arena ranges; the slots stay as garbage until the
 //! next compact.
 //!
-//! ## `available_q` lives in three places — by design
+//! ## `available_q` lives in two places
 //!
 //! 1. [`MeasureCache::available`] — per-node arena, parallel to
 //!    `desired`. Stores every cached subtree's per-node quantized
-//!    `available`. The dimensional half of the cache key for *every*
-//!    descendant when a snapshot is restored.
-//! 2. [`ArenaSnapshot::available_q`] — single value at the snapshot
-//!    root. Equals `available[nodes.start]`. Read directly at lookup
-//!    time as the cache-validity gate ("did the parent change available
-//!    since last frame?"); the per-node copy could be read instead but
-//!    this saves one indirection on the hot path.
-//! 3. [`crate::layout::result::LayoutResult::available_q`] — per-node,
+//!    `available`. The root entry is read at lookup time as the
+//!    dimensional half of the cache-validity check; the descendant
+//!    entries are restored on a cache hit so consumers downstream see
+//!    a populated column even for subtrees the measure pass
+//!    short-circuited.
+//! 2. [`crate::layout::result::LayoutResult::available_q`] — per-node,
 //!    per-frame. Written by `LayoutEngine::measure` on every node it
 //!    visits, restored from the arena copy on a cache hit so descendants
 //!    skipped by the short-circuit still carry their value. Read by
@@ -57,22 +55,18 @@ use crate::tree::widget_id::WidgetId;
 use glam::IVec2;
 use rustc_hash::FxHashMap;
 
-/// 32-byte snapshot. `nodes` indexes the three node-indexed arenas
-/// (`desired`, `text`, `available`); `hugs` indexes `hugs`. The
-/// snapshot key is `(subtree_hash, available_q)` — both fields are
-/// compared at lookup time.
+/// Snapshot index entry. `nodes` indexes the three node-indexed
+/// arenas (`desired`, `text`, `available`); `hugs` indexes `hugs`.
+/// The snapshot key is `(subtree_hash, available[nodes.start])` —
+/// the dimensional half is read out of the per-node `available`
+/// arena, which would be carrying the same value on a redundant
+/// field.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ArenaSnapshot {
     /// Rolled subtree hash from last frame. The rollup includes child
     /// count and per-child subtree hashes, so any structural or
     /// authoring change anywhere in the subtree busts the key.
     pub(crate) subtree_hash: NodeHash,
-    /// Quantized `available` size the snapshot was measured under —
-    /// the dimensional half of the cache key. Matches
-    /// `available[nodes.start]` (the per-node entry is still
-    /// populated for descendant restoration on a hit) but the key
-    /// check reads this field directly.
-    pub(crate) available_q: AvailableKey,
     /// Range over the three node-indexed arenas. `desired.items[nodes.range()]`
     /// is the subtree's `desired` in pre-order; index 0 is the
     /// snapshot root's own size.
@@ -141,7 +135,7 @@ pub(crate) fn quantize_available(s: Size) -> AvailableKey {
     // sentinel: a negative `available` could quantize to `i32::MIN` and
     // collide with the sentinel. Layout invariants keep `available` in
     // `[0, ∞)`; pin the contract here so a future regression trips early.
-    debug_assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
+    assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
     IVec2::new(quantize_axis(s.w), quantize_axis(s.h))
 }
 
@@ -193,10 +187,10 @@ impl MeasureCache {
         curr_avail: AvailableKey,
     ) -> Option<CachedSubtree<'_>> {
         let snap = self.snapshots.get(&wid)?;
-        if snap.subtree_hash != curr_hash || snap.available_q != curr_avail {
+        let nodes = snap.nodes.range();
+        if snap.subtree_hash != curr_hash || self.available[nodes.start] != curr_avail {
             return None;
         }
-        let nodes = snap.nodes.range();
         Some(CachedSubtree {
             root: self.desired.items[nodes.start],
             desired: &self.desired.items[nodes.clone()],
@@ -246,7 +240,6 @@ impl MeasureCache {
             let nodes = prev.nodes.range();
             let hugs_range = prev.hugs.range();
             prev.subtree_hash = subtree_hash;
-            prev.available_q = available_qs[0];
             self.desired.items[nodes.clone()].copy_from_slice(desired);
             self.text[nodes.clone()].copy_from_slice(text_shapes);
             self.available[nodes.clone()].copy_from_slice(available_qs);
@@ -275,7 +268,6 @@ impl MeasureCache {
             wid,
             ArenaSnapshot {
                 subtree_hash,
-                available_q: available_qs[0],
                 nodes,
                 hugs: hugs_span,
             },
