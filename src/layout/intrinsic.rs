@@ -15,6 +15,7 @@
 use super::support::{AxisCtx, leaf_text_shapes, resolve_axis_size};
 use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, stack, wrapstack, zstack};
 use crate::layout::types::sizing::Sizing;
+use crate::shape::TextWrap;
 use crate::text::TextMeasurer;
 use crate::tree::element::ScrollAxes;
 use crate::tree::{NodeId, Tree};
@@ -164,7 +165,14 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasu
     for ts in leaf_text_shapes(tree, node) {
         let m = text.shape_unbounded(wid, curr_hash, ts.text, ts.font_size_px, ts.line_height_px);
         let v = match (axis, req) {
-            (Axis::X, LenReq::MinContent) => m.intrinsic_min,
+            // Non-wrapping text can't break, so its min-content equals its
+            // unbroken width. Returning the longest-word width here would
+            // let a Hug-track solver shrink the column below the actual
+            // floor, and the text would overflow its slot at arrange.
+            (Axis::X, LenReq::MinContent) => match ts.wrap {
+                TextWrap::Wrap => m.intrinsic_min,
+                TextWrap::Single => m.size.w,
+            },
             (Axis::X, LenReq::MaxContent) => m.size.w,
             (Axis::Y, _) => m.size.h,
         };
