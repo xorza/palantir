@@ -229,7 +229,7 @@ impl InputState {
             frame_text: String::new(),
             modifiers: Modifiers::NONE,
             focused: None,
-            focus_policy: FocusPolicy::PreserveOnMiss,
+            focus_policy: FocusPolicy::default(),
         }
     }
 

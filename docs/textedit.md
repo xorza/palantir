@@ -101,19 +101,22 @@ frame_text: SmolStr,         // committed text this frame, ditto
   pub enum FocusPolicy {
       /// Press on non-focusable widget or empty surface preserves the
       /// current focus. The caret stays put; keystrokes keep flowing
-      /// to the focused TextEdit. Default.
+      /// to the focused TextEdit. Friendlier for sketches and tooling
+      /// UIs where every other widget is a Button.
       PreserveOnMiss,
       /// Press anywhere that isn't a focusable widget clears focus.
-      /// Native-app convention on most platforms.
+      /// Native-app convention on most platforms (click-outside-to-
+      /// blur). Default.
       ClearOnMiss,
   }
   ```
 
-  Default is `PreserveOnMiss` — friendlier for sketches and tooling
-  UIs where every other widget is a Button. Apps that want
-  click-outside-to-blur set `ui.focus_policy = ClearOnMiss` once at
-  startup. Programmatic `Ui::request_focus(None)` works under either
-  policy for explicit dismissal (Escape-to-blur, modal close, etc.).
+  Default is `ClearOnMiss` — matches what users expect from native
+  GUIs. Apps that want sticky focus (sketches / tooling where
+  clicking a Button shouldn't kill an in-progress edit) set
+  `ui.set_focus_policy(PreserveOnMiss)` once at startup. Programmatic
+  `Ui::request_focus(None)` works under either policy for explicit
+  dismissal (Escape-to-blur, modal close, etc.).
 - `KeyDown`/`Text` events accumulate into the frame queues. They're
   dispatched by lookup, not routed: only the widget whose
   `WidgetId == focused` reads them at record time. Same model as
