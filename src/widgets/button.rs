@@ -8,33 +8,22 @@ use crate::widgets::{Response, frame::Frame};
 use std::borrow::Cow;
 
 /// Paint settings for one button state — `normal`, `hovered`,
-/// `pressed`, or `disabled`. Each carries its own `Background` (fill /
-/// stroke / radius) and `TextStyle` (font size / color / leading), so
-/// two states with different radii or font sizes is expressible — most
-/// themes keep them equal across states by convention.
+/// `pressed`, or `disabled`. Each carries its own optional `Background`
+/// (fill / stroke / radius) and optional `TextStyle` (font size /
+/// color / leading). Both fall back to defaults when `None`:
+/// `background = None` paints nothing for that state; `text = None`
+/// uses [`crate::Theme::text`] (the global text style), so an app
+/// changing `theme.text.color` moves every button label that didn't
+/// override it.
 ///
 /// Used as the leaf type of [`ButtonTheme`]'s four state slots.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ButtonStyle {
     pub background: Option<Background>,
-    // todo also optional
-    pub text: TextStyle,
+    pub text: Option<TextStyle>,
 }
 
-impl ButtonStyle {
-    /// Compatibility constructor: solid fill + text color, default
-    /// font/leading from `TextStyle::default()`. Background carries no
-    /// stroke and zero radius — set those by spreading from this.
-    pub fn solid(fill: Color, text_color: Color) -> Self {
-        Self {
-            background: Some(Background {
-                fill,
-                ..Background::default()
-            }),
-            text: TextStyle::default().with_color(text_color),
-        }
-    }
-}
+impl ButtonStyle {}
 
 /// Four-state button theme. The leaf type ([`ButtonStyle`]) lives next
 /// to it; widget reads `theme.{normal,hovered,pressed,disabled}` based
@@ -49,35 +38,35 @@ pub struct ButtonTheme {
 
 impl Default for ButtonTheme {
     fn default() -> Self {
-        // Per-state ButtonStyle share a Background with the historical
-        // 4 px radius. `solid` doesn't set the radius, so we adjust
-        // each state below.
-        let with_radius = |v: ButtonStyle| -> ButtonStyle {
-            ButtonStyle {
-                background: v.background.map(|b| Background {
-                    radius: Corners::all(4.0),
-                    ..b
-                }),
-                ..v
-            }
+        // Each state's Background carries the historical 4 px radius.
+        // `text: None` on normal/hovered/pressed means "use the global
+        // text style" — bumping `theme.text.color` automatically
+        // recolors active button labels. Disabled has its own faded
+        // text since the global default is opaque.
+        let bg = |fill: Color| -> Option<Background> {
+            Some(Background {
+                fill,
+                stroke: None,
+                radius: Corners::all(4.0),
+            })
         };
         Self {
-            normal: with_radius(ButtonStyle::solid(
-                Color::rgb(0.20, 0.40, 0.80),
-                Color::WHITE,
-            )),
-            hovered: with_radius(ButtonStyle::solid(
-                Color::rgb(0.30, 0.52, 0.92),
-                Color::WHITE,
-            )),
-            pressed: with_radius(ButtonStyle::solid(
-                Color::rgb(0.10, 0.28, 0.66),
-                Color::WHITE,
-            )),
-            disabled: with_radius(ButtonStyle::solid(
-                Color::rgb(0.22, 0.26, 0.32),
-                Color::rgba(1.0, 1.0, 1.0, 0.45),
-            )),
+            normal: ButtonStyle {
+                background: bg(Color::rgb(0.20, 0.40, 0.80)),
+                text: None,
+            },
+            hovered: ButtonStyle {
+                background: bg(Color::rgb(0.30, 0.52, 0.92)),
+                text: None,
+            },
+            pressed: ButtonStyle {
+                background: bg(Color::rgb(0.10, 0.28, 0.66)),
+                text: None,
+            },
+            disabled: ButtonStyle {
+                background: bg(Color::rgb(0.22, 0.26, 0.32)),
+                text: Some(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.45))),
+            },
         }
     }
 }
@@ -148,13 +137,17 @@ impl Button {
         // `Frame::show` because no other shape/node has been pushed since the
         // frame closed — `Tree::add_shape`'s contiguity invariant still holds.
         if !self.label.is_empty() {
+            // Per-state text style; `None` falls through to the global
+            // `Theme::text`, so an app changing `theme.text.color`
+            // moves every button label that didn't override it.
+            let text = v.text.unwrap_or(ui.theme.text);
             ui.tree.add_shape(
                 resp.node,
                 Shape::Text {
                     text: self.label.clone(),
-                    color: v.text.color,
-                    font_size_px: v.text.font_size_px,
-                    line_height_px: v.text.font_size_px * v.text.line_height_mult,
+                    color: text.color,
+                    font_size_px: text.font_size_px,
+                    line_height_px: text.font_size_px * text.line_height_mult,
                     wrap: TextWrap::Single,
                     align: self.label_align,
                 },

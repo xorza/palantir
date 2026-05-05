@@ -748,11 +748,9 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     use crate::widgets::text::Text;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
-    ui.theme.text.font_size_px = 20.0;
-    ui.theme.button.normal.text.font_size_px = 22.0;
-    ui.theme.button.hovered.text.font_size_px = 22.0;
-    ui.theme.button.pressed.text.font_size_px = 22.0;
-    ui.theme.button.disabled.text.font_size_px = 22.0;
+    // Button's per-state `text` is None by default → label falls back
+    // to the global `theme.text`. Bumping it once moves Button labels.
+    ui.theme.text.font_size_px = 22.0;
     ui.theme.text_edit.text.font_size_px = 24.0;
     let mut buf = String::from("hi");
 
@@ -790,12 +788,19 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
             })
             .unwrap()
     };
+    // Button + Text both fall back to the global theme.text (Button
+    // because its per-state text is None by default; Text because it
+    // reads theme.text directly). TextEdit has its own theme path.
     assert_eq!(
         read_fs(btn_node.unwrap()),
         22.0,
-        "Button reads theme.button"
+        "Button label falls back to theme.text",
     );
-    assert_eq!(read_fs(txt_node.unwrap()), 20.0, "Text reads theme.text");
+    assert_eq!(
+        read_fs(txt_node.unwrap()),
+        22.0,
+        "Text widget reads theme.text",
+    );
     assert_eq!(
         read_fs(ed_node.unwrap()),
         24.0,
@@ -867,19 +872,15 @@ fn text_widget_color_override_wins_over_theme() {
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_line_height() {
-    // Pin: leading lives on each widget's own theme, not on a single
-    // global slot — same model as font size. App must update each
-    // theme's leading independently.
+    // Pin: leading lives on each widget's own theme. Button's
+    // per-state `text` is None by default → falls back to
+    // `theme.text`. TextEdit has its own `theme.text_edit.text`.
     use crate::shape::Shape;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
     ui.theme.text.line_height_mult = 2.0;
-    ui.theme.button.normal.text.line_height_mult = 2.5;
-    ui.theme.button.hovered.text.line_height_mult = 2.5;
-    ui.theme.button.pressed.text.line_height_mult = 2.5;
-    ui.theme.button.disabled.text.line_height_mult = 2.5;
     ui.theme.text_edit.text.line_height_mult = 3.0;
     let mut buf = String::from("hi");
 
@@ -917,18 +918,18 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
             })
             .unwrap()
     };
-    // Each widget uses its own theme's font_size × its own
-    // line_height_mult. Default font sizes are 16 in this test
-    // (we only flipped line_height_mults).
+    // Default font size is 16 everywhere. Button + Text both fall
+    // back to `theme.text` (Button via None per-state; Text directly).
+    // TextEdit reads its own `theme.text_edit.text`.
     assert_eq!(
         read_lh(btn_node.unwrap()),
-        16.0 * 2.5,
-        "Button reads theme.button"
+        16.0 * 2.0,
+        "Button label falls back to theme.text",
     );
     assert_eq!(
         read_lh(txt_node.unwrap()),
         16.0 * 2.0,
-        "Text reads theme.text"
+        "Text reads theme.text",
     );
     assert_eq!(
         read_lh(ed_node.unwrap()),

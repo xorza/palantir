@@ -1,6 +1,6 @@
 use palantir::{
-    Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Sizing, Stroke, TextStyle,
-    Ui, ButtonStyle,
+    Background, Button, ButtonStyle, ButtonTheme, Color, Configure, Corners, Panel, Sizing, Stroke,
+    TextStyle, Ui,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -77,15 +77,15 @@ fn outlined_style() -> ButtonTheme {
     ButtonTheme {
         normal: ButtonStyle {
             background: Some(bg(Color::TRANSPARENT, stroke)),
-            text: TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95)),
+            text: Some(TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95))),
         },
         hovered: ButtonStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.18), stroke)),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         pressed: ButtonStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.35), stroke)),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         disabled: ButtonStyle {
             background: Some(bg(
@@ -95,7 +95,7 @@ fn outlined_style() -> ButtonTheme {
                     color: Color::rgba(0.4, 0.5, 0.7, 0.35),
                 }),
             )),
-            text: TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45)),
+            text: Some(TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45))),
         },
     }
 }
@@ -110,19 +110,19 @@ fn danger_style() -> ButtonTheme {
     ButtonTheme {
         normal: ButtonStyle {
             background: Some(bg(red)),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         hovered: ButtonStyle {
             background: Some(bg(Color::rgb(0.95, 0.40, 0.35))),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         pressed: ButtonStyle {
             background: Some(bg(Color::rgb(0.70, 0.20, 0.20))),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         disabled: ButtonStyle {
             background: Some(bg(Color::rgba(0.85, 0.30, 0.30, 0.4))),
-            text: TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.55)),
+            text: Some(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.55))),
         },
     }
 }
