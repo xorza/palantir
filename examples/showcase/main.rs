@@ -308,7 +308,7 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
 }
 
 fn outlined_button_style() -> palantir::ButtonTheme {
-    use palantir::{ButtonTheme, TextStyle, ButtonStyle};
+    use palantir::{ButtonStyle, ButtonTheme, TextStyle};
     let stroke = Some(Stroke {
         width: 1.0,
         color: Color::rgb(0.4, 0.5, 0.7),
@@ -321,15 +321,15 @@ fn outlined_button_style() -> palantir::ButtonTheme {
     ButtonTheme {
         normal: ButtonStyle {
             background: Some(bg(Color::TRANSPARENT, stroke)),
-            text: TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95)),
+            text: Some(TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95))),
         },
         hovered: ButtonStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.15), stroke)),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         pressed: ButtonStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.30), stroke)),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         disabled: ButtonStyle {
             background: Some(bg(
@@ -339,13 +339,13 @@ fn outlined_button_style() -> palantir::ButtonTheme {
                     color: Color::rgba(0.4, 0.5, 0.7, 0.35),
                 }),
             )),
-            text: TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45)),
+            text: Some(TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45))),
         },
     }
 }
 
 fn highlight_button_style() -> palantir::ButtonTheme {
-    use palantir::{ButtonTheme, TextStyle, ButtonStyle};
+    use palantir::{ButtonStyle, ButtonTheme, TextStyle};
     let s = outlined_button_style();
     let stroke = s.normal.background.and_then(|b| b.stroke);
     ButtonTheme {
@@ -355,7 +355,7 @@ fn highlight_button_style() -> palantir::ButtonTheme {
                 stroke,
                 radius: Corners::all(4.0),
             }),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         ..s
     }

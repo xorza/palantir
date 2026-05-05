@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use palantir::Align;
 use palantir::WgpuBackend;
 use palantir::{
-    Background, Button, ButtonTheme, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke,
-    TextStyle, Ui, ButtonStyle,
+    Background, Button, ButtonStyle, ButtonTheme, Color, Configure, Corners, InputEvent, Panel,
+    Sizing, Stroke, TextStyle, Ui,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -25,15 +25,15 @@ fn outlined_button_style() -> ButtonTheme {
     ButtonTheme {
         normal: ButtonStyle {
             background: Some(bg(Color::TRANSPARENT, stroke)),
-            text: TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95)),
+            text: Some(TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95))),
         },
         hovered: ButtonStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.15), stroke)),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         pressed: ButtonStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.30), stroke)),
-            text: TextStyle::default().with_color(Color::WHITE),
+            text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         disabled: ButtonStyle {
             background: Some(bg(
@@ -43,7 +43,7 @@ fn outlined_button_style() -> ButtonTheme {
                     color: Color::rgba(0.4, 0.5, 0.7, 0.35),
                 }),
             )),
-            text: TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45)),
+            text: Some(TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45))),
         },
     }
 }
