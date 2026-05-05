@@ -1,6 +1,7 @@
+use crate::swatch;
 use palantir::Track;
 use palantir::{
-    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Stroke, Text, TextStyle, Ui,
+    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, Ui,
 };
 use std::rc::Rc;
 
@@ -21,9 +22,7 @@ pub fn build(ui: &mut Ui) {
                 "single",
                 "single-line label, hugs natural width",
                 |ui| {
-                    Text::new("The quick brown fox jumps over the lazy dog")
-                        .style(TextStyle::default().with_font_size(16.0))
-                        .show(ui);
+                    Text::new("The quick brown fox jumps over the lazy dog").show(ui);
                 },
             );
 
@@ -86,11 +85,6 @@ pub fn build_layouts(ui: &mut Ui) {
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            // Step B in action: two `Hug` columns sharing a constrained
-            // surface. The paragraph column shrinks to its intrinsic min
-            // floor + slack, the right-column label keeps its natural
-            // width, and the paragraph wraps cleanly inside its resolved
-            // column.
             section(
                 ui,
                 "two-hug-columns",
@@ -115,17 +109,6 @@ pub fn build_layouts(ui: &mut Ui) {
                 },
             );
 
-            // Property-grid pattern: Hug label column + Fill value column
-            // with wrapping text. The label hugs to its natural width;
-            // the value column gets the rest of the surface and wraps the
-            // paragraph inside it. The motivating use case behind Step B.
-            //
-            // The Grid is `Sizing::FILL × Sizing::Hug` so it spans the
-            // section's full width — same gotcha as `HStack { Fill }` with
-            // a Hug parent: a Fill *column* needs the *grid* to be Fill
-            // (or Fixed) on that axis, otherwise leftover is zero and
-            // the column collapses. Same rule CSS Grid follows for
-            // `display: grid; width: auto; grid-template-columns: 1fr`.
             section(
                 ui,
                 "property-grid",
@@ -169,11 +152,6 @@ pub fn build_layouts(ui: &mut Ui) {
                 },
             );
 
-            // Chat-message pattern: HStack { Avatar (Fixed) + Message
-            // (Fill, wrapping) }. Step C resolves the message's Fill
-            // share during HStack measure and re-measures it at that
-            // share — wrap text shapes correctly inside the leftover
-            // slot. The motivating use case behind Step C.
             section(
                 ui,
                 "chat-message",
@@ -187,67 +165,41 @@ pub fn build_layouts(ui: &mut Ui) {
                             chat_row(
                                 ui,
                                 "alice-1",
-                                Color::rgb(0.45, 0.55, 0.85),
+                                swatch::A,
                                 "Hey! Did you finish reading docs/intrinsics.md last night?",
                             );
                             chat_row(
                                 ui,
                                 "bob-1",
-                                Color::rgb(0.85, 0.55, 0.45),
+                                swatch::B,
                                 "Yeah — the Step B/C distinction finally clicked once I saw \
-                                the showcase property-grid card actually wrapping. Resizing \
-                                the window confirms the message column reflows live.",
+                             the showcase property-grid card actually wrapping. Resizing \
+                             the window confirms the message column reflows live.",
                             );
-                            chat_row(
-                                ui,
-                                "alice-2",
-                                Color::rgb(0.45, 0.55, 0.85),
-                                "Right? layout is fun.",
-                            );
+                            chat_row(ui, "alice-2", swatch::A, "Right? layout is fun.");
                         });
                 },
             );
         });
 }
 
-/// Card-style wrapper: a labeled rule above a body. Makes each demo visually
-/// distinct so the working/broken cases are easy to compare side by side.
-///
-/// The title's `Text` gets an explicit id derived from `id` because
-/// `#[track_caller]` doesn't propagate through closure bodies — without
-/// the explicit id, every section's title would resolve to the same call
-/// site inside `section()` and collide.
+/// Plain section: title + body. No card decoration; the surrounding
+/// showcase panel already contains the demo.
 fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .with_id(id)
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
-        .padding(8.0)
-        .background(Background {
-            fill: Color::rgb(0.16, 0.18, 0.22),
-            stroke: Some(Stroke {
-                width: 1.0,
-                color: Color::rgb(0.30, 0.34, 0.42),
-            }),
-            radius: Corners::all(4.0),
-        })
         .show(ui, |ui| {
             Text::new(title)
                 .with_id(("section-title", id))
-                .style(
-                    TextStyle::default()
-                        .with_font_size(12.0)
-                        .with_color(Color::rgb(0.70, 0.74, 0.82)),
-                )
+                .style(TextStyle::default().with_font_size(12.0))
                 .show(ui);
             body(ui);
         });
 }
 
-/// One chat row: avatar (Fixed circle-ish) + Fill wrapping message.
-/// Helper because `#[track_caller]` doesn't propagate through closure
-/// bodies — explicit ids derived from `key` keep the three rows
-/// distinct. Caller must pass a unique `key` per row.
+/// One chat row: avatar (Fixed circle) + Fill wrapping message.
 fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'static str) {
     Panel::hstack()
         .with_id(("chat-row", key))

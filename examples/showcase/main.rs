@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use palantir::WgpuBackend;
-use palantir::{
-    Background, Button, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke, Ui,
-};
+use palantir::{Background, Button, Color, Configure, InputEvent, Panel, Sizing, Ui};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -20,6 +18,7 @@ mod panels;
 mod scroll;
 mod sizing;
 mod spacing;
+mod swatch;
 mod text;
 mod text_edit;
 mod text_zorder;
@@ -139,14 +138,6 @@ impl ApplicationHandler for App {
         let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         let mut ui = Ui::new();
-        // Showcase cards are dark — flip the scrollbar thumb to a
-        // light translucent fill so it shows up against them.
-        ui.theme.scrollbar = palantir::ScrollbarTheme {
-            thumb: Color::rgba(1.0, 1.0, 1.0, 0.55),
-            thumb_hover: Color::rgba(1.0, 1.0, 1.0, 0.75),
-            thumb_active: Color::rgba(1.0, 1.0, 1.0, 0.9),
-            ..Default::default()
-        };
         let display = palantir::Display::from_physical(
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
@@ -245,8 +236,9 @@ impl State {
         self.ui.begin_frame(self.display);
         build_root(&mut self.ui, &mut self.active);
         let frame_out = self.ui.end_frame();
+        // Window background: palette `bg` (Ayu Mirage High Contrast).
         self.backend
-            .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), frame_out);
+            .submit(&frame.texture, Color::hex(0x252525), frame_out);
 
         frame.present();
         if !self.first_paint {
@@ -263,42 +255,42 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
         .show(ui, |ui| {
             // Toolbar: one button per showcase. WrapHStack so the buttons
             // wrap to a new row when the window is too narrow to fit them
-            // all on one line. Active button is highlighted.
+            // all on one line. Active button is rendered with the
+            // hovered-state fill so it reads as "selected" — minimal
+            // override on top of the default theme.
             Panel::wrap_hstack()
                 .gap(6.0)
                 .line_gap(6.0)
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
+                    let active_style = active_toolbar_button(&ui.theme.button);
                     for (i, (label, _)) in SHOWCASES.iter().enumerate() {
-                        let is_active = i == *active;
-                        let style = if is_active {
-                            highlight_button_style()
-                        } else {
-                            outlined_button_style()
-                        };
-                        let r = Button::new()
+                        let mut btn = Button::new()
                             .with_id(*label)
                             .label(*label)
-                            .style(style)
-                            .padding((10.0, 6.0, 10.0, 6.0))
-                            .show(ui);
-                        if r.clicked() {
+                            .padding((10.0, 6.0, 10.0, 6.0));
+                        if i == *active {
+                            btn = btn.style(active_style.clone());
+                        }
+                        if btn.show(ui).clicked() {
                             *active = i;
                         }
                     }
                 });
 
-            // Central panel: the selected showcase fills the rest.
+            // Central panel: hosts the selected showcase. Uses palette
+            // `surface` + `border` so the showcase cards sit visually
+            // contained against the window's `bg`.
             Panel::zstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .padding(16.0)
                 .background(Background {
-                    fill: Color::rgb(0.12, 0.14, 0.18),
-                    stroke: Some(Stroke {
+                    fill: Color::hex(0x343434),
+                    stroke: Some(palantir::Stroke {
                         width: 1.0,
-                        color: Color::rgb(0.25, 0.30, 0.40),
+                        color: Color::hex(0x363636),
                     }),
-                    radius: Corners::all(8.0),
+                    radius: palantir::Corners::all(8.0),
                 })
                 .show(ui, |ui| {
                     let (_, build_fn) = SHOWCASES[*active];
@@ -307,56 +299,13 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
         });
 }
 
-fn outlined_button_style() -> palantir::ButtonTheme {
-    use palantir::{ButtonStateStyle, ButtonTheme, TextStyle};
-    let stroke = Some(Stroke {
-        width: 1.0,
-        color: Color::rgb(0.4, 0.5, 0.7),
-    });
-    let bg = |fill, stroke| Background {
-        fill,
-        stroke,
-        radius: Corners::all(4.0),
-    };
-    ButtonTheme {
-        normal: ButtonStateStyle {
-            background: Some(bg(Color::TRANSPARENT, stroke)),
-            text: Some(TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95))),
-        },
-        hovered: ButtonStateStyle {
-            background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.15), stroke)),
-            text: Some(TextStyle::default().with_color(Color::WHITE)),
-        },
-        pressed: ButtonStateStyle {
-            background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.30), stroke)),
-            text: Some(TextStyle::default().with_color(Color::WHITE)),
-        },
-        disabled: ButtonStateStyle {
-            background: Some(bg(
-                Color::TRANSPARENT,
-                Some(Stroke {
-                    width: 1.0,
-                    color: Color::rgba(0.4, 0.5, 0.7, 0.35),
-                }),
-            )),
-            text: Some(TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45))),
-        },
-    }
-}
-
-fn highlight_button_style() -> palantir::ButtonTheme {
-    use palantir::{ButtonStateStyle, ButtonTheme, TextStyle};
-    let s = outlined_button_style();
-    let stroke = s.normal.background.and_then(|b| b.stroke);
-    ButtonTheme {
-        normal: ButtonStateStyle {
-            background: Some(Background {
-                fill: Color::rgba(0.4, 0.5, 0.7, 0.45),
-                stroke,
-                radius: Corners::all(4.0),
-            }),
-            text: Some(TextStyle::default().with_color(Color::WHITE)),
-        },
-        ..s
+/// Build a one-off ButtonTheme that highlights the active toolbar
+/// entry: copy the default theme, swap the `normal` slot to use the
+/// `hovered` background. Pressed / disabled / hovered fall through to
+/// the defaults.
+fn active_toolbar_button(default: &palantir::ButtonTheme) -> palantir::ButtonTheme {
+    palantir::ButtonTheme {
+        normal: default.hovered.clone(),
+        ..default.clone()
     }
 }

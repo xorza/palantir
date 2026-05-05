@@ -1,14 +1,5 @@
+use crate::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Ui};
-
-fn fixed() -> Color {
-    Color::rgb(0.85, 0.45, 0.30)
-}
-fn hug() -> Color {
-    Color::rgb(0.45, 0.80, 0.55)
-}
-fn fill() -> Color {
-    Color::rgb(0.30, 0.55, 0.85)
-}
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -17,89 +8,23 @@ pub fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             // Row 1: Fixed sizes — exact pixels, ignores parent.
             row(ui, "fixed", |ui| {
-                Frame::new()
-                    .with_id("fx-50")
-                    .size((Sizing::Fixed(50.0), Sizing::Fixed(40.0)))
-                    .background(Background {
-                        fill: fixed(),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Frame::new()
-                    .with_id("fx-100")
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
-                    .background(Background {
-                        fill: fixed(),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Frame::new()
-                    .with_id("fx-200")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
-                    .background(Background {
-                        fill: fixed(),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
+                fixed_box(ui, "fx-50", 50.0, swatch::B);
+                fixed_box(ui, "fx-100", 100.0, swatch::B);
+                fixed_box(ui, "fx-200", 200.0, swatch::B);
             });
 
-            // Row 2: Hug — child's content drives size. Padded frames hug their
-            // empty content box (effectively just padding).
+            // Row 2: Hug — child's content drives size. Padded frames hug
+            // their empty content box (effectively just padding).
             row(ui, "hug", |ui| {
-                Frame::new()
-                    .with_id("h-1")
-                    .size((Sizing::Hug, Sizing::Fixed(40.0)))
-                    .padding((20.0, 0.0, 20.0, 0.0))
-                    .background(Background {
-                        fill: hug(),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Frame::new()
-                    .with_id("h-2")
-                    .size((Sizing::Hug, Sizing::Fixed(40.0)))
-                    .padding((40.0, 0.0, 40.0, 0.0))
-                    .background(Background {
-                        fill: hug(),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
+                hug_box(ui, "h-1", 20.0);
+                hug_box(ui, "h-2", 40.0);
             });
 
             // Row 3: Fill — split leftover by weight. 1 : 2 : 1.
             row(ui, "fill", |ui| {
-                Frame::new()
-                    .with_id("f-1")
-                    .size((Sizing::Fill(1.0), Sizing::Fixed(40.0)))
-                    .background(Background {
-                        fill: fill(),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Frame::new()
-                    .with_id("f-2")
-                    .size((Sizing::Fill(2.0), Sizing::Fixed(40.0)))
-                    .background(Background {
-                        fill: fill(),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Frame::new()
-                    .with_id("f-3")
-                    .size((Sizing::Fill(1.0), Sizing::Fixed(40.0)))
-                    .background(Background {
-                        fill: fill(),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
-                    .show(ui);
+                fill_box(ui, "f-1", 1.0);
+                fill_box(ui, "f-2", 2.0);
+                fill_box(ui, "f-3", 1.0);
             });
         });
 }
@@ -110,4 +35,37 @@ fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .gap(8.0)
         .size((Sizing::FILL, Sizing::Hug))
         .show(ui, body);
+}
+
+fn swatch_bg(c: Color) -> Background {
+    Background {
+        fill: c,
+        radius: Corners::all(4.0),
+        ..Default::default()
+    }
+}
+
+fn fixed_box(ui: &mut Ui, id: &'static str, w: f32, c: Color) {
+    Frame::new()
+        .with_id(id)
+        .size((Sizing::Fixed(w), Sizing::Fixed(40.0)))
+        .background(swatch_bg(c))
+        .show(ui);
+}
+
+fn hug_box(ui: &mut Ui, id: &'static str, pad_x: f32) {
+    Frame::new()
+        .with_id(id)
+        .size((Sizing::Hug, Sizing::Fixed(40.0)))
+        .padding((pad_x, 0.0, pad_x, 0.0))
+        .background(swatch_bg(swatch::C))
+        .show(ui);
+}
+
+fn fill_box(ui: &mut Ui, id: &'static str, weight: f32) {
+    Frame::new()
+        .with_id(id)
+        .size((Sizing::Fill(weight), Sizing::Fixed(40.0)))
+        .background(swatch_bg(swatch::A))
+        .show(ui);
 }

@@ -1,3 +1,4 @@
+use crate::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Ui, Visibility};
 
 pub fn build(ui: &mut Ui) {
@@ -18,29 +19,11 @@ fn row(ui: &mut Ui, id: &'static str, middle: Visibility) {
         .with_id(id)
         .gap(12.0)
         .size((Sizing::FILL, Sizing::Fixed(60.0)))
-        .background(Background {
-            fill: Color::rgb(0.16, 0.18, 0.24),
-            ..Default::default()
-        })
         .padding(8.0)
-        .background(Background {
-            radius: Corners::all(4.0),
-            ..Default::default()
-        })
         .show(ui, |ui| {
-            tile(
-                ui,
-                (id, "a"),
-                Color::rgb(0.30, 0.55, 0.85),
-                Visibility::Visible,
-            );
-            tile(ui, (id, "mid"), Color::rgb(0.85, 0.45, 0.30), middle);
-            tile(
-                ui,
-                (id, "c"),
-                Color::rgb(0.45, 0.80, 0.55),
-                Visibility::Visible,
-            );
+            tile(ui, (id, "a"), swatch::A, Visibility::Visible);
+            tile(ui, (id, "mid"), swatch::B, middle);
+            tile(ui, (id, "c"), swatch::C, Visibility::Visible);
         });
 }
 

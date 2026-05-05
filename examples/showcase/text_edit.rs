@@ -1,6 +1,4 @@
-use palantir::{
-    Button, Color, Configure, FocusPolicy, Panel, Sizing, Text, TextEdit, TextStyle, Ui, WidgetId,
-};
+use palantir::{Button, Configure, FocusPolicy, Panel, Sizing, Text, TextEdit, Ui, WidgetId};
 
 /// Two TextEdits + a Button + an echo line.
 ///
@@ -32,14 +30,11 @@ pub fn build(ui: &mut Ui) {
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            Text::new("TextEdit — single-line editable text leaf.")
-                .style(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.85)))
-                .show(ui);
+            Text::new("TextEdit — single-line editable text leaf.").show(ui);
             Text::new(
                 "Click to focus, type to insert, arrows / Home / End / Backspace / Delete \
                  navigate, Escape blurs.",
             )
-            .style(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.55)))
             .wrapping()
             .show(ui);
 
@@ -78,7 +73,6 @@ pub fn build(ui: &mut Ui) {
                         .show(ui)
                         .clicked()
                     {
-                        // Flip on next frame.
                         let next = match policy {
                             FocusPolicy::ClearOnMiss => FocusPolicy::PreserveOnMiss,
                             FocusPolicy::PreserveOnMiss => FocusPolicy::ClearOnMiss,
@@ -97,12 +91,8 @@ pub fn build(ui: &mut Ui) {
                     }
                 });
 
-            Text::new(format!("buffer A ({:>2} bytes): {}", buf_a.len(), buf_a))
-                .style(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.75)))
-                .show(ui);
-            Text::new(format!("buffer B ({:>2} bytes): {}", buf_b.len(), buf_b))
-                .style(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.75)))
-                .show(ui);
+            Text::new(format!("buffer A ({:>2} bytes): {}", buf_a.len(), buf_a)).show(ui);
+            Text::new(format!("buffer B ({:>2} bytes): {}", buf_b.len(), buf_b)).show(ui);
         });
 
     *ui.state_mut::<String>(buf_a_id) = buf_a;
