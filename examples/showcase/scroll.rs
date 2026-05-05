@@ -1,4 +1,4 @@
-use palantir::{Color, Configure, Panel, Scroll, Sizing, Stroke, Styled, Text, Ui};
+use palantir::{Color, Configure, Panel, Scroll, Sizing, Stroke, Styled, Text, TextStyle, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -9,8 +9,11 @@ pub fn build(ui: &mut Ui) {
                 "Scroll — hover a card and pan with the wheel / two-finger scroll. \
                  Cards are vertical · horizontal · two-axis.",
             )
-            .size_px(13.0)
-            .color(Color::rgb(0.78, 0.82, 0.92))
+            .style(
+                TextStyle::default()
+                    .with_font_size(13.0)
+                    .with_color(Color::rgb(0.78, 0.82, 0.92)),
+            )
             .show(ui);
 
             Panel::hstack()
@@ -68,8 +71,11 @@ fn card(ui: &mut Ui, key: &'static str, label: &'static str, body: impl FnOnce(&
         .show(ui, |ui| {
             Text::new(label)
                 .with_id((key, "title"))
-                .size_px(12.0)
-                .color(Color::rgb(0.78, 0.82, 0.92))
+                .style(
+                    TextStyle::default()
+                        .with_font_size(12.0)
+                        .with_color(Color::rgb(0.78, 0.82, 0.92)),
+                )
                 .show(ui);
             body(ui);
         });
@@ -86,8 +92,11 @@ fn row(ui: &mut Ui, ns: &'static str, i: u32) {
         .show(ui, |ui| {
             Text::new(label_for(i))
                 .with_id((ns, "scroll-row-label", i))
-                .size_px(13.0)
-                .color(Color::rgb(0.10, 0.10, 0.14))
+                .style(
+                    TextStyle::default()
+                        .with_font_size(13.0)
+                        .with_color(Color::rgb(0.10, 0.10, 0.14)),
+                )
                 .show(ui);
         });
 }
@@ -103,8 +112,11 @@ fn col(ui: &mut Ui, i: u32) {
         .show(ui, |ui| {
             Text::new(label_for(i))
                 .with_id(("h", "scroll-col-label", i))
-                .size_px(13.0)
-                .color(Color::rgb(0.10, 0.10, 0.14))
+                .style(
+                    TextStyle::default()
+                        .with_font_size(13.0)
+                        .with_color(Color::rgb(0.10, 0.10, 0.14)),
+                )
                 .show(ui);
         });
 }
@@ -131,8 +143,11 @@ fn grid(ui: &mut Ui) {
                             .show(ui, |ui| {
                                 Text::new(cell_label(r, c))
                                     .with_id(("xy-cell-label", r, c))
-                                    .size_px(11.0)
-                                    .color(Color::rgb(0.10, 0.10, 0.14))
+                                    .style(
+                                        TextStyle::default()
+                                            .with_font_size(11.0)
+                                            .with_color(Color::rgb(0.10, 0.10, 0.14)),
+                                    )
                                     .show(ui);
                             });
                     }

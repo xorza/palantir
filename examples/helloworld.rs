@@ -42,6 +42,7 @@ fn outlined_button_style() -> ButtonTheme {
             text: Color::rgba(0.85, 0.88, 0.95, 0.45),
         },
         radius: Corners::all(4.0),
+        ..ButtonTheme::default()
     }
 }
 

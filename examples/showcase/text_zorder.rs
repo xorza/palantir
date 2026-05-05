@@ -5,7 +5,7 @@
 //! (group split on text→quad transition) and
 //! `src/renderer/backend/text.rs` (per-group prepare/render pool).
 
-use palantir::{Color, Configure, Frame, Panel, Sizing, Stroke, Styled, Text, Ui};
+use palantir::{Color, Configure, Frame, Panel, Sizing, Stroke, Styled, Text, TextStyle, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -15,8 +15,11 @@ pub fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             Text::new("Z-order — paint order honored across quads + text")
                 .with_id(("hdr", "title"))
-                .size_px(14.0)
-                .color(Color::rgb(0.78, 0.82, 0.90))
+                .style(
+                    TextStyle::default()
+                        .with_font_size(14.0)
+                        .with_color(Color::rgb(0.78, 0.82, 0.90)),
+                )
                 .show(ui);
 
             Text::new(concat!(
@@ -26,8 +29,11 @@ pub fn build(ui: &mut Ui) {
                 "in the encoder pass."
             ))
             .with_id(("hdr", "sub"))
-            .size_px(12.0)
-            .color(Color::rgb(0.62, 0.68, 0.78))
+            .style(
+                TextStyle::default()
+                    .with_font_size(12.0)
+                    .with_color(Color::rgb(0.62, 0.68, 0.78)),
+            )
             .wrapping()
             .show(ui);
 
@@ -69,8 +75,11 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
             // Caption above the demo box.
             Text::new(caption)
                 .with_id(("caption", id))
-                .size_px(11.0)
-                .color(Color::rgb(0.70, 0.74, 0.82))
+                .style(
+                    TextStyle::default()
+                        .with_font_size(11.0)
+                        .with_color(Color::rgb(0.70, 0.74, 0.82)),
+                )
                 .wrapping()
                 .show(ui);
 
@@ -99,8 +108,11 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
                     // covers it.
                     Text::new("T-shirt")
                         .with_id(("label", id))
-                        .size_px(28.0)
-                        .color(Color::WHITE)
+                        .style(
+                            TextStyle::default()
+                                .with_font_size(28.0)
+                                .with_color(Color::WHITE),
+                        )
                         .show(ui);
 
                     if quad_after {

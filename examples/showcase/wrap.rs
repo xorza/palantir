@@ -4,7 +4,9 @@
 //! gap dimensions are independent: `.gap(g)` is within-line spacing,
 //! `.line_gap(g)` is between-line spacing.
 
-use palantir::{Color, Configure, Frame, Justify, Panel, Sizing, Stroke, Styled, Text, Ui};
+use palantir::{
+    Color, Configure, Frame, Justify, Panel, Sizing, Stroke, Styled, Text, TextStyle, Ui,
+};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -14,8 +16,11 @@ pub fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             Text::new("WrapHStack / WrapVStack")
                 .with_id(("hdr", "title"))
-                .size_px(14.0)
-                .color(Color::rgb(0.78, 0.82, 0.90))
+                .style(
+                    TextStyle::default()
+                        .with_font_size(14.0)
+                        .with_color(Color::rgb(0.78, 0.82, 0.90)),
+                )
                 .show(ui);
 
             Text::new(concat!(
@@ -24,8 +29,11 @@ pub fn build(ui: &mut Ui) {
                 "`.line_gap` spaces lines. `.justify(...)` applies per-line.",
             ))
             .with_id(("hdr", "sub"))
-            .size_px(12.0)
-            .color(Color::rgb(0.62, 0.68, 0.78))
+            .style(
+                TextStyle::default()
+                    .with_font_size(12.0)
+                    .with_color(Color::rgb(0.62, 0.68, 0.78)),
+            )
             .wrapping()
             .show(ui);
 
@@ -125,8 +133,11 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
         .show(ui, |ui| {
             Text::new(label)
                 .with_id(("chip-label", &key))
-                .size_px(12.0)
-                .color(Color::rgb(0.86, 0.90, 0.98))
+                .style(
+                    TextStyle::default()
+                        .with_font_size(12.0)
+                        .with_color(Color::rgb(0.86, 0.90, 0.98)),
+                )
                 .show(ui);
         });
 }
@@ -155,8 +166,11 @@ fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce
         .show(ui, |ui| {
             Text::new(title)
                 .with_id(("section-title", id))
-                .size_px(12.0)
-                .color(Color::rgb(0.70, 0.74, 0.82))
+                .style(
+                    TextStyle::default()
+                        .with_font_size(12.0)
+                        .with_color(Color::rgb(0.70, 0.74, 0.82)),
+                )
                 .show(ui);
             body(ui);
         });

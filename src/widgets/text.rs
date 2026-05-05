@@ -1,9 +1,9 @@
 use crate::layout::types::align::Align;
-use crate::primitives::color::Color;
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
 use crate::widgets::Response;
+use crate::widgets::theme::TextStyle;
 use std::borrow::Cow;
 
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
@@ -11,15 +11,19 @@ use std::borrow::Cow;
 /// `.wrapping()` to opt into reshape-on-arrange when a fixed-width parent
 /// commits a narrower width than the natural unbroken line.
 ///
-/// `size_px` and `color` are `Option`s that fall back to the global
-/// [`crate::Theme::font_size_px`] / [`crate::Theme::text_color`] when
-/// not set on the builder. Apps that bump the global text defaults
-/// move every Text widget that didn't customize.
+/// Style is all-or-nothing: the optional `style` field replaces every
+/// text axis (font size, color, leading) at once. Defaults to the
+/// global [`crate::TextStyle`] from [`crate::Theme::text`] when not set.
+/// To tweak one axis, build a `TextStyle` from the theme and override
+/// the field you want:
+///
+/// ```ignore
+/// Text::new("hi").style(TextStyle { color: red, ..ui.theme.text })
+/// ```
 pub struct Text {
     element: Element,
     text: Cow<'static, str>,
-    size_px: Option<f32>,
-    color: Option<Color>,
+    style: Option<TextStyle>,
     wrap: TextWrap,
     align: Align,
 }
@@ -30,8 +34,7 @@ impl Text {
         Self {
             element: Element::new_auto(LayoutMode::Leaf),
             text: text.into(),
-            size_px: None,
-            color: None,
+            style: None,
             wrap: TextWrap::Single,
             // Default = (Auto, Auto) → top-left. Only matters when the
             // widget has Fixed size larger than its measured content;
@@ -40,14 +43,12 @@ impl Text {
         }
     }
 
-    pub fn size_px(mut self, px: f32) -> Self {
-        assert!(px > 0.0, "Text size must be positive, got {px}");
-        self.size_px = Some(px);
-        self
-    }
-
-    pub fn color(mut self, c: Color) -> Self {
-        self.color = Some(c);
+    /// Override the whole text style for this run. All-or-nothing —
+    /// every axis the bundle covers (font size, color, leading) is
+    /// replaced. To tweak one axis, build the bundle from the theme:
+    /// `TextStyle { color: red, ..ui.theme.text }`.
+    pub fn style(mut self, s: TextStyle) -> Self {
+        self.style = Some(s);
         self
     }
 
@@ -72,14 +73,13 @@ impl Text {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        let font_size_px = self.size_px.unwrap_or(ui.theme.font_size_px);
-        let color = self.color.unwrap_or(ui.theme.text_color);
-        let line_height_px = ui.theme.line_height_for(font_size_px);
+        let style = self.style.unwrap_or(ui.theme.text);
+        let line_height_px = style.line_height_for(style.font_size_px);
         let node = ui.node(self.element, |ui| {
             ui.add_shape(Shape::Text {
                 text: self.text,
-                color,
-                font_size_px,
+                color: style.color,
+                font_size_px: style.font_size_px,
                 line_height_px,
                 wrap: self.wrap,
                 align: self.align,

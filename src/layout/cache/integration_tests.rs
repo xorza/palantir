@@ -4,6 +4,7 @@
 //! per-frame engine state we forgot to snapshot/restore on a cache
 //! hit.
 
+use crate::TextStyle;
 use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::{color::Color, stroke::Stroke, transform::TranslateScale};
@@ -69,14 +70,14 @@ fn grid_cells_arranged_correctly_on_cache_hit_frame() {
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("Title:")
-                                    .size_px(14.0)
+                                    .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node,
                             );
                             capture.push(
                                 Text::new("value column")
-                                    .size_px(14.0)
+                                    .style(TextStyle::default().with_font_size(14.0))
                                     .wrapping()
                                     .grid_cell((0, 1))
                                     .show(ui)
@@ -110,7 +111,7 @@ fn cache_hit_restores_hugs_for_nested_grids() {
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("outer-L")
-                                    .size_px(14.0)
+                                    .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node,
@@ -129,7 +130,10 @@ fn cache_hit_restores_hugs_for_nested_grids() {
                                                 capture.push(
                                                     Text::new(label)
                                                         .with_id(("inner-cell", col))
-                                                        .size_px(14.0)
+                                                        .style(
+                                                            TextStyle::default()
+                                                                .with_font_size(14.0),
+                                                        )
                                                         .grid_cell((0, col))
                                                         .show(ui)
                                                         .node,
@@ -164,14 +168,14 @@ fn cache_hit_restores_hugs_for_multiple_sibling_grids() {
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("L1:")
-                                    .size_px(14.0)
+                                    .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node,
                             );
                             capture.push(
                                 Text::new("v1")
-                                    .size_px(14.0)
+                                    .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 1))
                                     .show(ui)
                                     .node,
@@ -185,14 +189,14 @@ fn cache_hit_restores_hugs_for_multiple_sibling_grids() {
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("Description:")
-                                    .size_px(14.0)
+                                    .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node,
                             );
                             capture.push(
                                 Text::new("end")
-                                    .size_px(14.0)
+                                    .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 2))
                                     .show(ui)
                                     .node,
@@ -235,18 +239,24 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                             .rows(Rc::from([Track::hug(), Track::hug()]))
                             .gap_xy(6.0, 8.0)
                             .show(ui, |ui| {
-                                Text::new("Title:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                                Text::new("Title:")
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .grid_cell((0, 0))
+                                    .show(ui);
                                 Text::new(
                                     "The quick brown fox jumps over the lazy dog. \
                                      Pack my box with five dozen liquor jugs.",
                                 )
-                                .size_px(14.0)
+                                .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 1))
                                 .show(ui);
-                                Text::new("Tag:").size_px(14.0).grid_cell((1, 0)).show(ui);
+                                Text::new("Tag:")
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .grid_cell((1, 0))
+                                    .show(ui);
                                 Text::new("layout, grid, intrinsic, wrapping")
-                                    .size_px(14.0)
+                                    .style(TextStyle::default().with_font_size(14.0))
                                     .wrapping()
                                     .grid_cell((1, 1))
                                     .show(ui);
@@ -299,7 +309,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                             .show(ui, |ui| {
                                 capture.push(
                                     Text::new("Title:")
-                                        .size_px(14.0)
+                                        .style(TextStyle::default().with_font_size(14.0))
                                         .grid_cell((0, 0))
                                         .show(ui)
                                         .node,
@@ -309,7 +319,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                         "Lorem ipsum dolor sit amet, consectetur \
                                          adipiscing elit, sed do eiusmod tempor.",
                                     )
-                                    .size_px(14.0)
+                                    .style(TextStyle::default().with_font_size(14.0))
                                     .wrapping()
                                     .grid_cell((0, 1))
                                     .show(ui)

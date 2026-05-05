@@ -13,6 +13,14 @@ pub struct ButtonTheme {
     pub pressed: Visuals,
     pub disabled: Visuals,
     pub radius: Corners,
+    // todo
+    /// Font size for the label. Font *color* is per-state on the
+    /// Visuals (`normal.text`, `hovered.text`, …); only size and
+    /// leading live here since they don't change with hover/press.
+    pub font_size_px: f32,
+    /// Line-height multiplier for the label. Same reason as
+    /// `font_size_px` — state-independent.
+    pub line_height_mult: f32,
 }
 
 impl Default for ButtonTheme {
@@ -26,6 +34,8 @@ impl Default for ButtonTheme {
                 Color::rgba(1.0, 1.0, 1.0, 0.45),
             ),
             radius: Corners::all(4.0),
+            font_size_px: 16.0,
+            line_height_mult: crate::text::LINE_HEIGHT_MULT,
         }
     }
 }
@@ -72,8 +82,8 @@ impl Button {
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let style = self.style.unwrap_or(ui.theme.button);
-        let font_size_px = ui.theme.font_size_px;
-        let line_height_px = ui.theme.line_height_for(font_size_px);
+        let font_size_px = style.font_size_px;
+        let line_height_px = font_size_px * style.line_height_mult;
         let v = if self.element.disabled {
             style.disabled
         } else {

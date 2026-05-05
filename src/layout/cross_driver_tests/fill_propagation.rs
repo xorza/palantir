@@ -4,6 +4,7 @@
 //! back to max-content and break wrapping under constrained widths.
 
 use super::support::two_hug_cols_with_wrap;
+use crate::TextStyle;
 use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::color::Color;
@@ -109,10 +110,13 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
             .cols(Rc::from([Track::hug(), Track::fill()]))
             .rows(Rc::from([Track::hug()]))
             .show(&mut ui, |ui| {
-                Text::new("Label:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                Text::new("Label:")
+                    .style(TextStyle::default().with_font_size(14.0))
+                    .grid_cell((0, 0))
+                    .show(ui);
                 value_node = Some(
                     Text::new("the quick brown fox jumps over the lazy dog")
-                        .size_px(14.0)
+                        .style(TextStyle::default().with_font_size(14.0))
                         .wrapping()
                         .grid_cell((0, 1))
                         .show(ui)
@@ -157,10 +161,13 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
             .cols(Rc::from([Track::hug(), Track::fill()]))
             .rows(Rc::from([Track::hug()]))
             .show(ui, |ui| {
-                Text::new("Label:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                Text::new("Label:")
+                    .style(TextStyle::default().with_font_size(14.0))
+                    .grid_cell((0, 0))
+                    .show(ui);
                 value_node = Some(
                     Text::new("the quick brown fox jumps over the lazy dog")
-                        .size_px(14.0)
+                        .style(TextStyle::default().with_font_size(14.0))
                         .wrapping()
                         .grid_cell((0, 1))
                         .show(ui)
@@ -201,19 +208,25 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                     .cols(Rc::from([Track::hug(), Track::fill()]))
                     .rows(Rc::from([Track::hug(), Track::hug()]))
                     .show(ui, |ui| {
-                        Text::new("Title:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                        Text::new("Title:")
+                            .style(TextStyle::default().with_font_size(14.0))
+                            .grid_cell((0, 0))
+                            .show(ui);
                         Text::new(
                             "the quick brown fox jumps over the lazy dog \
                              pack my box with five dozen liquor jugs how \
                              vexingly quick daft zebras jump",
                         )
-                        .size_px(14.0)
+                        .style(TextStyle::default().with_font_size(14.0))
                         .wrapping()
                         .grid_cell((0, 1))
                         .show(ui);
-                        Text::new("Tags:").size_px(14.0).grid_cell((1, 0)).show(ui);
+                        Text::new("Tags:")
+                            .style(TextStyle::default().with_font_size(14.0))
+                            .grid_cell((1, 0))
+                            .show(ui);
                         Text::new("layout, grid, intrinsic, wrapping, css")
-                            .size_px(14.0)
+                            .style(TextStyle::default().with_font_size(14.0))
                             .wrapping()
                             .grid_cell((1, 1))
                             .show(ui);
@@ -253,12 +266,15 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                             .cols(Rc::from([Track::hug(), Track::fill()]))
                             .rows(Rc::from([Track::hug()]))
                             .show(ui, |ui| {
-                                Text::new("Label:").size_px(14.0).grid_cell((0, 0)).show(ui);
+                                Text::new("Label:")
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .grid_cell((0, 0))
+                                    .show(ui);
                                 Text::new(
                                     "the quick brown fox jumps over the lazy dog \
                                      pack my box with five dozen liquor jugs",
                                 )
-                                .size_px(14.0)
+                                .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 1))
                                 .show(ui);

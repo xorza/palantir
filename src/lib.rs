@@ -46,4 +46,4 @@ pub use widgets::scroll::Scroll;
 pub use widgets::styled::{Background, Styled};
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
-pub use widgets::theme::{ScrollbarTheme, TextEditTheme, Theme};
+pub use widgets::theme::{ScrollbarTheme, TextEditTheme, TextStyle, Theme};

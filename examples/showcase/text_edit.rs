@@ -1,5 +1,5 @@
 use palantir::{
-    Button, Color, Configure, FocusPolicy, Panel, Sizing, Text, TextEdit, Ui, WidgetId,
+    Button, Color, Configure, FocusPolicy, Panel, Sizing, Text, TextEdit, TextStyle, Ui, WidgetId,
 };
 
 /// Two TextEdits + a Button + an echo line.
@@ -33,13 +33,13 @@ pub fn build(ui: &mut Ui) {
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             Text::new("TextEdit — single-line editable text leaf.")
-                .color(Color::rgba(1.0, 1.0, 1.0, 0.85))
+                .style(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.85)))
                 .show(ui);
             Text::new(
                 "Click to focus, type to insert, arrows / Home / End / Backspace / Delete \
                  navigate, Escape blurs.",
             )
-            .color(Color::rgba(1.0, 1.0, 1.0, 0.55))
+            .style(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.55)))
             .wrapping()
             .show(ui);
 
@@ -98,10 +98,10 @@ pub fn build(ui: &mut Ui) {
                 });
 
             Text::new(format!("buffer A ({:>2} bytes): {}", buf_a.len(), buf_a))
-                .color(Color::rgba(1.0, 1.0, 1.0, 0.75))
+                .style(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.75)))
                 .show(ui);
             Text::new(format!("buffer B ({:>2} bytes): {}", buf_b.len(), buf_b))
-                .color(Color::rgba(1.0, 1.0, 1.0, 0.75))
+                .style(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.75)))
                 .show(ui);
         });
 
