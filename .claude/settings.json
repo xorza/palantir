@@ -14,7 +14,9 @@
       "Bash(git add:*)",
       "Bash(git rm:*)",
 
-      "Bash(sd:*)"
+      "Bash(sd:*)",
+
+      "Bash(UPDATE_GOLDEN=1 cargo test*)"
     ]
   }
 }
