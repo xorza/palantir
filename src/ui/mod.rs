@@ -19,6 +19,27 @@ use crate::ui::state::StateMap;
 use crate::widgets::scroll::{ScrollNode, ScrollState};
 use crate::widgets::theme::Theme;
 
+/// The three rendering-pipeline subsystems Ui owns: text shaping →
+/// layout measurement/arrangement → frontend encoding/composition.
+/// Bundled because they share the `sweep_removed(&[WidgetId])` contract
+/// fired once per frame for widgets that vanished — see
+/// [`Self::sweep_removed`]. Widget Any-state lives separately on
+/// [`Ui::state`] since it's orthogonal to the rendering chain.
+#[derive(Default)]
+pub(crate) struct Pipeline {
+    pub(crate) text: TextMeasurer,
+    pub(crate) layout: LayoutEngine,
+    pub(crate) frontend: Frontend,
+}
+
+impl Pipeline {
+    fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        self.text.sweep_removed(removed);
+        self.layout.sweep_removed(removed);
+        self.frontend.sweep_removed(removed);
+    }
+}
+
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].
 ///
@@ -34,14 +55,16 @@ pub struct Ui {
     /// removed-widget diff, and frame rollover. See [`SeenIds`].
     pub(crate) ids: SeenIds,
 
-    /// Cross-frame `WidgetId → Any` state. See [`StateMap`].
+    /// Cross-frame `WidgetId → Any` widget state. See [`StateMap`].
     pub(crate) state: StateMap,
 
+    /// Rendering pipeline: text shaping → layout → frontend
+    /// encode/compose. See [`Pipeline`].
+    pub(crate) pipeline: Pipeline,
+
     pub(crate) input: InputState,
-    pub(crate) layout_engine: LayoutEngine,
     pub(crate) cascades: Cascades,
     pub(crate) display: Display,
-    pub(crate) text: TextMeasurer,
 
     /// Defaults to `true` so the first frame always renders. Cleared by
     /// `end_frame`, set by `on_input` / `request_repaint`.
@@ -50,8 +73,6 @@ pub struct Ui {
     /// Per-frame damage state. `Damage::compute` returns the filtered
     /// damage rect (`None` ⇒ full repaint, `Some(r)` ⇒ partial).
     pub(crate) damage: Damage,
-
-    pub(crate) frontend: Frontend,
 
     /// Scroll widgets registered during recording so `end_frame` can
     /// refresh their `ScrollState` rows after arrange. Capacity-retained
@@ -72,16 +93,14 @@ impl Ui {
             theme: Theme::default(),
             ids: SeenIds::default(),
             state: StateMap::default(),
+            pipeline: Pipeline::default(),
             input: InputState::new(),
-            layout_engine: LayoutEngine::new(),
             cascades: Cascades::default(),
             display: Display::default(),
-            text: TextMeasurer::new(),
             // First frame must render so the host has something to
             // present. Subsequent idle frames flip back to `false`.
             repaint_requested: true,
             damage: Damage::default(),
-            frontend: Frontend::default(),
             scroll_nodes: Vec::new(),
         }
     }
@@ -91,7 +110,7 @@ impl Ui {
     /// see the same buffer cache. Tests leave this unset and run on the
     /// deterministic mono fallback.
     pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
-        self.text.set_cosmic(cosmic);
+        self.pipeline.text.set_cosmic(cosmic);
     }
 
     /// Start recording a frame. A stray `scale_factor` of `0.0` from winit
@@ -119,14 +138,17 @@ impl Ui {
         // skip text reshape for unchanged Text nodes; damage reads them after.
         self.tree.end_frame();
         let removed = self.ids.end_frame();
-        self.text.sweep_removed(removed);
-        self.layout_engine.sweep_removed(removed);
-        self.frontend.sweep_removed(removed);
+        self.pipeline.sweep_removed(removed);
         self.state.sweep_removed(removed);
 
-        let layout = self
-            .layout_engine
-            .run(&self.tree, self.tree.root(), surface, &mut self.text);
+        // Disjoint-field reborrow: `layout`, `text`, `frontend` are
+        // independent fields of `pipeline`, so we can hold `&mut`s to
+        // each in turn (and to `layout` for the rest of the function,
+        // since `layout.run` returns a `&LayoutResult` borrow on it).
+        let pipeline = &mut self.pipeline;
+        let layout = pipeline
+            .layout
+            .run(&self.tree, self.tree.root(), surface, &mut pipeline.text);
 
         // Refresh each registered scroll widget's state row with the
         // freshly-arranged viewport + measured content height. Read here
@@ -160,7 +182,7 @@ impl Ui {
         let damage = self.damage.compute(&self.tree, cascades, removed, surface);
 
         self.repaint_requested = false;
-        let buffer = self
+        let buffer = pipeline
             .frontend
             .build(&self.tree, layout, cascades, damage, &self.display);
 

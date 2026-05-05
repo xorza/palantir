@@ -135,10 +135,6 @@ fn resolve_desired(
 }
 
 impl LayoutEngine {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     /// Drop cross-frame measure-cache entries for `WidgetId`s that
     /// vanished this frame. Called from `Ui::end_frame` with the same
     /// `removed` slice that `Damage` and `TextMeasurer` consume.

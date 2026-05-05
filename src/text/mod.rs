@@ -206,10 +206,6 @@ pub struct TextMeasurer {
 }
 
 impl TextMeasurer {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Install a shared shaper handle. Pass the same `SharedCosmic` to the
     /// renderer (`WgpuBackend::set_cosmic`) so both sides see one cache.
     ///
