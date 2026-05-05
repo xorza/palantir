@@ -332,3 +332,78 @@ fn bump_rect_min_leaves_non_rect_payloads_untouched() {
     );
     assert_eq!(buf.data, before);
 }
+
+/// Cached subtrees may be replayed at a different absolute buffer
+/// position than recording time. The composer reads
+/// `EnterSubtreePayload.exit_idx` to fast-forward past the matching
+/// `ExitSubtree`; if the snapshot stored absolute kind-indices,
+/// the fast-forward would land on the wrong cmd in the replayed
+/// buffer, leaving unmatched `Push/PopClip` pairs and panicking.
+///
+/// Pin the round-trip: build a buffer with leading cmds + an
+/// EnterSubtree/body/ExitSubtree triple, snapshot it, replay it
+/// into a fresh buffer with DIFFERENT leading cmds, and verify the
+/// replayed `exit_idx` points to the actual `ExitSubtree` position
+/// in the new buffer.
+#[test]
+fn replay_rebases_enter_subtree_exit_idx_to_destination_position() {
+    use crate::renderer::frontend::cmd_buffer::EnterSubtreePayload;
+
+    fn read_exit_idx(buf: &RenderCmdBuffer, kind_idx: usize) -> u32 {
+        assert!(matches!(buf.kinds[kind_idx], CmdKind::EnterSubtree));
+        let payload: EnterSubtreePayload = buf.read(buf.starts[kind_idx]);
+        payload.exit_idx
+    }
+
+    // Source: 2 leading cmds + Enter at idx 2, body cmd, Exit at idx 4.
+    let mut src = RenderCmdBuffer::default();
+    src.push_clip(Rect::new(0.0, 0.0, 10.0, 10.0));
+    src.pop_clip();
+    let cmd_lo_src = src.kinds.len() as u32;
+    let patch = src.push_enter_subtree(wid(7), hash(7), avail());
+    src.draw_rect(
+        Rect::new(1.0, 2.0, 3.0, 4.0),
+        Corners::default(),
+        Color::WHITE,
+        None,
+    );
+    src.push_exit_subtree(patch);
+    let exit_idx_src = (src.kinds.len() - 1) as u32;
+    assert_eq!(
+        read_exit_idx(&src, cmd_lo_src as usize),
+        exit_idx_src,
+        "sanity: source exit_idx points to ExitSubtree position pre-cache"
+    );
+
+    // Snapshot only the subtree cmds (idx 2..5).
+    let mut cache = EncodeCache::default();
+    cache.write_subtree(
+        wid(7),
+        hash(7),
+        avail(),
+        &src,
+        Span::new(cmd_lo_src, src.kinds.len() as u32 - cmd_lo_src),
+        Span::new(0, src.data.len() as u32), // whole data — start helper takes ranges
+        Vec2::ZERO,
+    );
+
+    // Replay into a buffer with a DIFFERENT leading prefix (5 dummy
+    // cmds). The cached subtree should land at idx 5; its EnterSubtree
+    // is at idx 5 and its ExitSubtree is at idx 5 + 2 = 7.
+    let mut dst = RenderCmdBuffer::default();
+    for _ in 0..5 {
+        dst.push_clip(Rect::ZERO);
+        dst.pop_clip();
+    }
+    // Even number of clip-cmds so we don't unbalance dst — 2 cmds × 5 = 10.
+    let kinds_base = dst.kinds.len() as u32;
+    assert!(cache.try_replay(wid(7), hash(7), avail(), &mut dst, Vec2::ZERO));
+
+    let new_enter_idx = kinds_base as usize;
+    let expected_exit_idx = kinds_base + 2; // body cmd + Exit; relative offset 2
+    assert_eq!(
+        read_exit_idx(&dst, new_enter_idx),
+        expected_exit_idx,
+        "replay rebased exit_idx to point at the matching ExitSubtree in dst"
+    );
+}

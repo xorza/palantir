@@ -185,6 +185,14 @@ fn encode_node(
     // authoring-only key. The composer culls per-cmd at compose time.
     let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
 
+    // Two-phase shape emission per node:
+    //   - Background shapes (RoundedRect, Text) paint BEFORE children
+    //     under the owner's clip but pre-transform — backgrounds and
+    //     text labels live "behind" descendants.
+    //   - Overlay shapes (Overlay) paint AFTER children, still
+    //     under the clip and untransformed — used for sub-rect
+    //     overlays like scrollbar tracks/thumbs that must sit on top
+    //     of (and not pan with) the content.
     if paints {
         for shape in tree.shapes.slice_of(id.index()) {
             match shape {
@@ -218,6 +226,8 @@ fn encode_node(
                         shaped.key,
                     );
                 }
+                // Overlay phase — emitted after children, see below.
+                Shape::Overlay { .. } => {}
                 // No backend support for these yet — drop with a trace so they're
                 // not silently invisible.
                 Shape::Line { .. } => {
@@ -245,6 +255,29 @@ fn encode_node(
     if transform.is_some() {
         out.pop_transform();
     }
+
+    // Overlay phase: Overlay shapes paint on top of children
+    // but still under the owner's clip and untransformed by the
+    // owner's pan. This is what scrollbar tracks/thumbs need — they
+    // sit inside the viewport's clip but on top of (and not panning
+    // with) the content.
+    if paints {
+        for shape in tree.shapes.slice_of(id.index()) {
+            if let Shape::Overlay {
+                rect: sub,
+                radius,
+                fill,
+            } = shape
+            {
+                let r = Rect {
+                    min: rect.min + sub.min,
+                    size: sub.size,
+                };
+                out.draw_rect(r, *radius, *fill, None);
+            }
+        }
+    }
+
     if clip {
         out.pop_clip();
     }

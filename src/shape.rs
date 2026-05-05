@@ -1,5 +1,7 @@
 use crate::layout::types::align::Align;
-use crate::primitives::{approx::approx_zero, color::Color, corners::Corners, stroke::Stroke};
+use crate::primitives::{
+    approx::approx_zero, color::Color, corners::Corners, rect::Rect, stroke::Stroke,
+};
 use glam::Vec2;
 use std::borrow::Cow;
 
@@ -12,6 +14,20 @@ pub enum Shape {
         radius: Corners,
         fill: Color,
         stroke: Option<Stroke>,
+    },
+    /// Filled rounded rect at an explicit sub-rect of the owner,
+    /// painted as an **overlay** (after the owner's children, on top
+    /// of them, still inside the owner's clip and untransformed by
+    /// the owner's pan transform). `rect` coordinates are owner-local
+    /// — `(0, 0)` is the owner's `min` corner. Used for scrollbar
+    /// tracks/thumbs and similar sub-region affordances that need to
+    /// stay anchored to the owner's viewport while content scrolls
+    /// underneath. Use `RoundedRect` instead when you want a
+    /// background painted *behind* the children.
+    Overlay {
+        rect: Rect,
+        radius: Corners,
+        fill: Color,
     },
     Line {
         a: Vec2,
@@ -68,6 +84,9 @@ impl Shape {
                     Some(s) => approx_zero(s.width) || approx_zero(s.color.a),
                 };
                 no_fill && no_stroke
+            }
+            Shape::Overlay { rect, fill, .. } => {
+                approx_zero(fill.a) || approx_zero(rect.size.w) || approx_zero(rect.size.h)
             }
             Shape::Line { width, color, .. } => approx_zero(*width) || approx_zero(color.a),
             Shape::Text { text, color, .. } => text.is_empty() || approx_zero(color.a),

@@ -162,12 +162,22 @@ impl Ui {
                 s.node.index(),
                 layout.rect.len(),
             );
-            let viewport = layout.rect[s.node.index()].size;
+            // Record both:
+            //  - viewport = INNER (padding-deflated) — what children
+            //    see; drives `content > viewport` overflow checks.
+            //  - outer = full arranged rect — drives bar positioning
+            //    so bars land flush with the OUTER far edge (which
+            //    sits inside the reserved strip even with user padding).
+            let outer_rect = layout.rect[s.node.index()];
+            let pad = self.tree.layout[s.node.index()].padding;
+            let outer = outer_rect.size;
+            let viewport = outer_rect.deflated_by(pad).size;
             let content = layout.scroll_content[s.node.index()];
             let row = self
                 .state
                 .get_or_insert_with::<ScrollState, _>(s.id, Default::default);
             row.viewport = viewport;
+            row.outer = outer;
             row.content = content;
             // End-frame re-clamp: pairs with the record-time clamp in
             // `Scroll::show`, which only had last frame's numbers.
