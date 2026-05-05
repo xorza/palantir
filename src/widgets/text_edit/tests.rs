@@ -1,0 +1,545 @@
+use super::{apply_key, next_char_boundary, prev_char_boundary};
+use crate::input::keyboard::{Key, KeyPress, Modifiers};
+use crate::input::{InputEvent, PointerButton};
+use crate::layout::types::sizing::Sizing;
+use crate::support::testing::{begin, click_at, ui_with_text};
+use crate::tree::element::Configure;
+use crate::tree::widget_id::WidgetId;
+use crate::widgets::panel::Panel;
+use crate::widgets::text_edit::TextEdit;
+use glam::{UVec2, Vec2};
+
+fn press(key: Key) -> KeyPress {
+    KeyPress {
+        key,
+        mods: Modifiers::NONE,
+        repeat: false,
+    }
+}
+
+#[test]
+fn apply_key_inserts_printable_chars() {
+    let mut s = String::new();
+    let mut caret = 0;
+    apply_key(&mut s, &mut caret, press(Key::Char('a')));
+    apply_key(&mut s, &mut caret, press(Key::Char('b')));
+    assert_eq!(s, "ab");
+    assert_eq!(caret, 2);
+}
+
+#[test]
+fn apply_key_skips_chars_with_command_modifier() {
+    // ctrl+'a' is a shortcut, not text input. v1 ignores it.
+    let mut s = String::from("hi");
+    let mut caret = 2;
+    apply_key(
+        &mut s,
+        &mut caret,
+        KeyPress {
+            key: Key::Char('a'),
+            mods: Modifiers {
+                ctrl: true,
+                ..Modifiers::NONE
+            },
+            repeat: false,
+        },
+    );
+    assert_eq!(s, "hi");
+    assert_eq!(caret, 2);
+}
+
+#[test]
+fn apply_key_space_inserts_when_no_modifier() {
+    let mut s = String::from("ab");
+    let mut caret = 2;
+    apply_key(&mut s, &mut caret, press(Key::Space));
+    assert_eq!(s, "ab ");
+    assert_eq!(caret, 3);
+}
+
+#[test]
+fn apply_key_backspace_removes_prev_codepoint() {
+    let mut s = String::from("héllo");
+    let mut caret = "hé".len();
+    apply_key(&mut s, &mut caret, press(Key::Backspace));
+    assert_eq!(s, "hllo");
+    assert_eq!(caret, "h".len());
+}
+
+#[test]
+fn apply_key_backspace_at_start_is_noop() {
+    let mut s = String::from("abc");
+    let mut caret = 0;
+    apply_key(&mut s, &mut caret, press(Key::Backspace));
+    assert_eq!(s, "abc");
+    assert_eq!(caret, 0);
+}
+
+#[test]
+fn apply_key_delete_removes_next_codepoint() {
+    let mut s = String::from("héllo");
+    let mut caret = 1; // between 'h' and 'é'
+    apply_key(&mut s, &mut caret, press(Key::Delete));
+    assert_eq!(s, "hllo");
+    assert_eq!(caret, 1);
+}
+
+#[test]
+fn apply_key_delete_at_end_is_noop() {
+    let mut s = String::from("abc");
+    let mut caret = 3;
+    apply_key(&mut s, &mut caret, press(Key::Delete));
+    assert_eq!(s, "abc");
+    assert_eq!(caret, 3);
+}
+
+#[test]
+fn apply_key_arrows_step_codepoints() {
+    let mut s = String::from("héllo");
+    let mut caret = 0;
+    apply_key(&mut s, &mut caret, press(Key::ArrowRight));
+    assert_eq!(caret, 1);
+    apply_key(&mut s, &mut caret, press(Key::ArrowRight));
+    assert_eq!(caret, 3, "skipped both bytes of 'é'");
+    apply_key(&mut s, &mut caret, press(Key::ArrowLeft));
+    assert_eq!(caret, 1);
+}
+
+#[test]
+fn apply_key_arrows_clamp_at_boundaries() {
+    let mut s = String::from("ab");
+    let mut caret = 0;
+    apply_key(&mut s, &mut caret, press(Key::ArrowLeft));
+    assert_eq!(caret, 0);
+    caret = 2;
+    apply_key(&mut s, &mut caret, press(Key::ArrowRight));
+    assert_eq!(caret, 2);
+}
+
+#[test]
+fn apply_key_home_end_jump_to_extremes() {
+    let mut s = String::from("hello");
+    let mut caret = 2;
+    apply_key(&mut s, &mut caret, press(Key::Home));
+    assert_eq!(caret, 0);
+    apply_key(&mut s, &mut caret, press(Key::End));
+    assert_eq!(caret, 5);
+}
+
+#[test]
+fn boundary_helpers_jump_full_codepoints() {
+    let s = "héllo";
+    // Forward from 0: jumps over 'h' = 1 byte
+    assert_eq!(next_char_boundary(s, 0), 1);
+    // Forward from 1: jumps over 'é' = 2 bytes
+    assert_eq!(next_char_boundary(s, 1), 3);
+    // Backward from 3: lands on 'é' boundary (offset 1)
+    assert_eq!(prev_char_boundary(s, 3), 1);
+    // Boundary clamping
+    assert_eq!(next_char_boundary(s, s.len()), s.len());
+    assert_eq!(prev_char_boundary(s, 0), 0);
+}
+
+// -- Integration tests through `Ui` ---------------------------------
+
+#[test]
+fn typing_inserts_text_when_focused() {
+    let mut ui = ui_with_text(UVec2::new(200, 80));
+    let mut buf = String::new();
+    let id = WidgetId::from_hash("editor");
+
+    // Frame 1: build, then end_frame to populate the cascade so focus
+    // dispatch has rects to hit-test.
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    // Click into the editor so focus lands.
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    assert_eq!(ui.focused_id(), Some(id));
+
+    // Frame 2: type 'h', 'i' via KeyDown(Char) events. End_frame
+    // clears them, so we feed before begin_frame.
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('h'),
+        repeat: false,
+    });
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('i'),
+        repeat: false,
+    });
+
+    begin(&mut ui, UVec2::new(200, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    assert_eq!(buf, "hi");
+}
+
+#[test]
+fn keystrokes_ignored_when_not_focused() {
+    let mut ui = ui_with_text(UVec2::new(200, 80));
+    let mut buf = String::new();
+
+    // Don't click. Feed a KeyDown anyway.
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('x'),
+        repeat: false,
+    });
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    assert_eq!(buf, "", "unfocused TextEdit must not consume keystrokes");
+    assert!(ui.focused_id().is_none());
+}
+
+#[test]
+fn escape_blurs_focus() {
+    let mut ui = ui_with_text(UVec2::new(200, 80));
+    let mut buf = String::from("text");
+    let id = WidgetId::from_hash("editor");
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    assert_eq!(ui.focused_id(), Some(id));
+
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Escape,
+        repeat: false,
+    });
+
+    begin(&mut ui, UVec2::new(200, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    assert_eq!(ui.focused_id(), None);
+}
+
+#[test]
+fn caret_clamps_after_external_buffer_shrink() {
+    // Host code can mutate the buffer between frames. If the new
+    // length is less than the cached caret, `show()` must clamp at
+    // the top of the next frame instead of panicking on a slice OOB.
+    let mut ui = ui_with_text(UVec2::new(200, 80));
+    let mut buf = String::from("hello");
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    // Move to end.
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::End,
+        repeat: false,
+    });
+    begin(&mut ui, UVec2::new(200, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    // External shrink.
+    buf = String::from("hi");
+
+    // Type one char — caret was at 5, must clamp to 2 first, then
+    // insert. Final text should be "hiX" (where X is the inserted char).
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('!'),
+        repeat: false,
+    });
+    begin(&mut ui, UVec2::new(200, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    assert_eq!(
+        buf, "hi!",
+        "clamping must keep insertion at end of shrunken buffer",
+    );
+}
+
+#[test]
+fn text_event_inserts_at_caret_when_focused() {
+    // The Text path (IME commits) takes the same insert route as
+    // KeyDown(Char). Pin that the multi-codepoint commit lands as a
+    // single splice.
+    use crate::input::keyboard::TextChunk;
+
+    let mut ui = ui_with_text(UVec2::new(200, 80));
+    let mut buf = String::new();
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
+
+    ui.on_input(InputEvent::Text(TextChunk::new("héllo").unwrap()));
+
+    begin(&mut ui, UVec2::new(200, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    assert_eq!(buf, "héllo");
+}
+
+#[test]
+fn pointer_state_respects_pointer_left() {
+    // Sanity: leaving the surface clears the click hit-test path so a
+    // subsequent KeyDown to a focused TextEdit still works.
+    let mut ui = ui_with_text(UVec2::new(200, 80));
+    let mut buf = String::new();
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    ui.on_input(InputEvent::PointerLeft);
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('z'),
+        repeat: false,
+    });
+
+    begin(&mut ui, UVec2::new(200, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    assert_eq!(buf, "z");
+}
+
+#[test]
+fn pressed_button_does_not_route_to_textedit_under_default_policy() {
+    // Default ClearOnMiss: click on a Button that isn't focusable
+    // should clear focus from the editor, so a subsequent keystroke
+    // doesn't land in the buffer.
+    use crate::widgets::button::Button;
+
+    let mut ui = ui_with_text(UVec2::new(400, 80));
+    let mut buf = String::new();
+
+    // Frame 1: lay out both widgets so cascades have rects.
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+        Button::new()
+            .with_id("plain")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    assert_eq!(ui.focused_id(), Some(WidgetId::from_hash("editor")));
+
+    // Re-record so cascades survive, then click on the Button.
+    begin(&mut ui, UVec2::new(400, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+        Button::new()
+            .with_id("plain")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+    // Button starts at x=180, click at 200.
+    click_at(&mut ui, Vec2::new(200.0, 20.0));
+    assert_eq!(
+        ui.focused_id(),
+        None,
+        "default ClearOnMiss drops focus when clicking a non-focusable Button",
+    );
+
+    // Now type — should NOT land in the buffer.
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('x'),
+        repeat: false,
+    });
+    begin(&mut ui, UVec2::new(400, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+        Button::new()
+            .with_id("plain")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    assert_eq!(buf, "");
+}
+
+#[test]
+fn pressed_button_under_preserve_policy_keeps_focus() {
+    use crate::widgets::button::Button;
+
+    let mut ui = ui_with_text(UVec2::new(400, 80));
+    ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
+    let mut buf = String::new();
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+        Button::new()
+            .with_id("plain")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    begin(&mut ui, UVec2::new(400, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+        Button::new()
+            .with_id("plain")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+    click_at(&mut ui, Vec2::new(200.0, 20.0));
+
+    // PreserveOnMiss: focus stays on editor. Type — lands in buffer.
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('x'),
+        repeat: false,
+    });
+    begin(&mut ui, UVec2::new(400, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+        Button::new()
+            .with_id("plain")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    assert_eq!(buf, "x");
+}
+
+#[test]
+fn pressed_button_pointer_jitter_does_not_steal_caret() {
+    // Regression guard: while a Button is being held (we as a TextEdit
+    // are NOT pressed), pointer movement shouldn't reset our caret.
+    let mut ui = ui_with_text(UVec2::new(400, 80));
+    let mut buf = String::from("ab");
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    // Move to End.
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::End,
+        repeat: false,
+    });
+    begin(&mut ui, UVec2::new(400, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    // Pointer moves over the editor without pressing — caret must
+    // stay where it was.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 20.0)));
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('!'),
+        repeat: false,
+    });
+
+    begin(&mut ui, UVec2::new(400, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("editor")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    // Caret was at end (offset 2) when '!' was inserted → "ab!".
+    assert_eq!(buf, "ab!");
+}
+
+#[test]
+fn pressed_button_event_left_click_release_one_frame() {
+    // Suppress unused-import warning for the press helper.
+    let _ = PointerButton::Left;
+}

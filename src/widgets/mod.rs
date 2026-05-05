@@ -5,6 +5,7 @@ pub(crate) mod panel;
 pub(crate) mod scroll;
 pub(crate) mod styled;
 pub(crate) mod text;
+pub(crate) mod text_edit;
 pub(crate) mod theme;
 
 use crate::input::ResponseState;

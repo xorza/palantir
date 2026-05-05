@@ -338,6 +338,14 @@ impl InputState {
         self.recompute_scroll_target(cascades);
     }
 
+    /// Current pointer position in logical pixels, or `None` when the
+    /// pointer is off-surface. Used by widgets that need pointer
+    /// coordinates relative to their own rect (e.g. TextEdit's
+    /// click-to-place-caret).
+    pub(crate) fn pointer_pos(&self) -> Option<Vec2> {
+        self.pointer.pos
+    }
+
     /// Returns this frame's scroll delta if `id` is the current scroll
     /// hit-target; otherwise `Vec2::ZERO`. Scroll widgets call this at
     /// record time to claim wheel/touchpad input.

@@ -1,4 +1,7 @@
 use crate::primitives::color::Color;
+use crate::primitives::corners::Corners;
+use crate::primitives::spacing::Spacing;
+use crate::primitives::stroke::Stroke;
 use crate::widgets::button::ButtonTheme;
 
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
@@ -12,6 +15,7 @@ use crate::widgets::button::ButtonTheme;
 pub struct Theme {
     pub button: ButtonTheme,
     pub scrollbar: ScrollbarTheme,
+    pub text_edit: TextEditTheme,
 }
 
 /// Visuals for [`crate::Scroll`] reservation-layout scrollbars. When
@@ -59,6 +63,60 @@ impl Default for ScrollbarTheme {
             thumb_hover: Color::rgba(0.0, 0.0, 0.0, 0.7),
             thumb_active: Color::rgba(0.0, 0.0, 0.0, 0.85),
             radius: 4.0,
+        }
+    }
+}
+
+/// Visuals for [`crate::TextEdit`]. Read from [`Theme::text_edit`]
+/// each frame; per-widget overrides via [`crate::TextEdit::style`].
+/// v1 has unfocused/focused background + stroke pairs, a caret color,
+/// and a selection color (selection rendering is deferred but the slot
+/// exists so a future enable doesn't require a theme change).
+#[derive(Clone, Debug)]
+pub struct TextEditTheme {
+    pub background: Color,
+    pub background_focused: Color,
+    pub stroke: Option<Stroke>,
+    pub stroke_focused: Option<Stroke>,
+    pub radius: Corners,
+    pub padding: Spacing,
+    pub text: Color,
+    pub placeholder: Color,
+    pub caret: Color,
+    /// Width of the caret rect in logical px. The caret is painted as
+    /// a thin Overlay rect at the caret's prefix-x; one pixel reads as
+    /// a hairline, two as a chunkier i-beam. Default 1.5 px.
+    pub caret_width: f32,
+    /// Selection highlight fill. Unused in v1 (no selection ops yet)
+    /// but kept on the theme so enabling selection later doesn't
+    /// require a theme migration.
+    pub selection: Color,
+    /// Default font size used for the buffer when the widget builder
+    /// doesn't override it. Matches `Button`'s historical 16 px.
+    pub size_px: f32,
+}
+
+impl Default for TextEditTheme {
+    fn default() -> Self {
+        Self {
+            background: Color::rgb(0.10, 0.12, 0.16),
+            background_focused: Color::rgb(0.13, 0.16, 0.22),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgba(1.0, 1.0, 1.0, 0.10),
+            }),
+            stroke_focused: Some(Stroke {
+                width: 1.5,
+                color: Color::rgb(0.30, 0.52, 0.92),
+            }),
+            radius: Corners::all(4.0),
+            padding: Spacing::xy(8.0, 6.0),
+            text: Color::WHITE,
+            placeholder: Color::rgba(1.0, 1.0, 1.0, 0.40),
+            caret: Color::WHITE,
+            caret_width: 1.5,
+            selection: Color::rgba(0.30, 0.52, 0.92, 0.40),
+            size_px: 16.0,
         }
     }
 }
