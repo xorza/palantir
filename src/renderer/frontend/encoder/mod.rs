@@ -178,6 +178,11 @@ fn encode_node(
     // Push/PopClip and Push/PopTransform are still emitted (above and
     // below) so scissor groups and child transforms stay coherent.
     // `None` filter ⇒ paint everything.
+    //
+    // Clip culling (skipping leaves outside the active ancestor clip)
+    // intentionally does NOT live here: it would make cmd shape
+    // depend on screen position, breaking the encode cache's
+    // authoring-only key. The composer culls per-cmd at compose time.
     let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
 
     if paints {
