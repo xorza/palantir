@@ -3,7 +3,6 @@
 impl widgetid instead of impl hash?
 ecs for soa?
 
-cornders stroke and bg - into one style
 texton button - optional
 
 ## Now — concrete, motivated, ready to start
