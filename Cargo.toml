@@ -17,6 +17,8 @@ wgpu = "*"
 winit = "*"
 rayon = "*"
 padding-struct = "*"
+serde = { version = "*", features = ["derive"] }
+toml = "*"
 
 [dev-dependencies]
 backtrace = "*"
