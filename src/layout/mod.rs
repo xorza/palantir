@@ -294,6 +294,27 @@ impl LayoutEngine {
             self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, text),
         );
 
+        // Floor `available` at `intrinsic_min` before dispatch: the
+        // node's actual outer size is `max(available, intrinsic_min)`
+        // (per `resolve_axis_size`), so children must measure against
+        // *that* width, not the smaller surface-derived value the
+        // parent passed down. Without this, a Hug grid inside a
+        // FILL panel whose own intrinsic_min is pinned by a long
+        // sibling (e.g. a non-wrapping section title) keeps shrinking
+        // with the surface even after the panel itself has stopped —
+        // the panel arranges at its floor, but its measure dispatch
+        // shaped the grid against the smaller surface width. Pinned
+        // by `text_wrap::two_hug_cols_nonwrapping_label_floors_at_full_width`.
+        //
+        // Finite-only: `INFINITY.max(intrinsic_min)` is a no-op for
+        // unbounded axes (Hug parent), preserving the WPF intrinsic
+        // trick. Fixed axes ignore both inputs in `resolve_axis_size`,
+        // so flooring here is harmless for them.
+        let dispatch_avail = Size::new(
+            available.w.max(intrinsic_min.w),
+            available.h.max(intrinsic_min.h),
+        );
+
         // Single dispatch. When `desired` exceeds `available` on a
         // non-Fixed axis it's because a rigid descendant pinned the
         // floor (`intrinsic_min` / `min_size` / `Sizing::Fixed`); a
@@ -301,7 +322,7 @@ impl LayoutEngine {
         // same value because every driver's content size is monotone
         // in `available` and pass-1 already saturated at the floor.
         // Pinned by `cross_driver_tests::convergence`.
-        let content = self.measure_dispatch(tree, node, style, available, text);
+        let content = self.measure_dispatch(tree, node, style, dispatch_avail, text);
         let desired = resolve_desired(style, content, available, intrinsic_min, min_size, max_size);
 
         self.scratch.desired[node.index()] = desired;

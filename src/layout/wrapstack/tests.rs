@@ -442,3 +442,70 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
     let inner_card_w = 120.0;
     assert_eq!(ob.min.x, inner_card_w + 10.0); // outer gap=10
 }
+
+/// Pin issue 2: showcase tab-toolbar pattern. A `Sizing::FILL`
+/// WrapHStack containing many `Button` children (each Hug-sized,
+/// driven by their non-wrapping label text), nested under a FILL
+/// panel with padding. Every button must fit within the wrapstack's
+/// arranged width — wrapping to a new row when necessary, never
+/// extending past the right edge.
+#[test]
+fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
+    use crate::support::testing::ui_with_text;
+    use crate::widgets::button::Button;
+
+    fn build(ui: &mut Ui) -> (NodeId, Vec<NodeId>) {
+        let mut wrap_node = None;
+        let mut kids = Vec::new();
+        Panel::vstack()
+            .padding(12.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                wrap_node = Some(
+                    Panel::wrap_hstack()
+                        .gap(6.0)
+                        .line_gap(6.0)
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .show(ui, |ui| {
+                            for label in [
+                                "text",
+                                "text layouts",
+                                "text edit",
+                                "z-order",
+                                "panels",
+                                "scroll",
+                                "wrap",
+                                "alignment",
+                                "justify",
+                                "clip",
+                                "visibility",
+                                "disabled",
+                                "gap",
+                                "buttons",
+                            ] {
+                                kids.push(Button::new().with_id(label).label(label).show(ui).node);
+                            }
+                        })
+                        .node,
+                );
+            });
+        (wrap_node.unwrap(), kids)
+    }
+
+    for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
+        let mut ui = ui_with_text(UVec2::new(surface_w, 600));
+        let (wrap, kids) = build(&mut ui);
+        ui.end_frame();
+        let wrap_rect = ui.pipeline.layout.result.rect[wrap.index()];
+        let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
+        for k in &kids {
+            let r = ui.pipeline.layout.result.rect[k.index()];
+            let right = r.min.x + r.size.w;
+            assert!(
+                right <= wrap_right + 0.5,
+                "button overflows wrapstack at surface_w={surface_w}: \
+                 wrap_right={wrap_right} button_right={right} (rect={r:?})",
+            );
+        }
+    }
+}
