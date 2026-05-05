@@ -98,19 +98,19 @@ pub(crate) type AvailableKey = IVec2;
 /// legitimately-stored 0px × 0px snapshot.
 pub(crate) const AVAIL_UNSET: AvailableKey = IVec2::splat(i32::MIN);
 
-/// What [`MeasureCache::try_lookup`] returns on a hit. The slices are
-/// borrows into the cache's arenas, ready to `copy_from_slice` into
-/// the caller's destination columns. `root` is the snapshot root's
-/// own `desired` — the value `measure` returns up the recursion.
-pub(crate) struct CachedSubtree<'a> {
-    pub(crate) root: Size,
+/// Per-subtree slice bundle: borrows into the four parallel
+/// node-indexed arenas (`desired`, `text_shapes`, `available_q`,
+/// `scroll_content`) plus the per-grid `hugs` payload. The four
+/// node-indexed slices share length and pre-order alignment;
+/// `hugs` is sized per-grid descendant in `HUG_ORDER`. Same shape
+/// for both reads ([`MeasureCache::try_lookup`]) and writes
+/// ([`MeasureCache::write_subtree`]).
+pub(crate) struct SubtreeArenas<'a> {
     pub(crate) desired: &'a [Size],
     pub(crate) text_shapes: &'a [Option<ShapedText>],
     pub(crate) available_q: &'a [AvailableKey],
     /// Per-node measured content extent for `LayoutMode::Scroll`
-    /// descendants, `Size::ZERO` elsewhere. Same indexing shape as
-    /// `desired`; restored verbatim on a hit so `Ui::end_frame`'s
-    /// per-scroll clamp sees up-to-date numbers without re-measuring.
+    /// descendants, `Size::ZERO` elsewhere.
     pub(crate) scroll_content: &'a [Size],
     /// Per-grid hug arrays for every `LayoutMode::Grid` descendant
     /// of the subtree, packed in pre-order. Each grid contributes
@@ -118,6 +118,15 @@ pub(crate) struct CachedSubtree<'a> {
     /// rows.min — for `2 * (n_cols + n_rows)` floats per grid.
     /// Empty for grid-free subtrees.
     pub(crate) hugs: &'a [f32],
+}
+
+/// What [`MeasureCache::try_lookup`] returns on a hit. `root` is
+/// the snapshot root's own `desired` — the value `measure` returns
+/// up the recursion. `arenas` carries the slices ready to
+/// `copy_from_slice` into the caller's destination columns.
+pub(crate) struct CachedSubtree<'a> {
+    pub(crate) root: Size,
+    pub(crate) arenas: SubtreeArenas<'a>,
 }
 
 #[inline]
@@ -193,38 +202,42 @@ impl MeasureCache {
         }
         Some(CachedSubtree {
             root: self.desired.items[nodes.start],
-            desired: &self.desired.items[nodes.clone()],
-            text_shapes: &self.text[nodes.clone()],
-            available_q: &self.available[nodes.clone()],
-            scroll_content: &self.scroll_content[nodes],
-            hugs: &self.hugs.items[snap.hugs.range()],
+            arenas: SubtreeArenas {
+                desired: &self.desired.items[nodes.clone()],
+                text_shapes: &self.text[nodes.clone()],
+                available_q: &self.available[nodes.clone()],
+                scroll_content: &self.scroll_content[nodes],
+                hugs: &self.hugs.items[snap.hugs.range()],
+            },
         })
     }
 
-    /// Overwrite (or insert) `wid`'s snapshot. `hugs` is the per-grid
-    /// hug payload for every Grid descendant of the subtree, packed
-    /// in `HUG_ORDER` (see grid module); empty for grid-free
+    /// Overwrite (or insert) `wid`'s snapshot. `arenas.hugs` is the
+    /// per-grid hug payload for every Grid descendant of the subtree,
+    /// packed in `HUG_ORDER` (see grid module); empty for grid-free
     /// subtrees. Hot path is in-place memcpy when the existing range
     /// has the same length — expected to hit ~always once a widget
     /// reaches steady state, since `subtree_hash` includes structure
     /// (same hash → same subtree size). Size mismatches mark the old
     /// range as garbage and append a fresh range to the arena.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn write_subtree(
         &mut self,
         wid: WidgetId,
         subtree_hash: NodeHash,
-        desired: &[Size],
-        text_shapes: &[Option<ShapedText>],
-        available_qs: &[AvailableKey],
-        scroll_contents: &[Size],
-        hugs: &[f32],
+        arenas: SubtreeArenas<'_>,
     ) {
+        let SubtreeArenas {
+            desired,
+            text_shapes,
+            available_q,
+            scroll_content,
+            hugs,
+        } = arenas;
         assert_eq!(desired.len(), text_shapes.len());
-        assert_eq!(desired.len(), available_qs.len());
-        assert_eq!(desired.len(), scroll_contents.len());
+        assert_eq!(desired.len(), available_q.len());
+        assert_eq!(desired.len(), scroll_content.len());
         assert!(
-            !available_qs.is_empty(),
+            !available_q.is_empty(),
             "snapshot must include the root's own per-node available_q",
         );
         let new_len = desired.len() as u32;
@@ -242,8 +255,8 @@ impl MeasureCache {
             prev.subtree_hash = subtree_hash;
             self.desired.items[nodes.clone()].copy_from_slice(desired);
             self.text[nodes.clone()].copy_from_slice(text_shapes);
-            self.available[nodes.clone()].copy_from_slice(available_qs);
-            self.scroll_content[nodes].copy_from_slice(scroll_contents);
+            self.available[nodes.clone()].copy_from_slice(available_q);
+            self.scroll_content[nodes].copy_from_slice(scroll_content);
             self.hugs.items[hugs_range].copy_from_slice(hugs);
             return;
         }
@@ -258,8 +271,8 @@ impl MeasureCache {
         let nodes = Span::new(self.desired.items.len() as u32, new_len);
         self.desired.items.extend_from_slice(desired);
         self.text.extend_from_slice(text_shapes);
-        self.available.extend_from_slice(available_qs);
-        self.scroll_content.extend_from_slice(scroll_contents);
+        self.available.extend_from_slice(available_q);
+        self.scroll_content.extend_from_slice(scroll_content);
         let hugs_span = Span::new(self.hugs.items.len() as u32, new_hugs_len);
         self.hugs.items.extend_from_slice(hugs);
         self.desired.acquire(new_len);
