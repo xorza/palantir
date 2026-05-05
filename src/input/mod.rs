@@ -105,6 +105,12 @@ pub struct InputState {
     /// whenever the pointer moves and at `end_frame`. The scroll widget
     /// matching this id consumes [`Self::frame_scroll_delta`].
     scroll_target: Option<WidgetId>,
+    /// Pointer position captured at the moment of the press that set
+    /// `active`. Subtracted from the current pointer position to give
+    /// drag widgets a rect-independent delta — the pointer can leave
+    /// the originating widget mid-drag and the delta keeps tracking.
+    /// Cleared on release / capture eviction.
+    press_pos: Option<Vec2>,
     clicked_this_frame: FxHashSet<WidgetId>,
     /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
     /// in [`Self::end_frame`]. Read by scroll widgets at record time.
@@ -124,6 +130,7 @@ impl InputState {
             active: None,
             hovered: None,
             scroll_target: None,
+            press_pos: None,
             clicked_this_frame: FxHashSet::default(),
             frame_scroll_delta: Vec2::ZERO,
         }
@@ -150,6 +157,7 @@ impl InputState {
                     .pointer
                     .pos
                     .and_then(|p| cascades.hit_test(p, Sense::click));
+                self.press_pos = self.active.and(self.pointer.pos);
             }
             InputEvent::PointerReleased(PointerButton::Left) => {
                 if let Some(a) = self.active.take() {
@@ -161,6 +169,7 @@ impl InputState {
                         self.clicked_this_frame.insert(a);
                     }
                 }
+                self.press_pos = None;
             }
             InputEvent::Scroll(d) => {
                 self.frame_scroll_delta += d;
@@ -180,6 +189,7 @@ impl InputState {
             && !cascades.by_id.contains_key(&active)
         {
             self.active = None;
+            self.press_pos = None;
         }
         self.recompute_hover(cascades);
         self.recompute_scroll_target(cascades);
@@ -188,13 +198,27 @@ impl InputState {
     /// Returns this frame's scroll delta if `id` is the current scroll
     /// hit-target; otherwise `Vec2::ZERO`. Scroll widgets call this at
     /// record time to claim wheel/touchpad input.
-    #[allow(dead_code)] // wired to Scroll widget in step 3
     pub(crate) fn scroll_delta_for(&self, id: WidgetId) -> Vec2 {
         if self.scroll_target == Some(id) {
             self.frame_scroll_delta
         } else {
             Vec2::ZERO
         }
+    }
+
+    /// Returns the cumulative drag delta (pointer pos minus press pos)
+    /// when `id` is the actively-captured widget and both positions are
+    /// known. Rect-independent — the pointer can leave the widget's
+    /// rect mid-drag and the delta keeps tracking. `None` when `id`
+    /// isn't active or the pointer has left the surface.
+    #[allow(dead_code)] // first consumer is the scrollbar widget (step 6)
+    pub(crate) fn drag_delta(&self, id: WidgetId) -> Option<Vec2> {
+        if self.active != Some(id) {
+            return None;
+        }
+        let press = self.press_pos?;
+        let now = self.pointer.pos?;
+        Some(now - press)
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &CascadeResult) -> ResponseState {
