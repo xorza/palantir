@@ -140,17 +140,19 @@ impl Ui {
                 s.node.index(),
                 layout.rect.len(),
             );
-            let viewport_h = layout.rect[s.node.index()].size.h;
-            let content_h = layout.scroll_content_h[s.node.index()];
+            let viewport = layout.rect[s.node.index()].size;
+            let content = layout.scroll_content[s.node.index()];
             let row = self
                 .state
                 .get_or_insert_with::<ScrollState, _>(s.id, Default::default);
-            row.viewport_h = viewport_h;
-            row.content_h = content_h;
+            row.viewport = viewport;
+            row.content = content;
             // End-frame re-clamp: pairs with the record-time clamp in
             // `Scroll::show`, which only had last frame's numbers.
-            let max_offset = (content_h - viewport_h).max(0.0);
-            row.offset = row.offset.clamp(0.0, max_offset);
+            let max_x = (content.w - viewport.w).max(0.0);
+            let max_y = (content.h - viewport.h).max(0.0);
+            row.offset.x = row.offset.x.clamp(0.0, max_x);
+            row.offset.y = row.offset.y.clamp(0.0, max_y);
         }
 
         let cascades = self.cascades.run(&self.tree, layout);

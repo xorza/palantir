@@ -131,12 +131,19 @@ fn content_intrinsic(
         LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, req, text),
         LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, req, text),
         LayoutMode::Grid(idx) => grid::intrinsic(engine, tree, node, idx, axis, req, text),
-        // Scroll on its main axis "wants" zero — the viewport is sized by
-        // its own `Sizing`, not by content. Cross axis matches a VStack.
+        // Scroll viewports "want" zero on every panned axis — sizing
+        // comes from the viewport's own `Sizing`, never from content.
+        // The non-panned axis falls back to the corresponding stack /
+        // zstack intrinsic.
         LayoutMode::ScrollV => match axis {
             Axis::Y => 0.0,
             Axis::X => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, text),
         },
+        LayoutMode::ScrollH => match axis {
+            Axis::X => 0.0,
+            Axis::Y => stack::intrinsic(engine, tree, node, Axis::X, axis, req, text),
+        },
+        LayoutMode::ScrollXY => 0.0,
     }
 }
 
