@@ -114,7 +114,7 @@ impl Damage {
         for i in 0..n {
             let wid = widget_ids[i];
             let curr_rect = cascade_rows[i].screen_rect;
-            let curr_hash = tree.hashes[i];
+            let curr_hash = tree.hashes.node[i];
             let curr = NodeSnapshot {
                 rect: curr_rect,
                 hash: curr_hash,

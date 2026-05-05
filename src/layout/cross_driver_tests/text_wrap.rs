@@ -27,7 +27,12 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         "wrapped paragraph should span multiple lines, got h={}",
         r.size.h,
     );
-    let shape = ui.tree.shapes_of(node).first().expect("text shape");
+    let shape = ui
+        .tree
+        .shapes
+        .slice_of(node.index())
+        .first()
+        .expect("text shape");
     let wrap = match shape {
         Shape::Text { wrap, .. } => *wrap,
         _ => panic!("expected Shape::Text"),

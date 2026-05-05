@@ -17,7 +17,7 @@ fn shapes_attached_to_button_node() {
         button_node = Some(Button::new().label("X").show(ui).node);
     });
 
-    let shapes = ui.tree.shapes_of(button_node.unwrap());
+    let shapes = ui.tree.shapes.slice_of(button_node.unwrap().index());
     assert_eq!(shapes.len(), 2);
     assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
     assert!(matches!(shapes[1], Shape::Text { .. }));
@@ -36,7 +36,7 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = ui_at(UVec2::new(200, 200));
     let target = f(&mut ui);
     ui.end_frame();
-    ui.tree.hashes[target.index()]
+    ui.tree.hashes.node[target.index()]
 }
 
 #[test]
@@ -50,8 +50,8 @@ fn empty_tree_has_no_hashes() {
     ui.tree.end_frame();
 
     assert_eq!(ui.tree.layout.len(), 0);
-    assert!(ui.tree.hashes.is_empty());
-    assert!(ui.tree.subtree_hashes.is_empty());
+    assert!(ui.tree.hashes.node.is_empty());
+    assert!(ui.tree.hashes.subtree.is_empty());
 }
 
 #[test]
@@ -146,8 +146,8 @@ fn changing_fill_color_changes_hash() {
     ui2.end_frame();
 
     assert_ne!(
-        ui1.tree.hashes[child1.unwrap().index()],
-        ui2.tree.hashes[child2.unwrap().index()],
+        ui1.tree.hashes.node[child1.unwrap().index()],
+        ui2.tree.hashes.node[child2.unwrap().index()],
         "different fill must produce different hash",
     );
 }
@@ -261,8 +261,8 @@ fn shape_order_matters_for_hash() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.hashes[n1.unwrap().index()],
-        ui2.tree.hashes[n2.unwrap().index()],
+        ui1.tree.hashes.node[n1.unwrap().index()],
+        ui2.tree.hashes.node[n2.unwrap().index()],
     );
 }
 
@@ -289,8 +289,8 @@ fn changing_text_content_changes_hash() {
     ui2.end_frame();
 
     assert_ne!(
-        ui1.tree.hashes[a.unwrap().index()],
-        ui2.tree.hashes[b.unwrap().index()]
+        ui1.tree.hashes.node[a.unwrap().index()],
+        ui2.tree.hashes.node[b.unwrap().index()]
     );
 }
 
@@ -328,8 +328,8 @@ fn child_hash_does_not_affect_parent_hash() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.hashes[parent1.index()],
-        ui2.tree.hashes[parent2.index()],
+        ui1.tree.hashes.node[parent1.index()],
+        ui2.tree.hashes.node[parent2.index()],
         "parent hash captures only its own fields, not children's",
     );
 }
@@ -472,8 +472,8 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.hashes[leaf1.index()],
-        ui2.tree.hashes[leaf2.index()]
+        ui1.tree.hashes.node[leaf1.index()],
+        ui2.tree.hashes.node[leaf2.index()]
     );
     assert_eq!(ui1.tree.subtree_hash(leaf1), ui2.tree.subtree_hash(leaf2));
 }

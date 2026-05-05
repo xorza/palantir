@@ -42,7 +42,7 @@ fn zstack_layers_children_without_painting_background() {
 
     let z = zstack_node.unwrap();
     // ZStack itself paints nothing.
-    assert!(ui.tree.shapes_of(z).is_empty());
+    assert!(ui.tree.shapes.slice_of(z.index()).is_empty());
 
     // ZStack hugs to max(child sizes) = (120, 80).
     let zr = ui.layout_engine.result.rect[z.index()];

@@ -55,6 +55,7 @@ impl NodeId {
 ///
 /// Topology is encoded by `subtree_end[i]`: an exclusive index one past the
 /// last descendant of node `i`. `i + 1 == subtree_end[i]` for a leaf.
+#[derive(Default)]
 pub(crate) struct Tree {
     pub(crate) widget_ids: Vec<WidgetId>,
     pub(crate) layout: Vec<LayoutCore>,
@@ -68,12 +69,9 @@ pub(crate) struct Tree {
     /// descendant of `i`.
     pub(crate) subtree_end: Vec<u32>,
 
-    pub(crate) shapes: Vec<Shape>,
-    /// Per-node shape-range starts, length always `node_count() + 1`. The
-    /// shapes for node `i` are `shapes[shape_starts[i]..shape_starts[i+1]]`;
-    /// the trailing sentinel is the open end of the last node, kept equal to
-    /// `shapes.len()` while recording so `add_shape` can extend it in place.
-    shape_starts: Vec<u32>,
+    /// Per-node `Shape` storage (flat buffer + per-node start offsets).
+    /// Reads via `shapes.slice_of(idx)`; writes via [`Self::add_shape`].
+    pub(crate) shapes: ShapeBuf,
     /// Recording-only scratch: index `i` holds the parent of node `i`,
     /// or `Self::NO_PARENT` (`u32::MAX`) for a root. Used by
     /// `close_node` to pop `current_open` and by `finalize_subtree_end`
@@ -91,49 +89,10 @@ pub(crate) struct Tree {
     /// capacity retained.
     pub(crate) grid: GridArena,
 
-    /// Per-node authoring hash, computed by [`Tree::compute_hashes`] after
-    /// recording is complete. Captures the inputs that affect rendering
-    /// (layout fields, paint attrs, extras, shapes, grid defs) — not
-    /// derived layout output (`rect`, `desired`). Damage diffs and the
-    /// `TextMeasurer` reuse cache compare this against last frame's
-    /// snapshot. Indexed by `NodeId.0`. Capacity retained across frames.
-    pub(crate) hashes: Vec<NodeHash>,
-    /// Per-node *subtree* hash: rolls `hashes[i]` together with the
-    /// subtree hashes of `i`'s direct children, in declaration order.
-    /// Equality of `subtree_hashes[i]` across frames means nothing in
-    /// the subtree rooted at `i` changed — the cross-frame measure
-    /// cache and the encode cache both key on this. See
-    /// `src/layout/measure-cache.md` and
-    /// `src/renderer/frontend/encoder/encode-cache.md`.
-    pub(crate) subtree_hashes: Vec<NodeHash>,
-    /// Per-node "this subtree contains a `LayoutMode::Grid`". Rolled
-    /// up alongside `subtree_hashes` in `compute_hashes`. Used as a
-    /// fast-path skip for `MeasureCache`'s grid-hug
-    /// snapshot/restore walk in `layout::grid_hugs`: grid-free
-    /// subtrees (the majority — panels, stacks, sections) avoid the
-    /// O(subtree-size) `LayoutMode::Grid(_)` scan on both write and
-    /// hit. Correctness doesn't depend on this bit; perf does.
-    pub(crate) subtree_has_grid: Vec<bool>,
-}
-
-impl Default for Tree {
-    fn default() -> Self {
-        Self {
-            layout: Vec::new(),
-            paint: Vec::new(),
-            widget_ids: Vec::new(),
-            subtree_end: Vec::new(),
-            shapes: Vec::new(),
-            shape_starts: vec![0],
-            recording_parent: Vec::new(),
-            current_open: None,
-            grid: GridArena::default(),
-            node_extras: Vec::new(),
-            hashes: Vec::new(),
-            subtree_hashes: Vec::new(),
-            subtree_has_grid: Vec::new(),
-        }
-    }
+    /// Per-node authoring hash + subtree-rollup hash + grid-presence bit,
+    /// all populated by [`Self::end_frame`]. Indexed by `NodeId.0`,
+    /// capacity retained across frames.
+    pub(crate) hashes: NodeHashes,
 }
 
 impl Tree {
@@ -147,20 +106,16 @@ impl Tree {
         self.paint.clear();
         self.widget_ids.clear();
         self.subtree_end.clear();
-        self.shapes.clear();
-        self.shape_starts.clear();
-        self.shape_starts.push(0);
+        self.shapes.begin_frame();
         self.recording_parent.clear();
         self.current_open = None;
         self.grid.clear();
         self.node_extras.clear();
-        self.hashes.clear();
-        self.subtree_hashes.clear();
-        self.subtree_has_grid.clear();
+        self.hashes.begin_frame();
     }
 
-    /// Walk every recorded node and populate `self.hashes` plus the
-    /// `self.subtree_hashes` rollup. Pure read over the rest of the
+    /// Walk every recorded node and populate `self.hashes.node` plus the
+    /// `self.hashes.subtree` rollup. Pure read over the rest of the
     /// tree; safe to call any time after recording completes. Capacity
     /// retained across frames.
     pub(crate) fn end_frame(&mut self) {
@@ -168,21 +123,19 @@ impl Tree {
 
         let n = self.layout.len();
 
-        self.hashes.clear();
-        self.hashes.reserve(n);
+        let nodes = &mut self.hashes.node;
+        nodes.clear();
+        nodes.reserve(n);
         for i in 0..n {
             let layout = &self.layout[i];
             let paint = self.paint[i];
             let extras = paint.extras.map(|idx| &self.node_extras[idx as usize]);
-            let s_start = self.shape_starts[i] as usize;
-            let s_end = self.shape_starts[i + 1] as usize;
-            let shapes = &self.shapes[s_start..s_end];
+            let shapes = self.shapes.slice_of(i);
             let grid_def = match layout.mode {
                 LayoutMode::Grid(idx) => Some(&self.grid.defs[idx as usize]),
                 _ => None,
             };
-            self.hashes
-                .push(NodeHash::compute(layout, paint, extras, shapes, grid_def));
+            nodes.push(NodeHash::compute(layout, paint, extras, shapes, grid_def));
         }
 
         // Subtree-hash rollup. Pre-order arena means every child has a
@@ -191,18 +144,18 @@ impl Tree {
         // parent folds its own node-hash with its direct children's
         // subtree hashes, in declaration order — sibling reorder
         // changes the parent's subtree hash.
-        self.subtree_hashes.clear();
-        self.subtree_hashes.resize(n, NodeHash::UNCOMPUTED);
-        self.subtree_has_grid.clear();
-        self.subtree_has_grid.resize(n, false);
+        self.hashes.subtree.clear();
+        self.hashes.subtree.resize(n, NodeHash::UNCOMPUTED);
+        self.hashes.subtree_has_grid.clear();
+        self.hashes.subtree_has_grid.resize(n, false);
         for i in (0..n).rev() {
             let end = self.subtree_end[i];
             let mut h = FxHasher::default();
-            h.write_u64(self.hashes[i].as_u64());
-            // Fold `transform` into `subtree_hash` (but not `hashes[i]`):
+            h.write_u64(self.hashes.node[i].as_u64());
+            // Fold `transform` into `subtree_hash` (but not `node[i]`):
             // damage diffs descendants' screen rects, so the per-node
             // hash stays transform-insensitive. The encode cache, which
-            // keys on `subtree_hash` and replays cached `PushTransform`
+            // keys on `subtree` and replays cached `PushTransform`
             // bytes verbatim, must invalidate on transform changes.
             if let Some(t) = self.read_extras(NodeId(i as u32)).transform {
                 h.write_u8(1);
@@ -214,12 +167,12 @@ impl Tree {
             let mut has_grid = matches!(self.layout[i].mode, LayoutMode::Grid(_));
             let mut next = (i as u32) + 1;
             while next < end {
-                h.write_u64(self.subtree_hashes[next as usize].as_u64());
-                has_grid |= self.subtree_has_grid[next as usize];
+                h.write_u64(self.hashes.subtree[next as usize].as_u64());
+                has_grid |= self.hashes.subtree_has_grid[next as usize];
                 next = self.subtree_end[next as usize];
             }
-            self.subtree_hashes[i] = NodeHash::from_u64(h.finish());
-            self.subtree_has_grid[i] = has_grid;
+            self.hashes.subtree[i] = NodeHash::from_u64(h.finish());
+            self.hashes.subtree_has_grid[i] = has_grid;
         }
     }
 
@@ -310,7 +263,7 @@ impl Tree {
         // O(N·depth) random-write loop with a true data dependency on
         // `recording_parent`; the deferred pass is O(N) sequential.
         self.subtree_end.push(new_id.0 + 1);
-        self.shape_starts.push(self.shapes.len() as u32);
+        self.shapes.open_node();
         self.recording_parent
             .push(parent.map_or(Self::NO_PARENT, |p| p.0));
         self.current_open = Some(new_id);
@@ -349,16 +302,16 @@ impl Tree {
         // authoring time rather than letting the corruption land in
         // `LayoutResult.text_shapes`.
         if matches!(shape, Shape::Text { .. }) {
-            let start = self.shape_starts[idx] as usize;
             assert!(
-                !self.shapes[start..]
+                !self
+                    .shapes
+                    .slice_of(idx)
                     .iter()
                     .any(|s| matches!(s, Shape::Text { .. })),
                 "node {idx} already has a Shape::Text — multiple text shapes per leaf are unsupported",
             );
         }
-        self.shapes.push(shape);
-        *self.shape_starts.last_mut().unwrap() = self.shapes.len() as u32;
+        self.shapes.push_to_open(shape);
     }
 
     pub(crate) fn is_collapsed(&self, id: NodeId) -> bool {
@@ -385,13 +338,6 @@ impl Tree {
         } else {
             Some(NodeId(0))
         }
-    }
-
-    pub(crate) fn shapes_of(&self, id: NodeId) -> &[Shape] {
-        let i = id.index();
-        let s = self.shape_starts[i] as usize;
-        let e = self.shape_starts[i + 1] as usize;
-        &self.shapes[s..e]
     }
 
     /// Iterate child NodeIds of `parent` in declaration order.
@@ -431,9 +377,10 @@ impl Tree {
 
     /// Subtree authoring hash for `id`: rolls this node's hash with
     /// its descendants' (in declaration order). `NodeHash::UNCOMPUTED`
-    /// before [`Self::compute_hashes`] runs.
+    /// before [`Self::end_frame`] runs.
     pub(crate) fn subtree_hash(&self, id: NodeId) -> NodeHash {
-        self.subtree_hashes
+        self.hashes
+            .subtree
             .get(id.index())
             .copied()
             .unwrap_or(NodeHash::UNCOMPUTED)
@@ -496,6 +443,89 @@ impl GridArena {
         let idx = self.defs.len() as u16;
         self.defs.push(def);
         idx
+    }
+}
+
+/// Per-node hash data populated by [`Tree::end_frame`].
+///
+/// - `node[i]` — authoring hash of node `i` alone (layout / paint /
+///   extras / shapes / grid def). Read by damage diff and the leaf
+///   intrinsic cache.
+/// - `subtree[i]` — rollup of `node[i]` together with the subtree
+///   hashes of `i`'s direct children, in declaration order. Equality
+///   across frames means nothing in the subtree changed; the cross-frame
+///   measure cache and encode cache both key on this. See
+///   `src/layout/measure-cache.md` and
+///   `src/renderer/frontend/encoder/encode-cache.md`.
+/// - `subtree_has_grid[i]` — true if the subtree at `i` contains any
+///   `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
+///   grid-hug snapshot/restore walk; correctness doesn't depend on it,
+///   perf does.
+///
+/// All three vecs are length `node_count()` after `end_frame`. Capacity
+/// retained across frames.
+#[derive(Default)]
+pub(crate) struct NodeHashes {
+    pub(crate) node: Vec<NodeHash>,
+    pub(crate) subtree: Vec<NodeHash>,
+    pub(crate) subtree_has_grid: Vec<bool>,
+}
+
+impl NodeHashes {
+    fn begin_frame(&mut self) {
+        self.node.clear();
+        self.subtree.clear();
+        self.subtree_has_grid.clear();
+    }
+}
+
+/// Per-node `Shape` storage: a flat `buf` of all shapes plus a `starts`
+/// table where `buf[starts[i]..starts[i+1]]` is node `i`'s slice.
+/// `starts` always has length `node_count() + 1` — the trailing
+/// sentinel is the open end of the most recently opened node, kept
+/// equal to `buf.len()` while recording so [`Self::push_to_open`] can
+/// extend it in place.
+pub(crate) struct ShapeBuf {
+    buf: Vec<Shape>,
+    starts: Vec<u32>,
+}
+
+impl Default for ShapeBuf {
+    fn default() -> Self {
+        Self {
+            buf: Vec::new(),
+            starts: vec![0],
+        }
+    }
+}
+
+impl ShapeBuf {
+    fn begin_frame(&mut self) {
+        self.buf.clear();
+        self.starts.clear();
+        self.starts.push(0);
+    }
+
+    /// Slice of shapes for node index `node_idx`. Empty for nodes that
+    /// recorded no shapes.
+    pub(crate) fn slice_of(&self, node_idx: usize) -> &[Shape] {
+        let s = self.starts[node_idx] as usize;
+        let e = self.starts[node_idx + 1] as usize;
+        &self.buf[s..e]
+    }
+
+    /// Mark a fresh open node — its shape range starts at the current
+    /// buffer end and extends as [`Self::push_to_open`] appends.
+    fn open_node(&mut self) {
+        self.starts.push(self.buf.len() as u32);
+    }
+
+    /// Append `shape` to the most-recently-opened node's range. Caller
+    /// (`Tree::add_shape`) enforces the contiguity + Text-uniqueness
+    /// invariants before delegating here.
+    fn push_to_open(&mut self, shape: Shape) {
+        self.buf.push(shape);
+        *self.starts.last_mut().unwrap() = self.buf.len() as u32;
     }
 }
 

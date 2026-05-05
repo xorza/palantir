@@ -22,15 +22,18 @@ pub(crate) fn leaf_text_shapes(
     tree: &Tree,
     node: NodeId,
 ) -> impl Iterator<Item = (&str, f32, TextWrap)> {
-    tree.shapes_of(node).iter().filter_map(|s| match s {
-        Shape::Text {
-            text,
-            font_size_px,
-            wrap,
-            ..
-        } => Some((text.as_ref(), *font_size_px, *wrap)),
-        _ => None,
-    })
+    tree.shapes
+        .slice_of(node.index())
+        .iter()
+        .filter_map(|s| match s {
+            Shape::Text {
+                text,
+                font_size_px,
+                wrap,
+                ..
+            } => Some((text.as_ref(), *font_size_px, *wrap)),
+            _ => None,
+        })
 }
 
 /// Resolve a node's outer slot size on one axis, given its sizing

@@ -242,7 +242,7 @@ impl LayoutEngine {
         // resize since outer-leaf measure is `available`-dependent
         // for `Hug` / `Fill` axes.
         let cache_wid = tree.widget_ids[node.index()];
-        let cache_hash = tree.subtree_hashes[node.index()];
+        let cache_hash = tree.hashes.subtree[node.index()];
         let cache_avail = quantize_available(available);
         // Record this node's quantized `available` before any
         // short-circuit. Downstream consumers (encode cache, etc.)
@@ -268,7 +268,7 @@ impl LayoutEngine {
             // any ancestor of a Grid leaves hugs zeroed and the
             // grid would collapse every cell to (0, 0). Pinned by
             // `widgets::tests::grid_cells_arranged_correctly_on_cache_hit_frame`.
-            if tree.subtree_has_grid[curr_start] {
+            if tree.hashes.subtree_has_grid[curr_start] {
                 self.scratch
                     .grid
                     .hugs
@@ -342,7 +342,7 @@ impl LayoutEngine {
             let start = node.index();
             let end = tree.subtree_end[start] as usize;
             self.scratch.tmp_hugs.clear();
-            if tree.subtree_has_grid[start] {
+            if tree.hashes.subtree_has_grid[start] {
                 self.scratch.grid.hugs.snapshot_subtree(
                     tree,
                     start..end,
@@ -542,7 +542,7 @@ impl LayoutEngine {
         text: &mut TextMeasurer,
     ) -> Size {
         let wid = tree.widget_ids[node.index()];
-        let curr_hash = tree.hashes[node.index()];
+        let curr_hash = tree.hashes.node[node.index()];
 
         // Refresh the unbounded measurement only when the authoring hash
         // has shifted. Crucially, when only the wrap target changed
