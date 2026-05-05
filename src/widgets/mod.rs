@@ -14,7 +14,7 @@ use crate::tree::NodeId;
 mod tests;
 
 pub struct Response {
-    pub node: NodeId,
+    pub(crate) node: NodeId,
     pub state: ResponseState,
 }
 

@@ -1,15 +1,15 @@
 pub(crate) mod common;
-pub mod input;
-pub mod layout;
-pub mod primitives;
-pub mod renderer;
-pub mod shape;
+pub(crate) mod input;
+pub(crate) mod layout;
+pub(crate) mod primitives;
+pub(crate) mod renderer;
+pub(crate) mod shape;
 #[cfg(any(test, feature = "internals"))]
 pub mod support;
-pub mod text;
-pub mod tree;
-pub mod ui;
-pub mod widgets;
+pub(crate) mod text;
+pub(crate) mod tree;
+pub(crate) mod ui;
+pub(crate) mod widgets;
 
 pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use layout::types::align::{Align, HAlign, VAlign};
@@ -33,9 +33,8 @@ pub use renderer::frontend::FrameOutput;
 pub use shape::Shape;
 pub use text::cosmic::CosmicMeasure;
 pub use text::{SharedCosmic, share};
-pub use tree::element::{Configure, Element, LayoutCore, LayoutMode, PaintAttrs, PaintCore};
+pub use tree::element::{Configure, Element, LayoutMode};
 pub use tree::widget_id::WidgetId;
-pub use tree::{NodeId, Tree};
 pub use ui::Ui;
 pub use widgets::Response;
 pub use widgets::button::{Button, ButtonTheme};

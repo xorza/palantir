@@ -49,7 +49,7 @@ fn empty_tree_has_no_hashes() {
     // verify the empty-tree case.)
     ui.tree.end_frame();
 
-    assert_eq!(ui.tree.node_count(), 0);
+    assert_eq!(ui.tree.layout.len(), 0);
     assert!(ui.tree.hashes.is_empty());
     assert!(ui.tree.subtree_hashes.is_empty());
 }
@@ -497,7 +497,7 @@ fn subtree_end_is_leaf_marker_before_finalize() {
         Frame::new().with_id("a").size(10.0).show(ui);
         Frame::new().with_id("b").size(10.0).show(ui);
     });
-    let n = ui.tree.node_count();
+    let n = ui.tree.layout.len();
     for i in 0..n {
         assert_eq!(
             ui.tree.subtree_end[i],
@@ -523,7 +523,7 @@ fn finalize_subtree_end_rolls_up_children() {
         })
         .node;
     // Tree (pre-order):  0=root  1=a  2=inner  3=b  4=c  5=d
-    assert_eq!(ui.tree.node_count(), 6);
+    assert_eq!(ui.tree.layout.len(), 6);
     ui.tree.finalize_subtree_end();
     assert_eq!(ui.tree.subtree_end[root.index()], 6, "root");
     assert_eq!(ui.tree.subtree_end[1], 2, "leaf a");
@@ -551,7 +551,7 @@ fn finalize_subtree_end_handles_deep_nesting() {
     ui.begin_frame(Display::default());
     nest(&mut ui, 16);
     ui.end_frame();
-    let n = ui.tree.node_count() as u32;
+    let n = ui.tree.layout.len() as u32;
     assert_eq!(n, 17, "16 stacks + 1 leaf");
     for i in 0..(n - 1) {
         assert_eq!(

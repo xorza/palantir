@@ -109,7 +109,7 @@ impl Damage {
         let mut acc: Option<Rect> = None;
 
         let cascade_rows = &cascades.rows;
-        let n = tree.node_count();
+        let n = tree.layout.len();
         let widget_ids = &tree.widget_ids;
         for i in 0..n {
             let wid = widget_ids[i];

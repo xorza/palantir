@@ -9,9 +9,9 @@ use rustc_hash::FxHasher;
 use std::hash::Hasher;
 use std::rc::Rc;
 
-pub mod element;
+pub(crate) mod element;
 pub(crate) mod node_hash;
-pub mod widget_id;
+pub(crate) mod widget_id;
 
 /// Track definitions + axis gaps for a `Grid` panel. Stored on `GridArena`
 /// (a `Tree`-owned `Vec<GridDef>`) and addressed from
@@ -30,11 +30,11 @@ pub(crate) struct GridDef {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct NodeId(pub(crate) u32);
+pub(crate) struct NodeId(pub(crate) u32);
 
 impl NodeId {
     #[inline]
-    pub fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         self.0 as usize
     }
 }
@@ -55,7 +55,7 @@ impl NodeId {
 ///
 /// Topology is encoded by `subtree_end[i]`: an exclusive index one past the
 /// last descendant of node `i`. `i + 1 == subtree_end[i]` for a leaf.
-pub struct Tree {
+pub(crate) struct Tree {
     pub(crate) widget_ids: Vec<WidgetId>,
     pub(crate) layout: Vec<LayoutCore>,
     pub(crate) paint: Vec<PaintCore>,
@@ -166,7 +166,7 @@ impl Tree {
     pub(crate) fn end_frame(&mut self) {
         self.finalize_subtree_end();
 
-        let n = self.node_count();
+        let n = self.layout.len();
 
         self.hashes.clear();
         self.hashes.reserve(n);
@@ -327,7 +327,7 @@ impl Tree {
         let idx = node.0 as usize;
         assert_eq!(
             idx,
-            self.node_count() - 1,
+            self.layout.len() - 1,
             "shapes for node {idx} must be added contiguously, before any child node",
         );
         // Multi-`Shape::Text` per leaf is unsupported: layout records a
@@ -349,20 +349,8 @@ impl Tree {
         *self.shape_starts.last_mut().unwrap() = self.shapes.len() as u32;
     }
 
-    pub fn layout(&self, id: NodeId) -> &LayoutCore {
-        &self.layout[id.0 as usize]
-    }
-
-    pub fn paint(&self, id: NodeId) -> PaintCore {
-        self.paint[id.0 as usize]
-    }
-
-    pub fn is_collapsed(&self, id: NodeId) -> bool {
+    pub(crate) fn is_collapsed(&self, id: NodeId) -> bool {
         self.layout[id.0 as usize].visibility.is_collapsed()
-    }
-
-    pub fn node_count(&self) -> usize {
-        self.layout.len()
     }
 
     /// Read extras for a node, returning a borrow of `ElementExtras::DEFAULT`
@@ -379,7 +367,7 @@ impl Tree {
     /// First node in pre-order paint order, or `None` if the tree is empty.
     /// Stable while the tree is alive: the root is always `NodeId(0)` once
     /// pushed.
-    pub fn root(&self) -> Option<NodeId> {
+    pub(crate) fn root(&self) -> Option<NodeId> {
         if self.layout.is_empty() {
             None
         } else {
@@ -387,7 +375,7 @@ impl Tree {
         }
     }
 
-    pub fn shapes_of(&self, id: NodeId) -> &[Shape] {
+    pub(crate) fn shapes_of(&self, id: NodeId) -> &[Shape] {
         let i = id.index();
         let s = self.shape_starts[i] as usize;
         let e = self.shape_starts[i + 1] as usize;
@@ -395,7 +383,7 @@ impl Tree {
     }
 
     /// Iterate child NodeIds of `parent` in declaration order.
-    pub fn children(&self, parent: NodeId) -> ChildIter<'_> {
+    pub(crate) fn children(&self, parent: NodeId) -> ChildIter<'_> {
         let pi = parent.0 as usize;
         ChildIter {
             subtree_end: &self.subtree_end,
@@ -409,7 +397,7 @@ impl Tree {
     /// `if tree.is_collapsed(c) { continue; }` boilerplate. Arrange loops
     /// generally still need the explicit branch because collapsed children
     /// affect cursor/gap bookkeeping differently — see [`Self::children_with_state`].
-    pub fn children_active(&self, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+    pub(crate) fn children_active(&self, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         self.children(parent).filter(|&c| !self.is_collapsed(c))
     }
 
@@ -419,7 +407,7 @@ impl Tree {
     /// anchor) but contribute nothing to cursors or content size.
     /// Replacing the per-driver `if tree.is_collapsed(c) {…} continue;`
     /// boilerplate.
-    pub fn children_with_state(&self, parent: NodeId) -> impl Iterator<Item = Child> + '_ {
+    pub(crate) fn children_with_state(&self, parent: NodeId) -> impl Iterator<Item = Child> + '_ {
         self.children(parent).map(|c| {
             if self.is_collapsed(c) {
                 Child::Collapsed(c)
@@ -440,7 +428,7 @@ impl Tree {
     }
 }
 
-pub struct ChildIter<'a> {
+pub(crate) struct ChildIter<'a> {
     subtree_end: &'a [u32],
     next: u32,
     end: u32,
@@ -451,7 +439,7 @@ pub struct ChildIter<'a> {
 /// the `if tree.is_collapsed(c) {…} continue;` boilerplate that used
 /// to live in every arrange driver.
 #[derive(Copy, Clone, Debug)]
-pub enum Child {
+pub(crate) enum Child {
     /// Visible / measured child — drive its layout normally.
     Active(NodeId),
     /// Collapsed child — its subtree must be zeroed at the parent's

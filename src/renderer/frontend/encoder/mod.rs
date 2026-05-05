@@ -165,7 +165,7 @@ fn encode_node(
     // applies inside the clip and only to children. The panel's own
     // background paints under the clip but BEFORE the transform — matching
     // WPF's `RenderTransform` convention.
-    let clip = tree.paint(id).attrs.is_clip();
+    let clip = tree.paint[id.index()].attrs.is_clip();
     if clip {
         out.push_clip(rect);
     }
@@ -206,7 +206,7 @@ fn encode_node(
                     // rect that DrawRect paints). Text aligns within the
                     // padding-deflated content area so e.g. `Button.padding(8)`
                     // insets the label visually.
-                    let inner = rect.deflated_by(tree.layout(id).padding);
+                    let inner = rect.deflated_by(tree.layout[id.index()].padding);
                     out.draw_text(
                         align_text_in(inner, shaped.measured, *align),
                         *color,

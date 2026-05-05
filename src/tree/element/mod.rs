@@ -146,13 +146,13 @@ impl ElementExtras {
 /// looks at. Visibility lives here so `is_collapsed` short-circuits in
 /// the layout fast-path without touching `PaintCore`.
 #[derive(Clone, Copy, Debug)]
-pub struct LayoutCore {
-    pub mode: LayoutMode,
-    pub size: Sizes,
-    pub padding: Spacing,
-    pub margin: Spacing,
-    pub align: Align,
-    pub visibility: Visibility,
+pub(crate) struct LayoutCore {
+    pub(crate) mode: LayoutMode,
+    pub(crate) size: Sizes,
+    pub(crate) padding: Spacing,
+    pub(crate) margin: Spacing,
+    pub(crate) align: Align,
+    pub(crate) visibility: Visibility,
 }
 
 /// Paint-and-input-side per-node columns, stored in `Tree::paint`. Read by
@@ -160,12 +160,12 @@ pub struct LayoutCore {
 /// flags + a u16 extras slot) so a frame's worth of paint flags fits in a
 /// handful of cache lines.
 #[derive(Clone, Copy, Debug)]
-pub struct PaintCore {
-    pub attrs: PaintAttrs,
+pub(crate) struct PaintCore {
+    pub(crate) attrs: PaintAttrs,
     /// Index into `Tree::node_extras`, or `None` when all extras are at
     /// default (the common case). Cap is 65 535 non-default elements per
     /// frame; `node_extras` is cleared per frame.
-    pub extras: Option<u16>,
+    pub(crate) extras: Option<u16>,
 }
 
 /// Per-node config: identity + spatial layout + interaction + paint flags.
@@ -177,8 +177,8 @@ pub struct PaintCore {
 #[derive(Clone, Copy, Debug)]
 pub struct Element {
     // ---- Identity + layout-algorithm selector --------------------------------
-    pub id: WidgetId,
-    pub mode: LayoutMode,
+    pub(crate) id: WidgetId,
+    pub(crate) mode: LayoutMode,
     /// `true` when `id` was synthesized by [`WidgetId::auto_stable`] (i.e. the
     /// caller used `Foo::new()` without an explicit key). `Ui::node` silently
     /// disambiguates colliding auto ids by mixing in a per-id occurrence
@@ -187,11 +187,11 @@ pub struct Element {
     pub(crate) auto_id: bool,
 
     // ---- Own size + alignment (read by every parent layout) ------------------
-    pub size: Sizes,
-    pub min_size: Size,
-    pub max_size: Size,
-    pub padding: Spacing,
-    pub margin: Spacing,
+    pub(crate) size: Sizes,
+    pub(crate) min_size: Size,
+    pub(crate) max_size: Size,
+    pub(crate) padding: Spacing,
+    pub(crate) margin: Spacing,
 
     // ---- Mode-specific: only read when the parent or self has the right mode.
     // Inert otherwise.
@@ -199,53 +199,53 @@ pub struct Element {
     /// HStack/VStack (single line) and WrapHStack/WrapVStack (within
     /// each wrap row/column). Ignored by `Leaf` / `ZStack` / `Canvas` /
     /// `Grid` (Grid uses its own row_gap/col_gap).
-    pub gap: f32,
+    pub(crate) gap: f32,
     /// Logical-px space between lines for WrapHStack/WrapVStack only.
     /// Inert otherwise.
-    pub line_gap: f32,
+    pub(crate) line_gap: f32,
     /// Main-axis distribution of leftover space in `HStack`/`VStack` (this
     /// node's children). No effect when any child is `Sizing::Fill` on the
     /// main axis. Ignored by `Leaf` / `ZStack` / `Canvas` / `Grid`.
-    pub justify: Justify,
+    pub(crate) justify: Justify,
     /// Alignment of this node inside its parent's inner rect. Each axis is
     /// honored only by parent layout modes that own that axis as a cross or
     /// placement axis: HStack reads `align.v` (cross), VStack reads `align.h`
     /// (cross), ZStack and Grid read both, HStack/VStack ignore their main
     /// axis, Canvas ignores both (absolute placement).
-    pub align: Align,
+    pub(crate) align: Align,
     /// Default `align` applied to children when the child's own axis is
     /// `Auto`. Mirrors CSS `align-items` (parent) + `align-self` (child).
     /// Read only by parents that honor `align` (HStack/VStack/ZStack/Grid).
-    pub child_align: Align,
+    pub(crate) child_align: Align,
     /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
     /// Defaults to `Vec2::ZERO`. Ignored when the parent isn't a `Canvas`.
-    pub position: Vec2,
+    pub(crate) position: Vec2,
     /// Cell + span inside a `Grid` parent. Defaults to `(0, 0)` placement and
     /// `(1, 1)` span. Ignored when the parent isn't a `Grid`.
-    pub grid: GridCell,
+    pub(crate) grid: GridCell,
 
     // ---- Interaction ---------------------------------------------------------
-    pub sense: Sense,
-    pub disabled: bool,
+    pub(crate) sense: Sense,
+    pub(crate) disabled: bool,
 
     // ---- Paint + cascade -----------------------------------------------------
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
     /// layout but suppresses paint + input; `Collapsed` zeros the slot and
     /// skips the subtree everywhere. Cascades implicitly (paint and input
     /// early-return at non-`Visible` nodes).
-    pub visibility: Visibility,
+    pub(crate) visibility: Visibility,
     /// Clip descendants' paint to this node's rendered rect (CSS `overflow:
     /// hidden`). The renderer applies a scissor while walking the subtree.
     /// Has no effect on layout — children may still measure beyond the rect;
     /// they're just visually clipped.
-    pub clip: bool,
+    pub(crate) clip: bool,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any
     /// ancestor transform; descendants render and hit-test in the world
     /// coordinates the cumulative transform produces. Origin is the top-left
     /// of the panel's logical-rect — the caller composes its own pivot by
     /// pre/post-translation.
-    pub transform: Option<TranslateScale>,
+    pub(crate) transform: Option<TranslateScale>,
 }
 
 impl Element {
@@ -471,7 +471,7 @@ pub trait Configure: Sized {
 ///
 /// `bits`: 0-2=sense tag, 3=disabled, 4=clip, 5-7=reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct PaintAttrs {
+pub(crate) struct PaintAttrs {
     bits: u8,
 }
 
@@ -491,7 +491,7 @@ impl PaintAttrs {
         Self { bits }
     }
 
-    pub fn sense(self) -> Sense {
+    pub(crate) fn sense(self) -> Sense {
         match self.bits & Self::SENSE_MASK {
             0 => Sense::None,
             1 => Sense::Hover,
@@ -501,10 +501,10 @@ impl PaintAttrs {
             _ => unreachable!(),
         }
     }
-    pub fn is_disabled(self) -> bool {
+    pub(crate) fn is_disabled(self) -> bool {
         self.bits & Self::DISABLED != 0
     }
-    pub fn is_clip(self) -> bool {
+    pub(crate) fn is_clip(self) -> bool {
         self.bits & Self::CLIP != 0
     }
 }

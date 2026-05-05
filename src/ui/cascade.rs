@@ -108,7 +108,7 @@ impl Cascades {
     /// open-ancestor stack; hit-entry derivation (clip-intersected rect
     /// + sense-cascaded effective sense) rides along the same loop.
     pub(crate) fn run(&mut self, tree: &Tree, layout: &LayoutResult) -> &CascadeResult {
-        let n = tree.node_count();
+        let n = tree.layout.len();
         let r = &mut self.result;
         r.rows.clear();
         r.rows.reserve(n);

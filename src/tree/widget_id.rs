@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct WidgetId(pub u64);
+pub struct WidgetId(pub(crate) u64);
 
 impl WidgetId {
     pub fn from_hash(h: impl Hash) -> Self {
