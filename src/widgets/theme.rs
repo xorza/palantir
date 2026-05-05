@@ -15,6 +15,18 @@ pub struct Theme {
     pub button: ButtonTheme,
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
+    /// Default font size in logical px for text-rendering widgets that
+    /// don't have a per-widget override (Button labels read this
+    /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
+    /// when their builder didn't set a size). Apps changing this once
+    /// at startup move every text widget that hasn't been individually
+    /// customized.
+    pub font_size_px: f32,
+    /// Default fill color for [`crate::Text`] runs that didn't call
+    /// `.color(...)`. Other text-rendering widgets (Button, TextEdit)
+    /// have their own per-state colors on their respective themes
+    /// (state-dependent: hover/pressed/focused) so they don't read this.
+    pub text_color: Color,
     /// Line-height-to-font-size ratio used by every text-rendering
     /// widget (Button label, [`crate::Text`], [`crate::TextEdit`]).
     /// Drives the shaper's leading and the caret rect height (locked
@@ -33,8 +45,23 @@ impl Default for Theme {
             button: ButtonTheme::default(),
             scrollbar: ScrollbarTheme::default(),
             text_edit: TextEditTheme::default(),
+            font_size_px: 16.0,
+            text_color: Color::WHITE,
             line_height_mult: crate::text::LINE_HEIGHT_MULT,
         }
+    }
+}
+
+impl Theme {
+    /// Resolve the absolute line-height-in-px the shaper will use for
+    /// text rendered at `font_size_px`. Single call site that owns the
+    /// `line_height_mult` formula; widgets call this instead of doing
+    /// `font_size * theme.line_height_mult` inline so the formula can
+    /// evolve (font-dependent leading, etc.) without a sweep through
+    /// every text-rendering widget.
+    #[inline]
+    pub fn line_height_for(&self, font_size_px: f32) -> f32 {
+        font_size_px * self.line_height_mult
     }
 }
 
@@ -110,9 +137,6 @@ pub struct TextEditTheme {
     /// but kept on the theme so enabling selection later doesn't
     /// require a theme migration.
     pub selection: Color,
-    /// Default font size used for the buffer when the widget builder
-    /// doesn't override it. Matches `Button`'s historical 16 px.
-    pub size_px: f32,
 }
 
 impl Default for TextEditTheme {
@@ -134,7 +158,6 @@ impl Default for TextEditTheme {
             caret: Color::WHITE,
             caret_width: 1.5,
             selection: Color::rgba(0.30, 0.52, 0.92, 0.40),
-            size_px: 16.0,
         }
     }
 }

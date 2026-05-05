@@ -736,6 +736,118 @@ fn ui_at_no_cosmic(size: UVec2) -> crate::Ui {
 }
 
 #[test]
+fn theme_font_size_overrides_default_for_button_text_and_textedit() {
+    // Pin: a single `ui.theme.font_size_px` setting flows into every
+    // text-rendering widget that didn't override on its builder.
+    use crate::shape::Shape;
+    use crate::widgets::button::Button;
+    use crate::widgets::text::Text;
+
+    let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
+    ui.theme.font_size_px = 20.0;
+    let mut buf = String::from("hi");
+
+    let mut btn_node = None;
+    let mut txt_node = None;
+    let mut ed_node = None;
+    Panel::vstack().show(&mut ui, |ui| {
+        btn_node = Some(
+            Button::new()
+                .with_id("btn")
+                .label("hi")
+                .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .node,
+        );
+        txt_node = Some(Text::new("hi").show(ui).node);
+        ed_node = Some(
+            TextEdit::new(&mut buf)
+                .with_id("ed")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .node,
+        );
+    });
+    ui.end_frame();
+
+    let read_fs = |node: crate::tree::NodeId| -> f32 {
+        ui.tree
+            .shapes
+            .slice_of(node.index())
+            .iter()
+            .find_map(|s| match s {
+                Shape::Text { font_size_px, .. } => Some(*font_size_px),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(read_fs(btn_node.unwrap()), 20.0);
+    assert_eq!(read_fs(txt_node.unwrap()), 20.0);
+    assert_eq!(read_fs(ed_node.unwrap()), 20.0);
+}
+
+#[test]
+fn theme_text_color_used_when_text_widget_does_not_override() {
+    use crate::primitives::color::Color;
+    use crate::shape::Shape;
+    use crate::widgets::text::Text;
+
+    let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
+    ui.theme.text_color = Color::rgb(1.0, 0.0, 0.0);
+
+    let mut node = None;
+    Panel::hstack().show(&mut ui, |ui| {
+        node = Some(Text::new("hi").show(ui).node);
+    });
+    ui.end_frame();
+
+    let color = ui
+        .tree
+        .shapes
+        .slice_of(node.unwrap().index())
+        .iter()
+        .find_map(|s| match s {
+            Shape::Text { color, .. } => Some(*color),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(color, Color::rgb(1.0, 0.0, 0.0));
+}
+
+#[test]
+fn text_widget_color_override_wins_over_theme() {
+    use crate::primitives::color::Color;
+    use crate::shape::Shape;
+    use crate::widgets::text::Text;
+
+    let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
+    ui.theme.text_color = Color::rgb(1.0, 0.0, 0.0);
+
+    let mut node = None;
+    Panel::hstack().show(&mut ui, |ui| {
+        node = Some(
+            Text::new("hi")
+                .color(Color::rgb(0.0, 1.0, 0.0))
+                .show(ui)
+                .node,
+        );
+    });
+    ui.end_frame();
+
+    let color = ui
+        .tree
+        .shapes
+        .slice_of(node.unwrap().index())
+        .iter()
+        .find_map(|s| match s {
+            Shape::Text { color, .. } => Some(*color),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(color, Color::rgb(0.0, 1.0, 0.0));
+}
+
+#[test]
 fn theme_line_height_mult_overrides_default_for_all_text_widgets() {
     // Pin: a single `ui.theme.line_height_mult` setting flows into
     // every text-rendering widget — Button, Text, TextEdit. Without

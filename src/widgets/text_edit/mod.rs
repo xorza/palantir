@@ -47,7 +47,7 @@ pub struct TextEdit<'a> {
     style: Option<TextEditTheme>,
     placeholder: Cow<'static, str>,
     /// Per-widget font-size override; falls back to
-    /// `Theme::text_edit.size_px` when `None`.
+    /// [`crate::Theme::font_size_px`] when `None`.
     size_px: Option<f32>,
     /// Per-widget caret-height multiplier; falls back to
     /// `Theme::text_edit.line_height_mult` when `None`.
@@ -87,7 +87,7 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Override the font size used for the buffer this frame. Defaults
-    /// to `Theme::text_edit.size_px` (16 px).
+    /// to [`crate::Theme::font_size_px`] (16 px).
     pub fn size_px(mut self, px: f32) -> Self {
         assert!(px > 0.0, "TextEdit size_px must be positive, got {px}");
         self.size_px = Some(px);
@@ -115,7 +115,7 @@ impl<'a> TextEdit<'a> {
             .style
             .clone()
             .unwrap_or_else(|| ui.theme.text_edit.clone());
-        let font_size = self.size_px.unwrap_or(style.size_px);
+        let font_size = self.size_px.unwrap_or(ui.theme.font_size_px);
         let line_height_mult = self.line_height_mult.unwrap_or(ui.theme.line_height_mult);
         // The renderer deflates by `element.padding` when laying out
         // `Shape::Text` (see `encoder::mod.rs`). Reading the same value
