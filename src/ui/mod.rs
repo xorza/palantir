@@ -16,6 +16,7 @@ use crate::ui::cascade::Cascades;
 use crate::ui::damage::Damage;
 use crate::ui::seen_ids::SeenIds;
 use crate::ui::state::StateMap;
+use crate::widgets::scroll::{ScrollNode, ScrollState};
 use crate::widgets::theme::Theme;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
@@ -51,6 +52,11 @@ pub struct Ui {
     pub(crate) damage: Damage,
 
     pub(crate) frontend: Frontend,
+
+    /// Scroll widgets registered during recording so `end_frame` can
+    /// refresh their `ScrollState` rows after arrange. Capacity-retained
+    /// across frames, cleared at `begin_frame`.
+    pub(crate) scroll_nodes: Vec<ScrollNode>,
 }
 
 impl Default for Ui {
@@ -76,6 +82,7 @@ impl Ui {
             repaint_requested: true,
             damage: Damage::default(),
             frontend: Frontend::default(),
+            scroll_nodes: Vec::new(),
         }
     }
 
@@ -98,6 +105,7 @@ impl Ui {
         self.display = display;
         self.tree.begin_frame();
         self.ids.begin_frame();
+        self.scroll_nodes.clear();
     }
 
     /// Finalize the just-recorded frame: measure + arrange, rebuild cascades
@@ -119,6 +127,32 @@ impl Ui {
         let layout = self
             .layout_engine
             .run(&self.tree, self.tree.root(), surface, &mut self.text);
+
+        // Refresh each registered scroll widget's state row with the
+        // freshly-arranged viewport + measured content height. Read here
+        // (post-arrange, pre-cascade) so next frame's record clamps with
+        // up-to-date numbers; the current frame's pan already used last
+        // frame's clamp.
+        for s in self.scroll_nodes.iter().copied() {
+            debug_assert!(
+                s.node.index() < layout.rect.len(),
+                "scroll_nodes entry references node {} past tree length {}",
+                s.node.index(),
+                layout.rect.len(),
+            );
+            let viewport_h = layout.rect[s.node.index()].size.h;
+            let content_h = layout.scroll_content_h[s.node.index()];
+            let row = self
+                .state
+                .get_or_insert_with::<ScrollState, _>(s.id, Default::default);
+            row.viewport_h = viewport_h;
+            row.content_h = content_h;
+            // End-frame re-clamp: pairs with the record-time clamp in
+            // `Scroll::show`, which only had last frame's numbers.
+            let max_offset = (content_h - viewport_h).max(0.0);
+            row.offset = row.offset.clamp(0.0, max_offset);
+        }
+
         let cascades = self.cascades.run(&self.tree, layout);
         self.input.end_frame(cascades);
         let damage = self.damage.compute(&self.tree, cascades, removed, surface);

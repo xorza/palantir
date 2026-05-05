@@ -71,6 +71,12 @@ pub enum LayoutMode {
     /// span via `grid`. Cap is 65 535 grids per frame (`grid_defs` is cleared
     /// each frame).
     Grid(u16),
+    /// Vertical scroll viewport. Lays out children like a `VStack` but
+    /// measures them with `available.h = INF`, so children report their
+    /// full natural height while the scroll node itself takes only the
+    /// height its parent gave it. Clipping + a `transform` set by the
+    /// widget builder pan the children inside the viewport.
+    ScrollV,
 }
 
 /// Rarely-set fields lifted out of `Element` so they don't bloat every

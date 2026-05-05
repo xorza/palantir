@@ -261,6 +261,28 @@ impl LayoutEngine {
             self.result.text_shapes[curr_start..curr_start + hit.text_shapes.len()]
                 .copy_from_slice(hit.text_shapes);
             self.result.available_q[curr_start..curr_end].copy_from_slice(hit.available_q);
+            // Derive `scroll_content_h` for any `LayoutMode::ScrollV`
+            // descendants from the just-restored children's `desired`,
+            // instead of caching the column. Avoids a parallel arena
+            // for what's almost always a sparse row. Formula must
+            // match `stack::measure`'s main-axis sum (`sum_non_fill_main
+            // + fill_main + total_gap`); change both together.
+            for i in curr_start..curr_end {
+                if matches!(tree.layout[i].mode, LayoutMode::ScrollV) {
+                    let parent = NodeId(i as u32);
+                    let mut total = 0.0_f32;
+                    let mut count = 0usize;
+                    for c in tree.children_active(parent) {
+                        total += self.scratch.desired[c.index()].h;
+                        count += 1;
+                    }
+                    let gap = tree.read_extras(parent).gap;
+                    if count > 1 {
+                        total += gap * (count - 1) as f32;
+                    }
+                    self.result.scroll_content_h[i] = total;
+                }
+            }
             // Restore per-grid hug arrays. `grid::arrange` reads
             // `LayoutEngine.scratch.grid.hugs`, populated only by
             // `grid::measure`. Without this restore, a cache hit at
@@ -441,6 +463,18 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
             LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
+            LayoutMode::ScrollV => {
+                // Children measure as if the main axis were unbounded so
+                // they report full natural height; the scroll node itself
+                // returns 0 on the main axis so `resolve_desired` falls
+                // through to the user's `Sizing::Fixed`/`Fill` and
+                // doesn't grow with content. Content height is stashed
+                // for `Ui::end_frame` to feed back into scroll state.
+                let unbounded = Size::new(inner_avail.w, f32::INFINITY);
+                let raw = stack::measure(self, tree, node, unbounded, Axis::Y, text);
+                self.result.scroll_content_h[node.index()] = raw.h;
+                Size::new(raw.w, 0.0)
+            }
         }
     }
 
@@ -467,6 +501,7 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::arrange(self, tree, node, inner),
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner),
             LayoutMode::Grid(idx) => grid::arrange(self, tree, node, inner, idx),
+            LayoutMode::ScrollV => stack::arrange(self, tree, node, inner, Axis::Y),
         }
     }
 
