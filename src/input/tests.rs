@@ -740,6 +740,41 @@ mod keyboard {
     }
 
     #[test]
+    fn key_from_winit_paging_navigation_keys() {
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::PageUp)), Key::PageUp);
+        assert_eq!(
+            key_from_winit(&WK::Named(NamedKey::PageDown)),
+            Key::PageDown
+        );
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::Tab)), Key::Tab);
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::Space)), Key::Space);
+    }
+
+    #[test]
+    fn modifiers_from_winit_translates_each_bit() {
+        use crate::input::keyboard::modifiers_from_winit;
+        use winit::keyboard::ModifiersState;
+
+        // Every flag off → all-default Modifiers.
+        let m = modifiers_from_winit(&ModifiersState::empty());
+        assert_eq!(m, Modifiers::NONE);
+
+        // Each individual bit maps to the matching field.
+        let m = modifiers_from_winit(&ModifiersState::SHIFT);
+        assert!(m.shift && !m.ctrl && !m.alt && !m.meta);
+        let m = modifiers_from_winit(&ModifiersState::CONTROL);
+        assert!(!m.shift && m.ctrl && !m.alt && !m.meta);
+        let m = modifiers_from_winit(&ModifiersState::ALT);
+        assert!(!m.shift && !m.ctrl && m.alt && !m.meta);
+        let m = modifiers_from_winit(&ModifiersState::SUPER);
+        assert!(!m.shift && !m.ctrl && !m.alt && m.meta);
+
+        // Combined: shift+meta should set both.
+        let m = modifiers_from_winit(&(ModifiersState::SHIFT | ModifiersState::SUPER));
+        assert!(m.shift && m.meta && !m.ctrl && !m.alt);
+    }
+
+    #[test]
     fn from_winit_ime_commit_emits_text_event() {
         let ev = InputEvent::from_winit(
             &WindowEvent::Ime(winit::event::Ime::Commit("é".into())),
@@ -1041,6 +1076,40 @@ mod keyboard {
         assert_eq!(ui.focused_id(), Some(id));
         ui.request_focus(None);
         assert_eq!(ui.focused_id(), None);
+    }
+
+    #[test]
+    fn invisible_focusable_widget_does_not_take_focus() {
+        // Cascade rule: invisible nodes drop their focusable bit just
+        // like they drop their `Sense`. Pin separately from the
+        // disabled case because the cascade combines `disabled ||
+        // invisible` and a future split would silently keep one bit
+        // alive.
+        use crate::Ui;
+        use crate::layout::types::sizing::Sizing;
+        use crate::layout::types::visibility::Visibility;
+        use crate::support::testing::{begin, click_at};
+        use crate::tree::element::Configure;
+        use crate::widgets::{button::Button, panel::Panel};
+
+        let mut ui = Ui::new();
+        begin(&mut ui, glam::UVec2::new(200, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            Button::new()
+                .with_id("editable")
+                .focusable(true)
+                .visibility(Visibility::Hidden)
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+        ui.end_frame();
+
+        click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+        assert_eq!(
+            ui.focused_id(),
+            None,
+            "invisible focusable widget refuses focus",
+        );
     }
 
     #[test]
