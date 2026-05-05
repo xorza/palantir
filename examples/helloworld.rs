@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use palantir::Align;
 use palantir::WgpuBackend;
 use palantir::{
-    Background, Button, ButtonStyle, ButtonTheme, Color, Configure, Corners, InputEvent, Panel,
-    Sizing, Stroke, TextStyle, Ui,
+    Background, Button, ButtonStateStyle, ButtonTheme, Color, Configure, Corners, InputEvent,
+    Panel, Sizing, Stroke, TextStyle, Ui,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -23,19 +23,19 @@ fn outlined_button_style() -> ButtonTheme {
         radius: Corners::all(4.0),
     };
     ButtonTheme {
-        normal: ButtonStyle {
+        normal: ButtonStateStyle {
             background: Some(bg(Color::TRANSPARENT, stroke)),
             text: Some(TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95))),
         },
-        hovered: ButtonStyle {
+        hovered: ButtonStateStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.15), stroke)),
             text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
-        pressed: ButtonStyle {
+        pressed: ButtonStateStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.30), stroke)),
             text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
-        disabled: ButtonStyle {
+        disabled: ButtonStateStyle {
             background: Some(bg(
                 Color::TRANSPARENT,
                 Some(Stroke {
