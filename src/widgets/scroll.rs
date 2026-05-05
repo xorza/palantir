@@ -164,10 +164,14 @@ impl Configure for Scroll {
     }
 }
 
+/// Cross-axis space stolen from children when this axis's bar is
+/// shown: the bar's `width` plus a `gap` strip of empty padding so
+/// the bar doesn't touch the visible content. Returns 0 when no bar
+/// is needed (axis not panned, or content fits).
 #[inline]
 fn bar_reservation(panned: bool, content: f32, viewport: f32, theme: &ScrollbarTheme) -> f32 {
     if panned && content > viewport {
-        theme.width
+        theme.width + theme.gap
     } else {
         0.0
     }

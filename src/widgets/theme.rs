@@ -26,6 +26,11 @@ pub struct Theme {
 pub struct ScrollbarTheme {
     /// Cross-axis thickness of the bar in logical px.
     pub width: f32,
+    /// Empty padding strip between content and the bar. Reserved
+    /// alongside `width` (total reservation = `width + gap`) but
+    /// painted as nothing — pure breathing room so the bar doesn't
+    /// touch the visible content.
+    pub gap: f32,
     /// Floor for the thumb's main-axis length so a tiny `viewport /
     /// content` ratio doesn't produce an ungrabbable nub.
     pub min_thumb_px: f32,
@@ -47,6 +52,7 @@ impl Default for ScrollbarTheme {
     fn default() -> Self {
         Self {
             width: 8.0,
+            gap: 4.0,
             min_thumb_px: 24.0,
             track: Color::TRANSPARENT,
             thumb: Color::rgba(0.0, 0.0, 0.0, 0.55),
