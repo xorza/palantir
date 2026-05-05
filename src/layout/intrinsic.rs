@@ -12,7 +12,7 @@
 //! alongside that driver's `measure`/`arrange` in its own module — same
 //! per-driver-file convention as the rest of layout.
 
-use super::support::{leaf_text_shapes, resolve_axis_size};
+use super::support::{AxisCtx, leaf_text_shapes, resolve_axis_size};
 use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, stack, wrapstack, zstack};
 use crate::layout::types::sizing::Sizing;
 use crate::text::TextMeasurer;
@@ -100,18 +100,18 @@ pub(crate) fn compute(
         }
     };
 
-    resolve_axis_size(
+    resolve_axis_size(AxisCtx {
         sizing,
         hug_with_margin,
-        f32::INFINITY,
+        available: f32::INFINITY,
         // Intrinsic queries run with `available = INFINITY`; the
         // min-content floor is irrelevant in that branch (no
         // shrinking to apply it to). Pass 0 — the `.max(0)` no-op.
-        0.0,
+        intrinsic_min: 0.0,
         margin,
-        min_clamp,
-        max_clamp,
-    )
+        min: min_clamp,
+        max: max_clamp,
+    })
 }
 
 fn content_intrinsic(

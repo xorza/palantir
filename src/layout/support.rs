@@ -63,6 +63,22 @@ pub(crate) fn leaf_text_shapes(
 /// which collapses Fill to its content size — the parent-independent
 /// rule for intrinsic queries (CSS Grid `1fr`-in-auto-context).
 ///
+/// Per-axis inputs for [`resolve_axis_size`]. Bundles the seven
+/// numbers + `Sizing` into one struct so the call site reads as
+/// "given this axis context, resolve the outer size" rather than a
+/// 7-arg parameter cliff. Margin-inclusive convention: `available`
+/// and the returned value both include the node's own margin on this
+/// axis; `hug_with_margin` is `content + padding + margin`.
+pub(crate) struct AxisCtx {
+    pub sizing: Sizing,
+    pub hug_with_margin: f32,
+    pub available: f32,
+    pub intrinsic_min: f32,
+    pub margin: f32,
+    pub min: f32,
+    pub max: f32,
+}
+
 /// **Flex-shrink semantics with min-content floor:** Hug clamps down
 /// to fit `available`; Fill consumes `available` exactly. Both axes
 /// shrink with parent down to `intrinsic_min` — the largest
@@ -81,34 +97,28 @@ pub(crate) fn leaf_text_shapes(
 /// `Fill` on an unconstrained axis (intrinsic queries with
 /// `available = INFINITY`) collapses to its content size — matches
 /// CSS Grid's `1fr` track in an auto-context parent.
-pub(crate) fn resolve_axis_size(
-    s: Sizing,
-    hug_with_margin: f32,
-    available: f32,
-    intrinsic_min: f32,
-    margin: f32,
-    min: f32,
-    max: f32,
-) -> f32 {
-    let content = hug_with_margin - margin;
-    let rendered = match s {
+pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
+    let content = ctx.hug_with_margin - ctx.margin;
+    let rendered = match ctx.sizing {
         Sizing::Fixed(v) => v,
         Sizing::Hug => {
-            if available.is_finite() {
-                content.min(available - margin).max(intrinsic_min - margin)
+            if ctx.available.is_finite() {
+                content
+                    .min(ctx.available - ctx.margin)
+                    .max(ctx.intrinsic_min - ctx.margin)
             } else {
                 content
             }
         }
         Sizing::Fill(_) => {
-            if available.is_finite() {
-                (available - margin).max(intrinsic_min - margin)
+            if ctx.available.is_finite() {
+                (ctx.available - ctx.margin).max(ctx.intrinsic_min - ctx.margin)
             } else {
                 content
             }
         }
     };
-    rendered.max(0.0).clamp(min, max) + margin
+    rendered.max(0.0).clamp(ctx.min, ctx.max) + ctx.margin
 }
 
 /// Set this node and every descendant to a zero-size rect anchored at
