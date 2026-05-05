@@ -74,9 +74,10 @@ impl<'a> TextEdit<'a> {
 
     /// Override the whole TextEdit theme — all-or-nothing. To tweak
     /// one axis, build the bundle from the theme:
-    /// `TextEditTheme { caret: red, ..ui.theme.text_edit.clone() }`.
-    /// Buffer font/leading/color live on the bundle's `text` field
-    /// (a [`crate::TextStyle`]).
+    /// `TextEditTheme { caret: red, ..ui.theme.text_edit }`. Buffer
+    /// font/leading/color live on the per-state `text` slot (a
+    /// [`crate::TextStyle`]) — `None` inherits [`crate::Theme::text`]
+    /// like every other text-rendering widget.
     pub fn style(mut self, s: TextEditTheme) -> Self {
         self.style = Some(s);
         self
@@ -85,12 +86,23 @@ impl<'a> TextEdit<'a> {
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         let is_focused = ui.input.focused == Some(id);
-        let style = self
-            .style
-            .clone()
-            .unwrap_or_else(|| ui.theme.text_edit.clone());
-        let font_size = style.text.font_size_px;
-        let line_height_mult = style.text.line_height_mult;
+        let theme = self.style.unwrap_or(ui.theme.text_edit);
+        // Pick the per-state style. Disabled wins over focus — a
+        // disabled editor that still happens to hold focus paints with
+        // its disabled visuals (mirrors Button).
+        let state = if self.element.disabled {
+            theme.disabled
+        } else if is_focused {
+            theme.focused
+        } else {
+            theme.normal
+        };
+        // `None` text inherits the global `Theme::text` (same rule as
+        // Button's per-state `text`). Apps changing `theme.text.color`
+        // recolor every editor that didn't override.
+        let text_style = state.text.unwrap_or(ui.theme.text);
+        let font_size = text_style.font_size_px;
+        let line_height_mult = text_style.line_height_mult;
         // The renderer deflates by `element.padding` when laying out
         // `Shape::Text` (see `encoder::mod.rs`). Reading the same value
         // here keeps the caret rect aligned with the glyphs.
@@ -120,22 +132,18 @@ impl<'a> TextEdit<'a> {
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
         let resp_node = ui.node(element, |ui| {
-            // Background. Per-state Background bundle covers fill +
-            // stroke + radius together.
-            let bg = if is_focused {
-                &style.background_focused
-            } else {
-                &style.background
-            };
-            bg.add_to(ui);
+            // Background. `None` inherits `Background::default()`
+            // (transparent / no stroke / zero radius); `Ui::add_shape`
+            // filters that as a no-op shape.
+            state.background.unwrap_or_default().add_to(ui);
 
             // Text or placeholder. Empty buffer + unfocused shows the
             // placeholder; focused shows the buffer (even if empty)
             // because we still want the caret to render flush-left.
             let (display, color) = if text_ptr.is_empty() && !is_focused {
-                (placeholder.clone(), style.placeholder)
+                (placeholder.clone(), theme.placeholder)
             } else {
-                (Cow::Owned(text_ptr.clone()), style.text.color)
+                (Cow::Owned(text_ptr.clone()), text_style.color)
             };
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {
@@ -168,13 +176,13 @@ impl<'a> TextEdit<'a> {
                 let caret_rect = Rect::new(
                     pad.left + caret_x,
                     pad.top,
-                    style.caret_width,
+                    theme.caret_width,
                     font_size * line_height_mult,
                 );
                 ui.add_shape(Shape::Overlay {
                     rect: caret_rect,
                     radius: Default::default(),
-                    fill: style.caret,
+                    fill: theme.caret,
                 });
             }
         });

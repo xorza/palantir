@@ -163,23 +163,34 @@ impl Default for ScrollbarTheme {
     }
 }
 
-/// Visuals for [`crate::TextEdit`]. Read from [`Theme::text_edit`]
-/// each frame; per-widget overrides via [`crate::TextEdit::style`] —
-/// all-or-nothing, the whole theme is replaced when set.
+/// Paint settings for one [`crate::TextEdit`] state — `normal` (the
+/// idle / unfocused state), `focused`, or `disabled`. Same shape as
+/// [`ButtonStateStyle`] and follows the same inheritance rule:
+/// `Some(x)` overrides; `None` inherits the framework default for that
+/// field. `background = None` inherits [`Background::default`] (paints
+/// nothing — `Ui::add_shape` filters no-op shapes). `text = None`
+/// inherits [`Theme::text`], so an app changing `theme.text.color`
+/// moves every editor's buffer text along with every button label.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TextEditStateStyle {
+    pub background: Option<Background>,
+    pub text: Option<TextStyle>,
+}
+
+/// Three-state TextEdit theme. The leaf type ([`TextEditStateStyle`])
+/// lives next to it; widget reads `theme.{normal,focused,disabled}`
+/// based on `Element::disabled` and focus.
 ///
-/// `text` is a [`TextStyle`] bundle so font size, color, and leading
-/// for the buffer text live in one slot rather than scattered fields.
-#[derive(Clone, Debug)]
+/// State-independent fields (`caret`, `caret_width`, `placeholder`,
+/// `selection`) live flat on the theme — they aren't state-varying in
+/// any plausible v1.x design (the caret only paints when focused, the
+/// placeholder only when the buffer is empty), so giving them per-state
+/// slots would be ceremony.
+#[derive(Clone, Copy, Debug)]
 pub struct TextEditTheme {
-    /// Background bundle (fill / stroke / radius) for the unfocused
-    /// state.
-    pub background: Background,
-    /// Background bundle for the focused state.
-    pub background_focused: Background,
-    /// Font/leading/color for the buffer text in the *unfocused-or-
-    /// focused-non-empty* state. Placeholder uses [`Self::placeholder`]
-    /// instead.
-    pub text: TextStyle,
+    pub normal: TextEditStateStyle,
+    pub focused: TextEditStateStyle,
+    pub disabled: TextEditStateStyle,
     pub placeholder: Color,
     pub caret: Color,
     /// Width of the caret rect in logical px. The caret is painted as
@@ -195,24 +206,43 @@ pub struct TextEditTheme {
 impl Default for TextEditTheme {
     fn default() -> Self {
         let radius = Corners::all(4.0);
+        let normal_bg = Background {
+            fill: Color::rgb(0.10, 0.12, 0.16),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgba(1.0, 1.0, 1.0, 0.10),
+            }),
+            radius,
+        };
+        let focused_bg = Background {
+            fill: Color::rgb(0.13, 0.16, 0.22),
+            stroke: Some(Stroke {
+                width: 1.5,
+                color: Color::rgb(0.30, 0.52, 0.92),
+            }),
+            radius,
+        };
+        let disabled_bg = Background {
+            fill: Color::rgb(0.10, 0.12, 0.16),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgba(1.0, 1.0, 1.0, 0.05),
+            }),
+            radius,
+        };
         Self {
-            background: Background {
-                fill: Color::rgb(0.10, 0.12, 0.16),
-                stroke: Some(Stroke {
-                    width: 1.0,
-                    color: Color::rgba(1.0, 1.0, 1.0, 0.10),
-                }),
-                radius,
+            normal: TextEditStateStyle {
+                background: Some(normal_bg),
+                text: None,
             },
-            background_focused: Background {
-                fill: Color::rgb(0.13, 0.16, 0.22),
-                stroke: Some(Stroke {
-                    width: 1.5,
-                    color: Color::rgb(0.30, 0.52, 0.92),
-                }),
-                radius,
+            focused: TextEditStateStyle {
+                background: Some(focused_bg),
+                text: None,
             },
-            text: TextStyle::default(),
+            disabled: TextEditStateStyle {
+                background: Some(disabled_bg),
+                text: Some(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.45))),
+            },
             placeholder: Color::rgba(1.0, 1.0, 1.0, 0.40),
             caret: Color::WHITE,
             caret_width: 1.5,

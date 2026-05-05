@@ -308,7 +308,7 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
 }
 
 fn outlined_button_style() -> palantir::ButtonTheme {
-    use palantir::{ButtonStyle, ButtonTheme, TextStyle};
+    use palantir::{ButtonStateStyle, ButtonTheme, TextStyle};
     let stroke = Some(Stroke {
         width: 1.0,
         color: Color::rgb(0.4, 0.5, 0.7),
@@ -319,19 +319,19 @@ fn outlined_button_style() -> palantir::ButtonTheme {
         radius: Corners::all(4.0),
     };
     ButtonTheme {
-        normal: ButtonStyle {
+        normal: ButtonStateStyle {
             background: Some(bg(Color::TRANSPARENT, stroke)),
             text: Some(TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95))),
         },
-        hovered: ButtonStyle {
+        hovered: ButtonStateStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.15), stroke)),
             text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
-        pressed: ButtonStyle {
+        pressed: ButtonStateStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.30), stroke)),
             text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
-        disabled: ButtonStyle {
+        disabled: ButtonStateStyle {
             background: Some(bg(
                 Color::TRANSPARENT,
                 Some(Stroke {
@@ -345,11 +345,11 @@ fn outlined_button_style() -> palantir::ButtonTheme {
 }
 
 fn highlight_button_style() -> palantir::ButtonTheme {
-    use palantir::{ButtonStyle, ButtonTheme, TextStyle};
+    use palantir::{ButtonStateStyle, ButtonTheme, TextStyle};
     let s = outlined_button_style();
     let stroke = s.normal.background.and_then(|b| b.stroke);
     ButtonTheme {
-        normal: ButtonStyle {
+        normal: ButtonStateStyle {
             background: Some(Background {
                 fill: Color::rgba(0.4, 0.5, 0.7, 0.45),
                 stroke,

@@ -737,21 +737,22 @@ fn ui_at_no_cosmic(size: UVec2) -> crate::Ui {
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
-    // Pin: each text-rendering widget has its own theme slot for
-    // font/leading — Button reads `theme.button`, Text reads
-    // `theme.text` (TextStyle), TextEdit reads `theme.text_edit.text`.
-    // Apps customizing the global "text" style only move the Text
-    // widget; Button and TextEdit have to be configured through their
-    // own per-widget themes.
+    // Pin: every text-rendering widget falls back to the global
+    // `theme.text` when its per-widget override is `None`. Setting
+    // `theme.text.font_size_px` once moves Button labels, Text, *and*
+    // TextEdit. Per-state overrides (set on
+    // `theme.text_edit.normal.text` etc.) win on top.
+    use crate::TextStyle;
     use crate::shape::Shape;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
-    // Button's per-state `text` is None by default → label falls back
-    // to the global `theme.text`. Bumping it once moves Button labels.
+    // Global default — Button + Text + TextEdit all inherit this.
     ui.theme.text.font_size_px = 22.0;
-    ui.theme.text_edit.text.font_size_px = 24.0;
+    // Per-state override on TextEdit's `normal` slot — wins over the
+    // global for the unfocused branch.
+    ui.theme.text_edit.normal.text = Some(TextStyle::default().with_font_size(24.0));
     let mut buf = String::from("hi");
 
     let mut btn_node = None;
@@ -788,9 +789,8 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
             })
             .unwrap()
     };
-    // Button + Text both fall back to the global theme.text (Button
-    // because its per-state text is None by default; Text because it
-    // reads theme.text directly). TextEdit has its own theme path.
+    // Button + Text both fall back to the global theme.text. TextEdit
+    // would too, but its `normal` slot has an override → wins.
     assert_eq!(
         read_fs(btn_node.unwrap()),
         22.0,
@@ -804,7 +804,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     assert_eq!(
         read_fs(ed_node.unwrap()),
         24.0,
-        "TextEdit reads theme.text_edit.text",
+        "TextEdit per-state override wins over theme.text",
     );
 }
 
@@ -872,16 +872,16 @@ fn text_widget_color_override_wins_over_theme() {
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_line_height() {
-    // Pin: leading lives on each widget's own theme. Button's
-    // per-state `text` is None by default → falls back to
-    // `theme.text`. TextEdit has its own `theme.text_edit.text`.
+    // Pin: every text-rendering widget falls back to `theme.text` for
+    // leading. TextEdit's `normal` slot can override on top.
+    use crate::TextStyle;
     use crate::shape::Shape;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
     ui.theme.text.line_height_mult = 2.0;
-    ui.theme.text_edit.text.line_height_mult = 3.0;
+    ui.theme.text_edit.normal.text = Some(TextStyle::default().with_line_height_mult(3.0));
     let mut buf = String::from("hi");
 
     let mut btn_node = None;
@@ -919,8 +919,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
             .unwrap()
     };
     // Default font size is 16 everywhere. Button + Text both fall
-    // back to `theme.text` (Button via None per-state; Text directly).
-    // TextEdit reads its own `theme.text_edit.text`.
+    // back to `theme.text`. TextEdit's `normal` slot override wins.
     assert_eq!(
         read_lh(btn_node.unwrap()),
         16.0 * 2.0,
@@ -934,7 +933,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     assert_eq!(
         read_lh(ed_node.unwrap()),
         16.0 * 3.0,
-        "TextEdit reads theme.text_edit.text",
+        "TextEdit per-state override wins over theme.text",
     );
 }
 
@@ -946,11 +945,15 @@ fn textedit_style_override_replaces_default_theme() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::shape::Shape;
+    use crate::widgets::theme::TextEditStateStyle;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hi");
     let style = TextEditTheme {
-        text: TextStyle::default().with_line_height_mult(3.0),
+        normal: TextEditStateStyle {
+            text: Some(TextStyle::default().with_line_height_mult(3.0)),
+            ..TextEditTheme::default().normal
+        },
         ..TextEditTheme::default()
     };
     let mut leaf = None;
@@ -958,7 +961,7 @@ fn textedit_style_override_replaces_default_theme() {
         leaf = Some(
             TextEdit::new(&mut buf)
                 .with_id("ed")
-                .style(style.clone())
+                .style(style)
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui)
                 .node,
@@ -1025,10 +1028,14 @@ fn pushed_shape_uses_style_overridden_line_height() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::shape::Shape;
+    use crate::widgets::theme::TextEditStateStyle;
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hi");
     let style = TextEditTheme {
-        text: TextStyle::default().with_line_height_mult(2.0),
+        normal: TextEditStateStyle {
+            text: Some(TextStyle::default().with_line_height_mult(2.0)),
+            ..TextEditTheme::default().normal
+        },
         ..TextEditTheme::default()
     };
     let mut leaf_node = None;
@@ -1036,7 +1043,7 @@ fn pushed_shape_uses_style_overridden_line_height() {
         leaf_node = Some(
             TextEdit::new(&mut buf)
                 .with_id("ed")
-                .style(style.clone())
+                .style(style)
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui)
                 .node,
@@ -1063,6 +1070,7 @@ fn line_height_override_changes_caret_rect_height() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::shape::Shape;
+    use crate::widgets::theme::TextEditStateStyle;
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {
         let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
@@ -1073,7 +1081,7 @@ fn line_height_override_changes_caret_rect_height() {
             let mut e = TextEdit::new(&mut buf)
                 .with_id("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
-            if let Some(s) = style.clone() {
+            if let Some(s) = style {
                 e = e.style(s);
             }
             leaf = Some(e.show(ui).node);
@@ -1086,7 +1094,7 @@ fn line_height_override_changes_caret_rect_height() {
             let mut e = TextEdit::new(&mut buf)
                 .with_id("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
-            if let Some(s) = style.clone() {
+            if let Some(s) = style {
                 e = e.style(s);
             }
             leaf = Some(e.show(ui).node);
@@ -1105,7 +1113,10 @@ fn line_height_override_changes_caret_rect_height() {
 
     let default = caret_height(None);
     let doubled = caret_height(Some(TextEditTheme {
-        text: TextStyle::default().with_line_height_mult(2.0),
+        focused: TextEditStateStyle {
+            text: Some(TextStyle::default().with_line_height_mult(2.0)),
+            ..TextEditTheme::default().focused
+        },
         ..TextEditTheme::default()
     }));
     assert!(

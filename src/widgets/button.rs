@@ -8,32 +8,31 @@ use crate::widgets::{Response, frame::Frame};
 use std::borrow::Cow;
 
 /// Paint settings for one button state — `normal`, `hovered`,
-/// `pressed`, or `disabled`. Each carries its own optional `Background`
-/// (fill / stroke / radius) and optional `TextStyle` (font size /
-/// color / leading). Both fall back to defaults when `None`:
-/// `background = None` paints nothing for that state; `text = None`
-/// uses [`crate::Theme::text`] (the global text style), so an app
+/// `pressed`, or `disabled`. Each `Option` field follows the same rule:
+/// `Some(x)` overrides; `None` inherits the framework default for that
+/// field. `background = None` inherits [`Background::default`] (a
+/// transparent / no-stroke / zero-radius background, which paints
+/// nothing — `Ui::add_shape` filters no-op shapes). `text = None`
+/// inherits [`crate::Theme::text`] (the global text style), so an app
 /// changing `theme.text.color` moves every button label that didn't
 /// override it.
 ///
 /// Used as the leaf type of [`ButtonTheme`]'s four state slots.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct ButtonStyle {
+pub struct ButtonStateStyle {
     pub background: Option<Background>,
     pub text: Option<TextStyle>,
 }
 
-impl ButtonStyle {}
-
-/// Four-state button theme. The leaf type ([`ButtonStyle`]) lives next
+/// Four-state button theme. The leaf type ([`ButtonStateStyle`]) lives next
 /// to it; widget reads `theme.{normal,hovered,pressed,disabled}` based
 /// on the live response state and `Element::disabled`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ButtonTheme {
-    pub normal: ButtonStyle,
-    pub hovered: ButtonStyle,
-    pub pressed: ButtonStyle,
-    pub disabled: ButtonStyle,
+    pub normal: ButtonStateStyle,
+    pub hovered: ButtonStateStyle,
+    pub pressed: ButtonStateStyle,
+    pub disabled: ButtonStateStyle,
 }
 
 impl Default for ButtonTheme {
@@ -51,19 +50,19 @@ impl Default for ButtonTheme {
             })
         };
         Self {
-            normal: ButtonStyle {
+            normal: ButtonStateStyle {
                 background: bg(Color::rgb(0.20, 0.40, 0.80)),
                 text: None,
             },
-            hovered: ButtonStyle {
+            hovered: ButtonStateStyle {
                 background: bg(Color::rgb(0.30, 0.52, 0.92)),
                 text: None,
             },
-            pressed: ButtonStyle {
+            pressed: ButtonStateStyle {
                 background: bg(Color::rgb(0.10, 0.28, 0.66)),
                 text: None,
             },
-            disabled: ButtonStyle {
+            disabled: ButtonStateStyle {
                 background: bg(Color::rgb(0.22, 0.26, 0.32)),
                 text: Some(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.45))),
             },
@@ -126,12 +125,12 @@ impl Button {
             }
         };
 
-        // Frame paints the per-state background. `None` skips it.
-        let mut frame = Frame::for_element(self.element);
-        if let Some(bg) = v.background {
-            frame = frame.background(bg);
-        }
-        let resp = frame.show(ui);
+        // Frame paints the per-state background. `None` inherits
+        // `Background::default()` (transparent, no stroke, zero radius);
+        // `Ui::add_shape` filters that as a no-op shape.
+        let resp = Frame::for_element(self.element)
+            .background(v.background.unwrap_or_default())
+            .show(ui);
 
         // Layer the label on top of the frame's background. Safe immediately after
         // `Frame::show` because no other shape/node has been pushed since the
