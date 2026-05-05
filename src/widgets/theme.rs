@@ -9,7 +9,7 @@ use crate::ui::Ui;
 /// corner radii. Default is transparent fill / no stroke / zero radius
 /// — emitting nothing — so a container that never sets any of these
 /// adds no shape to the tree (`Ui::add_shape` filters no-op shapes).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Background {
     pub fill: Color,
     pub stroke: Option<Stroke>,
@@ -33,7 +33,7 @@ impl Background {
 /// app/theme concern. Widgets that want disabled-state visuals read the
 /// disabled flag themselves and pick their own colors at recording
 /// time.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Theme {
     pub button: ButtonTheme,
     pub scrollbar: ScrollbarTheme,
@@ -45,7 +45,7 @@ pub struct Theme {
 /// whole "text look" with one assignment, and so future axes (font
 /// family, weight, italic, letter-spacing) extend a single struct
 /// rather than scattering across [`Theme`].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this
     /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
@@ -118,7 +118,7 @@ impl TextStyle {
 /// drag interaction yet), so `thumb` is the only color used today;
 /// the slots exist so adding drag can light them up without an API
 /// change.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ScrollbarTheme {
     /// Cross-axis thickness of the bar in logical px.
     pub width: f32,
@@ -169,7 +169,7 @@ impl Default for ScrollbarTheme {
 /// nothing — `Ui::add_shape` filters no-op shapes). `text = None`
 /// inherits [`Theme::text`], so an app changing `theme.text.color`
 /// moves every editor's buffer text along with every button label.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextEditStateStyle {
     pub background: Option<Background>,
     pub text: Option<TextStyle>,
@@ -184,7 +184,7 @@ pub struct TextEditStateStyle {
 /// any plausible v1.x design (the caret only paints when focused, the
 /// placeholder only when the buffer is empty), so giving them per-state
 /// slots would be ceremony.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TextEditTheme {
     pub normal: TextEditStateStyle,
     pub focused: TextEditStateStyle,
@@ -257,7 +257,7 @@ impl Default for TextEditTheme {
 /// nothing — `Ui::add_shape` filters no-op shapes). `text = None`
 /// inherits [`Theme::text`], so an app changing `theme.text.color`
 /// moves every button label that didn't override it.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ButtonStateStyle {
     pub background: Option<Background>,
     pub text: Option<TextStyle>,
@@ -266,7 +266,7 @@ pub struct ButtonStateStyle {
 /// Four-state button theme. The leaf type ([`ButtonStateStyle`]) lives
 /// next to it; widget reads `theme.{normal,hovered,pressed,disabled}`
 /// based on the live response state and `Element::disabled`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
     pub normal: ButtonStateStyle,
     pub hovered: ButtonStateStyle,
@@ -306,5 +306,23 @@ impl Default for ButtonTheme {
                 text: Some(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.45))),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_theme_roundtrips_through_toml() {
+        let theme = Theme::default();
+        let serialized = toml::to_string_pretty(&theme).expect("serialize");
+        let parsed: Theme = toml::from_str(&serialized).expect("parse");
+        let reserialized = toml::to_string_pretty(&parsed).expect("re-serialize");
+        // Comparing serialized strings rather than `Theme == Theme`:
+        // `ScrollbarTheme` deliberately doesn't derive `PartialEq`,
+        // and forcing it everywhere would be theme-API churn. String
+        // equality is just as strong — every field round-trips.
+        assert_eq!(serialized, reserialized);
     }
 }

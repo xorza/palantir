@@ -7,6 +7,56 @@ pub struct Color {
     pub a: f32,
 }
 
+// Serialize as a CSS-style sRGB hex string: `"#RRGGBB"` when fully
+// opaque, `"#RRGGBBAA"` otherwise. Round-trips through the same `u8`
+// quantization the framework uses everywhere (1/255 is below 8-bit
+// display precision, well below the cubic sRGB approximation error).
+impl serde::Serialize for Color {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let r = (linear_to_srgb(self.r).clamp(0.0, 1.0) * 255.0).round() as u8;
+        let g = (linear_to_srgb(self.g).clamp(0.0, 1.0) * 255.0).round() as u8;
+        let b = (linear_to_srgb(self.b).clamp(0.0, 1.0) * 255.0).round() as u8;
+        let a = (self.a.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let hex = if a == 0xff {
+            format!("#{r:02x}{g:02x}{b:02x}")
+        } else {
+            format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+        };
+        s.serialize_str(&hex)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Color {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = <std::borrow::Cow<'de, str>>::deserialize(d)?;
+        parse_hex(raw.trim()).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Parse `#rrggbb` / `#rrggbbaa` (CSS-style, alpha last).
+fn parse_hex(s: &str) -> Result<Color, &'static str> {
+    let body = s.strip_prefix('#').unwrap_or(s);
+    let parse_byte = |i: usize| -> Result<u8, &'static str> {
+        u8::from_str_radix(&body[i..i + 2], 16).map_err(|_| "invalid hex digit")
+    };
+    match body.len() {
+        6 => {
+            let r = parse_byte(0)?;
+            let g = parse_byte(2)?;
+            let b = parse_byte(4)?;
+            Ok(Color::rgb_u8(r, g, b))
+        }
+        8 => {
+            let r = parse_byte(0)?;
+            let g = parse_byte(2)?;
+            let b = parse_byte(4)?;
+            let a = parse_byte(6)?;
+            Ok(Color::rgba_u8(r, g, b, a))
+        }
+        _ => Err("expected #rrggbb or #rrggbbaa"),
+    }
+}
+
 impl Color {
     pub const TRANSPARENT: Self = Self {
         r: 0.0,
@@ -104,6 +154,26 @@ impl Color {
 /// `tests::cubic_srgb_max_error_under_two_thousandths`.
 const fn srgb_to_linear(c: f32) -> f32 {
     c * (c * (c * 0.305_306_01 + 0.682_171_1) + 0.012_522_878)
+}
+
+/// Inverse of the cubic `srgb_to_linear`. Used by the serde
+/// serializer so that `serialize → parse → re-serialize` round-trips
+/// to the exact same hex bytes (a spec-exact piecewise inverse would
+/// drift by 1 LSB at certain values because it doesn't match the
+/// cubic's curve). Spec-exact piecewise gives a great Newton seed —
+/// 3 iterations converge to f32 precision over `[0, 1]`.
+fn linear_to_srgb(y: f32) -> f32 {
+    let mut x = if y <= 0.003_130_8 {
+        y * 12.92
+    } else {
+        1.055 * y.powf(1.0 / 2.4) - 0.055
+    };
+    for _ in 0..3 {
+        let f = srgb_to_linear(x) - y;
+        let f_prime = 3.0 * 0.305_306_01 * x * x + 2.0 * 0.682_171_1 * x + 0.012_522_878;
+        x -= f / f_prime;
+    }
+    x
 }
 
 #[cfg(test)]

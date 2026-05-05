@@ -1,0 +1,70 @@
+[button.normal.background]
+fill = "#3366cc"
+radius = 4.0
+
+[button.hovered.background]
+fill = "#4d85eb"
+radius = 4.0
+
+[button.pressed.background]
+fill = "#1947a8"
+radius = 4.0
+
+[button.disabled.background]
+fill = "#384252"
+radius = 4.0
+
+[button.disabled.text]
+font_size_px = 16.0
+color = "#ffffff73"
+line_height_mult = 1.2
+
+[scrollbar]
+width = 8.0
+gap = 4.0
+min_thumb_px = 24.0
+track = "#00000000"
+thumb = "#0000008c"
+thumb_hover = "#000000b3"
+thumb_active = "#000000d9"
+radius = 4.0
+
+[text_edit]
+placeholder = "#ffffff66"
+caret = "#ffffff"
+caret_width = 1.5
+selection = "#4d85eb66"
+
+[text_edit.normal.background]
+fill = "#191f29"
+radius = 4.0
+
+[text_edit.normal.background.stroke]
+color = "#ffffff1a"
+width = 1.0
+
+[text_edit.focused.background]
+fill = "#212938"
+radius = 4.0
+
+[text_edit.focused.background.stroke]
+color = "#4d85eb"
+width = 1.5
+
+[text_edit.disabled.background]
+fill = "#191f29"
+radius = 4.0
+
+[text_edit.disabled.background.stroke]
+color = "#ffffff0d"
+width = 1.0
+
+[text_edit.disabled.text]
+font_size_px = 16.0
+color = "#ffffff73"
+line_height_mult = 1.2
+
+[text]
+font_size_px = 16.0
+color = "#ffffff"
+line_height_mult = 1.2
