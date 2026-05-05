@@ -300,6 +300,30 @@ impl TextMeasurer {
         dispatch(&self.cosmic, text, font_size_px, Some(target))
     }
 
+    /// Unbounded measured width of `text[..byte_offset]`, used for
+    /// caret-x positioning inside an editor. Bypasses the per-`WidgetId`
+    /// reuse cache because the prefix changes with caret movement and
+    /// editing — caching every prefix would bloat the table without
+    /// the savings the cache exists for. A future `byte_to_x` API on
+    /// `MeasureResult` (cosmic exposes one via `Buffer::layout_runs`)
+    /// will replace this when multi-line / IME / drag-select land; this
+    /// helper is the v1 single-line stand-in.
+    ///
+    /// Panics if `byte_offset` doesn't fall on a UTF-8 character
+    /// boundary — same surface as `&text[..byte_offset]`. Callers
+    /// must clamp to a real grapheme/codepoint boundary.
+    #[allow(dead_code)] // first consumer is the TextEdit widget (step 5)
+    pub(crate) fn caret_x(&mut self, text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
+        if byte_offset == 0 || text.is_empty() {
+            return 0.0;
+        }
+        // Slice indexing handles the boundary check; if `byte_offset`
+        // straddles a multibyte char Rust panics with the right message.
+        let prefix = &text[..byte_offset];
+        self.measure_calls += 1;
+        dispatch(&self.cosmic, prefix, font_size_px, None).size.w
+    }
+
     /// Drop reuse entries for the supplied removed-widget set. Mirrors
     /// the same per-frame diff fed to `Damage::compute` so cleanup
     /// stays bounded under widget churn without a second `seen_ids`
@@ -337,5 +361,45 @@ mod tests {
         // 8 chars × 8 px = 64 unbroken; max 32 → 4 chars/line, 2 lines.
         let s = mono_measure("12345678", 16.0, Some(32.0)).size;
         assert_eq!(s, Size::new(32.0, 32.0));
+    }
+
+    #[test]
+    fn caret_x_zero_offset_or_empty_returns_zero() {
+        let mut m = TextMeasurer::default();
+        assert_eq!(m.caret_x("hello", 0, 16.0), 0.0);
+        assert_eq!(m.caret_x("", 0, 16.0), 0.0);
+    }
+
+    #[test]
+    fn caret_x_mono_path_matches_prefix_glyph_widths() {
+        // Mono fallback: each ASCII byte is `font_size * 0.5` wide. At
+        // 16 px that's 8 px/char.
+        let mut m = TextMeasurer::default();
+        assert_eq!(m.caret_x("abc", 1, 16.0), 8.0);
+        assert_eq!(m.caret_x("abc", 2, 16.0), 16.0);
+        assert_eq!(m.caret_x("abc", 3, 16.0), 24.0);
+    }
+
+    #[test]
+    fn caret_x_increments_measure_calls_counter() {
+        // The `measure_calls` counter pins reshape-skip behavior in
+        // existing tests; pin that caret_x participates in it (no
+        // free measurements) so a future caller can detect over-call.
+        let mut m = TextMeasurer::default();
+        let before = m.measure_calls;
+        let _ = m.caret_x("abc", 2, 16.0);
+        assert_eq!(m.measure_calls, before + 1);
+        // Zero-offset shortcut must not bump the counter.
+        let zero_before = m.measure_calls;
+        let _ = m.caret_x("abc", 0, 16.0);
+        assert_eq!(m.measure_calls, zero_before);
+    }
+
+    #[test]
+    #[should_panic]
+    fn caret_x_panics_inside_multibyte_codepoint() {
+        // "é" is two UTF-8 bytes; offset 1 splits it.
+        let mut m = TextMeasurer::default();
+        let _ = m.caret_x("é", 1, 16.0);
     }
 }

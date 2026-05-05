@@ -844,10 +844,11 @@ mod keyboard {
     }
 
     #[test]
-    fn focus_lands_on_press_over_focusable_widget() {
+    fn focus_lands_on_press_over_focusable_widget_and_preserve_holds_it() {
         // A focusable Button (we abuse the Button widget by setting
         // .focusable(true) — TextEdit doesn't exist yet) takes focus
-        // when pressed. Clicking on the surface background does not.
+        // when pressed. Under PreserveOnMiss, pressing on empty
+        // surface afterwards keeps focus.
         use crate::Ui;
         use crate::input::PointerButton;
         use crate::layout::types::sizing::Sizing;
@@ -856,6 +857,7 @@ mod keyboard {
         use crate::widgets::{button::Button, panel::Panel};
 
         let mut ui = Ui::new();
+        ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
@@ -866,14 +868,12 @@ mod keyboard {
         });
         ui.end_frame();
 
-        // Press over the focusable widget → focus lands.
         click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
         assert_eq!(
             ui.focused_id(),
             Some(crate::tree::widget_id::WidgetId::from_hash("editable")),
         );
 
-        // Re-record the same tree so the focused id stays alive.
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
@@ -883,8 +883,7 @@ mod keyboard {
                 .show(ui);
         });
         ui.end_frame();
-        // Press far outside the focusable rect, default policy is
-        // PreserveOnMiss — focus must persist.
+        // Press past the focusable rect.
         ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -896,7 +895,7 @@ mod keyboard {
     }
 
     #[test]
-    fn focus_clears_on_miss_under_clear_policy() {
+    fn default_policy_is_clear_on_miss() {
         use crate::Ui;
         use crate::input::PointerButton;
         use crate::layout::types::sizing::Sizing;
@@ -904,8 +903,11 @@ mod keyboard {
         use crate::tree::element::Configure;
         use crate::widgets::{button::Button, panel::Panel};
 
+        // Pin: a fresh Ui starts with FocusPolicy::ClearOnMiss
+        // (click-outside-to-blur is the native-app convention).
         let mut ui = Ui::new();
-        ui.set_focus_policy(crate::FocusPolicy::ClearOnMiss);
+        assert_eq!(ui.focus_policy(), crate::FocusPolicy::ClearOnMiss);
+
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
@@ -934,14 +936,17 @@ mod keyboard {
         assert_eq!(
             ui.focused_id(),
             None,
-            "ClearOnMiss drops focus when press misses every focusable widget",
+            "default ClearOnMiss drops focus on a press past the focusable",
         );
     }
 
     #[test]
-    fn clicking_non_focusable_widget_preserves_focus() {
-        // Two widgets: one focusable, one only clickable. Clicking the
-        // pure-Click widget shouldn't steal focus from the focusable one.
+    fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
+        // Two widgets: one focusable, one only clickable. Under
+        // PreserveOnMiss, clicking the pure-Click widget shouldn't
+        // steal focus from the focusable one. (Under default
+        // ClearOnMiss this isn't true — the press lands on a
+        // non-focusable widget and clears focus.)
         use crate::Ui;
         use crate::layout::types::sizing::Sizing;
         use crate::support::testing::{begin, click_at};
@@ -949,6 +954,7 @@ mod keyboard {
         use crate::widgets::{button::Button, panel::Panel};
 
         let mut ui = Ui::new();
+        ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
         begin(&mut ui, glam::UVec2::new(400, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
