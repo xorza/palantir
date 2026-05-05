@@ -460,25 +460,23 @@ fn wrap_target_change_preserves_unbounded_cache() {
 #[test]
 fn state_map_persists_and_evicts_with_recorded_ids() {
     let mut ui = ui_at(UVec2::new(100, 100));
-    let id_a = WidgetId::from_hash("a");
-    let id_b = WidgetId::from_hash("b");
 
     begin(&mut ui, UVec2::new(100, 100));
     Frame::new().with_id("a").show(&mut ui);
     Frame::new().with_id("b").show(&mut ui);
-    *ui.state_mut::<u32>(id_a) = 11;
-    *ui.state_mut::<u32>(id_b) = 22;
+    *ui.state_mut::<u32>("a") = 11;
+    *ui.state_mut::<u32>("b") = 22;
     ui.end_frame();
 
     begin(&mut ui, UVec2::new(100, 100));
     Frame::new().with_id("a").show(&mut ui);
-    assert_eq!(*ui.state_mut::<u32>(id_a), 11);
+    assert_eq!(*ui.state_mut::<u32>("a"), 11);
     ui.end_frame();
 
     begin(&mut ui, UVec2::new(100, 100));
     Frame::new().with_id("b").show(&mut ui);
     assert_eq!(
-        *ui.state_mut::<u32>(id_b),
+        *ui.state_mut::<u32>("b"),
         0,
         "B was unrecorded in frame 2; its row should have been swept",
     );

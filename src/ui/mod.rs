@@ -162,8 +162,9 @@ impl Ui {
     ///
     /// Panics if a row already exists for `id` with a different `T`
     /// — that's a `WidgetId` collision, not a runtime condition.
-    pub fn state_mut<T: Default + 'static>(&mut self, id: WidgetId) -> &mut T {
-        self.state.get_or_insert_with(id, T::default)
+    pub fn state_mut<T: Default + 'static>(&mut self, id: impl std::hash::Hash) -> &mut T {
+        self.state
+            .get_or_insert_with(WidgetId::from_hash(id), T::default)
     }
 
     /// Re-run only the composer over the encoder's last cmd buffer,

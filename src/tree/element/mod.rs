@@ -249,13 +249,9 @@ pub struct Element {
 }
 
 impl Element {
-    pub fn new(id: WidgetId, mode: LayoutMode) -> Self {
-        Self::new_inner(id, mode, false)
-    }
-
-    /// Like [`Self::new`] but marks the id as auto-generated (see
-    /// [`Self::auto_id`]). Used by `*::new()` widget constructors that derive
-    /// the id from `WidgetId::auto_stable()`.
+    /// Marks the id as auto-generated (see [`Self::auto_id`]). Used by
+    /// `*::new()` widget constructors that derive the id from
+    /// `WidgetId::auto_stable()`.
     #[track_caller]
     pub(crate) fn new_auto(mode: LayoutMode) -> Self {
         Self::new_inner(WidgetId::auto_stable(), mode, true)

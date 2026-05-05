@@ -113,10 +113,8 @@ const TAGS: &[&str] = &[
 ];
 
 fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
-    use palantir::WidgetId;
-    let id = WidgetId::from_hash(key);
     Panel::hstack()
-        .with_id(("chip-row", id))
+        .with_id(("chip-row", &key))
         .padding((10.0, 4.0))
         .fill(Color::rgb(0.22, 0.30, 0.45))
         .stroke(Stroke {
@@ -126,7 +124,7 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
         .radius(10.0)
         .show(ui, |ui| {
             Text::new(label)
-                .with_id(("chip-label", id))
+                .with_id(("chip-label", &key))
                 .size_px(12.0)
                 .color(Color::rgb(0.86, 0.90, 0.98))
                 .show(ui);
@@ -134,10 +132,8 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
 }
 
 fn badge<H: std::hash::Hash>(ui: &mut Ui, key: H) {
-    use palantir::WidgetId;
-    let id = WidgetId::from_hash(key);
     Frame::new()
-        .with_id(("badge", id))
+        .with_id(("badge", &key))
         .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))
         .fill(Color::rgb(0.22, 0.46, 0.84))
         .radius(4.0)
