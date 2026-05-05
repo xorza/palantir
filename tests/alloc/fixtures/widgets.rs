@@ -1,7 +1,5 @@
 use crate::harness::{AllocBudget, audit_steady_state};
-use palantir::{
-    Button, Color, Configure, Frame, Grid, Panel, Sizing, Styled, Text, Track, Ui, WidgetId,
-};
+use palantir::{Button, Color, Configure, Frame, Grid, Panel, Sizing, Styled, Text, Track, Ui};
 use std::rc::Rc;
 
 #[test]
@@ -82,10 +80,9 @@ fn static_text_label_alloc_free() {
 
 #[test]
 fn state_map_counter_alloc_free() {
-    let id = WidgetId::from_hash("counter");
-    audit_steady_state("state_map_counter", AllocBudget::ZERO, move |ui| {
+    audit_steady_state("state_map_counter", AllocBudget::ZERO, |ui| {
         Frame::new().with_id("counter").show(ui);
-        let n = ui.state_mut::<u32>(id);
+        let n = ui.state_mut::<u32>("counter");
         *n = n.wrapping_add(1);
     });
 }

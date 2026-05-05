@@ -3,10 +3,10 @@ use std::hash::{Hash, Hasher};
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct WidgetId(pub(crate) u64);
+pub(crate) struct WidgetId(pub(crate) u64);
 
 impl WidgetId {
-    pub fn from_hash(h: impl Hash) -> Self {
+    pub(crate) fn from_hash(h: impl Hash) -> Self {
         let mut hasher = FxHasher::default();
         h.hash(&mut hasher);
         Self(hasher.finish())
@@ -14,7 +14,7 @@ impl WidgetId {
 
     /// Derive a child id by mixing `h` into this id. Useful for nested widgets
     /// where the parent already has a stable id.
-    pub fn with(self, h: impl Hash) -> Self {
+    pub(crate) fn with(self, h: impl Hash) -> Self {
         let mut hasher = FxHasher::default();
         self.0.hash(&mut hasher);
         h.hash(&mut hasher);
@@ -38,7 +38,7 @@ impl WidgetId {
     /// [`crate::tree::element::Configure::with_id`] when call order isn't
     /// stable across frames.
     #[track_caller]
-    pub const fn auto_stable() -> Self {
+    pub(crate) const fn auto_stable() -> Self {
         let l = std::panic::Location::caller();
         let mut h: u64 = FNV_OFFSET;
         h = fnv1a_extend_str(h, l.file());
