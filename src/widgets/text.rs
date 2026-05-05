@@ -6,20 +6,20 @@ use crate::ui::Ui;
 use crate::widgets::Response;
 use std::borrow::Cow;
 
-/// Default font size when no `.size(px)` was set. 16 px lines up with
-/// `Button`'s historical default and with the `mono_measure` fallback's
-/// reference metric.
-const DEFAULT_SIZE_PX: f32 = 16.0;
-
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
 /// anything that's just a string. Hugs its measured size by default; call
 /// `.wrapping()` to opt into reshape-on-arrange when a fixed-width parent
 /// commits a narrower width than the natural unbroken line.
+///
+/// `size_px` and `color` are `Option`s that fall back to the global
+/// [`crate::Theme::font_size_px`] / [`crate::Theme::text_color`] when
+/// not set on the builder. Apps that bump the global text defaults
+/// move every Text widget that didn't customize.
 pub struct Text {
     element: Element,
     text: Cow<'static, str>,
-    size_px: f32,
-    color: Color,
+    size_px: Option<f32>,
+    color: Option<Color>,
     wrap: TextWrap,
     align: Align,
 }
@@ -30,8 +30,8 @@ impl Text {
         Self {
             element: Element::new_auto(LayoutMode::Leaf),
             text: text.into(),
-            size_px: DEFAULT_SIZE_PX,
-            color: Color::WHITE,
+            size_px: None,
+            color: None,
             wrap: TextWrap::Single,
             // Default = (Auto, Auto) → top-left. Only matters when the
             // widget has Fixed size larger than its measured content;
@@ -42,20 +42,18 @@ impl Text {
 
     pub fn size_px(mut self, px: f32) -> Self {
         assert!(px > 0.0, "Text size must be positive, got {px}");
-        self.size_px = px;
+        self.size_px = Some(px);
         self
     }
 
     pub fn color(mut self, c: Color) -> Self {
-        self.color = c;
+        self.color = Some(c);
         self
     }
 
     /// Allow the renderer to reshape this text at the arranged width when
     /// the parent commits a narrower width than the unbounded line. Without
-    /// Reshape this text at the arranged width when the parent commits a
-    /// narrower width than the unbounded line. Without this, the text just
-    /// hugs its widest natural line forever.
+    /// this, the text just hugs its widest natural line forever.
     pub fn wrapping(mut self) -> Self {
         self.wrap = TextWrap::Wrap;
         self
@@ -74,12 +72,14 @@ impl Text {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        let line_height_px = self.size_px * ui.theme.line_height_mult;
+        let font_size_px = self.size_px.unwrap_or(ui.theme.font_size_px);
+        let color = self.color.unwrap_or(ui.theme.text_color);
+        let line_height_px = ui.theme.line_height_for(font_size_px);
         let node = ui.node(self.element, |ui| {
             ui.add_shape(Shape::Text {
                 text: self.text,
-                color: self.color,
-                font_size_px: self.size_px,
+                color,
+                font_size_px,
                 line_height_px,
                 wrap: self.wrap,
                 align: self.align,

@@ -72,7 +72,8 @@ impl Button {
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let style = self.style.unwrap_or(ui.theme.button);
-        let line_height_mult = ui.theme.line_height_mult;
+        let font_size_px = ui.theme.font_size_px;
+        let line_height_px = ui.theme.line_height_for(font_size_px);
         let v = if self.element.disabled {
             style.disabled
         } else {
@@ -101,8 +102,8 @@ impl Button {
                 Shape::Text {
                     text: self.label.clone(),
                     color: v.text,
-                    font_size_px: 16.0,
-                    line_height_px: 16.0 * line_height_mult,
+                    font_size_px,
+                    line_height_px,
                     wrap: TextWrap::Single,
                     align: self.label_align,
                 },
