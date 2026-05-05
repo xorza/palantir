@@ -113,6 +113,7 @@ fn outlined_style() -> ButtonTheme {
             )),
             text: Some(TextStyle::default().with_color(Color::hex(0x878a8d))),
         },
+        ..Default::default()
     }
 }
 
@@ -141,5 +142,6 @@ fn danger_style() -> ButtonTheme {
             background: Some(bg(Color::linear_rgba(red.r, red.g, red.b, 0.4))),
             text: Some(TextStyle::default().with_color(Color::linear_rgba(1.0, 1.0, 1.0, 0.55))),
         },
+        ..Default::default()
     }
 }

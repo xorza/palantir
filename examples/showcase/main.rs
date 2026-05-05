@@ -265,10 +265,7 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
                 .show(ui, |ui| {
                     let active_style = active_toolbar_button(&ui.theme.button);
                     for (i, (label, _)) in SHOWCASES.iter().enumerate() {
-                        let mut btn = Button::new()
-                            .with_id(*label)
-                            .label(*label)
-                            .padding((10.0, 6.0, 10.0, 6.0));
+                        let mut btn = Button::new().with_id(*label).label(*label);
                         if i == *active {
                             btn = btn.style(active_style.clone());
                         }

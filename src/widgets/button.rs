@@ -1,4 +1,5 @@
 use crate::layout::types::{align::Align, sense::Sense};
+use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
@@ -51,10 +52,21 @@ impl Button {
             .style
             .clone()
             .unwrap_or_else(|| ui.theme.button.clone());
-        let v = if self.element.disabled {
+        // Apply theme padding/margin when the builder hasn't set
+        // anything (sentinel: `Spacing::ZERO` == "use theme"). User
+        // overrides — anything non-zero set via `.padding(...)` /
+        // `.margin(...)` — pass through unchanged.
+        let mut element = self.element;
+        if element.padding == Spacing::ZERO {
+            element.padding = style.padding;
+        }
+        if element.margin == Spacing::ZERO {
+            element.margin = style.margin;
+        }
+        let v = if element.disabled {
             style.disabled
         } else {
-            let state = ui.response_for(self.element.id);
+            let state = ui.response_for(element.id);
             if state.pressed {
                 style.pressed
             } else if state.hovered {
@@ -67,7 +79,7 @@ impl Button {
         // Frame paints the per-state background. `None` inherits
         // `Background::default()` (transparent, no stroke, zero radius);
         // `Ui::add_shape` filters that as a no-op shape.
-        let resp = Frame::for_element(self.element)
+        let resp = Frame::for_element(element)
             .background(v.background.unwrap_or_default())
             .show(ui);
 
