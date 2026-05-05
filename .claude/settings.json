@@ -1,7 +1,20 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs sed *)"
+      "Edit(/tmp/**)",
+      "Write(/tmp/**)",
+
+      "Bash(xargs sed *)",
+      "Bash(sd:*)",
+
+      "Bash(cargo:*)",
+      "Bash(rustup:*)",
+
+      "Bash(git mv:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+
+      "Bash(sd:*)"
     ]
   }
 }
