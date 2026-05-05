@@ -181,7 +181,7 @@ impl CosmicMeasure {
             };
         }
 
-        let metrics = Metrics::new(font_size_px, font_size_px * 1.2);
+        let metrics = Metrics::new(font_size_px, crate::text::line_height(font_size_px));
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_size(&mut self.font_system, max_width_px, None);
         buffer.set_text(

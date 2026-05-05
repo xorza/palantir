@@ -1,6 +1,7 @@
 use crate::input::keyboard::{Key, KeyPress};
 use crate::layout::types::sense::Sense;
 use crate::primitives::rect::Rect;
+use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::tree::widget_id::WidgetId;
@@ -56,6 +57,12 @@ impl<'a> TextEdit<'a> {
         let mut element = Element::new_auto(LayoutMode::Leaf);
         element.sense = Sense::CLICK;
         element.focusable = true;
+        // Sensible default; override via `Configure::padding(...)`.
+        // `Element::padding` is what the renderer deflates by when
+        // laying text inside the leaf, so this is the only padding the
+        // widget tracks.
+        // todo theme
+        element.padding = Spacing::xy(8.0, 6.0);
         Self {
             element,
             text,
@@ -91,6 +98,10 @@ impl<'a> TextEdit<'a> {
             .clone()
             .unwrap_or_else(|| ui.theme.text_edit.clone());
         let font_size = self.size_px.unwrap_or(style.size_px);
+        // The renderer deflates by `element.padding` when laying out
+        // `Shape::Text` (see `encoder::mod.rs`). Reading the same value
+        // here keeps the caret rect aligned with the glyphs.
+        let padding = self.element.padding;
 
         // Phase 1: input handling. Touches `ui.state` and `ui.input`
         // (separate fields, disjoint borrows). Click-to-place-caret
@@ -103,7 +114,7 @@ impl<'a> TextEdit<'a> {
             is_focused,
             self.text,
             font_size,
-            style.padding.left,
+            padding.left,
             &mut blur_after,
         );
 
@@ -155,9 +166,18 @@ impl<'a> TextEdit<'a> {
             // *over* the text. Only when focused.
             if is_focused {
                 let caret_x = ui.pipeline.text.caret_x(text_ptr, caret_byte, font_size);
-                let pad = style.padding;
-                let caret_rect =
-                    Rect::new(pad.left + caret_x, pad.top, style.caret_width, font_size);
+                let pad = padding;
+                // Caret height = full line-height
+                // (`font_size * LINE_HEIGHT_MULT`) so the rect spans
+                // the same y-range the shaped text occupies. Using
+                // `font_size` alone leaves it ~20 % short and visually
+                // offset upward against the glyph baseline.
+                let caret_rect = Rect::new(
+                    pad.left + caret_x,
+                    pad.top,
+                    style.caret_width,
+                    crate::text::line_height(font_size),
+                );
                 ui.add_shape(Shape::Overlay {
                     rect: caret_rect,
                     radius: Default::default(),

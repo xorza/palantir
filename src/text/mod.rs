@@ -28,6 +28,24 @@ use std::rc::Rc;
 
 pub(crate) mod cosmic;
 
+/// Line-height-to-font-size ratio used by both the shaper
+/// ([`cosmic::CosmicMeasure`]) and any caller that needs to know the
+/// vertical extent of a shaped line — e.g. TextEdit sizing its caret
+/// rect to span the same height the text occupies. cosmic-text's
+/// default leading lives at 1.2× and cmsmic's `Metrics::new` is built
+/// from this constant; if you bump it here, the shaper and caret
+/// stay in lockstep.
+// todo theme
+pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
+
+/// Vertical extent of a single shaped line at `font_size_px`. Wraps
+/// the [`LINE_HEIGHT_MULT`] constant so callers don't have to import
+/// the constant directly.
+#[inline]
+pub(crate) fn line_height(font_size_px: f32) -> f32 {
+    font_size_px * LINE_HEIGHT_MULT
+}
+
 use crate::text::cosmic::CosmicMeasure;
 
 /// Shared handle to a [`CosmicMeasure`], cloned into both [`TextMeasurer`]
