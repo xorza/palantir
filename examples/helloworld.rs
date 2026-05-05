@@ -4,49 +4,12 @@ use std::time::{Duration, Instant};
 use palantir::Align;
 use palantir::WgpuBackend;
 use palantir::{
-    Background, Button, ButtonStateStyle, ButtonTheme, Color, Configure, Corners, InputEvent,
-    Panel, Sizing, Stroke, TextStyle, Ui,
+    Background, Button, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke, Ui,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
-
-fn outlined_button_style() -> ButtonTheme {
-    let stroke = Some(Stroke {
-        width: 1.5,
-        color: Color::rgb(0.4, 0.5, 0.7),
-    });
-    let bg = |fill, stroke| Background {
-        fill,
-        stroke,
-        radius: Corners::all(4.0),
-    };
-    ButtonTheme {
-        normal: ButtonStateStyle {
-            background: Some(bg(Color::TRANSPARENT, stroke)),
-            text: Some(TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95))),
-        },
-        hovered: ButtonStateStyle {
-            background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.15), stroke)),
-            text: Some(TextStyle::default().with_color(Color::WHITE)),
-        },
-        pressed: ButtonStateStyle {
-            background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.30), stroke)),
-            text: Some(TextStyle::default().with_color(Color::WHITE)),
-        },
-        disabled: ButtonStateStyle {
-            background: Some(bg(
-                Color::TRANSPARENT,
-                Some(Stroke {
-                    width: 1.5,
-                    color: Color::rgba(0.4, 0.5, 0.7, 0.35),
-                }),
-            )),
-            text: Some(TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45))),
-        },
-    }
-}
 
 fn main() {
     use tracing_subscriber::EnvFilter;
@@ -244,8 +207,9 @@ impl State {
         self.ui.begin_frame(self.display);
         build_ui(&mut self.ui, &mut self.click_count);
         let frame_out = self.ui.end_frame();
+        // Window background: palette `bg`.
         self.backend
-            .submit(&frame.texture, Color::rgb(0.08, 0.08, 0.10), frame_out);
+            .submit(&frame.texture, Color::hex(0x252525), frame_out);
 
         frame.present();
         if !self.first_paint {
@@ -277,7 +241,6 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
 
                     let reset = Button::new()
                         .label("reset")
-                        .style(outlined_button_style())
                         .size((Sizing::FILL, Sizing::Hug))
                         .min_size((0.0, 10.0))
                         .margin((4.0, 24.0, 32.0, 0.0))
@@ -303,10 +266,10 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         .margin(5)
                         .clip(true)
                         .background(Background {
-                            fill: Color::rgb(0.16, 0.20, 0.28),
+                            fill: Color::hex(0x252525),
                             stroke: Some(Stroke {
                                 width: 1.0,
-                                color: Color::rgb(0.30, 0.36, 0.46),
+                                color: Color::hex(0x363636),
                             }),
                             radius: Corners::all(12.0),
                         })
@@ -324,10 +287,10 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         .padding(16.0)
                         .margin(5)
                         .background(Background {
-                            fill: Color::rgb(0.16, 0.20, 0.28),
+                            fill: Color::hex(0x252525),
                             stroke: Some(Stroke {
                                 width: 1.0,
-                                color: Color::rgb(0.30, 0.36, 0.46),
+                                color: Color::hex(0x363636),
                             }),
                             radius: Corners::all(12.0),
                         })

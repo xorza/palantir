@@ -1,6 +1,4 @@
-use palantir::{
-    Background, Color, Configure, Corners, Panel, Scroll, Sizing, Stroke, Text, TextStyle, Ui,
-};
+use palantir::{Background, Color, Configure, Corners, Panel, Scroll, Sizing, Text, TextStyle, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -11,11 +9,7 @@ pub fn build(ui: &mut Ui) {
                 "Scroll — hover a card and pan with the wheel / two-finger scroll. \
                  Cards are vertical · horizontal · two-axis.",
             )
-            .style(
-                TextStyle::default()
-                    .with_font_size(13.0)
-                    .with_color(Color::rgb(0.78, 0.82, 0.92)),
-            )
+            .style(TextStyle::default().with_font_size(13.0))
             .show(ui);
 
             Panel::hstack()
@@ -64,69 +58,56 @@ fn card(ui: &mut Ui, key: &'static str, label: &'static str, body: impl FnOnce(&
         .size((Sizing::FILL, Sizing::FILL))
         .padding(8.0)
         .gap(6.0)
-        .background(Background {
-            fill: Color::rgb(0.16, 0.20, 0.28),
-            stroke: Some(Stroke {
-                width: 1.5,
-                color: Color::rgb(0.30, 0.36, 0.46),
-            }),
-            radius: Corners::all(8.0),
-        })
         .show(ui, |ui| {
             Text::new(label)
                 .with_id((key, "title"))
-                .style(
-                    TextStyle::default()
-                        .with_font_size(12.0)
-                        .with_color(Color::rgb(0.78, 0.82, 0.92)),
-                )
+                .style(TextStyle::default().with_font_size(12.0))
                 .show(ui);
             body(ui);
         });
 }
 
+/// On-swatch text needs to read against the bright fill, so we override
+/// to a near-black; this is a *legibility* requirement of the demo,
+/// not decoration.
+fn on_swatch_text() -> TextStyle {
+    TextStyle::default()
+        .with_font_size(13.0)
+        .with_color(Color::hex(0x1a1a1a))
+}
+
 fn row(ui: &mut Ui, ns: &'static str, i: u32) {
-    let (r, g, b) = swatch(i);
     Panel::hstack()
         .with_id((ns, "scroll-row", i))
         .size((Sizing::FILL, Sizing::Fixed(28.0)))
         .padding((10.0, 6.0))
         .background(Background {
-            fill: Color::rgb(r, g, b),
+            fill: gradient_color(i),
             radius: Corners::all(4.0),
             ..Default::default()
         })
         .show(ui, |ui| {
             Text::new(label_for(i))
                 .with_id((ns, "scroll-row-label", i))
-                .style(
-                    TextStyle::default()
-                        .with_font_size(13.0)
-                        .with_color(Color::rgb(0.10, 0.10, 0.14)),
-                )
+                .style(on_swatch_text())
                 .show(ui);
         });
 }
 
 fn col(ui: &mut Ui, i: u32) {
-    let (r, g, b) = swatch(i);
     Panel::vstack()
         .with_id(("h", "scroll-col", i))
         .size((Sizing::Fixed(60.0), Sizing::FILL))
         .padding((6.0, 10.0))
         .background(Background {
-            fill: Color::rgb(r, g, b),
+            fill: gradient_color(i),
             radius: Corners::all(4.0),
             ..Default::default()
         })
         .show(ui, |ui| {
             Text::new(label_for(i))
                 .with_id(("h", "scroll-col-label", i))
-                .style(
-                    TextStyle::default()
-                        .with_font_size(13.0)
-                        .with_color(Color::rgb(0.10, 0.10, 0.14)),
-                )
+                .style(on_swatch_text())
                 .show(ui);
         });
 }
@@ -143,24 +124,19 @@ fn grid(ui: &mut Ui) {
                 .gap(4.0)
                 .show(ui, |ui| {
                     for c in 0..12u32 {
-                        let (rr, gg, bb) = swatch(r * 12 + c);
                         Panel::hstack()
                             .with_id(("xy-cell", r, c))
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                             .padding((6.0, 4.0))
                             .background(Background {
-                                fill: Color::rgb(rr, gg, bb),
+                                fill: gradient_color(r * 12 + c),
                                 radius: Corners::all(4.0),
                                 ..Default::default()
                             })
                             .show(ui, |ui| {
                                 Text::new(cell_label(r, c))
                                     .with_id(("xy-cell-label", r, c))
-                                    .style(
-                                        TextStyle::default()
-                                            .with_font_size(11.0)
-                                            .with_color(Color::rgb(0.10, 0.10, 0.14)),
-                                    )
+                                    .style(on_swatch_text().with_font_size(11.0))
                                     .show(ui);
                             });
                     }
@@ -169,9 +145,11 @@ fn grid(ui: &mut Ui) {
     });
 }
 
-fn swatch(i: u32) -> (f32, f32, f32) {
+/// Gradient across the scrollable items so panning shows visible progress.
+/// The colors aren't theme — they ARE the demo content.
+fn gradient_color(i: u32) -> Color {
     let t = (i % 40) as f32 / 40.0;
-    (
+    Color::rgb(
         0.30 + 0.50 * t,
         0.55 - 0.20 * (t - 0.5).abs(),
         0.85 - 0.55 * t,

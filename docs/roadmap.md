@@ -5,6 +5,7 @@ ecs for soa?
 clearcolor from theme
 rounded corner clip
 texton button - optional
+default padding and margin for buttons and textedit
 
 ## Now — concrete, motivated, ready to start
 

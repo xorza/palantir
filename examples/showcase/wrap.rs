@@ -4,9 +4,9 @@
 //! gap dimensions are independent: `.gap(g)` is within-line spacing,
 //! `.line_gap(g)` is between-line spacing.
 
+use crate::swatch;
 use palantir::{
-    Background, Color, Configure, Corners, Frame, Justify, Panel, Sizing, Stroke, Text, TextStyle,
-    Ui,
+    Background, Configure, Corners, Frame, Justify, Panel, Sizing, Stroke, Text, TextStyle, Ui,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -17,11 +17,7 @@ pub fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             Text::new("WrapHStack / WrapVStack")
                 .with_id(("hdr", "title"))
-                .style(
-                    TextStyle::default()
-                        .with_font_size(14.0)
-                        .with_color(Color::rgb(0.78, 0.82, 0.90)),
-                )
+                .style(TextStyle::default().with_font_size(14.0))
                 .show(ui);
 
             Text::new(concat!(
@@ -30,11 +26,7 @@ pub fn build(ui: &mut Ui) {
                 "`.line_gap` spaces lines. `.justify(...)` applies per-line.",
             ))
             .with_id(("hdr", "sub"))
-            .style(
-                TextStyle::default()
-                    .with_font_size(12.0)
-                    .with_color(Color::rgb(0.62, 0.68, 0.78)),
-            )
+            .style(TextStyle::default().with_font_size(12.0))
             .wrapping()
             .show(ui);
 
@@ -121,26 +113,25 @@ const TAGS: &[&str] = &[
     "linear",
 ];
 
+/// Pill-shaped tag chip — the "chip" look IS the demo aesthetic, so a
+/// bg + stroke is needed to make it read as a chip rather than bare
+/// text. Uses a translucent accent so chips harmonize with the palette.
 fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
     Panel::hstack()
         .with_id(("chip-row", &key))
         .padding((10.0, 4.0))
         .background(Background {
-            fill: Color::rgb(0.22, 0.30, 0.45),
+            fill: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.20),
             stroke: Some(Stroke {
                 width: 1.0,
-                color: Color::rgb(0.34, 0.42, 0.58),
+                color: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.45),
             }),
             radius: Corners::all(10.0),
         })
         .show(ui, |ui| {
             Text::new(label)
                 .with_id(("chip-label", &key))
-                .style(
-                    TextStyle::default()
-                        .with_font_size(12.0)
-                        .with_color(Color::rgb(0.86, 0.90, 0.98)),
-                )
+                .style(TextStyle::default().with_font_size(12.0))
                 .show(ui);
         });
 }
@@ -150,35 +141,23 @@ fn badge<H: std::hash::Hash>(ui: &mut Ui, key: H) {
         .with_id(("badge", &key))
         .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))
         .background(Background {
-            fill: Color::rgb(0.22, 0.46, 0.84),
+            fill: swatch::A,
             radius: Corners::all(4.0),
             ..Default::default()
         })
         .show(ui);
 }
 
+/// Plain section: title + body, no card decoration.
 fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .with_id(id)
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
-        .padding(8.0)
-        .background(Background {
-            fill: Color::rgb(0.16, 0.18, 0.22),
-            stroke: Some(Stroke {
-                width: 1.0,
-                color: Color::rgb(0.30, 0.34, 0.42),
-            }),
-            radius: Corners::all(4.0),
-        })
         .show(ui, |ui| {
             Text::new(title)
                 .with_id(("section-title", id))
-                .style(
-                    TextStyle::default()
-                        .with_font_size(12.0)
-                        .with_color(Color::rgb(0.70, 0.74, 0.82)),
-                )
+                .style(TextStyle::default().with_font_size(12.0))
                 .show(ui);
             body(ui);
         });

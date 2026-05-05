@@ -1,13 +1,7 @@
+use crate::swatch;
 use palantir::{
     Align, Background, Color, Configure, Corners, Frame, HAlign, Panel, Sizing, Ui, VAlign,
 };
-
-fn parent_default() -> Color {
-    Color::rgb(0.30, 0.55, 0.85)
-}
-fn self_override() -> Color {
-    Color::rgb(0.85, 0.45, 0.30)
-}
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -21,16 +15,11 @@ pub fn build(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::v(VAlign::Center))
-                .background(Background {
-                    fill: Color::rgb(0.16, 0.18, 0.24),
-                    radius: Corners::all(6.0),
-                    ..Default::default()
-                })
                 .show(ui, |ui| {
-                    chip(ui, "a", parent_default(), Align::default());
-                    chip(ui, "b", parent_default(), Align::default());
-                    chip(ui, "c-self-bot", self_override(), Align::v(VAlign::Bottom));
-                    chip(ui, "d", parent_default(), Align::default());
+                    chip(ui, "a", swatch::A, Align::default());
+                    chip(ui, "b", swatch::A, Align::default());
+                    chip(ui, "c-self-bot", swatch::B, Align::v(VAlign::Bottom));
+                    chip(ui, "d", swatch::A, Align::default());
                 });
 
             // VStack with `child_align(HAlign::Right)` — children stack vertically,
@@ -40,15 +29,10 @@ pub fn build(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::h(HAlign::Right))
-                .background(Background {
-                    fill: Color::rgb(0.16, 0.18, 0.24),
-                    radius: Corners::all(6.0),
-                    ..Default::default()
-                })
                 .show(ui, |ui| {
-                    chip(ui, "a-vs", parent_default(), Align::default());
-                    chip(ui, "b-self-left", self_override(), Align::h(HAlign::Left));
-                    chip(ui, "c-vs", parent_default(), Align::default());
+                    chip(ui, "a-vs", swatch::A, Align::default());
+                    chip(ui, "b-self-left", swatch::B, Align::h(HAlign::Left));
+                    chip(ui, "c-vs", swatch::A, Align::default());
                 });
         });
 }

@@ -1,4 +1,4 @@
-use palantir::{Background, Button, Color, Configure, Corners, Panel, Sizing, Stroke, Ui};
+use palantir::{Button, Configure, Panel, Sizing, Text, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
@@ -6,38 +6,26 @@ pub fn build(ui: &mut Ui) {
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Left: a normal panel — buttons inside are interactive.
-            panel(ui, "alive", false);
+            section(ui, "alive", "alive", false);
             // Right: a disabled panel — disabled cascades, descendants suppress
             // input even though they don't set `disabled` themselves.
-            panel(ui, "frozen", true);
+            section(ui, "frozen", "frozen", true);
         });
 }
 
-fn panel(ui: &mut Ui, id: &'static str, disabled: bool) {
-    Panel::zstack()
+fn section(ui: &mut Ui, id: &'static str, label: &'static str, disabled: bool) {
+    Panel::vstack()
         .with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
-        .background(Background {
-            fill: Color::rgb(0.16, 0.18, 0.24),
-            stroke: Some(Stroke {
-                width: 1.0,
-                color: Color::rgb(0.30, 0.36, 0.46),
-            }),
-            radius: Corners::all(8.0),
-        })
+        .gap(8.0)
         .disabled(disabled)
         .show(ui, |ui| {
-            Panel::vstack()
-                .with_id((id, "stack"))
-                .size((Sizing::FILL, Sizing::Hug))
-                .gap(8.0)
-                .show(ui, |ui| {
-                    Button::new()
-                        .with_id((id, "btn1"))
-                        .label("click me")
-                        .show(ui);
-                    Button::new().with_id((id, "btn2")).label("or me").show(ui);
-                });
+            Text::new(label).with_id((id, "label")).show(ui);
+            Button::new()
+                .with_id((id, "btn1"))
+                .label("click me")
+                .show(ui);
+            Button::new().with_id((id, "btn2")).label("or me").show(ui);
         });
 }

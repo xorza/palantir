@@ -1,9 +1,6 @@
+use crate::swatch;
 use glam::Vec2;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, TranslateScale, Ui};
-
-fn tile_color() -> Color {
-    Color::rgb(0.30, 0.55, 0.85)
-}
+use palantir::{Background, Configure, Corners, Frame, Panel, Sizing, TranslateScale, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
@@ -28,7 +25,7 @@ pub fn build(ui: &mut Ui) {
                     });
             });
 
-            // Composed: outer scale 1.25, inner translate (20, 0). Order matters.
+            // Composed: outer scale 1.25, inner translate (20, 10). Order matters.
             cell(ui, "composed", |ui| {
                 Panel::zstack()
                     .with_id("outer")
@@ -50,11 +47,6 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
-        .background(Background {
-            fill: Color::rgb(0.16, 0.18, 0.24),
-            radius: Corners::all(6.0),
-            ..Default::default()
-        })
         .show(ui, body);
 }
 
@@ -63,7 +55,7 @@ fn tile(ui: &mut Ui, id: &'static str) {
         .with_id(id)
         .size((Sizing::Fixed(60.0), Sizing::Fixed(60.0)))
         .background(Background {
-            fill: tile_color(),
+            fill: swatch::A,
             radius: Corners::all(4.0),
             ..Default::default()
         })

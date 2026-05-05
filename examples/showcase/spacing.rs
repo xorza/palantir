@@ -1,7 +1,25 @@
+use crate::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
 
-fn fill_color() -> Color {
-    Color::rgba(0.30, 0.55, 0.85, 0.85)
+/// Inner-panel background used for padding/margin demos. The whole
+/// point of these demos is to *see* where the parent's bounds are
+/// relative to its children — without this, padding is invisible.
+/// Picked one shade darker than the showcase card (`#343434`) so the
+/// boundary reads against the surrounding card.
+fn panel_bg() -> Background {
+    Background {
+        fill: Color::hex(0x252525),
+        radius: Corners::all(4.0),
+        ..Default::default()
+    }
+}
+
+fn tile() -> Background {
+    Background {
+        fill: swatch::A,
+        radius: Corners::all(4.0),
+        ..Default::default()
+    }
 }
 
 pub fn build(ui: &mut Ui) {
@@ -16,21 +34,13 @@ pub fn build(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::Fixed(60.0)))
                     .padding(20.0)
                     .gap(8.0)
-                    .background(Background {
-                        fill: Color::rgb(0.20, 0.24, 0.32),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
+                    .background(panel_bg())
                     .show(ui, |ui| {
                         for i in 0..3 {
                             Frame::new()
                                 .with_id(("p", i))
                                 .size((Sizing::Fixed(40.0), Sizing::FILL))
-                                .background(Background {
-                                    fill: fill_color(),
-                                    radius: Corners::all(4.0),
-                                    ..Default::default()
-                                })
+                                .background(tile())
                                 .show(ui);
                         }
                     });
@@ -42,31 +52,19 @@ pub fn build(ui: &mut Ui) {
                     .with_id("m-row")
                     .size((Sizing::FILL, Sizing::Fixed(60.0)))
                     .gap(8.0)
-                    .background(Background {
-                        fill: Color::rgb(0.20, 0.24, 0.32),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
+                    .background(panel_bg())
                     .show(ui, |ui| {
                         Frame::new()
                             .with_id("m1")
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                             .margin(8.0)
-                            .background(Background {
-                                fill: fill_color(),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
+                            .background(tile())
                             .show(ui);
                         Frame::new()
                             .with_id("m2")
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                             .margin((16.0, 16.0, 0.0, 0.0))
-                            .background(Background {
-                                fill: fill_color(),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
+                            .background(tile())
                             .show(ui);
                     });
             });
@@ -79,30 +77,22 @@ pub fn build(ui: &mut Ui) {
                     .with_id("neg-row")
                     .size((Sizing::FILL, Sizing::Fixed(60.0)))
                     .padding(8.0)
-                    .background(Background {
-                        fill: Color::rgb(0.20, 0.24, 0.32),
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
+                    .background(panel_bg())
                     .show(ui, |ui| {
                         Frame::new()
                             .with_id("neg-a")
                             .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
-                            .background(Background {
-                                fill: fill_color(),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
+                            .background(tile())
                             .show(ui);
                         Frame::new()
                             .with_id("neg-b")
                             .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                             .margin((-30.0, 0.0, 0.0, 0.0))
                             .background(Background {
-                                fill: Color::rgba(0.85, 0.45, 0.30, 0.85),
+                                fill: swatch::B,
                                 stroke: Some(Stroke {
                                     width: 1.0,
-                                    color: Color::rgb(0.85, 0.45, 0.30),
+                                    color: swatch::B,
                                 }),
                                 radius: Corners::all(4.0),
                             })

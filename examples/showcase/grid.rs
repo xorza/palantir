@@ -1,19 +1,5 @@
-use palantir::{
-    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Stroke, Track, Ui,
-};
-
-fn body() -> Color {
-    Color::rgb(0.30, 0.55, 0.85)
-}
-fn header() -> Color {
-    Color::rgb(0.85, 0.45, 0.30)
-}
-fn sidebar() -> Color {
-    Color::rgb(0.45, 0.80, 0.55)
-}
-fn rail() -> Color {
-    Color::rgb(0.55, 0.45, 0.80)
-}
+use crate::swatch;
+use palantir::{Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Track, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -31,45 +17,17 @@ pub fn build(ui: &mut Ui) {
                     .gap(8.0)
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Frame::new()
-                            .with_id("title")
-                            .grid_cell((0, 0))
-                            .grid_span((1, 3))
-                            .background(Background {
-                                fill: header(),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
-                            .show(ui);
-                        Frame::new()
-                            .with_id("nav")
-                            .grid_cell((1, 0))
-                            .background(Background {
-                                fill: sidebar(),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
-                            .show(ui);
-                        Frame::new()
-                            .with_id("content")
-                            .grid_cell((1, 1))
-                            .background(Background {
-                                fill: body(),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
-                            .show(ui);
-                        // Right rail Hug → only as wide as its child.
-                        Frame::new()
-                            .with_id("rail")
-                            .grid_cell((1, 2))
-                            .size((Sizing::Fixed(80.0), Sizing::FILL))
-                            .background(Background {
-                                fill: rail(),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
-                            .show(ui);
+                        grid_tile(ui, "title", (0, 0), Some((1, 3)), None, swatch::B);
+                        grid_tile(ui, "nav", (1, 0), None, None, swatch::C);
+                        grid_tile(ui, "content", (1, 1), None, None, swatch::A);
+                        grid_tile(
+                            ui,
+                            "rail",
+                            (1, 2),
+                            None,
+                            Some((Sizing::Fixed(80.0), Sizing::FILL)),
+                            swatch::D,
+                        );
                     });
             });
 
@@ -88,24 +46,8 @@ pub fn build(ui: &mut Ui) {
                     .gap(8.0)
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Frame::new()
-                            .with_id("c1")
-                            .grid_cell((0, 0))
-                            .background(Background {
-                                fill: body(),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
-                            .show(ui);
-                        Frame::new()
-                            .with_id("c2")
-                            .grid_cell((0, 1))
-                            .background(Background {
-                                fill: rail(),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
-                            .show(ui);
+                        grid_tile(ui, "c1", (0, 0), None, None, swatch::A);
+                        grid_tile(ui, "c2", (0, 1), None, None, swatch::D);
                     });
             });
         });
@@ -117,13 +59,30 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .gap(8.0)
-        .background(Background {
-            fill: Color::rgb(0.16, 0.18, 0.24),
-            stroke: Some(Stroke {
-                width: 1.0,
-                color: Color::rgb(0.30, 0.36, 0.46),
-            }),
-            radius: Corners::all(6.0),
-        })
         .show(ui, body);
+}
+
+fn grid_tile(
+    ui: &mut Ui,
+    id: &'static str,
+    cell: (u16, u16),
+    span: Option<(u16, u16)>,
+    size: Option<(Sizing, Sizing)>,
+    color: Color,
+) {
+    let mut f = Frame::new()
+        .with_id(id)
+        .grid_cell(cell)
+        .background(Background {
+            fill: color,
+            radius: Corners::all(4.0),
+            ..Default::default()
+        });
+    if let Some(s) = span {
+        f = f.grid_span(s);
+    }
+    if let Some(sz) = size {
+        f = f.size(sz);
+    }
+    f.show(ui);
 }

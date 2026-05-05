@@ -1,8 +1,5 @@
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Ui};
-
-fn tile() -> Color {
-    Color::rgb(0.30, 0.55, 0.85)
-}
+use crate::swatch;
+use palantir::{Background, Configure, Corners, Frame, Panel, Sizing, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -22,18 +19,13 @@ fn row(ui: &mut Ui, id: &'static str, gap: f32) {
         .size((Sizing::FILL, Sizing::Fixed(48.0)))
         .padding(8.0)
         .gap(gap)
-        .background(Background {
-            fill: Color::rgb(0.16, 0.18, 0.24),
-            radius: Corners::all(4.0),
-            ..Default::default()
-        })
         .show(ui, |ui| {
             for i in 0..5 {
                 Frame::new()
                     .with_id((id, i))
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(32.0)))
                     .background(Background {
-                        fill: tile(),
+                        fill: swatch::A,
                         radius: Corners::all(4.0),
                         ..Default::default()
                     })

@@ -1,4 +1,19 @@
+use crate::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
+
+/// Visible panel boundary needed for this demo: the whole point is to
+/// see whether a child rect spills past or gets clipped at the panel
+/// edge — without a stroke, the boundary is invisible.
+fn bounded_panel() -> Background {
+    Background {
+        fill: Color::hex(0x252525),
+        stroke: Some(Stroke {
+            width: 1.5,
+            color: Color::hex(0x363636),
+        }),
+        radius: Corners::all(8.0),
+    }
+}
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
@@ -12,14 +27,7 @@ pub fn build(ui: &mut Ui) {
                 .with_id("clipped")
                 .size((Sizing::FILL, Sizing::FILL))
                 .clip(true)
-                .background(Background {
-                    fill: Color::rgb(0.16, 0.20, 0.28),
-                    stroke: Some(Stroke {
-                        width: 1.5,
-                        color: Color::rgb(0.30, 0.36, 0.46),
-                    }),
-                    radius: Corners::all(8.0),
-                })
+                .background(bounded_panel())
                 .show(ui, |ui| {
                     spiller(ui, "spilled-clipped");
                 });
@@ -29,14 +37,7 @@ pub fn build(ui: &mut Ui) {
                 .with_id("unclipped")
                 .size((Sizing::FILL, Sizing::FILL))
                 .clip(false)
-                .background(Background {
-                    fill: Color::rgb(0.16, 0.20, 0.28),
-                    stroke: Some(Stroke {
-                        width: 1.5,
-                        color: Color::rgb(0.30, 0.36, 0.46),
-                    }),
-                    radius: Corners::all(8.0),
-                })
+                .background(bounded_panel())
                 .show(ui, |ui| {
                     spiller(ui, "spilled-unclipped");
                 });
@@ -49,7 +50,7 @@ fn spiller(ui: &mut Ui, id: &'static str) {
         .size((Sizing::Fixed(220.0), Sizing::Fixed(80.0)))
         .margin((-40.0, -30.0, 0.0, 0.0))
         .background(Background {
-            fill: Color::rgb(0.85, 0.45, 0.30),
+            fill: swatch::B,
             radius: Corners::all(6.0),
             ..Default::default()
         })
