@@ -313,14 +313,20 @@ impl LayoutEngine {
         let desired = if grew_w || grew_h {
             let content = self.measure_dispatch(tree, node, style, new_available, text);
             let final_desired = resolve_desired(style, content, new_available, min_size, max_size);
-            assert!(
-                final_desired.w <= new_available.w + 0.5
-                    && final_desired.h <= new_available.h + 0.5,
-                "second-pass measure exceeded grown available: \
-                 desired={final_desired:?} new_available={new_available:?} \
-                 — convergence assumption broken",
-            );
-            final_desired
+            // Non-monotonic layouts (wrap-stacks; Fill distributions
+            // where a descendant's hug grows when given more space)
+            // can produce `final_desired > new_available` even after a
+            // second pass. The original convergence guarantee assumed
+            // monotonicity which doesn't hold there. Clamp to the
+            // parent's already-committed slot — any overflow renders
+            // inside and is tolerated by downstream
+            // (cascade/composer/backend), same posture the run loop
+            // takes for root-vs-surface overflow. Pinned by
+            // `cross_driver_tests::convergence`.
+            Size::new(
+                final_desired.w.min(new_available.w),
+                final_desired.h.min(new_available.h),
+            )
         } else {
             desired
         };
