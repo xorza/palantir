@@ -8,4 +8,3 @@ pub(crate) mod spacing;
 pub(crate) mod stroke;
 pub(crate) mod transform;
 pub(crate) mod urect;
-pub(crate) mod visuals;

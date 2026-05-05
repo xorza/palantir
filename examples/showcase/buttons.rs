@@ -1,6 +1,6 @@
 use palantir::{
     Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Sizing, Stroke, TextStyle,
-    Ui, Visuals,
+    Ui, ButtonStyle,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -75,19 +75,19 @@ fn outlined_style() -> ButtonTheme {
         radius: Corners::all(4.0),
     };
     ButtonTheme {
-        normal: Visuals {
+        normal: ButtonStyle {
             background: Some(bg(Color::TRANSPARENT, stroke)),
             text: TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95)),
         },
-        hovered: Visuals {
+        hovered: ButtonStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.18), stroke)),
             text: TextStyle::default().with_color(Color::WHITE),
         },
-        pressed: Visuals {
+        pressed: ButtonStyle {
             background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.35), stroke)),
             text: TextStyle::default().with_color(Color::WHITE),
         },
-        disabled: Visuals {
+        disabled: ButtonStyle {
             background: Some(bg(
                 Color::TRANSPARENT,
                 Some(Stroke {
@@ -108,19 +108,19 @@ fn danger_style() -> ButtonTheme {
         radius: Corners::all(2.0),
     };
     ButtonTheme {
-        normal: Visuals {
+        normal: ButtonStyle {
             background: Some(bg(red)),
             text: TextStyle::default().with_color(Color::WHITE),
         },
-        hovered: Visuals {
+        hovered: ButtonStyle {
             background: Some(bg(Color::rgb(0.95, 0.40, 0.35))),
             text: TextStyle::default().with_color(Color::WHITE),
         },
-        pressed: Visuals {
+        pressed: ButtonStyle {
             background: Some(bg(Color::rgb(0.70, 0.20, 0.20))),
             text: TextStyle::default().with_color(Color::WHITE),
         },
-        disabled: Visuals {
+        disabled: ButtonStyle {
             background: Some(bg(Color::rgba(0.85, 0.30, 0.30, 0.4))),
             text: TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.55)),
         },
