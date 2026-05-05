@@ -9,7 +9,7 @@
 //! cache benches and to assert cache population in tests. Production
 //! code should never need them.
 
-use crate::Ui;
+use crate::{Ui, WgpuBackend};
 
 /// Drop every cross-frame measure-cache entry, forcing the next frame
 /// to re-measure every leaf from scratch. See `benches/measure_cache.rs`.
@@ -40,4 +40,14 @@ pub fn clear_compose_cache(ui: &mut Ui) {
 /// the compose-cache bench to confirm population under each workload.
 pub fn compose_cache_snapshot_count(ui: &Ui) -> usize {
     ui.pipeline.frontend.composer.cache.snapshots.len()
+}
+
+/// Render-debug knob: when `on`, every frame loads with `LoadOp::Clear`
+/// (the submit-time clear color) even on `DamagePaint::Partial`. The
+/// scissor still applies, so only the dirty region paints — surrounding
+/// pixels flash the clear color. Used by the damage-visualization
+/// fixtures in `tests/visual/` to see exactly which pixels were
+/// repainted this frame.
+pub fn set_clear_on_damage(backend: &mut WgpuBackend, on: bool) {
+    backend.debug_clear_on_damage = on;
 }

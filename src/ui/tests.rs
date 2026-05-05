@@ -5,6 +5,7 @@ use crate::primitives::{color::Color, rect::Rect};
 use crate::support::testing::{begin, new_ui_text, ui_at};
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
+use crate::ui::damage::DamagePaint;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -73,7 +74,10 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(ui.damage.prev.is_empty());
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage.rect.is_none());
-    assert!(ui.damage.filter(ui.display.logical_rect()).is_none());
+    assert_eq!(
+        ui.damage.filter(ui.display.logical_rect()),
+        DamagePaint::Skip
+    );
     // Repaint gate clears even on empty frames so an idle empty host
     // doesn't burn cycles.
     assert!(!ui.should_repaint());

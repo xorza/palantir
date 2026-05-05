@@ -3,6 +3,12 @@
 //! fixtures by extending an existing module or creating a new one and
 //! declaring it below.
 
+// `damage` reaches into `palantir::support::internals::set_clear_on_damage`,
+// which is gated on the `internals` feature. Integration tests don't get
+// the lib's `cfg(test)`, so this module needs the feature explicitly:
+// `cargo test --features internals`.
+#[cfg(feature = "internals")]
+mod damage;
 mod hidpi;
 mod layout;
 mod scroll;

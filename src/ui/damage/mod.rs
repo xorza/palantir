@@ -71,6 +71,18 @@ pub(crate) struct Damage {
 /// LVGL's `LV_INV_BUF_SIZE` heuristic.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.5;
 
+/// What the GPU should do with this frame. Keeps three cases that
+/// were previously squashed into `Option<Rect>` distinct so the
+/// backend can branch on them: `Full` (clear + paint everything),
+/// `Partial(rect)` (load + scissor to rect), `Skip` (don't paint —
+/// backbuffer already holds the right pixels; just present it).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum DamagePaint {
+    Full,
+    Partial(Rect),
+    Skip,
+}
+
 impl Damage {
     /// Diff against the just-finished frame and return the filtered
     /// damage rect ready for the encoder filter and the backend
@@ -96,7 +108,7 @@ impl Damage {
         cascades: &CascadeResult,
         removed: &[WidgetId],
         surface: Rect,
-    ) -> Option<Rect> {
+    ) -> DamagePaint {
         // Surface change ⇒ swapchain reconfigure ⇒ backbuffer recreate
         // on the next `submit`, which forces `LoadOp::Clear`. The
         // encoder must match: produce a full paint (damage = None)
@@ -147,22 +159,25 @@ impl Damage {
 
         self.rect = acc;
         if surface_changed {
-            return None;
+            return DamagePaint::Full;
         }
         self.filter(surface)
     }
 
-    /// Apply the full-repaint threshold to `self.rect`. Private —
-    /// callers should use the value returned from [`Self::compute`].
-    /// Tests reach in via the same `pub(crate)` visibility as the
-    /// rest of `Damage`'s internals.
-    pub(crate) fn filter(&self, surface: Rect) -> Option<Rect> {
-        let r = self.rect?;
+    /// Resolve `self.rect` against the area threshold. `None`
+    /// accumulator ⇒ `Skip` (no widget changed and the surface is
+    /// stable; the GPU has nothing to do). `Some(rect)` over
+    /// threshold (or zero-area surface) ⇒ `Full`. Otherwise
+    /// `Partial(rect)`.
+    pub(crate) fn filter(&self, surface: Rect) -> DamagePaint {
+        let Some(r) = self.rect else {
+            return DamagePaint::Skip;
+        };
         let surface_area = surface.area();
         if surface_area <= 0.0 || r.area() / surface_area > FULL_REPAINT_THRESHOLD {
-            return None;
+            return DamagePaint::Full;
         }
-        Some(r)
+        DamagePaint::Partial(r)
     }
 }
 

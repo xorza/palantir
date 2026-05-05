@@ -13,7 +13,7 @@ use crate::tree::element::Element;
 use crate::tree::widget_id::WidgetId;
 use crate::tree::{NodeId, Tree};
 use crate::ui::cascade::Cascades;
-use crate::ui::damage::Damage;
+use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::seen_ids::SeenIds;
 use crate::ui::state::StateMap;
 use crate::widgets::scroll::{ScrollNode, ScrollState};
@@ -70,8 +70,8 @@ pub struct Ui {
     /// `end_frame`, set by `on_input` / `request_repaint`.
     repaint_requested: bool,
 
-    /// Per-frame damage state. `Damage::compute` returns the filtered
-    /// damage rect (`None` ⇒ full repaint, `Some(r)` ⇒ partial).
+    /// Per-frame damage state. `Damage::compute` returns
+    /// [`DamagePaint`] — `Full`, `Partial(rect)`, or `Skip`.
     pub(crate) damage: Damage,
 
     /// Scroll widgets registered during recording so `end_frame` can
@@ -192,9 +192,18 @@ impl Ui {
         let damage = self.damage.compute(&self.tree, cascades, removed, surface);
 
         self.repaint_requested = false;
-        let buffer = pipeline
-            .frontend
-            .build(&self.tree, layout, cascades, damage, &self.display);
+        // Encoder filter is `Some` only on Partial frames. Full
+        // re-encodes everything; Skip will be ignored by `submit`,
+        // but we still encode normally so the next non-Skip frame
+        // doesn't have stale cache state.
+        let damage_filter = match damage {
+            DamagePaint::Partial(r) => Some(r),
+            DamagePaint::Full | DamagePaint::Skip => None,
+        };
+        let buffer =
+            pipeline
+                .frontend
+                .build(&self.tree, layout, cascades, damage_filter, &self.display);
 
         FrameOutput { buffer, damage }
     }
