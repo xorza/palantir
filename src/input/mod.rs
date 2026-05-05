@@ -27,7 +27,16 @@ pub enum InputEvent {
     PointerLeft,
     PointerPressed(PointerButton),
     PointerReleased(PointerButton),
+    /// Scroll-wheel / touchpad delta in logical pixels. Sign matches the
+    /// underlying winit deltas (typically negative-y for a wheel tick
+    /// toward the user). Multiple events in one frame accumulate into
+    /// [`InputState::frame_scroll_delta`].
+    Scroll(Vec2),
 }
+
+/// Logical pixels per `MouseScrollDelta::LineDelta` line. Matches the
+/// winit / egui convention; text-aware step is a future polish.
+const SCROLL_LINE_PIXELS: f32 = 40.0;
 
 impl InputEvent {
     /// Translate a winit `WindowEvent` into a palantir input event.
@@ -35,7 +44,7 @@ impl InputEvent {
     /// `PointerMoved` is in logical pixels (matches the units layout works in).
     /// Returns `None` for events we don't currently consume.
     pub fn from_winit(event: &winit::event::WindowEvent, scale_factor: f32) -> Option<Self> {
-        use winit::event::{ElementState, MouseButton, WindowEvent};
+        use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
         match event {
             WindowEvent::CursorMoved { position, .. } => {
                 let s = scale_factor.max(f32::EPSILON);
@@ -52,6 +61,18 @@ impl InputEvent {
             } => Some(match state {
                 ElementState::Pressed => InputEvent::PointerPressed(PointerButton::Left),
                 ElementState::Released => InputEvent::PointerReleased(PointerButton::Left),
+            }),
+            // Sign convention follows winit's raw deltas: a wheel tick
+            // toward the user typically arrives as negative `y`. Widget
+            // code decides how to apply the delta to its offset.
+            WindowEvent::MouseWheel { delta, .. } => Some(match *delta {
+                MouseScrollDelta::LineDelta(x, y) => {
+                    InputEvent::Scroll(Vec2::new(x, y) * SCROLL_LINE_PIXELS)
+                }
+                MouseScrollDelta::PixelDelta(p) => {
+                    let s = scale_factor.max(f32::EPSILON);
+                    InputEvent::Scroll(Vec2::new(p.x as f32 / s, p.y as f32 / s))
+                }
             }),
             _ => None,
         }
@@ -81,6 +102,9 @@ pub struct InputState {
     active: Option<WidgetId>,
     hovered: Option<WidgetId>,
     clicked_this_frame: FxHashSet<WidgetId>,
+    /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
+    /// in [`Self::end_frame`]. Read by scroll widgets at record time.
+    pub(crate) frame_scroll_delta: Vec2,
 }
 
 impl Default for InputState {
@@ -96,6 +120,7 @@ impl InputState {
             active: None,
             hovered: None,
             clicked_this_frame: FxHashSet::default(),
+            frame_scroll_delta: Vec2::ZERO,
         }
     }
 
@@ -130,6 +155,9 @@ impl InputState {
                     }
                 }
             }
+            InputEvent::Scroll(d) => {
+                self.frame_scroll_delta += d;
+            }
             // Right/Middle: not yet wired through to widgets. Silently drop.
             InputEvent::PointerPressed(_) | InputEvent::PointerReleased(_) => {}
         }
@@ -140,6 +168,7 @@ impl InputState {
     /// `Cascades::run` (whose result `cascades` is passed here).
     pub(crate) fn end_frame(&mut self, cascades: &CascadeResult) {
         self.clicked_this_frame.clear();
+        self.frame_scroll_delta = Vec2::ZERO;
         if let Some(active) = self.active
             && !cascades.by_id.contains_key(&active)
         {
