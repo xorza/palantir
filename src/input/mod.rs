@@ -27,10 +27,10 @@ pub enum InputEvent {
     PointerLeft,
     PointerPressed(PointerButton),
     PointerReleased(PointerButton),
-    /// Scroll-wheel / touchpad delta in logical pixels. Sign matches the
-    /// underlying winit deltas (typically negative-y for a wheel tick
-    /// toward the user). Multiple events in one frame accumulate into
-    /// [`InputState::frame_scroll_delta`].
+    /// Scroll-wheel / touchpad delta in logical pixels. Positive `y`
+    /// means the user wants content to scroll *down* (a scroll widget
+    /// should add to its vertical offset). Multiple events in one frame
+    /// accumulate into [`InputState::frame_scroll_delta`].
     Scroll(Vec2),
 }
 
@@ -62,16 +62,16 @@ impl InputEvent {
                 ElementState::Pressed => InputEvent::PointerPressed(PointerButton::Left),
                 ElementState::Released => InputEvent::PointerReleased(PointerButton::Left),
             }),
-            // Sign convention follows winit's raw deltas: a wheel tick
-            // toward the user typically arrives as negative `y`. Widget
-            // code decides how to apply the delta to its offset.
+            // Convert to "positive y = scroll content down" so widgets can
+            // do `offset += delta_y` directly. winit reports +y when the
+            // wheel rotates *away* from the user (scroll up); flip it.
             WindowEvent::MouseWheel { delta, .. } => Some(match *delta {
                 MouseScrollDelta::LineDelta(x, y) => {
-                    InputEvent::Scroll(Vec2::new(x, y) * SCROLL_LINE_PIXELS)
+                    InputEvent::Scroll(Vec2::new(x, -y) * SCROLL_LINE_PIXELS)
                 }
                 MouseScrollDelta::PixelDelta(p) => {
                     let s = scale_factor.max(f32::EPSILON);
-                    InputEvent::Scroll(Vec2::new(p.x as f32 / s, p.y as f32 / s))
+                    InputEvent::Scroll(Vec2::new(p.x as f32 / s, -p.y as f32 / s))
                 }
             }),
             _ => None,

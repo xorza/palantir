@@ -373,20 +373,22 @@ mod scroll {
     }
 
     #[test]
-    fn from_winit_line_delta_scales_by_step_pixels() {
+    fn from_winit_line_delta_scales_by_step_pixels_and_flips_y() {
+        // winit's +y wheel = rotation away from user = scroll up. We flip
+        // so palantir's +y delta = scroll content down.
         let ev = InputEvent::from_winit(&wheel(MouseScrollDelta::LineDelta(0.0, 1.0)), 1.0)
             .expect("wheel produces a Scroll event");
         match ev {
             InputEvent::Scroll(d) => {
                 assert_eq!(d.x, 0.0);
-                assert_eq!(d.y, 40.0, "1 line should equal SCROLL_LINE_PIXELS");
+                assert_eq!(d.y, -40.0, "1 line up → -SCROLL_LINE_PIXELS");
             }
             _ => panic!("expected Scroll, got {ev:?}"),
         }
     }
 
     #[test]
-    fn from_winit_pixel_delta_divides_by_scale_factor() {
+    fn from_winit_pixel_delta_divides_by_scale_factor_and_flips_y() {
         let ev = InputEvent::from_winit(
             &wheel(MouseScrollDelta::PixelDelta(PhysicalPosition::new(
                 60.0, -120.0,
@@ -396,7 +398,8 @@ mod scroll {
         .expect("pixel-delta wheel produces a Scroll event");
         match ev {
             InputEvent::Scroll(d) => {
-                assert_eq!(d, Vec2::new(30.0, -60.0));
+                // x: 60 / 2 = 30. y: -(-120 / 2) = 60.
+                assert_eq!(d, Vec2::new(30.0, 60.0));
             }
             _ => panic!("expected Scroll, got {ev:?}"),
         }
