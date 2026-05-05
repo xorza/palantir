@@ -5,6 +5,28 @@ use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
 use crate::tree::{Child, NodeId, Tree};
 
+/// One Fill child as the freeze loop sees it. Pushed onto
+/// `LayoutScratch::stack_fill` during measure; popped at the end of
+/// the call. `frozen_alloc = Some(v)` means this child has been
+/// removed from the active pool and gets exactly `v` main-axis space.
+#[derive(Clone, Copy)]
+pub(crate) struct FillEntry {
+    node: NodeId,
+    weight: f32,
+    floor: f32,
+    cap: f32,
+    frozen_alloc: Option<f32>,
+}
+
+/// Flat depth-shared buffer for the Fill freeze loop. Layout is the
+/// same as `WrapScratch.pool`: each invocation pushes its entries,
+/// uses the resulting slice, truncates on exit so nested stacks
+/// reuse the tail capacity. Allocation-free in steady state.
+#[derive(Default)]
+pub(crate) struct StackScratch {
+    pub(crate) pool: Vec<FillEntry>,
+}
+
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
@@ -70,26 +92,17 @@ pub(crate) fn measure(
     if total_weight > 0.0 {
         let main_finite = axis.main(inner).is_finite();
         if main_finite {
-            // Collect Fill children with their (weight, floor, cap).
-            // Allocations here are bounded by the count of Fill
-            // children at this node — typically 2-10. Could move to
-            // `LayoutScratch` if hotspots show up.
-            #[derive(Clone, Copy)]
-            struct FillEntry {
-                node: NodeId,
-                weight: f32,
-                floor: f32,
-                cap: f32,
-                frozen_alloc: Option<f32>,
-            }
-            let mut entries: Vec<FillEntry> = Vec::new();
+            // Reentrancy-safe flat pool: record pool-end on entry,
+            // push entries, slice through `[start..]`, truncate at
+            // exit. Nested stacks reuse the tail capacity.
+            let pool_start = layout.scratch.stack_fill.pool.len();
             for c in tree.children_active(node) {
                 let Sizing::Fill(w) = axis.main_sizing(tree.layout[c.index()].size) else {
                     continue;
                 };
                 let cap = axis.main(tree.read_extras(c).max_size);
                 let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, text);
-                entries.push(FillEntry {
+                layout.scratch.stack_fill.pool.push(FillEntry {
                     node: c,
                     weight: w,
                     floor,
@@ -107,6 +120,7 @@ pub(crate) fn measure(
                 if active_weight <= 0.0 {
                     break;
                 }
+                let entries = &mut layout.scratch.stack_fill.pool[pool_start..];
                 for e in entries.iter_mut() {
                     if e.frozen_alloc.is_some() {
                         continue;
@@ -125,8 +139,13 @@ pub(crate) fn measure(
                 }
             }
             // Final measure: frozen at their floor, others at the
-            // re-divided share.
-            for e in &entries {
+            // re-divided share. Snapshot the pool view first so the
+            // recursive `layout.measure` call below can re-borrow
+            // `layout` mutably (and may itself push more entries
+            // onto `stack_fill.pool` for nested stacks).
+            let pool_end = layout.scratch.stack_fill.pool.len();
+            for i in pool_start..pool_end {
+                let e = layout.scratch.stack_fill.pool[i];
                 let main_avail = match e.frozen_alloc {
                     Some(a) => a,
                     None if active_weight > 0.0 => (remaining * e.weight / active_weight)
@@ -143,6 +162,9 @@ pub(crate) fn measure(
                 fill_main += axis.main(d);
                 max_cross = max_cross.max(axis.cross(d));
             }
+            // Drop our entries — restores the pool length the parent
+            // stack saw.
+            layout.scratch.stack_fill.pool.truncate(pool_start);
         } else {
             for c in tree.children_active(node) {
                 let Sizing::Fill(_) = axis.main_sizing(tree.layout[c.index()].size) else {

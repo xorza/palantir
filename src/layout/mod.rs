@@ -3,7 +3,8 @@ use crate::layout::cache::{MeasureCache, quantize_available};
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::result::{LayoutResult, ShapedText};
-use crate::layout::support::{leaf_text_shapes, resolve_axis_size, zero_subtree};
+use crate::layout::stack::StackScratch;
+use crate::layout::support::{AxisCtx, leaf_text_shapes, resolve_axis_size, zero_subtree};
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::WrapScratch;
 use crate::primitives::rect::Rect;
@@ -54,6 +55,7 @@ mod cross_driver_tests;
 pub(crate) struct LayoutScratch {
     pub(crate) grid: GridContext,
     pub(crate) wrap: WrapScratch,
+    pub(crate) stack_fill: StackScratch,
     pub(crate) desired: Vec<Size>,
     pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(crate) tmp_hugs: Vec<f32>,
@@ -116,24 +118,24 @@ fn resolve_desired(
     max_size: Size,
 ) -> Size {
     Size::new(
-        resolve_axis_size(
-            style.size.w,
-            content.w + style.padding.horiz() + style.margin.horiz(),
-            available.w,
-            intrinsic_min.w,
-            style.margin.horiz(),
-            min_size.w,
-            max_size.w,
-        ),
-        resolve_axis_size(
-            style.size.h,
-            content.h + style.padding.vert() + style.margin.vert(),
-            available.h,
-            intrinsic_min.h,
-            style.margin.vert(),
-            min_size.h,
-            max_size.h,
-        ),
+        resolve_axis_size(AxisCtx {
+            sizing: style.size.w,
+            hug_with_margin: content.w + style.padding.horiz() + style.margin.horiz(),
+            available: available.w,
+            intrinsic_min: intrinsic_min.w,
+            margin: style.margin.horiz(),
+            min: min_size.w,
+            max: max_size.w,
+        }),
+        resolve_axis_size(AxisCtx {
+            sizing: style.size.h,
+            hug_with_margin: content.h + style.padding.vert() + style.margin.vert(),
+            available: available.h,
+            intrinsic_min: intrinsic_min.h,
+            margin: style.margin.vert(),
+            min: min_size.h,
+            max: max_size.h,
+        }),
     )
 }
 
@@ -297,24 +299,30 @@ impl LayoutEngine {
         let content = self.measure_dispatch(tree, node, style, available, text);
         let desired = resolve_desired(style, content, available, intrinsic_min, min_size, max_size);
 
-        // Re-dispatch when grow happened on an axis whose children's
-        // `inner_avail` actually depends on `available`. Pass 1 measured
-        // children against the pre-grow `inner_avail` so they don't
-        // know they'll be allocated more space at arrange time —
-        // wrapstacks would pack extra rows, etc. Pass 2 re-measures
-        // with the grown outer so children see their actual post-grow
-        // inner. Recursion propagates: descendants that also grew
-        // re-dispatch inside the call. Converges in one extra dispatch
-        // because children of a grown parent are bounded by the new
-        // larger inner, so `desired` can only stay the same or shrink
-        // — never exceed `new_available` to trigger a third pass.
+        // Re-dispatch when desired exceeded available — happens under
+        // flex semantics only when a rigid descendant pushes desired
+        // past available: `intrinsic_min > available`, an explicit
+        // `min_size`, or a `Sizing::Fixed(v)` parent (filtered out
+        // below — Fixed doesn't read `available` so pass 2 would
+        // measure the same thing). Pass 1 measured children against
+        // the pre-grow `inner_avail`, so e.g. a wrap-stack inside the
+        // grown parent packed into the smaller width and produced
+        // more rows than fit. Pass 2 re-measures with the grown
+        // outer so children's internal layout (wrap row count, Fill
+        // distribution) reflects the slot they'll actually arrange
+        // into.
         //
-        // `Sizing::Fixed` short-circuits: its `outer` doesn't read
-        // `available`, so pass 2 would produce identical `inner_avail`
-        // and is pure waste.
+        // Convergence: pass-2 desired equals pass-1 desired by
+        // construction — both pin to the floor that triggered the
+        // grow (`intrinsic_min` / `min_size` / Fixed value). The
+        // clamp below is defensive against a hypothetical future
+        // driver whose pass-2 content grows further; it's a no-op
+        // under current semantics. Pinned by
+        // `cross_driver_tests::convergence`.
         //
-        // Cost: O(grown subtree) on frames a grow happens; the measure
-        // cache absorbs unaffected descendants on subsequent frames.
+        // Cost: O(grown subtree) on frames a grow happens; the
+        // measure cache absorbs unaffected descendants on subsequent
+        // frames.
         let grew_w = available.w.is_finite()
             && desired.w > available.w
             && !matches!(style.size.w, Sizing::Fixed(_));
@@ -335,16 +343,8 @@ impl LayoutEngine {
                 min_size,
                 max_size,
             );
-            // Non-monotonic layouts (wrap-stacks; Fill distributions
-            // where a descendant's hug grows when given more space)
-            // can produce `final_desired > new_available` even after a
-            // second pass. The original convergence guarantee assumed
-            // monotonicity which doesn't hold there. Clamp to the
-            // parent's already-committed slot — any overflow renders
-            // inside and is tolerated by downstream
-            // (cascade/composer/backend), same posture the run loop
-            // takes for root-vs-surface overflow. Pinned by
-            // `cross_driver_tests::convergence`.
+            // Defensive clamp: see the "Convergence" paragraph above.
+            // No-op under current semantics; here as a safety net.
             Size::new(
                 final_desired.w.min(new_available.w),
                 final_desired.h.min(new_available.h),
