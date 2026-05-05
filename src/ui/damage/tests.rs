@@ -46,7 +46,7 @@ fn first_frame_marks_every_node_dirty() {
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
-    assert_eq!(ui.damage.dirty.len(), ui.tree.node_count());
+    assert_eq!(ui.damage.dirty.len(), ui.tree.layout.len());
     assert!(ui.damage.rect.is_some());
 }
 

@@ -33,8 +33,12 @@ fn clip_flag_is_recorded_on_panel_node() {
     });
     ui.end_frame();
 
-    assert!(!ui.tree.paint(default_panel.unwrap()).attrs.is_clip());
-    assert!(ui.tree.paint(opt_in.unwrap()).attrs.is_clip());
+    assert!(
+        !ui.tree.paint[default_panel.unwrap().index()]
+            .attrs
+            .is_clip()
+    );
+    assert!(ui.tree.paint[opt_in.unwrap().index()].attrs.is_clip());
 }
 
 #[test]

@@ -101,7 +101,10 @@ pub(crate) fn measure(
         // height comes from non-Fill children only — a Fill-on-cross
         // child measured at `cross_avail` would otherwise inflate
         // `line_cross` to the parent's full cross.
-        let x = if matches!(axis.cross_sizing(tree.layout(c).size), Sizing::Fill(_)) {
+        let x = if matches!(
+            axis.cross_sizing(tree.layout[c.index()].size),
+            Sizing::Fill(_)
+        ) {
             0.0
         } else {
             axis.cross(d)
@@ -208,7 +211,7 @@ pub(crate) fn arrange(
                 main_cursor += eff_gap;
             }
             let d = layout.scratch.desired[c.index()];
-            let s = *tree.layout(c);
+            let s = tree.layout[c.index()];
             // Cross axis: each child placed within the line's cross
             // extent. Same rule as Stack cross — Fill stretches to
             // line_cross, Hug aligns per child.
@@ -256,7 +259,10 @@ pub(crate) fn arrange(
         // contribute to `line_cross`. Without this the row stretches
         // to the WrapStack's inner cross (because Fill measured to
         // `cross_avail`), defeating per-row hug semantics.
-        let x = if matches!(axis.cross_sizing(tree.layout(c).size), Sizing::Fill(_)) {
+        let x = if matches!(
+            axis.cross_sizing(tree.layout[c.index()].size),
+            Sizing::Fill(_)
+        ) {
             0.0
         } else {
             axis.cross(d)

@@ -77,7 +77,7 @@ pub(crate) fn compute(
         return 0.0;
     }
 
-    let style = *tree.layout(node);
+    let style = tree.layout[node.index()];
     let extras = tree.read_extras(node);
 
     let sizing = axis.main_sizing(style.size);

@@ -29,7 +29,7 @@ pub(crate) fn measure(
     let mut count = 0usize;
     for c in tree.children_active(node) {
         count += 1;
-        let l = tree.layout(c);
+        let l = tree.layout[c.index()];
         if let Sizing::Fill(w) = axis.main_sizing(l.size) {
             total_weight += w;
             continue;
@@ -64,7 +64,7 @@ pub(crate) fn measure(
             0.0
         };
         for c in tree.children_active(node) {
-            let Sizing::Fill(w) = axis.main_sizing(tree.layout(c).size) else {
+            let Sizing::Fill(w) = axis.main_sizing(tree.layout[c.index()].size) else {
                 continue;
             };
             let main_avail = if main_finite {
@@ -104,7 +104,7 @@ pub(crate) fn arrange(
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
     for c in tree.children_active(node) {
-        let l = tree.layout(c);
+        let l = tree.layout[c.index()];
         if let Sizing::Fill(weight) = axis.main_sizing(l.size) {
             total_weight += weight;
         } else {
@@ -150,7 +150,7 @@ pub(crate) fn arrange(
             }
             Child::Active(c) => c,
         };
-        let s = *tree.layout(c);
+        let s = tree.layout[c.index()];
         let d = layout.scratch.desired[c.index()];
         if !first {
             cursor += effective_gap;

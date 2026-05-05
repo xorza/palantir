@@ -61,7 +61,7 @@ pub(crate) struct LayoutScratch {
 
 impl LayoutScratch {
     fn resize_for(&mut self, tree: &Tree) {
-        let n = tree.node_count();
+        let n = tree.layout.len();
         self.desired.clear();
         self.desired.resize(n, Size::ZERO);
         self.intrinsics.clear();
@@ -193,7 +193,7 @@ impl LayoutEngine {
         self.scratch.resize_for(tree);
         self.result.resize_for(tree);
         // No root ⇒ no widgets recorded this frame. Result is sized to
-        // `tree.node_count() == 0`, so downstream consumers walk zero
+        // `tree.layout.len() == 0`, so downstream consumers walk zero
         // entries — return the freshly-cleared result without measuring.
         if let Some(root) = root {
             // Root slot grows past the surface when measured content
@@ -231,7 +231,7 @@ impl LayoutEngine {
             self.scratch.desired[node.index()] = Size::ZERO;
             return Size::ZERO;
         }
-        let style = *tree.layout(node);
+        let style = tree.layout[node.index()];
 
         // Phase-2 measure-cache short-circuit: any node. Same
         // `WidgetId`, same rolled subtree hash, same quantized
@@ -451,7 +451,7 @@ impl LayoutEngine {
             zero_subtree(self, tree, node, slot.min);
             return;
         }
-        let style = *tree.layout(node);
+        let style = tree.layout[node.index()];
         let mode = style.mode;
 
         let rendered = slot.deflated_by(style.margin);
