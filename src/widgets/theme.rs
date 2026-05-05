@@ -4,6 +4,29 @@ use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
 
+// Default palette: Ayu Mirage High Contrast. Mirrors
+// `assets/reference-palette.toml` — that file is the hand-edited source
+// of truth; these consts are the compile-time copy used to build the
+// framework defaults. Keep in sync when the palette changes.
+mod palette {
+    use crate::primitives::color::Color;
+    // backgrounds
+    pub const BG: Color = Color::hex(0x252525);
+    pub const SURFACE: Color = Color::hex(0x343434);
+    pub const ELEM: Color = Color::hex(0x343434);
+    pub const ELEM_HOVER: Color = Color::hex(0x3e3e3e);
+    pub const ELEM_ACTIVE: Color = Color::hex(0x4b4b4b);
+    // borders
+    pub const BORDER: Color = Color::hex(0x363636);
+    pub const BORDER_FOCUSED: Color = Color::hex(0x105577);
+    // text
+    pub const TEXT: Color = Color::hex(0xe2dfd3);
+    pub const TEXT_MUTED: Color = Color::hex(0xaaaaa8);
+    pub const TEXT_DISABLED: Color = Color::hex(0x878a8d);
+    // accent
+    pub const ACCENT: Color = Color::hex(0x9adbfb);
+}
+
 /// Paint data shared by container widgets (`Frame`, `Panel`, `Grid`)
 /// and per-state widget Visuals: fill colour, optional stroke, and
 /// corner radii. Default is transparent fill / no stroke / zero radius
@@ -68,7 +91,7 @@ impl Default for TextStyle {
     fn default() -> Self {
         Self {
             font_size_px: 16.0,
-            color: Color::WHITE,
+            color: palette::TEXT,
             line_height_mult: crate::text::LINE_HEIGHT_MULT,
         }
     }
@@ -148,14 +171,22 @@ pub struct ScrollbarTheme {
 
 impl Default for ScrollbarTheme {
     fn default() -> Self {
+        // Ayu doesn't define scrollbar colors directly. Use TEXT_MUTED
+        // at decreasing translucency for idle / hover / active so the
+        // bar reads as a soft overlay matching the palette's
+        // muted-text gray rather than pure black.
+        let thumb = |alpha: f32| {
+            let m = palette::TEXT_MUTED;
+            Color::linear_rgba(m.r, m.g, m.b, alpha)
+        };
         Self {
             width: 8.0,
             gap: 4.0,
             min_thumb_px: 24.0,
             track: Color::TRANSPARENT,
-            thumb: Color::rgba(0.0, 0.0, 0.0, 0.55),
-            thumb_hover: Color::rgba(0.0, 0.0, 0.0, 0.7),
-            thumb_active: Color::rgba(0.0, 0.0, 0.0, 0.85),
+            thumb: thumb(0.45),
+            thumb_hover: thumb(0.65),
+            thumb_active: thumb(0.85),
             radius: 4.0,
         }
     }
@@ -205,29 +236,33 @@ impl Default for TextEditTheme {
     fn default() -> Self {
         let radius = Corners::all(4.0);
         let normal_bg = Background {
-            fill: Color::rgb(0.10, 0.12, 0.16),
+            fill: palette::SURFACE,
             stroke: Some(Stroke {
                 width: 1.0,
-                color: Color::rgba(1.0, 1.0, 1.0, 0.10),
+                color: palette::BORDER,
             }),
             radius,
         };
         let focused_bg = Background {
-            fill: Color::rgb(0.13, 0.16, 0.22),
+            fill: palette::SURFACE,
             stroke: Some(Stroke {
                 width: 1.5,
-                color: Color::rgb(0.30, 0.52, 0.92),
+                color: palette::BORDER_FOCUSED,
             }),
             radius,
         };
         let disabled_bg = Background {
-            fill: Color::rgb(0.10, 0.12, 0.16),
+            fill: palette::BG,
             stroke: Some(Stroke {
                 width: 1.0,
-                color: Color::rgba(1.0, 1.0, 1.0, 0.05),
+                color: palette::BORDER,
             }),
             radius,
         };
+        // Selection = accent at ~25% alpha — readable wash that doesn't
+        // obscure the glyphs underneath.
+        let acc = palette::ACCENT;
+        let selection = Color::linear_rgba(acc.r, acc.g, acc.b, 0.25);
         Self {
             normal: TextEditStateStyle {
                 background: Some(normal_bg),
@@ -239,12 +274,12 @@ impl Default for TextEditTheme {
             },
             disabled: TextEditStateStyle {
                 background: Some(disabled_bg),
-                text: Some(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.45))),
+                text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
             },
-            placeholder: Color::rgba(1.0, 1.0, 1.0, 0.40),
-            caret: Color::WHITE,
+            placeholder: palette::TEXT_MUTED,
+            caret: palette::TEXT,
             caret_width: 1.5,
-            selection: Color::rgba(0.30, 0.52, 0.92, 0.40),
+            selection,
         }
     }
 }
@@ -276,11 +311,12 @@ pub struct ButtonTheme {
 
 impl Default for ButtonTheme {
     fn default() -> Self {
-        // Each state's Background carries the historical 4 px radius.
-        // `text: None` on normal/hovered/pressed means "use the global
-        // text style" — bumping `theme.text.color` automatically
-        // recolors active button labels. Disabled has its own faded
-        // text since the global default is opaque.
+        // Buttons map to the palette's clickable-surface family:
+        // ELEM / ELEM_HOVER / ELEM_ACTIVE. Disabled keeps the same
+        // ELEM fill but swaps text to TEXT_DISABLED. `text: None` on
+        // active states means "inherit Theme::text" — bumping
+        // `theme.text.color` recolors active button labels. The
+        // historical 4 px radius is retained.
         let bg = |fill: Color| -> Option<Background> {
             Some(Background {
                 fill,
@@ -290,20 +326,20 @@ impl Default for ButtonTheme {
         };
         Self {
             normal: ButtonStateStyle {
-                background: bg(Color::rgb(0.20, 0.40, 0.80)),
+                background: bg(palette::ELEM),
                 text: None,
             },
             hovered: ButtonStateStyle {
-                background: bg(Color::rgb(0.30, 0.52, 0.92)),
+                background: bg(palette::ELEM_HOVER),
                 text: None,
             },
             pressed: ButtonStateStyle {
-                background: bg(Color::rgb(0.10, 0.28, 0.66)),
+                background: bg(palette::ELEM_ACTIVE),
                 text: None,
             },
             disabled: ButtonStateStyle {
-                background: bg(Color::rgb(0.22, 0.26, 0.32)),
-                text: Some(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.45))),
+                background: bg(palette::ELEM),
+                text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
             },
         }
     }
