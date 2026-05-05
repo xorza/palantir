@@ -77,6 +77,15 @@ pub enum LayoutMode {
     /// height its parent gave it. Clipping + a `transform` set by the
     /// widget builder pan the children inside the viewport.
     ScrollV,
+    /// Horizontal scroll viewport — mirror of [`Self::ScrollV`].
+    /// Children flow left-to-right under `available.w = INF`.
+    ScrollH,
+    /// Two-axis scroll viewport. Lays out children like a `ZStack` but
+    /// measures them with both axes unbounded, so children report their
+    /// natural 2D extent. The widget pans on both axes via `transform`.
+    /// `Sizing::Fill` children are not meaningful here (no defined
+    /// content axis); use `Hug` or `Fixed`.
+    ScrollXY,
 }
 
 /// Rarely-set fields lifted out of `Element` so they don't bloat every
