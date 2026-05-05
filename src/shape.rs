@@ -62,7 +62,6 @@ pub enum Shape {
         /// know about widget conventions, and two `Shape::Text` runs at
         /// the same font-size but different leading correctly produce
         /// distinct cached shaped buffers (via [`TextCacheKey::lh_q`]).
-        // todo option?
         line_height_px: f32,
         wrap: TextWrap,
         align: Align,
