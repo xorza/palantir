@@ -18,7 +18,7 @@ use std::borrow::Cow;
 /// override it.
 ///
 /// Used as the leaf type of [`ButtonTheme`]'s four state slots.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ButtonStateStyle {
     pub background: Option<Background>,
     pub text: Option<TextStyle>,
@@ -27,7 +27,7 @@ pub struct ButtonStateStyle {
 /// Four-state button theme. The leaf type ([`ButtonStateStyle`]) lives next
 /// to it; widget reads `theme.{normal,hovered,pressed,disabled}` based
 /// on the live response state and `Element::disabled`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ButtonTheme {
     pub normal: ButtonStateStyle,
     pub hovered: ButtonStateStyle,
@@ -111,7 +111,10 @@ impl Button {
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
-        let style = self.style.unwrap_or(ui.theme.button);
+        let style = self
+            .style
+            .clone()
+            .unwrap_or_else(|| ui.theme.button.clone());
         let v = if self.element.disabled {
             style.disabled
         } else {
@@ -139,7 +142,7 @@ impl Button {
             // Per-state text style; `None` falls through to the global
             // `Theme::text`, so an app changing `theme.text.color`
             // moves every button label that didn't override it.
-            let text = v.text.unwrap_or(ui.theme.text);
+            let text = v.text.unwrap_or_else(|| ui.theme.text.clone());
             ui.tree.add_shape(
                 resp.node,
                 Shape::Text {

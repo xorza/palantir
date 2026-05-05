@@ -1081,7 +1081,7 @@ fn line_height_override_changes_caret_rect_height() {
             let mut e = TextEdit::new(&mut buf)
                 .with_id("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
-            if let Some(s) = style {
+            if let Some(s) = style.clone() {
                 e = e.style(s);
             }
             leaf = Some(e.show(ui).node);
@@ -1094,7 +1094,7 @@ fn line_height_override_changes_caret_rect_height() {
             let mut e = TextEdit::new(&mut buf)
                 .with_id("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
-            if let Some(s) = style {
+            if let Some(s) = style.clone() {
                 e = e.style(s);
             }
             leaf = Some(e.show(ui).node);
