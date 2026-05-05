@@ -2,11 +2,11 @@ use crate::layout::types::sense::Sense;
 use crate::primitives::size::Size;
 use crate::primitives::transform::TranslateScale;
 use crate::tree::NodeId;
-use crate::tree::element::{Configure, Element, LayoutMode};
+use crate::tree::element::{Configure, Element, LayoutMode, ScrollAxes};
 use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
-use glam::{BVec2, Vec2};
+use glam::Vec2;
 
 /// One scroll widget recorded this frame: the stable `WidgetId` keying
 /// its [`ScrollState`] row plus the per-frame `NodeId` for reading
@@ -46,33 +46,37 @@ pub(crate) struct ScrollState {
 /// clamp.
 pub struct Scroll {
     element: Element,
-    /// Mask of axes that consume scroll deltas. Single-axis scrolls
-    /// keep the off-axis offset at 0 even if a delta arrives on it.
-    pan: BVec2,
 }
 
 impl Scroll {
     #[track_caller]
     pub fn vertical() -> Self {
-        Self::with_mode(LayoutMode::ScrollV, BVec2::new(false, true))
+        Self::with_axes(ScrollAxes::Vertical)
     }
 
     #[track_caller]
     pub fn horizontal() -> Self {
-        Self::with_mode(LayoutMode::ScrollH, BVec2::new(true, false))
+        Self::with_axes(ScrollAxes::Horizontal)
     }
 
     #[track_caller]
     pub fn both() -> Self {
-        Self::with_mode(LayoutMode::ScrollXY, BVec2::TRUE)
+        Self::with_axes(ScrollAxes::Both)
     }
 
     #[track_caller]
-    fn with_mode(mode: LayoutMode, pan: BVec2) -> Self {
-        let mut element = Element::new_auto(mode);
+    fn with_axes(axes: ScrollAxes) -> Self {
+        let mut element = Element::new_auto(LayoutMode::Scroll(axes));
         element.clip = true;
         element.sense = Sense::Scroll;
-        Self { element, pan }
+        Self { element }
+    }
+
+    fn axes(&self) -> ScrollAxes {
+        match self.element.mode {
+            LayoutMode::Scroll(a) => a,
+            _ => unreachable!("Scroll widget must carry LayoutMode::Scroll"),
+        }
     }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
@@ -84,14 +88,15 @@ impl Scroll {
         // next frame's record starts in-bounds. Off-axis offsets stay
         // at 0 for single-axis scrolls.
         let delta = ui.input.scroll_delta_for(id);
+        let pan = self.axes().pan_mask();
         let row = ui.state_mut::<ScrollState>(id);
         let max_x = (row.content.w - row.viewport.w).max(0.0);
         let max_y = (row.content.h - row.viewport.h).max(0.0);
         let mut offset = row.offset;
-        if self.pan.x {
+        if pan.x {
             offset.x = (offset.x + delta.x).clamp(0.0, max_x);
         }
-        if self.pan.y {
+        if pan.y {
             offset.y = (offset.y + delta.y).clamp(0.0, max_y);
         }
         row.offset = offset;

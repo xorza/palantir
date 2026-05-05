@@ -113,6 +113,11 @@ pub(crate) struct CachedSubtree<'a> {
     pub(crate) desired: &'a [Size],
     pub(crate) text_shapes: &'a [Option<ShapedText>],
     pub(crate) available_q: &'a [AvailableKey],
+    /// Per-node measured content extent for `LayoutMode::Scroll`
+    /// descendants, `Size::ZERO` elsewhere. Same indexing shape as
+    /// `desired`; restored verbatim on a hit so `Ui::end_frame`'s
+    /// per-scroll clamp sees up-to-date numbers without re-measuring.
+    pub(crate) scroll_content: &'a [Size],
     /// Per-grid hug arrays for every `LayoutMode::Grid` descendant
     /// of the subtree, packed in pre-order. Each grid contributes
     /// four arrays in fixed order — cols.max, cols.min, rows.max,
@@ -155,6 +160,12 @@ pub(crate) struct MeasureCache {
     /// visits, so descendants must remain correct even when the
     /// measure pass short-circuits and never visits them.
     pub(crate) available: Vec<AvailableKey>,
+    /// Parallel to `desired`. Same indexing. Per-node measured
+    /// content extent for `LayoutMode::Scroll` nodes (zero for
+    /// non-scroll). Snapshotted so a cache hit can restore the
+    /// `LayoutResult.scroll_content` slice for the subtree without
+    /// re-running the underlying stack/zstack measure.
+    pub(crate) scroll_content: Vec<Size>,
     /// Per-grid hug arrays for every `LayoutMode::Grid` descendant
     /// of every cached subtree, packed in pre-order. Snapshot
     /// records `(hugs_start, hugs_len)` into this arena. Lets a
@@ -190,7 +201,8 @@ impl MeasureCache {
             root: self.desired.items[nodes.start],
             desired: &self.desired.items[nodes.clone()],
             text_shapes: &self.text[nodes.clone()],
-            available_q: &self.available[nodes],
+            available_q: &self.available[nodes.clone()],
+            scroll_content: &self.scroll_content[nodes],
             hugs: &self.hugs.items[snap.hugs.range()],
         })
     }
@@ -203,6 +215,7 @@ impl MeasureCache {
     /// reaches steady state, since `subtree_hash` includes structure
     /// (same hash → same subtree size). Size mismatches mark the old
     /// range as garbage and append a fresh range to the arena.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn write_subtree(
         &mut self,
         wid: WidgetId,
@@ -210,10 +223,12 @@ impl MeasureCache {
         desired: &[Size],
         text_shapes: &[Option<ShapedText>],
         available_qs: &[AvailableKey],
+        scroll_contents: &[Size],
         hugs: &[f32],
     ) {
         assert_eq!(desired.len(), text_shapes.len());
         assert_eq!(desired.len(), available_qs.len());
+        assert_eq!(desired.len(), scroll_contents.len());
         assert!(
             !available_qs.is_empty(),
             "snapshot must include the root's own per-node available_q",
@@ -234,7 +249,8 @@ impl MeasureCache {
             prev.available_q = available_qs[0];
             self.desired.items[nodes.clone()].copy_from_slice(desired);
             self.text[nodes.clone()].copy_from_slice(text_shapes);
-            self.available[nodes].copy_from_slice(available_qs);
+            self.available[nodes.clone()].copy_from_slice(available_qs);
+            self.scroll_content[nodes].copy_from_slice(scroll_contents);
             self.hugs.items[hugs_range].copy_from_slice(hugs);
             return;
         }
@@ -250,6 +266,7 @@ impl MeasureCache {
         self.desired.items.extend_from_slice(desired);
         self.text.extend_from_slice(text_shapes);
         self.available.extend_from_slice(available_qs);
+        self.scroll_content.extend_from_slice(scroll_contents);
         let hugs_span = Span::new(self.hugs.items.len() as u32, new_hugs_len);
         self.hugs.items.extend_from_slice(hugs);
         self.desired.acquire(new_len);
@@ -289,13 +306,15 @@ impl MeasureCache {
         let mut new_desired: Vec<Size> = Vec::with_capacity(self.desired.live);
         let mut new_text: Vec<Option<ShapedText>> = Vec::with_capacity(self.desired.live);
         let mut new_avail: Vec<AvailableKey> = Vec::with_capacity(self.desired.live);
+        let mut new_scroll: Vec<Size> = Vec::with_capacity(self.desired.live);
         let mut new_hugs: Vec<f32> = Vec::with_capacity(self.hugs.live);
         for snap in self.snapshots.values_mut() {
             let nodes = snap.nodes.range();
             snap.nodes.start = new_desired.len() as u32;
             new_desired.extend_from_slice(&self.desired.items[nodes.clone()]);
             new_text.extend_from_slice(&self.text[nodes.clone()]);
-            new_avail.extend_from_slice(&self.available[nodes]);
+            new_avail.extend_from_slice(&self.available[nodes.clone()]);
+            new_scroll.extend_from_slice(&self.scroll_content[nodes]);
             let hugs = snap.hugs.range();
             snap.hugs.start = new_hugs.len() as u32;
             new_hugs.extend_from_slice(&self.hugs.items[hugs]);
@@ -303,6 +322,7 @@ impl MeasureCache {
         self.desired.items = new_desired;
         self.text = new_text;
         self.available = new_avail;
+        self.scroll_content = new_scroll;
         self.hugs.items = new_hugs;
     }
 }

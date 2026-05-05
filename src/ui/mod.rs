@@ -134,7 +134,7 @@ impl Ui {
         // up-to-date numbers; the current frame's pan already used last
         // frame's clamp.
         for s in self.scroll_nodes.iter().copied() {
-            debug_assert!(
+            assert!(
                 s.node.index() < layout.rect.len(),
                 "scroll_nodes entry references node {} past tree length {}",
                 s.node.index(),

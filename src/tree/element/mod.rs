@@ -71,21 +71,35 @@ pub enum LayoutMode {
     /// span via `grid`. Cap is 65 535 grids per frame (`grid_defs` is cleared
     /// each frame).
     Grid(u16),
-    /// Vertical scroll viewport. Lays out children like a `VStack` but
-    /// measures them with `available.h = INF`, so children report their
-    /// full natural height while the scroll node itself takes only the
-    /// height its parent gave it. Clipping + a `transform` set by the
-    /// widget builder pan the children inside the viewport.
-    ScrollV,
-    /// Horizontal scroll viewport — mirror of [`Self::ScrollV`].
-    /// Children flow left-to-right under `available.w = INF`.
-    ScrollH,
-    /// Two-axis scroll viewport. Lays out children like a `ZStack` but
-    /// measures them with both axes unbounded, so children report their
-    /// natural 2D extent. The widget pans on both axes via `transform`.
-    /// `Sizing::Fill` children are not meaningful here (no defined
-    /// content axis); use `Hug` or `Fixed`.
-    ScrollXY,
+    /// Scroll viewport. Pan + child layout determined by [`ScrollAxes`]:
+    /// `Vertical`/`Horizontal` use a stack on that axis with the panned
+    /// axis measured as `INF`; `Both` uses a `ZStack` with both axes
+    /// unbounded. The widget builder sets a `transform` to pan and
+    /// enables `clip` so children render within the viewport rect.
+    Scroll(ScrollAxes),
+}
+
+/// Which axes a [`LayoutMode::Scroll`] viewport pans (and lays its
+/// children out along). Single-axis variants stack children on the
+/// panned axis; `Both` overlays them like a `ZStack`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ScrollAxes {
+    Vertical,
+    Horizontal,
+    Both,
+}
+
+impl ScrollAxes {
+    /// Mask of axes that consume scroll deltas. `Both` ⇒ `(true, true)`,
+    /// `Vertical` ⇒ `(false, true)`, `Horizontal` ⇒ `(true, false)`.
+    #[inline]
+    pub(crate) fn pan_mask(self) -> glam::BVec2 {
+        match self {
+            Self::Vertical => glam::BVec2::new(false, true),
+            Self::Horizontal => glam::BVec2::new(true, false),
+            Self::Both => glam::BVec2::TRUE,
+        }
+    }
 }
 
 /// Rarely-set fields lifted out of `Element` so they don't bloat every
