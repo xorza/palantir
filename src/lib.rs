@@ -40,6 +40,7 @@ pub use widgets::button::{Button, ButtonTheme};
 pub use widgets::frame::Frame;
 pub use widgets::grid::Grid;
 pub use widgets::panel::Panel;
+pub use widgets::scroll::Scroll;
 pub use widgets::styled::{Background, Styled};
 pub use widgets::text::Text;
 pub use widgets::theme::Theme;

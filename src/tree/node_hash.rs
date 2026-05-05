@@ -114,6 +114,7 @@ fn hash_layout_mode(h: &mut Hasher, m: LayoutMode) {
         LayoutMode::ZStack => 5,
         LayoutMode::Canvas => 6,
         LayoutMode::Grid(idx) => 7 | ((idx as u32) << 16),
+        LayoutMode::ScrollV => 8,
     };
     h.write_u32(packed);
 }

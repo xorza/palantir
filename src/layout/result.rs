@@ -20,6 +20,12 @@ pub(crate) struct LayoutResult {
     /// encode cache (and any other consumer keyed on the same
     /// `(subtree_hash, available_q)` shape as `MeasureCache`).
     pub(crate) available_q: Vec<AvailableKey>,
+    /// Measured content extent on the scroll axis for each
+    /// `LayoutMode::ScrollV` node (sum of children's heights + gaps).
+    /// Read by `Ui::end_frame` to refresh per-scroll-widget state rows
+    /// for next frame's offset clamp. `0.0` for non-scroll nodes — they
+    /// don't read this column.
+    pub(crate) scroll_content_h: Vec<f32>,
 }
 
 /// Result of shaping one `Shape::Text` during the measure pass. `Tree`
@@ -39,6 +45,8 @@ impl LayoutResult {
         self.text_shapes.resize(n, None);
         self.available_q.clear();
         self.available_q.resize(n, AVAIL_UNSET);
+        self.scroll_content_h.clear();
+        self.scroll_content_h.resize(n, 0.0);
     }
 
     /// Per-node quantized `available` size last passed to this node's
