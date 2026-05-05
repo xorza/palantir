@@ -37,7 +37,7 @@ pub use tree::element::{Configure, Element, LayoutMode};
 pub use tree::widget_id::WidgetId;
 pub use ui::Ui;
 pub use widgets::Response;
-pub use widgets::button::{Button, ButtonStateStyle, ButtonTheme};
+pub use widgets::button::Button;
 pub use widgets::frame::Frame;
 pub use widgets::grid::Grid;
 pub use widgets::panel::Panel;
@@ -45,4 +45,7 @@ pub use widgets::scroll::Scroll;
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
 pub use widgets::theme::Background;
-pub use widgets::theme::{ScrollbarTheme, TextEditStateStyle, TextEditTheme, TextStyle, Theme};
+pub use widgets::theme::{
+    ButtonStateStyle, ButtonTheme, ScrollbarTheme, TextEditStateStyle, TextEditTheme, TextStyle,
+    Theme,
+};

@@ -1,74 +1,10 @@
 use crate::layout::types::{align::Align, sense::Sense};
-use crate::primitives::{color::Color, corners::Corners};
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::theme::{Background, TextStyle};
+use crate::widgets::theme::ButtonTheme;
 use crate::widgets::{Response, frame::Frame};
 use std::borrow::Cow;
-
-/// Paint settings for one button state — `normal`, `hovered`,
-/// `pressed`, or `disabled`. Each `Option` field follows the same rule:
-/// `Some(x)` overrides; `None` inherits the framework default for that
-/// field. `background = None` inherits [`Background::default`] (a
-/// transparent / no-stroke / zero-radius background, which paints
-/// nothing — `Ui::add_shape` filters no-op shapes). `text = None`
-/// inherits [`crate::Theme::text`] (the global text style), so an app
-/// changing `theme.text.color` moves every button label that didn't
-/// override it.
-///
-/// Used as the leaf type of [`ButtonTheme`]'s four state slots.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct ButtonStateStyle {
-    pub background: Option<Background>,
-    pub text: Option<TextStyle>,
-}
-
-/// Four-state button theme. The leaf type ([`ButtonStateStyle`]) lives next
-/// to it; widget reads `theme.{normal,hovered,pressed,disabled}` based
-/// on the live response state and `Element::disabled`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ButtonTheme {
-    pub normal: ButtonStateStyle,
-    pub hovered: ButtonStateStyle,
-    pub pressed: ButtonStateStyle,
-    pub disabled: ButtonStateStyle,
-}
-
-impl Default for ButtonTheme {
-    fn default() -> Self {
-        // Each state's Background carries the historical 4 px radius.
-        // `text: None` on normal/hovered/pressed means "use the global
-        // text style" — bumping `theme.text.color` automatically
-        // recolors active button labels. Disabled has its own faded
-        // text since the global default is opaque.
-        let bg = |fill: Color| -> Option<Background> {
-            Some(Background {
-                fill,
-                stroke: None,
-                radius: Corners::all(4.0),
-            })
-        };
-        Self {
-            normal: ButtonStateStyle {
-                background: bg(Color::rgb(0.20, 0.40, 0.80)),
-                text: None,
-            },
-            hovered: ButtonStateStyle {
-                background: bg(Color::rgb(0.30, 0.52, 0.92)),
-                text: None,
-            },
-            pressed: ButtonStateStyle {
-                background: bg(Color::rgb(0.10, 0.28, 0.66)),
-                text: None,
-            },
-            disabled: ButtonStateStyle {
-                background: bg(Color::rgb(0.22, 0.26, 0.32)),
-                text: Some(TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.45))),
-            },
-        }
-    }
-}
 
 pub struct Button {
     element: Element,
