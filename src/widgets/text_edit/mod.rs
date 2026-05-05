@@ -86,7 +86,7 @@ impl<'a> TextEdit<'a> {
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         let is_focused = ui.input.focused == Some(id);
-        let theme = self.style.unwrap_or(ui.theme.text_edit);
+        let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
         // Pick the per-state style. Disabled wins over focus — a
         // disabled editor that still happens to hold focus paints with
         // its disabled visuals (mirrors Button).
@@ -100,7 +100,7 @@ impl<'a> TextEdit<'a> {
         // `None` text inherits the global `Theme::text` (same rule as
         // Button's per-state `text`). Apps changing `theme.text.color`
         // recolor every editor that didn't override.
-        let text_style = state.text.unwrap_or(ui.theme.text);
+        let text_style = state.text.unwrap_or_else(|| ui.theme.text.clone());
         let font_size = text_style.font_size_px;
         let line_height_mult = text_style.line_height_mult;
         // The renderer deflates by `element.padding` when laying out

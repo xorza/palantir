@@ -73,7 +73,7 @@ impl Text {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        let style = self.style.unwrap_or(ui.theme.text);
+        let style = self.style.unwrap_or_else(|| ui.theme.text.clone());
         let line_height_px = style.line_height_for(style.font_size_px);
         let node = ui.node(self.element, |ui| {
             ui.add_shape(Shape::Text {

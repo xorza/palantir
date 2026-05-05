@@ -39,9 +39,6 @@ pub struct Theme {
     pub button: ButtonTheme,
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
-    /// Global text defaults (font size, color, leading) that every
-    /// text-rendering widget falls back to when its builder didn't set
-    /// a per-widget override. See [`TextStyle`].
     pub text: TextStyle,
 }
 
@@ -49,7 +46,7 @@ pub struct Theme {
 /// whole "text look" with one assignment, and so future axes (font
 /// family, weight, italic, letter-spacing) extend a single struct
 /// rather than scattering across [`Theme`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this
     /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
@@ -141,8 +138,10 @@ pub struct ScrollbarTheme {
     pub thumb: Color,
     /// Thumb fill on hover. Read once hover-state on bar leaves lands
     /// (v1.1, alongside drag).
+    #[allow(dead_code)] // first reader is the v1.1 drag/hover branch
     pub thumb_hover: Color,
     /// Thumb fill while drag-captured. Read once drag-to-pan lands.
+    #[allow(dead_code)] // first reader is the v1.1 drag/hover branch
     pub thumb_active: Color,
     /// Corner radius applied to track and thumb. `width / 2` = pill.
     pub radius: f32,
@@ -171,7 +170,7 @@ impl Default for ScrollbarTheme {
 /// nothing — `Ui::add_shape` filters no-op shapes). `text = None`
 /// inherits [`Theme::text`], so an app changing `theme.text.color`
 /// moves every editor's buffer text along with every button label.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct TextEditStateStyle {
     pub background: Option<Background>,
     pub text: Option<TextStyle>,
@@ -186,7 +185,7 @@ pub struct TextEditStateStyle {
 /// any plausible v1.x design (the caret only paints when focused, the
 /// placeholder only when the buffer is empty), so giving them per-state
 /// slots would be ceremony.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct TextEditTheme {
     pub normal: TextEditStateStyle,
     pub focused: TextEditStateStyle,
