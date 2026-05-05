@@ -1,9 +1,11 @@
 use crate::layout::types::{sense::Sense, sizing::Sizing};
 use crate::primitives::color::Color;
+use crate::primitives::corners::Corners;
 use crate::shape::Shape;
 use crate::support::testing::{click_at, ui_at};
 use crate::tree::element::Configure;
-use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -15,8 +17,11 @@ fn frame_paints_a_single_rounded_rect() {
             Frame::new()
                 .with_id("decoration")
                 .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
-                .fill(Color::rgb(0.2, 0.4, 0.8))
-                .radius(6.0)
+                .background(Background {
+                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    radius: Corners::all(6.0),
+                    ..Default::default()
+                })
                 .show(ui)
                 .node,
         );

@@ -13,6 +13,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::support::testing::ui_at;
 use crate::tree::element::Configure;
+use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -249,7 +250,6 @@ fn root_grows_past_surface_when_content_exceeds_it() {
 #[test]
 fn wrap_toolbar_packs_at_post_grow_width() {
     use crate::primitives::color::Color;
-    use crate::widgets::styled::Styled;
     let mut ui = ui_at(UVec2::new(150, 800));
     let mut toolbar_node = None;
     Panel::vstack()
@@ -270,7 +270,10 @@ fn wrap_toolbar_packs_at_post_grow_width() {
                             Frame::new()
                                 .with_id(("btn", i))
                                 .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))
-                                .fill(Color::rgb(0.3, 0.3, 0.5))
+                                .background(Background {
+                                    fill: Color::rgb(0.3, 0.3, 0.5),
+                                    ..Default::default()
+                                })
                                 .show(ui);
                         }
                     })
@@ -322,7 +325,6 @@ fn two_hug_cols_section_height_matches_post_grow_text() {
     use crate::layout::types::track::Track;
     use crate::primitives::color::Color;
     use crate::widgets::grid::Grid;
-    use crate::widgets::styled::Styled;
     use crate::widgets::text::Text;
     use std::rc::Rc;
     let mut ui = crate::support::testing::ui_with_text(UVec2::new(200, 1100));
@@ -352,7 +354,10 @@ fn two_hug_cols_section_height_matches_post_grow_text() {
                                     .size((Sizing::FILL, Sizing::Hug))
                                     .padding(8.0)
                                     .gap(6.0)
-                                    .fill(Color::rgb(0.16, 0.18, 0.22))
+                                    .background(Background {
+                                        fill: Color::rgb(0.16, 0.18, 0.22),
+                                        ..Default::default()
+                                    })
                                     .show(ui, |ui| {
                                         Text::new("two Hug columns")
                                             .with_id("title")
@@ -401,7 +406,10 @@ fn two_hug_cols_section_height_matches_post_grow_text() {
                                 .with_id("section2")
                                 .size((Sizing::FILL, Sizing::Hug))
                                 .padding(8.0)
-                                .fill(Color::rgb(0.16, 0.18, 0.22))
+                                .background(Background {
+                                    fill: Color::rgb(0.16, 0.18, 0.22),
+                                    ..Default::default()
+                                })
                                 .show(ui, |ui| {
                                     Frame::new()
                                         .with_id("wide-frame")

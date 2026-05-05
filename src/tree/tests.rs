@@ -5,7 +5,8 @@ use crate::shape::Shape;
 use crate::support::testing::ui_at;
 use crate::tree::element::Configure;
 use crate::tree::{NodeId, node_hash::NodeHash};
-use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -63,7 +64,10 @@ fn same_authoring_produces_same_hash() {
                 Frame::new()
                     .with_id("a")
                     .size(50.0)
-                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        ..Default::default()
+                    })
                     .show(ui);
             })
             .node
@@ -75,7 +79,10 @@ fn same_authoring_produces_same_hash() {
                 Frame::new()
                     .with_id("a")
                     .size(50.0)
-                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        ..Default::default()
+                    })
                     .show(ui);
             })
             .node
@@ -92,7 +99,10 @@ fn changing_fill_color_changes_hash() {
                 Frame::new()
                     .with_id("a")
                     .size(50.0)
-                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        ..Default::default()
+                    })
                     .show(ui);
             })
             .node
@@ -104,7 +114,10 @@ fn changing_fill_color_changes_hash() {
                 Frame::new()
                     .with_id("a")
                     .size(50.0)
-                    .fill(Color::rgb(0.9, 0.4, 0.8)) // different red
+                    .background(Background {
+                        fill: Color::rgb(0.9, 0.4, 0.8),
+                        ..Default::default()
+                    }) // different red
                     .show(ui);
             })
             .node
@@ -123,7 +136,10 @@ fn changing_fill_color_changes_hash() {
             Frame::new()
                 .with_id("a")
                 .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
+                .background(Background {
+                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    ..Default::default()
+                })
                 .show(ui)
                 .node,
         );
@@ -138,7 +154,10 @@ fn changing_fill_color_changes_hash() {
             Frame::new()
                 .with_id("a")
                 .size(50.0)
-                .fill(Color::rgb(0.9, 0.4, 0.8))
+                .background(Background {
+                    fill: Color::rgb(0.9, 0.4, 0.8),
+                    ..Default::default()
+                })
                 .show(ui)
                 .node,
         );
@@ -307,7 +326,10 @@ fn child_hash_does_not_affect_parent_hash() {
             Frame::new()
                 .with_id("c")
                 .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
+                .background(Background {
+                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    ..Default::default()
+                })
                 .show(ui);
         })
         .node;
@@ -321,7 +343,10 @@ fn child_hash_does_not_affect_parent_hash() {
             Frame::new()
                 .with_id("c")
                 .size(50.0)
-                .fill(Color::rgb(0.9, 0.4, 0.8)) // different child fill
+                .background(Background {
+                    fill: Color::rgb(0.9, 0.4, 0.8),
+                    ..Default::default()
+                }) // different child fill
                 .show(ui);
         })
         .node;
@@ -356,12 +381,18 @@ fn subtree_hash_stable_across_frames() {
                 Frame::new()
                     .with_id("a")
                     .size(50.0)
-                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("b")
                     .size(30.0)
-                    .fill(Color::rgb(0.9, 0.1, 0.1))
+                    .background(Background {
+                        fill: Color::rgb(0.9, 0.1, 0.1),
+                        ..Default::default()
+                    })
                     .show(ui);
             })
             .node
@@ -380,7 +411,10 @@ fn subtree_hash_changes_when_descendant_changes() {
                 Frame::new()
                     .with_id("a")
                     .size(50.0)
-                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        ..Default::default()
+                    })
                     .show(ui);
             })
             .node
@@ -392,7 +426,10 @@ fn subtree_hash_changes_when_descendant_changes() {
                 Frame::new()
                     .with_id("a")
                     .size(50.0)
-                    .fill(Color::rgb(0.9, 0.4, 0.8)) // changed leaf fill
+                    .background(Background {
+                        fill: Color::rgb(0.9, 0.4, 0.8),
+                        ..Default::default()
+                    }) // changed leaf fill
                     .show(ui);
             })
             .node
@@ -412,12 +449,18 @@ fn subtree_hash_changes_on_sibling_reorder() {
                 Frame::new()
                     .with_id("a")
                     .size(50.0)
-                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("b")
                     .size(30.0)
-                    .fill(Color::rgb(0.9, 0.1, 0.1))
+                    .background(Background {
+                        fill: Color::rgb(0.9, 0.1, 0.1),
+                        ..Default::default()
+                    })
                     .show(ui);
             })
             .node
@@ -429,12 +472,18 @@ fn subtree_hash_changes_on_sibling_reorder() {
                 Frame::new()
                     .with_id("b")
                     .size(30.0)
-                    .fill(Color::rgb(0.9, 0.1, 0.1))
+                    .background(Background {
+                        fill: Color::rgb(0.9, 0.1, 0.1),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("a")
                     .size(50.0)
-                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        ..Default::default()
+                    })
                     .show(ui);
             })
             .node
@@ -456,7 +505,10 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     let leaf1 = Frame::new()
         .with_id("a")
         .size(50.0)
-        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .background(Background {
+            fill: Color::rgb(0.2, 0.4, 0.8),
+            ..Default::default()
+        })
         .show(&mut ui1)
         .node;
     ui1.end_frame();
@@ -466,7 +518,10 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     let leaf2 = Frame::new()
         .with_id("a")
         .size(50.0)
-        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .background(Background {
+            fill: Color::rgb(0.2, 0.4, 0.8),
+            ..Default::default()
+        })
         .show(&mut ui2)
         .node;
     ui2.end_frame();

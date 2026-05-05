@@ -2,7 +2,8 @@ use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::S
 use crate::primitives::color::Color;
 use crate::support::testing::ui_at;
 use crate::tree::element::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -23,7 +24,10 @@ fn zstack_layers_children_without_painting_background() {
                         Frame::new()
                             .with_id("bg")
                             .size((Sizing::Fixed(120.0), Sizing::Fixed(80.0)))
-                            .fill(Color::rgb(0.1, 0.1, 0.2))
+                            .background(Background {
+                                fill: Color::rgb(0.1, 0.1, 0.2),
+                                ..Default::default()
+                            })
                             .show(ui)
                             .node,
                     );
@@ -72,7 +76,10 @@ fn zstack_centers_child_when_align_center() {
                         .with_id("c")
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                         .align(Align::CENTER)
-                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .background(Background {
+                            fill: Color::rgb(0.5, 0.5, 0.5),
+                            ..Default::default()
+                        })
                         .show(ui)
                         .node,
                 );
@@ -100,7 +107,10 @@ fn zstack_aligns_independently_per_axis() {
                         .with_id("c")
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                         .align(Align::new(HAlign::Right, VAlign::Center))
-                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .background(Background {
+                            fill: Color::rgb(0.5, 0.5, 0.5),
+                            ..Default::default()
+                        })
                         .show(ui)
                         .node,
                 );

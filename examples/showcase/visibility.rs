@@ -1,4 +1,4 @@
-use palantir::{Color, Configure, Frame, Panel, Sizing, Styled, Ui, Visibility};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Ui, Visibility};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -18,9 +18,15 @@ fn row(ui: &mut Ui, id: &'static str, middle: Visibility) {
         .with_id(id)
         .gap(12.0)
         .size((Sizing::FILL, Sizing::Fixed(60.0)))
-        .fill(Color::rgb(0.16, 0.18, 0.24))
+        .background(Background {
+            fill: Color::rgb(0.16, 0.18, 0.24),
+            ..Default::default()
+        })
         .padding(8.0)
-        .radius(4.0)
+        .background(Background {
+            radius: Corners::all(4.0),
+            ..Default::default()
+        })
         .show(ui, |ui| {
             tile(
                 ui,
@@ -43,7 +49,10 @@ fn tile<I: std::hash::Hash>(ui: &mut Ui, id: I, c: Color, vis: Visibility) {
         .with_id(id)
         .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
         .visibility(vis)
-        .fill(c)
-        .radius(4.0)
+        .background(Background {
+            fill: c,
+            radius: Corners::all(4.0),
+            ..Default::default()
+        })
         .show(ui);
 }

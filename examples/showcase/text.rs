@@ -1,5 +1,7 @@
 use palantir::Track;
-use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Text, TextStyle, Ui};
+use palantir::{
+    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Stroke, Text, TextStyle, Ui,
+};
 use std::rc::Rc;
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
@@ -221,12 +223,14 @@ fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
         .padding(8.0)
-        .fill(Color::rgb(0.16, 0.18, 0.22))
-        .stroke(Stroke {
-            width: 1.0,
-            color: Color::rgb(0.30, 0.34, 0.42),
+        .background(Background {
+            fill: Color::rgb(0.16, 0.18, 0.22),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgb(0.30, 0.34, 0.42),
+            }),
+            radius: Corners::all(4.0),
         })
-        .radius(4.0)
         .show(ui, |ui| {
             Text::new(title)
                 .with_id(("section-title", id))
@@ -253,8 +257,11 @@ fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'stat
             Frame::new()
                 .with_id(("avatar", key))
                 .size((Sizing::Fixed(36.0), Sizing::Fixed(36.0)))
-                .fill(avatar_color)
-                .radius(18.0)
+                .background(Background {
+                    fill: avatar_color,
+                    radius: Corners::all(18.0),
+                    ..Default::default()
+                })
                 .show(ui);
             Text::new(message)
                 .with_id(("message", key))

@@ -7,11 +7,14 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
-use crate::primitives::{color::Color, stroke::Stroke, transform::TranslateScale};
+use crate::primitives::{
+    color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
+};
 use crate::support::testing::{begin, encode_cmds, new_ui_text, ui_with_text};
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
-use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, styled::Styled, text::Text};
+use crate::widgets::theme::Background;
+use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 
@@ -225,12 +228,14 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .clip(true)
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
-                    .fill(Color::rgb(0.16, 0.18, 0.22))
-                    .stroke(Stroke {
-                        width: 1.0,
-                        color: Color::rgb(0.3, 0.34, 0.42),
+                    .background(Background {
+                        fill: Color::rgb(0.16, 0.18, 0.22),
+                        stroke: Some(Stroke {
+                            width: 1.0,
+                            color: Color::rgb(0.3, 0.34, 0.42),
+                        }),
+                        radius: Corners::all(4.0),
                     })
-                    .radius(4.0)
                     .show(ui, |ui| {
                         Grid::new()
                             .with_id("grid")
@@ -265,7 +270,10 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                 Frame::new()
                     .with_id("under")
                     .size((Sizing::FILL, Sizing::Fixed(20.0)))
-                    .fill(Color::rgb(0.4, 0.4, 0.5))
+                    .background(Background {
+                        fill: Color::rgb(0.4, 0.4, 0.5),
+                        ..Default::default()
+                    })
                     .show(ui);
             });
     };

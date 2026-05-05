@@ -11,7 +11,8 @@ use crate::primitives::color::Color;
 use crate::support::testing::{ui_at, ui_with_text};
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
-use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, styled::Styled, text::Text};
+use crate::widgets::theme::Background;
+use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 
@@ -78,7 +79,10 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                     Frame::new()
                         .with_id("fill-child")
                         .size((Sizing::FILL, Sizing::FILL))
-                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .background(Background {
+                            fill: Color::rgb(0.5, 0.5, 0.5),
+                            ..Default::default()
+                        })
                         .show(ui);
                     Frame::new()
                         .with_id("fixed-child")

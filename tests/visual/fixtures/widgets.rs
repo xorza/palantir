@@ -2,7 +2,7 @@
 //! widget's render path.
 
 use glam::UVec2;
-use palantir::{Button, Color, Configure, Frame, Panel, Sizing, Stroke, Styled};
+use palantir::{Background, Button, Color, Configure, Corners, Frame, Panel, Sizing, Stroke};
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
@@ -31,12 +31,14 @@ fn frame_filled_with_stroke_matches_golden() {
             Frame::new()
                 .with_id("card")
                 .size((Sizing::FILL, Sizing::FILL))
-                .fill(Color::rgb(0.20, 0.30, 0.55))
-                .stroke(Stroke {
-                    width: 2.0,
-                    color: Color::rgb(0.65, 0.80, 1.00),
+                .background(Background {
+                    fill: Color::rgb(0.20, 0.30, 0.55),
+                    stroke: Some(Stroke {
+                        width: 2.0,
+                        color: Color::rgb(0.65, 0.80, 1.00),
+                    }),
+                    radius: Corners::all(16.0),
                 })
-                .radius(16.0)
                 .show(ui);
         });
     });

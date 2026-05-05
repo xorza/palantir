@@ -1,4 +1,4 @@
-use palantir::{Button, Color, Configure, Panel, Sizing, Stroke, Styled, Ui};
+use palantir::{Background, Button, Color, Configure, Corners, Panel, Sizing, Stroke, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
@@ -18,12 +18,14 @@ fn panel(ui: &mut Ui, id: &'static str, disabled: bool) {
         .with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
-        .fill(Color::rgb(0.16, 0.18, 0.24))
-        .stroke(Stroke {
-            width: 1.0,
-            color: Color::rgb(0.30, 0.36, 0.46),
+        .background(Background {
+            fill: Color::rgb(0.16, 0.18, 0.24),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgb(0.30, 0.36, 0.46),
+            }),
+            radius: Corners::all(8.0),
         })
-        .radius(8.0)
         .disabled(disabled)
         .show(ui, |ui| {
             Panel::vstack()

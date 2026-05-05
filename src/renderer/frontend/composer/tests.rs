@@ -389,7 +389,8 @@ mod cache_integration {
     use crate::primitives::transform::TranslateScale;
     use crate::support::testing::{begin, ui_at};
     use crate::tree::element::Configure;
-    use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
+    use crate::widgets::theme::Background;
+    use crate::widgets::{frame::Frame, panel::Panel};
     use glam::{UVec2, Vec2};
 
     fn build(ui: &mut Ui) {
@@ -403,18 +404,27 @@ mod cache_integration {
                     .clip(true)
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
-                    .fill(Color::rgb(0.16, 0.18, 0.22))
+                    .background(Background {
+                        fill: Color::rgb(0.16, 0.18, 0.22),
+                        ..Default::default()
+                    })
                     .transform(TranslateScale::new(Vec2::new(2.0, 1.0), 1.0))
                     .show(ui, |ui| {
                         Frame::new()
                             .with_id("a")
                             .size((Sizing::FILL, Sizing::Fixed(20.0)))
-                            .fill(Color::rgb(0.4, 0.4, 0.5))
+                            .background(Background {
+                                fill: Color::rgb(0.4, 0.4, 0.5),
+                                ..Default::default()
+                            })
                             .show(ui);
                         Frame::new()
                             .with_id("b")
                             .size((Sizing::FILL, Sizing::Fixed(10.0)))
-                            .fill(Color::rgb(0.5, 0.4, 0.4))
+                            .background(Background {
+                                fill: Color::rgb(0.5, 0.4, 0.4),
+                                ..Default::default()
+                            })
                             .show(ui);
                     });
             });
@@ -480,22 +490,34 @@ mod cache_integration {
                                 Frame::new()
                                     .with_id(("a", i))
                                     .size(Sizing::Fixed(10.0))
-                                    .fill(Color::WHITE)
+                                    .background(Background {
+                                        fill: Color::WHITE,
+                                        ..Default::default()
+                                    })
                                     .show(ui);
                                 Frame::new()
                                     .with_id(("b", i))
                                     .size(Sizing::Fixed(10.0))
-                                    .fill(Color::WHITE)
+                                    .background(Background {
+                                        fill: Color::WHITE,
+                                        ..Default::default()
+                                    })
                                     .show(ui);
                                 Frame::new()
                                     .with_id(("c", i))
                                     .size(Sizing::Fixed(10.0))
-                                    .fill(Color::WHITE)
+                                    .background(Background {
+                                        fill: Color::WHITE,
+                                        ..Default::default()
+                                    })
                                     .show(ui);
                                 Frame::new()
                                     .with_id(("d", i))
                                     .size(Sizing::Fixed(10.0))
-                                    .fill(Color::WHITE)
+                                    .background(Background {
+                                        fill: Color::WHITE,
+                                        ..Default::default()
+                                    })
                                     .show(ui);
                             });
                     }

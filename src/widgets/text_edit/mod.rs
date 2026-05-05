@@ -120,22 +120,14 @@ impl<'a> TextEdit<'a> {
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
         let resp_node = ui.node(element, |ui| {
-            // Background.
+            // Background. Per-state Background bundle covers fill +
+            // stroke + radius together.
             let bg = if is_focused {
-                style.background_focused
+                &style.background_focused
             } else {
-                style.background
+                &style.background
             };
-            let stroke = if is_focused {
-                style.stroke_focused
-            } else {
-                style.stroke
-            };
-            ui.add_shape(Shape::RoundedRect {
-                radius: style.radius,
-                fill: bg,
-                stroke,
-            });
+            bg.add_to(ui);
 
             // Text or placeholder. Empty buffer + unfocused shows the
             // placeholder; focused shows the buffer (even if empty)

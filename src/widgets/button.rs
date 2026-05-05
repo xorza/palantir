@@ -3,39 +3,45 @@ use crate::primitives::{color::Color, corners::Corners, visuals::Visuals};
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::{Response, frame::Frame, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{Response, frame::Frame};
 use std::borrow::Cow;
 
+/// Per-state button styling. Each `Visuals` carries its own
+/// `Background` (fill / stroke / radius) and `TextStyle` (font size /
+/// color / leading) — two states with different radii or font sizes
+/// is therefore expressible, even though most themes keep them equal
+/// across states by convention.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ButtonTheme {
     pub normal: Visuals,
     pub hovered: Visuals,
     pub pressed: Visuals,
     pub disabled: Visuals,
-    pub radius: Corners,
-    // todo
-    /// Font size for the label. Font *color* is per-state on the
-    /// Visuals (`normal.text`, `hovered.text`, …); only size and
-    /// leading live here since they don't change with hover/press.
-    pub font_size_px: f32,
-    /// Line-height multiplier for the label. Same reason as
-    /// `font_size_px` — state-independent.
-    pub line_height_mult: f32,
 }
 
 impl Default for ButtonTheme {
     fn default() -> Self {
+        // Per-state Visuals share a Background with the historical
+        // 4 px radius. Solid `Visuals::solid` doesn't set the radius,
+        // so we adjust each state below.
+        let with_radius = |v: Visuals| -> Visuals {
+            Visuals {
+                background: v.background.map(|b| Background {
+                    radius: Corners::all(4.0),
+                    ..b
+                }),
+                ..v
+            }
+        };
         Self {
-            normal: Visuals::solid(Color::rgb(0.20, 0.40, 0.80), Color::WHITE),
-            hovered: Visuals::solid(Color::rgb(0.30, 0.52, 0.92), Color::WHITE),
-            pressed: Visuals::solid(Color::rgb(0.10, 0.28, 0.66), Color::WHITE),
-            disabled: Visuals::solid(
+            normal: with_radius(Visuals::solid(Color::rgb(0.20, 0.40, 0.80), Color::WHITE)),
+            hovered: with_radius(Visuals::solid(Color::rgb(0.30, 0.52, 0.92), Color::WHITE)),
+            pressed: with_radius(Visuals::solid(Color::rgb(0.10, 0.28, 0.66), Color::WHITE)),
+            disabled: with_radius(Visuals::solid(
                 Color::rgb(0.22, 0.26, 0.32),
                 Color::rgba(1.0, 1.0, 1.0, 0.45),
-            ),
-            radius: Corners::all(4.0),
-            font_size_px: 16.0,
-            line_height_mult: crate::text::LINE_HEIGHT_MULT,
+            )),
         }
     }
 }
@@ -82,8 +88,6 @@ impl Button {
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let style = self.style.unwrap_or(ui.theme.button);
-        let font_size_px = style.font_size_px;
-        let line_height_px = font_size_px * style.line_height_mult;
         let v = if self.element.disabled {
             style.disabled
         } else {
@@ -97,11 +101,12 @@ impl Button {
             }
         };
 
-        let resp = Frame::for_element(self.element)
-            .fill(v.fill)
-            .stroke(v.stroke)
-            .radius(style.radius)
-            .show(ui);
+        // Frame paints the per-state background. `None` skips it.
+        let mut frame = Frame::for_element(self.element);
+        if let Some(bg) = v.background {
+            frame = frame.background(bg);
+        }
+        let resp = frame.show(ui);
 
         // Layer the label on top of the frame's background. Safe immediately after
         // `Frame::show` because no other shape/node has been pushed since the
@@ -111,9 +116,9 @@ impl Button {
                 resp.node,
                 Shape::Text {
                     text: self.label.clone(),
-                    color: v.text,
-                    font_size_px,
-                    line_height_px,
+                    color: v.text.color,
+                    font_size_px: v.text.font_size_px,
+                    line_height_px: v.text.font_size_px * v.text.line_height_mult,
                     wrap: TextWrap::Single,
                     align: self.label_align,
                 },

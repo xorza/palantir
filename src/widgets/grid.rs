@@ -3,7 +3,8 @@ use crate::primitives::transform::TranslateScale;
 use crate::tree::GridDef;
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::{Response, styled::Background, styled::Styled};
+use crate::widgets::Response;
+use crate::widgets::theme::Background;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -26,7 +27,7 @@ use std::sync::OnceLock;
 /// Auto-vs-Star cyclic dependency, no `SharedSizeScope`, no auto-flow).
 pub struct Grid {
     element: Element,
-    background: Background,
+    background: Option<Background>,
     def: GridDef,
 }
 
@@ -40,7 +41,7 @@ impl Grid {
         // without going through `show()` panics loudly.
         Self {
             element: Element::new_auto(LayoutMode::Grid(PENDING_GRID_IDX)),
-            background: Background::default(),
+            background: None,
             def: GridDef {
                 rows: empty_tracks(),
                 cols: empty_tracks(),
@@ -95,6 +96,11 @@ impl Grid {
         self
     }
 
+    pub fn background(mut self, b: Background) -> Self {
+        self.background = Some(b);
+        self
+    }
+
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
         let idx = ui.tree.push_grid_def(self.def);
@@ -103,7 +109,9 @@ impl Grid {
 
         let background = self.background;
         let node = ui.node(element, |ui| {
-            background.add_to(ui);
+            if let Some(bg) = &background {
+                bg.add_to(ui);
+            }
             body(ui);
         });
 
@@ -115,12 +123,6 @@ impl Grid {
 impl Configure for Grid {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
-    }
-}
-
-impl Styled for Grid {
-    fn background_mut(&mut self) -> &mut Background {
-        &mut self.background
     }
 }
 

@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use palantir::Align;
 use palantir::WgpuBackend;
 use palantir::{
-    Button, ButtonTheme, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke, Styled, Ui,
-    Visuals,
+    Background, Button, ButtonTheme, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke,
+    TextStyle, Ui, Visuals,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -17,32 +17,34 @@ fn outlined_button_style() -> ButtonTheme {
         width: 1.5,
         color: Color::rgb(0.4, 0.5, 0.7),
     });
+    let bg = |fill, stroke| Background {
+        fill,
+        stroke,
+        radius: Corners::all(4.0),
+    };
     ButtonTheme {
         normal: Visuals {
-            fill: Color::TRANSPARENT,
-            stroke,
-            text: Color::rgb(0.85, 0.88, 0.95),
+            background: Some(bg(Color::TRANSPARENT, stroke)),
+            text: TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95)),
         },
         hovered: Visuals {
-            fill: Color::rgba(0.4, 0.5, 0.7, 0.15),
-            stroke,
-            text: Color::WHITE,
+            background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.15), stroke)),
+            text: TextStyle::default().with_color(Color::WHITE),
         },
         pressed: Visuals {
-            fill: Color::rgba(0.4, 0.5, 0.7, 0.30),
-            stroke,
-            text: Color::WHITE,
+            background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.30), stroke)),
+            text: TextStyle::default().with_color(Color::WHITE),
         },
         disabled: Visuals {
-            fill: Color::TRANSPARENT,
-            stroke: Some(Stroke {
-                width: 1.5,
-                color: Color::rgba(0.4, 0.5, 0.7, 0.35),
-            }),
-            text: Color::rgba(0.85, 0.88, 0.95, 0.45),
+            background: Some(bg(
+                Color::TRANSPARENT,
+                Some(Stroke {
+                    width: 1.5,
+                    color: Color::rgba(0.4, 0.5, 0.7, 0.35),
+                }),
+            )),
+            text: TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45)),
         },
-        radius: Corners::all(4.0),
-        ..ButtonTheme::default()
     }
 }
 
@@ -300,12 +302,14 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         .padding(16.0)
                         .margin(5)
                         .clip(true)
-                        .fill(Color::rgb(0.16, 0.20, 0.28))
-                        .stroke(Stroke {
-                            width: 1.0,
-                            color: Color::rgb(0.30, 0.36, 0.46),
+                        .background(Background {
+                            fill: Color::rgb(0.16, 0.20, 0.28),
+                            stroke: Some(Stroke {
+                                width: 1.0,
+                                color: Color::rgb(0.30, 0.36, 0.46),
+                            }),
+                            radius: Corners::all(12.0),
                         })
-                        .radius(12.0)
                         .show(ui, |ui| {
                             Button::new()
                                 .with_id("spiller")
@@ -319,12 +323,14 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(16.0)
                         .margin(5)
-                        .fill(Color::rgb(0.16, 0.20, 0.28))
-                        .stroke(Stroke {
-                            width: 1.0,
-                            color: Color::rgb(0.30, 0.36, 0.46),
+                        .background(Background {
+                            fill: Color::rgb(0.16, 0.20, 0.28),
+                            stroke: Some(Stroke {
+                                width: 1.0,
+                                color: Color::rgb(0.30, 0.36, 0.46),
+                            }),
+                            radius: Corners::all(12.0),
                         })
-                        .radius(12.0)
                         .show(ui, |ui| {
                             Button::new()
                                 .align(Align::CENTER)

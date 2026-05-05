@@ -1,5 +1,6 @@
 use palantir::{
-    Button, ButtonTheme, Color, Configure, Corners, Panel, Sizing, Stroke, Ui, Visuals,
+    Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Sizing, Stroke, TextStyle,
+    Ui, Visuals,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -68,59 +69,60 @@ fn outlined_style() -> ButtonTheme {
         width: 1.5,
         color: Color::rgb(0.4, 0.5, 0.7),
     });
+    let bg = |fill, stroke| Background {
+        fill,
+        stroke,
+        radius: Corners::all(4.0),
+    };
     ButtonTheme {
         normal: Visuals {
-            fill: Color::TRANSPARENT,
-            stroke,
-            text: Color::rgb(0.85, 0.88, 0.95),
+            background: Some(bg(Color::TRANSPARENT, stroke)),
+            text: TextStyle::default().with_color(Color::rgb(0.85, 0.88, 0.95)),
         },
         hovered: Visuals {
-            fill: Color::rgba(0.4, 0.5, 0.7, 0.18),
-            stroke,
-            text: Color::WHITE,
+            background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.18), stroke)),
+            text: TextStyle::default().with_color(Color::WHITE),
         },
         pressed: Visuals {
-            fill: Color::rgba(0.4, 0.5, 0.7, 0.35),
-            stroke,
-            text: Color::WHITE,
+            background: Some(bg(Color::rgba(0.4, 0.5, 0.7, 0.35), stroke)),
+            text: TextStyle::default().with_color(Color::WHITE),
         },
         disabled: Visuals {
-            fill: Color::TRANSPARENT,
-            stroke: Some(Stroke {
-                width: 1.5,
-                color: Color::rgba(0.4, 0.5, 0.7, 0.35),
-            }),
-            text: Color::rgba(0.85, 0.88, 0.95, 0.45),
+            background: Some(bg(
+                Color::TRANSPARENT,
+                Some(Stroke {
+                    width: 1.5,
+                    color: Color::rgba(0.4, 0.5, 0.7, 0.35),
+                }),
+            )),
+            text: TextStyle::default().with_color(Color::rgba(0.85, 0.88, 0.95, 0.45)),
         },
-        radius: Corners::all(4.0),
-        ..ButtonTheme::default()
     }
 }
 
 fn danger_style() -> ButtonTheme {
     let red = Color::rgb(0.85, 0.30, 0.30);
+    let bg = |fill| Background {
+        fill,
+        stroke: None,
+        radius: Corners::all(2.0),
+    };
     ButtonTheme {
         normal: Visuals {
-            fill: red,
-            stroke: None,
-            text: Color::WHITE,
+            background: Some(bg(red)),
+            text: TextStyle::default().with_color(Color::WHITE),
         },
         hovered: Visuals {
-            fill: Color::rgb(0.95, 0.40, 0.35),
-            stroke: None,
-            text: Color::WHITE,
+            background: Some(bg(Color::rgb(0.95, 0.40, 0.35))),
+            text: TextStyle::default().with_color(Color::WHITE),
         },
         pressed: Visuals {
-            fill: Color::rgb(0.70, 0.20, 0.20),
-            stroke: None,
-            text: Color::WHITE,
+            background: Some(bg(Color::rgb(0.70, 0.20, 0.20))),
+            text: TextStyle::default().with_color(Color::WHITE),
         },
         disabled: Visuals {
-            fill: Color::rgba(0.85, 0.30, 0.30, 0.4),
-            stroke: None,
-            text: Color::rgba(1.0, 1.0, 1.0, 0.55),
+            background: Some(bg(Color::rgba(0.85, 0.30, 0.30, 0.4))),
+            text: TextStyle::default().with_color(Color::rgba(1.0, 1.0, 1.0, 0.55)),
         },
-        radius: Corners::all(2.0),
-        ..ButtonTheme::default()
     }
 }

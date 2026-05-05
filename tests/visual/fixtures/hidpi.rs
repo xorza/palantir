@@ -3,7 +3,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Button, Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Text, TextStyle, Track,
+    Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Stroke, Text,
+    TextStyle, Track,
 };
 
 use crate::diff::Tolerance;
@@ -39,12 +40,14 @@ fn dashboard_matches_golden() {
                     .grid_span((1, 2))
                     .padding((10.0, 14.0, 10.0, 14.0))
                     .gap(8.0)
-                    .fill(Color::rgb(0.18, 0.22, 0.32))
-                    .stroke(Stroke {
-                        width: 1.0,
-                        color: Color::rgb(0.30, 0.36, 0.46),
+                    .background(Background {
+                        fill: Color::rgb(0.18, 0.22, 0.32),
+                        stroke: Some(Stroke {
+                            width: 1.0,
+                            color: Color::rgb(0.30, 0.36, 0.46),
+                        }),
+                        radius: Corners::all(6.0),
                     })
-                    .radius(6.0)
                     .show(ui, |ui| {
                         Text::new("Palantir")
                             .with_id("brand")
@@ -68,20 +71,26 @@ fn dashboard_matches_golden() {
                     .grid_cell((1, 0))
                     .padding(8.0)
                     .gap(4.0)
-                    .fill(Color::rgb(0.14, 0.17, 0.24))
-                    .radius(6.0)
+                    .background(Background {
+                        fill: Color::rgb(0.14, 0.17, 0.24),
+                        radius: Corners::all(6.0),
+                        ..Default::default()
+                    })
                     .show(ui, |ui| {
                         for i in 0..5 {
                             Frame::new()
                                 .with_id(("nav-bg", i))
                                 .size((Sizing::FILL, Sizing::Fixed(28.0)))
                                 .padding((6.0, 8.0, 6.0, 8.0))
-                                .fill(if i == 1 {
-                                    Color::rgb(0.22, 0.30, 0.46)
-                                } else {
-                                    Color::TRANSPARENT
+                                .background(Background {
+                                    fill: if i == 1 {
+                                        Color::rgb(0.22, 0.30, 0.46)
+                                    } else {
+                                        Color::TRANSPARENT
+                                    },
+                                    radius: Corners::all(4.0),
+                                    ..Default::default()
                                 })
-                                .radius(4.0)
                                 .show(ui);
                         }
                     });
@@ -108,12 +117,14 @@ fn dashboard_matches_golden() {
                                 .grid_cell((row, col))
                                 .padding(12.0)
                                 .gap(6.0)
-                                .fill(*c)
-                                .stroke(Stroke {
-                                    width: 1.0,
-                                    color: Color::rgba(1.0, 1.0, 1.0, 0.18),
+                                .background(Background {
+                                    fill: *c,
+                                    stroke: Some(Stroke {
+                                        width: 1.0,
+                                        color: Color::rgba(1.0, 1.0, 1.0, 0.18),
+                                    }),
+                                    radius: Corners::all(8.0),
                                 })
-                                .radius(8.0)
                                 .show(ui, |ui| {
                                     Text::new("Card")
                                         .with_id(("card-title", i))
@@ -141,8 +152,11 @@ fn dashboard_matches_golden() {
                     .grid_cell((2, 0))
                     .grid_span((1, 2))
                     .padding((4.0, 10.0, 4.0, 10.0))
-                    .fill(Color::rgb(0.10, 0.12, 0.18))
-                    .radius(4.0)
+                    .background(Background {
+                        fill: Color::rgb(0.10, 0.12, 0.18),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui, |ui| {
                         Text::new("ready · 4 cards · scale 2.0")
                             .with_id("status")

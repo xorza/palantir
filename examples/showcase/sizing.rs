@@ -1,4 +1,4 @@
-use palantir::{Color, Configure, Frame, Panel, Sizing, Styled, Ui};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Ui};
 
 fn fixed() -> Color {
     Color::rgb(0.85, 0.45, 0.30)
@@ -20,20 +20,29 @@ pub fn build(ui: &mut Ui) {
                 Frame::new()
                     .with_id("fx-50")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(40.0)))
-                    .fill(fixed())
-                    .radius(4.0)
+                    .background(Background {
+                        fill: fixed(),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("fx-100")
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
-                    .fill(fixed())
-                    .radius(4.0)
+                    .background(Background {
+                        fill: fixed(),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("fx-200")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
-                    .fill(fixed())
-                    .radius(4.0)
+                    .background(Background {
+                        fill: fixed(),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
             });
 
@@ -44,15 +53,21 @@ pub fn build(ui: &mut Ui) {
                     .with_id("h-1")
                     .size((Sizing::Hug, Sizing::Fixed(40.0)))
                     .padding((20.0, 0.0, 20.0, 0.0))
-                    .fill(hug())
-                    .radius(4.0)
+                    .background(Background {
+                        fill: hug(),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("h-2")
                     .size((Sizing::Hug, Sizing::Fixed(40.0)))
                     .padding((40.0, 0.0, 40.0, 0.0))
-                    .fill(hug())
-                    .radius(4.0)
+                    .background(Background {
+                        fill: hug(),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
             });
 
@@ -61,20 +76,29 @@ pub fn build(ui: &mut Ui) {
                 Frame::new()
                     .with_id("f-1")
                     .size((Sizing::Fill(1.0), Sizing::Fixed(40.0)))
-                    .fill(fill())
-                    .radius(4.0)
+                    .background(Background {
+                        fill: fill(),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("f-2")
                     .size((Sizing::Fill(2.0), Sizing::Fixed(40.0)))
-                    .fill(fill())
-                    .radius(4.0)
+                    .background(Background {
+                        fill: fill(),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("f-3")
                     .size((Sizing::Fill(1.0), Sizing::Fixed(40.0)))
-                    .fill(fill())
-                    .radius(4.0)
+                    .background(Background {
+                        fill: fill(),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
             });
         });
