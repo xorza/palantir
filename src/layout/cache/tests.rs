@@ -1,4 +1,5 @@
 use crate::Ui;
+use crate::layout::cache::{ArenaSnapshot, AvailableKey};
 use crate::primitives::{color::Color, size::Size};
 use crate::support::testing::{begin, ui_at};
 use crate::tree::NodeId;
@@ -14,12 +15,23 @@ fn run_frame(ui: &mut Ui, build: impl FnOnce(&mut Ui)) {
     ui.end_frame();
 }
 
-/// Read the snapshot's live arena range for `wid`. Returns
-/// `(snapshot, desired_slice, _text_slice)`.
-fn snap_for(ui: &Ui, wid: WidgetId) -> Option<(super::ArenaSnapshot, &[Size])> {
+/// Read the snapshot's live arena range for `wid`.
+struct SnapView<'a> {
+    snap: ArenaSnapshot,
+    desired: &'a [Size],
+    avail: AvailableKey,
+}
+
+fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
     let cache = &ui.pipeline.layout.cache;
     let snap = *cache.snapshots.get(&wid)?;
-    Some((snap, &cache.desired.items[snap.nodes.range()]))
+    let nodes = snap.nodes.range();
+    let avail = cache.available[nodes.start];
+    Some(SnapView {
+        snap,
+        desired: &cache.desired.items[nodes],
+        avail,
+    })
 }
 
 #[test]
@@ -36,7 +48,8 @@ fn leaf_snapshot_populated_after_first_frame() {
             .show(ui);
     });
     let wid = WidgetId::from_hash("a");
-    let (snap, desired) = snap_for(&ui, wid).expect("leaf snapshot must be inserted");
+    let SnapView { snap, desired, .. } =
+        snap_for(&ui, wid).expect("leaf snapshot must be inserted");
     assert_eq!(snap.nodes.len, 1, "leaf subtree spans one node");
     assert_eq!(desired[0].w, 50.0);
     assert_eq!(desired[0].h, 50.0);
@@ -57,9 +70,9 @@ fn unchanged_leaf_keeps_subtree_hash_across_frames() {
     };
     run_frame(&mut ui, build);
     let wid = WidgetId::from_hash("a");
-    let h1 = snap_for(&ui, wid).unwrap().0.subtree_hash;
+    let h1 = snap_for(&ui, wid).unwrap().snap.subtree_hash;
     run_frame(&mut ui, build);
-    let h2 = snap_for(&ui, wid).unwrap().0.subtree_hash;
+    let h2 = snap_for(&ui, wid).unwrap().snap.subtree_hash;
     assert_eq!(h1, h2);
 }
 
@@ -77,7 +90,7 @@ fn changing_leaf_authoring_replaces_snapshot() {
             .show(ui);
     });
     let wid = WidgetId::from_hash("a");
-    let h1 = snap_for(&ui, wid).unwrap().0.subtree_hash;
+    let h1 = snap_for(&ui, wid).unwrap().snap.subtree_hash;
     run_frame(&mut ui, |ui| {
         Frame::new()
             .with_id("a")
@@ -88,7 +101,7 @@ fn changing_leaf_authoring_replaces_snapshot() {
             })
             .show(ui);
     });
-    let h2 = snap_for(&ui, wid).unwrap().0.subtree_hash;
+    let h2 = snap_for(&ui, wid).unwrap().snap.subtree_hash;
     assert_ne!(
         h1, h2,
         "changed authoring must update the leaf's snapshot hash",
@@ -135,9 +148,9 @@ fn cache_hit_replays_same_desired_size() {
     };
     run_frame(&mut ui, build);
     let wid = WidgetId::from_hash("a");
-    let d1 = snap_for(&ui, wid).unwrap().1[0];
+    let d1 = snap_for(&ui, wid).unwrap().desired[0];
     run_frame(&mut ui, build);
-    let d2 = snap_for(&ui, wid).unwrap().1[0];
+    let d2 = snap_for(&ui, wid).unwrap().desired[0];
     assert_eq!(d1, d2);
 }
 
@@ -161,15 +174,15 @@ fn changing_available_forces_miss_and_remeasure() {
     ui.end_frame();
 
     let wid = WidgetId::from_hash("fill");
-    let avail1 = snap_for(&ui, wid).unwrap().0.available_q;
-    let d1 = snap_for(&ui, wid).unwrap().1[0];
+    let avail1 = snap_for(&ui, wid).unwrap().avail;
+    let d1 = snap_for(&ui, wid).unwrap().desired[0];
 
     begin(&mut ui, UVec2::new(80, 80));
     Panel::hstack().with_id("root").show(&mut ui, build);
     ui.end_frame();
 
-    let avail2 = snap_for(&ui, wid).unwrap().0.available_q;
-    let desired2 = snap_for(&ui, wid).unwrap().1[0];
+    let avail2 = snap_for(&ui, wid).unwrap().avail;
+    let desired2 = snap_for(&ui, wid).unwrap().desired[0];
     assert_ne!(
         avail1, avail2,
         "shrinking the surface must change the cache's available key",
@@ -194,7 +207,7 @@ fn subtree_snapshot_covers_every_descendant() {
         });
     });
     let group_wid = WidgetId::from_hash("group");
-    let (snap, desired) = snap_for(&ui, group_wid).unwrap();
+    let SnapView { snap, desired, .. } = snap_for(&ui, group_wid).unwrap();
     // group itself + 3 children = 4 entries.
     assert_eq!(snap.nodes.len, 4);
     // Children are leaves — their own desired sizes are stored at
@@ -299,7 +312,7 @@ fn in_place_rewrite_preserves_arena_position() {
     ui.end_frame();
     let start1 = snap_for(&ui, WidgetId::from_hash("a"))
         .unwrap()
-        .0
+        .snap
         .nodes
         .start;
 
@@ -312,7 +325,7 @@ fn in_place_rewrite_preserves_arena_position() {
     ui.end_frame();
     let start2 = snap_for(&ui, WidgetId::from_hash("a"))
         .unwrap()
-        .0
+        .snap
         .nodes
         .start;
 
@@ -387,7 +400,7 @@ fn cache_hits_remain_valid_after_compaction() {
     });
     ui.end_frame();
     let kept_wid = WidgetId::from_hash(("a", 0usize));
-    let kept_desired_pre = snap_for(&ui, kept_wid).unwrap().1[0];
+    let kept_desired_pre = snap_for(&ui, kept_wid).unwrap().desired[0];
 
     // Frame 2: drop most, add fresh subtree to drive compaction.
     begin(&mut ui, UVec2::new(800, 800));

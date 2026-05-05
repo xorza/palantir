@@ -15,10 +15,42 @@
 
 use super::support::{cross_place, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
-use crate::layout::types::{justify::Justify, sizing::Sizing};
+use crate::layout::types::{
+    justify::Justify,
+    sizing::{Sizes, Sizing},
+};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
 use crate::tree::{Child, NodeId, Tree};
+
+/// One child's contribution to the current line. `m` always comes from
+/// the child's main-axis desired size; `x` is the cross contribution
+/// the line should hug to, zero for Fill-on-cross children (CSS flex
+/// parity — Fill stretches to the row, doesn't drive its height).
+struct ChildPack {
+    m: f32,
+    x: f32,
+}
+
+#[inline]
+fn child_pack(axis: Axis, child_size: Sizes, d: Size) -> ChildPack {
+    ChildPack {
+        m: axis.main(d),
+        x: if matches!(axis.cross_sizing(child_size), Sizing::Fill(_)) {
+            0.0
+        } else {
+            axis.cross(d)
+        },
+    }
+}
+
+/// True iff appending a child of main-axis extent `m` to the current
+/// line would push it past `main_avail`. The first child on a line
+/// (`line_main == 0`) never wraps — it always sets the line's start.
+#[inline]
+fn would_wrap(line_main: f32, gap: f32, m: f32, main_avail: f32) -> bool {
+    line_main > 0.0 && line_main + gap + m > main_avail
+}
 
 /// Flat per-frame scratch for wrap arrange. One contiguous
 /// `Vec<NodeId>` pool serves all nesting depths: each `enter()`
@@ -95,38 +127,19 @@ pub(crate) fn measure(
 
     for c in tree.children_active(node) {
         let d = layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
-        let m = axis.main(d);
-        // CSS flex parity: `Fill` on cross stretches to the row's
-        // cross extent rather than driving it. So the line's cross
-        // height comes from non-Fill children only — a Fill-on-cross
-        // child measured at `cross_avail` would otherwise inflate
-        // `line_cross` to the parent's full cross.
-        let x = if matches!(
-            axis.cross_sizing(tree.layout[c.index()].size),
-            Sizing::Fill(_)
-        ) {
-            0.0
-        } else {
-            axis.cross(d)
-        };
-
-        // Try to extend the current line. The first child on a line
-        // doesn't pay the within-line gap.
-        let candidate = if line_main > 0.0 {
-            line_main + gap + m
-        } else {
-            m
-        };
-
-        if line_main > 0.0 && candidate > main_avail {
-            // Wrap: flush current line, start a new one with this child.
+        let ChildPack { m, x } = child_pack(axis, tree.layout[c.index()].size, d);
+        if would_wrap(line_main, gap, m, main_avail) {
             max_line_main = max_line_main.max(line_main);
             total_cross += line_cross;
             line_count += 1;
             line_main = m;
             line_cross = x;
         } else {
-            line_main = candidate;
+            line_main = if line_main > 0.0 {
+                line_main + gap + m
+            } else {
+                m
+            };
             line_cross = line_cross.max(x);
         }
     }
@@ -254,26 +267,8 @@ pub(crate) fn arrange(
         };
 
         let d = layout.scratch.desired[c.index()];
-        let m = axis.main(d);
-        // Mirror the measure-side rule: Fill-on-cross children don't
-        // contribute to `line_cross`. Without this the row stretches
-        // to the WrapStack's inner cross (because Fill measured to
-        // `cross_avail`), defeating per-row hug semantics.
-        let x = if matches!(
-            axis.cross_sizing(tree.layout[c.index()].size),
-            Sizing::Fill(_)
-        ) {
-            0.0
-        } else {
-            axis.cross(d)
-        };
-
-        let candidate = if line_main > 0.0 {
-            line_main + gap + m
-        } else {
-            m
-        };
-        if line_main > 0.0 && candidate > main_avail {
+        let ChildPack { m, x } = child_pack(axis, tree.layout[c.index()].size, d);
+        if would_wrap(line_main, gap, m, main_avail) {
             place_line(
                 layout,
                 line_main,
@@ -286,7 +281,11 @@ pub(crate) fn arrange(
             line_cross = x;
         } else {
             layout.scratch.wrap.pool.push(c);
-            line_main = candidate;
+            line_main = if line_main > 0.0 {
+                line_main + gap + m
+            } else {
+                m
+            };
             line_cross = line_cross.max(x);
         }
     }
