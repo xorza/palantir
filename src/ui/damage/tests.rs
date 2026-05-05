@@ -543,31 +543,35 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         physical: UVec2::new(2000, 2000),
         ..DISPLAY
     };
-    // Root: Hug HStack containing a giant Fixed Frame + a small
-    // Fixed Frame. With content (3050, 60) larger than the surface
-    // (2000×2000), the root grows to content size and stays stable
-    // across surface changes — exactly the showcase regime where
-    // the bug manifests. Frame "small" ends up at (3000, 0, 50, 60)
-    // and is what we'll inject a tiny rect change into.
+    // Root: Fixed-size HStack (3050×60) containing two Fixed children
+    // — bigger than the 2000×2000 surface so children that overflow
+    // surface drive damage union past the surface bounds. Root rect is
+    // stable across surface changes (Fixed never reads `available`),
+    // so any damage rect change must come from the descendant nudge,
+    // not the root re-resolving. Frame "small" ends up at
+    // (3000, 0, 50, 60).
     let scene = |ui: &mut Ui| {
-        Panel::hstack().with_id("root").show(ui, |ui| {
-            Frame::new()
-                .with_id("big")
-                .size((3000.0, 60.0))
-                .background(Background {
-                    fill: BLUE,
-                    ..Default::default()
-                })
-                .show(ui);
-            Frame::new()
-                .with_id("small")
-                .size((50.0, 60.0))
-                .background(Background {
-                    fill: BLUE,
-                    ..Default::default()
-                })
-                .show(ui);
-        });
+        Panel::hstack()
+            .with_id("root")
+            .size((Sizing::Fixed(3050.0), Sizing::Fixed(60.0)))
+            .show(ui, |ui| {
+                Frame::new()
+                    .with_id("big")
+                    .size((3000.0, 60.0))
+                    .background(Background {
+                        fill: BLUE,
+                        ..Default::default()
+                    })
+                    .show(ui);
+                Frame::new()
+                    .with_id("small")
+                    .size((50.0, 60.0))
+                    .background(Background {
+                        fill: BLUE,
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
     };
 
     ui.begin_frame(big);

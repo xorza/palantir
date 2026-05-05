@@ -111,6 +111,7 @@ fn resolve_desired(
     style: LayoutCore,
     content: Size,
     available: Size,
+    intrinsic_min: Size,
     min_size: Size,
     max_size: Size,
 ) -> Size {
@@ -119,6 +120,7 @@ fn resolve_desired(
             style.size.w,
             content.w + style.padding.horiz() + style.margin.horiz(),
             available.w,
+            intrinsic_min.w,
             style.margin.horiz(),
             min_size.w,
             max_size.w,
@@ -127,6 +129,7 @@ fn resolve_desired(
             style.size.h,
             content.h + style.padding.vert() + style.margin.vert(),
             available.h,
+            intrinsic_min.h,
             style.margin.vert(),
             min_size.h,
             max_size.h,
@@ -276,11 +279,23 @@ impl LayoutEngine {
         let extras = tree.read_extras(node);
         let (min_size, max_size) = (extras.min_size, extras.max_size);
 
+        // Min-content intrinsic — the smallest this node can shrink
+        // to without breaking a rigid descendant (Fixed widget,
+        // explicit `min_size`, longest unbreakable word). Fed into
+        // `resolve_desired` as the lower bound under flex semantics:
+        // Hug/Fill clamp down to `available` but never below
+        // `intrinsic_min`. Cached per (node, axis, slot) so repeat
+        // queries during the same `run` are O(1).
+        let intrinsic_min = Size::new(
+            self.intrinsic(tree, node, Axis::X, LenReq::MinContent, text),
+            self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, text),
+        );
+
         // First dispatch: children see `inner_avail` derived from the
         // parent-passed `available`. May grow on a Fill axis when a
         // Fixed/Hug descendant's hug exceeds `available`.
         let content = self.measure_dispatch(tree, node, style, available, text);
-        let desired = resolve_desired(style, content, available, min_size, max_size);
+        let desired = resolve_desired(style, content, available, intrinsic_min, min_size, max_size);
 
         // Re-dispatch when grow happened on an axis whose children's
         // `inner_avail` actually depends on `available`. Pass 1 measured
@@ -312,7 +327,14 @@ impl LayoutEngine {
         );
         let desired = if grew_w || grew_h {
             let content = self.measure_dispatch(tree, node, style, new_available, text);
-            let final_desired = resolve_desired(style, content, new_available, min_size, max_size);
+            let final_desired = resolve_desired(
+                style,
+                content,
+                new_available,
+                intrinsic_min,
+                min_size,
+                max_size,
+            );
             // Non-monotonic layouts (wrap-stacks; Fill distributions
             // where a descendant's hug grows when given more space)
             // can produce `final_desired > new_available` even after a

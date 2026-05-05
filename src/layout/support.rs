@@ -63,32 +63,49 @@ pub(crate) fn leaf_text_shapes(
 /// which collapses Fill to its content size — the parent-independent
 /// rule for intrinsic queries (CSS Grid `1fr`-in-auto-context).
 ///
-/// `Fill` floors at `hug_with_margin` so a Fill panel never reports
-/// smaller than its measured children — a cramped window still gets a
-/// parent rect that contains its content (which then overflows the
-/// surface, by design). `Fixed` is a hard contract and does *not*
-/// grow past `v` even if children measure larger.
+/// **Flex-shrink semantics with min-content floor:** Hug clamps down
+/// to fit `available`; Fill consumes `available` exactly. Both axes
+/// shrink with parent down to `intrinsic_min` — the largest
+/// non-shrinkable descendant on this axis (Fixed widget extents,
+/// explicit `min_size`, longest-unbreakable-word for wrapping text).
+/// This matches CSS Flexbox's default `min-width: auto` for flex
+/// items: a flex item shrinks down to min-content, then stops.
+///
+/// The only ways desired can exceed `available` are
+/// `intrinsic_min > available` (rigid descendant doesn't fit), an
+/// explicit `min_size` floor, or `Sizing::Fixed(v)`. When that
+/// happens the child's rect overflows its slot; downstream
+/// (cascade/composer/backend) tolerates it, same as the
+/// root-vs-surface overflow.
+///
+/// `Fill` on an unconstrained axis (intrinsic queries with
+/// `available = INFINITY`) collapses to its content size — matches
+/// CSS Grid's `1fr` track in an auto-context parent.
 pub(crate) fn resolve_axis_size(
     s: Sizing,
     hug_with_margin: f32,
     available: f32,
+    intrinsic_min: f32,
     margin: f32,
     min: f32,
     max: f32,
 ) -> f32 {
+    let content = hug_with_margin - margin;
     let rendered = match s {
         Sizing::Fixed(v) => v,
-        Sizing::Hug => hug_with_margin - margin,
-        Sizing::Fill(_) => {
-            // Fill in an unconstrained axis collapses to max-content
-            // (matches CSS Grid: a `1fr` track with `width: auto` parent
-            // resolves to its content size, not infinity).
-            let outer = if available.is_finite() {
-                available.max(hug_with_margin)
+        Sizing::Hug => {
+            if available.is_finite() {
+                content.min(available - margin).max(intrinsic_min - margin)
             } else {
-                hug_with_margin
-            };
-            outer - margin
+                content
+            }
+        }
+        Sizing::Fill(_) => {
+            if available.is_finite() {
+                (available - margin).max(intrinsic_min - margin)
+            } else {
+                content
+            }
         }
     };
     rendered.max(0.0).clamp(min, max) + margin

@@ -107,9 +107,11 @@ impl Grid {
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
 
-        let background = self.background;
+        // `None` falls back to `theme.panel` (default `None` = pure
+        // layout). See `Theme::panel`.
+        let bg = self.background.or(ui.theme.panel);
         let node = ui.node(element, |ui| {
-            if let Some(bg) = &background {
+            if let Some(bg) = bg {
                 bg.add_to(ui);
             }
             body(ui);

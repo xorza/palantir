@@ -138,6 +138,17 @@ impl ApplicationHandler for App {
         let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         let mut ui = Ui::new();
+        // Showcase-only: outline every container with a thin stroke so
+        // layout boundaries are visible without editing each demo. The
+        // default `Theme::panel` is `None` (containers paint nothing) —
+        // this is just a demo override.
+        ui.theme.panel = Some(Background {
+            stroke: Some(palantir::Stroke {
+                width: 1.0,
+                color: Color::hex(0x4d5663),
+            }),
+            ..Default::default()
+        });
         let display = palantir::Display::from_physical(
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,

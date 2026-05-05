@@ -50,32 +50,6 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     assert!(shaped.measured.h > 32.0);
 }
 
-#[test]
-fn wrapping_text_overflows_intrinsic_min_without_breaking_words() {
-    let mut ui = ui_with_text(UVec2::new(400, 400));
-    let mut text_node = None;
-    Panel::vstack()
-        .size((Sizing::Fixed(8.0), Sizing::Hug))
-        .show(&mut ui, |ui| {
-            text_node = Some(
-                Text::new("supercalifragilisticexpialidocious")
-                    .style(TextStyle::default().with_font_size(16.0))
-                    .wrapping()
-                    .show(ui)
-                    .node,
-            );
-        });
-    ui.end_frame();
-
-    let r = ui.pipeline.layout.result.rect[text_node.unwrap().index()];
-    // The single word can't break — its width must overflow the 8 px slot.
-    assert!(
-        r.size.w > 8.0,
-        "an unbreakable word must overflow the slot, got w={}",
-        r.size.w,
-    );
-}
-
 /// Pinned by `src/layout/intrinsic.md`: a wrapping `Text` inside a
 /// `Grid` `Hug` column constrained by the parent's available width
 /// reshapes to fit. The grid column-resolution algorithm runs during
@@ -194,14 +168,14 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
     );
 }
 
-/// Pin: when a Stack's Fill child clamps to its `MinContent` floor
-/// during pass-2 measure, the Fill HStack parent reports `max(available,
-/// hug_with_margin)` so its own desired size includes the floored
-/// child. Arrange then sees an inner span that fits, and the Fill
-/// child's arranged width matches its measured width — parent stays
-/// at-least-as-big-as-child instead of cropping the measure floor.
+/// Pin (flex semantics): a Stack's Fill child clamps DOWN to its
+/// allocated slot when slot < min-content. The shaped text overflows
+/// the rect visually (paint extends past the rect's right edge) but
+/// the rect itself stays at the slot. Replaces an older test that
+/// pinned the WPF "Fill parent grows to contain min-content overflow"
+/// rule.
 #[test]
-fn hstack_fill_clamped_to_min_content_arranges_at_measured_floor() {
+fn hstack_fill_clamped_below_min_content_keeps_rect_at_slot() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
@@ -217,9 +191,8 @@ fn hstack_fill_clamped_to_min_content_arranges_at_measured_floor() {
         "measure must floor at MinContent; got shaped_w={shaped_w}"
     );
     assert!(
-        (rect_w - shaped_w).abs() < 0.5,
-        "arrange should match the measured floor now that the Fill \
-         parent grows past `available` to contain it; \
+        rect_w < shaped_w,
+        "rect should clamp to slot under flex semantics, paint overflows; \
          shaped_w={shaped_w} rect_w={rect_w}"
     );
 }

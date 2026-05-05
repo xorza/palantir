@@ -63,6 +63,14 @@ pub struct Theme {
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
     pub text: TextStyle,
+    /// Default background for container widgets (`Frame`, `Panel`,
+    /// `Grid`) when the call site didn't pass `.background(...)`.
+    /// `None` (the default) means containers paint nothing — original
+    /// behavior. Setting `Some(...)` lights up every unstyled container
+    /// at once, useful for prototyping or for showcasing layout (set
+    /// a thin stroke and you can see every panel boundary without
+    /// editing each call site).
+    pub panel: Option<Background>,
 }
 
 /// Default text-rendering inputs grouped together so apps can swap the

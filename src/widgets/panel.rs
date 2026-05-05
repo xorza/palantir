@@ -52,9 +52,12 @@ impl Panel {
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
+        // `None` falls back to `theme.panel` (default `None` =
+        // pure layout). See `Theme::panel`.
+        let bg = self.background.or(ui.theme.panel);
 
         let node = ui.node(self.element, |ui| {
-            if let Some(bg) = &self.background {
+            if let Some(bg) = bg {
                 bg.add_to(ui);
             }
             body(ui);

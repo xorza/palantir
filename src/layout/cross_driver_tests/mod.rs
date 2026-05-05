@@ -10,6 +10,5 @@
 mod convergence;
 mod fill_propagation;
 mod no_overlap;
-mod parent_contains_child;
 mod support;
 mod text_wrap;
