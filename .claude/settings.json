@@ -11,7 +11,9 @@
       "Bash(UPDATE_GOLDEN=1 cargo test*)",
       "Bash(cargo build *)",
       "Bash(cargo run *)",
-      "Bash(rustup:*)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy*)",
+      "Bash(cargo fmt*)",
 
       "Bash(git mv:*)",
       "Bash(git add:*)",
