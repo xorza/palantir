@@ -176,11 +176,12 @@ fn both_axis_scroll_pans_both_axes() {
         crate::primitives::size::Size::new(800.0, 800.0)
     );
     // Viewport is the inner (post-padding) area. Scroll reserves
-    // `theme.width = 8px` on each panned axis when content overflows,
-    // so the 200×200 outer rect leaves a 192×192 inner region.
+    // `theme.width + theme.gap = 12px` on each panned axis when
+    // content overflows, so the 200×200 outer rect leaves a 188×188
+    // inner region.
     assert_eq!(
         row.viewport,
-        crate::primitives::size::Size::new(192.0, 192.0)
+        crate::primitives::size::Size::new(188.0, 188.0)
     );
 }
 
@@ -586,8 +587,8 @@ mod bars {
             .get_or_insert_with::<ScrollState, _>(WidgetId::from_hash("scroll"), Default::default);
         assert_eq!(
             row.viewport,
-            Size::new(192.0, 200.0),
-            "V overflow reserves 8px on the right; H axis untouched"
+            Size::new(188.0, 200.0),
+            "V overflow reserves theme.width + theme.gap = 12px on the right; H axis untouched"
         );
     }
 
@@ -621,8 +622,9 @@ mod bars {
         let row = *ui
             .state
             .get_or_insert_with::<ScrollState, _>(WidgetId::from_hash("scroll"), Default::default);
-        // Inner = 200 - (left=16 + right=16+8) on x = 160; y = 200 - 32 = 168.
-        assert_eq!(row.viewport, Size::new(160.0, 168.0));
+        // Inner x = 200 - (left=16 + right=16 + reservation=8+4) = 156.
+        // Inner y = 200 - (top=16 + bottom=16) = 168.
+        assert_eq!(row.viewport, Size::new(156.0, 168.0));
     }
 
     /// Pin bar positioning: V bar's overlay rect sits flush with
@@ -718,8 +720,8 @@ mod bars {
         ui.end_frame();
         assert_eq!(
             read_viewport(&mut ui),
-            Size::new(192.0, 200.0),
-            "frame 2: reservation active, viewport = 200 - theme.width"
+            Size::new(188.0, 200.0),
+            "frame 2: reservation active, viewport = 200 - (width + gap)"
         );
 
         // Swap to short content. Frame 3 still reserves (decision made
@@ -783,9 +785,11 @@ mod bars {
             });
         });
         let theme = theme();
-        // Both axes reserve theme.width → inner viewport = 192 × 192,
-        // outer = 200 × 200.
-        let inner = 200.0 - theme.width;
+        // Both axes reserve theme.width + theme.gap → inner viewport
+        // = 188 × 188, outer = 200 × 200. Bar position (cross axis)
+        // sits flush with outer's far edge minus theme.width — the
+        // gap is the empty strip between content and bar.
+        let inner = 200.0 - theme.width - theme.gap;
         let outer_far = 200.0 - theme.width; // bar.cross_pos
         let overlays: Vec<_> = ui
             .tree
