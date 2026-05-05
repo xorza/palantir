@@ -1,3 +1,6 @@
+pub(crate) mod keyboard;
+
+use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit, modifiers_from_winit};
 use crate::layout::types::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::tree::widget_id::WidgetId;
@@ -32,6 +35,29 @@ pub enum InputEvent {
     /// should add to its vertical offset). Multiple events in one frame
     /// accumulate into [`InputState::frame_scroll_delta`].
     Scroll(Vec2),
+    /// Logical key was pressed. `repeat` reflects OS-level key repeat
+    /// (held keys re-emit). Modifier state isn't carried on the event;
+    /// consumers read the latest [`Modifiers`] from `InputState` (wired
+    /// in step 2 of the TextEdit plan).
+    KeyDown {
+        key: Key,
+        repeat: bool,
+    },
+    /// Logical key was released.
+    KeyUp {
+        key: Key,
+    },
+    /// Committed text — a typed character or an IME composition that
+    /// just finalized. Distinct from `KeyDown` because IME / dead-key
+    /// composition produces text without a physical keypress, and
+    /// because keys like `Enter` produce a logical key but no text we
+    /// want to insert. Editors should consume `Text` for character
+    /// input and `KeyDown` for navigation/control keys.
+    Text(TextChunk),
+    /// Modifier-key set changed. The carried snapshot is the new state
+    /// (not a delta). Consumers track the latest snapshot to disambiguate
+    /// e.g. ctrl+'a' (shortcut) from 'a' (text).
+    ModifiersChanged(Modifiers),
 }
 
 /// Logical pixels per `MouseScrollDelta::LineDelta` line. Matches the
@@ -77,6 +103,27 @@ impl InputEvent {
                     InputEvent::Scroll(Vec2::new(-p.x as f32 / s, -p.y as f32 / s))
                 }
             }),
+            WindowEvent::KeyboardInput { event, .. } => {
+                let key = key_from_winit(&event.logical_key);
+                Some(match event.state {
+                    ElementState::Pressed => InputEvent::KeyDown {
+                        key,
+                        repeat: event.repeat,
+                    },
+                    ElementState::Released => InputEvent::KeyUp { key },
+                })
+            }
+            // IME commit: what the user *meant* to insert after composition
+            // (dead keys, multi-keystroke CJK input). Strings longer than
+            // the inline buffer are dropped — IME commits over 15 bytes
+            // are rare enough that we'd rather see them surface as a bug
+            // than silently truncate at a non-grapheme boundary.
+            WindowEvent::Ime(winit::event::Ime::Commit(s)) => {
+                TextChunk::new(s).map(InputEvent::Text)
+            }
+            WindowEvent::ModifiersChanged(m) => Some(InputEvent::ModifiersChanged(
+                modifiers_from_winit(&m.state()),
+            )),
             _ => None,
         }
     }
@@ -179,6 +226,14 @@ impl InputState {
             }
             // Right/Middle: not yet wired through to widgets. Silently drop.
             InputEvent::PointerPressed(_) | InputEvent::PointerReleased(_) => {}
+            // Step 1 of the TextEdit plan only adds the event vocabulary;
+            // the consumers (frame queues, focus dispatch) land in steps
+            // 2 and 3. Drop on the floor for now — adding a real arm
+            // before then would invent state we don't yet need.
+            InputEvent::KeyDown { .. }
+            | InputEvent::KeyUp { .. }
+            | InputEvent::Text(_)
+            | InputEvent::ModifiersChanged(_) => {}
         }
     }
 
