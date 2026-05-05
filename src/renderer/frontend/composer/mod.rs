@@ -201,8 +201,21 @@ impl Composer {
                             (p.rect, p.radius, p.fill, Some(p.stroke))
                         }
                     };
-                    group.before_quad(out);
                     let world_rect = current_transform.apply_rect(rect);
+                    // Clip-cull: skip emitting the quad when it sits
+                    // entirely outside the active scissor. The GPU
+                    // would scissor it away anyway; this saves the
+                    // `quads.push` + per-quad math. Keeps the encode
+                    // cache shape-stable (cull lives only here, not in
+                    // the encoder).
+                    if let Some(active) = self.clip_stack.last() {
+                        let me = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                        if me.intersect(*active).is_none() {
+                            i += 1;
+                            continue;
+                        }
+                    }
+                    group.before_quad(out);
                     let world_radius = radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
@@ -281,16 +294,21 @@ impl Composer {
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(t.rect);
-                    let phys_rect = world_rect.scaled_by(scale, snap);
                     // Glyphon clips per-`TextArea` against the run's own
                     // `bounds`, ignoring whatever `wgpu` scissor is active.
-                    // Quads ride the `DrawGroup.scissor`; text needs its
-                    // bounds intersected with the active clip-stack top so
-                    // ancestor `clip = true` panels actually clip glyphs.
+                    // Intersect with the active clip-stack top so ancestor
+                    // `clip = true` panels actually clip glyphs; an empty
+                    // intersection means the run can't reach pixels — skip
+                    // the push entirely (cull).
                     let mut bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
                     if let Some(parent_clip) = self.clip_stack.last() {
                         bounds = bounds.clamp_to(*parent_clip);
                     }
+                    if bounds.w == 0 || bounds.h == 0 {
+                        i += 1;
+                        continue;
+                    }
+                    let phys_rect = world_rect.scaled_by(scale, snap);
                     group.push_text(
                         out,
                         TextRun {
