@@ -679,3 +679,110 @@ mod scroll_routing {
         ui.end_frame();
     }
 }
+
+mod keyboard {
+    use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit};
+    use crate::input::{InputEvent, InputState};
+    use crate::ui::cascade::CascadeResult;
+    use winit::event::WindowEvent;
+    use winit::keyboard::{Key as WK, NamedKey};
+
+    // `winit::event::KeyEvent` carries a platform_specific field that's
+    // non-portable to construct in tests, so we exercise the translation
+    // helper `key_from_winit` directly. The KeyboardInput→KeyDown
+    // wrapping in `from_winit` is a one-line `match event.state` — small
+    // enough that integration coverage of it can wait for a manual
+    // smoke-test in the showcase.
+
+    #[test]
+    fn key_from_winit_named_arrows() {
+        assert_eq!(
+            key_from_winit(&WK::Named(NamedKey::ArrowLeft)),
+            Key::ArrowLeft
+        );
+        assert_eq!(
+            key_from_winit(&WK::Named(NamedKey::ArrowRight)),
+            Key::ArrowRight
+        );
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::ArrowUp)), Key::ArrowUp);
+        assert_eq!(
+            key_from_winit(&WK::Named(NamedKey::ArrowDown)),
+            Key::ArrowDown
+        );
+    }
+
+    #[test]
+    fn key_from_winit_editing_keys() {
+        assert_eq!(
+            key_from_winit(&WK::Named(NamedKey::Backspace)),
+            Key::Backspace
+        );
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::Delete)), Key::Delete);
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::Home)), Key::Home);
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::End)), Key::End);
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::Enter)), Key::Enter);
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::Escape)), Key::Escape);
+    }
+
+    #[test]
+    fn key_from_winit_character_carries_first_char() {
+        // Shift+'a' arrives as Character("A") post-layout — should keep
+        // the capitalized form.
+        assert_eq!(key_from_winit(&WK::Character("A".into())), Key::Char('A'));
+        assert_eq!(key_from_winit(&WK::Character("é".into())), Key::Char('é'));
+    }
+
+    #[test]
+    fn key_from_winit_unknown_key_falls_back_to_other() {
+        // `F24` exists in NamedKey but isn't enumerated in our `Key` —
+        // should land in the catch-all rather than dropping the event.
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::F24)), Key::Other);
+    }
+
+    #[test]
+    fn from_winit_ime_commit_emits_text_event() {
+        let ev = InputEvent::from_winit(
+            &WindowEvent::Ime(winit::event::Ime::Commit("é".into())),
+            1.0,
+        )
+        .expect("Ime::Commit produces a Text event");
+        match ev {
+            InputEvent::Text(chunk) => assert_eq!(chunk.as_str(), "é"),
+            _ => panic!("expected Text, got {ev:?}"),
+        }
+    }
+
+    #[test]
+    fn from_winit_ime_commit_too_long_drops_event() {
+        let long = "0123456789abcdef"; // 16 bytes — over inline cap
+        let ev = InputEvent::from_winit(
+            &WindowEvent::Ime(winit::event::Ime::Commit(long.into())),
+            1.0,
+        );
+        assert!(
+            ev.is_none(),
+            "oversized IME commit drops cleanly rather than truncating"
+        );
+    }
+
+    #[test]
+    fn key_events_fall_through_input_state_unchanged() {
+        // Step 1 of TextEdit: events fall on the floor. Pin that
+        // delivering keyboard events doesn't perturb pointer/scroll
+        // state — the rest of the input machine ignores them.
+        let mut state = InputState::new();
+        let cascades = CascadeResult::default();
+        let before_scroll = state.frame_scroll_delta;
+        state.on_input(
+            InputEvent::KeyDown {
+                key: Key::ArrowLeft,
+                repeat: false,
+            },
+            &cascades,
+        );
+        state.on_input(InputEvent::Text(TextChunk::new("a").unwrap()), &cascades);
+        state.on_input(InputEvent::ModifiersChanged(Modifiers::NONE), &cascades);
+        state.on_input(InputEvent::KeyUp { key: Key::Tab }, &cascades);
+        assert_eq!(state.frame_scroll_delta, before_scroll);
+    }
+}
