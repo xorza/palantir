@@ -79,6 +79,8 @@ struct State {
     display: palantir::Display,
     first_paint: bool,
     active: usize,
+    fps_window_start: std::time::Instant,
+    fps_window_frames: u32,
 }
 
 impl ApplicationHandler for App {
@@ -128,7 +130,7 @@ impl ApplicationHandler for App {
             format,
             width: size.width.max(1),
             height: size.height.max(1),
-            present_mode: caps.present_modes[0],
+            present_mode: wgpu::PresentMode::AutoNoVsync,
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
@@ -168,21 +170,19 @@ impl ApplicationHandler for App {
             display,
             first_paint: false,
             active: 0,
+            fps_window_start: std::time::Instant::now(),
+            fps_window_frames: 0,
         });
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // Pure event-driven: only wake to redraw when the UI itself
-        // says something changed. Initial frame still needs a kick
-        // because nothing has happened yet (no input, no resize).
-        let needs_paint = match self.state.as_ref() {
-            Some(state) => state.first_paint || state.ui.should_repaint(),
-            None => false,
-        };
-        if needs_paint && let Some(state) = self.state.as_ref() {
+        // Free-running render loop: redraw every iteration regardless of
+        // input or repaint gate, so we can measure raw frame throughput
+        // with vsync off.
+        if let Some(state) = self.state.as_ref() {
             state.window.request_redraw();
         }
-        event_loop.set_control_flow(ControlFlow::Wait);
+        event_loop.set_control_flow(ControlFlow::Poll);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -254,6 +254,15 @@ impl State {
         frame.present();
         if !self.first_paint {
             self.first_paint = true;
+        }
+
+        self.fps_window_frames += 1;
+        let elapsed = self.fps_window_start.elapsed();
+        if elapsed.as_secs() >= 1 {
+            let fps = self.fps_window_frames as f64 / elapsed.as_secs_f64();
+            println!("fps: {fps:.1}");
+            self.fps_window_start = std::time::Instant::now();
+            self.fps_window_frames = 0;
         }
     }
 }

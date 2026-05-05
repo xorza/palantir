@@ -3,11 +3,14 @@
     "allow": [
       "Edit(/tmp/**)",
       "Write(/tmp/**)",
+      "Read(//tmp/**)",
 
       "Bash(xargs sed *)",
       "Bash(sd:*)",
 
-      "Bash(cargo:*)",
+      "Bash(UPDATE_GOLDEN=1 cargo test*)",
+      "Bash(cargo build *)",
+      "Bash(cargo run *)",
       "Bash(rustup:*)",
 
       "Bash(git mv:*)",
@@ -16,7 +19,10 @@
 
       "Bash(sd:*)",
 
-      "Bash(UPDATE_GOLDEN=1 cargo test*)"
+      "Bash(perf report *)",
+      "Bash(perf script *)",
+      "Bash(scripts/bench-perf.sh)",
+      "Bash(BENCH=frame scripts/bench-perf.sh)"
     ]
   }
 }
