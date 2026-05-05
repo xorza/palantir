@@ -56,10 +56,8 @@ impl Scroll {
         // because this frame's measure hasn't run yet. The matching
         // re-clamp in `Ui::end_frame` corrects with fresh numbers so
         // next frame's record starts in-bounds.
-        let row = ui
-            .state
-            .get_or_insert_with::<ScrollState, _>(id, Default::default);
         let delta_y = ui.input.scroll_delta_for(id).y;
+        let row = ui.state_mut::<ScrollState>(id);
         let max_offset = (row.content_h - row.viewport_h).max(0.0);
         let offset = (row.offset + delta_y).clamp(0.0, max_offset);
         row.offset = offset;

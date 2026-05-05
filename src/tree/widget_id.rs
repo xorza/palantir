@@ -3,10 +3,10 @@ use std::hash::{Hash, Hasher};
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct WidgetId(pub(crate) u64);
+pub struct WidgetId(pub(crate) u64);
 
 impl WidgetId {
-    pub(crate) fn from_hash(h: impl Hash) -> Self {
+    pub fn from_hash(h: impl Hash) -> Self {
         let mut hasher = FxHasher::default();
         h.hash(&mut hasher);
         Self(hasher.finish())
