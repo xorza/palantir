@@ -402,4 +402,29 @@ mod tests {
         let mut m = TextMeasurer::default();
         let _ = m.caret_x("é", 1, 16.0);
     }
+
+    #[test]
+    fn caret_x_cosmic_path_is_monotonic_and_bounded() {
+        // With real shaping, prefix widths must be non-decreasing and
+        // approach the full-string width at the final offset. We don't
+        // pin exact pixel values — those depend on font metrics — just
+        // the monotonicity invariant any consumer relies on.
+        let mut m = TextMeasurer::default();
+        m.set_cosmic(crate::text::share(
+            crate::text::cosmic::CosmicMeasure::with_bundled_fonts(),
+        ));
+        let s = "hello";
+        let widths: Vec<f32> = (0..=s.len()).map(|i| m.caret_x(s, i, 16.0)).collect();
+        assert_eq!(widths[0], 0.0, "prefix-x at offset 0 is zero");
+        for w in widths.windows(2) {
+            assert!(
+                w[1] >= w[0] - 0.01,
+                "prefix widths must be non-decreasing, got {w:?}",
+            );
+        }
+        assert!(
+            widths[s.len()] > widths[0],
+            "non-empty string has positive width",
+        );
+    }
 }

@@ -97,7 +97,15 @@ impl<'a> TextEdit<'a> {
         // happens here too, before keystroke processing, so a click +
         // type in the same frame inserts at the click point.
         let mut blur_after = false;
-        let caret_byte = handle_input(ui, id, is_focused, self.text, font_size, &mut blur_after);
+        let caret_byte = handle_input(
+            ui,
+            id,
+            is_focused,
+            self.text,
+            font_size,
+            style.padding.left,
+            &mut blur_after,
+        );
 
         // Phase 2: open the node and push shapes. `caret_x` for the
         // caret position lives inside the closure since it touches
@@ -190,6 +198,12 @@ fn handle_input(
     is_focused: bool,
     text: &mut String,
     font_size: f32,
+    // Resolved left-padding from the per-widget style (after merging
+    // `.style()` override with the theme default). Subtracted from the
+    // press-x so the caret hit-test runs in text-local coords. Passed
+    // in rather than re-resolved here so the override branch in
+    // `show()` doesn't desync from the click target.
+    pad_left: f32,
     blur_after: &mut bool,
 ) -> usize {
     let resp_state = ui.response_for(id);
@@ -210,8 +224,7 @@ fn handle_input(
     if resp_state.pressed
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos())
     {
-        let pad = ui.theme.text_edit.padding; // approximate; per-widget style override not available here without re-clone
-        let local_x = ptr.x - rect.min.x - pad.left;
+        let local_x = ptr.x - rect.min.x - pad_left;
         let new_caret = caret_from_x(text, local_x, font_size, &mut ui.pipeline.text);
         let state = ui
             .state

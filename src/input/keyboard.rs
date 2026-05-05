@@ -221,6 +221,13 @@ mod tests {
     }
 
     #[test]
+    fn text_chunk_empty_constant_matches_constructed_empty() {
+        assert!(TextChunk::EMPTY.is_empty());
+        assert_eq!(TextChunk::EMPTY.as_str(), "");
+        assert_eq!(TextChunk::EMPTY, TextChunk::new("").unwrap());
+    }
+
+    #[test]
     fn modifiers_any_command_excludes_shift() {
         assert!(
             !Modifiers {

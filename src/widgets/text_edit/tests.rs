@@ -543,3 +543,194 @@ fn pressed_button_event_left_click_release_one_frame() {
     // Suppress unused-import warning for the press helper.
     let _ = PointerButton::Left;
 }
+
+#[test]
+fn click_lands_caret_at_pressed_position() {
+    // Mono fallback gives 8 px per char at 16 px font. With theme's
+    // default 8 px left padding, pressing at x=8+8*3=32 should put
+    // the caret 3 chars in. End the press *inside* the widget so the
+    // editor sees `pressed=true` next frame's response.
+    let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
+    let mut buf = String::from("hello world");
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("ed")
+            .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    // Press at x=32 (theme padding 8 + three glyphs × 8 px) → caret=3.
+    // Hold the press across the next frame so `state.pressed` is true
+    // when handle_input runs.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(32.0, 20.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+
+    begin(&mut ui, UVec2::new(300, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("ed")
+            .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    // Type a marker char while still pressed → it must insert at
+    // caret=3, producing "helXlo world".
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('X'),
+        repeat: false,
+    });
+    begin(&mut ui, UVec2::new(300, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("ed")
+            .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    // Release — caret stays at the press location.
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    assert_eq!(
+        buf, "helXlo world",
+        "click landed caret at offset 3, then 'X' inserted there",
+    );
+}
+
+#[test]
+fn click_uses_per_widget_style_padding_not_theme_padding() {
+    // Pin the bug fix: when a per-widget `.style()` override changes
+    // padding, the click hit-test must use that padding. Theme leaves
+    // 8 px left, override gives 24 px. Press at x=32 should now hit
+    // offset 1 (24 + 1*8 = 32) instead of offset 3.
+    let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
+    let mut buf = String::from("hello world");
+
+    let style = crate::TextEditTheme {
+        padding: crate::Spacing::xy(24.0, 6.0),
+        ..crate::TextEditTheme::default()
+    };
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("ed")
+            .style(style.clone())
+            .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(32.0, 20.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+
+    begin(&mut ui, UVec2::new(300, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("ed")
+            .style(style.clone())
+            .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('X'),
+        repeat: false,
+    });
+    begin(&mut ui, UVec2::new(300, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut buf)
+            .with_id("ed")
+            .style(style.clone())
+            .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    assert_eq!(
+        buf, "hXello world",
+        "with override padding=24, x=32 hits offset 1, not 3",
+    );
+}
+
+#[test]
+fn two_textedits_only_one_focused_at_a_time() {
+    let mut ui = ui_with_text(UVec2::new(400, 80));
+    let mut a = String::new();
+    let mut b = String::new();
+    let id_a = WidgetId::from_hash("a");
+    let id_b = WidgetId::from_hash("b");
+
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut a)
+            .with_id("a")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+        TextEdit::new(&mut b)
+            .with_id("b")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+
+    // Click A.
+    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    assert_eq!(ui.focused_id(), Some(id_a));
+
+    // Type — lands in A, not B.
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('1'),
+        repeat: false,
+    });
+    begin(&mut ui, UVec2::new(400, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut a)
+            .with_id("a")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+        TextEdit::new(&mut b)
+            .with_id("b")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+    assert_eq!(a, "1");
+    assert_eq!(b, "");
+
+    // Click B.
+    click_at(&mut ui, Vec2::new(250.0, 20.0));
+    assert_eq!(ui.focused_id(), Some(id_b));
+
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('2'),
+        repeat: false,
+    });
+    begin(&mut ui, UVec2::new(400, 80));
+    Panel::hstack().show(&mut ui, |ui| {
+        TextEdit::new(&mut a)
+            .with_id("a")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+        TextEdit::new(&mut b)
+            .with_id("b")
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+            .show(ui);
+    });
+    ui.end_frame();
+    assert_eq!(a, "1", "A's buffer untouched once focus moved to B");
+    assert_eq!(b, "2");
+}
+
+/// `ui_at` from the testing module sets up a Ui without cosmic, so the
+/// mono fallback drives `caret_x` (8 px/char at 16 px font). That
+/// gives the predictable widths the click-positioning tests rely on.
+fn ui_at_no_cosmic(size: UVec2) -> crate::Ui {
+    use crate::layout::types::display::Display;
+    let mut ui = crate::Ui::new();
+    ui.begin_frame(Display::from_physical(size, 1.0));
+    ui
+}
