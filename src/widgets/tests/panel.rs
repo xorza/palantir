@@ -89,7 +89,7 @@ fn panel_hugs_largest_child_and_layers_them() {
     assert_eq!((b.size.w, b.size.h), (60.0, 50.0));
 
     // Panel paints its bg shape; first shape on the panel node is the rect.
-    let shapes = ui.tree.shapes_of(panel_node.unwrap());
+    let shapes = ui.tree.shapes.slice_of(panel_node.unwrap().index());
     assert_eq!(shapes.len(), 1);
     assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
 }

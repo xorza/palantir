@@ -23,7 +23,7 @@ fn frame_paints_a_single_rounded_rect() {
     });
     ui.end_frame();
 
-    let shapes = ui.tree.shapes_of(frame_node.unwrap());
+    let shapes = ui.tree.shapes.slice_of(frame_node.unwrap().index());
     assert_eq!(shapes.len(), 1);
     assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
 

@@ -186,7 +186,7 @@ fn encode_node(
     let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
 
     if paints {
-        for shape in tree.shapes_of(id) {
+        for shape in tree.shapes.slice_of(id.index()) {
             match shape {
                 Shape::RoundedRect {
                     radius,

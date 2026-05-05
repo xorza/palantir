@@ -1,7 +1,7 @@
 # Roadmap
 
 impl widgetid instead of impl hash?
-
+ecs for soa?
 
 ## Now — concrete, motivated, ready to start
 
