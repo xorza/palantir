@@ -1,6 +1,6 @@
 # Palantir
 
-A Rust GUI crate. **Immediate-mode authoring API**, **WPF-style two-pass layout**, **wgpu rendering**.
+A Rust GUI crate. **Immediate-mode authoring API**, **WPF-contract two-pass layout with flex-shrink sizing**, **wgpu rendering**.
 
 Read `DESIGN.md` for the full design rationale before making non-trivial changes.
 
@@ -47,7 +47,7 @@ Widget *state* (scroll, focus, animation) will live in a separate `Id → Any` m
 
 **`Shape`** (paint primitive: `RoundedRect`, `Text`, `Line`, …) stored flat in `Tree.shapes`, sliced per-node via `Tree.shape_starts` (length `node_count() + 1`). `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. Layout passes ignore Shapes and `PaintCore`; paint pass ignores hierarchy beyond `subtree_end`. **This decoupling is load-bearing — keep it.**
 
-**Sizing (WPF-aligned):** `Fixed(n)` outer = exactly `n` (incl. padding); `Hug` outer = content + padding (WPF `Auto`); `Fill(weight)` takes leftover, distributed by weight across `Fill` siblings (WPF `*`). Canonical impl: `resolve_axis_size` in `src/layout/mod.rs`; pinned by `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs`.
+**Sizing (flex-shrink with min-content floor):** `Fixed(n)` = exactly `n` (hard contract; can exceed parent's available). `Hug` = `min(content, available)` floored at `intrinsic_min`. `Fill(weight)` = `available` floored at `intrinsic_min`; with Fill siblings, each gets `leftover * weight / total_weight`, but a sibling whose floor exceeds its share *freezes* at floor and the rest re-divide (CSS Flexbox-style). The `intrinsic_min` floor is the largest non-shrinkable thing on this axis (Fixed descendant, explicit `min_size`, longest unbreakable word). Children clamp DOWN to fit parent — no WPF-style parent-grow. Overflow only happens when rigid descendants don't fit; downstream tolerates it. Canonical impl: `resolve_axis_size` in `src/layout/support.rs` + freeze loop in `src/layout/stack/mod.rs::measure`. Pinned by `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs` and `src/layout/cross_driver_tests/convergence.rs`.
 
 ## Project layout
 

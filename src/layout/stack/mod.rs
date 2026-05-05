@@ -40,11 +40,22 @@ pub(crate) fn measure(
     }
     let total_gap = gap * count.saturating_sub(1) as f32;
 
-    // Pass 2: measure Fill children. If the stack's main axis is finite
-    // each Fill child gets its resolved share floored at `MinContent`
-    // and capped by `max_size`; on a Hug stack (INF main) Fill children
-    // measure at INF main and report their natural width (matches the
-    // "Hug stack hugs to children's natural widths" rule).
+    // Pass 2: measure Fill children with min-content-aware
+    // distribution (CSS Flexbox-style). On a finite-main stack, each
+    // Fill child gets a target = `leftover * weight / total_weight`,
+    // floored at `MinContent` and capped at `max_size`. If any
+    // child's floor exceeds its target, freeze that child at its
+    // floor and re-divide the remaining leftover among the
+    // non-frozen siblings — repeat until stable. This means a sibling
+    // with rigid descendants (Fixed widget, longest-unbreakable-word)
+    // doesn't get squeezed past its min-content; instead the other
+    // FILL siblings absorb the squeeze. Without this freeze loop,
+    // Fixed children overflow visibly when the parent is narrow even
+    // though shrinkable siblings still have room to give. Converges
+    // in ≤ N iterations (every iteration freezes at least one).
+    //
+    // On a Hug stack (INF main) the freeze loop is a no-op — every
+    // Fill child measures at INF main and reports its natural width.
     //
     // Soundness: the `axis.main(inner)` we use as the budget here must
     // equal the `axis.main(inner)` the matching `arrange` call sees,
@@ -58,29 +69,90 @@ pub(crate) fn measure(
     let mut fill_main = 0.0f32;
     if total_weight > 0.0 {
         let main_finite = axis.main(inner).is_finite();
-        let leftover = if main_finite {
-            (axis.main(inner) - sum_non_fill_main - total_gap).max(0.0)
-        } else {
-            0.0
-        };
-        for c in tree.children_active(node) {
-            let Sizing::Fill(w) = axis.main_sizing(tree.layout[c.index()].size) else {
-                continue;
-            };
-            let main_avail = if main_finite {
+        if main_finite {
+            // Collect Fill children with their (weight, floor, cap).
+            // Allocations here are bounded by the count of Fill
+            // children at this node — typically 2-10. Could move to
+            // `LayoutScratch` if hotspots show up.
+            #[derive(Clone, Copy)]
+            struct FillEntry {
+                node: NodeId,
+                weight: f32,
+                floor: f32,
+                cap: f32,
+                frozen_alloc: Option<f32>,
+            }
+            let mut entries: Vec<FillEntry> = Vec::new();
+            for c in tree.children_active(node) {
+                let Sizing::Fill(w) = axis.main_sizing(tree.layout[c.index()].size) else {
+                    continue;
+                };
                 let cap = axis.main(tree.read_extras(c).max_size);
-                let target = (leftover * w / total_weight).min(cap);
-                // Floor at min-content so wrap text doesn't break inside
-                // a word (it overflows the slot instead — same rule the
-                // leaf reshape branch in shape_text follows).
                 let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, text);
-                target.max(floor)
-            } else {
-                f32::INFINITY
-            };
-            let d = layout.measure(tree, c, axis.compose_size(main_avail, cross_avail), text);
-            fill_main += axis.main(d);
-            max_cross = max_cross.max(axis.cross(d));
+                entries.push(FillEntry {
+                    node: c,
+                    weight: w,
+                    floor,
+                    cap,
+                    frozen_alloc: None,
+                });
+            }
+            let total_leftover = (axis.main(inner) - sum_non_fill_main - total_gap).max(0.0);
+            let mut remaining = total_leftover;
+            let mut active_weight = total_weight;
+            // Freeze loop: any child whose share-by-weight is below
+            // its floor takes its floor and exits the pool.
+            loop {
+                let mut new_freeze = false;
+                if active_weight <= 0.0 {
+                    break;
+                }
+                for e in entries.iter_mut() {
+                    if e.frozen_alloc.is_some() {
+                        continue;
+                    }
+                    let share = (remaining * e.weight / active_weight).min(e.cap);
+                    if e.floor > share {
+                        let alloc = e.floor.min(e.cap);
+                        e.frozen_alloc = Some(alloc);
+                        remaining -= alloc;
+                        active_weight -= e.weight;
+                        new_freeze = true;
+                    }
+                }
+                if !new_freeze {
+                    break;
+                }
+            }
+            // Final measure: frozen at their floor, others at the
+            // re-divided share.
+            for e in &entries {
+                let main_avail = match e.frozen_alloc {
+                    Some(a) => a,
+                    None if active_weight > 0.0 => (remaining * e.weight / active_weight)
+                        .min(e.cap)
+                        .max(e.floor),
+                    None => e.floor,
+                };
+                let d = layout.measure(
+                    tree,
+                    e.node,
+                    axis.compose_size(main_avail, cross_avail),
+                    text,
+                );
+                fill_main += axis.main(d);
+                max_cross = max_cross.max(axis.cross(d));
+            }
+        } else {
+            for c in tree.children_active(node) {
+                let Sizing::Fill(_) = axis.main_sizing(tree.layout[c.index()].size) else {
+                    continue;
+                };
+                let d =
+                    layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
+                fill_main += axis.main(d);
+                max_cross = max_cross.max(axis.cross(d));
+            }
         }
     }
 
@@ -97,9 +169,13 @@ pub(crate) fn arrange(
     let extras = tree.read_extras(node);
     let (gap, justify, parent_child_align) = (extras.gap, extras.justify, extras.child_align);
 
-    // Sum desired along main axis for non-Fill children; collect Fill weights.
-    // Fill siblings split the remaining space proportionally (WPF Star semantics)
-    // independent of their intrinsic content size.
+    // Sum desired along main axis for ALL children. Measure has
+    // already done the floor-aware Fill distribution; each child's
+    // `desired.main` is the slot it should occupy. Arrange just walks
+    // them in order. (Older revision recomputed Fill shares here as
+    // `leftover * weight / total_weight`, which ignored min-content
+    // floors and let Fixed descendants overflow when one Fill sibling
+    // had rigid content.)
     let mut sum_main_desired = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
@@ -107,9 +183,8 @@ pub(crate) fn arrange(
         let l = tree.layout[c.index()];
         if let Sizing::Fill(weight) = axis.main_sizing(l.size) {
             total_weight += weight;
-        } else {
-            sum_main_desired += axis.main(layout.scratch.desired[c.index()]);
         }
+        sum_main_desired += axis.main(layout.scratch.desired[c.index()]);
         count += 1;
     }
     let total_gap = gap * count.saturating_sub(1) as f32;
@@ -157,11 +232,7 @@ pub(crate) fn arrange(
         }
         first = false;
 
-        let main_sizing = axis.main_sizing(s.size);
-        let main_size = match main_sizing {
-            Sizing::Fill(weight) if total_weight > 0.0 => leftover * (weight / total_weight),
-            _ => axis.main(d),
-        };
+        let main_size = axis.main(d);
 
         let cross_p = cross_place(axis, &s, parent_child_align, d, cross);
 

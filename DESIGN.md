@@ -1,6 +1,6 @@
 # Palantir GUI — Design Doc
 
-A Rust GUI crate: **immediate-mode authoring API**, **WPF-style two-pass layout**, **wgpu rendering**.
+A Rust GUI crate: **immediate-mode authoring API**, **WPF-style two-pass layout (flex-shrink sizing)**, **wgpu rendering**.
 
 ## Goals
 
@@ -12,7 +12,7 @@ A Rust GUI crate: **immediate-mode authoring API**, **WPF-style two-pass layout*
 
 ## Core Idea: Record → Measure → Arrange → Cascade → Encode/Paint
 
-Pure immediate-mode hits a paradox: parents need child sizes before placing them, but the user code declares children inside the parent. WPF solves this with retained `Measure(available) → Arrange(final)`. We keep the immediate-mode *call site* but defer layout/paint by **building a transient tree each frame**, then running WPF's two passes plus a cascade and a paint pass on it.
+Pure immediate-mode hits a paradox: parents need child sizes before placing them, but the user code declares children inside the parent. WPF solves this with retained `Measure(available) → Arrange(final)`. We keep the immediate-mode *call site* and the WPF measure/arrange *contract* but use **CSS Flexbox-style sizing** within it (children shrink with parent rather than overflowing it — see "Sizing model" below). Layout/paint defers by **building a transient tree each frame**, then running the two passes plus a cascade and a paint pass on it.
 
 ```
 user closures ──► [1] Record    (append per-node columns + Shapes; no layout, no paint)
@@ -41,15 +41,25 @@ Splitting by reader keeps each pass touching only the columns it needs. Measured
 
 `Shape` (paint primitive: `RoundedRect`, `Text`, `Line`, …) is stored flat in `Tree.shapes`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. **Layout passes ignore Shapes and `PaintCore`; paint pass ignores hierarchy beyond `subtree_end`.** This decoupling is load-bearing.
 
-## Sizing model (WPF-aligned)
+## Sizing model (flex-shrink with min-content floor)
 
 Per-axis `Sizing`:
 
-- **`Fixed(n)`** — outer = exactly `n` (incl. padding). WPF explicit.
-- **`Hug`** — outer = content + padding. WPF `Auto`.
-- **`Fill(weight)`** — takes leftover, distributed by weight across `Fill` siblings. WPF `*`.
+- **`Fixed(n)`** — outer = exactly `n` (incl. padding). Hard contract; can exceed parent's available.
+- **`Hug`** — outer = `min(content, available)`, floored at `intrinsic_min`. Shrinks with parent down to the largest rigid descendant, then stops.
+- **`Fill(weight)`** — outer = `available`, floored at `intrinsic_min`. With Fill siblings, each gets `leftover * weight / total_weight`; siblings whose floor exceeds their share *freeze* at floor and the remaining leftover redistributes among the rest (CSS Flexbox-style freeze loop).
 
-Canonical impl: `resolve_axis_size` in `src/layout/mod.rs`. Pinned by `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs` — change the math, update the tests in the same change.
+The "min-content" floor (`intrinsic_min`) is the largest non-shrinkable thing on this axis: a `Fixed(v)` descendant's `v`, an explicit `min_size`, or the longest unbreakable word inside a wrapping `Text`. Computed via `LayoutEngine::intrinsic(node, axis, MinContent)` (cached per `(node, axis, slot)`).
+
+Two ways desired can exceed parent's available:
+1. Rigid descendant doesn't fit (`intrinsic_min > available`).
+2. Explicit `min_size` or `Fixed(v)` overrides.
+
+When that happens the rect overflows; downstream (cascade/composer/backend) tolerates it, same posture as the root-vs-surface overflow.
+
+This matches CSS Flexbox's default `flex-shrink: 1` with `min-width: auto`. **Departs from WPF**: WPF's `Auto`/`*` allow children to exceed the parent (parent grows or content overflows up the tree). Palantir parents *don't grow* past available — children clamp down to fit. The WPF model created two-pass convergence headaches and didn't match user expectation that "shrinking the window shrinks the UI."
+
+Canonical impl: `resolve_axis_size` in `src/layout/support.rs` (the per-axis math) plus the freeze loop in `src/layout/stack/mod.rs::measure` (the Fill-sibling distribution). Pinned by `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs` and `src/layout/cross_driver_tests/convergence.rs` — change the math, update the tests in the same change.
 
 ## Layout dispatch
 
@@ -131,6 +141,7 @@ Single render pass per surface, instanced draws. `wgpu::RenderBundle` for unchan
 ## Open Questions
 
 - **Re-measure on size mismatch during arrange.** WPF allows constrained re-measure. Currently one pass each. If a widget reports a measured-vs-arranged mismatch in practice, add an egui-style `request_discard` second-frame fallback. Not yet motivated.
+- **Grow-pass simplification.** `LayoutEngine::measure` retains a two-pass grow loop from the WPF era. Under flex-shrink semantics it only fires when `min_size`/`Fixed`/`intrinsic_min` overflows available — the second pass converges trivially in those cases, with overflow clamped to `new_available`. Could be deleted; left in because it's harmless and the convergence regression test pins safety.
 - **State store API.** `WidgetId → Any` map is committed in principle; the borrowing shape (`&mut Ui` reentrancy, lifetime of borrowed state across child closures) is the part still to design.
 - **Hit shapes + layers.** Both proposed above. Adding them is straightforward; deferred until a workload demands non-rect hit-testing or explicit popup ordering.
 

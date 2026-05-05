@@ -104,6 +104,10 @@ pub(crate) fn compute(
         sizing,
         hug_with_margin,
         f32::INFINITY,
+        // Intrinsic queries run with `available = INFINITY`; the
+        // min-content floor is irrelevant in that branch (no
+        // shrinking to apply it to). Pass 0 — the `.max(0)` no-op.
+        0.0,
         margin,
         min_clamp,
         max_clamp,
