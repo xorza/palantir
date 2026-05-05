@@ -102,6 +102,97 @@ fn compose_intersects_nested_clips() {
 }
 
 #[test]
+fn cull_drops_drawrect_entirely_outside_active_clip() {
+    // Two `DrawRect`s under the same clip: one inside, one fully
+    // outside. Composer must skip emitting the outside one (the GPU
+    // would scissor it, but skipping the `quads.push` saves CPU work).
+    // Push/Pop pair still emits a single scissored group covering the
+    // visible quad.
+    let buf = run(
+        |b| {
+            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            draw(b, rect(20.0, 20.0, 30.0, 30.0)); // inside
+            draw(b, rect(200.0, 200.0, 30.0, 30.0)); // entirely outside
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.quads.len(), 1, "outside-clip rect must be culled");
+    assert_eq!(buf.groups.len(), 1);
+    assert!(buf.groups[0].scissor.is_some());
+}
+
+#[test]
+fn cull_drops_drawtext_entirely_outside_active_clip() {
+    let buf = run(
+        |b| {
+            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            text(b, rect(10.0, 10.0, 50.0, 20.0)); // inside
+            text(b, rect(300.0, 300.0, 50.0, 20.0)); // outside
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.texts.len(), 1, "outside-clip text run must be culled");
+}
+
+#[test]
+fn cull_keeps_drawrect_partially_inside_active_clip() {
+    // Partial overlap counts — anything that could light a pixel keeps
+    // its quad. Only fully-disjoint draws are dropped.
+    let buf = run(
+        |b| {
+            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            draw(b, rect(80.0, 80.0, 50.0, 50.0)); // straddles the clip
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.quads.len(), 1, "straddling rect must still emit");
+}
+
+#[test]
+fn cull_does_not_apply_without_active_clip() {
+    // No `PushClip` ⇒ no scissor active. Even far-offscreen draws
+    // emit; the GPU's viewport scissor handles culling. Pin so a
+    // future tightening doesn't silently start dropping unscissored
+    // draws.
+    let buf = run(
+        |b| {
+            draw(b, rect(1000.0, 1000.0, 50.0, 50.0));
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.quads.len(), 1);
+}
+
+#[test]
+fn cull_handles_culled_text_then_quad_split() {
+    // The text-then-quad split rule lives in `GroupBuilder`. A culled
+    // text run must NOT flag `last_was_text`, otherwise the next quad
+    // would force a spurious group flush. Verify by drawing
+    // [text-out, rect-in, rect-in] under the same clip — they should
+    // share one group with both rects in it (no spurious split).
+    let buf = run(
+        |b| {
+            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            text(b, rect(300.0, 300.0, 50.0, 20.0)); // culled
+            draw(b, rect(10.0, 10.0, 30.0, 30.0));
+            draw(b, rect(50.0, 50.0, 30.0, 30.0));
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.texts.len(), 0);
+    assert_eq!(buf.quads.len(), 2);
+    assert_eq!(
+        buf.groups.len(),
+        1,
+        "culled text must not flag last_was_text and split the group"
+    );
+}
+
+#[test]
 fn compose_skips_groups_with_no_quads() {
     let buf = run(
         |b| {
