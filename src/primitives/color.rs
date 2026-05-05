@@ -220,4 +220,87 @@ mod tests {
         const _LITERAL: Color = Color::rgb(0.2, 0.4, 0.8);
         const _HEX: Color = Color::hex(0x3366CC);
     }
+
+    /// Roundtrip a Color through TOML and parse the emitted hex back.
+    /// Wraps in a tiny struct because TOML's top level must be a table.
+    fn toml_roundtrip(c: Color) -> (String, Color) {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct W {
+            c: Color,
+        }
+        let s = toml::to_string(&W { c }).expect("serialize");
+        let parsed: W = toml::from_str(&s).expect("parse");
+        (s, parsed.c)
+    }
+
+    /// Pin: serializing a Color and re-serializing the parse converges
+    /// to the same hex bytes for every (r, g, b) sRGB byte. Catches
+    /// Newton-iteration regressions that drift by 1 LSB.
+    #[test]
+    fn hex_round_trip_stable_over_all_bytes() {
+        for byte in 0u8..=255 {
+            let c = Color::rgb_u8(byte, byte, byte);
+            let (s1, parsed) = toml_roundtrip(c);
+            let (s2, _) = toml_roundtrip(parsed);
+            assert_eq!(s1, s2, "byte {byte} did not round-trip stably");
+        }
+    }
+
+    /// Pin: alpha = 1.0 emits the 6-digit form; any other alpha emits
+    /// the 8-digit form. A refactor that always emits 8 digits would
+    /// silently change the output format and trip this test.
+    #[test]
+    fn opaque_emits_six_digits_translucent_emits_eight() {
+        // 0.2 → 0x33, 0.4 → 0x66, 0.8 → 0xcc once round-tripped through
+        // the cubic / Newton inverse pair.
+        let (s, _) = toml_roundtrip(Color::rgb(0.2, 0.4, 0.8));
+        assert!(
+            s.contains(r##""#3366cc""##),
+            "opaque must emit 6 digits: {s}"
+        );
+        let (s, _) = toml_roundtrip(Color::rgba(0.2, 0.4, 0.8, 0.5));
+        assert!(
+            s.contains(r##""#3366cc80""##),
+            "translucent must emit 8 digits: {s}"
+        );
+    }
+
+    /// Edge cases: fully transparent, fully opaque white, opaque black.
+    #[test]
+    fn extremes_round_trip() {
+        for c in [Color::TRANSPARENT, Color::WHITE, Color::BLACK] {
+            let (s1, p) = toml_roundtrip(c);
+            let (s2, _) = toml_roundtrip(p);
+            assert_eq!(s1, s2);
+        }
+    }
+
+    /// Pin parse acceptance: with or without `#`, both 6- and 8-digit.
+    #[test]
+    fn parse_accepts_with_and_without_hash() {
+        assert_eq!(
+            parse_hex("#3266cc").unwrap(),
+            Color::rgb_u8(0x32, 0x66, 0xcc)
+        );
+        assert_eq!(
+            parse_hex("3266cc").unwrap(),
+            Color::rgb_u8(0x32, 0x66, 0xcc)
+        );
+        assert_eq!(
+            parse_hex("#3266cc80").unwrap(),
+            Color::rgba_u8(0x32, 0x66, 0xcc, 0x80)
+        );
+    }
+
+    /// Pin parse rejection: malformed inputs return an error rather
+    /// than silently producing garbage.
+    #[test]
+    fn parse_rejects_malformed_input() {
+        assert!(parse_hex("").is_err());
+        assert!(parse_hex("#").is_err());
+        assert!(parse_hex("#abc").is_err(), "3-digit not supported");
+        assert!(parse_hex("#abcde").is_err(), "5-digit not supported");
+        assert!(parse_hex("#abcdefab12").is_err(), "10-digit too long");
+        assert!(parse_hex("#zzzzzz").is_err(), "non-hex digits");
+    }
 }
