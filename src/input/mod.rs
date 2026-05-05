@@ -101,6 +101,10 @@ pub struct InputState {
     pointer: PointerState,
     active: Option<WidgetId>,
     hovered: Option<WidgetId>,
+    /// Topmost `Sense::Scroll` widget under the pointer, recomputed
+    /// whenever the pointer moves and at `end_frame`. The scroll widget
+    /// matching this id consumes [`Self::frame_scroll_delta`].
+    scroll_target: Option<WidgetId>,
     clicked_this_frame: FxHashSet<WidgetId>,
     /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
     /// in [`Self::end_frame`]. Read by scroll widgets at record time.
@@ -119,6 +123,7 @@ impl InputState {
             pointer: PointerState::default(),
             active: None,
             hovered: None,
+            scroll_target: None,
             clicked_this_frame: FxHashSet::default(),
             frame_scroll_delta: Vec2::ZERO,
         }
@@ -131,10 +136,12 @@ impl InputState {
             InputEvent::PointerMoved(p) => {
                 self.pointer.pos = Some(p);
                 self.recompute_hover(cascades);
+                self.recompute_scroll_target(cascades);
             }
             InputEvent::PointerLeft => {
                 self.pointer.pos = None;
                 self.hovered = None;
+                self.scroll_target = None;
             }
             InputEvent::PointerPressed(PointerButton::Left) => {
                 // Press hits the topmost *clickable* widget — hover-only widgets
@@ -175,6 +182,19 @@ impl InputState {
             self.active = None;
         }
         self.recompute_hover(cascades);
+        self.recompute_scroll_target(cascades);
+    }
+
+    /// Returns this frame's scroll delta if `id` is the current scroll
+    /// hit-target; otherwise `Vec2::ZERO`. Scroll widgets call this at
+    /// record time to claim wheel/touchpad input.
+    #[allow(dead_code)] // wired to Scroll widget in step 3
+    pub(crate) fn scroll_delta_for(&self, id: WidgetId) -> Vec2 {
+        if self.scroll_target == Some(id) {
+            self.frame_scroll_delta
+        } else {
+            Vec2::ZERO
+        }
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &CascadeResult) -> ResponseState {
@@ -203,6 +223,13 @@ impl InputState {
             .pointer
             .pos
             .and_then(|p| cascades.hit_test(p, Sense::hover));
+    }
+
+    fn recompute_scroll_target(&mut self, cascades: &CascadeResult) {
+        self.scroll_target = self
+            .pointer
+            .pos
+            .and_then(|p| cascades.hit_test(p, Sense::scroll));
     }
 }
 
