@@ -36,7 +36,7 @@ pub struct Ui {
     /// Cross-frame `WidgetId → Any` state. See [`StateMap`].
     pub(crate) state: StateMap,
 
-    input: InputState,
+    pub(crate) input: InputState,
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) cascades: Cascades,
     pub(crate) display: Display,
@@ -165,17 +165,6 @@ impl Ui {
     pub fn state_mut<T: Default + 'static>(&mut self, id: impl std::hash::Hash) -> &mut T {
         self.state
             .get_or_insert_with(WidgetId::from_hash(id), T::default)
-    }
-
-    /// Re-run only the composer over the encoder's last cmd buffer,
-    /// returning the resulting snapshot count change. `#[doc(hidden)]`
-    /// — exists only so `benches/compose_cache.rs` can isolate
-    /// compose-only timing from the rest of `end_frame`.
-    #[doc(hidden)]
-    pub fn __recompose(&mut self) {
-        self.frontend
-            .composer
-            .compose(&self.frontend.encoder.cmds, &self.display);
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {

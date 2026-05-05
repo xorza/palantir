@@ -494,6 +494,7 @@ impl PaintAttrs {
             2 => Sense::Click,
             3 => Sense::Drag,
             4 => Sense::ClickAndDrag,
+            5 => Sense::Scroll,
             _ => unreachable!(),
         }
     }
