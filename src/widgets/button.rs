@@ -1,32 +1,59 @@
 use crate::layout::types::{align::Align, sense::Sense};
-use crate::primitives::{color::Color, corners::Corners, visuals::Visuals};
+use crate::primitives::{color::Color, corners::Corners};
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::theme::Background;
+use crate::widgets::theme::{Background, TextStyle};
 use crate::widgets::{Response, frame::Frame};
 use std::borrow::Cow;
 
-/// Per-state button styling. Each `Visuals` carries its own
-/// `Background` (fill / stroke / radius) and `TextStyle` (font size /
-/// color / leading) — two states with different radii or font sizes
-/// is therefore expressible, even though most themes keep them equal
-/// across states by convention.
+/// Paint settings for one button state — `normal`, `hovered`,
+/// `pressed`, or `disabled`. Each carries its own `Background` (fill /
+/// stroke / radius) and `TextStyle` (font size / color / leading), so
+/// two states with different radii or font sizes is expressible — most
+/// themes keep them equal across states by convention.
+///
+/// Used as the leaf type of [`ButtonTheme`]'s four state slots.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ButtonStyle {
+    pub background: Option<Background>,
+    // todo also optional
+    pub text: TextStyle,
+}
+
+impl ButtonStyle {
+    /// Compatibility constructor: solid fill + text color, default
+    /// font/leading from `TextStyle::default()`. Background carries no
+    /// stroke and zero radius — set those by spreading from this.
+    pub fn solid(fill: Color, text_color: Color) -> Self {
+        Self {
+            background: Some(Background {
+                fill,
+                ..Background::default()
+            }),
+            text: TextStyle::default().with_color(text_color),
+        }
+    }
+}
+
+/// Four-state button theme. The leaf type ([`ButtonStyle`]) lives next
+/// to it; widget reads `theme.{normal,hovered,pressed,disabled}` based
+/// on the live response state and `Element::disabled`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ButtonTheme {
-    pub normal: Visuals,
-    pub hovered: Visuals,
-    pub pressed: Visuals,
-    pub disabled: Visuals,
+    pub normal: ButtonStyle,
+    pub hovered: ButtonStyle,
+    pub pressed: ButtonStyle,
+    pub disabled: ButtonStyle,
 }
 
 impl Default for ButtonTheme {
     fn default() -> Self {
-        // Per-state Visuals share a Background with the historical
-        // 4 px radius. Solid `Visuals::solid` doesn't set the radius,
-        // so we adjust each state below.
-        let with_radius = |v: Visuals| -> Visuals {
-            Visuals {
+        // Per-state ButtonStyle share a Background with the historical
+        // 4 px radius. `solid` doesn't set the radius, so we adjust
+        // each state below.
+        let with_radius = |v: ButtonStyle| -> ButtonStyle {
+            ButtonStyle {
                 background: v.background.map(|b| Background {
                     radius: Corners::all(4.0),
                     ..b
@@ -35,10 +62,19 @@ impl Default for ButtonTheme {
             }
         };
         Self {
-            normal: with_radius(Visuals::solid(Color::rgb(0.20, 0.40, 0.80), Color::WHITE)),
-            hovered: with_radius(Visuals::solid(Color::rgb(0.30, 0.52, 0.92), Color::WHITE)),
-            pressed: with_radius(Visuals::solid(Color::rgb(0.10, 0.28, 0.66), Color::WHITE)),
-            disabled: with_radius(Visuals::solid(
+            normal: with_radius(ButtonStyle::solid(
+                Color::rgb(0.20, 0.40, 0.80),
+                Color::WHITE,
+            )),
+            hovered: with_radius(ButtonStyle::solid(
+                Color::rgb(0.30, 0.52, 0.92),
+                Color::WHITE,
+            )),
+            pressed: with_radius(ButtonStyle::solid(
+                Color::rgb(0.10, 0.28, 0.66),
+                Color::WHITE,
+            )),
+            disabled: with_radius(ButtonStyle::solid(
                 Color::rgb(0.22, 0.26, 0.32),
                 Color::rgba(1.0, 1.0, 1.0, 0.45),
             )),
