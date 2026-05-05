@@ -29,18 +29,19 @@ fn hstack_arranges_two_buttons_side_by_side() {
     let kids: Vec<_> = ui.tree.children(root).collect();
     assert_eq!(kids.len(), 2);
 
-    // "Hi" measures 2*8=16 wide, 16 tall via the placeholder text metrics.
-    // Button has no default padding, so its desired size matches the label.
+    // "Hi" measures 2*8=16 wide. Height = `line_height_px` = font_size *
+    // LINE_HEIGHT_MULT = 16 * 1.2 = 19.2. Button has no default padding,
+    // so its desired size matches the label.
     let a = ui.pipeline.layout.result.rect[kids[0].index()];
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.min.y, 0.0);
     assert_eq!(a.size.w, 16.0);
-    assert_eq!(a.size.h, 16.0);
+    assert_eq!(a.size.h, 19.2);
 
     let b = ui.pipeline.layout.result.rect[kids[1].index()];
     assert_eq!(b.min.x, 16.0);
     assert_eq!(b.size.w, 100.0);
-    assert_eq!(b.size.h, 16.0);
+    assert_eq!(b.size.h, 19.2);
 }
 
 #[test]

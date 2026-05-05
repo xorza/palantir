@@ -12,16 +12,24 @@ use crate::tree::element::LayoutCore;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
-/// Iterate `(text, font_size_px, wrap)` for every `Shape::Text` on a
-/// leaf. Single source of truth for the layout-side leaf walk —
-/// `mod.rs::leaf_content_size` drives wrap shaping, `intrinsic::leaf`
-/// drives the unbounded content axis. Filtering and destructuring
-/// happen here so neither side can drift on which shape variants
-/// contribute to size.
+/// One `Shape::Text` worth of layout-side inputs. Yielded by
+/// [`leaf_text_shapes`]; named so the four fields aren't a tuple.
+pub(crate) struct LeafTextShape<'a> {
+    pub(crate) text: &'a str,
+    pub(crate) font_size_px: f32,
+    pub(crate) line_height_px: f32,
+    pub(crate) wrap: TextWrap,
+}
+
+/// Iterate every `Shape::Text` on a leaf. Single source of truth for
+/// the layout-side leaf walk — `mod.rs::leaf_content_size` drives wrap
+/// shaping, `intrinsic::leaf` drives the unbounded content axis.
+/// Filtering and destructuring happen here so neither side can drift
+/// on which shape variants contribute to size.
 pub(crate) fn leaf_text_shapes(
     tree: &Tree,
     node: NodeId,
-) -> impl Iterator<Item = (&str, f32, TextWrap)> {
+) -> impl Iterator<Item = LeafTextShape<'_>> {
     tree.shapes
         .slice_of(node.index())
         .iter()
@@ -29,9 +37,15 @@ pub(crate) fn leaf_text_shapes(
             Shape::Text {
                 text,
                 font_size_px,
+                line_height_px,
                 wrap,
                 ..
-            } => Some((text.as_ref(), *font_size_px, *wrap)),
+            } => Some(LeafTextShape {
+                text: text.as_ref(),
+                font_size_px: *font_size_px,
+                line_height_px: *line_height_px,
+                wrap: *wrap,
+            }),
             _ => None,
         })
 }

@@ -32,8 +32,8 @@ pub enum Key {
     Enter,
     Tab,
     Escape,
-    Space,
-    /// Printable character, post-layout (post-shift).
+    /// Printable character, post-layout (post-shift). Space arrives as
+    /// `Char(' ')`, not a dedicated variant.
     Char(char),
     /// Any key not covered by the variants above. Carried so dispatch
     /// can ignore it cleanly without translation losing the keypress.
@@ -174,7 +174,7 @@ pub(crate) fn key_from_winit(k: &winit::keyboard::Key) -> Key {
         WK::Named(NamedKey::Enter) => Key::Enter,
         WK::Named(NamedKey::Tab) => Key::Tab,
         WK::Named(NamedKey::Escape) => Key::Escape,
-        WK::Named(NamedKey::Space) => Key::Space,
+        WK::Named(NamedKey::Space) => Key::Char(' '),
         WK::Character(s) => s.chars().next().map(Key::Char).unwrap_or(Key::Other),
         _ => Key::Other,
     }

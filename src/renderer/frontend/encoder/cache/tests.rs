@@ -205,40 +205,46 @@ fn size_change_appends_and_marks_garbage() {
 
 #[test]
 fn same_lengths_different_hash_with_kind_swap_does_not_assert() {
-    // Regression: TextEdit's per-frame shape sequence can swap kinds
-    // while preserving total cmd count and data byte count
-    // (placeholder Text → focused-caret Overlay are both single
-    // commands, both write a 48-byte payload). The cache's in-place
-    // fast path used to trigger on len-equality alone and assert that
-    // the cached kinds matched the new kinds — wrong when the
-    // subtree_hash differs. Pin the fix: hash-mismatch falls through
-    // to the slow append path and replay returns the new kinds.
+    // Regression: a widget's per-frame command sequence can swap kinds
+    // while preserving total cmd count and data byte count — most
+    // visibly in TextEdit's placeholder-Text ↔ focused-caret-Overlay
+    // toggle, but reproducible at the cache layer with any same-length
+    // reorder. The in-place fast path used to trigger on length
+    // equality alone and assert that the cached kinds matched the new
+    // kinds — wrong when the `subtree_hash` differs. Pin the fix:
+    // hash-mismatch falls through to the slow append path and replay
+    // returns the new kinds.
+    //
+    // Reproducer: the same `[DrawText, PushClip]` pair vs.
+    // `[PushClip, DrawText]` — same total cmds (2) and same total
+    // data words, different kind sequence.
     let mut cache = EncodeCache::default();
 
-    let mut buf_text = RenderCmdBuffer::default();
-    buf_text.draw_text(
+    let mut buf_a = RenderCmdBuffer::default();
+    buf_a.draw_text(
         Rect::new(0.0, 0.0, 10.0, 10.0),
         Color::WHITE,
         TextCacheKey::INVALID,
     );
-    write_full(&mut cache, wid(1), hash(1), &buf_text, Vec2::ZERO);
+    buf_a.push_clip(Rect::new(0.0, 0.0, 10.0, 10.0));
+    write_full(&mut cache, wid(1), hash(1), &buf_a, Vec2::ZERO);
 
-    let mut buf_rect = RenderCmdBuffer::default();
-    buf_rect.draw_rect(
+    let mut buf_b = RenderCmdBuffer::default();
+    buf_b.push_clip(Rect::new(0.0, 0.0, 10.0, 10.0));
+    buf_b.draw_text(
         Rect::new(0.0, 0.0, 10.0, 10.0),
-        Corners::default(),
         Color::WHITE,
-        None,
+        TextCacheKey::INVALID,
     );
     // Sanity: same cmd count and same data byte count is what makes
     // the bug reachable in the first place.
-    assert_eq!(buf_text.kinds.len(), buf_rect.kinds.len());
-    assert_eq!(buf_text.data.len(), buf_rect.data.len());
+    assert_eq!(buf_a.kinds.len(), buf_b.kinds.len());
+    assert_eq!(buf_a.data.len(), buf_b.data.len());
 
-    write_full(&mut cache, wid(1), hash(2), &buf_rect, Vec2::ZERO);
+    write_full(&mut cache, wid(1), hash(2), &buf_b, Vec2::ZERO);
 
     let hit = cache.try_lookup(wid(1), hash(2), avail()).unwrap();
-    assert_eq!(hit.kinds, &[CmdKind::DrawRect]);
+    assert_eq!(hit.kinds, &[CmdKind::PushClip, CmdKind::DrawText]);
 }
 
 #[test]

@@ -53,6 +53,17 @@ pub enum Shape {
         text: Cow<'static, str>,
         color: Color,
         font_size_px: f32,
+        /// Line-height in logical px, fed straight to the shaper's
+        /// `Metrics::new`. Authoring-side widgets typically set this to
+        /// `font_size_px * line_height_mult` where the multiplier
+        /// defaults to [`crate::text::LINE_HEIGHT_MULT`] (1.2). Carrying
+        /// the resolved px on the shape — instead of a multiplier the
+        /// shaper would re-resolve — means the shaper doesn't have to
+        /// know about widget conventions, and two `Shape::Text` runs at
+        /// the same font-size but different leading correctly produce
+        /// distinct cached shaped buffers (via [`TextCacheKey::lh_q`]).
+        // todo option?
+        line_height_px: f32,
         wrap: TextWrap,
         align: Align,
     },

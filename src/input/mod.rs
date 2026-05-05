@@ -55,15 +55,11 @@ pub enum InputEvent {
     Scroll(Vec2),
     /// Logical key was pressed. `repeat` reflects OS-level key repeat
     /// (held keys re-emit). Modifier state isn't carried on the event;
-    /// consumers read the latest [`Modifiers`] from `InputState` (wired
-    /// in step 2 of the TextEdit plan).
+    /// consumers read the latest [`Modifiers`] from `InputState`. We
+    /// don't carry releases — no consumer needs them yet.
     KeyDown {
         key: Key,
         repeat: bool,
-    },
-    /// Logical key was released.
-    KeyUp {
-        key: Key,
     },
     /// Committed text — a typed character or an IME composition that
     /// just finalized. Distinct from `KeyDown` because IME / dead-key
@@ -121,16 +117,14 @@ impl InputEvent {
                     InputEvent::Scroll(Vec2::new(-p.x as f32 / s, -p.y as f32 / s))
                 }
             }),
-            WindowEvent::KeyboardInput { event, .. } => {
-                let key = key_from_winit(&event.logical_key);
-                Some(match event.state {
-                    ElementState::Pressed => InputEvent::KeyDown {
-                        key,
-                        repeat: event.repeat,
-                    },
-                    ElementState::Released => InputEvent::KeyUp { key },
-                })
-            }
+            WindowEvent::KeyboardInput { event, .. } => match event.state {
+                // Releases are dropped — no consumer needs them yet.
+                ElementState::Pressed => Some(InputEvent::KeyDown {
+                    key: key_from_winit(&event.logical_key),
+                    repeat: event.repeat,
+                }),
+                ElementState::Released => None,
+            },
             // IME commit: what the user *meant* to insert after composition
             // (dead keys, multi-keystroke CJK input). Strings longer than
             // the inline buffer are dropped — IME commits over 15 bytes
@@ -299,10 +293,6 @@ impl InputState {
             InputEvent::ModifiersChanged(m) => {
                 self.modifiers = m;
             }
-            // Releases aren't queued — editors consume presses, and a
-            // release queue without a reader would invent state we
-            // don't yet need.
-            InputEvent::KeyUp { .. } => {}
         }
     }
 

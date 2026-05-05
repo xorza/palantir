@@ -202,6 +202,7 @@ fn hash_shape(h: &mut Hasher, shape: &Shape) {
             text,
             color,
             font_size_px,
+            line_height_px,
             wrap,
             align,
         } => {
@@ -209,6 +210,7 @@ fn hash_shape(h: &mut Hasher, shape: &Shape) {
             text.hash(h);
             h.pod(color);
             h.write_u32(font_size_px.to_bits());
+            h.write_u32(line_height_px.to_bits());
             h.write_u16(((align.raw() as u16) << 8) | *wrap as u8 as u16);
         }
     }
@@ -233,4 +235,53 @@ fn hash_grid_def(h: &mut Hasher, def: &GridDef) {
     }
     h.write_u32(def.row_gap.to_bits());
     h.write_u32(def.col_gap.to_bits());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::types::align::Align;
+    use crate::primitives::color::Color;
+    use crate::shape::TextWrap;
+    use std::borrow::Cow;
+
+    fn text_shape(font_size_px: f32, line_height_px: f32) -> Shape {
+        Shape::Text {
+            text: Cow::Borrowed("hi"),
+            color: Color::WHITE,
+            font_size_px,
+            line_height_px,
+            wrap: TextWrap::Single,
+            align: Align::default(),
+        }
+    }
+
+    #[test]
+    fn text_shape_hash_differs_when_line_height_differs() {
+        // Pin: two `Shape::Text` runs that differ only in
+        // `line_height_px` must hash differently. Without this the
+        // measure cache would conflate runs whose shaped buffers
+        // genuinely differ (different `Metrics::new`).
+        let mut h_a = Hasher::new();
+        hash_shape(&mut h_a, &text_shape(16.0, 16.0 * 1.2));
+        let a = h_a.finish();
+        let mut h_b = Hasher::new();
+        hash_shape(&mut h_b, &text_shape(16.0, 16.0 * 1.5));
+        let b = h_b.finish();
+        assert_ne!(
+            a, b,
+            "different line_height_px must produce different node hashes",
+        );
+    }
+
+    #[test]
+    fn text_shape_hash_matches_when_line_height_matches() {
+        // Sanity counterpart: identical shapes hash identically (no
+        // accidental introduction of non-determinism via the new field).
+        let mut h_a = Hasher::new();
+        hash_shape(&mut h_a, &text_shape(16.0, 19.2));
+        let mut h_b = Hasher::new();
+        hash_shape(&mut h_b, &text_shape(16.0, 19.2));
+        assert_eq!(h_a.finish(), h_b.finish());
+    }
 }
