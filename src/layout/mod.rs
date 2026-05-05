@@ -10,7 +10,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::shape::TextWrap;
 use crate::text::TextMeasurer;
-use crate::tree::element::{LayoutCore, LayoutMode};
+use crate::tree::element::{LayoutCore, LayoutMode, ScrollAxes};
 use crate::tree::widget_id::WidgetId;
 use crate::tree::{NodeId, Tree};
 
@@ -20,7 +20,6 @@ pub(crate) mod canvas;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
 pub(crate) mod result;
-pub(crate) mod scroll;
 pub(crate) mod stack;
 pub(crate) mod support;
 pub(crate) mod types;
@@ -262,20 +261,7 @@ impl LayoutEngine {
             self.result.text_shapes[curr_start..curr_start + hit.text_shapes.len()]
                 .copy_from_slice(hit.text_shapes);
             self.result.available_q[curr_start..curr_end].copy_from_slice(hit.available_q);
-            // Derive `scroll_content` for any `Scroll{V, H, XY}`
-            // descendants from the just-restored children's `desired`,
-            // instead of caching the column. Avoids a parallel arena
-            // for what's almost always a sparse row.
-            for i in curr_start..curr_end {
-                let mode = tree.layout[i].mode;
-                if matches!(
-                    mode,
-                    LayoutMode::ScrollV | LayoutMode::ScrollH | LayoutMode::ScrollXY
-                ) {
-                    self.result.scroll_content[i] =
-                        scroll::derive_content(tree, &self.scratch.desired, NodeId(i as u32), mode);
-                }
-            }
+            self.result.scroll_content[curr_start..curr_end].copy_from_slice(hit.scroll_content);
             // Restore per-grid hug arrays. `grid::arrange` reads
             // `LayoutEngine.scratch.grid.hugs`, populated only by
             // `grid::measure`. Without this restore, a cache hit at
@@ -369,6 +355,7 @@ impl LayoutEngine {
                 &self.scratch.desired[start..end],
                 &self.result.text_shapes[start..end],
                 &self.result.available_q[start..end],
+                &self.result.scroll_content[start..end],
                 &self.scratch.tmp_hugs,
             );
         }
@@ -456,24 +443,38 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
             LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
-            // Scroll viewports stash content extent for `Ui::end_frame`
-            // and return 0 on the panned axes so `resolve_desired` falls
-            // through to the user's `Sizing` and doesn't grow with
-            // content. See `layout::scroll` for per-flavor formulas.
-            LayoutMode::ScrollV => {
-                let raw = scroll::measure_v(self, tree, node, inner_avail, text);
+            // Scroll viewports stash content extent in `scroll_content`
+            // for `Ui::end_frame` and return 0 on the panned axes so
+            // `resolve_desired` falls through to the user's `Sizing`
+            // and doesn't grow with content. Single-axis variants run
+            // a stack on the panned axis with that axis fed `INF`;
+            // `Both` runs a zstack with both axes unbounded.
+            LayoutMode::Scroll(axes) => {
+                let raw = match axes {
+                    ScrollAxes::Vertical => stack::measure(
+                        self,
+                        tree,
+                        node,
+                        Size::new(inner_avail.w, f32::INFINITY),
+                        Axis::Y,
+                        text,
+                    ),
+                    ScrollAxes::Horizontal => stack::measure(
+                        self,
+                        tree,
+                        node,
+                        Size::new(f32::INFINITY, inner_avail.h),
+                        Axis::X,
+                        text,
+                    ),
+                    ScrollAxes::Both => zstack::measure(self, tree, node, Size::INF, text),
+                };
                 self.result.scroll_content[node.index()] = raw;
-                Size::new(raw.w, 0.0)
-            }
-            LayoutMode::ScrollH => {
-                let raw = scroll::measure_h(self, tree, node, inner_avail, text);
-                self.result.scroll_content[node.index()] = raw;
-                Size::new(0.0, raw.h)
-            }
-            LayoutMode::ScrollXY => {
-                let raw = scroll::measure_xy(self, tree, node, text);
-                self.result.scroll_content[node.index()] = raw;
-                Size::ZERO
+                match axes {
+                    ScrollAxes::Vertical => Size::new(raw.w, 0.0),
+                    ScrollAxes::Horizontal => Size::new(0.0, raw.h),
+                    ScrollAxes::Both => Size::ZERO,
+                }
             }
         }
     }
@@ -501,9 +502,11 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::arrange(self, tree, node, inner),
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner),
             LayoutMode::Grid(idx) => grid::arrange(self, tree, node, inner, idx),
-            LayoutMode::ScrollV => stack::arrange(self, tree, node, inner, Axis::Y),
-            LayoutMode::ScrollH => stack::arrange(self, tree, node, inner, Axis::X),
-            LayoutMode::ScrollXY => zstack::arrange(self, tree, node, inner),
+            LayoutMode::Scroll(axes) => match axes {
+                ScrollAxes::Vertical => stack::arrange(self, tree, node, inner, Axis::Y),
+                ScrollAxes::Horizontal => stack::arrange(self, tree, node, inner, Axis::X),
+                ScrollAxes::Both => zstack::arrange(self, tree, node, inner),
+            },
         }
     }
 

@@ -16,7 +16,7 @@ use super::GridDef;
 use crate::common::hash::Hasher;
 use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
 use crate::shape::Shape;
-use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintCore};
+use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintCore, ScrollAxes};
 use std::hash::Hash;
 use std::hash::Hasher as _;
 
@@ -114,9 +114,9 @@ fn hash_layout_mode(h: &mut Hasher, m: LayoutMode) {
         LayoutMode::ZStack => 5,
         LayoutMode::Canvas => 6,
         LayoutMode::Grid(idx) => 7 | ((idx as u32) << 16),
-        LayoutMode::ScrollV => 8,
-        LayoutMode::ScrollH => 9,
-        LayoutMode::ScrollXY => 10,
+        LayoutMode::Scroll(ScrollAxes::Vertical) => 8,
+        LayoutMode::Scroll(ScrollAxes::Horizontal) => 9,
+        LayoutMode::Scroll(ScrollAxes::Both) => 10,
     };
     h.write_u32(packed);
 }

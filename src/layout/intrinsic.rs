@@ -16,6 +16,7 @@ use super::support::{leaf_text_shapes, resolve_axis_size};
 use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, stack, wrapstack, zstack};
 use crate::layout::types::sizing::Sizing;
 use crate::text::TextMeasurer;
+use crate::tree::element::ScrollAxes;
 use crate::tree::{NodeId, Tree};
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
@@ -135,15 +136,15 @@ fn content_intrinsic(
         // comes from the viewport's own `Sizing`, never from content.
         // The non-panned axis falls back to the corresponding stack /
         // zstack intrinsic.
-        LayoutMode::ScrollV => match axis {
+        LayoutMode::Scroll(ScrollAxes::Vertical) => match axis {
             Axis::Y => 0.0,
             Axis::X => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, text),
         },
-        LayoutMode::ScrollH => match axis {
+        LayoutMode::Scroll(ScrollAxes::Horizontal) => match axis {
             Axis::X => 0.0,
             Axis::Y => stack::intrinsic(engine, tree, node, Axis::X, axis, req, text),
         },
-        LayoutMode::ScrollXY => 0.0,
+        LayoutMode::Scroll(ScrollAxes::Both) => 0.0,
     }
 }
 
