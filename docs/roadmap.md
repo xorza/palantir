@@ -19,11 +19,6 @@ ecs for soa?
   Same one-frame-stale model as wheel pan — a just-recorded target's
   rect doesn't exist yet, so frame 0 of `scroll_to` from outside the
   scroll body needs a fallback (defer that case until it bites).
-- **Cross-frame measure short-circuit.** Key `(WidgetId, available, sizing)
-  → desired` and skip measure for unchanged subtrees, the way WPF does with
-  `_previousAvailableSize` and Masonry does with `MeasurementCache`. Composes
-  directly with damage rendering: if measure didn't fire, encode cache stays
-  valid.
 - **Overlay / popup layer.** Tooltips, dropdowns, context menus, and modals
   must draw outside their parent's clip and above siblings regardless of
   pre-order. Typically a separate "always on top" tree merged into the
