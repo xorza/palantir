@@ -5,12 +5,20 @@ ecs for soa?
 
 ## Now — concrete, motivated, ready to start
 
-- **ScrollView v1.** Plan in `docs/scrollview.md`. `InputEvent::Scroll` from
-  winit, vertical-only widget, offset stored via `state_mut`. Unblocks the
-  showcase's "tall content" gap.
-- **Drag tracking on `Active` capture.** Track `press_pos` + `last_pos` on
-  `InputState`; expose `drag_delta()` rect-independent so the pointer can
-  leave the originating widget mid-drag. Pre-req for scrollbars + touch-drag.
+- **Drag-to-pan on scrollbar thumb.** Bars draw + reserve space today
+  but aren't grabbable. Needs a tree restructure on `Scroll` — wrapper
+  carries `Sense::Scroll` + sizing, inner content node carries clip +
+  pan transform + `LayoutMode::Scroll(axes)` measure semantics, per-axis
+  bar leaves with `Sense::Drag` and stable derived ids accumulate
+  `drag_delta(bar_id) * (content - viewport) / (track - thumb)` into
+  `ScrollState.offset`. Click-on-track-to-page falls out for free once
+  bar leaves exist. Design in `docs/scrollbars.md`.
+- **`Scroll::scroll_to(WidgetId)` / `scroll_into_view`.** List-with-
+  selection wants "ensure selected row is visible." Cheap: compute
+  target rect from `LayoutResult.rect`, set `ScrollState.offset`, clamp.
+  Same one-frame-stale model as wheel pan — a just-recorded target's
+  rect doesn't exist yet, so frame 0 of `scroll_to` from outside the
+  scroll body needs a fallback (defer that case until it bites).
 - **Cross-frame measure short-circuit.** Key `(WidgetId, available, sizing)
   → desired` and skip measure for unchanged subtrees, the way WPF does with
   `_previousAvailableSize` and Masonry does with `MeasurementCache`. Composes
@@ -35,6 +43,14 @@ ecs for soa?
   `state_mut_with` (add the public API when this lands), glyph-level
   hit-test (`Buffer::hit`), IME, selection rendering as sibling shapes.
 - **IME + clipboard plumbing.** Both required for `TextEdit`.
+
+### Scroll polish
+
+- **Wheel step from font metrics.** `LineDelta(0, 1)` currently maps
+  to a fixed 40 logical px/line (`SCROLL_LINE_PIXELS` in
+  `src/input/mod.rs`). Once cosmic shaping is in the steady-state
+  path, swap for line-height of the dominant font in the scrolled
+  content. Modest polish; only matters for text-heavy lists.
 
 ### Damage rendering
 
@@ -153,9 +169,24 @@ ecs for soa?
 
 ### Long-list / scroll
 
-- **Virtualization / windowed children.** Once scroll exists. Prefer a
-  "virtual children" hook on a single node yielding measured children for
-  the visible window over Flutter's heavyweight sliver protocol.
+- **Virtualization / windowed children.** Prefer a "virtual children"
+  hook on a single node yielding measured children for the visible
+  window over Flutter's heavyweight sliver protocol. Only path to
+  `O(viewport)` measure cost; today encode/measure are `O(content)`
+  and the composer cull keeps GPU/CPU bounded.
+- **Smooth / inertia scrolling.** Velocity decay + `request_repaint`
+  loop. Real UX win on touchpads, but needs an animation tick infra
+  consumer to share. Too early without one.
+- **Bounce / rubber-band at edges.** Pure feel polish.
+- **Touch drag-to-scroll.** No touch-input plumbing in the winit
+  binding today. Wait for a real touch workload.
+- **Keyboard scrolling** (`PgUp`/`PgDn`/`Home`/`End`). Needs the focus
+  system; defer.
+- **Sticky / pinned headers.** Layout integration is non-trivial; ship
+  when something actually wants them.
+- **Nested scroll-chaining.** v1 = innermost hit-test wins. Browsers
+  chain to parent when child reaches its end; defer until somebody
+  wants it.
 
 ### i18n
 
@@ -178,6 +209,11 @@ ecs for soa?
 
 ## Speculative — profile-gated micro-wins, defer indefinitely
 
+- **Skip cascade/encode recursion under empty clip.** When a subtree's
+  screen rect is fully outside the root viewport, short-circuit
+  descent. Composer-level cull already drops the leaf shapes;
+  recursion-level skip is trickier (Active capture and future focus
+  may want off-screen rects live). Defer until a profile asks.
 - **SIMD `bump_rect_min`.** Replay loop reads/writes 2× f32 per rect-bearing
   cmd (~12 800 ops on the nested workload). Precompute a bit-per-cmd
   "rect-bearing" mask alongside the kinds array; `bump_rect_min` then
