@@ -3,6 +3,7 @@
 impl widgetid instead of impl hash?
 ecs for soa?
 clearcolor from theme
+rounded corner clip
 texton button - optional
 
 ## Now — concrete, motivated, ready to start
