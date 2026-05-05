@@ -58,6 +58,7 @@ pub fn share(cosmic: CosmicMeasure) -> SharedCosmic {
 /// by size for atlas bin reuse). [`TextCacheKey::INVALID`] is the sentinel
 /// returned by the mono fallback — the renderer treats it as "drop this run".
 #[repr(C)]
+#[padding_struct::padding_struct]
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct TextCacheKey {
     /// 64-bit hash of the source string. `0` for the invalid sentinel.
@@ -71,35 +72,26 @@ pub struct TextCacheKey {
     /// same font-size but different leading produce different shaped
     /// buffers (different `Metrics::new`), so the key has to discriminate.
     pub lh_q: u32,
-    /// Trailing padding so size is a multiple of the 8-byte alignment
-    /// `text_hash` forces — `bytemuck::Pod`'s no-padding-bytes invariant
-    /// requires it. Hashed-into the key but always zero so it doesn't
-    /// affect equality.
-    // todo autopad
-    _pad: u32,
 }
 
 impl TextCacheKey {
     /// Sentinel returned by the mono fallback. The renderer skips runs with
-    /// this key.
-    pub const INVALID: Self = Self {
-        text_hash: 0,
-        size_q: 0,
-        max_w_q: 0,
-        lh_q: 0,
-        _pad: 0,
-    };
+    /// this key. `bytemuck::Zeroable::zeroed` fills the padding fields
+    /// the `padding_struct` proc macro generated.
+    pub const INVALID: Self = unsafe { std::mem::zeroed() };
 
-    /// Builder that hides the `_pad` field — the only reason it exists
-    /// is to keep the struct size aligned for `bytemuck::Pod`, and
-    /// callers should never have to remember to zero it.
-    pub(crate) const fn new(text_hash: u64, size_q: u32, max_w_q: u32, lh_q: u32) -> Self {
+    /// Construct from the four hashed fields. The `padding_struct` proc
+    /// macro injects trailing padding fields to satisfy
+    /// `bytemuck::Pod`'s no-padding-bytes invariant; the
+    /// `..Zeroable::zeroed()` spread fills them with zeros so callers
+    /// don't have to know they exist.
+    pub(crate) fn new(text_hash: u64, size_q: u32, max_w_q: u32, lh_q: u32) -> Self {
         Self {
             text_hash,
             size_q,
             max_w_q,
             lh_q,
-            _pad: 0,
+            ..bytemuck::Zeroable::zeroed()
         }
     }
 
