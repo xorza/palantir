@@ -234,6 +234,29 @@ impl Ui {
         self.state.get_or_insert_with(id, T::default)
     }
 
+    /// Currently focused widget id, or `None`. Read by editable widgets
+    /// to decide whether to drain `frame_keys` / `frame_text` this frame.
+    pub fn focused_id(&self) -> Option<WidgetId> {
+        self.input.focused
+    }
+
+    /// Programmatically set or clear focus. Use for autofocus on mount
+    /// (`Some(id)`) and for explicit dismissal like Escape-to-blur
+    /// (`None`). Bypasses [`crate::FocusPolicy`] — both policies allow
+    /// programmatic clear.
+    pub fn request_focus(&mut self, id: Option<WidgetId>) {
+        self.input.focused = id;
+    }
+
+    /// Set the press-on-non-focusable behavior. See [`crate::FocusPolicy`].
+    pub fn set_focus_policy(&mut self, p: crate::FocusPolicy) {
+        self.input.focus_policy = p;
+    }
+
+    pub fn focus_policy(&self) -> crate::FocusPolicy {
+        self.input.focus_policy
+    }
+
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
         self.input.response_for(id, &self.cascades.result)
     }

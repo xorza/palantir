@@ -19,6 +19,7 @@
 //! | sense           |     ✓     |          |     ✓     |          |               |
 //! | disabled        |     ✓     |          |     ✓     |          |               |
 //! | clip            |     ✓     |          |     ✓     |          |               |
+//! | focusable       |     ✓     |          |     ✓     |          |               |
 //! | min_size        |     ✓     |          |           |          |       ✓       |
 //! | max_size        |     ✓     |          |           |          |       ✓       |
 //! | gap             |     ✓     |          |           |          |       ✓       |
@@ -256,6 +257,12 @@ pub struct Element {
     // ---- Interaction ---------------------------------------------------------
     pub(crate) sense: Sense,
     pub(crate) disabled: bool,
+    /// Eligible to capture keyboard focus on press. Disabled / invisible
+    /// nodes don't take focus regardless of this flag — the cascade pass
+    /// applies the same exclusion `Sense` gets. Default `false`; only
+    /// editable widgets (TextEdit) flip it on. Distinct from `Sense::Click`
+    /// because clicking a Button shouldn't steal focus from a TextEdit.
+    pub(crate) focusable: bool,
 
     // ---- Paint + cascade -----------------------------------------------------
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
@@ -305,6 +312,7 @@ impl Element {
             grid: GridCell::default(),
             sense: Sense::NONE,
             disabled: false,
+            focusable: false,
             visibility: Visibility::Visible,
             clip: false,
             transform: None,
@@ -325,7 +333,7 @@ impl Element {
             visibility: self.visibility,
         };
         let paint = PaintCore {
-            attrs: PaintAttrs::pack(self.sense, self.disabled, self.clip),
+            attrs: PaintAttrs::pack(self.sense, self.disabled, self.clip, self.focusable),
             extras: None,
         };
         let extras = ElementExtras {
@@ -475,6 +483,14 @@ pub trait Configure: Sized {
         self.element_mut().disabled = d;
         self
     }
+    /// Mark this node as eligible to take keyboard focus on press.
+    /// Default `false`. Only editable widgets (TextEdit) opt in. Disabled
+    /// or invisible nodes are excluded from focus regardless of this
+    /// flag — same cascade rule as `Sense`.
+    fn focusable(mut self, f: bool) -> Self {
+        self.element_mut().focusable = f;
+        self
+    }
     /// Three-state visibility. See [`Visibility`].
     fn visibility(mut self, v: Visibility) -> Self {
         self.element_mut().visibility = v;
@@ -490,11 +506,11 @@ pub trait Configure: Sized {
     }
 }
 
-/// Packed paint/input flags: `sense` (5-state enum, 3 bits), `disabled`,
-/// `clip`. One byte. `align` and `visibility` live on `LayoutCore` since
-/// the layout pass reads them.
+/// Packed paint/input flags: `sense` (6-state enum, 3 bits), `disabled`,
+/// `clip`, `focusable`. One byte. `align` and `visibility` live on
+/// `LayoutCore` since the layout pass reads them.
 ///
-/// `bits`: 0-2=sense tag, 3=disabled, 4=clip, 5-7=reserved.
+/// `bits`: 0-2=sense tag, 3=disabled, 4=clip, 5=focusable, 6-7=reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct PaintAttrs {
     bits: u8,
@@ -504,14 +520,18 @@ impl PaintAttrs {
     const SENSE_MASK: u8 = 0b111;
     const DISABLED: u8 = 1 << 3;
     const CLIP: u8 = 1 << 4;
+    const FOCUSABLE: u8 = 1 << 5;
 
-    pub(crate) fn pack(sense: Sense, disabled: bool, clip: bool) -> Self {
+    pub(crate) fn pack(sense: Sense, disabled: bool, clip: bool, focusable: bool) -> Self {
         let mut bits = sense as u8;
         if disabled {
             bits |= Self::DISABLED;
         }
         if clip {
             bits |= Self::CLIP;
+        }
+        if focusable {
+            bits |= Self::FOCUSABLE;
         }
         Self { bits }
     }
@@ -532,6 +552,9 @@ impl PaintAttrs {
     }
     pub(crate) fn is_clip(self) -> bool {
         self.bits & Self::CLIP != 0
+    }
+    pub(crate) fn is_focusable(self) -> bool {
+        self.bits & Self::FOCUSABLE != 0
     }
 }
 

@@ -11,8 +11,8 @@ pub(crate) mod tree;
 pub(crate) mod ui;
 pub(crate) mod widgets;
 
-pub use input::keyboard::{Key, Modifiers, TextChunk};
-pub use input::{InputEvent, InputState, PointerButton, PointerState, ResponseState};
+pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
+pub use input::{FocusPolicy, InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::display::Display;
 pub use layout::types::grid_cell::GridCell;

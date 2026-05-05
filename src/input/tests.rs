@@ -766,10 +766,10 @@ mod keyboard {
     }
 
     #[test]
-    fn key_events_fall_through_input_state_unchanged() {
-        // Step 1 of TextEdit: events fall on the floor. Pin that
-        // delivering keyboard events doesn't perturb pointer/scroll
-        // state — the rest of the input machine ignores them.
+    fn keyboard_events_do_not_perturb_scroll_state() {
+        // Pin: keyboard plumbing is independent of pointer/scroll. Scroll
+        // delta accumulator must stay untouched even as keys, text, and
+        // modifier changes flow in.
         let mut state = InputState::new();
         let cascades = CascadeResult::default();
         let before_scroll = state.frame_scroll_delta;
@@ -784,5 +784,322 @@ mod keyboard {
         state.on_input(InputEvent::ModifiersChanged(Modifiers::NONE), &cascades);
         state.on_input(InputEvent::KeyUp { key: Key::Tab }, &cascades);
         assert_eq!(state.frame_scroll_delta, before_scroll);
+    }
+
+    #[test]
+    fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
+        // Modifiers are captured at push time, not drain time, so a
+        // ModifiersChanged event that lands between two KeyDowns
+        // attributes correctly.
+        let mut state = InputState::new();
+        let cascades = CascadeResult::default();
+
+        state.on_input(
+            InputEvent::ModifiersChanged(Modifiers {
+                ctrl: true,
+                ..Modifiers::NONE
+            }),
+            &cascades,
+        );
+        state.on_input(
+            InputEvent::KeyDown {
+                key: Key::Char('a'),
+                repeat: false,
+            },
+            &cascades,
+        );
+        state.on_input(InputEvent::ModifiersChanged(Modifiers::NONE), &cascades);
+        state.on_input(
+            InputEvent::KeyDown {
+                key: Key::Char('b'),
+                repeat: true,
+            },
+            &cascades,
+        );
+
+        assert_eq!(state.frame_keys.len(), 2);
+        assert_eq!(state.frame_keys[0].key, Key::Char('a'));
+        assert!(state.frame_keys[0].mods.ctrl);
+        assert!(!state.frame_keys[0].repeat);
+        assert_eq!(state.frame_keys[1].key, Key::Char('b'));
+        assert!(!state.frame_keys[1].mods.ctrl);
+        assert!(state.frame_keys[1].repeat);
+    }
+
+    #[test]
+    fn key_up_does_not_queue() {
+        let mut state = InputState::new();
+        let cascades = CascadeResult::default();
+        state.on_input(InputEvent::KeyUp { key: Key::Tab }, &cascades);
+        assert!(state.frame_keys.is_empty());
+    }
+
+    #[test]
+    fn text_events_concatenate_into_frame_text() {
+        let mut state = InputState::new();
+        let cascades = CascadeResult::default();
+        state.on_input(InputEvent::Text(TextChunk::new("hé").unwrap()), &cascades);
+        state.on_input(InputEvent::Text(TextChunk::new("llo").unwrap()), &cascades);
+        assert_eq!(state.frame_text, "héllo");
+    }
+
+    #[test]
+    fn focus_lands_on_press_over_focusable_widget() {
+        // A focusable Button (we abuse the Button widget by setting
+        // .focusable(true) — TextEdit doesn't exist yet) takes focus
+        // when pressed. Clicking on the surface background does not.
+        use crate::Ui;
+        use crate::input::PointerButton;
+        use crate::layout::types::sizing::Sizing;
+        use crate::support::testing::{begin, click_at};
+        use crate::tree::element::Configure;
+        use crate::widgets::{button::Button, panel::Panel};
+
+        let mut ui = Ui::new();
+        begin(&mut ui, glam::UVec2::new(200, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            Button::new()
+                .with_id("editable")
+                .focusable(true)
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+        ui.end_frame();
+
+        // Press over the focusable widget → focus lands.
+        click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+        assert_eq!(
+            ui.focused_id(),
+            Some(crate::tree::widget_id::WidgetId::from_hash("editable")),
+        );
+
+        // Re-record the same tree so the focused id stays alive.
+        begin(&mut ui, glam::UVec2::new(200, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            Button::new()
+                .with_id("editable")
+                .focusable(true)
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+        ui.end_frame();
+        // Press far outside the focusable rect, default policy is
+        // PreserveOnMiss — focus must persist.
+        ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
+        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+        assert_eq!(
+            ui.focused_id(),
+            Some(crate::tree::widget_id::WidgetId::from_hash("editable")),
+            "PreserveOnMiss keeps focus when press lands off any focusable widget",
+        );
+    }
+
+    #[test]
+    fn focus_clears_on_miss_under_clear_policy() {
+        use crate::Ui;
+        use crate::input::PointerButton;
+        use crate::layout::types::sizing::Sizing;
+        use crate::support::testing::{begin, click_at};
+        use crate::tree::element::Configure;
+        use crate::widgets::{button::Button, panel::Panel};
+
+        let mut ui = Ui::new();
+        ui.set_focus_policy(crate::FocusPolicy::ClearOnMiss);
+        begin(&mut ui, glam::UVec2::new(200, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            Button::new()
+                .with_id("editable")
+                .focusable(true)
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+        ui.end_frame();
+
+        click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+        assert!(ui.focused_id().is_some());
+
+        begin(&mut ui, glam::UVec2::new(200, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            Button::new()
+                .with_id("editable")
+                .focusable(true)
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+        ui.end_frame();
+        ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
+        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+        assert_eq!(
+            ui.focused_id(),
+            None,
+            "ClearOnMiss drops focus when press misses every focusable widget",
+        );
+    }
+
+    #[test]
+    fn clicking_non_focusable_widget_preserves_focus() {
+        // Two widgets: one focusable, one only clickable. Clicking the
+        // pure-Click widget shouldn't steal focus from the focusable one.
+        use crate::Ui;
+        use crate::layout::types::sizing::Sizing;
+        use crate::support::testing::{begin, click_at};
+        use crate::tree::element::Configure;
+        use crate::widgets::{button::Button, panel::Panel};
+
+        let mut ui = Ui::new();
+        begin(&mut ui, glam::UVec2::new(400, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            Button::new()
+                .with_id("editable")
+                .focusable(true)
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+            Button::new()
+                .with_id("plain")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+        ui.end_frame();
+
+        click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+        assert_eq!(
+            ui.focused_id(),
+            Some(crate::tree::widget_id::WidgetId::from_hash("editable")),
+        );
+
+        begin(&mut ui, glam::UVec2::new(400, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            Button::new()
+                .with_id("editable")
+                .focusable(true)
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+            Button::new()
+                .with_id("plain")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+        ui.end_frame();
+
+        // Click the plain button — it captures the click but isn't
+        // focusable, so focus stays on "editable".
+        click_at(&mut ui, glam::Vec2::new(150.0, 20.0));
+        assert_eq!(
+            ui.focused_id(),
+            Some(crate::tree::widget_id::WidgetId::from_hash("editable")),
+            "click on non-focusable widget must not steal focus",
+        );
+    }
+
+    #[test]
+    fn focus_is_evicted_when_widget_disappears() {
+        use crate::Ui;
+        use crate::layout::types::sizing::Sizing;
+        use crate::support::testing::{begin, click_at};
+        use crate::tree::element::Configure;
+        use crate::widgets::{button::Button, panel::Panel};
+
+        let mut ui = Ui::new();
+        begin(&mut ui, glam::UVec2::new(200, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            Button::new()
+                .with_id("editable")
+                .focusable(true)
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+        ui.end_frame();
+
+        click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+        assert!(ui.focused_id().is_some());
+
+        // Next frame omits the focusable widget entirely.
+        begin(&mut ui, glam::UVec2::new(200, 80));
+        Panel::hstack().show(&mut ui, |_ui| {});
+        ui.end_frame();
+        assert_eq!(
+            ui.focused_id(),
+            None,
+            "focused widget removed from tree must drop focus",
+        );
+    }
+
+    #[test]
+    fn request_focus_bypasses_policy() {
+        use crate::Ui;
+        let mut ui = Ui::new();
+        let id = crate::tree::widget_id::WidgetId::from_hash("manual");
+        ui.request_focus(Some(id));
+        assert_eq!(ui.focused_id(), Some(id));
+        ui.request_focus(None);
+        assert_eq!(ui.focused_id(), None);
+    }
+
+    #[test]
+    fn disabled_focusable_widget_does_not_take_focus() {
+        // Cascade rule: disabled (or invisible) nodes drop their focusable
+        // bit just like they drop their `Sense` — keystrokes shouldn't
+        // route to a greyed-out field.
+        use crate::Ui;
+        use crate::layout::types::sizing::Sizing;
+        use crate::support::testing::{begin, click_at};
+        use crate::tree::element::Configure;
+        use crate::widgets::{button::Button, panel::Panel};
+
+        let mut ui = Ui::new();
+        begin(&mut ui, glam::UVec2::new(200, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            Button::new()
+                .with_id("editable")
+                .focusable(true)
+                .disabled(true)
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+        ui.end_frame();
+
+        click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+        assert_eq!(
+            ui.focused_id(),
+            None,
+            "disabled focusable widget refuses focus",
+        );
+    }
+
+    #[test]
+    fn end_frame_clears_keys_and_text_but_preserves_modifiers() {
+        let mut state = InputState::new();
+        let cascades = CascadeResult::default();
+        state.on_input(
+            InputEvent::ModifiersChanged(Modifiers {
+                shift: true,
+                ..Modifiers::NONE
+            }),
+            &cascades,
+        );
+        state.on_input(
+            InputEvent::KeyDown {
+                key: Key::ArrowLeft,
+                repeat: false,
+            },
+            &cascades,
+        );
+        state.on_input(InputEvent::Text(TextChunk::new("x").unwrap()), &cascades);
+        let key_cap_before = state.frame_keys.capacity();
+        let text_cap_before = state.frame_text.capacity();
+
+        state.end_frame(&cascades);
+
+        assert!(state.frame_keys.is_empty());
+        assert!(state.frame_text.is_empty());
+        // Capacity-retained: typing across frames stays alloc-free in
+        // steady state.
+        assert_eq!(state.frame_keys.capacity(), key_cap_before);
+        assert_eq!(state.frame_text.capacity(), text_cap_before);
+        // Modifier state is a running snapshot, not per-frame — held
+        // shift across frames must remain `true`.
+        assert!(state.modifiers.shift);
     }
 }
