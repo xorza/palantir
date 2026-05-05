@@ -207,8 +207,8 @@ fn scroll_v_records_content_height_and_yields_panned_axis_to_self_sizing() {
             .node
     });
 
-    let rect = ui.layout_engine.result.rect[scroll_node.index()];
-    let content = ui.layout_engine.result.scroll_content[scroll_node.index()];
+    let rect = ui.pipeline.layout.result.rect[scroll_node.index()];
+    let content = ui.pipeline.layout.result.scroll_content[scroll_node.index()];
     assert_eq!(
         rect.size.h, 200.0,
         "viewport honors Fixed h, ignores content"
@@ -237,8 +237,8 @@ fn scroll_h_records_content_width_and_yields_panned_axis_to_self_sizing() {
             .node
     });
 
-    let rect = ui.layout_engine.result.rect[scroll_node.index()];
-    let content = ui.layout_engine.result.scroll_content[scroll_node.index()];
+    let rect = ui.pipeline.layout.result.rect[scroll_node.index()];
+    let content = ui.pipeline.layout.result.scroll_content[scroll_node.index()];
     assert_eq!(rect.size.w, 200.0);
     assert_eq!(content.w, 128.0);
     assert_eq!(content.h, 40.0);
@@ -266,7 +266,7 @@ fn scroll_xy_records_max_per_axis() {
             .node
     });
 
-    let content = ui.layout_engine.result.scroll_content[scroll_node.index()];
+    let content = ui.pipeline.layout.result.scroll_content[scroll_node.index()];
     assert_eq!(content.w, 300.0, "max child width");
     assert_eq!(content.h, 250.0, "max child height");
 }
@@ -282,7 +282,7 @@ fn scroll_with_no_children_records_zero_content() {
             .node
     });
 
-    let content = ui.layout_engine.result.scroll_content[scroll_node.index()];
+    let content = ui.pipeline.layout.result.scroll_content[scroll_node.index()];
     assert_eq!(content, Size::ZERO);
 }
 

@@ -68,8 +68,8 @@ fn fill_hstack_grows_past_surface_to_contain_fixed_child() {
         .node;
     ui.end_frame();
 
-    let p = ui.layout_engine.result.rect[parent.index()];
-    let c = ui.layout_engine.result.rect[child_node.unwrap().index()];
+    let p = ui.pipeline.layout.result.rect[parent.index()];
+    let c = ui.pipeline.layout.result.rect[child_node.unwrap().index()];
 
     assert_eq!(c.size.w, 300.0, "Fixed child stays Fixed");
     assert!(
@@ -108,8 +108,8 @@ fn fixed_parent_does_not_grow_for_oversized_child() {
     });
     ui.end_frame();
 
-    let p = ui.layout_engine.result.rect[fixed_panel.unwrap().index()];
-    let c = ui.layout_engine.result.rect[child_node.unwrap().index()];
+    let p = ui.pipeline.layout.result.rect[fixed_panel.unwrap().index()];
+    let c = ui.pipeline.layout.result.rect[child_node.unwrap().index()];
 
     assert_eq!(p.size.w, 50.0, "Fixed parent stays at its declared size");
     assert_eq!(p.size.h, 50.0);
@@ -147,9 +147,9 @@ fn fill_hstack_grows_for_oversized_fixed_siblings() {
         .node;
     ui.end_frame();
 
-    let p = ui.layout_engine.result.rect[parent.index()];
-    let a = ui.layout_engine.result.rect[a_node.unwrap().index()];
-    let b = ui.layout_engine.result.rect[b_node.unwrap().index()];
+    let p = ui.pipeline.layout.result.rect[parent.index()];
+    let a = ui.pipeline.layout.result.rect[a_node.unwrap().index()];
+    let b = ui.pipeline.layout.result.rect[b_node.unwrap().index()];
 
     assert!(
         p.size.w >= 350.0,
@@ -194,9 +194,9 @@ fn nested_fill_hug_grows_through_intermediate_panel() {
         .node;
     ui.end_frame();
 
-    let o = ui.layout_engine.result.rect[outer.index()];
-    let i = ui.layout_engine.result.rect[inner_node.unwrap().index()];
-    let l = ui.layout_engine.result.rect[leaf_node.unwrap().index()];
+    let o = ui.pipeline.layout.result.rect[outer.index()];
+    let i = ui.pipeline.layout.result.rect[inner_node.unwrap().index()];
+    let l = ui.pipeline.layout.result.rect[leaf_node.unwrap().index()];
 
     assert_eq!(l.size.w, 250.0);
     assert!(
@@ -225,7 +225,7 @@ fn root_grows_past_surface_when_content_exceeds_it() {
         .node;
     ui.end_frame();
 
-    let r = ui.layout_engine.result.rect[root.index()];
+    let r = ui.pipeline.layout.result.rect[root.index()];
     assert!(
         r.size.w >= 400.0,
         "root should grow past 100 px surface to contain 400 px child; got w={}",
@@ -291,7 +291,7 @@ fn wrap_toolbar_packs_at_post_grow_width() {
         });
     ui.end_frame();
 
-    let toolbar_rect = ui.layout_engine.result.rect[toolbar_node.unwrap().index()];
+    let toolbar_rect = ui.pipeline.layout.result.rect[toolbar_node.unwrap().index()];
     // Buttons are 28 px tall. With root grown so toolbar.inner.w fits
     // 4 buttons per row (80 + 6 gap each), 16 buttons → 4 rows. That's
     // 4 × 28 + 3 × 6 = 130 px. Without the two-pass measure, toolbar's
@@ -409,10 +409,10 @@ fn two_hug_cols_section_height_matches_post_grow_text() {
         });
     ui.end_frame();
 
-    let section = ui.layout_engine.result.rect[section_node.unwrap().index()];
-    let grid = ui.layout_engine.result.rect[grid_node.unwrap().index()];
-    let text = ui.layout_engine.result.rect[text_node.unwrap().index()];
-    let shaped = ui.layout_engine.result.text_shapes[text_node.unwrap().index()]
+    let section = ui.pipeline.layout.result.rect[section_node.unwrap().index()];
+    let grid = ui.pipeline.layout.result.rect[grid_node.unwrap().index()];
+    let text = ui.pipeline.layout.result.rect[text_node.unwrap().index()];
+    let shaped = ui.pipeline.layout.result.text_shapes[text_node.unwrap().index()]
         .expect("para text was shaped");
 
     // Section's rect.h must match the post-grow text wrap, not the
@@ -456,7 +456,7 @@ fn fill_parent_stays_at_available_when_children_fit() {
         .node;
     ui.end_frame();
 
-    let r = ui.layout_engine.result.rect[parent.index()];
+    let r = ui.pipeline.layout.result.rect[parent.index()];
     assert_eq!(r.size.w, 800.0);
     assert_eq!(r.size.h, 600.0);
 }

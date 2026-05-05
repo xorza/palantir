@@ -19,9 +19,9 @@ fn collapsed_child_consumes_no_space_in_hstack() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.layout_engine.result.rect[kids[0].index()];
-    let gone = ui.layout_engine.result.rect[kids[1].index()];
-    let b = ui.layout_engine.result.rect[kids[2].index()];
+    let a = ui.pipeline.layout.result.rect[kids[0].index()];
+    let gone = ui.pipeline.layout.result.rect[kids[1].index()];
+    let b = ui.pipeline.layout.result.rect[kids[2].index()];
 
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.size.w, 40.0);
@@ -55,8 +55,8 @@ fn collapsed_does_not_consume_fill_weight() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.layout_engine.result.rect[kids[0].index()];
-    let b = ui.layout_engine.result.rect[kids[2].index()];
+    let a = ui.pipeline.layout.result.rect[kids[0].index()];
+    let b = ui.pipeline.layout.result.rect[kids[2].index()];
     // Collapsed sibling's weight (3.0) is dropped — remaining two fills split 50/50.
     assert_eq!(a.size.w, 200.0);
     assert_eq!(b.size.w, 200.0);
@@ -92,8 +92,8 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let hid = ui.layout_engine.result.rect[kids[1].index()];
-    let b = ui.layout_engine.result.rect[kids[2].index()];
+    let hid = ui.pipeline.layout.result.rect[kids[1].index()];
+    let b = ui.pipeline.layout.result.rect[kids[2].index()];
     // Hidden node still occupies its slot.
     assert_eq!(hid.size.w, 40.0);
     // ...so b's offset includes hidden's width + both gaps.
@@ -159,8 +159,8 @@ fn hstack_child_align_y_centers_all_children_by_default() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.layout_engine.result.rect[kids[0].index()];
-    let b = ui.layout_engine.result.rect[kids[1].index()];
+    let a = ui.pipeline.layout.result.rect[kids[0].index()];
+    let b = ui.pipeline.layout.result.rect[kids[1].index()];
     // Cross axis = 100, child = 20 tall → centered at (100-20)/2 = 40.
     assert_eq!(a.min.y, 40.0);
     assert_eq!(b.min.y, 40.0);
@@ -190,8 +190,8 @@ fn child_align_self_overrides_parent_default() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let centered = ui.layout_engine.result.rect[kids[0].index()];
-    let bottom = ui.layout_engine.result.rect[kids[1].index()];
+    let centered = ui.pipeline.layout.result.rect[kids[0].index()];
+    let bottom = ui.pipeline.layout.result.rect[kids[1].index()];
     assert_eq!(centered.min.y, 40.0);
     assert_eq!(bottom.min.y, 80.0);
 }

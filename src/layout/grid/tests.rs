@@ -21,8 +21,8 @@ fn grid_fixed_and_fill_columns_split_remainder() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let left = ui.layout_engine.result.rect[kids[0].index()];
-    let right = ui.layout_engine.result.rect[kids[1].index()];
+    let left = ui.pipeline.layout.result.rect[kids[0].index()];
+    let right = ui.pipeline.layout.result.rect[kids[1].index()];
     assert_eq!(left.size.w, 120.0);
     assert_eq!(left.min.x, 0.0);
     assert_eq!(right.size.w, 280.0);
@@ -60,9 +60,9 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let short_btn = ui.layout_engine.result.rect[kids[0].index()];
-    let long_btn = ui.layout_engine.result.rect[kids[1].index()];
-    let body = ui.layout_engine.result.rect[kids[2].index()];
+    let short_btn = ui.pipeline.layout.result.rect[kids[0].index()];
+    let long_btn = ui.pipeline.layout.result.rect[kids[1].index()];
+    let body = ui.pipeline.layout.result.rect[kids[2].index()];
     // Hug col = max(16, 56) = 56 → x boundary at 56.
     assert_eq!(body.min.x, 56.0);
     assert_eq!(body.size.w, 344.0);
@@ -84,8 +84,14 @@ fn grid_fill_weights_split_remainder_proportionally() {
         .node;
     ui.end_frame();
     let kids: Vec<_> = ui.tree.children(root).collect();
-    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].size.w, 100.0);
-    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].size.w, 300.0);
+    assert_eq!(
+        ui.pipeline.layout.result.rect[kids[0].index()].size.w,
+        100.0
+    );
+    assert_eq!(
+        ui.pipeline.layout.result.rect[kids[1].index()].size.w,
+        300.0
+    );
 }
 
 #[test]
@@ -104,8 +110,14 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
         .node;
     ui.end_frame();
     let kids: Vec<_> = ui.tree.children(root).collect();
-    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].size.w, 200.0);
-    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].size.w, 200.0);
+    assert_eq!(
+        ui.pipeline.layout.result.rect[kids[0].index()].size.w,
+        200.0
+    );
+    assert_eq!(
+        ui.pipeline.layout.result.rect[kids[1].index()].size.w,
+        200.0
+    );
 }
 
 #[test]
@@ -123,8 +135,14 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
         .node;
     ui.end_frame();
     let kids: Vec<_> = ui.tree.children(root).collect();
-    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].size.w, 150.0);
-    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].size.w, 250.0);
+    assert_eq!(
+        ui.pipeline.layout.result.rect[kids[0].index()].size.w,
+        150.0
+    );
+    assert_eq!(
+        ui.pipeline.layout.result.rect[kids[1].index()].size.w,
+        250.0
+    );
 }
 
 #[test]
@@ -151,8 +169,8 @@ fn grid_col_span_covers_multiple_columns_with_gap() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let header = ui.layout_engine.result.rect[kids[0].index()];
-    let body = ui.layout_engine.result.rect[kids[1].index()];
+    let header = ui.pipeline.layout.result.rect[kids[0].index()];
+    let body = ui.pipeline.layout.result.rect[kids[1].index()];
     assert_eq!(header.min.x, 0.0);
     assert_eq!(header.size.w, 320.0);
     assert_eq!(header.size.h, 40.0);
@@ -186,7 +204,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
         })
         .node;
     ui.end_frame();
-    let r = ui.layout_engine.result.rect[grid_node.unwrap().index()];
+    let r = ui.pipeline.layout.result.rect[grid_node.unwrap().index()];
     assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
     assert_eq!(r.size.h, 40.0);
 }
@@ -217,8 +235,8 @@ fn grid_row_span_covers_multiple_rows_with_gap() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let sidebar = ui.layout_engine.result.rect[kids[0].index()];
-    let body = ui.layout_engine.result.rect[kids[1].index()];
+    let sidebar = ui.pipeline.layout.result.rect[kids[0].index()];
+    let body = ui.pipeline.layout.result.rect[kids[1].index()];
     assert_eq!(sidebar.min.y, 0.0);
     assert_eq!(sidebar.size.w, 40.0);
     assert_eq!(sidebar.size.h, 320.0);
@@ -250,7 +268,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
         .node;
     ui.end_frame();
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let r = ui.layout_engine.result.rect[kids[0].index()];
+    let r = ui.pipeline.layout.result.rect[kids[0].index()];
     assert_eq!(r.size.w, 20.0);
     assert_eq!(r.size.h, 20.0);
     assert_eq!(r.min.x, 80.0);
@@ -309,8 +327,8 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
     ui.end_frame();
 
     let kids: Vec<_> = ui.tree.children(root).collect();
-    let big = ui.layout_engine.result.rect[kids[0].index()];
-    let corner = ui.layout_engine.result.rect[kids[1].index()];
+    let big = ui.pipeline.layout.result.rect[kids[0].index()];
+    let corner = ui.pipeline.layout.result.rect[kids[1].index()];
 
     assert_eq!((big.min.x, big.min.y), (0.0, 0.0));
     assert_eq!((big.size.w, big.size.h), (110.0, 110.0));
@@ -358,11 +376,11 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
         });
     ui.end_frame();
 
-    let r = ui.layout_engine.result.rect[grid_node.unwrap().index()];
+    let r = ui.pipeline.layout.result.rect[grid_node.unwrap().index()];
     assert_eq!(r.size.w, 0.0);
     assert_eq!(r.size.h, 0.0);
 
-    let ghost = ui.layout_engine.result.rect[ghost_node.unwrap().index()];
+    let ghost = ui.pipeline.layout.result.rect[ghost_node.unwrap().index()];
     assert_eq!(ghost.size.w, 0.0);
     assert_eq!(ghost.size.h, 0.0);
 }
@@ -418,12 +436,12 @@ fn grid_multi_row_hug_heights_resolve_independently() {
         });
     ui.end_frame();
 
-    assert_eq!(ui.layout_engine.result.rect[kids[0].index()].size.h, 10.0);
-    assert_eq!(ui.layout_engine.result.rect[kids[1].index()].size.h, 80.0);
-    assert_eq!(ui.layout_engine.result.rect[kids[2].index()].size.h, 30.0);
+    assert_eq!(ui.pipeline.layout.result.rect[kids[0].index()].size.h, 10.0);
+    assert_eq!(ui.pipeline.layout.result.rect[kids[1].index()].size.h, 80.0);
+    assert_eq!(ui.pipeline.layout.result.rect[kids[2].index()].size.h, 30.0);
     // Grid hugs to sum + (n-1)*0 (no row gap set) = 120.
     assert_eq!(
-        ui.layout_engine.result.rect[grid_node.unwrap().index()]
+        ui.pipeline.layout.result.rect[grid_node.unwrap().index()]
             .size
             .h,
         120.0

@@ -14,7 +14,7 @@ use crate::Ui;
 /// Drop every cross-frame measure-cache entry, forcing the next frame
 /// to re-measure every leaf from scratch. See `benches/measure_cache.rs`.
 pub fn clear_measure_cache(ui: &mut Ui) {
-    let cache = &mut ui.layout_engine.cache;
+    let cache = &mut ui.pipeline.layout.cache;
     cache.desired.clear();
     cache.text.clear();
     cache.available.clear();
@@ -26,18 +26,18 @@ pub fn clear_measure_cache(ui: &mut Ui) {
 /// encoder to re-encode every subtree from scratch. See
 /// `benches/encode_cache.rs`.
 pub fn clear_encode_cache(ui: &mut Ui) {
-    ui.frontend.encoder.cache.clear();
+    ui.pipeline.frontend.encoder.cache.clear();
 }
 
 /// Drop every cross-frame compose-cache entry, forcing the next frame's
 /// composer to re-compose every subtree from scratch. See
 /// `benches/compose_cache.rs`.
 pub fn clear_compose_cache(ui: &mut Ui) {
-    ui.frontend.composer.cache.clear();
+    ui.pipeline.frontend.composer.cache.clear();
 }
 
 /// Number of widgets currently snapshotted in the compose cache. Used by
 /// the compose-cache bench to confirm population under each workload.
 pub fn compose_cache_snapshot_count(ui: &Ui) -> usize {
-    ui.frontend.composer.cache.snapshots.len()
+    ui.pipeline.frontend.composer.cache.snapshots.len()
 }

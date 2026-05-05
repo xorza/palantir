@@ -676,7 +676,7 @@ fn encode_cache_warm_frame_matches_cold_encode() {
     build(&mut ui);
     ui.end_frame();
     let cold = encode_cmds(&ui);
-    let warm = &ui.frontend.encoder.cmds;
+    let warm = &ui.pipeline.frontend.encoder.cmds;
 
     assert_eq!(warm.kinds, cold.kinds);
     assert_eq!(warm.starts, cold.starts);

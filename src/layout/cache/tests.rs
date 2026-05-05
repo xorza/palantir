@@ -16,7 +16,7 @@ fn run_frame(ui: &mut Ui, build: impl FnOnce(&mut Ui)) {
 /// Read the snapshot's live arena range for `wid`. Returns
 /// `(snapshot, desired_slice, _text_slice)`.
 fn snap_for(ui: &Ui, wid: WidgetId) -> Option<(super::ArenaSnapshot, &[Size])> {
-    let cache = &ui.layout_engine.cache;
+    let cache = &ui.pipeline.layout.cache;
     let snap = *cache.snapshots.get(&wid)?;
     Some((snap, &cache.desired.items[snap.nodes.range()]))
 }
@@ -91,17 +91,17 @@ fn removed_widget_is_evicted() {
     });
     let gone = WidgetId::from_hash("gone");
     let kept = WidgetId::from_hash("kept");
-    assert!(ui.layout_engine.cache.snapshots.contains_key(&gone));
-    assert!(ui.layout_engine.cache.snapshots.contains_key(&kept));
+    assert!(ui.pipeline.layout.cache.snapshots.contains_key(&gone));
+    assert!(ui.pipeline.layout.cache.snapshots.contains_key(&kept));
 
     run_frame(&mut ui, |ui| {
         Frame::new().with_id("kept").size(40.0).show(ui);
     });
     assert!(
-        !ui.layout_engine.cache.snapshots.contains_key(&gone),
+        !ui.pipeline.layout.cache.snapshots.contains_key(&gone),
         "vanished widget must be evicted via SeenIds.removed",
     );
-    assert!(ui.layout_engine.cache.snapshots.contains_key(&kept));
+    assert!(ui.pipeline.layout.cache.snapshots.contains_key(&kept));
 }
 
 #[test]
@@ -207,7 +207,7 @@ fn subtree_skip_restores_descendant_available_q() {
     run_frame(&mut ui, build);
     let n = ui.tree.layout.len();
     let cold: Vec<_> = (0..n)
-        .map(|i| ui.layout_engine.result.available_q(NodeId(i as u32)))
+        .map(|i| ui.pipeline.layout.result.available_q(NodeId(i as u32)))
         .collect();
     // Cold frame must have populated every descendant — every slot is
     // `Some(real_value)`, never `None` (the UNSET frame-init sentinel).
@@ -218,7 +218,7 @@ fn subtree_skip_restores_descendant_available_q() {
 
     run_frame(&mut ui, build);
     let warm: Vec<_> = (0..n)
-        .map(|i| ui.layout_engine.result.available_q(NodeId(i as u32)))
+        .map(|i| ui.pipeline.layout.result.available_q(NodeId(i as u32)))
         .collect();
     assert_eq!(
         cold, warm,
@@ -240,11 +240,11 @@ fn subtree_skip_preserves_descendant_rects() {
     };
     run_frame(&mut ui, build);
     let n = ui.tree.layout.len();
-    let layout1 = &ui.layout_engine.result;
+    let layout1 = &ui.pipeline.layout.result;
     let rects1: Vec<_> = (0..n).map(|i| layout1.rect[i]).collect();
 
     run_frame(&mut ui, build);
-    let layout2 = &ui.layout_engine.result;
+    let layout2 = &ui.pipeline.layout.result;
     let rects2: Vec<_> = (0..n).map(|i| layout2.rect[i]).collect();
     assert_eq!(
         rects1, rects2,
@@ -336,7 +336,7 @@ fn arena_invariant_holds_under_fragmentation() {
     });
     ui.end_frame();
 
-    let cache = &ui.layout_engine.cache;
+    let cache = &ui.pipeline.layout.cache;
     if cache.desired.live > COMPACT_FLOOR {
         assert!(
             cache.desired.items.len() <= cache.desired.live.saturating_mul(COMPACT_RATIO),
@@ -384,7 +384,7 @@ fn cache_hits_remain_valid_after_compaction() {
 
     // Whether or not compaction fired, the kept widget's snapshot
     // must still describe the right desired and arena range.
-    let cache = &ui.layout_engine.cache;
+    let cache = &ui.pipeline.layout.cache;
     let snap = cache
         .snapshots
         .get(&kept_wid)
@@ -435,7 +435,8 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
     ui.end_frame();
 
     let snap = |ui: &Ui, key: &str| {
-        ui.layout_engine
+        ui.pipeline
+            .layout
             .cache
             .snapshots
             .get(&WidgetId::from_hash(key))
@@ -522,9 +523,9 @@ fn cache_handles_widget_reappearance_after_eviction() {
 
     // Frame 1: present.
     run_frame(&mut ui, with_widget);
-    let live_before = ui.layout_engine.cache.desired.live;
+    let live_before = ui.pipeline.layout.cache.desired.live;
     assert!(
-        ui.layout_engine.cache.snapshots.contains_key(&blip),
+        ui.pipeline.layout.cache.snapshots.contains_key(&blip),
         "widget must be cached after first frame",
     );
 
@@ -532,10 +533,10 @@ fn cache_handles_widget_reappearance_after_eviction() {
     // `Ui::end_frame` calls `MeasureCache::sweep_removed`.
     run_frame(&mut ui, without_widget);
     assert!(
-        !ui.layout_engine.cache.snapshots.contains_key(&blip),
+        !ui.pipeline.layout.cache.snapshots.contains_key(&blip),
         "vanished widget must be evicted via sweep_removed",
     );
-    let live_after_evict = ui.layout_engine.cache.desired.live;
+    let live_after_evict = ui.pipeline.layout.cache.desired.live;
     assert!(
         live_after_evict < live_before,
         "live count must decrease after eviction",
@@ -547,22 +548,22 @@ fn cache_handles_widget_reappearance_after_eviction() {
     // on a cold cache for the same build.
     run_frame(&mut ui, with_widget);
     assert!(
-        ui.layout_engine.cache.snapshots.contains_key(&blip),
+        ui.pipeline.layout.cache.snapshots.contains_key(&blip),
         "reappeared widget must be re-cached",
     );
 
     // Cold oracle: clear and run again. live_entries and the
     // snapshot's payload must match the warm reappearance.
-    let warm_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();
-    let warm_desired = ui.layout_engine.cache.desired.items[warm_snap.nodes.range()].to_vec();
-    let warm_live = ui.layout_engine.cache.desired.live;
+    let warm_snap = *ui.pipeline.layout.cache.snapshots.get(&blip).unwrap();
+    let warm_desired = ui.pipeline.layout.cache.desired.items[warm_snap.nodes.range()].to_vec();
+    let warm_live = ui.pipeline.layout.cache.desired.live;
 
     crate::support::internals::clear_measure_cache(&mut ui);
     run_frame(&mut ui, with_widget);
 
-    let cold_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();
-    let cold_desired = ui.layout_engine.cache.desired.items[cold_snap.nodes.range()].to_vec();
-    let cold_live = ui.layout_engine.cache.desired.live;
+    let cold_snap = *ui.pipeline.layout.cache.snapshots.get(&blip).unwrap();
+    let cold_desired = ui.pipeline.layout.cache.desired.items[cold_snap.nodes.range()].to_vec();
+    let cold_live = ui.pipeline.layout.cache.desired.live;
 
     assert_eq!(
         warm_snap.subtree_hash, cold_snap.subtree_hash,
