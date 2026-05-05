@@ -7,7 +7,8 @@ use crate::support::testing::begin;
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
 #[allow(dead_code)]
@@ -34,7 +35,14 @@ const RED: Color = Color::rgb(0.9, 0.4, 0.8);
 
 fn one_frame(ui: &mut Ui, color: Color) {
     Panel::hstack().with_id("root").show(ui, |ui| {
-        Frame::new().with_id("a").size(50.0).fill(color).show(ui);
+        Frame::new()
+            .with_id("a")
+            .size(50.0)
+            .background(Background {
+                fill: color,
+                ..Default::default()
+            })
+            .show(ui);
     });
 }
 
@@ -105,12 +113,18 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
             Frame::new()
                 .with_id("a")
                 .size((Sizing::Fixed(a_size), Sizing::Fixed(20.0)))
-                .fill(Color::rgb(0.2, 0.4, 0.8))
+                .background(Background {
+                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    ..Default::default()
+                })
                 .show(ui);
             Frame::new()
                 .with_id("b")
                 .size((Sizing::Fixed(30.0), Sizing::Fixed(20.0)))
-                .fill(Color::rgb(0.5, 0.5, 0.5))
+                .background(Background {
+                    fill: Color::rgb(0.5, 0.5, 0.5),
+                    ..Default::default()
+                })
                 .show(ui);
         });
     };
@@ -169,7 +183,10 @@ fn added_widget_contributes_curr_rect_to_damage() {
             Frame::new()
                 .with_id("new")
                 .size(50.0)
-                .fill(Color::rgb(0.2, 0.4, 0.8))
+                .background(Background {
+                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    ..Default::default()
+                })
                 .show(ui);
         });
     });
@@ -258,7 +275,10 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                     Frame::new()
                         .with_id("c")
                         .size(40.0)
-                        .fill(fill)
+                        .background(Background {
+                            fill,
+                            ..Default::default()
+                        })
                         .show(ui)
                         .node,
                 );
@@ -305,7 +325,10 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                     Frame::new()
                         .with_id("c")
                         .size(40.0)
-                        .fill(Color::rgb(0.2, 0.4, 0.8))
+                        .background(Background {
+                            fill: Color::rgb(0.2, 0.4, 0.8),
+                            ..Default::default()
+                        })
                         .show(ui)
                         .node,
                 );
@@ -531,12 +554,18 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             Frame::new()
                 .with_id("big")
                 .size((3000.0, 60.0))
-                .fill(BLUE)
+                .background(Background {
+                    fill: BLUE,
+                    ..Default::default()
+                })
                 .show(ui);
             Frame::new()
                 .with_id("small")
                 .size((50.0, 60.0))
-                .fill(BLUE)
+                .background(Background {
+                    fill: BLUE,
+                    ..Default::default()
+                })
                 .show(ui);
         });
     };

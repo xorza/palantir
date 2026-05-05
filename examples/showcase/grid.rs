@@ -1,4 +1,6 @@
-use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Track, Ui};
+use palantir::{
+    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Stroke, Track, Ui,
+};
 
 fn body() -> Color {
     Color::rgb(0.30, 0.55, 0.85)
@@ -33,28 +35,40 @@ pub fn build(ui: &mut Ui) {
                             .with_id("title")
                             .grid_cell((0, 0))
                             .grid_span((1, 3))
-                            .fill(header())
-                            .radius(4.0)
+                            .background(Background {
+                                fill: header(),
+                                radius: Corners::all(4.0),
+                                ..Default::default()
+                            })
                             .show(ui);
                         Frame::new()
                             .with_id("nav")
                             .grid_cell((1, 0))
-                            .fill(sidebar())
-                            .radius(4.0)
+                            .background(Background {
+                                fill: sidebar(),
+                                radius: Corners::all(4.0),
+                                ..Default::default()
+                            })
                             .show(ui);
                         Frame::new()
                             .with_id("content")
                             .grid_cell((1, 1))
-                            .fill(body())
-                            .radius(4.0)
+                            .background(Background {
+                                fill: body(),
+                                radius: Corners::all(4.0),
+                                ..Default::default()
+                            })
                             .show(ui);
                         // Right rail Hug → only as wide as its child.
                         Frame::new()
                             .with_id("rail")
                             .grid_cell((1, 2))
                             .size((Sizing::Fixed(80.0), Sizing::FILL))
-                            .fill(rail())
-                            .radius(4.0)
+                            .background(Background {
+                                fill: rail(),
+                                radius: Corners::all(4.0),
+                                ..Default::default()
+                            })
                             .show(ui);
                     });
             });
@@ -77,14 +91,20 @@ pub fn build(ui: &mut Ui) {
                         Frame::new()
                             .with_id("c1")
                             .grid_cell((0, 0))
-                            .fill(body())
-                            .radius(4.0)
+                            .background(Background {
+                                fill: body(),
+                                radius: Corners::all(4.0),
+                                ..Default::default()
+                            })
                             .show(ui);
                         Frame::new()
                             .with_id("c2")
                             .grid_cell((0, 1))
-                            .fill(rail())
-                            .radius(4.0)
+                            .background(Background {
+                                fill: rail(),
+                                radius: Corners::all(4.0),
+                                ..Default::default()
+                            })
                             .show(ui);
                     });
             });
@@ -97,11 +117,13 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .gap(8.0)
-        .fill(Color::rgb(0.16, 0.18, 0.24))
-        .stroke(Stroke {
-            width: 1.0,
-            color: Color::rgb(0.30, 0.36, 0.46),
+        .background(Background {
+            fill: Color::rgb(0.16, 0.18, 0.24),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgb(0.30, 0.36, 0.46),
+            }),
+            radius: Corners::all(6.0),
         })
-        .radius(6.0)
         .show(ui, body);
 }

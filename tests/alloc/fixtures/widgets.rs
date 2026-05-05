@@ -1,6 +1,6 @@
 use crate::harness::{AllocBudget, audit_steady_state};
 use palantir::{
-    Button, Color, Configure, Frame, Grid, Panel, Sizing, Styled, Text, Track, Ui, WidgetId,
+    Background, Button, Color, Configure, Frame, Grid, Panel, Sizing, Text, Track, Ui, WidgetId,
 };
 use std::rc::Rc;
 
@@ -49,7 +49,10 @@ fn grid_8x8_alloc_free() {
                     for c in 0..8u16 {
                         Frame::new()
                             .with_id((r, c))
-                            .fill(Color::WHITE)
+                            .background(Background {
+                                fill: Color::WHITE,
+                                ..Default::default()
+                            })
                             .grid_cell((r, c))
                             .show(ui);
                     }
@@ -66,7 +69,10 @@ fn damage_animated_rect_alloc_free() {
         let w = 100.0 + (tick % 200) as f32;
         Panel::vstack().show(ui, |ui| {
             Frame::new()
-                .fill(Color::WHITE)
+                .background(Background {
+                    fill: Color::WHITE,
+                    ..Default::default()
+                })
                 .size((Sizing::Fixed(w), Sizing::Fixed(40.0)))
                 .show(ui);
         });

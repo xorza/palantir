@@ -749,7 +749,10 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
 
     let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
     ui.theme.text.font_size_px = 20.0;
-    ui.theme.button.font_size_px = 22.0;
+    ui.theme.button.normal.text.font_size_px = 22.0;
+    ui.theme.button.hovered.text.font_size_px = 22.0;
+    ui.theme.button.pressed.text.font_size_px = 22.0;
+    ui.theme.button.disabled.text.font_size_px = 22.0;
     ui.theme.text_edit.text.font_size_px = 24.0;
     let mut buf = String::from("hi");
 
@@ -873,7 +876,10 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 
     let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
     ui.theme.text.line_height_mult = 2.0;
-    ui.theme.button.line_height_mult = 2.5;
+    ui.theme.button.normal.text.line_height_mult = 2.5;
+    ui.theme.button.hovered.text.line_height_mult = 2.5;
+    ui.theme.button.pressed.text.line_height_mult = 2.5;
+    ui.theme.button.disabled.text.line_height_mult = 2.5;
     ui.theme.text_edit.text.line_height_mult = 3.0;
     let mut buf = String::from("hi");
 

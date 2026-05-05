@@ -3,7 +3,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Align, Button, Color, Configure, Frame, Grid, Panel, Sizing, Stroke, Styled, Track,
+    Align, Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Stroke, Track,
 };
 
 use crate::diff::Tolerance;
@@ -25,17 +25,26 @@ fn vstack_fill_weights_matches_golden() {
                 Frame::new()
                     .with_id("a")
                     .size((Sizing::FILL, Sizing::Fill(1.0)))
-                    .fill(Color::rgb(0.85, 0.30, 0.30))
+                    .background(Background {
+                        fill: Color::rgb(0.85, 0.30, 0.30),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("b")
                     .size((Sizing::FILL, Sizing::Fill(2.0)))
-                    .fill(Color::rgb(0.30, 0.85, 0.40))
+                    .background(Background {
+                        fill: Color::rgb(0.30, 0.85, 0.40),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("c")
                     .size((Sizing::FILL, Sizing::Fill(1.0)))
-                    .fill(Color::rgb(0.30, 0.50, 0.95))
+                    .background(Background {
+                        fill: Color::rgb(0.30, 0.50, 0.95),
+                        ..Default::default()
+                    })
                     .show(ui);
             });
     });
@@ -60,26 +69,38 @@ fn grid_mixed_tracks_matches_golden() {
                     .with_id("header")
                     .grid_cell((0, 0))
                     .grid_span((1, 3))
-                    .fill(Color::rgb(0.25, 0.30, 0.45))
-                    .radius(4.0)
+                    .background(Background {
+                        fill: Color::rgb(0.25, 0.30, 0.45),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("side")
                     .grid_cell((1, 0))
-                    .fill(Color::rgb(0.35, 0.45, 0.30))
-                    .radius(4.0)
+                    .background(Background {
+                        fill: Color::rgb(0.35, 0.45, 0.30),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("body")
                     .grid_cell((1, 1))
-                    .fill(Color::rgb(0.20, 0.20, 0.28))
-                    .radius(4.0)
+                    .background(Background {
+                        fill: Color::rgb(0.20, 0.20, 0.28),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
                 Frame::new()
                     .with_id("aside")
                     .grid_cell((1, 2))
-                    .fill(Color::rgb(0.50, 0.30, 0.45))
-                    .radius(4.0)
+                    .background(Background {
+                        fill: Color::rgb(0.50, 0.30, 0.45),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
             });
     });
@@ -96,12 +117,14 @@ fn zstack_centered_button_matches_golden() {
         Panel::zstack()
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
-            .fill(Color::rgb(0.16, 0.20, 0.28))
-            .stroke(Stroke {
-                width: 1.0,
-                color: Color::rgb(0.30, 0.36, 0.46),
+            .background(Background {
+                fill: Color::rgb(0.16, 0.20, 0.28),
+                stroke: Some(Stroke {
+                    width: 1.0,
+                    color: Color::rgb(0.30, 0.36, 0.46),
+                }),
+                radius: Corners::all(10.0),
             })
-            .radius(10.0)
             .show(ui, |ui| {
                 Button::new()
                     .with_id("btn")

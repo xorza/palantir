@@ -4,14 +4,18 @@ use crate::primitives::color::Color;
 use crate::support::testing::under_outer;
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
-use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
 fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
     Frame::new()
         .with_id(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(h)))
-        .fill(Color::WHITE)
+        .background(Background {
+            fill: Color::WHITE,
+            ..Default::default()
+        })
         .show(ui)
         .node
 }
@@ -298,7 +302,10 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                     Frame::new()
                         .with_id("filler")
                         .size((Sizing::Fixed(100.0), Sizing::FILL))
-                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .background(Background {
+                            fill: Color::rgb(0.5, 0.5, 0.5),
+                            ..Default::default()
+                        })
                         .show(ui)
                         .node,
                 );

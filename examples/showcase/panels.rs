@@ -1,4 +1,4 @@
-use palantir::{Color, Configure, Frame, Panel, Sizing, Stroke, Styled, Ui};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
 
 fn tile() -> Color {
     Color::rgb(0.30, 0.55, 0.85)
@@ -37,19 +37,28 @@ pub fn build(ui: &mut Ui) {
                             .with_id("p1")
                             .position((10.0, 10.0))
                             .size(40.0)
-                            .fill(tile())
+                            .background(Background {
+                                fill: tile(),
+                                ..Default::default()
+                            })
                             .show(ui);
                         Frame::new()
                             .with_id("p2")
                             .position((60.0, 30.0))
                             .size(40.0)
-                            .fill(Color::rgb(0.85, 0.45, 0.30))
+                            .background(Background {
+                                fill: Color::rgb(0.85, 0.45, 0.30),
+                                ..Default::default()
+                            })
                             .show(ui);
                         Frame::new()
                             .with_id("p3")
                             .position((30.0, 70.0))
                             .size(40.0)
-                            .fill(Color::rgb(0.45, 0.80, 0.55))
+                            .background(Background {
+                                fill: Color::rgb(0.45, 0.80, 0.55),
+                                ..Default::default()
+                            })
                             .show(ui);
                     });
             });
@@ -60,8 +69,11 @@ fn swatch(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
     Frame::new()
         .with_id(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(h)))
-        .fill(c)
-        .radius(4.0)
+        .background(Background {
+            fill: c,
+            radius: Corners::all(4.0),
+            ..Default::default()
+        })
         .show(ui);
 }
 
@@ -71,11 +83,13 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .gap(8.0)
-        .fill(Color::rgb(0.16, 0.18, 0.24))
-        .stroke(Stroke {
-            width: 1.0,
-            color: Color::rgb(0.30, 0.36, 0.46),
+        .background(Background {
+            fill: Color::rgb(0.16, 0.18, 0.24),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgb(0.30, 0.36, 0.46),
+            }),
+            radius: Corners::all(6.0),
         })
-        .radius(6.0)
         .show(ui, body);
 }

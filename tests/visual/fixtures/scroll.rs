@@ -3,7 +3,9 @@
 //! correctness that bit us with the `exit_idx` panic.
 
 use glam::UVec2;
-use palantir::{Color, Configure, Frame, Panel, Scroll, ScrollbarTheme, Sizing, Styled};
+use palantir::{
+    Background, Color, Configure, Corners, Frame, Panel, Scroll, ScrollbarTheme, Sizing,
+};
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
@@ -43,8 +45,11 @@ fn scroll_vertical_overflow_matches_golden() {
                     for i in 0..30u32 {
                         Frame::new()
                             .with_id(("row", i))
-                            .fill(ROW)
-                            .radius(3.0)
+                            .background(Background {
+                                fill: ROW,
+                                radius: Corners::all(3.0),
+                                ..Default::default()
+                            })
                             .size((Sizing::FILL, Sizing::Fixed(20.0)))
                             .show(ui);
                     }
@@ -73,8 +78,11 @@ fn scroll_horizontal_overflow_matches_golden() {
                     for i in 0..30u32 {
                         Frame::new()
                             .with_id(("col", i))
-                            .fill(ROW)
-                            .radius(3.0)
+                            .background(Background {
+                                fill: ROW,
+                                radius: Corners::all(3.0),
+                                ..Default::default()
+                            })
                             .size((Sizing::Fixed(40.0), Sizing::FILL))
                             .show(ui);
                     }
@@ -102,8 +110,11 @@ fn scroll_xy_overflow_matches_golden() {
                 .show(ui, |ui| {
                     Frame::new()
                         .with_id("big")
-                        .fill(ROW)
-                        .radius(6.0)
+                        .background(Background {
+                            fill: ROW,
+                            radius: Corners::all(6.0),
+                            ..Default::default()
+                        })
                         .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
                         .show(ui);
                 });
@@ -130,8 +141,11 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
                 .show(ui, |ui| {
                     Frame::new()
                         .with_id("short")
-                        .fill(ROW)
-                        .radius(3.0)
+                        .background(Background {
+                            fill: ROW,
+                            radius: Corners::all(3.0),
+                            ..Default::default()
+                        })
                         .size((Sizing::FILL, Sizing::Fixed(40.0)))
                         .show(ui);
                 });
@@ -162,8 +176,11 @@ fn scroll_with_user_padding_matches_golden() {
                     for i in 0..20u32 {
                         Frame::new()
                             .with_id(("row", i))
-                            .fill(ROW)
-                            .radius(3.0)
+                            .background(Background {
+                                fill: ROW,
+                                radius: Corners::all(3.0),
+                                ..Default::default()
+                            })
                             .size((Sizing::FILL, Sizing::Fixed(20.0)))
                             .show(ui);
                     }
@@ -197,8 +214,11 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                     .with_id(("card", tag))
                     .clip(true)
                     .padding(6.0)
-                    .fill(CARD)
-                    .radius(6.0)
+                    .background(Background {
+                        fill: CARD,
+                        radius: Corners::all(6.0),
+                        ..Default::default()
+                    })
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         Scroll::vertical()
@@ -209,8 +229,11 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                                 for i in 0..25u32 {
                                     Frame::new()
                                         .with_id((tag, "row", i))
-                                        .fill(ROW)
-                                        .radius(3.0)
+                                        .background(Background {
+                                            fill: ROW,
+                                            radius: Corners::all(3.0),
+                                            ..Default::default()
+                                        })
                                         .size((Sizing::FILL, Sizing::Fixed(18.0)))
                                         .show(ui);
                                 }

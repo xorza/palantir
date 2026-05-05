@@ -355,6 +355,7 @@ mod bars {
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::{Scroll, bar_geometry};
+    use crate::widgets::theme::Background;
     use crate::widgets::theme::ScrollbarTheme;
     use glam::UVec2;
 
@@ -510,7 +511,6 @@ mod bars {
     /// caches still leave the cmd stream balanced.
     #[test]
     fn nested_clipped_scrolls_compose_through_warm_cache() {
-        use crate::widgets::styled::Styled;
         let surface = UVec2::new(800, 600);
         let mut ui = ui_at(surface);
         let build = |ui: &mut Ui| {
@@ -525,7 +525,10 @@ mod bars {
                             .clip(true)
                             .padding(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
-                            .fill(crate::primitives::color::Color::rgb(0.16, 0.20, 0.28))
+                            .background(Background {
+                                fill: crate::primitives::color::Color::rgb(0.16, 0.20, 0.28),
+                                ..Default::default()
+                            })
                             .show(ui, |ui| {
                                 let s = match tag {
                                     "v" => Scroll::vertical().with_id(("scroll", tag)),

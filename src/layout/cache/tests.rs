@@ -4,7 +4,8 @@ use crate::support::testing::{begin, ui_at};
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
-use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
 fn run_frame(ui: &mut Ui, build: impl FnOnce(&mut Ui)) {
@@ -28,7 +29,10 @@ fn leaf_snapshot_populated_after_first_frame() {
         Frame::new()
             .with_id("a")
             .size(50.0)
-            .fill(Color::rgb(0.2, 0.4, 0.8))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8),
+                ..Default::default()
+            })
             .show(ui);
     });
     let wid = WidgetId::from_hash("a");
@@ -45,7 +49,10 @@ fn unchanged_leaf_keeps_subtree_hash_across_frames() {
         Frame::new()
             .with_id("a")
             .size(50.0)
-            .fill(Color::rgb(0.2, 0.4, 0.8))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8),
+                ..Default::default()
+            })
             .show(ui);
     };
     run_frame(&mut ui, build);
@@ -63,7 +70,10 @@ fn changing_leaf_authoring_replaces_snapshot() {
         Frame::new()
             .with_id("a")
             .size(50.0)
-            .fill(Color::rgb(0.2, 0.4, 0.8))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8),
+                ..Default::default()
+            })
             .show(ui);
     });
     let wid = WidgetId::from_hash("a");
@@ -72,7 +82,10 @@ fn changing_leaf_authoring_replaces_snapshot() {
         Frame::new()
             .with_id("a")
             .size(50.0)
-            .fill(Color::rgb(0.9, 0.4, 0.8))
+            .background(Background {
+                fill: Color::rgb(0.9, 0.4, 0.8),
+                ..Default::default()
+            })
             .show(ui);
     });
     let h2 = snap_for(&ui, wid).unwrap().0.subtree_hash;
@@ -114,7 +127,10 @@ fn cache_hit_replays_same_desired_size() {
         Frame::new()
             .with_id("a")
             .size(50.0)
-            .fill(Color::rgb(0.2, 0.4, 0.8))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8),
+                ..Default::default()
+            })
             .show(ui);
     };
     run_frame(&mut ui, build);
@@ -269,7 +285,10 @@ fn in_place_rewrite_preserves_arena_position() {
         Frame::new()
             .with_id("a")
             .size(50.0)
-            .fill(Color::rgb(c, 0.4, 0.8))
+            .background(Background {
+                fill: Color::rgb(c, 0.4, 0.8),
+                ..Default::default()
+            })
             .show(ui);
     };
 
@@ -417,14 +436,20 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
                 Frame::new()
                     .with_id("changing-leaf")
                     .size(50.0)
-                    .fill(leaf_color)
+                    .background(Background {
+                        fill: leaf_color,
+                        ..Default::default()
+                    })
                     .show(ui);
             });
             Panel::vstack().with_id("stable-sibling").show(ui, |ui| {
                 Frame::new()
                     .with_id("stable-leaf")
                     .size(50.0)
-                    .fill(Color::rgb(0.2, 0.4, 0.8))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        ..Default::default()
+                    })
                     .show(ui);
             });
         });
@@ -510,7 +535,10 @@ fn cache_handles_widget_reappearance_after_eviction() {
             Frame::new()
                 .with_id("blip")
                 .size(40.0)
-                .fill(Color::rgb(0.5, 0.2, 0.7))
+                .background(Background {
+                    fill: Color::rgb(0.5, 0.2, 0.7),
+                    ..Default::default()
+                })
                 .show(ui);
         });
     };

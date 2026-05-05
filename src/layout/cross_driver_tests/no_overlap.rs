@@ -6,11 +6,12 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
-use crate::primitives::{color::Color, stroke::Stroke};
+use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::support::testing::{encode_cmds, ui_with_text};
 use crate::tree::element::Configure;
-use crate::widgets::{grid::Grid, panel::Panel, styled::Styled, text::Text};
+use crate::widgets::theme::Background;
+use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 
@@ -24,12 +25,14 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
         .padding(8.0)
-        .fill(Color::rgb(0.16, 0.18, 0.22))
-        .stroke(Stroke {
-            width: 1.0,
-            color: Color::rgb(0.30, 0.34, 0.42),
+        .background(Background {
+            fill: Color::rgb(0.16, 0.18, 0.22),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgb(0.30, 0.34, 0.42),
+            }),
+            radius: Corners::all(4.0),
         })
-        .radius(4.0)
         .show(ui, |ui| {
             Text::new("title")
                 .with_id(("section-title", id))

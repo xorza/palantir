@@ -1,4 +1,6 @@
-use palantir::{Align, Color, Configure, Frame, HAlign, Panel, Sizing, Styled, Ui, VAlign};
+use palantir::{
+    Align, Background, Color, Configure, Corners, Frame, HAlign, Panel, Sizing, Ui, VAlign,
+};
 
 fn parent_default() -> Color {
     Color::rgb(0.30, 0.55, 0.85)
@@ -19,8 +21,11 @@ pub fn build(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::v(VAlign::Center))
-                .fill(Color::rgb(0.16, 0.18, 0.24))
-                .radius(6.0)
+                .background(Background {
+                    fill: Color::rgb(0.16, 0.18, 0.24),
+                    radius: Corners::all(6.0),
+                    ..Default::default()
+                })
                 .show(ui, |ui| {
                     chip(ui, "a", parent_default(), Align::default());
                     chip(ui, "b", parent_default(), Align::default());
@@ -35,8 +40,11 @@ pub fn build(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::h(HAlign::Right))
-                .fill(Color::rgb(0.16, 0.18, 0.24))
-                .radius(6.0)
+                .background(Background {
+                    fill: Color::rgb(0.16, 0.18, 0.24),
+                    radius: Corners::all(6.0),
+                    ..Default::default()
+                })
                 .show(ui, |ui| {
                     chip(ui, "a-vs", parent_default(), Align::default());
                     chip(ui, "b-self-left", self_override(), Align::h(HAlign::Left));
@@ -50,7 +58,10 @@ fn chip(ui: &mut Ui, id: &'static str, c: Color, align: Align) {
         .with_id(id)
         .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
         .align(align)
-        .fill(c)
-        .radius(4.0)
+        .background(Background {
+            fill: c,
+            radius: Corners::all(4.0),
+            ..Default::default()
+        })
         .show(ui);
 }

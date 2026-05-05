@@ -5,7 +5,8 @@
 //! `.line_gap(g)` is between-line spacing.
 
 use palantir::{
-    Color, Configure, Frame, Justify, Panel, Sizing, Stroke, Styled, Text, TextStyle, Ui,
+    Background, Color, Configure, Corners, Frame, Justify, Panel, Sizing, Stroke, Text, TextStyle,
+    Ui,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -124,12 +125,14 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
     Panel::hstack()
         .with_id(("chip-row", &key))
         .padding((10.0, 4.0))
-        .fill(Color::rgb(0.22, 0.30, 0.45))
-        .stroke(Stroke {
-            width: 1.0,
-            color: Color::rgb(0.34, 0.42, 0.58),
+        .background(Background {
+            fill: Color::rgb(0.22, 0.30, 0.45),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgb(0.34, 0.42, 0.58),
+            }),
+            radius: Corners::all(10.0),
         })
-        .radius(10.0)
         .show(ui, |ui| {
             Text::new(label)
                 .with_id(("chip-label", &key))
@@ -146,8 +149,11 @@ fn badge<H: std::hash::Hash>(ui: &mut Ui, key: H) {
     Frame::new()
         .with_id(("badge", &key))
         .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))
-        .fill(Color::rgb(0.22, 0.46, 0.84))
-        .radius(4.0)
+        .background(Background {
+            fill: Color::rgb(0.22, 0.46, 0.84),
+            radius: Corners::all(4.0),
+            ..Default::default()
+        })
         .show(ui);
 }
 
@@ -157,12 +163,14 @@ fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
         .padding(8.0)
-        .fill(Color::rgb(0.16, 0.18, 0.22))
-        .stroke(Stroke {
-            width: 1.0,
-            color: Color::rgb(0.30, 0.34, 0.42),
+        .background(Background {
+            fill: Color::rgb(0.16, 0.18, 0.22),
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: Color::rgb(0.30, 0.34, 0.42),
+            }),
+            radius: Corners::all(4.0),
         })
-        .radius(4.0)
         .show(ui, |ui| {
             Text::new(title)
                 .with_id(("section-title", id))

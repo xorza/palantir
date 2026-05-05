@@ -1,7 +1,8 @@
 use crate::primitives::transform::TranslateScale;
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::{Response, styled::Background, styled::Styled};
+use crate::widgets::Response;
+use crate::widgets::theme::Background;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints a background rect
@@ -10,10 +11,10 @@ use crate::widgets::{Response, styled::Background, styled::Styled};
 /// just preselect the layout.
 ///
 /// Default fill is transparent and stroke is `None`, so a Panel without
-/// `.fill(...)` or `.stroke(...)` paints nothing — pure layout.
+/// `.background(Background { fill: ..., ..Default::default() })` or `.background(Background { stroke: Some(...), ..Default::default() })` paints nothing — pure layout.
 pub struct Panel {
     element: Element,
-    background: Background,
+    background: Option<Background>,
 }
 
 impl Panel {
@@ -21,7 +22,7 @@ impl Panel {
     fn auto(mode: LayoutMode) -> Self {
         Self {
             element: Element::new_auto(mode),
-            background: Background::default(),
+            background: None,
         }
     }
 
@@ -42,11 +43,20 @@ impl Panel {
         self
     }
 
+    /// Set the background. Default is `None` — a Panel without this
+    /// call paints nothing of its own (pure layout).
+    pub fn background(mut self, b: Background) -> Self {
+        self.background = Some(b);
+        self
+    }
+
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
 
         let node = ui.node(self.element, |ui| {
-            self.background.add_to(ui);
+            if let Some(bg) = &self.background {
+                bg.add_to(ui);
+            }
             body(ui);
         });
 
@@ -104,11 +114,5 @@ impl Panel {
 impl Configure for Panel {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
-    }
-}
-
-impl Styled for Panel {
-    fn background_mut(&mut self) -> &mut Background {
-        &mut self.background
     }
 }

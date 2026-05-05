@@ -1,5 +1,5 @@
 use glam::Vec2;
-use palantir::{Color, Configure, Frame, Panel, Sizing, Styled, TranslateScale, Ui};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, TranslateScale, Ui};
 
 fn tile_color() -> Color {
     Color::rgb(0.30, 0.55, 0.85)
@@ -50,8 +50,11 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .with_id(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
-        .fill(Color::rgb(0.16, 0.18, 0.24))
-        .radius(6.0)
+        .background(Background {
+            fill: Color::rgb(0.16, 0.18, 0.24),
+            radius: Corners::all(6.0),
+            ..Default::default()
+        })
         .show(ui, body);
 }
 
@@ -59,7 +62,10 @@ fn tile(ui: &mut Ui, id: &'static str) {
     Frame::new()
         .with_id(id)
         .size((Sizing::Fixed(60.0), Sizing::Fixed(60.0)))
-        .fill(tile_color())
-        .radius(4.0)
+        .background(Background {
+            fill: tile_color(),
+            radius: Corners::all(4.0),
+            ..Default::default()
+        })
         .show(ui);
 }

@@ -1,4 +1,6 @@
-use palantir::{Color, Configure, Panel, Scroll, Sizing, Stroke, Styled, Text, TextStyle, Ui};
+use palantir::{
+    Background, Color, Configure, Corners, Panel, Scroll, Sizing, Stroke, Text, TextStyle, Ui,
+};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -62,12 +64,14 @@ fn card(ui: &mut Ui, key: &'static str, label: &'static str, body: impl FnOnce(&
         .size((Sizing::FILL, Sizing::FILL))
         .padding(8.0)
         .gap(6.0)
-        .fill(Color::rgb(0.16, 0.20, 0.28))
-        .stroke(Stroke {
-            width: 1.5,
-            color: Color::rgb(0.30, 0.36, 0.46),
+        .background(Background {
+            fill: Color::rgb(0.16, 0.20, 0.28),
+            stroke: Some(Stroke {
+                width: 1.5,
+                color: Color::rgb(0.30, 0.36, 0.46),
+            }),
+            radius: Corners::all(8.0),
         })
-        .radius(8.0)
         .show(ui, |ui| {
             Text::new(label)
                 .with_id((key, "title"))
@@ -87,8 +91,11 @@ fn row(ui: &mut Ui, ns: &'static str, i: u32) {
         .with_id((ns, "scroll-row", i))
         .size((Sizing::FILL, Sizing::Fixed(28.0)))
         .padding((10.0, 6.0))
-        .fill(Color::rgb(r, g, b))
-        .radius(4.0)
+        .background(Background {
+            fill: Color::rgb(r, g, b),
+            radius: Corners::all(4.0),
+            ..Default::default()
+        })
         .show(ui, |ui| {
             Text::new(label_for(i))
                 .with_id((ns, "scroll-row-label", i))
@@ -107,8 +114,11 @@ fn col(ui: &mut Ui, i: u32) {
         .with_id(("h", "scroll-col", i))
         .size((Sizing::Fixed(60.0), Sizing::FILL))
         .padding((6.0, 10.0))
-        .fill(Color::rgb(r, g, b))
-        .radius(4.0)
+        .background(Background {
+            fill: Color::rgb(r, g, b),
+            radius: Corners::all(4.0),
+            ..Default::default()
+        })
         .show(ui, |ui| {
             Text::new(label_for(i))
                 .with_id(("h", "scroll-col-label", i))
@@ -138,8 +148,11 @@ fn grid(ui: &mut Ui) {
                             .with_id(("xy-cell", r, c))
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                             .padding((6.0, 4.0))
-                            .fill(Color::rgb(rr, gg, bb))
-                            .radius(4.0)
+                            .background(Background {
+                                fill: Color::rgb(rr, gg, bb),
+                                radius: Corners::all(4.0),
+                                ..Default::default()
+                            })
                             .show(ui, |ui| {
                                 Text::new(cell_label(r, c))
                                     .with_id(("xy-cell-label", r, c))

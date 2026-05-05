@@ -1,4 +1,4 @@
-use palantir::{Color, Configure, Frame, Panel, Sizing, Styled, Ui};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Ui};
 
 fn tile() -> Color {
     Color::rgb(0.30, 0.55, 0.85)
@@ -22,15 +22,21 @@ fn row(ui: &mut Ui, id: &'static str, gap: f32) {
         .size((Sizing::FILL, Sizing::Fixed(48.0)))
         .padding(8.0)
         .gap(gap)
-        .fill(Color::rgb(0.16, 0.18, 0.24))
-        .radius(4.0)
+        .background(Background {
+            fill: Color::rgb(0.16, 0.18, 0.24),
+            radius: Corners::all(4.0),
+            ..Default::default()
+        })
         .show(ui, |ui| {
             for i in 0..5 {
                 Frame::new()
                     .with_id((id, i))
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(32.0)))
-                    .fill(tile())
-                    .radius(4.0)
+                    .background(Background {
+                        fill: tile(),
+                        radius: Corners::all(4.0),
+                        ..Default::default()
+                    })
                     .show(ui);
             }
         });

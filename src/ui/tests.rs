@@ -5,7 +5,8 @@ use crate::primitives::{color::Color, rect::Rect};
 use crate::support::testing::{begin, new_ui_text, ui_at};
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -167,7 +168,10 @@ fn prev_frame_populated_after_end_frame() {
         Frame::new()
             .with_id("a")
             .size(50.0)
-            .fill(Color::rgb(0.2, 0.4, 0.8))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8),
+                ..Default::default()
+            })
             .show(ui);
     });
     ui.end_frame();
@@ -185,7 +189,10 @@ fn prev_frame_captures_arranged_rect() {
     let frame_node = Frame::new()
         .with_id("a")
         .size(50.0)
-        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .background(Background {
+            fill: Color::rgb(0.2, 0.4, 0.8),
+            ..Default::default()
+        })
         .show(&mut ui)
         .node;
     ui.end_frame();
@@ -201,7 +208,10 @@ fn prev_frame_captures_authoring_hash() {
     let frame_node = Frame::new()
         .with_id("a")
         .size(50.0)
-        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .background(Background {
+            fill: Color::rgb(0.2, 0.4, 0.8),
+            ..Default::default()
+        })
         .show(&mut ui)
         .node;
     ui.end_frame();
@@ -232,7 +242,10 @@ fn prev_frame_updates_on_authoring_change() {
     Frame::new()
         .with_id("a")
         .size(50.0)
-        .fill(Color::rgb(0.2, 0.4, 0.8))
+        .background(Background {
+            fill: Color::rgb(0.2, 0.4, 0.8),
+            ..Default::default()
+        })
         .show(&mut ui);
     ui.end_frame();
     let h1 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
@@ -241,7 +254,10 @@ fn prev_frame_updates_on_authoring_change() {
     Frame::new()
         .with_id("a")
         .size(50.0)
-        .fill(Color::rgb(0.9, 0.4, 0.8))
+        .background(Background {
+            fill: Color::rgb(0.9, 0.4, 0.8),
+            ..Default::default()
+        })
         .show(&mut ui);
     ui.end_frame();
     let h2 = ui.damage.prev[&WidgetId::from_hash("a")].hash;

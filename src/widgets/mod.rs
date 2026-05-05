@@ -3,7 +3,6 @@ pub(crate) mod frame;
 pub(crate) mod grid;
 pub(crate) mod panel;
 pub(crate) mod scroll;
-pub(crate) mod styled;
 pub(crate) mod text;
 pub(crate) mod text_edit;
 pub(crate) mod theme;

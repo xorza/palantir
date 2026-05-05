@@ -1,9 +1,11 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
+use crate::primitives::corners::Corners;
 use crate::shape::Shape;
 use crate::support::testing::{click_at, ui_at};
 use crate::tree::element::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -52,8 +54,11 @@ fn panel_hugs_largest_child_and_layers_them() {
             Panel::zstack()
                 .with_id("card")
                 .padding(10.0)
-                .fill(Color::rgb(0.1, 0.1, 0.15))
-                .radius(8.0)
+                .background(Background {
+                    fill: Color::rgb(0.1, 0.1, 0.15),
+                    radius: Corners::all(8.0),
+                    ..Default::default()
+                })
                 .show(ui, |ui| {
                     a_node = Some(
                         Button::new()
@@ -111,7 +116,10 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                     Frame::new()
                         .with_id("filler")
                         .size((Sizing::FILL, Sizing::FILL))
-                        .fill(Color::rgb(0.5, 0.5, 0.5))
+                        .background(Background {
+                            fill: Color::rgb(0.5, 0.5, 0.5),
+                            ..Default::default()
+                        })
                         .show(ui)
                         .node,
                 );
@@ -138,7 +146,10 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
             .with_id("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
-            .fill(Color::rgb(0.2, 0.2, 0.2))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.2, 0.2),
+                ..Default::default()
+            })
             .disabled(true)
             .show(ui, |ui| {
                 Button::new()
@@ -158,7 +169,10 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
             .with_id("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
-            .fill(Color::rgb(0.2, 0.2, 0.2))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.2, 0.2),
+                ..Default::default()
+            })
             .disabled(true)
             .show(ui, |ui| {
                 clicked = Button::new()

@@ -1,4 +1,4 @@
-use palantir::{Color, Configure, Frame, Panel, Sizing, Stroke, Styled, Ui};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
@@ -12,12 +12,14 @@ pub fn build(ui: &mut Ui) {
                 .with_id("clipped")
                 .size((Sizing::FILL, Sizing::FILL))
                 .clip(true)
-                .fill(Color::rgb(0.16, 0.20, 0.28))
-                .stroke(Stroke {
-                    width: 1.5,
-                    color: Color::rgb(0.30, 0.36, 0.46),
+                .background(Background {
+                    fill: Color::rgb(0.16, 0.20, 0.28),
+                    stroke: Some(Stroke {
+                        width: 1.5,
+                        color: Color::rgb(0.30, 0.36, 0.46),
+                    }),
+                    radius: Corners::all(8.0),
                 })
-                .radius(8.0)
                 .show(ui, |ui| {
                     spiller(ui, "spilled-clipped");
                 });
@@ -27,12 +29,14 @@ pub fn build(ui: &mut Ui) {
                 .with_id("unclipped")
                 .size((Sizing::FILL, Sizing::FILL))
                 .clip(false)
-                .fill(Color::rgb(0.16, 0.20, 0.28))
-                .stroke(Stroke {
-                    width: 1.5,
-                    color: Color::rgb(0.30, 0.36, 0.46),
+                .background(Background {
+                    fill: Color::rgb(0.16, 0.20, 0.28),
+                    stroke: Some(Stroke {
+                        width: 1.5,
+                        color: Color::rgb(0.30, 0.36, 0.46),
+                    }),
+                    radius: Corners::all(8.0),
                 })
-                .radius(8.0)
                 .show(ui, |ui| {
                     spiller(ui, "spilled-unclipped");
                 });
@@ -44,7 +48,10 @@ fn spiller(ui: &mut Ui, id: &'static str) {
         .with_id(id)
         .size((Sizing::Fixed(220.0), Sizing::Fixed(80.0)))
         .margin((-40.0, -30.0, 0.0, 0.0))
-        .fill(Color::rgb(0.85, 0.45, 0.30))
-        .radius(6.0)
+        .background(Background {
+            fill: Color::rgb(0.85, 0.45, 0.30),
+            radius: Corners::all(6.0),
+            ..Default::default()
+        })
         .show(ui);
 }

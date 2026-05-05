@@ -5,7 +5,9 @@
 //! (group split on text→quad transition) and
 //! `src/renderer/backend/text.rs` (per-group prepare/render pool).
 
-use palantir::{Color, Configure, Frame, Panel, Sizing, Stroke, Styled, Text, TextStyle, Ui};
+use palantir::{
+    Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Text, TextStyle, Ui,
+};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -87,20 +89,25 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
             Panel::zstack()
                 .with_id(("box", id))
                 .size((Sizing::FILL, Sizing::FILL))
-                .fill(Color::rgb(0.12, 0.14, 0.18))
-                .stroke(Stroke {
-                    width: 1.0,
-                    color: Color::rgb(0.30, 0.34, 0.42),
+                .background(Background {
+                    fill: Color::rgb(0.12, 0.14, 0.18),
+                    stroke: Some(Stroke {
+                        width: 1.0,
+                        color: Color::rgb(0.30, 0.34, 0.42),
+                    }),
+                    radius: Corners::all(6.0),
                 })
-                .radius(6.0)
                 .padding(12.0)
                 .show(ui, |ui| {
                     // Background panel with accent fill.
                     Frame::new()
                         .with_id(("bg", id))
                         .size((Sizing::FILL, Sizing::FILL))
-                        .fill(accent)
-                        .radius(4.0)
+                        .background(Background {
+                            fill: accent,
+                            radius: Corners::all(4.0),
+                            ..Default::default()
+                        })
                         .show(ui);
 
                     // Label — visible on top of the background. When
@@ -121,12 +128,14 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
                         Frame::new()
                             .with_id(("occluder", id))
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
-                            .fill(Color::rgb(0.10, 0.10, 0.10))
-                            .stroke(Stroke {
-                                width: 1.0,
-                                color: Color::rgb(0.45, 0.45, 0.50),
+                            .background(Background {
+                                fill: Color::rgb(0.10, 0.10, 0.10),
+                                stroke: Some(Stroke {
+                                    width: 1.0,
+                                    color: Color::rgb(0.45, 0.45, 0.50),
+                                }),
+                                radius: Corners::all(4.0),
                             })
-                            .radius(4.0)
                             .show(ui);
                     }
                 });

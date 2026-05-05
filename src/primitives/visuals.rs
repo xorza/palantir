@@ -1,27 +1,27 @@
-use crate::primitives::{color::Color, stroke::Stroke};
+use crate::primitives::color::Color;
+use crate::widgets::theme::{Background, TextStyle};
 
-/// One visual state's paint vocabulary. Shared across widget styles
-/// (e.g. `ButtonTheme::{normal, hovered, pressed}` are each `Visuals`).
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// One visual state's paint vocabulary: optional background bundle +
+/// text style bundle. Shared across widget styles (e.g.
+/// `ButtonTheme::{normal, hovered, pressed, disabled}` are each
+/// `Visuals`). `background = None` paints nothing for that state.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Visuals {
-    pub fill: Color,
-    pub stroke: Option<Stroke>,
-    // todo textstyle
-    pub text: Color,
+    pub background: Option<Background>,
+    pub text: TextStyle,
 }
 
 impl Visuals {
-    pub const fn solid(fill: Color, text: Color) -> Self {
+    /// Compatibility constructor: solid fill + text color, default
+    /// font/leading from `TextStyle::default()`.
+    pub fn solid(fill: Color, text_color: Color) -> Self {
         Self {
-            fill,
-            stroke: None,
-            text,
+            background: Some(Background {
+                fill,
+                ..Background::default()
+            }),
+            text: TextStyle::default().with_color(text_color),
         }
     }
 }
 
-impl Default for Visuals {
-    fn default() -> Self {
-        Self::solid(Color::TRANSPARENT, Color::WHITE)
-    }
-}

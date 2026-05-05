@@ -2,7 +2,8 @@ use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::support::testing::{click_at, encode_cmds, ui_at};
 use crate::tree::element::Configure;
-use crate::widgets::{button::Button, frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
@@ -74,18 +75,27 @@ fn hidden_keeps_slot_but_emits_no_draws() {
             Frame::new()
                 .with_id("a")
                 .size(40.0)
-                .fill(Color::rgb(1.0, 0.0, 0.0))
+                .background(Background {
+                    fill: Color::rgb(1.0, 0.0, 0.0),
+                    ..Default::default()
+                })
                 .show(ui);
             Frame::new()
                 .with_id("hid")
                 .size(40.0)
-                .fill(Color::rgb(0.0, 1.0, 0.0))
+                .background(Background {
+                    fill: Color::rgb(0.0, 1.0, 0.0),
+                    ..Default::default()
+                })
                 .hidden()
                 .show(ui);
             Frame::new()
                 .with_id("b")
                 .size(40.0)
-                .fill(Color::rgb(0.0, 0.0, 1.0))
+                .background(Background {
+                    fill: Color::rgb(0.0, 0.0, 1.0),
+                    ..Default::default()
+                })
                 .show(ui);
         })
         .node;

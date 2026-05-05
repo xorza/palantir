@@ -11,7 +11,8 @@ use crate::primitives::{color::Color, rect::Rect, size::Size, transform::Transla
 use crate::support::testing::{begin, encode_cmds, encode_cmds_filtered, ui_at};
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
-use crate::widgets::{frame::Frame, panel::Panel, styled::Styled};
+use crate::widgets::theme::Background;
+use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
 struct ClipPairs {
@@ -56,7 +57,10 @@ fn frame_with_fill_emits_one_draw_rect() {
         Frame::new()
             .with_id("a")
             .size(50.0)
-            .fill(Color::rgb(1.0, 0.0, 0.0))
+            .background(Background {
+                fill: Color::rgb(1.0, 0.0, 0.0),
+                ..Default::default()
+            })
             .show(ui);
     });
     ui.end_frame();
@@ -93,7 +97,10 @@ fn clip_emits_balanced_push_pop() {
                 Frame::new()
                     .with_id("inner")
                     .size(40.0)
-                    .fill(Color::rgb(0.5, 0.5, 0.5))
+                    .background(Background {
+                        fill: Color::rgb(0.5, 0.5, 0.5),
+                        ..Default::default()
+                    })
                     .show(ui);
             });
     });
@@ -228,14 +235,20 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .with_id("V")
                     .position((0.0, 0.0))
                     .size(30.0)
-                    .fill(v_color)
+                    .background(Background {
+                        fill: v_color,
+                        ..Default::default()
+                    })
                     .sense(Sense::CLICK)
                     .show(ui);
                 Frame::new()
                     .with_id("D")
                     .position((40.0, 0.0))
                     .size(30.0)
-                    .fill(d_color)
+                    .background(Background {
+                        fill: d_color,
+                        ..Default::default()
+                    })
                     .sense(Sense::CLICK)
                     .disabled(true)
                     .show(ui);
@@ -243,7 +256,10 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .with_id("H")
                     .position((80.0, 0.0))
                     .size(30.0)
-                    .fill(h_color)
+                    .background(Background {
+                        fill: h_color,
+                        ..Default::default()
+                    })
                     .sense(Sense::CLICK)
                     .hidden()
                     .show(ui);
@@ -326,7 +342,10 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .with_id("V")
                     .position((0.0, 0.0))
                     .size(30.0)
-                    .fill(v_color)
+                    .background(Background {
+                        fill: v_color,
+                        ..Default::default()
+                    })
                     .sense(Sense::CLICK)
                     .show(ui)
                     .clicked();
@@ -334,7 +353,10 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .with_id("D")
                     .position((40.0, 0.0))
                     .size(30.0)
-                    .fill(d_color)
+                    .background(Background {
+                        fill: d_color,
+                        ..Default::default()
+                    })
                     .sense(Sense::CLICK)
                     .disabled(true)
                     .show(ui)
@@ -343,7 +365,10 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .with_id("H")
                     .position((80.0, 0.0))
                     .size(30.0)
-                    .fill(h_color)
+                    .background(Background {
+                        fill: h_color,
+                        ..Default::default()
+                    })
                     .sense(Sense::CLICK)
                     .hidden()
                     .show(ui)
@@ -390,7 +415,10 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
         child_node = Some(
             Frame::new()
                 .size(Sizing::Fixed(40.0))
-                .fill(Color::rgb(1.0, 0.0, 0.0))
+                .background(Background {
+                    fill: Color::rgb(1.0, 0.0, 0.0),
+                    ..Default::default()
+                })
                 .show(ui)
                 .node,
         );
@@ -511,12 +539,18 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
         Frame::new()
             .with_id("a")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
-            .fill(Color::rgb(1.0, 0.0, 0.0))
+            .background(Background {
+                fill: Color::rgb(1.0, 0.0, 0.0),
+                ..Default::default()
+            })
             .show(ui);
         Frame::new()
             .with_id("b")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
-            .fill(Color::rgb(0.0, 1.0, 0.0))
+            .background(Background {
+                fill: Color::rgb(0.0, 1.0, 0.0),
+                ..Default::default()
+            })
             .show(ui);
     });
     ui.end_frame();
@@ -544,7 +578,10 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
         Frame::new()
             .with_id("a")
             .size(50.0)
-            .fill(Color::rgb(1.0, 0.0, 0.0))
+            .background(Background {
+                fill: Color::rgb(1.0, 0.0, 0.0),
+                ..Default::default()
+            })
             .show(ui);
     });
     ui.end_frame();
@@ -571,7 +608,10 @@ fn damage_filter_preserves_clip_pushpop() {
                     Frame::new()
                         .with_id("inner")
                         .size(20.0)
-                        .fill(Color::rgb(1.0, 0.0, 0.0))
+                        .background(Background {
+                            fill: Color::rgb(1.0, 0.0, 0.0),
+                            ..Default::default()
+                        })
                         .show(ui);
                 });
         });
@@ -607,7 +647,10 @@ fn damage_filter_preserves_transform_pushpop() {
                 Frame::new()
                     .with_id("inner")
                     .size(20.0)
-                    .fill(Color::rgb(1.0, 0.0, 0.0))
+                    .background(Background {
+                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        ..Default::default()
+                    })
                     .show(ui);
             });
     });
@@ -650,18 +693,27 @@ fn encode_cache_warm_frame_matches_cold_encode() {
                     .clip(true)
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
-                    .fill(Color::rgb(0.16, 0.18, 0.22))
+                    .background(Background {
+                        fill: Color::rgb(0.16, 0.18, 0.22),
+                        ..Default::default()
+                    })
                     .transform(TranslateScale::new(Vec2::new(2.0, 1.0), 1.0))
                     .show(ui, |ui| {
                         Frame::new()
                             .with_id("a")
                             .size((Sizing::FILL, Sizing::Fixed(20.0)))
-                            .fill(Color::rgb(0.4, 0.4, 0.5))
+                            .background(Background {
+                                fill: Color::rgb(0.4, 0.4, 0.5),
+                                ..Default::default()
+                            })
                             .show(ui);
                         Frame::new()
                             .with_id("b")
                             .size((Sizing::FILL, Sizing::Fixed(10.0)))
-                            .fill(Color::rgb(0.5, 0.4, 0.4))
+                            .background(Background {
+                                fill: Color::rgb(0.5, 0.4, 0.4),
+                                ..Default::default()
+                            })
                             .show(ui);
                     });
             });

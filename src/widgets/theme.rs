@@ -1,7 +1,31 @@
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::stroke::Stroke;
+use crate::shape::Shape;
+use crate::ui::Ui;
 use crate::widgets::button::ButtonTheme;
+
+/// Paint data shared by container widgets (`Frame`, `Panel`, `Grid`)
+/// and per-state widget Visuals: fill colour, optional stroke, and
+/// corner radii. Default is transparent fill / no stroke / zero radius
+/// — emitting nothing — so a container that never sets any of these
+/// adds no shape to the tree (`Ui::add_shape` filters no-op shapes).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Background {
+    pub fill: Color,
+    pub stroke: Option<Stroke>,
+    pub radius: Corners,
+}
+
+impl Background {
+    pub(crate) fn add_to(&self, ui: &mut Ui) {
+        ui.add_shape(Shape::RoundedRect {
+            radius: self.radius,
+            fill: self.fill,
+            stroke: self.stroke,
+        });
+    }
+}
 
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
@@ -25,7 +49,7 @@ pub struct Theme {
 /// whole "text look" with one assignment, and so future axes (font
 /// family, weight, italic, letter-spacing) extend a single struct
 /// rather than scattering across [`Theme`].
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this
     /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
@@ -147,11 +171,11 @@ impl Default for ScrollbarTheme {
 /// for the buffer text live in one slot rather than scattered fields.
 #[derive(Clone, Debug)]
 pub struct TextEditTheme {
-    pub background: Color,
-    pub background_focused: Color,
-    pub stroke: Option<Stroke>,
-    pub stroke_focused: Option<Stroke>,
-    pub radius: Corners,
+    /// Background bundle (fill / stroke / radius) for the unfocused
+    /// state.
+    pub background: Background,
+    /// Background bundle for the focused state.
+    pub background_focused: Background,
     /// Font/leading/color for the buffer text in the *unfocused-or-
     /// focused-non-empty* state. Placeholder uses [`Self::placeholder`]
     /// instead.
@@ -170,18 +194,24 @@ pub struct TextEditTheme {
 
 impl Default for TextEditTheme {
     fn default() -> Self {
+        let radius = Corners::all(4.0);
         Self {
-            background: Color::rgb(0.10, 0.12, 0.16),
-            background_focused: Color::rgb(0.13, 0.16, 0.22),
-            stroke: Some(Stroke {
-                width: 1.0,
-                color: Color::rgba(1.0, 1.0, 1.0, 0.10),
-            }),
-            stroke_focused: Some(Stroke {
-                width: 1.5,
-                color: Color::rgb(0.30, 0.52, 0.92),
-            }),
-            radius: Corners::all(4.0),
+            background: Background {
+                fill: Color::rgb(0.10, 0.12, 0.16),
+                stroke: Some(Stroke {
+                    width: 1.0,
+                    color: Color::rgba(1.0, 1.0, 1.0, 0.10),
+                }),
+                radius,
+            },
+            background_focused: Background {
+                fill: Color::rgb(0.13, 0.16, 0.22),
+                stroke: Some(Stroke {
+                    width: 1.5,
+                    color: Color::rgb(0.30, 0.52, 0.92),
+                }),
+                radius,
+            },
             text: TextStyle::default(),
             placeholder: Color::rgba(1.0, 1.0, 1.0, 0.40),
             caret: Color::WHITE,

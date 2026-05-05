@@ -1,13 +1,16 @@
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::{Response, styled::Background, styled::Styled};
+use crate::widgets::Response;
+use crate::widgets::theme::Background;
 
-/// A simple decorated rectangle: configurable fill / stroke / radius / size /
-/// margin + an optional `Sense`. Used directly for dividers / hit-areas / bg
-/// swatches, and as the rendering primitive inside `Button`.
+/// A simple decorated rectangle: optional background / size / margin
+/// plus an optional `Sense`. Used directly for dividers / hit-areas /
+/// bg swatches, and as the rendering primitive inside `Button`.
+/// Background is `None` by default — Frame paints nothing unless one
+/// is set via `.background(...)`.
 pub struct Frame {
     element: Element,
-    background: Background,
+    background: Option<Background>,
 }
 
 impl Frame {
@@ -20,14 +23,21 @@ impl Frame {
     pub fn for_element(element: Element) -> Self {
         Self {
             element,
-            background: Background::default(),
+            background: None,
         }
+    }
+
+    pub fn background(mut self, b: Background) -> Self {
+        self.background = Some(b);
+        self
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         let node = ui.node(self.element, |ui| {
-            self.background.add_to(ui);
+            if let Some(bg) = &self.background {
+                bg.add_to(ui);
+            }
         });
 
         let state = ui.response_for(id);
@@ -38,11 +48,5 @@ impl Frame {
 impl Configure for Frame {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
-    }
-}
-
-impl Styled for Frame {
-    fn background_mut(&mut self) -> &mut Background {
-        &mut self.background
     }
 }
