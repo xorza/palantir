@@ -747,7 +747,9 @@ mod keyboard {
             Key::PageDown
         );
         assert_eq!(key_from_winit(&WK::Named(NamedKey::Tab)), Key::Tab);
-        assert_eq!(key_from_winit(&WK::Named(NamedKey::Space)), Key::Space);
+        // Space collapses to `Char(' ')` so the editor treats it as
+        // ordinary text input — no dedicated variant.
+        assert_eq!(key_from_winit(&WK::Named(NamedKey::Space)), Key::Char(' '));
     }
 
     #[test]
@@ -817,7 +819,6 @@ mod keyboard {
         );
         state.on_input(InputEvent::Text(TextChunk::new("a").unwrap()), &cascades);
         state.on_input(InputEvent::ModifiersChanged(Modifiers::NONE), &cascades);
-        state.on_input(InputEvent::KeyUp { key: Key::Tab }, &cascades);
         assert_eq!(state.frame_scroll_delta, before_scroll);
     }
 
@@ -859,14 +860,6 @@ mod keyboard {
         assert_eq!(state.frame_keys[1].key, Key::Char('b'));
         assert!(!state.frame_keys[1].mods.ctrl);
         assert!(state.frame_keys[1].repeat);
-    }
-
-    #[test]
-    fn key_up_does_not_queue() {
-        let mut state = InputState::new();
-        let cascades = CascadeResult::default();
-        state.on_input(InputEvent::KeyUp { key: Key::Tab }, &cascades);
-        assert!(state.frame_keys.is_empty());
     }
 
     #[test]

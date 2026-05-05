@@ -49,6 +49,9 @@ pub struct TextEdit<'a> {
     /// Per-widget font-size override; falls back to
     /// `Theme::text_edit.size_px` when `None`.
     size_px: Option<f32>,
+    /// Per-widget caret-height multiplier; falls back to
+    /// `Theme::text_edit.line_height_mult` when `None`.
+    line_height_mult: Option<f32>,
 }
 
 impl<'a> TextEdit<'a> {
@@ -69,6 +72,7 @@ impl<'a> TextEdit<'a> {
             style: None,
             placeholder: Cow::Borrowed(""),
             size_px: None,
+            line_height_mult: None,
         }
     }
 
@@ -90,6 +94,20 @@ impl<'a> TextEdit<'a> {
         self
     }
 
+    /// Override the line-height multiplier. Drives both the rendered
+    /// text's leading (fed to cosmic-text's `Metrics::new` via
+    /// `Shape::Text.line_height_px`) and the caret rect's height — the
+    /// two stay locked. Defaults to `Theme::text_edit.line_height_mult`
+    /// (1.2, matching cosmic's natural leading).
+    pub fn line_height_mult(mut self, mult: f32) -> Self {
+        assert!(
+            mult > 0.0,
+            "TextEdit line_height_mult must be positive, got {mult}",
+        );
+        self.line_height_mult = Some(mult);
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         let is_focused = ui.input.focused == Some(id);
@@ -98,6 +116,7 @@ impl<'a> TextEdit<'a> {
             .clone()
             .unwrap_or_else(|| ui.theme.text_edit.clone());
         let font_size = self.size_px.unwrap_or(style.size_px);
+        let line_height_mult = self.line_height_mult.unwrap_or(ui.theme.line_height_mult);
         // The renderer deflates by `element.padding` when laying out
         // `Shape::Text` (see `encoder::mod.rs`). Reading the same value
         // here keeps the caret rect aligned with the glyphs.
@@ -114,6 +133,7 @@ impl<'a> TextEdit<'a> {
             is_focused,
             self.text,
             font_size,
+            font_size * line_height_mult,
             padding.left,
             &mut blur_after,
         );
@@ -156,6 +176,7 @@ impl<'a> TextEdit<'a> {
                     text: display,
                     color,
                     font_size_px: font_size,
+                    line_height_px: font_size * line_height_mult,
                     wrap: TextWrap::Single,
                     align: Default::default(),
                 });
@@ -165,18 +186,24 @@ impl<'a> TextEdit<'a> {
             // coords so it stays in the widget's clip and renders
             // *over* the text. Only when focused.
             if is_focused {
-                let caret_x = ui.pipeline.text.caret_x(text_ptr, caret_byte, font_size);
+                let caret_x = ui.pipeline.text.caret_x(
+                    text_ptr,
+                    caret_byte,
+                    font_size,
+                    font_size * line_height_mult,
+                );
                 let pad = padding;
-                // Caret height = full line-height
-                // (`font_size * LINE_HEIGHT_MULT`) so the rect spans
-                // the same y-range the shaped text occupies. Using
-                // `font_size` alone leaves it ~20 % short and visually
-                // offset upward against the glyph baseline.
+                // Caret height = `font_size × line_height_mult`
+                // (default 1.2 from `TextEditTheme`, matching the
+                // shaper's leading) so the rect spans the same y-range
+                // the shaped text occupies. Using `font_size` alone
+                // leaves it ~20 % short and visually offset upward
+                // against the glyph baseline.
                 let caret_rect = Rect::new(
                     pad.left + caret_x,
                     pad.top,
                     style.caret_width,
-                    crate::text::line_height(font_size),
+                    font_size * line_height_mult,
                 );
                 ui.add_shape(Shape::Overlay {
                     rect: caret_rect,
@@ -212,12 +239,14 @@ impl Configure for TextEdit<'_> {
 /// out of `show()` keeps the borrow choreography contained: we touch
 /// `ui.state`, `ui.input`, and `ui.pipeline.text` here, but never the
 /// shape/tree storage.
+#[allow(clippy::too_many_arguments)]
 fn handle_input(
     ui: &mut Ui,
     id: WidgetId,
     is_focused: bool,
     text: &mut String,
     font_size: f32,
+    line_height_px: f32,
     // Resolved left-padding from the per-widget style (after merging
     // `.style()` override with the theme default). Subtracted from the
     // press-x so the caret hit-test runs in text-local coords. Passed
@@ -227,11 +256,15 @@ fn handle_input(
     blur_after: &mut bool,
 ) -> usize {
     let resp_state = ui.response_for(id);
-    // Clamp caret. Read state via a mutable borrow that's compatible
-    // with reading from `ui.input` (separate field).
+
+    // Hold the state row once for the whole function. `ui.state`,
+    // `ui.input`, and `ui.pipeline.text` are disjoint fields of `Ui`,
+    // so we can keep `&mut state` alive while also reading the input
+    // queues and dispatching to the text measurer.
     let state = ui
         .state
         .get_or_insert_with::<TextEditState, _>(id, Default::default);
+    // Clamp caret. Host code may have shrunk `*text` between frames.
     if state.caret > text.len() {
         state.caret = text.len();
     }
@@ -245,17 +278,16 @@ fn handle_input(
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos())
     {
         let local_x = ptr.x - rect.min.x - pad_left;
-        let new_caret = caret_from_x(text, local_x, font_size, &mut ui.pipeline.text);
-        let state = ui
-            .state
-            .get_or_insert_with::<TextEditState, _>(id, Default::default);
-        state.caret = new_caret;
+        state.caret = caret_from_x(
+            text,
+            local_x,
+            font_size,
+            line_height_px,
+            &mut ui.pipeline.text,
+        );
     }
 
     if !is_focused {
-        let state = ui
-            .state
-            .get_or_insert_with::<TextEditState, _>(id, Default::default);
         return state.caret;
     }
 
@@ -263,48 +295,24 @@ fn handle_input(
     // ModifiersChanged + keystrokes-for-shortcut sequence still leaves
     // typed text intact), then `frame_keys` for navigation/edits.
     if !ui.input.frame_text.is_empty() {
-        let state = ui
-            .state
-            .get_or_insert_with::<TextEditState, _>(id, Default::default);
         text.insert_str(state.caret, &ui.input.frame_text);
         state.caret += ui.input.frame_text.len();
     }
 
-    // Iterate frame_keys with a swap-like manual loop to avoid borrow
-    // conflict between `ui.input.frame_keys` (read) and `ui.state`
-    // (write). Disjoint fields → both borrows allowed but not via the
-    // `state_mut` helper (which takes `&mut self` on the whole Ui).
-    let n_keys = ui.input.frame_keys.len();
-    for i in 0..n_keys {
-        let kp = ui.input.frame_keys[i];
-        let state = ui
-            .state
-            .get_or_insert_with::<TextEditState, _>(id, Default::default);
-        match apply_key(text, &mut state.caret, kp) {
-            KeyOutcome::Consumed => {}
-            KeyOutcome::Blur => {
-                *blur_after = true;
-            }
-            KeyOutcome::Pass => {}
+    for kp in &ui.input.frame_keys {
+        if apply_key(text, &mut state.caret, *kp) {
+            *blur_after = true;
         }
     }
 
-    let state = ui
-        .state
-        .get_or_insert_with::<TextEditState, _>(id, Default::default);
     state.caret
 }
 
-/// Result of dispatching one key press through the editor: did the
-/// widget consume the key, request blur, or pass it through?
-enum KeyOutcome {
-    Consumed,
-    Blur,
-    /// Reserved for future key dispatch (Tab focus cycle, etc.).
-    Pass,
-}
-
-fn apply_key(text: &mut String, caret: &mut usize, kp: KeyPress) -> KeyOutcome {
+/// Apply one keypress to the buffer + caret. Returns `true` if the
+/// caller should blur (Escape); every other recognized key is consumed
+/// silently. Single-line v1 ignores Enter / Tab / PageUp / PageDown
+/// and anything held with a command modifier (ctrl+a, cmd+c, …).
+fn apply_key(text: &mut String, caret: &mut usize, kp: KeyPress) -> bool {
     match kp.key {
         // Printable character without a command modifier counts as text
         // input. Shift alone doesn't disqualify (shift+'a' = 'A' is the
@@ -314,49 +322,24 @@ fn apply_key(text: &mut String, caret: &mut usize, kp: KeyPress) -> KeyOutcome {
             let s = c.encode_utf8(&mut buf);
             text.insert_str(*caret, s);
             *caret += s.len();
-            KeyOutcome::Consumed
         }
-        Key::Space if !kp.mods.any_command() => {
-            text.insert(*caret, ' ');
-            *caret += 1;
-            KeyOutcome::Consumed
+        Key::Backspace if *caret > 0 => {
+            let prev = prev_char_boundary(text, *caret);
+            text.replace_range(prev..*caret, "");
+            *caret = prev;
         }
-        Key::Backspace => {
-            if *caret > 0 {
-                let prev = prev_char_boundary(text, *caret);
-                text.replace_range(prev..*caret, "");
-                *caret = prev;
-            }
-            KeyOutcome::Consumed
+        Key::Delete if *caret < text.len() => {
+            let next = next_char_boundary(text, *caret);
+            text.replace_range(*caret..next, "");
         }
-        Key::Delete => {
-            if *caret < text.len() {
-                let next = next_char_boundary(text, *caret);
-                text.replace_range(*caret..next, "");
-            }
-            KeyOutcome::Consumed
-        }
-        Key::ArrowLeft => {
-            *caret = prev_char_boundary(text, *caret);
-            KeyOutcome::Consumed
-        }
-        Key::ArrowRight => {
-            *caret = next_char_boundary(text, *caret);
-            KeyOutcome::Consumed
-        }
-        Key::Home => {
-            *caret = 0;
-            KeyOutcome::Consumed
-        }
-        Key::End => {
-            *caret = text.len();
-            KeyOutcome::Consumed
-        }
-        Key::Escape => KeyOutcome::Blur,
-        // Single-line v1 ignores Enter / Tab / PageUp / PageDown and
-        // any control-modified shortcut (ctrl+a, cmd+c, etc.).
-        _ => KeyOutcome::Pass,
+        Key::ArrowLeft => *caret = prev_char_boundary(text, *caret),
+        Key::ArrowRight => *caret = next_char_boundary(text, *caret),
+        Key::Home => *caret = 0,
+        Key::End => *caret = text.len(),
+        Key::Escape => return true,
+        _ => {}
     }
+    false
 }
 
 fn prev_char_boundary(text: &str, offset: usize) -> usize {
@@ -390,13 +373,14 @@ fn caret_from_x(
     text: &str,
     target_x: f32,
     font_size: f32,
+    line_height_px: f32,
     m: &mut crate::text::TextMeasurer,
 ) -> usize {
     let mut best_off = 0usize;
     let mut best_dist = target_x.abs();
     for (i, ch) in text.char_indices() {
         let next = i + ch.len_utf8();
-        let x = m.caret_x(text, next, font_size);
+        let x = m.caret_x(text, next, font_size, line_height_px);
         let d = (x - target_x).abs();
         if d < best_dist {
             best_dist = d;

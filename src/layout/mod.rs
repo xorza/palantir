@@ -519,8 +519,17 @@ impl LayoutEngine {
         text: &mut TextMeasurer,
     ) -> Size {
         let mut s = Size::ZERO;
-        for (src, font_size_px, wrap) in leaf_text_shapes(tree, node) {
-            let m = self.shape_text(tree, node, src, font_size_px, wrap, available_w, text);
+        for ts in leaf_text_shapes(tree, node) {
+            let m = self.shape_text(
+                tree,
+                node,
+                ts.text,
+                ts.font_size_px,
+                ts.line_height_px,
+                ts.wrap,
+                available_w,
+                text,
+            );
             s = s.max(m);
         }
         s
@@ -533,6 +542,7 @@ impl LayoutEngine {
         node: NodeId,
         src: &str,
         font_size_px: f32,
+        line_height_px: f32,
         wrap: TextWrap,
         available_w: f32,
         text: &mut TextMeasurer,
@@ -544,7 +554,7 @@ impl LayoutEngine {
         // has shifted. Crucially, when only the wrap target changed
         // (e.g. animated parent width), the unbounded cache is
         // preserved and only the wrap reshape runs in shape_wrap.
-        let unbounded = text.shape_unbounded(wid, curr_hash, src, font_size_px);
+        let unbounded = text.shape_unbounded(wid, curr_hash, src, font_size_px, line_height_px);
 
         let want_wrap = matches!(wrap, TextWrap::Wrap)
             && available_w.is_finite()
@@ -553,7 +563,7 @@ impl LayoutEngine {
         let result = if want_wrap {
             let target = available_w.max(unbounded.intrinsic_min);
             let target_q = quantize_wrap_target(target);
-            text.shape_wrap(wid, src, font_size_px, target, target_q)
+            text.shape_wrap(wid, src, font_size_px, line_height_px, target, target_q)
         } else {
             unbounded
         };

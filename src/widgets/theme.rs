@@ -10,11 +10,32 @@ use crate::widgets::button::ButtonTheme;
 /// app/theme concern. Widgets that want disabled-state visuals read the
 /// disabled flag themselves and pick their own colors at recording
 /// time.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Theme {
     pub button: ButtonTheme,
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
+    /// Line-height-to-font-size ratio used by every text-rendering
+    /// widget (Button label, [`crate::Text`], [`crate::TextEdit`]).
+    /// Drives the shaper's leading and the caret rect height (locked
+    /// together via `Shape::Text.line_height_px`). Default matches
+    /// cosmic-text's natural leading
+    /// ([`crate::text::LINE_HEIGHT_MULT`], 1.2). Apps that want a
+    /// different global look set this once at startup; per-widget
+    /// override on TextEdit lives on the builder
+    /// (`TextEdit::line_height_mult`).
+    pub line_height_mult: f32,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            button: ButtonTheme::default(),
+            scrollbar: ScrollbarTheme::default(),
+            text_edit: TextEditTheme::default(),
+            line_height_mult: crate::text::LINE_HEIGHT_MULT,
+        }
+    }
 }
 
 /// Visuals for [`crate::Scroll`] reservation-layout scrollbars. When

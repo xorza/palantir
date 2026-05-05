@@ -51,9 +51,11 @@ fn apply_key_skips_chars_with_command_modifier() {
 
 #[test]
 fn apply_key_space_inserts_when_no_modifier() {
+    // `Key::Space` was collapsed to `Key::Char(' ')` — pin that the
+    // editor still inserts a space the same way as any other char.
     let mut s = String::from("ab");
     let mut caret = 2;
-    apply_key(&mut s, &mut caret, press(Key::Space));
+    apply_key(&mut s, &mut caret, press(Key::Char(' ')));
     assert_eq!(s, "ab ");
     assert_eq!(caret, 3);
 }
@@ -731,4 +733,236 @@ fn ui_at_no_cosmic(size: UVec2) -> crate::Ui {
     let mut ui = crate::Ui::new();
     ui.begin_frame(Display::from_physical(size, 1.0));
     ui
+}
+
+#[test]
+fn theme_line_height_mult_overrides_default_for_all_text_widgets() {
+    // Pin: a single `ui.theme.line_height_mult` setting flows into
+    // every text-rendering widget — Button, Text, TextEdit. Without
+    // this lockstep, an app that bumps the global leading would still
+    // see one widget at 1.2× while others moved.
+    use crate::shape::Shape;
+    use crate::widgets::button::Button;
+    use crate::widgets::text::Text;
+
+    let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
+    ui.theme.line_height_mult = 2.0;
+    let mut buf = String::from("hi");
+
+    let mut btn_node = None;
+    let mut txt_node = None;
+    let mut ed_node = None;
+    Panel::vstack().show(&mut ui, |ui| {
+        btn_node = Some(
+            Button::new()
+                .with_id("btn")
+                .label("hi")
+                .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .node,
+        );
+        txt_node = Some(Text::new("hi").show(ui).node);
+        ed_node = Some(
+            TextEdit::new(&mut buf)
+                .with_id("ed")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .node,
+        );
+    });
+    ui.end_frame();
+
+    let read_lh = |node: crate::tree::NodeId| -> f32 {
+        ui.tree
+            .shapes
+            .slice_of(node.index())
+            .iter()
+            .find_map(|s| match s {
+                Shape::Text { line_height_px, .. } => Some(*line_height_px),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(
+        read_lh(btn_node.unwrap()),
+        32.0,
+        "Button label respects theme"
+    );
+    assert_eq!(
+        read_lh(txt_node.unwrap()),
+        32.0,
+        "Text widget respects theme"
+    );
+    assert_eq!(
+        read_lh(ed_node.unwrap()),
+        32.0,
+        "TextEdit (no per-widget override) respects theme",
+    );
+}
+
+#[test]
+fn textedit_per_widget_override_wins_over_theme() {
+    // Pin: when both are set, `.line_height_mult(...)` on the builder
+    // wins over `ui.theme.line_height_mult`.
+    use crate::shape::Shape;
+
+    let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
+    ui.theme.line_height_mult = 2.0;
+    let mut buf = String::from("hi");
+    let mut leaf = None;
+    Panel::hstack().show(&mut ui, |ui| {
+        leaf = Some(
+            TextEdit::new(&mut buf)
+                .with_id("ed")
+                .line_height_mult(3.0)
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .node,
+        );
+    });
+    ui.end_frame();
+    let lh = ui
+        .tree
+        .shapes
+        .slice_of(leaf.unwrap().index())
+        .iter()
+        .find_map(|s| match s {
+            Shape::Text { line_height_px, .. } => Some(*line_height_px),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        lh, 48.0,
+        "16 px font × 3.0 widget override = 48, ignoring theme=2.0",
+    );
+}
+
+#[test]
+fn pushed_shape_carries_default_line_height_from_theme() {
+    // Pin: with no per-widget override, the `Shape::Text` recorded by
+    // TextEdit declares `line_height_px = font_size * theme.line_height_mult`
+    // (default 1.2 from `crate::text::LINE_HEIGHT_MULT`). The shaper
+    // and the caret rect both read this value, so a wrong default
+    // would put both renderers out of sync.
+    use crate::shape::Shape;
+    let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
+    let mut buf = String::from("hi");
+    let mut leaf_node = None;
+    Panel::hstack().show(&mut ui, |ui| {
+        leaf_node = Some(
+            TextEdit::new(&mut buf)
+                .with_id("ed")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .node,
+        );
+    });
+    ui.end_frame();
+
+    let shapes = ui.tree.shapes.slice_of(leaf_node.unwrap().index());
+    let text_shape = shapes.iter().find_map(|s| match s {
+        Shape::Text {
+            font_size_px,
+            line_height_px,
+            ..
+        } => Some((*font_size_px, *line_height_px)),
+        _ => None,
+    });
+    let (fs, lh) = text_shape.expect("TextEdit pushes a Shape::Text for non-empty buffer");
+    assert_eq!(fs, 16.0);
+    assert!(
+        (lh - 16.0 * crate::text::LINE_HEIGHT_MULT).abs() < 1e-5,
+        "default line_height_px should be font_size * LINE_HEIGHT_MULT, got {lh}",
+    );
+}
+
+#[test]
+fn pushed_shape_uses_per_widget_line_height_override() {
+    // Pin: `.line_height_mult(2.0)` propagates onto the recorded
+    // `Shape::Text` so the shaper produces a buffer at the requested
+    // leading. Without this, the per-widget setter would only affect
+    // the caret rect, leaving the rendered text at 1.2× — exactly the
+    // leak the user pointed out.
+    use crate::shape::Shape;
+    let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
+    let mut buf = String::from("hi");
+    let mut leaf_node = None;
+    Panel::hstack().show(&mut ui, |ui| {
+        leaf_node = Some(
+            TextEdit::new(&mut buf)
+                .with_id("ed")
+                .line_height_mult(2.0)
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .node,
+        );
+    });
+    ui.end_frame();
+
+    let shapes = ui.tree.shapes.slice_of(leaf_node.unwrap().index());
+    let lh = shapes
+        .iter()
+        .find_map(|s| match s {
+            Shape::Text { line_height_px, .. } => Some(*line_height_px),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(lh, 32.0, "16 * 2.0 should land directly on the shape");
+}
+
+#[test]
+fn line_height_override_changes_caret_rect_height() {
+    // Pin: caret rect height tracks the per-widget multiplier.
+    // Default 1.2 → caret = 19.2 px tall; override 2.0 → 32 px tall.
+    use crate::shape::Shape;
+
+    fn caret_height(mult: Option<f32>) -> f32 {
+        let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
+        // Focus the editor so the caret shape is pushed.
+        let mut buf = String::new();
+        let mut leaf = None;
+        Panel::hstack().show(&mut ui, |ui| {
+            let mut e = TextEdit::new(&mut buf)
+                .with_id("ed")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
+            if let Some(m) = mult {
+                e = e.line_height_mult(m);
+            }
+            leaf = Some(e.show(ui).node);
+        });
+        ui.end_frame();
+        click_at(&mut ui, Vec2::new(20.0, 20.0));
+        // Re-record so the focused branch fires this frame.
+        begin(&mut ui, UVec2::new(300, 80));
+        Panel::hstack().show(&mut ui, |ui| {
+            let mut e = TextEdit::new(&mut buf)
+                .with_id("ed")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
+            if let Some(m) = mult {
+                e = e.line_height_mult(m);
+            }
+            leaf = Some(e.show(ui).node);
+        });
+        ui.end_frame();
+        let shapes = ui.tree.shapes.slice_of(leaf.unwrap().index());
+        // Caret = the only Shape::Overlay pushed (no selection in v1).
+        shapes
+            .iter()
+            .find_map(|s| match s {
+                Shape::Overlay { rect, .. } => Some(rect.size.h),
+                _ => None,
+            })
+            .expect("focused TextEdit pushes a caret Overlay")
+    }
+
+    let default = caret_height(None);
+    let doubled = caret_height(Some(2.0));
+    assert!(
+        (default - 16.0 * crate::text::LINE_HEIGHT_MULT).abs() < 1e-5,
+        "default caret height = font_size * LINE_HEIGHT_MULT, got {default}",
+    );
+    assert!(
+        (doubled - 32.0).abs() < 1e-5,
+        "2.0 multiplier yields 32 px caret, got {doubled}",
+    );
 }

@@ -34,7 +34,7 @@ fn quantize(v: f32) -> u32 {
     (v.max(0.0) * 64.0).round() as u32
 }
 
-fn key_for(text: &str, size_px: f32, max_w_px: Option<f32>) -> TextCacheKey {
+fn key_for(text: &str, size_px: f32, line_height_px: f32, max_w_px: Option<f32>) -> TextCacheKey {
     let mut h = DefaultHasher::new();
     text.hash(&mut h);
     let mut text_hash = h.finish();
@@ -43,11 +43,12 @@ fn key_for(text: &str, size_px: f32, max_w_px: Option<f32>) -> TextCacheKey {
     if text_hash == 0 {
         text_hash = 1;
     }
-    TextCacheKey {
+    TextCacheKey::new(
         text_hash,
-        size_q: quantize(size_px),
-        max_w_q: max_w_px.map(quantize).unwrap_or(MAX_W_NONE),
-    }
+        quantize(size_px),
+        max_w_px.map(quantize).unwrap_or(MAX_W_NONE),
+        quantize(line_height_px),
+    )
 }
 
 struct CacheEntry {
@@ -163,6 +164,7 @@ impl CosmicMeasure {
         &mut self,
         text: &str,
         font_size_px: f32,
+        line_height_px: f32,
         max_width_px: Option<f32>,
     ) -> MeasureResult {
         if text.is_empty() || font_size_px <= 0.0 {
@@ -172,7 +174,7 @@ impl CosmicMeasure {
                 intrinsic_min: 0.0,
             };
         }
-        let key = key_for(text, font_size_px, max_width_px);
+        let key = key_for(text, font_size_px, line_height_px, max_width_px);
         if let Some(entry) = self.cache.get(&key) {
             return MeasureResult {
                 size: entry.measured,
@@ -181,7 +183,7 @@ impl CosmicMeasure {
             };
         }
 
-        let metrics = Metrics::new(font_size_px, crate::text::line_height(font_size_px));
+        let metrics = Metrics::new(font_size_px, line_height_px);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_size(&mut self.font_system, max_width_px, None);
         buffer.set_text(

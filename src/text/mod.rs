@@ -28,23 +28,11 @@ use std::rc::Rc;
 
 pub(crate) mod cosmic;
 
-/// Line-height-to-font-size ratio used by both the shaper
-/// ([`cosmic::CosmicMeasure`]) and any caller that needs to know the
-/// vertical extent of a shaped line — e.g. TextEdit sizing its caret
-/// rect to span the same height the text occupies. cosmic-text's
-/// default leading lives at 1.2× and cmsmic's `Metrics::new` is built
-/// from this constant; if you bump it here, the shaper and caret
-/// stay in lockstep.
-// todo theme
+/// Leading the shaper hands to cosmic-text's `Metrics::new`, also used
+/// as the default for [`crate::TextEditTheme::line_height_mult`] so
+/// the caret rect spans the same y-range as the rendered text.
+/// Single source — cosmic and the theme default move together.
 pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
-
-/// Vertical extent of a single shaped line at `font_size_px`. Wraps
-/// the [`LINE_HEIGHT_MULT`] constant so callers don't have to import
-/// the constant directly.
-#[inline]
-pub(crate) fn line_height(font_size_px: f32) -> f32 {
-    font_size_px * LINE_HEIGHT_MULT
-}
 
 use crate::text::cosmic::CosmicMeasure;
 
@@ -79,6 +67,16 @@ pub struct TextCacheKey {
     pub size_q: u32,
     /// `max_width_px * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
     pub max_w_q: u32,
+    /// `line_height_px * 64`, rounded. Two `Shape::Text` runs at the
+    /// same font-size but different leading produce different shaped
+    /// buffers (different `Metrics::new`), so the key has to discriminate.
+    pub lh_q: u32,
+    /// Trailing padding so size is a multiple of the 8-byte alignment
+    /// `text_hash` forces — `bytemuck::Pod`'s no-padding-bytes invariant
+    /// requires it. Hashed-into the key but always zero so it doesn't
+    /// affect equality.
+    // todo autopad
+    _pad: u32,
 }
 
 impl TextCacheKey {
@@ -88,10 +86,25 @@ impl TextCacheKey {
         text_hash: 0,
         size_q: 0,
         max_w_q: 0,
+        lh_q: 0,
+        _pad: 0,
     };
 
+    /// Builder that hides the `_pad` field — the only reason it exists
+    /// is to keep the struct size aligned for `bytemuck::Pod`, and
+    /// callers should never have to remember to zero it.
+    pub(crate) const fn new(text_hash: u64, size_q: u32, max_w_q: u32, lh_q: u32) -> Self {
+        Self {
+            text_hash,
+            size_q,
+            max_w_q,
+            lh_q,
+            _pad: 0,
+        }
+    }
+
     pub const fn is_invalid(self) -> bool {
-        self.text_hash == 0 && self.size_q == 0 && self.max_w_q == 0
+        self.text_hash == 0 && self.size_q == 0 && self.max_w_q == 0 && self.lh_q == 0
     }
 }
 
@@ -119,7 +132,12 @@ pub struct MeasureResult {
 ///
 /// Always returns [`TextCacheKey::INVALID`] — there's no shaped buffer to
 /// look up, so the renderer drops these runs cleanly.
-fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) -> MeasureResult {
+fn mono_measure(
+    text: &str,
+    font_size_px: f32,
+    line_height_px: f32,
+    max_width_px: Option<f32>,
+) -> MeasureResult {
     if text.is_empty() {
         return MeasureResult {
             size: Size::ZERO,
@@ -128,7 +146,7 @@ fn mono_measure(text: &str, font_size_px: f32, max_width_px: Option<f32>) -> Mea
         };
     }
     let glyph_w = font_size_px * 0.5;
-    let line_h = font_size_px;
+    let line_h = line_height_px;
     // Mono is a deterministic stub — count one "char" per byte. Correct for
     // ASCII (which is what every test and bench uses); for multibyte input
     // it overcounts, but mono is not a production path.
@@ -177,11 +195,14 @@ fn dispatch(
     cosmic: &Option<SharedCosmic>,
     text: &str,
     font_size_px: f32,
+    line_height_px: f32,
     max_width_px: Option<f32>,
 ) -> MeasureResult {
     match cosmic {
-        Some(c) => c.borrow_mut().measure(text, font_size_px, max_width_px),
-        None => mono_measure(text, font_size_px, max_width_px),
+        Some(c) => c
+            .borrow_mut()
+            .measure(text, font_size_px, line_height_px, max_width_px),
+        None => mono_measure(text, font_size_px, line_height_px, max_width_px),
     }
 }
 
@@ -254,6 +275,7 @@ impl TextMeasurer {
         hash: NodeHash,
         text: &str,
         font_size_px: f32,
+        line_height_px: f32,
     ) -> MeasureResult {
         // One hash lookup, all paths: `Entry` gives us a slot that
         // can be read, overwritten, or inserted into without
@@ -266,7 +288,7 @@ impl TextMeasurer {
             other => other,
         };
         self.measure_calls += 1;
-        let unbounded = dispatch(&self.cosmic, text, font_size_px, None);
+        let unbounded = dispatch(&self.cosmic, text, font_size_px, line_height_px, None);
         let new = TextReuseEntry {
             hash,
             unbounded,
@@ -293,6 +315,7 @@ impl TextMeasurer {
         wid: WidgetId,
         text: &str,
         font_size_px: f32,
+        line_height_px: f32,
         target: f32,
         target_q: u32,
     ) -> MeasureResult {
@@ -306,7 +329,13 @@ impl TextMeasurer {
             // borrow. Disjoint field borrows let `dispatch` run while
             // `entry` is held.
             self.measure_calls += 1;
-            let m = dispatch(&self.cosmic, text, font_size_px, Some(target));
+            let m = dispatch(
+                &self.cosmic,
+                text,
+                font_size_px,
+                line_height_px,
+                Some(target),
+            );
             entry.wrap = Some(WrapReuse {
                 target_q,
                 result: m,
@@ -315,7 +344,13 @@ impl TextMeasurer {
         }
         // No prime: dispatch but don't cache.
         self.measure_calls += 1;
-        dispatch(&self.cosmic, text, font_size_px, Some(target))
+        dispatch(
+            &self.cosmic,
+            text,
+            font_size_px,
+            line_height_px,
+            Some(target),
+        )
     }
 
     /// Unbounded measured width of `text[..byte_offset]`, used for
@@ -330,8 +365,13 @@ impl TextMeasurer {
     /// Panics if `byte_offset` doesn't fall on a UTF-8 character
     /// boundary — same surface as `&text[..byte_offset]`. Callers
     /// must clamp to a real grapheme/codepoint boundary.
-    #[allow(dead_code)] // first consumer is the TextEdit widget (step 5)
-    pub(crate) fn caret_x(&mut self, text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
+    pub(crate) fn caret_x(
+        &mut self,
+        text: &str,
+        byte_offset: usize,
+        font_size_px: f32,
+        line_height_px: f32,
+    ) -> f32 {
         if byte_offset == 0 || text.is_empty() {
             return 0.0;
         }
@@ -339,7 +379,9 @@ impl TextMeasurer {
         // straddles a multibyte char Rust panics with the right message.
         let prefix = &text[..byte_offset];
         self.measure_calls += 1;
-        dispatch(&self.cosmic, prefix, font_size_px, None).size.w
+        dispatch(&self.cosmic, prefix, font_size_px, line_height_px, None)
+            .size
+            .w
     }
 
     /// Drop reuse entries for the supplied removed-widget set. Mirrors
@@ -357,9 +399,16 @@ impl TextMeasurer {
 mod tests {
     use super::*;
 
+    /// Line-height equal to font size keeps the mono-fallback line
+    /// height numerically equal to `font_size`, matching the legacy
+    /// placeholder layout the existing tests pin.
+    fn lh(font_size: f32) -> f32 {
+        font_size
+    }
+
     #[test]
     fn empty_is_zero_invalid() {
-        let r = mono_measure("", 16.0, None);
+        let r = mono_measure("", 16.0, lh(16.0), None);
         assert_eq!(r.size, Size::ZERO);
         assert!(r.key.is_invalid());
     }
@@ -367,9 +416,12 @@ mod tests {
     #[test]
     fn unbroken_matches_legacy_placeholder() {
         // Pre-trait code used `chars * 8.0` × `16.0` at the implicit 16 px size.
-        assert_eq!(mono_measure("Hi", 16.0, None).size, Size::new(16.0, 16.0));
         assert_eq!(
-            mono_measure("hello!!", 16.0, None).size,
+            mono_measure("Hi", 16.0, lh(16.0), None).size,
+            Size::new(16.0, 16.0)
+        );
+        assert_eq!(
+            mono_measure("hello!!", 16.0, lh(16.0), None).size,
             Size::new(56.0, 16.0)
         );
     }
@@ -377,15 +429,27 @@ mod tests {
     #[test]
     fn wraps_when_max_width_below_unbroken() {
         // 8 chars × 8 px = 64 unbroken; max 32 → 4 chars/line, 2 lines.
-        let s = mono_measure("12345678", 16.0, Some(32.0)).size;
+        let s = mono_measure("12345678", 16.0, lh(16.0), Some(32.0)).size;
         assert_eq!(s, Size::new(32.0, 32.0));
+    }
+
+    #[test]
+    fn mono_height_follows_line_height_param() {
+        // Pin: mono's line height comes from the new `line_height_px`
+        // parameter, not from `font_size_px`. 16 px font with 24 px
+        // leading → result height = 24, not 16.
+        let s = mono_measure("Hi", 16.0, 24.0, None).size;
+        assert_eq!(s, Size::new(16.0, 24.0));
+        // Wrapping uses the same per-line height.
+        let wrapped = mono_measure("12345678", 16.0, 24.0, Some(32.0)).size;
+        assert_eq!(wrapped, Size::new(32.0, 48.0));
     }
 
     #[test]
     fn caret_x_zero_offset_or_empty_returns_zero() {
         let mut m = TextMeasurer::default();
-        assert_eq!(m.caret_x("hello", 0, 16.0), 0.0);
-        assert_eq!(m.caret_x("", 0, 16.0), 0.0);
+        assert_eq!(m.caret_x("hello", 0, 16.0, lh(16.0)), 0.0);
+        assert_eq!(m.caret_x("", 0, 16.0, lh(16.0)), 0.0);
     }
 
     #[test]
@@ -393,9 +457,19 @@ mod tests {
         // Mono fallback: each ASCII byte is `font_size * 0.5` wide. At
         // 16 px that's 8 px/char.
         let mut m = TextMeasurer::default();
-        assert_eq!(m.caret_x("abc", 1, 16.0), 8.0);
-        assert_eq!(m.caret_x("abc", 2, 16.0), 16.0);
-        assert_eq!(m.caret_x("abc", 3, 16.0), 24.0);
+        assert_eq!(m.caret_x("abc", 1, 16.0, lh(16.0)), 8.0);
+        assert_eq!(m.caret_x("abc", 2, 16.0, lh(16.0)), 16.0);
+        assert_eq!(m.caret_x("abc", 3, 16.0, lh(16.0)), 24.0);
+    }
+
+    #[test]
+    fn caret_x_width_independent_of_line_height() {
+        // Line height affects vertical extent, never glyph advance —
+        // pin that the caret-x return is identical for two leadings.
+        let mut m = TextMeasurer::default();
+        let a = m.caret_x("abc", 2, 16.0, 16.0);
+        let b = m.caret_x("abc", 2, 16.0, 24.0);
+        assert_eq!(a, b);
     }
 
     #[test]
@@ -405,11 +479,11 @@ mod tests {
         // free measurements) so a future caller can detect over-call.
         let mut m = TextMeasurer::default();
         let before = m.measure_calls;
-        let _ = m.caret_x("abc", 2, 16.0);
+        let _ = m.caret_x("abc", 2, 16.0, lh(16.0));
         assert_eq!(m.measure_calls, before + 1);
         // Zero-offset shortcut must not bump the counter.
         let zero_before = m.measure_calls;
-        let _ = m.caret_x("abc", 0, 16.0);
+        let _ = m.caret_x("abc", 0, 16.0, lh(16.0));
         assert_eq!(m.measure_calls, zero_before);
     }
 
@@ -418,7 +492,62 @@ mod tests {
     fn caret_x_panics_inside_multibyte_codepoint() {
         // "é" is two UTF-8 bytes; offset 1 splits it.
         let mut m = TextMeasurer::default();
-        let _ = m.caret_x("é", 1, 16.0);
+        let _ = m.caret_x("é", 1, 16.0, lh(16.0));
+    }
+
+    #[test]
+    fn cosmic_text_cache_key_distinguishes_line_height() {
+        // Pin: at the same font-size, different leadings produce
+        // different TextCacheKeys. The renderer caches shaped buffers
+        // by key — without this discrimination, a 16/19.2 buffer would
+        // be returned for a request that wanted 16/24, mismatching the
+        // measured rect against the rasterized glyphs.
+        use crate::text::cosmic::CosmicMeasure;
+        let mut c = CosmicMeasure::with_bundled_fonts();
+        let a = c.measure("hi", 16.0, 16.0 * LINE_HEIGHT_MULT, None).key;
+        let b = c.measure("hi", 16.0, 24.0, None).key;
+        assert_ne!(a, b, "different leading must produce different key");
+        assert_ne!(a.lh_q, b.lh_q, "lh_q is the discriminating field");
+        // Same call repeated → identical key (cache hit, deterministic).
+        let a2 = c.measure("hi", 16.0, 16.0 * LINE_HEIGHT_MULT, None).key;
+        assert_eq!(a, a2);
+    }
+
+    #[test]
+    fn shape_unbounded_caches_per_authoring_hash_only() {
+        // The reuse cache is keyed by `(WidgetId, NodeHash)` — different
+        // line heights with the *same* hash would collide (same widget
+        // id, same hash → cache hit returning the wrong measurement).
+        // Authoring-side hash includes line_height_px (pinned in
+        // node_hash tests), so callers that change leading must produce
+        // a different hash — pin that the measure cache respects the
+        // hash distinction.
+        let mut m = TextMeasurer::default();
+        let wid = WidgetId::from_hash("a");
+        let h1 = NodeHash::from_u64(1);
+        let h2 = NodeHash::from_u64(2);
+        let r1 = m.shape_unbounded(wid, h1, "hi", 16.0, 16.0);
+        let r2 = m.shape_unbounded(wid, h2, "hi", 16.0, 24.0);
+        assert_ne!(
+            r1.size.h, r2.size.h,
+            "different leading via different hash → distinct cache entries",
+        );
+        // Re-querying with the original hash returns the original (16
+        // px height), proving the entry wasn't overwritten.
+        let r1_again = m.shape_unbounded(wid, h1, "hi", 16.0, 16.0);
+        assert_eq!(r1.size.h, r1_again.size.h);
+    }
+
+    #[test]
+    fn text_cache_key_invalid_constant_zero_filled() {
+        // `_pad` byte was added to satisfy bytemuck's no-padding rule;
+        // pin that the INVALID sentinel still round-trips through
+        // `is_invalid`. Failure here would mean a malformed default.
+        assert!(TextCacheKey::INVALID.is_invalid());
+        // And a non-INVALID key registers as such even with all
+        // hashable fields zero except text_hash.
+        let real = TextCacheKey::new(1, 0, 0, 0);
+        assert!(!real.is_invalid());
     }
 
     #[test]
@@ -432,7 +561,9 @@ mod tests {
             crate::text::cosmic::CosmicMeasure::with_bundled_fonts(),
         ));
         let s = "hello";
-        let widths: Vec<f32> = (0..=s.len()).map(|i| m.caret_x(s, i, 16.0)).collect();
+        let widths: Vec<f32> = (0..=s.len())
+            .map(|i| m.caret_x(s, i, 16.0, 16.0 * LINE_HEIGHT_MULT))
+            .collect();
         assert_eq!(widths[0], 0.0, "prefix-x at offset 0 is zero");
         for w in widths.windows(2) {
             assert!(

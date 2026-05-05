@@ -74,11 +74,13 @@ impl Text {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
+        let line_height_px = self.size_px * ui.theme.line_height_mult;
         let node = ui.node(self.element, |ui| {
             ui.add_shape(Shape::Text {
                 text: self.text,
                 color: self.color,
                 font_size_px: self.size_px,
+                line_height_px,
                 wrap: self.wrap,
                 align: self.align,
             });

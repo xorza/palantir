@@ -157,8 +157,8 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasu
     let wid = tree.widget_ids[node.index()];
     let curr_hash = tree.hashes.node[node.index()];
     let mut acc = 0.0_f32;
-    for (src, font_size_px, _wrap) in leaf_text_shapes(tree, node) {
-        let m = text.shape_unbounded(wid, curr_hash, src, font_size_px);
+    for ts in leaf_text_shapes(tree, node) {
+        let m = text.shape_unbounded(wid, curr_hash, ts.text, ts.font_size_px, ts.line_height_px);
         let v = match (axis, req) {
             (Axis::X, LenReq::MinContent) => m.intrinsic_min,
             (Axis::X, LenReq::MaxContent) => m.size.w,
