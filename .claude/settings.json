@@ -1,32 +1,35 @@
 {
-  "permissions": {
-    "allow": [
-      "Edit(/tmp/**)",
-      "Write(/tmp/**)",
-      "Read(//tmp/**)",
+    "permissions": {
+        "allow": [
+            "Edit(/tmp/**)",
+            "Write(/tmp/**)",
+            "Read(//tmp/**)",
 
-      "Bash(xargs sed *)",
-      "Bash(sd:*)",
+            "Bash(xargs sed *)",
+            "Bash(sd:*)",
 
-      "Bash(UPDATE_GOLDEN=1 cargo test*)",
-      "Bash(UPDATE_GOLDEN=1 cargo nexttest run*)",
-      "Bash(cargo build *)",
-      "Bash(cargo run *)",
-      "Bash(cargo test *)",
-      "Bash(cargo clippy*)",
-      "Bash(cargo fmt*)",
-      "Bash(cargo nextest *)",
+            "Bash(UPDATE_GOLDEN=1 cargo test*)",
+            "Bash(UPDATE_GOLDEN=1 cargo nexttest run*)",
+            "Bash(cargo build *)",
+            "Bash(cargo run *)",
+            "Bash(cargo test *)",
+            "Bash(cargo clippy*)",
+            "Bash(cargo fmt*)",
+            "Bash(cargo nextest *)",
 
-      "Bash(git mv:*)",
-      "Bash(git add:*)",
-      "Bash(git rm:*)",
+            "Bash(git mv:*)",
+            "Bash(git add:*)",
+            "Bash(git rm:*)",
 
-      "Bash(sd:*)",
+            "Bash(sd:*)",
 
-      "Bash(perf report *)",
-      "Bash(perf script *)",
-      "Bash(scripts/bench-perf.sh)",
-      "Bash(BENCH=frame scripts/bench-perf.sh)"
-    ]
-  }
+            "Bash(perf report *)",
+            "Bash(perf script *)",
+            "Bash(perf record *)",
+
+            "Bash(scripts/bench-perf.sh)",
+
+            "Bash(npm_config_cache=\"/tmp/npm-cache\" npx --yes jscpd *)"
+        ]
+    }
 }
