@@ -45,8 +45,7 @@ pub use widgets::panel::Panel;
 pub use widgets::scroll::Scroll;
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
-pub use widgets::theme::Background;
 pub use widgets::theme::{
-    ButtonStateStyle, ButtonTheme, ScrollbarTheme, TextEditStateStyle, TextEditTheme, TextStyle,
-    Theme,
+    Background, ButtonStateStyle, ButtonTheme, ScrollbarTheme, Surface, TextEditStateStyle,
+    TextEditTheme, TextStyle, Theme,
 };

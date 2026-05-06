@@ -4,7 +4,7 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, ClipMode, Color, Configure, Corners, Frame, Panel, Scroll, ScrollbarTheme, Sizing,
+    Background, Color, Configure, Corners, Frame, Panel, Scroll, ScrollbarTheme, Sizing, Surface,
 };
 
 use crate::diff::Tolerance;
@@ -212,13 +212,12 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
             for tag in ["a", "b"] {
                 Panel::vstack()
                     .with_id(("card", tag))
-                    .clip(ClipMode::Rect)
                     .padding(6.0)
-                    .background(Background {
+                    .background(Surface::clipped(Background {
                         fill: CARD,
                         radius: Corners::all(6.0),
                         ..Default::default()
-                    })
+                    }))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         Scroll::vertical()

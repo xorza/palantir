@@ -384,13 +384,13 @@ fn compose_keeps_quads_then_text_in_one_group() {
 
 mod cache_integration {
     use crate::Ui;
-    use crate::layout::types::clip_mode::ClipMode;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::color::Color;
     use crate::primitives::transform::TranslateScale;
     use crate::support::testing::{begin, ui_at};
     use crate::tree::element::Configure;
     use crate::widgets::theme::Background;
+    use crate::widgets::theme::Surface;
     use crate::widgets::{frame::Frame, panel::Panel};
     use glam::{UVec2, Vec2};
 
@@ -402,7 +402,7 @@ mod cache_integration {
             .show(ui, |ui| {
                 Panel::zstack()
                     .with_id("inner")
-                    .clip(ClipMode::Rect)
+                    .background(Surface::scissor())
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .background(Background {

@@ -3,7 +3,19 @@
 /// `None` = no clip. `Rect` = axis-aligned scissor (the cheap, GPU-native
 /// path). `Rounded` = clip to the node's `Background.radius`; requires a
 /// stencil pass on the backend, so apps that never use it pay nothing.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[repr(u8)]
 pub enum ClipMode {
     #[default]

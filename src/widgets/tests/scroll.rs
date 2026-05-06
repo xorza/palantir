@@ -345,7 +345,6 @@ fn scroll_content_survives_measure_cache_hit() {
 
 mod bars {
     use crate::Ui;
-    use crate::layout::types::clip_mode::ClipMode;
     use crate::layout::types::display::Display;
     use crate::layout::types::sizing::Sizing;
     use crate::shape::Shape;
@@ -356,8 +355,7 @@ mod bars {
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::{Scroll, bar_geometry};
-    use crate::widgets::theme::Background;
-    use crate::widgets::theme::ScrollbarTheme;
+    use crate::widgets::theme::{Background, ScrollbarTheme, Surface};
     use glam::UVec2;
 
     fn theme() -> ScrollbarTheme {
@@ -523,13 +521,12 @@ mod bars {
                     for tag in ["v", "h", "xy"] {
                         Panel::vstack()
                             .with_id(("card", tag))
-                            .clip(ClipMode::Rect)
                             .padding(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(Background {
+                            .background(Surface::clipped(Background {
                                 fill: crate::primitives::color::Color::rgb(0.16, 0.20, 0.28),
                                 ..Default::default()
-                            })
+                            }))
                             .show(ui, |ui| {
                                 let s = match tag {
                                     "v" => Scroll::vertical().with_id(("scroll", tag)),

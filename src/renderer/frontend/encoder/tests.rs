@@ -12,7 +12,7 @@ use crate::primitives::{color::Color, rect::Rect, size::Size, transform::Transla
 use crate::support::testing::{begin, encode_cmds, encode_cmds_filtered, ui_at};
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
-use crate::widgets::theme::Background;
+use crate::widgets::theme::{Background, Surface};
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -89,11 +89,11 @@ fn clip_emits_balanced_push_pop() {
     let mut ui = ui_at(UVec2::new(200, 200));
     // Outer HStack opts out of the default-on clip so we can count just the
     // ZStack's pair under test.
-    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
             .with_id("clip")
             .size(50.0)
-            .clip(ClipMode::Rect)
+            .background(Surface::scissor())
             .show(ui, |ui| {
                 Frame::new()
                     .with_id("inner")
@@ -143,16 +143,15 @@ fn clip_emits_balanced_push_pop() {
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
             .with_id("rounded")
             .size(80.0)
-            .clip(ClipMode::Rounded)
-            .background(Background {
+            .background(Surface::rounded(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
                 radius: Corners::all(8.0),
                 ..Default::default()
-            })
+            }))
             .show(ui, |ui| {
                 Frame::new().with_id("c").size(40.0).show(ui);
             });
@@ -172,11 +171,14 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
 #[test]
 fn clip_rounded_falls_back_to_scissor_without_background() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
             .with_id("rounded_no_bg")
             .size(80.0)
-            .clip(ClipMode::Rounded)
+            .background(Surface {
+                paint: Background::default(),
+                clip: ClipMode::Rounded,
+            })
             .show(ui, |ui| {
                 Frame::new().with_id("c").size(40.0).show(ui);
             });
@@ -286,11 +288,11 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     // Frame 1: build, layout, end_frame so the hit index is populated.
     begin(&mut ui, UVec2::new(400, 400));
-    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Panel::canvas()
             .with_id("mid")
             .size(200.0)
-            .clip(ClipMode::Rect)
+            .background(Surface::scissor())
             .transform(xform)
             .show(ui, |ui| {
                 Frame::new()
@@ -393,11 +395,11 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     // Frame 2: rebuild and read clicked() on each widget.
     ui.begin_frame(Display::default());
     let mut got = (false, false, false);
-    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Panel::canvas()
             .with_id("mid")
             .size(200.0)
-            .clip(ClipMode::Rect)
+            .background(Surface::scissor())
             .transform(xform)
             .show(ui, |ui| {
                 got.0 = Frame::new()
@@ -446,16 +448,16 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 #[test]
 fn nested_clips_each_emit_their_own_pair() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
+    Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
             .with_id("outer")
             .size(Sizing::Fixed(100.0))
-            .clip(ClipMode::Rect)
+            .background(Surface::scissor())
             .show(ui, |ui| {
                 Panel::zstack()
                     .with_id("inner")
                     .size(Sizing::Fixed(50.0))
-                    .clip(ClipMode::Rect)
+                    .background(Surface::scissor())
                     .show(ui, |_| {});
             });
     });
@@ -658,25 +660,22 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
 #[test]
 fn damage_filter_preserves_clip_pushpop() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack()
-        .with_id("outer")
-        .clip(ClipMode::None)
-        .show(&mut ui, |ui| {
-            Panel::hstack()
-                .with_id("clipped")
-                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
-                .clip(ClipMode::Rect)
-                .show(ui, |ui| {
-                    Frame::new()
-                        .with_id("inner")
-                        .size(20.0)
-                        .background(Background {
-                            fill: Color::rgb(1.0, 0.0, 0.0),
-                            ..Default::default()
-                        })
-                        .show(ui);
-                });
-        });
+    Panel::hstack().with_id("outer").show(&mut ui, |ui| {
+        Panel::hstack()
+            .with_id("clipped")
+            .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+            .background(Surface::scissor())
+            .show(ui, |ui| {
+                Frame::new()
+                    .with_id("inner")
+                    .size(20.0)
+                    .background(Background {
+                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
+    });
     ui.end_frame();
 
     // Filter misses the clipped panel entirely.
@@ -752,7 +751,7 @@ fn encode_cache_warm_frame_matches_cold_encode() {
             .show(ui, |ui| {
                 Panel::zstack()
                     .with_id("inner")
-                    .clip(ClipMode::Rect)
+                    .background(Surface::scissor())
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .background(Background {

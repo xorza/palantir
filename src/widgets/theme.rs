@@ -1,8 +1,10 @@
+use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
+use crate::tree::element::Element;
 use crate::ui::Ui;
 
 // Default palette: Ayu Mirage High Contrast. Mirrors
@@ -48,6 +50,89 @@ impl Background {
     }
 }
 
+/// Container chrome: optional paint plus optional clip behavior. The clip
+/// reuses `paint.radius`, so paint and clip share one corner-radius source
+/// of truth — no drift, no separate radius field. `Surface::apply_clip`
+/// installs the clip flags onto an `Element`; the caller adds `paint` to
+/// the node body via `paint.add_to(ui)`.
+///
+/// Usable by any container widget (`Panel`, `Grid`, `Scroll`, custom
+/// widgets) — not panel-specific.
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Surface {
+    pub paint: Background,
+    pub clip: ClipMode,
+}
+
+impl Surface {
+    /// Pure scissor clip with no painted background — the canonical
+    /// "scroll viewport" / "overflow:hidden" surface.
+    pub const fn scissor() -> Self {
+        Self {
+            paint: Background {
+                fill: Color::TRANSPARENT,
+                stroke: None,
+                radius: Corners::ZERO,
+            },
+            clip: ClipMode::Rect,
+        }
+    }
+
+    /// Painted background plus scissor clip. Children of the panel are
+    /// scissor-clipped to its rect; rounded paint corners are NOT
+    /// stencil-clipped (use `.clip = ClipMode::Rounded` directly for
+    /// that). Use this for "card with overflow hidden" where you don't
+    /// need the stencil pass cost.
+    pub const fn clipped(paint: Background) -> Self {
+        Self {
+            paint,
+            clip: ClipMode::Rect,
+        }
+    }
+
+    /// Painted background plus rounded-corner stencil clip. Children
+    /// are stencil-clipped to the paint's rounded corners — the
+    /// stencil render path lights up. If `paint.radius` is zero the
+    /// installer downgrades to scissor clip.
+    pub const fn rounded(paint: Background) -> Self {
+        // todo check if corner radius is zero and downgrade to `Rect` clip
+        Self {
+            paint,
+            clip: ClipMode::Rounded,
+        }
+    }
+
+    /// Stamp clip flags onto the element. Called by container widgets in
+    /// their `show()` builder before `ui.node`. `ClipMode::Rounded` with a
+    /// zero `paint.radius` downgrades to `Rect` here so the encoder never
+    /// sees a rounded clip without a radius.
+    pub(crate) fn apply_clip(&self, element: &mut Element) {
+        match self.clip {
+            ClipMode::None => {}
+            ClipMode::Rect => element.clip = ClipMode::Rect,
+            ClipMode::Rounded => {
+                if self.paint.radius != Corners::ZERO {
+                    element.clip = ClipMode::Rounded;
+                    element.clip_radius = Some(self.paint.radius);
+                } else {
+                    element.clip = ClipMode::Rect;
+                }
+            }
+        }
+    }
+}
+
+/// Sugar: `.background(Background { … })` keeps working — paint-only with
+/// no clip is still expressible without typing the wrapper.
+impl From<Background> for Surface {
+    fn from(paint: Background) -> Self {
+        Self {
+            paint,
+            clip: ClipMode::None,
+        }
+    }
+}
+
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
 ///
@@ -63,14 +148,13 @@ pub struct Theme {
     pub text: TextStyle,
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: Color,
-    /// Default background for container widgets (`Frame`, `Panel`,
-    /// `Grid`) when the call site didn't pass `.background(...)`.
-    /// `None` (the default) means containers paint nothing — original
-    /// behavior. Setting `Some(...)` lights up every unstyled container
-    /// at once, useful for prototyping or for showcasing layout (set
-    /// a thin stroke and you can see every panel boundary without
-    /// editing each call site).
-    pub panel: Option<Background>,
+    /// Default surface for container widgets (`Panel`, `Grid`) when the
+    /// call site didn't pass `.background(...)`. `None` = containers paint
+    /// nothing and don't clip. Setting `Some(...)` lights up every
+    /// unstyled container at once — useful for prototyping (set a thin
+    /// stroke and every panel boundary becomes visible) or for shipping a
+    /// design-system default that clips children to a rounded card shape.
+    pub panel: Option<Surface>,
 }
 
 impl Default for Theme {
