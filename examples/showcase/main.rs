@@ -77,14 +77,21 @@ struct State {
     backend: WgpuBackend,
     ui: Ui,
     display: palantir::Display,
-    first_paint: bool,
+    /// Set when the swapchain's contents are stale — acquire failed
+    /// (Occluded / Timeout / Validation / Outdated / Lost) or surface
+    /// was just reconfigured. Consumed at the top of `draw()` to
+    /// invalidate damage's prev-frame snapshot, forcing the next
+    /// `compute` to return `Full` instead of `Skip` against an
+    /// unpainted backbuffer. Initial `true` so frame 1 rewinds
+    /// explicitly rather than relying on damage's first-frame heuristic.
+    new_surface: bool,
     active: usize,
     fps_window_start: std::time::Instant,
     fps_window_frames: u32,
-    /// Host-side repaint gate. Set on input / resize / scale change;
-    /// cleared after `draw()`. Read in `about_to_wait` to decide
-    /// whether to ask winit for a redraw. Starts `true` so paint 1
-    /// fires.
+    /// Host-side repaint gate. Set on input / resize / scale change /
+    /// surface failure / `Occluded(false)`. Cleared at the top of
+    /// `draw()`. Read in `about_to_wait` to decide whether to ask
+    /// winit for a redraw.
     repaint_requested: bool,
 }
 
@@ -173,7 +180,7 @@ impl ApplicationHandler for App {
             backend,
             ui,
             display,
-            first_paint: false,
+            new_surface: true,
             active: 0,
             fps_window_start: std::time::Instant::now(),
             fps_window_frames: 0,
@@ -186,12 +193,14 @@ impl ApplicationHandler for App {
             return;
         };
 
-        if state.repaint_requested {
+        if state.repaint_requested && state.window.is_visible().unwrap_or_default() {
             state.window.request_redraw();
         }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        // println!("{:?}", event);
+
         let Some(state) = self.state.as_mut() else {
             return;
         };
@@ -217,9 +226,14 @@ impl ApplicationHandler for App {
                 state.surface.configure(&state.device, &state.config);
                 state.display.physical = glam::UVec2::new(state.config.width, state.config.height);
                 state.repaint_requested = true;
-                // state.draw();
             }
             WindowEvent::RedrawRequested => state.draw(),
+            // winit fires `Occluded(false)` when the OS uncovers our
+            // window after it had been fully obscured. Wake the gate
+            // so the next `about_to_wait` repaints against the now-
+            // presentable surface — without this we'd stay idle until
+            // some unrelated event happened to wake us.
+            WindowEvent::Occluded(false) => state.repaint_requested = true,
             _ => {}
         }
     }
@@ -227,6 +241,11 @@ impl ApplicationHandler for App {
 
 impl State {
     fn draw(&mut self) {
+        self.repaint_requested = false;
+        if !self.window.is_visible().unwrap_or_default() {
+            return;
+        }
+
         self.fps_window_frames += 1;
         let elapsed = self.fps_window_start.elapsed();
         if elapsed.as_secs() >= 1 {
@@ -236,11 +255,10 @@ impl State {
             self.fps_window_frames = 0;
         }
 
-        // Clear the gate up front: this draw call is satisfying the
-        // request, regardless of whether we end up presenting (Skip
-        // bail or acquire failure). Otherwise a Skip frame after input
-        // would leave the gate set and busy-loop at 60 Hz.
-        self.repaint_requested = false;
+        if self.new_surface {
+            self.ui.invalidate_prev_frame();
+            self.new_surface = false;
+        }
 
         self.ui.begin_frame(self.display);
         build_root(&mut self.ui, &mut self.active);
@@ -251,15 +269,22 @@ impl State {
         }
 
         use wgpu::CurrentSurfaceTexture::*;
+
         let frame = match self.surface.get_current_texture() {
-            Success(f) | Suboptimal(f) => f,
-            Outdated | Lost => {
+            Success(f) => f,
+            Suboptimal(_) | Outdated | Lost => {
                 self.surface.configure(&self.device, &self.config);
-                self.bail_unpainted();
+                self.new_surface = true;
+                self.repaint_requested = true;
                 return;
             }
-            Timeout | Occluded | Validation => {
-                self.bail_unpainted();
+            Timeout | Validation => {
+                self.new_surface = true;
+                self.repaint_requested = true;
+                return;
+            }
+            Occluded => {
+                self.new_surface = true;
                 return;
             }
         };
@@ -269,22 +294,6 @@ impl State {
             .submit(&frame.texture, Color::hex(0x252525), frame_out);
 
         frame.present();
-
-        self.first_paint = true;
-    }
-
-    /// `end_frame` already committed damage's prev-state, but nothing
-    /// reached the backbuffer (acquire failed). Two effects:
-    ///
-    /// - Rewind damage so the next frame is forced to `Full` instead
-    ///   of returning `Skip` against an unpainted backbuffer.
-    /// - Re-arm the host gate so the next `about_to_wait` retries
-    ///   automatically. Without this, a transient `Occluded` (e.g.
-    ///   another window covered ours) would leave the loop idle until
-    ///   some unrelated event happened to wake it.
-    fn bail_unpainted(&mut self) {
-        self.ui.invalidate_prev_frame();
-        self.repaint_requested = true;
     }
 }
 
