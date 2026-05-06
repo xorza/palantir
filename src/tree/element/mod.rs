@@ -192,10 +192,23 @@ pub(crate) struct LayoutCore {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PaintCore {
     pub(crate) attrs: PaintAttrs,
-    /// Index into `Tree::node_extras`, or `None` when all extras are at
-    /// default (the common case). Cap is 65 535 non-default elements per
-    /// frame; `node_extras` is cleared per frame.
-    pub(crate) extras: Option<u16>,
+    /// Index into `Tree::node_extras`, or [`Self::NO_EXTRAS`] (`u16::MAX`)
+    /// when all extras are at default — the common case. Cap is 65 535
+    /// non-default elements per frame; `node_extras` is cleared per
+    /// frame. Sentinel-encoded (rather than `Option<u16>`) so the column
+    /// stays at 4 bytes/node instead of 6 — same pattern as `chrome_idx`.
+    pub(crate) extras: u16,
+}
+
+impl PaintCore {
+    /// Sentinel `extras` slot for the all-default common case.
+    pub(crate) const NO_EXTRAS: u16 = u16::MAX;
+
+    /// True when this node has a side-table entry in `Tree::node_extras`.
+    #[inline]
+    pub(crate) fn has_extras(self) -> bool {
+        self.extras != Self::NO_EXTRAS
+    }
 }
 
 /// Per-node config: identity + spatial layout + interaction + paint flags.
@@ -335,7 +348,7 @@ impl Element {
         };
         let paint = PaintCore {
             attrs: PaintAttrs::pack(self.sense, self.disabled, self.clip, self.focusable),
-            extras: None,
+            extras: PaintCore::NO_EXTRAS,
         };
         let extras = ElementExtras {
             transform: self.transform,
