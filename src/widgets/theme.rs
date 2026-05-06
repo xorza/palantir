@@ -61,11 +61,7 @@ pub struct Theme {
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
     pub text: TextStyle,
-    /// Color the host clears the window/swapchain to before painting.
-    /// Defaults to the palette's darkest neutral (`terminal_bg`) so any
-    /// gap around containers reads as a deep frame rather than the
-    /// editor surface. Hosts pass this to `WgpuBackend::submit` as the
-    /// `clear` argument.
+    /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: Color,
     /// Default background for container widgets (`Frame`, `Panel`,
     /// `Grid`) when the call site didn't pass `.background(...)`.
@@ -270,9 +266,7 @@ pub struct TextEditTheme {
 impl Default for TextEditTheme {
     fn default() -> Self {
         let radius = Corners::all(4.0);
-        // The palette's BORDER (#363636) sits ~2% above SURFACE (#343434)
-        // and is invisible — derive a softer-but-readable edge from
-        // TEXT_MUTED at low alpha instead. Same approach as ScrollbarTheme.
+        // Palette BORDER is ~2% above SURFACE — invisible. Derive edge from TEXT_MUTED alpha.
         let m = palette::TEXT_MUTED;
         let edge = Color::linear_rgba(m.r, m.g, m.b, 0.18);
         let normal_bg = Background {
@@ -370,10 +364,7 @@ impl Default for ButtonTheme {
         // active states means "inherit Theme::text" — bumping
         // `theme.text.color` recolors active button labels. The
         // historical 4 px radius is retained.
-        // Bump fills up one tier (ELEM_HOVER as the resting state) so a
-        // button on the app's BG reads as a clearly raised surface, and
-        // add a soft TEXT_MUTED-alpha edge — palette's BORDER is too
-        // close to ELEM to delineate. Hovered/pressed step further up.
+        // Resting state at ELEM_HOVER tier; soft TEXT_MUTED-alpha edge (palette BORDER is invisible).
         let m = palette::TEXT_MUTED;
         let edge = Color::linear_rgba(m.r, m.g, m.b, 0.18);
         let bg = |fill: Color| -> Option<Background> {
@@ -386,9 +377,7 @@ impl Default for ButtonTheme {
                 radius: Corners::all(4.0),
             })
         };
-        // Pressed sits at ELEM_ACTIVE, same as hovered in this palette;
-        // distinguish it with the focused-border stroke so a click reads
-        // even if the fill barely moves.
+        // Pressed = hovered fill + focused stroke (palette has no further fill tier).
         let pressed_bg = Background {
             fill: palette::ELEM_ACTIVE,
             stroke: Some(Stroke {
