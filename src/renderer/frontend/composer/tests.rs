@@ -467,7 +467,7 @@ mod cache_integration {
             .show(ui, |ui| {
                 Panel::zstack()
                     .with_id("inner")
-                    .background(Surface::scissor())
+                    .background(Surface::clip_rect())
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .background(Background {

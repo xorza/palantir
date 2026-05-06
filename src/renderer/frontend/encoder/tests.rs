@@ -149,7 +149,7 @@ fn clip_emits_balanced_push_pop() {
         Panel::zstack()
             .with_id("clip")
             .size(50.0)
-            .background(Surface::scissor())
+            .background(Surface::clip_rect())
             .show(ui, |ui| {
                 Frame::new()
                     .with_id("inner")
@@ -215,7 +215,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
             Panel::zstack()
                 .with_id("rounded")
                 .size(80.0)
-                .background(Surface::rounded(Background {
+                .background(Surface::clip_rounded_with_bg(Background {
                     fill: Color::rgb(0.2, 0.2, 0.2),
                     stroke: Some(Stroke {
                         width: 2.0,
@@ -379,7 +379,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         Panel::canvas()
             .with_id("mid")
             .size(200.0)
-            .background(Surface::scissor())
+            .background(Surface::clip_rect())
             .transform(xform)
             .show(ui, |ui| {
                 Frame::new()
@@ -486,7 +486,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         Panel::canvas()
             .with_id("mid")
             .size(200.0)
-            .background(Surface::scissor())
+            .background(Surface::clip_rect())
             .transform(xform)
             .show(ui, |ui| {
                 got.0 = Frame::new()
@@ -539,12 +539,12 @@ fn nested_clips_each_emit_their_own_pair() {
         Panel::zstack()
             .with_id("outer")
             .size(Sizing::Fixed(100.0))
-            .background(Surface::scissor())
+            .background(Surface::clip_rect())
             .show(ui, |ui| {
                 Panel::zstack()
                     .with_id("inner")
                     .size(Sizing::Fixed(50.0))
-                    .background(Surface::scissor())
+                    .background(Surface::clip_rect())
                     .show(ui, |_| {});
             });
     });
@@ -751,7 +751,7 @@ fn damage_filter_preserves_clip_pushpop() {
         Panel::hstack()
             .with_id("clipped")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
-            .background(Surface::scissor())
+            .background(Surface::clip_rect())
             .show(ui, |ui| {
                 Frame::new()
                     .with_id("inner")
@@ -838,7 +838,7 @@ fn encode_cache_warm_frame_matches_cold_encode() {
             .show(ui, |ui| {
                 Panel::zstack()
                     .with_id("inner")
-                    .background(Surface::scissor())
+                    .background(Surface::clip_rect())
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .background(Background {

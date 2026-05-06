@@ -261,7 +261,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(16.0)
                         .margin(5)
-                        .background(Surface::clipped(Background {
+                        .background(Surface::clip_rect_with_bg(Background {
                             fill: Color::hex(0x252525),
                             stroke: Some(Stroke {
                                 width: 1.0,

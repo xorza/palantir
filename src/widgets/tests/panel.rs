@@ -45,7 +45,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
         let n = Panel::zstack()
             .with_id("scissor")
             .size(50.0)
-            .background(Surface::scissor())
+            .background(Surface::clip_rect())
             .show(ui, |_| {})
             .node;
         cases.push(("scissor", n, ClipMode::Rect, true));
@@ -54,7 +54,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
         let n = Panel::zstack()
             .with_id("clipped")
             .size(50.0)
-            .background(Surface::clipped(Background {
+            .background(Surface::clip_rect_with_bg(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
                 ..Default::default()
             }))
@@ -66,7 +66,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
         let n = Panel::zstack()
             .with_id("rounded")
             .size(50.0)
-            .background(Surface::rounded(Background {
+            .background(Surface::clip_rounded_with_bg(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
                 radius: Corners::all(4.0),
                 ..Default::default()
@@ -79,7 +79,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
         let n = Panel::zstack()
             .with_id("rounded-zero")
             .size(50.0)
-            .background(Surface::rounded(Background {
+            .background(Surface::clip_rounded_with_bg(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
                 ..Default::default()
             }))

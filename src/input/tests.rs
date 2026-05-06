@@ -232,7 +232,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         Panel::zstack()
             .with_id("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-            .background(Surface::scissor())
+            .background(Surface::clip_rect())
             .show(ui, |ui| {
                 Button::new()
                     .with_id("inner")
@@ -253,7 +253,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         Panel::zstack()
             .with_id("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-            .background(Surface::scissor())
+            .background(Surface::clip_rect())
             .show(ui, |ui| {
                 clicked = Button::new()
                     .with_id("inner")

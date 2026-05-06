@@ -43,7 +43,7 @@ pub struct Surface {
 impl Surface {
     /// Pure scissor clip with no painted background — the canonical
     /// "scroll viewport" / "overflow:hidden" surface.
-    pub const fn scissor() -> Self {
+    pub const fn clip_rect() -> Self {
         Self {
             paint: Background {
                 fill: Color::TRANSPARENT,
@@ -59,7 +59,7 @@ impl Surface {
     /// stencil-clipped (use `.clip = ClipMode::Rounded` directly for
     /// that). Use this for "card with overflow hidden" where you don't
     /// need the stencil pass cost.
-    pub const fn clipped(paint: Background) -> Self {
+    pub const fn clip_rect_with_bg(paint: Background) -> Self {
         Self {
             paint,
             clip: ClipMode::Rect,
@@ -70,7 +70,7 @@ impl Surface {
     /// are stencil-clipped to the paint's rounded corners — the
     /// stencil render path lights up. If `paint.radius` is zero the
     /// installer downgrades to scissor clip.
-    pub const fn rounded(paint: Background) -> Self {
+    pub const fn clip_rounded_with_bg(paint: Background) -> Self {
         // todo check if corner radius is zero and downgrade to `Rect` clip
         Self {
             paint,
