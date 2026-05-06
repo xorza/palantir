@@ -3,6 +3,7 @@
 //! shader at `quad.wgsl` next to this file.
 
 use crate::layout::types::span::Span;
+use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size, urect::URect};
 use crate::renderer::gpu::quad::Quad;
 use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
@@ -58,7 +59,7 @@ pub(crate) struct QuadPipeline {
 ///   color draw in the stencil-attached pass — non-rounded groups run
 ///   it at `stencil_reference = 0`, which always passes against the
 ///   cleared stencil.
-pub(crate) struct StencilPipelines {
+struct StencilPipelines {
     mask_write: wgpu::RenderPipeline,
     stencil_test: wgpu::RenderPipeline,
 }
@@ -172,11 +173,10 @@ impl QuadPipeline {
 
     /// Lazy-build the stencil-aware variants. Idempotent; called from
     /// the rounded-clip render path before the first `set_pipeline`.
-    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) -> &StencilPipelines {
+    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
         if self.stencil.is_none() {
             self.stencil = Some(self.build_stencil_pipelines(device));
         }
-        self.stencil.as_ref().expect("just-built above")
     }
 
     fn build_stencil_pipelines(&self, device: &wgpu::Device) -> StencilPipelines {
@@ -185,10 +185,7 @@ impl QuadPipeline {
             bind_group_layouts: &[Some(&self.bind_layout)],
             immediate_size: 0,
         });
-        // Both stencil pipelines share the same instance layout — same
-        // attributes as the existing `pipeline`. Build it once and pass
-        // by reference to each pipeline descriptor.
-        let instance_layout_a = wgpu::VertexBufferLayout {
+        let instance_layout = wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Quad>() as u64,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &wgpu::vertex_attr_array![
@@ -201,43 +198,56 @@ impl QuadPipeline {
             ],
         };
 
-        // Mask-write face: stencil compare = Always, op = Replace
-        // (writes the dynamic `stencil_reference` to every pixel the
-        // SDF would shade). Color writes off → no fragment lighting.
+        let build = |label: &'static str,
+                     fragment_entry: &'static str,
+                     color_writes: wgpu::ColorWrites,
+                     blend: Option<wgpu::BlendState>,
+                     depth_stencil: wgpu::DepthStencilState|
+         -> wgpu::RenderPipeline {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &self.shader,
+                    entry_point: Some("vs"),
+                    compilation_options: Default::default(),
+                    buffers: std::slice::from_ref(&instance_layout),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &self.shader,
+                    entry_point: Some(fragment_entry),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: self.color_format,
+                        blend,
+                        write_mask: color_writes,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..Default::default()
+                },
+                depth_stencil: Some(depth_stencil),
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+
+        // Mask-write: stencil Replace at every pixel the SDF passes
+        // (`fs_mask` discards outside). Color writes off, blend inert.
         let mask_face = wgpu::StencilFaceState {
             compare: wgpu::CompareFunction::Always,
             fail_op: wgpu::StencilOperation::Keep,
             depth_fail_op: wgpu::StencilOperation::Keep,
             pass_op: wgpu::StencilOperation::Replace,
         };
-        let mask_write = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("palantir.quad.pipeline.mask"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &self.shader,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: std::slice::from_ref(&instance_layout_a),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &self.shader,
-                // `fs_mask` discards outside the rounded SDF so the
-                // stencil Replace op only fires inside the shape.
-                // Otherwise the rasterizer's full bounding box would
-                // get stamped, defeating the rounded mask.
-                entry_point: Some("fs_mask"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: self.color_format,
-                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::empty(),
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
+        let mask_write = build(
+            "palantir.quad.pipeline.mask",
+            "fs_mask",
+            wgpu::ColorWrites::empty(),
+            None,
+            wgpu::DepthStencilState {
                 format: super::STENCIL_FORMAT,
                 depth_write_enabled: Some(false),
                 depth_compare: Some(wgpu::CompareFunction::Always),
@@ -248,61 +258,18 @@ impl QuadPipeline {
                     write_mask: 0xff,
                 },
                 bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+            },
+        );
 
-        // Stencil-test face: compare Equal against the active
-        // reference. Cleared stencil = 0; non-rounded groups draw at
-        // ref=0 (always pass); rounded groups draw at ref=N after a
-        // mask write established stencil=N inside the rounded shape.
-        let test_face = wgpu::StencilFaceState {
-            compare: wgpu::CompareFunction::Equal,
-            fail_op: wgpu::StencilOperation::Keep,
-            depth_fail_op: wgpu::StencilOperation::Keep,
-            pass_op: wgpu::StencilOperation::Keep,
-        };
-        let stencil_test = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("palantir.quad.pipeline.stencil_test"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &self.shader,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: std::slice::from_ref(&instance_layout_a),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &self.shader,
-                entry_point: Some("fs"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: self.color_format,
-                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: super::STENCIL_FORMAT,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::Always),
-                stencil: wgpu::StencilState {
-                    front: test_face,
-                    back: test_face,
-                    read_mask: 0xff,
-                    write_mask: 0x00,
-                },
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        // Stencil-test: same `fs` as the no-stencil pipeline, plus the
+        // shared `stencil_test_state` so text and quads can't drift.
+        let stencil_test = build(
+            "palantir.quad.pipeline.stencil_test",
+            "fs",
+            wgpu::ColorWrites::ALL,
+            Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+            super::stencil_test_state(),
+        );
 
         StencilPipelines {
             mask_write,
@@ -328,7 +295,7 @@ impl QuadPipeline {
         }
 
         if quads.len() > self.instance_capacity {
-            self.instance_capacity = quads.len().next_power_of_two();
+            self.instance_capacity = quads.len().next_power_of_two().max(8);
             self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir.quad.instances"),
                 size: (self.instance_capacity * std::mem::size_of::<Quad>()) as u64,
@@ -409,5 +376,21 @@ impl QuadPipeline {
     /// Draw the single mask `Quad` at `mask_idx` in the mask buffer.
     pub(crate) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>, mask_idx: u32) {
         pass.draw(0..4, mask_idx..mask_idx + 1);
+    }
+
+    /// Build a `Quad` instance for the stencil mask-write pipeline.
+    /// Only `rect` + `radius` reach the SDF in `fs_mask`; color/stroke
+    /// are ignored (mask pipeline disables color writes), so we pass
+    /// defaults.
+    pub(crate) fn mask_instance(rect: URect, radius: Corners) -> Quad {
+        Quad::new(
+            Rect {
+                min: Vec2::new(rect.x as f32, rect.y as f32),
+                size: Size::new(rect.w as f32, rect.h as f32),
+            },
+            Color::default(),
+            radius,
+            None,
+        )
     }
 }

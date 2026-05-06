@@ -7,11 +7,11 @@
 //! the pool, so the cache is hit for free across groups.
 //!
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
-//! [`TextRun`]: super::super::gpu::buffer::TextRun
+//! [`TextRun`]: crate::renderer::gpu::buffer::TextRun
 
-use super::super::gpu::buffer::TextRun;
 use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
+use crate::renderer::gpu::buffer::TextRun;
 use crate::text::SharedCosmic;
 use crate::text::cosmic::RenderSplit;
 use glam::UVec2;
@@ -98,7 +98,11 @@ pub(crate) struct TextRenderer {
 }
 
 impl TextRenderer {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+    ) -> Self {
         let cache = Cache::new(device);
         let atlas = TextAtlas::new(device, queue, &cache, format);
         let viewport = Viewport::new(device, &cache);
@@ -120,14 +124,14 @@ impl TextRenderer {
 
     /// Install the shared shaper handle. Pass the same `SharedCosmic` to
     /// [`crate::Ui::set_cosmic`] so layout and rendering see one cache.
-    pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
+    pub(crate) fn set_cosmic(&mut self, cosmic: SharedCosmic) {
         self.cosmic = Some(cosmic);
     }
 
     /// Re-create on surface format change (e.g. after window recreation).
     /// Replaces the atlas + drops the renderer pool (each renderer holds
     /// pipeline state tied to the old format).
-    pub fn rebuild_for_format(
+    pub(crate) fn rebuild_for_format(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -142,13 +146,13 @@ impl TextRenderer {
     }
 
     /// True if any group has been prepared this frame and should render.
-    pub fn has_prepared(&self) -> bool {
+    pub(crate) fn has_prepared(&self) -> bool {
         self.ready.iter().any(|&r| r) || self.stencil_ready.iter().any(|&r| r)
     }
 
     /// Update the viewport uniform. Called once per frame before the
     /// per-group prepares so all renderers see the same viewport.
-    pub fn update_viewport(&mut self, queue: &wgpu::Queue, viewport_phys: UVec2) {
+    pub(crate) fn update_viewport(&mut self, queue: &wgpu::Queue, viewport_phys: UVec2) {
         self.viewport.update(
             queue,
             Resolution {
@@ -164,7 +168,7 @@ impl TextRenderer {
     /// pool — both share `atlas`. Returns `false` and skips work if no
     /// shaper is installed or no runs resolve to a buffer. The pool
     /// grows on demand if `group_idx` exceeds its current length.
-    pub fn prepare_group(
+    pub(crate) fn prepare_group(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -207,7 +211,7 @@ impl TextRenderer {
         // pipelines are reused via `atlas.get_or_create_pipeline`.
         let depth_stencil = match mode {
             StencilMode::Plain => None,
-            StencilMode::Stencil => Some(text_stencil_test_state()),
+            StencilMode::Stencil => Some(super::stencil_test_state()),
         };
         let (pool, ready) = match mode {
             StencilMode::Plain => (&mut self.renderers, &mut self.ready),
@@ -253,7 +257,7 @@ impl TextRenderer {
     /// Render the prepared text for `group_idx` from the `mode` pool.
     /// Silently no-ops if the group wasn't prepared this frame in that
     /// mode (no text, no shaper, prepare failed, or wrong pool).
-    pub fn render_group(
+    pub(crate) fn render_group(
         &self,
         group_idx: usize,
         pass: &mut wgpu::RenderPass<'_>,
@@ -275,7 +279,7 @@ impl TextRenderer {
     /// renderer pool if it's grossly over-allocated, and reset
     /// per-renderer ready flags. Call once after all `render_group`
     /// calls have been submitted in the encoder pass.
-    pub fn end_frame(&mut self) {
+    pub(crate) fn end_frame(&mut self) {
         self.atlas.trim();
         // Shrink only when pool is more than 2× high_water — see
         // [`POOL_SHRINK_RATIO`]. Skips truncate work entirely in
@@ -295,32 +299,6 @@ impl TextRenderer {
             *r = false;
         }
         self.high_water = 0;
-    }
-}
-
-/// `DepthStencilState` matching the quad pipeline's `stencil_test`
-/// face: stencil compare = Equal against the active reference, no
-/// stencil writes, no depth. Glyphon's `TextRenderer::new` clones
-/// this; both pools (plain + stencil) share the same `TextAtlas`,
-/// which caches pipelines by `(format, multisample, depth_stencil)`.
-fn text_stencil_test_state() -> wgpu::DepthStencilState {
-    let face = wgpu::StencilFaceState {
-        compare: wgpu::CompareFunction::Equal,
-        fail_op: wgpu::StencilOperation::Keep,
-        depth_fail_op: wgpu::StencilOperation::Keep,
-        pass_op: wgpu::StencilOperation::Keep,
-    };
-    wgpu::DepthStencilState {
-        format: super::STENCIL_FORMAT,
-        depth_write_enabled: Some(false),
-        depth_compare: Some(wgpu::CompareFunction::Always),
-        stencil: wgpu::StencilState {
-            front: face,
-            back: face,
-            read_mask: 0xff,
-            write_mask: 0x00,
-        },
-        bias: wgpu::DepthBiasState::default(),
     }
 }
 

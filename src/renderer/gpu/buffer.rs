@@ -49,24 +49,14 @@ impl Default for RenderBuffer {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawGroup {
     pub(crate) scissor: Option<URect>,
-    /// When set, the active clip is a rounded scissor — `scissor` is its
-    /// bounding rect (in physical px) and `radius` is the per-corner
-    /// radii (also physical px, already DPR-scaled). Backend writes a
-    /// rounded SDF mask into stencil before drawing this group's
-    /// quads/text and uses stencil-test pipelines for the draws. `None`
-    /// = plain scissor (existing fast path).
-    pub(crate) rounded_clip: Option<RoundedClipPhys>,
+    /// When set, the active clip is a rounded scissor: `scissor` is the
+    /// mask's bounding rect and `rounded_clip` carries the per-corner
+    /// radii in physical px (DPR-scaled). Backend stamps the mask using
+    /// `(scissor, rounded_clip)` and switches to stencil-test pipelines
+    /// for this group's draws. `None` = plain scissor.
+    pub(crate) rounded_clip: Option<Corners>,
     pub(crate) quads: Span,
     pub(crate) texts: Span,
-}
-
-/// Physical-px rounded-clip descriptor riding on `DrawGroup`. Same rect
-/// the scissor uses, plus per-corner radii in physical pixels (already
-/// scaled by DPR). Backend feeds it into the mask-write quad pipeline.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct RoundedClipPhys {
-    pub(crate) rect: URect,
-    pub(crate) radius: Corners,
 }
 
 /// One shaped text run placed in physical-px space. The buffer it references
