@@ -246,15 +246,6 @@ impl State {
             return;
         }
 
-        self.fps_window_frames += 1;
-        let elapsed = self.fps_window_start.elapsed();
-        if elapsed.as_secs() >= 1 {
-            let fps = self.fps_window_frames as f64 / elapsed.as_secs_f64();
-            println!("fps: {fps:.1}");
-            self.fps_window_start = std::time::Instant::now();
-            self.fps_window_frames = 0;
-        }
-
         if self.new_surface {
             self.ui.invalidate_prev_frame();
             self.new_surface = false;
@@ -294,6 +285,15 @@ impl State {
             .submit(&frame.texture, Color::hex(0x252525), frame_out);
 
         frame.present();
+
+        self.fps_window_frames += 1;
+        let elapsed = self.fps_window_start.elapsed();
+        if elapsed.as_secs() >= 1 {
+            let fps = self.fps_window_frames as f64 / elapsed.as_secs_f64();
+            println!("fps: {fps:.1}");
+            self.fps_window_start = std::time::Instant::now();
+            self.fps_window_frames = 0;
+        }
     }
 }
 
