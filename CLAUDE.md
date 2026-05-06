@@ -90,8 +90,7 @@ Always run, in this order, before confirming any code change:
 ```sh
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings
-cargo nextest run         # faster + cleaner output than `cargo test`
-cargo test --doc          # nextest doesn't run doctests
+cargo test
 ```
 
 For changes that touch feature-gated code (anything under
