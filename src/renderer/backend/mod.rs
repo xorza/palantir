@@ -29,9 +29,28 @@ use text::TextRenderer;
 struct Backbuffer {
     tex: wgpu::Texture,
     view: wgpu::TextureView,
+    /// Lazy stencil attachment, allocated on first frame with rounded
+    /// clipping (`FrameOutput::has_rounded_clip == true`). Apps that
+    /// never use rounded clip never allocate this. Recreated alongside
+    /// the color texture on resize / format change.
+    #[allow(dead_code)] // first reader is the rounded-clip render path (sub-slice 3.B.3)
+    stencil: Option<StencilAttachment>,
     size: wgpu::Extent3d,
     format: wgpu::TextureFormat,
 }
+
+#[allow(dead_code)] // first reader is the rounded-clip render path (sub-slice 3.B.3)
+struct StencilAttachment {
+    tex: wgpu::Texture,
+    view: wgpu::TextureView,
+}
+
+/// Format used for the lazy stencil attachment. `Stencil8` is the
+/// minimum that satisfies the rounded-clip mask path; no depth
+/// component is needed (UI is 2D, no z-test). Read by the
+/// stencil-aware quad pipeline variants in `quad_pipeline.rs`.
+#[allow(dead_code)] // first reader is sub-slice 3.B.3
+pub(crate) const STENCIL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Stencil8;
 
 /// wgpu backend: owns the quad pipeline + text renderer and cloned
 /// device/queue handles (cheap, Arc-backed). The text side holds a shared
@@ -99,10 +118,39 @@ impl WgpuBackend {
         self.backbuffer = Some(Backbuffer {
             tex,
             view,
+            stencil: None,
             size,
             format,
         });
         true
+    }
+
+    /// Allocate the stencil attachment if it isn't already present, or
+    /// resize it if the backbuffer was just recreated. Called from the
+    /// stencil rendering path on first need; idempotent.
+    #[allow(dead_code)] // first caller is the rounded-clip render path (sub-slice 3.B.3)
+    fn ensure_stencil(&mut self) {
+        let bb = self
+            .backbuffer
+            .as_mut()
+            .expect("ensure_backbuffer must run first");
+        if let Some(s) = &bb.stencil
+            && s.tex.size() == bb.size
+        {
+            return;
+        }
+        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("palantir.renderer.stencil"),
+            size: bb.size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: STENCIL_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+        bb.stencil = Some(StencilAttachment { tex, view });
     }
 
     /// Install the shared shaper handle. Pass the same `SharedCosmic` to
