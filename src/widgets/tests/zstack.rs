@@ -49,13 +49,13 @@ fn zstack_layers_children_without_painting_background() {
     assert!(ui.tree.shapes_of(z).next().is_none());
 
     // ZStack hugs to max(child sizes) = (120, 80).
-    let zr = ui.pipeline.layout.result.rect[z.index()];
+    let zr = ui.layout.result.rect[z.index()];
     assert_eq!(zr.size.w, 120.0);
     assert_eq!(zr.size.h, 80.0);
 
     // Both children placed at ZStack's top-left (no padding), at their own size.
-    let bg = ui.pipeline.layout.result.rect[bg_node.unwrap().index()];
-    let fg = ui.pipeline.layout.result.rect[fg_node.unwrap().index()];
+    let bg = ui.layout.result.rect[bg_node.unwrap().index()];
+    let fg = ui.layout.result.rect[fg_node.unwrap().index()];
     assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
     assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
     assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
@@ -99,7 +99,7 @@ fn zstack_aligns_child_per_axis() {
         });
         ui.end_frame();
 
-        let r = ui.pipeline.layout.result.rect[child_node.unwrap().index()];
+        let r = ui.layout.result.rect[child_node.unwrap().index()];
         assert_eq!((r.min.x, r.min.y), *expected, "case: {label}");
         assert_eq!(
             (r.size.w, r.size.h),

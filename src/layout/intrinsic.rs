@@ -219,7 +219,7 @@ mod tests {
             .next()
             .expect("hstack has child");
         let slot = LenReq::MinContent.slot(Axis::X);
-        let cached = ui.pipeline.layout.scratch.intrinsics[child.index()][slot];
+        let cached = ui.layout.scratch.intrinsics[child.index()][slot];
         assert!(
             !cached.is_nan(),
             "MinContent X for the Fill+wrap child must be cached after run"
@@ -249,15 +249,11 @@ mod tests {
         let slot = LenReq::MinContent.slot(Axis::X);
 
         const SENTINEL: f32 = 1234.5;
-        ui.pipeline.layout.scratch.intrinsics[child.index()][slot] = SENTINEL;
+        ui.layout.scratch.intrinsics[child.index()][slot] = SENTINEL;
 
-        let v = ui.pipeline.layout.intrinsic(
-            &ui.tree,
-            child,
-            Axis::X,
-            LenReq::MinContent,
-            &mut ui.pipeline.text,
-        );
+        let v = ui
+            .layout
+            .intrinsic(&ui.tree, child, Axis::X, LenReq::MinContent, &mut ui.text);
         assert_eq!(
             v, SENTINEL,
             "cache hit must return the stored value verbatim, not recompute"
@@ -285,25 +281,21 @@ mod tests {
         // observe which nodes the parent query repopulates.
         ui.end_frame();
         let slot = LenReq::MaxContent.slot(Axis::X);
-        for entry in ui.pipeline.layout.scratch.intrinsics.iter_mut() {
+        for entry in ui.layout.scratch.intrinsics.iter_mut() {
             entry[slot] = f32::NAN;
         }
 
-        let _ = ui.pipeline.layout.intrinsic(
-            &ui.tree,
-            root,
-            Axis::X,
-            LenReq::MaxContent,
-            &mut ui.pipeline.text,
-        );
+        let _ = ui
+            .layout
+            .intrinsic(&ui.tree, root, Axis::X, LenReq::MaxContent, &mut ui.text);
 
         assert!(
-            !ui.pipeline.layout.scratch.intrinsics[root.index()][slot].is_nan(),
+            !ui.layout.scratch.intrinsics[root.index()][slot].is_nan(),
             "root slot must be cached"
         );
         for c in ui.tree.children(root).map(|c| c.id) {
             assert!(
-                !ui.pipeline.layout.scratch.intrinsics[c.index()][slot].is_nan(),
+                !ui.layout.scratch.intrinsics[c.index()][slot].is_nan(),
                 "child {} slot must be cached after parent query",
                 c.index()
             );

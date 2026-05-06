@@ -88,13 +88,8 @@ pub(crate) fn encode_cmds(ui: &Ui) -> RenderCmdBuffer {
 pub(crate) fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBuffer {
     // Fresh `Encoder` per call → empty cache, every encode is a cold
     // build. Tests that want to verify cache-replay output use
-    // `ui.pipeline.frontend.encoder.cmds()` instead.
+    // `ui.frontend.encoder.cmds()` instead.
     let mut encoder = Encoder::default();
-    encoder.encode(
-        &ui.tree,
-        &ui.pipeline.layout.result,
-        &ui.cascades.result,
-        filter,
-    );
+    encoder.encode(&ui.tree, &ui.layout.result, &ui.cascades.result, filter);
     std::mem::take(&mut encoder.cmds)
 }

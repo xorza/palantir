@@ -20,27 +20,6 @@ use crate::ui::state::StateMap;
 use crate::widgets::scroll::ScrollRegistry;
 use crate::widgets::theme::{Surface, Theme};
 
-/// The three rendering-pipeline subsystems Ui owns: text shaping →
-/// layout measurement/arrangement → frontend encoding/composition.
-/// Bundled because they share the `sweep_removed(&[WidgetId])` contract
-/// fired once per frame for widgets that vanished — see
-/// [`Self::sweep_removed`]. Widget Any-state lives separately on
-/// [`Ui::state`] since it's orthogonal to the rendering chain.
-#[derive(Default)]
-pub(crate) struct Pipeline {
-    pub(crate) text: TextMeasurer,
-    pub(crate) layout: LayoutEngine,
-    pub(crate) frontend: Frontend,
-}
-
-impl Pipeline {
-    fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        self.text.sweep_removed(removed);
-        self.layout.sweep_removed(removed);
-        self.frontend.sweep_removed(removed);
-    }
-}
-
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].
 ///
@@ -59,9 +38,9 @@ pub struct Ui {
     /// Cross-frame `WidgetId → Any` widget state. See [`StateMap`].
     pub(crate) state: StateMap,
 
-    /// Rendering pipeline: text shaping → layout → frontend
-    /// encode/compose. See [`Pipeline`].
-    pub(crate) pipeline: Pipeline,
+    pub(crate) text: TextMeasurer,
+    pub(crate) layout: LayoutEngine,
+    pub(crate) frontend: Frontend,
 
     pub(crate) input: InputState,
     pub(crate) cascades: Cascades,
@@ -89,7 +68,9 @@ impl Ui {
             theme: Theme::default(),
             ids: SeenIds::default(),
             state: StateMap::default(),
-            pipeline: Pipeline::default(),
+            text: TextMeasurer::default(),
+            layout: LayoutEngine::default(),
+            frontend: Frontend::default(),
             input: InputState::new(),
             cascades: Cascades::default(),
             display: Display::default(),
@@ -103,7 +84,7 @@ impl Ui {
     /// see the same buffer cache. Tests leave this unset and run on the
     /// deterministic mono fallback.
     pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
-        self.pipeline.text.set_cosmic(cosmic);
+        self.text.set_cosmic(cosmic);
     }
 
     /// Start recording a frame. A stray `scale_factor` of `0.0` from winit
@@ -134,17 +115,14 @@ impl Ui {
         // skip text reshape for unchanged Text nodes; damage reads them after.
         self.tree.end_frame();
         let removed = self.ids.end_frame();
-        self.pipeline.sweep_removed(removed);
+        self.text.sweep_removed(removed);
+        self.layout.sweep_removed(removed);
+        self.frontend.sweep_removed(removed);
         self.state.sweep_removed(removed);
 
-        // Disjoint-field reborrow: `layout`, `text`, `frontend` are
-        // independent fields of `pipeline`, so we can hold `&mut`s to
-        // each in turn (and to `layout` for the rest of the function,
-        // since `layout.run` returns a `&LayoutResult` borrow on it).
-        let pipeline = &mut self.pipeline;
-        let layout = pipeline
+        let layout = self
             .layout
-            .run(&self.tree, self.tree.root(), surface, &mut pipeline.text);
+            .run(&self.tree, self.tree.root(), surface, &mut self.text);
 
         self.scrolls.refresh(&self.tree, layout, &mut self.state);
 
@@ -161,8 +139,7 @@ impl Ui {
             DamagePaint::Full | DamagePaint::Skip => None,
         };
         let buffer =
-            pipeline
-                .frontend
+            self.frontend
                 .build(&self.tree, layout, cascades, damage_filter, &self.display);
 
         FrameOutput { buffer, damage }
@@ -233,17 +210,7 @@ impl Ui {
         surface: Option<Surface>,
         f: impl FnOnce(&mut Ui),
     ) -> NodeId {
-        if !self.ids.record(element.id) {
-            assert!(
-                element.auto_id,
-                "WidgetId collision — id {:?} recorded twice this frame. \
-                 Two explicit `.with_id(key)` calls produced the same hash; \
-                 pick distinct keys. Duplicate ids silently corrupt focus, \
-                 scroll, click capture, and hit-testing.",
-                element.id,
-            );
-            element.id = self.ids.next_dup(element.id);
-        }
+        element.id = self.ids.record(element.id, element.auto_id);
         // Apply the surface's clip mode to the element (with Rounded
         // → Rect downgrade for zero-radius paint), and pass the
         // chrome (paint Background) to the tree to land in

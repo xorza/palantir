@@ -137,7 +137,7 @@ impl<'a> TextEdit<'a> {
 
         // Phase 2: open the node and push shapes. `caret_x` for the
         // caret position lives inside the closure since it touches
-        // `ui.pipeline.text` (disjoint from `ui.tree`, so add_shape
+        // `ui.text` (disjoint from `ui.tree`, so add_shape
         // sequences fine after the measurement returns).
         // Chrome paints via `Tree::chrome_for` — encoder emits it before
         // any clip. The surface's clip stays `None` (TextEdit's caret
@@ -172,7 +172,7 @@ impl<'a> TextEdit<'a> {
             // coords so it stays in the widget's clip and renders
             // *over* the text. Only when focused.
             if is_focused {
-                let caret_x = ui.pipeline.text.caret_x(
+                let caret_x = ui.text.caret_x(
                     text_ptr,
                     caret_byte,
                     font_size,
@@ -224,7 +224,7 @@ impl Configure for TextEdit<'_> {
 /// Process this frame's pointer + keyboard input for one TextEdit
 /// widget and return the caret byte offset to render. Splitting this
 /// out of `show()` keeps the borrow choreography contained: we touch
-/// `ui.state`, `ui.input`, and `ui.pipeline.text` here, but never the
+/// `ui.state`, `ui.input`, and `ui.text` here, but never the
 /// shape/tree storage.
 #[allow(clippy::too_many_arguments)]
 fn handle_input(
@@ -245,7 +245,7 @@ fn handle_input(
     let resp_state = ui.response_for(id);
 
     // Hold the state row once for the whole function. `ui.state`,
-    // `ui.input`, and `ui.pipeline.text` are disjoint fields of `Ui`,
+    // `ui.input`, and `ui.text` are disjoint fields of `Ui`,
     // so we can keep `&mut state` alive while also reading the input
     // queues and dispatching to the text measurer.
     let state = ui
@@ -265,13 +265,7 @@ fn handle_input(
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos())
     {
         let local_x = ptr.x - rect.min.x - pad_left;
-        state.caret = caret_from_x(
-            text,
-            local_x,
-            font_size,
-            line_height_px,
-            &mut ui.pipeline.text,
-        );
+        state.caret = caret_from_x(text, local_x, font_size, line_height_px, &mut ui.text);
     }
 
     if !is_focused {
