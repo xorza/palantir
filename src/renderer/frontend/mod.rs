@@ -21,7 +21,7 @@ use crate::layout::types::display::Display;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::renderer::gpu::buffer::RenderBuffer;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::tree::Tree;
 use crate::tree::widget_id::WidgetId;
 use crate::ui::cascade::CascadeResult;
@@ -98,7 +98,7 @@ impl Frontend {
     /// `removed` slice that the measure cache and text reuse map
     /// consume; keeps every cross-frame cache eviction-locked.
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        self.encoder.cache.sweep_removed(removed);
-        self.composer.cache.sweep_removed(removed);
+        self.encoder.sweep_removed(removed);
+        self.composer.sweep_removed(removed);
     }
 }

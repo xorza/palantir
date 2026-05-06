@@ -3,7 +3,7 @@ mod quad_pipeline;
 use self::quad_pipeline::QuadPipeline;
 use super::frontend::FrameOutput;
 use crate::primitives::{color::Color, urect::URect};
-use crate::renderer::gpu::quad::Quad;
+use crate::renderer::quad::Quad;
 use crate::text::SharedCosmic;
 use crate::ui::damage::DamagePaint;
 

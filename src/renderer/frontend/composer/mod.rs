@@ -7,8 +7,8 @@ use crate::layout::cache::AvailableKey;
 use crate::layout::types::display::Display;
 use crate::primitives::corners::Corners;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
-use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
-use crate::renderer::gpu::quad::Quad;
+use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use cache::ComposeCache;
@@ -369,6 +369,10 @@ impl Composer {
         group.flush(out);
 
         &self.buffer
+    }
+
+    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        self.cache.sweep_removed(removed);
     }
 }
 

@@ -2,8 +2,8 @@ use super::*;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::{color::Color, urect::URect};
-use crate::renderer::gpu::buffer::{DrawGroup, TextRun};
-use crate::renderer::gpu::quad::Quad;
+use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::{DrawGroup, TextRun};
 use crate::text::TextCacheKey;
 use glam::{IVec2, Vec2};
 

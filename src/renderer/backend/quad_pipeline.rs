@@ -4,7 +4,7 @@
 
 use crate::layout::types::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size, urect::URect};
-use crate::renderer::gpu::quad::Quad;
+use crate::renderer::quad::Quad;
 use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
 use wgpu::util::DeviceExt;

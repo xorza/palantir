@@ -6,8 +6,9 @@
 //! - [`backend`] consumes `&RenderBuffer` and submits draws. The only
 //!   stage that touches a device/queue.
 //!
-//! `RenderBuffer` and `Quad` live at this level — they're the contract
-//! between frontend and backend. Other backends (software rasterizer,
+//! [`RenderBuffer`](render_buffer::RenderBuffer) and [`Quad`](quad::Quad)
+//! live at this level — they're the frontend↔backend contract. Pure
+//! CPU data; no device handles. Other backends (software rasterizer,
 //! headless capture) consume `&RenderBuffer` directly. A TUI/text
 //! backend would skip the compose step and walk the encoder's
 //! `RenderCmdBuffer` itself, since pixel snap and scissor rects don't
@@ -16,4 +17,5 @@
 //! [`Ui`]: crate::ui::Ui
 pub(crate) mod backend;
 pub(crate) mod frontend;
-pub(crate) mod gpu;
+pub(crate) mod quad;
+pub(crate) mod render_buffer;

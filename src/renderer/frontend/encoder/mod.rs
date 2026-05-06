@@ -92,6 +92,10 @@ impl Encoder {
         }
         &self.cmds
     }
+
+    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        self.cache.sweep_removed(removed);
+    }
 }
 
 fn encode_node(
