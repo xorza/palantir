@@ -60,4 +60,4 @@ arenas and the `FxHashMap` index.
 
 Future-work items (intrinsic-query cache, real-workload validation,
 cold-cache mitigations, coarser quantization) live in
-`docs/roadmap.md`.
+`docs/roadmap/caches.md`.
