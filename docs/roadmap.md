@@ -1,252 +1,199 @@
 # Roadmap
 
-impl widgetid instead of impl hash?
-ecs for soa?
-clearcolor from theme
-rounded corner clip
-texton button - optional
-spacing serializable nicely
+Scratch ideas: impl WidgetId instead of impl Hash; ECS for SoA;
+clear color from theme; rounded-corner clip; text on Button (optional);
+Spacing serializable nicely.
 
-## Now — concrete, motivated, ready to start
+## Now
 
-- **Drag-to-pan on scrollbar thumb.** Bars draw + reserve space today
-  via `Shape::Overlay` painted on the scroll node itself (single-node
-  design — the doc's old 2-level wrapper-plus-content restructure is
-  obsolete). To make them grabbable, replace the overlay shapes with
-  per-axis bar **leaf nodes** carrying `Sense::Drag` and stable derived
-  ids (`("scroll-vbar", parent_id)` etc.) so `drag_delta(bar_id)` is
-  defined. Each frame:
+- **Drag-to-pan scrollbar thumb.** Replace overlay shapes with per-axis
+  bar leaf nodes (`Sense::Drag`, derived ids `("scroll-vbar", parent_id)`).
+  `state.offset.main += drag_delta * (content - viewport) / (track - thumb)`,
+  clamp. Click-to-page + hover-grow fall out once leaves exist.
+- **`Scroll::scroll_to(WidgetId)`.** Compute target rect from
+  `LayoutResult.rect`, set `ScrollState.offset`, clamp. One-frame-stale
+  for just-recorded targets — defer the fallback.
+- **Overlay / popup layer.** Tooltips, dropdowns, menus, modals draw
+  outside parent clip + above siblings. Separate "always on top" tree
+  merged into encoder.
+- **accesskit integration.** Per-widget `accessibility_role` + dedicated
+  tree pass. Cost grows with widget count — do early.
 
-  ```
-  let scale = (content.main - viewport.main) / (track_len - thumb_size).max(1.0);
-  state.offset.main += drag_delta(bar_id).main * scale;
-  state.offset.main = state.offset.main.clamp(0.0, max);
-  ```
+## Next
 
-  Same one-frame-stale clamp as wheel pan. Wheel + drag deltas sum
-  into `ScrollState.offset` in record-time order. Click-on-track-to-page
-  falls out for free once the bar leaves exist (`Sense::ClickAndDrag`,
-  click-minus-thumb pages by `viewport`). Hover-grow thumb is also
-  cheap once the leaves carry hover state.
-- **`Scroll::scroll_to(WidgetId)` / `scroll_into_view`.** List-with-
-  selection wants "ensure selected row is visible." Cheap: compute
-  target rect from `LayoutResult.rect`, set `ScrollState.offset`, clamp.
-  Same one-frame-stale model as wheel pan — a just-recorded target's
-  rect doesn't exist yet, so frame 0 of `scroll_to` from outside the
-  scroll body needs a fallback (defer that case until it bites).
-- **Overlay / popup layer.** Tooltips, dropdowns, context menus, and modals
-  must draw outside their parent's clip and above siblings regardless of
-  pre-order. Typically a separate "always on top" tree merged into the
-  encoder pass. Showcase feels half-built without it.
-- **accesskit integration.** "One week if planned now, a month if not"
-  (Masonry, via `references/SUMMARY.md`). Per-widget `accessibility_role` +
-  dedicated tree pass. Cost grows with widget count — do it before the
-  surface area gets big.
+### TextEdit — remaining
 
-## Next — concrete, queued behind Now
+v1 ships single-line typing, caret, codepoint backspace/delete +
+arrows + home/end, click/drag-to-place, focus + `FocusPolicy`,
+escape-to-blur, IME `Commit`. See `src/widgets/text_edit/design.md`.
 
-### Persistent-state consumers
+- **Selection (visible + edits).** Selection-fill `Overlay` under text;
+  shift+arrow / home/end / drag extends, plain arrow collapses,
+  ctrl+a all-select; edits replace selected range. State + theme
+  slots already there.
+- **Glyph hit-test via `Buffer::hit`.** Replace O(n) `caret_from_x`
+  scan with one shaped lookup. Same upgrade gives multi-line
+  `byte_to_xy`.
+- **Grapheme-aware boundary walks.** `unicode-segmentation` once
+  selection lands.
+- **Multi-line.** Enter inserts `\n`, PageUp/Down live, caret y from
+  `Buffer::hit`, `TextWrap::Wrap` when builder sets `multiline`.
+- **Clipboard.** `arboard` behind `Clipboard` trait on `Ui`; route
+  ctrl/cmd+c/x/v from `frame_keys`.
+- **IME preedit.** Currently dropped at translation. Plumb
+  `InputEvent::ImePreedit { text, cursor }`, render underlined under
+  caret, commit on `Ime(Commit)`.
+- **`Ui::wants_ime()`.** Host gates `set_ime_allowed(true)` instead of
+  unconditional.
+- **Undo / redo.** Bounded ring buffer per `TextEditState`, coalesce by
+  edit-kind + timestamp. Needs shortcut routing.
+- **Caret blink.** Tick alpha off `dt` once an animation-tick infra
+  consumer exists.
 
-- **Focus subsystem.** Tab order, focus ring, keyboard nav, focus-on-disabled
-  rules. Distinct from the state map — needs its own pass.
-- **`TextEdit` widget.** One `cosmic_text::Editor` per `WidgetId` via
-  `state_mut_with` (add the public API when this lands), glyph-level
-  hit-test (`Buffer::hit`), IME, selection rendering as sibling shapes.
-- **IME + clipboard plumbing.** Both required for `TextEdit`.
+### Focus — remaining
+
+v1 ships `focused`, `FocusPolicy`, programmatic `request_focus`,
+click-to-focus, eviction-on-removal, escape-to-blur.
+
+- **Tab cycling.** `Tab` / `Shift+Tab` over the cascade in pre-order,
+  skipping non-focusable / disabled. Multi-line editors opt into
+  consuming Tab.
+- **Focus ring.** Centralized `focused`-state outline shape so a11y /
+  high-contrast can boost it.
+- **Focus-on-disabled rule.** Going disabled while focused should
+  release focus. Pin it.
+- **Focus restoration.** Optional remember-and-restore when a focused
+  widget vanishes (modal-close → restore caller).
 
 ### Scroll polish
 
-- **Wheel step from font metrics.** `LineDelta(0, 1)` currently maps
-  to a fixed 40 logical px/line (`SCROLL_LINE_PIXELS` in
-  `src/input/mod.rs`). Once cosmic shaping is in the steady-state
-  path, swap for line-height of the dominant font in the scrolled
-  content. Modest polish; only matters for text-heavy lists.
+- **Wheel step from font metrics.** Drop fixed 40 px/line
+  (`SCROLL_LINE_PIXELS`); use line-height of dominant font in
+  scrolled content.
 
 ### Damage rendering
 
-- **Multi-rect damage.** Replace the single union rect with N disjoint
-  regions (clustered from the per-node dirty set). Avoids the 50% heuristic
-  tripping when two unrelated corners change.
-- **Incremental hit-index rebuild.** Only update `HitIndex` entries for
-  dirty nodes (and any whose cascade row changed) instead of walking every
-  node every frame.
-- **Debug overlay.** Toggleable mode that flashes dirty nodes red and
-  outlines the damage rect — trivial once the per-node dirty set has a real
-  consumer.
-- **Damage-aware encode replay.** Currently `damage_filter.is_some()`
-  bypasses the encode cache entirely, so animated frames don't benefit. The
-  cached cmds are already correct (full subtree, damage-independent); gate
-  the replay on `screen_rect ∩ damage = ∅`.
+- **Multi-rect damage.** N disjoint regions instead of one union;
+  avoids 50 % heuristic tripping on unrelated corners.
+- **Incremental hit-index rebuild.** Only update `HitIndex` for dirty
+  + cascade-changed nodes.
+- **Debug overlay.** Flash dirty nodes + outline damage rect.
+- **Damage-aware encode replay.** Today `damage_filter.is_some()`
+  bypasses encode cache; gate replay on
+  `screen_rect ∩ damage = ∅` instead.
 
 ### Invalidation
 
-- **Property tracker / fine-grained dirty propagation.** Hash each widget's
-  input bag per frame so the encode cache can decide invalidation without a
-  full equality check on `(NodeHash, cascade row)`. Distinct from damage
-  rects — this tracks data-input change, not screen-rect change.
-- **`request_discard` equivalent for first-frame size mismatch.** When
-  measure produces a different size than last frame (text reflow, cosmic
-  shape miss), re-run the frame invisibly the way egui does. First-frame
-  text widths are likely wrong today.
+- **Property tracker.** Per-widget input-bag hash so encode cache
+  decides invalidation without `(NodeHash, cascade)` equality.
+- **`request_discard` for first-frame size mismatch.** Re-run frame
+  invisibly when measure differs from last frame (text reflow,
+  shape miss). egui-style.
 
 ### Tooling
 
-- **Profiling spans (tracy or puffin).** One-line `profile_function!` per
-  pass; cheap and the "optimize aggressively" posture wants per-pass
-  timings on demand.
-- **Snapshot / golden-image renderer tests.** Pixel-diff each showcase tab
-  against a checked-in reference; catches renderer regressions unit tests
-  miss.
-- **Pixel-snapping audit at fractional scales.** Yoga shipped accumulating
-  1px gaps at scale=1.5; Taffy fixed it (commit aa5b296). Add tests at
-  1.25 / 1.5 / 1.75 to pin behavior.
-- **Color-space verification.** Glyphon outputs sRGB; confirm text doesn't
-  look faded on a linear surface format and document the rule. Applies to
-  every shape — verify surface format matches shader assumptions and pin a
-  test.
+- **Profiling spans (tracy / puffin).** `profile_function!` per pass.
+- **Snapshot / golden-image renderer tests.** Pixel-diff showcase tabs.
+- **Pixel-snapping audit at fractional scales** (1.25 / 1.5 / 1.75).
+  Yoga shipped 1px gaps; Taffy fixed (aa5b296).
+- **Color-space verification.** Confirm Glyphon sRGB output on linear
+  surface; pin a test.
 - **HiDPI / scale-factor change handling.** Per-monitor DPI changes
-  mid-session must invalidate atlas, text shape cache, and the proposed
-  layout cache.
+  must invalidate atlas + text cache + (future) layout cache.
 
-## Later — real work, gated on a workload
+## Later — workload-gated
 
 ### Text
 
-- **Layer B — `CosmicMeasure.cache` eviction.** Refcount `TextCacheKey` by
-  live `WidgetId`s; sweep via `SeenIds.removed()` so the shaped-buffer
-  table doesn't leak. Defer until a string-churn workload demonstrates the
-  leak.
-- **`Shape::Text.text: String` allocs.** Each `Text::show` clones into the
-  shape every frame. Move to `Cow<'static, str>` for static labels; intern
-  dynamic strings via `Arc<str>` keyed on `text_hash`. Profile-gate before
-  shipping.
-- **Atlas eviction under multi-font / multi-size load.** Verify
-  `atlas.trim()` + glyphon's shelf overflow holds up over a long session.
-- **Wallclock bench for the reuse cache.** `benches/layout.rs` runs without
-  cosmic, so it can't see the Layer A win. Add a cosmic-enabled variant
-  with N=100 static labels and quote real µs/frame numbers.
+- **`CosmicMeasure.cache` eviction (Layer B).** Refcount
+  `TextCacheKey` by live `WidgetId`s, sweep via `SeenIds.removed()`.
+- **`Shape::Text.text` allocs.** `Cow<'static, str>` for static labels;
+  intern dynamic via `Arc<str>` keyed on text hash.
+- **Atlas eviction under multi-font / multi-size load.**
+- **Wallclock bench for the reuse cache.** `benches/layout.rs` runs
+  without cosmic — add a cosmic variant for real µs/frame numbers.
 
 ### Caches
 
-- **Cross-frame intrinsic-query cache.** `LayoutEngine::intrinsic` is
-  intra-frame only. A second column keyed on `subtree_hash + axis + req`
-  would compose cleanly. Skip until a workload proves it matters.
+- **Cross-frame intrinsic-query cache.** Key on
+  `subtree_hash + axis + req`.
 - **Real-workload validation (measure cache).** Bench numbers are
-  synthetic. The showcase doesn't push against the 400 µs ceiling, so the
-  cache's user-visible win is unverified.
-- **Subtree-granularity encode cache.** Replay a contiguous range when no
-  descendant is dirty, instead of N per-node slice replays. Cheaper memcpy
-  and pairs with a Vello-style flat stream representation.
-- **Hit-hint propagation between caches.** Both caches key on `(WidgetId,
-  subtree_hash, available_q)` and sweep on the same `removed` list, so a
-  measure-cache hit implies an encode-cache hit. Layout writes a
-  `Vec<bool>` (or packed bit on `LayoutResult`) marking measure-cache-hit
-  roots; encoder reads the bit and skips its own `FxHashMap::get`. Tiny
-  per-call, only sound while the two caches stay eviction-locked.
-  Profile-driven.
+  synthetic; showcase doesn't push the 400 µs ceiling.
+- **Subtree-granularity encode cache.** Replay contiguous range when
+  no descendant dirty; pairs with Vello-style flat stream.
+- **Hit-hint propagation between caches.** Measure-cache hit implies
+  encode-cache hit (same key, eviction-locked); skip encoder's
+  `FxHashMap::get`.
 
 ### Renderer / GPU
 
-- **Instance buffer capacity-retention audit.** Confirm encode → compose →
-  backend retains `Vec` capacity across frames. The alloc harness covers
-  Ui-side state but doesn't pin the renderer pipeline. Iced, quirky, and
-  makepad all keep typed instance buffers across frames.
-- **wgpu staging belt / upload pool.** Replace ad-hoc `queue.write_buffer`
-  calls with `wgpu::util::StagingBelt` to batch instance + uniform uploads.
-- **Offscreen render targets / mask layer.** No render-to-texture path
-  today, which blocks real drop shadows beyond SDF, blur, masked
-  compositing, and tab transitions. Mark as a known fork point in
-  `DESIGN.md`.
-- **Push constants vs shared UBO for camera/scissor.** Open question from
-  `references/SUMMARY.md §12.5`. UBO works on stock wgpu (quirky proves
-  it); document the choice.
+- **Instance buffer capacity-retention audit.** Confirm encode →
+  compose → backend retain `Vec` capacity.
+- **wgpu staging belt.** Replace ad-hoc `queue.write_buffer` with
+  `StagingBelt`.
+- **Offscreen render targets / mask layer.** Blocks real drop shadows,
+  blur, masked compositing, tab transitions.
+- **Push constants vs shared UBO** for camera / scissor (SUMMARY §12.5).
 
 ### Input
 
-- **Event coalescing / key repeat / double-click timing.** winit delivers
-  raw events; UI conventions (250ms double-click window, OS key-repeat
-  rate, mouse-motion coalescing) need a centralized layer.
+- **Event coalescing / key repeat / double-click timing.** Centralize
+  the 250 ms window, OS key-repeat, mouse-motion coalescing.
 - **Drag-and-drop with MIME-typed payloads.** Distinct from
-  drag-tracking-with-`Active`-capture — needs payload typing, drop targets,
+  `Active`-capture drag; needs payload typing + drop targets +
   OS file drops.
 
 ### Layering
 
-- **Explicit z-order beyond pre-order.** Clay's `zIndex` field on render
-  commands is the model; becomes relevant once popups exist.
-- **Multi-window / multi-viewport.** egui's `Viewport` + per-surface
-  `IdMap<PaintList>` is the reference design. Single-surface today.
+- **Explicit z-order beyond pre-order.** Clay's `zIndex` model;
+  relevant once popups exist.
+- **Multi-window / multi-viewport.** egui's `Viewport` +
+  `IdMap<PaintList>`. Single-surface today.
 
 ### Long-list / scroll
 
-- **Virtualization / windowed children.** Prefer a "virtual children"
-  hook on a single node yielding measured children for the visible
-  window over Flutter's heavyweight sliver protocol. Only path to
-  `O(viewport)` measure cost; today encode/measure are `O(content)`
-  and the composer cull keeps GPU/CPU bounded.
-- **Smooth / inertia scrolling.** Velocity decay + `request_repaint`
-  loop. Real UX win on touchpads, but needs an animation tick infra
-  consumer to share. Too early without one.
-- **Bounce / rubber-band at edges.** Pure feel polish.
-- **Touch drag-to-scroll.** No touch-input plumbing in the winit
-  binding today. Wait for a real touch workload.
-- **Keyboard scrolling** (`PgUp`/`PgDn`/`Home`/`End`). Needs the focus
-  system; defer.
-- **Sticky / pinned headers.** Layout integration is non-trivial; ship
-  when something actually wants them.
-- **Nested scroll-chaining.** v1 = innermost hit-test wins. Browsers
-  chain to parent when child reaches its end; defer until somebody
-  wants it.
+- **Virtualization** — virtual-children hook over Flutter's slivers;
+  only path to O(viewport) measure.
+- **Inertia scrolling** — velocity decay + `request_repaint`. Needs
+  animation-tick consumer.
+- **Bounce / rubber-band.** Pure feel.
+- **Touch drag.** No touch plumbing today.
+- **Keyboard scrolling** (PgUp/Dn/Home/End). Needs focus.
+- **Sticky / pinned headers.** Non-trivial layout integration.
+- **Nested scroll-chaining.** Browsers chain to parent at child end;
+  v1 = innermost wins.
 
 ### i18n
 
-- **RTL / mirroring.** cosmic-text handles BiDi glyph-side, but stack/grid
-  arrangement and alignment defaults need an LTR/RTL flag.
+- **RTL / mirroring.** cosmic-text handles BiDi glyph-side; stack/grid
+  arrangement + alignment defaults need an LTR/RTL flag.
 
 ### Tooling
 
-- **Per-frame scratch arena.** A project-wide `bumpalo` for things that are
-  genuinely per-frame transient, instead of every pass solving
-  capacity-retention separately.
+- **Per-frame scratch arena (`bumpalo`).** Replace per-pass capacity
+  retention with one shared arena.
 
 ### Damage (lower-impact)
 
-- **Tighter damage on parent-transform animation.** A dedicated
-  transform-cascade pass to collapse deep-subtree damage to a tight bound;
-  only worth it if profiling shows the current union is too coarse.
-- **Manual damage verification.** Visual A/B against `damage = None` to
-  catch the case where the diff misses something.
+- **Tighter damage on parent-transform animation.** Dedicated
+  transform-cascade pass collapsing deep-subtree damage.
+- **Manual damage verification.** Visual A/B against `damage = None`
+  to catch missed diffs.
 
-## Speculative — profile-gated micro-wins, defer indefinitely
+## Speculative — profile-gated
 
-- **Skip cascade/encode recursion under empty clip.** When a subtree's
-  screen rect is fully outside the root viewport, short-circuit
-  descent. Composer-level cull already drops the leaf shapes;
-  recursion-level skip is trickier (Active capture and future focus
-  may want off-screen rects live). Defer until a profile asks.
-- **SIMD `bump_rect_min`.** Replay loop reads/writes 2× f32 per rect-bearing
-  cmd (~12 800 ops on the nested workload). Precompute a bit-per-cmd
-  "rect-bearing" mask alongside the kinds array; `bump_rect_min` then
-  vectorizes over rect payloads. Only worth it if profiles show this loop
-  hot.
-- **Tiny-subtree threshold (encode cache).** Caching a 1–2-cmd subtree
-  costs more in hashmap probe + `write_subtree` bookkeeping than it saves.
-  Add a `min_cmds_for_cache` (≈4) gate before `write_subtree`.
-- **Coarser `available_q` quantization (encode side).** 1-logical-px
-  granularity may bust the cache on sub-pixel parent drift. Bump to 2 px or
-  4 px if a profile shows hash-match / avail-mismatch as a frequent miss
-  path.
-- **Coarser `available` quantization (measure side).** Currently 1 logical
-  px. If jittery `Fill` children show cache misses on sub-pixel parent
-  drift, bump granularity. Wait for evidence.
-- **Cold-cache mitigations (measure cache).** If a workload ever shows
-  resize-frame jank, candidates: skip snapshot writes for collapsed
-  subtrees, gate writes by subtree-size threshold, amortize compact across
-  frames.
-- **Spatial index for hit-test at high N.** `HitIndex` is O(1) by-id but
-  pointer→node walks the cascade table; quad-tree / BVH only matters at
-  thousands of nodes but the data is there. Profile-gated.
-- **Contiguous children slices.** Clay's `children.elements: int32_t*` into
-  a shared array beats linked-list children for cache locality and BFS.
-  SUMMARY §5 marks this as "strictly better, defer until profiling
-  justifies."
+- **Skip cascade/encode recursion under empty clip.** Composer-level
+  cull already drops leaves; recursion skip trickier (Active /
+  future focus may want off-screen live).
+- **SIMD `bump_rect_min`.** Bit-per-cmd rect-bearing mask, vectorize
+  over rect payloads.
+- **Tiny-subtree threshold (encode cache).** `min_cmds_for_cache` ≈ 4
+  before `write_subtree`.
+- **Coarser `available_q` quantization** (encode and/or measure).
+  Bump from 1 px on sub-pixel parent drift.
+- **Cold-cache mitigations (measure cache).** Skip-collapsed,
+  size-threshold, amortized compact — if resize jank shows.
+- **Spatial index for hit-test at high N.** Quad-tree / BVH; matters
+  at thousands of nodes.
+- **Contiguous children slices.** Clay's `int32_t*`-into-shared-array
+  for cache locality and BFS (SUMMARY §5).
