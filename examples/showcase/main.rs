@@ -240,6 +240,7 @@ impl State {
 
         self.ui.begin_frame(self.display);
         build_root(&mut self.ui, &mut self.active);
+        let clear = self.ui.theme.window_clear;
         let frame_out = self.ui.end_frame();
 
         if frame_out.can_skip_rendering() {
@@ -267,8 +268,7 @@ impl State {
             }
         };
 
-        self.backend
-            .submit(&frame.texture, Color::hex(0x252525), frame_out);
+        self.backend.submit(&frame.texture, clear, frame_out);
 
         frame.present();
     }

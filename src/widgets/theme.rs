@@ -12,6 +12,7 @@ use crate::ui::Ui;
 mod palette {
     use crate::primitives::color::Color;
     // backgrounds
+    pub const TERMINAL_BG: Color = Color::hex(0x1a1a1a);
     pub const ELEM: Color = Color::hex(0x343434);
     pub const ELEM_HOVER: Color = Color::hex(0x3e3e3e);
     pub const ELEM_ACTIVE: Color = Color::hex(0x4b4b4b);
@@ -54,12 +55,18 @@ impl Background {
 /// app/theme concern. Widgets that want disabled-state visuals read the
 /// disabled flag themselves and pick their own colors at recording
 /// time.
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Theme {
     pub button: ButtonTheme,
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
     pub text: TextStyle,
+    /// Color the host clears the window/swapchain to before painting.
+    /// Defaults to the palette's darkest neutral (`terminal_bg`) so any
+    /// gap around containers reads as a deep frame rather than the
+    /// editor surface. Hosts pass this to `WgpuBackend::submit` as the
+    /// `clear` argument.
+    pub window_clear: Color,
     /// Default background for container widgets (`Frame`, `Panel`,
     /// `Grid`) when the call site didn't pass `.background(...)`.
     /// `None` (the default) means containers paint nothing — original
@@ -68,6 +75,19 @@ pub struct Theme {
     /// a thin stroke and you can see every panel boundary without
     /// editing each call site).
     pub panel: Option<Background>,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            button: ButtonTheme::default(),
+            scrollbar: ScrollbarTheme::default(),
+            text_edit: TextEditTheme::default(),
+            text: TextStyle::default(),
+            window_clear: palette::TERMINAL_BG,
+            panel: None,
+        }
+    }
 }
 
 /// Default text-rendering inputs grouped together so apps can swap the
