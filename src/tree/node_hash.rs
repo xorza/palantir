@@ -15,6 +15,7 @@
 use super::GridDef;
 use crate::common::hash::Hasher;
 use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
+use crate::primitives::background::Background;
 use crate::shape::Shape;
 use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintCore, ScrollAxes};
 use std::hash::Hash;
@@ -59,6 +60,7 @@ impl NodeHash {
         layout: &LayoutCore,
         paint: PaintCore,
         extras: Option<&ElementExtras>,
+        chrome: Option<&Background>,
         shapes: &[Shape],
         grid_def: Option<&GridDef>,
     ) -> Self {
@@ -68,6 +70,7 @@ impl NodeHash {
         if let Some(e) = extras {
             hash_node_extras(&mut h, e);
         }
+        hash_chrome(&mut h, chrome);
         h.write_u32(shapes.len() as u32);
         for s in shapes {
             hash_shape(&mut h, s);
@@ -164,7 +167,11 @@ fn hash_node_extras(h: &mut Hasher, e: &ElementExtras) {
     h.pod(&[e.min_size, e.max_size]);
     h.pod(&[e.gap, e.line_gap]);
     h.write_u16(((e.child_align.raw() as u16) << 8) | e.justify as u8 as u16);
-    match e.chrome {
+}
+
+#[inline]
+fn hash_chrome(h: &mut Hasher, chrome: Option<&Background>) {
+    match chrome {
         None => h.write_u8(0),
         Some(bg) => {
             h.write_u8(1);

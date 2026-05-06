@@ -33,8 +33,11 @@ mismatch in exchange for skipping the stencil pass).
 
 - `PaintAttrs.clip: ClipMode` — 2 bits packed in the per-node attrs
   byte. Hot-path reads (cascade, encoder, hit-test) hit this directly.
-- `ElementExtras.chrome: Option<Background>` — sparse side-table entry,
-  populated only on nodes with chrome. Single source of truth for:
+- `Tree.chrome_idx: Vec<u16>` — index column parallel to
+  `layout`/`paint`, `Tree::NO_CHROME` (`u16::MAX`) for nodes without
+  chrome. `Tree.chrome_table: Vec<Background>` holds the actual entries.
+  Read via `tree.chrome_for(id) -> Option<&Background>`. Single source
+  of truth for:
   - Painted background (encoder emits `DrawRect` from it).
   - Rounded-clip mask radius (from `chrome.radius`).
   - Rounded-clip mask inset (from `chrome.stroke.width`).
@@ -44,8 +47,7 @@ threaded through `ui.node(element, surface, body)`: the `Ui` reads
 `surface.clip` (with `Rounded` → `Rect` downgrade for zero-radius
 paint), writes the clip mode bit onto `element`, and passes
 `surface.paint` to `Tree::open_node` as the chrome param. The tree
-stamps it into `extras.chrome` before the side-table allocation
-check.
+pushes it into `chrome_table` and records the slot in `chrome_idx`.
 
 `Background` lives in `crate::primitives::background` (pure data).
 `Surface` lives in `crate::widgets::theme` (pure data too — no
@@ -53,7 +55,7 @@ methods that mutate `Element`).
 
 ## Encode flow (per node, in `encoder/mod.rs::encode_node`)
 
-1. **Chrome** — if `extras.chrome` is `Some` and not `is_noop()`, emit a
+1. **Chrome** — if `tree.chrome_for(id)` is `Some` and not `is_noop()`, emit a
    `DrawRect` with the chrome's `radius` / `fill` / `stroke`. Chrome
    paints **before** the clip is pushed: the clip rect is deflated by
    `stroke.width`, so chrome's own stroke pixels would be clipped if it

@@ -9,7 +9,7 @@ use crate::primitives::stroke::Stroke;
 /// — emitting nothing.
 ///
 /// Pure data, no methods that need a `Ui` — paint emission goes
-/// through `ElementExtras.chrome` and the encoder, not through
+/// through `Tree::chrome_table` and the encoder, not through
 /// shape-list registration.
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Background {

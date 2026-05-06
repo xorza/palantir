@@ -86,7 +86,7 @@ fn invisible_frame_does_not_emit_draw_rect() {
 
 /// Pin: the encoder iterates ALL shape variants in the
 /// background phase, not just `Text`. Chrome moved off the shapes
-/// list (now lives on `extras.chrome`), but `Shape::RoundedRect`
+/// list (now lives in `Tree::chrome_table`), but `Shape::RoundedRect`
 /// remains a valid variant — any custom widget that pushes one via
 /// `ui.add_shape` should still produce a `DrawRect` command. Tested
 /// by manually injecting a `RoundedRect` onto a panel node.

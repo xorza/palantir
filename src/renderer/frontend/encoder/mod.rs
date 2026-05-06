@@ -178,7 +178,7 @@ fn encode_node(
     // interior.
     let mode = tree.paint[id.index()].attrs.clip_mode();
     let clip = mode.is_clip();
-    let chrome = tree.read_extras(id).chrome;
+    let chrome = tree.chrome_for(id).copied();
 
     let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
 

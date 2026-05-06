@@ -139,7 +139,7 @@ impl<'a> TextEdit<'a> {
         // caret position lives inside the closure since it touches
         // `ui.pipeline.text` (disjoint from `ui.tree`, so add_shape
         // sequences fine after the measurement returns).
-        // Chrome paints via `extras.chrome` — encoder emits it before
+        // Chrome paints via `Tree::chrome_for` — encoder emits it before
         // any clip. The surface's clip stays `None` (TextEdit's caret
         // and selection handle their own painting; no rect-clipping).
         let surface = state
