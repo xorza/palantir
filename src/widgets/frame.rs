@@ -34,11 +34,9 @@ impl Frame {
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        // `None` falls back to `theme.panel` so an app-wide panel
-        // background (e.g. a stroke for layout debugging) lights up
-        // every unstyled container at once. Default `theme.panel` is
-        // `None` → paints nothing.
-        let bg = self.background.or(ui.theme.panel);
+        // Frame is a leaf — no children to clip. Pull just the paint
+        // from `theme.panel` if the call site didn't set its own.
+        let bg = self.background.or_else(|| ui.theme.panel.map(|s| s.paint));
         let node = ui.node(self.element, |ui| {
             if let Some(bg) = bg {
                 bg.add_to(ui);

@@ -1,10 +1,10 @@
-use crate::layout::types::{clip_mode::ClipMode, sizing::Sizing, track::Track};
+use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::transform::TranslateScale;
 use crate::tree::GridDef;
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::theme::Background;
-use crate::widgets::{Response, bind_clip_radius_to_background};
+use crate::widgets::Response;
+use crate::widgets::theme::Surface;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -27,7 +27,7 @@ use std::sync::OnceLock;
 /// Auto-vs-Star cyclic dependency, no `SharedSizeScope`, no auto-flow).
 pub struct Grid {
     element: Element,
-    background: Option<Background>,
+    surface: Option<Surface>,
     def: GridDef,
 }
 
@@ -41,7 +41,7 @@ impl Grid {
         // without going through `show()` panics loudly.
         Self {
             element: Element::new_auto(LayoutMode::Grid(PENDING_GRID_IDX)),
-            background: None,
+            surface: None,
             def: GridDef {
                 rows: empty_tracks(),
                 cols: empty_tracks(),
@@ -87,17 +87,13 @@ impl Grid {
         self
     }
 
-    pub fn clip(mut self, mode: ClipMode) -> Self {
-        self.element.clip = mode;
-        self
-    }
     pub fn transform(mut self, t: TranslateScale) -> Self {
         self.element.transform = Some(t);
         self
     }
 
-    pub fn background(mut self, b: Background) -> Self {
-        self.background = Some(b);
+    pub fn background(mut self, s: impl Into<Surface>) -> Self {
+        self.surface = Some(s.into());
         self
     }
 
@@ -109,11 +105,13 @@ impl Grid {
 
         // `None` falls back to `theme.panel` (default `None` = pure
         // layout). See `Theme::panel`.
-        let bg = self.background.or(ui.theme.panel);
-        bind_clip_radius_to_background(&mut element, bg.as_ref());
+        let surface = self.surface.or(ui.theme.panel);
+        if let Some(s) = surface.as_ref() {
+            s.apply_clip(&mut element);
+        }
         let node = ui.node(element, |ui| {
-            if let Some(bg) = bg {
-                bg.add_to(ui);
+            if let Some(s) = surface {
+                s.paint.add_to(ui);
             }
             body(ui);
         });
