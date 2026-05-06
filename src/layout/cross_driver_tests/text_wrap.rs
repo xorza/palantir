@@ -30,7 +30,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     ui.end_frame();
 
     let node = text_node.unwrap();
-    let r = ui.pipeline.layout.result.rect[node.index()];
+    let r = ui.layout.result.rect[node.index()];
     assert!(
         r.size.h > 32.0,
         "wrapped paragraph should span multiple lines, got h={}",
@@ -42,8 +42,8 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         _ => panic!("expected Shape::Text"),
     };
     assert_eq!(wrap, TextWrap::Wrap);
-    let shaped = ui.pipeline.layout.result.text_shapes[node.index()]
-        .expect("layout should have shaped the text");
+    let shaped =
+        ui.layout.result.text_shapes[node.index()].expect("layout should have shaped the text");
     assert!(shaped.measured.h > 32.0);
 }
 
@@ -59,7 +59,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     let node = two_hug_cols_with_wrap(&mut ui, PARAGRAPH);
     ui.end_frame();
 
-    let shaped = ui.pipeline.layout.result.text_shapes[node.index()].expect("text was shaped");
+    let shaped = ui.layout.result.text_shapes[node.index()].expect("text was shaped");
     // Multi-line height (a 16 px font wraps to 3 lines at the resolved
     // column width — h ≈ 58 px in practice; assert > 32 to allow for
     // line-height variation).
@@ -84,27 +84,15 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     let node = two_hug_cols_with_wrap(&mut ui, PARAGRAPH);
     ui.end_frame();
 
-    let max_w = ui.pipeline.layout.intrinsic(
-        &ui.tree,
-        node,
-        Axis::X,
-        LenReq::MaxContent,
-        &mut ui.pipeline.text,
-    );
-    let min_w = ui.pipeline.layout.intrinsic(
-        &ui.tree,
-        node,
-        Axis::X,
-        LenReq::MinContent,
-        &mut ui.pipeline.text,
-    );
-    let max_h = ui.pipeline.layout.intrinsic(
-        &ui.tree,
-        node,
-        Axis::Y,
-        LenReq::MaxContent,
-        &mut ui.pipeline.text,
-    );
+    let max_w = ui
+        .layout
+        .intrinsic(&ui.tree, node, Axis::X, LenReq::MaxContent, &mut ui.text);
+    let min_w = ui
+        .layout
+        .intrinsic(&ui.tree, node, Axis::X, LenReq::MinContent, &mut ui.text);
+    let max_h = ui
+        .layout
+        .intrinsic(&ui.tree, node, Axis::Y, LenReq::MaxContent, &mut ui.text);
 
     assert!(
         max_w > 200.0,
@@ -134,7 +122,7 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     let msg = chat_message(&mut ui, 40.0, PARAGRAPH, 14.0);
     ui.end_frame();
 
-    let shaped = ui.pipeline.layout.result.text_shapes[msg.index()].expect("text was shaped");
+    let shaped = ui.layout.result.text_shapes[msg.index()].expect("text was shaped");
     assert!(
         shaped.measured.h > 32.0,
         "Fill message should wrap inside its resolved share; got h={}",
@@ -157,7 +145,7 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
 
-    let shaped = ui.pipeline.layout.result.text_shapes[msg.index()].expect("text was shaped");
+    let shaped = ui.layout.result.text_shapes[msg.index()].expect("text was shaped");
     assert!(
         shaped.measured.w > 20.0,
         "min-content floor should keep message wider than the cramped slot; got w={}",
@@ -177,11 +165,11 @@ fn hstack_fill_clamped_below_min_content_keeps_rect_at_slot() {
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
 
-    let shaped_w = ui.pipeline.layout.result.text_shapes[msg.index()]
+    let shaped_w = ui.layout.result.text_shapes[msg.index()]
         .expect("text was shaped")
         .measured
         .w;
-    let rect_w = ui.pipeline.layout.result.rect[msg.index()].size.w;
+    let rect_w = ui.layout.result.rect[msg.index()].size.w;
 
     assert!(
         shaped_w > 50.0,
@@ -262,8 +250,8 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
         let mut ui = ui_with_text(UVec2::new(surface_w, 400));
         let (grid, section) = build(&mut ui);
         ui.end_frame();
-        let grid_w = ui.pipeline.layout.result.rect[grid.index()].size.w;
-        let section_w = ui.pipeline.layout.result.rect[section.index()].size.w;
+        let grid_w = ui.layout.result.rect[grid.index()].size.w;
+        let section_w = ui.layout.result.rect[section.index()].size.w;
         (grid_w, section_w)
     }
 
@@ -324,19 +312,19 @@ fn nonwrapping_text_minconent_equals_full_width() {
         .node;
     ui.end_frame();
 
-    let max_w = ui.pipeline.layout.intrinsic(
+    let max_w = ui.layout.intrinsic(
         &ui.tree,
         label_node,
         Axis::X,
         LenReq::MaxContent,
-        &mut ui.pipeline.text,
+        &mut ui.text,
     );
-    let min_w = ui.pipeline.layout.intrinsic(
+    let min_w = ui.layout.intrinsic(
         &ui.tree,
         label_node,
         Axis::X,
         LenReq::MinContent,
-        &mut ui.pipeline.text,
+        &mut ui.text,
     );
     assert!(
         (min_w - max_w).abs() <= 0.5,
@@ -385,12 +373,12 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     let mut probe = ui_with_text(UVec2::new(2000, 400));
     let (_, probe_label) = build(&mut probe);
     probe.end_frame();
-    let label_full = probe.pipeline.layout.intrinsic(
+    let label_full = probe.layout.intrinsic(
         &probe.tree,
         probe_label,
         Axis::X,
         LenReq::MaxContent,
-        &mut probe.pipeline.text,
+        &mut probe.text,
     );
     assert!(label_full > 0.0);
 
@@ -401,7 +389,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         let mut ui = ui_with_text(UVec2::new(surface_w, 400));
         let (_, label) = build(&mut ui);
         ui.end_frame();
-        let label_rect_w = ui.pipeline.layout.result.rect[label.index()].size.w;
+        let label_rect_w = ui.layout.result.rect[label.index()].size.w;
         assert!(
             label_rect_w >= label_full - 0.5,
             "label cell shrank below the label's natural width — \

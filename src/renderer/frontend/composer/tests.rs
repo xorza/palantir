@@ -511,7 +511,7 @@ mod cache_integration {
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
-        let warm = ui.pipeline.frontend.composer.buffer.clone();
+        let warm = ui.frontend.composer.buffer.clone();
 
         // Frame 3: clear both caches → cold compose under same inputs.
         crate::support::internals::clear_encode_cache(&mut ui);
@@ -519,7 +519,7 @@ mod cache_integration {
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
-        let cold = ui.pipeline.frontend.composer.buffer.clone();
+        let cold = ui.frontend.composer.buffer.clone();
 
         assert_eq!(
             bytemuck::cast_slice::<_, u8>(&warm.quads),
@@ -635,7 +635,7 @@ mod cache_integration {
         ui.begin_frame(snap_off);
         build(&mut ui);
         ui.end_frame();
-        let warm = ui.pipeline.frontend.composer.buffer.clone();
+        let warm = ui.frontend.composer.buffer.clone();
 
         // Cold oracle at snap_off: clear both caches and rerun.
         crate::support::internals::clear_encode_cache(&mut ui);
@@ -643,7 +643,7 @@ mod cache_integration {
         ui.begin_frame(snap_off);
         build(&mut ui);
         ui.end_frame();
-        let cold = ui.pipeline.frontend.composer.buffer.clone();
+        let cold = ui.frontend.composer.buffer.clone();
 
         assert_eq!(
             bytemuck::cast_slice::<_, u8>(&warm.quads),
@@ -665,13 +665,13 @@ mod cache_integration {
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
-        let warm = ui.pipeline.frontend.composer.buffer.clone();
+        let warm = ui.frontend.composer.buffer.clone();
 
         crate::support::internals::clear_compose_cache(&mut ui);
         begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame();
-        let cold_compose = ui.pipeline.frontend.composer.buffer.clone();
+        let cold_compose = ui.frontend.composer.buffer.clone();
 
         assert_eq!(
             bytemuck::cast_slice::<_, u8>(&warm.quads),

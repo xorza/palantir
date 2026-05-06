@@ -154,7 +154,7 @@ fn prev_frame_captures_arranged_rect() {
         .show(&mut ui)
         .node;
     ui.end_frame();
-    let arranged = ui.pipeline.layout.result.rect[frame_node.index()];
+    let arranged = ui.layout.result.rect[frame_node.index()];
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.rect, arranged);
@@ -241,14 +241,14 @@ fn text_reshape_skipped_when_unchanged_across_frames() {
     };
 
     render(&mut ui);
-    let after_first = ui.pipeline.text.measure_calls;
+    let after_first = ui.text.measure_calls;
     assert!(
         after_first > 0,
         "first frame should drive at least one measure call",
     );
 
     render(&mut ui);
-    let after_second = ui.pipeline.text.measure_calls;
+    let after_second = ui.text.measure_calls;
     assert_eq!(
         after_second,
         after_first,
@@ -271,14 +271,14 @@ fn text_reshape_runs_when_content_changes() {
         Text::new("first").with_id("changing").show(ui);
     });
     ui.end_frame();
-    let before = ui.pipeline.text.measure_calls;
+    let before = ui.text.measure_calls;
 
     begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().show(&mut ui, |ui| {
         Text::new("second").with_id("changing").show(ui);
     });
     ui.end_frame();
-    let after = ui.pipeline.text.measure_calls;
+    let after = ui.text.measure_calls;
 
     assert!(
         after > before,
@@ -311,9 +311,9 @@ fn wrapping_text_reshape_skipped_when_unchanged() {
     };
 
     render(&mut ui);
-    let after_first = ui.pipeline.text.measure_calls;
+    let after_first = ui.text.measure_calls;
     render(&mut ui);
-    let after_second = ui.pipeline.text.measure_calls;
+    let after_second = ui.text.measure_calls;
     assert_eq!(
         after_second,
         after_first,
@@ -351,9 +351,9 @@ fn intrinsic_query_reuses_cached_text_measure() {
     };
 
     render(&mut ui);
-    let after_first = ui.pipeline.text.measure_calls;
+    let after_first = ui.text.measure_calls;
     render(&mut ui);
-    let after_second = ui.pipeline.text.measure_calls;
+    let after_second = ui.text.measure_calls;
     assert_eq!(
         after_second,
         after_first,
@@ -377,7 +377,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     ui.end_frame();
     let wid = WidgetId::from_hash("transient");
     assert!(
-        ui.pipeline.text.reuse.contains_key(&wid),
+        ui.text.reuse.contains_key(&wid),
         "text widget should populate text_reuse on first render",
     );
 
@@ -385,7 +385,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     Panel::vstack().show(&mut ui, |_ui| {});
     ui.end_frame();
     assert!(
-        !ui.pipeline.text.reuse.contains_key(&wid),
+        !ui.text.reuse.contains_key(&wid),
         "removed widget's reuse entry must be swept",
     );
 }
@@ -416,14 +416,14 @@ fn wrap_target_change_preserves_unbounded_cache() {
     };
 
     render(&mut ui, 60.0);
-    let after_first = ui.pipeline.text.measure_calls;
+    let after_first = ui.text.measure_calls;
     assert!(
         after_first >= 2,
         "first frame should measure both unbounded and wrap (got {after_first})",
     );
 
     render(&mut ui, 80.0);
-    let after_second = ui.pipeline.text.measure_calls;
+    let after_second = ui.text.measure_calls;
     let delta = after_second - after_first;
     assert_eq!(
         delta, 1,

@@ -43,20 +43,21 @@ impl SeenIds {
         self.dup.clear();
     }
 
-    /// Record a `WidgetId` for this frame. Returns `false` if `id`
-    /// was already recorded this frame — the caller (`Ui::node`)
-    /// turns that into a panic with the call-site context.
-    pub(crate) fn record(&mut self, id: WidgetId) -> bool {
-        self.curr.insert(id)
-    }
-
-    /// Resolve an auto-generated id that has already collided this frame:
-    /// derive a fresh id by mixing in the next occurrence counter for the
-    /// original `id`, recording (and returning) the disambiguated id.
-    /// Asserts the disambiguated id itself doesn't collide — if it does,
-    /// the user has constructed an explicit `with_id` that shadows the
-    /// auto-disambiguation slot, which is genuinely a bug.
-    pub(crate) fn next_dup(&mut self, id: WidgetId) -> WidgetId {
+    /// Record a widget for this frame and return the id it should
+    /// actually use. Auto ids that collide are silently disambiguated
+    /// by mixing in an occurrence counter; explicit-id collisions are
+    /// hard bugs and panic with call-site context.
+    pub(crate) fn record(&mut self, id: WidgetId, auto: bool) -> WidgetId {
+        if self.curr.insert(id) {
+            return id;
+        }
+        assert!(
+            auto,
+            "WidgetId collision — id {id:?} recorded twice this frame. \
+             Two explicit `.with_id(key)` calls produced the same hash; \
+             pick distinct keys. Duplicate ids silently corrupt focus, \
+             scroll, click capture, and hit-testing.",
+        );
         let counter = self.dup.entry(id).or_insert(0);
         *counter += 1;
         let disambiguated = id.with(*counter);

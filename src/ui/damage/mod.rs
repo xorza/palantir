@@ -121,6 +121,11 @@ impl Damage {
         // outside a tiny damage scissor. Roll prev forward and bail.
         let surface_changed = self.prev_surface != Some(surface);
         self.prev_surface = Some(surface);
+        if surface_changed {
+            // Stale rects from the prior surface would skew the next
+            // frame's diff; full repaint reseeds prev from scratch below.
+            self.prev.clear();
+        }
         #[cfg(test)]
         self.dirty.clear();
         let mut acc: Option<Rect> = None;

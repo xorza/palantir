@@ -247,7 +247,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
 
     // Mask geometry: encoded rect is the panel's layout rect deflated
     // by stroke.width=2; each corner radius is reduced by the same.
-    let panel_rect = ui.pipeline.layout.result.rect[panel_node.unwrap().index()];
+    let panel_rect = ui.layout.result.rect[panel_node.unwrap().index()];
     let expected_rect = panel_rect.deflated_by(Spacing::all(2.0));
     let start = cmds.starts[rounded_idx];
     let payload: PushClipRoundedPayload = cmds.read(start);
@@ -876,7 +876,7 @@ fn encode_cache_warm_frame_matches_cold_encode() {
     build(&mut ui);
     ui.end_frame();
     let cold = encode_cmds(&ui);
-    let warm = &ui.pipeline.frontend.encoder.cmds;
+    let warm = &ui.frontend.encoder.cmds;
 
     assert_eq!(warm.kinds, cold.kinds);
     assert_eq!(warm.starts, cold.starts);
@@ -946,7 +946,7 @@ fn encode_cache_hits_on_damage_filtered_frame_without_writing() {
     build(&mut ui);
     ui.end_frame();
 
-    let snapshots_before = ui.pipeline.frontend.encoder.cache.snapshots.len();
+    let snapshots_before = ui.frontend.encoder.cache.snapshots.len();
     assert!(
         snapshots_before > 0,
         "warm cache should hold at least one snapshot"
@@ -958,14 +958,14 @@ fn encode_cache_hits_on_damage_filtered_frame_without_writing() {
     // the cache is consulted; the eligible subtree replays and its
     // bracketing markers appear in the cmd stream.
     let off_screen = Rect::new(10_000.0, 10_000.0, 10.0, 10.0);
-    ui.pipeline.frontend.encoder.encode(
+    ui.frontend.encoder.encode(
         &ui.tree,
-        &ui.pipeline.layout.result,
+        &ui.layout.result,
         &ui.cascades.result,
         Some(off_screen),
     );
 
-    let cmds = &ui.pipeline.frontend.encoder.cmds;
+    let cmds = &ui.frontend.encoder.cmds;
     let enter = cmds
         .kinds
         .iter()
@@ -985,7 +985,7 @@ fn encode_cache_hits_on_damage_filtered_frame_without_writing() {
     // Writes are still gated on full-paint frames: a damage-filtered
     // encode must not mutate the snapshot table.
     assert_eq!(
-        ui.pipeline.frontend.encoder.cache.snapshots.len(),
+        ui.frontend.encoder.cache.snapshots.len(),
         snapshots_before,
         "damage-filtered frame must not write back to the encode cache"
     );
