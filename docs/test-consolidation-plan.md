@@ -14,6 +14,8 @@ Audit covers all `#[test]`s in the crate (~17k LOC across ~75 files). No edits �
 | Integration (alloc + visual) | 22 | 22 | 0 |
 | **Total** | **~417** | **~336** | **~−81 (≈19%)** |
 
+Pass 2 adds another **~7 test cuts** plus **~5 fixture extractions** (LOC reduction without test reduction). Revised target: **~329 tests**, with shared scaffolding pulled into `support::testing`.
+
 (Counts approximate; some test mods weren't fully enumerated. Numbers are upper bounds — pre-merge re-read is mandatory before each cut.)
 
 ---
@@ -136,6 +138,104 @@ When this plan is applied:
 
 ---
 
+## Pass 2 additions — additional merges
+
+Found on a second-pass re-read. Refines or extends pass-1 entries.
+
+23. **`tree/tests.rs`** — refinement of #3
+    - The 4 tests `changing_layout_size_changes_hash` (L184), `changing_padding_changes_hash` (L203), `changing_visibility_changes_hash` (L221), `changing_justify_changes_hash` (L241) have **identical structure** (`record_hash` twice, mutate one field, assert hashes differ) → 1 parametric over a local `Property` enum. This is the precise scope of the "6 → 1" estimate in #3.
+    - Keep `changing_fill_color_changes_hash` (L94, asserts via per-child loop), `shape_order_matters_for_hash` (L261), `changing_text_content_changes_hash` (L292) as standalone — different assertion shape.
+
+24. **`text/mod.rs`** — caret-position cluster — 3 → 1
+    - `caret_x_zero_offset_or_empty_returns_zero`, `caret_x_mono_path_matches_prefix_glyph_widths`, `caret_x_width_independent_of_line_height` (≈L441–L465) all probe `caret_x()` with different `(text, byte_offset, font, expected)` → table-driven over those four columns.
+
+25. **`input/tests.rs`** — focus-policy pair — 2 → 1
+    - `focus_lands_on_press_over_focusable_widget_and_preserve_holds_it` and `clicking_non_focusable_widget_preserves_focus_under_preserve_policy` share scaffolding; merge over `(policy, click_target_focusable: bool, expected_focused_id)`. Conservative: counts toward the ≈9 already estimated for this file in #21.
+
+26. **`widgets/tests/visibility.rs`** — alignment pair (was "leave alone") — 2 → 1
+    - `hstack_child_align_y_centers_all_children_by_default` and `child_align_self_overrides_parent_default` (L152–L207) both build hstack + measure child y-positions. Parametric over `(parent_align, child_override, expected_y)`. Reverses pass-1 "leave alone" for *only* these two tests; the other 4 (collapsed/hidden semantics) stay separate.
+
+27. **`primitives/corners.rs`** — already-parametric, but compactable (informational)
+    - `serialize_then_parse_round_trips` (≈L362–L380) already loops over 3 fixtures. Adding labels would catch the case-id on failure.
+
+Net pass-2 cuts: ≈7 tests (some absorbed into pass-1 estimates).
+
+---
+
+## Shared fixtures — extract without merging tests
+
+Pass 2 found duplicated *setup* across tests whose *assertions* differ. Don't merge those tests; extract a fixture helper into `src/support/testing.rs` (or a per-driver `tests/common.rs`) and call it from each.
+
+**F1. `fixture_grid_with_two_text_cols`** — `support::testing`
+
+```rust
+pub(crate) fn fixture_grid_with_two_text_cols(
+    ui: &mut Ui,
+    col_widths: (Sizing, Sizing),
+    text: (&str, &str),
+) -> GridFixture { /* (grid_node, left_node, right_node) */ }
+```
+
+Call sites: `cross_driver_tests/text_wrap.rs` L266, L361; `cross_driver_tests/fill_propagation.rs` L110.
+
+**F2. `fixture_canvas_with_fill_child`** — `support::testing` or local to `layout/canvas/tests.rs`
+
+```rust
+pub(crate) fn fixture_canvas_with_fill_child(
+    ui: &mut Ui,
+    canvas_size: (Sizing, Sizing),
+    pos: (f32, f32),
+) -> Rect { /* child's arranged rect */ }
+```
+
+Call sites: `layout/canvas/tests.rs` L90, L120 (Fixed/Hug variants).
+
+**F3. `build_scroll_with_content`** — local to `widgets/tests/scroll.rs`
+
+```rust
+fn build_scroll_with_content(
+    ui: &mut Ui,
+    id: &str,
+    axes: ScrollAxes,
+    viewport: (f32, f32),
+    content: (f32, f32),
+)
+```
+
+Replaces three near-identical inline closures (`build`, `build_h`, `build_xy` at L23, L124, L146) plus the body of `record_two_frames` callers (L435, L456).
+
+**F4. `setup_focused_editor`** — local to `widgets/text_edit/tests.rs`
+
+```rust
+fn setup_focused_editor(ui: &mut Ui, size: (f32, f32)) -> WidgetId
+```
+
+Wraps "build TextEdit, click to focus, return id". Used by `escape_blurs_focus`, `caret_clamps_after_external_buffer_shrink`, and several integration tests (≈L148–L189).
+
+**F5. `scroll_state(ui, id) -> ScrollState`** — `support::testing`
+
+State-map read is open-coded as `ui.state::<ScrollState>(WidgetId::from_hash("scroll"))` in 4+ scroll tests (≈L323, L587). One-liner helper kills the boilerplate.
+
+**Already centralized — no action:**
+- `under_outer(...)` — used 14× across `layout/{zstack,canvas}/tests.rs`, already in `support::testing`.
+- `ui_with_text(UVec2)` — used 16× across `cross_driver_tests/`, already in `support::testing`.
+
+**Optional consts** (low value, only if it earns its place after F1–F5 land):
+- `SURFACE_400_600`, `SURFACE_800_600`, etc. for repeated `UVec2::new(W, H)` literals. Skip unless `rg 'UVec2::new\(\d+, \d+\)' src/` shows a single value used in 5+ files.
+
+---
+
+## Re-confirmed "leave alone" (pass 2)
+
+Re-read flagged these as candidates and confirmed they should stay separate:
+
+- **`layout/cross_driver_tests/convergence.rs`** — both tests already parametric via `for outer_w in (260..=600).step_by(10)` and `(480..=900).step_by(1)`. Each width probes a distinct flex-shrink solver state. Don't split.
+- **`layout/cache/tests.rs`** (15 tests) — re-checked: each pins an orthogonal cache transition (insertion / hash stability / invalidation / eviction / compaction). Merging would obscure which transition broke.
+- **`primitives/color.rs::hex_round_trip_stable_over_all_bytes`** — already a 256-iteration property test. Leave.
+- **`tests/alloc/**`, `tests/visual/**`** — non-negotiable per CLAUDE.md.
+
+---
+
 ## Suggested commit slicing
 
 To keep blame readable and bisection cheap:
@@ -151,6 +251,9 @@ To keep blame readable and bisection cheap:
 - **C9** renderer/encoder + encoder/cache: −7
 - **C10** renderer/composer + composer/cache: −7
 - **C11** ui + text (small): −3
-- **C12 (gated)** input/tests parametric pass: −≈9 — only after re-read
+- **C12 (gated)** input/tests parametric pass (incl. focus-policy pair from #25): −≈10 — only after re-read
+- **C13** fixture extractions F1–F5 into `support::testing` (no test count change, ~120 LOC removed from test bodies)
+- **C14** caret-position parametric (#24) + visibility alignment pair (#26): −3
+- **C15** corners round-trip labels (#27): no count change, label-add only
 
-Each commit: a single file (or tightly-related pair), one test pass, fmt + clippy clean.
+Each commit: a single file (or tightly-related pair), one test pass, fmt + clippy clean. **Run F1–F5 (C13) AFTER all parametric merges** so the helper signature reflects the post-merge call sites, not the pre-merge ones.
