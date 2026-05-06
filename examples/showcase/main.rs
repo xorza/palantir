@@ -226,7 +226,7 @@ impl State {
         let elapsed = self.fps_window_start.elapsed();
         if elapsed.as_secs() >= 1 {
             let fps = self.fps_window_frames as f64 / elapsed.as_secs_f64();
-            println!("fps: {fps:.1}");
+            // println!("fps: {fps:.1}");
             self.fps_window_start = std::time::Instant::now();
             self.fps_window_frames = 0;
         }
