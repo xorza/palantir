@@ -577,7 +577,7 @@ mod bars {
                             .with_id(("card", tag))
                             .padding(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(Surface::clipped(Background {
+                            .background(Surface::clip_rect_with_bg(Background {
                                 fill: crate::primitives::color::Color::rgb(0.16, 0.20, 0.28),
                                 ..Default::default()
                             }))

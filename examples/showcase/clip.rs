@@ -25,7 +25,7 @@ pub fn build(ui: &mut Ui) {
             Panel::zstack()
                 .with_id("clipped")
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(Surface::clipped(bounded_panel()))
+                .background(Surface::clip_rect_with_bg(bounded_panel()))
                 .show(ui, |ui| {
                     spiller(ui, "spilled-clipped");
                 });

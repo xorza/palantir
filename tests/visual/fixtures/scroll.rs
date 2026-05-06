@@ -213,7 +213,7 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                 Panel::vstack()
                     .with_id(("card", tag))
                     .padding(6.0)
-                    .background(Surface::clipped(Background {
+                    .background(Surface::clip_rect_with_bg(Background {
                         fill: CARD,
                         radius: Corners::all(6.0),
                         ..Default::default()

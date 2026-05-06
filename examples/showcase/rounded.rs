@@ -25,11 +25,16 @@ pub fn build(ui: &mut Ui) {
 
             // Scissor clip: child cut at the rect bounding box, square
             // corners visible where the rounded paint thins out.
-            labeled_card(ui, "scissor", Surface::clipped(card()), "scissor");
+            labeled_card(ui, "scissor", Surface::clip_rect_with_bg(card()), "scissor");
 
             // Rounded stencil clip: child trimmed to the painted
             // corner radius.
-            labeled_card(ui, "rounded", Surface::rounded(card()), "rounded");
+            labeled_card(
+                ui,
+                "rounded",
+                Surface::clip_rounded_with_bg(card()),
+                "rounded",
+            );
         });
 }
 

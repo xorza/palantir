@@ -157,7 +157,7 @@ impl Scroll {
         }
 
         // Default to scissor when no user surface — Scroll is always clipped.
-        let surface = self.surface.unwrap_or_else(Surface::scissor);
+        let surface = self.surface.unwrap_or_else(Surface::clip_rect);
         let node = ui.node(element, Some(surface), |ui| {
             body(ui);
             // Bars push *after* the body → they land in the trailing

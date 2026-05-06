@@ -71,7 +71,7 @@ fn surface_rounded_clips_full_fill_child() {
                 Panel::zstack()
                     .with_id("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .background(Surface::rounded(Background {
+                    .background(Surface::clip_rounded_with_bg(Background {
                         fill: Color::TRANSPARENT,
                         stroke: Some(Stroke {
                             width: 5.0,
@@ -117,7 +117,7 @@ fn rounded_clip_survives_surface_resize() {
                 Panel::zstack()
                     .with_id("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .background(Surface::rounded(Background {
+                    .background(Surface::clip_rounded_with_bg(Background {
                         fill: Color::rgb(0.2, 0.2, 0.3),
                         radius: Corners::all(8.0),
                         ..Default::default()

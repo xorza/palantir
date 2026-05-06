@@ -208,7 +208,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                 Panel::zstack()
                     .with_id("transformed")
                     .transform(TranslateScale::new(glam::Vec2::new(4.0, 2.0), 1.0))
-                    .background(Surface::scissor())
+                    .background(Surface::clip_rect())
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .background(Background {
