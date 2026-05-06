@@ -5,6 +5,7 @@ ECS for SoA;
 Spacing serializable nicely.
  surface.paint.add_to(ui);  - direct - surface add_to and no clipping info in element
  gradients, textures
+ fn emit_background_shapes( - remove
 
 ## Now
 
