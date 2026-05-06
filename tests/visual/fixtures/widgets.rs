@@ -73,7 +73,7 @@ fn surface_rounded_clips_full_fill_child() {
                     .background(Surface::rounded(Background {
                         fill: Color::TRANSPARENT,
                         stroke: Some(Stroke {
-                            width: 1.0,
+                            width: 5.0,
                             color: Color::rgb_u8(0, 255, 0),
                         }),
                         radius: Corners::new(4.0, 12.0, 20.0, 28.0),
