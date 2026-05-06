@@ -1,4 +1,5 @@
 use crate::layout::types::track::Track;
+use crate::primitives::background::Background;
 use crate::shape::Shape;
 use crate::tree::element::{
     Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintCore,
@@ -201,7 +202,11 @@ impl Tree {
 
     /// Push a node as a child of the currently-open node (or as the root if
     /// no node is open) and make it the new tip. Pair with `close_node`.
-    pub(crate) fn open_node(&mut self, element: Element) -> NodeId {
+    pub(crate) fn open_node(
+        &mut self,
+        element: Element,
+        chrome: Option<Background>,
+    ) -> NodeId {
         let parent = self.current_open;
         let new_id = NodeId(self.layout.len() as u32);
         if let LayoutMode::Grid(idx) = element.mode {
@@ -214,8 +219,14 @@ impl Tree {
             layout,
             mut paint,
             id: widget_id,
-            extras,
+            mut extras,
         } = element.split();
+        // Chrome is the per-node-call surface paint. Element doesn't
+        // carry it; `ui.node` threads it here so we can stamp it onto
+        // `extras.chrome` before the side-table allocation check —
+        // an extras-bearing chrome on an otherwise-default element
+        // still gets a side-table slot allocated.
+        extras.chrome = chrome;
 
         // If the parent is a `Grid`, validate the child's `GridCell` against
         // the grid's track counts now — once at recording time — instead of

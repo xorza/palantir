@@ -5,6 +5,7 @@ pub(crate) mod state;
 
 use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
+use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::display::Display;
 use crate::renderer::frontend::{FrameOutput, Frontend};
 use crate::shape::Shape;
@@ -17,7 +18,7 @@ use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::seen_ids::SeenIds;
 use crate::ui::state::StateMap;
 use crate::widgets::scroll::{ScrollNode, ScrollState};
-use crate::widgets::theme::Theme;
+use crate::widgets::theme::{Surface, Theme};
 
 /// The three rendering-pipeline subsystems Ui owns: text shaping →
 /// layout measurement/arrangement → frontend encoding/composition.
@@ -262,7 +263,12 @@ impl Ui {
         self.input.response_for(id, &self.cascades.result)
     }
 
-    pub(crate) fn node(&mut self, mut element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
+    pub(crate) fn node(
+        &mut self,
+        mut element: Element,
+        surface: Option<Surface>,
+        f: impl FnOnce(&mut Ui),
+    ) -> NodeId {
         if !self.ids.record(element.id) {
             assert!(
                 element.auto_id,
@@ -274,7 +280,19 @@ impl Ui {
             );
             element.id = self.ids.next_dup(element.id);
         }
-        let node = self.tree.open_node(element);
+        // Apply the surface's clip mode to the element (with Rounded
+        // → Rect downgrade for zero-radius paint), and pass the
+        // chrome (paint Background) to the tree to land on
+        // `extras.chrome`. Element doesn't carry chrome — chrome is
+        // a per-node-call concern, paired with the body.
+        let chrome = surface.map(|s| {
+            element.clip = match s.clip {
+                ClipMode::Rounded if s.paint.radius.approx_zero() => ClipMode::Rect,
+                mode => mode,
+            };
+            s.paint
+        });
+        let node = self.tree.open_node(element, chrome);
         f(self);
         self.tree.close_node();
         node

@@ -106,11 +106,7 @@ impl Grid {
         // `None` falls back to `theme.panel` (default `None` = pure
         // layout). See `Theme::panel`.
         let surface = self.surface.or(ui.theme.panel);
-        if let Some(s) = surface.as_ref() {
-            s.apply_to(&mut element);
-        }
-        let node = ui.node(element, body);
-
+        let node = ui.node(element, surface, body);
         let state = ui.response_for(id);
         Response { node, state }
     }

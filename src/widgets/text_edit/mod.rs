@@ -139,15 +139,16 @@ impl<'a> TextEdit<'a> {
         // caret position lives inside the closure since it touches
         // `ui.pipeline.text` (disjoint from `ui.tree`, so add_shape
         // sequences fine after the measurement returns).
-        let mut element = self.element;
-        // Chrome paints via `element.chrome` — encoder emits it before
-        // any clip. `None` inherits `Background::default()` (transparent
-        // / no stroke / zero radius); the encoder filters that as a
-        // no-op draw via the existing rounded-rect noop check.
-        element.chrome = state.background.or(Some(Background::default()));
+        // Chrome paints via `extras.chrome` — encoder emits it before
+        // any clip. The surface's clip stays `None` (TextEdit's caret
+        // and selection handle their own painting; no rect-clipping).
+        let surface = state
+            .background
+            .or(Some(Background::default()))
+            .map(crate::widgets::theme::Surface::from);
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
-        let resp_node = ui.node(element, |ui| {
+        let resp_node = ui.node(self.element, surface, |ui| {
             // Text or placeholder. Empty buffer + unfocused shows the
             // placeholder; focused shows the buffer (even if empty)
             // because we still want the caret to render flush-left.
