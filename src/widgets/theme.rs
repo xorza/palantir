@@ -111,11 +111,11 @@ impl Surface {
             ClipMode::None => {}
             ClipMode::Rect => element.clip = ClipMode::Rect,
             ClipMode::Rounded => {
-                if self.paint.radius != Corners::ZERO {
+                if self.paint.radius.approx_zero() {
+                    element.clip = ClipMode::Rect;
+                } else {
                     element.clip = ClipMode::Rounded;
                     element.clip_radius = Some(self.paint.radius);
-                } else {
-                    element.clip = ClipMode::Rect;
                 }
             }
         }
