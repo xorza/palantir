@@ -38,8 +38,8 @@ impl NodeId {
 ///   clip / focusable). 1 byte/node; read by cascade / encoder /
 ///   hit-test in dense columnar passes
 /// - `nodes`      — per-NodeId `NodeMeta`, bundling the author's
-///   `widget_id`, the kinds-stream `Span`, the exclusive end NodeId,
-///   and the first shape index in the node's subtree.
+///   `widget_id`, the kinds-stream `Span`, the shape-stream `Span`
+///   covering this node's subtree, and the exclusive end NodeId.
 ///   `i + 1 == nodes[i].end` for a leaf.
 ///
 /// **Kinds stream** — `kinds: Vec<TreeOp>` interleaves `NodeEnter`,
@@ -56,18 +56,17 @@ impl NodeId {
 pub(crate) struct Tree {
     // -- Per-NodeId mandatory columns ------------------------------------
     /// Per-NodeId metadata bundle:
-    /// - `widget_id`   — author-supplied identity (hit-test, state map).
-    /// - `kinds`       — `Span` covering this node's `NodeEnter` through
+    /// - `widget_id` — author-supplied identity (hit-test, state map).
+    /// - `kinds`     — `Span` covering this node's `NodeEnter` through
     ///   matching `NodeExit` in the kinds stream.
-    /// - `end`         — exclusive end NodeId in pre-order
+    /// - `shapes`    — `Span` covering shapes recorded inside this
+    ///   node's NodeEnter→NodeExit window (this node + descendants).
+    /// - `end`       — exclusive end NodeId in pre-order
     ///   (`i + 1 == nodes[i].end` for a leaf).
-    /// - `shape_first` — first shape index belonging to this node's
-    ///   subtree.
     ///
     /// Bundled because all four are written together at `open_node` /
     /// `close_node` and the bookkeeping ends would risk desync if
-    /// split. End-of-subtree shape range = `nodes[end].shape_first`
-    /// (or `shapes.len()` if `end == n`).
+    /// split.
     // todo soa
     pub(crate) nodes: Vec<NodeMeta>,
     /// Layout-pass column: geometry + visibility. Held tight so the
@@ -104,8 +103,8 @@ pub(crate) struct Tree {
     ///   - `NodeExit`  → no payload
     pub(crate) kinds: Vec<TreeOp>,
     /// Flat shape storage in record order. Indexed by counting `Shape`
-    /// kinds entries up to a given position; `nodes[i].shape_first`
-    /// caches the first index belonging to node `i`'s subtree.
+    /// kinds entries up to a given position; `nodes[i].shapes` caches
+    /// the range belonging to node `i`'s subtree.
     pub(crate) shapes: Vec<Shape>,
 
     // -- Frame-scoped sub-storage ----------------------------------------
@@ -262,14 +261,14 @@ impl Tree {
         self.attrs.push(attrs);
         // Leaf marker. `close_node` rolls each closing subtree up
         // into its parent's slot, so `nodes[i].end` is final the
-        // moment the root's `close_node` returns. `kinds.len` is
-        // filled at close (placeholder 0); `widget_id`, `kinds.start`,
-        // and `shape_first` are final here.
+        // moment the root's `close_node` returns. `kinds.len` and
+        // `shapes.len` are filled at close (placeholders 0); the
+        // other fields are final here.
         self.nodes.push(NodeMeta {
             widget_id,
             kinds: Span::new(self.kinds.len() as u32, 0),
+            shapes: Span::new(self.shapes.len() as u32, 0),
             end: new_id.0 + 1,
-            shape_first: self.shapes.len() as u32,
         });
         self.kinds.push(TreeOp::NodeEnter);
         self.open_frames.push(OpenFrame {
@@ -288,10 +287,12 @@ impl Tree {
             .pop()
             .expect("close_node called with no open node");
 
-        // Push NodeExit and finalize the closing node's `kinds` span.
+        // Push NodeExit and finalize the closing node's `kinds` and
+        // `shapes` spans (both placeholders set to 0 at open time).
         self.kinds.push(TreeOp::NodeExit);
         let meta = &mut self.nodes[closing.node.index()];
         meta.kinds.len = self.kinds.len() as u32 - meta.kinds.start;
+        meta.shapes.len = self.shapes.len() as u32 - meta.shapes.start;
         let end = meta.end;
 
         if let Some(parent) = self.open_frames.last() {
@@ -367,10 +368,9 @@ impl Tree {
         let r = meta.kinds.range();
         let start = r.start + 1;
         let end = r.end - 1;
-        let shape_first = meta.shape_first as usize;
         let shapes = &self.shapes;
         let mut depth = 0i32;
-        let mut shape_cursor = shape_first;
+        let mut shape_cursor = meta.shapes.start as usize;
         self.kinds[start..end]
             .iter()
             .filter_map(move |op| match op {
@@ -537,14 +537,19 @@ pub(crate) struct NodeMeta {
     /// Span into `Tree.kinds`: `kinds[start..start+len]` covers this
     /// node's `NodeEnter` through matching `NodeExit` (inclusive).
     pub(crate) kinds: Span,
+    /// Span into `Tree.shapes`: `shapes[start..start+len]` covers
+    /// every shape recorded inside this node's NodeEnter→NodeExit
+    /// window, including descendants. `len` is set at `close_node`
+    /// from `shapes.len() - shapes.start`. Stored as a `Span`
+    /// (rather than just `start` + a "look at next node" trick) so a
+    /// node with shapes pushed AFTER its only child closes — e.g.
+    /// `Scroll` with bars at slot N — gets a correct count for the
+    /// child's subtree (the next pre-order node would otherwise sit
+    /// past those parent-owned bars).
+    pub(crate) shapes: Span,
     /// Exclusive end in NodeId space: one past the last descendant
     /// in pre-order. `i + 1 == end` for a leaf.
     pub(crate) end: u32,
-    /// First shape index belonging to this node's subtree (this node +
-    /// every descendant). End of the subtree's shape range is
-    /// `nodes[end].shape_first`, or `shapes.len()` when `end` is past
-    /// the last NodeId.
-    pub(crate) shape_first: u32,
 }
 
 /// Tagged event in the per-frame `kinds` stream — see `Tree.kinds`.

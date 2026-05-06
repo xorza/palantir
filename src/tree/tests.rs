@@ -125,6 +125,79 @@ fn interleaved_shapes_record_correct_kinds_stream() {
     );
 }
 
+/// Regression: `subtree_shape_count` must stay correct when a parent
+/// pushes shapes *after* its only child closes (slot=N shapes). The
+/// child and parent share the same NodeId-space `end`, so the old
+/// "look at next pre-order node's shape_first" trick over-counted by
+/// the parent's trailing shapes — the encoder's shape cursor then
+/// overshot `shapes.len()` and panicked when the cache-replay /
+/// invisible-cascade short-circuit fired on the child.
+///
+/// Mirrors the production scrollbar pattern: `Scroll` has a single
+/// `Body` child, then pushes bar `SubRect`s at slot N. Without the
+/// fix, `nodes[Body].shapes.len` counted the bars too.
+#[test]
+fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
+    fn pos_rect() -> Shape {
+        Shape::SubRect {
+            local_rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+            radius: Corners::default(),
+            fill: Color::rgb(1.0, 0.0, 0.0),
+            stroke: None,
+        }
+    }
+    let mut ui = ui_at(UVec2::new(200, 200));
+    let mut child_id = None;
+    let parent_id = Panel::vstack()
+        .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+        .show(&mut ui, |ui| {
+            // Single child, no shapes inside.
+            child_id = Some(
+                Frame::new()
+                    .with_id("only-child")
+                    .background(Background {
+                        fill: Color::rgb(0.0, 1.0, 0.0),
+                        ..Default::default()
+                    })
+                    .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                    .show(ui)
+                    .node,
+            );
+            // Two shapes pushed AFTER the child closes (slot=N).
+            ui.add_shape(pos_rect());
+            ui.add_shape(pos_rect());
+        })
+        .node;
+    ui.end_frame();
+
+    let parent = parent_id.index();
+    let child = child_id.unwrap().index();
+
+    // Parent and child share `end` (parent has only this one child),
+    // which is the bug trigger.
+    assert_eq!(
+        ui.tree.nodes[parent].end, ui.tree.nodes[child].end,
+        "test setup: parent's only child shares the parent's end NodeId"
+    );
+
+    // Parent's subtree contains both bar shapes.
+    assert_eq!(
+        ui.tree.nodes[parent].shapes.len, 2,
+        "parent's subtree owns both slot-N shapes"
+    );
+    // Child's subtree contains zero shapes — the trailing bars belong
+    // to the parent, not the child.
+    assert_eq!(
+        ui.tree.nodes[child].shapes.len, 0,
+        "child's subtree must NOT include parent's slot-N shapes"
+    );
+
+    // End-to-end: the encoder must walk this tree without panicking
+    // (cursor overshoot was the original symptom). `encode_cmds`
+    // exercises the full encode path.
+    let _cmds = encode_cmds(&ui);
+}
+
 // --- Authoring-hash tests ---------------------------------------------------
 // `Tree::compute_hashes` populates `Tree.hashes` with one u64 per node
 // reflecting *only* the authoring inputs (layout, paint attrs, extras,

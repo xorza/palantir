@@ -153,23 +153,6 @@ fn emit_one_shape(
     }
 }
 
-/// Total shape count in `id`'s subtree (this node + all descendants).
-/// Used to advance `shape_cursor` past a cache-replayed or invisible
-/// subtree without walking it. The end of the subtree's shape range
-/// is `nodes[end].shape_first` when `end < n`, else `shapes.len()`.
-#[inline]
-fn subtree_shape_count(tree: &Tree, id: NodeId) -> usize {
-    let i = id.index();
-    let end = tree.nodes[i].end as usize;
-    let lo = tree.nodes[i].shape_first as usize;
-    let hi = if end < tree.nodes.len() {
-        tree.nodes[end].shape_first as usize
-    } else {
-        tree.shapes.len()
-    };
-    hi - lo
-}
-
 #[allow(clippy::too_many_arguments)]
 fn encode_node(
     tree: &Tree,
@@ -187,7 +170,7 @@ fn encode_node(
     if cascades.rows[id.index()].invisible {
         // Still advance the global shape cursor past this subtree's
         // shapes so siblings see the right offset.
-        *shape_cursor += subtree_shape_count(tree, id);
+        *shape_cursor += tree.nodes[id.index()].shapes.len as usize;
         return;
     }
 
@@ -220,7 +203,7 @@ fn encode_node(
     if let Some((wid, hash, avail)) = cache_key
         && cache.try_replay(wid, hash, avail, out, layout.rect[id.index()].min)
     {
-        *shape_cursor += subtree_shape_count(tree, id);
+        *shape_cursor += tree.nodes[id.index()].shapes.len as usize;
         return;
     }
 
