@@ -79,3 +79,21 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     let a = in.fill.a * outer_aa;
     return vec4<f32>(in.fill.rgb * a, a);
 }
+
+// Stencil mask-write: `discard` outside the rounded shape so those
+// pixels skip the post-fragment stencil op (Replace) entirely, leaving
+// stencil at 0 outside the rounded region. The color write_mask is
+// empty in the mask pipeline, so the returned vec4 is dropped — only
+// the stencil side effect matters. Hard threshold at SDF = 0 (no AA on
+// the mask edge): the panel's painted rounded background already AA's
+// the visible boundary; the stencil mask just controls which children
+// pixels survive, and a 1-pixel hard inner edge sits behind the AA rim
+// where it's invisible.
+@fragment
+fn fs_mask(in: VertexOut) -> @location(0) vec4<f32> {
+    let d = sdf_rounded_rect(in.local, in.size, in.radius);
+    if (d > 0.0) {
+        discard;
+    }
+    return vec4<f32>(0.0);
+}

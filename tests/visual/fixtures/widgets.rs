@@ -2,7 +2,9 @@
 //! widget's render path.
 
 use glam::UVec2;
-use palantir::{Background, Button, Color, Configure, Corners, Frame, Panel, Sizing, Stroke};
+use palantir::{
+    Background, Button, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Surface,
+};
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
@@ -43,4 +45,40 @@ fn frame_filled_with_stroke_matches_golden() {
         });
     });
     assert_matches_golden("frame_filled_with_stroke", &img, Tolerance::default());
+}
+
+/// Pins the rounded-clip stencil path. A `Surface::rounded(...)` panel
+/// holds an oversized child that overflows on every side via negative
+/// margins; the stencil mask must trim the child at the painted radius
+/// so the panel's corners look clean against the dark background.
+#[test]
+fn surface_rounded_clips_overflow_to_corners() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(220, 220), 1.0, DARK_BG, |ui| {
+        Panel::vstack().padding(20.0).show(ui, |ui| {
+            Panel::zstack()
+                .with_id("card")
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(Surface::rounded(Background {
+                    fill: Color::rgb(0.18, 0.22, 0.30),
+                    stroke: Some(Stroke {
+                        width: 1.5,
+                        color: Color::rgb(0.55, 0.65, 0.78),
+                    }),
+                    radius: Corners::all(28.0),
+                }))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .with_id("spill")
+                        .size((Sizing::Fixed(360.0), Sizing::Fixed(360.0)))
+                        .margin((-60.0, -60.0, -60.0, -60.0))
+                        .background(Background {
+                            fill: Color::rgb(0.92, 0.32, 0.36),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        });
+    });
+    assert_matches_golden("surface_rounded_clips_overflow", &img, Tolerance::default());
 }
