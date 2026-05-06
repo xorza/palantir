@@ -71,7 +71,6 @@ impl Surface {
     /// stencil render path lights up. If `paint.radius` is zero the
     /// installer downgrades to scissor clip.
     pub const fn clip_rounded_with_bg(paint: Background) -> Self {
-        // todo check if corner radius is zero and downgrade to `Rect` clip
         Self {
             paint,
             clip: ClipMode::Rounded,
