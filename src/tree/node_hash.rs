@@ -168,8 +168,14 @@ fn hash_node_extras(h: &mut Hasher, e: &ElementExtras) {
         None => h.write_u8(0),
         Some(m) => {
             h.write_u8(1);
-            h.pod(&m.radius);
             h.pod(&m.inset);
+            match m.radius {
+                None => h.write_u8(0),
+                Some(r) => {
+                    h.write_u8(1);
+                    h.pod(&r);
+                }
+            }
         }
     }
 }
