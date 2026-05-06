@@ -136,7 +136,7 @@ fn text_shape_emits_draw_text() {
     ui.end_frame();
     let cmds = encode_cmds(&ui);
     assert!(
-        cmds.kinds.iter().any(|k| *k == CmdKind::DrawText),
+        cmds.kinds.contains(&CmdKind::DrawText),
         "Text widget must emit a DrawText command"
     );
 }
@@ -196,33 +196,66 @@ fn clip_emits_balanced_push_pop() {
     }
 }
 
+/// Rounded-clip emission, plus encoded mask geometry. The stroke
+/// width acts as the inset: the encoded rect is the panel's layout
+/// rect deflated by `stroke.width` on every side, and each corner
+/// radius is reduced by the same amount so the mask curve stays
+/// concentric with the painted stroke's inner edge. Pins both
+/// `PushClipRounded` count AND payload — a regression in either the
+/// `Surface::apply_to` stamping or the encoder's geometry math fails
+/// here.
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
+    use crate::primitives::spacing::Spacing;
+    use crate::primitives::stroke::Stroke;
     let mut ui = ui_at(UVec2::new(200, 200));
+    let mut panel_node = None;
     Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack()
-            .with_id("rounded")
-            .size(80.0)
-            .background(Surface::rounded(Background {
-                fill: Color::rgb(0.2, 0.2, 0.2),
-                radius: Corners::all(8.0),
-                ..Default::default()
-            }))
-            .show(ui, |ui| {
-                Frame::new().with_id("c").size(40.0).show(ui);
-            });
+        panel_node = Some(
+            Panel::zstack()
+                .with_id("rounded")
+                .size(80.0)
+                .background(Surface::rounded(Background {
+                    fill: Color::rgb(0.2, 0.2, 0.2),
+                    stroke: Some(Stroke {
+                        width: 2.0,
+                        color: Color::rgb(1.0, 1.0, 1.0),
+                    }),
+                    radius: Corners::all(8.0),
+                }))
+                .show(ui, |ui| {
+                    Frame::new().with_id("c").size(40.0).show(ui);
+                })
+                .node,
+        );
     });
     ui.end_frame();
     let cmds = encode_cmds(&ui);
+
+    let rounded_idx = cmds
+        .kinds
+        .iter()
+        .position(|k| *k == CmdKind::PushClipRounded)
+        .expect("rounded clip with rounded background emits PushClipRounded");
     assert_eq!(
         cmds.kinds
             .iter()
             .filter(|k| **k == CmdKind::PushClipRounded)
             .count(),
         1,
-        "rounded clip with rounded background emits PushClipRounded"
     );
+
+    // Mask geometry: encoded rect is the panel's layout rect deflated
+    // by stroke.width=2; each corner radius is reduced by the same.
+    let panel_rect = ui.pipeline.layout.result.rect[panel_node.unwrap().index()];
+    let expected_rect = panel_rect.deflated_by(Spacing::all(2.0));
+    let start = cmds.starts[rounded_idx];
+    let mask_rect: Rect = cmds.read(start);
+    const RECT_WORDS: u32 = (size_of::<Rect>() / 4) as u32;
+    let mask_radius: Corners = cmds.read(start + RECT_WORDS);
+    assert_eq!(mask_rect, expected_rect);
+    assert_eq!(mask_radius, Corners::all(6.0));
 }
 
 #[test]
