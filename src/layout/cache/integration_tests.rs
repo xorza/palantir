@@ -47,20 +47,19 @@ fn assert_warm_rects_match_cold(
     assert_eq!(cold, warm, "{msg}");
 }
 
-/// Cross-frame measure-cache regression: when the cache hits at a
-/// Grid (or any ancestor of a Grid), the grid driver's per-frame
-/// `GridHugStore` scratch — populated by `grid::measure` and read
-/// by `grid::arrange` — stays at its `reset_for`-zero state because
-/// measure was short-circuited. Arrange then computes zero column
-/// widths, collapsing every cell to x=0.
+/// Cross-frame measure-cache regression. When the cache hits at a
+/// Grid (or any ancestor), the grid driver's per-frame `GridHugStore`
+/// scratch must be re-populated from the snapshot — otherwise arrange
+/// computes zero column widths, collapsing every cell to x=0.
+///
+/// Topologies pinned: a single grid, nested grids (outer + inner), and
+/// two sibling grids inside a vstack (cache hit must restore hugs for
+/// both, in pre-order).
 #[test]
-fn grid_cells_arranged_correctly_on_cache_hit_frame() {
-    let mut ui = ui_with_text(UVec2::new(800, 600));
-    assert_warm_rects_match_cold(
-        &mut ui,
-        UVec2::new(800, 600),
-        "cache-hit frame must not perturb single-grid cell rects",
-        |ui, capture| {
+fn cache_hit_preserves_grid_cell_rects() {
+    type Build = fn(&mut Ui, &mut Vec<NodeId>);
+    let cases: &[(&str, Build)] = &[
+        ("single_grid", |ui, capture| {
             Panel::vstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
@@ -88,21 +87,8 @@ fn grid_cells_arranged_correctly_on_cache_hit_frame() {
                             );
                         });
                 });
-        },
-    );
-}
-
-/// Nested grids: outer Grid with an inner Grid in one of its cells.
-/// A cache hit at any ancestor must restore hugs for both, each at
-/// its current-frame `idx`.
-#[test]
-fn cache_hit_restores_hugs_for_nested_grids() {
-    let mut ui = ui_with_text(UVec2::new(800, 600));
-    assert_warm_rects_match_cold(
-        &mut ui,
-        UVec2::new(800, 600),
-        "cache-hit frame must preserve outer+nested grid cell rects",
-        |ui, capture| {
+        }),
+        ("nested_grids", |ui, capture| {
             Panel::vstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
@@ -146,20 +132,8 @@ fn cache_hit_restores_hugs_for_nested_grids() {
                                 });
                         });
                 });
-        },
-    );
-}
-
-/// Two sibling Grids inside a vstack: a cache hit at the vstack
-/// must restore hug arrays for *both* grids, in pre-order.
-#[test]
-fn cache_hit_restores_hugs_for_multiple_sibling_grids() {
-    let mut ui = ui_with_text(UVec2::new(800, 600));
-    assert_warm_rects_match_cold(
-        &mut ui,
-        UVec2::new(800, 600),
-        "cache-hit frame must preserve all sibling-grid cell rects",
-        |ui, capture| {
+        }),
+        ("sibling_grids", |ui, capture| {
             Panel::vstack()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
@@ -206,8 +180,17 @@ fn cache_hit_restores_hugs_for_multiple_sibling_grids() {
                             );
                         });
                 });
-        },
-    );
+        }),
+    ];
+    for (label, build) in cases {
+        let mut ui = ui_with_text(UVec2::new(800, 600));
+        assert_warm_rects_match_cold(
+            &mut ui,
+            UVec2::new(800, 600),
+            &format!("case: {label}"),
+            *build,
+        );
+    }
 }
 
 /// Cache-correctness generalization: a measure-cache hit must not

@@ -392,37 +392,42 @@ fn damage_with(r: Rect) -> Damage {
     }
 }
 
+/// Heuristic: ratio = damage_area / surface_area; > 50% ⇒ Full,
+/// otherwise Partial. The check is `>`, not `>=`, so exactly 50%
+/// stays Partial. A zero-area surface forces Full (divide-by-zero
+/// guard).
 #[test]
-fn small_damage_stays_partial() {
-    // 100 / 10000 = 1% — well below 50%.
-    let d = damage_with(Rect::new(0.0, 0.0, 10.0, 10.0));
-    assert_eq!(
-        d.filter(TEST_SURFACE),
-        DamagePaint::Partial(Rect::new(0.0, 0.0, 10.0, 10.0))
-    );
-}
-
-#[test]
-fn large_damage_falls_back_to_full() {
-    // 80x80 = 6400, surface 100x100 = 10000 → 64% > 50%.
-    let d = damage_with(Rect::new(0.0, 0.0, 80.0, 80.0));
-    assert_eq!(d.filter(TEST_SURFACE), DamagePaint::Full);
-}
-
-#[test]
-fn at_threshold_stays_partial() {
-    // Exactly 50%. The check is `>`, not `>=`, so 50% is partial.
-    let d = damage_with(Rect::new(0.0, 0.0, 50.0, 100.0));
-    assert_eq!(
-        d.filter(TEST_SURFACE),
-        DamagePaint::Partial(Rect::new(0.0, 0.0, 50.0, 100.0))
-    );
-}
-
-#[test]
-fn zero_area_surface_forces_full() {
-    let d = damage_with(Rect::new(0.0, 0.0, 1.0, 1.0));
-    assert_eq!(d.filter(Rect::ZERO), DamagePaint::Full);
+fn damage_filter_threshold_cases() {
+    let cases: &[(&str, Rect, Rect, DamagePaint)] = &[
+        (
+            "small_1pct",
+            Rect::new(0.0, 0.0, 10.0, 10.0),
+            TEST_SURFACE,
+            DamagePaint::Partial(Rect::new(0.0, 0.0, 10.0, 10.0)),
+        ),
+        (
+            "large_64pct",
+            Rect::new(0.0, 0.0, 80.0, 80.0),
+            TEST_SURFACE,
+            DamagePaint::Full,
+        ),
+        (
+            "exact_50pct_stays_partial",
+            Rect::new(0.0, 0.0, 50.0, 100.0),
+            TEST_SURFACE,
+            DamagePaint::Partial(Rect::new(0.0, 0.0, 50.0, 100.0)),
+        ),
+        (
+            "zero_area_surface",
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            Rect::ZERO,
+            DamagePaint::Full,
+        ),
+    ];
+    for (label, dmg, surface, want) in cases {
+        let d = damage_with(*dmg);
+        assert_eq!(d.filter(*surface), *want, "case: {label}");
+    }
 }
 
 /// Pin: on the first frame `Damage::filter` returns `Full` — every
@@ -439,63 +444,69 @@ fn first_frame_filter_is_full() {
     );
 }
 
-/// Pin: when the surface size changes between frames, `compute`
-/// returns `None` (full repaint) regardless of how few widgets are
-/// dirty. The backend recreates the backbuffer on resize and forces
-/// `LoadOp::Clear`; if the encoder produced a damage-filtered partial
-/// paint (matching `dirty=2` instead of the full tree), the freshly
-/// cleared backbuffer would be left as clear color outside the tiny
-/// damage scissor — visible as a one-frame black flash on every
-/// resize step. Anti-regression for that flicker.
+/// Pin: a Display change between frames (resize or scale-factor)
+/// forces the next compute to `Full` regardless of how few widgets
+/// are dirty. The backend recreates the backbuffer / reshapes text
+/// and a partial paint over a freshly cleared backbuffer would leave
+/// the rest of the screen as clear color — the showcase resize-flicker
+/// case.
 #[test]
-fn surface_resize_forces_full_repaint() {
-    let mut ui = Ui::new();
-    let build = |ui: &mut Ui| {
-        one_frame(ui, BLUE);
-    };
+fn display_change_forces_full_repaint() {
+    let cases: &[(&str, Display)] = &[
+        (
+            "resize_1px",
+            Display {
+                physical: UVec2::new(199, 200),
+                ..DISPLAY
+            },
+        ),
+        (
+            "scale_factor",
+            Display {
+                scale_factor: 2.0,
+                ..DISPLAY
+            },
+        ),
+    ];
+    for (label, mutated) in cases {
+        let mut ui = Ui::new();
+        let build = |ui: &mut Ui| {
+            one_frame(ui, BLUE);
+        };
 
-    // Frame 1: 200×200. First frame is full repaint (every node added).
-    ui.begin_frame(DISPLAY);
-    build(&mut ui);
-    let d1 = ui.end_frame().damage;
-    assert_eq!(d1, DamagePaint::Full);
+        // Steady-state: Full first frame, then Skip on identical re-record.
+        ui.begin_frame(DISPLAY);
+        build(&mut ui);
+        assert_eq!(ui.end_frame().damage, DamagePaint::Full, "case: {label} f1");
+        ui.begin_frame(DISPLAY);
+        build(&mut ui);
+        assert_eq!(ui.end_frame().damage, DamagePaint::Skip, "case: {label} f2");
+        assert!(ui.damage.dirty.is_empty(), "case: {label} steady");
 
-    // Frame 2: same surface, identical authoring. Steady state ⇒
-    // no dirty nodes ⇒ Skip (backbuffer carries forward).
-    ui.begin_frame(DISPLAY);
-    build(&mut ui);
-    let d2 = ui.end_frame().damage;
-    assert_eq!(d2, DamagePaint::Skip);
-    assert!(ui.damage.dirty.is_empty());
+        // Mutate Display; identical authoring; must short-circuit to Full.
+        ui.begin_frame(*mutated);
+        build(&mut ui);
+        let after = ui.end_frame().damage;
+        assert_eq!(after, DamagePaint::Full, "case: {label} display change");
+        assert!(
+            !ui.damage.dirty.is_empty(),
+            "case: {label} display change should mark some nodes dirty (rects shifted)",
+        );
 
-    // Frame 3: surface narrows by 1 px, identical authoring. With
-    // `Sizing::FILL` root, every node's screen_rect shifts ⇒ many
-    // dirty nodes, but even if only one were dirty the surface
-    // change must force `Full`.
-    let smaller = Display {
-        physical: UVec2::new(199, 200),
-        ..DISPLAY
-    };
-    ui.begin_frame(smaller);
-    build(&mut ui);
-    let d3 = ui.end_frame().damage;
-    assert!(
-        !ui.damage.dirty.is_empty(),
-        "resize should mark some nodes dirty (rect changed)",
-    );
-    assert_eq!(
-        d3,
-        DamagePaint::Full,
-        "surface change must short-circuit to full repaint",
-    );
-
-    // Frame 4: surface stable at the new size, identical authoring.
-    // Back to steady state.
-    ui.begin_frame(smaller);
-    build(&mut ui);
-    let d4 = ui.end_frame().damage;
-    assert_eq!(d4, DamagePaint::Skip);
-    assert!(ui.damage.dirty.is_empty());
+        // Stable surface at the new size, identical authoring → back to Skip.
+        ui.begin_frame(*mutated);
+        build(&mut ui);
+        let settled = ui.end_frame().damage;
+        assert_eq!(
+            settled,
+            DamagePaint::Skip,
+            "case: {label} post-mutation steady"
+        );
+        assert!(
+            ui.damage.dirty.is_empty(),
+            "case: {label} post-mutation dirty empty"
+        );
+    }
 }
 
 /// Pin: `Ui::invalidate_prev_frame` rewinds damage so the next
@@ -539,42 +550,6 @@ fn invalidate_prev_frame_forces_next_frame_to_full() {
     ui.begin_frame(DISPLAY);
     build(&mut ui);
     assert_eq!(ui.end_frame().damage, DamagePaint::Skip);
-}
-
-/// Pin (scale-factor / DPI change): same physical surface size, new
-/// `scale_factor` ⇒ logical surface rect changes (logical = physical
-/// / scale). Backend may or may not recreate the backbuffer (physical
-/// size unchanged), but text needs to reshape at the new scale and a
-/// full repaint is the safe path. Damage should treat scale-factor
-/// change like a resize.
-#[test]
-fn scale_factor_change_forces_full_repaint() {
-    let mut ui = Ui::new();
-    let build = |ui: &mut Ui| {
-        one_frame(ui, BLUE);
-    };
-
-    ui.begin_frame(DISPLAY);
-    build(&mut ui);
-    ui.end_frame();
-    ui.begin_frame(DISPLAY);
-    build(&mut ui);
-    let steady = ui.end_frame().damage;
-    assert_eq!(steady, DamagePaint::Skip);
-    assert!(ui.damage.dirty.is_empty());
-
-    let scaled = Display {
-        scale_factor: 2.0,
-        ..DISPLAY
-    };
-    ui.begin_frame(scaled);
-    build(&mut ui);
-    let after_scale = ui.end_frame().damage;
-    assert_eq!(
-        after_scale,
-        DamagePaint::Full,
-        "scale-factor change must short-circuit to full repaint",
-    );
 }
 
 /// Pin (precise bug reproducer): the showcase resize-flicker fired

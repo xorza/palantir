@@ -85,51 +85,62 @@ fn replay(cache: &EncodeCache, w: WidgetId, h: NodeHash, current_origin: Vec2) -
     out
 }
 
+/// Replay at the same origin is byte-identical to the source; replay
+/// at a shifted origin translates every rect's `min` by the delta but
+/// leaves kinds untouched.
 #[test]
-fn round_trip_at_same_origin_is_byte_identical() {
-    let origin = Vec2::new(50.0, 100.0);
-    let src = buf_at(origin);
+fn replay_round_trip_cases() {
+    let cases: &[(&str, Vec2, Vec2)] = &[
+        (
+            "same_origin",
+            Vec2::new(50.0, 100.0),
+            Vec2::new(50.0, 100.0),
+        ),
+        (
+            "shifted_origin",
+            Vec2::new(50.0, 100.0),
+            Vec2::new(70.0, 130.0),
+        ),
+    ];
+    for (label, write_origin, replay_origin) in cases {
+        let src = buf_at(*write_origin);
+        let mut cache = EncodeCache::default();
+        write_full(&mut cache, wid(1), hash(1), &src, *write_origin);
+        let replayed = replay(&cache, wid(1), hash(1), *replay_origin);
+        let expected = buf_at(*replay_origin);
 
-    let mut cache = EncodeCache::default();
-    write_full(&mut cache, wid(1), hash(1), &src, origin);
-    let replayed = replay(&cache, wid(1), hash(1), origin);
-
-    assert_eq!(replayed.kinds, src.kinds);
-    assert_eq!(replayed.starts, src.starts);
-    assert_eq!(replayed.data, src.data);
-}
-
-#[test]
-fn replay_at_shifted_origin_translates_rects() {
-    let cold = buf_at(Vec2::new(50.0, 100.0));
-    let mut cache = EncodeCache::default();
-    write_full(&mut cache, wid(1), hash(1), &cold, Vec2::new(50.0, 100.0));
-
-    let new_origin = Vec2::new(70.0, 130.0);
-    let replayed = replay(&cache, wid(1), hash(1), new_origin);
-    let expected = buf_at(new_origin);
-
-    assert_eq!(replayed.kinds, expected.kinds);
-    for i in 0..expected.kinds.len() {
-        assert_eq!(rect_of(&replayed, i), rect_of(&expected, i));
+        assert_eq!(replayed.kinds, expected.kinds, "case: {label} kinds");
+        for i in 0..expected.kinds.len() {
+            assert_eq!(
+                rect_of(&replayed, i),
+                rect_of(&expected, i),
+                "case: {label} rect[{i}]"
+            );
+        }
+        if write_origin == replay_origin {
+            // Same-origin replay must be byte-identical to the source —
+            // no payload bits altered, no offsets shifted.
+            assert_eq!(replayed.starts, src.starts, "case: {label} starts");
+            assert_eq!(replayed.data, src.data, "case: {label} data");
+        }
     }
 }
 
+/// `try_lookup` misses when the key fields don't all match: hash or
+/// `available` differing forces a recompute even with the right
+/// `WidgetId`.
 #[test]
-fn hash_mismatch_misses() {
-    let src = buf_at(Vec2::ZERO);
-    let mut cache = EncodeCache::default();
-    write_full(&mut cache, wid(1), hash(1), &src, Vec2::ZERO);
-    assert!(cache.try_lookup(wid(1), hash(2), avail()).is_none());
-}
-
-#[test]
-fn available_mismatch_misses() {
-    let src = buf_at(Vec2::ZERO);
-    let mut cache = EncodeCache::default();
-    write_full(&mut cache, wid(1), hash(1), &src, Vec2::ZERO);
-    let other = IVec2::new(1, 1);
-    assert!(cache.try_lookup(wid(1), hash(1), other).is_none());
+fn lookup_mismatch_misses_cases() {
+    let cases: &[(&str, NodeHash, AvailableKey)] = &[
+        ("hash_mismatch", hash(2), avail()),
+        ("available_mismatch", hash(1), IVec2::new(1, 1)),
+    ];
+    for (label, h, a) in cases {
+        let src = buf_at(Vec2::ZERO);
+        let mut cache = EncodeCache::default();
+        write_full(&mut cache, wid(1), hash(1), &src, Vec2::ZERO);
+        assert!(cache.try_lookup(wid(1), *h, *a).is_none(), "case: {label}");
+    }
 }
 
 #[test]

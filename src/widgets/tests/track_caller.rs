@@ -24,77 +24,44 @@ fn id_of<W: Configure>(mut w: W) -> WidgetId {
 }
 
 #[test]
-fn button_new_propagates_track_caller() {
-    assert_distinct("Button::new", id_of(Button::new()), id_of(Button::new()));
-}
-
-#[test]
-fn frame_new_propagates_track_caller() {
-    assert_distinct("Frame::new", id_of(Frame::new()), id_of(Frame::new()));
-}
-
-#[test]
-fn grid_new_propagates_track_caller() {
-    assert_distinct("Grid::new", id_of(Grid::new()), id_of(Grid::new()));
-}
-
-#[test]
-fn text_new_propagates_track_caller() {
-    assert_distinct("Text::new", id_of(Text::new("x")), id_of(Text::new("x")));
-}
-
-#[test]
-fn panel_hstack_propagates_track_caller() {
-    assert_distinct(
-        "Panel::hstack",
-        id_of(Panel::hstack()),
-        id_of(Panel::hstack()),
-    );
-}
-
-#[test]
-fn panel_vstack_propagates_track_caller() {
-    assert_distinct(
-        "Panel::vstack",
-        id_of(Panel::vstack()),
-        id_of(Panel::vstack()),
-    );
-}
-
-#[test]
-fn panel_zstack_propagates_track_caller() {
-    assert_distinct(
-        "Panel::zstack",
-        id_of(Panel::zstack()),
-        id_of(Panel::zstack()),
-    );
-}
-
-#[test]
-fn panel_canvas_propagates_track_caller() {
-    assert_distinct(
-        "Panel::canvas",
-        id_of(Panel::canvas()),
-        id_of(Panel::canvas()),
-    );
-}
-
-#[test]
-fn panel_wrap_hstack_propagates_track_caller() {
-    assert_distinct(
-        "Panel::wrap_hstack",
-        id_of(Panel::wrap_hstack()),
-        id_of(Panel::wrap_hstack()),
-    );
-}
-
-#[test]
-fn panel_wrap_vstack_propagates_track_caller() {
-    assert_distinct(
-        "Panel::wrap_vstack",
-        id_of(Panel::wrap_vstack()),
-        id_of(Panel::wrap_vstack()),
-    );
+fn constructors_propagate_track_caller() {
+    // Each pair calls the same constructor twice on adjacent source lines.
+    // `#[track_caller]` makes the two calls produce distinct auto ids;
+    // dropping the attribute on any constructor (or one of its callees)
+    // collapses the pair to identical ids.
+    type Case = (&'static str, fn() -> (WidgetId, WidgetId));
+    let cases: &[Case] = &[
+        ("Button::new", || {
+            (id_of(Button::new()), id_of(Button::new()))
+        }),
+        ("Frame::new", || (id_of(Frame::new()), id_of(Frame::new()))),
+        ("Grid::new", || (id_of(Grid::new()), id_of(Grid::new()))),
+        ("Text::new", || {
+            (id_of(Text::new("x")), id_of(Text::new("x")))
+        }),
+        ("Panel::hstack", || {
+            (id_of(Panel::hstack()), id_of(Panel::hstack()))
+        }),
+        ("Panel::vstack", || {
+            (id_of(Panel::vstack()), id_of(Panel::vstack()))
+        }),
+        ("Panel::zstack", || {
+            (id_of(Panel::zstack()), id_of(Panel::zstack()))
+        }),
+        ("Panel::canvas", || {
+            (id_of(Panel::canvas()), id_of(Panel::canvas()))
+        }),
+        ("Panel::wrap_hstack", || {
+            (id_of(Panel::wrap_hstack()), id_of(Panel::wrap_hstack()))
+        }),
+        ("Panel::wrap_vstack", || {
+            (id_of(Panel::wrap_vstack()), id_of(Panel::wrap_vstack()))
+        }),
+    ];
+    for (label, mk) in cases {
+        let (a, b) = mk();
+        assert_distinct(label, a, b);
+    }
 }
 
 /// Sanity: `with_id(...)` overrides the auto id, so two calls with the

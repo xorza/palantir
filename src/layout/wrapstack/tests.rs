@@ -20,64 +20,49 @@ fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
         .node
 }
 
-/// Pin: three 60×20 cells in a 200-wide WrapHStack with `gap=10` fit on
-/// one line (60+10+60+10+60 = 200). All three sit at y=0.
+/// Pin: 60×20 cells in a 200-wide WrapHStack with gap=10, line_gap=8.
+/// 3 fit on one line (60+10+60+10+60 = 200, all at y=0). A 4th cell
+/// (250 > 200 with gaps) wraps to line 1 at y = 20 + 8 = 28.
 #[test]
-fn wrap_hstack_packs_into_single_line_when_fits() {
-    let mut ui = Ui::new();
-    let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack()
-            .with_id("w")
-            .size((Sizing::Fixed(200.0), Sizing::Hug))
-            .gap(10.0)
-            .line_gap(8.0)
-            .show(ui, |ui| {
-                kids.push(cell(ui, "a", 60.0, 20.0));
-                kids.push(cell(ui, "b", 60.0, 20.0));
-                kids.push(cell(ui, "c", 60.0, 20.0));
-            })
-            .node
-    });
-    let a = ui.pipeline.layout.result.rect[kids[0].index()];
-    let b = ui.pipeline.layout.result.rect[kids[1].index()];
-    let c = ui.pipeline.layout.result.rect[kids[2].index()];
-    assert_eq!(a.min.y, 0.0);
-    assert_eq!(b.min.y, 0.0);
-    assert_eq!(c.min.y, 0.0);
-    assert_eq!(a.min.x, 0.0);
-    assert_eq!(b.min.x, 70.0);
-    assert_eq!(c.min.x, 140.0);
-}
-
-/// Pin: a 4th 60-wide cell wraps to a new line because 60+10+60+10+60+10+60 = 250 > 200.
-/// Lines have height 20; line_gap=8 → 4th cell sits at y=28.
-#[test]
-fn wrap_hstack_wraps_when_next_child_overflows() {
-    let mut ui = Ui::new();
-    let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack()
-            .with_id("w")
-            .size((Sizing::Fixed(200.0), Sizing::Hug))
-            .gap(10.0)
-            .line_gap(8.0)
-            .show(ui, |ui| {
-                kids.push(cell(ui, "a", 60.0, 20.0));
-                kids.push(cell(ui, "b", 60.0, 20.0));
-                kids.push(cell(ui, "c", 60.0, 20.0));
-                kids.push(cell(ui, "d", 60.0, 20.0));
-            })
-            .node
-    });
-    let a = ui.pipeline.layout.result.rect[kids[0].index()];
-    let b = ui.pipeline.layout.result.rect[kids[1].index()];
-    let c = ui.pipeline.layout.result.rect[kids[2].index()];
-    let d = ui.pipeline.layout.result.rect[kids[3].index()];
-    assert_eq!((a.min.x, a.min.y), (0.0, 0.0));
-    assert_eq!((b.min.x, b.min.y), (70.0, 0.0));
-    assert_eq!((c.min.x, c.min.y), (140.0, 0.0));
-    assert_eq!((d.min.x, d.min.y), (0.0, 28.0));
+fn wrap_hstack_packs_then_wraps_on_overflow() {
+    type Case = (&'static str, usize, &'static [(f32, f32)]);
+    let cases: &[Case] = &[
+        (
+            "3_fit_single_line",
+            3,
+            &[(0.0, 0.0), (70.0, 0.0), (140.0, 0.0)],
+        ),
+        (
+            "4_wraps_to_second_line",
+            4,
+            &[(0.0, 0.0), (70.0, 0.0), (140.0, 0.0), (0.0, 28.0)],
+        ),
+    ];
+    for (label, count, expected) in cases {
+        let mut ui = Ui::new();
+        let mut kids = Vec::new();
+        let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+            Panel::wrap_hstack()
+                .with_id("w")
+                .size((Sizing::Fixed(200.0), Sizing::Hug))
+                .gap(10.0)
+                .line_gap(8.0)
+                .show(ui, |ui| {
+                    for i in 0..*count {
+                        kids.push(cell(ui, ["a", "b", "c", "d"][i], 60.0, 20.0));
+                    }
+                })
+                .node
+        });
+        for (i, (want_x, want_y)) in expected.iter().enumerate() {
+            let r = ui.pipeline.layout.result.rect[kids[i].index()];
+            assert_eq!(
+                (r.min.x, r.min.y),
+                (*want_x, *want_y),
+                "case: {label} child[{i}]"
+            );
+        }
+    }
 }
 
 /// Pin: when a child is wider than the available main, it sits alone on
@@ -139,29 +124,48 @@ fn wrap_hstack_line_height_is_max_child_cross() {
     assert_eq!(next.min.y, 60.0);
 }
 
-/// Pin: `Justify::Center` per-line. With a 200-wide WrapHStack and line
-/// content 60+10+60 = 130, leftover = 70 → start_offset = 35.
+/// Pin: per-line justify with a 200-wide WrapHStack and two 60-wide
+/// children (gap=10). Content width = 130, leftover = 70.
+///   Center:       half (35) leading → 35, 105.
+///   SpaceBetween: 1 between-gap absorbs all 70 extra → 0, 140.
+///   SpaceAround:  35/count = 35 per slot, half (17.5) leading → 17.5,
+///                 122.5 (60 + (10 + 35) gap = 105; 17.5 + 105 = 122.5).
 #[test]
-fn wrap_hstack_justify_center_per_line() {
-    let mut ui = Ui::new();
-    let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack()
-            .with_id("w")
-            .size((Sizing::Fixed(200.0), Sizing::Hug))
-            .gap(10.0)
-            .line_gap(0.0)
-            .justify(Justify::Center)
-            .show(ui, |ui| {
-                kids.push(cell(ui, "a", 60.0, 20.0));
-                kids.push(cell(ui, "b", 60.0, 20.0));
-            })
-            .node
-    });
-    let a = ui.pipeline.layout.result.rect[kids[0].index()];
-    let b = ui.pipeline.layout.result.rect[kids[1].index()];
-    assert_eq!(a.min.x, 35.0);
-    assert_eq!(b.min.x, 105.0);
+fn wrap_hstack_justify_per_line() {
+    let cases: &[(&str, Justify, [f32; 2])] = &[
+        ("center", Justify::Center, [35.0, 105.0]),
+        ("space_between", Justify::SpaceBetween, [0.0, 140.0]),
+        ("space_around", Justify::SpaceAround, [17.5, 122.5]),
+    ];
+    for (label, justify, expected) in cases {
+        let mut ui = Ui::new();
+        let mut kids = Vec::new();
+        let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+            Panel::wrap_hstack()
+                .with_id("w")
+                .size((Sizing::Fixed(200.0), Sizing::Hug))
+                .gap(10.0)
+                .line_gap(0.0)
+                .justify(*justify)
+                .show(ui, |ui| {
+                    kids.push(cell(ui, "a", 60.0, 20.0));
+                    kids.push(cell(ui, "b", 60.0, 20.0));
+                })
+                .node
+        });
+        let a = ui.pipeline.layout.result.rect[kids[0].index()];
+        let b = ui.pipeline.layout.result.rect[kids[1].index()];
+        assert!(
+            (a.min.x - expected[0]).abs() < 0.5,
+            "case: {label} a.x={}",
+            a.min.x
+        );
+        assert!(
+            (b.min.x - expected[1]).abs() < 0.5,
+            "case: {label} b.x={}",
+            b.min.x
+        );
+    }
 }
 
 /// Pin: WrapVStack — same code via `Axis::Y`. Children flow top-to-
@@ -227,59 +231,6 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
     assert_eq!(r.size.w, 200.0, "Fixed main width is honored");
     // Two lines of 20 + 8 line_gap = 48.
     assert_eq!(r.size.h, 48.0);
-}
-
-/// Pin: `Justify::SpaceBetween` per row distributes leftover as extra
-/// gap between siblings on each line. 200-wide WrapHStack, two 60-wide
-/// children, gap=10 → leftover=70, 1 between-gap, eff_gap = 10+70 = 80.
-#[test]
-fn wrap_hstack_justify_space_between_per_line() {
-    let mut ui = Ui::new();
-    let mut kids = Vec::new();
-    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack()
-            .with_id("w")
-            .size((Sizing::Fixed(200.0), Sizing::Hug))
-            .gap(10.0)
-            .justify(Justify::SpaceBetween)
-            .show(ui, |ui| {
-                kids.push(cell(ui, "a", 60.0, 20.0));
-                kids.push(cell(ui, "b", 60.0, 20.0));
-            })
-            .node
-    });
-    let a = ui.pipeline.layout.result.rect[kids[0].index()];
-    let b = ui.pipeline.layout.result.rect[kids[1].index()];
-    assert_eq!(a.min.x, 0.0);
-    // 200 - 60 = 140 → b at 140, exact end-edge.
-    assert_eq!(b.min.x, 140.0);
-}
-
-/// Pin: `Justify::SpaceAround` per row distributes leftover as half
-/// extra padding at line edges + full between siblings. 200-wide
-/// WrapHStack, two 60-wide, gap=10 → leftover=70, extra/count = 35,
-/// half=17.5 leading, full=35 between → siblings at gap=10+35=45.
-#[test]
-fn wrap_hstack_justify_space_around_per_line() {
-    let mut ui = Ui::new();
-    let mut kids = Vec::new();
-    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::wrap_hstack()
-            .with_id("w")
-            .size((Sizing::Fixed(200.0), Sizing::Hug))
-            .gap(10.0)
-            .justify(Justify::SpaceAround)
-            .show(ui, |ui| {
-                kids.push(cell(ui, "a", 60.0, 20.0));
-                kids.push(cell(ui, "b", 60.0, 20.0));
-            })
-            .node
-    });
-    let a = ui.pipeline.layout.result.rect[kids[0].index()];
-    let b = ui.pipeline.layout.result.rect[kids[1].index()];
-    // start_offset = 17.5; b = 17.5 + 60 + 45 = 122.5
-    assert!((a.min.x - 17.5).abs() < 0.5);
-    assert!((b.min.x - 122.5).abs() < 0.5);
 }
 
 /// Pin: cross-axis `Sizing::Fill` stretches to the row's tallest-child

@@ -148,38 +148,66 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
 }
 
 #[test]
-fn grid_col_span_covers_multiple_columns_with_gap() {
-    let mut ui = ui_at(UVec2::new(400, 200));
-    // 3 fixed cols of 100 with gap 10 → header spanning all = 100+10+100+10+100 = 320.
-    let root = Grid::new()
-        .cols([
+fn grid_span_covers_multiple_tracks_with_gap() {
+    // 3 fixed primary tracks of 100 with gap 10 → spanning all = 320.
+    // Body sits in track (1,1) → 110 offset on primary, 50 on secondary.
+    // Pins col-span and row-span share the same code path (mirror axes).
+    let cases: &[(&str, bool)] = &[("col_span", false), ("row_span", true)];
+    for (label, swap) in cases {
+        let surface = if *swap {
+            UVec2::new(200, 400)
+        } else {
+            UVec2::new(400, 200)
+        };
+        let mut ui = ui_at(surface);
+        let primary = [
             Track::fixed(100.0),
             Track::fixed(100.0),
             Track::fixed(100.0),
-        ])
-        .rows([Track::fixed(40.0), Track::fixed(40.0)])
-        .gap(10.0)
-        .show(&mut ui, |ui| {
-            Frame::new()
-                .with_id("header")
-                .grid_cell((0, 0))
-                .grid_span((1, 3))
-                .show(ui);
-            Frame::new().with_id("body").grid_cell((1, 1)).show(ui);
-        })
-        .node;
-    ui.end_frame();
+        ];
+        let secondary = [Track::fixed(40.0), Track::fixed(40.0)];
+        let mut g = Grid::new();
+        if *swap {
+            g = g.rows(primary).cols(secondary);
+        } else {
+            g = g.cols(primary).rows(secondary);
+        }
+        let span = if *swap { (3, 1) } else { (1, 3) };
+        let root = g
+            .gap(10.0)
+            .show(&mut ui, |ui| {
+                Frame::new()
+                    .with_id("header")
+                    .grid_cell((0, 0))
+                    .grid_span(span)
+                    .show(ui);
+                Frame::new().with_id("body").grid_cell((1, 1)).show(ui);
+            })
+            .node;
+        ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
-    let header = ui.pipeline.layout.result.rect[kids[0].index()];
-    let body = ui.pipeline.layout.result.rect[kids[1].index()];
-    assert_eq!(header.min.x, 0.0);
-    assert_eq!(header.size.w, 320.0);
-    assert_eq!(header.size.h, 40.0);
-    assert_eq!(body.min.x, 110.0);
-    assert_eq!(body.min.y, 50.0);
-    assert_eq!(body.size.w, 100.0);
-    assert_eq!(body.size.h, 40.0);
+        let kids: Vec<_> = ui.tree.children(root).collect();
+        let header = ui.pipeline.layout.result.rect[kids[0].index()];
+        let body = ui.pipeline.layout.result.rect[kids[1].index()];
+        // (primary, secondary) → (x, y) when not swapped; (y, x) when swapped.
+        let (h_pri_min, h_pri_size, h_sec_size) = if *swap {
+            (header.min.y, header.size.h, header.size.w)
+        } else {
+            (header.min.x, header.size.w, header.size.h)
+        };
+        let (b_pri_min, b_sec_min, b_pri_size, b_sec_size) = if *swap {
+            (body.min.y, body.min.x, body.size.h, body.size.w)
+        } else {
+            (body.min.x, body.min.y, body.size.w, body.size.h)
+        };
+        assert_eq!(h_pri_min, 0.0, "case: {label} header pri_min");
+        assert_eq!(h_pri_size, 320.0, "case: {label} header pri_size");
+        assert_eq!(h_sec_size, 40.0, "case: {label} header sec_size");
+        assert_eq!(b_pri_min, 110.0, "case: {label} body pri_min");
+        assert_eq!(b_sec_min, 50.0, "case: {label} body sec_min");
+        assert_eq!(b_pri_size, 100.0, "case: {label} body pri_size");
+        assert_eq!(b_sec_size, 40.0, "case: {label} body sec_size");
+    }
 }
 
 #[test]
@@ -209,43 +237,6 @@ fn grid_hug_grid_collapses_fill_tracks() {
     let r = ui.pipeline.layout.result.rect[grid_node.unwrap().index()];
     assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
     assert_eq!(r.size.h, 40.0);
-}
-
-#[test]
-fn grid_row_span_covers_multiple_rows_with_gap() {
-    // Mirror image of `grid_col_span_covers_multiple_columns_with_gap` — same
-    // arithmetic, axes swapped. Pins that row-span and col-span share the
-    // same code path.
-    let mut ui = ui_at(UVec2::new(200, 400));
-    let root = Grid::new()
-        .rows([
-            Track::fixed(100.0),
-            Track::fixed(100.0),
-            Track::fixed(100.0),
-        ])
-        .cols([Track::fixed(40.0), Track::fixed(40.0)])
-        .gap(10.0)
-        .show(&mut ui, |ui| {
-            Frame::new()
-                .with_id("sidebar")
-                .grid_cell((0, 0))
-                .grid_span((3, 1))
-                .show(ui);
-            Frame::new().with_id("body").grid_cell((1, 1)).show(ui);
-        })
-        .node;
-    ui.end_frame();
-
-    let kids: Vec<_> = ui.tree.children(root).collect();
-    let sidebar = ui.pipeline.layout.result.rect[kids[0].index()];
-    let body = ui.pipeline.layout.result.rect[kids[1].index()];
-    assert_eq!(sidebar.min.y, 0.0);
-    assert_eq!(sidebar.size.w, 40.0);
-    assert_eq!(sidebar.size.h, 320.0);
-    assert_eq!(body.min.x, 50.0);
-    assert_eq!(body.min.y, 110.0);
-    assert_eq!(body.size.w, 40.0);
-    assert_eq!(body.size.h, 100.0);
 }
 
 #[test]

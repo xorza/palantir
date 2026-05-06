@@ -51,58 +51,40 @@ fn scroll_state_records_viewport_and_content_after_arrange() {
     assert_eq!(row.offset, Vec2::ZERO, "no wheel input → offset stays at 0");
 }
 
+/// Wheel delta accumulates across frames into offset, clamped to
+/// `[0, content - viewport]`. When content fits inside the viewport,
+/// the offset stays at zero. Each case is a sequence of wheel pushes
+/// applied across consecutive frames; the final assertion reads the
+/// offset after the last frame, exercising both accumulation and clamp.
 #[test]
-fn wheel_delta_advances_offset_clamped_to_max() {
-    let mut ui = ui_at(SURFACE);
-    build(&mut ui, 200.0, 800.0);
-    ui.end_frame();
+fn wheel_delta_advances_offset_with_clamp() {
+    // (label, viewport_h, content_h, &[wheel_y per frame], expected_final_offset_y)
+    let cases: &[(&str, f32, f32, &[f32], f32)] = &[
+        ("single_push_accumulates", 200.0, 800.0, &[50.0], 50.0),
+        (
+            "second_push_accumulates_and_clamps_at_max",
+            200.0,
+            800.0,
+            &[50.0, 9_999.0],
+            600.0,
+        ),
+        ("non_overflowing_stays_zero", 300.0, 100.0, &[500.0], 0.0),
+    ];
+    for (label, viewport_h, content_h, pushes, expected) in cases {
+        let mut ui = ui_at(SURFACE);
+        build(&mut ui, *viewport_h, *content_h);
+        ui.end_frame();
 
-    // Pointer over scroll viewport (root vstack starts at (0,0); scroll is
-    // the only child; viewport is the top 200px of the surface).
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 50.0)));
+        ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        for wheel_y in *pushes {
+            ui.on_input(InputEvent::Scroll(Vec2::new(0.0, *wheel_y)));
+            ui.begin_frame(surface_display());
+            build(&mut ui, *viewport_h, *content_h);
+            ui.end_frame();
+        }
 
-    ui.begin_frame(surface_display());
-    build(&mut ui, 200.0, 800.0);
-    ui.end_frame();
-
-    assert_eq!(
-        read_state(&mut ui).offset.y,
-        50.0,
-        "wheel delta accumulates into offset",
-    );
-
-    // Huge wheel push → clamps to (content - viewport) = 600.
-    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 9_999.0)));
-    ui.begin_frame(surface_display());
-    build(&mut ui, 200.0, 800.0);
-    ui.end_frame();
-
-    assert_eq!(
-        read_state(&mut ui).offset.y,
-        600.0,
-        "offset clamps to content - viewport",
-    );
-}
-
-#[test]
-fn non_overflowing_content_keeps_offset_at_zero() {
-    let mut ui = ui_at(SURFACE);
-    build(&mut ui, 300.0, 100.0);
-    ui.end_frame();
-
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 500.0)));
-
-    ui.begin_frame(surface_display());
-    build(&mut ui, 300.0, 100.0);
-    ui.end_frame();
-
-    assert_eq!(
-        read_state(&mut ui).offset,
-        Vec2::ZERO,
-        "wheel input over non-overflowing content has nowhere to go",
-    );
+        assert_eq!(read_state(&mut ui).offset.y, *expected, "case: {label}");
+    }
 }
 
 #[test]
@@ -191,103 +173,105 @@ fn both_axis_scroll_pans_both_axes() {
 // own desired stays at zero on the panned axes (so `resolve_desired` falls
 // through to the user's `Sizing`).
 
+/// `LayoutResult.scroll_content` records the content extent the
+/// scroll viewport sees. V-axis and H-axis behave like a Stack: sum
+/// along the panned axis, max on the cross. XY behaves like a ZStack:
+/// max per axis. An empty scroll records zero.
 #[test]
-fn scroll_v_records_content_height_and_yields_panned_axis_to_self_sizing() {
-    let mut ui = Ui::new();
-    let scroll_node = under_outer(&mut ui, UVec2::new(400, 600), |ui| {
-        Scroll::vertical()
-            .with_id("scroll")
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-            .gap(4.0)
-            .show(ui, |ui| {
-                // Three rows of 28h with 4px gap → 28*3 + 4*2 = 92.
-                for i in 0..3u32 {
-                    Frame::new()
-                        .with_id(("row", i))
-                        .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
-                        .show(ui);
+fn scroll_records_content_extent() {
+    enum Axis {
+        V,
+        H,
+        XY,
+        Empty,
+    }
+    let cases: &[(&str, Axis, Size)] = &[
+        ("v_axis_sum_main_max_cross", Axis::V, Size::new(180.0, 92.0)),
+        ("h_axis_sum_main_max_cross", Axis::H, Size::new(128.0, 40.0)),
+        ("xy_max_per_axis", Axis::XY, Size::new(300.0, 250.0)),
+        ("empty_records_zero", Axis::Empty, Size::ZERO),
+    ];
+    for (label, axis, expected) in cases {
+        let mut ui = Ui::new();
+        let surface = match axis {
+            Axis::V | Axis::Empty => UVec2::new(400, 600),
+            Axis::H => UVec2::new(800, 200),
+            Axis::XY => UVec2::new(400, 400),
+        };
+        let scroll_node = under_outer(&mut ui, surface, |ui| {
+            match axis {
+                Axis::V => {
+                    Scroll::vertical()
+                        .with_id("scroll")
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .gap(4.0)
+                        .show(ui, |ui| {
+                            // 3 rows of 28h, 4px gap → 28*3 + 4*2 = 92.
+                            for i in 0..3u32 {
+                                Frame::new()
+                                    .with_id(("row", i))
+                                    .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
+                                    .show(ui);
+                            }
+                        })
+                        .node
                 }
-            })
-            .node
-    });
-
-    let rect = ui.pipeline.layout.result.rect[scroll_node.index()];
-    let content = ui.pipeline.layout.result.scroll_content[scroll_node.index()];
-    assert_eq!(
-        rect.size.h, 200.0,
-        "viewport honors Fixed h, ignores content"
-    );
-    assert_eq!(content.h, 92.0, "stack(Y) sum + (n-1)·gap");
-    assert_eq!(content.w, 180.0, "stack(Y) cross = max child width");
-}
-
-#[test]
-fn scroll_h_records_content_width_and_yields_panned_axis_to_self_sizing() {
-    let mut ui = Ui::new();
-    let scroll_node = under_outer(&mut ui, UVec2::new(800, 200), |ui| {
-        Scroll::horizontal()
-            .with_id("scroll")
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(60.0)))
-            .gap(8.0)
-            .show(ui, |ui| {
-                // Two cols of 60w with 8 gap → 60*2 + 8 = 128.
-                for i in 0..2u32 {
-                    Frame::new()
-                        .with_id(("col", i))
-                        .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
-                        .show(ui);
+                Axis::H => {
+                    Scroll::horizontal()
+                        .with_id("scroll")
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(60.0)))
+                        .gap(8.0)
+                        .show(ui, |ui| {
+                            // 2 cols of 60w, 8px gap → 60*2 + 8 = 128.
+                            for i in 0..2u32 {
+                                Frame::new()
+                                    .with_id(("col", i))
+                                    .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
+                                    .show(ui);
+                            }
+                        })
+                        .node
                 }
-            })
-            .node
-    });
-
-    let rect = ui.pipeline.layout.result.rect[scroll_node.index()];
-    let content = ui.pipeline.layout.result.scroll_content[scroll_node.index()];
-    assert_eq!(rect.size.w, 200.0);
-    assert_eq!(content.w, 128.0);
-    assert_eq!(content.h, 40.0);
-}
-
-#[test]
-fn scroll_xy_records_max_per_axis() {
-    // ZStack-flavored: children overlap at (0,0) inside the viewport.
-    // Content extent = max child per axis (not sum).
-    let mut ui = Ui::new();
-    let scroll_node = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Scroll::both()
-            .with_id("scroll")
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-            .show(ui, |ui| {
-                Frame::new()
-                    .with_id("wide")
-                    .size((Sizing::Fixed(300.0), Sizing::Fixed(60.0)))
-                    .show(ui);
-                Frame::new()
-                    .with_id("tall")
-                    .size((Sizing::Fixed(80.0), Sizing::Fixed(250.0)))
-                    .show(ui);
-            })
-            .node
-    });
-
-    let content = ui.pipeline.layout.result.scroll_content[scroll_node.index()];
-    assert_eq!(content.w, 300.0, "max child width");
-    assert_eq!(content.h, 250.0, "max child height");
-}
-
-#[test]
-fn scroll_with_no_children_records_zero_content() {
-    let mut ui = Ui::new();
-    let scroll_node = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Scroll::vertical()
-            .with_id("empty")
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-            .show(ui, |_| {})
-            .node
-    });
-
-    let content = ui.pipeline.layout.result.scroll_content[scroll_node.index()];
-    assert_eq!(content, Size::ZERO);
+                Axis::XY => {
+                    Scroll::both()
+                        .with_id("scroll")
+                        .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .with_id("wide")
+                                .size((Sizing::Fixed(300.0), Sizing::Fixed(60.0)))
+                                .show(ui);
+                            Frame::new()
+                                .with_id("tall")
+                                .size((Sizing::Fixed(80.0), Sizing::Fixed(250.0)))
+                                .show(ui);
+                        })
+                        .node
+                }
+                Axis::Empty => {
+                    Scroll::vertical()
+                        .with_id("empty")
+                        .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                        .show(ui, |_| {})
+                        .node
+                }
+            }
+        });
+        let rect = ui.pipeline.layout.result.rect[scroll_node.index()];
+        let content = ui.pipeline.layout.result.scroll_content[scroll_node.index()];
+        assert_eq!(content, *expected, "case: {label} content");
+        // Viewport honors the Scroll's Fixed size, ignoring overflow content.
+        let want_view = match axis {
+            Axis::V => (200.0, 200.0),
+            Axis::H => (200.0, 60.0),
+            Axis::XY | Axis::Empty => (100.0, 100.0),
+        };
+        assert_eq!(
+            (rect.size.w, rect.size.h),
+            want_view,
+            "case: {label} viewport"
+        );
+    }
 }
 
 #[test]
@@ -362,45 +346,117 @@ mod bars {
         ScrollbarTheme::default()
     }
 
+    /// `bar_geometry(viewport, content, offset, track, theme)` returns
+    /// `None` when content fits the viewport or the track collapses to
+    /// zero; otherwise `Some { thumb_size, thumb_offset }`. `thumb_size`
+    /// = (viewport / content) * track, clamped to `[min_thumb_px, track]`.
+    /// `thumb_offset` rides linearly with `offset` and reaches `track -
+    /// thumb_size` at max offset.
     #[test]
-    fn thumb_size_is_viewport_over_content_times_track() {
-        // 200/800 * 180 = 45; above the 24 floor.
-        let g = bar_geometry(200.0, 800.0, 0.0, 180.0, &theme()).unwrap();
-        assert!((g.thumb_size - 45.0).abs() < 1e-3);
-        assert_eq!(g.thumb_offset, 0.0);
-    }
-
-    #[test]
-    fn thumb_offset_at_max_offset_sits_at_track_end() {
-        let track = 180.0;
-        let g = bar_geometry(200.0, 800.0, 600.0, track, &theme()).unwrap();
-        let travel = track - g.thumb_size;
-        assert!((g.thumb_offset - travel).abs() < 1e-3);
-    }
-
-    #[test]
-    fn thumb_size_clamped_to_min_thumb_px() {
-        // 100/10000 * 180 = 1.8 → clamped up to 24.
-        let g = bar_geometry(100.0, 10_000.0, 0.0, 180.0, &theme()).unwrap();
-        assert_eq!(g.thumb_size, 24.0);
-    }
-
-    #[test]
-    fn thumb_size_clamped_down_to_track_when_min_thumb_exceeds_track() {
-        // Track shorter than min_thumb_px floor — thumb fills the track.
-        let g = bar_geometry(100.0, 200.0, 0.0, 10.0, &theme()).unwrap();
-        assert_eq!(g.thumb_size, 10.0);
-    }
-
-    #[test]
-    fn no_geometry_when_content_fits_viewport() {
-        assert!(bar_geometry(200.0, 200.0, 0.0, 180.0, &theme()).is_none());
-        assert!(bar_geometry(200.0, 100.0, 0.0, 180.0, &theme()).is_none());
-    }
-
-    #[test]
-    fn no_geometry_when_track_collapses_to_zero() {
-        assert!(bar_geometry(200.0, 800.0, 0.0, 0.0, &theme()).is_none());
+    fn bar_geometry_thumb_size_and_offset_cases() {
+        struct Want {
+            thumb_size: Option<f32>,
+            thumb_offset: Option<f32>,
+        }
+        type Case = (&'static str, f32, f32, f32, f32, Option<Want>);
+        let cases: &[Case] = &[
+            (
+                "ratio_above_floor",
+                200.0,
+                800.0,
+                0.0,
+                180.0,
+                Some(Want {
+                    thumb_size: Some(45.0),
+                    thumb_offset: Some(0.0),
+                }),
+            ),
+            (
+                "midpoint_offset_rides_linearly",
+                // travel = track - thumb_size = 180 - 45 = 135.
+                // offset/max = 300/600 = 0.5 → thumb_offset = 0.5 * 135 = 67.5.
+                200.0,
+                800.0,
+                300.0,
+                180.0,
+                Some(Want {
+                    thumb_size: Some(45.0),
+                    thumb_offset: Some(67.5),
+                }),
+            ),
+            (
+                "max_offset_sits_at_track_end",
+                200.0,
+                800.0,
+                600.0,
+                180.0,
+                Some(Want {
+                    thumb_size: Some(45.0),
+                    thumb_offset: Some(180.0 - 45.0),
+                }),
+            ),
+            (
+                "clamped_up_to_min_thumb_px",
+                100.0,
+                10_000.0,
+                0.0,
+                180.0,
+                Some(Want {
+                    thumb_size: Some(24.0),
+                    thumb_offset: None,
+                }),
+            ),
+            (
+                "clamped_down_to_track_when_min_exceeds_track",
+                100.0,
+                200.0,
+                0.0,
+                10.0,
+                Some(Want {
+                    thumb_size: Some(10.0),
+                    thumb_offset: None,
+                }),
+            ),
+            (
+                "none_when_content_equals_viewport",
+                200.0,
+                200.0,
+                0.0,
+                180.0,
+                None,
+            ),
+            (
+                "none_when_content_smaller_than_viewport",
+                200.0,
+                100.0,
+                0.0,
+                180.0,
+                None,
+            ),
+            ("none_when_track_zero", 200.0, 800.0, 0.0, 0.0, None),
+        ];
+        for (label, viewport, content, offset, track, want) in cases {
+            let got = bar_geometry(*viewport, *content, *offset, *track, &theme());
+            match (want, got) {
+                (None, None) => {}
+                (Some(want), Some(g)) => {
+                    if let Some(s) = want.thumb_size {
+                        assert!((g.thumb_size - s).abs() < 1e-3, "case: {label} thumb_size");
+                    }
+                    if let Some(o) = want.thumb_offset {
+                        assert!(
+                            (g.thumb_offset - o).abs() < 1e-3,
+                            "case: {label} thumb_offset"
+                        );
+                    }
+                }
+                (want, got) => panic!(
+                    "case: {label} mismatch: want={:?}, got={:?}",
+                    want.is_some(),
+                    got.is_some()
+                ),
+            }
+        }
     }
 
     /// Build a scroll over two frames so end_frame settles `ScrollState`

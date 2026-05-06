@@ -149,59 +149,48 @@ fn hidden_button_does_not_click() {
     assert!(!clicked, "hidden button should not receive clicks");
 }
 
+/// 200×100 hstack with `child_align(VAlign::Center)` and two 40×20
+/// children. The first child always inherits the parent default (y=40);
+/// the second child either inherits (no override → y=40) or overrides
+/// (`VAlign::Bottom` → y=80). Pins both inherit-default propagation
+/// and that an override on one child doesn't leak to its sibling.
 #[test]
-fn hstack_child_align_y_centers_all_children_by_default() {
-    let mut ui = ui_at(UVec2::new(200, 100));
-    let root = Panel::hstack()
-        .size((Sizing::FILL, Sizing::Fixed(100.0)))
-        .child_align(Align::v(VAlign::Center))
-        .show(&mut ui, |ui| {
-            Frame::new()
-                .with_id("a")
-                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                .show(ui);
-            Frame::new()
-                .with_id("b")
-                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                .show(ui);
-        })
-        .node;
-    ui.end_frame();
+fn hstack_child_align_per_axis_with_overrides() {
+    let cases: &[(&str, Option<Align>, f32)] = &[
+        ("both_inherit_parent_center", None, 40.0),
+        (
+            "second_overrides_to_bottom",
+            Some(Align::v(VAlign::Bottom)),
+            80.0,
+        ),
+    ];
+    for (label, second_override, second_y) in cases {
+        let mut ui = ui_at(UVec2::new(200, 100));
+        let root = Panel::hstack()
+            .size((Sizing::FILL, Sizing::Fixed(100.0)))
+            .child_align(Align::v(VAlign::Center))
+            .show(&mut ui, |ui| {
+                Frame::new()
+                    .with_id("a")
+                    .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                    .show(ui);
+                let mut b = Frame::new()
+                    .with_id("b")
+                    .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)));
+                if let Some(a) = *second_override {
+                    b = b.align(a);
+                }
+                b.show(ui);
+            })
+            .node;
+        ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
-    let a = ui.pipeline.layout.result.rect[kids[0].index()];
-    let b = ui.pipeline.layout.result.rect[kids[1].index()];
-    // Cross axis = 100, child = 20 tall → centered at (100-20)/2 = 40.
-    assert_eq!(a.min.y, 40.0);
-    assert_eq!(b.min.y, 40.0);
-    assert_eq!(a.size.h, 20.0);
-    assert_eq!(b.size.h, 20.0);
-}
-
-#[test]
-fn child_align_self_overrides_parent_default() {
-    let mut ui = ui_at(UVec2::new(200, 100));
-    let root = Panel::hstack()
-        .size((Sizing::FILL, Sizing::Fixed(100.0)))
-        .child_align(Align::v(VAlign::Center))
-        .show(&mut ui, |ui| {
-            Frame::new()
-                .with_id("centered")
-                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                .show(ui);
-            // Explicit Bottom on the child wins over the parent's default.
-            Frame::new()
-                .with_id("bottom")
-                .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                .align(Align::v(VAlign::Bottom))
-                .show(ui);
-        })
-        .node;
-    ui.end_frame();
-
-    let kids: Vec<_> = ui.tree.children(root).collect();
-    let centered = ui.pipeline.layout.result.rect[kids[0].index()];
-    let bottom = ui.pipeline.layout.result.rect[kids[1].index()];
-    assert_eq!(centered.min.y, 40.0);
-    assert_eq!(bottom.min.y, 80.0);
+        let kids: Vec<_> = ui.tree.children(root).collect();
+        let a = ui.pipeline.layout.result.rect[kids[0].index()];
+        let b = ui.pipeline.layout.result.rect[kids[1].index()];
+        assert_eq!(a.min.y, 40.0, "case: {label} a inherits default");
+        assert_eq!(a.size.h, 20.0, "case: {label} a.size.h");
+        assert_eq!(b.min.y, *second_y, "case: {label} b");
+        assert_eq!(b.size.h, 20.0, "case: {label} b.size.h");
+    }
 }

@@ -437,31 +437,29 @@ mod tests {
         assert_eq!(wrapped, Size::new(32.0, 48.0));
     }
 
+    /// `caret_x(text, byte_offset, font_size, line_height)`. Mono
+    /// fallback: each ASCII byte is `font_size * 0.5` wide. Caret x is
+    /// independent of `line_height` (advance only depends on font_size
+    /// + glyph). Empty string and zero offset short-circuit to zero.
     #[test]
-    fn caret_x_zero_offset_or_empty_returns_zero() {
-        let mut m = TextMeasurer::default();
-        assert_eq!(m.caret_x("hello", 0, 16.0, lh(16.0)), 0.0);
-        assert_eq!(m.caret_x("", 0, 16.0, lh(16.0)), 0.0);
-    }
-
-    #[test]
-    fn caret_x_mono_path_matches_prefix_glyph_widths() {
-        // Mono fallback: each ASCII byte is `font_size * 0.5` wide. At
-        // 16 px that's 8 px/char.
-        let mut m = TextMeasurer::default();
-        assert_eq!(m.caret_x("abc", 1, 16.0, lh(16.0)), 8.0);
-        assert_eq!(m.caret_x("abc", 2, 16.0, lh(16.0)), 16.0);
-        assert_eq!(m.caret_x("abc", 3, 16.0, lh(16.0)), 24.0);
-    }
-
-    #[test]
-    fn caret_x_width_independent_of_line_height() {
-        // Line height affects vertical extent, never glyph advance —
-        // pin that the caret-x return is identical for two leadings.
-        let mut m = TextMeasurer::default();
-        let a = m.caret_x("abc", 2, 16.0, 16.0);
-        let b = m.caret_x("abc", 2, 16.0, 24.0);
-        assert_eq!(a, b);
+    fn caret_x_cases() {
+        let cases: &[(&str, &str, usize, f32, f32, f32)] = &[
+            ("zero_offset", "hello", 0, 16.0, lh(16.0), 0.0),
+            ("empty_string", "", 0, 16.0, lh(16.0), 0.0),
+            ("mono_one_char", "abc", 1, 16.0, lh(16.0), 8.0),
+            ("mono_two_chars", "abc", 2, 16.0, lh(16.0), 16.0),
+            ("mono_three_chars", "abc", 3, 16.0, lh(16.0), 24.0),
+            ("lh_independent_short", "abc", 2, 16.0, 16.0, 16.0),
+            ("lh_independent_tall", "abc", 2, 16.0, 24.0, 16.0),
+        ];
+        for (label, text, offset, fs, lh_v, expected) in cases {
+            let mut m = TextMeasurer::default();
+            assert_eq!(
+                m.caret_x(text, *offset, *fs, *lh_v),
+                *expected,
+                "case: {label}"
+            );
+        }
     }
 
     #[test]

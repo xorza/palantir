@@ -18,115 +18,114 @@ fn press(key: Key) -> KeyPress {
     }
 }
 
+/// `apply_key(s, caret, key)` is the editor's pure key-handling core.
+/// One case per (input, caret_in, key, expected_str, expected_caret).
+/// Multi-step semantics (e.g. arrows striding) are decomposed into
+/// individual cases that thread `caret` from the previous step's output.
 #[test]
-fn apply_key_inserts_printable_chars() {
-    let mut s = String::new();
-    let mut caret = 0;
-    apply_key(&mut s, &mut caret, press(Key::Char('a')));
-    apply_key(&mut s, &mut caret, press(Key::Char('b')));
-    assert_eq!(s, "ab");
-    assert_eq!(caret, 2);
-}
-
-#[test]
-fn apply_key_skips_chars_with_command_modifier() {
-    // ctrl+'a' is a shortcut, not text input. v1 ignores it.
-    let mut s = String::from("hi");
-    let mut caret = 2;
-    apply_key(
-        &mut s,
-        &mut caret,
-        KeyPress {
-            key: Key::Char('a'),
-            mods: Modifiers {
-                ctrl: true,
-                ..Modifiers::NONE
-            },
-            repeat: false,
+fn apply_key_cases() {
+    let ctrl = KeyPress {
+        key: Key::Char('a'),
+        mods: Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
         },
-    );
-    assert_eq!(s, "hi");
-    assert_eq!(caret, 2);
-}
-
-#[test]
-fn apply_key_space_inserts_when_no_modifier() {
-    // `Key::Space` was collapsed to `Key::Char(' ')` — pin that the
-    // editor still inserts a space the same way as any other char.
-    let mut s = String::from("ab");
-    let mut caret = 2;
-    apply_key(&mut s, &mut caret, press(Key::Char(' ')));
-    assert_eq!(s, "ab ");
-    assert_eq!(caret, 3);
-}
-
-#[test]
-fn apply_key_backspace_removes_prev_codepoint() {
-    let mut s = String::from("héllo");
-    let mut caret = "hé".len();
-    apply_key(&mut s, &mut caret, press(Key::Backspace));
-    assert_eq!(s, "hllo");
-    assert_eq!(caret, "h".len());
-}
-
-#[test]
-fn apply_key_backspace_at_start_is_noop() {
-    let mut s = String::from("abc");
-    let mut caret = 0;
-    apply_key(&mut s, &mut caret, press(Key::Backspace));
-    assert_eq!(s, "abc");
-    assert_eq!(caret, 0);
-}
-
-#[test]
-fn apply_key_delete_removes_next_codepoint() {
-    let mut s = String::from("héllo");
-    let mut caret = 1; // between 'h' and 'é'
-    apply_key(&mut s, &mut caret, press(Key::Delete));
-    assert_eq!(s, "hllo");
-    assert_eq!(caret, 1);
-}
-
-#[test]
-fn apply_key_delete_at_end_is_noop() {
-    let mut s = String::from("abc");
-    let mut caret = 3;
-    apply_key(&mut s, &mut caret, press(Key::Delete));
-    assert_eq!(s, "abc");
-    assert_eq!(caret, 3);
-}
-
-#[test]
-fn apply_key_arrows_step_codepoints() {
-    let mut s = String::from("héllo");
-    let mut caret = 0;
-    apply_key(&mut s, &mut caret, press(Key::ArrowRight));
-    assert_eq!(caret, 1);
-    apply_key(&mut s, &mut caret, press(Key::ArrowRight));
-    assert_eq!(caret, 3, "skipped both bytes of 'é'");
-    apply_key(&mut s, &mut caret, press(Key::ArrowLeft));
-    assert_eq!(caret, 1);
-}
-
-#[test]
-fn apply_key_arrows_clamp_at_boundaries() {
-    let mut s = String::from("ab");
-    let mut caret = 0;
-    apply_key(&mut s, &mut caret, press(Key::ArrowLeft));
-    assert_eq!(caret, 0);
-    caret = 2;
-    apply_key(&mut s, &mut caret, press(Key::ArrowRight));
-    assert_eq!(caret, 2);
-}
-
-#[test]
-fn apply_key_home_end_jump_to_extremes() {
-    let mut s = String::from("hello");
-    let mut caret = 2;
-    apply_key(&mut s, &mut caret, press(Key::Home));
-    assert_eq!(caret, 0);
-    apply_key(&mut s, &mut caret, press(Key::End));
-    assert_eq!(caret, 5);
+        repeat: false,
+    };
+    let cases: &[(&str, &str, usize, KeyPress, &str, usize)] = &[
+        ("printable_a", "", 0, press(Key::Char('a')), "a", 1),
+        (
+            "printable_b_after_a",
+            "a",
+            1,
+            press(Key::Char('b')),
+            "ab",
+            2,
+        ),
+        ("ctrl_modifier_skipped", "hi", 2, ctrl, "hi", 2),
+        ("space_inserts", "ab", 2, press(Key::Char(' ')), "ab ", 3),
+        (
+            "backspace_mid_removes_codepoint",
+            "héllo",
+            3,
+            press(Key::Backspace),
+            "hllo",
+            1,
+        ),
+        (
+            "backspace_at_start_noop",
+            "abc",
+            0,
+            press(Key::Backspace),
+            "abc",
+            0,
+        ),
+        (
+            "delete_mid_removes_codepoint",
+            "héllo",
+            1,
+            press(Key::Delete),
+            "hllo",
+            1,
+        ),
+        ("delete_at_end_noop", "abc", 3, press(Key::Delete), "abc", 3),
+        (
+            "arrow_right_steps_one_byte",
+            "héllo",
+            0,
+            press(Key::ArrowRight),
+            "héllo",
+            1,
+        ),
+        (
+            "arrow_right_skips_multibyte_codepoint",
+            "héllo",
+            1,
+            press(Key::ArrowRight),
+            "héllo",
+            3,
+        ),
+        (
+            "arrow_left_steps_one_byte",
+            "héllo",
+            3,
+            press(Key::ArrowLeft),
+            "héllo",
+            1,
+        ),
+        (
+            "arrow_left_clamps_at_start",
+            "ab",
+            0,
+            press(Key::ArrowLeft),
+            "ab",
+            0,
+        ),
+        (
+            "arrow_right_clamps_at_end",
+            "ab",
+            2,
+            press(Key::ArrowRight),
+            "ab",
+            2,
+        ),
+        (
+            "home_jumps_to_zero",
+            "hello",
+            2,
+            press(Key::Home),
+            "hello",
+            0,
+        ),
+        ("end_jumps_to_len", "hello", 2, press(Key::End), "hello", 5),
+    ];
+    for (label, input, caret_in, key, want_str, want_caret) in cases {
+        let mut s = String::from(*input);
+        let mut caret = *caret_in;
+        apply_key(&mut s, &mut caret, *key);
+        assert_eq!(s, *want_str, "case: {label} string");
+        assert_eq!(caret, *want_caret, "case: {label} caret");
+    }
 }
 
 #[test]
