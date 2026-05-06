@@ -1,7 +1,8 @@
 # Roadmap
 
-Scratch ideas: impl WidgetId instead of impl Hash; ECS for SoA;
-rounded-corner clip; text on Button (optional);
+Scratch ideas: impl WidgetId instead of impl Hash; 
+ECS for SoA;
+rounded-corner clip;
 Spacing serializable nicely.
 
 ## Now
