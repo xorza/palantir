@@ -84,8 +84,8 @@ methods that mutate `Element`).
 
 ## Backend stencil path (in `renderer/backend/`)
 
-`RenderBuffer::has_rounded_clip()` walks `groups` for any
-`rounded_clip.is_some()`. The backend branches on it.
+`RenderBuffer::has_rounded_clip` is set by the composer when it processes
+any `PushClipRounded`. The backend branches on it.
 
 **Plain path** (no rounded groups): the existing color-only
 render pass. No stencil texture allocated. No stencil-variant pipelines

@@ -217,7 +217,7 @@ impl WgpuBackend {
     pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, frame: FrameOutput<'_>) {
         let buffer = frame.buffer;
         let damage = frame.damage;
-        let use_stencil = buffer.has_rounded_clip();
+        let use_stencil = buffer.has_rounded_clip;
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
