@@ -282,18 +282,12 @@ pub struct Element {
     /// skips the subtree everywhere. Cascades implicitly (paint and input
     /// early-return at non-`Visible` nodes).
     pub(crate) visibility: Visibility,
-    /// Storage for the clip flag — written via `Surface::apply_clip`
-    /// (panel / grid builders) or set directly by framework-internal
+    /// Storage for the clip flag — written by `ui.node` from the
+    /// `Surface` argument, or set directly by framework-internal
     /// widgets like `Scroll`. `Rect` = scissor; `Rounded` = scissor +
-    /// stencil mask (radius from `clip_radius`); `None` = no clip.
-    /// No effect on layout.
+    /// stencil mask (radius / inset derived from chrome). `None` = no
+    /// clip. No effect on layout.
     pub(crate) clip: ClipMode,
-    /// Painted `Background` — the chrome of this node. Encoder
-    /// emits it as a `RoundedRect` before pushing the clip, and
-    /// reads its `radius` + `stroke` to derive the rounded clip mask
-    /// (when `clip == Rounded`). `None` for nodes without chrome.
-    /// Stamped via `Surface::apply_to`.
-    pub(crate) chrome: Option<Background>,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any
     /// ancestor transform; descendants render and hit-test in the world
@@ -334,7 +328,6 @@ impl Element {
             focusable: false,
             visibility: Visibility::Visible,
             clip: ClipMode::None,
-            chrome: None,
             transform: None,
         }
     }
@@ -366,7 +359,10 @@ impl Element {
             line_gap: self.line_gap,
             justify: self.justify,
             child_align: self.child_align,
-            chrome: self.chrome,
+            // Chrome is plumbed into `extras.chrome` separately by
+            // `Tree::open_node` from the `surface` arg passed to
+            // `ui.node` — not routed through `Element` itself.
+            chrome: None,
         };
         ElementSplit {
             layout,

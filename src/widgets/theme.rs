@@ -4,7 +4,6 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
-use crate::tree::element::Element;
 
 // Default palette: Ayu Mirage High Contrast. Mirrors
 // `assets/reference-palette.toml` — that file is the hand-edited source
@@ -79,23 +78,6 @@ impl Surface {
         }
     }
 
-    /// Stamp this surface's clip + chrome onto the element. Called by
-    /// container widgets in their `show()` builder before `ui.node`.
-    /// Encoder reads `element.chrome` for both painted-background
-    /// emission AND for the rounded-clip mask geometry (radius from
-    /// `chrome.radius`, inset from `chrome.stroke.width`). Single
-    /// source of truth — no separate clip-mask field.
-    ///
-    /// `ClipMode::Rounded` with a zero `paint.radius` downgrades to
-    /// `Rect` here so the encoder never sees a rounded clip without a
-    /// radius.
-    pub(crate) fn apply_to(&self, element: &mut Element) {
-        element.clip = match self.clip {
-            ClipMode::Rounded if self.paint.radius.approx_zero() => ClipMode::Rect,
-            mode => mode,
-        };
-        element.chrome = Some(self.paint);
-    }
 }
 
 /// Sugar: `.background(Background { … })` keeps working — paint-only with

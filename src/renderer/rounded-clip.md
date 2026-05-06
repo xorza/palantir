@@ -39,12 +39,17 @@ mismatch in exchange for skipping the stencil pass).
   - Rounded-clip mask radius (from `chrome.radius`).
   - Rounded-clip mask inset (from `chrome.stroke.width`).
 
-`Surface::apply_to(&self, element)` writes both fields. Container
-widgets call it once at the top of `show()` before `ui.node`.
+`Element` does NOT carry chrome. Chrome is a per-node-call concern,
+threaded through `ui.node(element, surface, body)`: the `Ui` reads
+`surface.clip` (with `Rounded` → `Rect` downgrade for zero-radius
+paint), writes the clip mode bit onto `element`, and passes
+`surface.paint` to `Tree::open_node` as the chrome param. The tree
+stamps it into `extras.chrome` before the side-table allocation
+check.
 
-`Background` lives in `crate::primitives::background` (pure data, no
-`Ui`-aware methods). `Surface` lives in `crate::widgets::theme` (depends
-on `Element` for `apply_to`).
+`Background` lives in `crate::primitives::background` (pure data).
+`Surface` lives in `crate::widgets::theme` (pure data too — no
+methods that mutate `Element`).
 
 ## Encode flow (per node, in `encoder/mod.rs::encode_node`)
 
@@ -124,13 +129,12 @@ stencil-1 pixels and disappear.
 
 ## Surface APIs
 
-`Surface::scissor()` is the only construction that survives `Surface::apply_to`
-without a paint (Background is `Default::default` — fully transparent;
-encoder skips emitting it via `is_noop`). Used by Scroll for its
-viewport clip.
+`Surface::scissor()` is the only construction without a paint
+(Background is `Default::default` — fully transparent; encoder skips
+emitting it via `is_noop`). Used by Scroll for its viewport clip.
 
 `Surface::rounded(bg)` with `bg.radius.approx_zero()` downgrades to
-`ClipMode::Rect` inside `apply_to` (encoder never sees a rounded clip
+`ClipMode::Rect` inside `ui.node` (encoder never sees a rounded clip
 without a radius). The `const fn` constructor itself can't downgrade
 (no const equality on f32) — runtime path catches it.
 
