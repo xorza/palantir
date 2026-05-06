@@ -32,17 +32,16 @@ pub(crate) struct QuadPipeline {
     /// Lazy stencil-aware pipeline variants — built on first need
     /// (first frame with `FrameOutput::has_rounded_clip == true`) so
     /// apps that never round-clip pay nothing. Once built, kept
-    /// indefinitely. First reader is sub-slice 3.B.3.
-    #[allow(dead_code)]
+    /// indefinitely.
     stencil: Option<StencilPipelines>,
+    /// Lazy buffer holding one `Quad` per rounded clip in the current
+    /// frame; uploaded by `upload_masks`, drawn by `draw_mask`. Reused
+    /// across frames; capacity grows monotonically.
+    mask_buffer: Option<wgpu::Buffer>,
+    mask_capacity: usize,
     /// Cached creation inputs needed to lazy-build `stencil` later.
-    /// `bind_layout` is rebuilt each time but it's cheap; the shader
-    /// module + format + instance layout are the recurring inputs.
-    #[allow(dead_code)]
     shader: wgpu::ShaderModule,
-    #[allow(dead_code)]
     color_format: wgpu::TextureFormat,
-    #[allow(dead_code)]
     bind_layout: wgpu::BindGroupLayout,
 }
 
@@ -59,7 +58,6 @@ pub(crate) struct QuadPipeline {
 ///   color draw in the stencil-attached pass — non-rounded groups run
 ///   it at `stencil_reference = 0`, which always passes against the
 ///   cleared stencil.
-#[allow(dead_code)] // first reader is the rounded-clip render path (sub-slice 3.B.3)
 pub(crate) struct StencilPipelines {
     mask_write: wgpu::RenderPipeline,
     stencil_test: wgpu::RenderPipeline,
@@ -164,6 +162,8 @@ impl QuadPipeline {
             instance_buffer,
             instance_capacity,
             stencil: None,
+            mask_buffer: None,
+            mask_capacity: 0,
             shader,
             color_format: format,
             bind_layout,
@@ -172,7 +172,6 @@ impl QuadPipeline {
 
     /// Lazy-build the stencil-aware variants. Idempotent; called from
     /// the rounded-clip render path before the first `set_pipeline`.
-    #[allow(dead_code)] // first caller is sub-slice 3.B.3
     pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) -> &StencilPipelines {
         if self.stencil.is_none() {
             self.stencil = Some(self.build_stencil_pipelines(device));
@@ -354,5 +353,57 @@ impl QuadPipeline {
             return;
         }
         pass.draw(0..4, instances.into());
+    }
+
+    /// Upload `masks` (one `Quad` per rounded clip in the frame) to the
+    /// stencil-mask vertex buffer. Grows the buffer to the next power
+    /// of two when needed.
+    pub(crate) fn upload_masks(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        masks: &[Quad],
+    ) {
+        if masks.is_empty() {
+            return;
+        }
+        if masks.len() > self.mask_capacity {
+            self.mask_capacity = masks.len().next_power_of_two().max(8);
+            self.mask_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("palantir.quad.masks"),
+                size: (self.mask_capacity * std::mem::size_of::<Quad>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        let buf = self
+            .mask_buffer
+            .as_ref()
+            .expect("mask_buffer just allocated");
+        queue.write_buffer(buf, 0, bytemuck::cast_slice(masks));
+    }
+
+    /// Bind the stencil-test (color) pipeline + main instance buffer.
+    /// Used once before the per-group draw loop in the stencil path.
+    pub(crate) fn bind_stencil_test<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        let stencil = self.stencil.as_ref().expect("ensure_stencil first");
+        pass.set_pipeline(&stencil.stencil_test);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+    }
+
+    /// Bind the mask-write pipeline + mask instance buffer. Caller sets
+    /// `stencil_reference` per draw (1 to write the mask, 0 to clear).
+    pub(crate) fn bind_mask_write<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        let stencil = self.stencil.as_ref().expect("ensure_stencil first");
+        let buf = self.mask_buffer.as_ref().expect("upload_masks first");
+        pass.set_pipeline(&stencil.mask_write);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, buf.slice(..));
+    }
+
+    /// Draw the single mask `Quad` at `mask_idx` in the mask buffer.
+    pub(crate) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>, mask_idx: u32) {
+        pass.draw(0..4, mask_idx..mask_idx + 1);
     }
 }

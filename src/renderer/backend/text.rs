@@ -33,9 +33,7 @@ pub(crate) enum StencilMode {
     /// Glyphon pipeline built with `depth_stencil = Some(...)` matching
     /// the quad pipeline's `stencil_test` state. The render pass sets
     /// `stencil_reference` per draw — text under a rounded clip
-    /// inherits the active reference and gets stencil-rounded. First
-    /// reader is sub-slice 3.B.3.
-    #[allow(dead_code)]
+    /// inherits the active reference and gets stencil-rounded.
     Stencil,
 }
 
@@ -81,14 +79,12 @@ pub(crate) struct TextRenderer {
     /// use rounded clip never allocate this pool. Shares the same
     /// `atlas` (glyphon caches pipelines by `(format, multisample,
     /// depth_stencil)` — no fork needed).
-    #[allow(dead_code)] // first reader is sub-slice 3.B.3
     stencil_renderers: Vec<GlyphonRenderer>,
     /// Same length as `renderers`. `ready[i]` says whether
     /// `renderers[i].prepare(...)` was called this frame and should be
     /// rendered. Reset to all-false in [`Self::end_frame`].
     ready: Vec<bool>,
     /// Same shape as `ready`, for `stencil_renderers`.
-    #[allow(dead_code)] // first reader is sub-slice 3.B.3
     stencil_ready: Vec<bool>,
     /// Highest `group_idx + 1` prepared this frame. Used by
     /// [`Self::end_frame`] to truncate the pool down to the slots that

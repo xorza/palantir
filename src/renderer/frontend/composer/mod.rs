@@ -203,7 +203,14 @@ impl Composer {
                             radius: logical_radius.scaled_by(phys_scale),
                         })
                     } else {
-                        None
+                        // Rect clip nested inside a rounded ancestor: inherit
+                        // the ancestor's rounded data so children stay
+                        // stencil-tested against the active mask. Without
+                        // this, the child group would draw with ref=0 over
+                        // pixels already stenciled to 1 by the parent's
+                        // mask, and the stencil_test pipeline would discard
+                        // every fragment.
+                        self.clip_stack.last().and_then(|f| f.rounded)
                     };
                     self.clip_stack.push(ClipFrame { scissor, rounded });
                     group.set_clip(Some(scissor), rounded, out);
