@@ -2,7 +2,6 @@
 
 Scratch ideas: impl WidgetId instead of impl Hash; 
 ECS for SoA;
-rounded-corner clip;
 Spacing serializable nicely.
 
 ## Now
