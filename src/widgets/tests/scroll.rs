@@ -345,6 +345,7 @@ fn scroll_content_survives_measure_cache_hit() {
 
 mod bars {
     use crate::Ui;
+    use crate::layout::types::clip_mode::ClipMode;
     use crate::layout::types::display::Display;
     use crate::layout::types::sizing::Sizing;
     use crate::shape::Shape;
@@ -522,7 +523,7 @@ mod bars {
                     for tag in ["v", "h", "xy"] {
                         Panel::vstack()
                             .with_id(("card", tag))
-                            .clip(true)
+                            .clip(ClipMode::Rect)
                             .padding(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {

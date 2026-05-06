@@ -1,3 +1,4 @@
+use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
@@ -11,7 +12,7 @@ use glam::UVec2;
 #[test]
 fn clip_flag_is_recorded_on_panel_node() {
     // Default is `overflow: visible` — panels do not clip unless asked.
-    // Explicit `.clip(true)` opts in. Pin both directions so a future
+    // Explicit `.clip(ClipMode::Rect)` opts in. Pin both directions so a future
     // default change is loud.
     let mut ui = ui_at(UVec2::new(200, 200));
     let mut default_panel = None;
@@ -28,7 +29,7 @@ fn clip_flag_is_recorded_on_panel_node() {
             Panel::zstack()
                 .with_id("opt-in")
                 .size(50.0)
-                .clip(true)
+                .clip(ClipMode::Rect)
                 .show(ui, |_| {})
                 .node,
         );
@@ -38,9 +39,15 @@ fn clip_flag_is_recorded_on_panel_node() {
     assert!(
         !ui.tree.paint[default_panel.unwrap().index()]
             .attrs
+            .clip_mode()
             .is_clip()
     );
-    assert!(ui.tree.paint[opt_in.unwrap().index()].attrs.is_clip());
+    assert!(
+        ui.tree.paint[opt_in.unwrap().index()]
+            .attrs
+            .clip_mode()
+            .is_clip()
+    );
 }
 
 #[test]

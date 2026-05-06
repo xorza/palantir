@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::input::{InputEvent, PointerButton};
-use crate::layout::types::{display::Display, sense::Sense, sizing::Sizing};
+use crate::layout::types::{clip_mode::ClipMode, display::Display, sense::Sense, sizing::Sizing};
 use crate::support::testing::{begin, click_at, press_at, release_left, ui_at};
 use crate::tree::element::Configure;
 use crate::widgets::{button::Button, panel::Panel};
@@ -231,7 +231,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         Panel::zstack()
             .with_id("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-            .clip(true)
+            .clip(ClipMode::Rect)
             .show(ui, |ui| {
                 Button::new()
                     .with_id("inner")
@@ -252,7 +252,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         Panel::zstack()
             .with_id("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-            .clip(true)
+            .clip(ClipMode::Rect)
             .show(ui, |ui| {
                 clicked = Button::new()
                     .with_id("inner")
@@ -281,7 +281,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
             .with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
-            .clip(false)
+            .clip(ClipMode::None)
             .show(ui, |ui| {
                 Button::new()
                     .with_id("inner")
@@ -301,7 +301,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
             .with_id("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
-            .clip(false)
+            .clip(ClipMode::None)
             .show(ui, |ui| {
                 clicked = Button::new()
                     .with_id("inner")

@@ -35,8 +35,8 @@
 //! one chained setter per row.
 
 use crate::layout::types::{
-    align::Align, align::HAlign, align::VAlign, grid_cell::GridCell, justify::Justify,
-    sense::Sense, sizing::Sizes, visibility::Visibility,
+    align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
+    justify::Justify, sense::Sense, sizing::Sizes, visibility::Visibility,
 };
 use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
 use crate::tree::widget_id::WidgetId;
@@ -270,11 +270,12 @@ pub struct Element {
     /// skips the subtree everywhere. Cascades implicitly (paint and input
     /// early-return at non-`Visible` nodes).
     pub(crate) visibility: Visibility,
-    /// Clip descendants' paint to this node's rendered rect (CSS `overflow:
-    /// hidden`). The renderer applies a scissor while walking the subtree.
-    /// Has no effect on layout — children may still measure beyond the rect;
-    /// they're just visually clipped.
-    pub(crate) clip: bool,
+    /// Clip descendants' paint to this node's rendered rect. `Rect` =
+    /// scissor; `Rounded` = scissor + stencil mask using the panel's own
+    /// `Background.radius`; `None` = no clip. Has no effect on layout —
+    /// children may still measure beyond the rect; they're just visually
+    /// clipped.
+    pub(crate) clip: ClipMode,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any
     /// ancestor transform; descendants render and hit-test in the world
@@ -314,7 +315,7 @@ impl Element {
             disabled: false,
             focusable: false,
             visibility: Visibility::Visible,
-            clip: false,
+            clip: ClipMode::None,
             transform: None,
         }
     }
@@ -506,11 +507,9 @@ pub trait Configure: Sized {
     }
 }
 
-/// Packed paint/input flags: `sense` (6-state enum, 3 bits), `disabled`,
-/// `clip`, `focusable`. One byte. `align` and `visibility` live on
-/// `LayoutCore` since the layout pass reads them.
+/// Packed paint/input flags. One byte.
 ///
-/// `bits`: 0-2=sense tag, 3=disabled, 4=clip, 5=focusable, 6-7=reserved.
+/// `bits`: 0-2=sense tag, 3=disabled, 4-5=clip mode, 6=focusable, 7=reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct PaintAttrs {
     bits: u8,
@@ -519,17 +518,16 @@ pub(crate) struct PaintAttrs {
 impl PaintAttrs {
     const SENSE_MASK: u8 = 0b111;
     const DISABLED: u8 = 1 << 3;
-    const CLIP: u8 = 1 << 4;
-    const FOCUSABLE: u8 = 1 << 5;
+    const CLIP_SHIFT: u8 = 4;
+    const CLIP_MASK: u8 = 0b11 << Self::CLIP_SHIFT;
+    const FOCUSABLE: u8 = 1 << 6;
 
-    pub(crate) fn pack(sense: Sense, disabled: bool, clip: bool, focusable: bool) -> Self {
+    pub(crate) fn pack(sense: Sense, disabled: bool, clip: ClipMode, focusable: bool) -> Self {
         let mut bits = sense as u8;
         if disabled {
             bits |= Self::DISABLED;
         }
-        if clip {
-            bits |= Self::CLIP;
-        }
+        bits |= (clip as u8) << Self::CLIP_SHIFT;
         if focusable {
             bits |= Self::FOCUSABLE;
         }
@@ -550,8 +548,13 @@ impl PaintAttrs {
     pub(crate) fn is_disabled(self) -> bool {
         self.bits & Self::DISABLED != 0
     }
-    pub(crate) fn is_clip(self) -> bool {
-        self.bits & Self::CLIP != 0
+    pub(crate) fn clip_mode(self) -> ClipMode {
+        match (self.bits & Self::CLIP_MASK) >> Self::CLIP_SHIFT {
+            0 => ClipMode::None,
+            1 => ClipMode::Rect,
+            2 => ClipMode::Rounded,
+            _ => unreachable!(),
+        }
     }
     pub(crate) fn is_focusable(self) -> bool {
         self.bits & Self::FOCUSABLE != 0

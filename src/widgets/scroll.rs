@@ -1,4 +1,5 @@
 use crate::layout::axis::Axis;
+use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sense::Sense;
 use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
@@ -91,7 +92,7 @@ impl Scroll {
     #[track_caller]
     fn with_axes(axes: ScrollAxes) -> Self {
         let mut element = Element::new_auto(LayoutMode::Scroll(axes));
-        element.clip = true;
+        element.clip = ClipMode::Rect;
         element.sense = Sense::Scroll;
         Self { element }
     }

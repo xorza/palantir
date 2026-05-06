@@ -1,4 +1,4 @@
-use crate::layout::types::{sizing::Sizing, track::Track};
+use crate::layout::types::{clip_mode::ClipMode, sizing::Sizing, track::Track};
 use crate::primitives::transform::TranslateScale;
 use crate::tree::GridDef;
 use crate::tree::element::{Configure, Element, LayoutMode};
@@ -87,8 +87,8 @@ impl Grid {
         self
     }
 
-    pub fn clip(mut self, c: bool) -> Self {
-        self.element.clip = c;
+    pub fn clip(mut self, mode: ClipMode) -> Self {
+        self.element.clip = mode;
         self
     }
     pub fn transform(mut self, t: TranslateScale) -> Self {

@@ -14,6 +14,7 @@ pub(crate) mod widgets;
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
 pub use input::{FocusPolicy, InputEvent, InputState, PointerButton, PointerState, ResponseState};
 pub use layout::types::align::{Align, HAlign, VAlign};
+pub use layout::types::clip_mode::ClipMode;
 pub use layout::types::display::Display;
 pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
