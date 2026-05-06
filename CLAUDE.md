@@ -99,8 +99,8 @@ might be affected by `internals`/`bench-deep`), run the full feature
 matrix instead:
 
 ```sh
-scripts/test-all.sh       # fmt + clippy + nextest across all feature combos
-FAST=1 scripts/test-all.sh # skip fmt + clippy, just run nextest per combo
+scripts/test-all.sh       # fmt + clippy + tests across all feature combos
+FAST=1 scripts/test-all.sh # skip fmt + clippy, just run tests per combo
 ```
 
 Fix anything that fails. Don't tell the user a change is complete unless these all pass.
