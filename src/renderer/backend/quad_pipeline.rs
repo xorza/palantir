@@ -221,7 +221,11 @@ impl QuadPipeline {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &self.shader,
-                entry_point: Some("fs"),
+                // `fs_mask` discards outside the rounded SDF so the
+                // stencil Replace op only fires inside the shape.
+                // Otherwise the rasterizer's full bounding box would
+                // get stamped, defeating the rounded mask.
+                entry_point: Some("fs_mask"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: self.color_format,

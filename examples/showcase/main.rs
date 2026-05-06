@@ -15,6 +15,7 @@ mod gap;
 mod grid;
 mod justify;
 mod panels;
+mod rounded;
 mod scroll;
 mod sizing;
 mod spacing;
@@ -43,6 +44,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("alignment", alignment::build),
     ("justify", justify::build),
     ("clip", clip::build),
+    ("rounded clip", rounded::build),
     ("transform", transform::build),
     ("visibility", visibility::build),
     ("disabled", disabled::build),
