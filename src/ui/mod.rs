@@ -17,7 +17,7 @@ use crate::ui::cascade::Cascades;
 use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::seen_ids::SeenIds;
 use crate::ui::state::StateMap;
-use crate::widgets::scroll::{ScrollNode, ScrollState};
+use crate::widgets::scroll::ScrollRegistry;
 use crate::widgets::theme::{Surface, Theme};
 
 /// The three rendering-pipeline subsystems Ui owns: text shaping →
@@ -72,9 +72,8 @@ pub struct Ui {
     pub(crate) damage: Damage,
 
     /// Scroll widgets registered during recording so `end_frame` can
-    /// refresh their `ScrollState` rows after arrange. Capacity-retained
-    /// across frames, cleared at `begin_frame`.
-    pub(crate) scroll_nodes: Vec<ScrollNode>,
+    /// refresh their `ScrollState` rows after arrange.
+    pub(crate) scrolls: ScrollRegistry,
 }
 
 impl Default for Ui {
@@ -95,7 +94,7 @@ impl Ui {
             cascades: Cascades::default(),
             display: Display::default(),
             damage: Damage::default(),
-            scroll_nodes: Vec::new(),
+            scrolls: ScrollRegistry::default(),
         }
     }
 
@@ -118,7 +117,7 @@ impl Ui {
         self.display = display;
         self.tree.begin_frame();
         self.ids.begin_frame();
-        self.scroll_nodes.clear();
+        self.scrolls.begin_frame();
     }
 
     /// Finalize the just-recorded frame: measure + arrange, rebuild cascades
@@ -147,42 +146,7 @@ impl Ui {
             .layout
             .run(&self.tree, self.tree.root(), surface, &mut pipeline.text);
 
-        // Refresh each registered scroll widget's state row with the
-        // freshly-arranged viewport + measured content height. Read here
-        // (post-arrange, pre-cascade) so next frame's record clamps with
-        // up-to-date numbers; the current frame's pan already used last
-        // frame's clamp.
-        for s in self.scroll_nodes.iter().copied() {
-            assert!(
-                s.node.index() < layout.rect.len(),
-                "scroll_nodes entry references node {} past tree length {}",
-                s.node.index(),
-                layout.rect.len(),
-            );
-            // Record both:
-            //  - viewport = INNER (padding-deflated) — what children
-            //    see; drives `content > viewport` overflow checks.
-            //  - outer = full arranged rect — drives bar positioning
-            //    so bars land flush with the OUTER far edge (which
-            //    sits inside the reserved strip even with user padding).
-            let outer_rect = layout.rect[s.node.index()];
-            let pad = self.tree.records.layout()[s.node.index()].padding;
-            let outer = outer_rect.size;
-            let viewport = outer_rect.deflated_by(pad).size;
-            let content = layout.scroll_content[s.node.index()];
-            let row = self
-                .state
-                .get_or_insert_with::<ScrollState, _>(s.id, Default::default);
-            row.viewport = viewport;
-            row.outer = outer;
-            row.content = content;
-            // End-frame re-clamp: pairs with the record-time clamp in
-            // `Scroll::show`, which only had last frame's numbers.
-            let max_x = (content.w - viewport.w).max(0.0);
-            let max_y = (content.h - viewport.h).max(0.0);
-            row.offset.x = row.offset.x.clamp(0.0, max_x);
-            row.offset.y = row.offset.y.clamp(0.0, max_y);
-        }
+        self.scrolls.refresh(&self.tree, layout, &mut self.state);
 
         let cascades = self.cascades.run(&self.tree, layout);
         self.input.end_frame(cascades);
