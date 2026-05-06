@@ -205,17 +205,19 @@ fn encode_node(
         match mask.radius {
             None => out.push_clip(mask_rect),
             Some(r) => {
-                // Inflate each corner radius by `inset` so the SDF
-                // rounds children further inward at corners. Slightly
-                // over-aggressive at corners (~0.5px past the stroke
-                // for a 1px stroke), invisible behind the AA rim.
-                let inflated = Corners {
-                    tl: r.tl + mask.inset,
-                    tr: r.tr + mask.inset,
-                    br: r.br + mask.inset,
-                    bl: r.bl + mask.inset,
+                // Reduce each corner radius by `inset` so the mask
+                // curve stays concentric with the painted stroke's
+                // inner edge — both curves have center at
+                // `(rect.min + paint.radius)`. Inflating instead
+                // would offset the curve center inward and produce a
+                // visible notch where the mismatched curves meet.
+                let mask_radius = Corners {
+                    tl: (r.tl - mask.inset).max(0.0),
+                    tr: (r.tr - mask.inset).max(0.0),
+                    br: (r.br - mask.inset).max(0.0),
+                    bl: (r.bl - mask.inset).max(0.0),
                 };
-                out.push_clip_rounded(mask_rect, inflated);
+                out.push_clip_rounded(mask_rect, mask_radius);
             }
         }
     }
