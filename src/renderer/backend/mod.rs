@@ -275,8 +275,14 @@ impl WgpuBackend {
                 continue;
             }
             let runs = &buffer.texts[g.texts.range()];
-            self.text
-                .prepare_group(&self.device, &self.queue, buffer.scale, i, runs);
+            self.text.prepare_group(
+                &self.device,
+                &self.queue,
+                buffer.scale,
+                i,
+                runs,
+                text::StencilMode::Plain,
+            );
         }
 
         let mut encoder = self
@@ -344,7 +350,8 @@ impl WgpuBackend {
                         text_scissor.w,
                         text_scissor.h,
                     );
-                    self.text.render_group(i, &mut pass);
+                    self.text
+                        .render_group(i, &mut pass, text::StencilMode::Plain);
                     quad_bound = false;
                 }
             }

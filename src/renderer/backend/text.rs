@@ -20,6 +20,25 @@ use glyphon::{
     TextRenderer as GlyphonRenderer, Viewport,
 };
 
+/// Selects which renderer pool a `prepare_group` / `render_group` call
+/// targets. Plain frames stay on the no-stencil pool (existing
+/// behavior). When the surrounding pass has a stencil attachment
+/// (rounded-clip path), text must use a depth-stencil-aware glyphon
+/// pipeline or wgpu validation errors — `Stencil` selects that pool.
+/// Pools share the underlying `TextAtlas` so glyph caches hit across
+/// modes for free.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StencilMode {
+    Plain,
+    /// Glyphon pipeline built with `depth_stencil = Some(...)` matching
+    /// the quad pipeline's `stencil_test` state. The render pass sets
+    /// `stencil_reference` per draw — text under a rounded clip
+    /// inherits the active reference and gets stencil-rounded. First
+    /// reader is sub-slice 3.B.3.
+    #[allow(dead_code)]
+    Stencil,
+}
+
 /// Pool shrinks only when grossly over-allocated: pool length must
 /// exceed `2 × high_water` to trigger a truncate down to high_water.
 /// That hysteresis absorbs frame-to-frame fluctuation (tooltip in/out,
@@ -57,10 +76,20 @@ pub(crate) struct TextRenderer {
     /// water; capacity retained across frames so steady state is alloc-
     /// free.
     renderers: Vec<GlyphonRenderer>,
+    /// Stencil-aware mirror of `renderers`, lazy-built on the first
+    /// `prepare_group(.., StencilMode::Stencil)` call. Apps that never
+    /// use rounded clip never allocate this pool. Shares the same
+    /// `atlas` (glyphon caches pipelines by `(format, multisample,
+    /// depth_stencil)` — no fork needed).
+    #[allow(dead_code)] // first reader is sub-slice 3.B.3
+    stencil_renderers: Vec<GlyphonRenderer>,
     /// Same length as `renderers`. `ready[i]` says whether
     /// `renderers[i].prepare(...)` was called this frame and should be
     /// rendered. Reset to all-false in [`Self::end_frame`].
     ready: Vec<bool>,
+    /// Same shape as `ready`, for `stencil_renderers`.
+    #[allow(dead_code)] // first reader is sub-slice 3.B.3
+    stencil_ready: Vec<bool>,
     /// Highest `group_idx + 1` prepared this frame. Used by
     /// [`Self::end_frame`] to truncate the pool down to the slots that
     /// were actually used, so a frame burst (e.g. an open modal with
@@ -85,7 +114,9 @@ impl TextRenderer {
             viewport,
             swash_cache,
             renderers: Vec::new(),
+            stencil_renderers: Vec::new(),
             ready: Vec::new(),
+            stencil_ready: Vec::new(),
             high_water: 0,
             scratch: Vec::new(),
         }
@@ -109,12 +140,14 @@ impl TextRenderer {
         self.atlas = TextAtlas::new(device, queue, &self.cache, format);
         self.renderers.clear();
         self.ready.clear();
+        self.stencil_renderers.clear();
+        self.stencil_ready.clear();
         self.high_water = 0;
     }
 
     /// True if any group has been prepared this frame and should render.
     pub fn has_prepared(&self) -> bool {
-        self.ready.iter().any(|&r| r)
+        self.ready.iter().any(|&r| r) || self.stencil_ready.iter().any(|&r| r)
     }
 
     /// Update the viewport uniform. Called once per frame before the
@@ -130,10 +163,11 @@ impl TextRenderer {
     }
 
     /// Build glyphon `TextArea`s from `runs` (looked up in the shared
-    /// cosmic cache) and call `prepare` on the renderer pool slot at
-    /// `group_idx`. Returns `false` and skips work if no shaper is
-    /// installed or no runs resolve to a buffer. The pool grows on
-    /// demand if `group_idx` exceeds the current pool length.
+    /// cosmic cache) and call `prepare` on the pool slot at
+    /// `group_idx`. `mode` selects the no-stencil or stencil-aware
+    /// pool — both share `atlas`. Returns `false` and skips work if no
+    /// shaper is installed or no runs resolve to a buffer. The pool
+    /// grows on demand if `group_idx` exceeds its current length.
     pub fn prepare_group(
         &mut self,
         device: &wgpu::Device,
@@ -141,6 +175,7 @@ impl TextRenderer {
         scale: f32,
         group_idx: usize,
         runs: &[TextRun],
+        mode: StencilMode,
     ) -> bool {
         let Some(cosmic) = self.cosmic.as_ref() else {
             return false;
@@ -171,21 +206,29 @@ impl TextRenderer {
             return false;
         }
 
-        // Grow pool to accommodate `group_idx`. Each renderer is small
-        // (one wgpu vertex buffer + a Vec<GlyphToRender>); pipeline is
-        // reused via `atlas.get_or_create_pipeline`.
-        while self.renderers.len() <= group_idx {
+        // Grow target pool to accommodate `group_idx`. Each renderer is
+        // small (one wgpu vertex buffer + a Vec<GlyphToRender>);
+        // pipelines are reused via `atlas.get_or_create_pipeline`.
+        let depth_stencil = match mode {
+            StencilMode::Plain => None,
+            StencilMode::Stencil => Some(text_stencil_test_state()),
+        };
+        let (pool, ready) = match mode {
+            StencilMode::Plain => (&mut self.renderers, &mut self.ready),
+            StencilMode::Stencil => (&mut self.stencil_renderers, &mut self.stencil_ready),
+        };
+        while pool.len() <= group_idx {
             let renderer = GlyphonRenderer::new(
                 &mut self.atlas,
                 device,
                 wgpu::MultisampleState::default(),
-                None,
+                depth_stencil.clone(),
             );
-            self.renderers.push(renderer);
-            self.ready.push(false);
+            pool.push(renderer);
+            ready.push(false);
         }
 
-        let result = self.renderers[group_idx].prepare(
+        let result = pool[group_idx].prepare(
             device,
             queue,
             font_system,
@@ -200,25 +243,34 @@ impl TextRenderer {
         drop(scratch);
 
         if let Err(e) = result {
-            tracing::warn!(?e, group_idx, "glyphon prepare failed");
-            self.ready[group_idx] = false;
+            tracing::warn!(?e, group_idx, ?mode, "glyphon prepare failed");
+            ready[group_idx] = false;
             return false;
         }
-        self.ready[group_idx] = true;
+        ready[group_idx] = true;
         if group_idx + 1 > self.high_water {
             self.high_water = group_idx + 1;
         }
         true
     }
 
-    /// Render the prepared text for `group_idx`. Silently no-ops if the
-    /// group wasn't prepared this frame (no text, no shaper, or prepare
-    /// failed).
-    pub fn render_group(&self, group_idx: usize, pass: &mut wgpu::RenderPass<'_>) {
-        if !matches!(self.ready.get(group_idx), Some(true)) {
+    /// Render the prepared text for `group_idx` from the `mode` pool.
+    /// Silently no-ops if the group wasn't prepared this frame in that
+    /// mode (no text, no shaper, prepare failed, or wrong pool).
+    pub fn render_group(
+        &self,
+        group_idx: usize,
+        pass: &mut wgpu::RenderPass<'_>,
+        mode: StencilMode,
+    ) {
+        let (pool, ready) = match mode {
+            StencilMode::Plain => (&self.renderers, &self.ready),
+            StencilMode::Stencil => (&self.stencil_renderers, &self.stencil_ready),
+        };
+        if !matches!(ready.get(group_idx), Some(true)) {
             return;
         }
-        if let Err(e) = self.renderers[group_idx].render(&self.atlas, &self.viewport, pass) {
+        if let Err(e) = pool[group_idx].render(&self.atlas, &self.viewport, pass) {
             tracing::warn!(?e, group_idx, "glyphon render failed");
         }
     }
@@ -231,15 +283,48 @@ impl TextRenderer {
         self.atlas.trim();
         // Shrink only when pool is more than 2× high_water — see
         // [`POOL_SHRINK_RATIO`]. Skips truncate work entirely in
-        // steady state.
+        // steady state. Both pools follow the same rule.
         if self.renderers.len() > self.high_water.saturating_mul(POOL_SHRINK_RATIO) {
             self.renderers.truncate(self.high_water);
             self.ready.truncate(self.high_water);
         }
+        if self.stencil_renderers.len() > self.high_water.saturating_mul(POOL_SHRINK_RATIO) {
+            self.stencil_renderers.truncate(self.high_water);
+            self.stencil_ready.truncate(self.high_water);
+        }
         for r in &mut self.ready {
             *r = false;
         }
+        for r in &mut self.stencil_ready {
+            *r = false;
+        }
         self.high_water = 0;
+    }
+}
+
+/// `DepthStencilState` matching the quad pipeline's `stencil_test`
+/// face: stencil compare = Equal against the active reference, no
+/// stencil writes, no depth. Glyphon's `TextRenderer::new` clones
+/// this; both pools (plain + stencil) share the same `TextAtlas`,
+/// which caches pipelines by `(format, multisample, depth_stencil)`.
+fn text_stencil_test_state() -> wgpu::DepthStencilState {
+    let face = wgpu::StencilFaceState {
+        compare: wgpu::CompareFunction::Equal,
+        fail_op: wgpu::StencilOperation::Keep,
+        depth_fail_op: wgpu::StencilOperation::Keep,
+        pass_op: wgpu::StencilOperation::Keep,
+    };
+    wgpu::DepthStencilState {
+        format: super::STENCIL_FORMAT,
+        depth_write_enabled: Some(false),
+        depth_compare: Some(wgpu::CompareFunction::Always),
+        stencil: wgpu::StencilState {
+            front: face,
+            back: face,
+            read_mask: 0xff,
+            write_mask: 0x00,
+        },
+        bias: wgpu::DepthBiasState::default(),
     }
 }
 
