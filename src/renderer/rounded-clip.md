@@ -151,4 +151,4 @@ without a radius). The `const fn` constructor itself can't downgrade
   scissor / rounded.
 
 Future extensions (nested clips, partial-damage fixture) tracked in
-`docs/roadmap.md` under Renderer / GPU and Damage.
+`docs/roadmap/renderer.md` and `docs/roadmap/damage.md`.

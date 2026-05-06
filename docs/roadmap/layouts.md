@@ -1,4 +1,4 @@
-# Layouts roadmap
+# Layouts
 
 Open layout work — shipped-when-conditions-merit; no committed roadmap.
 

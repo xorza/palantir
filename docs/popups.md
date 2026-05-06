@@ -89,7 +89,7 @@ Convert these entry points to iterate `tree.roots`:
 - Roots are never nested in `recording_parent` (their first node has no
   parent entry). Existing walks already gate on that.
 
-## Out of scope (queue in `roadmap.md`)
+## Out of scope (queue in `roadmap/`)
 
 - Layout-anchored popups (anchor by `WidgetId`, deferred measure after
   `Main` arrange).
