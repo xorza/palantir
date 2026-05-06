@@ -38,9 +38,7 @@ use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
     justify::Justify, sense::Sense, sizing::Sizes, visibility::Visibility,
 };
-use crate::primitives::{
-    background::Background, size::Size, spacing::Spacing, transform::TranslateScale,
-};
+use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 
@@ -133,15 +131,6 @@ pub(crate) struct ElementExtras {
     pub(crate) justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
     pub(crate) child_align: Align,
-    /// Panel chrome — the painted `Background`. Single source of
-    /// truth for both painted background emission AND clip mask
-    /// geometry: encoder paints it as the node's own `RoundedRect`
-    /// (before its clip) and reads `chrome.{radius,stroke}` for the
-    /// rounded mask radius and stroke-width inset. Clip mode lives
-    /// separately in `PaintAttrs.clip`. `None` for nodes without
-    /// chrome (text leaves, layout-only panels). Stamped by
-    /// `Surface::apply_to`.
-    pub(crate) chrome: Option<Background>,
 }
 
 impl ElementExtras {
@@ -162,7 +151,6 @@ impl ElementExtras {
         line_gap: 0.0,
         justify: Justify::Start,
         child_align: Align::new(HAlign::Auto, VAlign::Auto),
-        chrome: None,
     };
 }
 
@@ -359,10 +347,6 @@ impl Element {
             line_gap: self.line_gap,
             justify: self.justify,
             child_align: self.child_align,
-            // Chrome is plumbed into `extras.chrome` separately by
-            // `Tree::open_node` from the `surface` arg passed to
-            // `ui.node` — not routed through `Element` itself.
-            chrome: None,
         };
         ElementSplit {
             layout,

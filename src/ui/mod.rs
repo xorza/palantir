@@ -282,9 +282,9 @@ impl Ui {
         }
         // Apply the surface's clip mode to the element (with Rounded
         // → Rect downgrade for zero-radius paint), and pass the
-        // chrome (paint Background) to the tree to land on
-        // `extras.chrome`. Element doesn't carry chrome — chrome is
-        // a per-node-call concern, paired with the body.
+        // chrome (paint Background) to the tree to land in
+        // `Tree::chrome_table`. Element doesn't carry chrome — chrome
+        // is a per-node-call concern, paired with the body.
         let chrome = surface.map(|s| {
             element.clip = match s.clip {
                 ClipMode::Rounded if s.paint.radius.approx_zero() => ClipMode::Rect,

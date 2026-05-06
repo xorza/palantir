@@ -66,6 +66,16 @@ pub(crate) struct Tree {
     /// `position`, `grid`). `paint[i].extras` is `Some(idx)` when a node
     /// customized any of these. Cleared per frame.
     pub(crate) node_extras: Vec<ElementExtras>,
+    /// Chrome side table — index column parallel to `layout`/`paint`,
+    /// `Self::NO_CHROME` (`u16::MAX`) for nodes without chrome.
+    /// Decoupled from `node_extras` because chrome is panel-common
+    /// while the rest of `ElementExtras` is rare; bundling them was
+    /// costing every chrome-bearing panel a 108-byte extras slot just
+    /// to hold a single `Option<Background>`.
+    pub(crate) chrome_idx: Vec<u16>,
+    /// Chrome storage. Cap of 65 535 chromes per frame; cleared per
+    /// frame, capacity retained.
+    pub(crate) chrome_table: Vec<Background>,
     /// Length parallel to the columns above. `i + 1 == subtree_end[i]` for a
     /// leaf; otherwise points one past the last descendant of `i`.
     /// Maintained incrementally by `close_node`, so the slot is final
@@ -99,6 +109,9 @@ pub(crate) struct Tree {
 }
 
 impl Tree {
+    /// Sentinel `chrome_idx` slot for nodes without chrome.
+    pub(crate) const NO_CHROME: u16 = u16::MAX;
+
     pub(crate) fn begin_frame(&mut self) {
         self.layout.clear();
         self.paint.clear();
@@ -109,6 +122,8 @@ impl Tree {
         self.current_open = None;
         self.grid.clear();
         self.node_extras.clear();
+        self.chrome_idx.clear();
+        self.chrome_table.clear();
         self.hashes.begin_frame();
     }
 
@@ -119,19 +134,21 @@ impl Tree {
     pub(crate) fn end_frame(&mut self) {
         let n = self.layout.len();
 
-        let nodes = &mut self.hashes.node;
-        nodes.clear();
-        nodes.reserve(n);
+        self.hashes.node.clear();
+        self.hashes.node.reserve(n);
         for i in 0..n {
             let layout = &self.layout[i];
             let paint = self.paint[i];
             let extras = paint.extras.map(|idx| &self.node_extras[idx as usize]);
+            let chrome = self.chrome_for(NodeId(i as u32));
             let shapes = self.shapes.slice_of(i);
             let grid_def = match layout.mode {
                 LayoutMode::Grid(idx) => Some(&self.grid.defs[idx as usize]),
                 _ => None,
             };
-            nodes.push(NodeHash::compute(layout, paint, extras, shapes, grid_def));
+            self.hashes.node.push(NodeHash::compute(
+                layout, paint, extras, chrome, shapes, grid_def,
+            ));
         }
 
         // Subtree-hash rollup. Pre-order arena means every child has a
@@ -187,14 +204,8 @@ impl Tree {
             layout,
             mut paint,
             id: widget_id,
-            mut extras,
+            extras,
         } = element.split();
-        // Chrome is the per-node-call surface paint. Element doesn't
-        // carry it; `ui.node` threads it here so we can stamp it onto
-        // `extras.chrome` before the side-table allocation check —
-        // an extras-bearing chrome on an otherwise-default element
-        // still gets a side-table slot allocated.
-        extras.chrome = chrome;
 
         // If the parent is a `Grid`, validate the child's `GridCell` against
         // the grid's track counts now — once at recording time — instead of
@@ -233,6 +244,20 @@ impl Tree {
             self.node_extras.push(extras);
             paint.extras = Some(idx);
         }
+
+        let chrome_slot = match chrome {
+            Some(bg) => {
+                assert!(
+                    self.chrome_table.len() < Self::NO_CHROME as usize,
+                    "more than 65 535 chromes in a single frame",
+                );
+                let idx = self.chrome_table.len() as u16;
+                self.chrome_table.push(bg);
+                idx
+            }
+            None => Self::NO_CHROME,
+        };
+        self.chrome_idx.push(chrome_slot);
 
         self.layout.push(layout);
         self.paint.push(paint);
@@ -313,6 +338,17 @@ impl Tree {
         match self.paint[id.0 as usize].extras {
             Some(i) => &self.node_extras[i as usize],
             None => &ElementExtras::DEFAULT,
+        }
+    }
+
+    /// Chrome for `id`, or `None` if the node has no chrome. Resolves
+    /// the `chrome_idx` sentinel into a borrow of `chrome_table`.
+    pub(crate) fn chrome_for(&self, id: NodeId) -> Option<&Background> {
+        let slot = self.chrome_idx[id.index()];
+        if slot == Self::NO_CHROME {
+            None
+        } else {
+            Some(&self.chrome_table[slot as usize])
         }
     }
 

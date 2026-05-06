@@ -27,11 +27,13 @@ fn frame_paints_a_single_rounded_rect() {
     });
     ui.end_frame();
 
-    // Chrome lives on `extras.chrome`, not in the shapes list.
+    // Chrome lives in `Tree::chrome_table`, not in the shapes list.
     let shapes = ui.tree.shapes.slice_of(frame_node.unwrap().index());
     assert!(shapes.is_empty());
-    let extras = ui.tree.read_extras(frame_node.unwrap());
-    assert!(extras.chrome.is_some(), "frame chrome stamped onto extras");
+    assert!(
+        ui.tree.chrome_for(frame_node.unwrap()).is_some(),
+        "frame chrome recorded in chrome table",
+    );
 
     // Default sense is None — frame is not a hit-test target.
     let r = ui.pipeline.layout.result.rect[frame_node.unwrap().index()];
