@@ -8,7 +8,7 @@ use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::text::{cosmic::CosmicMeasure, share};
+use crate::text::{SharedCosmic, cosmic::CosmicMeasure, share};
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::widgets::panel::Panel;
@@ -31,8 +31,18 @@ pub(crate) fn ui_with_text(size: UVec2) -> Ui {
 }
 
 pub(crate) fn new_ui_text() -> Ui {
+    // Cosmic-text's `FontSystem` parses bundled font bytes on
+    // construction — expensive (multiple ms). Tests that loop over
+    // many widths or sizes call `ui_with_text` per iteration; sharing
+    // one `SharedCosmic` per thread amortizes the parse across the
+    // thread's lifetime and cuts cross-driver test runtime ~10×.
+    // Fine because cosmic state across tests is just a glyph cache —
+    // tests assert on layout output, not cache contents.
+    thread_local! {
+        static SHARED: SharedCosmic = share(CosmicMeasure::with_bundled_fonts());
+    }
     let mut ui = Ui::new();
-    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    SHARED.with(|c| ui.set_cosmic(c.clone()));
     ui
 }
 
