@@ -430,6 +430,40 @@ fn changing_layout_property_changes_hash() {
                     .node
             },
         ),
+        (
+            "focusable",
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .focusable(false)
+                    .show(ui, |_| {})
+                    .node
+            },
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .focusable(true)
+                    .show(ui, |_| {})
+                    .node
+            },
+        ),
+        (
+            "disabled",
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .disabled(false)
+                    .show(ui, |_| {})
+                    .node
+            },
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .disabled(true)
+                    .show(ui, |_| {})
+                    .node
+            },
+        ),
     ];
     for (label, a, b) in cases {
         let h1 = record_hash(*a);
@@ -712,6 +746,105 @@ fn leaf_subtree_hash_depends_on_node_hash() {
         ui2.tree.hashes.node[leaf2.index()]
     );
     assert_eq!(ui1.tree.subtree_hash(leaf1), ui2.tree.subtree_hash(leaf2));
+}
+
+/// Transform changes are intentionally folded into `subtree_hash` only,
+/// not the per-node hash — the encode cache (subtree-keyed) must
+/// invalidate while damage rect-diffing handles paint-position drift.
+/// Pin both directions in one fixture.
+#[test]
+fn transform_change_affects_subtree_but_not_node_hash() {
+    use crate::primitives::transform::TranslateScale;
+    use glam::Vec2;
+
+    let mut ui1 = ui_at(UVec2::new(200, 200));
+    let n1 = Panel::hstack()
+        .with_id("root")
+        .transform(TranslateScale::IDENTITY)
+        .show(&mut ui1, |_| {})
+        .node;
+    ui1.end_frame();
+
+    let mut ui2 = ui_at(UVec2::new(200, 200));
+    let n2 = Panel::hstack()
+        .with_id("root")
+        .transform(TranslateScale::from_translation(Vec2::new(10.0, 0.0)))
+        .show(&mut ui2, |_| {})
+        .node;
+    ui2.end_frame();
+
+    assert_eq!(
+        ui1.tree.hashes.node[n1.index()],
+        ui2.tree.hashes.node[n2.index()],
+        "transform change must NOT change per-node hash",
+    );
+    assert_ne!(
+        ui1.tree.subtree_hash(n1),
+        ui2.tree.subtree_hash(n2),
+        "transform change MUST change subtree hash (encode cache key)",
+    );
+}
+
+/// `LayoutMode::Grid(idx)` carries a frame-local arena slot that shifts
+/// with sibling order. The per-node hash must NOT depend on it — only
+/// on the def's contents, which are rolled in at `NodeExit`. Two frames
+/// recording the same grid in different relative positions to other
+/// grids must produce identical per-node hashes for the matching grid.
+#[test]
+fn grid_per_node_hash_independent_of_arena_slot() {
+    use crate::layout::types::track::Track;
+    use crate::widgets::grid::Grid;
+    use std::rc::Rc;
+
+    let cols: Rc<[Track]> = Rc::from([Track::fill(), Track::fill()]);
+    let rows: Rc<[Track]> = Rc::from([Track::fill()]);
+
+    // Frame 1: target grid recorded first. Slot 0.
+    let mut ui1 = ui_at(UVec2::new(200, 200));
+    let mut g1 = None;
+    Panel::vstack().with_id("root").show(&mut ui1, |ui| {
+        g1 = Some(
+            Grid::new()
+                .with_id("target")
+                .cols(cols.clone())
+                .rows(rows.clone())
+                .show(ui, |_| {})
+                .node,
+        );
+        Grid::new()
+            .with_id("other")
+            .cols(cols.clone())
+            .rows(rows.clone())
+            .show(ui, |_| {});
+    });
+    ui1.end_frame();
+
+    // Frame 2: same grids, swapped declaration order. Target grid now
+    // gets arena slot 1 instead of 0.
+    let mut ui2 = ui_at(UVec2::new(200, 200));
+    let mut g2 = None;
+    Panel::vstack().with_id("root").show(&mut ui2, |ui| {
+        Grid::new()
+            .with_id("other")
+            .cols(cols.clone())
+            .rows(rows.clone())
+            .show(ui, |_| {});
+        g2 = Some(
+            Grid::new()
+                .with_id("target")
+                .cols(cols.clone())
+                .rows(rows.clone())
+                .show(ui, |_| {})
+                .node,
+        );
+    });
+    ui2.end_frame();
+
+    assert_eq!(
+        ui1.tree.hashes.node[g1.unwrap().index()],
+        ui2.tree.hashes.node[g2.unwrap().index()],
+        "grid arena slot must not contribute to the per-node hash",
+    );
 }
 
 // --- subtree_end rollup ----------------------------------------------------
