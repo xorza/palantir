@@ -18,10 +18,7 @@
 # Each combo runs:
 #   1. cargo fmt --all -- --check          (once, up front)
 #   2. cargo clippy --all-targets --features <combo> -- -D warnings
-#   3. cargo nextest run --features <combo>
-#   4. cargo test --doc --features <combo> (nextest skips doctests)
-#
-# Requires `cargo-nextest` — install with `cargo install cargo-nextest`.
+#   3. cargo test --features <combo>       (unit + integration + doctests)
 #
 # Usage:
 #   scripts/test-all.sh           # full matrix
@@ -48,11 +45,6 @@ COMBOS=(
   "internals bench-deep"
 )
 
-if ! command -v cargo-nextest >/dev/null 2>&1; then
-  printf 'error: cargo-nextest not found. Install with: cargo install cargo-nextest\n' >&2
-  exit 1
-fi
-
 if [[ "${FAST:-0}" != "1" ]]; then
   banner "fmt --check"
   cargo fmt --all -- --check
@@ -71,19 +63,11 @@ for features in "${COMBOS[@]}"; do
     fi
   fi
 
-  step "nextest"
+  step "test"
   if [[ -z "$features" ]]; then
-    cargo nextest run
+    cargo test
   else
-    cargo nextest run --features "$features"
-  fi
-
-  # nextest doesn't run doctests; cover them here.
-  step "doctests"
-  if [[ -z "$features" ]]; then
-    cargo test --doc
-  else
-    cargo test --doc --features "$features"
+    cargo test --features "$features"
   fi
 done
 
