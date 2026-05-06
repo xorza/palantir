@@ -14,6 +14,7 @@
       "Bash(cargo test *)",
       "Bash(cargo clippy*)",
       "Bash(cargo fmt*)",
+      "Bash(cargo nextest *)",
 
       "Bash(git mv:*)",
       "Bash(git add:*)",
