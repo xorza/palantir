@@ -199,15 +199,10 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        // println!("{:?}", event);
-
         let Some(state) = self.state.as_mut() else {
             return;
         };
 
-        // Any input event might change UI state (hover, press, focus,
-        // hit-test). Mirror palantir's old conservative "any event ⇒
-        // repaint" so we don't drop frames after legitimate input.
         if let Some(ev) = InputEvent::from_winit(&event, state.display.scale_factor) {
             state.ui.on_input(ev);
             state.repaint_requested = true;
@@ -218,6 +213,7 @@ impl ApplicationHandler for App {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 state.display.scale_factor = scale_factor as f32;
                 state.repaint_requested = true;
+                state.new_surface = true;
             }
             WindowEvent::Resized(new) => {
                 let max = state.device.limits().max_texture_dimension_2d;
@@ -225,14 +221,10 @@ impl ApplicationHandler for App {
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
                 state.display.physical = glam::UVec2::new(state.config.width, state.config.height);
+                state.new_surface = true;
                 state.repaint_requested = true;
             }
             WindowEvent::RedrawRequested => state.draw(),
-            // winit fires `Occluded(false)` when the OS uncovers our
-            // window after it had been fully obscured. Wake the gate
-            // so the next `about_to_wait` repaints against the now-
-            // presentable surface — without this we'd stay idle until
-            // some unrelated event happened to wake us.
             WindowEvent::Occluded(false) => state.repaint_requested = true,
             _ => {}
         }
@@ -241,6 +233,15 @@ impl ApplicationHandler for App {
 
 impl State {
     fn draw(&mut self) {
+        self.fps_window_frames += 1;
+        let elapsed = self.fps_window_start.elapsed();
+        if elapsed.as_secs() >= 1 {
+            let fps = self.fps_window_frames as f64 / elapsed.as_secs_f64();
+            println!("fps: {fps:.1}");
+            self.fps_window_start = std::time::Instant::now();
+            self.fps_window_frames = 0;
+        }
+
         self.repaint_requested = false;
         if !self.window.is_visible().unwrap_or_default() {
             return;
@@ -280,20 +281,10 @@ impl State {
             }
         };
 
-        // Window background: palette `bg` (Ayu Mirage High Contrast).
         self.backend
             .submit(&frame.texture, Color::hex(0x252525), frame_out);
 
         frame.present();
-
-        self.fps_window_frames += 1;
-        let elapsed = self.fps_window_start.elapsed();
-        if elapsed.as_secs() >= 1 {
-            let fps = self.fps_window_frames as f64 / elapsed.as_secs_f64();
-            println!("fps: {fps:.1}");
-            self.fps_window_start = std::time::Instant::now();
-            self.fps_window_frames = 0;
-        }
     }
 }
 
