@@ -2,8 +2,7 @@ mod quad_pipeline;
 
 use self::quad_pipeline::QuadPipeline;
 use super::frontend::FrameOutput;
-use crate::primitives::{color::Color, rect::Rect, size::Size, stroke::Stroke, urect::URect};
-use crate::renderer::gpu::buffer::RoundedClipPhys;
+use crate::primitives::{color::Color, urect::URect};
 use crate::renderer::gpu::quad::Quad;
 use crate::text::SharedCosmic;
 use crate::ui::damage::DamagePaint;
@@ -51,6 +50,31 @@ struct StencilAttachment {
 /// component is needed (UI is 2D, no z-test). Read by the
 /// stencil-aware quad pipeline variants in `quad_pipeline.rs`.
 pub(crate) const STENCIL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Stencil8;
+
+/// Stencil-test pipeline state shared by the quad's `stencil_test`
+/// pipeline and glyphon's stencil-aware text renderer. Sole source of
+/// truth so the two can't drift (mismatched `read_mask` etc. would
+/// silently break rounded text under mask).
+pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
+    let face = wgpu::StencilFaceState {
+        compare: wgpu::CompareFunction::Equal,
+        fail_op: wgpu::StencilOperation::Keep,
+        depth_fail_op: wgpu::StencilOperation::Keep,
+        pass_op: wgpu::StencilOperation::Keep,
+    };
+    wgpu::DepthStencilState {
+        format: STENCIL_FORMAT,
+        depth_write_enabled: Some(false),
+        depth_compare: Some(wgpu::CompareFunction::Always),
+        stencil: wgpu::StencilState {
+            front: face,
+            back: face,
+            read_mask: 0xff,
+            write_mask: 0x00,
+        },
+        bias: wgpu::DepthBiasState::default(),
+    }
+}
 
 /// wgpu backend: owns the quad pipeline + text renderer and cloned
 /// device/queue handles (cheap, Arc-backed). The text side holds a shared
@@ -118,6 +142,11 @@ impl WgpuBackend {
         self.backbuffer = Some(Backbuffer {
             tex,
             view,
+            // Drop any stale stencil — it was sized to the old
+            // backbuffer; `ensure_stencil` lazily allocates a fresh
+            // one matching the new size on the next rounded-clip
+            // frame. Without this, wgpu validation rejects the pass
+            // (mismatched attachment sizes).
             stencil: None,
             size,
             format,
@@ -125,17 +154,16 @@ impl WgpuBackend {
         true
     }
 
-    /// Allocate the stencil attachment if it isn't already present, or
-    /// resize it if the backbuffer was just recreated. Called from the
-    /// stencil rendering path on first need; idempotent.
+    /// Allocate the stencil attachment if it isn't already present.
+    /// `ensure_backbuffer` resets `stencil` to `None` whenever it
+    /// rebuilds the color texture, so a `Some` here is always
+    /// size-matched to the current backbuffer.
     fn ensure_stencil(&mut self) {
         let bb = self
             .backbuffer
             .as_mut()
             .expect("ensure_backbuffer must run first");
-        if let Some(s) = &bb.stencil
-            && s.tex.size() == bb.size
-        {
+        if bb.stencil.is_some() {
             return;
         }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
@@ -273,9 +301,9 @@ impl WgpuBackend {
             mask_indices.resize(buffer.groups.len(), None);
             let mut masks: Vec<Quad> = Vec::new();
             for (i, g) in buffer.groups.iter().enumerate() {
-                if let Some(rc) = g.rounded_clip {
+                if let (Some(scissor), Some(radius)) = (g.scissor, g.rounded_clip) {
                     mask_indices[i] = Some(masks.len() as u32);
-                    masks.push(make_mask_quad(rc));
+                    masks.push(QuadPipeline::mask_instance(scissor, radius));
                 }
             }
             self.quad.upload_masks(&self.device, &self.queue, &masks);
@@ -357,11 +385,10 @@ impl WgpuBackend {
                 multiview_mask: None,
             });
             let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
-            // Quad pipeline binding survives across groups, but glyphon's
-            // `render_group` clobbers it. Re-bind lazily on the no-stencil
-            // path; on the stencil path we always re-bind explicitly per
-            // group (mask vs. test pipeline alternates).
-            let mut quad_bound = false;
+            // Re-bind the quad pipeline per group: glyphon's
+            // `render_group` clobbers state, and the stencil path
+            // alternates mask/test pipelines anyway. Re-bind cost is
+            // a few state setters — cheap relative to the draw call.
             for (i, g) in buffer.groups.iter().enumerate() {
                 let group_scissor = g.scissor.unwrap_or(full_viewport);
                 let effective = match damage_scissor {
@@ -376,9 +403,10 @@ impl WgpuBackend {
                 }
                 pass.set_scissor_rect(effective.x, effective.y, effective.w, effective.h);
 
+                let text_scissor = damage_scissor.unwrap_or(full_viewport);
                 if use_stencil {
                     let mask_idx = mask_indices[i];
-                    let stencil_ref = if mask_idx.is_some() { 1 } else { 0 };
+                    let stencil_ref: u32 = if mask_idx.is_some() { 1 } else { 0 };
                     pass.set_stencil_reference(stencil_ref);
                     // Per-group invariant: each rounded group writes its
                     // mask, draws, then clears the mask back to 0 so the
@@ -394,10 +422,6 @@ impl WgpuBackend {
                         self.quad.draw_range(&mut pass, g.quads);
                     }
                     if g.texts.len != 0 {
-                        let text_scissor = match damage_scissor {
-                            Some(d) => d,
-                            None => full_viewport,
-                        };
                         pass.set_scissor_rect(
                             text_scissor.x,
                             text_scissor.y,
@@ -405,33 +429,27 @@ impl WgpuBackend {
                             text_scissor.h,
                         );
                         self.text.render_group(i, &mut pass, text_mode);
-                        // Restore group scissor for the mask-clear below.
-                        pass.set_scissor_rect(effective.x, effective.y, effective.w, effective.h);
                     }
                     if let Some(mi) = mask_idx {
                         // Replace(0) re-stencils the rounded region back
                         // to 0; subsequent groups that don't re-write
-                        // their own mask see clean stencil.
+                        // their own mask see clean stencil. The
+                        // mask-clear's `fs_mask` discards outside the
+                        // SDF, so a wider scissor (carried over from
+                        // text) still produces the same stencil writes.
                         pass.set_stencil_reference(0);
                         self.quad.bind_mask_write(&mut pass);
                         self.quad.draw_mask(&mut pass, mi);
                     }
-                } else {
+                } else if g.quads.len != 0 || g.texts.len != 0 {
                     if g.quads.len != 0 {
-                        if !quad_bound {
-                            self.quad.bind(&mut pass);
-                            quad_bound = true;
-                        }
+                        self.quad.bind(&mut pass);
                         self.quad.draw_range(&mut pass, g.quads);
                     }
                     if g.texts.len != 0 {
                         // Text uses a full-viewport scissor + per-area
                         // `bounds` for clipping (set in compose). Under
                         // partial repaint we narrow to the damage rect.
-                        let text_scissor = match damage_scissor {
-                            Some(d) => d,
-                            None => full_viewport,
-                        };
                         pass.set_scissor_rect(
                             text_scissor.x,
                             text_scissor.y,
@@ -439,7 +457,6 @@ impl WgpuBackend {
                             text_scissor.h,
                         );
                         self.text.render_group(i, &mut pass, text_mode);
-                        quad_bound = false;
                     }
                 }
             }
@@ -508,25 +525,6 @@ impl WgpuBackend {
         );
         self.queue.submit(std::iter::once(encoder.finish()));
     }
-}
-
-/// Build a single-instance `Quad` for the stencil mask-write pipeline
-/// from a physical-px rounded clip. Color/stroke fields are ignored
-/// (mask pipeline disables color writes); only `rect.size` and
-/// `radius` reach the SDF in the fragment shader.
-fn make_mask_quad(rc: RoundedClipPhys) -> Quad {
-    Quad::new(
-        Rect {
-            min: glam::Vec2::new(rc.rect.x as f32, rc.rect.y as f32),
-            size: Size::new(rc.rect.w as f32, rc.rect.h as f32),
-        },
-        Color::WHITE,
-        rc.radius,
-        Some(Stroke {
-            width: 0.0,
-            color: Color::default(),
-        }),
-    )
 }
 
 #[cfg(test)]

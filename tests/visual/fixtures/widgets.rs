@@ -96,3 +96,37 @@ fn surface_rounded_clips_full_fill_child() {
         Tolerance::default(),
     );
 }
+
+/// Pin the backbuffer-rebuild invariant: when the surface texture
+/// changes size between rounded-clip frames, `WgpuBackend` must
+/// reset its stencil attachment along with the color backbuffer. If
+/// the old stencil leaks across the resize, wgpu validation panics
+/// because the stencil texture's size no longer matches the render
+/// pass attachment. Smoke test: two rounded-clip renders at
+/// different sizes, no golden assertion — surviving the second
+/// `submit` without panic is the assertion.
+#[test]
+fn rounded_clip_survives_surface_resize() {
+    let mut h = Harness::new();
+    let scene = |ui: &mut palantir::Ui| {
+        Panel::vstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .padding(10.0)
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .with_id("rounded")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .background(Surface::rounded(Background {
+                        fill: Color::rgb(0.2, 0.2, 0.3),
+                        radius: Corners::all(8.0),
+                        ..Default::default()
+                    }))
+                    .show(ui, |_| {});
+            });
+    };
+    let _ = h.render(UVec2::new(120, 120), 1.0, DARK_BG, scene);
+    let _ = h.render(UVec2::new(240, 200), 1.0, DARK_BG, scene);
+    // If `ensure_backbuffer` failed to reset `bb.stencil = None`, the
+    // second render would attach a 120×120 stencil to a 240×200 pass
+    // and wgpu validation would have already panicked above.
+}

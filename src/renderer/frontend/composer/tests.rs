@@ -242,19 +242,15 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
         .rounded_clip
         .expect("outer rounded data must ride on group");
     // DPR=2 → radius doubles 8→16, rect (10,20,100,80) → (20,40,200,160).
-    assert_eq!(outer_r.radius.tl, 16.0);
-    assert_eq!(outer_r.rect, URect::new(20, 40, 200, 160));
-    assert_eq!(outer.scissor, Some(outer_r.rect));
+    assert_eq!(outer_r.tl, 16.0);
+    assert_eq!(outer.scissor, Some(URect::new(20, 40, 200, 160)));
 
-    // Inheritance: inner Rect clip carries the SAME rounded mask as
+    // Inheritance: inner Rect clip carries the SAME rounded radii as
     // the outer parent, scissor narrowed to the inner rect.
     let inner_r = inner
         .rounded_clip
         .expect("inner rect clip inside rounded ancestor inherits rounded data");
-    assert_eq!(
-        inner_r, outer_r,
-        "inner group inherits parent's mask geometry"
-    );
+    assert_eq!(inner_r, outer_r, "inner group inherits parent's mask radii");
     // DPR=2: rect (30,40,40,30) → (60,80,80,60), clamped to outer.
     assert_eq!(inner.scissor, Some(URect::new(60, 80, 80, 60)));
 }

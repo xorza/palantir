@@ -7,7 +7,7 @@ use crate::layout::cache::AvailableKey;
 use crate::layout::types::display::Display;
 use crate::primitives::corners::Corners;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
-use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, RoundedClipPhys, TextRun};
+use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::renderer::gpu::quad::Quad;
 use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
@@ -42,7 +42,7 @@ struct SubtreeFrame {
 #[derive(Default)]
 struct GroupBuilder {
     current: Option<URect>,
-    rounded: Option<RoundedClipPhys>,
+    rounded: Option<Corners>,
     quads_start: u32,
     texts_start: u32,
     /// `true` iff the most recent draw appended to the in-flight
@@ -81,7 +81,7 @@ impl GroupBuilder {
     fn set_clip(
         &mut self,
         scissor: Option<URect>,
-        rounded: Option<RoundedClipPhys>,
+        rounded: Option<Corners>,
         out: &mut RenderBuffer,
     ) {
         if scissor != self.current || rounded != self.rounded {
@@ -146,7 +146,7 @@ pub(crate) struct Composer {
 #[derive(Clone, Copy)]
 struct ClipFrame {
     scissor: URect,
-    rounded: Option<RoundedClipPhys>,
+    rounded: Option<Corners>,
 }
 
 impl Composer {
@@ -198,10 +198,7 @@ impl Composer {
                         // Combine current transform's uniform scale with DPR
                         // so radii match the painted SDF's physical size.
                         let phys_scale = current_transform.scale * scale;
-                        Some(RoundedClipPhys {
-                            rect: scissor,
-                            radius: logical_radius.scaled_by(phys_scale),
-                        })
+                        Some(logical_radius.scaled_by(phys_scale))
                     } else {
                         // Rect clip nested inside a rounded ancestor: inherit
                         // the ancestor's rounded data so children stay
