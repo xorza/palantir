@@ -1,8 +1,11 @@
 use crate::Ui;
 use crate::layout::types::{display::Display, justify::Justify, sizing::Sizing};
 use crate::primitives::color::Color;
+use crate::primitives::corners::Corners;
+use crate::primitives::rect::Rect;
+use crate::renderer::frontend::cmd_buffer::CmdKind;
 use crate::shape::Shape;
-use crate::support::testing::ui_at;
+use crate::support::testing::{encode_cmds, ui_at};
 use crate::tree::element::Configure;
 use crate::tree::{NodeId, node_hash::NodeHash};
 use crate::widgets::theme::Background;
@@ -20,12 +23,105 @@ fn shapes_attached_to_button_node() {
 
     // Chrome (the button background) lives in `Tree::chrome_table`,
     // not in the shapes list. Only the label `Text` shape lands here.
-    let shapes = ui.tree.shapes.slice_of(button_node.unwrap().index());
+    let shapes: Vec<&Shape> = ui.tree.shapes_of(button_node.unwrap()).collect();
     assert_eq!(shapes.len(), 1);
     assert!(matches!(shapes[0], Shape::Text { .. }));
     assert!(
         ui.tree.chrome_for(button_node.unwrap()).is_some(),
         "button chrome recorded in chrome table",
+    );
+}
+
+/// Pin the kinds-stream mechanism end-to-end: when shapes are interleaved
+/// with child nodes under one parent, the kinds stream encodes their
+/// position in record order (Shape between NodeEnter/NodeExit pairs of
+/// the right children). Each shape's size encodes the expected slot for
+/// an unambiguous readback.
+#[test]
+fn interleaved_shapes_record_correct_kinds_stream() {
+    fn pos_rect(slot: u16) -> Shape {
+        let s = (slot + 1) as f32 * 10.0;
+        Shape::SubRect {
+            local_rect: Rect::new(0.0, 0.0, s, s),
+            radius: Corners::default(),
+            fill: Color::rgb(1.0, 0.0, 0.0),
+            stroke: None,
+        }
+    }
+    let mut ui = ui_at(UVec2::new(200, 200));
+    let p = Panel::vstack()
+        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+        .show(&mut ui, |ui| {
+            ui.add_shape(pos_rect(0));
+            Frame::new()
+                .with_id("c0")
+                .background(Background {
+                    fill: Color::rgb(0.0, 1.0, 0.0),
+                    ..Default::default()
+                })
+                .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                .show(ui);
+            ui.add_shape(pos_rect(1));
+            Frame::new()
+                .with_id("c1")
+                .background(Background {
+                    fill: Color::rgb(0.0, 0.0, 1.0),
+                    ..Default::default()
+                })
+                .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                .show(ui);
+            ui.add_shape(pos_rect(2));
+        })
+        .node;
+    ui.end_frame();
+
+    // Walk the parent's kinds slice — it must show our three SubRects
+    // interleaved between the two child NodeEnter/NodeExit pairs in
+    // record order.
+    let pi = p.index();
+    let kinds_slice = &ui.tree.kinds[ui.tree.nodes[pi].kinds.range()];
+    use crate::tree::TreeOp;
+    assert_eq!(
+        kinds_slice,
+        &[
+            TreeOp::NodeEnter,
+            TreeOp::Shape,
+            TreeOp::NodeEnter,
+            TreeOp::NodeExit,
+            TreeOp::Shape,
+            TreeOp::NodeEnter,
+            TreeOp::NodeExit,
+            TreeOp::Shape,
+            TreeOp::NodeExit,
+        ][..],
+        "kinds stream encodes shape→child→shape→child→shape interleave",
+    );
+    let sizes: Vec<f32> = ui
+        .tree
+        .shapes_of(p)
+        .map(|s| match s {
+            Shape::SubRect {
+                local_rect: rect, ..
+            } => rect.size.w,
+            _ => panic!("unexpected shape variant"),
+        })
+        .collect();
+    // Record order is preserved by direct push to `kinds` + `shapes`.
+    assert_eq!(sizes, vec![10.0, 20.0, 30.0]);
+
+    // End-to-end: the encoder paints draw commands in record order —
+    // `pos_rect(0)` → child c0 chrome → `pos_rect(1)` → child c1 chrome
+    // → `pos_rect(2)`. 3 parent SubRects + 2 child chrome paints = 5
+    // DrawRect cmds in total.
+    let cmds = encode_cmds(&ui);
+    let draw_rect_count = cmds
+        .kinds
+        .iter()
+        .filter(|k| matches!(k, CmdKind::DrawRect))
+        .count();
+    assert_eq!(
+        draw_rect_count, 5,
+        "expected 3 parent shapes interleaved with 2 child chromes",
     );
 }
 
@@ -566,12 +662,12 @@ fn subtree_end_rolls_up_during_recording() {
         .node;
     // Tree (pre-order):  0=root  1=a  2=inner  3=b  4=c  5=d
     assert_eq!(ui.tree.layout.len(), 6);
-    assert_eq!(ui.tree.subtree_end[root.index()], 6, "root");
-    assert_eq!(ui.tree.subtree_end[1], 2, "leaf a");
-    assert_eq!(ui.tree.subtree_end[2], 5, "inner spans b,c");
-    assert_eq!(ui.tree.subtree_end[3], 4, "leaf b");
-    assert_eq!(ui.tree.subtree_end[4], 5, "leaf c");
-    assert_eq!(ui.tree.subtree_end[5], 6, "leaf d");
+    assert_eq!(ui.tree.nodes[root.index()].end, 6, "root");
+    assert_eq!(ui.tree.nodes[1].end, 2, "leaf a");
+    assert_eq!(ui.tree.nodes[2].end, 5, "inner spans b,c");
+    assert_eq!(ui.tree.nodes[3].end, 4, "leaf b");
+    assert_eq!(ui.tree.nodes[4].end, 5, "leaf c");
+    assert_eq!(ui.tree.nodes[5].end, 6, "leaf d");
 }
 
 #[test]
@@ -593,11 +689,11 @@ fn subtree_end_handles_deep_nesting() {
     assert_eq!(n, 17, "16 stacks + 1 leaf");
     for i in 0..(n - 1) {
         assert_eq!(
-            ui.tree.subtree_end[i as usize], n,
+            ui.tree.nodes[i as usize].end, n,
             "every ancestor on the chain points past the leaf",
         );
     }
-    assert_eq!(ui.tree.subtree_end[(n - 1) as usize], n, "leaf");
+    assert_eq!(ui.tree.nodes[(n - 1) as usize].end, n, "leaf");
 }
 
 #[test]
@@ -615,8 +711,8 @@ fn child_iter_traverses_correctly_after_finalize() {
         })
         .node;
     ui.end_frame();
-    let kids: Vec<u32> = ui.tree.children(root).map(|n| n.0).collect();
+    let kids: Vec<u32> = ui.tree.children(root).map(|c| c.id.0).collect();
     assert_eq!(kids, vec![1, 2, 4], "root's direct children: a, inner, c");
-    let inner_kids: Vec<u32> = ui.tree.children(NodeId(2)).map(|n| n.0).collect();
+    let inner_kids: Vec<u32> = ui.tree.children(NodeId(2)).map(|c| c.id.0).collect();
     assert_eq!(inner_kids, vec![3], "inner's direct child: b");
 }

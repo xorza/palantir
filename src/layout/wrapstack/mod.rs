@@ -125,7 +125,7 @@ pub(crate) fn measure(
     let mut line_cross = 0.0f32;
     let mut line_count = 0usize;
 
-    for c in tree.children_active(node) {
+    for c in tree.children(node).filter_map(Child::active) {
         let d = layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
         let ChildPack { m, x } = child_pack(axis, tree.layout[c.index()].size, d);
         if would_wrap(line_main, gap, m, main_avail) {
@@ -249,22 +249,20 @@ pub(crate) fn arrange(
 
     // Walk all children: collapsed get zeroed at the cursor, active
     // children pack into the current line and flush on overflow.
-    for child in tree.children_with_state(node) {
-        let c = match child {
-            Child::Collapsed(c) => {
-                // Anchor inside this layout's inner rect at the
-                // current cursor. Position is stable; size is zero so
-                // there's no visual or input contribution.
-                zero_subtree(
-                    layout,
-                    tree,
-                    c,
-                    axis.compose_point(axis.main_v(inner.min), cross_cursor),
-                );
-                continue;
-            }
-            Child::Active(c) => c,
-        };
+    for child in tree.children(node) {
+        let c = child.id;
+        if child.visibility.is_collapsed() {
+            // Anchor inside this layout's inner rect at the current
+            // cursor. Position is stable; size is zero so there's no
+            // visual or input contribution.
+            zero_subtree(
+                layout,
+                tree,
+                c,
+                axis.compose_point(axis.main_v(inner.min), cross_cursor),
+            );
+            continue;
+        }
 
         let d = layout.scratch.desired[c.index()];
         let ChildPack { m, x } = child_pack(axis, tree.layout[c.index()].size, d);
@@ -324,7 +322,7 @@ pub(crate) fn intrinsic(
         match req {
             LenReq::MinContent => {
                 let mut floor = 0.0f32;
-                for c in tree.children_active(node) {
+                for c in tree.children(node).filter_map(Child::active) {
                     floor = floor.max(layout.intrinsic(tree, c, query_axis, req, text));
                 }
                 floor
@@ -332,7 +330,7 @@ pub(crate) fn intrinsic(
             LenReq::MaxContent => {
                 let mut total = 0.0f32;
                 let mut count = 0usize;
-                for c in tree.children_active(node) {
+                for c in tree.children(node).filter_map(Child::active) {
                     total += layout.intrinsic(tree, c, query_axis, req, text);
                     count += 1;
                 }
@@ -345,7 +343,7 @@ pub(crate) fn intrinsic(
         // width — which we don't compute here. Conservative for typical
         // toolbar/badge use cases.
         let mut max = 0.0f32;
-        for c in tree.children_active(node) {
+        for c in tree.children(node).filter_map(Child::active) {
             max = max.max(layout.intrinsic(tree, c, query_axis, req, text));
         }
         max

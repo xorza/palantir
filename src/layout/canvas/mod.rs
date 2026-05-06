@@ -31,7 +31,7 @@ pub(crate) fn measure(
     // inflate the canvas's content size. `desired` is already ZERO for
     // collapsed children (reset at the top of `run`); arrange zeros
     // their subtrees regardless.
-    for c in tree.children_active(node) {
+    for c in tree.children(node).filter_map(Child::active) {
         let pos = tree.read_extras(c).position;
         let d = layout.measure(tree, c, child_avail, text);
         max_w = max_w.max(pos.x + d.w);
@@ -44,14 +44,12 @@ pub(crate) fn measure(
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `measure`.
 pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
-    for child in tree.children_with_state(node) {
-        let c = match child {
-            Child::Collapsed(c) => {
-                zero_subtree(layout, tree, c, inner.min);
-                continue;
-            }
-            Child::Active(c) => c,
-        };
+    for child in tree.children(node) {
+        let c = child.id;
+        if child.visibility.is_collapsed() {
+            zero_subtree(layout, tree, c, inner.min);
+            continue;
+        }
         let d = layout.scratch.desired[c.index()];
         let pos = tree.read_extras(c).position;
         let child_rect = Rect {
@@ -74,7 +72,7 @@ pub(crate) fn intrinsic(
     text: &mut TextMeasurer,
 ) -> f32 {
     let mut max = 0.0_f32;
-    for c in tree.children_active(node) {
+    for c in tree.children(node).filter_map(Child::active) {
         let pos = tree.read_extras(c).position;
         max = max.max(axis.main_v(pos) + layout.intrinsic(tree, c, axis, req, text));
     }

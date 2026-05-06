@@ -3,7 +3,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Button, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Surface,
+    Background, Button, Color, Configure, Corners, Frame, Panel, Rect, Shape, Sizing, Stroke,
+    Surface,
 };
 
 use crate::diff::Tolerance;
@@ -129,4 +130,69 @@ fn rounded_clip_survives_surface_resize() {
     // If `ensure_backbuffer` failed to reset `bb.stencil = None`, the
     // second render would attach a 120×120 stencil to a 240×200 pass
     // and wgpu validation would have already panicked above.
+}
+
+/// Pin the slot mechanism end-to-end: a parent records three SubRect
+/// shapes interleaved with two child Frame nodes. Each shape's rect
+/// **overlaps the children that should paint underneath it**, so the
+/// final pixels distinguish "shape painted at the right slot" from
+/// "all shapes collapsed to slot 0".
+///
+/// Layout (220×60 hstack, no padding, no gap):
+/// - red SubRect at x=0..30 (slot 0, hidden by cyan child).
+/// - cyan child at x=0..60.
+/// - green SubRect at x=30..90 (slot 1: covers cyan's right half;
+///   yellow then paints over green's right half).
+/// - yellow child at x=60..120.
+/// - blue SubRect at x=90..150 (slot 2: covers yellow's right half
+///   + extends past it).
+///
+/// Expected pixels: cyan(0..30), green(30..60), yellow(60..90),
+/// blue(90..150). If slots collapsed to 0, the visible order would
+/// instead be cyan(0..60), yellow(60..120), blue(120..150).
+#[test]
+fn interleaved_shapes_paint_in_record_order() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(220, 60), 1.0, DARK_BG, |ui| {
+        Panel::hstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .padding(0.0)
+            .show(ui, |ui| {
+                ui.add_shape(Shape::SubRect {
+                    local_rect: Rect::new(0.0, 0.0, 30.0, 60.0),
+                    radius: Corners::default(),
+                    fill: Color::rgb(1.0, 0.0, 0.0),
+                    stroke: None,
+                });
+                Frame::new()
+                    .with_id("cyan")
+                    .background(Background {
+                        fill: Color::rgb(0.0, 1.0, 1.0),
+                        ..Default::default()
+                    })
+                    .size((Sizing::Fixed(60.0), Sizing::FILL))
+                    .show(ui);
+                ui.add_shape(Shape::SubRect {
+                    local_rect: Rect::new(30.0, 0.0, 60.0, 60.0),
+                    radius: Corners::default(),
+                    fill: Color::rgb(0.0, 1.0, 0.0),
+                    stroke: None,
+                });
+                Frame::new()
+                    .with_id("yellow")
+                    .background(Background {
+                        fill: Color::rgb(1.0, 1.0, 0.0),
+                        ..Default::default()
+                    })
+                    .size((Sizing::Fixed(60.0), Sizing::FILL))
+                    .show(ui);
+                ui.add_shape(Shape::SubRect {
+                    local_rect: Rect::new(90.0, 0.0, 60.0, 60.0),
+                    radius: Corners::default(),
+                    fill: Color::rgb(0.2, 0.4, 1.0),
+                    stroke: None,
+                });
+            });
+    });
+    assert_matches_golden("interleaved_shapes_paint_order", &img, Tolerance::default());
 }

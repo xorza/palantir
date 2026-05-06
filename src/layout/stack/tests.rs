@@ -26,7 +26,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
         Rect::new(0.0, 0.0, 800.0, 600.0)
     );
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     assert_eq!(kids.len(), 2);
 
     // "Hi" measures 2*8=16 wide. Height = `line_height_px` = font_size *
@@ -58,7 +58,7 @@ fn vstack_with_fill_distributes_remainder() {
 
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let fixed = ui.pipeline.layout.result.rect[kids[0].index()];
     let filler = ui.pipeline.layout.result.rect[kids[1].index()];
 
@@ -84,7 +84,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let a = ui.pipeline.layout.result.rect[kids[0].index()];
     let b = ui.pipeline.layout.result.rect[kids[1].index()];
     // 400 leftover / 4 weight = 100 per weight unit → a=100, b=300.
@@ -112,7 +112,7 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let a = ui.pipeline.layout.result.rect[kids[0].index()];
     let b = ui.pipeline.layout.result.rect[kids[1].index()];
     assert_eq!(a.size.w, 200.0);
@@ -147,7 +147,7 @@ fn hstack_justify_distributes_leftover() {
             .node;
         ui.end_frame();
 
-        let kids: Vec<_> = ui.tree.children(root).collect();
+        let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
         for (i, want_x) in expected_xs.iter().enumerate() {
             assert_eq!(
                 ui.pipeline.layout.result.rect[kids[i].index()].min.x,
@@ -175,7 +175,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     // Fill consumes leftover → first child still pinned to start.
     assert_eq!(ui.pipeline.layout.result.rect[kids[0].index()].min.x, 0.0);
     assert_eq!(ui.pipeline.layout.result.rect[kids[1].index()].min.x, 40.0);
@@ -199,7 +199,7 @@ fn hstack_gap_inserts_space_between_children() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     assert_eq!(ui.pipeline.layout.result.rect[kids[0].index()].min.x, 0.0);
     assert_eq!(ui.pipeline.layout.result.rect[kids[1].index()].min.x, 50.0);
     assert_eq!(ui.pipeline.layout.result.rect[kids[2].index()].min.x, 100.0);
@@ -220,7 +220,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let r = ui.pipeline.layout.result.rect[kids[0].index()];
     // Cross axis is height (100); child is 20 tall → centered at (100-20)/2 = 40.
     assert_eq!(r.min.y, 40.0);
@@ -248,7 +248,7 @@ fn negative_left_margin_spills_outside_slot() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     assert_eq!(kids.len(), 1);
 
     // Rendered rect (what the renderer paints, what hit-test uses) is shifted
@@ -316,7 +316,7 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let a = ui.pipeline.layout.result.rect[kids[0].index()];
     let hidden = ui.pipeline.layout.result.rect[kids[1].index()];
     let b = ui.pipeline.layout.result.rect[kids[2].index()];

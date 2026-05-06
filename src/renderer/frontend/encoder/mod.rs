@@ -6,7 +6,7 @@ use crate::primitives::{
 };
 use crate::shape::Shape;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{NodeId, Tree, node_hash::NodeHash};
+use crate::tree::{NodeId, Tree, TreeOp, node_hash::NodeHash};
 use crate::ui::cascade::CascadeResult;
 use cache::EncodeCache;
 
@@ -80,6 +80,7 @@ impl Encoder {
     ) -> &RenderCmdBuffer {
         self.cmds.clear();
         if let Some(root) = tree.root() {
+            let mut shape_cursor = 0usize;
             encode_node(
                 tree,
                 layout,
@@ -87,6 +88,7 @@ impl Encoder {
                 damage_filter,
                 &mut self.cache,
                 root,
+                &mut shape_cursor,
                 &mut self.cmds,
             );
         }
@@ -98,6 +100,77 @@ impl Encoder {
     }
 }
 
+/// Emit one shape at `owner_rect`, advancing the global shape cursor.
+/// Pulled out of `encode_node` so the kinds-stream walk can call it
+/// from the depth-0 `Shape` branch without duplicating the per-variant
+/// match.
+fn emit_one_shape(
+    tree: &Tree,
+    layout: &LayoutResult,
+    id: NodeId,
+    owner_rect: Rect,
+    shape: &Shape,
+    out: &mut RenderCmdBuffer,
+) {
+    match shape {
+        Shape::RoundedRect {
+            radius,
+            fill,
+            stroke,
+        } => {
+            out.draw_rect(owner_rect, *radius, *fill, *stroke);
+        }
+        Shape::SubRect {
+            local_rect,
+            radius,
+            fill,
+            stroke,
+        } => {
+            let r = Rect {
+                min: owner_rect.min + local_rect.min,
+                size: local_rect.size,
+            };
+            out.draw_rect(r, *radius, *fill, *stroke);
+        }
+        Shape::Text { color, align, .. } => {
+            let Some(shaped) = layout.text_shapes[id.index()] else {
+                return;
+            };
+            if shaped.key.is_invalid() {
+                tracing::trace!(?shape, "encoder: dropping text with invalid key");
+                return;
+            }
+            let inner = owner_rect.deflated_by(tree.layout[id.index()].padding);
+            out.draw_text(
+                align_text_in(inner, shaped.measured, *align),
+                *color,
+                shaped.key,
+            );
+        }
+        Shape::Line { .. } => {
+            tracing::trace!(?shape, "encoder: dropping unsupported shape");
+        }
+    }
+}
+
+/// Total shape count in `id`'s subtree (this node + all descendants).
+/// Used to advance `shape_cursor` past a cache-replayed or invisible
+/// subtree without walking it. The end of the subtree's shape range
+/// is `nodes[end].shape_first` when `end < n`, else `shapes.len()`.
+#[inline]
+fn subtree_shape_count(tree: &Tree, id: NodeId) -> usize {
+    let i = id.index();
+    let end = tree.nodes[i].end as usize;
+    let lo = tree.nodes[i].shape_first as usize;
+    let hi = if end < tree.nodes.len() {
+        tree.nodes[end].shape_first as usize
+    } else {
+        tree.shapes.len()
+    };
+    hi - lo
+}
+
+#[allow(clippy::too_many_arguments)]
 fn encode_node(
     tree: &Tree,
     layout: &LayoutResult,
@@ -105,12 +178,16 @@ fn encode_node(
     damage_filter: Option<Rect>,
     cache: &mut EncodeCache,
     id: NodeId,
+    shape_cursor: &mut usize,
     out: &mut RenderCmdBuffer,
 ) {
     // Hidden / Collapsed: paint nothing for this node or its subtree.
     // The cascade table already composed self + ancestors; recursing skips
     // the whole subtree because we early-return at the top of every node.
     if cascades.rows[id.index()].invisible {
+        // Still advance the global shape cursor past this subtree's
+        // shapes so siblings see the right offset.
+        *shape_cursor += subtree_shape_count(tree, id);
         return;
     }
 
@@ -126,12 +203,16 @@ fn encode_node(
     // back would lie about the snapshot covering the full subtree.
     // Cache snapshot age is therefore bounded by the *last full-paint*
     // frame, not the last frame.
-    let subtree_size = tree.subtree_end[id.index()] - id.index() as u32;
+    let subtree_size = tree.nodes[id.index()].end - id.index() as u32;
     let cache_eligible = damage_filter.is_none() && subtree_size > TINY_SUBTREE_THRESHOLD;
     let cache_key = if cache_eligible {
-        layout
-            .available_q(id)
-            .map(|avail| (tree.widget_ids[id.index()], tree.subtree_hash(id), avail))
+        layout.available_q(id).map(|avail| {
+            (
+                tree.nodes[id.index()].widget_id,
+                tree.subtree_hash(id),
+                avail,
+            )
+        })
     } else {
         None
     };
@@ -139,6 +220,7 @@ fn encode_node(
     if let Some((wid, hash, avail)) = cache_key
         && cache.try_replay(wid, hash, avail, out, layout.rect[id.index()].min)
     {
+        *shape_cursor += subtree_shape_count(tree, id);
         return;
     }
 
@@ -180,7 +262,7 @@ fn encode_node(
     // Painting chrome unmasked (it self-clips via the SDF) keeps the
     // stroke visible while children stay clipped to the inset
     // interior.
-    let mode = tree.paint[id.index()].attrs.clip_mode();
+    let mode = tree.attrs[id.index()].clip_mode();
     let clip = mode.is_clip();
     let chrome = tree.chrome_for(id).copied();
 
@@ -242,49 +324,6 @@ fn encode_node(
     // depend on screen position, breaking the encode cache's
     // authoring-only key. The composer culls per-cmd at compose time.
 
-    // Background-phase shapes emit after chrome and before children,
-    // all under the owner's clip. Overlay shapes are deferred to the
-    // post-children phase — see below.
-    if paints {
-        for shape in tree.shapes.slice_of(id.index()) {
-            match shape {
-                Shape::RoundedRect {
-                    radius,
-                    fill,
-                    stroke,
-                } => {
-                    out.draw_rect(rect, *radius, *fill, *stroke);
-                }
-                Shape::Text { color, align, .. } => {
-                    // Shaping ran in measure; the buffer key lives on
-                    // `LayoutResult.text_shapes`. Missing entry =
-                    // mono fallback (no shaper) or empty run — drop.
-                    let Some(shaped) = layout.text_shapes[id.index()] else {
-                        continue;
-                    };
-                    if shaped.key.is_invalid() {
-                        tracing::trace!(?shape, "encoder: dropping text with invalid key");
-                        continue;
-                    }
-                    // `layout.rect[id]` is padding-inclusive; text
-                    // aligns within the padding-deflated content area
-                    // so e.g. `Button.padding(8)` insets the label.
-                    let inner = rect.deflated_by(tree.layout[id.index()].padding);
-                    out.draw_text(
-                        align_text_in(inner, shaped.measured, *align),
-                        *color,
-                        shaped.key,
-                    );
-                }
-                // Overlay phase emits these after children — see below.
-                Shape::Overlay { .. } => {}
-                Shape::Line { .. } => {
-                    tracing::trace!(?shape, "encoder: dropping unsupported shape");
-                }
-            }
-        }
-    }
-
     // Skip Push/PopTransform when the transform is identity — composing
     // identity is a no-op, so emitting the pair just wastes two cmd
     // slots and a `transform_stack` push/pop in the composer.
@@ -292,37 +331,54 @@ fn encode_node(
         .read_extras(id)
         .transform
         .filter(|t| *t != TranslateScale::IDENTITY);
-    if let Some(t) = transform {
-        out.push_transform(t);
-    }
 
-    for child in tree.children(id) {
-        encode_node(tree, layout, cascades, damage_filter, cache, child, out);
-    }
-
-    if transform.is_some() {
-        out.pop_transform();
-    }
-
-    // Overlay phase: Overlay shapes paint on top of children
-    // but still under the owner's clip and untransformed by the
-    // owner's pan. This is what scrollbar tracks/thumbs need — they
-    // sit inside the viewport's clip but on top of (and not panning
-    // with) the content.
-    if paints {
-        for shape in tree.shapes.slice_of(id.index()) {
-            if let Shape::Overlay {
-                rect: sub,
-                radius,
-                fill,
-            } = shape
-            {
-                let r = Rect {
-                    min: rect.min + sub.min,
-                    size: sub.size,
-                };
-                out.draw_rect(r, *radius, *fill, None);
+    // Walk this node's slice of the kinds stream, depth 0 only:
+    //   - `Shape` at depth 0 → emit at owner rect (or its sub-rect)
+    //   - `NodeEnter` at depth 0 → recurse for that direct child,
+    //     bracketed by the owner's pan transform if non-identity, then
+    //     skip the pos cursor past the child's full subtree.
+    // Shapes always paint *outside* the owner's pan so they stay
+    // anchored to the owner regardless of scroll offset; transform is
+    // pushed/popped per child accordingly.
+    let r = tree.nodes[id.index()].kinds.range();
+    let body_start = r.start + 1;
+    let body_end = r.end - 1;
+    let mut pos = body_start;
+    let mut children = tree.children(id).map(|c| c.id);
+    while pos < body_end {
+        match tree.kinds[pos] {
+            TreeOp::Shape => {
+                if paints {
+                    emit_one_shape(tree, layout, id, rect, &tree.shapes[*shape_cursor], out);
+                }
+                *shape_cursor += 1;
+                pos += 1;
             }
+            TreeOp::NodeEnter => {
+                let child = children
+                    .next()
+                    .expect("kinds NodeEnter at depth 0 but children() exhausted");
+                if let Some(t) = transform {
+                    out.push_transform(t);
+                }
+                encode_node(
+                    tree,
+                    layout,
+                    cascades,
+                    damage_filter,
+                    cache,
+                    child,
+                    shape_cursor,
+                    out,
+                );
+                if transform.is_some() {
+                    out.pop_transform();
+                }
+                pos = tree.nodes[child.index()].kinds.range().end;
+            }
+            TreeOp::NodeExit => unreachable!(
+                "owner's matching NodeExit excluded by body_end; nested exits skipped via node_kinds.range().end"
+            ),
         }
     }
 

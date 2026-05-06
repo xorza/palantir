@@ -298,15 +298,11 @@ impl Ui {
         node
     }
 
-    pub(crate) fn add_shape(&mut self, shape: Shape) {
+    pub fn add_shape(&mut self, shape: Shape) {
         if shape.is_noop() {
             return;
         }
-        let node = self
-            .tree
-            .current_open
-            .expect("add_shape called outside any open node");
-        self.tree.add_shape(node, shape);
+        self.tree.add_shape(shape);
     }
 }
 

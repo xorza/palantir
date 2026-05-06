@@ -20,7 +20,7 @@ fn grid_fixed_and_fill_columns_split_remainder() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let left = ui.pipeline.layout.result.rect[kids[0].index()];
     let right = ui.pipeline.layout.result.rect[kids[1].index()];
     assert_eq!(left.size.w, 120.0);
@@ -61,7 +61,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let short_btn = ui.pipeline.layout.result.rect[kids[0].index()];
     let long_btn = ui.pipeline.layout.result.rect[kids[1].index()];
     let body = ui.pipeline.layout.result.rect[kids[2].index()];
@@ -85,7 +85,7 @@ fn grid_fill_weights_split_remainder_proportionally() {
         })
         .node;
     ui.end_frame();
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     assert_eq!(
         ui.pipeline.layout.result.rect[kids[0].index()].size.w,
         100.0
@@ -111,7 +111,7 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
         })
         .node;
     ui.end_frame();
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     assert_eq!(
         ui.pipeline.layout.result.rect[kids[0].index()].size.w,
         200.0
@@ -136,7 +136,7 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
         })
         .node;
     ui.end_frame();
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     assert_eq!(
         ui.pipeline.layout.result.rect[kids[0].index()].size.w,
         150.0
@@ -186,7 +186,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
             .node;
         ui.end_frame();
 
-        let kids: Vec<_> = ui.tree.children(root).collect();
+        let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
         let header = ui.pipeline.layout.result.rect[kids[0].index()];
         let body = ui.pipeline.layout.result.rect[kids[1].index()];
         // (primary, secondary) → (x, y) when not swapped; (y, x) when swapped.
@@ -260,7 +260,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
         })
         .node;
     ui.end_frame();
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let r = ui.pipeline.layout.result.rect[kids[0].index()];
     assert_eq!(r.size.w, 20.0);
     assert_eq!(r.size.h, 20.0);
@@ -319,7 +319,7 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let big = ui.pipeline.layout.result.rect[kids[0].index()];
     let corner = ui.pipeline.layout.result.rect[kids[1].index()];
 

@@ -191,10 +191,11 @@ impl<'a> TextEdit<'a> {
                     theme.caret_width,
                     font_size * line_height_mult,
                 );
-                ui.add_shape(Shape::Overlay {
-                    rect: caret_rect,
+                ui.add_shape(Shape::SubRect {
+                    local_rect: caret_rect,
                     radius: Default::default(),
                     fill: theme.caret,
+                    stroke: None,
                 });
             }
         });

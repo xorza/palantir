@@ -75,11 +75,10 @@ pub(crate) fn compute(
     req: LenReq,
     text: &mut TextMeasurer,
 ) -> f32 {
-    if tree.is_collapsed(node) {
+    let style = tree.layout[node.index()];
+    if style.visibility.is_collapsed() {
         return 0.0;
     }
-
-    let style = tree.layout[node.index()];
     let extras = tree.read_extras(node);
 
     let sizing = axis.main_sizing(style.size);
@@ -159,7 +158,7 @@ fn content_intrinsic(
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
 fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasurer) -> f32 {
-    let wid = tree.widget_ids[node.index()];
+    let wid = tree.nodes[node.index()].widget_id;
     let curr_hash = tree.hashes.node[node.index()];
     let mut acc = 0.0_f32;
     for ts in leaf_text_shapes(tree, node) {
@@ -213,7 +212,12 @@ mod tests {
             .node;
         ui.end_frame();
 
-        let child = ui.tree.children(root).next().expect("hstack has child");
+        let child = ui
+            .tree
+            .children(root)
+            .map(|c| c.id)
+            .next()
+            .expect("hstack has child");
         let slot = LenReq::MinContent.slot(Axis::X);
         let cached = ui.pipeline.layout.scratch.intrinsics[child.index()][slot];
         assert!(
@@ -241,7 +245,7 @@ mod tests {
             .node;
         ui.end_frame();
 
-        let child = ui.tree.children(root).next().unwrap();
+        let child = ui.tree.children(root).map(|c| c.id).next().unwrap();
         let slot = LenReq::MinContent.slot(Axis::X);
 
         const SENTINEL: f32 = 1234.5;
@@ -297,7 +301,7 @@ mod tests {
             !ui.pipeline.layout.scratch.intrinsics[root.index()][slot].is_nan(),
             "root slot must be cached"
         );
-        for c in ui.tree.children(root) {
+        for c in ui.tree.children(root).map(|c| c.id) {
             assert!(
                 !ui.pipeline.layout.scratch.intrinsics[c.index()][slot].is_nan(),
                 "child {} slot must be cached after parent query",

@@ -779,9 +779,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
 
     let read_fs = |node: crate::tree::NodeId| -> f32 {
         ui.tree
-            .shapes
-            .slice_of(node.index())
-            .iter()
+            .shapes_of(node)
             .find_map(|s| match s {
                 Shape::Text { font_size_px, .. } => Some(*font_size_px),
                 _ => None,
@@ -824,9 +822,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
 
     let color = ui
         .tree
-        .shapes
-        .slice_of(node.unwrap().index())
-        .iter()
+        .shapes_of(node.unwrap())
         .find_map(|s| match s {
             Shape::Text { color, .. } => Some(*color),
             _ => None,
@@ -858,9 +854,7 @@ fn text_widget_color_override_wins_over_theme() {
 
     let color = ui
         .tree
-        .shapes
-        .slice_of(node.unwrap().index())
-        .iter()
+        .shapes_of(node.unwrap())
         .find_map(|s| match s {
             Shape::Text { color, .. } => Some(*color),
             _ => None,
@@ -908,9 +902,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 
     let read_lh = |node: crate::tree::NodeId| -> f32 {
         ui.tree
-            .shapes
-            .slice_of(node.index())
-            .iter()
+            .shapes_of(node)
             .find_map(|s| match s {
                 Shape::Text { line_height_px, .. } => Some(*line_height_px),
                 _ => None,
@@ -969,9 +961,7 @@ fn textedit_style_override_replaces_default_theme() {
     ui.end_frame();
     let lh = ui
         .tree
-        .shapes
-        .slice_of(leaf.unwrap().index())
-        .iter()
+        .shapes_of(leaf.unwrap())
         .find_map(|s| match s {
             Shape::Text { line_height_px, .. } => Some(*line_height_px),
             _ => None,
@@ -1002,8 +992,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     });
     ui.end_frame();
 
-    let shapes = ui.tree.shapes.slice_of(leaf_node.unwrap().index());
-    let text_shape = shapes.iter().find_map(|s| match s {
+    let text_shape = ui.tree.shapes_of(leaf_node.unwrap()).find_map(|s| match s {
         Shape::Text {
             font_size_px,
             line_height_px,
@@ -1050,9 +1039,9 @@ fn pushed_shape_uses_style_overridden_line_height() {
     });
     ui.end_frame();
 
-    let shapes = ui.tree.shapes.slice_of(leaf_node.unwrap().index());
-    let lh = shapes
-        .iter()
+    let lh = ui
+        .tree
+        .shapes_of(leaf_node.unwrap())
         .find_map(|s| match s {
             Shape::Text { line_height_px, .. } => Some(*line_height_px),
             _ => None,
@@ -1099,12 +1088,13 @@ fn line_height_override_changes_caret_rect_height() {
             leaf = Some(e.show(ui).node);
         });
         ui.end_frame();
-        let shapes = ui.tree.shapes.slice_of(leaf.unwrap().index());
-        // Caret = the only Shape::Overlay pushed (no selection in v1).
-        shapes
-            .iter()
+        // Caret = the only Shape::SubRect pushed (no selection in v1).
+        ui.tree
+            .shapes_of(leaf.unwrap())
             .find_map(|s| match s {
-                Shape::Overlay { rect, .. } => Some(rect.size.h),
+                Shape::SubRect {
+                    local_rect: rect, ..
+                } => Some(rect.size.h),
                 _ => None,
             })
             .expect("focused TextEdit pushes a caret Overlay")

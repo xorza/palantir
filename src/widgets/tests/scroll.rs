@@ -470,19 +470,17 @@ mod bars {
         let scroll_id = WidgetId::from_hash("scroll");
         let idx = ui
             .tree
-            .widget_ids
+            .nodes
             .iter()
-            .position(|id| *id == scroll_id)
+            .position(|m| m.widget_id == scroll_id)
             .expect("scroll widget recorded");
         (ui, NodeId(idx as u32))
     }
 
     fn count_positioned(ui: &Ui, node: NodeId) -> usize {
         ui.tree
-            .shapes
-            .slice_of(node.index())
-            .iter()
-            .filter(|s| matches!(s, Shape::Overlay { .. }))
+            .shapes_of(node)
+            .filter(|s| matches!(s, Shape::SubRect { .. }))
             .count()
     }
 
@@ -714,11 +712,11 @@ mod bars {
         let expected_x = 200.0 - theme.width;
         let overlays: Vec<_> = ui
             .tree
-            .shapes
-            .slice_of(node.index())
-            .iter()
+            .shapes_of(node)
             .filter_map(|s| match s {
-                Shape::Overlay { rect, .. } => Some(*rect),
+                Shape::SubRect {
+                    local_rect: rect, ..
+                } => Some(*rect),
                 _ => None,
             })
             .collect();
@@ -850,11 +848,11 @@ mod bars {
         let outer_far = 200.0 - theme.width; // bar.cross_pos
         let overlays: Vec<_> = ui
             .tree
-            .shapes
-            .slice_of(node.index())
-            .iter()
+            .shapes_of(node)
             .filter_map(|s| match s {
-                Shape::Overlay { rect, .. } => Some(*rect),
+                Shape::SubRect {
+                    local_rect: rect, ..
+                } => Some(*rect),
                 _ => None,
             })
             .collect();

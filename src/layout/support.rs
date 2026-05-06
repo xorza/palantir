@@ -9,7 +9,7 @@ use crate::primitives::{rect::Rect, size::Size};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
 use crate::tree::element::LayoutCore;
-use crate::tree::{NodeId, Tree};
+use crate::tree::{Child, NodeId, Tree};
 use glam::Vec2;
 
 /// One `Shape::Text` worth of layout-side inputs. Yielded by
@@ -30,24 +30,21 @@ pub(crate) fn leaf_text_shapes(
     tree: &Tree,
     node: NodeId,
 ) -> impl Iterator<Item = LeafTextShape<'_>> {
-    tree.shapes
-        .slice_of(node.index())
-        .iter()
-        .filter_map(|s| match s {
-            Shape::Text {
-                text,
-                font_size_px,
-                line_height_px,
-                wrap,
-                ..
-            } => Some(LeafTextShape {
-                text: text.as_ref(),
-                font_size_px: *font_size_px,
-                line_height_px: *line_height_px,
-                wrap: *wrap,
-            }),
-            _ => None,
-        })
+    tree.shapes_of(node).filter_map(|s| match s {
+        Shape::Text {
+            text,
+            font_size_px,
+            line_height_px,
+            wrap,
+            ..
+        } => Some(LeafTextShape {
+            text: text.as_ref(),
+            font_size_px: *font_size_px,
+            line_height_px: *line_height_px,
+            wrap: *wrap,
+        }),
+        _ => None,
+    })
 }
 
 /// Resolve a node's outer slot size on one axis, given its sizing
@@ -130,7 +127,7 @@ pub(crate) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
         size: Size::ZERO,
     };
     let start = node.index();
-    let end = tree.subtree_end[start] as usize;
+    let end = (tree.nodes[start].end) as usize;
     for i in start..end {
         layout.result.rect[i] = zero;
     }
@@ -149,7 +146,7 @@ pub(crate) fn children_max_intrinsic(
     text: &mut TextMeasurer,
 ) -> f32 {
     let mut m = 0.0f32;
-    for c in tree.children_active(node) {
+    for c in tree.children(node).filter_map(Child::active) {
         m = m.max(layout.intrinsic(tree, c, axis, req, text));
     }
     m

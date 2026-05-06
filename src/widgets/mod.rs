@@ -15,6 +15,7 @@ use crate::tree::NodeId;
 mod tests;
 
 pub struct Response {
+    #[allow(dead_code)] // Read only from `#[cfg(test)]` modules.
     pub(crate) node: NodeId,
     pub state: ResponseState,
 }

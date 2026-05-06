@@ -2,6 +2,25 @@
 
 ## Now
 
+- **First-frame bar settle.** Bars don't appear on the frame a scroll
+  is first recorded — `Scroll::show` reads `ScrollState.viewport` /
+  `.content` from the *previous* frame's measure, so on cold mount
+  (showcase tab switch, scroll appearing inside a freshly-mounted
+  subtree) `bar_geometry` returns `None` and no bar shapes get
+  pushed. Frame N+1 then has populated state and bars appear — but
+  the host (showcase / hello world) only re-requests a redraw on
+  input, so until the user moves the mouse the bars stay invisible.
+  Pre-existing 2-frame settle (`record_two_frames` in
+  `widgets/tests/scroll.rs` is exactly this), surfaced now that
+  scrollbars are the user's first stop. Three options ordered by
+  invasiveness: (a) `FrameOutput.needs_settle: bool` set when any
+  scroll's state was default-initialized this frame, host force-
+  schedules another redraw; (b) push bar shapes from a post-arrange
+  step that reads the current frame's `LayoutResult.scroll_content`
+  instead of stale `ScrollState`, killing the settle entirely;
+  (c) measure-time bar emission as a layout-pass output. (b) is the
+  cleanest — eliminates the footgun for any user-built widget that
+  depends on measured size.
 - **Drag-to-pan scrollbar thumb.** Replace overlay shapes with per-axis
   bar leaf nodes (`Sense::Drag`, derived ids `("scroll-vbar", parent_id)`).
   `state.offset.main += drag_delta * (content - viewport) / (track - thumb)`,

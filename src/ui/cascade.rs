@@ -133,10 +133,9 @@ impl Cascades {
         r.by_id.reserve(n);
         self.stack.clear();
 
-        let paint = &tree.paint;
         let layout_col = &tree.layout;
-        let subtree_end = &tree.subtree_end;
-        let widget_ids = &tree.widget_ids;
+        let attrs_col = &tree.attrs;
+        let nodes = &tree.nodes;
 
         for i in 0..n {
             while let Some(top) = self.stack.last() {
@@ -151,7 +150,7 @@ impl Cascades {
             };
 
             let id = NodeId(i as u32);
-            let attrs = paint[i].attrs;
+            let attrs = attrs_col[i];
 
             let disabled = parent_dis || attrs.is_disabled();
             let invisible = parent_inv || !layout_col[i].visibility.is_visible();
@@ -190,7 +189,7 @@ impl Cascades {
                 attrs.sense()
             };
             let focusable = !cascaded_off && attrs.is_focusable();
-            let widget_id = widget_ids[i];
+            let widget_id = nodes[i].widget_id;
             r.by_id.insert(widget_id, r.entries.len() as u32);
             r.entries.push(HitEntry {
                 id: widget_id,
@@ -205,7 +204,7 @@ impl Cascades {
                 clip: desc_clip,
                 disabled,
                 invisible,
-                subtree_end: subtree_end[i],
+                subtree_end: nodes[i].end,
             });
         }
         &self.result

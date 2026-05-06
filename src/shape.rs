@@ -15,19 +15,19 @@ pub enum Shape {
         fill: Color,
         stroke: Option<Stroke>,
     },
-    /// Filled rounded rect at an explicit sub-rect of the owner,
-    /// painted as an **overlay** (after the owner's children, on top
-    /// of them, still inside the owner's clip and untransformed by
-    /// the owner's pan transform). `rect` coordinates are owner-local
-    /// — `(0, 0)` is the owner's `min` corner. Used for scrollbar
-    /// tracks/thumbs and similar sub-region affordances that need to
-    /// stay anchored to the owner's viewport while content scrolls
-    /// underneath. Use `RoundedRect` instead when you want a
-    /// background painted *behind* the children.
-    Overlay {
-        rect: Rect,
+    /// Filled/stroked rounded rect at an explicit owner-relative
+    /// sub-rect. `local_rect.min` is `(0, 0)` at the owner's top-left
+    /// corner. Paints in the slot the shape was pushed in (interleaved
+    /// with children via the slot mechanism — see `Tree::add_shape`),
+    /// still under the owner's clip but outside its pan transform. Used
+    /// for scrollbar tracks/thumbs (pushed after body content → slot N)
+    /// and TextEdit carets (pushed after the Text shape on a leaf → slot
+    /// 0, after the Text in record order).
+    SubRect {
+        local_rect: Rect,
         radius: Corners,
         fill: Color,
+        stroke: Option<Stroke>,
     },
     Line {
         a: Vec2,
@@ -95,8 +95,19 @@ impl Shape {
                 };
                 no_fill && no_stroke
             }
-            Shape::Overlay { rect, fill, .. } => {
-                approx_zero(fill.a) || approx_zero(rect.size.w) || approx_zero(rect.size.h)
+            Shape::SubRect {
+                local_rect,
+                fill,
+                stroke,
+                ..
+            } => {
+                let no_fill = approx_zero(fill.a);
+                let no_stroke = match stroke {
+                    None => true,
+                    Some(s) => approx_zero(s.width) || approx_zero(s.color.a),
+                };
+                let zero_area = approx_zero(local_rect.size.w) || approx_zero(local_rect.size.h);
+                zero_area || (no_fill && no_stroke)
             }
             Shape::Line { width, color, .. } => approx_zero(*width) || approx_zero(color.a),
             Shape::Text { text, color, .. } => text.is_empty() || approx_zero(color.a),
