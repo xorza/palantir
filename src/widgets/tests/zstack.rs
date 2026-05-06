@@ -62,63 +62,49 @@ fn zstack_layers_children_without_painting_background() {
     assert_eq!((fg.size.w, fg.size.h), (60.0, 30.0));
 }
 
+/// ZStack inner = 200×100, child = 40×20. `align(...)` resolves
+/// independently per axis: Center → (100-40)/2 leading; End → inner -
+/// child; Start → 0.
 #[test]
-fn zstack_centers_child_when_align_center() {
-    let mut ui = ui_at(UVec2::new(400, 400));
-    let mut child_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack()
-            .with_id("box")
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
-            .show(ui, |ui| {
-                child_node = Some(
-                    Frame::new()
-                        .with_id("c")
-                        .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                        .align(Align::CENTER)
-                        .background(Background {
-                            fill: Color::rgb(0.5, 0.5, 0.5),
-                            ..Default::default()
-                        })
-                        .show(ui)
-                        .node,
-                );
-            });
-    });
-    ui.end_frame();
+fn zstack_aligns_child_per_axis() {
+    let cases: &[(&str, Align, (f32, f32))] = &[
+        ("center", Align::CENTER, (80.0, 40.0)),
+        (
+            "right_center_independent_axes",
+            Align::new(HAlign::Right, VAlign::Center),
+            (160.0, 40.0),
+        ),
+    ];
+    for (label, align, expected) in cases {
+        let mut ui = ui_at(UVec2::new(400, 400));
+        let mut child_node = None;
+        Panel::hstack().show(&mut ui, |ui| {
+            Panel::zstack()
+                .with_id("box")
+                .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+                .show(ui, |ui| {
+                    child_node = Some(
+                        Frame::new()
+                            .with_id("c")
+                            .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                            .align(*align)
+                            .background(Background {
+                                fill: Color::rgb(0.5, 0.5, 0.5),
+                                ..Default::default()
+                            })
+                            .show(ui)
+                            .node,
+                    );
+                });
+        });
+        ui.end_frame();
 
-    let r = ui.pipeline.layout.result.rect[child_node.unwrap().index()];
-    // ZStack inner = 200×100, child = 40×20 → centered at (80, 40).
-    assert_eq!((r.min.x, r.min.y), (80.0, 40.0));
-    assert_eq!((r.size.w, r.size.h), (40.0, 20.0));
-}
-
-#[test]
-fn zstack_aligns_independently_per_axis() {
-    let mut ui = ui_at(UVec2::new(400, 400));
-    let mut child_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
-        Panel::zstack()
-            .with_id("box")
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
-            .show(ui, |ui| {
-                child_node = Some(
-                    Frame::new()
-                        .with_id("c")
-                        .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                        .align(Align::new(HAlign::Right, VAlign::Center))
-                        .background(Background {
-                            fill: Color::rgb(0.5, 0.5, 0.5),
-                            ..Default::default()
-                        })
-                        .show(ui)
-                        .node,
-                );
-            });
-    });
-    ui.end_frame();
-
-    let r = ui.pipeline.layout.result.rect[child_node.unwrap().index()];
-    // x: End → 200-40 = 160. y: Center → (100-20)/2 = 40.
-    assert_eq!((r.min.x, r.min.y), (160.0, 40.0));
+        let r = ui.pipeline.layout.result.rect[child_node.unwrap().index()];
+        assert_eq!((r.min.x, r.min.y), *expected, "case: {label}");
+        assert_eq!(
+            (r.size.w, r.size.h),
+            (40.0, 20.0),
+            "case: {label} Fixed size honored under align"
+        );
+    }
 }

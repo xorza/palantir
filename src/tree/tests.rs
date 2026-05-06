@@ -186,80 +186,84 @@ fn widget_id_does_not_affect_hash() {
 }
 
 #[test]
-fn changing_layout_size_changes_hash() {
-    let h1 = record_hash(|ui| {
-        Panel::hstack()
-            .with_id("root")
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
-            .show(ui, |_| {})
-            .node
-    });
-    let h2 = record_hash(|ui| {
-        Panel::hstack()
-            .with_id("root")
-            .size((Sizing::Fixed(101.0), Sizing::Fixed(50.0)))
-            .show(ui, |_| {})
-            .node
-    });
-    assert_ne!(h1, h2);
-}
-
-#[test]
-fn changing_padding_changes_hash() {
-    let h1 = record_hash(|ui| {
-        Panel::hstack()
-            .with_id("root")
-            .padding(8.0)
-            .show(ui, |_| {})
-            .node
-    });
-    let h2 = record_hash(|ui| {
-        Panel::hstack()
-            .with_id("root")
-            .padding(12.0)
-            .show(ui, |_| {})
-            .node
-    });
-    assert_ne!(h1, h2);
-}
-
-#[test]
-fn changing_visibility_changes_hash() {
+fn changing_layout_property_changes_hash() {
     use crate::layout::types::visibility::Visibility;
-    let h1 = record_hash(|ui| {
-        Panel::hstack()
-            .with_id("root")
-            .visibility(Visibility::Visible)
-            .show(ui, |_| {})
-            .node
-    });
-    let h2 = record_hash(|ui| {
-        Panel::hstack()
-            .with_id("root")
-            .visibility(Visibility::Hidden)
-            .show(ui, |_| {})
-            .node
-    });
-    assert_ne!(h1, h2);
-}
-
-#[test]
-fn changing_justify_changes_hash() {
-    let h1 = record_hash(|ui| {
-        Panel::hstack()
-            .with_id("root")
-            .justify(Justify::Start)
-            .show(ui, |_| {})
-            .node
-    });
-    let h2 = record_hash(|ui| {
-        Panel::hstack()
-            .with_id("root")
-            .justify(Justify::Center)
-            .show(ui, |_| {})
-            .node
-    });
-    assert_ne!(h1, h2);
+    type Build = fn(&mut Ui) -> NodeId;
+    let cases: &[(&str, Build, Build)] = &[
+        (
+            "size",
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
+                    .show(ui, |_| {})
+                    .node
+            },
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .size((Sizing::Fixed(101.0), Sizing::Fixed(50.0)))
+                    .show(ui, |_| {})
+                    .node
+            },
+        ),
+        (
+            "padding",
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .padding(8.0)
+                    .show(ui, |_| {})
+                    .node
+            },
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .padding(12.0)
+                    .show(ui, |_| {})
+                    .node
+            },
+        ),
+        (
+            "visibility",
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .visibility(Visibility::Visible)
+                    .show(ui, |_| {})
+                    .node
+            },
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .visibility(Visibility::Hidden)
+                    .show(ui, |_| {})
+                    .node
+            },
+        ),
+        (
+            "justify",
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .justify(Justify::Start)
+                    .show(ui, |_| {})
+                    .node
+            },
+            |ui| {
+                Panel::hstack()
+                    .with_id("root")
+                    .justify(Justify::Center)
+                    .show(ui, |_| {})
+                    .node
+            },
+        ),
+    ];
+    for (label, a, b) in cases {
+        let h1 = record_hash(*a);
+        let h2 = record_hash(*b);
+        assert_ne!(h1, h2, "case: {label}");
+    }
 }
 
 #[test]

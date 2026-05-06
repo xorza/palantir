@@ -43,46 +43,44 @@ fn count_draw_rects(cmds: &RenderCmdBuffer) -> usize {
         .count()
 }
 
+/// Baseline encoder counts: empty tree emits no draws; a Frame with a
+/// fill emits one DrawRect; an invisible Frame (no fill / stroke /
+/// shape) emits none — `Shape::is_noop` filters at `add_shape` time so
+/// the encoder sees no RoundedRect in the tree.
 #[test]
-fn empty_tree_encodes_to_nothing() {
-    let mut ui = ui_at(UVec2::new(100, 100));
-    Panel::hstack().show(&mut ui, |_| {});
-    ui.end_frame();
-    let cmds = encode_cmds(&ui);
-    assert_eq!(count_draw_rects(&cmds), 0);
-}
-
-#[test]
-fn frame_with_fill_emits_one_draw_rect() {
-    let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
-        Frame::new()
-            .with_id("a")
-            .size(50.0)
-            .background(Background {
-                fill: Color::rgb(1.0, 0.0, 0.0),
-                ..Default::default()
-            })
-            .show(ui);
-    });
-    ui.end_frame();
-    let cmds = encode_cmds(&ui);
-
-    assert_eq!(count_draw_rects(&cmds), 1);
-}
-
-#[test]
-fn invisible_frame_does_not_emit_draw_rect() {
-    // Shape::is_noop filters at Ui::add_shape time; the encoder should see no
-    // RoundedRect in the tree, hence no DrawRect command.
-    let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
-        Frame::new().with_id("invisible").size(50.0).show(ui);
-    });
-    ui.end_frame();
-    let cmds = encode_cmds(&ui);
-
-    assert_eq!(count_draw_rects(&cmds), 0);
+fn baseline_draw_rect_count_cases() {
+    enum Scene {
+        Empty,
+        FrameWithFill,
+        InvisibleFrame,
+    }
+    let cases: &[(&str, Scene, usize)] = &[
+        ("empty_tree", Scene::Empty, 0),
+        ("frame_with_fill", Scene::FrameWithFill, 1),
+        ("invisible_frame", Scene::InvisibleFrame, 0),
+    ];
+    for (label, scene, expected) in cases {
+        let mut ui = ui_at(UVec2::new(200, 200));
+        Panel::hstack().show(&mut ui, |ui| match scene {
+            Scene::Empty => {}
+            Scene::FrameWithFill => {
+                Frame::new()
+                    .with_id("a")
+                    .size(50.0)
+                    .background(Background {
+                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            }
+            Scene::InvisibleFrame => {
+                Frame::new().with_id("invisible").size(50.0).show(ui);
+            }
+        });
+        ui.end_frame();
+        let cmds = encode_cmds(&ui);
+        assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
+    }
 }
 
 /// Pin: the encoder iterates ALL shape variants in the

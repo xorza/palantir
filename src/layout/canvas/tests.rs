@@ -86,63 +86,43 @@ fn canvas_negative_position_does_not_extend_bbox() {
     assert_eq!(child.min.y - panel_rect.min.y, -5.0);
 }
 
+/// A constrained Canvas (Fixed) passes its inner to children, so a Fill
+/// child takes the canvas's full inner. A Hug Canvas passes INF on Hug
+/// axes → Fill falls back to intrinsic (zero for an empty Frame). This
+/// preserves the recursive-sizing protection for Hug parents.
+///
+/// The old "Fill = 0 in Canvas" rule (Fill always intrinsic) was a
+/// Canvas-specific quirk that broke constraint propagation for Hug Grid
+/// children. Authors who genuinely want "no Fill behavior" can use
+/// `Sizing::Hug`.
 #[test]
-fn canvas_fill_child_takes_constrained_canvas_inner() {
-    // A constrained Canvas (Fixed/Fill) passes its inner size to
-    // children, so a Fill child takes the canvas's full inner. The
-    // child's `position` still applies — placed at `pos + inner.size`,
-    // which may overflow the canvas's own rect.
-    //
-    // The old "Fill = 0 in Canvas" rule (Fill falls back to intrinsic
-    // unconditionally) was a Canvas-specific quirk that broke
-    // constraint propagation for Hug Grid children. Authors who
-    // genuinely want "no Fill behavior" can use `Sizing::Hug`.
-    //
-    // Hug Canvas (no constraint to propagate) still passes INF on Hug
-    // axes → Fill falls back to intrinsic. Pinned by
-    // `canvas_hug_fill_child_falls_back_to_intrinsic` below.
-    let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::canvas()
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-            .show(ui, |ui| {
-                Frame::new()
-                    .with_id("filler")
-                    .position((10.0, 10.0))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui);
-            })
-            .node
-    });
-    let kids: Vec<_> = ui.tree.children(panel).collect();
-    let f = ui.pipeline.layout.result.rect[kids[0].index()];
-    assert_eq!(f.size.w, 100.0);
-    assert_eq!(f.size.h, 100.0);
-}
-
-#[test]
-fn canvas_hug_fill_child_falls_back_to_intrinsic() {
-    // Companion to `canvas_fill_child_takes_constrained_canvas_inner`:
-    // Hug Canvas still passes INF on Hug axes → Fill children fall back
-    // to intrinsic (zero for an empty Frame). This preserves the
-    // recursive-sizing protection for Hug parents.
-    let mut ui = Ui::new();
-    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-        Panel::canvas()
-            // Hug × Hug — default.
-            .show(ui, |ui| {
-                Frame::new()
-                    .with_id("filler")
-                    .position((10.0, 10.0))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui);
-            })
-            .node
-    });
-    let kids: Vec<_> = ui.tree.children(panel).collect();
-    let f = ui.pipeline.layout.result.rect[kids[0].index()];
-    assert_eq!(f.size.w, 0.0);
-    assert_eq!(f.size.h, 0.0);
+fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
+    let cases: &[(&str, Option<f32>, f32)] = &[
+        ("fixed_canvas_passes_inner", Some(100.0), 100.0),
+        ("hug_canvas_falls_back_to_intrinsic", None, 0.0),
+    ];
+    for (label, fixed_size, expected) in cases {
+        let mut ui = Ui::new();
+        let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+            let mut canvas = Panel::canvas();
+            if let Some(s) = *fixed_size {
+                canvas = canvas.size((Sizing::Fixed(s), Sizing::Fixed(s)));
+            }
+            canvas
+                .show(ui, |ui| {
+                    Frame::new()
+                        .with_id("filler")
+                        .position((10.0, 10.0))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui);
+                })
+                .node
+        });
+        let kids: Vec<_> = ui.tree.children(panel).collect();
+        let f = ui.pipeline.layout.result.rect[kids[0].index()];
+        assert_eq!(f.size.w, *expected, "case: {label} w");
+        assert_eq!(f.size.h, *expected, "case: {label} h");
+    }
 }
 
 #[test]

@@ -122,84 +122,40 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
 }
 
 #[test]
-fn hstack_justify_center_centers_content_block() {
+fn hstack_justify_distributes_leftover() {
     use crate::layout::types::justify::Justify;
-    let mut ui = ui_at(UVec2::new(200, 100));
-    let root = Panel::hstack()
-        .justify(Justify::Center)
-        .show(&mut ui, |ui| {
-            Frame::new().with_id("a").size(40.0).show(ui);
-            Frame::new().with_id("b").size(40.0).show(ui);
-        })
-        .node;
-    ui.end_frame();
+    // 200-wide parent, 40-wide children, no gap.
+    // Center:       leftover 120, half (60) leading.
+    // End:          last child trailing-aligned (200 - 40 = 160).
+    // SpaceBetween: 3 children → 80 leftover / 2 gaps of 40.
+    // SpaceAround:  120 leftover / 2 = 60 per slot, half-pads (30/60/30).
+    let cases: &[(&str, Justify, &[f32])] = &[
+        ("center", Justify::Center, &[60.0, 100.0]),
+        ("end", Justify::End, &[120.0, 160.0]),
+        ("space_between", Justify::SpaceBetween, &[0.0, 80.0, 160.0]),
+        ("space_around", Justify::SpaceAround, &[30.0, 130.0]),
+    ];
+    for (label, justify, expected_xs) in cases {
+        let mut ui = ui_at(UVec2::new(200, 100));
+        let root = Panel::hstack()
+            .justify(*justify)
+            .show(&mut ui, |ui| {
+                for i in 0..expected_xs.len() {
+                    Frame::new().with_id(("c", i)).size(40.0).show(ui);
+                }
+            })
+            .node;
+        ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
-    // Two 40-wide children, no gap → content width = 80. Leftover = 120,
-    // half = 60 padding on the leading edge.
-    assert_eq!(ui.pipeline.layout.result.rect[kids[0].index()].min.x, 60.0);
-    assert_eq!(ui.pipeline.layout.result.rect[kids[1].index()].min.x, 100.0);
-}
-
-#[test]
-fn hstack_justify_end_packs_to_trailing_edge() {
-    use crate::layout::types::justify::Justify;
-    let mut ui = ui_at(UVec2::new(200, 100));
-    let root = Panel::hstack()
-        .justify(Justify::End)
-        .show(&mut ui, |ui| {
-            Frame::new().with_id("a").size(40.0).show(ui);
-            Frame::new().with_id("b").size(40.0).show(ui);
-        })
-        .node;
-    ui.end_frame();
-
-    let kids: Vec<_> = ui.tree.children(root).collect();
-    // Last child ends at 200; 40 wide → starts at 160. First at 120.
-    assert_eq!(ui.pipeline.layout.result.rect[kids[0].index()].min.x, 120.0);
-    assert_eq!(ui.pipeline.layout.result.rect[kids[1].index()].min.x, 160.0);
-}
-
-#[test]
-fn hstack_justify_space_between_distributes_leftover_between() {
-    use crate::layout::types::justify::Justify;
-    let mut ui = ui_at(UVec2::new(200, 100));
-    let root = Panel::hstack()
-        .justify(Justify::SpaceBetween)
-        .show(&mut ui, |ui| {
-            Frame::new().with_id("a").size(40.0).show(ui);
-            Frame::new().with_id("b").size(40.0).show(ui);
-            Frame::new().with_id("c").size(40.0).show(ui);
-        })
-        .node;
-    ui.end_frame();
-
-    let kids: Vec<_> = ui.tree.children(root).collect();
-    // Leftover = 200 - 120 = 80, split into 2 gaps of 40.
-    assert_eq!(ui.pipeline.layout.result.rect[kids[0].index()].min.x, 0.0);
-    assert_eq!(ui.pipeline.layout.result.rect[kids[1].index()].min.x, 80.0);
-    assert_eq!(ui.pipeline.layout.result.rect[kids[2].index()].min.x, 160.0);
-}
-
-#[test]
-fn hstack_justify_space_around_distributes_with_half_pads() {
-    use crate::layout::types::justify::Justify;
-    let mut ui = ui_at(UVec2::new(200, 100));
-    let root = Panel::hstack()
-        .justify(Justify::SpaceAround)
-        .show(&mut ui, |ui| {
-            Frame::new().with_id("a").size(40.0).show(ui);
-            Frame::new().with_id("b").size(40.0).show(ui);
-        })
-        .node;
-    ui.end_frame();
-
-    let kids: Vec<_> = ui.tree.children(root).collect();
-    // Leftover = 120, /count(2) = 60 per slot. Half (30) padding before first,
-    // full 60 between, half (30) after last.
-    assert_eq!(ui.pipeline.layout.result.rect[kids[0].index()].min.x, 30.0);
-    // 30 + 40 + 60 = 130
-    assert_eq!(ui.pipeline.layout.result.rect[kids[1].index()].min.x, 130.0);
+        let kids: Vec<_> = ui.tree.children(root).collect();
+        for (i, want_x) in expected_xs.iter().enumerate() {
+            assert_eq!(
+                ui.pipeline.layout.result.rect[kids[i].index()].min.x,
+                *want_x,
+                "case: {label} child[{i}].min.x",
+            );
+        }
+    }
 }
 
 #[test]

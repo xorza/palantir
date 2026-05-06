@@ -101,29 +101,24 @@ fn round_trip_lookup_returns_subtree_relative_groups() {
     assert_eq!(hit.groups[0].texts, Span::new(0, 1));
 }
 
+/// `try_lookup` misses when any of the key fields disagrees: hash,
+/// `available`, or cascade fingerprint.
 #[test]
-fn hash_mismatch_misses() {
-    let mut cache = ComposeCache::default();
-    write(&mut cache, wid(1), hash(1), 0, 0, 0, 0);
-    assert!(cache.try_lookup(wid(1), hash(2), avail(), 0).is_none());
-}
-
-#[test]
-fn avail_mismatch_misses() {
-    let mut cache = ComposeCache::default();
-    write(&mut cache, wid(1), hash(1), 0, 0, 0, 0);
-    assert!(
-        cache
-            .try_lookup(wid(1), hash(1), IVec2::new(1, 1), 0)
-            .is_none()
-    );
-}
-
-#[test]
-fn cascade_fp_mismatch_misses() {
-    let mut cache = ComposeCache::default();
-    write(&mut cache, wid(1), hash(1), 0xaaaa, 0, 0, 0);
-    assert!(cache.try_lookup(wid(1), hash(1), avail(), 0xbbbb).is_none());
+fn lookup_mismatch_misses_cases() {
+    type LookupKey = (NodeHash, AvailableKey, u64);
+    let cases: &[(&str, u64, LookupKey)] = &[
+        ("hash_mismatch", 0, (hash(2), avail(), 0)),
+        ("avail_mismatch", 0, (hash(1), IVec2::new(1, 1), 0)),
+        ("cascade_fp_mismatch", 0xaaaa, (hash(1), avail(), 0xbbbb)),
+    ];
+    for (label, written_fp, (h, a, fp)) in cases {
+        let mut cache = ComposeCache::default();
+        write(&mut cache, wid(1), hash(1), *written_fp, 0, 0, 0);
+        assert!(
+            cache.try_lookup(wid(1), *h, *a, *fp).is_none(),
+            "case: {label}"
+        );
+    }
 }
 
 #[test]

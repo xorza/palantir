@@ -42,49 +42,72 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
         });
 }
 
+/// Showcase regressions: two cells in a Grid with a wrapping text column
+/// must not paint on top of each other. Pinned across two topologies:
+/// a default-sized Grid with two Hug cols, and a FILL-sized Grid with
+/// Hug + Fill cols (the property-grid pattern).
 #[test]
-fn two_hug_columns_with_wrapping_text_do_not_overlap() {
-    let mut ui = ui_with_text(UVec2::new(800, 600));
-    let mut left = None;
-    let mut right = None;
-    Panel::vstack()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(&mut ui, |ui| {
-            Grid::new()
-                .cols(Rc::from([Track::hug(), Track::hug()]))
-                .rows(Rc::from([Track::hug()]))
-                .show(ui, |ui| {
-                    left = Some(
-                        Text::new(
-                            "The quick brown fox jumps over the lazy dog. Pack my box \
-                             with five dozen liquor jugs. How vexingly quick daft zebras jump!",
-                        )
-                        .style(TextStyle::default().with_font_size(14.0))
-                        .wrapping()
-                        .grid_cell((0, 0))
-                        .show(ui)
-                        .node,
-                    );
-                    right = Some(
-                        Text::new("right column")
-                            .style(TextStyle::default().with_font_size(14.0))
-                            .grid_cell((0, 1))
-                            .show(ui)
-                            .node,
-                    );
-                });
-        });
-    ui.end_frame();
+fn grid_columns_with_wrapping_text_do_not_overlap() {
+    type Case = (&'static str, Option<Sizing>, [Track; 2], (f32, f32));
+    let cases: &[Case] = &[
+        (
+            "two_hug_columns",
+            None,
+            [Track::hug(), Track::hug()],
+            (0.0, 0.0),
+        ),
+        (
+            "hug_label_fill_value",
+            Some(Sizing::FILL),
+            [Track::hug(), Track::fill()],
+            (6.0, 16.0),
+        ),
+    ];
+    let long_text = "The quick brown fox jumps over the lazy dog. Pack my box \
+                     with five dozen liquor jugs. How vexingly quick daft zebras jump!";
+    for (label_id, grid_main, cols, gap_xy) in cases {
+        let mut ui = ui_with_text(UVec2::new(800, 600));
+        let mut left = None;
+        let mut right = None;
+        Panel::vstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(&mut ui, |ui| {
+                let mut g = Grid::new();
+                if let Some(s) = *grid_main {
+                    g = g.size((s, Sizing::Hug));
+                }
+                g.cols(Rc::from(*cols))
+                    .rows(Rc::from([Track::hug()]))
+                    .gap_xy(gap_xy.0, gap_xy.1)
+                    .show(ui, |ui| {
+                        left = Some(
+                            Text::new(long_text)
+                                .style(TextStyle::default().with_font_size(14.0))
+                                .wrapping()
+                                .grid_cell((0, 0))
+                                .show(ui)
+                                .node,
+                        );
+                        right = Some(
+                            Text::new("right column")
+                                .style(TextStyle::default().with_font_size(14.0))
+                                .grid_cell((0, 1))
+                                .show(ui)
+                                .node,
+                        );
+                    });
+            });
+        ui.end_frame();
 
-    let layout = &ui.pipeline.layout.result;
-    let lr = layout.rect[left.unwrap().index()];
-    let rr = layout.rect[right.unwrap().index()];
-    assert!(lr.size.w > 0.0, "left column must have a positive width");
-    assert!(
-        rr.min.x >= lr.max().x - 0.5,
-        "right column must start at or past the left column's right edge: \
-         left={lr:?}, right={rr:?}",
-    );
+        let layout = &ui.pipeline.layout.result;
+        let lr = layout.rect[left.unwrap().index()];
+        let rr = layout.rect[right.unwrap().index()];
+        assert!(lr.size.w > 0.0, "case: {label_id} left col width");
+        assert!(
+            rr.min.x >= lr.max().x - 0.5,
+            "case: {label_id} right must start past left.right; left={lr:?}, right={rr:?}",
+        );
+    }
 }
 
 #[test]
@@ -321,51 +344,4 @@ fn text_layouts_full_showcase_drawtext_dump() {
             }
         }
     }
-}
-
-/// Showcase regression: the property-grid section overlapped its
-/// label column ("Title:", "Description:", "Tags:") with its
-/// wrapping value column.
-#[test]
-fn property_grid_hug_label_does_not_overlap_fill_value() {
-    let mut ui = ui_with_text(UVec2::new(800, 600));
-    let mut label = None;
-    let mut value = None;
-    Panel::vstack()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(&mut ui, |ui| {
-            Grid::new()
-                .size((Sizing::FILL, Sizing::Hug))
-                .cols(Rc::from([Track::hug(), Track::fill()]))
-                .rows(Rc::from([Track::hug()]))
-                .gap_xy(6.0, 16.0)
-                .show(ui, |ui| {
-                    label = Some(
-                        Text::new("Title:")
-                            .style(TextStyle::default().with_font_size(14.0))
-                            .grid_cell((0, 0))
-                            .show(ui)
-                            .node,
-                    );
-                    value = Some(
-                        Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
-                            .style(TextStyle::default().with_font_size(14.0))
-                            .wrapping()
-                            .grid_cell((0, 1))
-                            .show(ui)
-                            .node,
-                    );
-                });
-        });
-    ui.end_frame();
-
-    let layout = &ui.pipeline.layout.result;
-    let lr = layout.rect[label.unwrap().index()];
-    let vr = layout.rect[value.unwrap().index()];
-    assert!(lr.size.w > 0.0, "label cell must have a positive width");
-    assert!(
-        vr.min.x >= lr.max().x - 0.5,
-        "value cell must start at or past the label cell's right edge: \
-         label={lr:?}, value={vr:?}",
-    );
 }
