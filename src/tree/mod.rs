@@ -11,6 +11,7 @@ use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::grid::GridDef;
 use fixedbitset::FixedBitSet;
+use soa_rs::{Soa, Soars};
 
 pub(crate) mod element;
 pub(crate) mod node_hash;
@@ -28,56 +29,37 @@ impl NodeId {
 
 /// Two storage modes coexist:
 ///
-/// **Per-NodeId columns** — parallel `Vec`s indexed by `NodeId.0`, all in
+/// **Per-NodeId columns** — `Soa<NodeRecord>` indexed by `NodeId.0`, in
 /// pre-order paint order (parent before children, siblings in declaration
 /// order). Reverse iteration gives topmost-first (used by hit-testing).
-/// Splitting by reader keeps each pass touching only the bytes it needs:
+/// `soa-rs` lays each `NodeRecord` field out as its own contiguous slice,
+/// so each pass touches only the bytes it needs:
 ///
-/// - `layout`     — read by measure / arrange / alignment math
-/// - `attrs`      — packed paint/input flags (sense / disabled /
-///   clip / focusable). 1 byte/node; read by cascade / encoder /
-///   hit-test in dense columnar passes
-/// - `nodes`      — per-NodeId `NodeMeta`, bundling the author's
-///   `widget_id`, the kinds-stream `Span`, the shape-stream `Span`
-///   covering this node's subtree, and the exclusive end NodeId.
-///   `i + 1 == nodes[i].end` for a leaf.
+/// - `layout`         — read by measure / arrange / alignment math
+/// - `attrs`          — 1-byte packed paint/input flags; cascade / encoder
+/// - `widget_id`      — hit-test, state map, damage diff
+/// - `end`            — pre-order skip (every walk)
+/// - `kinds`/`shapes` — encoder span lookups
 ///
 /// **Kinds stream** — `kinds: Vec<TreeOp>` interleaves `NodeEnter`,
 /// `Shape`, `NodeExit` events in pure record order. Payload lives in
-/// `nodes` + `layout` + `attrs` (per-NodeEnter) and `shapes`
-/// (per-Shape). The encoder and hash walk this stream linearly;
-/// `nodes[i].kinds` maps a node to its slice in O(1).
+/// `records` (per-NodeEnter) and `shapes` (per-Shape). The encoder and
+/// hash walk this stream linearly; `records.kinds()[i]` maps a node to
+/// its slice in O(1).
 ///
-/// Recording: `open_node` pushes `NodeEnter` + per-node columns,
+/// Recording: `open_node` pushes `NodeEnter` + a `NodeRecord`,
 /// `add_shape` pushes `Shape`, `close_node` pushes `NodeExit` and
-/// finalizes `nodes[i]`. No deferred-pending or linearization —
-/// stream and columns are final the moment the root closes.
+/// finalizes `records.kinds()[i]` / `records.shapes()[i]`. No
+/// deferred-pending or linearization — stream and columns are final
+/// the moment the root closes.
 #[derive(Default)]
 pub(crate) struct Tree {
     // -- Per-NodeId mandatory columns ------------------------------------
-    /// Per-NodeId metadata bundle:
-    /// - `widget_id` — author-supplied identity (hit-test, state map).
-    /// - `kinds`     — `Span` covering this node's `NodeEnter` through
-    ///   matching `NodeExit` in the kinds stream.
-    /// - `shapes`    — `Span` covering shapes recorded inside this
-    ///   node's NodeEnter→NodeExit window (this node + descendants).
-    /// - `end`       — exclusive end NodeId in pre-order
-    ///   (`i + 1 == nodes[i].end` for a leaf).
-    ///
-    /// Bundled because all four are written together at `open_node` /
-    /// `close_node` and the bookkeeping ends would risk desync if
-    /// split.
-    // todo soa
-    pub(crate) nodes: Vec<NodeMeta>,
-    /// Layout-pass column: geometry + visibility. Held tight so the
-    /// hot measure/arrange path doesn't pull paint flags it never
-    /// reads.
-    pub(crate) layout: Vec<LayoutCore>,
-    /// 1-byte packed paint/input flags per node (sense / disabled /
-    /// clip / focusable). Split from `layout` so cascade / encoder /
-    /// hit-test pull a 16-nodes-per-cacheline dense column instead of
-    /// the full `LayoutCore`.
-    pub(crate) attrs: Vec<PaintAttrs>,
+    /// SoA storage of per-NodeId data. Six parallel slices live behind
+    /// one `Soa`: `widget_id`, `kinds`, `shapes`, `end`, `layout`, `attrs`.
+    /// `open_node` pushes one `NodeRecord` (atomic across all six),
+    /// `close_node` finalizes the `kinds`/`shapes` spans in place.
+    pub(crate) records: Soa<NodeRecord>,
 
     // -- Per-NodeId sparse side tables -----------------------------------
     /// Rarely-set element fields (`transform`, `position`, `grid`, …)
@@ -97,14 +79,13 @@ pub(crate) struct Tree {
     /// in pure record order. Walked linearly by the encoder; replaces
     /// the old per-node shape slice + slot mechanism. Each entry maps
     /// to a payload:
-    ///   - `NodeEnter` → next entry in `nodes[i].widget_id` /
-    ///     `layout[i]` / `attrs[i]`
+    ///   - `NodeEnter` → next entry in `records` (one push per enter)
     ///   - `Shape`     → next entry in `shapes`
     ///   - `NodeExit`  → no payload
     pub(crate) kinds: Vec<TreeOp>,
     /// Flat shape storage in record order. Indexed by counting `Shape`
-    /// kinds entries up to a given position; `nodes[i].shapes` caches
-    /// the range belonging to node `i`'s subtree.
+    /// kinds entries up to a given position; `records.shapes()[i]`
+    /// caches the range belonging to node `i`'s subtree.
     pub(crate) shapes: Vec<Shape>,
 
     // -- Frame-scoped sub-storage ----------------------------------------
@@ -130,9 +111,7 @@ pub(crate) struct Tree {
 
 impl Tree {
     pub(crate) fn begin_frame(&mut self) {
-        self.nodes.clear();
-        self.layout.clear();
-        self.attrs.clear();
+        self.records.clear();
         self.extras.clear();
         self.chrome.clear();
         self.kinds.clear();
@@ -167,12 +146,11 @@ impl Tree {
 
     /// Cross-column structural invariants that must hold after the
     /// root closes. One pass over `kinds` tallies the three op
-    /// counts; `nodes` and `attrs` length matches are direct asserts.
-    /// Catches drift between the recording stream and the per-NodeId
-    /// columns the moment a `Tree` mutation gets it wrong. Debug-only.
+    /// counts. The SoA `records` keeps every per-node column in
+    /// lockstep, so a single length check is enough. Debug-only.
     #[cfg(debug_assertions)]
     fn assert_recording_invariants(&self) {
-        let n = self.layout.len();
+        let n = self.records.len();
         let mut enters = 0usize;
         let mut exits = 0usize;
         let mut shape_evts = 0usize;
@@ -185,26 +163,16 @@ impl Tree {
         }
         debug_assert_eq!(
             enters, n,
-            "kinds stream NodeEnter count diverged from layout column",
+            "kinds stream NodeEnter count diverged from records column",
         );
         debug_assert_eq!(
             exits, n,
-            "kinds stream NodeExit count diverged from layout column",
+            "kinds stream NodeExit count diverged from records column",
         );
         debug_assert_eq!(
             shape_evts,
             self.shapes.len(),
             "kinds stream Shape count diverged from shapes column",
-        );
-        debug_assert_eq!(
-            self.nodes.len(),
-            n,
-            "nodes column length must match layout column after recording",
-        );
-        debug_assert_eq!(
-            self.attrs.len(),
-            n,
-            "attrs column length must match layout column after recording",
         );
     }
 
@@ -212,7 +180,7 @@ impl Tree {
     /// no node is open) and make it the new tip. Pair with `close_node`.
     pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
         let parent = self.open_frames.last().map(|f| f.node);
-        let new_id = NodeId(self.layout.len() as u32);
+        let new_id = NodeId(self.records.len() as u32);
         if let LayoutMode::Grid(idx) = element.mode {
             assert!(
                 (idx as usize) < self.grid.defs.len(),
@@ -231,7 +199,7 @@ impl Tree {
         // inside every measure pass. Empty grids (zero rows or cols) skip
         // validation; their measure pass shortcuts to `Size::ZERO`.
         if let Some(parent_id) = parent
-            && let LayoutMode::Grid(grid_idx) = self.layout[parent_id.0 as usize].mode
+            && let LayoutMode::Grid(grid_idx) = self.records.layout()[parent_id.0 as usize].mode
         {
             let def = &self.grid.defs[grid_idx as usize];
             let n_rows = def.rows.len();
@@ -257,18 +225,18 @@ impl Tree {
         self.extras.push((!extras.is_default()).then_some(extras));
         self.chrome.push(chrome);
 
-        self.layout.push(layout);
-        self.attrs.push(attrs);
         // Leaf marker. `close_node` rolls each closing subtree up
-        // into its parent's slot, so `nodes[i].end` is final the
+        // into its parent's slot, so `records.end()[i]` is final the
         // moment the root's `close_node` returns. `kinds.len` and
         // `shapes.len` are filled at close (placeholders 0); the
         // other fields are final here.
-        self.nodes.push(NodeMeta {
+        self.records.push(NodeRecord {
             widget_id,
             kinds: Span::new(self.kinds.len() as u32, 0),
             shapes: Span::new(self.shapes.len() as u32, 0),
             end: new_id.0 + 1,
+            layout,
+            attrs,
         });
         self.kinds.push(TreeOp::NodeEnter);
         self.open_frames.push(OpenFrame {
@@ -279,7 +247,7 @@ impl Tree {
     }
 
     /// Pop the currently-open node back to its parent and roll its
-    /// `nodes[…].end` up into the parent's slot. Panics if no node
+    /// `records.end()[…]` up into the parent's slot. Panics if no node
     /// is open.
     pub(crate) fn close_node(&mut self) {
         let closing = self
@@ -290,15 +258,20 @@ impl Tree {
         // Push NodeExit and finalize the closing node's `kinds` and
         // `shapes` spans (both placeholders set to 0 at open time).
         self.kinds.push(TreeOp::NodeExit);
-        let meta = &mut self.nodes[closing.node.index()];
-        meta.kinds.len = self.kinds.len() as u32 - meta.kinds.start;
-        meta.shapes.len = self.shapes.len() as u32 - meta.shapes.start;
-        let end = meta.end;
+        let i = closing.node.index();
+        let kinds_len = self.kinds.len() as u32;
+        let shapes_len = self.shapes.len() as u32;
+        let kinds = &mut self.records.kinds_mut()[i];
+        kinds.len = kinds_len - kinds.start;
+        let shapes = &mut self.records.shapes_mut()[i];
+        shapes.len = shapes_len - shapes.start;
+        let end = self.records.end()[i];
 
         if let Some(parent) = self.open_frames.last() {
             let pi = parent.node.index();
-            if self.nodes[pi].end < end {
-                self.nodes[pi].end = end;
+            let ends = self.records.end_mut();
+            if ends[pi] < end {
+                ends[pi] = end;
             }
         }
     }
@@ -335,7 +308,7 @@ impl Tree {
     /// Stable while the tree is alive: the root is always `NodeId(0)` once
     /// pushed.
     pub(crate) fn root(&self) -> Option<NodeId> {
-        if self.layout.is_empty() {
+        if self.records.is_empty() {
             None
         } else {
             Some(NodeId(0))
@@ -352,7 +325,7 @@ impl Tree {
         ChildIter {
             tree: self,
             next: parent.0 + 1,
-            end: self.nodes[pi].end,
+            end: self.records.end()[pi],
         }
     }
 
@@ -363,13 +336,14 @@ impl Tree {
     /// yielding depth-0 `Shape` events.
     pub(crate) fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &Shape> + '_ {
         let i = node.index();
-        let meta = &self.nodes[i];
-        let r = meta.kinds.range();
+        let kinds_span = self.records.kinds()[i];
+        let shapes_span = self.records.shapes()[i];
+        let r = kinds_span.range();
         let start = r.start + 1;
         let end = r.end - 1;
         let shapes = &self.shapes;
         let mut depth = 0i32;
-        let mut shape_cursor = meta.shapes.start as usize;
+        let mut shape_cursor = shapes_span.start as usize;
         self.kinds[start..end]
             .iter()
             .filter_map(move |op| match op {
@@ -424,7 +398,8 @@ pub(crate) struct ChildIter<'a> {
 /// [`Tree::children`]; replaces the
 /// `if tree.is_collapsed(c) {…} continue;` boilerplate that used to
 /// live in every arrange driver. `visibility` is the cached value of
-/// `tree.layout[id.index()].visibility` — read once during iteration.
+/// `tree.records.layout()[id.index()].visibility` — read once during
+/// iteration.
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct Child {
     pub(crate) id: NodeId,
@@ -450,8 +425,8 @@ impl<'a> Iterator for ChildIter<'a> {
             return None;
         }
         let id = NodeId(self.next);
-        let visibility = self.tree.layout[id.index()].visibility;
-        self.next = self.tree.nodes[self.next as usize].end;
+        let visibility = self.tree.records.layout()[id.index()].visibility;
+        self.next = self.tree.records.end()[self.next as usize];
         Some(Child { id, visibility })
     }
 }
@@ -501,7 +476,7 @@ impl GridArena {
 ///   grid-hug snapshot/restore walk; correctness doesn't depend on it,
 ///   perf does.
 ///
-/// All three vecs are length `node_count()` after `end_frame`. Capacity
+/// All three vecs are length `records.len()` after `end_frame`. Capacity
 /// retained across frames.
 #[derive(Default)]
 pub(crate) struct NodeHashes {
@@ -523,30 +498,36 @@ impl NodeHashes {
     }
 }
 
-/// Per-NodeId metadata bundle. Holds everything that's both
-/// (a) one-per-node and (b) finalized by `close_node`. Layout-side
-/// data lives separately in `Tree.layout` because the layout pass
-/// reads it densely and shouldn't pull these unrelated bytes.
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct NodeMeta {
-    /// Author-supplied identity. Read by hit-test and the state map.
-    pub(crate) widget_id: WidgetId,
+/// Per-NodeId record. One push per `open_node`, finalized by
+/// `close_node`. Stored as `Soa<NodeRecord>` on `Tree.records` so each
+/// field becomes its own contiguous slice — passes that read only one
+/// or two fields don't pull the rest into cache.
+#[derive(Soars, Clone, Copy, Debug)]
+#[soa_derive(Debug)]
+pub(crate) struct NodeRecord {
+    /// Author-supplied identity. Read by hit-test, state map, damage diff.
+    pub widget_id: WidgetId,
     /// Span into `Tree.kinds`: `kinds[start..start+len]` covers this
     /// node's `NodeEnter` through matching `NodeExit` (inclusive).
-    pub(crate) kinds: Span,
-    /// Span into `Tree.shapes`: `shapes[start..start+len]` covers
-    /// every shape recorded inside this node's NodeEnter→NodeExit
-    /// window, including descendants. `len` is set at `close_node`
-    /// from `shapes.len() - shapes.start`. Stored as a `Span`
-    /// (rather than just `start` + a "look at next node" trick) so a
-    /// node with shapes pushed AFTER its only child closes — e.g.
-    /// `Scroll` with bars at slot N — gets a correct count for the
-    /// child's subtree (the next pre-order node would otherwise sit
-    /// past those parent-owned bars).
-    pub(crate) shapes: Span,
+    pub kinds: Span,
+    /// Span into `Tree.shapes`: covers every shape recorded inside
+    /// this node's NodeEnter→NodeExit window, including descendants.
+    /// `len` is set at `close_node` from `shapes.len() - shapes.start`.
+    /// Stored as a `Span` (rather than just `start` + a "look at next
+    /// node" trick) so a node with shapes pushed AFTER its only child
+    /// closes — e.g. `Scroll` with bars at slot N — gets a correct
+    /// count for the child's subtree (the next pre-order node would
+    /// otherwise sit past those parent-owned bars).
+    pub shapes: Span,
     /// Exclusive end in NodeId space: one past the last descendant
     /// in pre-order. `i + 1 == end` for a leaf.
-    pub(crate) end: u32,
+    pub end: u32,
+    /// Layout-pass column: geometry + visibility. Bundled because the
+    /// hot measure/arrange path reads all six fields together.
+    pub layout: LayoutCore,
+    /// 1-byte packed paint/input flags (sense / disabled / clip /
+    /// focusable). Read by cascade / encoder / hit-test.
+    pub attrs: PaintAttrs,
 }
 
 /// Tagged event in the per-frame `kinds` stream — see `Tree.kinds`.

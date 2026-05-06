@@ -90,7 +90,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
     ui.end_frame();
 
     for (name, id, expected_clip, expects_chrome) in &cases {
-        let clip = ui.tree.attrs[id.index()].clip_mode();
+        let clip = ui.tree.records.attrs()[id.index()].clip_mode();
         assert_eq!(clip, *expected_clip, "[{name}] clip mode");
         let chrome = ui.tree.chrome_for(*id);
         assert_eq!(

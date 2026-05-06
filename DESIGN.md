@@ -34,20 +34,26 @@ The tree is rebuilt every frame but laid out fresh — no stale cached sizes, no
 
 ## Tree shape
 
-Arena `Tree`, **SoA** — columns indexed by `NodeId.0`:
+Arena `Tree`, **SoA** — `records: Soa<NodeRecord>` (via `soa-rs`) indexed by `NodeId.0`. `NodeRecord` packs six logically-disjoint columns into one push site; `soa-rs` lays each field out as its own contiguous slice, so each pass reads only the bytes it needs:
 
-- `layout: Vec<LayoutCore>` — mode/size/padding/margin/align/visibility (read by measure + arrange).
-- `paint: Vec<PaintCore>` — `PaintAttrs` (1-byte sense/disabled/clip) + optional `extras: u16` index (read by cascade/encoder/hit-test).
-- `widget_ids: Vec<WidgetId>` — hit-test + state map key.
-- `subtree_end: Vec<u32>` — pre-order topology, `i + 1 == subtree_end[i]` for a leaf. Drives every walk.
-- `shapes: ShapeBuf` — flat `Vec<Shape>` + per-node `starts: Vec<u32>` (length `node_count() + 1`). Sliced as `buf[starts[i]..starts[i+1]]`.
-- `node_extras: Vec<ElementExtras>` — out-of-line side table for rare fields (`transform`, `position`, `grid` cell). Pointed to from `paint[i].extras`; nodes with default extras don't allocate a row.
+- `layout: LayoutCore` — mode/size/padding/margin/align/visibility (read by measure + arrange as a bundle; all six fields touched together so they stay packed in one column).
+- `attrs: PaintAttrs` — 1-byte packed sense/disabled/clip/focusable. Read by cascade / encoder.
+- `widget_id: WidgetId` — hit-test, state map, damage diff.
+- `end: u32` — pre-order topology, `i + 1 == end` for a leaf. Drives every walk; densest column at 4 B/node.
+- `kinds: Span`, `shapes: Span` — encoder span lookups into the kinds stream and shape buffer.
+
+Adjacent storage on the tree, not part of the SoA:
+
+- `kinds: Vec<TreeOp>` — tagged event stream interleaving `NodeEnter` / `Shape` / `NodeExit` in record order; encoder walks it linearly.
+- `shapes: Vec<Shape>` — flat shape buffer; per-node ranges live in `records.shapes()[i]`.
+- `extras: SparseColumn<ElementExtras>` — out-of-line side table for rare fields (`transform`, `position`, `grid` cell). Sparse: nodes with default extras don't allocate a row.
+- `chrome: SparseColumn<Background>` — panel chrome, sparse for the same reason.
 - `grid: GridArena` — frame-scoped `Vec<GridDef>` for `LayoutMode::Grid(idx)` panels.
-- `hashes: NodeHashes` — `node` (per-node authoring hash), `subtree` (rollup of node + children's subtree hashes), `subtree_has_grid` (fast-path bit). Populated in `end_frame` after `subtree_end` rolls up. Keys both the cross-frame measure cache and the encode cache.
+- `hashes: NodeHashes` — `node` (per-node authoring hash), `subtree` (rollup of node + children's subtree hashes), `subtree_has_grid` (fast-path bit). Populated in `end_frame` after `end` rolls up. Keys both the cross-frame measure cache and the encode cache.
 
-Splitting by reader keeps each pass touching only the columns it needs. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, **not** on the tree — the tree is input, results are derived.
+Atomic-push across the SoA columns means `open_node` writes all six per-node fields together and they can't drift; the `assert_recording_invariants` length check collapses to a single comparison against the kinds stream. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, **not** on the tree — the tree is input, results are derived.
 
-`Shape` (paint primitive: `RoundedRect`, `Text`, `Line`) is stored flat in `Tree.shapes`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. **Layout passes ignore Shapes and `PaintCore`; paint pass ignores hierarchy beyond `subtree_end`.** This decoupling is load-bearing.
+`Shape` (paint primitive: `RoundedRect`, `Text`, `Line`) is stored flat in `Tree.shapes`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. **Layout passes ignore Shapes and `attrs`; paint pass ignores hierarchy beyond `end`.** This decoupling is load-bearing.
 
 ## Sizing model (flex-shrink with min-content floor)
 

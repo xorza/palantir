@@ -140,7 +140,7 @@ fn emit_one_shape(
                 tracing::trace!(?shape, "encoder: dropping text with invalid key");
                 return;
             }
-            let inner = owner_rect.deflated_by(tree.layout[id.index()].padding);
+            let inner = owner_rect.deflated_by(tree.records.layout()[id.index()].padding);
             out.draw_text(
                 align_text_in(inner, shaped.measured, *align),
                 *color,
@@ -170,7 +170,7 @@ fn encode_node(
     if cascades.rows[id.index()].invisible {
         // Still advance the global shape cursor past this subtree's
         // shapes so siblings see the right offset.
-        *shape_cursor += tree.nodes[id.index()].shapes.len as usize;
+        *shape_cursor += tree.records.shapes()[id.index()].len as usize;
         return;
     }
 
@@ -186,12 +186,12 @@ fn encode_node(
     // back would lie about the snapshot covering the full subtree.
     // Cache snapshot age is therefore bounded by the *last full-paint*
     // frame, not the last frame.
-    let subtree_size = tree.nodes[id.index()].end - id.index() as u32;
+    let subtree_size = tree.records.end()[id.index()] - id.index() as u32;
     let cache_eligible = damage_filter.is_none() && subtree_size > TINY_SUBTREE_THRESHOLD;
     let cache_key = if cache_eligible {
         layout.available_q(id).map(|avail| {
             (
-                tree.nodes[id.index()].widget_id,
+                tree.records.widget_id()[id.index()],
                 tree.subtree_hash(id),
                 avail,
             )
@@ -203,7 +203,7 @@ fn encode_node(
     if let Some((wid, hash, avail)) = cache_key
         && cache.try_replay(wid, hash, avail, out, layout.rect[id.index()].min)
     {
-        *shape_cursor += tree.nodes[id.index()].shapes.len as usize;
+        *shape_cursor += tree.records.shapes()[id.index()].len as usize;
         return;
     }
 
@@ -245,7 +245,7 @@ fn encode_node(
     // Painting chrome unmasked (it self-clips via the SDF) keeps the
     // stroke visible while children stay clipped to the inset
     // interior.
-    let mode = tree.attrs[id.index()].clip_mode();
+    let mode = tree.records.attrs()[id.index()].clip_mode();
     let clip = mode.is_clip();
     let chrome = tree.chrome_for(id).copied();
 
@@ -323,7 +323,7 @@ fn encode_node(
     // Shapes always paint *outside* the owner's pan so they stay
     // anchored to the owner regardless of scroll offset; transform is
     // pushed/popped per child accordingly.
-    let r = tree.nodes[id.index()].kinds.range();
+    let r = tree.records.kinds()[id.index()].range();
     let body_start = r.start + 1;
     let body_end = r.end - 1;
     let mut pos = body_start;
@@ -357,7 +357,7 @@ fn encode_node(
                 if transform.is_some() {
                     out.pop_transform();
                 }
-                pos = tree.nodes[child.index()].kinds.range().end;
+                pos = tree.records.kinds()[child.index()].range().end;
             }
             TreeOp::NodeExit => unreachable!(
                 "owner's matching NodeExit excluded by body_end; nested exits skipped via node_kinds.range().end"

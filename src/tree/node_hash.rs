@@ -80,7 +80,7 @@ impl NodeHashes {
     /// filter.
     fn compute_per_node(&mut self, tree: &Tree) {
         self.node.clear();
-        self.node.resize(tree.layout.len(), NodeHash::UNCOMPUTED);
+        self.node.resize(tree.records.len(), NodeHash::UNCOMPUTED);
         self.compute_stack.clear();
 
         let stack = &mut self.compute_stack;
@@ -102,7 +102,12 @@ impl NodeHashes {
                     let i = id.index();
                     let extras = tree.extras.get(i);
                     let mut h = Hasher::new();
-                    hash_layout_core(&mut h, &tree.layout[i], tree.attrs[i], extras.is_some());
+                    hash_layout_core(
+                        &mut h,
+                        &tree.records.layout()[i],
+                        tree.records.attrs()[i],
+                        extras.is_some(),
+                    );
                     if let Some(e) = extras {
                         hash_node_extras(&mut h, e);
                     }
@@ -118,7 +123,7 @@ impl NodeHashes {
                 }
                 TreeOp::NodeExit => {
                     let (id, mut h) = stack.pop().expect("NodeExit op without matching NodeEnter");
-                    if let LayoutMode::Grid(idx) = tree.layout[id.index()].mode {
+                    if let LayoutMode::Grid(idx) = tree.records.layout()[id.index()].mode {
                         hash_grid_def(&mut h, &tree.grid.defs[idx as usize]);
                     }
                     out[id.index()] = NodeHash::from_u64(h.finish());
@@ -142,13 +147,13 @@ impl NodeHashes {
     /// transform-only changes; `node[i]` stays transform-insensitive
     /// so damage rect-diffing handles those.
     fn compute_subtree_rollup(&mut self, tree: &Tree) {
-        let n = tree.layout.len();
+        let n = tree.records.len();
         self.subtree.clear();
         self.subtree.resize(n, NodeHash::UNCOMPUTED);
         self.subtree_has_grid.clear();
         self.subtree_has_grid.grow(n);
         for i in (0..n).rev() {
-            let end = tree.nodes[i].end;
+            let end = tree.records.end()[i];
             let mut h = FxHasher::default();
             h.write_u64(self.node[i].as_u64());
             if let Some(t) = tree.read_extras(NodeId(i as u32)).transform {
@@ -157,12 +162,12 @@ impl NodeHashes {
             } else {
                 h.write_u8(0);
             }
-            let mut has_grid = matches!(tree.layout[i].mode, LayoutMode::Grid(_));
+            let mut has_grid = matches!(tree.records.layout()[i].mode, LayoutMode::Grid(_));
             let mut next = (i as u32) + 1;
             while next < end {
                 h.write_u64(self.subtree[next as usize].as_u64());
                 has_grid |= self.subtree_has_grid.contains(next as usize);
-                next = tree.nodes[next as usize].end;
+                next = tree.records.end()[next as usize];
             }
             self.subtree[i] = NodeHash::from_u64(h.finish());
             self.subtree_has_grid.set(i, has_grid);

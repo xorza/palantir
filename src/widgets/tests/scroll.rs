@@ -470,9 +470,10 @@ mod bars {
         let scroll_id = WidgetId::from_hash("scroll");
         let idx = ui
             .tree
-            .nodes
+            .records
+            .widget_id()
             .iter()
-            .position(|m| m.widget_id == scroll_id)
+            .position(|w| *w == scroll_id)
             .expect("scroll widget recorded");
         (ui, NodeId(idx as u32))
     }

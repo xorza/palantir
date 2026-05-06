@@ -42,7 +42,7 @@ fn auto_id_collisions_disambiguate() {
         chip(ui);
     });
     // 1 panel + 3 chips = 4 distinct ids, no panic.
-    assert_eq!(ui.tree.layout.len(), 4);
+    assert_eq!(ui.tree.records.len(), 4);
 }
 
 /// Helper: drive one full frame with an empty root so we can inspect
@@ -70,7 +70,7 @@ fn empty_ui_drives_a_frame_safely() {
         assert!(frame.buffer.groups.is_empty());
     }
 
-    assert_eq!(ui.tree.layout.len(), 0);
+    assert_eq!(ui.tree.records.len(), 0);
     assert!(ui.damage.prev.is_empty());
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage.rect.is_none());
@@ -88,7 +88,7 @@ fn empty_then_populated_frame() {
     ui.end_frame();
 
     drain_one_frame(&mut ui);
-    assert_eq!(ui.tree.layout.len(), 1);
+    assert_eq!(ui.tree.records.len(), 1);
     assert!(!ui.damage.prev.is_empty());
 }
 

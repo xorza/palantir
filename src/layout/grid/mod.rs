@@ -260,7 +260,7 @@ impl GridHugStore {
     /// dictated by [`HUG_ORDER`] per Grid, in pre-order.
     pub(crate) fn snapshot_subtree(&self, tree: &Tree, subtree: Range<usize>, out: &mut Vec<f32>) {
         for i in subtree {
-            if let LayoutMode::Grid(idx) = tree.layout[i].mode {
+            if let LayoutMode::Grid(idx) = tree.records.layout()[i].mode {
                 for (axis, kind) in HUG_ORDER {
                     out.extend_from_slice(self.slice(idx, axis, kind));
                 }
@@ -276,7 +276,7 @@ impl GridHugStore {
     pub(crate) fn restore_subtree(&mut self, tree: &Tree, subtree: Range<usize>, hugs: &[f32]) {
         let mut pos = 0usize;
         for i in subtree {
-            if let LayoutMode::Grid(idx) = tree.layout[i].mode {
+            if let LayoutMode::Grid(idx) = tree.records.layout()[i].mode {
                 for (axis, kind) in HUG_ORDER {
                     let dst = self.slice_mut(idx, axis, kind);
                     let n = dst.len();
@@ -393,8 +393,8 @@ fn measure_inner(
     // (`Fill` / `Fixed`), measure's `inner_avail.w` matches arrange's
     // `inner.w`, so Fill cols at measure time give cells the same
     // width they'll get at arrange — wrap text shapes correctly.
-    let grid_sizing_w = tree.layout[node.index()].size.w;
-    let grid_sizing_h = tree.layout[node.index()].size.h;
+    let grid_sizing_w = tree.records.layout()[node.index()].size.w;
+    let grid_sizing_h = tree.records.layout()[node.index()].size.h;
     {
         let GridContext {
             depth_stack, hugs, ..
@@ -550,7 +550,7 @@ fn arrange_inner(
         return;
     }
 
-    let grid_size = tree.layout[node.index()].size;
+    let grid_size = tree.records.layout()[node.index()].size;
 
     // Resolve track sizes (Fixed + Hug + Fill) and compute offsets.
     // Arrange ignores `resolved` flags but `resolve_axis` requires
@@ -588,7 +588,7 @@ fn arrange_inner(
             zero_subtree(layout, tree, c, inner.min);
             continue;
         }
-        let s_node = tree.layout[c.index()];
+        let s_node = tree.records.layout()[c.index()];
         let cell = tree.read_extras(c).grid;
         let d = layout.scratch.desired[c.index()];
 
