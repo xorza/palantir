@@ -193,7 +193,7 @@ impl ApplicationHandler for App {
             return;
         };
 
-        if state.repaint_requested && state.window.is_visible().unwrap_or_default() {
+        if state.repaint_requested {
             state.window.request_redraw();
         }
     }
@@ -243,9 +243,6 @@ impl State {
         }
 
         self.repaint_requested = false;
-        if !self.window.is_visible().unwrap_or_default() {
-            return;
-        }
 
         if self.new_surface {
             self.ui.invalidate_prev_frame();
