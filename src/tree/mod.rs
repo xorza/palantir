@@ -63,8 +63,9 @@ pub(crate) struct Tree {
     pub(crate) layout: Vec<LayoutCore>,
     pub(crate) paint: Vec<PaintCore>,
     /// Out-of-line side table for rarely-set element fields (`transform`,
-    /// `position`, `grid`). `paint[i].extras` is `Some(idx)` when a node
-    /// customized any of these. Cleared per frame.
+    /// `position`, `grid`). `paint[i].extras` holds the slot index, or
+    /// `PaintCore::NO_EXTRAS` for the all-default common case. Cleared
+    /// per frame.
     pub(crate) node_extras: Vec<ElementExtras>,
     /// Chrome side table — index column parallel to `layout`/`paint`,
     /// `Self::NO_CHROME` (`u16::MAX`) for nodes without chrome.
@@ -132,6 +133,11 @@ impl Tree {
     /// tree; safe to call any time after recording completes. Capacity
     /// retained across frames.
     pub(crate) fn end_frame(&mut self) {
+        assert!(
+            self.current_open.is_none() && self.open_stack.is_empty(),
+            "end_frame called with {} node(s) still open — a widget builder forgot close_node",
+            self.open_stack.len() + 1,
+        );
         let n = self.layout.len();
 
         self.hashes.node.clear();
@@ -139,7 +145,9 @@ impl Tree {
         for i in 0..n {
             let layout = &self.layout[i];
             let paint = self.paint[i];
-            let extras = paint.extras.map(|idx| &self.node_extras[idx as usize]);
+            let extras = paint
+                .has_extras()
+                .then(|| &self.node_extras[paint.extras as usize]);
             let chrome = self.chrome_for(NodeId(i as u32));
             let shapes = self.shapes.slice_of(i);
             let grid_def = match layout.mode {
@@ -237,12 +245,11 @@ impl Tree {
 
         if !extras.is_default() {
             assert!(
-                self.node_extras.len() < u16::MAX as usize,
+                self.node_extras.len() < PaintCore::NO_EXTRAS as usize,
                 "more than 65 535 nodes with extras (transform/position/grid) in a single frame",
             );
-            let idx = self.node_extras.len() as u16;
+            paint.extras = self.node_extras.len() as u16;
             self.node_extras.push(extras);
-            paint.extras = Some(idx);
         }
 
         let chrome_slot = match chrome {
@@ -271,6 +278,11 @@ impl Tree {
             self.open_stack.push(p.0);
         }
         self.current_open = Some(new_id);
+        debug_assert_eq!(
+            self.shapes.starts.len(),
+            self.layout.len() + 1,
+            "ShapeBuf::starts must hold node_count() + 1 entries (trailing sentinel)",
+        );
         new_id
     }
 
@@ -294,10 +306,6 @@ impl Tree {
                 self.current_open = None;
             }
         }
-    }
-
-    pub(crate) fn push_grid_def(&mut self, def: GridDef) -> u16 {
-        self.grid.push_def(def)
     }
 
     pub(crate) fn add_shape(&mut self, node: NodeId, shape: Shape) {
@@ -335,9 +343,11 @@ impl Tree {
     /// individual fields (`gap`, `child_align`, `position`, …) without
     /// duplicating defaults at every call site.
     pub(crate) fn read_extras(&self, id: NodeId) -> &ElementExtras {
-        match self.paint[id.0 as usize].extras {
-            Some(i) => &self.node_extras[i as usize],
-            None => &ElementExtras::DEFAULT,
+        let p = self.paint[id.0 as usize];
+        if p.has_extras() {
+            &self.node_extras[p.extras as usize]
+        } else {
+            &ElementExtras::DEFAULT
         }
     }
 
@@ -399,14 +409,12 @@ impl Tree {
     }
 
     /// Subtree authoring hash for `id`: rolls this node's hash with
-    /// its descendants' (in declaration order). `NodeHash::UNCOMPUTED`
-    /// before [`Self::end_frame`] runs.
+    /// its descendants' (in declaration order). Panics if called before
+    /// [`Self::end_frame`] has populated the column for this frame —
+    /// callers should never observe `NodeHash::UNCOMPUTED` outside the
+    /// rollup loop's own scratch.
     pub(crate) fn subtree_hash(&self, id: NodeId) -> NodeHash {
-        self.hashes
-            .subtree
-            .get(id.index())
-            .copied()
-            .unwrap_or(NodeHash::UNCOMPUTED)
+        self.hashes.subtree[id.index()]
     }
 }
 
@@ -458,7 +466,7 @@ impl GridArena {
     /// Append a `GridDef` referencing user-owned `Rc<[Track]>` rows + cols;
     /// return its index. The index is stamped into a `LayoutMode::Grid(idx)`
     /// on the owning panel's `Element`. `Rc` clones are refcount-only.
-    fn push_def(&mut self, def: GridDef) -> u16 {
+    pub(crate) fn push_def(&mut self, def: GridDef) -> u16 {
         assert!(
             self.defs.len() < u16::MAX as usize,
             "more than 65 535 Grid panels in a single frame",

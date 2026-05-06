@@ -9,15 +9,18 @@
 //! no matching node this frame contributes its prev rect to damage
 //! (removed). The damage rect is the union of every contribution.
 //!
-//! `Damage.dirty` is the per-node dirty list (added / hash-changed /
-//! rect-changed). Currently consumed only by tests; reserved for
-//! identity-based reuse (per-node command cache, text-shape cache,
-//! multi-rect damage, incremental hit-index, debug overlay — see
-//! `docs/roadmap/damage.md`).
+//! `Damage.dirty` is a test-only per-node dirty list (added /
+//! hash-changed / rect-changed). Production builds don't accumulate
+//! it — the rect aggregator (`self.rect`) is the actually-consumed
+//! output. Reintroduce `dirty` to production when an identity-based
+//! consumer lands (per-node command cache, multi-rect damage, debug
+//! overlay — see `docs/roadmap/damage.md`).
 
 use crate::primitives::rect::Rect;
+#[cfg(test)]
+use crate::tree::NodeId;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{NodeId, Tree, node_hash::NodeHash};
+use crate::tree::{Tree, node_hash::NodeHash};
 use crate::ui::cascade::CascadeResult;
 use rustc_hash::FxHashMap;
 
@@ -55,6 +58,7 @@ pub(crate) struct NodeSnapshot {
 /// Capacities on `dirty` and `prev` are retained across frames.
 #[derive(Default)]
 pub(crate) struct Damage {
+    #[cfg(test)]
     pub(crate) dirty: Vec<NodeId>,
     pub(crate) rect: Option<Rect>,
     /// Last frame's per-widget `(rect, hash)` snapshot. Read by the
@@ -117,6 +121,7 @@ impl Damage {
         // outside a tiny damage scissor. Roll prev forward and bail.
         let surface_changed = self.prev_surface != Some(surface);
         self.prev_surface = Some(surface);
+        #[cfg(test)]
         self.dirty.clear();
         let mut acc: Option<Rect> = None;
 
@@ -144,9 +149,12 @@ impl Damage {
                     true
                 }
             };
+            #[cfg(test)]
             if dirty {
                 self.dirty.push(NodeId(i as u32));
             }
+            #[cfg(not(test))]
+            let _ = dirty;
         }
 
         // Evict last-frame snapshots for removed widgets; their rect

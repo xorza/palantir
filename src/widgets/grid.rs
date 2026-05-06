@@ -35,7 +35,7 @@ impl Grid {
     #[track_caller]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        // Mode is patched at `show()` time once `push_grid_def` returns the
+        // Mode is patched at `show()` time once `grid.push_def` returns the
         // real index. Initialize with a placeholder that `Tree::push_node`'s
         // bounds-check rejects, so any code path that reaches the tree
         // without going through `show()` panics loudly.
@@ -99,7 +99,7 @@ impl Grid {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
-        let idx = ui.tree.push_grid_def(self.def);
+        let idx = ui.tree.grid.push_def(self.def);
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
 
