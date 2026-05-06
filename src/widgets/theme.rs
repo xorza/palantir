@@ -4,7 +4,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
-use crate::tree::element::{Element, RoundedClip};
+use crate::tree::element::{ClipMask, Element};
 use crate::ui::Ui;
 
 // Default palette: Ayu Mirage High Contrast. Mirrors
@@ -107,22 +107,33 @@ impl Surface {
     /// zero `paint.radius` downgrades to `Rect` here so the encoder never
     /// sees a rounded clip without a radius.
     pub(crate) fn apply_clip(&self, element: &mut Element) {
+        let inset = self.paint.stroke.map_or(0.0, |s| s.width);
         match self.clip {
             ClipMode::None => {}
-            ClipMode::Rect => element.clip = ClipMode::Rect,
+            ClipMode::Rect => {
+                element.clip = ClipMode::Rect;
+                // Children scissor-clip inside the painted stroke ring.
+                element.clip_mask = Some(ClipMask {
+                    inset,
+                    radius: None,
+                });
+            }
             ClipMode::Rounded => {
                 if self.paint.radius.approx_zero() {
                     element.clip = ClipMode::Rect;
+                    element.clip_mask = Some(ClipMask {
+                        inset,
+                        radius: None,
+                    });
                 } else {
                     element.clip = ClipMode::Rounded;
-                    // Stamp the painted radius + stroke width together;
-                    // encoder deflates the layout rect by `inset` and
-                    // reduces each corner radius by the same amount so
-                    // children clip just inside the stroke ring (corners
-                    // AND straight edges).
-                    element.clip_mask = Some(RoundedClip {
-                        radius: self.paint.radius,
-                        inset: self.paint.stroke.map_or(0.0, |s| s.width),
+                    // Encoder deflates the layout rect by `inset` and
+                    // inflates each corner radius by `inset` so the SDF
+                    // mask sits just inside the painted stroke ring at
+                    // both corners and straight edges.
+                    element.clip_mask = Some(ClipMask {
+                        inset,
+                        radius: Some(self.paint.radius),
                     });
                 }
             }

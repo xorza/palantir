@@ -133,25 +133,25 @@ pub(crate) struct ElementExtras {
     pub(crate) justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
     pub(crate) child_align: Align,
-    /// Mask geometry for `ClipMode::Rounded` — corner radii (matching
-    /// the painted `Background.radius`) plus an `inset` (typically
-    /// `Background.stroke.width`). Encoder deflates the layout rect
-    /// by `inset` and reduces each corner radius by `inset` to land
-    /// the mask just inside the painted stroke. `None` for nodes
-    /// whose clip mode is not `Rounded`. Stamped by
-    /// `Surface::apply_clip`.
-    pub(crate) clip_mask: Option<RoundedClip>,
+    /// Mask geometry for both `ClipMode::Rect` and `ClipMode::Rounded`.
+    /// `inset` deflates the layout rect on every side (typically
+    /// `Background.stroke.width` so children can't paint over the
+    /// painted stroke). `radius` is the painted corner radii — `Some`
+    /// for `Rounded` (encoder inflates by `inset` for the SDF mask),
+    /// `None` for plain `Rect`. Whole field is `None` for
+    /// `ClipMode::None`. Stamped by `Surface::apply_clip`.
+    pub(crate) clip_mask: Option<ClipMask>,
 }
 
-/// Mask geometry for `ClipMode::Rounded`. The painted `Background`
-/// owns the radii (paint and clip share one source of truth) and the
-/// stroke width that translates to the inset. Mask rect = layout rect
-/// deflated by `inset` on every side; mask radii = `radius` reduced
-/// per-corner by `inset` (clamped at 0).
+/// Mask geometry covering both `Rect` and `Rounded` clip modes. The
+/// painted `Background` owns the stroke width (→ `inset`) and the
+/// corner radii (→ `radius` for `Rounded`). Encoder deflates the
+/// layout rect by `inset` for either mode, plus inflates each
+/// `radius` corner by `inset` for the `Rounded` SDF mask.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct RoundedClip {
-    pub(crate) radius: Corners,
+pub(crate) struct ClipMask {
     pub(crate) inset: f32,
+    pub(crate) radius: Option<Corners>,
 }
 
 impl ElementExtras {
@@ -298,11 +298,11 @@ pub struct Element {
     /// stencil mask (radius from `clip_radius`); `None` = no clip.
     /// No effect on layout.
     pub(crate) clip: ClipMode,
-    /// Mask geometry paired with `ClipMode::Rounded` — see
-    /// [`RoundedClip`] for the radius/inset bundle. Source of truth
+    /// Mask geometry paired with `ClipMode::Rect` / `ClipMode::Rounded`
+    /// — see [`ClipMask`] for the inset/radius bundle. Source of truth
     /// is the panel's `Surface`, stamped by `Surface::apply_clip`.
-    /// Ignored when `clip` is not `Rounded`.
-    pub(crate) clip_mask: Option<RoundedClip>,
+    /// Ignored when `clip` is `None`.
+    pub(crate) clip_mask: Option<ClipMask>,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any
     /// ancestor transform; descendants render and hit-test in the world

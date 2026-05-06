@@ -1,5 +1,5 @@
 use super::cmd_buffer::{EnterPatch, RenderCmdBuffer};
-use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
+use crate::layout::types::{align::Align, align::HAlign, align::VAlign};
 use crate::layout::{cache::AvailableKey, result::LayoutResult};
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
@@ -178,7 +178,13 @@ fn encode_node(
     // interior.
     let mode = tree.paint[id.index()].attrs.clip_mode();
     let clip = mode.is_clip();
-    let chrome_before_clip = matches!(mode, ClipMode::Rounded);
+    // For both Rect and Rounded, chrome paints BEFORE the clip is
+    // pushed: the clip rect is deflated by the panel's stroke width
+    // (so children don't paint over the stroke), which means chrome's
+    // own stroke pixels would also fall outside the deflated region
+    // and be clipped. Painting chrome first leaves it unclipped (the
+    // panel's SDF self-clips correctly), preserving the stroke ring.
+    let chrome_before_clip = clip;
 
     let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
 
@@ -186,32 +192,31 @@ fn encode_node(
         emit_background_shapes(tree, layout, id, rect, out);
     }
 
-    match mode {
-        ClipMode::None => {}
-        ClipMode::Rect => out.push_clip(rect),
-        ClipMode::Rounded => {
-            // Builder (`Surface::apply_clip`) guarantees a mask is
-            // stamped whenever clip mode survives as `Rounded`.
-            //
-            // Deflate the layout rect by `mask.inset` (= painted stroke
-            // width) so children clip inside the stroke ring at
-            // straight edges, and inflate each corner radius by the
-            // same amount so the SDF rounds children further inward
-            // at corners. Slightly over-aggressive at corners (~0.5px
-            // beyond the stroke for a 1px stroke), but visually
-            // indistinguishable from the geometrically-perfect inset.
-            let mask = tree
-                .read_extras(id)
-                .clip_mask
-                .expect("ClipMode::Rounded without clip_mask — builder invariant violated");
-            let mask_rect = rect.deflated_by(Spacing::all(mask.inset));
-            let inflated = Corners {
-                tl: mask.radius.tl + mask.inset,
-                tr: mask.radius.tr + mask.inset,
-                br: mask.radius.br + mask.inset,
-                bl: mask.radius.bl + mask.inset,
-            };
-            out.push_clip_rounded(mask_rect, inflated);
+    if clip {
+        // Builder (`Surface::apply_clip`) guarantees a mask is stamped
+        // whenever clip mode survives as `Rect` or `Rounded`. Deflate
+        // the layout rect by `mask.inset` (= painted stroke width) so
+        // children clip inside the stroke ring.
+        let mask = tree
+            .read_extras(id)
+            .clip_mask
+            .expect("clip != None without clip_mask — builder invariant violated");
+        let mask_rect = rect.deflated_by(Spacing::all(mask.inset));
+        match mask.radius {
+            None => out.push_clip(mask_rect),
+            Some(r) => {
+                // Inflate each corner radius by `inset` so the SDF
+                // rounds children further inward at corners. Slightly
+                // over-aggressive at corners (~0.5px past the stroke
+                // for a 1px stroke), invisible behind the AA rim.
+                let inflated = Corners {
+                    tl: r.tl + mask.inset,
+                    tr: r.tr + mask.inset,
+                    br: r.br + mask.inset,
+                    bl: r.bl + mask.inset,
+                };
+                out.push_clip_rounded(mask_rect, inflated);
+            }
         }
     }
 
