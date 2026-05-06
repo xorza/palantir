@@ -75,12 +75,14 @@ fn render_schedule_interleaves_text_per_group() {
             // Group 0: 2 quads + 1 text
             DrawGroup {
                 scissor: None,
+                rounded_clip: None,
                 quads: Span::new(0, 2),
                 texts: Span::new(0, 1),
             },
             // Group 1: 1 quad, no text
             DrawGroup {
                 scissor: None,
+                rounded_clip: None,
                 quads: Span::new(2, 1),
                 texts: Span::new(1, 0),
             },
@@ -111,12 +113,14 @@ fn render_schedule_emits_text_for_quadless_group() {
             // Group 0: 1 quad only
             DrawGroup {
                 scissor: None,
+                rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 0),
             },
             // Group 1: text only, no quads
             DrawGroup {
                 scissor: None,
+                rounded_clip: None,
                 quads: Span::new(1, 0),
                 texts: Span::new(0, 2),
             },

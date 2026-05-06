@@ -206,6 +206,42 @@ fn compose_skips_groups_with_no_quads() {
 }
 
 #[test]
+fn push_clip_rounded_lands_radius_on_group() {
+    let buf = run(
+        |b| {
+            b.push_clip_rounded(rect(10.0, 20.0, 100.0, 80.0), Corners::all(8.0));
+            draw(b, rect(20.0, 30.0, 40.0, 40.0));
+            b.pop_clip();
+        },
+        &params(2.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.groups.len(), 1, "one rounded-clipped group");
+    assert!(buf.has_rounded_clip);
+    let g = &buf.groups[0];
+    let rounded = g.rounded_clip.expect("rounded data must ride on group");
+    // DPR=2 → radius doubles: 8 → 16. Same scale on the rect (20,40,200,160).
+    assert_eq!(rounded.radius.tl, 16.0);
+    assert_eq!(rounded.rect, URect::new(20, 40, 200, 160));
+    // Sanity: scissor matches the rounded rect bounding box.
+    assert_eq!(g.scissor, Some(rounded.rect));
+}
+
+#[test]
+fn push_clip_rect_emits_no_rounded_data() {
+    let buf = run(
+        |b| {
+            b.push_clip(rect(10.0, 20.0, 100.0, 80.0));
+            draw(b, rect(20.0, 30.0, 10.0, 10.0));
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.groups.len(), 1);
+    assert!(!buf.has_rounded_clip);
+    assert!(buf.groups[0].rounded_clip.is_none());
+}
+
+#[test]
 fn compose_scales_rects_for_dpr() {
     let buf = run(
         |b| draw(b, rect(10.0, 20.0, 30.0, 40.0)),
