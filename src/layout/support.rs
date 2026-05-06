@@ -4,7 +4,9 @@
 //! caching and result writing.
 
 use super::{Axis, LayoutEngine, LenReq};
-use crate::layout::types::{align::Align, align::AxisAlign, sizing::Sizes, sizing::Sizing};
+use crate::layout::types::{
+    align::Align, align::AxisAlign, justify::Justify, sizing::Sizes, sizing::Sizing,
+};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextMeasurer;
@@ -176,6 +178,73 @@ pub(crate) fn child_avail_per_axis_hug(size: Sizes, inner_avail: Size) -> Size {
             inner_avail.h
         },
     )
+}
+
+/// Main-axis offset + effective inter-child gap for one row of
+/// `justify`-distributed children. Single source of truth for Stack and
+/// WrapStack — keeps SpaceBetween / SpaceAround degeneracy rules
+/// (count < 2 / count < 1) in one place.
+pub(crate) struct JustifyOffsets {
+    pub(crate) start: f32,
+    pub(crate) gap: f32,
+}
+
+pub(crate) fn justify_offsets(
+    justify: Justify,
+    leftover: f32,
+    gap: f32,
+    count: usize,
+) -> JustifyOffsets {
+    match justify {
+        Justify::Start => JustifyOffsets { start: 0.0, gap },
+        Justify::Center => JustifyOffsets {
+            start: leftover * 0.5,
+            gap,
+        },
+        Justify::End => JustifyOffsets {
+            start: leftover,
+            gap,
+        },
+        Justify::SpaceBetween if count > 1 => JustifyOffsets {
+            start: 0.0,
+            gap: gap + leftover / (count - 1) as f32,
+        },
+        Justify::SpaceAround if count > 0 => {
+            let extra = leftover / count as f32;
+            JustifyOffsets {
+                start: extra * 0.5,
+                gap: gap + extra,
+            }
+        }
+        // Fewer than 2 / 1 children → fallback to Start.
+        Justify::SpaceBetween | Justify::SpaceAround => JustifyOffsets { start: 0.0, gap },
+    }
+}
+
+/// Measure children of a per-axis-hug panel (ZStack / Canvas). Per
+/// active child, calls `layout.measure` against the per-axis-hug
+/// `child_avail`, then folds the child's contribution (size + offset
+/// from `contrib`) into a per-axis max. Drivers differ only in
+/// whether they add a positional offset.
+pub(crate) fn measure_per_axis_hug(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    inner_avail: Size,
+    text: &mut TextMeasurer,
+    mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
+) -> Size {
+    let style = tree.records.layout()[node.index()];
+    let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
+    let mut max_w = 0.0f32;
+    let mut max_h = 0.0f32;
+    for c in tree.children(node).filter_map(Child::active) {
+        let d = layout.measure(tree, c, child_avail, text);
+        let cont = contrib(tree, c, d);
+        max_w = max_w.max(cont.w);
+        max_h = max_h.max(cont.h);
+    }
+    Size::new(max_w, max_h)
 }
 
 /// Resolved horizontal/vertical alignment after the cascade.

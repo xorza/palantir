@@ -337,6 +337,10 @@ impl LayoutEngine {
         {
             let start = node.index();
             let end = (tree.records.end()[start]) as usize;
+            // The snapshot's root `available_q` must match the value
+            // written at measure entry; cache hits restore it back into
+            // `result.available_q` and downstream caches key on it.
+            assert_eq!(self.result.available_q[start], cache_avail);
             self.scratch.tmp_hugs.clear();
             if tree.hashes.subtree_has_grid.contains(start) {
                 self.scratch.grid.hugs.snapshot_subtree(
