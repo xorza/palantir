@@ -1,6 +1,8 @@
-use super::support::{children_max_intrinsic, cross_place, zero_subtree};
+use super::support::{
+    JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
+};
 use super::{Axis, LayoutEngine, LenReq};
-use crate::layout::types::{justify::Justify, sizing::Sizing};
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
 use crate::tree::{Child, NodeId, Tree};
@@ -220,21 +222,13 @@ pub(crate) fn arrange(
     // `justify` distributes any unused main-axis space. With Fill children
     // present, leftover is consumed by Fill weights → justify is a no-op
     // (degrade to Start / original gap).
-    let (start_offset, effective_gap) = if total_weight > 0.0 {
-        (0.0, gap)
+    let JustifyOffsets {
+        start: start_offset,
+        gap: effective_gap,
+    } = if total_weight > 0.0 {
+        JustifyOffsets { start: 0.0, gap }
     } else {
-        match justify {
-            Justify::Start => (0.0, gap),
-            Justify::Center => (leftover * 0.5, gap),
-            Justify::End => (leftover, gap),
-            Justify::SpaceBetween if count > 1 => (0.0, gap + leftover / (count - 1) as f32),
-            Justify::SpaceAround if count > 0 => {
-                let extra = leftover / count as f32;
-                (extra * 0.5, gap + extra)
-            }
-            // Fewer than 2 / 1 children → fallback to Start.
-            Justify::SpaceBetween | Justify::SpaceAround => (0.0, gap),
-        }
+        justify_offsets(justify, leftover, gap, count)
     };
 
     let cross_min = axis.cross_v(inner.min);

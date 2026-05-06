@@ -13,12 +13,9 @@
 //! `place_axis` with the `Auto-stretches-Fill` rule makes Fill children
 //! grow to that height (CSS `align-items: stretch` default).
 
-use super::support::{cross_place, zero_subtree};
+use super::support::{JustifyOffsets, cross_place, justify_offsets, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
-use crate::layout::types::{
-    justify::Justify,
-    sizing::{Sizes, Sizing},
-};
+use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
 use crate::tree::{Child, NodeId, Tree};
@@ -202,18 +199,10 @@ pub(crate) fn arrange(
 
         let count = line_end - line_start;
         let leftover = (main_avail - line_main).max(0.0);
-        let (start_offset, eff_gap) = match justify {
-            Justify::Start => (0.0, gap),
-            Justify::Center => (leftover * 0.5, gap),
-            Justify::End => (leftover, gap),
-            Justify::SpaceBetween if count > 1 => (0.0, gap + leftover / (count - 1) as f32),
-            Justify::SpaceAround if count > 0 => {
-                let extra = leftover / count as f32;
-                (extra * 0.5, gap + extra)
-            }
-            // Fewer than 2 / 1 children → fallback to Start.
-            Justify::SpaceBetween | Justify::SpaceAround => (0.0, gap),
-        };
+        let JustifyOffsets {
+            start: start_offset,
+            gap: eff_gap,
+        } = justify_offsets(justify, leftover, gap, count);
         let mut main_cursor = axis.main_v(inner.min) + start_offset;
         // Iterate by index so we copy each `NodeId` out before
         // calling `layout.arrange`, which needs `&mut layout`.

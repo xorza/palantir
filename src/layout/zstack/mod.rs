@@ -1,11 +1,11 @@
 use super::support::{
-    AxisAlignPair, child_avail_per_axis_hug, children_max_intrinsic, place_axis,
-    resolved_axis_align, zero_subtree,
+    AxisAlignPair, children_max_intrinsic, measure_per_axis_hug, place_axis, resolved_axis_align,
+    zero_subtree,
 };
 use super::{Axis, LayoutEngine, LenReq};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
-use crate::tree::{Child, NodeId, Tree};
+use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
 #[cfg(test)]
@@ -43,16 +43,7 @@ pub(crate) fn measure(
     inner_avail: Size,
     text: &mut TextMeasurer,
 ) -> Size {
-    let style = tree.records.layout()[node.index()];
-    let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
-    let mut max_w = 0.0f32;
-    let mut max_h = 0.0f32;
-    for c in tree.children(node).filter_map(Child::active) {
-        let d = layout.measure(tree, c, child_avail, text);
-        max_w = max_w.max(d.w);
-        max_h = max_h.max(d.h);
-    }
-    Size::new(max_w, max_h)
+    measure_per_axis_hug(layout, tree, node, inner_avail, text, |_, _, d| d)
 }
 
 /// Each child gets a slot inside `inner`, sized per its own `Sizing` and

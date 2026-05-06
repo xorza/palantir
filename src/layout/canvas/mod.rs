@@ -1,4 +1,4 @@
-use super::support::{child_avail_per_axis_hug, zero_subtree};
+use super::support::{measure_per_axis_hug, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
@@ -23,21 +23,14 @@ pub(crate) fn measure(
     inner_avail: Size,
     text: &mut TextMeasurer,
 ) -> Size {
-    let style = tree.records.layout()[node.index()];
-    let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
-    let mut max_w = 0.0f32;
-    let mut max_h = 0.0f32;
     // Active children only: a collapsed child at (100,100) must not
     // inflate the canvas's content size. `desired` is already ZERO for
     // collapsed children (reset at the top of `run`); arrange zeros
     // their subtrees regardless.
-    for c in tree.children(node).filter_map(Child::active) {
+    measure_per_axis_hug(layout, tree, node, inner_avail, text, |tree, c, d| {
         let pos = tree.read_extras(c).position;
-        let d = layout.measure(tree, c, child_avail, text);
-        max_w = max_w.max(pos.x + d.w);
-        max_h = max_h.max(pos.y + d.h);
-    }
-    Size::new(max_w, max_h)
+        Size::new(pos.x + d.w, pos.y + d.h)
+    })
 }
 
 /// Each child gets a slot at `inner.min + style.position`, sized per its
