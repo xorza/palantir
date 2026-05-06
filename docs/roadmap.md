@@ -1,7 +1,7 @@
 # Roadmap
 
 Scratch ideas: impl WidgetId instead of impl Hash; ECS for SoA;
-clear color from theme; rounded-corner clip; text on Button (optional);
+rounded-corner clip; text on Button (optional);
 Spacing serializable nicely.
 
 ## Now
