@@ -33,17 +33,19 @@ State-of-the-art UI framework, craft-driven. **No external consumers, no publish
 
 ## Architecture
 
-Five passes per frame on an arena `Tree` rebuilt every frame:
+Five passes per frame on an arena `Tree` rebuilt every frame (with `tree.end_frame` finalizing `subtree_end` + per-node + subtree-rollup hashes between record and measure):
 
 1. **Record** — user code (`Button::new().label("x").show(&mut ui)`) appends per-node columns + `Shape`s.
-2. **Measure** (post-order) — node returns desired size given available size.
+2. **Measure** (post-order) — node returns desired size given available; `MeasureCache` short-circuits whole subtrees on `(WidgetId, subtree_hash, available_q)` hits. Single dispatch (no WPF-style grow loop).
 3. **Arrange** (pre-order) — parent assigns final `Rect` to each child.
-4. **Cascade** (pre-order) — `Cascades::rebuild` flattens disabled/invisible/clip/transform; consumed by encoder *and* hit-index so they can't drift.
-5. **Encode + Paint** (pre-order) — `renderer::encode` → `Vec<RenderCmd>`; `Composer` groups by scissor, snaps to physical pixels; `WgpuBackend` submits instanced quads.
+4. **Cascade** (pre-order) — `Cascades::run` flattens disabled/invisible/clip/transform and builds the hit index in the same walk; consumed by encoder *and* hit-test so they can't drift.
+5. **Encode + Compose + Paint** — `Encoder` → `RenderCmdBuffer` (subtree-skip via the encode cache, same key as measure); `Composer` groups by scissor, snaps to physical pixels (compose cache mirrors); `WgpuBackend` submits instanced quads. `Damage` returns `Full` / `Partial(rect)` / `Skip`.
 
-Widget *state* (scroll, focus, animation) will live in a separate `Id → Any` map keyed by `WidgetId` — see Status.
+Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). Access via `Ui::state_mut::<T>(id)`; rows for `WidgetId`s not recorded this frame are dropped in `end_frame` via the same `removed` slice that `Damage`, `TextMeasurer`, and `MeasureCache` consume.
 
-**Tree = SoA columns indexed by `NodeId.0`:** `layout: Vec<LayoutCore>` (mode/size/padding/margin/align/visibility — measure/arrange), `paint: Vec<PaintCore>` (`PaintAttrs` 1-byte sense/disabled/clip + extras index — cascade/encoder/hit-test), `widget_ids: Vec<WidgetId>` (hit-test + future state map), `subtree_end: Vec<u32>` (pre-order topology; `i + 1 == subtree_end[i]` for a leaf — every walk). Splitting by reader keeps each pass touching only the columns it needs. Measured `desired`/`rect` live on `LayoutResult` keyed by `NodeId`, not on the tree.
+**Tree = SoA columns indexed by `NodeId.0`:** `layout: Vec<LayoutCore>` (mode/size/padding/margin/align/visibility — measure/arrange), `paint: Vec<PaintCore>` (`PaintAttrs` 1-byte sense/disabled/clip + optional `extras: u16` — cascade/encoder/hit-test), `widget_ids: Vec<WidgetId>` (hit-test + state map key), `subtree_end: Vec<u32>` (pre-order topology; `i + 1 == subtree_end[i]` for a leaf — every walk), `node_extras: Vec<ElementExtras>` (out-of-line side table for rare fields: transform / position / grid cell), `hashes: NodeHashes` (per-node + subtree-rollup, populated in `end_frame`; key for cross-frame caches). Splitting by reader keeps each pass touching only the columns it needs. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, not on the tree.
+
+**Cross-frame work-skip caches.** `MeasureCache` (`src/layout/cache/`) and the encode/compose caches (`src/renderer/frontend/{encoder,composer}/cache/`) are keyed on `(WidgetId, subtree_hash, available_q)`. A hit blits last frame's subtree (`desired` + `text_shapes` + `RenderCmd` slice) and skips recursion. Same `removed` sweep evicts all three plus `StateMap` and `TextMeasurer`. **`Damage` is a tri-state** `DamagePaint` (`Full` / `Partial(Rect)` / `Skip`); `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present.
 
 **`Shape`** (paint primitive: `RoundedRect`, `Text`, `Line`, …) stored flat in `Tree.shapes`, sliced per-node via `Tree.shape_starts` (length `node_count() + 1`). `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. Layout passes ignore Shapes and `PaintCore`; paint pass ignores hierarchy beyond `subtree_end`. **This decoupling is load-bearing — keep it.**
 
