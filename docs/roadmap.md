@@ -7,6 +7,7 @@ Spacing serializable nicely.
  gradients, textures
  fn emit_background_shapes( - remove
  frame to accept surface
+ add shapes after children??
 
 ## Now
 
