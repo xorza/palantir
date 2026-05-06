@@ -9,6 +9,7 @@
       "Bash(sd:*)",
 
       "Bash(UPDATE_GOLDEN=1 cargo test*)",
+      "Bash(UPDATE_GOLDEN=1 cargo nexttest run*)",
       "Bash(cargo build *)",
       "Bash(cargo run *)",
       "Bash(cargo test *)",
