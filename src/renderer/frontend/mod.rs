@@ -41,6 +41,24 @@ pub struct FrameOutput<'a> {
     pub(crate) damage: DamagePaint,
 }
 
+impl FrameOutput<'_> {
+    /// `true` when this frame's damage diff produced no work — the
+    /// backbuffer already holds the right pixels. Hosts can skip
+    /// `surface.get_current_texture()` + `submit` + `present` entirely.
+    ///
+    /// Only safe to early-bail when *the previous frame's `submit`
+    /// actually presented*. If a host called `end_frame` and then
+    /// failed to present (Occluded surface, validation error, lost
+    /// device), it must call [`Ui::invalidate_prev_frame`] before
+    /// the next `end_frame`; otherwise this method will return `true`
+    /// against an unpainted backbuffer and the window stays black.
+    ///
+    /// [`Ui::invalidate_prev_frame`]: crate::Ui::invalidate_prev_frame
+    pub fn can_skip_rendering(&self) -> bool {
+        self.damage == DamagePaint::Skip
+    }
+}
+
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
 /// every persistent allocation (the encoder's
 /// [`RenderCmdBuffer`](cmd_buffer::RenderCmdBuffer), the output

@@ -78,9 +78,6 @@ fn empty_ui_drives_a_frame_safely() {
         ui.damage.filter(ui.display.logical_rect()),
         DamagePaint::Skip
     );
-    // Repaint gate clears even on empty frames so an idle empty host
-    // doesn't burn cycles.
-    assert!(!ui.should_repaint());
 }
 
 /// Pin: an empty frame followed by a populated frame works (the
@@ -93,49 +90,6 @@ fn empty_then_populated_frame() {
     drain_one_frame(&mut ui);
     assert_eq!(ui.tree.layout.len(), 1);
     assert!(!ui.damage.prev.is_empty());
-}
-
-/// Pin: initial gate state is `true` (very first frame must run, host
-/// has nothing to present otherwise) and `end_frame()` clears it (idle
-/// host can skip the next tick).
-#[test]
-fn repaint_gate_starts_true_clears_after_end_frame() {
-    let mut ui = Ui::new();
-    assert!(ui.should_repaint());
-    drain_one_frame(&mut ui);
-    assert!(!ui.should_repaint());
-}
-
-/// Pin: `request_repaint()` flips the gate and is idempotent — N
-/// calls in one frame don't accumulate; one `end_frame()` clears
-/// them all. Animations and async state landing use this path.
-#[test]
-fn request_repaint_flips_gate_idempotently() {
-    let mut ui = Ui::new();
-    drain_one_frame(&mut ui);
-    assert!(!ui.should_repaint());
-
-    ui.request_repaint();
-    ui.request_repaint();
-    ui.request_repaint();
-    assert!(ui.should_repaint());
-
-    drain_one_frame(&mut ui);
-    assert!(!ui.should_repaint());
-}
-
-/// Pin: input flips the gate back on. Conservative — even a pointer
-/// move that doesn't change hover index sets it.
-#[test]
-fn repaint_gate_flips_on_input() {
-    use crate::input::InputEvent;
-    use glam::Vec2;
-    let mut ui = Ui::new();
-    drain_one_frame(&mut ui);
-    assert!(!ui.should_repaint());
-
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
-    assert!(ui.should_repaint());
 }
 
 /// Pin: `begin_frame` panics if `display.scale_factor` is below

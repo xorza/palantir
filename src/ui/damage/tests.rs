@@ -498,6 +498,49 @@ fn surface_resize_forces_full_repaint() {
     assert!(ui.damage.dirty.is_empty());
 }
 
+/// Pin: `Ui::invalidate_prev_frame` rewinds damage so the next
+/// `end_frame` returns `Full` even when widgets are unchanged. This
+/// is the host's escape hatch for "I called `end_frame` but never
+/// presented" — failed surface acquire (Occluded / Timeout /
+/// Validation), surface reconfigure, etc. Without it, the next
+/// `compute` would produce `Skip` against an unpainted backbuffer
+/// and the window stays black until something forces a real change.
+#[test]
+fn invalidate_prev_frame_forces_next_frame_to_full() {
+    let mut ui = Ui::new();
+    let build = |ui: &mut Ui| {
+        one_frame(ui, BLUE);
+    };
+
+    // Two warm frames: first is `Full`, second is `Skip` (steady state).
+    ui.begin_frame(DISPLAY);
+    build(&mut ui);
+    assert_eq!(ui.end_frame().damage, DamagePaint::Full);
+    ui.begin_frame(DISPLAY);
+    build(&mut ui);
+    assert_eq!(ui.end_frame().damage, DamagePaint::Skip);
+
+    // Host says "last `end_frame`'s output didn't actually paint."
+    ui.invalidate_prev_frame();
+
+    // Next frame must be `Full` even though authoring is identical
+    // and the surface didn't move — damage has no valid prev to diff
+    // against, so it falls back to a clear+repaint.
+    ui.begin_frame(DISPLAY);
+    build(&mut ui);
+    let d = ui.end_frame().damage;
+    assert_eq!(
+        d,
+        DamagePaint::Full,
+        "invalidate_prev_frame must force the next compute to Full",
+    );
+
+    // And once a real frame paints, steady-state `Skip` resumes.
+    ui.begin_frame(DISPLAY);
+    build(&mut ui);
+    assert_eq!(ui.end_frame().damage, DamagePaint::Skip);
+}
+
 /// Pin (scale-factor / DPI change): same physical surface size, new
 /// `scale_factor` ⇒ logical surface rect changes (logical = physical
 /// / scale). Backend may or may not recreate the backbuffer (physical

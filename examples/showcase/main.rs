@@ -81,6 +81,11 @@ struct State {
     active: usize,
     fps_window_start: std::time::Instant,
     fps_window_frames: u32,
+    /// Host-side repaint gate. Set on input / resize / scale change;
+    /// cleared after `draw()`. Read in `about_to_wait` to decide
+    /// whether to ask winit for a redraw. Starts `true` so paint 1
+    /// fires.
+    repaint_requested: bool,
 }
 
 impl ApplicationHandler for App {
@@ -172,11 +177,16 @@ impl ApplicationHandler for App {
             active: 0,
             fps_window_start: std::time::Instant::now(),
             fps_window_frames: 0,
+            repaint_requested: true,
         });
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(state) = self.state.as_ref() {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+
+        if state.repaint_requested {
             state.window.request_redraw();
         }
     }
@@ -186,18 +196,19 @@ impl ApplicationHandler for App {
             return;
         };
 
-        // Feed input first so `Ui::should_repaint` reflects this event
-        // by the time we decide whether to schedule a redraw below.
+        // Any input event might change UI state (hover, press, focus,
+        // hit-test). Mirror palantir's old conservative "any event ⇒
+        // repaint" so we don't drop frames after legitimate input.
         if let Some(ev) = InputEvent::from_winit(&event, state.display.scale_factor) {
             state.ui.on_input(ev);
+            state.repaint_requested = true;
         }
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 state.display.scale_factor = scale_factor as f32;
-                state.ui.request_repaint();
-                state.window.request_redraw();
+                state.repaint_requested = true;
             }
             WindowEvent::Resized(new) => {
                 let max = state.device.limits().max_texture_dimension_2d;
@@ -205,53 +216,17 @@ impl ApplicationHandler for App {
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
                 state.display.physical = glam::UVec2::new(state.config.width, state.config.height);
-                state.ui.request_repaint();
-                state.draw();
+                state.repaint_requested = true;
+                // state.draw();
             }
             WindowEvent::RedrawRequested => state.draw(),
-            // Other events (cursor / button) flow through `on_input`
-            // above, which sets the repaint gate. `about_to_wait`
-            // turns that into a `request_redraw` call. No need to
-            // handle each variant here — the gate is the single
-            // source of truth.
-            _ => {
-                if state.ui.should_repaint() {
-                    state.window.request_redraw();
-                }
-            }
+            _ => {}
         }
     }
 }
 
 impl State {
     fn draw(&mut self) {
-        use wgpu::CurrentSurfaceTexture::*;
-        let frame = match self.surface.get_current_texture() {
-            Success(f) | Suboptimal(f) => f,
-            Outdated | Lost => {
-                self.surface.configure(&self.device, &self.config);
-                self.window.request_redraw();
-                return;
-            }
-            Timeout => {
-                self.window.request_redraw();
-                return;
-            }
-            Occluded => return,
-            Validation => return,
-        };
-        self.ui.begin_frame(self.display);
-        build_root(&mut self.ui, &mut self.active);
-        let frame_out = self.ui.end_frame();
-        // Window background: palette `bg` (Ayu Mirage High Contrast).
-        self.backend
-            .submit(&frame.texture, Color::hex(0x252525), frame_out);
-
-        frame.present();
-        if !self.first_paint {
-            self.first_paint = true;
-        }
-
         self.fps_window_frames += 1;
         let elapsed = self.fps_window_start.elapsed();
         if elapsed.as_secs() >= 1 {
@@ -260,6 +235,56 @@ impl State {
             self.fps_window_start = std::time::Instant::now();
             self.fps_window_frames = 0;
         }
+
+        // Clear the gate up front: this draw call is satisfying the
+        // request, regardless of whether we end up presenting (Skip
+        // bail or acquire failure). Otherwise a Skip frame after input
+        // would leave the gate set and busy-loop at 60 Hz.
+        self.repaint_requested = false;
+
+        self.ui.begin_frame(self.display);
+        build_root(&mut self.ui, &mut self.active);
+        let frame_out = self.ui.end_frame();
+
+        if frame_out.can_skip_rendering() {
+            return;
+        }
+
+        use wgpu::CurrentSurfaceTexture::*;
+        let frame = match self.surface.get_current_texture() {
+            Success(f) | Suboptimal(f) => f,
+            Outdated | Lost => {
+                self.surface.configure(&self.device, &self.config);
+                self.bail_unpainted();
+                return;
+            }
+            Timeout | Occluded | Validation => {
+                self.bail_unpainted();
+                return;
+            }
+        };
+
+        // Window background: palette `bg` (Ayu Mirage High Contrast).
+        self.backend
+            .submit(&frame.texture, Color::hex(0x252525), frame_out);
+
+        frame.present();
+
+        self.first_paint = true;
+    }
+
+    /// `end_frame` already committed damage's prev-state, but nothing
+    /// reached the backbuffer (acquire failed). Two effects:
+    ///
+    /// - Rewind damage so the next frame is forced to `Full` instead
+    ///   of returning `Skip` against an unpainted backbuffer.
+    /// - Re-arm the host gate so the next `about_to_wait` retries
+    ///   automatically. Without this, a transient `Occluded` (e.g.
+    ///   another window covered ours) would leave the loop idle until
+    ///   some unrelated event happened to wake it.
+    fn bail_unpainted(&mut self) {
+        self.ui.invalidate_prev_frame();
+        self.repaint_requested = true;
     }
 }
 
