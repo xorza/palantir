@@ -331,6 +331,7 @@ fn bump_rect_min(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], offset: Ve
     for (kind, &start) in kinds.iter().zip(starts.iter()) {
         match kind {
             CmdKind::PushClip
+            | CmdKind::PushClipRounded
             | CmdKind::DrawRect
             | CmdKind::DrawRectStroked
             | CmdKind::DrawText => {

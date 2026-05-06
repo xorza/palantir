@@ -1,5 +1,5 @@
 use super::cmd_buffer::{EnterPatch, RenderCmdBuffer};
-use crate::layout::types::{align::Align, align::HAlign, align::VAlign};
+use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::layout::{cache::AvailableKey, result::LayoutResult};
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale};
 use crate::shape::Shape;
@@ -165,9 +165,20 @@ fn encode_node(
     // applies inside the clip and only to children. The panel's own
     // background paints under the clip but BEFORE the transform — matching
     // WPF's `RenderTransform` convention.
-    let clip = tree.paint[id.index()].attrs.clip_mode().is_clip();
-    if clip {
-        out.push_clip(rect);
+    let mode = tree.paint[id.index()].attrs.clip_mode();
+    let clip = mode.is_clip();
+    match mode {
+        ClipMode::None => {}
+        ClipMode::Rect => out.push_clip(rect),
+        ClipMode::Rounded => {
+            // Builder (`bind_clip_radius_to_background`) guarantees a radius
+            // is stamped whenever clip mode survives as `Rounded`.
+            let r = tree
+                .read_extras(id)
+                .clip_radius
+                .expect("ClipMode::Rounded without clip_radius — builder invariant violated");
+            out.push_clip_rounded(rect, r);
+        }
     }
 
     // Damage filter: skip leaf shape emission when this node's

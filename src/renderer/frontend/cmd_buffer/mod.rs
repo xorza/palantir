@@ -34,6 +34,12 @@ use crate::tree::widget_id::WidgetId;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CmdKind {
     PushClip,
+    /// Scissor clip + rounded-corner stencil mask. Same `Rect` payload as
+    /// `PushClip` plus a trailing `Corners` (taken from the panel's
+    /// `Background.radius`). Composer treats it as a regular scissor for
+    /// the purposes of group splitting; the backend's stencil path reads
+    /// the radius to write the SDF mask.
+    PushClipRounded,
     PopClip,
     PushTransform,
     PopTransform,
@@ -130,6 +136,13 @@ impl RenderCmdBuffer {
     pub(crate) fn push_clip(&mut self, r: Rect) {
         self.record_start(CmdKind::PushClip);
         write_pod(&mut self.data, r);
+    }
+
+    #[inline]
+    pub(crate) fn push_clip_rounded(&mut self, r: Rect, radius: Corners) {
+        self.record_start(CmdKind::PushClipRounded);
+        write_pod(&mut self.data, r);
+        write_pod(&mut self.data, radius);
     }
 
     #[inline]

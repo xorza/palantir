@@ -25,6 +25,11 @@ pub(crate) struct RenderBuffer {
     /// Glyph rasterization needs it: shaped buffers are sized in logical px,
     /// so glyphon scales by this when emitting glyph quads.
     pub(crate) scale: f32,
+    /// `true` iff the encoder emitted at least one `PushClipRounded` this
+    /// frame. Backends use this to lazy-init / select the stencil-mask
+    /// render path; apps that never use rounded clip stay on the cheap
+    /// scissor-only path.
+    pub(crate) has_rounded_clip: bool,
 }
 
 impl Default for RenderBuffer {
@@ -36,6 +41,7 @@ impl Default for RenderBuffer {
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
             scale: 1.0,
+            has_rounded_clip: false,
         }
     }
 }

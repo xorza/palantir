@@ -148,6 +148,7 @@ impl WgpuBackend {
             groups = buffer.groups.len(),
             viewport = ?buffer.viewport_phys,
             ?damage,
+            rounded_clip = buffer.has_rounded_clip,
             "wgpu_backend.submit"
         );
 

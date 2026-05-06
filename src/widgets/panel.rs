@@ -2,8 +2,8 @@ use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::transform::TranslateScale;
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::Response;
 use crate::widgets::theme::Background;
+use crate::widgets::{Response, bind_clip_radius_to_background};
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints a background rect
@@ -58,7 +58,10 @@ impl Panel {
         // pure layout). See `Theme::panel`.
         let bg = self.background.or(ui.theme.panel);
 
-        let node = ui.node(self.element, |ui| {
+        let mut element = self.element;
+        bind_clip_radius_to_background(&mut element, bg.as_ref());
+
+        let node = ui.node(element, |ui| {
             if let Some(bg) = bg {
                 bg.add_to(ui);
             }
