@@ -204,10 +204,9 @@ impl State {
 
         self.ui.begin_frame(self.display);
         build_ui(&mut self.ui, &mut self.click_count);
+        let clear = self.ui.theme.window_clear;
         let frame_out = self.ui.end_frame();
-        // Window background: palette `bg`.
-        self.backend
-            .submit(&frame.texture, Color::hex(0x252525), frame_out);
+        self.backend.submit(&frame.texture, clear, frame_out);
 
         frame.present();
         if !self.first_paint {
