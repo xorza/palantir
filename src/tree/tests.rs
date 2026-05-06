@@ -79,7 +79,7 @@ fn interleaved_shapes_record_correct_kinds_stream() {
     // interleaved between the two child NodeEnter/NodeExit pairs in
     // record order.
     let pi = p.index();
-    let kinds_slice = &ui.tree.kinds[ui.tree.nodes[pi].kinds.range()];
+    let kinds_slice = &ui.tree.kinds[ui.tree.records.kinds()[pi].range()];
     use crate::tree::TreeOp;
     assert_eq!(
         kinds_slice,
@@ -176,19 +176,22 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     // Parent and child share `end` (parent has only this one child),
     // which is the bug trigger.
     assert_eq!(
-        ui.tree.nodes[parent].end, ui.tree.nodes[child].end,
+        ui.tree.records.end()[parent],
+        ui.tree.records.end()[child],
         "test setup: parent's only child shares the parent's end NodeId"
     );
 
     // Parent's subtree contains both bar shapes.
     assert_eq!(
-        ui.tree.nodes[parent].shapes.len, 2,
+        ui.tree.records.shapes()[parent].len,
+        2,
         "parent's subtree owns both slot-N shapes"
     );
     // Child's subtree contains zero shapes — the trailing bars belong
     // to the parent, not the child.
     assert_eq!(
-        ui.tree.nodes[child].shapes.len, 0,
+        ui.tree.records.shapes()[child].len,
+        0,
         "child's subtree must NOT include parent's slot-N shapes"
     );
 
@@ -224,7 +227,7 @@ fn empty_tree_has_no_hashes() {
     // verify the empty-tree case.)
     ui.tree.end_frame();
 
-    assert_eq!(ui.tree.layout.len(), 0);
+    assert_eq!(ui.tree.records.len(), 0);
     assert!(ui.tree.hashes.node.is_empty());
     assert!(ui.tree.hashes.subtree.is_empty());
 }
@@ -734,13 +737,13 @@ fn subtree_end_rolls_up_during_recording() {
         })
         .node;
     // Tree (pre-order):  0=root  1=a  2=inner  3=b  4=c  5=d
-    assert_eq!(ui.tree.layout.len(), 6);
-    assert_eq!(ui.tree.nodes[root.index()].end, 6, "root");
-    assert_eq!(ui.tree.nodes[1].end, 2, "leaf a");
-    assert_eq!(ui.tree.nodes[2].end, 5, "inner spans b,c");
-    assert_eq!(ui.tree.nodes[3].end, 4, "leaf b");
-    assert_eq!(ui.tree.nodes[4].end, 5, "leaf c");
-    assert_eq!(ui.tree.nodes[5].end, 6, "leaf d");
+    assert_eq!(ui.tree.records.len(), 6);
+    assert_eq!(ui.tree.records.end()[root.index()], 6, "root");
+    assert_eq!(ui.tree.records.end()[1], 2, "leaf a");
+    assert_eq!(ui.tree.records.end()[2], 5, "inner spans b,c");
+    assert_eq!(ui.tree.records.end()[3], 4, "leaf b");
+    assert_eq!(ui.tree.records.end()[4], 5, "leaf c");
+    assert_eq!(ui.tree.records.end()[5], 6, "leaf d");
 }
 
 #[test]
@@ -758,15 +761,16 @@ fn subtree_end_handles_deep_nesting() {
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
     nest(&mut ui, 16);
-    let n = ui.tree.layout.len() as u32;
+    let n = ui.tree.records.len() as u32;
     assert_eq!(n, 17, "16 stacks + 1 leaf");
     for i in 0..(n - 1) {
         assert_eq!(
-            ui.tree.nodes[i as usize].end, n,
+            ui.tree.records.end()[i as usize],
+            n,
             "every ancestor on the chain points past the leaf",
         );
     }
-    assert_eq!(ui.tree.nodes[(n - 1) as usize].end, n, "leaf");
+    assert_eq!(ui.tree.records.end()[(n - 1) as usize], n, "leaf");
 }
 
 #[test]

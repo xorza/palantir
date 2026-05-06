@@ -54,7 +54,7 @@ fn first_frame_marks_every_node_dirty() {
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
-    assert_eq!(ui.damage.dirty.len(), ui.tree.layout.len());
+    assert_eq!(ui.damage.dirty.len(), ui.tree.records.len());
     assert!(ui.damage.rect.is_some());
 }
 
@@ -90,7 +90,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     assert_eq!(ui.damage.dirty.len(), 1);
     let dirty_id = ui.damage.dirty[0];
     assert_eq!(
-        ui.tree.nodes[dirty_id.index()].widget_id,
+        ui.tree.records.widget_id()[dirty_id.index()],
         WidgetId::from_hash("a")
     );
     // Damage rect = Frame's rect (50x50 at (0,0)). Color change
@@ -137,7 +137,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
         .damage
         .dirty
         .iter()
-        .map(|n| ui.tree.nodes[n.index()].widget_id)
+        .map(|n| ui.tree.records.widget_id()[n.index()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("a")));
     assert!(dirty_ids.contains(&WidgetId::from_hash("b")));
@@ -195,7 +195,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .damage
         .dirty
         .iter()
-        .map(|n| ui.tree.nodes[n.index()].widget_id)
+        .map(|n| ui.tree.records.widget_id()[n.index()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
     assert!(ui.damage.rect.is_some());
@@ -367,7 +367,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
         .damage
         .dirty
         .iter()
-        .map(|n| ui.tree.nodes[n.index()].widget_id)
+        .map(|n| ui.tree.records.widget_id()[n.index()])
         .collect();
     assert_eq!(dirty_widget_ids, vec![WidgetId::from_hash("c")]);
 }
@@ -743,7 +743,7 @@ fn button_hover_damage_covers_only_the_button() {
     );
     let dirty_id = ui.damage.dirty[0];
     assert_eq!(
-        ui.tree.nodes[dirty_id.index()].widget_id,
+        ui.tree.records.widget_id()[dirty_id.index()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));
@@ -790,7 +790,7 @@ fn button_unhover_damage_covers_only_the_button() {
     build(&mut ui, &mut hot_node, &mut cold_node);
     assert_eq!(ui.damage.dirty.len(), 1);
     assert_eq!(
-        ui.tree.nodes[ui.damage.dirty[0].index()].widget_id,
+        ui.tree.records.widget_id()[ui.damage.dirty[0].index()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage.rect, Some(hot_rect));

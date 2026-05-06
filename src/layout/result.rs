@@ -39,7 +39,7 @@ pub(crate) struct ShapedText {
 
 impl LayoutResult {
     pub(crate) fn resize_for(&mut self, tree: &Tree) {
-        let n = tree.layout.len();
+        let n = tree.records.len();
         self.rect.clear();
         self.rect.resize(n, Rect::ZERO);
         self.text_shapes.clear();

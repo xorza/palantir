@@ -127,7 +127,7 @@ pub(crate) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
         size: Size::ZERO,
     };
     let start = node.index();
-    let end = (tree.nodes[start].end) as usize;
+    let end = (tree.records.end()[start]) as usize;
     for i in start..end {
         layout.result.rect[i] = zero;
     }

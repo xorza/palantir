@@ -123,7 +123,7 @@ impl Cascades {
     /// open-ancestor stack; hit-entry derivation (clip-intersected rect
     /// + sense-cascaded effective sense) rides along the same loop.
     pub(crate) fn run(&mut self, tree: &Tree, layout: &LayoutResult) -> &CascadeResult {
-        let n = tree.layout.len();
+        let n = tree.records.len();
         let r = &mut self.result;
         r.rows.clear();
         r.rows.reserve(n);
@@ -133,9 +133,10 @@ impl Cascades {
         r.by_id.reserve(n);
         self.stack.clear();
 
-        let layout_col = &tree.layout;
-        let attrs_col = &tree.attrs;
-        let nodes = &tree.nodes;
+        let layout_col = tree.records.layout();
+        let attrs_col = tree.records.attrs();
+        let widget_ids = tree.records.widget_id();
+        let ends = tree.records.end();
 
         for i in 0..n {
             while let Some(top) = self.stack.last() {
@@ -189,7 +190,7 @@ impl Cascades {
                 attrs.sense()
             };
             let focusable = !cascaded_off && attrs.is_focusable();
-            let widget_id = nodes[i].widget_id;
+            let widget_id = widget_ids[i];
             r.by_id.insert(widget_id, r.entries.len() as u32);
             r.entries.push(HitEntry {
                 id: widget_id,
@@ -204,7 +205,7 @@ impl Cascades {
                 clip: desc_clip,
                 disabled,
                 invisible,
-                subtree_end: nodes[i].end,
+                subtree_end: ends[i],
             });
         }
         &self.result

@@ -166,7 +166,7 @@ impl Ui {
             //    so bars land flush with the OUTER far edge (which
             //    sits inside the reserved strip even with user padding).
             let outer_rect = layout.rect[s.node.index()];
-            let pad = self.tree.layout[s.node.index()].padding;
+            let pad = self.tree.records.layout()[s.node.index()].padding;
             let outer = outer_rect.size;
             let viewport = outer_rect.deflated_by(pad).size;
             let content = layout.scroll_content[s.node.index()];

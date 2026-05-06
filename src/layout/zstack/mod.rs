@@ -43,7 +43,7 @@ pub(crate) fn measure(
     inner_avail: Size,
     text: &mut TextMeasurer,
 ) -> Size {
-    let style = tree.layout[node.index()];
+    let style = tree.records.layout()[node.index()];
     let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
@@ -69,7 +69,7 @@ pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
             continue;
         }
         let d = layout.scratch.desired[c.index()];
-        let s = tree.layout[c.index()];
+        let s = tree.records.layout()[c.index()];
 
         let AxisAlignPair { h, v } = resolved_axis_align(&s, parent_child_align);
         let x = place_axis(h, s.size.w, d.w, inner.size.w);

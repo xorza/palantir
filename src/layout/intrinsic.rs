@@ -75,7 +75,7 @@ pub(crate) fn compute(
     req: LenReq,
     text: &mut TextMeasurer,
 ) -> f32 {
-    let style = tree.layout[node.index()];
+    let style = tree.records.layout()[node.index()];
     if style.visibility.is_collapsed() {
         return 0.0;
     }
@@ -158,7 +158,7 @@ fn content_intrinsic(
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
 fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasurer) -> f32 {
-    let wid = tree.nodes[node.index()].widget_id;
+    let wid = tree.records.widget_id()[node.index()];
     let curr_hash = tree.hashes.node[node.index()];
     let mut acc = 0.0_f32;
     for ts in leaf_text_shapes(tree, node) {

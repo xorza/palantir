@@ -51,7 +51,7 @@ pub(crate) fn measure(
     let mut count = 0usize;
     for c in tree.children(node).filter_map(Child::active) {
         count += 1;
-        let l = tree.layout[c.index()];
+        let l = tree.records.layout()[c.index()];
         if let Sizing::Fill(w) = axis.main_sizing(l.size) {
             total_weight += w;
             continue;
@@ -97,7 +97,8 @@ pub(crate) fn measure(
             // exit. Nested stacks reuse the tail capacity.
             let pool_start = layout.scratch.stack_fill.pool.len();
             for c in tree.children(node).filter_map(Child::active) {
-                let Sizing::Fill(w) = axis.main_sizing(tree.layout[c.index()].size) else {
+                let Sizing::Fill(w) = axis.main_sizing(tree.records.layout()[c.index()].size)
+                else {
                     continue;
                 };
                 let cap = axis.main(tree.read_extras(c).max_size);
@@ -167,7 +168,8 @@ pub(crate) fn measure(
             layout.scratch.stack_fill.pool.truncate(pool_start);
         } else {
             for c in tree.children(node).filter_map(Child::active) {
-                let Sizing::Fill(_) = axis.main_sizing(tree.layout[c.index()].size) else {
+                let Sizing::Fill(_) = axis.main_sizing(tree.records.layout()[c.index()].size)
+                else {
                     continue;
                 };
                 let d =
@@ -202,7 +204,7 @@ pub(crate) fn arrange(
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
     for c in tree.children(node).filter_map(Child::active) {
-        let l = tree.layout[c.index()];
+        let l = tree.records.layout()[c.index()];
         if let Sizing::Fill(weight) = axis.main_sizing(l.size) {
             total_weight += weight;
         }
@@ -245,7 +247,7 @@ pub(crate) fn arrange(
             zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min));
             continue;
         }
-        let s = tree.layout[c.index()];
+        let s = tree.records.layout()[c.index()];
         let d = layout.scratch.desired[c.index()];
         if !first {
             cursor += effective_gap;

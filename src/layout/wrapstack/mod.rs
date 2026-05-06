@@ -127,7 +127,7 @@ pub(crate) fn measure(
 
     for c in tree.children(node).filter_map(Child::active) {
         let d = layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
-        let ChildPack { m, x } = child_pack(axis, tree.layout[c.index()].size, d);
+        let ChildPack { m, x } = child_pack(axis, tree.records.layout()[c.index()].size, d);
         if would_wrap(line_main, gap, m, main_avail) {
             max_line_main = max_line_main.max(line_main);
             total_cross += line_cross;
@@ -224,7 +224,7 @@ pub(crate) fn arrange(
                 main_cursor += eff_gap;
             }
             let d = layout.scratch.desired[c.index()];
-            let s = tree.layout[c.index()];
+            let s = tree.records.layout()[c.index()];
             // Cross axis: each child placed within the line's cross
             // extent. Same rule as Stack cross — Fill stretches to
             // line_cross, Hug aligns per child.
@@ -265,7 +265,7 @@ pub(crate) fn arrange(
         }
 
         let d = layout.scratch.desired[c.index()];
-        let ChildPack { m, x } = child_pack(axis, tree.layout[c.index()].size, d);
+        let ChildPack { m, x } = child_pack(axis, tree.records.layout()[c.index()].size, d);
         if would_wrap(line_main, gap, m, main_avail) {
             place_line(
                 layout,

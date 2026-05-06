@@ -126,10 +126,10 @@ impl Damage {
         let mut acc: Option<Rect> = None;
 
         let cascade_rows = &cascades.rows;
-        let n = tree.layout.len();
-        let nodes = &tree.nodes;
+        let n = tree.records.len();
+        let widget_ids = tree.records.widget_id();
         for i in 0..n {
-            let wid = nodes[i].widget_id;
+            let wid = widget_ids[i];
             let curr_rect = cascade_rows[i].screen_rect;
             let curr_hash = tree.hashes.node[i];
             let curr = NodeSnapshot {
