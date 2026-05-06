@@ -1,4 +1,5 @@
 use crate::layout::axis::Axis;
+use crate::layout::result::LayoutResult;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sense::Sense;
 use crate::primitives::corners::Corners;
@@ -6,9 +7,11 @@ use crate::primitives::size::Size;
 use crate::primitives::transform::TranslateScale;
 use crate::shape::Shape;
 use crate::tree::NodeId;
+use crate::tree::Tree;
 use crate::tree::element::{Configure, Element, LayoutMode, ScrollAxes};
 use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
+use crate::ui::state::StateMap;
 use crate::widgets::Response;
 use crate::widgets::theme::{ScrollbarTheme, Surface};
 use glam::Vec2;
@@ -45,6 +48,55 @@ pub(crate) struct ScrollState {
     pub(crate) viewport: Size,
     pub(crate) outer: Size,
     pub(crate) content: Size,
+}
+
+/// Per-frame registry of recorded [`Scroll`] widgets. Pushed during
+/// recording, drained in `Ui::end_frame` after arrange to refresh each
+/// widget's [`ScrollState`] row. Capacity-retained across frames.
+#[derive(Default)]
+pub(crate) struct ScrollRegistry {
+    nodes: Vec<ScrollNode>,
+}
+
+impl ScrollRegistry {
+    pub(crate) fn begin_frame(&mut self) {
+        self.nodes.clear();
+    }
+
+    pub(crate) fn push(&mut self, node: ScrollNode) {
+        self.nodes.push(node);
+    }
+
+    /// Refresh each registered scroll widget's state row with the
+    /// freshly-arranged viewport + measured content extent. Called
+    /// post-arrange / pre-cascade so next frame's record clamps with
+    /// up-to-date numbers; the current frame's pan already used last
+    /// frame's clamp.
+    pub(crate) fn refresh(&self, tree: &Tree, layout: &LayoutResult, state: &mut StateMap) {
+        for s in self.nodes.iter().copied() {
+            assert!(
+                s.node.index() < layout.rect.len(),
+                "scroll registry entry references node {} past tree length {}",
+                s.node.index(),
+                layout.rect.len(),
+            );
+            let outer_rect = layout.rect[s.node.index()];
+            let pad = tree.records.layout()[s.node.index()].padding;
+            let outer = outer_rect.size;
+            let viewport = outer_rect.deflated_by(pad).size;
+            let content = layout.scroll_content[s.node.index()];
+            let row = state.get_or_insert_with::<ScrollState, _>(s.id, Default::default);
+            row.viewport = viewport;
+            row.outer = outer;
+            row.content = content;
+            // End-frame re-clamp: pairs with the record-time clamp in
+            // `Scroll::show`, which only had last frame's numbers.
+            let max_x = (content.w - viewport.w).max(0.0);
+            let max_y = (content.h - viewport.h).max(0.0);
+            row.offset.x = row.offset.x.clamp(0.0, max_x);
+            row.offset.y = row.offset.y.clamp(0.0, max_y);
+        }
+    }
 }
 
 /// Scroll viewport. Three flavors via constructor:
@@ -171,7 +223,7 @@ impl Scroll {
             push_bar(ui, viewport, outer, content, offset, Axis::Y, pan.y, &theme);
             push_bar(ui, viewport, outer, content, offset, Axis::X, pan.x, &theme);
         });
-        ui.scroll_nodes.push(ScrollNode { id, node });
+        ui.scrolls.push(ScrollNode { id, node });
 
         let resp_state = ui.response_for(id);
         Response {
