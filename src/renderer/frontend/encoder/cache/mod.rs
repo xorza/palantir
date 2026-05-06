@@ -32,23 +32,11 @@
 use crate::common::cache_arena::LiveArena;
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::span::Span;
-use crate::renderer::frontend::cmd_buffer::{
-    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
-};
+use crate::renderer::frontend::cmd_buffer::{CmdKind, EnterSubtreePayload, RenderCmdBuffer};
 use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
-
-// `bump_rect_min` indexes `data[start..start+2]` as `rect.min.{x,y}` for
-// every rect-bearing payload kind. Pin the layout invariant: `Rect`
-// must be the leading field of each such payload, and `PushClip`'s
-// payload is a bare `Rect` (offset 0 by definition).
-const _: () = {
-    assert!(std::mem::offset_of!(DrawRectPayload, rect) == 0);
-    assert!(std::mem::offset_of!(DrawRectStrokedPayload, rect) == 0);
-    assert!(std::mem::offset_of!(DrawTextPayload, rect) == 0);
-};
 
 /// 32-byte snapshot. `cmds` indexes the parallel (`kinds`, `starts`);
 /// `data` indexes `data`. Both `subtree_hash` and `available_q` are
@@ -329,24 +317,14 @@ impl EncodeCache {
 fn bump_rect_min(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], offset: Vec2) {
     assert_eq!(kinds.len(), starts.len());
     for (kind, &start) in kinds.iter().zip(starts.iter()) {
-        match kind {
-            CmdKind::PushClip
-            | CmdKind::PushClipRounded
-            | CmdKind::DrawRect
-            | CmdKind::DrawRectStroked
-            | CmdKind::DrawText => {
-                let off = start as usize;
-                let x = f32::from_bits(data[off]) + offset.x;
-                let y = f32::from_bits(data[off + 1]) + offset.y;
-                data[off] = x.to_bits();
-                data[off + 1] = y.to_bits();
-            }
-            CmdKind::PopClip
-            | CmdKind::PushTransform
-            | CmdKind::PopTransform
-            | CmdKind::EnterSubtree
-            | CmdKind::ExitSubtree => {}
+        if !kind.has_leading_rect() {
+            continue;
         }
+        let off = start as usize;
+        let x = f32::from_bits(data[off]) + offset.x;
+        let y = f32::from_bits(data[off + 1]) + offset.y;
+        data[off] = x.to_bits();
+        data[off + 1] = y.to_bits();
     }
 }
 
@@ -366,10 +344,8 @@ fn bump_exit_idx(kinds: &[CmdKind], starts: &[u32], data: &mut [u32], delta: i64
     if delta == 0 {
         return;
     }
-    const EXIT_IDX_WORD: usize = std::mem::offset_of!(
-        crate::renderer::frontend::cmd_buffer::EnterSubtreePayload,
-        exit_idx
-    ) / size_of::<u32>();
+    const EXIT_IDX_WORD: usize =
+        std::mem::offset_of!(EnterSubtreePayload, exit_idx) / size_of::<u32>();
     for (kind, &start) in kinds.iter().zip(starts.iter()) {
         if matches!(kind, CmdKind::EnterSubtree) {
             let off = start as usize + EXIT_IDX_WORD;

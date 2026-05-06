@@ -217,13 +217,14 @@ impl WgpuBackend {
     pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, frame: FrameOutput<'_>) {
         let buffer = frame.buffer;
         let damage = frame.damage;
+        let use_stencil = buffer.has_rounded_clip();
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
             groups = buffer.groups.len(),
             viewport = ?buffer.viewport_phys,
             ?damage,
-            rounded_clip = buffer.has_rounded_clip,
+            rounded_clip = use_stencil,
             "wgpu_backend.submit"
         );
 
@@ -284,7 +285,6 @@ impl WgpuBackend {
         // `PushClipRounded`. Lazy-init the stencil texture + pipeline
         // variants the first time we land here; thereafter both stay
         // warm. Apps that never round-clip never enter this branch.
-        let use_stencil = buffer.has_rounded_clip;
         let text_mode = if use_stencil {
             text::StencilMode::Stencil
         } else {

@@ -90,7 +90,6 @@ fn render_schedule_interleaves_text_per_group() {
         viewport_phys: UVec2::new(100, 100),
         viewport_phys_f: Vec2::new(100.0, 100.0),
         scale: 1.0,
-        has_rounded_clip: false,
     };
     assert_eq!(
         render_schedule(&buf),
@@ -128,7 +127,6 @@ fn render_schedule_emits_text_for_quadless_group() {
         viewport_phys: UVec2::new(100, 100),
         viewport_phys_f: Vec2::new(100.0, 100.0),
         scale: 1.0,
-        has_rounded_clip: false,
     };
     assert_eq!(
         render_schedule(&buf),

@@ -1,6 +1,6 @@
 use super::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, EnterSubtreePayload,
-    RenderCmdBuffer,
+    PushClipRoundedPayload, RenderCmdBuffer,
 };
 use crate::common::hash::Hasher;
 use crate::layout::cache::AvailableKey;
@@ -167,7 +167,6 @@ impl Composer {
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
         out.scale = scale;
-        out.has_rounded_clip = false;
 
         self.clip_stack.clear();
         self.transform_stack.clear();
@@ -182,19 +181,20 @@ impl Composer {
             let start = cmds.starts[i];
             match kind {
                 CmdKind::PushClip | CmdKind::PushClipRounded => {
-                    let r: Rect = cmds.read(start);
+                    let (r, logical_radius) = match kind {
+                        CmdKind::PushClip => (cmds.read::<Rect>(start), None),
+                        _ => {
+                            let p: PushClipRoundedPayload = cmds.read(start);
+                            (p.rect, Some(p.radius))
+                        }
+                    };
                     let world = current_transform.apply_rect(r);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
                     let scissor = match self.clip_stack.last() {
                         Some(parent) => me.clamp_to(parent.scissor),
                         None => me,
                     };
-                    let rounded = if matches!(kind, CmdKind::PushClipRounded) {
-                        out.has_rounded_clip = true;
-                        // Radius payload follows the rect in PushClipRounded.
-                        // Rect = 4 f32 words, so the corners read starts 4 words after the rect.
-                        const RECT_WORDS: u32 = (size_of::<Rect>() / 4) as u32;
-                        let logical_radius: Corners = cmds.read(start + RECT_WORDS);
+                    let rounded = if let Some(logical_radius) = logical_radius {
                         // Combine current transform's uniform scale with DPR
                         // so radii match the painted SDF's physical size.
                         let phys_scale = current_transform.scale * scale;
