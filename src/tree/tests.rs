@@ -536,37 +536,15 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     assert_eq!(ui1.tree.subtree_hash(leaf1), ui2.tree.subtree_hash(leaf2));
 }
 
-// --- subtree_end finalization ----------------------------------------------
-// `Tree::open_node` writes only the per-node leaf marker `i + 1`;
-// `finalize_subtree_end` (called from `compute_hashes` and therefore
-// `end_frame`) propagates each child's slot up to its parent. The
-// invariant: `subtree_end[i]` points one past the last descendant of
-// `i` in pre-order. Below pins both the post-recording leaf state and
-// the post-finalize correctness across nesting shapes.
+// --- subtree_end rollup ----------------------------------------------------
+// `Tree::open_node` writes the per-node leaf marker `i + 1`;
+// `close_node` rolls each closing subtree up into its parent's slot.
+// The invariant: `subtree_end[i]` points one past the last descendant
+// of `i` in pre-order, and is final the moment the root's `close_node`
+// returns — no separate finalize pass.
 
 #[test]
-fn subtree_end_is_leaf_marker_before_finalize() {
-    // Recording-only state: every slot equals i+1 because no ancestor
-    // walk runs in `open_node` anymore. `finalize_subtree_end` /
-    // `compute_hashes` must run before any subtree iteration is valid.
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::default());
-    Panel::hstack().with_id("root").show(&mut ui, |ui| {
-        Frame::new().with_id("a").size(10.0).show(ui);
-        Frame::new().with_id("b").size(10.0).show(ui);
-    });
-    let n = ui.tree.layout.len();
-    for i in 0..n {
-        assert_eq!(
-            ui.tree.subtree_end[i],
-            (i as u32) + 1,
-            "node {i} should hold the leaf marker pre-finalize",
-        );
-    }
-}
-
-#[test]
-fn finalize_subtree_end_rolls_up_children() {
+fn subtree_end_rolls_up_during_recording() {
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
     let root = Panel::hstack()
@@ -582,7 +560,6 @@ fn finalize_subtree_end_rolls_up_children() {
         .node;
     // Tree (pre-order):  0=root  1=a  2=inner  3=b  4=c  5=d
     assert_eq!(ui.tree.layout.len(), 6);
-    ui.tree.finalize_subtree_end();
     assert_eq!(ui.tree.subtree_end[root.index()], 6, "root");
     assert_eq!(ui.tree.subtree_end[1], 2, "leaf a");
     assert_eq!(ui.tree.subtree_end[2], 5, "inner spans b,c");
@@ -592,10 +569,8 @@ fn finalize_subtree_end_rolls_up_children() {
 }
 
 #[test]
-fn finalize_subtree_end_handles_deep_nesting() {
-    // Linear chain: depth-N stacks each containing one stack until a
-    // leaf. Old code did O(N·depth) random writes; the new pass must
-    // still produce subtree_end[0] = N for the chain root.
+fn subtree_end_handles_deep_nesting() {
+    // Linear chain: depth-N stacks each containing one stack until a leaf.
     fn nest(ui: &mut Ui, depth: usize) {
         if depth == 0 {
             Frame::new().with_id(("leaf", depth)).size(10.0).show(ui);
@@ -608,7 +583,6 @@ fn finalize_subtree_end_handles_deep_nesting() {
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
     nest(&mut ui, 16);
-    ui.end_frame();
     let n = ui.tree.layout.len() as u32;
     assert_eq!(n, 17, "16 stacks + 1 leaf");
     for i in 0..(n - 1) {
@@ -618,24 +592,6 @@ fn finalize_subtree_end_handles_deep_nesting() {
         );
     }
     assert_eq!(ui.tree.subtree_end[(n - 1) as usize], n, "leaf");
-}
-
-#[test]
-fn finalize_subtree_end_is_idempotent() {
-    let mut ui = Ui::new();
-    ui.begin_frame(Display::default());
-    Panel::hstack().with_id("root").show(&mut ui, |ui| {
-        Panel::vstack().with_id("inner").show(ui, |ui| {
-            Frame::new().with_id("a").size(10.0).show(ui);
-            Frame::new().with_id("b").size(10.0).show(ui);
-        });
-        Frame::new().with_id("c").size(10.0).show(ui);
-    });
-    ui.tree.finalize_subtree_end();
-    let snapshot: Vec<u32> = ui.tree.subtree_end.clone();
-    ui.tree.finalize_subtree_end();
-    ui.tree.finalize_subtree_end();
-    assert_eq!(ui.tree.subtree_end, snapshot);
 }
 
 #[test]
