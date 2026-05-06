@@ -3,49 +3,102 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::support::testing::{click_at, ui_at};
 use crate::tree::element::Configure;
-use crate::widgets::theme::{Background, Surface};
+use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
+/// `Surface::apply_to` (called by `Panel::show`) writes the clip bit
+/// AND `extras.chrome` together. One fixture sweeps every Surface
+/// configuration: no surface; paint-only via `From<Background>`;
+/// `Surface::scissor`; `Surface::clipped`; `Surface::rounded` with
+/// non-zero radius; `Surface::rounded` with zero-radius downgrade.
+/// Refactors that touch any mode are caught by the table.
 #[test]
-fn clip_flag_is_recorded_on_panel_node() {
-    // Default is `overflow: visible` — panels do not clip unless asked.
-    // Explicit `.background(Surface::scissor())` opts in. Pin both directions so a future
-    // default change is loud.
+fn surface_apply_to_sets_clip_bit_and_chrome() {
+    use crate::ClipMode;
+    use crate::widgets::theme::Surface;
+
     let mut ui = ui_at(UVec2::new(200, 200));
-    let mut default_panel = None;
-    let mut opt_in = None;
+    let mut cases: Vec<(&str, crate::tree::NodeId, ClipMode, bool)> = Vec::new();
     Panel::hstack().show(&mut ui, |ui| {
-        default_panel = Some(
-            Panel::zstack()
-                .with_id("default")
-                .size(50.0)
-                .show(ui, |_| {})
-                .node,
-        );
-        opt_in = Some(
-            Panel::zstack()
-                .with_id("opt-in")
-                .size(50.0)
-                .background(Surface::scissor())
-                .show(ui, |_| {})
-                .node,
-        );
+        // No surface set anywhere → no clip, no chrome.
+        let n = Panel::zstack()
+            .with_id("none")
+            .size(50.0)
+            .show(ui, |_| {})
+            .node;
+        cases.push(("none", n, ClipMode::None, false));
+
+        // Paint-only Background via From<Background>: chrome, no clip.
+        let n = Panel::zstack()
+            .with_id("paint-only")
+            .size(50.0)
+            .background(Background {
+                fill: Color::rgb(0.5, 0.5, 0.5),
+                ..Default::default()
+            })
+            .show(ui, |_| {})
+            .node;
+        cases.push(("paint-only", n, ClipMode::None, true));
+
+        // Surface::scissor — clip + transparent chrome.
+        let n = Panel::zstack()
+            .with_id("scissor")
+            .size(50.0)
+            .background(Surface::scissor())
+            .show(ui, |_| {})
+            .node;
+        cases.push(("scissor", n, ClipMode::Rect, true));
+
+        // Surface::clipped(bg) — clip + paint.
+        let n = Panel::zstack()
+            .with_id("clipped")
+            .size(50.0)
+            .background(Surface::clipped(Background {
+                fill: Color::rgb(0.2, 0.2, 0.2),
+                ..Default::default()
+            }))
+            .show(ui, |_| {})
+            .node;
+        cases.push(("clipped", n, ClipMode::Rect, true));
+
+        // Surface::rounded(bg) with non-zero radius — Rounded survives.
+        let n = Panel::zstack()
+            .with_id("rounded")
+            .size(50.0)
+            .background(Surface::rounded(Background {
+                fill: Color::rgb(0.2, 0.2, 0.2),
+                radius: Corners::all(4.0),
+                ..Default::default()
+            }))
+            .show(ui, |_| {})
+            .node;
+        cases.push(("rounded", n, ClipMode::Rounded, true));
+
+        // Surface::rounded(bg) with zero radius — apply_to downgrades.
+        let n = Panel::zstack()
+            .with_id("rounded-zero")
+            .size(50.0)
+            .background(Surface::rounded(Background {
+                fill: Color::rgb(0.2, 0.2, 0.2),
+                ..Default::default()
+            }))
+            .show(ui, |_| {})
+            .node;
+        cases.push(("rounded-zero", n, ClipMode::Rect, true));
     });
     ui.end_frame();
 
-    assert!(
-        !ui.tree.paint[default_panel.unwrap().index()]
-            .attrs
-            .clip_mode()
-            .is_clip()
-    );
-    assert!(
-        ui.tree.paint[opt_in.unwrap().index()]
-            .attrs
-            .clip_mode()
-            .is_clip()
-    );
+    for (name, id, expected_clip, expects_chrome) in &cases {
+        let clip = ui.tree.paint[id.index()].attrs.clip_mode();
+        assert_eq!(clip, *expected_clip, "[{name}] clip mode");
+        let chrome = ui.tree.read_extras(*id).chrome;
+        assert_eq!(
+            chrome.is_some(),
+            *expects_chrome,
+            "[{name}] chrome stamping"
+        );
+    }
 }
 
 #[test]

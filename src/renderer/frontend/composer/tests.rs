@@ -205,25 +205,58 @@ fn compose_skips_groups_with_no_quads() {
     assert!(buf.groups.is_empty());
 }
 
+/// Composer plumbing for rounded clip: radius + rect ride on the
+/// emitted `DrawGroup`, scaled by DPR. Inheritance verified in the
+/// same fixture: a `Rect` clip pushed inside the `Rounded` parent
+/// must inherit the parent's `rounded_clip` so children stay
+/// stencil-tested against the active mask. Without inheritance,
+/// inner draws would land at `stencil_ref=0` over `stencil=1`
+/// pixels and disappear.
 #[test]
-fn push_clip_rounded_lands_radius_on_group() {
+fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let buf = run(
         |b| {
             b.push_clip_rounded(rect(10.0, 20.0, 100.0, 80.0), Corners::all(8.0));
+            // Tier 1: direct draw under the rounded clip.
             draw(b, rect(20.0, 30.0, 40.0, 40.0));
+            // Tier 2: nest a plain rect clip — children of THIS clip
+            // must still inherit the rounded info from the ancestor.
+            b.push_clip(rect(30.0, 40.0, 40.0, 30.0));
+            draw(b, rect(35.0, 45.0, 10.0, 10.0));
+            b.pop_clip();
             b.pop_clip();
         },
         &params(2.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.groups.len(), 1, "one rounded-clipped group");
     assert!(buf.has_rounded_clip);
-    let g = &buf.groups[0];
-    let rounded = g.rounded_clip.expect("rounded data must ride on group");
-    // DPR=2 → radius doubles: 8 → 16. Same scale on the rect (20,40,200,160).
-    assert_eq!(rounded.radius.tl, 16.0);
-    assert_eq!(rounded.rect, URect::new(20, 40, 200, 160));
-    // Sanity: scissor matches the rounded rect bounding box.
-    assert_eq!(g.scissor, Some(rounded.rect));
+    assert_eq!(
+        buf.groups.len(),
+        2,
+        "two groups: outer rounded scissor, inner rect scissor"
+    );
+
+    let outer = &buf.groups[0];
+    let inner = &buf.groups[1];
+
+    let outer_r = outer
+        .rounded_clip
+        .expect("outer rounded data must ride on group");
+    // DPR=2 → radius doubles 8→16, rect (10,20,100,80) → (20,40,200,160).
+    assert_eq!(outer_r.radius.tl, 16.0);
+    assert_eq!(outer_r.rect, URect::new(20, 40, 200, 160));
+    assert_eq!(outer.scissor, Some(outer_r.rect));
+
+    // Inheritance: inner Rect clip carries the SAME rounded mask as
+    // the outer parent, scissor narrowed to the inner rect.
+    let inner_r = inner
+        .rounded_clip
+        .expect("inner rect clip inside rounded ancestor inherits rounded data");
+    assert_eq!(
+        inner_r, outer_r,
+        "inner group inherits parent's mask geometry"
+    );
+    // DPR=2: rect (30,40,40,30) → (60,80,80,60), clamped to outer.
+    assert_eq!(inner.scissor, Some(URect::new(60, 80, 80, 60)));
 }
 
 #[test]
