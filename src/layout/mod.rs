@@ -270,7 +270,7 @@ impl LayoutEngine {
             // any ancestor of a Grid leaves hugs zeroed and the
             // grid would collapse every cell to (0, 0). Pinned by
             // `widgets::tests::grid_cells_arranged_correctly_on_cache_hit_frame`.
-            if tree.hashes.subtree_has_grid[curr_start] {
+            if tree.hashes.subtree_has_grid.contains(curr_start) {
                 self.scratch
                     .grid
                     .hugs
@@ -338,7 +338,7 @@ impl LayoutEngine {
             let start = node.index();
             let end = tree.subtree_end[start] as usize;
             self.scratch.tmp_hugs.clear();
-            if tree.hashes.subtree_has_grid[start] {
+            if tree.hashes.subtree_has_grid.contains(start) {
                 self.scratch.grid.hugs.snapshot_subtree(
                     tree,
                     start..end,

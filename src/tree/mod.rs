@@ -6,6 +6,7 @@ use crate::tree::element::{
 };
 use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
+use fixedbitset::FixedBitSet;
 use rustc_hash::FxHasher;
 use std::hash::Hasher;
 use std::rc::Rc;
@@ -142,7 +143,7 @@ impl Tree {
         self.hashes.subtree.clear();
         self.hashes.subtree.resize(n, NodeHash::UNCOMPUTED);
         self.hashes.subtree_has_grid.clear();
-        self.hashes.subtree_has_grid.resize(n, false);
+        self.hashes.subtree_has_grid.grow(n);
         for i in (0..n).rev() {
             let end = self.subtree_end[i];
             let mut h = FxHasher::default();
@@ -163,11 +164,11 @@ impl Tree {
             let mut next = (i as u32) + 1;
             while next < end {
                 h.write_u64(self.hashes.subtree[next as usize].as_u64());
-                has_grid |= self.hashes.subtree_has_grid[next as usize];
+                has_grid |= self.hashes.subtree_has_grid.contains(next as usize);
                 next = self.subtree_end[next as usize];
             }
             self.hashes.subtree[i] = NodeHash::from_u64(h.finish());
-            self.hashes.subtree_has_grid[i] = has_grid;
+            self.hashes.subtree_has_grid.set(i, has_grid);
         }
     }
 
@@ -454,7 +455,7 @@ impl GridArena {
 pub(crate) struct NodeHashes {
     pub(crate) node: Vec<NodeHash>,
     pub(crate) subtree: Vec<NodeHash>,
-    pub(crate) subtree_has_grid: Vec<bool>,
+    pub(crate) subtree_has_grid: FixedBitSet,
 }
 
 impl NodeHashes {
