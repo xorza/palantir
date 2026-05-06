@@ -118,7 +118,6 @@ impl Tree {
         self.shapes.clear();
         self.grid.clear();
         self.open_frames.clear();
-        self.hashes.begin_frame();
     }
 
     /// Walk every recorded node and populate `self.hashes.node` plus the
@@ -134,14 +133,14 @@ impl Tree {
         #[cfg(debug_assertions)]
         self.assert_recording_invariants();
 
-        // Per-node + subtree hashes, both populated by a single
-        // entry point on `NodeHashes`. `mem::take` swaps the storage
-        // out so `compute` can read from `self` and write into the
-        // local without borrow conflicts; capacity is preserved.
-        // todo untangle
-        let mut hashes = std::mem::take(&mut self.hashes);
-        hashes.compute(self);
-        self.hashes = hashes;
+        self.hashes.compute(
+            &self.records,
+            &self.extras,
+            &self.chrome,
+            &self.kinds,
+            &self.shapes,
+            &self.grid,
+        );
     }
 
     /// Cross-column structural invariants that must hold after the
@@ -488,14 +487,6 @@ pub(crate) struct NodeHashes {
     /// depth and is retained across frames so the hot path is alloc-
     /// free in steady state.
     pub(crate) compute_stack: Vec<(NodeId, Hasher)>,
-}
-
-impl NodeHashes {
-    fn begin_frame(&mut self) {
-        self.node.clear();
-        self.subtree.clear();
-        self.subtree_has_grid.clear();
-    }
 }
 
 /// Per-NodeId record. One push per `open_node`, finalized by
