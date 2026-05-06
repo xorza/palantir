@@ -8,7 +8,7 @@ use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
 /// `Surface::apply_to` (called by `Panel::show`) writes the clip bit
-/// AND `extras.chrome` together. One fixture sweeps every Surface
+/// AND records chrome in `Tree::chrome_table` together. One fixture sweeps every Surface
 /// configuration: no surface; paint-only via `From<Background>`;
 /// `Surface::scissor`; `Surface::clipped`; `Surface::rounded` with
 /// non-zero radius; `Surface::rounded` with zero-radius downgrade.
