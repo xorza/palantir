@@ -159,7 +159,6 @@ impl ApplicationHandler for App {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 tracing::info!(scale_factor, "scale factor changed");
                 state.display.scale_factor = scale_factor as f32;
-                state.ui.request_repaint();
                 state.window.request_redraw();
             }
             WindowEvent::Resized(new) => {
@@ -168,7 +167,6 @@ impl ApplicationHandler for App {
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
                 state.display.physical = glam::UVec2::new(state.config.width, state.config.height);
-                state.ui.request_repaint();
                 state.window.request_redraw();
             }
             WindowEvent::CursorMoved { .. }

@@ -66,10 +66,6 @@ pub struct Ui {
     pub(crate) cascades: Cascades,
     pub(crate) display: Display,
 
-    /// Defaults to `true` so the first frame always renders. Cleared by
-    /// `end_frame`, set by `on_input` / `request_repaint`.
-    repaint_requested: bool,
-
     /// Per-frame damage state. `Damage::compute` returns
     /// [`DamagePaint`] — `Full`, `Partial(rect)`, or `Skip`.
     pub(crate) damage: Damage,
@@ -97,9 +93,6 @@ impl Ui {
             input: InputState::new(),
             cascades: Cascades::default(),
             display: Display::default(),
-            // First frame must render so the host has something to
-            // present. Subsequent idle frames flip back to `false`.
-            repaint_requested: true,
             damage: Damage::default(),
             scroll_nodes: Vec::new(),
         }
@@ -130,7 +123,10 @@ impl Ui {
     /// Finalize the just-recorded frame: measure + arrange, rebuild cascades
     /// and hit-index, compute hashes and damage, and encode + compose into
     /// the frontend's `RenderBuffer`. Returns the painted output ready for
-    /// `WgpuBackend::submit`. Clears the repaint gate.
+    /// `WgpuBackend::submit`. Damage's prev-state is committed here on the
+    /// assumption that the host will present this frame — see
+    /// [`Self::invalidate_prev_frame`] for the rewind path when that
+    /// assumption breaks.
     pub fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
         // Hashes are pure functions of recorded inputs and don't depend on
@@ -191,7 +187,6 @@ impl Ui {
         self.input.end_frame(cascades);
         let damage = self.damage.compute(&self.tree, cascades, removed, surface);
 
-        self.repaint_requested = false;
         // Encoder filter is `Some` only on Partial frames. Full
         // re-encodes everything; Skip will be ignored by `submit`,
         // but we still encode normally so the next non-Skip frame
@@ -208,27 +203,24 @@ impl Ui {
         FrameOutput { buffer, damage }
     }
 
-    /// Feed a palantir-native input event. Schedules a repaint
-    /// conservatively: every event sets the gate because hover/press
-    /// indices, hit-test rects, or response state may shift even when the
-    /// event itself looks like a no-op. Refining this needs a hit-test
-    /// inside `on_input`.
+    /// Feed a palantir-native input event. Hosts mirror this with their
+    /// own redraw-scheduling — palantir doesn't track a repaint gate,
+    /// since whether to call `window.request_redraw()` is a host
+    /// concern (winit ↔ ui boundary).
     pub fn on_input(&mut self, event: InputEvent) {
         self.input.on_input(event, &self.cascades.result);
-        self.repaint_requested = true;
     }
 
-    /// True if the UI has changed since the last `end_frame`. Hosts gate
-    /// `request_redraw` on this so idle frames cost nothing.
-    pub fn should_repaint(&self) -> bool {
-        self.repaint_requested
-    }
-
-    /// Schedule a repaint on the next host tick. Use for animations, async
-    /// state landing, theme changes, or any mutation that doesn't flow
-    /// through `on_input`.
-    pub fn request_repaint(&mut self) {
-        self.repaint_requested = true;
+    /// Drop damage's prev-frame snapshot so the next `end_frame` is
+    /// forced to return `DamagePaint::Full`. Hosts call this when the
+    /// last `end_frame`'s output didn't actually reach the swapchain
+    /// — failed surface acquire (Occluded, Timeout, Outdated, Lost,
+    /// Validation), surface reconfigure, or any other path that
+    /// short-circuits `submit` + `present`. Without the rewind, the
+    /// next frame's diff would compare against snapshots from a frame
+    /// that was never painted and incorrectly return `Skip`.
+    pub fn invalidate_prev_frame(&mut self) {
+        self.damage.prev_surface = None;
     }
 
     /// Borrow the cross-frame state row for `id`, creating it via

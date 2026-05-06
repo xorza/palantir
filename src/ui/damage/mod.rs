@@ -38,8 +38,8 @@ pub(crate) struct NodeSnapshot {
 /// `dirty` lists every added / hash-changed / rect-changed node in
 /// pre-order paint order. `rect` is the smallest rect enclosing all
 /// dirty contributions plus every removed widget's prev rect.
-/// `None` when no node is dirty — legitimate when the host called
-/// `request_repaint()` but nothing actually changed (e.g., an
+/// `None` when no node is dirty — legitimate when the host
+/// requested a redraw but nothing actually changed (e.g., an
 /// animation tick that didn't advance any visible state).
 ///
 /// `prev` is the per-`WidgetId` snapshot map carried over from last
