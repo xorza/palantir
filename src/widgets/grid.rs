@@ -107,14 +107,9 @@ impl Grid {
         // layout). See `Theme::panel`.
         let surface = self.surface.or(ui.theme.panel);
         if let Some(s) = surface.as_ref() {
-            s.apply_clip(&mut element);
+            s.apply_to(&mut element);
         }
-        let node = ui.node(element, |ui| {
-            if let Some(s) = surface {
-                s.paint.add_to(ui);
-            }
-            body(ui);
-        });
+        let node = ui.node(element, body);
 
         let state = ui.response_for(id);
         Response { node, state }

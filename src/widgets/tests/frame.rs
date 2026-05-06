@@ -1,7 +1,6 @@
 use crate::layout::types::{sense::Sense, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::shape::Shape;
 use crate::support::testing::{click_at, ui_at};
 use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
@@ -28,9 +27,11 @@ fn frame_paints_a_single_rounded_rect() {
     });
     ui.end_frame();
 
+    // Chrome lives on `extras.chrome`, not in the shapes list.
     let shapes = ui.tree.shapes.slice_of(frame_node.unwrap().index());
-    assert_eq!(shapes.len(), 1);
-    assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
+    assert!(shapes.is_empty());
+    let extras = ui.tree.read_extras(frame_node.unwrap());
+    assert!(extras.chrome.is_some(), "frame chrome stamped onto extras");
 
     // Default sense is None — frame is not a hit-test target.
     let r = ui.pipeline.layout.result.rect[frame_node.unwrap().index()];

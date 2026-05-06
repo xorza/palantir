@@ -1,7 +1,6 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::shape::Shape;
 use crate::support::testing::{click_at, ui_at};
 use crate::tree::element::Configure;
 use crate::widgets::theme::{Background, Surface};
@@ -99,10 +98,11 @@ fn panel_hugs_largest_child_and_layers_them() {
     assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
     assert_eq!((b.size.w, b.size.h), (60.0, 50.0));
 
-    // Panel paints its bg shape; first shape on the panel node is the rect.
+    // Panel chrome lives on `extras.chrome`, not in the shapes list.
     let shapes = ui.tree.shapes.slice_of(panel_node.unwrap().index());
-    assert_eq!(shapes.len(), 1);
-    assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
+    assert!(shapes.is_empty());
+    let extras = ui.tree.read_extras(panel_node.unwrap());
+    assert!(extras.chrome.is_some(), "panel chrome stamped onto extras");
 }
 
 #[test]

@@ -39,7 +39,7 @@ use crate::layout::types::{
     justify::Justify, sense::Sense, sizing::Sizes, visibility::Visibility,
 };
 use crate::primitives::{
-    corners::Corners, size::Size, spacing::Spacing, transform::TranslateScale,
+    background::Background, size::Size, spacing::Spacing, transform::TranslateScale,
 };
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
@@ -133,25 +133,15 @@ pub(crate) struct ElementExtras {
     pub(crate) justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
     pub(crate) child_align: Align,
-    /// Mask geometry for both `ClipMode::Rect` and `ClipMode::Rounded`.
-    /// `inset` deflates the layout rect on every side (typically
-    /// `Background.stroke.width` so children can't paint over the
-    /// painted stroke). `radius` is the painted corner radii — `Some`
-    /// for `Rounded` (encoder inflates by `inset` for the SDF mask),
-    /// `None` for plain `Rect`. Whole field is `None` for
-    /// `ClipMode::None`. Stamped by `Surface::apply_clip`.
-    pub(crate) clip_mask: Option<ClipMask>,
-}
-
-/// Mask geometry covering both `Rect` and `Rounded` clip modes. The
-/// painted `Background` owns the stroke width (→ `inset`) and the
-/// corner radii (→ `radius` for `Rounded`). Encoder deflates the
-/// layout rect by `inset` for either mode, plus inflates each
-/// `radius` corner by `inset` for the `Rounded` SDF mask.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ClipMask {
-    pub(crate) inset: f32,
-    pub(crate) radius: Option<Corners>,
+    /// Panel chrome — the painted `Background`. Single source of
+    /// truth for both painted background emission AND clip mask
+    /// geometry: encoder paints it as the node's own `RoundedRect`
+    /// (before its clip) and reads `chrome.{radius,stroke}` for the
+    /// rounded mask radius and stroke-width inset. Clip mode lives
+    /// separately in `PaintAttrs.clip`. `None` for nodes without
+    /// chrome (text leaves, layout-only panels). Stamped by
+    /// `Surface::apply_to`.
+    pub(crate) chrome: Option<Background>,
 }
 
 impl ElementExtras {
@@ -172,7 +162,7 @@ impl ElementExtras {
         line_gap: 0.0,
         justify: Justify::Start,
         child_align: Align::new(HAlign::Auto, VAlign::Auto),
-        clip_mask: None,
+        chrome: None,
     };
 }
 
@@ -298,11 +288,12 @@ pub struct Element {
     /// stencil mask (radius from `clip_radius`); `None` = no clip.
     /// No effect on layout.
     pub(crate) clip: ClipMode,
-    /// Mask geometry paired with `ClipMode::Rect` / `ClipMode::Rounded`
-    /// — see [`ClipMask`] for the inset/radius bundle. Source of truth
-    /// is the panel's `Surface`, stamped by `Surface::apply_clip`.
-    /// Ignored when `clip` is `None`.
-    pub(crate) clip_mask: Option<ClipMask>,
+    /// Painted `Background` — the chrome of this node. Encoder
+    /// emits it as a `RoundedRect` before pushing the clip, and
+    /// reads its `radius` + `stroke` to derive the rounded clip mask
+    /// (when `clip == Rounded`). `None` for nodes without chrome.
+    /// Stamped via `Surface::apply_to`.
+    pub(crate) chrome: Option<Background>,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any
     /// ancestor transform; descendants render and hit-test in the world
@@ -343,7 +334,7 @@ impl Element {
             focusable: false,
             visibility: Visibility::Visible,
             clip: ClipMode::None,
-            clip_mask: None,
+            chrome: None,
             transform: None,
         }
     }
@@ -375,7 +366,7 @@ impl Element {
             line_gap: self.line_gap,
             justify: self.justify,
             child_align: self.child_align,
-            clip_mask: self.clip_mask,
+            chrome: self.chrome,
         };
         ElementSplit {
             layout,

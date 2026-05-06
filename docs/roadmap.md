@@ -6,6 +6,7 @@ Spacing serializable nicely.
  surface.paint.add_to(ui);  - direct - surface add_to and no clipping info in element
  gradients, textures
  fn emit_background_shapes( - remove
+ frame to accept surface
 
 ## Now
 

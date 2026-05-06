@@ -1,11 +1,10 @@
 use crate::layout::types::clip_mode::ClipMode;
+pub use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
-use crate::shape::Shape;
-use crate::tree::element::{ClipMask, Element};
-use crate::ui::Ui;
+use crate::tree::element::Element;
 
 // Default palette: Ayu Mirage High Contrast. Mirrors
 // `assets/reference-palette.toml` — that file is the hand-edited source
@@ -26,28 +25,6 @@ mod palette {
     pub const TEXT_DISABLED: Color = Color::hex(0x878a8d);
     // accent
     pub const ACCENT: Color = Color::hex(0x9adbfb);
-}
-
-/// Paint data shared by container widgets (`Frame`, `Panel`, `Grid`)
-/// and per-state widget Visuals: fill colour, optional stroke, and
-/// corner radii. Default is transparent fill / no stroke / zero radius
-/// — emitting nothing — so a container that never sets any of these
-/// adds no shape to the tree (`Ui::add_shape` filters no-op shapes).
-#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Background {
-    pub fill: Color,
-    pub stroke: Option<Stroke>,
-    pub radius: Corners,
-}
-
-impl Background {
-    pub(crate) fn add_to(&self, ui: &mut Ui) {
-        ui.add_shape(Shape::RoundedRect {
-            radius: self.radius,
-            fill: self.fill,
-            stroke: self.stroke,
-        });
-    }
 }
 
 /// Container chrome: optional paint plus optional clip behavior. The clip
@@ -102,42 +79,22 @@ impl Surface {
         }
     }
 
-    /// Stamp clip flags onto the element. Called by container widgets in
-    /// their `show()` builder before `ui.node`. `ClipMode::Rounded` with a
-    /// zero `paint.radius` downgrades to `Rect` here so the encoder never
-    /// sees a rounded clip without a radius.
-    pub(crate) fn apply_clip(&self, element: &mut Element) {
-        let inset = self.paint.stroke.map_or(0.0, |s| s.width);
-        match self.clip {
-            ClipMode::None => {}
-            ClipMode::Rect => {
-                element.clip = ClipMode::Rect;
-                // Children scissor-clip inside the painted stroke ring.
-                element.clip_mask = Some(ClipMask {
-                    inset,
-                    radius: None,
-                });
-            }
-            ClipMode::Rounded => {
-                if self.paint.radius.approx_zero() {
-                    element.clip = ClipMode::Rect;
-                    element.clip_mask = Some(ClipMask {
-                        inset,
-                        radius: None,
-                    });
-                } else {
-                    element.clip = ClipMode::Rounded;
-                    // Encoder deflates the layout rect by `inset` and
-                    // inflates each corner radius by `inset` so the SDF
-                    // mask sits just inside the painted stroke ring at
-                    // both corners and straight edges.
-                    element.clip_mask = Some(ClipMask {
-                        inset,
-                        radius: Some(self.paint.radius),
-                    });
-                }
-            }
-        }
+    /// Stamp this surface's clip + chrome onto the element. Called by
+    /// container widgets in their `show()` builder before `ui.node`.
+    /// Encoder reads `element.chrome` for both painted-background
+    /// emission AND for the rounded-clip mask geometry (radius from
+    /// `chrome.radius`, inset from `chrome.stroke.width`). Single
+    /// source of truth — no separate clip-mask field.
+    ///
+    /// `ClipMode::Rounded` with a zero `paint.radius` downgrades to
+    /// `Rect` here so the encoder never sees a rounded clip without a
+    /// radius.
+    pub(crate) fn apply_to(&self, element: &mut Element) {
+        element.clip = match self.clip {
+            ClipMode::Rounded if self.paint.radius.approx_zero() => ClipMode::Rect,
+            mode => mode,
+        };
+        element.chrome = Some(self.paint);
     }
 }
 
