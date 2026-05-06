@@ -7,11 +7,11 @@
 //! the pool, so the cache is hit for free across groups.
 //!
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
-//! [`TextRun`]: crate::renderer::gpu::buffer::TextRun
+//! [`TextRun`]: crate::renderer::render_buffer::TextRun
 
 use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
-use crate::renderer::gpu::buffer::TextRun;
+use crate::renderer::render_buffer::TextRun;
 use crate::text::SharedCosmic;
 use crate::text::cosmic::RenderSplit;
 use glam::UVec2;

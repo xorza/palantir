@@ -5,7 +5,7 @@ use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
-use crate::renderer::gpu::buffer::RenderBuffer;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 

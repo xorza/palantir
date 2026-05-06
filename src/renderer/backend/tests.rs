@@ -8,8 +8,8 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
-use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
-use crate::renderer::gpu::quad::Quad;
+use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
