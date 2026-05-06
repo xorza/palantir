@@ -139,6 +139,67 @@ fn clip_emits_balanced_push_pop() {
     }
 }
 
+#[test]
+fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
+    use crate::primitives::corners::Corners;
+    let mut ui = ui_at(UVec2::new(200, 200));
+    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
+        Panel::zstack()
+            .with_id("rounded")
+            .size(80.0)
+            .clip(ClipMode::Rounded)
+            .background(Background {
+                fill: Color::rgb(0.2, 0.2, 0.2),
+                radius: Corners::all(8.0),
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                Frame::new().with_id("c").size(40.0).show(ui);
+            });
+    });
+    ui.end_frame();
+    let cmds = encode_cmds(&ui);
+    assert_eq!(
+        cmds.kinds
+            .iter()
+            .filter(|k| **k == CmdKind::PushClipRounded)
+            .count(),
+        1,
+        "rounded clip with rounded background emits PushClipRounded"
+    );
+}
+
+#[test]
+fn clip_rounded_falls_back_to_scissor_without_background() {
+    let mut ui = ui_at(UVec2::new(200, 200));
+    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
+        Panel::zstack()
+            .with_id("rounded_no_bg")
+            .size(80.0)
+            .clip(ClipMode::Rounded)
+            .show(ui, |ui| {
+                Frame::new().with_id("c").size(40.0).show(ui);
+            });
+    });
+    ui.end_frame();
+    let cmds = encode_cmds(&ui);
+    assert_eq!(
+        cmds.kinds
+            .iter()
+            .filter(|k| **k == CmdKind::PushClipRounded)
+            .count(),
+        0,
+        "no background → no radius → falls back to scissor"
+    );
+    assert_eq!(
+        cmds.kinds
+            .iter()
+            .filter(|k| **k == CmdKind::PushClip)
+            .count(),
+        1
+    );
+}
+
 /// Walk an encoder command stream and return the effective screen-space rect
 /// for each `DrawRect`, keyed by its fill colour. The interpretation mirrors
 /// what a backend does: `PushTransform` composes onto the current transform;
@@ -161,7 +222,7 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
                 t = t.compose(child);
             }
             CmdKind::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
-            CmdKind::PushClip => {
+            CmdKind::PushClip | CmdKind::PushClipRounded => {
                 let r: Rect = cmds.read(start);
                 let screen = t.apply_rect(r);
                 let intersected = match clip {

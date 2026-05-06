@@ -38,7 +38,9 @@ use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
     justify::Justify, sense::Sense, sizing::Sizes, visibility::Visibility,
 };
-use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
+use crate::primitives::{
+    corners::Corners, size::Size, spacing::Spacing, transform::TranslateScale,
+};
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 
@@ -131,6 +133,11 @@ pub(crate) struct ElementExtras {
     pub(crate) justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
     pub(crate) child_align: Align,
+    /// Per-corner radii for `ClipMode::Rounded`. Stamped by the panel
+    /// builder from its own `Background.radius` so the clip and the
+    /// painted background share one source of truth. `None` for nodes
+    /// whose clip mode is not `Rounded`.
+    pub(crate) clip_radius: Option<Corners>,
 }
 
 impl ElementExtras {
@@ -151,6 +158,7 @@ impl ElementExtras {
         line_gap: 0.0,
         justify: Justify::Start,
         child_align: Align::new(HAlign::Auto, VAlign::Auto),
+        clip_radius: None,
     };
 }
 
@@ -276,6 +284,10 @@ pub struct Element {
     /// children may still measure beyond the rect; they're just visually
     /// clipped.
     pub(crate) clip: ClipMode,
+    /// Per-corner radii for `ClipMode::Rounded`. Stamped by the panel
+    /// builder from its `Background.radius`. Ignored when `clip` is not
+    /// `Rounded`.
+    pub(crate) clip_radius: Option<Corners>,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any
     /// ancestor transform; descendants render and hit-test in the world
@@ -316,6 +328,7 @@ impl Element {
             focusable: false,
             visibility: Visibility::Visible,
             clip: ClipMode::None,
+            clip_radius: None,
             transform: None,
         }
     }
@@ -347,6 +360,7 @@ impl Element {
             line_gap: self.line_gap,
             justify: self.justify,
             child_align: self.child_align,
+            clip_radius: self.clip_radius,
         };
         ElementSplit {
             layout,

@@ -3,8 +3,8 @@ use crate::primitives::transform::TranslateScale;
 use crate::tree::GridDef;
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::Response;
 use crate::widgets::theme::Background;
+use crate::widgets::{Response, bind_clip_radius_to_background};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -110,6 +110,7 @@ impl Grid {
         // `None` falls back to `theme.panel` (default `None` = pure
         // layout). See `Theme::panel`.
         let bg = self.background.or(ui.theme.panel);
+        bind_clip_radius_to_background(&mut element, bg.as_ref());
         let node = ui.node(element, |ui| {
             if let Some(bg) = bg {
                 bg.add_to(ui);

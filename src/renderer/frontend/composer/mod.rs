@@ -149,6 +149,7 @@ impl Composer {
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
         out.scale = scale;
+        out.has_rounded_clip = false;
 
         self.clip_stack.clear();
         self.transform_stack.clear();
@@ -162,7 +163,7 @@ impl Composer {
             let kind = cmds.kinds[i];
             let start = cmds.starts[i];
             match kind {
-                CmdKind::PushClip => {
+                CmdKind::PushClip | CmdKind::PushClipRounded => {
                     let r: Rect = cmds.read(start);
                     let world = current_transform.apply_rect(r);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
@@ -172,6 +173,9 @@ impl Composer {
                     };
                     self.clip_stack.push(new);
                     group.set_scissor(Some(new), out);
+                    if matches!(kind, CmdKind::PushClipRounded) {
+                        out.has_rounded_clip = true;
+                    }
                 }
                 CmdKind::PopClip => {
                     self.clip_stack
