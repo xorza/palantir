@@ -77,7 +77,6 @@ impl Surface {
             clip: ClipMode::Rounded,
         }
     }
-
 }
 
 /// Sugar: `.background(Background { … })` keeps working — paint-only with

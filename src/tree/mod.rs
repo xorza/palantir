@@ -66,20 +66,21 @@ pub(crate) struct Tree {
     /// customized any of these. Cleared per frame.
     pub(crate) node_extras: Vec<ElementExtras>,
     /// Length parallel to the columns above. `i + 1 == subtree_end[i]` for a
-    /// leaf or a not-yet-populated parent; otherwise points one past the last
-    /// descendant of `i`.
+    /// leaf; otherwise points one past the last descendant of `i`.
+    /// Maintained incrementally by `close_node`, so the slot is final
+    /// the moment recording closes (no separate finalize pass).
     pub(crate) subtree_end: Vec<u32>,
 
     /// Per-node `Shape` storage (flat buffer + per-node start offsets).
     /// Reads via `shapes.slice_of(idx)`; writes via [`Self::add_shape`].
     pub(crate) shapes: ShapeBuf,
-    /// Recording-only scratch: index `i` holds the parent of node `i`,
-    /// or `Self::NO_PARENT` (`u32::MAX`) for a root. Used by
-    /// `close_node` to pop `current_open` and by `finalize_subtree_end`
-    /// for the post-record rollup. `u32` with a sentinel halves the
-    /// footprint vs `Vec<Option<NodeId>>` (8 bytes / entry) and lets
-    /// the rollup loop branch on a plain integer compare.
-    recording_parent: Vec<u32>,
+    /// Recording-only ancestor chain of currently-open nodes, **not
+    /// including the tip** (which lives in `current_open`). On
+    /// `close_node` the popped entry is both the parent of the closing
+    /// node (used to roll up `subtree_end`) and the new tip. Capacity
+    /// peaks at tree depth — typically a handful of entries — so this
+    /// is a depth-sized scratch, not a node-sized column.
+    open_stack: Vec<u32>,
     /// Tip of the currently-open path while recording. `Some(n)` between an
     /// `open_node` returning `n` and the matching `close_node`. Cleared in
     /// `clear`.
@@ -97,18 +98,13 @@ pub(crate) struct Tree {
 }
 
 impl Tree {
-    /// Sentinel parent for root nodes in `recording_parent`. Picked at
-    /// `u32::MAX` so a valid `NodeId.0` (capped at `node_count() - 1`)
-    /// never collides.
-    const NO_PARENT: u32 = u32::MAX;
-
     pub(crate) fn begin_frame(&mut self) {
         self.layout.clear();
         self.paint.clear();
         self.widget_ids.clear();
         self.subtree_end.clear();
         self.shapes.begin_frame();
-        self.recording_parent.clear();
+        self.open_stack.clear();
         self.current_open = None;
         self.grid.clear();
         self.node_extras.clear();
@@ -120,8 +116,6 @@ impl Tree {
     /// tree; safe to call any time after recording completes. Capacity
     /// retained across frames.
     pub(crate) fn end_frame(&mut self) {
-        self.finalize_subtree_end();
-
         let n = self.layout.len();
 
         let nodes = &mut self.hashes.node;
@@ -177,36 +171,9 @@ impl Tree {
         }
     }
 
-    /// Roll `subtree_end` up from leaves to roots so every internal
-    /// node's slot points one past its last descendant. After recording,
-    /// `subtree_end[i]` is the per-node leaf marker `i + 1` (set in
-    /// `open_node`); this single reverse pass uses `recording_parent` to
-    /// propagate each child's `subtree_end` up to its parent. Pre-order
-    /// arena → children always have higher indices than their parent →
-    /// reverse iteration visits children first. Idempotent.
-    pub(crate) fn finalize_subtree_end(&mut self) {
-        let n = self.layout.len();
-        let parents = &self.recording_parent[..n];
-        let ends = &mut self.subtree_end[..n];
-        for i in (1..n).rev() {
-            let p = parents[i];
-            if p == Self::NO_PARENT {
-                continue;
-            }
-            let pi = p as usize;
-            if ends[pi] < ends[i] {
-                ends[pi] = ends[i];
-            }
-        }
-    }
-
     /// Push a node as a child of the currently-open node (or as the root if
     /// no node is open) and make it the new tip. Pair with `close_node`.
-    pub(crate) fn open_node(
-        &mut self,
-        element: Element,
-        chrome: Option<Background>,
-    ) -> NodeId {
+    pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
         let parent = self.current_open;
         let new_id = NodeId(self.layout.len() as u32);
         if let LayoutMode::Grid(idx) = element.mode {
@@ -269,30 +236,38 @@ impl Tree {
         self.layout.push(layout);
         self.paint.push(paint);
         self.widget_ids.push(widget_id);
-        // Provisional leaf marker; `finalize_subtree_end` rolls it up
-        // post-recording. Walking ancestors per `open_node` was an
-        // O(N·depth) random-write loop with a true data dependency on
-        // `recording_parent`; the deferred pass is O(N) sequential.
+        // Leaf marker. `close_node` rolls each closing subtree up
+        // into its parent's slot, so `subtree_end` is final the
+        // moment the root's `close_node` returns.
         self.subtree_end.push(new_id.0 + 1);
         self.shapes.open_node();
-        self.recording_parent
-            .push(parent.map_or(Self::NO_PARENT, |p| p.0));
+        if let Some(p) = parent {
+            self.open_stack.push(p.0);
+        }
         self.current_open = Some(new_id);
         new_id
     }
 
-    /// Pop the currently-open node back to its parent. Panics if no node is
+    /// Pop the currently-open node back to its parent and roll its
+    /// `subtree_end` up into the parent's slot. Panics if no node is
     /// open.
     pub(crate) fn close_node(&mut self) {
-        let cur = self
+        let closing = self
             .current_open
             .expect("close_node called with no open node");
-        let p = self.recording_parent[cur.0 as usize];
-        self.current_open = if p == Self::NO_PARENT {
-            None
-        } else {
-            Some(NodeId(p))
-        };
+        match self.open_stack.pop() {
+            Some(parent) => {
+                let pi = parent as usize;
+                let end = self.subtree_end[closing.index()];
+                if self.subtree_end[pi] < end {
+                    self.subtree_end[pi] = end;
+                }
+                self.current_open = Some(NodeId(parent));
+            }
+            None => {
+                self.current_open = None;
+            }
+        }
     }
 
     pub(crate) fn push_grid_def(&mut self, def: GridDef) -> u16 {
