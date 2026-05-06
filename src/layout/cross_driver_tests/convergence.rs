@@ -14,8 +14,9 @@
 //! several widths in the swept range; post-fix the second-pass result
 //! is clamped to `new_available` and rendering proceeds.
 
+use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
-use crate::support::testing::ui_with_text;
+use crate::support::testing::{new_ui_text, ui_with_text};
 use crate::tree::element::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
@@ -150,8 +151,14 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     // showcase) plus a wider band so a future regression in either
     // direction shows up. Step 1 px to guarantee we hit whatever
     // discrete width tips the toolbar's wrap count past a threshold.
+    //
+    // Reuse one `Ui` across the sweep — recreating it would re-load
+    // the bundled cosmic fonts on every iter (~120 ms each, dominating
+    // wall time). Models the real workload too: a host keeps one `Ui`
+    // and just feeds new `begin_frame(size)` per resize.
+    let mut ui = new_ui_text();
     for w in (480u32..=900).step_by(1) {
-        let mut ui = ui_with_text(UVec2::new(w, 600));
+        ui.begin_frame(Display::from_physical(UVec2::new(w, 600), 1.0));
         Panel::vstack()
             .padding(12.0)
             .gap(12.0)
