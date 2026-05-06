@@ -23,9 +23,18 @@ owns the cache + cmd buffer and is the entry point from
   reads `is_invisible` (descendant invisibility comes from authoring +
   in-subtree ancestors, captured in `subtree_hash`), `attrs.is_clip()`
   and `extras.transform` (authoring, in `subtree_hash`), and
-  `screen_rect` only when `damage_filter.is_some()`. The cache is
-  bypassed in the damage-filter branch, so `screen_rect` never
-  influences a hit.
+  `screen_rect` only when `damage_filter.is_some()`. A cache hit
+  early-returns before that read, so `screen_rect` never influences
+  a hit — even on damage-filtered frames, where reads are allowed
+  (writes are still gated on full-paint; see "Damage-filter gate"
+  below).
+- **Damage-filter gate.** Reads run on every frame: a hit replays
+  the prior full-paint cmd stream byte-for-byte and the backend
+  scissor handles the damage rect. Writes run only when
+  `damage_filter.is_none()` — a partial-paint frame skips per-leaf
+  shapes outside the dirty region, so recording its output would
+  store an incomplete snapshot and lie about coverage. Snapshot age
+  is bounded by the last full-paint frame.
 
 ## Storage
 

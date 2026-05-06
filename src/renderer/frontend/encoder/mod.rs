@@ -56,11 +56,14 @@ const TINY_SUBTREE_THRESHOLD: u32 = 4;
 /// it; the cache lives here because nothing else in the frontend touches
 /// it.
 ///
-/// The cache is **only consulted when `damage_filter.is_none()`** — see
-/// `cache::EncodeCache` for the cascade-not-in-key argument.
-/// Damage-filtered frames bypass the cache entirely; full-repaint frames
-/// (resize, theme, first frame) and `damage_filter=None` paths get the
-/// win.
+/// Cache **reads** run on every frame (full and damage-filtered): a
+/// cached replay reproduces the prior full-paint cmd stream byte-for-byte
+/// and is correctly scissored by the backend. Cache **writes** are
+/// gated on `damage_filter.is_none()` — a partial-paint frame skips
+/// per-leaf shapes outside the dirty region, so recording its output
+/// would lie about the snapshot covering the full subtree. Snapshot age
+/// is therefore bounded by the last full-paint frame, not the last
+/// frame. See `cache::EncodeCache` for the cascade-not-in-key argument.
 #[derive(Default)]
 pub(crate) struct Encoder {
     pub(crate) cache: EncodeCache,
@@ -174,21 +177,18 @@ fn encode_node(
         return;
     }
 
-    // Cross-frame subtree-skip cache (Phase 3). Only consulted on
-    // full-paint frames (`damage_filter.is_none()`) — the descendant
-    // is_invisible / clip / transform reads inside this subtree are
-    // captured by `subtree_hash`; `screen_rect` is the only cascade
-    // input that would force re-keying, and it's read only when
-    // `damage_filter.is_some()`. See `cache::EncodeCache`.
-    //
-    // Damage-filtered frames neither hit nor refresh the cache: a
-    // partial repaint paints a strict subset of the tree, so writing
-    // back would lie about the snapshot covering the full subtree.
-    // Cache snapshot age is therefore bounded by the *last full-paint*
-    // frame, not the last frame.
+    // Cross-frame subtree-skip cache (Phase 3). Reads run on every
+    // frame (full or damage-filtered): replaying a cached subtree
+    // restores the *complete* cmd stream from the prior full-paint
+    // frame, which is byte-identical to a fresh full encode and is
+    // correctly scissored downstream by the backend's damage rect.
+    // Writes are gated on full-paint frames only — a damage-filtered
+    // frame skips per-leaf paint for nodes outside the dirty region,
+    // so writing back would record a partial subtree and lie about
+    // coverage. Cache snapshot age is therefore bounded by the *last
+    // full-paint* frame, not the last frame. See `cache::EncodeCache`.
     let subtree_size = tree.records.end()[id.index()] - id.index() as u32;
-    let cache_eligible = damage_filter.is_none() && subtree_size > TINY_SUBTREE_THRESHOLD;
-    let cache_key = if cache_eligible {
+    let cache_key = if subtree_size > TINY_SUBTREE_THRESHOLD {
         layout.available_q(id).map(|avail| {
             (
                 tree.records.widget_id()[id.index()],
@@ -208,13 +208,15 @@ fn encode_node(
     }
 
     // Bracket cache-eligible subtrees with `EnterSubtree`/`ExitSubtree`
-    // markers. The markers go *inside* the snapshot range (cmd_lo is
-    // captured before `push_enter_subtree` so the open cmd is at index
-    // `cmd_lo`; the close is the last cmd in the range). Composer
-    // reads `EnterSubtree` to attempt a splice (fast-forwarding past
-    // the matching `ExitSubtree` on a hit) and uses `ExitSubtree` to
-    // write the snapshot back on a miss.
-    let cache_pending = if let Some((wid, subtree_hash, avail)) = cache_key {
+    // markers on full-paint frames only. The markers go *inside* the
+    // snapshot range (cmd_lo is captured before `push_enter_subtree`
+    // so the open cmd is at index `cmd_lo`; the close is the last cmd
+    // in the range). Composer reads `EnterSubtree` to attempt a splice
+    // (fast-forwarding past the matching `ExitSubtree` on a hit) and
+    // uses `ExitSubtree` to write the snapshot back on a miss.
+    let cache_pending = if damage_filter.is_none()
+        && let Some((wid, subtree_hash, avail)) = cache_key
+    {
         let cmd_lo = out.kinds.len() as u32;
         let data_lo = out.data.len() as u32;
         let enter_patch = out.push_enter_subtree(wid, subtree_hash, avail);

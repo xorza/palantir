@@ -882,3 +882,111 @@ fn encode_cache_warm_frame_matches_cold_encode() {
     assert_eq!(warm.starts, cold.starts);
     assert_eq!(warm.data, cold.data);
 }
+
+/// Encode-cache reads run on damage-filtered frames; writes don't. A
+/// warm cache must hit when the encoder is re-run with `damage_filter
+/// = Some(rect)` (replaying the full-paint cmd stream, which the
+/// backend scissor then trims), and the cache's snapshot count must
+/// not change — recording a partial-paint output would lie about
+/// subtree coverage.
+#[test]
+fn encode_cache_hits_on_damage_filtered_frame_without_writing() {
+    let build = |ui: &mut Ui| {
+        Panel::vstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .padding(8.0)
+            .gap(6.0)
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .with_id("inner")
+                    .background(Surface::clip_rect())
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .padding(6.0)
+                    .background(Background {
+                        fill: Color::rgb(0.16, 0.18, 0.22),
+                        ..Default::default()
+                    })
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .with_id("a")
+                            .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                            .background(Background {
+                                fill: Color::rgb(0.4, 0.4, 0.5),
+                                ..Default::default()
+                            })
+                            .show(ui);
+                        Frame::new()
+                            .with_id("b")
+                            .size((Sizing::FILL, Sizing::Fixed(10.0)))
+                            .background(Background {
+                                fill: Color::rgb(0.5, 0.4, 0.4),
+                                ..Default::default()
+                            })
+                            .show(ui);
+                        Frame::new()
+                            .with_id("c")
+                            .size((Sizing::FILL, Sizing::Fixed(10.0)))
+                            .background(Background {
+                                fill: Color::rgb(0.4, 0.5, 0.4),
+                                ..Default::default()
+                            })
+                            .show(ui);
+                    });
+            });
+    };
+
+    let mut ui = ui_at(UVec2::new(400, 200));
+    build(&mut ui);
+    ui.end_frame();
+
+    // Second full-paint frame primes the encode cache (`Frontend::build`
+    // passes `damage_filter=None` because Damage returns Skip for an
+    // unchanged frame).
+    begin(&mut ui, UVec2::new(400, 200));
+    build(&mut ui);
+    ui.end_frame();
+
+    let snapshots_before = ui.pipeline.frontend.encoder.cache.snapshots.len();
+    assert!(
+        snapshots_before > 0,
+        "warm cache should hold at least one snapshot"
+    );
+
+    // Re-encode directly with a damage filter that misses every node.
+    // Pre-A6 the cache was bypassed: no `EnterSubtree` markers would
+    // be emitted (cache_pending stays None and no replay runs). Post-A6
+    // the cache is consulted; the eligible subtree replays and its
+    // bracketing markers appear in the cmd stream.
+    let off_screen = Rect::new(10_000.0, 10_000.0, 10.0, 10.0);
+    ui.pipeline.frontend.encoder.encode(
+        &ui.tree,
+        &ui.pipeline.layout.result,
+        &ui.cascades.result,
+        Some(off_screen),
+    );
+
+    let cmds = &ui.pipeline.frontend.encoder.cmds;
+    let enter = cmds
+        .kinds
+        .iter()
+        .filter(|k| **k == CmdKind::EnterSubtree)
+        .count();
+    let exit = cmds
+        .kinds
+        .iter()
+        .filter(|k| **k == CmdKind::ExitSubtree)
+        .count();
+    assert!(
+        enter >= 1,
+        "damage-filtered encode should hit the cache and replay EnterSubtree markers (got {enter})"
+    );
+    assert_eq!(enter, exit, "Enter/ExitSubtree markers must be balanced");
+
+    // Writes are still gated on full-paint frames: a damage-filtered
+    // encode must not mutate the snapshot table.
+    assert_eq!(
+        ui.pipeline.frontend.encoder.cache.snapshots.len(),
+        snapshots_before,
+        "damage-filtered frame must not write back to the encode cache"
+    );
+}
