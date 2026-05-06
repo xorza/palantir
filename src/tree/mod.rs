@@ -350,8 +350,7 @@ impl Tree {
     pub(crate) fn children(&self, parent: NodeId) -> ChildIter<'_> {
         let pi = parent.0 as usize;
         ChildIter {
-            layout: &self.layout,
-            nodes: &self.nodes,
+            tree: self,
             next: parent.0 + 1,
             end: self.nodes[pi].end,
         }
@@ -415,10 +414,8 @@ impl Tree {
     }
 }
 
-// todo have only tree ref
 pub(crate) struct ChildIter<'a> {
-    layout: &'a [LayoutCore],
-    nodes: &'a [NodeMeta],
+    tree: &'a Tree,
     next: u32,
     end: u32,
 }
@@ -453,8 +450,8 @@ impl<'a> Iterator for ChildIter<'a> {
             return None;
         }
         let id = NodeId(self.next);
-        let visibility = self.layout[id.index()].visibility;
-        self.next = self.nodes[self.next as usize].end;
+        let visibility = self.tree.layout[id.index()].visibility;
+        self.next = self.tree.nodes[self.next as usize].end;
         Some(Child { id, visibility })
     }
 }
