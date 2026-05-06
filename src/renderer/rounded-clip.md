@@ -84,14 +84,14 @@ methods that mutate `Element`).
 
 ## Backend stencil path (in `renderer/backend/`)
 
-`FrameOutput::has_rounded_clip()` is set by the composer when it sees
-any `PushClipRounded`. The backend branches on it.
+`RenderBuffer::has_rounded_clip()` walks `groups` for any
+`rounded_clip.is_some()`. The backend branches on it.
 
-**Plain path** (`has_rounded_clip == false`): the existing color-only
+**Plain path** (no rounded groups): the existing color-only
 render pass. No stencil texture allocated. No stencil-variant pipelines
 built. Bit-for-bit identical to pre-feature.
 
-**Stencil path** (`has_rounded_clip == true`):
+**Stencil path** (any rounded group):
 - `Backbuffer.stencil: Option<StencilAttachment>` — lazy `Stencil8`
   texture, allocated on first rounded frame, kept warm thereafter.
 - `QuadPipeline::ensure_stencil(device)` — lazy-builds two pipelines:

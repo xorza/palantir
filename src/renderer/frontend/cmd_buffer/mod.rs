@@ -34,11 +34,10 @@ use crate::tree::widget_id::WidgetId;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CmdKind {
     PushClip,
-    /// Scissor clip + rounded-corner stencil mask. Same `Rect` payload as
-    /// `PushClip` plus a trailing `Corners` (taken from the panel's
-    /// `Background.radius`). Composer treats it as a regular scissor for
-    /// the purposes of group splitting; the backend's stencil path reads
-    /// the radius to write the SDF mask.
+    /// Scissor clip + rounded-corner stencil mask. Carries
+    /// `PushClipRoundedPayload` (rect + radius). Composer treats it as a
+    /// regular scissor for the purposes of group splitting; the
+    /// backend's stencil path reads the radius to write the SDF mask.
     PushClipRounded,
     PopClip,
     PushTransform,
@@ -54,6 +53,33 @@ pub(crate) enum CmdKind {
     /// drives `ComposeCache::write_subtree` on the miss path.
     EnterSubtree,
     ExitSubtree,
+}
+
+impl CmdKind {
+    /// `true` for kinds whose payload begins with `rect: Rect` — i.e.
+    /// the first 8 bytes (= 2 u32 words) of the payload are
+    /// `rect.min.{x, y}`. Used by the encode cache to translate
+    /// subtree-relative coordinates without unpacking each payload
+    /// variant. Pinned by const asserts on each payload struct's
+    /// `offset_of!(rect)` below.
+    #[inline]
+    pub(crate) fn has_leading_rect(self) -> bool {
+        matches!(
+            self,
+            CmdKind::PushClip
+                | CmdKind::PushClipRounded
+                | CmdKind::DrawRect
+                | CmdKind::DrawRectStroked
+                | CmdKind::DrawText,
+        )
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct PushClipRoundedPayload {
+    pub(crate) rect: Rect,
+    pub(crate) radius: Corners,
 }
 
 #[repr(C)]
@@ -81,16 +107,12 @@ pub(crate) struct DrawTextPayload {
     pub(crate) key: TextCacheKey,
 }
 
-/// 32 bytes, align 8. Trailing `_pad` makes the size a multiple of 8
-/// (the alignment forced by the `u64` fields) so `bytemuck::Pod`'s
-/// no-padding-bytes invariant holds. `exit_idx` is patched by
-/// [`RenderCmdBuffer::push_exit_subtree`] once the matching close is
-/// recorded. Carries the subtree's `(WidgetId, subtree_hash,
-/// available_q)` triple — the composer cache reads them to key its
-/// lookup directly off the cmd stream (self-describing markers).
-///
-/// Size + align are pinned by a `const` assert so the field-offset math
-/// in `push_exit_subtree` (via `offset_of!`) stays in sync.
+/// `exit_idx` is patched by [`RenderCmdBuffer::push_exit_subtree`] once
+/// the matching close is recorded. Carries the subtree's `(WidgetId,
+/// subtree_hash, available_q)` triple — the composer cache reads them
+/// to key its lookup directly off the cmd stream (self-describing
+/// markers). Trailing padding is injected by `padding_struct` so
+/// `bytemuck::Pod`'s no-padding-bytes invariant holds.
 #[repr(C)]
 #[padding_struct::padding_struct]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -101,12 +123,15 @@ pub(crate) struct EnterSubtreePayload {
     pub(crate) exit_idx: u32,
 }
 
+/// Pin the `rect: Rect` leading-field invariant for every kind whose
+/// [`CmdKind::has_leading_rect`] returns `true`. The encode cache's
+/// `bump_rect_min` reads `data[start..start+2]` as `rect.min.{x, y}`
+/// without unpacking the variant, relying on this layout.
 const _: () = {
-    assert!(std::mem::size_of::<EnterSubtreePayload>() == 32);
-    assert!(std::mem::align_of::<EnterSubtreePayload>() == 8);
-    // `push_exit_subtree` patches `exit_idx` by word offset — pin it
-    // so a future field reorder can't silently retarget the patch.
-    assert!(std::mem::offset_of!(EnterSubtreePayload, exit_idx) == 24);
+    assert!(std::mem::offset_of!(PushClipRoundedPayload, rect) == 0);
+    assert!(std::mem::offset_of!(DrawRectPayload, rect) == 0);
+    assert!(std::mem::offset_of!(DrawRectStrokedPayload, rect) == 0);
+    assert!(std::mem::offset_of!(DrawTextPayload, rect) == 0);
 };
 
 /// Returned by [`RenderCmdBuffer::push_enter_subtree`]; threaded into
@@ -139,10 +164,9 @@ impl RenderCmdBuffer {
     }
 
     #[inline]
-    pub(crate) fn push_clip_rounded(&mut self, r: Rect, radius: Corners) {
+    pub(crate) fn push_clip_rounded(&mut self, rect: Rect, radius: Corners) {
         self.record_start(CmdKind::PushClipRounded);
-        write_pod(&mut self.data, r);
-        write_pod(&mut self.data, radius);
+        write_pod(&mut self.data, PushClipRoundedPayload { rect, radius });
     }
 
     #[inline]

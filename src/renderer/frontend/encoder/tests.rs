@@ -1,5 +1,6 @@
 use super::super::cmd_buffer::{
-    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, RenderCmdBuffer,
+    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, PushClipRoundedPayload,
+    RenderCmdBuffer,
 };
 use super::align_text_in;
 use crate::Ui;
@@ -251,11 +252,9 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     let panel_rect = ui.pipeline.layout.result.rect[panel_node.unwrap().index()];
     let expected_rect = panel_rect.deflated_by(Spacing::all(2.0));
     let start = cmds.starts[rounded_idx];
-    let mask_rect: Rect = cmds.read(start);
-    const RECT_WORDS: u32 = (size_of::<Rect>() / 4) as u32;
-    let mask_radius: Corners = cmds.read(start + RECT_WORDS);
-    assert_eq!(mask_rect, expected_rect);
-    assert_eq!(mask_radius, Corners::all(6.0));
+    let payload: PushClipRoundedPayload = cmds.read(start);
+    assert_eq!(payload.rect, expected_rect);
+    assert_eq!(payload.radius, Corners::all(6.0));
 }
 
 #[test]
