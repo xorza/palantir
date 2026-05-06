@@ -139,6 +139,11 @@ click-to-focus, eviction-on-removal, escape-to-blur.
 - **Offscreen render targets / mask layer.** Blocks real drop shadows,
   blur, masked compositing, tab transitions.
 - **Push constants vs shared UBO** for camera / scissor (SUMMARY §12.5).
+- **Nested rounded clips.** Today's stencil path handles a single
+  rounded level per group via the write/clear cycle. Multi-level
+  nesting needs a stencil ref counter (Increment on push, Decrement
+  on pop; compare = Equal against the active depth). `Stencil8`
+  supports 255 levels. See `src/renderer/rounded-clip.md`.
 
 ### Input
 
@@ -184,6 +189,10 @@ click-to-focus, eviction-on-removal, escape-to-blur.
   transform-cascade pass collapsing deep-subtree damage.
 - **Manual damage verification.** Visual A/B against `damage = None`
   to catch missed diffs.
+- **Damage × rounded clip fixture.** Partial-damage frames inside a
+  `Surface::rounded(...)` panel are untested. Theory: `LoadOp::Clear(0)`
+  per frame plus cmd-buffer replay handles it (every paint redraws
+  the mask), but no fixture pins it. See `src/renderer/rounded-clip.md`.
 
 ## Speculative — profile-gated
 
