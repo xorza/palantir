@@ -238,11 +238,47 @@ fn encode_node(
     // depend on screen position, breaking the encode cache's
     // authoring-only key. The composer culls per-cmd at compose time.
 
-    // Background-phase shapes (Text + any custom RoundedRect from
-    // user widgets) emit AFTER chrome and BEFORE children, all under
-    // the owner's clip. Overlay shapes paint after children, see below.
+    // Background-phase shapes emit after chrome and before children,
+    // all under the owner's clip. Overlay shapes are deferred to the
+    // post-children phase — see below.
     if paints {
-        emit_background_shapes(tree, layout, id, rect, out);
+        for shape in tree.shapes.slice_of(id.index()) {
+            match shape {
+                Shape::RoundedRect {
+                    radius,
+                    fill,
+                    stroke,
+                } => {
+                    out.draw_rect(rect, *radius, *fill, *stroke);
+                }
+                Shape::Text { color, align, .. } => {
+                    // Shaping ran in measure; the buffer key lives on
+                    // `LayoutResult.text_shapes`. Missing entry =
+                    // mono fallback (no shaper) or empty run — drop.
+                    let Some(shaped) = layout.text_shapes[id.index()] else {
+                        continue;
+                    };
+                    if shaped.key.is_invalid() {
+                        tracing::trace!(?shape, "encoder: dropping text with invalid key");
+                        continue;
+                    }
+                    // `layout.rect[id]` is padding-inclusive; text
+                    // aligns within the padding-deflated content area
+                    // so e.g. `Button.padding(8)` insets the label.
+                    let inner = rect.deflated_by(tree.layout[id.index()].padding);
+                    out.draw_text(
+                        align_text_in(inner, shaped.measured, *align),
+                        *color,
+                        shaped.key,
+                    );
+                }
+                // Overlay phase emits these after children — see below.
+                Shape::Overlay { .. } => {}
+                Shape::Line { .. } => {
+                    tracing::trace!(?shape, "encoder: dropping unsupported shape");
+                }
+            }
+        }
     }
 
     // Skip Push/PopTransform when the transform is identity — composing
@@ -303,50 +339,6 @@ fn encode_node(
             (p.data_lo..data_hi).into(),
             layout.rect[id.index()].min,
         );
-    }
-}
-
-/// Emit a node's "background phase" shapes (panel chrome + text
-/// runs). Called from `encode_node` either before the clip push
-/// (rounded-clip mode, so chrome stays unmasked) or after (rect /
-/// no-clip, WPF-style chrome-under-clip).
-fn emit_background_shapes(
-    tree: &Tree,
-    layout: &LayoutResult,
-    id: NodeId,
-    rect: Rect,
-    out: &mut RenderCmdBuffer,
-) {
-    for shape in tree.shapes.slice_of(id.index()) {
-        match shape {
-            Shape::RoundedRect {
-                radius,
-                fill,
-                stroke,
-            } => {
-                out.draw_rect(rect, *radius, *fill, *stroke);
-            }
-            Shape::Text { color, align, .. } => {
-                let Some(shaped) = layout.text_shapes[id.index()] else {
-                    continue;
-                };
-                if shaped.key.is_invalid() {
-                    tracing::trace!(?shape, "encoder: dropping text with invalid key");
-                    continue;
-                }
-                let inner = rect.deflated_by(tree.layout[id.index()].padding);
-                out.draw_text(
-                    align_text_in(inner, shaped.measured, *align),
-                    *color,
-                    shaped.key,
-                );
-            }
-            // Overlay phase emits these after children — see encode_node.
-            Shape::Overlay { .. } => {}
-            Shape::Line { .. } => {
-                tracing::trace!(?shape, "encoder: dropping unsupported shape");
-            }
-        }
     }
 }
 
