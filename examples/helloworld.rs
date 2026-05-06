@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use palantir::Align;
 use palantir::WgpuBackend;
 use palantir::{
-    Background, Button, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke, Ui,
+    Background, Button, ClipMode, Color, Configure, Corners, InputEvent, Panel, Sizing, Stroke, Ui,
 };
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -261,7 +261,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(16.0)
                         .margin(5)
-                        .clip(true)
+                        .clip(ClipMode::Rect)
                         .background(Background {
                             fill: Color::hex(0x252525),
                             stroke: Some(Stroke {

@@ -169,7 +169,7 @@ impl Cascades {
                 Some(t) => row.transform.compose(t),
                 None => row.transform,
             };
-            let desc_clip = if attrs.is_clip() {
+            let desc_clip = if attrs.clip_mode().is_clip() {
                 Some(match row.clip {
                     Some(c) => screen_rect.intersect(c),
                     None => screen_rect,

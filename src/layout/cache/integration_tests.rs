@@ -6,7 +6,7 @@
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::layout::types::{sizing::Sizing, track::Track};
+use crate::layout::types::{clip_mode::ClipMode, sizing::Sizing, track::Track};
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
@@ -225,7 +225,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                 Panel::zstack()
                     .with_id("transformed")
                     .transform(TranslateScale::new(glam::Vec2::new(4.0, 2.0), 1.0))
-                    .clip(true)
+                    .clip(ClipMode::Rect)
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .background(Background {

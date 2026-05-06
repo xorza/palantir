@@ -1,3 +1,4 @@
+use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::transform::TranslateScale;
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
@@ -26,11 +27,12 @@ impl Panel {
         }
     }
 
-    /// Clip descendants' paint to this panel's rendered rect (CSS
-    /// `overflow: hidden`). Layout is unchanged — children may still measure
-    /// beyond, they're just visually scissored.
-    pub fn clip(mut self, c: bool) -> Self {
-        self.element.clip = c;
+    /// Clip descendants' paint to this panel. `Rect` = scissor (cheap);
+    /// `Rounded` = stencil mask using the panel's `Background.radius`
+    /// (pulls in the stencil render path — apps that never use it pay
+    /// nothing). Layout is unchanged — children may still measure beyond.
+    pub fn clip(mut self, mode: ClipMode) -> Self {
+        self.element.clip = mode;
         self
     }
     /// Apply a pan/zoom transform to descendants (post-layout). Layout runs

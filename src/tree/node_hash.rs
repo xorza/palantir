@@ -138,8 +138,8 @@ fn hash_paint_core(h: &mut Hasher, p: PaintCore) {
     let a = p.attrs;
     let packed = (a.sense() as u16)
         | ((a.is_disabled() as u16) << 8)
-        | ((a.is_clip() as u16) << 9)
-        | ((p.extras.is_some() as u16) << 10);
+        | ((a.clip_mode() as u16) << 9)
+        | ((p.extras.is_some() as u16) << 11);
     // `extras: Option<u16>` is a side-table index — only its presence
     // matters across frames (the table is rebuilt each frame); contents
     // are hashed separately by `hash_node_extras`.

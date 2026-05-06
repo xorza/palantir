@@ -5,7 +5,8 @@ use super::align_text_in;
 use crate::Ui;
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{
-    align::Align, align::HAlign, align::VAlign, display::Display, sense::Sense, sizing::Sizing,
+    align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, display::Display,
+    sense::Sense, sizing::Sizing,
 };
 use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
 use crate::support::testing::{begin, encode_cmds, encode_cmds_filtered, ui_at};
@@ -88,11 +89,11 @@ fn clip_emits_balanced_push_pop() {
     let mut ui = ui_at(UVec2::new(200, 200));
     // Outer HStack opts out of the default-on clip so we can count just the
     // ZStack's pair under test.
-    Panel::hstack().clip(false).show(&mut ui, |ui| {
+    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
         Panel::zstack()
             .with_id("clip")
             .size(50.0)
-            .clip(true)
+            .clip(ClipMode::Rect)
             .show(ui, |ui| {
                 Frame::new()
                     .with_id("inner")
@@ -224,11 +225,11 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     // Frame 1: build, layout, end_frame so the hit index is populated.
     begin(&mut ui, UVec2::new(400, 400));
-    Panel::hstack().clip(false).show(&mut ui, |ui| {
+    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
         Panel::canvas()
             .with_id("mid")
             .size(200.0)
-            .clip(true)
+            .clip(ClipMode::Rect)
             .transform(xform)
             .show(ui, |ui| {
                 Frame::new()
@@ -331,11 +332,11 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     // Frame 2: rebuild and read clicked() on each widget.
     ui.begin_frame(Display::default());
     let mut got = (false, false, false);
-    Panel::hstack().clip(false).show(&mut ui, |ui| {
+    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
         Panel::canvas()
             .with_id("mid")
             .size(200.0)
-            .clip(true)
+            .clip(ClipMode::Rect)
             .transform(xform)
             .show(ui, |ui| {
                 got.0 = Frame::new()
@@ -384,16 +385,16 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 #[test]
 fn nested_clips_each_emit_their_own_pair() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().clip(false).show(&mut ui, |ui| {
+    Panel::hstack().clip(ClipMode::None).show(&mut ui, |ui| {
         Panel::zstack()
             .with_id("outer")
             .size(Sizing::Fixed(100.0))
-            .clip(true)
+            .clip(ClipMode::Rect)
             .show(ui, |ui| {
                 Panel::zstack()
                     .with_id("inner")
                     .size(Sizing::Fixed(50.0))
-                    .clip(true)
+                    .clip(ClipMode::Rect)
                     .show(ui, |_| {});
             });
     });
@@ -598,12 +599,12 @@ fn damage_filter_preserves_clip_pushpop() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack()
         .with_id("outer")
-        .clip(false)
+        .clip(ClipMode::None)
         .show(&mut ui, |ui| {
             Panel::hstack()
                 .with_id("clipped")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
-                .clip(true)
+                .clip(ClipMode::Rect)
                 .show(ui, |ui| {
                     Frame::new()
                         .with_id("inner")
@@ -690,7 +691,7 @@ fn encode_cache_warm_frame_matches_cold_encode() {
             .show(ui, |ui| {
                 Panel::zstack()
                     .with_id("inner")
-                    .clip(true)
+                    .clip(ClipMode::Rect)
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .background(Background {
