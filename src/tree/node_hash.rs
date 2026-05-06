@@ -164,11 +164,12 @@ fn hash_node_extras(h: &mut Hasher, e: &ElementExtras) {
     h.pod(&[e.min_size, e.max_size]);
     h.pod(&[e.gap, e.line_gap]);
     h.write_u16(((e.child_align.raw() as u16) << 8) | e.justify as u8 as u16);
-    match e.clip_radius {
+    match e.clip_mask {
         None => h.write_u8(0),
-        Some(r) => {
+        Some(m) => {
             h.write_u8(1);
-            h.pod(&r);
+            h.pod(&m.radius);
+            h.pod(&m.inset);
         }
     }
 }

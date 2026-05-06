@@ -1,7 +1,9 @@
 use super::cmd_buffer::{EnterPatch, RenderCmdBuffer};
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::layout::{cache::AvailableKey, result::LayoutResult};
-use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale};
+use crate::primitives::{
+    corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
+};
 use crate::shape::Shape;
 use crate::tree::widget_id::WidgetId;
 use crate::tree::{NodeId, Tree, node_hash::NodeHash};
@@ -165,19 +167,51 @@ fn encode_node(
     // applies inside the clip and only to children. The panel's own
     // background paints under the clip but BEFORE the transform — matching
     // WPF's `RenderTransform` convention.
+    //
+    // Exception: for `ClipMode::Rounded`, chrome paints BEFORE the clip
+    // is pushed. The rounded mask is inset by the stroke width so
+    // children can't overpaint the panel's stroke; that means chrome
+    // pixels at the stroke region sit outside the mask. If chrome
+    // painted under the mask too, its stroke would also be discarded.
+    // Painting chrome unmasked (it self-clips via the SDF) keeps the
+    // stroke visible while children stay clipped to the inset
+    // interior.
     let mode = tree.paint[id.index()].attrs.clip_mode();
     let clip = mode.is_clip();
+    let chrome_before_clip = matches!(mode, ClipMode::Rounded);
+
+    let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
+
+    if chrome_before_clip && paints {
+        emit_background_shapes(tree, layout, id, rect, out);
+    }
+
     match mode {
         ClipMode::None => {}
         ClipMode::Rect => out.push_clip(rect),
         ClipMode::Rounded => {
-            // Builder (`bind_clip_radius_to_background`) guarantees a radius
-            // is stamped whenever clip mode survives as `Rounded`.
-            let r = tree
+            // Builder (`Surface::apply_clip`) guarantees a mask is
+            // stamped whenever clip mode survives as `Rounded`.
+            //
+            // Deflate the layout rect by `mask.inset` (= painted stroke
+            // width) so children clip inside the stroke ring at
+            // straight edges, and inflate each corner radius by the
+            // same amount so the SDF rounds children further inward
+            // at corners. Slightly over-aggressive at corners (~0.5px
+            // beyond the stroke for a 1px stroke), but visually
+            // indistinguishable from the geometrically-perfect inset.
+            let mask = tree
                 .read_extras(id)
-                .clip_radius
-                .expect("ClipMode::Rounded without clip_radius — builder invariant violated");
-            out.push_clip_rounded(rect, r);
+                .clip_mask
+                .expect("ClipMode::Rounded without clip_mask — builder invariant violated");
+            let mask_rect = rect.deflated_by(Spacing::all(mask.inset));
+            let inflated = Corners {
+                tl: mask.radius.tl + mask.inset,
+                tr: mask.radius.tr + mask.inset,
+                br: mask.radius.br + mask.inset,
+                bl: mask.radius.bl + mask.inset,
+            };
+            out.push_clip_rounded(mask_rect, inflated);
         }
     }
 
@@ -194,7 +228,6 @@ fn encode_node(
     // intentionally does NOT live here: it would make cmd shape
     // depend on screen position, breaking the encode cache's
     // authoring-only key. The composer culls per-cmd at compose time.
-    let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
 
     // Two-phase shape emission per node:
     //   - Background shapes (RoundedRect, Text) paint BEFORE children
@@ -204,48 +237,8 @@ fn encode_node(
     //     under the clip and untransformed — used for sub-rect
     //     overlays like scrollbar tracks/thumbs that must sit on top
     //     of (and not pan with) the content.
-    if paints {
-        for shape in tree.shapes.slice_of(id.index()) {
-            match shape {
-                Shape::RoundedRect {
-                    radius,
-                    fill,
-                    stroke,
-                } => {
-                    out.draw_rect(rect, *radius, *fill, *stroke);
-                }
-                Shape::Text { color, align, .. } => {
-                    // Shaping happened in measure; the resulting buffer key is
-                    // on `LayoutResult.text_shapes`. Missing entry means no
-                    // shaper was installed (mono fallback) or the run was empty
-                    // — drop in either case.
-                    let Some(shaped) = layout.text_shapes[id.index()] else {
-                        continue;
-                    };
-                    if shaped.key.is_invalid() {
-                        tracing::trace!(?shape, "encoder: dropping text with invalid key");
-                        continue;
-                    }
-                    // `layout.rect[id.index()]` is padding-inclusive (the rendered
-                    // rect that DrawRect paints). Text aligns within the
-                    // padding-deflated content area so e.g. `Button.padding(8)`
-                    // insets the label visually.
-                    let inner = rect.deflated_by(tree.layout[id.index()].padding);
-                    out.draw_text(
-                        align_text_in(inner, shaped.measured, *align),
-                        *color,
-                        shaped.key,
-                    );
-                }
-                // Overlay phase — emitted after children, see below.
-                Shape::Overlay { .. } => {}
-                // No backend support for these yet — drop with a trace so they're
-                // not silently invisible.
-                Shape::Line { .. } => {
-                    tracing::trace!(?shape, "encoder: dropping unsupported shape");
-                }
-            }
-        }
+    if paints && !chrome_before_clip {
+        emit_background_shapes(tree, layout, id, rect, out);
     }
 
     // Skip Push/PopTransform when the transform is identity — composing
@@ -306,6 +299,50 @@ fn encode_node(
             (p.data_lo..data_hi).into(),
             layout.rect[id.index()].min,
         );
+    }
+}
+
+/// Emit a node's "background phase" shapes (panel chrome + text
+/// runs). Called from `encode_node` either before the clip push
+/// (rounded-clip mode, so chrome stays unmasked) or after (rect /
+/// no-clip, WPF-style chrome-under-clip).
+fn emit_background_shapes(
+    tree: &Tree,
+    layout: &LayoutResult,
+    id: NodeId,
+    rect: Rect,
+    out: &mut RenderCmdBuffer,
+) {
+    for shape in tree.shapes.slice_of(id.index()) {
+        match shape {
+            Shape::RoundedRect {
+                radius,
+                fill,
+                stroke,
+            } => {
+                out.draw_rect(rect, *radius, *fill, *stroke);
+            }
+            Shape::Text { color, align, .. } => {
+                let Some(shaped) = layout.text_shapes[id.index()] else {
+                    continue;
+                };
+                if shaped.key.is_invalid() {
+                    tracing::trace!(?shape, "encoder: dropping text with invalid key");
+                    continue;
+                }
+                let inner = rect.deflated_by(tree.layout[id.index()].padding);
+                out.draw_text(
+                    align_text_in(inner, shaped.measured, *align),
+                    *color,
+                    shaped.key,
+                );
+            }
+            // Overlay phase emits these after children — see encode_node.
+            Shape::Overlay { .. } => {}
+            Shape::Line { .. } => {
+                tracing::trace!(?shape, "encoder: dropping unsupported shape");
+            }
+        }
     }
 }
 
