@@ -5,8 +5,9 @@ use super::cmd_buffer::{
 use crate::common::hash::Hasher;
 use crate::layout::cache::AvailableKey;
 use crate::layout::types::display::Display;
+use crate::primitives::corners::Corners;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
-use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, TextRun};
+use crate::renderer::gpu::buffer::{DrawGroup, RenderBuffer, RoundedClipPhys, TextRun};
 use crate::renderer::gpu::quad::Quad;
 use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
@@ -41,6 +42,7 @@ struct SubtreeFrame {
 #[derive(Default)]
 struct GroupBuilder {
     current: Option<URect>,
+    rounded: Option<RoundedClipPhys>,
     quads_start: u32,
     texts_start: u32,
     /// `true` iff the most recent draw appended to the in-flight
@@ -53,7 +55,7 @@ struct GroupBuilder {
 impl GroupBuilder {
     /// Push the in-flight group into `out.groups` (if non-empty),
     /// rebase `quads_start` / `texts_start` onto the current `out`
-    /// lengths, and clear `last_was_text`. Scissor (`current`) is
+    /// lengths, and clear `last_was_text`. Scissor + rounded clip are
     /// preserved.
     fn flush(&mut self, out: &mut RenderBuffer) {
         let q_end = out.quads.len() as u32;
@@ -61,6 +63,7 @@ impl GroupBuilder {
         if q_end > self.quads_start || t_end > self.texts_start {
             out.groups.push(DrawGroup {
                 scissor: self.current,
+                rounded_clip: self.rounded,
                 quads: (self.quads_start..q_end).into(),
                 texts: (self.texts_start..t_end).into(),
             });
@@ -70,15 +73,21 @@ impl GroupBuilder {
         self.last_was_text = false;
     }
 
-    /// Switch to `scissor`, flushing the in-flight group only if it
-    /// differs from `current`. Always clears `last_was_text` — a
-    /// clip transition is a draw boundary even when the resolved
-    /// scissor happens to equal the current one (matches the
-    /// pre-builder behavior).
-    fn set_scissor(&mut self, scissor: Option<URect>, out: &mut RenderBuffer) {
-        if scissor != self.current {
+    /// Switch to a new clip (scissor + optional rounded), flushing the
+    /// in-flight group only if anything differs. Always clears
+    /// `last_was_text` — a clip transition is a draw boundary even
+    /// when the resolved state happens to equal the current one
+    /// (matches the pre-builder behavior).
+    fn set_clip(
+        &mut self,
+        scissor: Option<URect>,
+        rounded: Option<RoundedClipPhys>,
+        out: &mut RenderBuffer,
+    ) {
+        if scissor != self.current || rounded != self.rounded {
             self.flush(out);
             self.current = scissor;
+            self.rounded = rounded;
         }
         self.last_was_text = false;
     }
@@ -124,11 +133,20 @@ impl GroupBuilder {
 #[derive(Default)]
 pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
-    clip_stack: Vec<URect>,
+    /// Pairs the resolved scissor with its rounded-clip data (when the
+    /// push was `PushClipRounded`); both ride together so a `PopClip`
+    /// restores them as a unit.
+    clip_stack: Vec<ClipFrame>,
     transform_stack: Vec<TranslateScale>,
     subtree_stack: Vec<SubtreeFrame>,
     pub(crate) cache: ComposeCache,
     pub(crate) buffer: RenderBuffer,
+}
+
+#[derive(Clone, Copy)]
+struct ClipFrame {
+    scissor: URect,
+    rounded: Option<RoundedClipPhys>,
 }
 
 impl Composer {
@@ -167,21 +185,39 @@ impl Composer {
                     let r: Rect = cmds.read(start);
                     let world = current_transform.apply_rect(r);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
-                    let new = match self.clip_stack.last() {
-                        Some(parent) => me.clamp_to(*parent),
+                    let scissor = match self.clip_stack.last() {
+                        Some(parent) => me.clamp_to(parent.scissor),
                         None => me,
                     };
-                    self.clip_stack.push(new);
-                    group.set_scissor(Some(new), out);
-                    if matches!(kind, CmdKind::PushClipRounded) {
+                    let rounded = if matches!(kind, CmdKind::PushClipRounded) {
                         out.has_rounded_clip = true;
-                    }
+                        // Radius payload follows the rect in PushClipRounded.
+                        // Rect = 4 f32 words, so the corners read starts 4 words after the rect.
+                        const RECT_WORDS: u32 = (size_of::<Rect>() / 4) as u32;
+                        let logical_radius: Corners = cmds.read(start + RECT_WORDS);
+                        // Combine current transform's uniform scale with DPR
+                        // so radii match the painted SDF's physical size.
+                        let phys_scale = current_transform.scale * scale;
+                        Some(RoundedClipPhys {
+                            rect: scissor,
+                            radius: logical_radius.scaled_by(phys_scale),
+                        })
+                    } else {
+                        None
+                    };
+                    self.clip_stack.push(ClipFrame { scissor, rounded });
+                    group.set_clip(Some(scissor), rounded, out);
                 }
                 CmdKind::PopClip => {
                     self.clip_stack
                         .pop()
                         .expect("PopClip without matching PushClip");
-                    group.set_scissor(self.clip_stack.last().copied(), out);
+                    let parent = self.clip_stack.last().copied();
+                    group.set_clip(
+                        parent.map(|f| f.scissor),
+                        parent.and_then(|f| f.rounded),
+                        out,
+                    );
                 }
                 CmdKind::PushTransform => {
                     let t: TranslateScale = cmds.read(start);
@@ -214,7 +250,7 @@ impl Composer {
                     // the encoder).
                     if let Some(active) = self.clip_stack.last() {
                         let me = scissor_from_logical(world_rect, scale, snap, viewport_phys);
-                        if me.intersect(*active).is_none() {
+                        if me.intersect(active.scissor).is_none() {
                             i += 1;
                             continue;
                         }
@@ -237,7 +273,7 @@ impl Composer {
                     let avail = payload.avail;
                     let cascade_fp = cascade_fingerprint(
                         current_transform,
-                        self.clip_stack.last().copied(),
+                        self.clip_stack.last().map(|f| f.scissor),
                         scale,
                         snap,
                         viewport_phys,
@@ -305,8 +341,8 @@ impl Composer {
                     // intersection means the run can't reach pixels — skip
                     // the push entirely (cull).
                     let mut bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
-                    if let Some(parent_clip) = self.clip_stack.last() {
-                        bounds = bounds.clamp_to(*parent_clip);
+                    if let Some(parent) = self.clip_stack.last() {
+                        bounds = bounds.clamp_to(parent.scissor);
                     }
                     if bounds.w == 0 || bounds.h == 0 {
                         i += 1;

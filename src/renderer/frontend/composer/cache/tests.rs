@@ -56,6 +56,7 @@ fn write(
     let mut groups = vec![
         DrawGroup {
             scissor: None,
+            rounded_clip: None,
             quads: Span::new(0, 0),
             texts: Span::new(0, 0),
         };
@@ -67,6 +68,7 @@ fn write(
     texts.push(text_run());
     groups.push(DrawGroup {
         scissor: Some(URect::new(0, 0, 100, 100)),
+        rounded_clip: None,
         quads: Span::new(quads_lo, 2),
         texts: Span::new(texts_lo, 1),
     });
@@ -158,6 +160,7 @@ fn size_change_appends_and_marks_garbage() {
     let small_quads = vec![quad(0.0)];
     let small_groups = vec![DrawGroup {
         scissor: None,
+        rounded_clip: None,
         quads: Span::new(0, 1),
         texts: Span::new(0, 0),
     }];
@@ -238,6 +241,7 @@ fn compact_preserves_lookups() {
     let small_quads = vec![quad(0.0)];
     let small_groups = vec![DrawGroup {
         scissor: None,
+        rounded_clip: None,
         quads: Span::new(0, 1),
         texts: Span::new(0, 0),
     }];

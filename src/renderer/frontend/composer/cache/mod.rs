@@ -117,6 +117,7 @@ impl ComposeCache {
         for g in hit.groups {
             out.groups.push(DrawGroup {
                 scissor: g.scissor,
+                rounded_clip: g.rounded_clip,
                 quads: Span::new(g.quads.start + base_q, g.quads.len),
                 texts: Span::new(g.texts.start + base_t, g.texts.len),
             });
@@ -271,6 +272,7 @@ impl ComposeCache {
 fn rebase_relative(src: &DrawGroup, rebase_q: u32, rebase_t: u32) -> DrawGroup {
     DrawGroup {
         scissor: src.scissor,
+        rounded_clip: src.rounded_clip,
         quads: Span::new(src.quads.start - rebase_q, src.quads.len),
         texts: Span::new(src.texts.start - rebase_t, src.texts.len),
     }
