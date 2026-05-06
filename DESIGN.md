@@ -16,30 +16,38 @@ Pure immediate-mode hits a paradox: parents need child sizes before placing them
 
 ```
 user closures ──► [1] Record    (append per-node columns + Shapes; no layout, no paint)
+                  [*] end_frame finalize (subtree_end rollup + per-node + subtree-rollup hashes)
                   [2] Measure   (post-order, bottom-up)  — desired size given available
+                                                          short-circuited per subtree by MeasureCache
                   [3] Arrange   (pre-order, top-down)    — parent assigns final Rect to each child
                   [4] Cascade   (pre-order, top-down)    — flatten disabled/visibility/clip/transform
-                  [5] Encode + Paint                     — emit RenderCmds, group by scissor, submit
+                                                          + build hit index in same walk
+                  [5] Encode + Compose + Paint            — emit RenderCmds (subtree-skip via EncodeCache),
+                                                          compose to physical-px quads (ComposeCache),
+                                                          submit; damage tri-state (Full/Partial/Skip)
                   [*] Hit-test next frame's input against last frame's cascade
 ```
 
-The tree is rebuilt every frame but laid out fresh — no stale cached sizes, no jitter. Identity is by stable IDs (`WidgetId`, hashed call-site + user key) so animation/state/focus survive across frames.
+The tree is rebuilt every frame but laid out fresh — no stale cached sizes, no jitter. Identity is by stable IDs (`WidgetId`, hashed call-site + user key) so animation/state/focus survive across frames. Cross-frame *work skipping* lives in side caches keyed on `(WidgetId, subtree_hash, available_q)`: identical authoring + identical incoming `available` ⇒ blit last frame's `desired` / `RenderCmd` slice and skip recursion. The tree itself stays throwaway.
 
-**Cascade is its own pass** (not folded into encoder or hit-test) precisely so the encoder *and* the hit-index read the same flattened state — they can't drift on disabled/clipped/transformed subtrees.
+**Cascade is its own pass** (not folded into encoder or hit-test) precisely so the encoder *and* the hit-index read the same flattened state — they can't drift on disabled/clipped/transformed subtrees. The hit index is built inside the cascade walk so they share one allocation.
 
 ## Tree shape
 
 Arena `Tree`, **SoA** — columns indexed by `NodeId.0`:
 
 - `layout: Vec<LayoutCore>` — mode/size/padding/margin/align/visibility (read by measure + arrange).
-- `paint: Vec<PaintCore>` — `PaintAttrs` (1-byte sense/disabled/clip) + extras index (read by cascade/encoder/hit-test).
-- `widget_ids: Vec<WidgetId>` — hit-test + future state map.
+- `paint: Vec<PaintCore>` — `PaintAttrs` (1-byte sense/disabled/clip) + optional `extras: u16` index (read by cascade/encoder/hit-test).
+- `widget_ids: Vec<WidgetId>` — hit-test + state map key.
 - `subtree_end: Vec<u32>` — pre-order topology, `i + 1 == subtree_end[i]` for a leaf. Drives every walk.
-- `shapes: Vec<Shape>` + `shape_starts: Vec<u32>` — per-node paint primitives, sliced flat.
+- `shapes: ShapeBuf` — flat `Vec<Shape>` + per-node `starts: Vec<u32>` (length `node_count() + 1`). Sliced as `buf[starts[i]..starts[i+1]]`.
+- `node_extras: Vec<ElementExtras>` — out-of-line side table for rare fields (`transform`, `position`, `grid` cell). Pointed to from `paint[i].extras`; nodes with default extras don't allocate a row.
+- `grid: GridArena` — frame-scoped `Vec<GridDef>` for `LayoutMode::Grid(idx)` panels.
+- `hashes: NodeHashes` — `node` (per-node authoring hash), `subtree` (rollup of node + children's subtree hashes), `subtree_has_grid` (fast-path bit). Populated in `end_frame` after `subtree_end` rolls up. Keys both the cross-frame measure cache and the encode cache.
 
-Splitting by reader keeps each pass touching only the columns it needs. Measured `desired`/`rect` live on `LayoutResult` keyed by `NodeId`, **not** on the tree — the tree is input, results are derived.
+Splitting by reader keeps each pass touching only the columns it needs. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, **not** on the tree — the tree is input, results are derived.
 
-`Shape` (paint primitive: `RoundedRect`, `Text`, `Line`, …) is stored flat in `Tree.shapes`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. **Layout passes ignore Shapes and `PaintCore`; paint pass ignores hierarchy beyond `subtree_end`.** This decoupling is load-bearing.
+`Shape` (paint primitive: `RoundedRect`, `Text`, `Line`) is stored flat in `Tree.shapes`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. **Layout passes ignore Shapes and `PaintCore`; paint pass ignores hierarchy beyond `subtree_end`.** This decoupling is load-bearing.
 
 ## Sizing model (flex-shrink with min-content floor)
 
@@ -63,7 +71,11 @@ Canonical impl: `resolve_axis_size` in `src/layout/support.rs` (the per-axis mat
 
 ## Layout dispatch
 
-No `trait Layout`. A `LayoutEngine` dispatches on a `LayoutMode` enum (`Leaf`/`HStack`/`VStack`/`WrapHStack`/`WrapVStack`/`ZStack`/`Canvas`/`Grid`) into per-driver modules under `src/layout/`. Each driver exports a `measure(engine, tree, node, ...) -> Size` and an `arrange(engine, tree, node, ...)`.
+No `trait Layout`. A `LayoutEngine` dispatches on a `LayoutMode` enum (`Leaf`/`HStack`/`VStack`/`WrapHStack`/`WrapVStack`/`ZStack`/`Canvas`/`Grid(u16)`/`Scroll(ScrollAxes)`) into per-driver modules under `src/layout/`. Each driver exports three free `pub(crate) fn`s — `measure`, `arrange`, `intrinsic` — matched into `LayoutEngine::measure_dispatch`, `arrange`, and `intrinsic::compute`. Adding a driver = new variant + new module + match arms; exhaustive matches catch the missing arms at compile time.
+
+**Single dispatch.** `measure` runs the driver once. The old WPF-style "grow loop" (re-dispatch when content exceeds available) is gone — under flex-shrink semantics, `intrinsic_min` is computed up front, `available` is floored at `intrinsic_min` before dispatch, and `resolve_axis_size` clamps the result. Every driver's content size is monotone in `available`, so a re-dispatch would converge to the same value. Pinned by `cross_driver_tests::convergence`.
+
+**Scroll viewports** measure children with the panned axis fed `INFINITY`, stash the raw extent in `LayoutResult.scroll_content`, and return zero on the panned axis(es) so the parent's hugging falls through to the user's `Sizing` instead of growing with content. End-of-frame, `Ui` refreshes each registered scroll widget's `ScrollState` row (viewport / outer / content) and re-clamps `offset` against the up-to-date numbers.
 
 **Per-axis `Align` semantics by parent layout mode:**
 
@@ -84,9 +96,11 @@ Native panels only — no Taffy, no flex/grid backend dependency. Grid is implem
 - Explicit-key collisions (two `.with_id("same")` calls) hard-assert in `Ui::node` — they're always caller bugs. Auto/explicit is tracked by `Element::auto_id`.
 - Collisions and removed-widget diff are tracked by `SeenIds` on `Ui`.
 
-## State outside the tree (planned)
+## State outside the tree
 
-Per-widget state (scroll offset, text cursor, animation) is intended to live in a `WidgetId → Any` map. The tree is throwaway; state persists. **Not yet implemented** — `Ui` currently holds input state directly. The infrastructure (stable `WidgetId`, seen-id tracking) is in place; the generic store is next.
+Per-widget state (scroll offset, text cursor selection, animation, focus flags) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). The tree is throwaway; state persists. Access via `Ui::state_mut::<T>(id)` — creates with `T::default()` on first touch, panics on type mismatch (collision = caller bug). Rows for any `WidgetId` not recorded this frame are dropped in `end_frame` via the same `removed` slice fed to `Damage`, `TextMeasurer`, and `MeasureCache` — one source of truth for "this widget went away."
+
+Focus is a separate field (`InputState.focused: Option<WidgetId>`) since it's global, not per-widget. `FocusPolicy` controls whether pressing on a non-focusable surface clears focus or preserves it.
 
 ## Input
 
@@ -126,9 +140,16 @@ Cases handled:
 
 ## Rendering
 
-Paint pass walks the cascade and emits `Vec<RenderCmd>`. The composer groups draws by scissor, snaps to physical pixels, and submits instanced quads through `WgpuBackend`. Text runs via `glyphon` + `cosmic-text` interleave with quads inside each scissor group, sharing one `TextAtlas` + `SwashCache`.
+Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The composer turns commands into physical-px instanced quads grouped by scissor; `WgpuBackend` submits one render pass per surface. Text runs via `glyphon` + `cosmic-text` interleave with quads inside each scissor group, sharing one `TextAtlas` + `SwashCache`. The shaper (mono fallback for tests, real cosmic shaper for hosts) is threaded through measure as `&mut TextMeasurer` so wrapping leaves can reshape against the parent-committed width during the bottom-up pass.
 
-Single render pass per surface, instanced draws. `wgpu::RenderBundle` for unchanged subtrees is a future optimization; full-redraw is fine until profiling says otherwise.
+**Subtree-skip caches** mirror the measure cache:
+
+- **Encode cache** — keyed by `(WidgetId, subtree_hash, available_q)`, stores subtree-relative `RenderCmdBuffer` slices. On replay the encoder translates by the *current* frame's `rect.min`, so a cached subtree survives parent origin shifts (scroll, resize, sibling reflow) without invalidating. Bypassed on partial-damage frames since those need per-cmd `screen_rect` filtering.
+- **Compose cache** — same key, stores composed quads.
+
+**Damage** is a tri-state (`DamagePaint`): `Full` (re-paint everything), `Partial(rect)` (encoder filters cmds whose screen rect intersects), `Skip` (no diff vs prev frame, no submit). `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `end_frame` is forced to `Full`.
+
+Single render pass per surface, instanced draws. `wgpu::RenderBundle` for unchanged subtrees is a possible future addition on top of the encode cache.
 
 ## Non-Goals (v1)
 
@@ -141,9 +162,8 @@ Single render pass per surface, instanced draws. `wgpu::RenderBundle` for unchan
 ## Open Questions
 
 - **Re-measure on size mismatch during arrange.** WPF allows constrained re-measure. Currently one pass each. If a widget reports a measured-vs-arranged mismatch in practice, add an egui-style `request_discard` second-frame fallback. Not yet motivated.
-- **Grow-pass simplification.** `LayoutEngine::measure` retains a two-pass grow loop from the WPF era. Under flex-shrink semantics it only fires when `min_size`/`Fixed`/`intrinsic_min` overflows available — the second pass converges trivially in those cases, with overflow clamped to `new_available`. Could be deleted; left in because it's harmless and the convergence regression test pins safety.
-- **State store API.** `WidgetId → Any` map is committed in principle; the borrowing shape (`&mut Ui` reentrancy, lifetime of borrowed state across child closures) is the part still to design.
 - **Hit shapes + layers.** Both proposed above. Adding them is straightforward; deferred until a workload demands non-rect hit-testing or explicit popup ordering.
+- **Render bundles.** `wgpu::RenderBundle` for unchanged subtrees on top of the encode/compose caches is a candidate when profiling motivates it; the cache key is already in place.
 
 ## Prior Art Worth Studying
 
