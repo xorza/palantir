@@ -84,6 +84,63 @@ fn invisible_frame_does_not_emit_draw_rect() {
     assert_eq!(count_draw_rects(&cmds), 0);
 }
 
+/// Pin: the encoder iterates ALL shape variants in the
+/// background phase, not just `Text`. Chrome moved off the shapes
+/// list (now lives on `extras.chrome`), but `Shape::RoundedRect`
+/// remains a valid variant — any custom widget that pushes one via
+/// `ui.add_shape` should still produce a `DrawRect` command. Tested
+/// by manually injecting a `RoundedRect` onto a panel node.
+#[test]
+fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
+    use crate::primitives::corners::Corners;
+    use crate::shape::Shape;
+    let mut ui = ui_at(UVec2::new(200, 200));
+    Panel::hstack().show(&mut ui, |ui| {
+        // Attach to the outer hstack BEFORE opening any child — the
+        // tree's contiguity invariant requires shapes to be added to
+        // the last-pushed node before its children open.
+        ui.add_shape(Shape::RoundedRect {
+            radius: Corners::all(4.0),
+            fill: Color::rgb(1.0, 0.0, 0.0),
+            stroke: None,
+        });
+        Frame::new().with_id("host").size(50.0).show(ui);
+    });
+    ui.end_frame();
+    let cmds = encode_cmds(&ui);
+    let draws = cmds
+        .kinds
+        .iter()
+        .filter(|k| matches!(k, CmdKind::DrawRect | CmdKind::DrawRectStroked))
+        .count();
+    assert!(
+        draws >= 1,
+        "manually pushed RoundedRect must emit a DrawRect, got {draws}"
+    );
+}
+
+/// Pin: `Shape::Text` runs through the same background-phase
+/// iteration. If the loop ever narrowed to a single shape variant
+/// (RoundedRect, say), text labels would silently disappear. The
+/// existing label-bearing tests would still pass because chrome
+/// carries the visible content; this test specifically pins the
+/// `DrawText` emission.
+#[test]
+fn text_shape_emits_draw_text() {
+    use crate::Text;
+    use crate::support::testing::ui_with_text;
+    let mut ui = ui_with_text(UVec2::new(200, 200));
+    Panel::hstack().show(&mut ui, |ui| {
+        Text::new("hi").show(ui);
+    });
+    ui.end_frame();
+    let cmds = encode_cmds(&ui);
+    assert!(
+        cmds.kinds.iter().any(|k| *k == CmdKind::DrawText),
+        "Text widget must emit a DrawText command"
+    );
+}
+
 #[test]
 fn clip_emits_balanced_push_pop() {
     let mut ui = ui_at(UVec2::new(200, 200));
