@@ -225,6 +225,46 @@ State-map read is open-coded as `ui.state::<ScrollState>(WidgetId::from_hash("sc
 
 ---
 
+## Pass 3 additions — third-pass re-read
+
+Found on a third pass focused on files less covered by passes 1–2.
+
+28. **`layout/zstack/tests.rs`** — alignment pair — 2 → 1 *(distinct from #19, which targets `widgets/tests/zstack.rs`)*
+    - `zstack_aligns_per_axis_from_child_override` (L48–76) and `zstack_child_align_cascades_to_auto_axes` (L78–101) both build a `Fixed(100×100)` zstack under a 200×200 surface and assert child-rect offsets given an `(parent_child_align, child_align_override)` pair. Same `under_outer` scaffold, same `panel_rect.min` math.
+    - Merge as parametric over `(parent_child_align: Option<Align>, child_overrides: &[(WidgetId, Option<Align>)], expected: &[(f32, f32)])`. Keep `zstack_lays_children_at_inner_top_left_by_default` (L25–46), `zstack_fill_child_stretches_to_inner` (L103–125), and `zstack_hugs_to_largest_child_per_axis_independently` (L8–23) standalone — different invariants (default placement / Fill stretch / Hug rollup).
+
+29. **`ui/tests.rs`** — `prev_frame_captures_*` cluster (informational, gated)
+    - `prev_frame_captures_arranged_rect` (L144) and `prev_frame_captures_authoring_hash` (L163) share fixture: build one frame, end_frame, read `ui.prev_frame()` field. Possibly mergeable as parametric over `(extractor_fn, expected)`. **Conservative:** assertion shapes likely diverge (rect vs hash); read both before merging. Don't auto-merge — surface for review. Counts as a pass-3 candidate, not a commit.
+    - Plan #22's text-reshape cluster (L229/L263/L292) re-checked: assertions are *orthogonal* (skip path / change path / wrap path), not parametric. Downgrade #22 to: leave alone, or cut **at most** the wrapping variant if its skip-path assertion duplicates L229. Net: probably 19 → 19, not 19 → 18.
+
+30. **`widgets/tests/{panel,frame,canvas}.rs`** — fixture re-check (no merge)
+    - All three already use the `ui_at(UVec2)` helper (re-confirmed F1–F5's "already centralized" note). The proposed `under_panel` fixture from a third-pass scan does **not** earn its place — call sites differ in panel kind (hstack/zstack), surface config, and child build closure. Skip.
+
+31. **`primitives/corners.rs`** — internal parametric tests already labeled
+    - Re-read confirms `serialize_then_parse_round_trips` (#27) is the only candidate. Other tests (radius arithmetic, hit-test) probe distinct contracts. No further cuts.
+
+32. **`common/hash.rs`, `common/cache_arena.rs`, `tree/node_hash.rs`, `renderer/gpu/quad.rs`, `ui/state.rs`, `widgets/theme.rs`** — small modules
+    - Re-checked: each test pins a distinct contract (Hasher byte-equivalence variants, arena alloc/grow/clear, node-hash determinism, Quad shader layout, StateMap eviction/type-mismatch, Theme token resolution). No parametric merges identified.
+
+33. **`input/keyboard.rs`** — confirmed "leave alone" from §123
+    - Re-read: 6 tests cover distinct key-handling contracts (modifier mapping / repeat / IME / focus traversal / text submission / cancel). Not parametric.
+
+Net pass-3 cuts: **−1 test** (#28), **+1 informational gate** (#29), **−1 to plan estimate** (#22 downgrade).
+
+---
+
+## Revised totals (post-pass-3)
+
+| | Before | After (pass 1+2+3) |
+|---|---|---|
+| Hard cuts | ~417 | ~329 → **~328** (#28 −1, #22 likely +1 vs prior estimate) |
+| Fixture extractions | — | F1–F5 (no count change) |
+| Gated/conditional | — | #21 (input), #22 (ui text-reshape, downgraded), #29 (prev_frame_captures pair) |
+
+Net: third pass mostly *confirms* the existing plan and tightens estimates rather than uncovering new mass merges. Pass 1 + pass 2 captured the bulk of the available consolidation.
+
+---
+
 ## Re-confirmed "leave alone" (pass 2)
 
 Re-read flagged these as candidates and confirmed they should stay separate:
@@ -255,5 +295,7 @@ To keep blame readable and bisection cheap:
 - **C13** fixture extractions F1–F5 into `support::testing` (no test count change, ~120 LOC removed from test bodies)
 - **C14** caret-position parametric (#24) + visibility alignment pair (#26): −3
 - **C15** corners round-trip labels (#27): no count change, label-add only
+- **C16** layout/zstack alignment pair (#28): −1
+- **C17 (gated, optional)** ui prev_frame_captures pair (#29): −1 only after side-by-side assertion check
 
 Each commit: a single file (or tightly-related pair), one test pass, fmt + clippy clean. **Run F1–F5 (C13) AFTER all parametric merges** so the helper signature reflects the post-merge call sites, not the pre-merge ones.
