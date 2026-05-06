@@ -6,7 +6,102 @@ of pre-order, and (c) hit-test on top. Today's tree is single-rooted,
 paint order = pre-order, and clip cascades from ancestors — so
 none of (a)/(b)/(c) is reachable through a normal child node.
 
-This doc proposes the integration plan and lays out the slices.
+This doc has two halves: the **checklist** (working punch-list, top)
+and the **rationale** (what was rejected and why, bottom).
+
+## Target shape (one-line)
+
+Multi-root arena `Tree` with `Layer`-tagged roots; pipeline passes loop
+over `tree.roots` (stable-sorted by layer at `end_frame`).
+
+```rust
+enum Layer { Main, Popup, Modal, Tooltip, Debug }   // total order
+
+struct RootSlot {
+    first_node:  u32,
+    layer:       Layer,
+    anchor_rect: Rect,
+}
+
+// in Tree:
+roots: Vec<RootSlot>,
+```
+
+## Checklist
+
+Each slice compiles + ships the showcase.
+
+### 1. `Layer` enum + `RootSlot` storage
+- Add `Layer`, `RootSlot`, `tree.roots: Vec<RootSlot>`.
+- `tree.begin_frame`: clear `roots`. `tree.end_frame`: push the `Main`
+  slot (`first_node = 0`, `Display::logical_rect()`), stable-sort by
+  layer (no-op for one root).
+- Replace `tree.root()` callers with `for root in &tree.roots { … }`.
+  Single root keeps current behavior bit-identical.
+- Test: hash-rollup is root-local — record two synthetic roots, assert
+  `subtree_hash[root_b]` ignores `root_a`.
+
+### 2. `Ui::layer(layer, anchor, body)`
+- Save `tree.current_open`, set to `None`.
+- Push deferred `RootSlot { first_node: tree.layout.len() as u32, … }`.
+- Run `body`; first `open_node` becomes the new root.
+- Restore `current_open`.
+- Test: record `Main` + a `Popup` root via `Ui::layer`, assert
+  `tree.roots` is sorted `[Main, Popup]` post-`end_frame`.
+
+### 3. Pipeline loop conversion
+Convert these entry points to iterate `tree.roots`:
+- `LayoutEngine::run` — `run(root.first_node, root.anchor_rect)` per root.
+- `Cascades::run` — already loops; just drive from `tree.roots`.
+- `Encoder::encode` — one `encode_node` per root, in order.
+- HitIndex / Damage — no edit; reverse-iter already gives topmost-first
+  once roots are layer-sorted, and damage already takes screen rects.
+- Showcase must render identically (single-root path collapses).
+
+### 4. `Popup` widget + showcase tab
+- `Popup::anchored_to(rect: Rect, |ui| { … })` with `ClickOutside`
+  flag.
+- Anchor rect = caller-supplied screen rect (typically last-frame
+  `Response.state.rect` of the trigger). One-frame stale on first open
+  is acceptable (matches Scroll's wheel-pan posture).
+- New `examples/showcase/popup.rs`: dropdown menu, hover tooltip, and
+  a confirm modal stub.
+- Verifies: clip escape, hit-test priority, draw order across layers.
+
+### 5. `Modal` click-eat leaf
+- `Modal::show(|ui| …)` records (a) a full-surface `RoundedRect` with
+  `dim_color`, (b) a leaf with `Sense::Click` + empty handler covering
+  the same rect to swallow stray clicks.
+- `ClickOutside::Dismiss` opt-in (default = block).
+
+### 6. `Tooltip` + follow-cursor
+- `Tooltip::for_widget(id)` reads last-frame anchor rect; or
+  `.follow_cursor()` reads `ui.input.pointer_pos()` + fixed offset.
+- Auto-dismiss when anchor loses hover (`Response.hovered() == false`
+  for N frames, or immediate — pick one and pin).
+
+## Invariants to keep
+
+- `tree.layout` stays one flat SoA arena; multi-root only adds the
+  `roots` manifest.
+- Cache keys unchanged: `(WidgetId, subtree_hash, available_q)`.
+- `subtree_hash` rollup terminates at each root's `subtree_end[first_node]`.
+- Roots are never nested in `recording_parent` (their first node has no
+  parent entry). Existing walks already gate on that.
+
+## Out of scope (queue in `roadmap.md`)
+
+- Layout-anchored popups (anchor by `WidgetId`, deferred measure after
+  `Main` arrange).
+- Animated open/close.
+- Submenu chains with arrow-key nav.
+- OS-level / multi-window popups.
+
+---
+
+# Rationale
+
+Background notes for re-litigation. Skip on first read.
 
 ## What's there today
 
@@ -226,44 +321,6 @@ Popups close on:
 
 For modals, click-outside-to-dismiss is opt-in (a confirmation
 modal usually shouldn't); the dim leaf consumes clicks by default.
-
-## Slices
-
-Each step compiles + tests the existing showcase.
-
-1. **`Layer` enum + `RootSlot` storage.** Add the type, the
-   `tree.roots` vec, populate with `Main` only at `end_frame`.
-   Sort is a no-op for one root. Existing pipeline loops over the
-   single root via `tree.roots[0]`. No user-visible change. Pin a
-   test that the hash rollup is root-local.
-2. **`Ui::layer(layer, anchor, body)`.** Save/restore
-   `current_open`, push `RootSlot` at body entry. No widgets yet —
-   write a layer-direct test that records two roots and asserts
-   they appear in `tree.roots` post-sort.
-3. **Pipeline loops.** Convert `LayoutEngine::run`,
-   `Encoder::encode`, and the cascade-not-yet-anchor-aware
-   pieces to iterate `tree.roots`. Verify the showcase still
-   renders identically — the loops collapse to the previous
-   single-root path when there's just one.
-4. **Showcase tab + `Popup` widget.** A simple
-   `Popup::anchored_to(rect, |ui| ...)` with a click-outside
-   dismissal flag returned by the closure. New
-   `examples/showcase/popup.rs` exercises a dropdown menu, a
-   tooltip on hover, and a confirm modal. Catches anything the
-   unit tests miss (clip escape, hit-test priority, draw order
-   across layers).
-5. **Modal click-eat leaf.** The dim + the input-blocker, reused
-   by `Modal::show`.
-6. **Tooltip + follow-cursor.** Convenience widget that owns the
-   anchor-rect math against `ui.input.pointer_pos()`.
-
-Out of scope here, queued in `docs/roadmap.md`:
-
-- Layout-anchored popups (anchor by `WidgetId`, deferred measure
-  after Main arrange).
-- Animated open/close (needs animation-tick infra).
-- Submenu chains (popup-from-popup with arrow-key nav between).
-- Window-manager integration / OS-level popups (multi-window).
 
 ## Why multi-root over `Order`-on-Element
 
