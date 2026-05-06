@@ -3,7 +3,7 @@
 Scratch ideas: impl WidgetId instead of impl Hash; 
 ECS for SoA;
 Spacing serializable nicely.
-maybe background show have info about clippings
+ surface.paint.add_to(ui);  - direct - surface add_to and no clipping info in element
 
 ## Now
 

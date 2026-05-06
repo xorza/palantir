@@ -10,7 +10,7 @@ use crate::tree::element::{Configure, Element, LayoutMode, ScrollAxes};
 use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::ScrollbarTheme;
+use crate::widgets::theme::{ScrollbarTheme, Surface};
 use glam::Vec2;
 
 /// One scroll widget recorded this frame: the stable `WidgetId` keying
@@ -71,6 +71,7 @@ pub(crate) struct ScrollState {
 /// follow-up.
 pub struct Scroll {
     element: Element,
+    surface: Option<Surface>,
 }
 
 impl Scroll {
@@ -92,9 +93,24 @@ impl Scroll {
     #[track_caller]
     fn with_axes(axes: ScrollAxes) -> Self {
         let mut element = Element::new_auto(LayoutMode::Scroll(axes));
-        element.clip = ClipMode::Rect;
         element.sense = Sense::Scroll;
-        Self { element }
+        Self {
+            element,
+            surface: None,
+        }
+    }
+
+    /// Install chrome for the scroll viewport. Accepts a bare `Background`
+    /// (paint-only — clip stays scissor) or a full `Surface`. Scroll
+    /// requires clipping, so `ClipMode::None` on the supplied surface is
+    /// upgraded to `Rect`; `Rect` and `Rounded` pass through.
+    pub fn background(mut self, s: impl Into<Surface>) -> Self {
+        let mut s = s.into();
+        if matches!(s.clip, ClipMode::None) {
+            s.clip = ClipMode::Rect;
+        }
+        self.surface = Some(s);
+        self
     }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
@@ -140,7 +156,13 @@ impl Scroll {
             element.transform = Some(TranslateScale::from_translation(-offset));
         }
 
+        // Default to scissor when no user surface — Scroll is always clipped.
+        let surface = self.surface.unwrap_or_else(Surface::scissor);
+        surface.apply_clip(&mut element);
+
         let node = ui.node(element, |ui| {
+            // Surface paint goes first so it sits behind bars + content.
+            surface.paint.add_to(ui);
             // Bar shapes must precede any child node so `Tree::add_shape`'s
             // contiguity invariant holds. They paint owner-relative under
             // the viewport's clip, before the pan transform — so they

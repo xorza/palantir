@@ -278,15 +278,15 @@ pub struct Element {
     /// skips the subtree everywhere. Cascades implicitly (paint and input
     /// early-return at non-`Visible` nodes).
     pub(crate) visibility: Visibility,
-    /// Clip descendants' paint to this node's rendered rect. `Rect` =
-    /// scissor; `Rounded` = scissor + stencil mask using the panel's own
-    /// `Background.radius`; `None` = no clip. Has no effect on layout —
-    /// children may still measure beyond the rect; they're just visually
-    /// clipped.
+    /// Storage for the clip flag — written via `Surface::apply_clip`
+    /// (panel / grid builders) or set directly by framework-internal
+    /// widgets like `Scroll`. `Rect` = scissor; `Rounded` = scissor +
+    /// stencil mask (radius from `clip_radius`); `None` = no clip.
+    /// No effect on layout.
     pub(crate) clip: ClipMode,
-    /// Per-corner radii for `ClipMode::Rounded`. Stamped by the panel
-    /// builder from its `Background.radius`. Ignored when `clip` is not
-    /// `Rounded`.
+    /// Per-corner radii paired with `ClipMode::Rounded`. Source of truth
+    /// is `Surface::paint.radius`, copied here by `Surface::apply_clip`.
+    /// Ignored when `clip` is not `Rounded`.
     pub(crate) clip_radius: Option<Corners>,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any

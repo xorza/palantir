@@ -148,6 +148,15 @@ impl Corners {
             bl: self.bl * scale,
         }
     }
+
+    /// True when every corner is within UI epsilon of zero. Use this
+    /// instead of `== Corners::ZERO` when the radii may have arrived via
+    /// float math (DPR scaling, animation, theme deserialization) where
+    /// exact equality is brittle.
+    pub const fn approx_zero(&self) -> bool {
+        use super::approx::approx_zero;
+        approx_zero(self.tl) && approx_zero(self.tr) && approx_zero(self.br) && approx_zero(self.bl)
+    }
 }
 
 impl<T: Num> From<T> for Corners {
