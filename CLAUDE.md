@@ -87,7 +87,18 @@ Always run, in this order, before confirming any code change:
 ```sh
 cargo fmt --all
 cargo clippy --all-targets -- -D warnings
-cargo test
+cargo nextest run         # faster + cleaner output than `cargo test`
+cargo test --doc          # nextest doesn't run doctests
+```
+
+For changes that touch feature-gated code (anything under
+`#[cfg(feature = ...)]`, exposed via `support::internals`, or that
+might be affected by `internals`/`bench-deep`), run the full feature
+matrix instead:
+
+```sh
+scripts/test-all.sh       # fmt + clippy + nextest across all feature combos
+FAST=1 scripts/test-all.sh # skip fmt + clippy, just run nextest per combo
 ```
 
 Fix anything that fails. Don't tell the user a change is complete unless these all pass.
