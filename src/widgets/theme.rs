@@ -12,16 +12,13 @@ use crate::ui::Ui;
 mod palette {
     use crate::primitives::color::Color;
     // backgrounds
-    pub const BG: Color = Color::hex(0x252525);
-    pub const SURFACE: Color = Color::hex(0x343434);
     pub const ELEM: Color = Color::hex(0x343434);
     pub const ELEM_HOVER: Color = Color::hex(0x3e3e3e);
     pub const ELEM_ACTIVE: Color = Color::hex(0x4b4b4b);
     // borders
-    pub const BORDER: Color = Color::hex(0x363636);
     pub const BORDER_FOCUSED: Color = Color::hex(0x105577);
     // text
-    pub const TEXT: Color = Color::hex(0xe2dfd3);
+    pub const TEXT: Color = Color::hex(0xffffff);
     pub const TEXT_MUTED: Color = Color::hex(0xaaaaa8);
     pub const TEXT_DISABLED: Color = Color::hex(0x878a8d);
     // accent
@@ -253,16 +250,21 @@ pub struct TextEditTheme {
 impl Default for TextEditTheme {
     fn default() -> Self {
         let radius = Corners::all(4.0);
+        // The palette's BORDER (#363636) sits ~2% above SURFACE (#343434)
+        // and is invisible — derive a softer-but-readable edge from
+        // TEXT_MUTED at low alpha instead. Same approach as ScrollbarTheme.
+        let m = palette::TEXT_MUTED;
+        let edge = Color::linear_rgba(m.r, m.g, m.b, 0.18);
         let normal_bg = Background {
-            fill: palette::SURFACE,
+            fill: palette::ELEM_HOVER,
             stroke: Some(Stroke {
                 width: 1.0,
-                color: palette::BORDER,
+                color: edge,
             }),
             radius,
         };
         let focused_bg = Background {
-            fill: palette::SURFACE,
+            fill: palette::ELEM_HOVER,
             stroke: Some(Stroke {
                 width: 1.5,
                 color: palette::BORDER_FOCUSED,
@@ -270,10 +272,10 @@ impl Default for TextEditTheme {
             radius,
         };
         let disabled_bg = Background {
-            fill: palette::BG,
+            fill: palette::ELEM,
             stroke: Some(Stroke {
                 width: 1.0,
-                color: palette::BORDER,
+                color: edge,
             }),
             radius,
         };
@@ -348,24 +350,44 @@ impl Default for ButtonTheme {
         // active states means "inherit Theme::text" — bumping
         // `theme.text.color` recolors active button labels. The
         // historical 4 px radius is retained.
+        // Bump fills up one tier (ELEM_HOVER as the resting state) so a
+        // button on the app's BG reads as a clearly raised surface, and
+        // add a soft TEXT_MUTED-alpha edge — palette's BORDER is too
+        // close to ELEM to delineate. Hovered/pressed step further up.
+        let m = palette::TEXT_MUTED;
+        let edge = Color::linear_rgba(m.r, m.g, m.b, 0.18);
         let bg = |fill: Color| -> Option<Background> {
             Some(Background {
                 fill,
-                stroke: None,
+                stroke: Some(Stroke {
+                    width: 1.0,
+                    color: edge,
+                }),
                 radius: Corners::all(4.0),
             })
         };
+        // Pressed sits at ELEM_ACTIVE, same as hovered in this palette;
+        // distinguish it with the focused-border stroke so a click reads
+        // even if the fill barely moves.
+        let pressed_bg = Background {
+            fill: palette::ELEM_ACTIVE,
+            stroke: Some(Stroke {
+                width: 1.0,
+                color: palette::BORDER_FOCUSED,
+            }),
+            radius: Corners::all(4.0),
+        };
         Self {
             normal: ButtonStateStyle {
-                background: bg(palette::ELEM),
-                text: None,
-            },
-            hovered: ButtonStateStyle {
                 background: bg(palette::ELEM_HOVER),
                 text: None,
             },
-            pressed: ButtonStateStyle {
+            hovered: ButtonStateStyle {
                 background: bg(palette::ELEM_ACTIVE),
+                text: None,
+            },
+            pressed: ButtonStateStyle {
+                background: Some(pressed_bg),
                 text: None,
             },
             disabled: ButtonStateStyle {
