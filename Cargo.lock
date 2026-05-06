@@ -1684,6 +1684,7 @@ dependencies = [
  "rayon",
  "rustc-hash 2.1.2",
  "serde",
+ "soa-rs",
  "thiserror 2.0.18",
  "toml",
  "tracing",
@@ -2288,6 +2289,26 @@ name = "smol_str"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4aaa7368fcf4852a4c2dd92df0cace6a71f2091ca0a23391ce7f3a31833f1523"
+
+[[package]]
+name = "soa-rs"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf20e367c4676b712916633bc735e97d18cf4d7c2a88b0e29a43446790d029d6"
+dependencies = [
+ "soa-rs-derive",
+]
+
+[[package]]
+name = "soa-rs-derive"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3de734b144ae71c89c91cdc45de3bd22e99e4efb1098e2635797fc0ee0566172"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "spirv"
