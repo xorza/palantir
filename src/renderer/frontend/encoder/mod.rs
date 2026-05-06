@@ -1,5 +1,5 @@
 use super::cmd_buffer::{EnterPatch, RenderCmdBuffer};
-use crate::layout::types::{align::Align, align::HAlign, align::VAlign};
+use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::layout::{cache::AvailableKey, result::LayoutResult};
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
@@ -178,47 +178,49 @@ fn encode_node(
     // interior.
     let mode = tree.paint[id.index()].attrs.clip_mode();
     let clip = mode.is_clip();
-    // For both Rect and Rounded, chrome paints BEFORE the clip is
-    // pushed: the clip rect is deflated by the panel's stroke width
-    // (so children don't paint over the stroke), which means chrome's
-    // own stroke pixels would also fall outside the deflated region
-    // and be clipped. Painting chrome first leaves it unclipped (the
-    // panel's SDF self-clips correctly), preserving the stroke ring.
-    let chrome_before_clip = clip;
+    let chrome = tree.read_extras(id).chrome;
 
     let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
 
-    if chrome_before_clip && paints {
-        emit_background_shapes(tree, layout, id, rect, out);
+    // Chrome paints BEFORE the clip is pushed. The clip rect is
+    // deflated by the chrome's stroke width (so children don't paint
+    // over the stroke), which means chrome's own stroke pixels would
+    // also fall outside the deflated region and be clipped. Painting
+    // chrome first leaves it unclipped (the panel's SDF self-clips
+    // correctly), preserving the stroke ring.
+    if paints
+        && let Some(bg) = chrome
+        && !bg.is_noop()
+    {
+        out.draw_rect(rect, bg.radius, bg.fill, bg.stroke);
     }
 
     if clip {
-        // Builder (`Surface::apply_clip`) guarantees a mask is stamped
-        // whenever clip mode survives as `Rect` or `Rounded`. Deflate
-        // the layout rect by `mask.inset` (= painted stroke width) so
-        // children clip inside the stroke ring.
-        let mask = tree
-            .read_extras(id)
-            .clip_mask
-            .expect("clip != None without clip_mask — builder invariant violated");
-        let mask_rect = rect.deflated_by(Spacing::all(mask.inset));
-        match mask.radius {
-            None => out.push_clip(mask_rect),
-            Some(r) => {
+        // Inset the clip by the chrome's stroke width so children
+        // clip inside the painted stroke ring. With no chrome (clip
+        // set without a Surface — shouldn't happen post-`apply_to`),
+        // inset is 0.
+        let inset = chrome.and_then(|bg| bg.stroke).map_or(0.0, |s| s.width);
+        let mask_rect = rect.deflated_by(Spacing::all(inset));
+        match mode {
+            ClipMode::Rect => out.push_clip(mask_rect),
+            ClipMode::Rounded => {
                 // Reduce each corner radius by `inset` so the mask
                 // curve stays concentric with the painted stroke's
                 // inner edge — both curves have center at
-                // `(rect.min + paint.radius)`. Inflating instead
-                // would offset the curve center inward and produce a
-                // visible notch where the mismatched curves meet.
+                // `(rect.min + paint.radius)`.
+                let painted = chrome
+                    .map(|bg| bg.radius)
+                    .expect("ClipMode::Rounded without chrome — builder invariant violated");
                 let mask_radius = Corners {
-                    tl: (r.tl - mask.inset).max(0.0),
-                    tr: (r.tr - mask.inset).max(0.0),
-                    br: (r.br - mask.inset).max(0.0),
-                    bl: (r.bl - mask.inset).max(0.0),
+                    tl: (painted.tl - inset).max(0.0),
+                    tr: (painted.tr - inset).max(0.0),
+                    br: (painted.br - inset).max(0.0),
+                    bl: (painted.bl - inset).max(0.0),
                 };
                 out.push_clip_rounded(mask_rect, mask_radius);
             }
+            ClipMode::None => {}
         }
     }
 
@@ -236,15 +238,10 @@ fn encode_node(
     // depend on screen position, breaking the encode cache's
     // authoring-only key. The composer culls per-cmd at compose time.
 
-    // Two-phase shape emission per node:
-    //   - Background shapes (RoundedRect, Text) paint BEFORE children
-    //     under the owner's clip but pre-transform — backgrounds and
-    //     text labels live "behind" descendants.
-    //   - Overlay shapes (Overlay) paint AFTER children, still
-    //     under the clip and untransformed — used for sub-rect
-    //     overlays like scrollbar tracks/thumbs that must sit on top
-    //     of (and not pan with) the content.
-    if paints && !chrome_before_clip {
+    // Background-phase shapes (Text + any custom RoundedRect from
+    // user widgets) emit AFTER chrome and BEFORE children, all under
+    // the owner's clip. Overlay shapes paint after children, see below.
+    if paints {
         emit_background_shapes(tree, layout, id, rect, out);
     }
 

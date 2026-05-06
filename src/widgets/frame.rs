@@ -1,7 +1,7 @@
+use crate::primitives::background::Background;
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::Background;
 
 /// A simple decorated rectangle: optional background / size / margin
 /// plus an optional `Sense`. Used directly for dividers / hit-areas /
@@ -37,11 +37,9 @@ impl Frame {
         // Frame is a leaf — no children to clip. Pull just the paint
         // from `theme.panel` if the call site didn't set its own.
         let bg = self.background.or_else(|| ui.theme.panel.map(|s| s.paint));
-        let node = ui.node(self.element, |ui| {
-            if let Some(bg) = bg {
-                bg.add_to(ui);
-            }
-        });
+        let mut element = self.element;
+        element.chrome = bg;
+        let node = ui.node(element, |_| {});
 
         let state = ui.response_for(id);
         Response { node, state }

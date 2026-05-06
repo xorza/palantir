@@ -18,10 +18,13 @@ fn shapes_attached_to_button_node() {
         button_node = Some(Button::new().label("X").show(ui).node);
     });
 
+    // Chrome (the button background) lives on `extras.chrome`, not in
+    // the shapes list. Only the label `Text` shape lands here.
     let shapes = ui.tree.shapes.slice_of(button_node.unwrap().index());
-    assert_eq!(shapes.len(), 2);
-    assert!(matches!(shapes[0], Shape::RoundedRect { .. }));
-    assert!(matches!(shapes[1], Shape::Text { .. }));
+    assert_eq!(shapes.len(), 1);
+    assert!(matches!(shapes[0], Shape::Text { .. }));
+    let extras = ui.tree.read_extras(button_node.unwrap());
+    assert!(extras.chrome.is_some(), "button chrome stamped onto extras");
 }
 
 // --- Authoring-hash tests ---------------------------------------------------

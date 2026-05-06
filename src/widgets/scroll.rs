@@ -158,15 +158,15 @@ impl Scroll {
 
         // Default to scissor when no user surface — Scroll is always clipped.
         let surface = self.surface.unwrap_or_else(Surface::scissor);
-        surface.apply_clip(&mut element);
+        surface.apply_to(&mut element);
 
         let node = ui.node(element, |ui| {
-            // Surface paint goes first so it sits behind bars + content.
-            surface.paint.add_to(ui);
             // Bar shapes must precede any child node so `Tree::add_shape`'s
             // contiguity invariant holds. They paint owner-relative under
             // the viewport's clip, before the pan transform — so they
             // stay anchored in the reserved strips while content scrolls.
+            // Chrome paint is emitted by the encoder via element.chrome,
+            // so the panel's own background sits behind these bars.
             push_bar(ui, viewport, outer, content, offset, Axis::Y, pan.y, &theme);
             push_bar(ui, viewport, outer, content, offset, Axis::X, pan.x, &theme);
             body(ui);

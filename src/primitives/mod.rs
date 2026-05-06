@@ -1,4 +1,5 @@
 pub(crate) mod approx;
+pub(crate) mod background;
 pub(crate) mod color;
 pub(crate) mod corners;
 pub(crate) mod num;
