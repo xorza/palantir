@@ -159,15 +159,17 @@ impl Scroll {
         // Default to scissor when no user surface — Scroll is always clipped.
         let surface = self.surface.unwrap_or_else(Surface::scissor);
         let node = ui.node(element, Some(surface), |ui| {
-            // Bar shapes must precede any child node so `Tree::add_shape`'s
-            // contiguity invariant holds. They paint owner-relative under
-            // the viewport's clip, before the pan transform — so they
-            // stay anchored in the reserved strips while content scrolls.
-            // Chrome paint is emitted by the encoder via Tree::chrome_for,
-            // so the panel's own background sits behind these bars.
+            body(ui);
+            // Bars push *after* the body → they land in the trailing
+            // shape slot (after every child), so the encoder paints
+            // them on top of content. They paint owner-relative under
+            // the viewport's clip and outside the owner's pan, so
+            // they stay anchored in the reserved strips while content
+            // scrolls. Chrome paint is emitted by the encoder via
+            // `Tree::chrome_for`, so the panel's own background sits
+            // behind these bars.
             push_bar(ui, viewport, outer, content, offset, Axis::Y, pan.y, &theme);
             push_bar(ui, viewport, outer, content, offset, Axis::X, pan.x, &theme);
-            body(ui);
         });
         ui.scroll_nodes.push(ScrollNode { id, node });
 
@@ -259,16 +261,18 @@ fn push_bar(
     let cross_pos = cross_outer - theme.width;
     let track = axis.compose_rect(0.0, cross_pos, main, theme.width);
     if theme.track.a > 0.0 {
-        ui.add_shape(Shape::Overlay {
-            rect: track,
+        ui.add_shape(Shape::SubRect {
+            local_rect: track,
             radius,
             fill: theme.track,
+            stroke: None,
         });
     }
     let thumb = axis.compose_rect(geom.thumb_offset, cross_pos, geom.thumb_size, theme.width);
-    ui.add_shape(Shape::Overlay {
-        rect: thumb,
+    ui.add_shape(Shape::SubRect {
+        local_rect: thumb,
         radius,
         fill: theme.thumb,
+        stroke: None,
     });
 }

@@ -47,7 +47,7 @@ pub(crate) fn measure(
     let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
-    for c in tree.children_active(node) {
+    for c in tree.children(node).filter_map(Child::active) {
         let d = layout.measure(tree, c, child_avail, text);
         max_w = max_w.max(d.w);
         max_h = max_h.max(d.h);
@@ -62,14 +62,12 @@ pub(crate) fn measure(
 /// falls back to stretch on that axis.
 pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
     let parent_child_align = tree.read_extras(node).child_align;
-    for child in tree.children_with_state(node) {
-        let c = match child {
-            Child::Collapsed(c) => {
-                zero_subtree(layout, tree, c, inner.min);
-                continue;
-            }
-            Child::Active(c) => c,
-        };
+    for child in tree.children(node) {
+        let c = child.id;
+        if child.visibility.is_collapsed() {
+            zero_subtree(layout, tree, c, inner.min);
+            continue;
+        }
         let d = layout.scratch.desired[c.index()];
         let s = tree.layout[c.index()];
 

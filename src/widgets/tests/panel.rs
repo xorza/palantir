@@ -90,7 +90,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
     ui.end_frame();
 
     for (name, id, expected_clip, expects_chrome) in &cases {
-        let clip = ui.tree.paint[id.index()].attrs.clip_mode();
+        let clip = ui.tree.attrs[id.index()].clip_mode();
         assert_eq!(clip, *expected_clip, "[{name}] clip mode");
         let chrome = ui.tree.chrome_for(*id);
         assert_eq!(
@@ -152,8 +152,10 @@ fn panel_hugs_largest_child_and_layers_them() {
     assert_eq!((b.size.w, b.size.h), (60.0, 50.0));
 
     // Panel chrome lives in `Tree::chrome_table`, not in the shapes list.
-    let shapes = ui.tree.shapes.slice_of(panel_node.unwrap().index());
-    assert!(shapes.is_empty());
+    assert!(
+        ui.tree.shapes_of(panel_node.unwrap()).next().is_none(),
+        "panel chrome doesn't show up in the shape stream"
+    );
     assert!(
         ui.tree.chrome_for(panel_node.unwrap()).is_some(),
         "panel chrome recorded in chrome table",

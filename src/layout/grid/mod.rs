@@ -340,7 +340,7 @@ fn measure_inner(
 
     if n_rows == 0 || n_cols == 0 {
         // Still measure children so their `desired` is set.
-        for c in tree.children(node) {
+        for c in tree.children(node).map(|c| c.id) {
             layout.measure(tree, c, Size::ZERO, text);
         }
         return Size::ZERO;
@@ -354,7 +354,7 @@ fn measure_inner(
     // `&mut depth_stack[depth]` borrow is released before the
     // `layout.intrinsic` calls below (which need `&mut layout`).
     let col_tracks = layout.scratch.grid.depth_stack.at(depth).col.tracks.clone();
-    for c in tree.children_active(node) {
+    for c in tree.children(node).filter_map(Child::active) {
         let cell = tree.read_extras(c).grid;
         if cell.col_span != 1 {
             continue;
@@ -417,16 +417,14 @@ fn measure_inner(
     // Phase 2: measure cells with resolved col widths. Rows are still
     // unresolved (only Fixed is known); cells get INF on row axis as
     // before. Cell desired heights feed row Hug resolution next.
-    for child in tree.children_with_state(node) {
-        let c = match child {
-            Child::Collapsed(c) => {
-                // Still measure so the subtree's `desired` is zeroed
-                // (LayoutEngine::measure short-circuits on collapsed).
-                layout.measure(tree, c, Size::ZERO, text);
-                continue;
-            }
-            Child::Active(c) => c,
-        };
+    for child in tree.children(node) {
+        let c = child.id;
+        if child.visibility.is_collapsed() {
+            // Still measure so the subtree's `desired` is zeroed
+            // (LayoutEngine::measure short-circuits on collapsed).
+            layout.measure(tree, c, Size::ZERO, text);
+            continue;
+        }
         let cell = tree.read_extras(c).grid;
 
         let avail = {
@@ -546,7 +544,7 @@ fn arrange_inner(
     } = prepare_axis_scratch_at(layout, tree, idx, depth);
 
     if n_rows == 0 || n_cols == 0 {
-        for c in tree.children(node) {
+        for c in tree.children(node).map(|c| c.id) {
             zero_subtree(layout, tree, c, inner.min);
         }
         return;
@@ -584,14 +582,12 @@ fn arrange_inner(
     }
 
     let parent_child_align = tree.read_extras(node).child_align;
-    for child in tree.children_with_state(node) {
-        let c = match child {
-            Child::Collapsed(c) => {
-                zero_subtree(layout, tree, c, inner.min);
-                continue;
-            }
-            Child::Active(c) => c,
-        };
+    for child in tree.children(node) {
+        let c = child.id;
+        if child.visibility.is_collapsed() {
+            zero_subtree(layout, tree, c, inner.min);
+            continue;
+        }
         let s_node = tree.layout[c.index()];
         let cell = tree.read_extras(c).grid;
         let d = layout.scratch.desired[c.index()];
@@ -890,7 +886,7 @@ pub(crate) fn intrinsic(
         };
     }
 
-    for c in tree.children_active(node) {
+    for c in tree.children(node).filter_map(Child::active) {
         let cell = tree.read_extras(c).grid;
         let span = match axis {
             Axis::X => cell.col_span,

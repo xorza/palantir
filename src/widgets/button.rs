@@ -3,8 +3,8 @@ use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
-use crate::widgets::theme::ButtonTheme;
-use crate::widgets::{Response, frame::Frame};
+use crate::widgets::Response;
+use crate::widgets::theme::{ButtonTheme, Surface};
 use std::borrow::Cow;
 
 pub struct Button {
@@ -76,35 +76,25 @@ impl Button {
             }
         };
 
-        // Frame paints the per-state background. `None` inherits
-        // `Background::default()` (transparent, no stroke, zero radius);
-        // `Ui::add_shape` filters that as a no-op shape.
-        let resp = Frame::for_element(element)
-            .background(v.background.unwrap_or_default())
-            .show(ui);
+        let surface = Some(Surface::from(v.background.unwrap_or_default()));
+        let text_style = v.text.unwrap_or_else(|| ui.theme.text.clone());
+        let label = self.label.clone();
+        let label_align = self.label_align;
 
-        // Layer the label on top of the frame's background. Safe immediately after
-        // `Frame::show` because no other shape/node has been pushed since the
-        // frame closed — `Tree::add_shape`'s contiguity invariant still holds.
-        if !self.label.is_empty() {
-            // Per-state text style; `None` falls through to the global
-            // `Theme::text`, so an app changing `theme.text.color`
-            // moves every button label that didn't override it.
-            let text = v.text.unwrap_or_else(|| ui.theme.text.clone());
-            ui.tree.add_shape(
-                resp.node,
-                Shape::Text {
-                    text: self.label.clone(),
-                    color: text.color,
-                    font_size_px: text.font_size_px,
-                    line_height_px: text.font_size_px * text.line_height_mult,
+        let node = ui.node(element, surface, |ui| {
+            if !label.is_empty() {
+                ui.add_shape(Shape::Text {
+                    text: label,
+                    color: text_style.color,
+                    font_size_px: text_style.font_size_px,
+                    line_height_px: text_style.font_size_px * text_style.line_height_mult,
                     wrap: TextWrap::Single,
-                    align: self.label_align,
-                },
-            );
-        }
-
-        resp
+                    align: label_align,
+                });
+            }
+        });
+        let state = ui.response_for(element.id);
+        Response { node, state }
     }
 }
 

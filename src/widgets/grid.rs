@@ -1,12 +1,27 @@
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::transform::TranslateScale;
-use crate::tree::GridDef;
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::Surface;
 use std::rc::Rc;
 use std::sync::OnceLock;
+
+/// Track definitions + axis gaps for a `Grid` panel. Stored on
+/// `GridArena` (a `Tree`-owned `Vec<GridDef>`) and addressed from
+/// `LayoutMode::Grid(u16)`. Track defs live behind `Rc<[Track]>` so
+/// callers can cache and share them across frames without the
+/// framework copying — the builder stores the `Rc`, the layout pass
+/// reads through it directly. Per-track hug sizes (computed in
+/// measure, read in arrange) live on `LayoutResult` keyed by grid def
+/// index — the tree is read-only after recording.
+#[derive(Clone, Debug)]
+pub(crate) struct GridDef {
+    pub rows: Rc<[Track]>,
+    pub cols: Rc<[Track]>,
+    pub row_gap: f32,
+    pub col_gap: f32,
+}
 
 /// WPF-style grid: explicit row + column track definitions, per-track
 /// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and

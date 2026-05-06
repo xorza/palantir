@@ -19,7 +19,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let a = ui.pipeline.layout.result.rect[kids[0].index()];
     let gone = ui.pipeline.layout.result.rect[kids[1].index()];
     let b = ui.pipeline.layout.result.rect[kids[2].index()];
@@ -55,7 +55,7 @@ fn collapsed_does_not_consume_fill_weight() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let a = ui.pipeline.layout.result.rect[kids[0].index()];
     let b = ui.pipeline.layout.result.rect[kids[2].index()];
     // Collapsed sibling's weight (3.0) is dropped — remaining two fills split 50/50.
@@ -101,7 +101,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).collect();
+    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
     let hid = ui.pipeline.layout.result.rect[kids[1].index()];
     let b = ui.pipeline.layout.result.rect[kids[2].index()];
     // Hidden node still occupies its slot.
@@ -185,7 +185,7 @@ fn hstack_child_align_per_axis_with_overrides() {
             .node;
         ui.end_frame();
 
-        let kids: Vec<_> = ui.tree.children(root).collect();
+        let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
         let a = ui.pipeline.layout.result.rect[kids[0].index()];
         let b = ui.pipeline.layout.result.rect[kids[1].index()];
         assert_eq!(a.min.y, 40.0, "case: {label} a inherits default");

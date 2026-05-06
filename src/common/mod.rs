@@ -4,3 +4,4 @@
 
 pub(crate) mod cache_arena;
 pub(crate) mod hash;
+pub(crate) mod sparse_column;

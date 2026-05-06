@@ -1,38 +1,40 @@
-//! Per-node element data: `Element` (wide builder form), the four columns
-//! `Tree` stores it in (`LayoutCore`, `PaintCore`, `WidgetId`,
-//! `subtree_end`), and `ElementExtras` (rarely-set side table).
+//! Per-node element data: `Element` (wide builder form), the columns
+//! `Tree` stores it in (`LayoutCore`, `PaintAttrs`, `NodeMeta`), and
+//! `ElementExtras` (rarely-set side table).
 //!
-//! Adding a field to `Element` requires routing it to one of the columns.
-//! Column choice is by *reader*: layout passes touch only `LayoutCore`,
-//! paint/cascade passes touch only `PaintCore`, hit-test reads the
-//! `WidgetId` column.
+//! Adding a field to `Element` requires routing it to one of the
+//! columns. Column choice is by *reader*: layout passes touch only
+//! `LayoutCore`; cascade / encoder / hit-test read the 1-byte
+//! `PaintAttrs` column densely; identity (`widget_id`) lives on
+//! `NodeMeta`.
 //!
-//! | field           | Element | LayoutCore | PaintCore | WidgetId | ElementExtras |
-//! |-----------------|:---------:|:--------:|:---------:|:--------:|:-------------:|
-//! | id              |     ✓     |          |           |    ✓     |               |
-//! | mode            |     ✓     |    ✓     |           |          |               |
-//! | size            |     ✓     |    ✓     |           |          |               |
-//! | padding         |     ✓     |    ✓     |           |          |               |
-//! | margin          |     ✓     |    ✓     |           |          |               |
-//! | align           |     ✓     |    ✓     |           |          |               |
-//! | visibility      |     ✓     |    ✓     |           |          |               |
-//! | sense           |     ✓     |          |     ✓     |          |               |
-//! | disabled        |     ✓     |          |     ✓     |          |               |
-//! | clip            |     ✓     |          |     ✓     |          |               |
-//! | focusable       |     ✓     |          |     ✓     |          |               |
-//! | min_size        |     ✓     |          |           |          |       ✓       |
-//! | max_size        |     ✓     |          |           |          |       ✓       |
-//! | gap             |     ✓     |          |           |          |       ✓       |
-//! | justify         |     ✓     |          |           |          |       ✓       |
-//! | child_align     |     ✓     |          |           |          |       ✓       |
-//! | position        |     ✓     |          |           |          |       ✓       |
-//! | grid            |     ✓     |          |           |          |       ✓       |
-//! | transform       |     ✓     |          |           |          |       ✓       |
+//! | field      | Element | LayoutCore | PaintAttrs | NodeMeta | ElementExtras |
+//! |------------|:-------:|:----------:|:----------:|:--------:|:-------------:|
+//! | id         |    ✓    |            |            |    ✓     |               |
+//! | mode       |    ✓    |     ✓      |            |          |               |
+//! | size       |    ✓    |     ✓      |            |          |               |
+//! | padding    |    ✓    |     ✓      |            |          |               |
+//! | margin     |    ✓    |     ✓      |            |          |               |
+//! | align      |    ✓    |     ✓      |            |          |               |
+//! | visibility |    ✓    |     ✓      |            |          |               |
+//! | sense      |    ✓    |            |     ✓      |          |               |
+//! | disabled   |    ✓    |            |     ✓      |          |               |
+//! | clip       |    ✓    |            |     ✓      |          |               |
+//! | focusable  |    ✓    |            |     ✓      |          |               |
+//! | min_size   |    ✓    |            |            |          |       ✓       |
+//! | max_size   |    ✓    |            |            |          |       ✓       |
+//! | gap        |    ✓    |            |            |          |       ✓       |
+//! | justify    |    ✓    |            |            |          |       ✓       |
+//! | child_align|    ✓    |            |            |          |       ✓       |
+//! | position   |    ✓    |            |            |          |       ✓       |
+//! | grid       |    ✓    |            |            |          |       ✓       |
+//! | transform  |    ✓    |            |            |          |       ✓       |
 //!
-//! `Element::split` routes the fields at `Tree::push_node` time. The
+//! `Element::split` routes the fields at `Tree::open_node` time. The
 //! extras side table is allocated only when at least one extras field
-//! differs from `ElementExtras::DEFAULT`. `Configure` (the trait) provides
-//! one chained setter per row.
+//! differs from `ElementExtras::DEFAULT`; the per-NodeId index column
+//! inside `Tree.extras` is filled at `open_node` time. `Configure`
+//! (the trait) provides one chained setter per row.
 
 use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
@@ -170,11 +172,13 @@ impl ElementExtras {
     }
 }
 
-/// Layout-side per-node columns, stored in `Tree::layout`. Read by every
-/// pass that runs measure/arrange/alignment math; held tight (one cache
-/// line) so the layout pass doesn't pull paint/identity bytes it never
-/// looks at. Visibility lives here so `is_collapsed` short-circuits in
-/// the layout fast-path without touching `PaintCore`.
+/// Per-node layout column, stored in `Tree::layout`. Read by every
+/// pass that runs measure/arrange/alignment math. Held tight so the
+/// layout pass pulls only what it reads. Visibility lives here so
+/// `is_collapsed` short-circuits in the layout fast-path. Packed
+/// paint/input flags (sense / disabled / clip / focusable) live in
+/// `Tree::attrs` — a separate 1-byte/node column read by cascade /
+/// encoder / hit-test.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LayoutCore {
     pub(crate) mode: LayoutMode,
@@ -183,32 +187,6 @@ pub(crate) struct LayoutCore {
     pub(crate) margin: Spacing,
     pub(crate) align: Align,
     pub(crate) visibility: Visibility,
-}
-
-/// Paint-and-input-side per-node columns, stored in `Tree::paint`. Read by
-/// cascade rebuild, the encoder, and the hit-index. Tiny (a u8 of packed
-/// flags + a u16 extras slot) so a frame's worth of paint flags fits in a
-/// handful of cache lines.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct PaintCore {
-    pub(crate) attrs: PaintAttrs,
-    /// Index into `Tree::node_extras`, or [`Self::NO_EXTRAS`] (`u16::MAX`)
-    /// when all extras are at default — the common case. Cap is 65 535
-    /// non-default elements per frame; `node_extras` is cleared per
-    /// frame. Sentinel-encoded (rather than `Option<u16>`) so the column
-    /// stays at 4 bytes/node instead of 6 — same pattern as `chrome_idx`.
-    pub(crate) extras: u16,
-}
-
-impl PaintCore {
-    /// Sentinel `extras` slot for the all-default common case.
-    pub(crate) const NO_EXTRAS: u16 = u16::MAX;
-
-    /// True when this node has a side-table entry in `Tree::node_extras`.
-    #[inline]
-    pub(crate) fn has_extras(self) -> bool {
-        self.extras != Self::NO_EXTRAS
-    }
 }
 
 /// Per-node config: identity + spatial layout + interaction + paint flags.
@@ -333,10 +311,10 @@ impl Element {
         }
     }
 
-    /// Split into the four storage columns plus the rarely-set bits.
-    /// `Tree::push_node` stamps the extras side-table slot if any extras
-    /// differ from default and writes the resulting `extras` index into
-    /// `PaintCore`.
+    /// Split into the storage columns plus the rarely-set bits.
+    /// `Tree::open_node` writes `layout` + `attrs` into their per-node
+    /// columns and stamps the extras side-table slot if any extras
+    /// differ from default (sentinel `SparseColumn::ABSENT` otherwise).
     pub(crate) fn split(self) -> ElementSplit {
         let layout = LayoutCore {
             mode: self.mode,
@@ -346,10 +324,7 @@ impl Element {
             align: self.align,
             visibility: self.visibility,
         };
-        let paint = PaintCore {
-            attrs: PaintAttrs::pack(self.sense, self.disabled, self.clip, self.focusable),
-            extras: PaintCore::NO_EXTRAS,
-        };
+        let attrs = PaintAttrs::pack(self.sense, self.disabled, self.clip, self.focusable);
         let extras = ElementExtras {
             transform: self.transform,
             position: self.position,
@@ -363,17 +338,21 @@ impl Element {
         };
         ElementSplit {
             layout,
-            paint,
+            attrs,
             id: self.id,
             extras,
         }
     }
 }
 
-/// Output of [`Element::split`] — the four storage columns of an `Element`.
+/// Output of [`Element::split`] — the storage columns of an `Element`.
+/// `extras` lands in `Tree::extras` (sparse side table) iff
+/// non-default; the per-NodeId index column inside `extras` is filled
+/// at `open_node` time. `attrs` and `layout` push into their dense
+/// per-NodeId columns.
 pub(crate) struct ElementSplit {
     pub(crate) layout: LayoutCore,
-    pub(crate) paint: PaintCore,
+    pub(crate) attrs: PaintAttrs,
     pub(crate) id: WidgetId,
     pub(crate) extras: ElementExtras,
 }

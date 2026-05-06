@@ -1,35 +1,20 @@
-use crate::layout::types::track::Track;
+use crate::common::hash::Hasher;
+use crate::common::sparse_column::SparseColumn;
+use crate::layout::types::span::Span;
+use crate::layout::types::visibility::Visibility;
 use crate::primitives::background::Background;
 use crate::shape::Shape;
 use crate::tree::element::{
-    Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintCore,
+    Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintAttrs,
 };
 use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
+use crate::widgets::grid::GridDef;
 use fixedbitset::FixedBitSet;
-use rustc_hash::FxHasher;
-use std::hash::Hasher;
-use std::rc::Rc;
 
 pub(crate) mod element;
 pub(crate) mod node_hash;
 pub(crate) mod widget_id;
-
-/// Track definitions + axis gaps for a `Grid` panel. Stored on `GridArena`
-/// (a `Tree`-owned `Vec<GridDef>`) and addressed from
-/// `LayoutMode::Grid(u16)`. Track defs live behind `Rc<[Track]>` so callers
-/// can cache and share them across frames without the framework copying —
-/// the builder stores the `Rc`, the layout pass reads through it directly.
-/// Per-track hug sizes (computed in measure, read in arrange) live on
-/// `LayoutResult` keyed by grid def index — the tree is read-only after
-/// recording.
-#[derive(Clone, Debug)]
-pub(crate) struct GridDef {
-    pub rows: Rc<[Track]>,
-    pub cols: Rc<[Track]>,
-    pub row_gap: f32,
-    pub col_gap: f32,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct NodeId(pub(crate) u32);
@@ -41,68 +26,103 @@ impl NodeId {
     }
 }
 
-/// Per-node columns are stored in parallel `Vec`s on `Tree`, all indexed by
-/// `NodeId.0`. Splitting by reader keeps each pass touching only the bytes
-/// it needs:
+/// Two storage modes coexist:
+///
+/// **Per-NodeId columns** — parallel `Vec`s indexed by `NodeId.0`, all in
+/// pre-order paint order (parent before children, siblings in declaration
+/// order). Reverse iteration gives topmost-first (used by hit-testing).
+/// Splitting by reader keeps each pass touching only the bytes it needs:
 ///
 /// - `layout`     — read by measure / arrange / alignment math
-/// - `paint`      — read by cascade / encoder / hit-test
-/// - `widget_ids` — read only by hit-test and (future) state map
-/// - `subtree_end`— pre-order topology; read by every walk
+/// - `attrs`      — packed paint/input flags (sense / disabled /
+///   clip / focusable). 1 byte/node; read by cascade / encoder /
+///   hit-test in dense columnar passes
+/// - `nodes`      — per-NodeId `NodeMeta`, bundling the author's
+///   `widget_id`, the kinds-stream `Span`, the exclusive end NodeId,
+///   and the first shape index in the node's subtree.
+///   `i + 1 == nodes[i].end` for a leaf.
 ///
-/// `nodes` are stored in pre-order paint order: a parent is pushed before
-/// its children, and siblings appear in declaration order. Reverse iteration
-/// over indices gives topmost-first traversal — load-bearing for hit-testing
-/// in `Ui`.
+/// **Kinds stream** — `kinds: Vec<TreeOp>` interleaves `NodeEnter`,
+/// `Shape`, `NodeExit` events in pure record order. Payload lives in
+/// `nodes` + `layout` + `attrs` (per-NodeEnter) and `shapes`
+/// (per-Shape). The encoder and hash walk this stream linearly;
+/// `nodes[i].kinds` maps a node to its slice in O(1).
 ///
-/// Topology is encoded by `subtree_end[i]`: an exclusive index one past the
-/// last descendant of node `i`. `i + 1 == subtree_end[i]` for a leaf.
+/// Recording: `open_node` pushes `NodeEnter` + per-node columns,
+/// `add_shape` pushes `Shape`, `close_node` pushes `NodeExit` and
+/// finalizes `nodes[i]`. No deferred-pending or linearization —
+/// stream and columns are final the moment the root closes.
 #[derive(Default)]
 pub(crate) struct Tree {
-    pub(crate) widget_ids: Vec<WidgetId>,
+    // -- Per-NodeId mandatory columns ------------------------------------
+    /// Per-NodeId metadata bundle:
+    /// - `widget_id`   — author-supplied identity (hit-test, state map).
+    /// - `kinds`       — `Span` covering this node's `NodeEnter` through
+    ///   matching `NodeExit` in the kinds stream.
+    /// - `end`         — exclusive end NodeId in pre-order
+    ///   (`i + 1 == nodes[i].end` for a leaf).
+    /// - `shape_first` — first shape index belonging to this node's
+    ///   subtree.
+    ///
+    /// Bundled because all four are written together at `open_node` /
+    /// `close_node` and the bookkeeping ends would risk desync if
+    /// split. End-of-subtree shape range = `nodes[end].shape_first`
+    /// (or `shapes.len()` if `end == n`).
+    // todo soa
+    pub(crate) nodes: Vec<NodeMeta>,
+    /// Layout-pass column: geometry + visibility. Held tight so the
+    /// hot measure/arrange path doesn't pull paint flags it never
+    /// reads.
     pub(crate) layout: Vec<LayoutCore>,
-    pub(crate) paint: Vec<PaintCore>,
-    /// Out-of-line side table for rarely-set element fields (`transform`,
-    /// `position`, `grid`). `paint[i].extras` holds the slot index, or
-    /// `PaintCore::NO_EXTRAS` for the all-default common case. Cleared
-    /// per frame.
-    pub(crate) node_extras: Vec<ElementExtras>,
-    /// Chrome side table — index column parallel to `layout`/`paint`,
-    /// `Self::NO_CHROME` (`u16::MAX`) for nodes without chrome.
-    /// Decoupled from `node_extras` because chrome is panel-common
-    /// while the rest of `ElementExtras` is rare; bundling them was
-    /// costing every chrome-bearing panel a 108-byte extras slot just
-    /// to hold a single `Option<Background>`.
-    pub(crate) chrome_idx: Vec<u16>,
-    /// Chrome storage. Cap of 65 535 chromes per frame; cleared per
-    /// frame, capacity retained.
-    pub(crate) chrome_table: Vec<Background>,
-    /// Length parallel to the columns above. `i + 1 == subtree_end[i]` for a
-    /// leaf; otherwise points one past the last descendant of `i`.
-    /// Maintained incrementally by `close_node`, so the slot is final
-    /// the moment recording closes (no separate finalize pass).
-    pub(crate) subtree_end: Vec<u32>,
+    /// 1-byte packed paint/input flags per node (sense / disabled /
+    /// clip / focusable). Split from `layout` so cascade / encoder /
+    /// hit-test pull a 16-nodes-per-cacheline dense column instead of
+    /// the full `LayoutCore`.
+    pub(crate) attrs: Vec<PaintAttrs>,
 
-    /// Per-node `Shape` storage (flat buffer + per-node start offsets).
-    /// Reads via `shapes.slice_of(idx)`; writes via [`Self::add_shape`].
-    pub(crate) shapes: ShapeBuf,
-    /// Recording-only ancestor chain of currently-open nodes, **not
-    /// including the tip** (which lives in `current_open`). On
-    /// `close_node` the popped entry is both the parent of the closing
-    /// node (used to roll up `subtree_end`) and the new tip. Capacity
-    /// peaks at tree depth — typically a handful of entries — so this
-    /// is a depth-sized scratch, not a node-sized column.
-    open_stack: Vec<u32>,
-    /// Tip of the currently-open path while recording. `Some(n)` between an
-    /// `open_node` returning `n` and the matching `close_node`. Cleared in
-    /// `clear`.
-    pub(crate) current_open: Option<NodeId>,
+    // -- Per-NodeId sparse side tables -----------------------------------
+    /// Rarely-set element fields (`transform`, `position`, `grid`, …)
+    /// stored sparsely — most nodes leave them all default. The
+    /// `SparseColumn` packs a per-NodeId index column with the dense
+    /// table; cleared per frame, capacity retained.
+    pub(crate) extras: SparseColumn<ElementExtras>,
+    /// Chrome (panel `Background`) stored sparsely. Decoupled from
+    /// `extras` because chrome is panel-common while the rest of
+    /// `ElementExtras` is rare — bundling them was costing every
+    /// chrome-bearing panel a 108-byte extras slot to hold a single
+    /// `Option<Background>`.
+    pub(crate) chrome: SparseColumn<Background>,
+
+    // -- Kinds stream + flat shape buffer --------------------------------
+    /// Tagged event stream interleaving node enters/exits with shapes,
+    /// in pure record order. Walked linearly by the encoder; replaces
+    /// the old per-node shape slice + slot mechanism. Each entry maps
+    /// to a payload:
+    ///   - `NodeEnter` → next entry in `nodes[i].widget_id` /
+    ///     `layout[i]` / `attrs[i]`
+    ///   - `Shape`     → next entry in `shapes`
+    ///   - `NodeExit`  → no payload
+    pub(crate) kinds: Vec<TreeOp>,
+    /// Flat shape storage in record order. Indexed by counting `Shape`
+    /// kinds entries up to a given position; `nodes[i].shape_first`
+    /// caches the first index belonging to node `i`'s subtree.
+    pub(crate) shapes: Vec<Shape>,
+
+    // -- Frame-scoped sub-storage ----------------------------------------
     /// Frame-scoped grid storage: track defs (addressed by
     /// `LayoutMode::Grid(u16)`). Per-track hug arrays live on `LayoutResult`
     /// since the tree is read-only after recording. Cleared per frame,
     /// capacity retained.
     pub(crate) grid: GridArena,
 
+    // -- Recording-only state --------------------------------------------
+    /// Stack of currently-open nodes. The last entry is the tip;
+    /// preceding entries are its ancestors. Capacity peaks at tree depth
+    /// — typically a handful of entries. Empty outside the
+    /// `begin_frame` ↔ root `close_node` window.
+    open_frames: Vec<OpenFrame>,
+
+    // -- Output (populated by `end_frame`) -------------------------------
     /// Per-node authoring hash + subtree-rollup hash + grid-presence bit,
     /// all populated by [`Self::end_frame`]. Indexed by `NodeId.0`,
     /// capacity retained across frames.
@@ -110,21 +130,16 @@ pub(crate) struct Tree {
 }
 
 impl Tree {
-    /// Sentinel `chrome_idx` slot for nodes without chrome.
-    pub(crate) const NO_CHROME: u16 = u16::MAX;
-
     pub(crate) fn begin_frame(&mut self) {
+        self.nodes.clear();
         self.layout.clear();
-        self.paint.clear();
-        self.widget_ids.clear();
-        self.subtree_end.clear();
-        self.shapes.begin_frame();
-        self.open_stack.clear();
-        self.current_open = None;
+        self.attrs.clear();
+        self.extras.clear();
+        self.chrome.clear();
+        self.kinds.clear();
+        self.shapes.clear();
         self.grid.clear();
-        self.node_extras.clear();
-        self.chrome_idx.clear();
-        self.chrome_table.clear();
+        self.open_frames.clear();
         self.hashes.begin_frame();
     }
 
@@ -134,73 +149,70 @@ impl Tree {
     /// retained across frames.
     pub(crate) fn end_frame(&mut self) {
         assert!(
-            self.current_open.is_none() && self.open_stack.is_empty(),
+            self.open_frames.is_empty(),
             "end_frame called with {} node(s) still open — a widget builder forgot close_node",
-            self.open_stack.len() + 1,
+            self.open_frames.len(),
         );
+        #[cfg(debug_assertions)]
+        self.assert_recording_invariants();
+
+        // Per-node + subtree hashes, both populated by a single
+        // entry point on `NodeHashes`. `mem::take` swaps the storage
+        // out so `compute` can read from `self` and write into the
+        // local without borrow conflicts; capacity is preserved.
+        // todo untangle
+        let mut hashes = std::mem::take(&mut self.hashes);
+        hashes.compute(self);
+        self.hashes = hashes;
+    }
+
+    /// Cross-column structural invariants that must hold after the
+    /// root closes. One pass over `kinds` tallies the three op
+    /// counts; `nodes` and `attrs` length matches are direct asserts.
+    /// Catches drift between the recording stream and the per-NodeId
+    /// columns the moment a `Tree` mutation gets it wrong. Debug-only.
+    #[cfg(debug_assertions)]
+    fn assert_recording_invariants(&self) {
         let n = self.layout.len();
-
-        self.hashes.node.clear();
-        self.hashes.node.reserve(n);
-        for i in 0..n {
-            let layout = &self.layout[i];
-            let paint = self.paint[i];
-            let extras = paint
-                .has_extras()
-                .then(|| &self.node_extras[paint.extras as usize]);
-            let chrome = self.chrome_for(NodeId(i as u32));
-            let shapes = self.shapes.slice_of(i);
-            let grid_def = match layout.mode {
-                LayoutMode::Grid(idx) => Some(&self.grid.defs[idx as usize]),
-                _ => None,
-            };
-            self.hashes.node.push(NodeHash::compute(
-                layout, paint, extras, chrome, shapes, grid_def,
-            ));
-        }
-
-        // Subtree-hash rollup. Pre-order arena means every child has a
-        // strictly higher index than its parent, so iterating in
-        // reverse fills children before their parent reads them. Each
-        // parent folds its own node-hash with its direct children's
-        // subtree hashes, in declaration order — sibling reorder
-        // changes the parent's subtree hash.
-        self.hashes.subtree.clear();
-        self.hashes.subtree.resize(n, NodeHash::UNCOMPUTED);
-        self.hashes.subtree_has_grid.clear();
-        self.hashes.subtree_has_grid.grow(n);
-        for i in (0..n).rev() {
-            let end = self.subtree_end[i];
-            let mut h = FxHasher::default();
-            h.write_u64(self.hashes.node[i].as_u64());
-            // Fold `transform` into `subtree_hash` (but not `node[i]`):
-            // damage diffs descendants' screen rects, so the per-node
-            // hash stays transform-insensitive. The encode cache, which
-            // keys on `subtree` and replays cached `PushTransform`
-            // bytes verbatim, must invalidate on transform changes.
-            if let Some(t) = self.read_extras(NodeId(i as u32)).transform {
-                h.write_u8(1);
-                let bytes = bytemuck::bytes_of(&t);
-                h.write(bytes);
-            } else {
-                h.write_u8(0);
+        let mut enters = 0usize;
+        let mut exits = 0usize;
+        let mut shape_evts = 0usize;
+        for op in &self.kinds {
+            match op {
+                TreeOp::NodeEnter => enters += 1,
+                TreeOp::NodeExit => exits += 1,
+                TreeOp::Shape => shape_evts += 1,
             }
-            let mut has_grid = matches!(self.layout[i].mode, LayoutMode::Grid(_));
-            let mut next = (i as u32) + 1;
-            while next < end {
-                h.write_u64(self.hashes.subtree[next as usize].as_u64());
-                has_grid |= self.hashes.subtree_has_grid.contains(next as usize);
-                next = self.subtree_end[next as usize];
-            }
-            self.hashes.subtree[i] = NodeHash::from_u64(h.finish());
-            self.hashes.subtree_has_grid.set(i, has_grid);
         }
+        debug_assert_eq!(
+            enters, n,
+            "kinds stream NodeEnter count diverged from layout column",
+        );
+        debug_assert_eq!(
+            exits, n,
+            "kinds stream NodeExit count diverged from layout column",
+        );
+        debug_assert_eq!(
+            shape_evts,
+            self.shapes.len(),
+            "kinds stream Shape count diverged from shapes column",
+        );
+        debug_assert_eq!(
+            self.nodes.len(),
+            n,
+            "nodes column length must match layout column after recording",
+        );
+        debug_assert_eq!(
+            self.attrs.len(),
+            n,
+            "attrs column length must match layout column after recording",
+        );
     }
 
     /// Push a node as a child of the currently-open node (or as the root if
     /// no node is open) and make it the new tip. Pair with `close_node`.
     pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
-        let parent = self.current_open;
+        let parent = self.open_frames.last().map(|f| f.node);
         let new_id = NodeId(self.layout.len() as u32);
         if let LayoutMode::Grid(idx) = element.mode {
             assert!(
@@ -210,7 +222,7 @@ impl Tree {
         }
         let ElementSplit {
             layout,
-            mut paint,
+            attrs,
             id: widget_id,
             extras,
         } = element.split();
@@ -243,78 +255,63 @@ impl Tree {
             }
         }
 
-        if !extras.is_default() {
-            assert!(
-                self.node_extras.len() < PaintCore::NO_EXTRAS as usize,
-                "more than 65 535 nodes with extras (transform/position/grid) in a single frame",
-            );
-            paint.extras = self.node_extras.len() as u16;
-            self.node_extras.push(extras);
-        }
-
-        let chrome_slot = match chrome {
-            Some(bg) => {
-                assert!(
-                    self.chrome_table.len() < Self::NO_CHROME as usize,
-                    "more than 65 535 chromes in a single frame",
-                );
-                let idx = self.chrome_table.len() as u16;
-                self.chrome_table.push(bg);
-                idx
-            }
-            None => Self::NO_CHROME,
-        };
-        self.chrome_idx.push(chrome_slot);
+        self.extras.push((!extras.is_default()).then_some(extras));
+        self.chrome.push(chrome);
 
         self.layout.push(layout);
-        self.paint.push(paint);
-        self.widget_ids.push(widget_id);
+        self.attrs.push(attrs);
         // Leaf marker. `close_node` rolls each closing subtree up
-        // into its parent's slot, so `subtree_end` is final the
-        // moment the root's `close_node` returns.
-        self.subtree_end.push(new_id.0 + 1);
-        self.shapes.open_node();
-        if let Some(p) = parent {
-            self.open_stack.push(p.0);
-        }
-        self.current_open = Some(new_id);
-        debug_assert_eq!(
-            self.shapes.starts.len(),
-            self.layout.len() + 1,
-            "ShapeBuf::starts must hold node_count() + 1 entries (trailing sentinel)",
-        );
+        // into its parent's slot, so `nodes[i].end` is final the
+        // moment the root's `close_node` returns. `kinds.len` is
+        // filled at close (placeholder 0); `widget_id`, `kinds.start`,
+        // and `shape_first` are final here.
+        self.nodes.push(NodeMeta {
+            widget_id,
+            kinds: Span::new(self.kinds.len() as u32, 0),
+            end: new_id.0 + 1,
+            shape_first: self.shapes.len() as u32,
+        });
+        self.kinds.push(TreeOp::NodeEnter);
+        self.open_frames.push(OpenFrame {
+            node: new_id,
+            has_text: false,
+        });
         new_id
     }
 
     /// Pop the currently-open node back to its parent and roll its
-    /// `subtree_end` up into the parent's slot. Panics if no node is
-    /// open.
+    /// `nodes[…].end` up into the parent's slot. Panics if no node
+    /// is open.
     pub(crate) fn close_node(&mut self) {
         let closing = self
-            .current_open
+            .open_frames
+            .pop()
             .expect("close_node called with no open node");
-        match self.open_stack.pop() {
-            Some(parent) => {
-                let pi = parent as usize;
-                let end = self.subtree_end[closing.index()];
-                if self.subtree_end[pi] < end {
-                    self.subtree_end[pi] = end;
-                }
-                self.current_open = Some(NodeId(parent));
-            }
-            None => {
-                self.current_open = None;
+
+        // Push NodeExit and finalize the closing node's `kinds` span.
+        self.kinds.push(TreeOp::NodeExit);
+        let meta = &mut self.nodes[closing.node.index()];
+        meta.kinds.len = self.kinds.len() as u32 - meta.kinds.start;
+        let end = meta.end;
+
+        if let Some(parent) = self.open_frames.last() {
+            let pi = parent.node.index();
+            if self.nodes[pi].end < end {
+                self.nodes[pi].end = end;
             }
         }
     }
 
-    pub(crate) fn add_shape(&mut self, node: NodeId, shape: Shape) {
-        let idx = node.0 as usize;
-        assert_eq!(
-            idx,
-            self.layout.len() - 1,
-            "shapes for node {idx} must be added contiguously, before any child node",
-        );
+    /// Append a shape to the currently-open tip. The shape's position
+    /// in the kinds stream encodes its paint order — shapes pushed
+    /// before any child paint first, shapes between two children paint
+    /// between them, etc. Targeting is positional (whichever `Ui` is
+    /// open).
+    pub(crate) fn add_shape(&mut self, shape: Shape) {
+        let tip = self
+            .open_frames
+            .last_mut()
+            .expect("add_shape called with no open node");
         // Multi-`Shape::Text` per leaf is unsupported: layout records a
         // single `ShapedText` per node and the encoder emits a single
         // `DrawText` rect — a second text shape would silently
@@ -323,43 +320,14 @@ impl Tree {
         // `LayoutResult.text_shapes`.
         if matches!(shape, Shape::Text { .. }) {
             assert!(
-                !self
-                    .shapes
-                    .slice_of(idx)
-                    .iter()
-                    .any(|s| matches!(s, Shape::Text { .. })),
-                "node {idx} already has a Shape::Text — multiple text shapes per leaf are unsupported",
+                !tip.has_text,
+                "node {} already has a Shape::Text — multiple text shapes per leaf are unsupported",
+                tip.node.0,
             );
+            tip.has_text = true;
         }
-        self.shapes.push_to_open(shape);
-    }
-
-    pub(crate) fn is_collapsed(&self, id: NodeId) -> bool {
-        self.layout[id.0 as usize].visibility.is_collapsed()
-    }
-
-    /// Read extras for a node, returning a borrow of `ElementExtras::DEFAULT`
-    /// when the node has no side-table entry. Use this when you want to read
-    /// individual fields (`gap`, `child_align`, `position`, …) without
-    /// duplicating defaults at every call site.
-    pub(crate) fn read_extras(&self, id: NodeId) -> &ElementExtras {
-        let p = self.paint[id.0 as usize];
-        if p.has_extras() {
-            &self.node_extras[p.extras as usize]
-        } else {
-            &ElementExtras::DEFAULT
-        }
-    }
-
-    /// Chrome for `id`, or `None` if the node has no chrome. Resolves
-    /// the `chrome_idx` sentinel into a borrow of `chrome_table`.
-    pub(crate) fn chrome_for(&self, id: NodeId) -> Option<&Background> {
-        let slot = self.chrome_idx[id.index()];
-        if slot == Self::NO_CHROME {
-            None
-        } else {
-            Some(&self.chrome_table[slot as usize])
-        }
+        self.kinds.push(TreeOp::Shape);
+        self.shapes.push(shape);
     }
 
     /// First node in pre-order paint order, or `None` if the tree is empty.
@@ -373,39 +341,68 @@ impl Tree {
         }
     }
 
-    /// Iterate child NodeIds of `parent` in declaration order.
+    /// Iterate children of `parent` in declaration order, each tagged
+    /// with its collapse state (`Child::Active` / `Child::Collapsed`).
+    /// Use `.filter_map(Child::active)` for active-only iteration, or
+    /// match on `Child` when collapsed children still need handling
+    /// (arrange loops zero their subtrees at the parent's anchor).
     pub(crate) fn children(&self, parent: NodeId) -> ChildIter<'_> {
         let pi = parent.0 as usize;
         ChildIter {
-            subtree_end: &self.subtree_end,
+            layout: &self.layout,
+            nodes: &self.nodes,
             next: parent.0 + 1,
-            end: self.subtree_end[pi],
+            end: self.nodes[pi].end,
         }
     }
 
-    /// Iterate non-collapsed child NodeIds of `parent` in declaration order.
-    /// Layout drivers measure/intrinsic loops use this to skip the
-    /// `if tree.is_collapsed(c) { continue; }` boilerplate. Arrange loops
-    /// generally still need the explicit branch because collapsed children
-    /// affect cursor/gap bookkeeping differently — see [`Self::children_with_state`].
-    pub(crate) fn children_active(&self, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
-        self.children(parent).filter(|&c| !self.is_collapsed(c))
+    // -- Per-node read accessors -----------------------------------------
+
+    /// Iterate shapes attached *directly* to `node` (not its descendants),
+    /// in record order. Walks the inside of node `i`'s `kinds` span,
+    /// yielding depth-0 `Shape` events.
+    pub(crate) fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &Shape> + '_ {
+        let i = node.index();
+        let meta = &self.nodes[i];
+        let r = meta.kinds.range();
+        let start = r.start + 1;
+        let end = r.end - 1;
+        let shape_first = meta.shape_first as usize;
+        let shapes = &self.shapes;
+        let mut depth = 0i32;
+        let mut shape_cursor = shape_first;
+        self.kinds[start..end]
+            .iter()
+            .filter_map(move |op| match op {
+                TreeOp::NodeEnter => {
+                    depth += 1;
+                    None
+                }
+                TreeOp::NodeExit => {
+                    depth -= 1;
+                    None
+                }
+                TreeOp::Shape => {
+                    let idx = shape_cursor;
+                    shape_cursor += 1;
+                    (depth == 0).then_some(&shapes[idx])
+                }
+            })
     }
 
-    /// Iterate child NodeIds of `parent` tagged with their collapse state.
-    /// Used by every arrange driver: collapsed children must still be
-    /// visited (so their subtree's rects get zeroed at the parent's
-    /// anchor) but contribute nothing to cursors or content size.
-    /// Replacing the per-driver `if tree.is_collapsed(c) {…} continue;`
-    /// boilerplate.
-    pub(crate) fn children_with_state(&self, parent: NodeId) -> impl Iterator<Item = Child> + '_ {
-        self.children(parent).map(|c| {
-            if self.is_collapsed(c) {
-                Child::Collapsed(c)
-            } else {
-                Child::Active(c)
-            }
-        })
+    /// Read extras for a node, returning a borrow of `ElementExtras::DEFAULT`
+    /// when the node has no side-table entry. Use this when you want to read
+    /// individual fields (`gap`, `child_align`, `position`, …) without
+    /// duplicating defaults at every call site.
+    pub(crate) fn read_extras(&self, id: NodeId) -> &ElementExtras {
+        self.extras
+            .get(id.index())
+            .unwrap_or(&ElementExtras::DEFAULT)
+    }
+
+    /// Chrome for `id`, or `None` if the node has no chrome.
+    pub(crate) fn chrome_for(&self, id: NodeId) -> Option<&Background> {
+        self.chrome.get(id.index())
     }
 
     /// Subtree authoring hash for `id`: rolls this node's hash with
@@ -418,41 +415,54 @@ impl Tree {
     }
 }
 
+// todo have only tree ref
 pub(crate) struct ChildIter<'a> {
-    subtree_end: &'a [u32],
+    layout: &'a [LayoutCore],
+    nodes: &'a [NodeMeta],
     next: u32,
     end: u32,
 }
 
-/// Child of a parent, tagged with its collapse state. Yielded by
-/// [`Tree::children_with_state`]; the dispatch on this enum replaces
-/// the `if tree.is_collapsed(c) {…} continue;` boilerplate that used
-/// to live in every arrange driver.
+/// Child of a parent, tagged with its `Visibility`. Yielded by
+/// [`Tree::children`]; replaces the
+/// `if tree.is_collapsed(c) {…} continue;` boilerplate that used to
+/// live in every arrange driver. `visibility` is the cached value of
+/// `tree.layout[id.index()].visibility` — read once during iteration.
 #[derive(Copy, Clone, Debug)]
-pub(crate) enum Child {
-    /// Visible / measured child — drive its layout normally.
-    Active(NodeId),
-    /// Collapsed child — its subtree must be zeroed at the parent's
-    /// anchor and skipped from cursor/content bookkeeping.
-    Collapsed(NodeId),
+pub(crate) struct Child {
+    pub(crate) id: NodeId,
+    pub(crate) visibility: Visibility,
 }
 
-impl<'a> Iterator for ChildIter<'a> {
-    type Item = NodeId;
-    fn next(&mut self) -> Option<NodeId> {
-        if self.next >= self.end {
-            return None;
-        }
-        let cur = NodeId(self.next);
-        self.next = self.subtree_end[self.next as usize];
-        Some(cur)
+impl Child {
+    /// `Some(id)` when the child is active (not collapsed), `None`
+    /// when collapsed. Pairs with `.filter_map(Child::active)` for
+    /// active-only loops. Hidden counts as active here — it still
+    /// participates in layout (occupies space), only paint/hit-test
+    /// short-circuit at the cascade.
+    #[inline]
+    pub(crate) fn active(self) -> Option<NodeId> {
+        (!self.visibility.is_collapsed()).then_some(self.id)
     }
 }
 
-/// Frame-scoped recording-only grid storage: track defs (one per `Grid`
-/// panel), addressed by `LayoutMode::Grid(u16)`. Per-track hug arrays live
-/// on `LayoutResult` since the tree is read-only after recording. Capacity
-/// is retained across frames; data is cleared per frame.
+impl<'a> Iterator for ChildIter<'a> {
+    type Item = Child;
+    fn next(&mut self) -> Option<Child> {
+        if self.next >= self.end {
+            return None;
+        }
+        let id = NodeId(self.next);
+        let visibility = self.layout[id.index()].visibility;
+        self.next = self.nodes[self.next as usize].end;
+        Some(Child { id, visibility })
+    }
+}
+
+/// Frame-scoped grid storage: track defs (one per `Grid` panel),
+/// addressed by `LayoutMode::Grid(u16)`. Per-track hug arrays live on
+/// `LayoutResult` since the tree is read-only after recording.
+/// Capacity is retained across frames; data is cleared per frame.
 #[derive(Default)]
 pub(crate) struct GridArena {
     pub(crate) defs: Vec<GridDef>,
@@ -463,9 +473,10 @@ impl GridArena {
         self.defs.clear();
     }
 
-    /// Append a `GridDef` referencing user-owned `Rc<[Track]>` rows + cols;
-    /// return its index. The index is stamped into a `LayoutMode::Grid(idx)`
-    /// on the owning panel's `Element`. `Rc` clones are refcount-only.
+    /// Append a `GridDef` referencing user-owned `Rc<[Track]>` rows +
+    /// cols; return its index. The index is stamped into a
+    /// `LayoutMode::Grid(idx)` on the owning panel's `Element`. `Rc`
+    /// clones are refcount-only.
     pub(crate) fn push_def(&mut self, def: GridDef) -> u16 {
         assert!(
             self.defs.len() < u16::MAX as usize,
@@ -500,6 +511,11 @@ pub(crate) struct NodeHashes {
     pub(crate) node: Vec<NodeHash>,
     pub(crate) subtree: Vec<NodeHash>,
     pub(crate) subtree_has_grid: FixedBitSet,
+    /// Reused scratch for the single-pass per-node hash compute (one
+    /// entry per currently-open ancestor). Capacity peaks at tree
+    /// depth and is retained across frames so the hot path is alloc-
+    /// free in steady state.
+    pub(crate) compute_stack: Vec<(NodeId, Hasher)>,
 }
 
 impl NodeHashes {
@@ -510,54 +526,49 @@ impl NodeHashes {
     }
 }
 
-/// Per-node `Shape` storage: a flat `buf` of all shapes plus a `starts`
-/// table where `buf[starts[i]..starts[i+1]]` is node `i`'s slice.
-/// `starts` always has length `node_count() + 1` — the trailing
-/// sentinel is the open end of the most recently opened node, kept
-/// equal to `buf.len()` while recording so [`Self::push_to_open`] can
-/// extend it in place.
-pub(crate) struct ShapeBuf {
-    buf: Vec<Shape>,
-    starts: Vec<u32>,
+/// Per-NodeId metadata bundle. Holds everything that's both
+/// (a) one-per-node and (b) finalized by `close_node`. Layout-side
+/// data lives separately in `Tree.layout` because the layout pass
+/// reads it densely and shouldn't pull these unrelated bytes.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct NodeMeta {
+    /// Author-supplied identity. Read by hit-test and the state map.
+    pub(crate) widget_id: WidgetId,
+    /// Span into `Tree.kinds`: `kinds[start..start+len]` covers this
+    /// node's `NodeEnter` through matching `NodeExit` (inclusive).
+    pub(crate) kinds: Span,
+    /// Exclusive end in NodeId space: one past the last descendant
+    /// in pre-order. `i + 1 == end` for a leaf.
+    pub(crate) end: u32,
+    /// First shape index belonging to this node's subtree (this node +
+    /// every descendant). End of the subtree's shape range is
+    /// `nodes[end].shape_first`, or `shapes.len()` when `end` is past
+    /// the last NodeId.
+    pub(crate) shape_first: u32,
 }
 
-impl Default for ShapeBuf {
-    fn default() -> Self {
-        Self {
-            buf: Vec::new(),
-            starts: vec![0],
-        }
-    }
+/// Tagged event in the per-frame `kinds` stream — see `Tree.kinds`.
+/// One byte each. `NodeEnter` and `NodeExit` always pair (root-first
+/// preorder); `Shape` events sit between, in record order.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TreeOp {
+    NodeEnter,
+    Shape,
+    NodeExit,
 }
 
-impl ShapeBuf {
-    fn begin_frame(&mut self) {
-        self.buf.clear();
-        self.starts.clear();
-        self.starts.push(0);
-    }
-
-    /// Slice of shapes for node index `node_idx`. Empty for nodes that
-    /// recorded no shapes.
-    pub(crate) fn slice_of(&self, node_idx: usize) -> &[Shape] {
-        let s = self.starts[node_idx] as usize;
-        let e = self.starts[node_idx + 1] as usize;
-        &self.buf[s..e]
-    }
-
-    /// Mark a fresh open node — its shape range starts at the current
-    /// buffer end and extends as [`Self::push_to_open`] appends.
-    fn open_node(&mut self) {
-        self.starts.push(self.buf.len() as u32);
-    }
-
-    /// Append `shape` to the most-recently-opened node's range. Caller
-    /// (`Tree::add_shape`) enforces the contiguity + Text-uniqueness
-    /// invariants before delegating here.
-    fn push_to_open(&mut self, shape: Shape) {
-        self.buf.push(shape);
-        *self.starts.last_mut().unwrap() = self.buf.len() as u32;
-    }
+/// Recording-only frame for the open-stack. One per currently-open
+/// node, root-first; the last entry is the tip.
+#[derive(Clone, Copy, Debug)]
+struct OpenFrame {
+    /// The node this frame represents.
+    node: NodeId,
+    /// Tracks "this node already has a `Shape::Text`" — multi-Text per
+    /// leaf is unsupported (the layout pass writes a single
+    /// `ShapedText` slot per node). Avoids an O(node-shapes) scan in
+    /// `add_shape`.
+    has_text: bool,
 }
 
 #[cfg(test)]

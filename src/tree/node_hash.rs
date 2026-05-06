@@ -12,12 +12,14 @@
 //! NaN bit pattern; UI authoring shouldn't produce NaN anyway (asserts
 //! in builders enforce non-negative sizes etc.).
 
-use super::GridDef;
+use super::{NodeHashes, NodeId, Tree, TreeOp};
 use crate::common::hash::Hasher;
 use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::shape::Shape;
-use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintCore, ScrollAxes};
+use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, ScrollAxes};
+use crate::widgets::grid::GridDef;
+use rustc_hash::FxHasher;
 use std::hash::Hash;
 use std::hash::Hasher as _;
 
@@ -51,34 +53,120 @@ impl NodeHash {
     pub(crate) fn from_u64(v: u64) -> Self {
         Self(v)
     }
+}
 
-    /// Compute the authoring hash for one node. Read-only over the tree —
-    /// pure function of (LayoutCore, PaintCore, ElementExtras, shapes,
-    /// optional GridDef) at this `NodeId`.
-    #[inline]
-    pub(crate) fn compute(
-        layout: &LayoutCore,
-        paint: PaintCore,
-        extras: Option<&ElementExtras>,
-        chrome: Option<&Background>,
-        shapes: &[Shape],
-        grid_def: Option<&GridDef>,
-    ) -> Self {
-        let mut h = Hasher::new();
-        hash_layout_core(&mut h, layout);
-        hash_paint_core(&mut h, paint);
-        if let Some(e) = extras {
-            hash_node_extras(&mut h, e);
+impl NodeHashes {
+    /// Per-frame entry point called by `Tree::end_frame`: populates
+    /// `node[i]`, `subtree[i]`, and `subtree_has_grid` for every node
+    /// in `tree`. Two phases run back-to-back, both alloc-free in
+    /// steady state thanks to the retained `compute_stack` scratch.
+    pub(crate) fn compute(&mut self, tree: &Tree) {
+        self.compute_per_node(tree);
+        self.compute_subtree_rollup(tree);
+    }
+
+    /// Phase 1: compute every node's authoring hash in a single
+    /// pre-order pass over `tree.kinds`. O(N) total work — replaces
+    /// the per-node walk that was O(N²) worst-case for skewed trees.
+    ///
+    /// Hashing equivalence with the old per-node walk: each node's
+    /// hasher receives the same byte sequence in the same order —
+    /// mandatory data (`LayoutCore`, `attrs`, extras-presence,
+    /// extras, chrome) on `NodeEnter`; depth-0 shapes and direct-
+    /// child boundaries while the node is the topmost open hasher;
+    /// `grid_def` on `NodeExit`. Shapes nested under descendants
+    /// route into the descendant's hasher (= the new top of stack),
+    /// not the ancestor's — same effect as the old `if depth == 0`
+    /// filter.
+    fn compute_per_node(&mut self, tree: &Tree) {
+        self.node.clear();
+        self.node.resize(tree.layout.len(), NodeHash::UNCOMPUTED);
+        self.compute_stack.clear();
+
+        let stack = &mut self.compute_stack;
+        let out = &mut self.node;
+        let mut node_iter: u32 = 0;
+        let mut shape_cursor: usize = 0;
+
+        for op in &tree.kinds {
+            match op {
+                TreeOp::NodeEnter => {
+                    // Mix child-boundary marker into the parent's
+                    // hasher before pushing the new hasher — this
+                    // NodeEnter is a direct child of the current top.
+                    if let Some((_, parent_h)) = stack.last_mut() {
+                        parent_h.write_u8(0xFF);
+                    }
+                    let id = NodeId(node_iter);
+                    node_iter += 1;
+                    let i = id.index();
+                    let extras = tree.extras.get(i);
+                    let mut h = Hasher::new();
+                    hash_layout_core(&mut h, &tree.layout[i], tree.attrs[i], extras.is_some());
+                    if let Some(e) = extras {
+                        hash_node_extras(&mut h, e);
+                    }
+                    hash_chrome(&mut h, tree.chrome_for(id));
+                    stack.push((id, h));
+                }
+                TreeOp::Shape => {
+                    let (_, h) = stack
+                        .last_mut()
+                        .expect("Shape op outside any open NodeEnter");
+                    hash_shape(h, &tree.shapes[shape_cursor]);
+                    shape_cursor += 1;
+                }
+                TreeOp::NodeExit => {
+                    let (id, mut h) = stack.pop().expect("NodeExit op without matching NodeEnter");
+                    if let LayoutMode::Grid(idx) = tree.layout[id.index()].mode {
+                        hash_grid_def(&mut h, &tree.grid.defs[idx as usize]);
+                    }
+                    out[id.index()] = NodeHash::from_u64(h.finish());
+                }
+            }
         }
-        hash_chrome(&mut h, chrome);
-        h.write_u32(shapes.len() as u32);
-        for s in shapes {
-            hash_shape(&mut h, s);
+        debug_assert!(
+            stack.is_empty(),
+            "kinds stream ended with {} open hashers",
+            stack.len(),
+        );
+    }
+
+    /// Phase 2: subtree-hash rollup. Pre-order arena means every
+    /// child has a strictly higher index than its parent, so iterating
+    /// in reverse fills children before their parent reads them. Each
+    /// parent folds its own node-hash with its direct children's
+    /// subtree hashes, in declaration order — sibling reorder
+    /// changes the parent's subtree hash. `transform` folds in here
+    /// (but not into `node[i]`) so the encode cache invalidates on
+    /// transform-only changes; `node[i]` stays transform-insensitive
+    /// so damage rect-diffing handles those.
+    fn compute_subtree_rollup(&mut self, tree: &Tree) {
+        let n = tree.layout.len();
+        self.subtree.clear();
+        self.subtree.resize(n, NodeHash::UNCOMPUTED);
+        self.subtree_has_grid.clear();
+        self.subtree_has_grid.grow(n);
+        for i in (0..n).rev() {
+            let end = tree.nodes[i].end;
+            let mut h = FxHasher::default();
+            h.write_u64(self.node[i].as_u64());
+            if let Some(t) = tree.read_extras(NodeId(i as u32)).transform {
+                h.write_u8(1);
+                h.write(bytemuck::bytes_of(&t));
+            } else {
+                h.write_u8(0);
+            }
+            let mut has_grid = matches!(tree.layout[i].mode, LayoutMode::Grid(_));
+            let mut next = (i as u32) + 1;
+            while next < end {
+                h.write_u64(self.subtree[next as usize].as_u64());
+                has_grid |= self.subtree_has_grid.contains(next as usize);
+                next = tree.nodes[next as usize].end;
+            }
+            self.subtree[i] = NodeHash::from_u64(h.finish());
+            self.subtree_has_grid.set(i, has_grid);
         }
-        if let Some(def) = grid_def {
-            hash_grid_def(&mut h, def);
-        }
-        Self(h.finish())
     }
 }
 
@@ -125,27 +213,22 @@ fn hash_layout_mode(h: &mut Hasher, m: LayoutMode) {
 }
 
 #[inline]
-fn hash_layout_core(h: &mut Hasher, l: &LayoutCore) {
+fn hash_layout_core(h: &mut Hasher, l: &LayoutCore, attrs: PaintAttrs, has_extras: bool) {
     hash_layout_mode(h, l.mode);
     hash_sizes(h, l.size);
     // padding + margin: two `Spacing`s (4 f32 each = 32 contiguous bytes).
     h.pod(&[l.padding, l.margin]);
     // Pack Align (u8) + Visibility (u8 discriminant) into one u16 write.
     h.write_u16(((l.visibility as u8 as u16) << 8) | l.align.raw() as u16);
-}
-
-#[inline]
-fn hash_paint_core(h: &mut Hasher, p: PaintCore) {
     // PaintAttrs sense (3 bits) + disabled + clip + extras-presence — all
-    // small flags. Pack into one u16 instead of four byte writes.
-    let a = p.attrs;
-    let packed = (a.sense() as u16)
-        | ((a.is_disabled() as u16) << 8)
-        | ((a.clip_mode() as u16) << 9)
-        | ((p.has_extras() as u16) << 11);
-    // `extras` is a sentinel-encoded side-table index — only its
-    // presence matters across frames (the table is rebuilt each frame);
-    // contents are hashed separately by `hash_node_extras`.
+    // small flags. Pack into one u16 instead of four byte writes. The
+    // extras *slot index* is sentinel-encoded and only its presence
+    // matters across frames (the table is rebuilt each frame); contents
+    // hash separately via `hash_node_extras`.
+    let packed = (attrs.sense() as u16)
+        | ((attrs.is_disabled() as u16) << 8)
+        | ((attrs.clip_mode() as u16) << 9)
+        | ((has_extras as u16) << 11);
     h.write_u16(packed);
 }
 
@@ -207,11 +290,23 @@ fn hash_shape(h: &mut Hasher, shape: &Shape) {
                 }
             }
         }
-        Shape::Overlay { rect, radius, fill } => {
+        Shape::SubRect {
+            local_rect,
+            radius,
+            fill,
+            stroke,
+        } => {
             h.write_u8(3);
-            h.pod(rect);
+            h.pod(local_rect);
             h.pod(radius);
             h.pod(fill);
+            match stroke {
+                None => h.write_u8(0),
+                Some(s) => {
+                    h.write_u8(1);
+                    h.pod(s);
+                }
+            }
         }
         Shape::Line { a, b, width, color } => {
             h.write_u8(1);

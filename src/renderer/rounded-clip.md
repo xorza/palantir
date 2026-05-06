@@ -72,13 +72,13 @@ methods that mutate `Element`).
    - Emit `PushClip { rect }` or `PushClipRounded { rect, radius }`.
 3. **Background-phase shapes** — iterate `tree.shapes.slice_of(id)`.
    `Shape::Text` emits `DrawText`. `Shape::RoundedRect` (if any custom
-   widget pushes one via `ui.add_shape`) emits `DrawRect`. `Shape::Overlay`
+   widget pushes one via `ui.add_shape`) emits `DrawRect`. `Shape::SubRect`
    is deferred. `Shape::Line` is unsupported and trace-dropped.
 4. Push transform if any (skipped on identity).
 5. Recurse children.
 6. Pop transform.
 7. **Overlay-phase shapes** — iterate `tree.shapes` again, emit
-   `Shape::Overlay` as `DrawRect`. Used by Scroll for scrollbar
+   `Shape::SubRect` as `DrawRect`. Used by Scroll for scrollbar
    tracks/thumbs that paint above content but inside the clip.
 8. Pop clip if any.
 
