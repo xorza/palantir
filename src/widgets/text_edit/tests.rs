@@ -1088,12 +1088,13 @@ fn line_height_override_changes_caret_rect_height() {
             leaf = Some(e.show(ui).node);
         });
         ui.end_frame();
-        // Caret = the only Shape::SubRect pushed (no selection in v1).
+        // Caret = the only sub-rect Shape pushed (no selection in v1).
         ui.tree
             .shapes_of(leaf.unwrap())
             .find_map(|s| match s {
-                Shape::SubRect {
-                    local_rect: rect, ..
+                Shape::RoundedRect {
+                    local_rect: Some(rect),
+                    ..
                 } => Some(rect.size.h),
                 _ => None,
             })

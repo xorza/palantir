@@ -132,6 +132,7 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
         // tree's contiguity invariant requires shapes to be added to
         // the last-pushed node before its children open.
         ui.add_shape(Shape::RoundedRect {
+            local_rect: None,
             radius: Corners::all(4.0),
             fill: Color::rgb(1.0, 0.0, 0.0),
             stroke: None,

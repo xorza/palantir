@@ -481,7 +481,15 @@ mod bars {
     fn count_positioned(ui: &Ui, node: NodeId) -> usize {
         ui.tree
             .shapes_of(node)
-            .filter(|s| matches!(s, Shape::SubRect { .. }))
+            .filter(|s| {
+                matches!(
+                    s,
+                    Shape::RoundedRect {
+                        local_rect: Some(_),
+                        ..
+                    }
+                )
+            })
             .count()
     }
 
@@ -715,8 +723,9 @@ mod bars {
             .tree
             .shapes_of(node)
             .filter_map(|s| match s {
-                Shape::SubRect {
-                    local_rect: rect, ..
+                Shape::RoundedRect {
+                    local_rect: Some(rect),
+                    ..
                 } => Some(*rect),
                 _ => None,
             })
@@ -851,8 +860,9 @@ mod bars {
             .tree
             .shapes_of(node)
             .filter_map(|s| match s {
-                Shape::SubRect {
-                    local_rect: rect, ..
+                Shape::RoundedRect {
+                    local_rect: Some(rect),
+                    ..
                 } => Some(*rect),
                 _ => None,
             })

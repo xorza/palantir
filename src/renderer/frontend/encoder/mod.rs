@@ -114,21 +114,17 @@ fn emit_one_shape(
 ) {
     match shape {
         Shape::RoundedRect {
-            radius,
-            fill,
-            stroke,
-        } => {
-            out.draw_rect(owner_rect, *radius, *fill, *stroke);
-        }
-        Shape::SubRect {
             local_rect,
             radius,
             fill,
             stroke,
         } => {
-            let r = Rect {
-                min: owner_rect.min + local_rect.min,
-                size: local_rect.size,
+            let r = match local_rect {
+                None => owner_rect,
+                Some(lr) => Rect {
+                    min: owner_rect.min + lr.min,
+                    size: lr.size,
+                },
             };
             out.draw_rect(r, *radius, *fill, *stroke);
         }
