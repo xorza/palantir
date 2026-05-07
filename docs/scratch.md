@@ -7,6 +7,7 @@ SubRect - whaat
 posisiton and size for shapes and nodes
 Multi-`Shape::Text` per leaf is unsupported
 vec<bool> - bitset
+nodehashes should not mutate hasgrid
 
 
 soa on nodeextras

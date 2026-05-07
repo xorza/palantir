@@ -52,7 +52,7 @@ fn wid(n: u64) -> WidgetId {
 }
 
 fn hash(n: u64) -> NodeHash {
-    NodeHash::from_u64(n)
+    NodeHash(n)
 }
 
 fn avail() -> AvailableKey {

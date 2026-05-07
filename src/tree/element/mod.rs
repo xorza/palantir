@@ -504,7 +504,7 @@ pub trait Configure: Sized {
 /// `bits`: 0-2=sense tag, 3=disabled, 4-5=clip mode, 6=focusable, 7=reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct PaintAttrs {
-    bits: u8,
+    pub(crate) bits: u8,
 }
 
 impl PaintAttrs {

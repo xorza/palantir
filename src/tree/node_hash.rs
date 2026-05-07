@@ -22,6 +22,7 @@ use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, Sc
 use crate::widgets::grid::GridDef;
 use fixedbitset::FixedBitSet;
 use soa_rs::Soa;
+
 use std::hash::Hash;
 use std::hash::Hasher as _;
 
@@ -32,18 +33,9 @@ use std::hash::Hasher as _;
 /// like `shape_unbounded(wid: WidgetId, hash: NodeHash, …)`.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct NodeHash(u64);
+pub(crate) struct NodeHash(pub(crate) u64);
 
-impl NodeHash {
-    /// Construct a `NodeHash` from a raw `u64`. Used by the rollup
-    /// loop and by tests that synthesize sentinel hashes.
-    #[inline]
-    pub(crate) fn from_u64(v: u64) -> Self {
-        Self(v)
-    }
-}
-
-/// Per-node hash data populated by [`Tree::end_frame`].
+/// Per-node hash data populated by [`super::Tree::end_frame`].
 ///
 /// - `node[i]` — authoring hash of node `i` alone (layout / paint /
 ///   extras / shapes / grid def). Read by damage diff and the leaf
@@ -54,25 +46,21 @@ impl NodeHash {
 ///   measure cache and encode cache both key on this. See
 ///   `src/layout/measure-cache.md` and
 ///   `src/renderer/frontend/encoder/encode-cache.md`.
-/// - `subtree_has_grid[i]` — true if the subtree at `i` contains any
-///   `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
-///   grid-hug snapshot/restore walk; correctness doesn't depend on it,
-///   perf does.
 ///
-/// All three vecs are length `records.len()` after `end_frame`. Capacity
+/// Both vecs are length `records.len()` after `end_frame`. Capacity
 /// retained across frames.
 #[derive(Default)]
 pub(crate) struct NodeHashes {
     pub(crate) node: Vec<NodeHash>,
     pub(crate) subtree: Vec<NodeHash>,
-    pub(crate) subtree_has_grid: FixedBitSet,
 }
 
 impl NodeHashes {
     /// Per-frame entry point called by `Tree::end_frame`: populates
-    /// `node[i]`, `subtree[i]`, and `subtree_has_grid`. Field-borrow
-    /// signature instead of `&Tree` so the caller can split-borrow
-    /// `&mut self.hashes` from the read-only tree columns.
+    /// `node[i]`, `subtree[i]`, and the caller-owned `subtree_has_grid`
+    /// bitset. Field-borrow signature instead of `&Tree` so the caller
+    /// can split-borrow `&mut self.hashes` and `&mut self.subtree_has_grid`
+    /// from the read-only tree columns.
     pub(crate) fn compute(
         &mut self,
         records: &Soa<NodeRecord>,
@@ -80,9 +68,10 @@ impl NodeHashes {
         chrome: &SparseColumn<Background>,
         shapes: &[Shape],
         grid: &GridArena,
+        subtree_has_grid: &mut FixedBitSet,
     ) {
         self.compute_per_node(records, extras, chrome, shapes, grid);
-        self.compute_subtree_rollup(records, extras);
+        self.compute_subtree_rollup(records, extras, subtree_has_grid);
     }
 
     /// Phase 1: per-node authoring hash. For each node, hash its layout /
@@ -141,7 +130,7 @@ impl NodeHashes {
             if let LayoutMode::Grid(idx) = layouts[i].mode {
                 hash_grid_def(&mut h, &grid.defs[idx as usize]);
             }
-            self.node.push(NodeHash::from_u64(h.finish()));
+            self.node.push(NodeHash(h.finish()));
         }
     }
 
@@ -153,12 +142,13 @@ impl NodeHashes {
         &mut self,
         records: &Soa<NodeRecord>,
         extras: &SparseColumn<ElementExtras>,
+        subtree_has_grid: &mut FixedBitSet,
     ) {
         let n = records.len();
         self.subtree.clear();
         self.subtree.resize_with(n, NodeHash::default);
-        self.subtree_has_grid.clear();
-        self.subtree_has_grid.grow(n);
+        subtree_has_grid.clear();
+        subtree_has_grid.grow(n);
 
         let ends = records.end();
         let layouts = records.layout();
@@ -177,11 +167,11 @@ impl NodeHashes {
             let mut next = (i as u32) + 1;
             while next < end {
                 h.write_u64(self.subtree[next as usize].0);
-                has_grid |= self.subtree_has_grid.contains(next as usize);
+                has_grid |= subtree_has_grid.contains(next as usize);
                 next = ends[next as usize];
             }
-            self.subtree[i] = NodeHash::from_u64(h.finish());
-            self.subtree_has_grid.set(i, has_grid);
+            self.subtree[i] = NodeHash(h.finish());
+            subtree_has_grid.set(i, has_grid);
         }
     }
 }
@@ -232,13 +222,9 @@ fn hash_layout_core(h: &mut Hasher, l: &LayoutCore, attrs: PaintAttrs) {
     hash_layout_mode(h, l.mode);
     hash_sizes(h, l.size);
     h.pod(&[l.padding, l.margin]);
-    h.write_u16(((l.visibility as u8 as u16) << 8) | l.align.raw() as u16);
-    // sense(3 bits @0) | disabled(@8) | clip(2 bits @9) | focusable(@11).
-    let packed = (attrs.sense() as u16)
-        | ((attrs.is_disabled() as u16) << 8)
-        | ((attrs.clip_mode() as u16) << 9)
-        | ((attrs.is_focusable() as u16) << 11);
-    h.write_u16(packed);
+    h.write_u8(l.visibility as u8);
+    h.write_u8(l.align.raw());
+    h.write_u8(attrs.bits);
 }
 
 #[inline]
@@ -258,7 +244,8 @@ fn hash_node_extras(h: &mut Hasher, e: &ElementExtras) {
     h.pod(&e.grid);
     h.pod(&[e.min_size, e.max_size]);
     h.pod(&[e.gap, e.line_gap]);
-    h.write_u16(((e.child_align.raw() as u16) << 8) | e.justify as u8 as u16);
+    h.write_u8(e.child_align.raw());
+    h.write_u8(e.justify as u8);
 }
 
 #[inline]

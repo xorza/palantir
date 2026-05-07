@@ -514,8 +514,8 @@ mod tests {
         // hash distinction.
         let mut m = TextMeasurer::default();
         let wid = WidgetId::from_hash("a");
-        let h1 = NodeHash::from_u64(1);
-        let h2 = NodeHash::from_u64(2);
+        let h1 = NodeHash(1);
+        let h2 = NodeHash(2);
         let r1 = m.shape_unbounded(wid, h1, "hi", 16.0, 16.0);
         let r2 = m.shape_unbounded(wid, h2, "hi", 16.0, 24.0);
         assert_ne!(
