@@ -6,7 +6,7 @@ use crate::primitives::{
 };
 use crate::shape::Shape;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{NodeId, Tree, TreeOp, node_hash::NodeHash};
+use crate::tree::{NodeId, Tree, node_hash::NodeHash};
 use crate::ui::cascade::CascadeResult;
 use cache::EncodeCache;
 
@@ -83,7 +83,6 @@ impl Encoder {
     ) -> &RenderCmdBuffer {
         self.cmds.clear();
         if let Some(root) = tree.root() {
-            let mut shape_cursor = 0usize;
             encode_node(
                 tree,
                 layout,
@@ -91,7 +90,6 @@ impl Encoder {
                 damage_filter,
                 &mut self.cache,
                 root,
-                &mut shape_cursor,
                 &mut self.cmds,
             );
         }
@@ -103,9 +101,8 @@ impl Encoder {
     }
 }
 
-/// Emit one shape at `owner_rect`, advancing the global shape cursor.
-/// Pulled out of `encode_node` so the kinds-stream walk can call it
-/// from the depth-0 `Shape` branch without duplicating the per-variant
+/// Emit one shape at `owner_rect`. Pulled out of `encode_node` so the
+/// child-interleave loop can call it without duplicating the per-variant
 /// match.
 fn emit_one_shape(
     tree: &Tree,
@@ -164,16 +161,12 @@ fn encode_node(
     damage_filter: Option<Rect>,
     cache: &mut EncodeCache,
     id: NodeId,
-    shape_cursor: &mut usize,
     out: &mut RenderCmdBuffer,
 ) {
     // Hidden / Collapsed: paint nothing for this node or its subtree.
     // The cascade table already composed self + ancestors; recursing skips
     // the whole subtree because we early-return at the top of every node.
     if cascades.rows[id.index()].invisible {
-        // Still advance the global shape cursor past this subtree's
-        // shapes so siblings see the right offset.
-        *shape_cursor += tree.records.shapes()[id.index()].len as usize;
         return;
     }
 
@@ -203,7 +196,6 @@ fn encode_node(
     if let Some((wid, hash, avail)) = cache_key
         && cache.try_replay(wid, hash, avail, out, layout.rect[id.index()].min)
     {
-        *shape_cursor += tree.records.shapes()[id.index()].len as usize;
         return;
     }
 
@@ -317,54 +309,38 @@ fn encode_node(
         .transform
         .filter(|t| *t != TranslateScale::IDENTITY);
 
-    // Walk this node's slice of the kinds stream, depth 0 only:
-    //   - `Shape` at depth 0 → emit at owner rect (or its sub-rect)
-    //   - `NodeEnter` at depth 0 → recurse for that direct child,
-    //     bracketed by the owner's pan transform if non-identity, then
-    //     skip the pos cursor past the child's full subtree.
-    // Shapes always paint *outside* the owner's pan so they stay
-    // anchored to the owner regardless of scroll offset; transform is
-    // pushed/popped per child accordingly.
-    let r = tree.records.kinds()[id.index()].range();
-    let body_start = r.start + 1;
-    let body_end = r.end - 1;
-    let mut pos = body_start;
-    let mut children = tree.children(id).map(|c| c.id);
-    while pos < body_end {
-        match tree.kinds[pos] {
-            TreeOp::Shape => {
-                if paints {
-                    emit_one_shape(tree, layout, id, rect, &tree.shapes[*shape_cursor], out);
-                }
-                *shape_cursor += 1;
-                pos += 1;
+    // Interleave direct shapes with child recursion in record order.
+    // Each child captured the shape buffer position at its open as
+    // `shapes.start`, so the gaps in `parent.shapes` between children's
+    // sub-ranges are exactly the parent's direct shapes. Shapes always
+    // paint *outside* the owner's pan transform so they stay anchored
+    // to the owner regardless of scroll offset.
+    let parent = tree.records.shapes()[id.index()];
+    let parent_end = parent.start as usize + parent.len as usize;
+    let mut cursor = parent.start as usize;
+    for child in tree.children(id).map(|c| c.id) {
+        let cs = tree.records.shapes()[child.index()];
+        let cs_start = cs.start as usize;
+        while cursor < cs_start {
+            if paints {
+                emit_one_shape(tree, layout, id, rect, &tree.shapes[cursor], out);
             }
-            TreeOp::NodeEnter => {
-                let child = children
-                    .next()
-                    .expect("kinds NodeEnter at depth 0 but children() exhausted");
-                if let Some(t) = transform {
-                    out.push_transform(t);
-                }
-                encode_node(
-                    tree,
-                    layout,
-                    cascades,
-                    damage_filter,
-                    cache,
-                    child,
-                    shape_cursor,
-                    out,
-                );
-                if transform.is_some() {
-                    out.pop_transform();
-                }
-                pos = tree.records.kinds()[child.index()].range().end;
-            }
-            TreeOp::NodeExit => unreachable!(
-                "owner's matching NodeExit excluded by body_end; nested exits skipped via node_kinds.range().end"
-            ),
+            cursor += 1;
         }
+        if let Some(t) = transform {
+            out.push_transform(t);
+        }
+        encode_node(tree, layout, cascades, damage_filter, cache, child, out);
+        if transform.is_some() {
+            out.pop_transform();
+        }
+        cursor = cs_start + cs.len as usize;
+    }
+    while cursor < parent_end {
+        if paints {
+            emit_one_shape(tree, layout, id, rect, &tree.shapes[cursor], out);
+        }
+        cursor += 1;
     }
 
     if clip {

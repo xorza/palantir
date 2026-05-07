@@ -32,13 +32,13 @@ fn shapes_attached_to_button_node() {
     );
 }
 
-/// Pin the kinds-stream mechanism end-to-end: when shapes are interleaved
-/// with child nodes under one parent, the kinds stream encodes their
-/// position in record order (Shape between NodeEnter/NodeExit pairs of
-/// the right children). Each shape's size encodes the expected slot for
-/// an unambiguous readback.
+/// Pin record-order interleaving end-to-end: when shapes are
+/// interleaved with child nodes under one parent, the children's
+/// `shapes.start` values fall between parent shape indices in the
+/// flat shape buffer, and the encoder paints them in that order.
+/// Each shape's size encodes the expected slot for unambiguous readback.
 #[test]
-fn interleaved_shapes_record_correct_kinds_stream() {
+fn interleaved_shapes_record_correct_order() {
     fn pos_rect(slot: u16) -> Shape {
         let s = (slot + 1) as f32 * 10.0;
         Shape::SubRect {
@@ -75,26 +75,30 @@ fn interleaved_shapes_record_correct_kinds_stream() {
         .node;
     ui.end_frame();
 
-    // Walk the parent's kinds slice — it must show our three SubRects
-    // interleaved between the two child NodeEnter/NodeExit pairs in
-    // record order.
+    // Children's `shapes.start` values must fall between the parent's
+    // direct shape indices, encoding the shape→child→shape→child→shape
+    // interleave purely via spans.
     let pi = p.index();
-    let kinds_slice = &ui.tree.kinds[ui.tree.records.kinds()[pi].range()];
-    use crate::tree::TreeOp;
+    let p_shapes = ui.tree.records.shapes()[pi];
+    assert_eq!(p_shapes.len, 3, "parent owns 3 direct shapes");
+    let children: Vec<_> = ui.tree.children(p).map(|c| c.id).collect();
+    assert_eq!(children.len(), 2);
+    let c0_shapes = ui.tree.records.shapes()[children[0].index()];
+    let c1_shapes = ui.tree.records.shapes()[children[1].index()];
     assert_eq!(
-        kinds_slice,
-        &[
-            TreeOp::NodeEnter,
-            TreeOp::Shape,
-            TreeOp::NodeEnter,
-            TreeOp::NodeExit,
-            TreeOp::Shape,
-            TreeOp::NodeEnter,
-            TreeOp::NodeExit,
-            TreeOp::Shape,
-            TreeOp::NodeExit,
-        ][..],
-        "kinds stream encodes shape→child→shape→child→shape interleave",
+        c0_shapes.start,
+        p_shapes.start + 1,
+        "1 parent shape recorded before c0 opens",
+    );
+    assert_eq!(
+        c1_shapes.start,
+        p_shapes.start + 2,
+        "1 parent shape recorded between c0 close and c1 open",
+    );
+    assert_eq!(
+        p_shapes.start + p_shapes.len,
+        c1_shapes.start + c1_shapes.len + 1,
+        "1 parent shape recorded after c1 closes",
     );
     let sizes: Vec<f32> = ui
         .tree
