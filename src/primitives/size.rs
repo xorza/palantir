@@ -33,6 +33,16 @@ impl Size {
         self.w == f32::INFINITY && self.h == f32::INFINITY
     }
 
+    /// True if both axes are within `EPS` of zero — i.e. this size
+    /// is approximately `Size::ZERO`. Strict (both-axis) semantic to
+    /// match the [`super::approx::approx_zero`] free fn on `f32`.
+    /// For "paints no pixels" (which also catches negative axes from
+    /// degenerate construction), use `w <= EPS || h <= EPS` at the
+    /// call site — that's a different (looser) predicate.
+    pub const fn approx_zero(self) -> bool {
+        super::approx::approx_zero(self.w) && super::approx::approx_zero(self.h)
+    }
+
     pub const fn min(self, other: Self) -> Self {
         Self {
             w: if self.w < other.w { self.w } else { other.w },

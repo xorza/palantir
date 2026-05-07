@@ -38,6 +38,14 @@ impl Rect {
         self.size.w * self.size.h
     }
 
+    /// True if this rect is approximately `Rect::ZERO` — `min` within
+    /// `EPS` of `(0, 0)` AND `size.approx_zero()`. Strict, matches
+    /// [`Size::approx_zero`] semantic.
+    pub const fn approx_zero(self) -> bool {
+        use super::approx::approx_zero;
+        approx_zero(self.min.x) && approx_zero(self.min.y) && self.size.approx_zero()
+    }
+
     pub const fn contains(&self, p: Vec2) -> bool {
         let mx = self.max();
         p.x >= self.min.x && p.y >= self.min.y && p.x < mx.x && p.y < mx.y

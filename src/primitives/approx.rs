@@ -3,7 +3,7 @@
 /// `EPS = 1e-4` is below 8-bit color precision (1/255 ≈ 4e-3) and sub-pixel
 /// position resolution at typical display scales, so differences smaller
 /// than this are invisible to the user.
-const EPS: f32 = 1.0e-4;
+pub(crate) const EPS: f32 = 1.0e-4;
 
 /// True if `c` is within `EPS` of zero. Const-friendly via plain
 /// comparisons (`f32::abs` is not const-stable).
