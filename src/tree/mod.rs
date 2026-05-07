@@ -14,6 +14,7 @@ use crate::widgets::grid::GridDef;
 use fixedbitset::FixedBitSet;
 use soa_rs::{Soa, Soars};
 use std::hash::{Hash, Hasher as _};
+use strum::EnumCount as _;
 
 pub(crate) mod element;
 pub(crate) mod node_hash;
@@ -33,17 +34,19 @@ impl NodeId {
 /// (under) and hit-test last (under). Total order — popups beat the
 /// main tree, modals beat popups, tooltips beat modals, debug beats
 /// everything. See `docs/popups.md`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[allow(
-    dead_code,
-    reason = "Popup/Modal/Tooltip/Debug consumed by docs/popups.md step 2"
-)]
-pub(crate) enum Layer {
-    Main,
-    Popup,
-    Modal,
-    Tooltip,
-    Debug,
+///
+/// `#[repr(u8)]` + the contiguous variant layout means `layer as usize`
+/// is a valid index into `[T; Layer::COUNT]` per-layer storage on
+/// `Tree`. `Layer::COUNT` comes from `strum::EnumCount`.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, strum::EnumCount)]
+pub enum Layer {
+    #[default]
+    Main = 0,
+    Popup = 1,
+    Modal = 2,
+    Tooltip = 3,
+    Debug = 4,
 }
 
 /// One entry per recorded root in the multi-root tree. `first_node`
@@ -127,11 +130,22 @@ pub(crate) struct Tree {
     pub(crate) grid: GridArena,
 
     // -- Recording-only state --------------------------------------------
-    /// Stack of currently-open node ids. The last entry is the tip;
-    /// preceding entries are its ancestors. Capacity peaks at tree
-    /// depth — typically a handful of entries. Empty outside the
+    /// Per-layer ancestor stack indexed by `layer as usize`. Only one
+    /// layer is active at a time during recording (`current_layer`);
+    /// the others sit empty between scopes. Empty outside the
     /// `begin_frame` ↔ root `close_node` window.
-    open_frames: Vec<NodeId>,
+    pub(crate) open_frames: [Vec<NodeId>; Layer::COUNT],
+    /// Per-layer anchor rect set at `Ui::layer` entry; read by
+    /// `open_node`'s lazy root push. `Main`'s slot is patched at
+    /// `end_frame` once the surface is known.
+    layer_anchor: [Rect; Layer::COUNT],
+    /// Active layer for the next `open_node`. `Main` between/outside
+    /// `Ui::layer` scopes; switched by `push_layer` / `pop_layer`.
+    current_layer: Layer,
+    /// Multi-root manifest. Populated lazily by `open_node`, sorted by
+    /// layer at `Self::end_frame`. Every pipeline pass iterates this
+    /// slice. Empty when no nodes were recorded this frame.
+    pub(crate) roots: Vec<RootSlot>,
 
     // -- Output (populated by `end_frame`) -------------------------------
     /// Per-node + subtree-rollup authoring hashes, populated by
@@ -144,10 +158,6 @@ pub(crate) struct Tree {
     /// alongside the rollup. Conceptually a structure summary, not a
     /// hash, hence kept off `NodeHashes`.
     pub(crate) subtree_has_grid: FixedBitSet,
-    /// Multi-root manifest. Populated by [`Self::end_frame`] in layer
-    /// order — every pipeline pass iterates this slice. Empty when no
-    /// nodes were recorded this frame.
-    pub(crate) roots: Vec<RootSlot>,
 }
 
 impl Tree {
@@ -158,9 +168,46 @@ impl Tree {
         self.chrome.clear();
         self.shapes.clear();
         self.grid.clear();
-        self.open_frames.clear();
+        for s in &mut self.open_frames {
+            s.clear();
+        }
         self.subtree_has_grid.clear();
         self.roots.clear();
+        self.current_layer = Layer::Main;
+        // `Main`'s anchor is patched at `end_frame` once the surface is
+        // known; other layer anchors are caller-supplied at `push_layer`.
+        self.layer_anchor = [Rect::ZERO; Layer::COUNT];
+    }
+
+    /// Enter a layer scope — `Ui::layer`'s `body` records into this
+    /// scope until the matching [`Self::pop_layer`]. v1 only allows
+    /// entry from `Main` with no node open; nested popups are a v2
+    /// concern (see `docs/popups.md`).
+    pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Rect) {
+        assert_eq!(
+            self.current_layer,
+            Layer::Main,
+            "Ui::layer must be called from the Main scope (current: {:?})",
+            self.current_layer,
+        );
+        assert!(
+            self.open_frames[Layer::Main as usize].is_empty(),
+            "Ui::layer must be called at top-level recording (no node currently open)",
+        );
+        self.current_layer = layer;
+        self.layer_anchor[layer as usize] = anchor;
+    }
+
+    /// Close the layer scope opened by [`Self::push_layer`]. Body must
+    /// have closed every node it opened.
+    pub(crate) fn pop_layer(&mut self) {
+        assert!(
+            self.open_frames[self.current_layer as usize].is_empty(),
+            "Ui::layer body left {} node(s) open in layer {:?}",
+            self.open_frames[self.current_layer as usize].len(),
+            self.current_layer,
+        );
+        self.current_layer = Layer::Main;
     }
 
     /// Finalize the recorded frame: stamp the implicit `Main` root,
@@ -169,14 +216,24 @@ impl Tree {
     /// rest of the tree; safe to call any time after recording
     /// completes. Capacity retained across frames.
     pub(crate) fn end_frame(&mut self, main_anchor: Rect) {
-        assert!(
-            self.open_frames.is_empty(),
-            "end_frame called with {} node(s) still open — a widget builder forgot close_node",
-            self.open_frames.len(),
+        for (layer_idx, stack) in self.open_frames.iter().enumerate() {
+            assert!(
+                stack.is_empty(),
+                "end_frame called with {} node(s) still open in layer {} — a widget builder forgot close_node",
+                stack.len(),
+                layer_idx,
+            );
+        }
+        assert_eq!(
+            self.current_layer,
+            Layer::Main,
+            "end_frame called with active layer {:?} — Ui::layer body forgot to return",
+            self.current_layer,
         );
-        // `Main` slots are pushed lazily in `open_node` with a placeholder
-        // anchor; patch them now that the surface is known. Other layers
-        // (Popup/Modal/Tooltip — step 2) carry caller-supplied anchors.
+        // `Main` slots are pushed lazily in `open_node` with the
+        // begin-frame placeholder anchor; patch them now that the
+        // surface is known. Other layers carry caller-supplied anchors.
+        self.layer_anchor[Layer::Main as usize] = main_anchor;
         for r in &mut self.roots {
             if r.layer == Layer::Main {
                 r.anchor_rect = main_anchor;
@@ -303,17 +360,18 @@ impl Tree {
     /// Push a node as a child of the currently-open node (or as the root if
     /// no node is open) and make it the new tip. Pair with `close_node`.
     pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
-        let parent = self.open_frames.last().copied();
+        let layer_idx = self.current_layer as usize;
+        let parent = self.open_frames[layer_idx].last().copied();
         let new_id = NodeId(self.records.len() as u32);
         if parent.is_none() {
-            // Top-level node — seed a root for it. Step 2 will introduce
-            // a per-`Ui::layer` override so popups push `Popup`/etc.
-            // here; today every top-level node is a `Main` root.
-            // `anchor_rect` is patched at `end_frame`.
+            // Top-level node within the active layer scope — seed a
+            // root. `Main`'s anchor is the begin-frame placeholder
+            // (patched in `end_frame`); other layers carry the anchor
+            // passed to `Ui::layer`.
             self.roots.push(RootSlot {
                 first_node: new_id.0,
-                layer: Layer::Main,
-                anchor_rect: Rect::ZERO,
+                layer: self.current_layer,
+                anchor_rect: self.layer_anchor[layer_idx],
             });
         }
         if let LayoutMode::Grid(idx) = element.mode {
@@ -375,7 +433,7 @@ impl Tree {
             attrs,
         });
         self.subtree_has_grid.grow(self.records.len());
-        self.open_frames.push(new_id);
+        self.open_frames[layer_idx].push(new_id);
         new_id
     }
 
@@ -383,8 +441,8 @@ impl Tree {
     /// `records.end()[…]` up into the parent's slot. Panics if no node
     /// is open.
     pub(crate) fn close_node(&mut self) {
-        let closing = self
-            .open_frames
+        let layer_idx = self.current_layer as usize;
+        let closing = self.open_frames[layer_idx]
             .pop()
             .expect("close_node called with no open node");
 
@@ -405,7 +463,11 @@ impl Tree {
         }
         let i_has_grid = self.subtree_has_grid.contains(i);
 
-        if let Some(&parent) = self.open_frames.last() {
+        // Roll up only into a parent inside the *same* layer scope.
+        // Per-layer `open_frames` automatically isolates scopes — a
+        // popup root closing leaves its layer's stack empty without
+        // touching `Main`'s tip.
+        if let Some(&parent) = self.open_frames[layer_idx].last() {
             let pi = parent.index();
             let ends = self.records.end_mut();
             if ends[pi] < end {
@@ -425,7 +487,7 @@ impl Tree {
     /// open).
     pub(crate) fn add_shape(&mut self, shape: Shape) {
         assert!(
-            !self.open_frames.is_empty(),
+            !self.open_frames[self.current_layer as usize].is_empty(),
             "add_shape called with no open node",
         );
         self.shapes.push(shape);

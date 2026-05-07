@@ -7,12 +7,13 @@ use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::display::Display;
+use crate::primitives::rect::Rect;
 use crate::renderer::frontend::{FrameOutput, Frontend};
 use crate::shape::Shape;
 use crate::text::{SharedCosmic, TextMeasurer};
 use crate::tree::element::Element;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{NodeId, Tree};
+use crate::tree::{Layer, NodeId, Tree};
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::seen_ids::SeenIds;
@@ -240,6 +241,26 @@ impl Ui {
             return;
         }
         self.tree.add_shape(shape);
+    }
+
+    /// Record `body` as a side layer — its first widget becomes a new
+    /// root tagged with `layer`, anchored at `anchor` (caller-supplied
+    /// screen rect, typically a trigger widget's last-frame
+    /// `Response.state.rect`).
+    ///
+    /// Must be called at top-level recording (no node currently open).
+    /// Records pre-order contiguity is load-bearing for child iteration
+    /// — interleaving a popup mid-`Panel::show` would split the
+    /// surrounding panel's subtree across non-adjacent index ranges.
+    /// V1 requires the egui-style pattern: record `Main` content first,
+    /// then call `ui.layer(...)` after the outer scope closes.
+    pub fn layer<R>(&mut self, layer: Layer, anchor: Rect, body: impl FnOnce(&mut Ui) -> R) -> R {
+        // `Tree::push_layer` enforces v1's top-level rule —
+        // `current_layer == Main` and `open_frames[Main].is_empty()`.
+        self.tree.push_layer(layer, anchor);
+        let result = body(self);
+        self.tree.pop_layer();
+        result
     }
 }
 
