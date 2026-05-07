@@ -51,3 +51,12 @@ impl From<Sizing> for Track {
         Self::new(s)
     }
 }
+
+impl std::hash::Hash for Track {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.size.hash(h);
+        h.write_u32(self.min.to_bits());
+        h.write_u32(self.max.to_bits());
+    }
+}

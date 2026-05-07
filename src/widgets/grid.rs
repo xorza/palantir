@@ -23,6 +23,21 @@ pub(crate) struct GridDef {
     pub col_gap: f32,
 }
 
+impl std::hash::Hash for GridDef {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        h.write_u32(self.rows.len() as u32);
+        for t in self.rows.iter() {
+            t.hash(h);
+        }
+        h.write_u32(self.cols.len() as u32);
+        for t in self.cols.iter() {
+            t.hash(h);
+        }
+        h.write_u32(self.row_gap.to_bits());
+        h.write_u32(self.col_gap.to_bits());
+    }
+}
+
 /// WPF-style grid: explicit row + column track definitions, per-track
 /// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and
 /// children placed by `(row, col)` with optional `(row_span, col_span)`.
