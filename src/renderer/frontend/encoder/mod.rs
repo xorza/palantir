@@ -192,7 +192,7 @@ fn encode_node(
         layout.available_q(id).map(|avail| {
             (
                 tree.records.widget_id()[id.index()],
-                tree.subtree_hash(id),
+                tree.hashes.subtree[id.index()],
                 avail,
             )
         })
