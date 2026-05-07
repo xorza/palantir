@@ -356,7 +356,7 @@ fn measure_inner(
     // `layout.intrinsic` calls below (which need `&mut layout`).
     let col_tracks = layout.scratch.grid.depth_stack.at(depth).col.tracks.clone();
     for c in tree.children(node).filter_map(Child::active) {
-        let cell = tree.read_extras(c).grid;
+        let cell = tree.bounds(c).grid;
         if cell.col_span != 1 {
             continue;
         }
@@ -426,7 +426,7 @@ fn measure_inner(
             layout.measure(tree, c, Size::ZERO, text);
             continue;
         }
-        let cell = tree.read_extras(c).grid;
+        let cell = tree.bounds(c).grid;
 
         let avail = {
             let s = layout.scratch.grid.depth_stack.at(depth);
@@ -582,7 +582,7 @@ fn arrange_inner(
         track_offsets(&s.row.sizes, row_gap, &mut s.row.offsets);
     }
 
-    let parent_child_align = tree.read_extras(node).child_align;
+    let parent_child_align = tree.panel(node).child_align;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
@@ -590,7 +590,7 @@ fn arrange_inner(
             continue;
         }
         let s_node = tree.records.layout()[c.index()];
-        let cell = tree.read_extras(c).grid;
+        let cell = tree.bounds(c).grid;
         let d = layout.scratch.desired[c.index()];
 
         let (slot_x, slot_y, slot_w, slot_h) = {
@@ -888,7 +888,7 @@ pub(crate) fn intrinsic(
     }
 
     for c in tree.children(node).filter_map(Child::active) {
-        let cell = tree.read_extras(c).grid;
+        let cell = tree.bounds(c).grid;
         let span = match axis {
             Axis::X => cell.col_span,
             Axis::Y => cell.row_span,

@@ -107,9 +107,9 @@ pub(crate) fn measure(
     axis: Axis,
     text: &mut TextMeasurer,
 ) -> Size {
-    let extras = tree.read_extras(node);
-    let gap = extras.gap;
-    let line_gap = extras.line_gap;
+    let panel = tree.panel(node);
+    let gap = panel.gap;
+    let line_gap = panel.line_gap;
     let main_avail = axis.main(inner);
     let cross_avail = axis.cross(inner);
 
@@ -161,11 +161,11 @@ pub(crate) fn arrange(
     inner: Rect,
     axis: Axis,
 ) {
-    let extras = tree.read_extras(node);
-    let gap = extras.gap;
-    let line_gap = extras.line_gap;
-    let justify = extras.justify;
-    let parent_child_align = extras.child_align;
+    let panel = tree.panel(node);
+    let gap = panel.gap;
+    let line_gap = panel.line_gap;
+    let justify = panel.justify;
+    let parent_child_align = panel.child_align;
     let main_avail = axis.main(inner.size);
 
     // Same packing logic as `measure`. Each row needs lookahead —
@@ -305,8 +305,7 @@ pub(crate) fn intrinsic(
     req: LenReq,
     text: &mut TextMeasurer,
 ) -> f32 {
-    let extras = tree.read_extras(node);
-    let gap = extras.gap;
+    let gap = tree.panel(node).gap;
     if main_axis == query_axis {
         match req {
             LenReq::MinContent => {

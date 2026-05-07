@@ -301,7 +301,7 @@ fn encode_node(
     // identity is a no-op, so emitting the pair just wastes two cmd
     // slots and a `transform_stack` push/pop in the composer.
     let transform = tree
-        .read_extras(id)
+        .bounds(id)
         .transform
         .filter(|t| *t != TranslateScale::IDENTITY);
 

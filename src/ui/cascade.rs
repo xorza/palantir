@@ -164,7 +164,7 @@ impl Cascades {
                 invisible,
             };
 
-            let node_transform = tree.read_extras(id).transform;
+            let node_transform = tree.bounds(id).transform;
             let desc_transform = match node_transform {
                 Some(t) => row.transform.compose(t),
                 None => row.transform,
