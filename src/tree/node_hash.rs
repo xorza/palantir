@@ -46,80 +46,73 @@ mod tests {
     use crate::common::hash::Hasher;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
+    use crate::primitives::rect::Rect;
     use crate::shape::{Shape, TextWrap};
     use std::borrow::Cow;
     use std::hash::{Hash, Hasher as _};
 
-    fn text_shape(font_size_px: f32, line_height_px: f32) -> Shape {
+    fn text_shape(line_height_px: f32, local_rect: Option<Rect>) -> Shape {
         Shape::Text {
-            local_rect: None,
+            local_rect,
             text: Cow::Borrowed("hi"),
             color: Color::WHITE,
-            font_size_px,
+            font_size_px: 16.0,
             line_height_px,
             wrap: TextWrap::Single,
             align: Align::default(),
         }
     }
 
-    #[test]
-    fn text_shape_hash_differs_when_line_height_differs() {
-        // Pin: two `Shape::Text` runs that differ only in
-        // `line_height_px` must hash differently. Without this the
-        // measure cache would conflate runs whose shaped buffers
-        // genuinely differ (different `Metrics::new`).
-        let mut h_a = Hasher::new();
-        text_shape(16.0, 16.0 * 1.2).hash(&mut h_a);
-        let a = h_a.finish();
-        let mut h_b = Hasher::new();
-        text_shape(16.0, 16.0 * 1.5).hash(&mut h_b);
-        let b = h_b.finish();
-        assert_ne!(
-            a, b,
-            "different line_height_px must produce different node hashes",
-        );
+    fn hash_shape(s: &Shape) -> u64 {
+        let mut h = Hasher::new();
+        s.hash(&mut h);
+        h.finish()
     }
 
+    /// Pin: every authoring-relevant `Shape::Text` field participates
+    /// in the node hash. Without this, the measure cache would
+    /// conflate runs whose shaped buffers genuinely differ
+    /// (`line_height_px` → different `Metrics::new`) or whose paint
+    /// position differs (`local_rect` → different `DrawText` rects).
+    /// New fields go in the table, not in a new test.
     #[test]
-    fn text_shape_hash_matches_when_line_height_matches() {
-        // Sanity counterpart: identical shapes hash identically (no
-        // accidental introduction of non-determinism via the new field).
-        let mut h_a = Hasher::new();
-        text_shape(16.0, 19.2).hash(&mut h_a);
-        let mut h_b = Hasher::new();
-        text_shape(16.0, 19.2).hash(&mut h_b);
-        assert_eq!(h_a.finish(), h_b.finish());
+    fn text_shape_hash_distinguishes_each_authoring_field() {
+        let r_a = Some(Rect::new(0.0, 0.0, 10.0, 10.0));
+        let r_b = Some(Rect::new(5.0, 5.0, 10.0, 10.0));
+        let cases: [(&str, Shape, Shape); 3] = [
+            (
+                "line_height_px",
+                text_shape(16.0 * 1.2, None),
+                text_shape(16.0 * 1.5, None),
+            ),
+            (
+                "local_rect None vs Some",
+                text_shape(19.2, None),
+                text_shape(19.2, r_a),
+            ),
+            (
+                "local_rect Some(a) vs Some(b)",
+                text_shape(19.2, r_a),
+                text_shape(19.2, r_b),
+            ),
+        ];
+        for (label, a, b) in cases {
+            assert_ne!(
+                hash_shape(&a),
+                hash_shape(&b),
+                "case `{label}`: distinct fields must hash differently",
+            );
+        }
     }
 
+    /// Sanity counterpart: identical shapes hash identically (guards
+    /// against accidental non-determinism, e.g. a future field
+    /// hashed via a `RandomState` or rand call).
     #[test]
-    fn text_shape_hash_differs_when_local_rect_differs() {
-        // Pin: `local_rect` participates in `Shape::Text`'s hash.
-        // Two runs with identical text but different `local_rect`
-        // must produce different node hashes — otherwise the measure
-        // cache would conflate them and the encoder would replay a
-        // stale `DrawText` rect after the user repositioned a run.
-        use crate::primitives::rect::Rect;
-        let make = |local_rect: Option<Rect>| Shape::Text {
-            local_rect,
-            text: Cow::Borrowed("hi"),
-            color: Color::WHITE,
-            font_size_px: 16.0,
-            line_height_px: 16.0,
-            wrap: TextWrap::Single,
-            align: Align::default(),
-        };
-        let h = |s: &Shape| {
-            let mut h = Hasher::new();
-            s.hash(&mut h);
-            h.finish()
-        };
-        let h_none = h(&make(None));
-        let h_a = h(&make(Some(Rect::new(0.0, 0.0, 10.0, 10.0))));
-        let h_b = h(&make(Some(Rect::new(5.0, 5.0, 10.0, 10.0))));
-        assert_ne!(h_none, h_a, "None vs Some(rect) must hash differently");
-        assert_ne!(
-            h_a, h_b,
-            "Some(rect_a) vs Some(rect_b) must hash differently"
+    fn text_shape_hash_matches_when_inputs_match() {
+        assert_eq!(
+            hash_shape(&text_shape(19.2, None)),
+            hash_shape(&text_shape(19.2, None)),
         );
     }
 }
