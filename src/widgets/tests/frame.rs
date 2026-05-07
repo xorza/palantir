@@ -1,7 +1,7 @@
 use crate::layout::types::{sense::Sense, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::support::testing::{click_at, ui_at};
+use crate::support::testing::{click_at, shapes_of, ui_at};
 use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, panel::Panel};
@@ -28,7 +28,7 @@ fn frame_paints_a_single_rounded_rect() {
     ui.end_frame();
 
     // Chrome lives in `Tree::chrome_table`, not in the shape stream.
-    assert!(ui.tree.shapes_of(frame_node.unwrap()).next().is_none());
+    assert!(shapes_of(&ui.tree, frame_node.unwrap()).next().is_none());
     assert!(
         ui.tree.chrome_for(frame_node.unwrap()).is_some(),
         "frame chrome recorded in chrome table",

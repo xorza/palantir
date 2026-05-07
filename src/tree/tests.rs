@@ -5,7 +5,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
 use crate::shape::Shape;
-use crate::support::testing::{encode_cmds, ui_at};
+use crate::support::testing::{encode_cmds, shapes_of, ui_at};
 use crate::tree::element::Configure;
 use crate::tree::{NodeId, node_hash::NodeHash};
 use crate::widgets::theme::Background;
@@ -23,7 +23,7 @@ fn shapes_attached_to_button_node() {
 
     // Chrome (the button background) lives in `Tree::chrome_table`,
     // not in the shapes list. Only the label `Text` shape lands here.
-    let shapes: Vec<&Shape> = ui.tree.shapes_of(button_node.unwrap()).collect();
+    let shapes: Vec<&Shape> = shapes_of(&ui.tree, button_node.unwrap()).collect();
     assert_eq!(shapes.len(), 1);
     assert!(matches!(shapes[0], Shape::Text { .. }));
     assert!(
@@ -100,9 +100,7 @@ fn interleaved_shapes_record_correct_order() {
         c1_shapes.start + c1_shapes.len + 1,
         "1 parent shape recorded after c1 closes",
     );
-    let sizes: Vec<f32> = ui
-        .tree
-        .shapes_of(p)
+    let sizes: Vec<f32> = shapes_of(&ui.tree, p)
         .map(|s| match s {
             Shape::RoundedRect {
                 local_rect: Some(rect),

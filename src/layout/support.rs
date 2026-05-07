@@ -32,7 +32,7 @@ pub(crate) fn leaf_text_shapes(
     tree: &Tree,
     node: NodeId,
 ) -> impl Iterator<Item = LeafTextShape<'_>> {
-    tree.shapes_of(node).filter_map(|s| match s {
+    tree.leaf_shapes(node).iter().filter_map(|s| match s {
         Shape::Text {
             text,
             font_size_px,

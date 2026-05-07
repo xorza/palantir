@@ -332,7 +332,7 @@ mod bars {
     use crate::layout::types::display::Display;
     use crate::layout::types::sizing::Sizing;
     use crate::shape::Shape;
-    use crate::support::testing::ui_at;
+    use crate::support::testing::{shapes_of, ui_at};
     use crate::tree::NodeId;
     use crate::tree::element::Configure;
     use crate::tree::widget_id::WidgetId;
@@ -479,8 +479,7 @@ mod bars {
     }
 
     fn count_positioned(ui: &Ui, node: NodeId) -> usize {
-        ui.tree
-            .shapes_of(node)
+        shapes_of(&ui.tree, node)
             .filter(|s| {
                 matches!(
                     s,
@@ -719,9 +718,7 @@ mod bars {
         });
         let theme = theme();
         let expected_x = 200.0 - theme.width;
-        let overlays: Vec<_> = ui
-            .tree
-            .shapes_of(node)
+        let overlays: Vec<_> = shapes_of(&ui.tree, node)
             .filter_map(|s| match s {
                 Shape::RoundedRect {
                     local_rect: Some(rect),
@@ -856,9 +853,7 @@ mod bars {
         // gap is the empty strip between content and bar.
         let inner = 200.0 - theme.width - theme.gap;
         let outer_far = 200.0 - theme.width; // bar.cross_pos
-        let overlays: Vec<_> = ui
-            .tree
-            .shapes_of(node)
+        let overlays: Vec<_> = shapes_of(&ui.tree, node)
             .filter_map(|s| match s {
                 Shape::RoundedRect {
                     local_rect: Some(rect),

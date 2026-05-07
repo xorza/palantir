@@ -392,14 +392,22 @@ impl Tree {
         TreeItems::new(&self.records, &self.shapes, node)
     }
 
-    /// Direct shapes only — convenience over `direct_items` for
-    /// callers that don't care about child boundaries (mostly tests
-    /// and `leaf_text_shapes`, which only runs on leaves).
-    pub(crate) fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &Shape> + '_ {
-        self.tree_items(node).filter_map(|item| match item {
-            TreeItem::Shape(s) => Some(s),
-            TreeItem::Child(_) => None,
-        })
+    /// Direct slice over a leaf's shapes. A leaf has no children, so the
+    /// `records.shapes()[i]` span is exactly the leaf's own direct shapes
+    /// — contiguous in `Tree.shapes`, no child boundaries to skip. Use
+    /// this in measure/encode hot paths instead of `tree_items` filtering.
+    /// Debug-asserts the node is a leaf (`end == id + 1`).
+    pub(crate) fn leaf_shapes(&self, leaf: NodeId) -> &[Shape] {
+        let i = leaf.index();
+        debug_assert_eq!(
+            self.records.end()[i],
+            leaf.0 + 1,
+            "leaf_shapes called on non-leaf node {leaf:?}",
+        );
+        let span = self.records.shapes()[i];
+        let start = span.start as usize;
+        let end = start + span.len as usize;
+        &self.shapes[start..end]
     }
 
     /// Bounds extras for a node (`min_size`, `max_size`, `position`, `grid`,

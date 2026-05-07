@@ -1,7 +1,7 @@
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::support::testing::{click_at, ui_at};
+use crate::support::testing::{click_at, shapes_of, ui_at};
 use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -153,7 +153,7 @@ fn panel_hugs_largest_child_and_layers_them() {
 
     // Panel chrome lives in `Tree::chrome_table`, not in the shapes list.
     assert!(
-        ui.tree.shapes_of(panel_node.unwrap()).next().is_none(),
+        shapes_of(&ui.tree, panel_node.unwrap()).next().is_none(),
         "panel chrome doesn't show up in the shape stream"
     );
     assert!(

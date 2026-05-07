@@ -1,6 +1,6 @@
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::color::Color;
-use crate::support::testing::ui_at;
+use crate::support::testing::{shapes_of, ui_at};
 use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -46,7 +46,7 @@ fn zstack_layers_children_without_painting_background() {
 
     let z = zstack_node.unwrap();
     // ZStack itself paints nothing.
-    assert!(ui.tree.shapes_of(z).next().is_none());
+    assert!(shapes_of(&ui.tree, z).next().is_none());
 
     // ZStack hugs to max(child sizes) = (120, 80).
     let zr = ui.layout.result.rect[z.index()];
