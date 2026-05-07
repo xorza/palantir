@@ -89,7 +89,13 @@ impl Frontend {
         damage_filter: Option<Rect>,
         display: &Display,
     ) -> &RenderBuffer {
-        let cmds = self.encoder.encode(tree, layout, cascades, damage_filter);
+        let cmds = self.encoder.encode(
+            tree,
+            layout,
+            cascades,
+            damage_filter,
+            display.logical_rect(),
+        );
         self.composer.compose(cmds, display)
     }
 

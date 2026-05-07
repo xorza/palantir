@@ -102,6 +102,12 @@ pub(crate) fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBu
     // build. Tests that want to verify cache-replay output use
     // `ui.frontend.encoder.cmds()` instead.
     let mut encoder = Encoder::default();
-    encoder.encode(&ui.tree, &ui.layout.result, &ui.cascades.result, filter);
+    encoder.encode(
+        &ui.tree,
+        &ui.layout.result,
+        &ui.cascades.result,
+        filter,
+        ui.display.logical_rect(),
+    );
     std::mem::take(&mut encoder.cmds)
 }

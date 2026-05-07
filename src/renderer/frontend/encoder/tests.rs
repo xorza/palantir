@@ -1018,11 +1018,13 @@ fn encode_cache_hits_on_damage_filtered_frame_without_writing() {
     // the cache is consulted; the eligible subtree replays and its
     // bracketing markers appear in the cmd stream.
     let off_screen = Rect::new(10_000.0, 10_000.0, 10.0, 10.0);
+    let viewport = ui.display.logical_rect();
     ui.frontend.encoder.encode(
         &ui.tree,
         &ui.layout.result,
         &ui.cascades.result,
         Some(off_screen),
+        viewport,
     );
 
     let cmds = &ui.frontend.encoder.cmds;
