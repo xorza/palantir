@@ -33,19 +33,21 @@ Each slice compiles + ships the showcase.
 
 ### 1. `Layer` enum + `RootSlot` storage
 - Add `Layer`, `RootSlot`, `tree.roots: Vec<RootSlot>`.
-- `tree.begin_frame`: clear `roots`. `tree.end_frame`: push the `Main`
-  slot (`first_node = 0`, `Display::logical_rect()`), stable-sort by
-  layer (no-op for one root).
+- `tree.begin_frame`: clear `roots`. `tree.end_frame(main_anchor: Rect)`:
+  push the `Main` slot (`first_node = 0`, `main_anchor`), stable-sort
+  by layer (no-op for one root). `Ui::end_frame` passes the surface
+  rect.
 - Replace `tree.root()` callers with `for root in &tree.roots { … }`.
   Single root keeps current behavior bit-identical.
-- Test: hash-rollup is root-local — record two synthetic roots, assert
+- Test: hash-rollup is root-local — record two synthetic roots
+  (clear `open_frames` between top-level opens), assert
   `subtree_hash[root_b]` ignores `root_a`.
 
 ### 2. `Ui::layer(layer, anchor, body)`
-- Save `tree.current_open`, set to `None`.
-- Push deferred `RootSlot { first_node: tree.layout.len() as u32, … }`.
+- Save `tree.open_frames`, replace with empty.
+- Push deferred `RootSlot { first_node: tree.records.len() as u32, … }`.
 - Run `body`; first `open_node` becomes the new root.
-- Restore `current_open`.
+- Restore `open_frames`.
 - Test: record `Main` + a `Popup` root via `Ui::layer`, assert
   `tree.roots` is sorted `[Main, Popup]` post-`end_frame`.
 
@@ -106,26 +108,28 @@ Background notes for re-litigation. Skip on first read.
 ## What's there today
 
 - **Single-rooted tree.** `Tree::root() -> Option<NodeId>` returns
-  `NodeId(0)` (`src/tree/mod.rs:335`). The whole pipeline
+  `NodeId(0)` (`src/tree/mod.rs:346`). The whole pipeline
   (`LayoutEngine::run`, `Cascades::run`, `Encoder::encode`) takes that
   one root. Multi-root is a delete + loop in each.
 - **Pre-order = paint order.** `encode_node` walks
-  `tree.children(id)` recursively (`src/renderer/frontend/encoder/mod.rs:251`).
-  Later siblings paint over earlier ones. There's no `zIndex` /
-  `Order` knob.
-- **`Shape::Overlay` is the only "above children" affordance.** Same
-  node, post-children, still inside owner clip + untransformed
-  (`src/shape.rs:27`, encoder phase 2 at
-  `src/renderer/frontend/encoder/mod.rs:259`). Used for scrollbar
-  thumbs. **Cannot escape ancestor clip** — it's still under every
-  ancestor's `PushClip`. Wrong tool for popups.
+  `tree.tree_items(id)` interleaving direct shapes with child recursion
+  (`src/renderer/frontend/encoder/mod.rs:348`). Later siblings paint
+  over earlier ones. There's no `zIndex` / `Order` knob.
+- **Sub-rect shapes interleave with children, but stay under ancestor
+  clip.** `Shape::RoundedRect { local_rect: Some(_) }` and
+  `Shape::Text { local_rect: Some(_) }` paint at owner-relative coords
+  in the slot they were pushed in (`src/shape.rs:11-19`). Used for
+  scrollbar tracks/thumbs and TextEdit carets. The slot mechanism
+  controls *paint order within the owner*, not clip — every interleaved
+  shape is still under every ancestor's `PushClip`. Wrong tool for
+  popups.
 - **Cascade composes clip via intersection** (`src/ui/cascade.rs:172`).
   A popup recorded as a normal child of a clipped parent inherits the
   intersection.
 - **Caches key on `(WidgetId, subtree_hash, available_q)`** —
   popup must look like any other subtree to encode/measure/compose
   caches; no infra change needed if we keep that invariant.
-- **HitIndex is pre-order with reverse-iter** (`src/ui/cascade.rs:86`).
+- **HitIndex is pre-order with reverse-iter** (`src/ui/cascade.rs:87`).
   Topmost-first comes for free if popup nodes land *last* in
   `entries`.
 
@@ -163,7 +167,7 @@ Storage:
 
 ```rust
 pub(crate) struct RootSlot {
-    pub(crate) first_node: u32,   // index into tree.layout
+    pub(crate) first_node: u32,   // index into tree.records
     pub(crate) layer: Layer,
     pub(crate) anchor_rect: Rect, // surface rect for Main/Modal,
                                   // anchor screen-rect for Popup/Tooltip
@@ -175,10 +179,10 @@ pub(crate) struct Tree {
 }
 ```
 
-`tree.layout` stays one flat SoA arena. `subtree_end[i]` still defines
-each root's span; the only new invariant is "a root's first node has
-no entry in `recording_parent`." Existing walks already respect that
-— they read `recording_parent[i]` only when present.
+`tree.records` stays one flat SoA arena. `records.end()[i]` still
+defines each root's span; the only new invariant is "a root's first
+node is opened with `open_frames` empty," which is automatic if
+`Ui::layer` saves/clears `open_frames` around the body.
 
 ### Recording API
 
@@ -208,7 +212,7 @@ pub struct Modal    { /* dim_color, click_outside: ClickOutside, … */ }
 Mechanics inside `Ui::layer`:
 
 1. Save `tree.current_open` and reset to `None`.
-2. Push a deferred `RootSlot` (first_node = `tree.layout.len()`,
+2. Push a deferred `RootSlot` (first_node = `tree.records.len()`,
    layer, anchor).
 3. Run `body` — its first `open_node` records as a root, descendants
    nest normally. Each closed child returns to its parent within
@@ -263,7 +267,7 @@ the Main root is arranged. v1 = caller-supplied screen rect.
 | pass            | today                                     | with multi-root                                                        |
 | --------------- | ----------------------------------------- | ---------------------------------------------------------------------- |
 | Record          | one open stack                            | `Ui::layer` saves/restores `current_open`, appends a `RootSlot`        |
-| `tree.end_frame`| rolls subtree_end, hashes, etc.           | also `roots.sort_by_key(\|r\| r.layer)`                                |
+| `tree.end_frame`| rolls `records.end()`, hashes, etc.       | takes `main_anchor: Rect`, pushes `Main` slot, sorts `roots`           |
 | `LayoutEngine::run`| takes one root + surface                  | loops over `tree.roots`, `run(root, root.anchor_rect)` each            |
 | `Cascades::run` | one walk; ancestor stack reset on roots   | already loops `0..n`; just keep ancestor stack per-root (it does)      |
 | `Encoder::encode`| one `encode_node(root)`                   | loops over `tree.roots` in order; each call is independent             |
@@ -287,9 +291,9 @@ popup closes, no special path.
 
 The one thing to verify: popup's `subtree_hash` rollup must not
 accidentally fold the Main tree's hash. Today the rollup walks
-`subtree_end[i]` via `i+1` advance with a `next < end` guard
-(`src/tree/mod.rs:151`) — already root-local. Multi-root tree:
-each root's rollup terminates at its own `subtree_end[first_node]`,
+`records.end()[i]` via `i+1` advance with a `next < end` guard
+(`src/tree/mod.rs:198-202`) — already root-local. Multi-root tree:
+each root's rollup terminates at its own `records.end()[first_node]`,
 unaffected by sibling roots. Pin with a unit test.
 
 ### Hit-test ordering
