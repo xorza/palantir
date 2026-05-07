@@ -12,7 +12,7 @@
 //! NaN bit pattern; UI authoring shouldn't produce NaN anyway (asserts
 //! in builders enforce non-negative sizes etc.).
 
-use super::{GridArena, NodeHashes, NodeId, NodeRecord, TreeOp};
+use super::{GridArena, NodeHashes, NodeRecord};
 use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
 use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
@@ -58,72 +58,71 @@ impl NodeHashes {
         records: &Soa<NodeRecord>,
         extras: &SparseColumn<ElementExtras>,
         chrome: &SparseColumn<Background>,
-        kinds: &[TreeOp],
         shapes: &[Shape],
         grid: &GridArena,
     ) {
-        self.compute_per_node(records, extras, chrome, kinds, shapes, grid);
+        self.compute_per_node(records, extras, chrome, shapes, grid);
         self.compute_subtree_rollup(records, extras);
     }
 
-    /// Phase 1: compute every node's authoring hash in a single
-    /// pre-order pass over `kinds`. O(N) total work.
+    /// Phase 1: per-node authoring hash. For each node, hash its layout /
+    /// extras / chrome, then walk its `shapes` span: emit each direct
+    /// shape and a `0xFF` marker per direct child, in record order. The
+    /// marker positions are recovered from children's `shapes.start` —
+    /// every child captured the shape buffer position at its open, so
+    /// the gaps between children's sub-ranges hold the parent's direct
+    /// shapes verbatim.
     fn compute_per_node(
         &mut self,
         records: &Soa<NodeRecord>,
         extras: &SparseColumn<ElementExtras>,
         chrome: &SparseColumn<Background>,
-        kinds: &[TreeOp],
         shapes: &[Shape],
         grid: &GridArena,
     ) {
+        let n = records.len();
         self.node.clear();
-        self.node.resize(records.len(), NodeHash::UNCOMPUTED);
-        self.compute_stack.clear();
+        self.node.resize(n, NodeHash::UNCOMPUTED);
 
-        let stack = &mut self.compute_stack;
-        let out = &mut self.node;
-        let mut next_id: u32 = 0;
-        let mut shape_cursor: usize = 0;
+        let shapes_col = records.shapes();
+        let ends = records.end();
+        let layouts = records.layout();
+        let attrs_col = records.attrs();
 
-        for op in kinds {
-            match op {
-                TreeOp::NodeEnter => {
-                    if let Some((_, parent_h)) = stack.last_mut() {
-                        parent_h.write_u8(0xFF);
-                    }
-                    let id = NodeId(next_id);
-                    next_id += 1;
-                    let i = id.index();
-                    let mut h = Hasher::new();
-                    hash_layout_core(&mut h, &records.layout()[i], records.attrs()[i]);
-                    if let Some(e) = extras.get(i) {
-                        hash_node_extras(&mut h, e);
-                    }
-                    hash_chrome(&mut h, chrome.get(i));
-                    stack.push((id, h));
-                }
-                TreeOp::Shape => {
-                    let (_, h) = stack
-                        .last_mut()
-                        .expect("Shape op outside any open NodeEnter");
-                    hash_shape(h, &shapes[shape_cursor]);
-                    shape_cursor += 1;
-                }
-                TreeOp::NodeExit => {
-                    let (id, mut h) = stack.pop().expect("NodeExit op without matching NodeEnter");
-                    if let LayoutMode::Grid(idx) = records.layout()[id.index()].mode {
-                        hash_grid_def(&mut h, &grid.defs[idx as usize]);
-                    }
-                    out[id.index()] = NodeHash::from_u64(h.finish());
-                }
+        for i in 0..n {
+            let mut h = Hasher::new();
+            hash_layout_core(&mut h, &layouts[i], attrs_col[i]);
+            if let Some(e) = extras.get(i) {
+                hash_node_extras(&mut h, e);
             }
+            hash_chrome(&mut h, chrome.get(i));
+
+            let parent = shapes_col[i];
+            let parent_end = parent.start as usize + parent.len as usize;
+            let mut cursor = parent.start as usize;
+            let mut next_child = (i as u32) + 1;
+            let i_end = ends[i];
+            while next_child < i_end {
+                let cs = shapes_col[next_child as usize];
+                let cs_start = cs.start as usize;
+                while cursor < cs_start {
+                    hash_shape(&mut h, &shapes[cursor]);
+                    cursor += 1;
+                }
+                h.write_u8(0xFF);
+                cursor = cs_start + cs.len as usize;
+                next_child = ends[next_child as usize];
+            }
+            while cursor < parent_end {
+                hash_shape(&mut h, &shapes[cursor]);
+                cursor += 1;
+            }
+
+            if let LayoutMode::Grid(idx) = layouts[i].mode {
+                hash_grid_def(&mut h, &grid.defs[idx as usize]);
+            }
+            self.node[i] = NodeHash::from_u64(h.finish());
         }
-        debug_assert!(
-            stack.is_empty(),
-            "kinds stream ended with {} open hashers",
-            stack.len(),
-        );
     }
 
     /// Phase 2: subtree-hash rollup. Reverse pre-order so children fill
