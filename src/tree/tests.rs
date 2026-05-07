@@ -914,6 +914,44 @@ fn subtree_end_handles_deep_nesting() {
     assert_eq!(ui.tree.records.end()[(n - 1) as usize], n, "leaf");
 }
 
+/// Pin the bounds/panel column split: `.gap(...)` is panel-only, so it
+/// must populate `panel.table` without touching `bounds.table`. Conversely,
+/// `.min_size(...)` populates `bounds.table` without touching `panel.table`.
+/// Catches accidental re-merging of the two columns or a setter routing to
+/// the wrong column.
+#[test]
+fn extras_columns_split_by_field_kind() {
+    use crate::primitives::size::Size;
+
+    let mut ui = Ui::new();
+    ui.begin_frame(Display::default());
+    Panel::hstack()
+        .with_id("panel-with-gap")
+        .gap(8.0)
+        .show(&mut ui, |ui| {
+            Frame::new()
+                .with_id("leaf-with-min")
+                .min_size(Size::new(20.0, 20.0))
+                .show(ui);
+            Frame::new().with_id("plain-leaf").size(10.0).show(ui);
+        });
+    ui.end_frame();
+
+    // Panel set `.gap`: one entry in `panel.table`, none in `bounds.table`.
+    // Leaf set `.min_size`: one entry in `bounds.table`, none in `panel.table`.
+    // Plain leaf set neither: contributes to neither table.
+    assert_eq!(
+        ui.tree.panel.table.len(),
+        1,
+        "only the gapped panel populates panel.table",
+    );
+    assert_eq!(
+        ui.tree.bounds.table.len(),
+        1,
+        "only the min-sized leaf populates bounds.table",
+    );
+}
+
 #[test]
 fn child_iter_traverses_correctly_after_finalize() {
     let mut ui = Ui::new();

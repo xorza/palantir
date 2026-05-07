@@ -52,7 +52,7 @@ pub(crate) fn measure(
 /// Defaults pin to top-left unless the child has `Sizing::Fill` — then `Auto`
 /// falls back to stretch on that axis.
 pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
-    let parent_child_align = tree.read_extras(node).child_align;
+    let parent_child_align = tree.panel(node).child_align;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {

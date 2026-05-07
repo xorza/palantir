@@ -129,16 +129,12 @@ impl ScrollAxes {
     }
 }
 
-/// Rarely-set fields lifted out of `Element` so they don't bloat every
-/// stored `Node`. Builders write defaults inline; on `Tree::push_node` the
-/// non-default values get stamped into `Tree::node_extras` and the `Node`
-/// keeps just an `Option<u16>` slot. Two categories live here: per-node
-/// overrides that most nodes don't set (`transform`, `position`, `grid`) and
-/// panel-only knobs that leaves never read (`gap`, `justify`, `child_align`).
-/// Leaves vastly outnumber panels, so paying ~36B once per panel beats
-/// carrying these fields inline on every leaf.
+/// Per-node bounds + transform + parent-relative placement. Set on any
+/// `Element` (leaf or panel) whose builder customizes one of these fields.
+/// Lifted into a sparse side-table so leaves that touch none of these stay
+/// at zero per-node bytes here.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ElementExtras {
+pub(crate) struct BoundsExtras {
     pub(crate) transform: Option<TranslateScale>,
     pub(crate) position: Vec2,
     pub(crate) grid: GridCell,
@@ -146,6 +142,12 @@ pub(crate) struct ElementExtras {
     pub(crate) min_size: Size,
     /// Upper clamp on the resolved outer size. Default `Size::INF`.
     pub(crate) max_size: Size,
+}
+
+/// Panel-only knobs. Read by stack/wrap/grid/zstack drivers on the parent
+/// node — leaves never touch them. Sparse so leaves don't allocate.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PanelExtras {
     /// Logical-px space between siblings within a line. Read by
     /// HStack/VStack (single line) and WrapHStack/WrapVStack (within
     /// each wrap row/column).
@@ -166,13 +168,19 @@ pub(crate) struct ElementExtras {
 /// diffs in `Damage::compute`, the right granularity. Transform IS folded
 /// into `subtree_hash` separately (in the tree's rollup loop) so the encode
 /// cache invalidates on transform-only changes.
-impl std::hash::Hash for ElementExtras {
+impl std::hash::Hash for BoundsExtras {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         h.write(bytemuck::bytes_of(&self.position));
         self.grid.hash(h);
         self.min_size.hash(h);
         self.max_size.hash(h);
+    }
+}
+
+impl std::hash::Hash for PanelExtras {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         h.write_u32(self.gap.to_bits());
         h.write_u32(self.line_gap.to_bits());
         self.child_align.hash(h);
@@ -180,9 +188,7 @@ impl std::hash::Hash for ElementExtras {
     }
 }
 
-impl ElementExtras {
-    /// All-defaults instance. Single source of truth — `Default` and
-    /// `Tree::read_extras`'s "missing extras" fallback both go through this.
+impl BoundsExtras {
     pub(crate) const DEFAULT: Self = Self {
         transform: None,
         position: Vec2::ZERO,
@@ -194,26 +200,39 @@ impl ElementExtras {
         },
         min_size: Size::ZERO,
         max_size: Size::INF,
+    };
+
+    /// True when nothing has been customized — push_node skips the side-table
+    /// allocation in this case. Exact equality against `DEFAULT` so adding a
+    /// field only requires updating `DEFAULT`; no separate predicate to keep
+    /// in sync.
+    pub(crate) fn is_default(&self) -> bool {
+        self == &Self::DEFAULT
+    }
+}
+
+impl PanelExtras {
+    pub(crate) const DEFAULT: Self = Self {
         gap: 0.0,
         line_gap: 0.0,
         justify: Justify::Start,
         child_align: Align::new(HAlign::Auto, VAlign::Auto),
     };
+
+    pub(crate) fn is_default(&self) -> bool {
+        self == &Self::DEFAULT
+    }
 }
 
-impl Default for ElementExtras {
+impl Default for BoundsExtras {
     fn default() -> Self {
         Self::DEFAULT
     }
 }
 
-impl ElementExtras {
-    /// True when nothing has been customized — push_node skips the side-table
-    /// allocation in this case. Compared exactly against `DEFAULT` so adding
-    /// a field only requires updating `DEFAULT`; no separate predicate to
-    /// keep in sync.
-    pub(crate) fn is_default(&self) -> bool {
-        self == &Self::DEFAULT
+impl Default for PanelExtras {
+    fn default() -> Self {
+        Self::DEFAULT
     }
 }
 
@@ -382,12 +401,14 @@ impl Element {
             visibility: self.visibility,
         };
         let attrs = PaintAttrs::pack(self.sense, self.disabled, self.clip, self.focusable);
-        let extras = ElementExtras {
+        let bounds = BoundsExtras {
             transform: self.transform,
             position: self.position,
             grid: self.grid,
             min_size: self.min_size,
             max_size: self.max_size,
+        };
+        let panel = PanelExtras {
             gap: self.gap,
             line_gap: self.line_gap,
             justify: self.justify,
@@ -397,21 +418,23 @@ impl Element {
             layout,
             attrs,
             id: self.id,
-            extras,
+            bounds,
+            panel,
         }
     }
 }
 
 /// Output of [`Element::split`] — the storage columns of an `Element`.
-/// `extras` lands in `Tree::extras` (sparse side table) iff
-/// non-default; the per-NodeId index column inside `extras` is filled
-/// at `open_node` time. `attrs` and `layout` push into their dense
-/// per-NodeId columns.
+/// `bounds`/`panel` land in `Tree::bounds`/`Tree::panel` (sparse side tables)
+/// iff non-default; the per-NodeId index columns inside each are filled at
+/// `open_node` time. `attrs` and `layout` push into their dense per-NodeId
+/// columns.
 pub(crate) struct ElementSplit {
     pub(crate) layout: LayoutCore,
     pub(crate) attrs: PaintAttrs,
     pub(crate) id: WidgetId,
-    pub(crate) extras: ElementExtras,
+    pub(crate) bounds: BoundsExtras,
+    pub(crate) panel: PanelExtras,
 }
 
 /// Mixin: any widget builder that holds an `Element` gets the chained

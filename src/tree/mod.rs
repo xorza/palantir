@@ -5,7 +5,7 @@ use crate::layout::types::visibility::Visibility;
 use crate::primitives::background::Background;
 use crate::shape::Shape;
 use crate::tree::element::{
-    Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintAttrs,
+    BoundsExtras, Element, ElementSplit, LayoutCore, LayoutMode, PaintAttrs, PanelExtras,
 };
 use crate::tree::node_hash::{NodeHash, NodeHashes};
 use crate::tree::widget_id::WidgetId;
@@ -64,16 +64,18 @@ pub(crate) struct Tree {
     pub(crate) records: Soa<NodeRecord>,
 
     // -- Per-NodeId sparse side tables -----------------------------------
-    /// Rarely-set element fields (`transform`, `position`, `grid`, …)
-    /// stored sparsely — most nodes leave them all default. The
-    /// `SparseColumn` packs a per-NodeId index column with the dense
-    /// table; cleared per frame, capacity retained.
-    pub(crate) extras: SparseColumn<ElementExtras>,
-    /// Chrome (panel `Background`) stored sparsely. Decoupled from
-    /// `extras` because chrome is panel-common while the rest of
-    /// `ElementExtras` is rare — bundling them was costing every
-    /// chrome-bearing panel a 108-byte extras slot to hold a single
-    /// `Option<Background>`.
+    /// Per-node bounds + transform + parent-relative placement (`min_size`,
+    /// `max_size`, `position`, `grid`, `transform`). Sparse — most leaves
+    /// leave them all default. Split from panel-only fields so leaves that
+    /// only set bounds don't bloat their slot with `gap`/`justify`/etc.
+    pub(crate) bounds: SparseColumn<BoundsExtras>,
+    /// Panel-only knobs (`gap`, `line_gap`, `justify`, `child_align`).
+    /// Sparse — leaves never write these, so the column stays small even in
+    /// large trees; ~16B/entry vs the old ~64B unified extras.
+    pub(crate) panel: SparseColumn<PanelExtras>,
+    /// Chrome (panel `Background`) stored sparsely. Decoupled from the
+    /// extras columns because chrome is panel-common while bounds/panel
+    /// fields are mostly default.
     pub(crate) chrome: SparseColumn<Background>,
 
     // -- Flat shape buffer -----------------------------------------------
@@ -113,7 +115,8 @@ pub(crate) struct Tree {
 impl Tree {
     pub(crate) fn begin_frame(&mut self) {
         self.records.clear();
-        self.extras.clear();
+        self.bounds.clear();
+        self.panel.clear();
         self.chrome.clear();
         self.shapes.clear();
         self.grid.clear();
@@ -151,8 +154,11 @@ impl Tree {
             let mut h = Hasher::new();
             self.records.layout()[i].hash(&mut h);
             self.records.attrs()[i].hash(&mut h);
-            if let Some(e) = self.extras.get(i) {
-                e.hash(&mut h);
+            if let Some(b) = self.bounds.get(i) {
+                b.hash(&mut h);
+            }
+            if let Some(p) = self.panel.get(i) {
+                p.hash(&mut h);
             }
             self.chrome.get(i).hash(&mut h);
 
@@ -183,7 +189,7 @@ impl Tree {
             let end = self.records.end()[i];
             let mut h = Hasher::new();
             h.write_u64(self.hashes.node[i].0);
-            if let Some(t) = self.extras.get(i).and_then(|e| e.transform) {
+            if let Some(t) = self.bounds.get(i).and_then(|b| b.transform) {
                 h.write_u8(1);
                 h.pod(&t);
             } else {
@@ -229,7 +235,8 @@ impl Tree {
             layout,
             attrs,
             id: widget_id,
-            extras,
+            bounds,
+            panel,
         } = element.split();
 
         // If the parent is a `Grid`, validate the child's `GridCell` against
@@ -243,7 +250,7 @@ impl Tree {
             let n_rows = def.rows.len();
             let n_cols = def.cols.len();
             if n_rows > 0 && n_cols > 0 {
-                let c = extras.grid;
+                let c = bounds.grid;
                 let row = c.row as usize;
                 let col = c.col as usize;
                 let row_span = c.row_span as usize;
@@ -260,7 +267,8 @@ impl Tree {
             }
         }
 
-        self.extras.push((!extras.is_default()).then_some(extras));
+        self.bounds.push((!bounds.is_default()).then_some(bounds));
+        self.panel.push((!panel.is_default()).then_some(panel));
         self.chrome.push(chrome);
 
         // Leaf marker. `close_node` rolls each closing subtree up
@@ -394,14 +402,20 @@ impl Tree {
         })
     }
 
-    /// Read extras for a node, returning a borrow of `ElementExtras::DEFAULT`
-    /// when the node has no side-table entry. Use this when you want to read
-    /// individual fields (`gap`, `child_align`, `position`, …) without
-    /// duplicating defaults at every call site.
-    pub(crate) fn read_extras(&self, id: NodeId) -> &ElementExtras {
-        self.extras
+    /// Bounds extras for a node (`min_size`, `max_size`, `position`, `grid`,
+    /// `transform`), falling back to `BoundsExtras::DEFAULT` when the node has
+    /// no side-table entry.
+    pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
+        self.bounds
             .get(id.index())
-            .unwrap_or(&ElementExtras::DEFAULT)
+            .unwrap_or(&BoundsExtras::DEFAULT)
+    }
+
+    /// Panel extras for a node (`gap`, `line_gap`, `justify`, `child_align`),
+    /// falling back to `PanelExtras::DEFAULT` when the node has no entry.
+    /// Leaves never set these, so the column stays small.
+    pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {
+        self.panel.get(id.index()).unwrap_or(&PanelExtras::DEFAULT)
     }
 
     /// Chrome for `id`, or `None` if the node has no chrome.

@@ -37,7 +37,7 @@ pub(crate) fn measure(
     axis: Axis,
     text: &mut TextMeasurer,
 ) -> Size {
-    let gap = tree.read_extras(node).gap;
+    let gap = tree.panel(node).gap;
     let cross_avail = axis.cross(inner);
 
     // Pass 1: measure non-Fill children at `INF` main with the stack's
@@ -103,7 +103,7 @@ pub(crate) fn measure(
                 else {
                     continue;
                 };
-                let cap = axis.main(tree.read_extras(c).max_size);
+                let cap = axis.main(tree.bounds(c).max_size);
                 let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, text);
                 layout.scratch.stack_fill.pool.push(FillEntry {
                     node: c,
@@ -192,8 +192,8 @@ pub(crate) fn arrange(
     inner: Rect,
     axis: Axis,
 ) {
-    let extras = tree.read_extras(node);
-    let (gap, justify, parent_child_align) = (extras.gap, extras.justify, extras.child_align);
+    let panel = tree.panel(node);
+    let (gap, justify, parent_child_align) = (panel.gap, panel.justify, panel.child_align);
 
     // Sum desired along main axis for ALL children. Measure has
     // already done the floor-aware Fill distribution; each child's
@@ -271,7 +271,7 @@ pub(crate) fn intrinsic(
     req: LenReq,
     text: &mut TextMeasurer,
 ) -> f32 {
-    let gap = tree.read_extras(node).gap;
+    let gap = tree.panel(node).gap;
     if main_axis == query_axis {
         let mut total = 0.0_f32;
         let mut count = 0_usize;

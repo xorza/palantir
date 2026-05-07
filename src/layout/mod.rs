@@ -279,8 +279,8 @@ impl LayoutEngine {
             return hit.root;
         }
 
-        let extras = tree.read_extras(node);
-        let (min_size, max_size) = (extras.min_size, extras.max_size);
+        let bounds = tree.bounds(node);
+        let (min_size, max_size) = (bounds.min_size, bounds.max_size);
 
         // Min-content intrinsic — the smallest this node can shrink
         // to without breaking a rigid descendant (Fixed widget,
