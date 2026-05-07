@@ -8,11 +8,23 @@ use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::Encoder;
+use crate::shape::Shape;
 use crate::text::{SharedCosmic, cosmic::CosmicMeasure, share};
-use crate::tree::NodeId;
 use crate::tree::element::Configure;
+use crate::tree::{NodeId, Tree, TreeItem};
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
+
+/// Direct shapes of `node` — including panels whose direct shapes are
+/// interleaved between children (scrollbar overlays, parent-pushed
+/// sub-rects). Production callers on leaves use `Tree::leaf_shapes`
+/// (direct slice, no per-item branch) instead.
+pub(crate) fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &Shape> + '_ {
+    tree.tree_items(node).filter_map(|item| match item {
+        TreeItem::Shape(s) => Some(s),
+        TreeItem::Child(_) => None,
+    })
+}
 
 pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
     ui.begin_frame(Display::from_physical(size, 1.0));

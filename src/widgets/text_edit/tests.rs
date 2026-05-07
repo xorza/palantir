@@ -3,7 +3,7 @@ use crate::Spacing;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::sizing::Sizing;
-use crate::support::testing::{begin, click_at, ui_with_text};
+use crate::support::testing::{begin, click_at, shapes_of, ui_with_text};
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::panel::Panel;
@@ -778,8 +778,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     ui.end_frame();
 
     let read_fs = |node: crate::tree::NodeId| -> f32 {
-        ui.tree
-            .shapes_of(node)
+        shapes_of(&ui.tree, node)
             .find_map(|s| match s {
                 Shape::Text { font_size_px, .. } => Some(*font_size_px),
                 _ => None,
@@ -820,9 +819,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     });
     ui.end_frame();
 
-    let color = ui
-        .tree
-        .shapes_of(node.unwrap())
+    let color = shapes_of(&ui.tree, node.unwrap())
         .find_map(|s| match s {
             Shape::Text { color, .. } => Some(*color),
             _ => None,
@@ -852,9 +849,7 @@ fn text_widget_color_override_wins_over_theme() {
     });
     ui.end_frame();
 
-    let color = ui
-        .tree
-        .shapes_of(node.unwrap())
+    let color = shapes_of(&ui.tree, node.unwrap())
         .find_map(|s| match s {
             Shape::Text { color, .. } => Some(*color),
             _ => None,
@@ -901,8 +896,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     ui.end_frame();
 
     let read_lh = |node: crate::tree::NodeId| -> f32 {
-        ui.tree
-            .shapes_of(node)
+        shapes_of(&ui.tree, node)
             .find_map(|s| match s {
                 Shape::Text { line_height_px, .. } => Some(*line_height_px),
                 _ => None,
@@ -959,9 +953,7 @@ fn textedit_style_override_replaces_default_theme() {
         );
     });
     ui.end_frame();
-    let lh = ui
-        .tree
-        .shapes_of(leaf.unwrap())
+    let lh = shapes_of(&ui.tree, leaf.unwrap())
         .find_map(|s| match s {
             Shape::Text { line_height_px, .. } => Some(*line_height_px),
             _ => None,
@@ -992,7 +984,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     });
     ui.end_frame();
 
-    let text_shape = ui.tree.shapes_of(leaf_node.unwrap()).find_map(|s| match s {
+    let text_shape = shapes_of(&ui.tree, leaf_node.unwrap()).find_map(|s| match s {
         Shape::Text {
             font_size_px,
             line_height_px,
@@ -1039,9 +1031,7 @@ fn pushed_shape_uses_style_overridden_line_height() {
     });
     ui.end_frame();
 
-    let lh = ui
-        .tree
-        .shapes_of(leaf_node.unwrap())
+    let lh = shapes_of(&ui.tree, leaf_node.unwrap())
         .find_map(|s| match s {
             Shape::Text { line_height_px, .. } => Some(*line_height_px),
             _ => None,
@@ -1089,8 +1079,7 @@ fn line_height_override_changes_caret_rect_height() {
         });
         ui.end_frame();
         // Caret = the only sub-rect Shape pushed (no selection in v1).
-        ui.tree
-            .shapes_of(leaf.unwrap())
+        shapes_of(&ui.tree, leaf.unwrap())
             .find_map(|s| match s {
                 Shape::RoundedRect {
                     local_rect: Some(rect),

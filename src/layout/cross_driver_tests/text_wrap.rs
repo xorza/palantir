@@ -4,7 +4,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::shape::{Shape, TextWrap};
-use crate::support::testing::ui_with_text;
+use crate::support::testing::{shapes_of, ui_with_text};
 use crate::tree::element::Configure;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -37,7 +37,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         r.size.h,
     );
     // todo refactor
-    let shape = ui.tree.shapes_of(node).next().expect("text shape");
+    let shape = shapes_of(&ui.tree, node).next().expect("text shape");
     let wrap = match shape {
         Shape::Text { wrap, .. } => *wrap,
         _ => panic!("expected Shape::Text"),
