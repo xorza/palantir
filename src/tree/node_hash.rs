@@ -31,16 +31,10 @@ use std::hash::Hasher as _;
 /// confusion with `WidgetId` / other 64-bit handles in signatures
 /// like `shape_unbounded(wid: WidgetId, hash: NodeHash, …)`.
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct NodeHash(u64);
 
 impl NodeHash {
-    /// Sentinel returned by `Tree::node_hash` before
-    /// `compute_hashes` runs. Distinguishable from any real hash only
-    /// probabilistically (collisions are 2⁻⁶⁴), but adequate as an
-    /// "uninitialized" marker.
-    pub(crate) const UNCOMPUTED: Self = Self(0);
-
     /// Construct a `NodeHash` from a raw `u64`. Used by the rollup
     /// loop and by tests that synthesize sentinel hashes.
     #[inline]
@@ -108,7 +102,7 @@ impl NodeHashes {
     ) {
         let n = records.len();
         self.node.clear();
-        self.node.resize(n, NodeHash::UNCOMPUTED);
+        self.node.reserve(n);
 
         let shapes_col = records.shapes();
         let ends = records.end();
@@ -147,7 +141,7 @@ impl NodeHashes {
             if let LayoutMode::Grid(idx) = layouts[i].mode {
                 hash_grid_def(&mut h, &grid.defs[idx as usize]);
             }
-            self.node[i] = NodeHash::from_u64(h.finish());
+            self.node.push(NodeHash::from_u64(h.finish()));
         }
     }
 
@@ -162,25 +156,29 @@ impl NodeHashes {
     ) {
         let n = records.len();
         self.subtree.clear();
-        self.subtree.resize(n, NodeHash::UNCOMPUTED);
+        self.subtree.resize_with(n, NodeHash::default);
         self.subtree_has_grid.clear();
         self.subtree_has_grid.grow(n);
+
+        let ends = records.end();
+        let layouts = records.layout();
+
         for i in (0..n).rev() {
-            let end = records.end()[i];
+            let end = ends[i];
             let mut h = Hasher::new();
-            self.node[i].hash(&mut h);
+            h.write_u64(self.node[i].0);
             if let Some(t) = extras.get(i).and_then(|e| e.transform) {
                 h.write_u8(1);
                 h.pod(&t);
             } else {
                 h.write_u8(0);
             }
-            let mut has_grid = matches!(records.layout()[i].mode, LayoutMode::Grid(_));
+            let mut has_grid = matches!(layouts[i].mode, LayoutMode::Grid(_));
             let mut next = (i as u32) + 1;
             while next < end {
-                self.subtree[next as usize].hash(&mut h);
+                h.write_u64(self.subtree[next as usize].0);
                 has_grid |= self.subtree_has_grid.contains(next as usize);
-                next = records.end()[next as usize];
+                next = ends[next as usize];
             }
             self.subtree[i] = NodeHash::from_u64(h.finish());
             self.subtree_has_grid.set(i, has_grid);
