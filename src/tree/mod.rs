@@ -3,6 +3,7 @@ use crate::common::sparse_column::SparseColumn;
 use crate::layout::types::span::Span;
 use crate::layout::types::visibility::Visibility;
 use crate::primitives::background::Background;
+use crate::primitives::rect::Rect;
 use crate::shape::Shape;
 use crate::tree::element::{
     BoundsExtras, Element, ElementSplit, LayoutCore, LayoutMode, PaintAttrs, PanelExtras,
@@ -26,6 +27,39 @@ impl NodeId {
     pub(crate) fn index(self) -> usize {
         self.0 as usize
     }
+}
+
+/// Paint / hit-test order across roots. Lower variants paint first
+/// (under) and hit-test last (under). Total order — popups beat the
+/// main tree, modals beat popups, tooltips beat modals, debug beats
+/// everything. See `docs/popups.md`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[allow(
+    dead_code,
+    reason = "Popup/Modal/Tooltip/Debug consumed by docs/popups.md step 2"
+)]
+pub(crate) enum Layer {
+    Main,
+    Popup,
+    Modal,
+    Tooltip,
+    Debug,
+}
+
+/// One entry per recorded root in the multi-root tree. `first_node`
+/// indexes `tree.records`; `anchor_rect` is the surface rect for
+/// `Main`/`Modal` and the anchor screen-rect for `Popup`/`Tooltip`.
+/// Sorted by `layer` at `Tree::end_frame` so every pipeline pass walks
+/// roots in paint order.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RootSlot {
+    pub(crate) first_node: u32,
+    pub(crate) layer: Layer,
+    #[allow(
+        dead_code,
+        reason = "consumed by docs/popups.md step 3 (pipeline conversion)"
+    )]
+    pub(crate) anchor_rect: Rect,
 }
 
 /// **Per-NodeId columns** — `Soa<NodeRecord>` indexed by `NodeId.0`, in
@@ -110,6 +144,10 @@ pub(crate) struct Tree {
     /// alongside the rollup. Conceptually a structure summary, not a
     /// hash, hence kept off `NodeHashes`.
     pub(crate) subtree_has_grid: FixedBitSet,
+    /// Multi-root manifest. Populated by [`Self::end_frame`] in layer
+    /// order — every pipeline pass iterates this slice. Empty when no
+    /// nodes were recorded this frame.
+    pub(crate) roots: Vec<RootSlot>,
 }
 
 impl Tree {
@@ -122,20 +160,33 @@ impl Tree {
         self.grid.clear();
         self.open_frames.clear();
         self.subtree_has_grid.clear();
+        self.roots.clear();
     }
 
-    /// Finalize the recorded frame: walk every node and populate
+    /// Finalize the recorded frame: stamp the implicit `Main` root,
+    /// stable-sort `roots` by layer, walk every node and populate
     /// `self.hashes.node` + `self.hashes.subtree`. Pure read over the
     /// rest of the tree; safe to call any time after recording
     /// completes. Capacity retained across frames.
-    pub(crate) fn end_frame(&mut self) {
+    pub(crate) fn end_frame(&mut self, main_anchor: Rect) {
         assert!(
             self.open_frames.is_empty(),
             "end_frame called with {} node(s) still open — a widget builder forgot close_node",
             self.open_frames.len(),
         );
+        // `Main` slots are pushed lazily in `open_node` with a placeholder
+        // anchor; patch them now that the surface is known. Other layers
+        // (Popup/Modal/Tooltip — step 2) carry caller-supplied anchors.
+        for r in &mut self.roots {
+            if r.layer == Layer::Main {
+                r.anchor_rect = main_anchor;
+            }
+        }
+        // Verify storage-order coverage *before* sorting by layer so the
+        // walk doesn't need a side allocation to recover record order.
         #[cfg(debug_assertions)]
         self.assert_recording_invariants();
+        self.roots.sort_by_key(|r| r.layer);
 
         self.compute_node_hashes();
         self.compute_subtree_hashes();
@@ -204,20 +255,49 @@ impl Tree {
         }
     }
 
-    /// Cross-column structural invariants. The root's `shapes` span
-    /// must cover the entire shape buffer — every shape lives in some
-    /// subtree. Debug-only.
+    /// Cross-column structural invariants. Every top-level record is a
+    /// root (lazy-pushed in `open_node`), so `roots` covers `records`
+    /// and `shapes` contiguously starting at 0 — no gaps, no overlaps,
+    /// no orphans. Debug-only.
     #[cfg(debug_assertions)]
     fn assert_recording_invariants(&self) {
-        if let Some(root) = self.root() {
-            let root_shapes = self.records.shapes()[root.index()];
-            debug_assert_eq!(root_shapes.start, 0, "root shapes span must start at 0",);
-            debug_assert_eq!(
-                root_shapes.len as usize,
-                self.shapes.len(),
-                "root shapes span must cover the whole shape buffer",
+        if self.roots.is_empty() {
+            debug_assert!(
+                self.records.is_empty(),
+                "non-empty records ({}) without any root slot",
+                self.records.len(),
             );
+            return;
         }
+        // Caller-contract: `roots` is in record order — `open_node`'s
+        // lazy push appends in record order, and this fires before the
+        // layer-sort in `end_frame`.
+        let mut next_rec = 0u32;
+        let mut next_shape = 0u32;
+        for root in &self.roots {
+            debug_assert_eq!(
+                root.first_node, next_rec,
+                "roots must abut in record order — no gaps, no overlap",
+            );
+            let i = root.first_node as usize;
+            let s = self.records.shapes()[i];
+            debug_assert_eq!(
+                s.start, next_shape,
+                "root {i}'s shapes must abut the previous root's",
+            );
+            next_rec = self.records.end()[i];
+            next_shape = s.start + s.len;
+        }
+        debug_assert_eq!(
+            next_rec as usize,
+            self.records.len(),
+            "roots must cover every record",
+        );
+        debug_assert_eq!(
+            next_shape as usize,
+            self.shapes.len(),
+            "roots must cover every shape",
+        );
     }
 
     /// Push a node as a child of the currently-open node (or as the root if
@@ -225,6 +305,17 @@ impl Tree {
     pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
         let parent = self.open_frames.last().copied();
         let new_id = NodeId(self.records.len() as u32);
+        if parent.is_none() {
+            // Top-level node — seed a root for it. Step 2 will introduce
+            // a per-`Ui::layer` override so popups push `Popup`/etc.
+            // here; today every top-level node is a `Main` root.
+            // `anchor_rect` is patched at `end_frame`.
+            self.roots.push(RootSlot {
+                first_node: new_id.0,
+                layer: Layer::Main,
+                anchor_rect: Rect::ZERO,
+            });
+        }
         if let LayoutMode::Grid(idx) = element.mode {
             assert!(
                 (idx as usize) < self.grid.defs.len(),
@@ -338,17 +429,6 @@ impl Tree {
             "add_shape called with no open node",
         );
         self.shapes.push(shape);
-    }
-
-    /// First node in pre-order paint order, or `None` if the tree is empty.
-    /// Stable while the tree is alive: the root is always `NodeId(0)` once
-    /// pushed.
-    pub(crate) fn root(&self) -> Option<NodeId> {
-        if self.records.is_empty() {
-            None
-        } else {
-            Some(NodeId(0))
-        }
     }
 
     /// Iterate children of `parent` in declaration order, each tagged

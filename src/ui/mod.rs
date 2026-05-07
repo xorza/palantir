@@ -114,16 +114,21 @@ impl Ui {
         // Hashes are pure functions of recorded inputs and don't depend on
         // layout output, so we compute them up front. Layout reads them to
         // skip text reshape for unchanged Text nodes; damage reads them after.
-        self.tree.end_frame();
+        self.tree.end_frame(surface);
         let removed = self.ids.end_frame();
         self.text.sweep_removed(removed);
         self.layout.sweep_removed(removed);
         self.frontend.sweep_removed(removed);
         self.state.sweep_removed(removed);
 
+        // Multi-root pipeline conversion lands in step 3 of
+        // docs/popups.md; today the manifest holds at most one Main
+        // root, so a single `run` is bit-identical to the prior single-
+        // root call. The `else` branch covers the empty-tree frame.
+        let main_root = self.tree.roots.first().map(|r| NodeId(r.first_node));
         let layout = self
             .layout
-            .run(&self.tree, self.tree.root(), surface, &mut self.text);
+            .run(&self.tree, main_root, surface, &mut self.text);
 
         self.scrolls.refresh(&self.tree, layout, &mut self.state);
 
