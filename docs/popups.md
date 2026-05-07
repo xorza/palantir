@@ -48,13 +48,17 @@ Each slice compiles + ships the showcase.
 - Test: hash-rollup is root-local — two top-level subtrees, vary one,
   pin the other's `subtree_hash` is unchanged.
 
-### 2. `Ui::layer(layer, anchor, body)`
-- Save `tree.open_frames`, replace with empty.
-- Push deferred `RootSlot { first_node: tree.records.len() as u32, … }`.
-- Run `body`; first `open_node` becomes the new root.
-- Restore `open_frames`.
-- Test: record `Main` + a `Popup` root via `Ui::layer`, assert
-  `tree.roots` is sorted `[Main, Popup]` post-`end_frame`.
+### 2. `Ui::layer(layer, anchor, body)`  ✅ shipped (v1, top-level only)
+- Pushes `(layer, anchor)` onto `tree.layer_stack` so `open_node`'s
+  lazy push picks up the popup's layer + anchor.
+- Asserts `open_frames.is_empty()` at entry — **top-level recording
+  only**. See "Mid-recording layer changes" in the rationale for why
+  and the v2 path.
+- `tree.layer_bases` exists as forward-compat scaffolding for nested
+  popups but stays empty under the v1 top-level assertion.
+- Tests: `Main` + `Popup` recorded top-level → `tree.roots` sorted
+  `[Main, Popup]`, `records.end()` ranges abut, anchor passes through;
+  illegal mid-`Panel::show` call panics with a clear message.
 
 ### 3. Pipeline loop conversion
 Convert these entry points to iterate `tree.roots`:
@@ -300,6 +304,77 @@ accidentally fold the Main tree's hash. Today the rollup walks
 (`src/tree/mod.rs:198-202`) — already root-local. Multi-root tree:
 each root's rollup terminates at its own `records.end()[first_node]`,
 unaffected by sibling roots. Pin with a unit test.
+
+### Mid-recording layer changes (v2 deferral)
+
+**Status today:** `Ui::layer` asserts top-level recording (no node
+currently open). The natural user pattern — opening a popup from
+inside a `Panel::show` callback when a button is clicked — is forbidden
+in v1.
+
+**Why it's hard.** The arena depends on pre-order subtree contiguity:
+`tree.children(parent)` walks `next..end[parent]` and skipping over
+foreign records is a load-bearing assumption shared by every walk
+(measure, arrange, cascade, encode, hash rollup). Recording a popup
+mid-`Panel::show` interleaves the popup's nodes between the panel's
+own children, splitting the panel's subtree across non-adjacent
+index ranges. Main's `end[0]` ends up over-spanning the popup, so
+`tree.children(panel)` would visit the popup's nodes as if they were
+panel children.
+
+**Required user pattern in v1:**
+
+```rust
+let mut menu_open = false;
+let mut anchor_rect = Rect::ZERO;
+Panel::vstack().show(&mut ui, |ui| {
+    let r = Button::new("menu").show(ui);
+    if r.clicked() { menu_open = true; }
+    anchor_rect = r.state.rect;
+});
+if menu_open {
+    ui.layer(Layer::Popup, anchor_rect, |ui| { ... });
+}
+```
+
+Workable, but loses the locality of "open the popup right where I
+clicked."
+
+**Solution space (v2, when motivated):**
+
+| approach              | mechanic                                                                                       | invasiveness                                                                                           | user ergonomics                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| **Closure queue**     | `Ui::layer` boxes the body into `Vec<Box<dyn FnOnce(&mut Ui) + 'static>>`; drained at frame end | low — one Vec, drain step in `end_frame`                                                               | bad — body must be `'static` (no stack borrows; Rc/Cell only) |
+| **Staging arena**     | popup body records into a parallel SoA buffer; spliced into `records` at end of outer scope    | high — every record-side write needs to know which buffer (`records`, `shapes`, `bounds`, `panel`, `chrome`, `subtree_has_grid`, `widget_id`s, etc.) | best — body works exactly like inline                        |
+| **End-frame reorder** | record interleaved as today; reorder records after `close_node` for outer scope so subtrees become contiguous; fix up `end[]` / `shapes[]` / `roots.first_node` / sparse columns | moderate — single fixup pass walks records once, rewrites indices                                      | best — body works exactly like inline                        |
+
+The closure queue is cheapest to ship but most restrictive: closures
+that capture `&mut some_local_state` won't compile, forcing users to
+thread state through `Rc<RefCell<…>>` or `Ui::state`. egui takes this
+hit; it's livable but rough.
+
+The staging arena is cleanest for users but is a major plumbing
+change — every `tree.records.push(…)` / `tree.add_shape(…)` /
+sparse-column write needs an explicit target buffer. Roughly 30–50
+call sites.
+
+The end-frame reorder is the favored path: recording stays inline (no
+API change in the body), the fixup is concentrated in one place
+(`tree::end_frame` or close to it), and the cost is O(records) once
+per frame — comparable to existing `compute_subtree_hashes`. The fixup
+pass is mechanical: identify each popup's contiguous block, move it to
+the end of `records`, rewrite `end[]` for the surrounding parent to
+exclude the popup's old range, rewrite affected shape/bounds/panel
+indices, rewrite `roots[i].first_node`. `WidgetId`s are stable. The
+hash pass would run after the reorder.
+
+**Recommendation:** ship v1 (top-level only) through to step 6 with
+the awkward user pattern in showcase, then implement end-frame
+reorder when (a) showcase or a real app exposes the friction, or
+(b) sub-menus / context menus land and need to nest popups inside
+popup bodies. Don't pre-build it — the tradeoff between "current
+restriction is fine" and "reorder fixup is worth its complexity"
+needs a real workload to weigh.
 
 ### Hit-test ordering
 
