@@ -261,9 +261,7 @@ impl TextMeasurer {
 
     /// Identity-cached unbounded shape for `wid`, refreshing it (and
     /// clearing any stale wrap entry) when the authoring hash has
-    /// shifted. Returns by value because callers typically also call
-    /// [`Self::shape_wrap`] on the wrap path, which would borrow-
-    /// conflict with a reference into the cache.
+    /// shifted.
     pub(crate) fn shape_unbounded(
         &mut self,
         wid: WidgetId,
@@ -300,12 +298,10 @@ impl TextMeasurer {
     }
 
     /// Identity-cached wrap shape for `wid` at the caller-quantized
-    /// `target_q`. Hits the cache when the same wrap target was used
-    /// last frame; otherwise dispatches `measure` and refreshes the
-    /// entry. Caller is responsible for having populated the unbounded
-    /// entry first via [`Self::shape_unbounded`] — without that, the
-    /// wrap result is computed but cannot be cached (no parent entry)
-    /// and the next call re-measures.
+    /// `target_q`. Hits when the same wrap target was used last frame;
+    /// otherwise dispatches and refreshes the entry. Must be preceded
+    /// by [`Self::shape_unbounded`] on the same `(wid, ordinal)` so the
+    /// parent entry exists.
     #[allow(clippy::too_many_arguments)]
     pub fn shape_wrap(
         &mut self,
@@ -317,38 +313,30 @@ impl TextMeasurer {
         target: f32,
         target_q: u32,
     ) -> MeasureResult {
-        if let Some(entry) = self.reuse.get_mut(&(wid, ordinal)) {
-            if let Some(w) = entry.wrap
-                && w.target_q == target_q
-            {
-                return w.result;
-            }
-            // Cache miss with existing entry: write back through the same
-            // borrow. Disjoint field borrows let `dispatch` run while
-            // `entry` is held.
-            self.measure_calls += 1;
-            let m = dispatch(
-                &self.cosmic,
-                text,
-                font_size_px,
-                line_height_px,
-                Some(target),
-            );
-            entry.wrap = Some(WrapReuse {
-                target_q,
-                result: m,
-            });
-            return m;
+        let entry = match self.reuse.entry((wid, ordinal)) {
+            Entry::Occupied(o) => o,
+            Entry::Vacant(_) => panic!(
+                "shape_wrap requires a prior shape_unbounded call on the same (wid, ordinal)",
+            ),
+        };
+        if let Some(w) = entry.get().wrap
+            && w.target_q == target_q
+        {
+            return w.result;
         }
-        // No prime: dispatch but don't cache.
         self.measure_calls += 1;
-        dispatch(
+        let m = dispatch(
             &self.cosmic,
             text,
             font_size_px,
             line_height_px,
             Some(target),
-        )
+        );
+        entry.into_mut().wrap = Some(WrapReuse {
+            target_q,
+            result: m,
+        });
+        m
     }
 
     /// Unbounded measured width of `text[..byte_offset]`, used for
