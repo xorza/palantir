@@ -12,16 +12,12 @@
 //! NaN bit pattern; UI authoring shouldn't produce NaN anyway (asserts
 //! in builders enforce non-negative sizes etc.).
 
-use super::{GridArena, NodeId, NodeRecord, TreeItem, iter_direct_items};
 use crate::common::hash::Hasher;
-use crate::common::sparse_column::SparseColumn;
 use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::shape::Shape;
 use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, ScrollAxes};
 use crate::widgets::grid::GridDef;
-use soa_rs::Soa;
-
 use std::hash::Hash;
 use std::hash::Hasher as _;
 
@@ -54,105 +50,11 @@ pub(crate) struct NodeHashes {
     pub(crate) subtree: Vec<NodeHash>,
 }
 
-impl NodeHashes {
-    /// Per-frame entry point called by `Tree::end_frame`: populates
-    /// `node[i]` and `subtree[i]`. Field-borrow signature instead of
-    /// `&Tree` so the caller can split-borrow `&mut self.hashes` from
-    /// the read-only tree columns.
-    pub(crate) fn compute(
-        &mut self,
-        records: &Soa<NodeRecord>,
-        extras: &SparseColumn<ElementExtras>,
-        chrome: &SparseColumn<Background>,
-        shapes: &[Shape],
-        grid: &GridArena,
-    ) {
-        self.compute_per_node(records, extras, chrome, shapes, grid);
-        self.compute_subtree_rollup(records, extras);
-    }
-
-    /// Phase 1: per-node authoring hash. For each node, hash its layout /
-    /// extras / chrome, then walk `iter_direct_items` and feed each
-    /// direct shape into the hasher with a `0xFF` marker between
-    /// children — the marker preserves "shape vs child boundary"
-    /// ordering across siblings.
-    fn compute_per_node(
-        &mut self,
-        records: &Soa<NodeRecord>,
-        extras: &SparseColumn<ElementExtras>,
-        chrome: &SparseColumn<Background>,
-        shapes: &[Shape],
-        grid: &GridArena,
-    ) {
-        let n = records.len();
-        self.node.clear();
-        self.node.reserve(n);
-
-        let layouts = records.layout();
-        let attrs_col = records.attrs();
-
-        for i in 0..n {
-            let mut h = Hasher::new();
-            hash_layout_core(&mut h, &layouts[i], attrs_col[i]);
-            if let Some(e) = extras.get(i) {
-                hash_node_extras(&mut h, e);
-            }
-            hash_chrome(&mut h, chrome.get(i));
-
-            for item in iter_direct_items(records, shapes, NodeId(i as u32)) {
-                match item {
-                    TreeItem::Shape(s) => hash_shape(&mut h, s),
-                    TreeItem::Child(_) => h.write_u8(0xFF),
-                }
-            }
-
-            if let LayoutMode::Grid(idx) = layouts[i].mode {
-                hash_grid_def(&mut h, &grid.defs[idx as usize]);
-            }
-            self.node.push(NodeHash(h.finish()));
-        }
-    }
-
-    /// Phase 2: subtree-hash rollup. Reverse pre-order so children fill
-    /// before parents read. `transform` folds in here (not `node[i]`) so
-    /// the encode cache invalidates on transform-only changes while
-    /// damage rect-diffing keeps owning paint-position drift.
-    fn compute_subtree_rollup(
-        &mut self,
-        records: &Soa<NodeRecord>,
-        extras: &SparseColumn<ElementExtras>,
-    ) {
-        let n = records.len();
-        self.subtree.clear();
-        self.subtree.resize_with(n, NodeHash::default);
-
-        let ends = records.end();
-
-        for i in (0..n).rev() {
-            let end = ends[i];
-            let mut h = Hasher::new();
-            h.write_u64(self.node[i].0);
-            if let Some(t) = extras.get(i).and_then(|e| e.transform) {
-                h.write_u8(1);
-                h.pod(&t);
-            } else {
-                h.write_u8(0);
-            }
-            let mut next = (i as u32) + 1;
-            while next < end {
-                h.write_u64(self.subtree[next as usize].0);
-                next = ends[next as usize];
-            }
-            self.subtree[i] = NodeHash(h.finish());
-        }
-    }
-}
-
 /// `Sizing` is a tagged union with niche-uninit padding in its inactive
 /// variant — `pod` would hash junk bytes. Encode as a deterministic
 /// `tag:u8 + value:f32` instead. Inlined for the two `Sizes` axes.
 #[inline]
-fn hash_sizing(h: &mut Hasher, s: Sizing) {
+pub(crate) fn hash_sizing(h: &mut Hasher, s: Sizing) {
     let (tag, v) = match s {
         Sizing::Fixed(v) => (0u8, v),
         Sizing::Hug => (1, 0.0),
@@ -163,7 +65,7 @@ fn hash_sizing(h: &mut Hasher, s: Sizing) {
 }
 
 #[inline]
-fn hash_sizes(h: &mut Hasher, s: Sizes) {
+pub(crate) fn hash_sizes(h: &mut Hasher, s: Sizes) {
     hash_sizing(h, s.w);
     hash_sizing(h, s.h);
 }
@@ -172,7 +74,7 @@ fn hash_sizes(h: &mut Hasher, s: Sizes) {
 /// is a frame-local arena slot that shifts with sibling order, while the
 /// def's actual content is hashed at `NodeExit` via `hash_grid_def`.
 #[inline]
-fn hash_layout_mode(h: &mut Hasher, m: LayoutMode) {
+pub(crate) fn hash_layout_mode(h: &mut Hasher, m: LayoutMode) {
     let tag: u8 = match m {
         LayoutMode::Leaf => 0,
         LayoutMode::HStack => 1,
@@ -190,7 +92,7 @@ fn hash_layout_mode(h: &mut Hasher, m: LayoutMode) {
 }
 
 #[inline]
-fn hash_layout_core(h: &mut Hasher, l: &LayoutCore, attrs: PaintAttrs) {
+pub(crate) fn hash_layout_core(h: &mut Hasher, l: &LayoutCore, attrs: PaintAttrs) {
     hash_layout_mode(h, l.mode);
     hash_sizes(h, l.size);
     h.pod(&[l.padding, l.margin]);
@@ -200,7 +102,7 @@ fn hash_layout_core(h: &mut Hasher, l: &LayoutCore, attrs: PaintAttrs) {
 }
 
 #[inline]
-fn hash_node_extras(h: &mut Hasher, e: &ElementExtras) {
+pub(crate) fn hash_node_extras(h: &mut Hasher, e: &ElementExtras) {
     // `transform` is intentionally omitted: it doesn't affect this
     // node's own paint (the encoder draws the node at its layout rect
     // *before* `PushTransform`; the transform composes into
@@ -221,7 +123,7 @@ fn hash_node_extras(h: &mut Hasher, e: &ElementExtras) {
 }
 
 #[inline]
-fn hash_chrome(h: &mut Hasher, chrome: Option<&Background>) {
+pub(crate) fn hash_chrome(h: &mut Hasher, chrome: Option<&Background>) {
     match chrome {
         None => h.write_u8(0),
         Some(bg) => {
@@ -240,7 +142,7 @@ fn hash_chrome(h: &mut Hasher, chrome: Option<&Background>) {
 }
 
 #[inline]
-fn hash_shape(h: &mut Hasher, shape: &Shape) {
+pub(crate) fn hash_shape(h: &mut Hasher, shape: &Shape) {
     match shape {
         Shape::RoundedRect {
             radius,
@@ -302,14 +204,14 @@ fn hash_shape(h: &mut Hasher, shape: &Shape) {
 }
 
 #[inline]
-fn hash_track(h: &mut Hasher, t: &Track) {
+pub(crate) fn hash_track(h: &mut Hasher, t: &Track) {
     hash_sizing(h, t.size);
     h.write_u32(t.min.to_bits());
     h.write_u32(t.max.to_bits());
 }
 
 #[inline]
-fn hash_grid_def(h: &mut Hasher, def: &GridDef) {
+pub(crate) fn hash_grid_def(h: &mut Hasher, def: &GridDef) {
     h.write_u32(def.rows.len() as u32);
     for t in def.rows.iter() {
         hash_track(h, t);

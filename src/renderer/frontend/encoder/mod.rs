@@ -313,7 +313,7 @@ fn encode_node(
     // Shapes paint *outside* the owner's pan transform so they stay
     // anchored to the owner regardless of scroll offset; transform is
     // pushed/popped per child accordingly.
-    for item in tree.direct_items(id) {
+    for item in tree.tree_items(id) {
         match item {
             TreeItem::Shape(shape) => {
                 if paints {

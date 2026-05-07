@@ -1,3 +1,4 @@
+use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
 use crate::layout::types::span::Span;
 use crate::layout::types::visibility::Visibility;
@@ -6,11 +7,15 @@ use crate::shape::Shape;
 use crate::tree::element::{
     Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintAttrs,
 };
-use crate::tree::node_hash::NodeHashes;
+use crate::tree::node_hash::{
+    NodeHash, NodeHashes, hash_chrome, hash_grid_def, hash_layout_core, hash_node_extras,
+    hash_shape,
+};
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::grid::GridDef;
 use fixedbitset::FixedBitSet;
 use soa_rs::{Soa, Soars};
+use std::hash::Hasher as _;
 
 pub(crate) mod element;
 pub(crate) mod node_hash;
@@ -119,10 +124,10 @@ impl Tree {
         self.subtree_has_grid.clear();
     }
 
-    /// Walk every recorded node and populate `self.hashes.node` plus the
-    /// `self.hashes.subtree` rollup. Pure read over the rest of the
-    /// tree; safe to call any time after recording completes. Capacity
-    /// retained across frames.
+    /// Finalize the recorded frame: walk every node and populate
+    /// `self.hashes.node` + `self.hashes.subtree`. Pure read over the
+    /// rest of the tree; safe to call any time after recording
+    /// completes. Capacity retained across frames.
     pub(crate) fn end_frame(&mut self) {
         assert!(
             self.open_frames.is_empty(),
@@ -132,13 +137,67 @@ impl Tree {
         #[cfg(debug_assertions)]
         self.assert_recording_invariants();
 
-        self.hashes.compute(
-            &self.records,
-            &self.extras,
-            &self.chrome,
-            &self.shapes,
-            &self.grid,
-        );
+        self.compute_node_hashes();
+        self.compute_subtree_hashes();
+    }
+
+    /// Per-node authoring hash. Hashes layout / extras / chrome, then
+    /// walks `direct_items` interleaving each direct shape with a
+    /// `0xFF` marker per child to preserve "shape vs child boundary"
+    /// ordering across siblings.
+    fn compute_node_hashes(&mut self) {
+        let n = self.records.len();
+        self.hashes.node.clear();
+        self.hashes.node.reserve(n);
+
+        for i in 0..n {
+            let mut h = Hasher::new();
+            hash_layout_core(&mut h, &self.records.layout()[i], self.records.attrs()[i]);
+            if let Some(e) = self.extras.get(i) {
+                hash_node_extras(&mut h, e);
+            }
+            hash_chrome(&mut h, self.chrome.get(i));
+
+            for item in TreeItems::new(&self.records, &self.shapes, NodeId(i as u32)) {
+                match item {
+                    TreeItem::Shape(s) => hash_shape(&mut h, s),
+                    TreeItem::Child(_) => h.write_u8(0xFF),
+                }
+            }
+
+            if let LayoutMode::Grid(idx) = self.records.layout()[i].mode {
+                hash_grid_def(&mut h, &self.grid.defs[idx as usize]);
+            }
+            self.hashes.node.push(NodeHash(h.finish()));
+        }
+    }
+
+    /// Subtree-hash rollup, reverse pre-order so children fill before
+    /// parents read. `transform` folds in here (not into `node[i]`) so
+    /// the encode cache invalidates on transform-only changes while
+    /// damage rect-diffing keeps owning paint-position drift.
+    fn compute_subtree_hashes(&mut self) {
+        let n = self.records.len();
+        self.hashes.subtree.clear();
+        self.hashes.subtree.resize_with(n, NodeHash::default);
+
+        for i in (0..n).rev() {
+            let end = self.records.end()[i];
+            let mut h = Hasher::new();
+            h.write_u64(self.hashes.node[i].0);
+            if let Some(t) = self.extras.get(i).and_then(|e| e.transform) {
+                h.write_u8(1);
+                h.pod(&t);
+            } else {
+                h.write_u8(0);
+            }
+            let mut next = (i as u32) + 1;
+            while next < end {
+                h.write_u64(self.hashes.subtree[next as usize].0);
+                next = self.records.end()[next as usize];
+            }
+            self.hashes.subtree[i] = NodeHash(h.finish());
+        }
     }
 
     /// Cross-column structural invariants. The root's `shapes` span
@@ -319,20 +378,19 @@ impl Tree {
 
     // -- Per-node read accessors -----------------------------------------
 
-    /// Iterate `node`'s direct contents in record order — each direct
-    /// shape interleaved with each direct child at the position it was
-    /// opened. Drives the encoder (recurses on `Child`, paints on
-    /// `Shape`) and the per-node hash (writes `0xFF` per `Child`,
-    /// `hash_shape` per `Shape`); both pre-order walks share this.
-    pub(crate) fn direct_items(&self, node: NodeId) -> impl Iterator<Item = TreeItem<'_>> + '_ {
-        iter_direct_items(&self.records, &self.shapes, node)
+    /// Iterate `node`'s direct contents in record order. Wrapper over
+    /// [`TreeItems::new`] for callers that hold a `&Tree`; the
+    /// hash compute reaches for `TreeItems::new` directly so it can
+    /// keep `&mut self.hashes` live.
+    pub(crate) fn tree_items(&self, node: NodeId) -> TreeItems<'_> {
+        TreeItems::new(&self.records, &self.shapes, node)
     }
 
     /// Direct shapes only — convenience over `direct_items` for
     /// callers that don't care about child boundaries (mostly tests
     /// and `leaf_text_shapes`, which only runs on leaves).
     pub(crate) fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &Shape> + '_ {
-        self.direct_items(node).filter_map(|item| match item {
+        self.tree_items(node).filter_map(|item| match item {
             TreeItem::Shape(s) => Some(s),
             TreeItem::Child(_) => None,
         })
@@ -406,47 +464,67 @@ impl<'a> Iterator for ChildIter<'a> {
     }
 }
 
-/// Free-function form of [`Tree::direct_items`] over the raw column
-/// slices. Lets `NodeHashes::compute_per_node` reuse the walk without
-/// borrowing the whole `Tree` (which would conflict with the
-/// `&mut self.hashes` split-borrow).
-pub(crate) fn iter_direct_items<'a>(
-    records: &'a Soa<NodeRecord>,
+/// Iterator over a node's direct contents in record order. Yields
+/// each direct shape interleaved with each direct child at the
+/// position the child was opened. Construct via [`TreeItems::new`]
+/// from the column slices, or [`Tree::direct_items`] from a `&Tree`.
+/// The two-constructor surface exists so methods that need
+/// `&mut self.hashes` can still iterate without a `&self` borrow.
+pub(crate) struct TreeItems<'a> {
+    shapes_col: &'a [Span],
+    layouts: &'a [LayoutCore],
+    ends: &'a [u32],
     shapes: &'a [Shape],
-    node: NodeId,
-) -> impl Iterator<Item = TreeItem<'a>> + 'a {
-    let shapes_col = records.shapes();
-    let parent = shapes_col[node.index()];
-    let parent_end = (parent.start + parent.len) as usize;
-    let subtree_end = records.end()[node.index()];
-    let mut cursor = parent.start as usize;
-    let mut next_child_id = node.0 + 1;
+    cursor: usize,
+    parent_end: usize,
+    next_child_id: u32,
+    subtree_end: u32,
+}
 
-    std::iter::from_fn(move || {
-        if next_child_id < subtree_end {
-            let cs = shapes_col[next_child_id as usize];
+impl<'a> TreeItems<'a> {
+    pub(crate) fn new(records: &'a Soa<NodeRecord>, shapes: &'a [Shape], node: NodeId) -> Self {
+        let shapes_col = records.shapes();
+        let parent = shapes_col[node.index()];
+        Self {
+            shapes_col,
+            layouts: records.layout(),
+            ends: records.end(),
+            shapes,
+            cursor: parent.start as usize,
+            parent_end: (parent.start + parent.len) as usize,
+            next_child_id: node.0 + 1,
+            subtree_end: records.end()[node.index()],
+        }
+    }
+}
+
+impl<'a> Iterator for TreeItems<'a> {
+    type Item = TreeItem<'a>;
+    fn next(&mut self) -> Option<TreeItem<'a>> {
+        if self.next_child_id < self.subtree_end {
+            let cs = self.shapes_col[self.next_child_id as usize];
             let cs_start = cs.start as usize;
-            if cursor < cs_start {
-                let s = &shapes[cursor];
-                cursor += 1;
+            if self.cursor < cs_start {
+                let s = &self.shapes[self.cursor];
+                self.cursor += 1;
                 return Some(TreeItem::Shape(s));
             }
-            let visibility = records.layout()[next_child_id as usize].visibility;
+            let visibility = self.layouts[self.next_child_id as usize].visibility;
             let child = Child {
-                id: NodeId(next_child_id),
+                id: NodeId(self.next_child_id),
                 visibility,
             };
-            cursor = cs_start + cs.len as usize;
-            next_child_id = records.end()[next_child_id as usize];
+            self.cursor = cs_start + cs.len as usize;
+            self.next_child_id = self.ends[self.next_child_id as usize];
             return Some(TreeItem::Child(child));
         }
-        if cursor < parent_end {
-            let s = &shapes[cursor];
-            cursor += 1;
+        if self.cursor < self.parent_end {
+            let s = &self.shapes[self.cursor];
+            self.cursor += 1;
             return Some(TreeItem::Shape(s));
         }
         None
-    })
+    }
 }
 
 /// Frame-scoped grid storage: track defs (one per `Grid` panel),
