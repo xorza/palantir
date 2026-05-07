@@ -340,16 +340,16 @@ impl Tree {
             .open_frames
             .last_mut()
             .expect("add_shape called with no open node");
-        // Multi-`Shape::Text` per leaf is unsupported: layout records a
-        // single `ShapedText` per node and the encoder emits a single
-        // `DrawText` rect — a second text shape would silently
-        // overwrite the first's shaped buffer / cache key. Catch at
-        // authoring time rather than letting the corruption land in
-        // `LayoutResult.text_shapes`.
+        // One `Shape::Text` per node — `LayoutResult.text_shapes` has
+        // one slot per node and the encoder emits one `DrawText` per
+        // node. See `docs/multi-text-per-leaf.md` for the lift.
         if matches!(shape, Shape::Text { .. }) {
             assert!(
                 !tip.has_text,
-                "node {} already has a Shape::Text — multiple text shapes per leaf are unsupported",
+                "node {} already has a Shape::Text. \
+                 Custom widgets needing multiple texts must open a child node per text \
+                 (e.g. via `Ui::node`) — `Shape::Text` is one-per-leaf today. \
+                 See docs/multi-text-per-leaf.md.",
                 tip.node.0,
             );
             tip.has_text = true;
