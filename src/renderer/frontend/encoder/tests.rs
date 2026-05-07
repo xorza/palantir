@@ -46,18 +46,33 @@ fn count_draw_rects(cmds: &RenderCmdBuffer) -> usize {
 /// Baseline encoder counts: empty tree emits no draws; a Frame with a
 /// fill emits one DrawRect; an invisible Frame (no fill / stroke /
 /// shape) emits none — `Shape::is_noop` filters at `add_shape` time so
-/// the encoder sees no RoundedRect in the tree.
+/// the encoder sees no RoundedRect in the tree. Degenerate Backgrounds
+/// (transparent + no stroke) and clip-only Surfaces (`Surface::clip_rect`)
+/// also emit zero `DrawRect`s — the encoder's `bg.is_noop()` guard at
+/// chrome-paint time filters them.
 #[test]
 fn baseline_draw_rect_count_cases() {
     enum Scene {
         Empty,
         FrameWithFill,
         InvisibleFrame,
+        FrameWithDegenerateBackground,
+        FrameWithClipRectSurface,
     }
     let cases: &[(&str, Scene, usize)] = &[
         ("empty_tree", Scene::Empty, 0),
         ("frame_with_fill", Scene::FrameWithFill, 1),
         ("invisible_frame", Scene::InvisibleFrame, 0),
+        (
+            "frame_with_degenerate_background",
+            Scene::FrameWithDegenerateBackground,
+            0,
+        ),
+        (
+            "frame_with_clip_rect_surface",
+            Scene::FrameWithClipRectSurface,
+            0,
+        ),
     ];
     for (label, scene, expected) in cases {
         let mut ui = ui_at(UVec2::new(200, 200));
@@ -75,6 +90,24 @@ fn baseline_draw_rect_count_cases() {
             }
             Scene::InvisibleFrame => {
                 Frame::new().with_id("invisible").size(50.0).show(ui);
+            }
+            Scene::FrameWithDegenerateBackground => {
+                Frame::new()
+                    .with_id("degenerate")
+                    .size(50.0)
+                    .background(Background {
+                        fill: Color::TRANSPARENT,
+                        stroke: None,
+                        ..Default::default()
+                    })
+                    .show(ui);
+            }
+            Scene::FrameWithClipRectSurface => {
+                Frame::new()
+                    .with_id("clip_only")
+                    .size(50.0)
+                    .background(Surface::clip_rect())
+                    .show(ui);
             }
         });
         ui.end_frame();
