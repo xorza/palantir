@@ -12,7 +12,7 @@
 //! NaN bit pattern; UI authoring shouldn't produce NaN anyway (asserts
 //! in builders enforce non-negative sizes etc.).
 
-use super::{GridArena, NodeHashes, NodeRecord};
+use super::{GridArena, NodeRecord};
 use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
 use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
@@ -20,6 +20,7 @@ use crate::primitives::background::Background;
 use crate::shape::Shape;
 use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, ScrollAxes};
 use crate::widgets::grid::GridDef;
+use fixedbitset::FixedBitSet;
 use soa_rs::Soa;
 use std::hash::Hash;
 use std::hash::Hasher as _;
@@ -46,6 +47,31 @@ impl NodeHash {
     pub(crate) fn from_u64(v: u64) -> Self {
         Self(v)
     }
+}
+
+/// Per-node hash data populated by [`Tree::end_frame`].
+///
+/// - `node[i]` — authoring hash of node `i` alone (layout / paint /
+///   extras / shapes / grid def). Read by damage diff and the leaf
+///   intrinsic cache.
+/// - `subtree[i]` — rollup of `node[i]` together with the subtree
+///   hashes of `i`'s direct children, in declaration order. Equality
+///   across frames means nothing in the subtree changed; the cross-frame
+///   measure cache and encode cache both key on this. See
+///   `src/layout/measure-cache.md` and
+///   `src/renderer/frontend/encoder/encode-cache.md`.
+/// - `subtree_has_grid[i]` — true if the subtree at `i` contains any
+///   `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
+///   grid-hug snapshot/restore walk; correctness doesn't depend on it,
+///   perf does.
+///
+/// All three vecs are length `records.len()` after `end_frame`. Capacity
+/// retained across frames.
+#[derive(Default)]
+pub(crate) struct NodeHashes {
+    pub(crate) node: Vec<NodeHash>,
+    pub(crate) subtree: Vec<NodeHash>,
+    pub(crate) subtree_has_grid: FixedBitSet,
 }
 
 impl NodeHashes {

@@ -6,10 +6,9 @@ use crate::shape::Shape;
 use crate::tree::element::{
     Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintAttrs,
 };
-use crate::tree::node_hash::NodeHash;
+use crate::tree::node_hash::NodeHashes;
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::grid::GridDef;
-use fixedbitset::FixedBitSet;
 use soa_rs::{Soa, Soars};
 
 pub(crate) mod element;
@@ -410,32 +409,6 @@ impl GridArena {
         self.defs.push(def);
         idx
     }
-}
-
-/// Per-node hash data populated by [`Tree::end_frame`].
-///
-/// - `node[i]` — authoring hash of node `i` alone (layout / paint /
-///   extras / shapes / grid def). Read by damage diff and the leaf
-///   intrinsic cache.
-/// - `subtree[i]` — rollup of `node[i]` together with the subtree
-///   hashes of `i`'s direct children, in declaration order. Equality
-///   across frames means nothing in the subtree changed; the cross-frame
-///   measure cache and encode cache both key on this. See
-///   `src/layout/measure-cache.md` and
-///   `src/renderer/frontend/encoder/encode-cache.md`.
-/// - `subtree_has_grid[i]` — true if the subtree at `i` contains any
-///   `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
-///   grid-hug snapshot/restore walk; correctness doesn't depend on it,
-///   perf does.
-///
-/// All three vecs are length `records.len()` after `end_frame`. Capacity
-/// retained across frames.
-// todo move to impl
-#[derive(Default)]
-pub(crate) struct NodeHashes {
-    pub(crate) node: Vec<NodeHash>,
-    pub(crate) subtree: Vec<NodeHash>,
-    pub(crate) subtree_has_grid: FixedBitSet,
 }
 
 /// Per-NodeId record. One push per `open_node`, finalized by
