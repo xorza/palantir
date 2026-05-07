@@ -17,6 +17,9 @@
       "Bash(cargo fmt*)",
       "Bash(cargo nextest *)",
       "Bash(cargo check *)",
+      "Bash(cargo search *)",
+      "Bash(cargo info *)",
+      "Bash(cargo doc *)",
 
       "Bash(git mv:*)",
       "Bash(git add:*)",
@@ -29,6 +32,8 @@
       "Bash(perf record *)",
 
       "Bash(scripts/bench-perf.sh)",
+      "Bash(FAST=1 scripts/test-all.sh)",
+      "Bash(scripts/test-all.sh)",
 
       "Bash(npm_config_cache=\"/tmp/npm-cache\" npx --yes jscpd *)"
     ]
