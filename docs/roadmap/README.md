@@ -21,6 +21,9 @@ priority (Now / Next / Later / Speculative).
 - [Renderer / GPU](renderer.md) — staging belt, offscreen, nested clips
 - [Text](text.md) — cache eviction, atlas, allocs
 - [Input](input.md) — coalescing, drag-and-drop
+- [Actions](actions.md) — typed actions, keymap, chord support
+- [Animations](animations.md) — per-widget tween/spring slots
+- [State](state.md) — cross-widget stores, event bus, external writes
 - [Layering](layering.md) — popups, z-order, multi-window
 - [Accessibility](accessibility.md) — accesskit
 - [Tooling](tooling.md) — profiling, snapshots, HiDPI
