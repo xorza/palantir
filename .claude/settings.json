@@ -22,6 +22,8 @@
       "Bash(cargo doc *)",
       "Bash(cargo bench *)",
 
+      "Bash(cargo +nightly test*)",
+
       "Bash(git mv:*)",
       "Bash(git add:*)",
       "Bash(git rm:*)",
