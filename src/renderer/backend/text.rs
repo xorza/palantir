@@ -14,6 +14,7 @@ use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::SharedCosmic;
 use crate::text::cosmic::RenderSplit;
+use fixedbitset::FixedBitSet;
 use glam::UVec2;
 use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
@@ -80,12 +81,13 @@ pub(crate) struct TextRenderer {
     /// `atlas` (glyphon caches pipelines by `(format, multisample,
     /// depth_stencil)` — no fork needed).
     stencil_renderers: Vec<GlyphonRenderer>,
-    /// Same length as `renderers`. `ready[i]` says whether
-    /// `renderers[i].prepare(...)` was called this frame and should be
-    /// rendered. Reset to all-false in [`Self::end_frame`].
-    ready: Vec<bool>,
+    /// Bit `i` says whether `renderers[i].prepare(...)` was called this
+    /// frame and should be rendered. Length grows with the pool; bits
+    /// past `renderers.len()` are unused. Reset to all-false in
+    /// [`Self::end_frame`].
+    ready: FixedBitSet,
     /// Same shape as `ready`, for `stencil_renderers`.
-    stencil_ready: Vec<bool>,
+    stencil_ready: FixedBitSet,
     /// Highest `group_idx + 1` prepared this frame. Used by
     /// [`Self::end_frame`] to truncate the pool down to the slots that
     /// were actually used, so a frame burst (e.g. an open modal with
@@ -115,8 +117,8 @@ impl TextRenderer {
             swash_cache,
             renderers: Vec::new(),
             stencil_renderers: Vec::new(),
-            ready: Vec::new(),
-            stencil_ready: Vec::new(),
+            ready: FixedBitSet::new(),
+            stencil_ready: FixedBitSet::new(),
             high_water: 0,
             scratch: Vec::new(),
         }
@@ -147,7 +149,7 @@ impl TextRenderer {
 
     /// True if any group has been prepared this frame and should render.
     pub(crate) fn has_prepared(&self) -> bool {
-        self.ready.iter().any(|&r| r) || self.stencil_ready.iter().any(|&r| r)
+        self.ready.count_ones(..) > 0 || self.stencil_ready.count_ones(..) > 0
     }
 
     /// Update the viewport uniform. Called once per frame before the
@@ -225,8 +227,8 @@ impl TextRenderer {
                 depth_stencil.clone(),
             );
             pool.push(renderer);
-            ready.push(false);
         }
+        ready.grow(pool.len());
 
         let result = pool[group_idx].prepare(
             device,
@@ -244,10 +246,10 @@ impl TextRenderer {
 
         if let Err(e) = result {
             tracing::warn!(?e, group_idx, ?mode, "glyphon prepare failed");
-            ready[group_idx] = false;
+            ready.remove(group_idx);
             return false;
         }
-        ready[group_idx] = true;
+        ready.insert(group_idx);
         if group_idx + 1 > self.high_water {
             self.high_water = group_idx + 1;
         }
@@ -267,7 +269,7 @@ impl TextRenderer {
             StencilMode::Plain => (&self.renderers, &self.ready),
             StencilMode::Stencil => (&self.stencil_renderers, &self.stencil_ready),
         };
-        if !matches!(ready.get(group_idx), Some(true)) {
+        if !ready.contains(group_idx) {
             return;
         }
         if let Err(e) = pool[group_idx].render(&self.atlas, &self.viewport, pass) {
@@ -284,20 +286,17 @@ impl TextRenderer {
         // Shrink only when pool is more than 2× high_water — see
         // [`POOL_SHRINK_RATIO`]. Skips truncate work entirely in
         // steady state. Both pools follow the same rule.
+        // Pools can shrink; `ready`/`stencil_ready` only grow (one bit
+        // per renderer). Bits past `pool.len()` are never read after a
+        // shrink, and `clear()` below zeros them anyway.
         if self.renderers.len() > self.high_water.saturating_mul(POOL_SHRINK_RATIO) {
             self.renderers.truncate(self.high_water);
-            self.ready.truncate(self.high_water);
         }
         if self.stencil_renderers.len() > self.high_water.saturating_mul(POOL_SHRINK_RATIO) {
             self.stencil_renderers.truncate(self.high_water);
-            self.stencil_ready.truncate(self.high_water);
         }
-        for r in &mut self.ready {
-            *r = false;
-        }
-        for r in &mut self.stencil_ready {
-            *r = false;
-        }
+        self.ready.clear();
+        self.stencil_ready.clear();
         self.high_water = 0;
     }
 }
