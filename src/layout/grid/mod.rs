@@ -5,6 +5,7 @@ use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextMeasurer;
 use crate::tree::element::LayoutMode;
 use crate::tree::{Child, NodeId, Tree};
+use fixedbitset::FixedBitSet;
 use glam::Vec2;
 use std::ops::Range;
 use std::rc::Rc;
@@ -97,7 +98,7 @@ fn reset_hugs_for(layout: &mut LayoutEngine, idx: u16) {
 pub(crate) struct AxisScratch {
     pub(crate) tracks: Rc<[Track]>,
     pub(crate) sizes: Vec<f32>,
-    pub(crate) resolved: Vec<bool>,
+    pub(crate) resolved: FixedBitSet,
     pub(crate) offsets: Vec<f32>,
     flexible: Vec<usize>,
 }
@@ -107,7 +108,7 @@ impl Default for AxisScratch {
         Self {
             tracks: Rc::from([]),
             sizes: Vec::new(),
-            resolved: Vec::new(),
+            resolved: FixedBitSet::new(),
             offsets: Vec::new(),
             flexible: Vec::new(),
         }
@@ -117,14 +118,14 @@ impl Default for AxisScratch {
 impl AxisScratch {
     /// Adopt the user's track `Rc<[Track]>` (refcount-only) and (re)size the
     /// per-track arrays to match. All arrays are zeroed; `resolved` is reset
-    /// to `false`. Capacity on the `Vec`s is retained across frames.
+    /// to all-false. Capacity is retained across frames.
     fn reset(&mut self, tracks: Rc<[Track]>) {
         let n = tracks.len();
         self.tracks = tracks;
         self.sizes.clear();
         self.sizes.resize(n, 0.0);
         self.resolved.clear();
-        self.resolved.resize(n, false);
+        self.resolved.grow(n);
         self.offsets.clear();
         self.offsets.resize(n, 0.0);
     }
@@ -513,7 +514,7 @@ fn resolve_fixed(a: &mut AxisScratch) {
     for (i, t) in a.tracks.iter().enumerate() {
         if let Sizing::Fixed(v) = t.size {
             a.sizes[i] = v.clamp(t.min, t.max);
-            a.resolved[i] = true;
+            a.resolved.insert(i);
         }
     }
 }
@@ -629,15 +630,15 @@ fn arrange_inner(
 /// Sum of spanned tracks' resolved sizes, or `∞` if any spanned track is not
 /// yet resolved (Hug / Fill at measure time). Infinity makes the child fall
 /// back to its intrinsic size on that axis (the WPF trick).
-fn sum_spanned_known(sizes: &[f32], resolved: &[bool], start: u16, span: u16) -> f32 {
+fn sum_spanned_known(sizes: &[f32], resolved: &FixedBitSet, start: u16, span: u16) -> f32 {
     let s = (start as usize).min(sizes.len());
     let n = (span as usize).min(sizes.len() - s);
     let mut sum = 0.0;
-    for i in s..s + n {
-        if !resolved[i] {
+    for (offset, &size) in sizes[s..s + n].iter().enumerate() {
+        if !resolved.contains(s + offset) {
             return f32::INFINITY;
         }
-        sum += sizes[i];
+        sum += size;
     }
     sum
 }
@@ -710,7 +711,7 @@ fn resolve_axis(
     // Fill cols would measure with measure-time Fill leftover (a
     // finite value), then arrange might collapse Fill to 0 (e.g., Hug
     // grid) and the cell rect/shape would disagree.
-    a.resolved.fill(false);
+    a.resolved.clear();
     let total_gap = gap * n.saturating_sub(1) as f32;
 
     // Phase 1: Fixed.
@@ -718,7 +719,7 @@ fn resolve_axis(
     for (i, t) in a.tracks.iter().enumerate() {
         if let Sizing::Fixed(v) = t.size {
             a.sizes[i] = v.clamp(t.min, t.max);
-            a.resolved[i] = true;
+            a.resolved.insert(i);
             consumed += a.sizes[i];
         }
     }
@@ -746,7 +747,7 @@ fn resolve_axis(
                     let lo = hug_min[i].max(t.min);
                     let hi = hug_max[i].max(lo).min(t.max);
                     a.sizes[i] = hi;
-                    a.resolved[i] = true;
+                    a.resolved.insert(i);
                     consumed += hi;
                 }
             }
@@ -756,7 +757,7 @@ fn resolve_axis(
                 if matches!(t.size, Sizing::Hug) {
                     let lo = hug_min[i].max(t.min);
                     a.sizes[i] = lo;
-                    a.resolved[i] = true;
+                    a.resolved.insert(i);
                     consumed += lo;
                 }
             }
@@ -775,7 +776,7 @@ fn resolve_axis(
                         0.0
                     };
                     a.sizes[i] = (lo + share).min(hi);
-                    a.resolved[i] = true;
+                    a.resolved.insert(i);
                     consumed += a.sizes[i];
                 }
             }
@@ -831,7 +832,7 @@ fn resolve_axis(
     if !matches!(grid_sizing, Sizing::Hug) && total.is_finite() {
         for (i, t) in a.tracks.iter().enumerate() {
             if matches!(t.size, Sizing::Fill(_)) {
-                a.resolved[i] = true;
+                a.resolved.insert(i);
             }
         }
     }

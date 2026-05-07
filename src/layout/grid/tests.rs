@@ -269,9 +269,8 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
     // pins (cells in Fill cols see INF until arrange).
     resolve_axis(&mut a, &hug_min, &hug_max, 200.0, 0.0, Sizing::Hug);
 
-    assert_eq!(
-        a.resolved.as_slice(),
-        &[true, true, false],
+    assert!(
+        a.resolved.contains(0) && a.resolved.contains(1) && !a.resolved.contains(2),
         "Fill cols must stay unresolved so `sum_spanned_known` returns INF for them"
     );
 }
