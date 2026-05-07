@@ -20,7 +20,6 @@ use crate::primitives::background::Background;
 use crate::shape::Shape;
 use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, ScrollAxes};
 use crate::widgets::grid::GridDef;
-use fixedbitset::FixedBitSet;
 use soa_rs::Soa;
 
 use std::hash::Hash;
@@ -57,10 +56,9 @@ pub(crate) struct NodeHashes {
 
 impl NodeHashes {
     /// Per-frame entry point called by `Tree::end_frame`: populates
-    /// `node[i]`, `subtree[i]`, and the caller-owned `subtree_has_grid`
-    /// bitset. Field-borrow signature instead of `&Tree` so the caller
-    /// can split-borrow `&mut self.hashes` and `&mut self.subtree_has_grid`
-    /// from the read-only tree columns.
+    /// `node[i]` and `subtree[i]`. Field-borrow signature instead of
+    /// `&Tree` so the caller can split-borrow `&mut self.hashes` from
+    /// the read-only tree columns.
     pub(crate) fn compute(
         &mut self,
         records: &Soa<NodeRecord>,
@@ -68,10 +66,9 @@ impl NodeHashes {
         chrome: &SparseColumn<Background>,
         shapes: &[Shape],
         grid: &GridArena,
-        subtree_has_grid: &mut FixedBitSet,
     ) {
         self.compute_per_node(records, extras, chrome, shapes, grid);
-        self.compute_subtree_rollup(records, extras, subtree_has_grid);
+        self.compute_subtree_rollup(records, extras);
     }
 
     /// Phase 1: per-node authoring hash. For each node, hash its layout /
@@ -142,16 +139,12 @@ impl NodeHashes {
         &mut self,
         records: &Soa<NodeRecord>,
         extras: &SparseColumn<ElementExtras>,
-        subtree_has_grid: &mut FixedBitSet,
     ) {
         let n = records.len();
         self.subtree.clear();
         self.subtree.resize_with(n, NodeHash::default);
-        subtree_has_grid.clear();
-        subtree_has_grid.grow(n);
 
         let ends = records.end();
-        let layouts = records.layout();
 
         for i in (0..n).rev() {
             let end = ends[i];
@@ -163,15 +156,12 @@ impl NodeHashes {
             } else {
                 h.write_u8(0);
             }
-            let mut has_grid = matches!(layouts[i].mode, LayoutMode::Grid(_));
             let mut next = (i as u32) + 1;
             while next < end {
                 h.write_u64(self.subtree[next as usize].0);
-                has_grid |= subtree_has_grid.contains(next as usize);
                 next = ends[next as usize];
             }
             self.subtree[i] = NodeHash(h.finish());
-            subtree_has_grid.set(i, has_grid);
         }
     }
 }
