@@ -111,15 +111,28 @@ pub(crate) const AVAIL_UNSET: AvailableKey = IVec2::splat(i32::MIN);
 /// `text_shapes` payloads. The four node-indexed slices share length
 /// and pre-order alignment; `hugs` is sized per-grid descendant in
 /// `HUG_ORDER`; `text_shapes` is sized per text-shape in pre-order.
-/// `text_spans` stores **subtree-local** spans into `text_shapes`
-/// (start relative to the slice's first element). Same shape for
-/// both reads ([`MeasureCache::try_lookup`]) and writes
-/// ([`MeasureCache::write_subtree`]).
+///
+/// `text_spans` carries spans whose `start` is offset by
+/// `text_spans_base`. [`MeasureCache::write_subtree`] subtracts
+/// `text_spans_base` per element so the stored form is subtree-local
+/// (and thus survives compaction of the flat range).
+/// [`MeasureCache::try_lookup`] returns spans already in subtree-local
+/// form with `text_spans_base = 0`, so the caller can rebase by
+/// adding its destination offset directly. Lets writers hand over
+/// their global per-frame `text_spans` slice and a single offset
+/// scalar — no scratch buffer required.
 pub(crate) struct SubtreeArenas<'a> {
     pub(crate) desired: &'a [Size],
-    /// Per-node `Span` into `text_shapes`. Subtree-local: span
-    /// `start` is relative to `text_shapes[0]`.
+    /// Per-node `Span` into the flat `text_shapes` buffer. Spans are
+    /// expressed in `text_spans_base`-rooted coordinates: subtract
+    /// `text_spans_base` from each `start` to get a subtree-local
+    /// index into [`Self::text_shapes`].
     pub(crate) text_spans: &'a [Span],
+    /// Base offset to subtract from each `text_spans[i].start`. Zero
+    /// on read (cache stores subtree-local already); non-zero on
+    /// write (caller's per-frame `text_spans` slice indexes a global
+    /// flat buffer, this offset rebases it).
+    pub(crate) text_spans_base: u32,
     pub(crate) available_q: &'a [AvailableKey],
     /// Per-node measured content extent for `LayoutMode::Scroll`
     /// descendants, `Size::ZERO` elsewhere.
@@ -232,6 +245,7 @@ impl MeasureCache {
             arenas: SubtreeArenas {
                 desired: &self.desired.items[nodes.clone()],
                 text_spans: &self.text_spans[nodes.clone()],
+                text_spans_base: 0,
                 available_q: &self.available[nodes.clone()],
                 scroll_content: &self.scroll_content[nodes],
                 hugs: &self.hugs.items[snap.hugs.range()],
@@ -257,6 +271,7 @@ impl MeasureCache {
         let SubtreeArenas {
             desired,
             text_spans,
+            text_spans_base,
             available_q,
             scroll_content,
             hugs,
@@ -272,6 +287,10 @@ impl MeasureCache {
         let new_len = desired.len() as u32;
         let new_hugs_len = hugs.len() as u32;
         let new_text_len = text_shapes.len() as u32;
+        let rebase = |s: &Span| Span {
+            start: s.start.saturating_sub(text_spans_base),
+            len: s.len,
+        };
 
         if let Some(prev) = self.snapshots.get_mut(&wid)
             && prev.nodes.len == new_len
@@ -286,7 +305,12 @@ impl MeasureCache {
             let text_range = prev.text_shapes.range();
             prev.subtree_hash = subtree_hash;
             self.desired.items[nodes.clone()].copy_from_slice(desired);
-            self.text_spans[nodes.clone()].copy_from_slice(text_spans);
+            for (dst, src) in self.text_spans[nodes.clone()]
+                .iter_mut()
+                .zip(text_spans.iter())
+            {
+                *dst = rebase(src);
+            }
             self.available[nodes.clone()].copy_from_slice(available_q);
             self.scroll_content[nodes].copy_from_slice(scroll_content);
             self.hugs.items[hugs_range].copy_from_slice(hugs);
@@ -304,7 +328,7 @@ impl MeasureCache {
         }
         let nodes = Span::new(self.desired.items.len() as u32, new_len);
         self.desired.items.extend_from_slice(desired);
-        self.text_spans.extend_from_slice(text_spans);
+        self.text_spans.extend(text_spans.iter().map(rebase));
         self.available.extend_from_slice(available_q);
         self.scroll_content.extend_from_slice(scroll_content);
         let hugs_span = Span::new(self.hugs.items.len() as u32, new_hugs_len);

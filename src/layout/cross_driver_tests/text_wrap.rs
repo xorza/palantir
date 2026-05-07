@@ -6,8 +6,9 @@ use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
+use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
-use crate::support::testing::{shapes_of, ui_with_text};
+use crate::support::testing::{begin, encode_cmds, shapes_of, ui_with_text};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -404,15 +405,14 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     }
 }
 
-/// Pin: a custom widget that pushes two `Shape::Text` to the same
-/// node has both runs shaped (`text_spans[node].len == 2`) and laid
-/// out at distinct positions via per-shape `local_rect`. Replaces the
-/// old "one Shape::Text per leaf" hard assert.
-#[test]
-fn multi_shape_text_per_leaf_shapes_each_run_independently() {
-    let mut ui = ui_with_text(UVec2::new(400, 400));
+/// Two `Shape::Text` runs in one leaf:
+///   slot 0: "first" at `local_rect: Some((0, 0)+100x20)`,
+///   slot 1: "second-with-different-text" at `Some((0, 22)+100x20)`.
+/// Returns the leaf NodeId so callers can read `text_spans` /
+/// emitted commands. Used by the multi-text-per-leaf pinning tests.
+fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::tree::NodeId {
     let mut leaf = None;
-    Panel::vstack().show(&mut ui, |ui| {
+    Panel::vstack().show(ui, |ui| {
         leaf = Some(ui.node(Element::new_auto(LayoutMode::Leaf), None, |ui| {
             ui.add_shape(Shape::Text {
                 local_rect: Some(Rect::new(0.0, 0.0, 100.0, 20.0)),
@@ -434,9 +434,19 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
             });
         }));
     });
+    leaf.unwrap()
+}
+
+/// Pin: a custom widget that pushes two `Shape::Text` to the same
+/// node has both runs shaped (`text_spans[node].len == 2`) at distinct
+/// `TextCacheKey`s (no `TextMeasurer.reuse` collision). Replaces the
+/// old "one Shape::Text per leaf" hard assert.
+#[test]
+fn multi_shape_text_per_leaf_shapes_each_run_independently() {
+    let mut ui = ui_with_text(UVec2::new(400, 400));
+    let leaf = build_multi_text_leaf(&mut ui);
     ui.end_frame();
 
-    let leaf = leaf.unwrap();
     let span = ui.layout.result.text_spans[leaf.index()];
     assert_eq!(
         span.len, 2,
@@ -460,5 +470,89 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
         first.key, second.key,
         "different text inputs must produce distinct TextCacheKeys — \
          a collision would mean the second shape clobbered the first's cache slot",
+    );
+}
+
+/// Pin: encoder emits one `DrawText` per `Shape::Text` in record
+/// order, and `local_rect: Some(lr)` shifts the emitted rect by
+/// `lr.min` (relative to the owner). Without per-shape `text_ordinal`
+/// indexing or the `local_rect` branch, the second run would either
+/// re-paint the first's shaped buffer or sit on top of the first.
+#[test]
+fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
+    let mut ui = ui_with_text(UVec2::new(400, 400));
+    let leaf = build_multi_text_leaf(&mut ui);
+    ui.end_frame();
+
+    let owner_min = ui.layout.result.rect[leaf.index()].min;
+    let cmds = encode_cmds(&ui);
+    let mut drawn: Vec<glam::Vec2> = (0..cmds.kinds.len())
+        .filter(|&i| cmds.kinds[i] == CmdKind::DrawText)
+        .map(|i| cmds.read::<DrawTextPayload>(cmds.starts[i]).rect.min)
+        .collect();
+    assert_eq!(
+        drawn.len(),
+        2,
+        "leaf with two Shape::Text must emit two DrawText cmds; got {drawn:?}"
+    );
+    drawn.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+    let [low, high] = [drawn[0], drawn[1]];
+    // Slot 0 (`local_rect.min = (0, 0)`) → DrawText.min == owner.min.
+    assert!(
+        (low.y - owner_min.y).abs() < 0.5,
+        "slot 0 with local_rect=(0,0) should emit at owner_min.y; \
+         owner_min={owner_min:?} low={low:?}",
+    );
+    // Slot 1 (`local_rect.min = (0, 22)`) → DrawText.min.y == owner.min.y + 22.
+    assert!(
+        (high.y - (owner_min.y + 22.0)).abs() < 0.5,
+        "slot 1 with local_rect.y=22 should emit shifted by 22 from owner_min.y; \
+         owner_min={owner_min:?} high={high:?}",
+    );
+    // Distinct y proves the two emissions are not aliased.
+    assert!(
+        (high.y - low.y).abs() >= 20.0,
+        "two DrawText must paint at distinct y; got {low:?} {high:?}",
+    );
+}
+
+/// Pin: the cross-frame measure cache replays multi-text leaves
+/// correctly. Frame 1 populates the cache; frame 2 hits and rebases
+/// the snapshot's subtree-local spans + flat text-shapes back into
+/// the per-frame buffer. Without correct rebase (e.g. forgetting
+/// `dest_start += text_shapes.len()` or storing global indices in
+/// the snapshot), frame 2 would either read from the wrong slot or
+/// see stale `TextCacheKey`s.
+#[test]
+fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
+    let mut ui = ui_with_text(UVec2::new(400, 400));
+    let f1_leaf = build_multi_text_leaf(&mut ui);
+    ui.end_frame();
+    let f1_span = ui.layout.result.text_spans[f1_leaf.index()];
+    let f1_first = ui.layout.result.text_shapes[f1_span.start as usize];
+    let f1_second = ui.layout.result.text_shapes[(f1_span.start + 1) as usize];
+
+    begin(&mut ui, UVec2::new(400, 400));
+    let f2_leaf = build_multi_text_leaf(&mut ui);
+    ui.end_frame();
+    let f2_span = ui.layout.result.text_spans[f2_leaf.index()];
+    assert_eq!(f2_span.len, 2, "frame 2 must restore both text-shape slots");
+    let f2_first = ui.layout.result.text_shapes[f2_span.start as usize];
+    let f2_second = ui.layout.result.text_shapes[(f2_span.start + 1) as usize];
+
+    assert_eq!(
+        (f1_first.key, f1_second.key),
+        (f2_first.key, f2_second.key),
+        "cache hit must replay the exact same TextCacheKeys per slot",
+    );
+    assert!(
+        (f1_first.measured.w - f2_first.measured.w).abs() < 0.01
+            && (f1_second.measured.w - f2_second.measured.w).abs() < 0.01,
+        "cache hit must replay the exact same measured sizes per slot; \
+         f1=({:?}, {:?}) f2=({:?}, {:?})",
+        f1_first.measured,
+        f1_second.measured,
+        f2_first.measured,
+        f2_second.measured,
     );
 }
