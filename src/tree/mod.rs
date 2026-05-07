@@ -331,35 +331,28 @@ impl Tree {
     // -- Per-node read accessors -----------------------------------------
 
     /// Iterate shapes attached *directly* to `node` (not its descendants),
-    /// in record order. Walks the inside of node `i`'s `kinds` span,
-    /// yielding depth-0 `Shape` events.
+    /// in record order. Walks `node`'s shape span, skipping each child's
+    /// sub-range; relies on children's shape spans being non-overlapping
+    /// and pre-order within the parent's span.
     pub(crate) fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &Shape> + '_ {
-        let i = node.index();
-        let kinds_span = self.records.kinds()[i];
-        let shapes_span = self.records.shapes()[i];
-        let r = kinds_span.range();
-        let start = r.start + 1;
-        let end = r.end - 1;
+        let shapes_col = self.records.shapes();
+        let mut child_subtrees = self
+            .children(node)
+            .map(|c| shapes_col[c.id.index()].range());
+        let mut skip = child_subtrees.next();
         let shapes = &self.shapes;
-        let mut depth = 0i32;
-        let mut shape_cursor = shapes_span.start as usize;
-        self.kinds[start..end]
-            .iter()
-            .filter_map(move |op| match op {
-                TreeOp::NodeEnter => {
-                    depth += 1;
-                    None
+        shapes_col[node.index()].range().filter_map(move |idx| {
+            while let Some(r) = skip.as_ref() {
+                if idx < r.start {
+                    break;
                 }
-                TreeOp::NodeExit => {
-                    depth -= 1;
-                    None
+                if idx < r.end {
+                    return None;
                 }
-                TreeOp::Shape => {
-                    let idx = shape_cursor;
-                    shape_cursor += 1;
-                    (depth == 0).then_some(&shapes[idx])
-                }
-            })
+                skip = child_subtrees.next();
+            }
+            Some(&shapes[idx])
+        })
     }
 
     /// Read extras for a node, returning a borrow of `ElementExtras::DEFAULT`
