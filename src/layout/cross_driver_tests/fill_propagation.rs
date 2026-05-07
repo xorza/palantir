@@ -20,7 +20,7 @@ use std::rc::Rc;
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
 fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
-    let shaped = support::first_text(&ui.layout.result, node).expect("text was shaped");
+    let shaped = support::shaped_text(&ui.layout.result, node);
     assert!(
         shaped.measured.h > 32.0,
         "expected multi-line wrapped height, got h={}",
@@ -129,8 +129,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                 );
             });
         ui.end_frame();
-        support::first_text(&ui.layout.result, value_node.unwrap())
-            .expect("text was shaped")
+        support::shaped_text(&ui.layout.result, value_node.unwrap())
             .measured
             .h
     }
@@ -182,8 +181,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     });
     ui.end_frame();
 
-    let shaped =
-        support::first_text(&ui.layout.result, value_node.unwrap()).expect("text was shaped");
+    let shaped = support::shaped_text(&ui.layout.result, value_node.unwrap());
     assert!(
         shaped.measured.h > 32.0,
         "Fill grid + Fill col should wrap text under constrained width; got h={}",

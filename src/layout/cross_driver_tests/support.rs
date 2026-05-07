@@ -12,13 +12,19 @@ use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use std::rc::Rc;
 
-/// Test helper: a node's first shaped-text result, or `None` when the
-/// layout pass shaped no text on it. Most tests only have one
-/// `Shape::Text` per leaf; if a future test needs all of them, index
-/// `result.text_shapes[span.start..span.start+span.len]` directly.
-pub(crate) fn first_text(result: &LayoutResult, id: NodeId) -> Option<ShapedText> {
+/// Test helper: the leaf's single shaped-text result. Asserts the
+/// span holds exactly one entry — every cross-driver test today builds
+/// single-Text leaves; a multi-text caller should index
+/// `result.text_shapes[span.range()]` itself rather than pretend index
+/// 0 is meaningful.
+pub(crate) fn shaped_text(result: &LayoutResult, id: NodeId) -> ShapedText {
     let span = result.text_spans[id.index()];
-    (span.len > 0).then(|| result.text_shapes[span.start as usize])
+    assert_eq!(
+        span.len, 1,
+        "shaped_text expects a single-Text leaf; got {} shapes",
+        span.len,
+    );
+    result.text_shapes[span.start as usize]
 }
 
 /// `Grid` with two `Hug` columns × one `Hug` row. The wrapping `Text`
