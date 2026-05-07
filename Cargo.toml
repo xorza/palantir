@@ -58,3 +58,25 @@ panic = "abort"
 strip = "symbols"
 debug = false
 incremental = false
+
+
+
+# Optimize heavy dependencies even in dev/test builds
+[profile.dev.package.wgpu]
+opt-level = 3
+[profile.dev.package.wgpu-core]
+opt-level = 3
+[profile.dev.package.wgpu-hal]
+opt-level = 3
+[profile.dev.package.wgpu-types]
+opt-level = 3
+[profile.dev.package.naga]
+opt-level = 3
+[profile.dev.package.gpu-descriptor]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.spirv]
+opt-level = 3
+[profile.dev.package.ash]
+opt-level = 3

@@ -102,6 +102,26 @@ arg.
 - Promote harness to its own internal crate if/when benches or other
   test binaries want to reuse it (current scale doesn't justify).
 
+## Slow startup? `cargo clean`.
+
+Symptom: a single visual test takes 15+ seconds, almost all in
+`Harness::new()` → `gpu()` → `wgpu::Instance::request_adapter`.
+
+Cause: on macOS, Metal's first-device init does
+`MTLCopyAllDevices` → `IOSurfaceClientCopyGPUPolicies` →
+`[NSBundle mainBundle]` localized-resource lookup, which `readdir`s
+**every entry in the executable's parent directory**. Test binaries
+live in `target/debug/deps/`, which accumulates `.rcgu.o` incremental
+codegen shrapnel across rebuilds — once it crosses ~400k files,
+adapter init is linear in dir size and stalls for 15+ seconds. Same
+binary placed in a directory with fewer entries (e.g.
+`target/debug/examples/`) initializes in 2-3 seconds.
+
+Fix: `cargo clean`. Visual suite goes from ~18s → ~0.3s. If it
+recurs, run `cargo clean` again, or set `CARGO_INCREMENTAL=0` for
+test runs (trades incremental rebuild speed for not accumulating
+rcgu files).
+
 ## Open questions
 
 - **Adapter selection** — `LowPower`. Revisit if dev-machine vs CI runners diverge.
