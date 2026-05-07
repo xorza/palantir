@@ -50,6 +50,9 @@ internals = []
 # `cargo bench --features "internals bench-deep"` adds `caches.rs`.
 bench-deep = []
 
+[profile.release]
+debug = "line-tables-only"
+
 [profile.release-max]
 inherits = "release"
 opt-level = 3
