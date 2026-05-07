@@ -12,7 +12,7 @@
 //! NaN bit pattern; UI authoring shouldn't produce NaN anyway (asserts
 //! in builders enforce non-negative sizes etc.).
 
-use super::{GridArena, NodeRecord};
+use super::{GridArena, NodeId, NodeRecord, TreeItem, iter_direct_items};
 use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
 use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
@@ -72,12 +72,10 @@ impl NodeHashes {
     }
 
     /// Phase 1: per-node authoring hash. For each node, hash its layout /
-    /// extras / chrome, then walk its `shapes` span: emit each direct
-    /// shape and a `0xFF` marker per direct child, in record order. The
-    /// marker positions are recovered from children's `shapes.start` —
-    /// every child captured the shape buffer position at its open, so
-    /// the gaps between children's sub-ranges hold the parent's direct
-    /// shapes verbatim.
+    /// extras / chrome, then walk `iter_direct_items` and feed each
+    /// direct shape into the hasher with a `0xFF` marker between
+    /// children — the marker preserves "shape vs child boundary"
+    /// ordering across siblings.
     fn compute_per_node(
         &mut self,
         records: &Soa<NodeRecord>,
@@ -90,8 +88,6 @@ impl NodeHashes {
         self.node.clear();
         self.node.reserve(n);
 
-        let shapes_col = records.shapes();
-        let ends = records.end();
         let layouts = records.layout();
         let attrs_col = records.attrs();
 
@@ -103,25 +99,11 @@ impl NodeHashes {
             }
             hash_chrome(&mut h, chrome.get(i));
 
-            let parent = shapes_col[i];
-            let parent_end = parent.start as usize + parent.len as usize;
-            let mut cursor = parent.start as usize;
-            let mut next_child = (i as u32) + 1;
-            let i_end = ends[i];
-            while next_child < i_end {
-                let cs = shapes_col[next_child as usize];
-                let cs_start = cs.start as usize;
-                while cursor < cs_start {
-                    hash_shape(&mut h, &shapes[cursor]);
-                    cursor += 1;
+            for item in iter_direct_items(records, shapes, NodeId(i as u32)) {
+                match item {
+                    TreeItem::Shape(s) => hash_shape(&mut h, s),
+                    TreeItem::Child(_) => h.write_u8(0xFF),
                 }
-                h.write_u8(0xFF);
-                cursor = cs_start + cs.len as usize;
-                next_child = ends[next_child as usize];
-            }
-            while cursor < parent_end {
-                hash_shape(&mut h, &shapes[cursor]);
-                cursor += 1;
             }
 
             if let LayoutMode::Grid(idx) = layouts[i].mode {
