@@ -90,4 +90,36 @@ mod tests {
         text_shape(16.0, 19.2).hash(&mut h_b);
         assert_eq!(h_a.finish(), h_b.finish());
     }
+
+    #[test]
+    fn text_shape_hash_differs_when_local_rect_differs() {
+        // Pin: `local_rect` participates in `Shape::Text`'s hash.
+        // Two runs with identical text but different `local_rect`
+        // must produce different node hashes — otherwise the measure
+        // cache would conflate them and the encoder would replay a
+        // stale `DrawText` rect after the user repositioned a run.
+        use crate::primitives::rect::Rect;
+        let make = |local_rect: Option<Rect>| Shape::Text {
+            local_rect,
+            text: Cow::Borrowed("hi"),
+            color: Color::WHITE,
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            wrap: TextWrap::Single,
+            align: Align::default(),
+        };
+        let h = |s: &Shape| {
+            let mut h = Hasher::new();
+            s.hash(&mut h);
+            h.finish()
+        };
+        let h_none = h(&make(None));
+        let h_a = h(&make(Some(Rect::new(0.0, 0.0, 10.0, 10.0))));
+        let h_b = h(&make(Some(Rect::new(5.0, 5.0, 10.0, 10.0))));
+        assert_ne!(h_none, h_a, "None vs Some(rect) must hash differently");
+        assert_ne!(
+            h_a, h_b,
+            "Some(rect_a) vs Some(rect_b) must hash differently"
+        );
+    }
 }

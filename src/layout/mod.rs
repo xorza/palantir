@@ -60,10 +60,6 @@ pub(crate) struct LayoutScratch {
     pub(crate) desired: Vec<Size>,
     pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(crate) tmp_hugs: Vec<f32>,
-    /// Staging buffer for rebasing per-node `text_spans` to subtree-
-    /// local form before writing a `MeasureCache` snapshot. Reused
-    /// across snapshots in one frame; capacity retained across frames.
-    pub(crate) tmp_text_spans: Vec<Span>,
 }
 
 impl LayoutScratch {
@@ -373,25 +369,20 @@ impl LayoutEngine {
                     &mut self.scratch.tmp_hugs,
                 );
             }
-            // Rebase per-node spans to subtree-local form (start
-            // relative to `text_shapes_lo`) so the snapshot remains
-            // valid after compaction relocates the flat range. Empty
-            // spans (`Span::default()` with start=0) round-trip through
-            // `saturating_sub` correctly: 0 - lo = 0.
+            // Hand the per-frame `text_spans` slice straight to the
+            // cache; `write_subtree` rebases via `text_spans_base` as
+            // it copies, eliminating a scratch buffer + memcpy round
+            // trip. Empty spans (`Span::default()` with start=0)
+            // round-trip through `saturating_sub` correctly: 0 - lo
+            // = 0.
             let text_shapes_hi = self.result.text_shapes.len() as u32;
-            self.scratch.tmp_text_spans.clear();
-            self.scratch
-                .tmp_text_spans
-                .extend(self.result.text_spans[start..end].iter().map(|s| Span {
-                    start: s.start.saturating_sub(text_shapes_lo),
-                    len: s.len,
-                }));
             self.cache.write_subtree(
                 cache_wid,
                 cache_hash,
                 SubtreeArenas {
                     desired: &self.scratch.desired[start..end],
-                    text_spans: &self.scratch.tmp_text_spans,
+                    text_spans: &self.result.text_spans[start..end],
+                    text_spans_base: text_shapes_lo,
                     available_q: &self.result.available_q[start..end],
                     scroll_content: &self.result.scroll_content[start..end],
                     hugs: &self.scratch.tmp_hugs,
