@@ -116,6 +116,7 @@ impl Tree {
         self.shapes.clear();
         self.grid.clear();
         self.open_frames.clear();
+        self.subtree_has_grid.clear();
     }
 
     /// Walk every recorded node and populate `self.hashes.node` plus the
@@ -137,7 +138,6 @@ impl Tree {
             &self.chrome,
             &self.shapes,
             &self.grid,
-            &mut self.subtree_has_grid,
         );
     }
 
@@ -218,6 +218,7 @@ impl Tree {
             layout,
             attrs,
         });
+        self.subtree_has_grid.grow(self.records.len());
         self.open_frames.push(OpenFrame {
             node: new_id,
             has_text: false,
@@ -242,11 +243,23 @@ impl Tree {
         shapes.len = shapes_len - shapes.start;
         let end = self.records.end()[i];
 
+        // Roll up `subtree_has_grid`: this node's bit is true iff its
+        // own layout is `Grid` or any descendant's bit is set (set as
+        // grandchildren closed). After deciding for `i`, OR into the
+        // parent's bit so the chain propagates to the root.
+        if matches!(self.records.layout()[i].mode, LayoutMode::Grid(_)) {
+            self.subtree_has_grid.insert(i);
+        }
+        let i_has_grid = self.subtree_has_grid.contains(i);
+
         if let Some(parent) = self.open_frames.last() {
             let pi = parent.node.index();
             let ends = self.records.end_mut();
             if ends[pi] < end {
                 ends[pi] = end;
+            }
+            if i_has_grid {
+                self.subtree_has_grid.insert(pi);
             }
         }
     }
