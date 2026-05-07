@@ -236,7 +236,7 @@ pub struct TextMeasurer {
     /// `Shape::Text` runs — without it, the second run's entry would
     /// overwrite the first's. The wrap slot's `target_q` quantization
     /// is layout policy chosen at the call site.
-    pub(crate) reuse: FxHashMap<(WidgetId, u8), TextReuseEntry>,
+    pub(crate) reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
 }
 
 impl TextMeasurer {
@@ -267,7 +267,7 @@ impl TextMeasurer {
     pub(crate) fn shape_unbounded(
         &mut self,
         wid: WidgetId,
-        ordinal: u8,
+        ordinal: u16,
         hash: NodeHash,
         text: &str,
         font_size_px: f32,
@@ -310,7 +310,7 @@ impl TextMeasurer {
     pub fn shape_wrap(
         &mut self,
         wid: WidgetId,
-        ordinal: u8,
+        ordinal: u16,
         text: &str,
         font_size_px: f32,
         line_height_px: f32,

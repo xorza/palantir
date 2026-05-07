@@ -556,7 +556,7 @@ impl LayoutEngine {
     ) -> Size {
         let span_start = self.result.text_shapes.len() as u32;
         let mut s = Size::ZERO;
-        let mut ordinal: u8 = 0;
+        let mut ordinal: u16 = 0;
         for ts in leaf_text_shapes(tree, node) {
             let m = self.shape_text(
                 tree,
@@ -571,7 +571,7 @@ impl LayoutEngine {
             );
             s = s.max(m);
             ordinal = ordinal.checked_add(1).expect(
-                "more than 255 Shape::Text per leaf — well past anything sane; \
+                "more than 65535 Shape::Text per leaf — well past anything sane; \
                  widen the within-node ordinal width if this trips",
             );
         }
@@ -588,7 +588,7 @@ impl LayoutEngine {
         &mut self,
         tree: &Tree,
         node: NodeId,
-        ordinal: u8,
+        ordinal: u16,
         src: &str,
         font_size_px: f32,
         line_height_px: f32,
