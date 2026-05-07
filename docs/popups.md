@@ -49,13 +49,21 @@ Each slice compiles + ships the showcase.
   pin the other's `subtree_hash` is unchanged.
 
 ### 2. `Ui::layer(layer, anchor, body)`  ✅ shipped (v1, top-level only)
-- Pushes `(layer, anchor)` onto `tree.layer_stack` so `open_node`'s
-  lazy push picks up the popup's layer + anchor.
-- Asserts `open_frames.is_empty()` at entry — **top-level recording
-  only**. See "Mid-recording layer changes" in the rationale for why
-  and the v2 path.
-- `tree.layer_bases` exists as forward-compat scaffolding for nested
-  popups but stays empty under the v1 top-level assertion.
+- Recording state on `Tree`:
+  - `open_frames: [Vec<NodeId>; Layer::COUNT]` — per-layer ancestor
+    stack. Only one layer is active at a time during recording; others
+    sit empty between scopes.
+  - `layer_anchor: [Rect; Layer::COUNT]` — anchor per layer, set on
+    `Ui::layer` entry; `Main`'s slot is patched in `end_frame`.
+  - `current_layer: Layer` — active layer for the next `open_node`.
+- `Ui::layer` calls `Tree::push_layer(layer, anchor)` which enforces
+  v1's top-level rule with two asserts: `current_layer == Main` and
+  `open_frames[Main].is_empty()`. Body runs with `current_layer = layer`.
+  `pop_layer` restores `current_layer = Main` after asserting the
+  popup body closed every node it opened.
+- `Layer::COUNT` comes from `strum::EnumCount` derive on the enum;
+  `#[repr(u8)]` + sequential `0..5` discriminants make `layer as usize`
+  a valid array index.
 - Tests: `Main` + `Popup` recorded top-level → `tree.roots` sorted
   `[Main, Popup]`, `records.end()` ranges abut, anchor passes through;
   illegal mid-`Panel::show` call panics with a clear message.
