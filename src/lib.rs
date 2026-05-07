@@ -34,6 +34,7 @@ pub use renderer::frontend::FrameOutput;
 pub use shape::Shape;
 pub use text::cosmic::CosmicMeasure;
 pub use text::{SharedCosmic, share};
+pub use tree::Layer;
 pub use tree::element::{Configure, Element, LayoutMode};
 pub use tree::widget_id::WidgetId;
 pub use ui::Ui;

@@ -7,7 +7,7 @@ use crate::renderer::frontend::cmd_buffer::CmdKind;
 use crate::shape::Shape;
 use crate::support::testing::{encode_cmds, shapes_of, ui_at};
 use crate::tree::element::Configure;
-use crate::tree::{NodeId, node_hash::NodeHash};
+use crate::tree::{Layer, NodeId, node_hash::NodeHash};
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -960,6 +960,73 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
         h_b1, h_b2,
         "root B's subtree_hash must not fold root A's content",
     );
+}
+
+/// Pin: `Ui::layer` records into a side root tagged with the given
+/// layer; `end_frame` sorts roots by layer so popups paint after Main
+/// regardless of recording order. Also pins that the popup body's
+/// nodes nest correctly inside the popup's root (not folded into the
+/// surrounding Main scope).
+#[test]
+fn ui_layer_records_popup_root_after_main_in_paint_order() {
+    let mut ui = ui_at(UVec2::new(400, 400));
+    let popup_anchor = Rect {
+        min: glam::Vec2::new(50.0, 60.0),
+        size: crate::primitives::size::Size::new(100.0, 80.0),
+    };
+    Panel::vstack().with_id("main-root").show(&mut ui, |ui| {
+        Frame::new().with_id("main-leaf").size(50.0).show(ui);
+        Frame::new().with_id("main-leaf-2").size(30.0).show(ui);
+    });
+    // V1 requires popups at top-level — after the Main outer scope
+    // closes. Records pre-order contiguity is load-bearing.
+    ui.layer(Layer::Popup, popup_anchor, |ui| {
+        Panel::vstack().with_id("popup-root").show(ui, |ui| {
+            Frame::new().with_id("popup-leaf").size(20.0).show(ui);
+        });
+    });
+    ui.end_frame();
+
+    let roots = &ui.tree.roots;
+    assert_eq!(roots.len(), 2, "expected Main + Popup");
+    assert_eq!(roots[0].layer, Layer::Main, "Main paints first");
+    assert_eq!(roots[1].layer, Layer::Popup, "Popup paints over Main");
+    assert_eq!(roots[0].first_node, 0, "Main starts at index 0");
+    let popup_first = roots[1].first_node as usize;
+    assert!(popup_first > 0, "Popup root lands after Main's nodes");
+
+    // Popup's anchor passes through unchanged from `Ui::layer`.
+    let r = roots[1].anchor_rect;
+    assert_eq!(r.min, popup_anchor.min);
+    assert_eq!(r.size, popup_anchor.size);
+
+    // Popup's subtree must be self-contained — its `end` must not
+    // extend into the Main tree, and Main's `end` must not extend
+    // into the popup. Concretely: Main's end[0] stops at popup_first;
+    // popup's end[popup_first] stops at records.len().
+    let n = ui.tree.records.len() as u32;
+    assert_eq!(
+        ui.tree.records.end()[0],
+        popup_first as u32,
+        "Main's subtree must end where Popup's begins",
+    );
+    assert_eq!(
+        ui.tree.records.end()[popup_first],
+        n,
+        "Popup's subtree covers the rest of records",
+    );
+}
+
+#[test]
+#[should_panic(expected = "Ui::layer must be called at top-level recording")]
+fn ui_layer_panics_when_called_inside_an_open_panel() {
+    let mut ui = ui_at(UVec2::new(100, 100));
+    Panel::vstack().show(&mut ui, |ui| {
+        // Mid-Main recording — Ui::layer is illegal here in v1
+        // because interleaving popup records breaks pre-order
+        // subtree contiguity for the surrounding panel.
+        ui.layer(Layer::Popup, Rect::ZERO, |_| {});
+    });
 }
 
 /// Pin the bounds/panel column split: `.gap(...)` is panel-only, so it
