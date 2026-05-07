@@ -1052,3 +1052,135 @@ fn encode_cache_hits_on_damage_filtered_frame_without_writing() {
         "damage-filtered frame must not write back to the encode cache"
     );
 }
+
+/// Pin: a subtree whose screen rect lies entirely outside the surface
+/// emits zero DrawRect cmds on a full-paint frame. Damage filtering
+/// already gated this for partial frames; viewport culling extends the
+/// skip to full frames where `damage_filter == None`.
+#[test]
+fn viewport_cull_skips_offscreen_subtree() {
+    let mut ui = ui_at(UVec2::new(100, 100));
+    Panel::canvas()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            Frame::new()
+                .with_id("off")
+                .position((500.0, 500.0))
+                .size(20.0)
+                .background(Background {
+                    fill: Color::rgb(1.0, 0.0, 0.0),
+                    ..Default::default()
+                })
+                .show(ui);
+        });
+    ui.end_frame();
+
+    let cmds = encode_cmds(&ui);
+    assert_eq!(
+        count_draw_rects(&cmds),
+        0,
+        "off-screen frame must emit no DrawRect on a full-paint frame"
+    );
+}
+
+/// Pin: with one on-screen and one off-screen sibling, only the
+/// on-screen sibling paints. Confirms cull is per-subtree, not all-or-
+/// nothing at the root.
+#[test]
+fn viewport_cull_keeps_onscreen_sibling() {
+    let mut ui = ui_at(UVec2::new(100, 100));
+    Panel::canvas()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            Frame::new()
+                .with_id("on")
+                .position((10.0, 10.0))
+                .size(20.0)
+                .background(Background {
+                    fill: Color::rgb(0.0, 1.0, 0.0),
+                    ..Default::default()
+                })
+                .show(ui);
+            Frame::new()
+                .with_id("off")
+                .position((500.0, 500.0))
+                .size(20.0)
+                .background(Background {
+                    fill: Color::rgb(1.0, 0.0, 0.0),
+                    ..Default::default()
+                })
+                .show(ui);
+        });
+    ui.end_frame();
+
+    let cmds = encode_cmds(&ui);
+    assert_eq!(
+        count_draw_rects(&cmds),
+        1,
+        "only the on-screen sibling should emit a DrawRect"
+    );
+}
+
+/// Pin: a subtree that contained an off-screen descendant must not
+/// write a cache snapshot — viewport position isn't in the cache key,
+/// so a future frame that scrolls the descendant into view would
+/// replay an empty subtree. With every subtree containing the
+/// off-screen frame, the cache stays empty across full-paint frames.
+/// The on-screen control populates `snapshots`, demonstrating the
+/// taint (not some unrelated reason) keeps it empty.
+#[test]
+fn viewport_cull_taints_cache_writes() {
+    // Build a tree large enough for cache eligibility (subtree_size
+    // > 4 nodes — the threshold is `TINY_SUBTREE_THRESHOLD = 4` in
+    // `encoder::mod`). Five frames inside one canvas comfortably
+    // clears it.
+    let build = |ui: &mut Ui, off: bool| {
+        Panel::canvas()
+            .with_id("group")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                let pos = if off { 500.0 } else { 10.0 };
+                for (i, label) in ["a", "b", "c", "d", "e"].iter().enumerate() {
+                    Frame::new()
+                        .with_id(*label)
+                        .position((pos + i as f32 * 0.5, pos))
+                        .size(10.0)
+                        .background(Background {
+                            fill: Color::rgb(0.5, 0.5, 0.5),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                }
+            });
+    };
+
+    // Off-screen variant: two full-paint frames (`Frontend::build`
+    // writes the cache on a full frame). After both, the cache must
+    // still be empty because every cache-eligible subtree contains
+    // the off-screen frames and is tainted.
+    let mut ui = ui_at(UVec2::new(100, 100));
+    build(&mut ui, true);
+    ui.end_frame();
+    begin(&mut ui, UVec2::new(100, 100));
+    build(&mut ui, true);
+    ui.end_frame();
+    assert!(
+        ui.frontend.encoder.cache.snapshots.is_empty(),
+        "off-screen tree must not populate the encode cache (got {} snapshots)",
+        ui.frontend.encoder.cache.snapshots.len()
+    );
+
+    // On-screen control: same tree, on-screen positions. Cache
+    // *must* populate, proving the empty cache above is the taint
+    // and not (e.g.) every subtree falling under TINY_SUBTREE_THRESHOLD.
+    let mut ui = ui_at(UVec2::new(100, 100));
+    build(&mut ui, false);
+    ui.end_frame();
+    begin(&mut ui, UVec2::new(100, 100));
+    build(&mut ui, false);
+    ui.end_frame();
+    assert!(
+        !ui.frontend.encoder.cache.snapshots.is_empty(),
+        "on-screen tree should populate the encode cache"
+    );
+}
