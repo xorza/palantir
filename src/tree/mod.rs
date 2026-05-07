@@ -9,6 +9,7 @@ use crate::tree::element::{
 use crate::tree::node_hash::NodeHashes;
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::grid::GridDef;
+use fixedbitset::FixedBitSet;
 use soa_rs::{Soa, Soars};
 
 pub(crate) mod element;
@@ -95,10 +96,16 @@ pub(crate) struct Tree {
     open_frames: Vec<OpenFrame>,
 
     // -- Output (populated by `end_frame`) -------------------------------
-    /// Per-node authoring hash + subtree-rollup hash + grid-presence bit,
-    /// all populated by [`Self::end_frame`]. Indexed by `NodeId.0`,
-    /// capacity retained across frames.
+    /// Per-node + subtree-rollup authoring hashes, populated by
+    /// [`Self::end_frame`]. Indexed by `NodeId.0`, capacity retained
+    /// across frames.
     pub(crate) hashes: NodeHashes,
+    /// Bit `i` is true iff the subtree rooted at node `i` contains any
+    /// `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
+    /// grid-hug snapshot/restore walk; populated by [`Self::end_frame`]
+    /// alongside the rollup. Conceptually a structure summary, not a
+    /// hash, hence kept off `NodeHashes`.
+    pub(crate) subtree_has_grid: FixedBitSet,
 }
 
 impl Tree {
@@ -130,6 +137,7 @@ impl Tree {
             &self.chrome,
             &self.shapes,
             &self.grid,
+            &mut self.subtree_has_grid,
         );
     }
 
