@@ -5,26 +5,19 @@ use crate::primitives::{
 use glam::Vec2;
 use std::borrow::Cow;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum Shape {
-    /// Filled/stroked rounded rectangle covering the owner node's arranged
-    /// rect. Position and size come from the node — shapes don't carry their
-    /// own bounds.
+    /// Filled/stroked rounded rectangle. With `local_rect = None` it covers
+    /// the owner node's full arranged rect (position/size come from layout).
+    /// With `local_rect = Some(r)` it paints `r` at owner-relative coords —
+    /// `r.min = (0, 0)` is the owner's top-left. The sub-rect form paints in
+    /// the slot it was pushed in (interleaved with children via the slot
+    /// mechanism — see `Tree::add_shape`), still under the owner's clip but
+    /// outside its pan transform. Used for scrollbar tracks/thumbs (pushed
+    /// after body content → slot N) and TextEdit carets (pushed after the
+    /// Text shape on a leaf → slot 0, after the Text in record order).
     RoundedRect {
-        radius: Corners,
-        fill: Color,
-        stroke: Option<Stroke>,
-    },
-    /// Filled/stroked rounded rect at an explicit owner-relative
-    /// sub-rect. `local_rect.min` is `(0, 0)` at the owner's top-left
-    /// corner. Paints in the slot the shape was pushed in (interleaved
-    /// with children via the slot mechanism — see `Tree::add_shape`),
-    /// still under the owner's clip but outside its pan transform. Used
-    /// for scrollbar tracks/thumbs (pushed after body content → slot N)
-    /// and TextEdit carets (pushed after the Text shape on a leaf → slot
-    /// 0, after the Text in record order).
-    SubRect {
-        local_rect: Rect,
+        local_rect: Option<Rect>,
         radius: Corners,
         fill: Color,
         stroke: Option<Stroke>,
@@ -87,15 +80,7 @@ impl Shape {
     /// widgets can push speculatively without guarding.
     pub fn is_noop(&self) -> bool {
         match self {
-            Shape::RoundedRect { fill, stroke, .. } => {
-                let no_fill = approx_zero(fill.a);
-                let no_stroke = match stroke {
-                    None => true,
-                    Some(s) => approx_zero(s.width) || approx_zero(s.color.a),
-                };
-                no_fill && no_stroke
-            }
-            Shape::SubRect {
+            Shape::RoundedRect {
                 local_rect,
                 fill,
                 stroke,
@@ -106,7 +91,9 @@ impl Shape {
                     None => true,
                     Some(s) => approx_zero(s.width) || approx_zero(s.color.a),
                 };
-                let zero_area = approx_zero(local_rect.size.w) || approx_zero(local_rect.size.h);
+                let zero_area = local_rect
+                    .map(|r| approx_zero(r.size.w) || approx_zero(r.size.h))
+                    .unwrap_or(false);
                 zero_area || (no_fill && no_stroke)
             }
             Shape::Line { width, color, .. } => approx_zero(*width) || approx_zero(color.a),

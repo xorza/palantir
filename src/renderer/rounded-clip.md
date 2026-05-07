@@ -70,17 +70,17 @@ methods that mutate `Element`).
      `(rect.min + paint.radius)`. Inflating instead would offset the
      curve center inward and produce a visible notch.
    - Emit `PushClip { rect }` or `PushClipRounded { rect, radius }`.
-3. **Background-phase shapes** — iterate `tree.shapes.slice_of(id)`.
-   `Shape::Text` emits `DrawText`. `Shape::RoundedRect` (if any custom
-   widget pushes one via `ui.add_shape`) emits `DrawRect`. `Shape::SubRect`
-   is deferred. `Shape::Line` is unsupported and trace-dropped.
+3. **Shapes** — iterate `tree.shapes.slice_of(id)`. `Shape::Text` emits
+   `DrawText`. `Shape::RoundedRect { local_rect: None, .. }` emits a
+   `DrawRect` covering the owner's full rect. `Shape::RoundedRect {
+   local_rect: Some(r), .. }` emits a `DrawRect` at owner-relative `r`
+   (used by Scroll for scrollbar tracks/thumbs and by TextEdit for the
+   caret). Shapes are interleaved with children via the slot mechanism.
+   `Shape::Line` is unsupported and trace-dropped.
 4. Push transform if any (skipped on identity).
-5. Recurse children.
+5. Recurse children, with shape slots interleaved between them.
 6. Pop transform.
-7. **Overlay-phase shapes** — iterate `tree.shapes` again, emit
-   `Shape::SubRect` as `DrawRect`. Used by Scroll for scrollbar
-   tracks/thumbs that paint above content but inside the clip.
-8. Pop clip if any.
+7. Pop clip if any.
 
 ## Backend stencil path (in `renderer/backend/`)
 

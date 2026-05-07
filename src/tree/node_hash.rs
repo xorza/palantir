@@ -145,29 +145,19 @@ pub(crate) fn hash_chrome(h: &mut Hasher, chrome: Option<&Background>) {
 pub(crate) fn hash_shape(h: &mut Hasher, shape: &Shape) {
     match shape {
         Shape::RoundedRect {
-            radius,
-            fill,
-            stroke,
-        } => {
-            h.write_u8(0);
-            h.pod(radius);
-            h.pod(fill);
-            match stroke {
-                None => h.write_u8(0),
-                Some(s) => {
-                    h.write_u8(1);
-                    h.pod(s);
-                }
-            }
-        }
-        Shape::SubRect {
             local_rect,
             radius,
             fill,
             stroke,
         } => {
-            h.write_u8(3);
-            h.pod(local_rect);
+            h.write_u8(0);
+            match local_rect {
+                None => h.write_u8(0),
+                Some(r) => {
+                    h.write_u8(1);
+                    h.pod(r);
+                }
+            }
             h.pod(radius);
             h.pod(fill);
             match stroke {

@@ -313,16 +313,16 @@ fn push_bar(
     let cross_pos = cross_outer - theme.width;
     let track = axis.compose_rect(0.0, cross_pos, main, theme.width);
     if theme.track.a > 0.0 {
-        ui.add_shape(Shape::SubRect {
-            local_rect: track,
+        ui.add_shape(Shape::RoundedRect {
+            local_rect: Some(track),
             radius,
             fill: theme.track,
             stroke: None,
         });
     }
     let thumb = axis.compose_rect(geom.thumb_offset, cross_pos, geom.thumb_size, theme.width);
-    ui.add_shape(Shape::SubRect {
-        local_rect: thumb,
+    ui.add_shape(Shape::RoundedRect {
+        local_rect: Some(thumb),
         radius,
         fill: theme.thumb,
         stroke: None,

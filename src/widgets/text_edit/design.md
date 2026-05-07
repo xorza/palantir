@@ -234,7 +234,7 @@ under a padded theme, build a custom theme rather than passing zero.
 
 ## Caret rendering
 
-Caret is a thin `Shape::SubRect` rect at owner-local coords, painted
+Caret is a thin `Shape::RoundedRect { local_rect: Some(..), .. }` at owner-local coords, painted
 last so it sits *over* the text inside the widget's clip. Position
 comes from `TextMeasurer::caret_x` (re-measures the prefix; cache miss
 amortizes once cosmic exposes per-glyph x). Blink is stubbed to

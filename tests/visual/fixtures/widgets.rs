@@ -132,19 +132,19 @@ fn rounded_clip_survives_surface_resize() {
     // and wgpu validation would have already panicked above.
 }
 
-/// Pin the slot mechanism end-to-end: a parent records three SubRect
+/// Pin the slot mechanism end-to-end: a parent records three sub-rect
 /// shapes interleaved with two child Frame nodes. Each shape's rect
 /// **overlaps the children that should paint underneath it**, so the
 /// final pixels distinguish "shape painted at the right slot" from
 /// "all shapes collapsed to slot 0".
 ///
 /// Layout (220×60 hstack, no padding, no gap):
-/// - red SubRect at x=0..30 (slot 0, hidden by cyan child).
+/// - red sub-rect at x=0..30 (slot 0, hidden by cyan child).
 /// - cyan child at x=0..60.
-/// - green SubRect at x=30..90 (slot 1: covers cyan's right half;
+/// - green sub-rect at x=30..90 (slot 1: covers cyan's right half;
 ///   yellow then paints over green's right half).
 /// - yellow child at x=60..120.
-/// - blue SubRect at x=90..150 (slot 2: covers yellow's right half
+/// - blue sub-rect at x=90..150 (slot 2: covers yellow's right half
 ///   + extends past it).
 ///
 /// Expected pixels: cyan(0..30), green(30..60), yellow(60..90),
@@ -158,8 +158,8 @@ fn interleaved_shapes_paint_in_record_order() {
             .size((Sizing::FILL, Sizing::FILL))
             .padding(0.0)
             .show(ui, |ui| {
-                ui.add_shape(Shape::SubRect {
-                    local_rect: Rect::new(0.0, 0.0, 30.0, 60.0),
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 30.0, 60.0)),
                     radius: Corners::default(),
                     fill: Color::rgb(1.0, 0.0, 0.0),
                     stroke: None,
@@ -172,8 +172,8 @@ fn interleaved_shapes_paint_in_record_order() {
                     })
                     .size((Sizing::Fixed(60.0), Sizing::FILL))
                     .show(ui);
-                ui.add_shape(Shape::SubRect {
-                    local_rect: Rect::new(30.0, 0.0, 60.0, 60.0),
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(30.0, 0.0, 60.0, 60.0)),
                     radius: Corners::default(),
                     fill: Color::rgb(0.0, 1.0, 0.0),
                     stroke: None,
@@ -186,8 +186,8 @@ fn interleaved_shapes_paint_in_record_order() {
                     })
                     .size((Sizing::Fixed(60.0), Sizing::FILL))
                     .show(ui);
-                ui.add_shape(Shape::SubRect {
-                    local_rect: Rect::new(90.0, 0.0, 60.0, 60.0),
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(90.0, 0.0, 60.0, 60.0)),
                     radius: Corners::default(),
                     fill: Color::rgb(0.2, 0.4, 1.0),
                     stroke: None,
