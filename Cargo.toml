@@ -22,6 +22,7 @@ winit = "*"
 rayon = "*"
 padding-struct = "*"
 soa-rs = "*"
+strum = { version = "*", features = ["derive"] }
 serde = { version = "*", features = ["derive"] }
 toml = "*"
 
