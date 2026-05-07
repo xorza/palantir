@@ -15,10 +15,7 @@ use crate::{Ui, WgpuBackend};
 /// to re-measure every leaf from scratch. See `benches/measure_cache.rs`.
 pub fn clear_measure_cache(ui: &mut Ui) {
     let cache = &mut ui.layout.cache;
-    cache.desired.clear();
-    cache.text_spans.clear();
-    cache.available.clear();
-    cache.scroll_content.clear();
+    cache.nodes.clear();
     cache.hugs.clear();
     cache.text_shapes_arena.clear();
     cache.snapshots.clear();
