@@ -4,15 +4,9 @@
 
 b(crate) fn first_text(result: &L - strange
 
-local_rect_zero_area
    ordinal: u8,
 
- let zero_area = local_rect
-                    .map(|r| approx_zero(r.size.w) || approx_zero(r.size.h))
-                    .unwrap_or(false);
-                zero_area || text.is_empty() || approx_zero(color.a) rect - empty?
-
-
+   
   7. MultiArena<T> extraction. src/layout/REVIEW.md explicitly names "fourth parallel arena" as the trigger. MeasureCache now
   has four node-indexed parallel columns (desired, text_spans, available, scroll_content) + two variable-length (hugs,
   text_shapes_arena). Right move is one shared live counter + one helper covering the per-snapshot copy/compact/release dance
