@@ -114,7 +114,7 @@ fn emit_one_shape(
     id: NodeId,
     owner_rect: Rect,
     shape: &Shape,
-    text_ordinal: u32,
+    text_ordinal: u16,
     out: &mut RenderCmdBuffer,
 ) {
     match shape {
@@ -141,11 +141,11 @@ fn emit_one_shape(
         } => {
             let span = layout.text_spans[id.index()];
             assert!(
-                text_ordinal < span.len,
+                u32::from(text_ordinal) < span.len,
                 "encoder text-shape ordinal {text_ordinal} out of bounds for span len {}",
                 span.len,
             );
-            let shaped = layout.text_shapes[(span.start + text_ordinal) as usize];
+            let shaped = layout.text_shapes[(span.start + u32::from(text_ordinal)) as usize];
             if shaped.key.is_invalid() {
                 tracing::trace!(?shape, "encoder: dropping text with invalid key");
                 return;
@@ -344,7 +344,7 @@ fn encode_node(
     // anchored to the owner regardless of scroll offset; transform is
     // pushed/popped per child accordingly.
     let mut tainted = false;
-    let mut text_ordinal: u32 = 0;
+    let mut text_ordinal: u16 = 0;
     for item in tree.tree_items(id) {
         match item {
             TreeItem::Shape(shape) => {

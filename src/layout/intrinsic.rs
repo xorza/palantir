@@ -162,7 +162,7 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasu
     let curr_hash = tree.hashes.node[node.index()];
     let mut acc = 0.0_f32;
     for (ordinal, ts) in leaf_text_shapes(tree, node).enumerate() {
-        let ordinal = ordinal as u8;
+        let ordinal = ordinal as u16;
         let m = text.shape_unbounded(
             wid,
             ordinal,
