@@ -6,6 +6,7 @@
 SubRect - whaat
 posisiton and size for shapes and nodes
 Multi-`Shape::Text` per leaf is unsupported
+vec<bool> - bitset
 
 
 soa on nodeextras
