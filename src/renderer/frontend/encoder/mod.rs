@@ -6,7 +6,7 @@ use crate::primitives::{
 };
 use crate::shape::Shape;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{NodeId, Tree, node_hash::NodeHash};
+use crate::tree::{NodeId, Tree, TreeItem, node_hash::NodeHash};
 use crate::ui::cascade::CascadeResult;
 use cache::EncodeCache;
 
@@ -310,37 +310,26 @@ fn encode_node(
         .filter(|t| *t != TranslateScale::IDENTITY);
 
     // Interleave direct shapes with child recursion in record order.
-    // Each child captured the shape buffer position at its open as
-    // `shapes.start`, so the gaps in `parent.shapes` between children's
-    // sub-ranges are exactly the parent's direct shapes. Shapes always
-    // paint *outside* the owner's pan transform so they stay anchored
-    // to the owner regardless of scroll offset.
-    let parent = tree.records.shapes()[id.index()];
-    let parent_end = parent.start as usize + parent.len as usize;
-    let mut cursor = parent.start as usize;
-    for child in tree.children(id).map(|c| c.id) {
-        let cs = tree.records.shapes()[child.index()];
-        let cs_start = cs.start as usize;
-        while cursor < cs_start {
-            if paints {
-                emit_one_shape(tree, layout, id, rect, &tree.shapes[cursor], out);
+    // Shapes paint *outside* the owner's pan transform so they stay
+    // anchored to the owner regardless of scroll offset; transform is
+    // pushed/popped per child accordingly.
+    for item in tree.direct_items(id) {
+        match item {
+            TreeItem::Shape(shape) => {
+                if paints {
+                    emit_one_shape(tree, layout, id, rect, shape, out);
+                }
             }
-            cursor += 1;
+            TreeItem::Child(child) => {
+                if let Some(t) = transform {
+                    out.push_transform(t);
+                }
+                encode_node(tree, layout, cascades, damage_filter, cache, child.id, out);
+                if transform.is_some() {
+                    out.pop_transform();
+                }
+            }
         }
-        if let Some(t) = transform {
-            out.push_transform(t);
-        }
-        encode_node(tree, layout, cascades, damage_filter, cache, child, out);
-        if transform.is_some() {
-            out.pop_transform();
-        }
-        cursor = cs_start + cs.len as usize;
-    }
-    while cursor < parent_end {
-        if paints {
-            emit_one_shape(tree, layout, id, rect, &tree.shapes[cursor], out);
-        }
-        cursor += 1;
     }
 
     if clip {

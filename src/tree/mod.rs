@@ -319,28 +319,22 @@ impl Tree {
 
     // -- Per-node read accessors -----------------------------------------
 
-    /// Iterate shapes attached *directly* to `node` (not its descendants),
-    /// in record order. Walks `node`'s shape span, skipping each child's
-    /// sub-range; relies on children's shape spans being non-overlapping
-    /// and pre-order within the parent's span.
+    /// Iterate `node`'s direct contents in record order — each direct
+    /// shape interleaved with each direct child at the position it was
+    /// opened. Drives the encoder (recurses on `Child`, paints on
+    /// `Shape`) and the per-node hash (writes `0xFF` per `Child`,
+    /// `hash_shape` per `Shape`); both pre-order walks share this.
+    pub(crate) fn direct_items(&self, node: NodeId) -> impl Iterator<Item = TreeItem<'_>> + '_ {
+        iter_direct_items(&self.records, &self.shapes, node)
+    }
+
+    /// Direct shapes only — convenience over `direct_items` for
+    /// callers that don't care about child boundaries (mostly tests
+    /// and `leaf_text_shapes`, which only runs on leaves).
     pub(crate) fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &Shape> + '_ {
-        let shapes_col = self.records.shapes();
-        let mut child_subtrees = self
-            .children(node)
-            .map(|c| shapes_col[c.id.index()].range());
-        let mut skip = child_subtrees.next();
-        let shapes = &self.shapes;
-        shapes_col[node.index()].range().filter_map(move |idx| {
-            while let Some(r) = skip.as_ref() {
-                if idx < r.start {
-                    break;
-                }
-                if idx < r.end {
-                    return None;
-                }
-                skip = child_subtrees.next();
-            }
-            Some(&shapes[idx])
+        self.direct_items(node).filter_map(|item| match item {
+            TreeItem::Shape(s) => Some(s),
+            TreeItem::Child(_) => None,
         })
     }
 
@@ -364,6 +358,15 @@ pub(crate) struct ChildIter<'a> {
     tree: &'a Tree,
     next: u32,
     end: u32,
+}
+
+/// One step in the record-order walk of a node's direct contents.
+/// `Child` carries the visibility tag the same way `ChildIter` does;
+/// callers that don't need it (e.g. encoder) just use `child.id`.
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum TreeItem<'a> {
+    Shape(&'a Shape),
+    Child(Child),
 }
 
 /// Child of a parent, tagged with its `Visibility`. Yielded by
@@ -401,6 +404,49 @@ impl<'a> Iterator for ChildIter<'a> {
         self.next = self.tree.records.end()[self.next as usize];
         Some(Child { id, visibility })
     }
+}
+
+/// Free-function form of [`Tree::direct_items`] over the raw column
+/// slices. Lets `NodeHashes::compute_per_node` reuse the walk without
+/// borrowing the whole `Tree` (which would conflict with the
+/// `&mut self.hashes` split-borrow).
+pub(crate) fn iter_direct_items<'a>(
+    records: &'a Soa<NodeRecord>,
+    shapes: &'a [Shape],
+    node: NodeId,
+) -> impl Iterator<Item = TreeItem<'a>> + 'a {
+    let shapes_col = records.shapes();
+    let parent = shapes_col[node.index()];
+    let parent_end = (parent.start + parent.len) as usize;
+    let subtree_end = records.end()[node.index()];
+    let mut cursor = parent.start as usize;
+    let mut next_child_id = node.0 + 1;
+
+    std::iter::from_fn(move || {
+        if next_child_id < subtree_end {
+            let cs = shapes_col[next_child_id as usize];
+            let cs_start = cs.start as usize;
+            if cursor < cs_start {
+                let s = &shapes[cursor];
+                cursor += 1;
+                return Some(TreeItem::Shape(s));
+            }
+            let visibility = records.layout()[next_child_id as usize].visibility;
+            let child = Child {
+                id: NodeId(next_child_id),
+                visibility,
+            };
+            cursor = cs_start + cs.len as usize;
+            next_child_id = records.end()[next_child_id as usize];
+            return Some(TreeItem::Child(child));
+        }
+        if cursor < parent_end {
+            let s = &shapes[cursor];
+            cursor += 1;
+            return Some(TreeItem::Shape(s));
+        }
+        None
+    })
 }
 
 /// Frame-scoped grid storage: track defs (one per `Grid` panel),
