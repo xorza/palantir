@@ -46,7 +46,7 @@ use glam::Vec2;
 
 /// How a node arranges its children. Stored on `Element::mode` and read by
 /// the layout pass; the tree itself treats it as an opaque tag.
-#[derive(Clone, Copy, Debug, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LayoutMode {
     Leaf,
     HStack,
@@ -92,6 +92,30 @@ pub enum ScrollAxes {
     Both,
 }
 
+/// `Grid(idx)` collapses to a single tag — `idx` is a frame-local arena
+/// slot that shifts with sibling order, while the def's actual content
+/// is hashed at `NodeExit` via `GridDef::hash`. Hashing the idx would
+/// invalidate the cache for cosmetic reorderings.
+impl std::hash::Hash for LayoutMode {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        let tag: u8 = match self {
+            LayoutMode::Leaf => 0,
+            LayoutMode::HStack => 1,
+            LayoutMode::VStack => 2,
+            LayoutMode::WrapHStack => 3,
+            LayoutMode::WrapVStack => 4,
+            LayoutMode::ZStack => 5,
+            LayoutMode::Canvas => 6,
+            LayoutMode::Grid(_) => 7,
+            LayoutMode::Scroll(ScrollAxes::Vertical) => 8,
+            LayoutMode::Scroll(ScrollAxes::Horizontal) => 9,
+            LayoutMode::Scroll(ScrollAxes::Both) => 10,
+        };
+        h.write_u8(tag);
+    }
+}
+
 impl ScrollAxes {
     /// Mask of axes that consume scroll deltas. `Both` ⇒ `(true, true)`,
     /// `Vertical` ⇒ `(false, true)`, `Horizontal` ⇒ `(true, false)`.
@@ -133,6 +157,27 @@ pub(crate) struct ElementExtras {
     pub(crate) justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
     pub(crate) child_align: Align,
+}
+
+/// `transform` is intentionally omitted: it doesn't affect this node's own
+/// paint (the encoder draws the node at its layout rect *before*
+/// `PushTransform`; the transform composes into descendants' screen rects via
+/// `Cascades`). A parent transform change shows up as descendant screen-rect
+/// diffs in `Damage::compute`, the right granularity. Transform IS folded
+/// into `subtree_hash` separately (in the tree's rollup loop) so the encode
+/// cache invalidates on transform-only changes.
+impl std::hash::Hash for ElementExtras {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        h.write(bytemuck::bytes_of(&self.position));
+        self.grid.hash(h);
+        self.min_size.hash(h);
+        self.max_size.hash(h);
+        h.write_u32(self.gap.to_bits());
+        h.write_u32(self.line_gap.to_bits());
+        self.child_align.hash(h);
+        self.justify.hash(h);
+    }
 }
 
 impl ElementExtras {
@@ -187,6 +232,18 @@ pub(crate) struct LayoutCore {
     pub(crate) margin: Spacing,
     pub(crate) align: Align,
     pub(crate) visibility: Visibility,
+}
+
+impl std::hash::Hash for LayoutCore {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.mode.hash(h);
+        self.size.hash(h);
+        self.padding.hash(h);
+        self.margin.hash(h);
+        self.align.hash(h);
+        self.visibility.hash(h);
+    }
 }
 
 /// Per-node config: identity + spatial layout + interaction + paint flags.
@@ -502,7 +559,7 @@ pub trait Configure: Sized {
 /// Packed paint/input flags. One byte.
 ///
 /// `bits`: 0-2=sense tag, 3=disabled, 4-5=clip mode, 6=focusable, 7=reserved.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct PaintAttrs {
     pub(crate) bits: u8,
 }

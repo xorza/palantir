@@ -7,9 +7,7 @@ use crate::shape::Shape;
 use crate::tree::element::{
     Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintAttrs,
 };
-use crate::tree::node_hash::{
-    NodeHash, NodeHashes, hash_chrome, hash_layout_core, hash_node_extras,
-};
+use crate::tree::node_hash::{NodeHash, NodeHashes};
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::grid::GridDef;
 use fixedbitset::FixedBitSet;
@@ -151,11 +149,12 @@ impl Tree {
 
         for i in 0..n {
             let mut h = Hasher::new();
-            hash_layout_core(&mut h, &self.records.layout()[i], self.records.attrs()[i]);
+            self.records.layout()[i].hash(&mut h);
+            self.records.attrs()[i].hash(&mut h);
             if let Some(e) = self.extras.get(i) {
-                hash_node_extras(&mut h, e);
+                e.hash(&mut h);
             }
-            hash_chrome(&mut h, self.chrome.get(i));
+            self.chrome.get(i).hash(&mut h);
 
             for item in TreeItems::new(&self.records, &self.shapes, NodeId(i as u32)) {
                 match item {

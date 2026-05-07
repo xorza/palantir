@@ -11,7 +11,7 @@ use crate::primitives::stroke::Stroke;
 /// Pure data, no methods that need a `Ui` — paint emission goes
 /// through `Tree::chrome_table` and the encoder, not through
 /// shape-list registration.
-#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Background {
     pub fill: Color,
     pub stroke: Option<Stroke>,
