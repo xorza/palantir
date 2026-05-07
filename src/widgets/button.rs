@@ -84,6 +84,7 @@ impl Button {
         let node = ui.node(element, surface, |ui| {
             if !label.is_empty() {
                 ui.add_shape(Shape::Text {
+                    local_rect: None,
                     text: label,
                     color: text_style.color,
                     font_size_px: text_style.font_size_px,

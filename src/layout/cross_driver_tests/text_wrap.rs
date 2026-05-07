@@ -1,13 +1,17 @@
+use super::support;
 use super::support::{chat_message, two_hug_cols_with_wrap};
 use crate::TextStyle;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
+use crate::primitives::color::Color;
+use crate::primitives::rect::Rect;
 use crate::shape::{Shape, TextWrap};
 use crate::support::testing::{shapes_of, ui_with_text};
-use crate::tree::element::Configure;
+use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
+use std::borrow::Cow;
 use std::rc::Rc;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
@@ -44,7 +48,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     };
     assert_eq!(wrap, TextWrap::Wrap);
     let shaped =
-        ui.layout.result.text_shapes[node.index()].expect("layout should have shaped the text");
+        support::first_text(&ui.layout.result, node).expect("layout should have shaped the text");
     assert!(shaped.measured.h > 32.0);
 }
 
@@ -60,7 +64,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     let node = two_hug_cols_with_wrap(&mut ui, PARAGRAPH);
     ui.end_frame();
 
-    let shaped = ui.layout.result.text_shapes[node.index()].expect("text was shaped");
+    let shaped = support::first_text(&ui.layout.result, node).expect("text was shaped");
     // Multi-line height (a 16 px font wraps to 3 lines at the resolved
     // column width — h ≈ 58 px in practice; assert > 32 to allow for
     // line-height variation).
@@ -123,7 +127,7 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     let msg = chat_message(&mut ui, 40.0, PARAGRAPH, 14.0);
     ui.end_frame();
 
-    let shaped = ui.layout.result.text_shapes[msg.index()].expect("text was shaped");
+    let shaped = support::first_text(&ui.layout.result, msg).expect("text was shaped");
     assert!(
         shaped.measured.h > 32.0,
         "Fill message should wrap inside its resolved share; got h={}",
@@ -146,7 +150,7 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
 
-    let shaped = ui.layout.result.text_shapes[msg.index()].expect("text was shaped");
+    let shaped = support::first_text(&ui.layout.result, msg).expect("text was shaped");
     assert!(
         shaped.measured.w > 20.0,
         "min-content floor should keep message wider than the cramped slot; got w={}",
@@ -166,7 +170,7 @@ fn hstack_fill_clamped_below_min_content_keeps_rect_at_slot() {
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.end_frame();
 
-    let shaped_w = ui.layout.result.text_shapes[msg.index()]
+    let shaped_w = support::first_text(&ui.layout.result, msg)
         .expect("text was shaped")
         .measured
         .w;
@@ -398,4 +402,63 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
              surface_w={surface_w} label_full={label_full} label_rect_w={label_rect_w}",
         );
     }
+}
+
+/// Pin: a custom widget that pushes two `Shape::Text` to the same
+/// node has both runs shaped (`text_spans[node].len == 2`) and laid
+/// out at distinct positions via per-shape `local_rect`. Replaces the
+/// old "one Shape::Text per leaf" hard assert.
+#[test]
+fn multi_shape_text_per_leaf_shapes_each_run_independently() {
+    let mut ui = ui_with_text(UVec2::new(400, 400));
+    let mut leaf = None;
+    Panel::vstack().show(&mut ui, |ui| {
+        leaf = Some(ui.node(Element::new_auto(LayoutMode::Leaf), None, |ui| {
+            ui.add_shape(Shape::Text {
+                local_rect: Some(Rect::new(0.0, 0.0, 100.0, 20.0)),
+                text: Cow::Borrowed("first"),
+                color: Color::WHITE,
+                font_size_px: 14.0,
+                line_height_px: 16.0,
+                wrap: TextWrap::Single,
+                align: Default::default(),
+            });
+            ui.add_shape(Shape::Text {
+                local_rect: Some(Rect::new(0.0, 22.0, 100.0, 20.0)),
+                text: Cow::Borrowed("second-with-different-text"),
+                color: Color::WHITE,
+                font_size_px: 14.0,
+                line_height_px: 16.0,
+                wrap: TextWrap::Single,
+                align: Default::default(),
+            });
+        }));
+    });
+    ui.end_frame();
+
+    let leaf = leaf.unwrap();
+    let span = ui.layout.result.text_spans[leaf.index()];
+    assert_eq!(
+        span.len, 2,
+        "leaf with two Shape::Text should record two text-shape entries"
+    );
+    let first = ui.layout.result.text_shapes[span.start as usize];
+    let second = ui.layout.result.text_shapes[(span.start + 1) as usize];
+    assert!(
+        first.measured.w > 0.0 && second.measured.w > 0.0,
+        "both runs must have measured nonzero width: first={:?} second={:?}",
+        first.measured,
+        second.measured,
+    );
+    assert!(
+        second.measured.w > first.measured.w,
+        "second run is longer text and should measure wider; first={} second={}",
+        first.measured.w,
+        second.measured.w,
+    );
+    assert_ne!(
+        first.key, second.key,
+        "different text inputs must produce distinct TextCacheKeys — \
+         a collision would mean the second shape clobbered the first's cache slot",
+    );
 }

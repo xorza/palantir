@@ -377,7 +377,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     ui.end_frame();
     let wid = WidgetId::from_hash("transient");
     assert!(
-        ui.text.reuse.contains_key(&wid),
+        ui.text.reuse.contains_key(&(wid, 0)),
         "text widget should populate text_reuse on first render",
     );
 
@@ -385,7 +385,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     Panel::vstack().show(&mut ui, |_ui| {});
     ui.end_frame();
     assert!(
-        !ui.text.reuse.contains_key(&wid),
+        !ui.text.reuse.contains_key(&(wid, 0)),
         "removed widget's reuse entry must be swept",
     );
 }

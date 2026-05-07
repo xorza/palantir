@@ -1,4 +1,5 @@
 use crate::layout::cache::{AVAIL_UNSET, AvailableKey};
+use crate::layout::types::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
 use crate::tree::{NodeId, Tree};
@@ -11,9 +12,14 @@ use crate::tree::{NodeId, Tree};
 #[derive(Default)]
 pub(crate) struct LayoutResult {
     pub(crate) rect: Vec<Rect>,
-    /// Per-node shape result for `Shape::Text` leaves. `None` for any
-    /// node the layout pass didn't shape text for.
-    pub(crate) text_shapes: Vec<Option<ShapedText>>,
+    /// Flat per-frame buffer of shaped text runs. Grows during the
+    /// measure pass: each `Shape::Text` on each leaf appends one
+    /// entry. Indexed via `text_spans[node]`. Mirrors `tree.shapes` +
+    /// `records.shapes()` for the layout-derived counterpart.
+    pub(crate) text_shapes: Vec<ShapedText>,
+    /// Per-node `Span` into `text_shapes`. Empty span (`len: 0`) for
+    /// nodes that didn't shape text. Same length as `rect`.
+    pub(crate) text_spans: Vec<Span>,
     /// Per-node quantized `available` size, the dimensional half of
     /// the cross-frame cache key. Written on every measure entry,
     /// restored from a snapshot on cache-hit subtrees. Read by the
@@ -43,7 +49,8 @@ impl LayoutResult {
         self.rect.clear();
         self.rect.resize(n, Rect::ZERO);
         self.text_shapes.clear();
-        self.text_shapes.resize(n, None);
+        self.text_spans.clear();
+        self.text_spans.resize(n, Span::default());
         self.available_q.clear();
         self.available_q.resize(n, AVAIL_UNSET);
         self.scroll_content.clear();

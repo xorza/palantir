@@ -5,11 +5,21 @@
 
 use crate::TextStyle;
 use crate::Ui;
+use crate::layout::result::{LayoutResult, ShapedText};
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use std::rc::Rc;
+
+/// Test helper: a node's first shaped-text result, or `None` when the
+/// layout pass shaped no text on it. Most tests only have one
+/// `Shape::Text` per leaf; if a future test needs all of them, index
+/// `result.text_shapes[span.start..span.start+span.len]` directly.
+pub(crate) fn first_text(result: &LayoutResult, id: NodeId) -> Option<ShapedText> {
+    let span = result.text_spans[id.index()];
+    (span.len > 0).then(|| result.text_shapes[span.start as usize])
+}
 
 /// `Grid` with two `Hug` columns × one `Hug` row. The wrapping `Text`
 /// in column 0 is the unit under test; column 1 carries a short label

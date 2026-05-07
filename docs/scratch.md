@@ -4,6 +4,8 @@
 
 b(crate) fn first_text(result: &L - strange
 
+local_rect_zero_area
+   ordinal: u8,
 
  let zero_area = local_rect
                     .map(|r| approx_zero(r.size.w) || approx_zero(r.size.h))

@@ -93,11 +93,11 @@ pub(crate) struct Tree {
     pub(crate) grid: GridArena,
 
     // -- Recording-only state --------------------------------------------
-    /// Stack of currently-open nodes. The last entry is the tip;
-    /// preceding entries are its ancestors. Capacity peaks at tree depth
-    /// — typically a handful of entries. Empty outside the
+    /// Stack of currently-open node ids. The last entry is the tip;
+    /// preceding entries are its ancestors. Capacity peaks at tree
+    /// depth — typically a handful of entries. Empty outside the
     /// `begin_frame` ↔ root `close_node` window.
-    open_frames: Vec<OpenFrame>,
+    open_frames: Vec<NodeId>,
 
     // -- Output (populated by `end_frame`) -------------------------------
     /// Per-node + subtree-rollup authoring hashes, populated by
@@ -223,7 +223,7 @@ impl Tree {
     /// Push a node as a child of the currently-open node (or as the root if
     /// no node is open) and make it the new tip. Pair with `close_node`.
     pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
-        let parent = self.open_frames.last().map(|f| f.node);
+        let parent = self.open_frames.last().copied();
         let new_id = NodeId(self.records.len() as u32);
         if let LayoutMode::Grid(idx) = element.mode {
             assert!(
@@ -284,10 +284,7 @@ impl Tree {
             attrs,
         });
         self.subtree_has_grid.grow(self.records.len());
-        self.open_frames.push(OpenFrame {
-            node: new_id,
-            has_text: false,
-        });
+        self.open_frames.push(new_id);
         new_id
     }
 
@@ -302,7 +299,7 @@ impl Tree {
 
         // Finalize the closing node's `shapes` span (placeholder set
         // to 0 at open time).
-        let i = closing.node.index();
+        let i = closing.index();
         let shapes_len = self.shapes.len() as u32;
         let shapes = &mut self.records.shapes_mut()[i];
         shapes.len = shapes_len - shapes.start;
@@ -317,8 +314,8 @@ impl Tree {
         }
         let i_has_grid = self.subtree_has_grid.contains(i);
 
-        if let Some(parent) = self.open_frames.last() {
-            let pi = parent.node.index();
+        if let Some(&parent) = self.open_frames.last() {
+            let pi = parent.index();
             let ends = self.records.end_mut();
             if ends[pi] < end {
                 ends[pi] = end;
@@ -336,24 +333,10 @@ impl Tree {
     /// sub-ranges, etc. Targeting is positional (whichever `Ui` is
     /// open).
     pub(crate) fn add_shape(&mut self, shape: Shape) {
-        let tip = self
-            .open_frames
-            .last_mut()
-            .expect("add_shape called with no open node");
-        // One `Shape::Text` per node — `LayoutResult.text_shapes` has
-        // one slot per node and the encoder emits one `DrawText` per
-        // node. See `docs/multi-text-per-leaf.md` for the lift.
-        if matches!(shape, Shape::Text { .. }) {
-            assert!(
-                !tip.has_text,
-                "node {} already has a Shape::Text. \
-                 Custom widgets needing multiple texts must open a child node per text \
-                 (e.g. via `Ui::node`) — `Shape::Text` is one-per-leaf today. \
-                 See docs/multi-text-per-leaf.md.",
-                tip.node.0,
-            );
-            tip.has_text = true;
-        }
+        assert!(
+            !self.open_frames.is_empty(),
+            "add_shape called with no open node",
+        );
         self.shapes.push(shape);
     }
 
@@ -584,19 +567,6 @@ pub(crate) struct NodeRecord {
     /// 1-byte packed paint/input flags (sense / disabled / clip /
     /// focusable). Read by cascade / encoder / hit-test.
     pub attrs: PaintAttrs,
-}
-
-/// Recording-only frame for the open-stack. One per currently-open
-/// node, root-first; the last entry is the tip.
-#[derive(Clone, Copy, Debug)]
-struct OpenFrame {
-    /// The node this frame represents.
-    node: NodeId,
-    /// Tracks "this node already has a `Shape::Text`" — multi-Text per
-    /// leaf is unsupported (the layout pass writes a single
-    /// `ShapedText` slot per node). Avoids an O(node-shapes) scan in
-    /// `add_shape`.
-    has_text: bool,
 }
 
 #[cfg(test)]

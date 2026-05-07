@@ -3,6 +3,7 @@
 //! parent has a finite slot — that would make any nested grid fall
 //! back to max-content and break wrapping under constrained widths.
 
+use super::support;
 use super::support::two_hug_cols_with_wrap;
 use crate::TextStyle;
 use crate::Ui;
@@ -19,7 +20,7 @@ use std::rc::Rc;
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
 fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
-    let shaped = ui.layout.result.text_shapes[node.index()].expect("text was shaped");
+    let shaped = support::first_text(&ui.layout.result, node).expect("text was shaped");
     assert!(
         shaped.measured.h > 32.0,
         "expected multi-line wrapped height, got h={}",
@@ -128,7 +129,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                 );
             });
         ui.end_frame();
-        ui.layout.result.text_shapes[value_node.unwrap().index()]
+        support::first_text(&ui.layout.result, value_node.unwrap())
             .expect("text was shaped")
             .measured
             .h
@@ -182,7 +183,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     ui.end_frame();
 
     let shaped =
-        ui.layout.result.text_shapes[value_node.unwrap().index()].expect("text was shaped");
+        support::first_text(&ui.layout.result, value_node.unwrap()).expect("text was shaped");
     assert!(
         shaped.measured.h > 32.0,
         "Fill grid + Fill col should wrap text under constrained width; got h={}",

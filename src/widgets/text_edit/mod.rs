@@ -159,6 +159,7 @@ impl<'a> TextEdit<'a> {
             };
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {
+                    local_rect: None,
                     text: display,
                     color,
                     font_size_px: font_size,
