@@ -105,13 +105,16 @@ impl Encoder {
 
 /// Emit one shape at `owner_rect`. Pulled out of `encode_node` so the
 /// child-interleave loop can call it without duplicating the per-variant
-/// match.
+/// match. `text_ordinal` is the within-node index of the next
+/// `Shape::Text` to consume from `layout.text_spans[id]`; the caller
+/// increments it after this function emits a text run.
 fn emit_one_shape(
     tree: &Tree,
     layout: &LayoutResult,
     id: NodeId,
     owner_rect: Rect,
     shape: &Shape,
+    text_ordinal: u32,
     out: &mut RenderCmdBuffer,
 ) {
     match shape {
@@ -130,17 +133,35 @@ fn emit_one_shape(
             };
             out.draw_rect(r, *radius, *fill, *stroke);
         }
-        Shape::Text { color, align, .. } => {
-            let Some(shaped) = layout.text_shapes[id.index()] else {
-                return;
-            };
+        Shape::Text {
+            local_rect,
+            color,
+            align,
+            ..
+        } => {
+            let span = layout.text_spans[id.index()];
+            assert!(
+                text_ordinal < span.len,
+                "encoder text-shape ordinal {text_ordinal} out of bounds for span len {}",
+                span.len,
+            );
+            let shaped = layout.text_shapes[(span.start + text_ordinal) as usize];
             if shaped.key.is_invalid() {
                 tracing::trace!(?shape, "encoder: dropping text with invalid key");
                 return;
             }
-            let inner = owner_rect.deflated_by(tree.records.layout()[id.index()].padding);
+            // `local_rect: None` → owner inner rect (padding-deflated).
+            // `local_rect: Some` → owner-relative explicit rect, padding
+            // skipped. `align` positions the glyph bbox inside whichever.
+            let base = match local_rect {
+                None => owner_rect.deflated_by(tree.records.layout()[id.index()].padding),
+                Some(lr) => Rect {
+                    min: owner_rect.min + lr.min,
+                    size: lr.size,
+                },
+            };
             out.draw_text(
-                align_text_in(inner, shaped.measured, *align),
+                align_text_in(base, shaped.measured, *align),
                 *color,
                 shaped.key,
             );
@@ -323,11 +344,15 @@ fn encode_node(
     // anchored to the owner regardless of scroll offset; transform is
     // pushed/popped per child accordingly.
     let mut tainted = false;
+    let mut text_ordinal: u32 = 0;
     for item in tree.tree_items(id) {
         match item {
             TreeItem::Shape(shape) => {
                 if paints {
-                    emit_one_shape(tree, layout, id, rect, shape, out);
+                    emit_one_shape(tree, layout, id, rect, shape, text_ordinal, out);
+                }
+                if matches!(shape, Shape::Text { .. }) {
+                    text_ordinal += 1;
                 }
             }
             TreeItem::Child(child) => {

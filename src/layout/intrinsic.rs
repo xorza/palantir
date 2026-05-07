@@ -161,8 +161,16 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasu
     let wid = tree.records.widget_id()[node.index()];
     let curr_hash = tree.hashes.node[node.index()];
     let mut acc = 0.0_f32;
-    for ts in leaf_text_shapes(tree, node) {
-        let m = text.shape_unbounded(wid, curr_hash, ts.text, ts.font_size_px, ts.line_height_px);
+    for (ordinal, ts) in leaf_text_shapes(tree, node).enumerate() {
+        let ordinal = ordinal as u8;
+        let m = text.shape_unbounded(
+            wid,
+            ordinal,
+            curr_hash,
+            ts.text,
+            ts.font_size_px,
+            ts.line_height_px,
+        );
         let v = match (axis, req) {
             // Non-wrapping text can't break, so its min-content equals its
             // unbroken width. Returning the longest-word width here would

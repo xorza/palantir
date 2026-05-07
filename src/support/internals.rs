@@ -16,9 +16,11 @@ use crate::{Ui, WgpuBackend};
 pub fn clear_measure_cache(ui: &mut Ui) {
     let cache = &mut ui.layout.cache;
     cache.desired.clear();
-    cache.text.clear();
+    cache.text_spans.clear();
     cache.available.clear();
+    cache.scroll_content.clear();
     cache.hugs.clear();
+    cache.text_shapes_arena.clear();
     cache.snapshots.clear();
 }
 

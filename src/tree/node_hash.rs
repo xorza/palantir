@@ -52,6 +52,7 @@ mod tests {
 
     fn text_shape(font_size_px: f32, line_height_px: f32) -> Shape {
         Shape::Text {
+            local_rect: None,
             text: Cow::Borrowed("hi"),
             color: Color::WHITE,
             font_size_px,

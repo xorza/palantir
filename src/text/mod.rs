@@ -227,13 +227,16 @@ pub struct TextMeasurer {
     /// pinning reshape-skip behaviour; cheap enough to leave on in
     /// release.
     pub(crate) measure_calls: u64,
-    /// Per-`WidgetId` cross-frame cache of shaping output, lookup-keyed
-    /// by identity and validity-checked by authoring hash. Lets layout
-    /// skip the `measure` dispatch (and the underlying string-hash +
-    /// `RefCell` lock around `CosmicMeasure`) when a Text leaf's
-    /// inputs are unchanged across frames. The wrap slot's `target_q`
-    /// quantization is layout policy chosen at the call site.
-    pub(crate) reuse: FxHashMap<WidgetId, TextReuseEntry>,
+    /// Cross-frame cache of shaping output keyed by
+    /// `(WidgetId, within-node text-shape ordinal)`, validity-checked
+    /// by authoring hash. Lets layout skip the `measure` dispatch
+    /// (and the underlying string-hash + `RefCell` lock around
+    /// `CosmicMeasure`) when a Text leaf's inputs are unchanged across
+    /// frames. The ordinal disambiguates leaves with multiple
+    /// `Shape::Text` runs — without it, the second run's entry would
+    /// overwrite the first's. The wrap slot's `target_q` quantization
+    /// is layout policy chosen at the call site.
+    pub(crate) reuse: FxHashMap<(WidgetId, u8), TextReuseEntry>,
 }
 
 impl TextMeasurer {
@@ -264,6 +267,7 @@ impl TextMeasurer {
     pub(crate) fn shape_unbounded(
         &mut self,
         wid: WidgetId,
+        ordinal: u8,
         hash: NodeHash,
         text: &str,
         font_size_px: f32,
@@ -275,7 +279,7 @@ impl TextMeasurer {
         // every other arm falls through to one shared dispatch +
         // write. Disjoint field borrows let `dispatch` run while the
         // slot borrow is held.
-        let slot = match self.reuse.entry(wid) {
+        let slot = match self.reuse.entry((wid, ordinal)) {
             Entry::Occupied(o) if o.get().hash == hash => return o.get().unbounded,
             other => other,
         };
@@ -302,16 +306,18 @@ impl TextMeasurer {
     /// entry first via [`Self::shape_unbounded`] — without that, the
     /// wrap result is computed but cannot be cached (no parent entry)
     /// and the next call re-measures.
+    #[allow(clippy::too_many_arguments)]
     pub fn shape_wrap(
         &mut self,
         wid: WidgetId,
+        ordinal: u8,
         text: &str,
         font_size_px: f32,
         line_height_px: f32,
         target: f32,
         target_q: u32,
     ) -> MeasureResult {
-        if let Some(entry) = self.reuse.get_mut(&wid) {
+        if let Some(entry) = self.reuse.get_mut(&(wid, ordinal)) {
             if let Some(w) = entry.wrap
                 && w.target_q == target_q
             {
@@ -381,9 +387,13 @@ impl TextMeasurer {
     /// stays bounded under widget churn without a second `seen_ids`
     /// scan.
     pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        for wid in removed {
-            self.reuse.remove(wid);
+        if removed.is_empty() {
+            return;
         }
+        // O(N·M) linear scan, but typical sweep sizes are tiny (1-10
+        // removed) and the keep-it-alloc-free property is more
+        // important than asymptotic tightness here.
+        self.reuse.retain(|(wid, _), _| !removed.contains(wid));
     }
 }
 
@@ -516,15 +526,15 @@ mod tests {
         let wid = WidgetId::from_hash("a");
         let h1 = NodeHash(1);
         let h2 = NodeHash(2);
-        let r1 = m.shape_unbounded(wid, h1, "hi", 16.0, 16.0);
-        let r2 = m.shape_unbounded(wid, h2, "hi", 16.0, 24.0);
+        let r1 = m.shape_unbounded(wid, 0, h1, "hi", 16.0, 16.0);
+        let r2 = m.shape_unbounded(wid, 0, h2, "hi", 16.0, 24.0);
         assert_ne!(
             r1.size.h, r2.size.h,
             "different leading via different hash → distinct cache entries",
         );
         // Re-querying with the original hash returns the original (16
         // px height), proving the entry wasn't overwritten.
-        let r1_again = m.shape_unbounded(wid, h1, "hi", 16.0, 16.0);
+        let r1_again = m.shape_unbounded(wid, 0, h1, "hi", 16.0, 16.0);
         assert_eq!(r1.size.h, r1_again.size.h);
     }
 

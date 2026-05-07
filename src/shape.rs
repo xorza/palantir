@@ -34,12 +34,20 @@ pub enum Shape {
     /// `LayoutResult.text_shapes`, not here. `wrap` selects between "shape
     /// once and freeze" (`Single`) and "reshape if the parent commits a
     /// narrower width than the natural unbroken line" (`Wrap`). `align`
-    /// positions the glyph bbox inside the owner leaf's arranged rect —
-    /// the encoder reads it together with `text_shapes[id].measured` to
-    /// shift the emitted `DrawText` rect. `HAlign::Auto`/`Stretch` and
-    /// `VAlign::Auto`/`Stretch` collapse to top-left for text (glyphs
-    /// don't stretch).
+    /// positions the glyph bbox inside the owner leaf's arranged rect (or
+    /// `local_rect` if set) — the encoder reads it together with the
+    /// shaped run's `measured` to shift the emitted `DrawText` rect.
+    /// `HAlign::Auto`/`Stretch` and `VAlign::Auto`/`Stretch` collapse to
+    /// top-left for text (glyphs don't stretch).
+    ///
+    /// `local_rect` mirrors `RoundedRect::local_rect`: `None` paints into
+    /// the owner's arranged rect (deflated by the node's `padding`);
+    /// `Some(lr)` paints `lr` at owner-relative coords (`lr.min = (0, 0)`
+    /// is owner top-left), with `padding` skipped and `align` positioning
+    /// the run *inside `lr`*. Lets a custom widget place multiple text
+    /// runs in one leaf without each clobbering the others.
     Text {
+        local_rect: Option<Rect>,
         /// `Cow<'static, str>` so static-string labels (the common case via
         /// `&'static str → Into<Cow<…>>`) round-trip with only pointer-copy
         /// `Clone`s — no per-frame heap alloc. Dynamic strings still allocate
@@ -112,6 +120,7 @@ impl Hash for Shape {
                 color.hash(h);
             }
             Shape::Text {
+                local_rect,
                 text,
                 color,
                 font_size_px,
@@ -120,6 +129,13 @@ impl Hash for Shape {
                 align,
             } => {
                 h.write_u8(2);
+                match local_rect {
+                    None => h.write_u8(0),
+                    Some(r) => {
+                        h.write_u8(1);
+                        r.hash(h);
+                    }
+                }
                 text.hash(h);
                 color.hash(h);
                 h.write_u32(font_size_px.to_bits());
@@ -128,6 +144,16 @@ impl Hash for Shape {
             }
         }
     }
+}
+
+/// True iff `local_rect` is set and has zero width or height. Shared
+/// between `RoundedRect`/`Text` `is_noop` arms — `None` means
+/// "paint into owner's full rect", which is never zero-area.
+#[inline]
+fn local_rect_zero_area(local_rect: &Option<Rect>) -> bool {
+    local_rect
+        .map(|r| approx_zero(r.size.w) || approx_zero(r.size.h))
+        .unwrap_or(false)
 }
 
 impl Shape {
@@ -147,13 +173,15 @@ impl Shape {
                     None => true,
                     Some(s) => approx_zero(s.width) || approx_zero(s.color.a),
                 };
-                let zero_area = local_rect
-                    .map(|r| approx_zero(r.size.w) || approx_zero(r.size.h))
-                    .unwrap_or(false);
-                zero_area || (no_fill && no_stroke)
+                local_rect_zero_area(local_rect) || (no_fill && no_stroke)
             }
             Shape::Line { width, color, .. } => approx_zero(*width) || approx_zero(color.a),
-            Shape::Text { text, color, .. } => text.is_empty() || approx_zero(color.a),
+            Shape::Text {
+                text,
+                color,
+                local_rect,
+                ..
+            } => local_rect_zero_area(local_rect) || text.is_empty() || approx_zero(color.a),
         }
     }
 }

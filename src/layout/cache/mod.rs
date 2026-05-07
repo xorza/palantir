@@ -3,19 +3,21 @@
 //! `subtree_hash` and incoming `available` size both match last
 //! frame. See `src/layout/measure-cache.md`.
 //!
-//! **Storage**: SoA arenas (`desired`, `text`, `available` — all
-//! node-indexed and parallel — and `hugs` for grid descendants) plus
-//! a tiny per-`WidgetId` `ArenaSnapshot` pointing at a contiguous
-//! range. Steady-state writes are in-place memcpys when the subtree
-//! size matches; size mismatches fall back to append + mark-garbage
-//! with periodic compaction. Storage is a small set of `Vec`s plus
-//! one `FxHashMap` (the snapshot index), regardless of widget count.
+//! **Storage**: SoA arenas — four node-indexed and parallel
+//! (`desired`, `text_spans`, `available`, `scroll_content`) plus two
+//! variable-length per-subtree (`hugs` for grid descendants,
+//! `text_shapes_arena` for `Shape::Text` runs) — plus a tiny
+//! per-`WidgetId` `ArenaSnapshot` pointing at a contiguous range.
+//! Steady-state writes are in-place memcpys when the subtree size
+//! matches; size mismatches fall back to append + mark-garbage with
+//! periodic compaction. Storage is a small set of `Vec`s plus one
+//! `FxHashMap` (the snapshot index), regardless of widget count.
 //!
 //! Liveness bookkeeping rides on the shared [`LiveArena`] primitive
 //! so the compaction policy and constants are in one place
-//! (`src/common/cache_arena.rs`); the three node-indexed arenas share
-//! `desired.live` (they grow and shrink together by invariant), `hugs`
-//! tracks its own.
+//! (`src/common/cache_arena.rs`); the four node-indexed arenas share
+//! `desired.live` (they grow and shrink together by invariant); each
+//! variable-length arena (`hugs`, `text_shapes_arena`) tracks its own.
 //!
 //! Compaction kicks in when an arena holds more than `live ×
 //! COMPACT_RATIO` items. It walks every snapshot, rewrites their
@@ -55,19 +57,19 @@ use crate::tree::widget_id::WidgetId;
 use glam::IVec2;
 use rustc_hash::FxHashMap;
 
-/// Snapshot index entry. `nodes` indexes the three node-indexed
-/// arenas (`desired`, `text`, `available`); `hugs` indexes `hugs`.
-/// The snapshot key is `(subtree_hash, available[nodes.start])` —
-/// the dimensional half is read out of the per-node `available`
-/// arena, which would be carrying the same value on a redundant
-/// field.
+/// Snapshot index entry. `nodes` indexes the node-indexed arenas
+/// (`desired`, `text_spans`, `available`, `scroll_content`); `hugs`
+/// indexes `hugs`; `text_shapes` indexes `text_shapes_arena`. The
+/// snapshot key is `(subtree_hash, available[nodes.start])` — the
+/// dimensional half is read out of the per-node `available` arena,
+/// which would be carrying the same value on a redundant field.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ArenaSnapshot {
     /// Rolled subtree hash from last frame. The rollup includes child
     /// count and per-child subtree hashes, so any structural or
     /// authoring change anywhere in the subtree busts the key.
     pub(crate) subtree_hash: NodeHash,
-    /// Range over the three node-indexed arenas. `desired.items[nodes.range()]`
+    /// Range over the node-indexed arenas. `desired.items[nodes.range()]`
     /// is the subtree's `desired` in pre-order; index 0 is the
     /// snapshot root's own size.
     pub(crate) nodes: Span,
@@ -79,6 +81,11 @@ pub(crate) struct ArenaSnapshot {
     /// `subtree_hash` is unchanged because the hash includes every
     /// descendant `GridDef` (track count + sizing).
     pub(crate) hugs: Span,
+    /// Range over `text_shapes_arena`. Variable-length flat buffer of
+    /// shaped text runs for every `Shape::Text` in the subtree, in
+    /// pre-order. The `text_spans` slice (parallel to `desired`)
+    /// stores **subtree-local** spans into this range.
+    pub(crate) text_shapes: Span,
 }
 
 /// Quantized `available` size — the dimensional half of the cache
@@ -99,15 +106,20 @@ pub(crate) type AvailableKey = IVec2;
 pub(crate) const AVAIL_UNSET: AvailableKey = IVec2::splat(i32::MIN);
 
 /// Per-subtree slice bundle: borrows into the four parallel
-/// node-indexed arenas (`desired`, `text_shapes`, `available_q`,
-/// `scroll_content`) plus the per-grid `hugs` payload. The four
-/// node-indexed slices share length and pre-order alignment;
-/// `hugs` is sized per-grid descendant in `HUG_ORDER`. Same shape
-/// for both reads ([`MeasureCache::try_lookup`]) and writes
+/// node-indexed arenas (`desired`, `text_spans`, `available_q`,
+/// `scroll_content`) plus the per-grid `hugs` and the flat
+/// `text_shapes` payloads. The four node-indexed slices share length
+/// and pre-order alignment; `hugs` is sized per-grid descendant in
+/// `HUG_ORDER`; `text_shapes` is sized per text-shape in pre-order.
+/// `text_spans` stores **subtree-local** spans into `text_shapes`
+/// (start relative to the slice's first element). Same shape for
+/// both reads ([`MeasureCache::try_lookup`]) and writes
 /// ([`MeasureCache::write_subtree`]).
 pub(crate) struct SubtreeArenas<'a> {
     pub(crate) desired: &'a [Size],
-    pub(crate) text_shapes: &'a [Option<ShapedText>],
+    /// Per-node `Span` into `text_shapes`. Subtree-local: span
+    /// `start` is relative to `text_shapes[0]`.
+    pub(crate) text_spans: &'a [Span],
     pub(crate) available_q: &'a [AvailableKey],
     /// Per-node measured content extent for `LayoutMode::Scroll`
     /// descendants, `Size::ZERO` elsewhere.
@@ -118,6 +130,9 @@ pub(crate) struct SubtreeArenas<'a> {
     /// rows.min — for `2 * (n_cols + n_rows)` floats per grid.
     /// Empty for grid-free subtrees.
     pub(crate) hugs: &'a [f32],
+    /// Flat per-text-shape buffer, in pre-order over the subtree's
+    /// `Shape::Text` runs. Empty for text-free subtrees.
+    pub(crate) text_shapes: &'a [ShapedText],
 }
 
 /// What [`MeasureCache::try_lookup`] returns on a hit. `root` is
@@ -150,12 +165,16 @@ pub(crate) fn quantize_available(s: Size) -> AvailableKey {
 
 #[derive(Default)]
 pub(crate) struct MeasureCache {
-    /// Owns the live counter shared across the three parallel
-    /// node-indexed arenas. `text` and `available` ride on
-    /// `desired.live` by the same-length invariant.
+    /// Owns the live counter shared across the parallel node-indexed
+    /// arenas. `text_spans`, `available`, and `scroll_content` ride
+    /// on `desired.live` by the same-length invariant.
     pub(crate) desired: LiveArena<Size>,
-    /// Parallel to `desired`. Same indexing.
-    pub(crate) text: Vec<Option<ShapedText>>,
+    /// Parallel to `desired`. Same indexing. Per-node `Span` into
+    /// each snapshot's flat `text_shapes_arena` range. Spans are
+    /// stored **subtree-local** (start relative to the snapshot's
+    /// `text_shapes` range start) so they remain valid after
+    /// compaction relocates the flat range.
+    pub(crate) text_spans: Vec<Span>,
     /// Parallel to `desired`. Same indexing. Per-descendant
     /// quantized `available`, snapshotted so a measure-cache hit can
     /// restore the full subtree's `available_q` column on
@@ -178,6 +197,14 @@ pub(crate) struct MeasureCache {
     /// this, a cache hit at any ancestor of a Grid would leave `hugs`
     /// zeroed and the grid would collapse every cell to (0, 0).
     pub(crate) hugs: LiveArena<f32>,
+    /// Flat shaped-text buffer for every `Shape::Text` in every
+    /// cached subtree, packed in pre-order. Snapshot records
+    /// `(text_shapes_start, len)` into this arena. `text_spans`
+    /// (per-node, subtree-local) addresses entries within each
+    /// snapshot's range. Tracks its own live counter — text shapes
+    /// don't appear on every node, so length doesn't ride on
+    /// `desired.live`.
+    pub(crate) text_shapes_arena: LiveArena<ShapedText>,
     /// Per-`WidgetId` snapshot index. Each value points at a range in
     /// the arenas above.
     pub(crate) snapshots: FxHashMap<WidgetId, ArenaSnapshot>,
@@ -204,10 +231,11 @@ impl MeasureCache {
             root: self.desired.items[nodes.start],
             arenas: SubtreeArenas {
                 desired: &self.desired.items[nodes.clone()],
-                text_shapes: &self.text[nodes.clone()],
+                text_spans: &self.text_spans[nodes.clone()],
                 available_q: &self.available[nodes.clone()],
                 scroll_content: &self.scroll_content[nodes],
                 hugs: &self.hugs.items[snap.hugs.range()],
+                text_shapes: &self.text_shapes_arena.items[snap.text_shapes.range()],
             },
         })
     }
@@ -228,12 +256,13 @@ impl MeasureCache {
     ) {
         let SubtreeArenas {
             desired,
-            text_shapes,
+            text_spans,
             available_q,
             scroll_content,
             hugs,
+            text_shapes,
         } = arenas;
-        assert_eq!(desired.len(), text_shapes.len());
+        assert_eq!(desired.len(), text_spans.len());
         assert_eq!(desired.len(), available_q.len());
         assert_eq!(desired.len(), scroll_content.len());
         assert!(
@@ -242,22 +271,26 @@ impl MeasureCache {
         );
         let new_len = desired.len() as u32;
         let new_hugs_len = hugs.len() as u32;
+        let new_text_len = text_shapes.len() as u32;
 
         if let Some(prev) = self.snapshots.get_mut(&wid)
             && prev.nodes.len == new_len
             && prev.hugs.len == new_hugs_len
+            && prev.text_shapes.len == new_text_len
         {
             // In-place: hot path. Same `subtree_hash` → identical
-            // structure → identical hug-array shape, so the existing
-            // ranges fit byte-for-byte.
+            // structure → identical hug-array and text-shape-count
+            // shape, so the existing ranges fit byte-for-byte.
             let nodes = prev.nodes.range();
             let hugs_range = prev.hugs.range();
+            let text_range = prev.text_shapes.range();
             prev.subtree_hash = subtree_hash;
             self.desired.items[nodes.clone()].copy_from_slice(desired);
-            self.text[nodes.clone()].copy_from_slice(text_shapes);
+            self.text_spans[nodes.clone()].copy_from_slice(text_spans);
             self.available[nodes.clone()].copy_from_slice(available_q);
             self.scroll_content[nodes].copy_from_slice(scroll_content);
             self.hugs.items[hugs_range].copy_from_slice(hugs);
+            self.text_shapes_arena.items[text_range].copy_from_slice(text_shapes);
             return;
         }
 
@@ -267,26 +300,34 @@ impl MeasureCache {
         if let Some(prev) = self.snapshots.get(&wid) {
             self.desired.release(prev.nodes.len);
             self.hugs.release(prev.hugs.len);
+            self.text_shapes_arena.release(prev.text_shapes.len);
         }
         let nodes = Span::new(self.desired.items.len() as u32, new_len);
         self.desired.items.extend_from_slice(desired);
-        self.text.extend_from_slice(text_shapes);
+        self.text_spans.extend_from_slice(text_spans);
         self.available.extend_from_slice(available_q);
         self.scroll_content.extend_from_slice(scroll_content);
         let hugs_span = Span::new(self.hugs.items.len() as u32, new_hugs_len);
         self.hugs.items.extend_from_slice(hugs);
+        let text_span = Span::new(self.text_shapes_arena.items.len() as u32, new_text_len);
+        self.text_shapes_arena.items.extend_from_slice(text_shapes);
         self.desired.acquire(new_len);
         self.hugs.acquire(new_hugs_len);
+        self.text_shapes_arena.acquire(new_text_len);
         self.snapshots.insert(
             wid,
             ArenaSnapshot {
                 subtree_hash,
                 nodes,
                 hugs: hugs_span,
+                text_shapes: text_span,
             },
         );
 
-        if self.desired.needs_compact() || self.hugs.needs_compact() {
+        if self.desired.needs_compact()
+            || self.hugs.needs_compact()
+            || self.text_shapes_arena.needs_compact()
+        {
             self.compact();
         }
     }
@@ -300,6 +341,7 @@ impl MeasureCache {
             if let Some(snap) = self.snapshots.remove(wid) {
                 self.desired.release(snap.nodes.len);
                 self.hugs.release(snap.hugs.len);
+                self.text_shapes_arena.release(snap.text_shapes.len);
             }
         }
     }
@@ -309,26 +351,31 @@ impl MeasureCache {
     /// once per ~N writes given `COMPACT_RATIO = 2`.
     fn compact(&mut self) {
         let mut new_desired: Vec<Size> = Vec::with_capacity(self.desired.live);
-        let mut new_text: Vec<Option<ShapedText>> = Vec::with_capacity(self.desired.live);
+        let mut new_text_spans: Vec<Span> = Vec::with_capacity(self.desired.live);
         let mut new_avail: Vec<AvailableKey> = Vec::with_capacity(self.desired.live);
         let mut new_scroll: Vec<Size> = Vec::with_capacity(self.desired.live);
         let mut new_hugs: Vec<f32> = Vec::with_capacity(self.hugs.live);
+        let mut new_text_shapes: Vec<ShapedText> = Vec::with_capacity(self.text_shapes_arena.live);
         for snap in self.snapshots.values_mut() {
             let nodes = snap.nodes.range();
             snap.nodes.start = new_desired.len() as u32;
             new_desired.extend_from_slice(&self.desired.items[nodes.clone()]);
-            new_text.extend_from_slice(&self.text[nodes.clone()]);
+            new_text_spans.extend_from_slice(&self.text_spans[nodes.clone()]);
             new_avail.extend_from_slice(&self.available[nodes.clone()]);
             new_scroll.extend_from_slice(&self.scroll_content[nodes]);
             let hugs = snap.hugs.range();
             snap.hugs.start = new_hugs.len() as u32;
             new_hugs.extend_from_slice(&self.hugs.items[hugs]);
+            let text = snap.text_shapes.range();
+            snap.text_shapes.start = new_text_shapes.len() as u32;
+            new_text_shapes.extend_from_slice(&self.text_shapes_arena.items[text]);
         }
         self.desired.items = new_desired;
-        self.text = new_text;
+        self.text_spans = new_text_spans;
         self.available = new_avail;
         self.scroll_content = new_scroll;
         self.hugs.items = new_hugs;
+        self.text_shapes_arena.items = new_text_shapes;
     }
 }
 

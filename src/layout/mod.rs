@@ -6,6 +6,7 @@ use crate::layout::result::{LayoutResult, ShapedText};
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{AxisCtx, leaf_text_shapes, resolve_axis_size, zero_subtree};
 use crate::layout::types::sizing::Sizing;
+use crate::layout::types::span::Span;
 use crate::layout::wrapstack::WrapScratch;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -59,6 +60,10 @@ pub(crate) struct LayoutScratch {
     pub(crate) desired: Vec<Size>,
     pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(crate) tmp_hugs: Vec<f32>,
+    /// Staging buffer for rebasing per-node `text_spans` to subtree-
+    /// local form before writing a `MeasureCache` snapshot. Reused
+    /// across snapshots in one frame; capacity retained across frames.
+    pub(crate) tmp_text_spans: Vec<Span>,
 }
 
 impl LayoutScratch {
@@ -259,8 +264,19 @@ impl LayoutEngine {
             // so a length mismatch here would mean the rollup is broken.
             assert_eq!(curr_end, (tree.records.end()[curr_start]) as usize);
             self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
-            self.result.text_shapes[curr_start..curr_start + hit.arenas.text_shapes.len()]
-                .copy_from_slice(hit.arenas.text_shapes);
+            // Append the snapshot's flat text-shape range to the live
+            // per-frame buffer, then rebase its subtree-local spans by
+            // `dest_start` into the per-node `text_spans` column.
+            let dest_start = self.result.text_shapes.len() as u32;
+            self.result
+                .text_shapes
+                .extend_from_slice(hit.arenas.text_shapes);
+            for (i, snap_span) in hit.arenas.text_spans.iter().enumerate() {
+                self.result.text_spans[curr_start + i] = Span {
+                    start: dest_start + snap_span.start,
+                    len: snap_span.len,
+                };
+            }
             self.result.available_q[curr_start..curr_end].copy_from_slice(hit.arenas.available_q);
             self.result.scroll_content[curr_start..curr_end]
                 .copy_from_slice(hit.arenas.scroll_content);
@@ -278,6 +294,14 @@ impl LayoutEngine {
             }
             return hit.root;
         }
+
+        // Mark where this subtree's text shapes start in the flat
+        // per-frame buffer. After dispatch returns, the subtree owns
+        // `[text_shapes_lo..text_shapes.len())` contiguously (pre-order
+        // append + nested cache-hit appends both fall inside this
+        // range). Used to rebase per-node spans to subtree-local form
+        // when snapshotting below.
+        let text_shapes_lo = self.result.text_shapes.len() as u32;
 
         let bounds = tree.bounds(node);
         let (min_size, max_size) = (bounds.min_size, bounds.max_size);
@@ -349,15 +373,30 @@ impl LayoutEngine {
                     &mut self.scratch.tmp_hugs,
                 );
             }
+            // Rebase per-node spans to subtree-local form (start
+            // relative to `text_shapes_lo`) so the snapshot remains
+            // valid after compaction relocates the flat range. Empty
+            // spans (`Span::default()` with start=0) round-trip through
+            // `saturating_sub` correctly: 0 - lo = 0.
+            let text_shapes_hi = self.result.text_shapes.len() as u32;
+            self.scratch.tmp_text_spans.clear();
+            self.scratch
+                .tmp_text_spans
+                .extend(self.result.text_spans[start..end].iter().map(|s| Span {
+                    start: s.start.saturating_sub(text_shapes_lo),
+                    len: s.len,
+                }));
             self.cache.write_subtree(
                 cache_wid,
                 cache_hash,
                 SubtreeArenas {
                     desired: &self.scratch.desired[start..end],
-                    text_shapes: &self.result.text_shapes[start..end],
+                    text_spans: &self.scratch.tmp_text_spans,
                     available_q: &self.result.available_q[start..end],
                     scroll_content: &self.result.scroll_content[start..end],
                     hugs: &self.scratch.tmp_hugs,
+                    text_shapes: &self.result.text_shapes
+                        [text_shapes_lo as usize..text_shapes_hi as usize],
                 },
             );
         }
@@ -524,11 +563,14 @@ impl LayoutEngine {
         available_w: f32,
         text: &mut TextMeasurer,
     ) -> Size {
+        let span_start = self.result.text_shapes.len() as u32;
         let mut s = Size::ZERO;
+        let mut ordinal: u8 = 0;
         for ts in leaf_text_shapes(tree, node) {
             let m = self.shape_text(
                 tree,
                 node,
+                ordinal,
                 ts.text,
                 ts.font_size_px,
                 ts.line_height_px,
@@ -537,7 +579,16 @@ impl LayoutEngine {
                 text,
             );
             s = s.max(m);
+            ordinal = ordinal.checked_add(1).expect(
+                "more than 255 Shape::Text per leaf — well past anything sane; \
+                 widen the within-node ordinal width if this trips",
+            );
         }
+        let span_len = self.result.text_shapes.len() as u32 - span_start;
+        self.result.text_spans[node.index()] = Span {
+            start: span_start,
+            len: span_len,
+        };
         s
     }
 
@@ -546,6 +597,7 @@ impl LayoutEngine {
         &mut self,
         tree: &Tree,
         node: NodeId,
+        ordinal: u8,
         src: &str,
         font_size_px: f32,
         line_height_px: f32,
@@ -560,7 +612,8 @@ impl LayoutEngine {
         // has shifted. Crucially, when only the wrap target changed
         // (e.g. animated parent width), the unbounded cache is
         // preserved and only the wrap reshape runs in shape_wrap.
-        let unbounded = text.shape_unbounded(wid, curr_hash, src, font_size_px, line_height_px);
+        let unbounded =
+            text.shape_unbounded(wid, ordinal, curr_hash, src, font_size_px, line_height_px);
 
         let want_wrap = matches!(wrap, TextWrap::Wrap)
             && available_w.is_finite()
@@ -569,12 +622,20 @@ impl LayoutEngine {
         let result = if want_wrap {
             let target = available_w.max(unbounded.intrinsic_min);
             let target_q = quantize_wrap_target(target);
-            text.shape_wrap(wid, src, font_size_px, line_height_px, target, target_q)
+            text.shape_wrap(
+                wid,
+                ordinal,
+                src,
+                font_size_px,
+                line_height_px,
+                target,
+                target_q,
+            )
         } else {
             unbounded
         };
 
-        self.result.text_shapes[node.index()] = Some(ShapedText {
+        self.result.text_shapes.push(ShapedText {
             measured: result.size,
             key: result.key,
         });
