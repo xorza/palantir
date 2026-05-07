@@ -146,14 +146,16 @@ impl Hash for Shape {
     }
 }
 
-/// True iff `local_rect` is set and has zero width or height. Shared
-/// between `RoundedRect`/`Text` `is_noop` arms — `None` means
-/// "paint into owner's full rect", which is never zero-area.
+/// True iff `local_rect` is set with a degenerate or negative extent
+/// — paints no pixels regardless of fill/stroke/text. Broader than
+/// `Size::approx_zero` (which is strict both-axes-near-zero); this
+/// also catches `Rect::new(0, 0, -10, 20)` and similar from
+/// authoring bugs. `None` means "paint into owner's full rect" and
+/// is never paint-empty.
 #[inline]
-fn local_rect_zero_area(local_rect: &Option<Rect>) -> bool {
-    local_rect
-        .map(|r| approx_zero(r.size.w) || approx_zero(r.size.h))
-        .unwrap_or(false)
+fn local_rect_paint_empty(local_rect: &Option<Rect>) -> bool {
+    use crate::primitives::approx::EPS;
+    local_rect.is_some_and(|r| r.size.w <= EPS || r.size.h <= EPS)
 }
 
 impl Shape {
@@ -168,20 +170,22 @@ impl Shape {
                 stroke,
                 ..
             } => {
-                let no_fill = approx_zero(fill.a);
+                let no_fill = fill.approx_transparent();
                 let no_stroke = match stroke {
                     None => true,
-                    Some(s) => approx_zero(s.width) || approx_zero(s.color.a),
+                    Some(s) => approx_zero(s.width) || s.color.approx_transparent(),
                 };
-                local_rect_zero_area(local_rect) || (no_fill && no_stroke)
+                local_rect_paint_empty(local_rect) || (no_fill && no_stroke)
             }
-            Shape::Line { width, color, .. } => approx_zero(*width) || approx_zero(color.a),
+            Shape::Line { width, color, .. } => approx_zero(*width) || color.approx_transparent(),
             Shape::Text {
                 text,
                 color,
                 local_rect,
                 ..
-            } => local_rect_zero_area(local_rect) || text.is_empty() || approx_zero(color.a),
+            } => {
+                local_rect_paint_empty(local_rect) || text.is_empty() || color.approx_transparent()
+            }
         }
     }
 }

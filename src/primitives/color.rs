@@ -84,6 +84,11 @@ impl Color {
         a: 1.0,
     };
 
+    /// Alpha within `EPS` of zero — paints nothing.
+    pub const fn approx_transparent(self) -> bool {
+        super::approx::approx_zero(self.a)
+    }
+
     /// `(r, g, b)` in 0..1 sRGB space (the default — matches CSS, Figma, Photoshop).
     /// Linearized internally so blending and SDF AA happen correctly in linear space.
     pub const fn rgb(r: f32, g: f32, b: f32) -> Self {

@@ -24,10 +24,10 @@ impl Background {
     /// emitting a `DrawRect` for no-op chrome so transparent
     /// `Surface::scissor()` defaults don't leak draw commands.
     pub fn is_noop(&self) -> bool {
-        let no_fill = approx_zero(self.fill.a);
+        let no_fill = self.fill.approx_transparent();
         let no_stroke = match self.stroke {
             None => true,
-            Some(s) => approx_zero(s.width) || approx_zero(s.color.a),
+            Some(s) => approx_zero(s.width) || s.color.approx_transparent(),
         };
         no_fill && no_stroke
     }
