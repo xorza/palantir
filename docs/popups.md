@@ -31,17 +31,22 @@ roots: Vec<RootSlot>,
 
 Each slice compiles + ships the showcase.
 
-### 1. `Layer` enum + `RootSlot` storage
+### 1. `Layer` enum + `RootSlot` storage  ✅ shipped
 - Add `Layer`, `RootSlot`, `tree.roots: Vec<RootSlot>`.
-- `tree.begin_frame`: clear `roots`. `tree.end_frame(main_anchor: Rect)`:
-  push the `Main` slot (`first_node = 0`, `main_anchor`), stable-sort
-  by layer (no-op for one root). `Ui::end_frame` passes the surface
-  rect.
-- Replace `tree.root()` callers with `for root in &tree.roots { … }`.
-  Single root keeps current behavior bit-identical.
-- Test: hash-rollup is root-local — record two synthetic roots
-  (clear `open_frames` between top-level opens), assert
-  `subtree_hash[root_b]` ignores `root_a`.
+- `tree.begin_frame`: clear `roots`. `open_node` lazy-pushes a `Main`
+  slot whenever it opens a node with empty `open_frames` (`anchor_rect`
+  placeholder, patched at `end_frame`). `tree.end_frame(main_anchor:
+  Rect)` patches every `Main` slot's anchor and stable-sorts by layer.
+  Lazy push keeps the manifest in lockstep with records — no "root
+  without a node" window — and slots in step 2's `Ui::layer` push as a
+  per-layer override.
+- `Tree::root()` deleted. Encoder iterates `tree.roots`; `Ui` reads
+  `roots.first()` for the single-root layout call (step 3 plumbs the
+  loop into `LayoutEngine::run` itself).
+- Debug invariant: registered roots cover `records` and `shapes`
+  contiguously starting at 0 — no orphan top-level nodes.
+- Test: hash-rollup is root-local — two top-level subtrees, vary one,
+  pin the other's `subtree_hash` is unchanged.
 
 ### 2. `Ui::layer(layer, anchor, body)`
 - Save `tree.open_frames`, replace with empty.

@@ -83,7 +83,7 @@ impl Encoder {
         viewport: Rect,
     ) -> &RenderCmdBuffer {
         self.cmds.clear();
-        if let Some(root) = tree.root() {
+        for root in &tree.roots {
             encode_node(
                 tree,
                 layout,
@@ -91,7 +91,7 @@ impl Encoder {
                 damage_filter,
                 viewport,
                 &mut self.cache,
-                root,
+                NodeId(root.first_node),
                 &mut self.cmds,
             );
         }

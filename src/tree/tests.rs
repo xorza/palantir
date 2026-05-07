@@ -228,7 +228,7 @@ fn empty_tree_has_no_hashes() {
     // empty. (Layout / end_frame normally need a root, so we
     // intentionally skip them; just call compute_hashes directly to
     // verify the empty-tree case.)
-    ui.tree.end_frame();
+    ui.tree.end_frame(Rect::ZERO);
 
     assert_eq!(ui.tree.records.len(), 0);
     assert!(ui.tree.hashes.node.is_empty());
@@ -910,6 +910,56 @@ fn subtree_end_handles_deep_nesting() {
         );
     }
     assert_eq!(ui.tree.records.end()[(n - 1) as usize], n, "leaf");
+}
+
+/// Pin: `subtree_hash` rollup is root-local. Multi-root prep — when
+/// `Ui::layer` lands (`docs/popups.md` step 2), a popup recorded
+/// alongside the Main tree must hash independently of Main's content.
+/// Today we synthesize the second root by recording two top-level
+/// subtrees back-to-back; `open_node` lazy-pushes a `RootSlot` for each.
+/// Both slots are `Main` here (step 2 introduces a per-layer push).
+#[test]
+fn subtree_hash_rollup_root_local_across_two_roots() {
+    fn build(ui: &mut Ui, root_a_color: Color) -> u32 {
+        // Root A — content varies via `root_a_color`.
+        Panel::vstack().with_id("root-a").show(ui, |ui| {
+            Frame::new()
+                .with_id("a-leaf")
+                .size(50.0)
+                .background(Background {
+                    fill: root_a_color,
+                    ..Default::default()
+                })
+                .show(ui);
+        });
+        // Capture the index where root B will start, then record root B
+        // (identical across both invocations).
+        let b_first = ui.tree.records.len() as u32;
+        Panel::vstack().with_id("root-b").show(ui, |ui| {
+            Frame::new().with_id("b-leaf").size(30.0).show(ui);
+        });
+        b_first
+    }
+    let (h_b1, b_first1) = {
+        let mut ui = ui_at(UVec2::new(200, 200));
+        let b_first = build(&mut ui, Color::rgb(1.0, 0.0, 0.0));
+        ui.end_frame();
+        (ui.tree.hashes.subtree[b_first as usize], b_first)
+    };
+    let (h_b2, b_first2) = {
+        let mut ui = ui_at(UVec2::new(200, 200));
+        let b_first = build(&mut ui, Color::rgb(0.0, 1.0, 0.0));
+        ui.end_frame();
+        (ui.tree.hashes.subtree[b_first as usize], b_first)
+    };
+    assert_eq!(
+        b_first1, b_first2,
+        "root B's first node must land at the same index in both builds",
+    );
+    assert_eq!(
+        h_b1, h_b2,
+        "root B's subtree_hash must not fold root A's content",
+    );
 }
 
 /// Pin the bounds/panel column split: `.gap(...)` is panel-only, so it
