@@ -80,6 +80,7 @@ impl Encoder {
         layout: &LayoutResult,
         cascades: &CascadeResult,
         damage_filter: Option<Rect>,
+        viewport: Rect,
     ) -> &RenderCmdBuffer {
         self.cmds.clear();
         if let Some(root) = tree.root() {
@@ -88,6 +89,7 @@ impl Encoder {
                 layout,
                 cascades,
                 damage_filter,
+                viewport,
                 &mut self.cache,
                 root,
                 &mut self.cmds,
@@ -155,15 +157,26 @@ fn encode_node(
     layout: &LayoutResult,
     cascades: &CascadeResult,
     damage_filter: Option<Rect>,
+    viewport: Rect,
     cache: &mut EncodeCache,
     id: NodeId,
     out: &mut RenderCmdBuffer,
-) {
+) -> bool {
     // Hidden / Collapsed: paint nothing for this node or its subtree.
     // The cascade table already composed self + ancestors; recursing skips
     // the whole subtree because we early-return at the top of every node.
     if cascades.rows[id.index()].invisible {
-        return;
+        return false;
+    }
+
+    // Viewport cull: a subtree whose screen-space rect doesn't touch
+    // the surface paints zero pixels. Skip emission entirely (cmds and
+    // cache replay). Returning `true` taints any cache-pending ancestor
+    // so it doesn't snapshot a partial subtree — viewport position
+    // isn't in the cache key, so a future frame that scrolls the
+    // subtree on-screen would replay the cull.
+    if !cascades.rows[id.index()].screen_rect.intersects(viewport) {
+        return true;
     }
 
     // Cross-frame subtree-skip cache (Phase 3). Reads run on every
@@ -192,7 +205,7 @@ fn encode_node(
     if let Some((wid, hash, avail)) = cache_key
         && cache.try_replay(wid, hash, avail, out, layout.rect[id.index()].min)
     {
-        return;
+        return false;
     }
 
     // Bracket cache-eligible subtrees with `EnterSubtree`/`ExitSubtree`
@@ -309,6 +322,7 @@ fn encode_node(
     // Shapes paint *outside* the owner's pan transform so they stay
     // anchored to the owner regardless of scroll offset; transform is
     // pushed/popped per child accordingly.
+    let mut tainted = false;
     for item in tree.tree_items(id) {
         match item {
             TreeItem::Shape(shape) => {
@@ -320,7 +334,16 @@ fn encode_node(
                 if let Some(t) = transform {
                     out.push_transform(t);
                 }
-                encode_node(tree, layout, cascades, damage_filter, cache, child.id, out);
+                tainted |= encode_node(
+                    tree,
+                    layout,
+                    cascades,
+                    damage_filter,
+                    viewport,
+                    cache,
+                    child.id,
+                    out,
+                );
                 if transform.is_some() {
                     out.pop_transform();
                 }
@@ -334,18 +357,22 @@ fn encode_node(
 
     if let Some(p) = cache_pending {
         out.push_exit_subtree(p.enter_patch);
-        let cmd_hi = out.kinds.len() as u32;
-        let data_hi = out.data.len() as u32;
-        cache.write_subtree(
-            p.wid,
-            p.subtree_hash,
-            p.avail,
-            out,
-            (p.cmd_lo..cmd_hi).into(),
-            (p.data_lo..data_hi).into(),
-            layout.rect[id.index()].min,
-        );
+        if !tainted {
+            let cmd_hi = out.kinds.len() as u32;
+            let data_hi = out.data.len() as u32;
+            cache.write_subtree(
+                p.wid,
+                p.subtree_hash,
+                p.avail,
+                out,
+                (p.cmd_lo..cmd_hi).into(),
+                (p.data_lo..data_hi).into(),
+                layout.rect[id.index()].min,
+            );
+        }
     }
+
+    tainted
 }
 
 /// Position a text run's bounding box inside a leaf's arranged rect per
