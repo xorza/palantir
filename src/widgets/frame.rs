@@ -1,4 +1,3 @@
-use crate::primitives::background::Background;
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -11,7 +10,7 @@ use crate::widgets::theme::Surface;
 /// is set via `.background(...)`.
 pub struct Frame {
     element: Element,
-    background: Option<Background>,
+    surface: Option<Surface>,
 }
 
 impl Frame {
@@ -24,22 +23,18 @@ impl Frame {
     pub fn for_element(element: Element) -> Self {
         Self {
             element,
-            background: None,
+            surface: None,
         }
     }
 
-    pub fn background(mut self, b: Background) -> Self {
-        self.background = Some(b);
+    pub fn background(mut self, s: impl Into<Surface>) -> Self {
+        self.surface = Some(s.into());
         self
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        // Frame is a leaf — no children to clip. Pull just the paint
-        // from `theme.panel` if the call site didn't set its own.
-        let bg = self.background.or_else(|| ui.theme.panel.map(|s| s.paint));
-        let surface = bg.map(Surface::from);
-        let node = ui.node(self.element, surface, |_| {});
+        let node = ui.node(self.element, self.surface, |_| {});
         let state = ui.response_for(id);
         Response { node, state }
     }
