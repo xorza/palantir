@@ -52,6 +52,7 @@ pub struct Ui {
 
     /// Scroll widgets registered during recording so `end_frame` can
     /// refresh their `ScrollState` rows after arrange.
+    // todo move to tree?
     pub(crate) scrolls: ScrollRegistry,
 }
 
