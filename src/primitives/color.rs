@@ -7,6 +7,13 @@ pub struct Color {
     pub a: f32,
 }
 
+impl std::hash::Hash for Color {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
+    }
+}
+
 // Serialize as a CSS-style sRGB hex string: `"#RRGGBB"` when fully
 // opaque, `"#RRGGBBAA"` otherwise. Round-trips through the same `u8`
 // quantization the framework uses everywhere (1/255 is below 8-bit

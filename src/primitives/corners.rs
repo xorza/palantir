@@ -12,6 +12,13 @@ pub struct Corners {
     pub bl: f32,
 }
 
+impl std::hash::Hash for Corners {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
+    }
+}
+
 // Serialize Corners compactly:
 // - all four equal     → bare scalar `4.0`
 // - tl=tr, br=bl       → 2-element array `[top, bottom]` (CSS-style shorthand)
