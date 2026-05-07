@@ -1,6 +1,5 @@
 
 - `impl WidgetId` instead of `impl Hash`
-- `Spacing` serializable nicely
 - gradients, textures
 
 Multi-`Shape::Text` per leaf is unsupported
