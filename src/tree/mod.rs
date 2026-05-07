@@ -369,16 +369,6 @@ impl Tree {
     pub(crate) fn chrome_for(&self, id: NodeId) -> Option<&Background> {
         self.chrome.get(id.index())
     }
-
-    /// Subtree authoring hash for `id`: rolls this node's hash with
-    /// its descendants' (in declaration order). Panics if called before
-    /// [`Self::end_frame`] has populated the column for this frame —
-    /// callers should never observe `NodeHash::UNCOMPUTED` outside the
-    /// rollup loop's own scratch.
-    // todo remove
-    pub(crate) fn subtree_hash(&self, id: NodeId) -> NodeHash {
-        self.hashes.subtree[id.index()]
-    }
 }
 
 pub(crate) struct ChildIter<'a> {

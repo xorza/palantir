@@ -584,7 +584,7 @@ fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = ui_at(UVec2::new(200, 200));
     let target = f(&mut ui);
     ui.end_frame();
-    ui.tree.subtree_hash(target)
+    ui.tree.hashes.subtree[target.index()]
 }
 
 #[test]
@@ -745,7 +745,10 @@ fn leaf_subtree_hash_depends_on_node_hash() {
         ui1.tree.hashes.node[leaf1.index()],
         ui2.tree.hashes.node[leaf2.index()]
     );
-    assert_eq!(ui1.tree.subtree_hash(leaf1), ui2.tree.subtree_hash(leaf2));
+    assert_eq!(
+        ui1.tree.hashes.subtree[leaf1.index()],
+        ui2.tree.hashes.subtree[leaf2.index()]
+    );
 }
 
 /// Transform changes are intentionally folded into `subtree_hash` only,
@@ -779,8 +782,8 @@ fn transform_change_affects_subtree_but_not_node_hash() {
         "transform change must NOT change per-node hash",
     );
     assert_ne!(
-        ui1.tree.subtree_hash(n1),
-        ui2.tree.subtree_hash(n2),
+        ui1.tree.hashes.subtree[n1.index()],
+        ui2.tree.hashes.subtree[n2.index()],
         "transform change MUST change subtree hash (encode cache key)",
     );
 }
