@@ -173,6 +173,32 @@ fn text_shape_emits_draw_text() {
     );
 }
 
+/// Pin: a clip-only Surface (no painted background) on a container still
+/// emits the PushClip/PopClip pair so children get clipped, while
+/// contributing zero `DrawRect`s of its own. The encoder's `bg.is_noop()`
+/// guard skips the chrome paint; the clip mode survives independently.
+#[test]
+fn clip_only_surface_emits_clip_but_no_draw() {
+    let mut ui = ui_at(UVec2::new(200, 200));
+    Panel::hstack().show(&mut ui, |ui| {
+        Panel::zstack()
+            .with_id("clip_only")
+            .size(50.0)
+            .background(Surface::clip_rect())
+            .show(ui, |_| {});
+    });
+    ui.end_frame();
+    let cmds = encode_cmds(&ui);
+    let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
+    assert_eq!(pushes, 1, "clip-only surface must push a clip");
+    assert_eq!(pops, 1, "clip-only surface must pop the clip");
+    assert_eq!(
+        count_draw_rects(&cmds),
+        0,
+        "transparent paint must emit no DrawRect"
+    );
+}
+
 #[test]
 fn clip_emits_balanced_push_pop() {
     let mut ui = ui_at(UVec2::new(200, 200));
