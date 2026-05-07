@@ -12,11 +12,6 @@
 //! NaN bit pattern; UI authoring shouldn't produce NaN anyway (asserts
 //! in builders enforce non-negative sizes etc.).
 
-use crate::common::hash::Hasher;
-use crate::primitives::background::Background;
-use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, ScrollAxes};
-use std::hash::{Hash, Hasher as _};
-
 /// Authoring-hash newtype. A 64-bit `FxHash` over the inputs that
 /// affect rendering output for one node — *not* the derived layout
 /// output. Wrapping `u64` rather than passing it bare prevents
@@ -46,85 +41,14 @@ pub(crate) struct NodeHashes {
     pub(crate) subtree: Vec<NodeHash>,
 }
 
-/// `Grid(idx)` collapses to the same tag as the other variants — `idx`
-/// is a frame-local arena slot that shifts with sibling order, while the
-/// def's actual content is hashed at `NodeExit` via `GridDef::hash`.
-#[inline]
-pub(crate) fn hash_layout_mode(h: &mut Hasher, m: LayoutMode) {
-    let tag: u8 = match m {
-        LayoutMode::Leaf => 0,
-        LayoutMode::HStack => 1,
-        LayoutMode::VStack => 2,
-        LayoutMode::WrapHStack => 3,
-        LayoutMode::WrapVStack => 4,
-        LayoutMode::ZStack => 5,
-        LayoutMode::Canvas => 6,
-        LayoutMode::Grid(_) => 7,
-        LayoutMode::Scroll(ScrollAxes::Vertical) => 8,
-        LayoutMode::Scroll(ScrollAxes::Horizontal) => 9,
-        LayoutMode::Scroll(ScrollAxes::Both) => 10,
-    };
-    h.write_u8(tag);
-}
-
-#[inline]
-pub(crate) fn hash_layout_core(h: &mut Hasher, l: &LayoutCore, attrs: PaintAttrs) {
-    hash_layout_mode(h, l.mode);
-    l.size.hash(h);
-    h.pod(&[l.padding, l.margin]);
-    h.write_u8(l.visibility as u8);
-    h.write_u8(l.align.raw());
-    h.write_u8(attrs.bits);
-}
-
-#[inline]
-pub(crate) fn hash_node_extras(h: &mut Hasher, e: &ElementExtras) {
-    // `transform` is intentionally omitted: it doesn't affect this
-    // node's own paint (the encoder draws the node at its layout rect
-    // *before* `PushTransform`; the transform composes into
-    // descendants' screen rects via `Cascades`). A parent transform
-    // change shows up as descendant screen-rect diffs in
-    // `Damage::compute`, which is the right granularity.
-    //
-    // Transform IS folded into `subtree_hash` separately (in the tree's
-    // rollup loop) so the encode cache — which replays cached command
-    // buffers with the original `PushTransform` baked in — invalidates
-    // on transform-only changes.
-    h.pod(&e.position);
-    h.pod(&e.grid);
-    h.pod(&[e.min_size, e.max_size]);
-    h.pod(&[e.gap, e.line_gap]);
-    h.write_u8(e.child_align.raw());
-    h.write_u8(e.justify as u8);
-}
-
-#[inline]
-pub(crate) fn hash_chrome(h: &mut Hasher, chrome: Option<&Background>) {
-    match chrome {
-        None => h.write_u8(0),
-        Some(bg) => {
-            h.write_u8(1);
-            h.pod(&bg.fill);
-            h.pod(&bg.radius);
-            match bg.stroke {
-                None => h.write_u8(0),
-                Some(s) => {
-                    h.write_u8(1);
-                    h.pod(&s);
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::common::hash::Hasher;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
     use crate::shape::{Shape, TextWrap};
     use std::borrow::Cow;
-    use std::hash::Hash;
+    use std::hash::{Hash, Hasher as _};
 
     fn text_shape(font_size_px: f32, line_height_px: f32) -> Shape {
         Shape::Text {

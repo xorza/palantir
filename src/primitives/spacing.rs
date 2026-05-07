@@ -19,6 +19,13 @@ pub struct Spacing {
     pub bottom: f32,
 }
 
+impl std::hash::Hash for Spacing {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
+    }
+}
+
 impl Spacing {
     pub const ZERO: Self = Self {
         left: 0.0,

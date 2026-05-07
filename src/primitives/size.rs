@@ -7,6 +7,13 @@ pub struct Size {
     pub h: f32,
 }
 
+impl std::hash::Hash for Size {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
+    }
+}
+
 impl Size {
     pub const ZERO: Self = Self { w: 0.0, h: 0.0 };
     pub const INF: Self = Self {
