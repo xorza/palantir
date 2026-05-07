@@ -15,10 +15,8 @@
 use crate::common::hash::Hasher;
 use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
-use crate::shape::Shape;
 use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, ScrollAxes};
 use crate::widgets::grid::GridDef;
-use std::hash::Hash;
 use std::hash::Hasher as _;
 
 /// Authoring-hash newtype. A 64-bit `FxHash` over the inputs that
@@ -142,58 +140,6 @@ pub(crate) fn hash_chrome(h: &mut Hasher, chrome: Option<&Background>) {
 }
 
 #[inline]
-pub(crate) fn hash_shape(h: &mut Hasher, shape: &Shape) {
-    match shape {
-        Shape::RoundedRect {
-            local_rect,
-            radius,
-            fill,
-            stroke,
-        } => {
-            h.write_u8(0);
-            match local_rect {
-                None => h.write_u8(0),
-                Some(r) => {
-                    h.write_u8(1);
-                    h.pod(r);
-                }
-            }
-            h.pod(radius);
-            h.pod(fill);
-            match stroke {
-                None => h.write_u8(0),
-                Some(s) => {
-                    h.write_u8(1);
-                    h.pod(s);
-                }
-            }
-        }
-        Shape::Line { a, b, width, color } => {
-            h.write_u8(1);
-            h.pod(a);
-            h.pod(b);
-            h.write_u32(width.to_bits());
-            h.pod(color);
-        }
-        Shape::Text {
-            text,
-            color,
-            font_size_px,
-            line_height_px,
-            wrap,
-            align,
-        } => {
-            h.write_u8(2);
-            text.hash(h);
-            h.pod(color);
-            h.write_u32(font_size_px.to_bits());
-            h.write_u32(line_height_px.to_bits());
-            h.write_u16(((align.raw() as u16) << 8) | *wrap as u8 as u16);
-        }
-    }
-}
-
-#[inline]
 pub(crate) fn hash_track(h: &mut Hasher, t: &Track) {
     hash_sizing(h, t.size);
     h.write_u32(t.min.to_bits());
@@ -219,8 +165,9 @@ mod tests {
     use super::*;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
-    use crate::shape::TextWrap;
+    use crate::shape::{Shape, TextWrap};
     use std::borrow::Cow;
+    use std::hash::Hash;
 
     fn text_shape(font_size_px: f32, line_height_px: f32) -> Shape {
         Shape::Text {
@@ -240,10 +187,10 @@ mod tests {
         // measure cache would conflate runs whose shaped buffers
         // genuinely differ (different `Metrics::new`).
         let mut h_a = Hasher::new();
-        hash_shape(&mut h_a, &text_shape(16.0, 16.0 * 1.2));
+        text_shape(16.0, 16.0 * 1.2).hash(&mut h_a);
         let a = h_a.finish();
         let mut h_b = Hasher::new();
-        hash_shape(&mut h_b, &text_shape(16.0, 16.0 * 1.5));
+        text_shape(16.0, 16.0 * 1.5).hash(&mut h_b);
         let b = h_b.finish();
         assert_ne!(
             a, b,
@@ -256,9 +203,9 @@ mod tests {
         // Sanity counterpart: identical shapes hash identically (no
         // accidental introduction of non-determinism via the new field).
         let mut h_a = Hasher::new();
-        hash_shape(&mut h_a, &text_shape(16.0, 19.2));
+        text_shape(16.0, 19.2).hash(&mut h_a);
         let mut h_b = Hasher::new();
-        hash_shape(&mut h_b, &text_shape(16.0, 19.2));
+        text_shape(16.0, 19.2).hash(&mut h_b);
         assert_eq!(h_a.finish(), h_b.finish());
     }
 }

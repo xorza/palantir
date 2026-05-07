@@ -11,6 +11,13 @@ pub struct Rect {
     pub size: Size,
 }
 
+impl std::hash::Hash for Rect {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
+    }
+}
+
 impl Rect {
     pub const ZERO: Self = Self {
         min: Vec2::ZERO,

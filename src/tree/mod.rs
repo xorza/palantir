@@ -9,13 +9,12 @@ use crate::tree::element::{
 };
 use crate::tree::node_hash::{
     NodeHash, NodeHashes, hash_chrome, hash_grid_def, hash_layout_core, hash_node_extras,
-    hash_shape,
 };
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::grid::GridDef;
 use fixedbitset::FixedBitSet;
 use soa_rs::{Soa, Soars};
-use std::hash::Hasher as _;
+use std::hash::{Hash, Hasher as _};
 
 pub(crate) mod element;
 pub(crate) mod node_hash;
@@ -160,7 +159,7 @@ impl Tree {
 
             for item in TreeItems::new(&self.records, &self.shapes, NodeId(i as u32)) {
                 match item {
-                    TreeItem::Shape(s) => hash_shape(&mut h, s),
+                    TreeItem::Shape(s) => s.hash(&mut h),
                     TreeItem::Child(_) => h.write_u8(0xFF),
                 }
             }

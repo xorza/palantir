@@ -4,8 +4,9 @@ use crate::primitives::{
 };
 use glam::Vec2;
 use std::borrow::Cow;
+use std::hash::{Hash, Hasher};
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum Shape {
     /// Filled/stroked rounded rectangle. With `local_rect = None` it covers
     /// the owner node's full arranged rect (position/size come from layout).
@@ -72,6 +73,61 @@ pub enum TextWrap {
     /// the natural unbroken line. The widest unbreakable run (longest word)
     /// is the floor — text overflows rather than breaking inside a word.
     Wrap,
+}
+
+impl Hash for Shape {
+    /// Discriminant tags are stable (`RoundedRect=0`, `Line=1`, `Text=2`) so
+    /// cache keys don't shift if variants are reordered.
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        match self {
+            Shape::RoundedRect {
+                local_rect,
+                radius,
+                fill,
+                stroke,
+            } => {
+                h.write_u8(0);
+                match local_rect {
+                    None => h.write_u8(0),
+                    Some(r) => {
+                        h.write_u8(1);
+                        r.hash(h);
+                    }
+                }
+                radius.hash(h);
+                fill.hash(h);
+                match stroke {
+                    None => h.write_u8(0),
+                    Some(s) => {
+                        h.write_u8(1);
+                        s.hash(h);
+                    }
+                }
+            }
+            Shape::Line { a, b, width, color } => {
+                h.write_u8(1);
+                h.write(bytemuck::bytes_of(a));
+                h.write(bytemuck::bytes_of(b));
+                h.write_u32(width.to_bits());
+                color.hash(h);
+            }
+            Shape::Text {
+                text,
+                color,
+                font_size_px,
+                line_height_px,
+                wrap,
+                align,
+            } => {
+                h.write_u8(2);
+                text.hash(h);
+                color.hash(h);
+                h.write_u32(font_size_px.to_bits());
+                h.write_u32(line_height_px.to_bits());
+                h.write_u16(((align.raw() as u16) << 8) | *wrap as u8 as u16);
+            }
+        }
+    }
 }
 
 impl Shape {
