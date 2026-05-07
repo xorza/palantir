@@ -527,6 +527,18 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "shape_wrap requires a prior shape_unbounded")]
+    fn shape_wrap_panics_without_prime() {
+        // Contract change: `shape_wrap` no longer falls back to a
+        // dispatch-without-cache when the unbounded entry is missing.
+        // Pin the panic so a future caller that wraps without priming
+        // first fails loudly instead of silently losing the cache.
+        let mut m = TextMeasurer::default();
+        let wid = WidgetId::from_hash("a");
+        m.shape_wrap(wid, 0, "hi", 16.0, 16.0, 100.0, 100);
+    }
+
+    #[test]
     fn text_cache_key_invalid_constant_zero_filled() {
         // `_pad` byte was added to satisfy bytemuck's no-padding rule;
         // pin that the INVALID sentinel still round-trips through

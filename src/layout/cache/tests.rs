@@ -34,6 +34,21 @@ fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
     })
 }
 
+/// `NodeArenas` bundles four parallel columns and enforces
+/// length-equality by construction. Drift would silently corrupt
+/// snapshot lookups (one column reads the right index, another reads
+/// past its end). Pin the invariant after every operation that touches
+/// the cache.
+#[track_caller]
+fn assert_node_columns_aligned(ui: &Ui) {
+    let n = &ui.layout.cache.nodes;
+    let len = n.desired.len();
+    assert_eq!(n.text_spans.len(), len, "text_spans length drift");
+    assert_eq!(n.available.len(), len, "available length drift");
+    assert_eq!(n.scroll_content.len(), len, "scroll_content length drift");
+    assert!(n.live <= len, "live {} > total {}", n.live, len);
+}
+
 #[test]
 fn leaf_snapshot_populated_after_first_frame() {
     let mut ui = Ui::new();
@@ -333,6 +348,7 @@ fn in_place_rewrite_preserves_arena_position() {
         start1, start2,
         "same-len rewrite must stay at same arena offset"
     );
+    assert_node_columns_aligned(&ui);
 }
 
 #[test]
@@ -378,6 +394,7 @@ fn arena_invariant_holds_under_fragmentation() {
             COMPACT_RATIO,
         );
     }
+    assert_node_columns_aligned(&ui);
 }
 
 #[test]
@@ -432,6 +449,7 @@ fn cache_hits_remain_valid_after_compaction() {
     if cache.nodes.live > COMPACT_FLOOR {
         assert!(cache.nodes.desired.len() <= cache.nodes.live.saturating_mul(COMPACT_RATIO),);
     }
+    assert_node_columns_aligned(&ui);
 }
 
 /// Partial-invalidation contract: changing one leaf must bust the
