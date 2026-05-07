@@ -35,6 +35,21 @@ impl<T: Num> From<T> for Sizing {
     }
 }
 
+/// Tagged-union with niche-uninit padding in the inactive variant — raw
+/// `bytes_of` would hash junk. Encode `tag:u8 + value:f32` instead.
+impl std::hash::Hash for Sizing {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        let (tag, v) = match *self {
+            Sizing::Fixed(v) => (0u8, v),
+            Sizing::Hug => (1, 0.0),
+            Sizing::Fill(w) => (2, w),
+        };
+        h.write_u8(tag);
+        h.write_u32(v.to_bits());
+    }
+}
+
 /// Per-axis `Sizing`. Construct via `Default` (Hug × Hug), `Sizes::from(s)`
 /// (uniform), `Sizes::from(n)` (uniform Fixed via `Num`), or
 /// `Sizes::from((w, h))` for asymmetric. The `From` impls are the public
@@ -49,6 +64,14 @@ pub struct Sizes {
 impl From<Sizing> for Sizes {
     fn from(s: Sizing) -> Self {
         Self { w: s, h: s }
+    }
+}
+
+impl std::hash::Hash for Sizes {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.w.hash(h);
+        self.h.hash(h);
     }
 }
 

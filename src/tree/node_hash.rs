@@ -13,11 +13,9 @@
 //! in builders enforce non-negative sizes etc.).
 
 use crate::common::hash::Hasher;
-use crate::layout::types::{sizing::Sizes, sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::tree::element::{ElementExtras, LayoutCore, LayoutMode, PaintAttrs, ScrollAxes};
-use crate::widgets::grid::GridDef;
-use std::hash::Hasher as _;
+use std::hash::{Hash, Hasher as _};
 
 /// Authoring-hash newtype. A 64-bit `FxHash` over the inputs that
 /// affect rendering output for one node — *not* the derived layout
@@ -48,29 +46,9 @@ pub(crate) struct NodeHashes {
     pub(crate) subtree: Vec<NodeHash>,
 }
 
-/// `Sizing` is a tagged union with niche-uninit padding in its inactive
-/// variant — `pod` would hash junk bytes. Encode as a deterministic
-/// `tag:u8 + value:f32` instead. Inlined for the two `Sizes` axes.
-#[inline]
-pub(crate) fn hash_sizing(h: &mut Hasher, s: Sizing) {
-    let (tag, v) = match s {
-        Sizing::Fixed(v) => (0u8, v),
-        Sizing::Hug => (1, 0.0),
-        Sizing::Fill(w) => (2, w),
-    };
-    h.write_u8(tag);
-    h.write_u32(v.to_bits());
-}
-
-#[inline]
-pub(crate) fn hash_sizes(h: &mut Hasher, s: Sizes) {
-    hash_sizing(h, s.w);
-    hash_sizing(h, s.h);
-}
-
 /// `Grid(idx)` collapses to the same tag as the other variants — `idx`
 /// is a frame-local arena slot that shifts with sibling order, while the
-/// def's actual content is hashed at `NodeExit` via `hash_grid_def`.
+/// def's actual content is hashed at `NodeExit` via `GridDef::hash`.
 #[inline]
 pub(crate) fn hash_layout_mode(h: &mut Hasher, m: LayoutMode) {
     let tag: u8 = match m {
@@ -92,7 +70,7 @@ pub(crate) fn hash_layout_mode(h: &mut Hasher, m: LayoutMode) {
 #[inline]
 pub(crate) fn hash_layout_core(h: &mut Hasher, l: &LayoutCore, attrs: PaintAttrs) {
     hash_layout_mode(h, l.mode);
-    hash_sizes(h, l.size);
+    l.size.hash(h);
     h.pod(&[l.padding, l.margin]);
     h.write_u8(l.visibility as u8);
     h.write_u8(l.align.raw());
@@ -137,27 +115,6 @@ pub(crate) fn hash_chrome(h: &mut Hasher, chrome: Option<&Background>) {
             }
         }
     }
-}
-
-#[inline]
-pub(crate) fn hash_track(h: &mut Hasher, t: &Track) {
-    hash_sizing(h, t.size);
-    h.write_u32(t.min.to_bits());
-    h.write_u32(t.max.to_bits());
-}
-
-#[inline]
-pub(crate) fn hash_grid_def(h: &mut Hasher, def: &GridDef) {
-    h.write_u32(def.rows.len() as u32);
-    for t in def.rows.iter() {
-        hash_track(h, t);
-    }
-    h.write_u32(def.cols.len() as u32);
-    for t in def.cols.iter() {
-        hash_track(h, t);
-    }
-    h.write_u32(def.row_gap.to_bits());
-    h.write_u32(def.col_gap.to_bits());
 }
 
 #[cfg(test)]

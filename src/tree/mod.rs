@@ -8,7 +8,7 @@ use crate::tree::element::{
     Element, ElementExtras, ElementSplit, LayoutCore, LayoutMode, PaintAttrs,
 };
 use crate::tree::node_hash::{
-    NodeHash, NodeHashes, hash_chrome, hash_grid_def, hash_layout_core, hash_node_extras,
+    NodeHash, NodeHashes, hash_chrome, hash_layout_core, hash_node_extras,
 };
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::grid::GridDef;
@@ -165,7 +165,7 @@ impl Tree {
             }
 
             if let LayoutMode::Grid(idx) = self.records.layout()[i].mode {
-                hash_grid_def(&mut h, &self.grid.defs[idx as usize]);
+                self.grid.defs[idx as usize].hash(&mut h);
             }
             self.hashes.node.push(NodeHash(h.finish()));
         }
