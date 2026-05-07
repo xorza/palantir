@@ -6,7 +6,6 @@
 SubRect - whaat
 posisiton and size for shapes and nodes
 Multi-`Shape::Text` per leaf is unsupported
-vec<bool> - bitset
 shapef_of on tree remove?
 
 
