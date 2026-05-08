@@ -81,16 +81,16 @@ fn prepare_axis_scratch_at(
 /// `cross_driver_tests::parent_contains_child::two_hug_cols_section_height_matches_post_grow_text`.
 fn reset_hugs_for(layout: &mut LayoutEngine, idx: u16) {
     let hugs = &mut layout.scratch.grid.hugs;
-    hugs.slice_mut(idx, Axis::X, HugKind::Max).fill(0.0);
-    hugs.slice_mut(idx, Axis::X, HugKind::Min).fill(0.0);
-    hugs.slice_mut(idx, Axis::Y, HugKind::Max).fill(0.0);
-    hugs.slice_mut(idx, Axis::Y, HugKind::Min).fill(0.0);
+    for (axis, kind) in HUG_ORDER {
+        hugs.slice_mut(idx, axis, kind).fill(0.0);
+    }
 }
 
 /// Per-axis scratch for one nesting depth. `tracks` shares the user's
-/// `Rc<[Track]>` (refcount-only clone — no copy). `flexible` is a transient
-/// list used only inside `resolve_axis`; it lives on the per-axis struct so
-/// its capacity is retained across frames.
+/// `Rc<[Track]>` (refcount-only clone — no copy). `flexible` and
+/// `hug_bounds` are transient lists used only inside `resolve_axis`;
+/// they live on the per-axis struct so their capacity is retained
+/// across frames.
 ///
 /// Per-track content-driven `[min, max]` Hug ranges live in
 /// `GridHugStore` (durable across the whole layout pass); they're passed
@@ -101,6 +101,7 @@ pub(crate) struct AxisScratch {
     pub(crate) resolved: FixedBitSet,
     pub(crate) offsets: Vec<f32>,
     flexible: Vec<usize>,
+    hug_bounds: Vec<HugBound>,
 }
 
 impl Default for AxisScratch {
@@ -111,8 +112,16 @@ impl Default for AxisScratch {
             resolved: FixedBitSet::new(),
             offsets: Vec::new(),
             flexible: Vec::new(),
+            hug_bounds: Vec::new(),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct HugBound {
+    idx: usize,
+    lo: f32,
+    hi: f32,
 }
 
 impl AxisScratch {
@@ -253,6 +262,14 @@ impl GridHugStore {
         }
     }
 
+    /// Both pools' slices for one `(idx, axis)` in one call. Single
+    /// slot lookup; the borrow checker splits the `&mut self` because
+    /// `min_pool` and `max_pool` are separate fields.
+    pub(crate) fn slice_mut_pair(&mut self, idx: u16, axis: Axis) -> (&mut [f32], &mut [f32]) {
+        let r = self.axis_slice(idx, axis);
+        (&mut self.min_pool[r.clone()], &mut self.max_pool[r])
+    }
+
     /// Pack per-grid hug arrays for every `LayoutMode::Grid` descendant
     /// in `subtree` (pre-order node-index range) into `out`. Used by
     /// the cross-frame measure cache: when a subtree is snapshotted,
@@ -367,17 +384,8 @@ fn measure_inner(
         let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, text);
         let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, text);
         let i = cell.col as usize;
-        let cols_min = layout
-            .scratch
-            .grid
-            .hugs
-            .slice_mut(idx, Axis::X, HugKind::Min);
+        let (cols_min, cols_max) = layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
         cols_min[i] = cols_min[i].max(min);
-        let cols_max = layout
-            .scratch
-            .grid
-            .hugs
-            .slice_mut(idx, Axis::X, HugKind::Max);
         cols_max[i] = cols_max[i].max(max);
     }
 
@@ -725,61 +733,45 @@ fn resolve_axis(
     }
 
     // Phase 2: Hug, constraint-solved against remaining-after-Fixed.
-    let remaining_after_fixed = (total - consumed).max(0.0);
+    // Single pass: snapshot each Hug track's clamped `(lo, hi)` once,
+    // pick the distribution rule from the totals, then write sizes.
+    a.hug_bounds.clear();
     let mut hug_min_sum = 0.0_f32;
     let mut hug_max_sum = 0.0_f32;
-    let mut hug_count = 0_usize;
     for (i, t) in a.tracks.iter().enumerate() {
         if matches!(t.size, Sizing::Hug) {
             let lo = hug_min[i].max(t.min);
             let hi = hug_max[i].max(lo).min(t.max);
             hug_min_sum += lo;
             hug_max_sum += hi;
-            hug_count += 1;
+            a.hug_bounds.push(HugBound { idx: i, lo, hi });
         }
     }
 
-    if hug_count > 0 {
-        if hug_max_sum <= remaining_after_fixed || total.is_infinite() {
-            // Plenty of room (or unconstrained) → each Hug at max.
-            for (i, t) in a.tracks.iter().enumerate() {
-                if matches!(t.size, Sizing::Hug) {
-                    let lo = hug_min[i].max(t.min);
-                    let hi = hug_max[i].max(lo).min(t.max);
-                    a.sizes[i] = hi;
-                    a.resolved.insert(i);
-                    consumed += hi;
-                }
-            }
-        } else if hug_min_sum >= remaining_after_fixed {
-            // Cramped → each Hug at min, grid overflows at this point.
-            for (i, t) in a.tracks.iter().enumerate() {
-                if matches!(t.size, Sizing::Hug) {
-                    let lo = hug_min[i].max(t.min);
-                    a.sizes[i] = lo;
-                    a.resolved.insert(i);
-                    consumed += lo;
-                }
-            }
-        } else {
-            // Slack distribution: start at min, grow toward max
-            // proportional to per-track slack `(hi - lo)`.
-            let slack = remaining_after_fixed - hug_min_sum;
-            let total_range = hug_max_sum - hug_min_sum;
-            for (i, t) in a.tracks.iter().enumerate() {
-                if matches!(t.size, Sizing::Hug) {
-                    let lo = hug_min[i].max(t.min);
-                    let hi = hug_max[i].max(lo).min(t.max);
-                    let share = if total_range > 0.0 {
-                        slack * (hi - lo) / total_range
-                    } else {
-                        0.0
-                    };
-                    a.sizes[i] = (lo + share).min(hi);
-                    a.resolved.insert(i);
-                    consumed += a.sizes[i];
-                }
-            }
+    if !a.hug_bounds.is_empty() {
+        let remaining_after_fixed = (total - consumed).max(0.0);
+        // Pick distribution mode once. `unconstrained` covers infinite
+        // total (Hug parent) and the "every Hug fits at max" case;
+        // `cramped` covers "even at min the Hugs overflow"; otherwise
+        // distribute slack proportional to per-track `(hi - lo)`.
+        let unconstrained = total.is_infinite() || hug_max_sum <= remaining_after_fixed;
+        let cramped = !unconstrained && hug_min_sum >= remaining_after_fixed;
+        let slack = remaining_after_fixed - hug_min_sum;
+        let total_range = hug_max_sum - hug_min_sum;
+
+        for &HugBound { idx, lo, hi } in &a.hug_bounds {
+            let v = if unconstrained {
+                hi
+            } else if cramped {
+                lo
+            } else if total_range > 0.0 {
+                (lo + slack * (hi - lo) / total_range).min(hi)
+            } else {
+                lo
+            };
+            a.sizes[idx] = v;
+            a.resolved.insert(idx);
+            consumed += v;
         }
     }
 
@@ -812,7 +804,7 @@ fn resolve_axis(
                 a.sizes[i] = clamped;
                 remaining = (remaining - clamped).max(0.0);
                 flexible_weight -= w;
-                a.flexible.remove(k);
+                a.flexible.swap_remove(k);
                 continue 'outer;
             }
             k += 1;

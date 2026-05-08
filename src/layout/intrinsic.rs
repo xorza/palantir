@@ -82,7 +82,6 @@ pub(crate) fn compute(
     let bounds = tree.bounds(node);
 
     let sizing = axis.main_sizing(style.size);
-    let pad = axis.spacing(style.padding);
     let margin = axis.spacing(style.margin);
     let min_clamp = axis.main(bounds.min_size);
     let max_clamp = axis.main(bounds.max_size);
@@ -91,11 +90,13 @@ pub(crate) fn compute(
     // (next to this file): Fill in intrinsic context returns its content's
     // intrinsic, ignoring weight — `resolve_axis_size` with `available =
     // INFINITY` enforces exactly that (Fill falls back to `hug_with_margin`).
-    // Skip the content query for Fixed: `resolve_axis_size` short-circuits
-    // Fixed and never reads `hug_with_margin`.
+    // Skip the content query and padding read for Fixed:
+    // `resolve_axis_size` short-circuits Fixed and never reads
+    // `hug_with_margin`.
     let hug_with_margin = match sizing {
         Sizing::Fixed(_) => 0.0,
         Sizing::Hug | Sizing::Fill(_) => {
+            let pad = axis.spacing(style.padding);
             content_intrinsic(engine, tree, node, axis, req, text, style.mode) + pad + margin
         }
     };
