@@ -41,6 +41,11 @@ name = "caches"
 harness = false
 required-features = ["internals", "bench-deep"]
 
+[[bench]]
+name = "cascade"
+harness = false
+required-features = ["internals", "bench-deep"]
+
 [features]
 # Exposes `internals::*` (cache reset + introspection helpers used by
 # `benches/`). Tests get the same module without the feature because
