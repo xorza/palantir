@@ -14,7 +14,13 @@ use strum::EnumCount as _;
 
 /// One arena per [`Layer`]. Recording dispatches `open_node`,
 /// `add_shape`, `close_node` to `trees[recording.current_layer as
-/// usize]`. Pipeline passes iterate trees in `Layer::PAINT_ORDER`.
+/// usize]`. Pipeline passes iterate trees via
+/// [`Forest::iter_paint_order`].
+///
+/// **Access convention**: prefer [`Forest::tree`] / [`Forest::tree_mut`]
+/// for known-layer access; iterate `trees` directly only for
+/// cross-layer aggregation that doesn't care about layer order
+/// (e.g. summing record counts).
 pub(crate) struct Forest {
     pub(crate) trees: [Tree; Layer::COUNT],
     pub(crate) recording: RecordingState,
@@ -104,9 +110,13 @@ impl Forest {
         &mut self.trees[layer as usize]
     }
 
-    /// Mutably borrow the currently-active recording tree.
-    #[inline]
-    pub(crate) fn active_tree_mut(&mut self) -> &mut Tree {
-        self.tree_mut(self.recording.current_layer)
+    /// Iterate trees in paint order (`Layer::PAINT_ORDER`), pairing
+    /// each with its layer tag. Pipeline passes consume this to
+    /// process layers bottom-up.
+    pub(crate) fn iter_paint_order(&self) -> impl Iterator<Item = (Layer, &Tree)> {
+        Layer::PAINT_ORDER
+            .iter()
+            .copied()
+            .map(move |layer| (layer, &self.trees[layer as usize]))
     }
 }

@@ -122,8 +122,7 @@ impl Cascades {
         r.by_id.clear();
         r.by_id.reserve(total);
 
-        for layer in Layer::PAINT_ORDER {
-            let tree = forest.tree(layer);
+        for (layer, tree) in forest.iter_paint_order() {
             let layout = &results[layer as usize];
             let rows = &mut r.rows[layer as usize];
             rows.clear();

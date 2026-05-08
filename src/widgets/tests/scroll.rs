@@ -334,10 +334,9 @@ mod bars {
     use crate::layout::types::sizing::Sizing;
     use crate::shape::Shape;
     use crate::support::testing::{shapes_of, ui_at};
-    use crate::tree::Layer;
-    use crate::tree::NodeId;
     use crate::tree::element::Configure;
     use crate::tree::widget_id::WidgetId;
+    use crate::tree::{Layer, NodeId};
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::{Scroll, bar_geometry};

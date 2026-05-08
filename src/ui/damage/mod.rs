@@ -20,8 +20,8 @@ use crate::primitives::rect::Rect;
 #[cfg(test)]
 use crate::tree::NodeId;
 use crate::tree::forest::Forest;
+use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{Layer, node_hash::NodeHash};
 use crate::ui::cascade::CascadeResult;
 use rustc_hash::FxHashMap;
 
@@ -123,8 +123,7 @@ impl Damage {
         self.dirty.clear();
         let mut acc: Option<Rect> = None;
 
-        for layer in Layer::PAINT_ORDER {
-            let tree = forest.tree(layer);
+        for (layer, tree) in forest.iter_paint_order() {
             let rows = cascades.rows_for(layer);
             let n = tree.records.len();
             let widget_ids = tree.records.widget_id();

@@ -85,8 +85,7 @@ impl Encoder {
         viewport: Rect,
     ) -> &RenderCmdBuffer {
         self.cmds.clear();
-        for layer in Layer::PAINT_ORDER {
-            let tree = forest.tree(layer);
+        for (layer, tree) in forest.iter_paint_order() {
             let layout = &results[layer as usize];
             let rows = cascades.rows_for(layer);
             for root in &tree.roots {
