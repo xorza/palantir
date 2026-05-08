@@ -260,13 +260,6 @@ impl LayoutEngine {
         let cache_wid = tree.records.widget_id()[node.index()];
         let cache_hash = tree.rollups.subtree[node.index()];
         let cache_avail = quantize_available(available);
-        // Record this node's quantized `available` before any
-        // short-circuit. Downstream consumers (encode cache, etc.)
-        // read the column at every node they visit; on a measure-cache
-        // hit the descendant range is restored from the snapshot
-        // below, so this single write covers the miss path and the
-        // snapshot covers the hit path.
-        self.result.available_q[node.index()] = cache_avail;
         if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
             let curr_start = node.index();
             let curr_end = curr_start + hit.arenas.desired.len();
@@ -287,7 +280,6 @@ impl LayoutEngine {
                     len: snap_span.len,
                 };
             }
-            self.result.available_q[curr_start..curr_end].copy_from_slice(hit.arenas.available_q);
             self.result.scroll_content[curr_start..curr_end]
                 .copy_from_slice(hit.arenas.scroll_content);
             // Restore per-grid hug arrays. `grid::arrange` reads
@@ -371,10 +363,6 @@ impl LayoutEngine {
         {
             let start = node.index();
             let end = (tree.records.subtree_end()[start]) as usize;
-            // The snapshot's root `available_q` must match the value
-            // written at measure entry; cache hits restore it back into
-            // `result.available_q` and downstream caches key on it.
-            assert_eq!(self.result.available_q[start], cache_avail);
             self.scratch.tmp_hugs.clear();
             if tree.rollups.has_grid.contains(start) {
                 self.scratch.grid.hugs.snapshot_subtree(
@@ -393,11 +381,11 @@ impl LayoutEngine {
             self.cache.write_subtree(
                 cache_wid,
                 cache_hash,
+                cache_avail,
                 SubtreeArenas {
                     desired: &self.scratch.desired[start..end],
                     text_spans: &self.result.text_spans[start..end],
                     text_spans_base: text_shapes_lo,
-                    available_q: &self.result.available_q[start..end],
                     scroll_content: &self.result.scroll_content[start..end],
                     hugs: &self.scratch.tmp_hugs,
                     text_shapes: &self.result.text_shapes

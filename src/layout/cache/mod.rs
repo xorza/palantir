@@ -3,18 +3,18 @@
 //! `subtree_hash` and incoming `available` size both match last
 //! frame. See `src/layout/measure-cache.md`.
 //!
-//! **Storage**: SoA arenas — four node-indexed and parallel, bundled
-//! into [`NodeArenas`] (`desired`, `text_spans`, `available`,
-//! `scroll_content`) so length-equality is structural; plus two
-//! variable-length per-subtree [`LiveArena`]s (`hugs` for grid
-//! descendants, `text_shapes_arena` for `Shape::Text` runs) — plus a
-//! tiny per-`WidgetId` `ArenaSnapshot` pointing at a contiguous range.
-//! Steady-state writes are in-place memcpys when the subtree size
-//! matches; size mismatches fall back to append + mark-garbage with
-//! periodic compaction. Storage is a small set of `Vec`s plus one
-//! `FxHashMap` (the snapshot index), regardless of widget count.
+//! **Storage**: SoA arenas — three node-indexed and parallel, bundled
+//! into [`NodeArenas`] (`desired`, `text_spans`, `scroll_content`) so
+//! length-equality is structural; plus two variable-length per-subtree
+//! [`LiveArena`]s (`hugs` for grid descendants, `text_shapes_arena` for
+//! `Shape::Text` runs) — plus a tiny per-`WidgetId` `ArenaSnapshot`
+//! pointing at a contiguous range. The dimensional cache key
+//! (quantized `available`) lives directly on `ArenaSnapshot` as a
+//! per-snapshot scalar, not in a parallel arena. Steady-state writes
+//! are in-place memcpys when the subtree size matches; size mismatches
+//! fall back to append + mark-garbage with periodic compaction.
 //!
-//! `NodeArenas` owns one shared `live` counter for its four columns;
+//! `NodeArenas` owns one shared `live` counter for its three columns;
 //! each variable-length `LiveArena` tracks its own. Compaction
 //! constants live in `src/common/cache_arena.rs`.
 //!
@@ -26,26 +26,6 @@
 //! Eviction (via [`MeasureCache::sweep_removed`]) drops the snapshot
 //! and releases its arena ranges; the slots stay as garbage until the
 //! next compact.
-//!
-//! ## `available_q` lives in two places
-//!
-//! 1. [`NodeArenas::available`] — per-node arena, parallel to
-//!    `desired`. Stores every cached subtree's per-node quantized
-//!    `available`. The root entry is read at lookup time as the
-//!    dimensional half of the cache-validity check; the descendant
-//!    entries are restored on a cache hit so consumers downstream see
-//!    a populated column even for subtrees the measure pass
-//!    short-circuited.
-//! 2. [`crate::layout::result::LayoutResult::available_q`] — per-node,
-//!    per-frame. Written by `LayoutEngine::measure` on every node it
-//!    visits, restored from the arena copy on a cache hit so descendants
-//!    skipped by the short-circuit still carry their value. Read by
-//!    downstream consumers (encode cache, etc.) at every visited node.
-//!
-//! The data flow on a hit: parent's `measure` looks up the snapshot,
-//! restores `desired` + `text_shapes` + `available_q` + `hugs` slices
-//! into per-frame storage, returns the root size — descendants are
-//! never visited but their per-frame state matches as if they had been.
 
 use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO, LiveArena};
 use crate::layout::result::ShapedText;
@@ -59,15 +39,18 @@ use std::ops::Range;
 
 /// Snapshot index entry. `nodes` indexes the [`NodeArenas`] columns;
 /// `hugs` indexes `hugs`; `text_shapes` indexes `text_shapes_arena`.
-/// The snapshot key is `(subtree_hash, available[nodes.start])` — the
-/// dimensional half is read out of the per-node `available` arena,
-/// which would be carrying the same value on a redundant field.
+/// The snapshot key is `(subtree_hash, available_q)` — both stored
+/// inline so the validity check on `try_lookup` doesn't have to
+/// dereference a separate per-node arena.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ArenaSnapshot {
     /// Rolled subtree hash from last frame. The rollup includes child
     /// count and per-child subtree hashes, so any structural or
     /// authoring change anywhere in the subtree busts the key.
     pub(crate) subtree_hash: NodeHash,
+    /// Quantized `available` size at snapshot time — the dimensional
+    /// half of the cache-validity check.
+    pub(crate) available_q: AvailableKey,
     /// Range over [`NodeArenas`]. `nodes.desired[range()]` is the
     /// subtree's `desired` in pre-order; index 0 is the snapshot root's
     /// own size.
@@ -93,23 +76,12 @@ pub(crate) struct ArenaSnapshot {
 /// is used as a cache-validity gate.
 pub(crate) type AvailableKey = IVec2;
 
-/// Sentinel "never written" value. Distinct from anything
-/// [`quantize_available`] can produce: that function emits `i32::MAX`
-/// for infinity or `>= 0` for finite (the inputs are always
-/// non-negative `available` sizes), so `i32::MIN` cannot collide with
-/// a real key. Used as the per-frame init fill for
-/// `LayoutScratch.available_q` so a cache-validity equality check can
-/// never spuriously match against a slot whose write was somehow
-/// skipped — the `{0, 0}` zero default would compare equal to a
-/// legitimately-stored 0px × 0px snapshot.
-pub(crate) const AVAIL_UNSET: AvailableKey = IVec2::splat(i32::MIN);
-
-/// Per-subtree slice bundle: borrows into the four parallel
-/// node-indexed arenas (`desired`, `text_spans`, `available_q`,
-/// `scroll_content`) plus the per-grid `hugs` and the flat
-/// `text_shapes` payloads. The four node-indexed slices share length
-/// and pre-order alignment; `hugs` is sized per-grid descendant in
-/// `HUG_ORDER`; `text_shapes` is sized per text-shape in pre-order.
+/// Per-subtree slice bundle: borrows into the three parallel
+/// node-indexed arenas (`desired`, `text_spans`, `scroll_content`)
+/// plus the per-grid `hugs` and the flat `text_shapes` payloads. The
+/// three node-indexed slices share length and pre-order alignment;
+/// `hugs` is sized per-grid descendant in `HUG_ORDER`; `text_shapes`
+/// is sized per text-shape in pre-order.
 ///
 /// `text_spans` carries spans whose `start` is offset by
 /// `text_spans_base`. [`MeasureCache::write_subtree`] subtracts
@@ -132,7 +104,6 @@ pub(crate) struct SubtreeArenas<'a> {
     /// write (caller's per-frame `text_spans` slice indexes a global
     /// flat buffer, this offset rebases it).
     pub(crate) text_spans_base: u32,
-    pub(crate) available_q: &'a [AvailableKey],
     /// Per-node measured content extent for `LayoutMode::Scroll`
     /// descendants, `Size::ZERO` elsewhere.
     pub(crate) scroll_content: &'a [Size],
@@ -167,19 +138,17 @@ fn quantize_axis(v: f32) -> i32 {
 
 #[inline]
 pub(crate) fn quantize_available(s: Size) -> AvailableKey {
-    // Non-negative inputs are load-bearing for the `AVAIL_UNSET = i32::MIN`
-    // sentinel: a negative `available` could quantize to `i32::MIN` and
-    // collide with the sentinel. Layout invariants keep `available` in
-    // `[0, ∞)`; pin the contract here so a future regression trips early.
+    // Layout invariants keep `available` in `[0, ∞)`; pin the contract
+    // here so a future regression trips early.
     assert!(s.w >= 0.0 && s.h >= 0.0, "negative available: {s:?}");
     IVec2::new(quantize_axis(s.w), quantize_axis(s.h))
 }
 
-/// The four node-indexed parallel columns. Length-equality is
-/// structural: every mutation goes through methods that touch all four
-/// at once, so the columns can't drift. `live` counts elements still
-/// referenced by a snapshot; the underlying `Vec`s carry that plus
-/// garbage from released snapshots until the next compact.
+/// The three node-indexed parallel columns. Length-equality is
+/// structural: every mutation goes through methods that touch all
+/// three at once, so the columns can't drift. `live` counts elements
+/// still referenced by a snapshot; the underlying `Vec`s carry that
+/// plus garbage from released snapshots until the next compact.
 #[derive(Default)]
 pub(crate) struct NodeArenas {
     pub(crate) desired: Vec<Size>,
@@ -187,11 +156,6 @@ pub(crate) struct NodeArenas {
     /// range. Stored **subtree-local** (start relative to the snapshot's
     /// `text_shapes` range start) so spans survive flat-range compaction.
     pub(crate) text_spans: Vec<Span>,
-    /// Per-descendant quantized `available`, snapshotted so a hit can
-    /// restore the full subtree's `available_q` column on
-    /// `LayoutScratch`. The encode cache reads it at every node, so
-    /// descendants must remain correct even when measure short-circuits.
-    pub(crate) available: Vec<AvailableKey>,
     /// Per-node measured content extent for `LayoutMode::Scroll`
     /// (zero elsewhere). Restored on a cache hit so the
     /// `LayoutResult.scroll_content` slice is populated without
@@ -213,7 +177,6 @@ impl NodeArenas {
                 len: s.len,
             };
         }
-        self.available[range.clone()].copy_from_slice(src.available_q);
         self.scroll_content[range].copy_from_slice(src.scroll_content);
     }
 
@@ -225,7 +188,6 @@ impl NodeArenas {
             start: s.start.saturating_sub(base),
             len: s.len,
         }));
-        self.available.extend_from_slice(src.available_q);
         self.scroll_content.extend_from_slice(src.scroll_content);
         start
     }
@@ -235,8 +197,6 @@ impl NodeArenas {
         self.desired.extend_from_slice(&src.desired[range.clone()]);
         self.text_spans
             .extend_from_slice(&src.text_spans[range.clone()]);
-        self.available
-            .extend_from_slice(&src.available[range.clone()]);
         self.scroll_content
             .extend_from_slice(&src.scroll_content[range]);
         start
@@ -260,7 +220,6 @@ impl NodeArenas {
         Self {
             desired: Vec::with_capacity(cap),
             text_spans: Vec::with_capacity(cap),
-            available: Vec::with_capacity(cap),
             scroll_content: Vec::with_capacity(cap),
             live: 0,
         }
@@ -270,7 +229,6 @@ impl NodeArenas {
     pub(crate) fn clear(&mut self) {
         self.desired.clear();
         self.text_spans.clear();
-        self.available.clear();
         self.scroll_content.clear();
         self.live = 0;
     }
@@ -303,9 +261,10 @@ pub(crate) struct MeasureCache {
 
 impl MeasureCache {
     /// Validate the cache for `wid` against the current frame's
-    /// `(subtree_hash, available_q)`. On hit, return a
-    /// [`CachedSubtree`] with the root's `desired` and the two
-    /// arena slices ready to copy. On miss, `None`.
+    /// `(subtree_hash, available_q)`. Both halves of the key live on
+    /// the snapshot — no parallel-arena indirection. On hit, return a
+    /// [`CachedSubtree`] with the root's `desired` and the arena
+    /// slices ready to copy. On miss, `None`.
     #[inline]
     pub(crate) fn try_lookup(
         &self,
@@ -314,17 +273,16 @@ impl MeasureCache {
         curr_avail: AvailableKey,
     ) -> Option<CachedSubtree<'_>> {
         let snap = self.snapshots.get(&wid)?;
-        let nodes = snap.nodes.range();
-        if snap.subtree_hash != curr_hash || self.nodes.available[nodes.start] != curr_avail {
+        if snap.subtree_hash != curr_hash || snap.available_q != curr_avail {
             return None;
         }
+        let nodes = snap.nodes.range();
         Some(CachedSubtree {
             root: self.nodes.desired[nodes.start],
             arenas: SubtreeArenas {
                 desired: &self.nodes.desired[nodes.clone()],
                 text_spans: &self.nodes.text_spans[nodes.clone()],
                 text_spans_base: 0,
-                available_q: &self.nodes.available[nodes.clone()],
                 scroll_content: &self.nodes.scroll_content[nodes],
                 hugs: &self.hugs.items[snap.hugs.range()],
                 text_shapes: &self.text_shapes_arena.items[snap.text_shapes.range()],
@@ -344,15 +302,12 @@ impl MeasureCache {
         &mut self,
         wid: WidgetId,
         subtree_hash: NodeHash,
+        available_q: AvailableKey,
         arenas: SubtreeArenas<'_>,
     ) {
         assert_eq!(arenas.desired.len(), arenas.text_spans.len());
-        assert_eq!(arenas.desired.len(), arenas.available_q.len());
         assert_eq!(arenas.desired.len(), arenas.scroll_content.len());
-        assert!(
-            !arenas.available_q.is_empty(),
-            "snapshot must include the root's own per-node available_q",
-        );
+        assert!(!arenas.desired.is_empty(), "snapshot must include the root");
         let new_len = arenas.desired.len() as u32;
         let new_hugs_len = arenas.hugs.len() as u32;
         let new_text_len = arenas.text_shapes.len() as u32;
@@ -369,6 +324,7 @@ impl MeasureCache {
             let hugs_range = prev.hugs.range();
             let text_range = prev.text_shapes.range();
             prev.subtree_hash = subtree_hash;
+            prev.available_q = available_q;
             self.nodes.write_in_place(nodes, &arenas);
             self.hugs.items[hugs_range].copy_from_slice(arenas.hugs);
             self.text_shapes_arena.items[text_range].copy_from_slice(arenas.text_shapes);
@@ -398,6 +354,7 @@ impl MeasureCache {
             wid,
             ArenaSnapshot {
                 subtree_hash,
+                available_q,
                 nodes,
                 hugs: hugs_span,
                 text_shapes: text_span,

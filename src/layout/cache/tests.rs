@@ -26,15 +26,14 @@ fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
     let cache = &ui.layout.cache;
     let snap = *cache.snapshots.get(&wid)?;
     let nodes = snap.nodes.range();
-    let avail = cache.nodes.available[nodes.start];
     Some(SnapView {
         snap,
         desired: &cache.nodes.desired[nodes],
-        avail,
+        avail: snap.available_q,
     })
 }
 
-/// `NodeArenas` bundles four parallel columns and enforces
+/// `NodeArenas` bundles three parallel columns and enforces
 /// length-equality by construction. Drift would silently corrupt
 /// snapshot lookups (one column reads the right index, another reads
 /// past its end). Pin the invariant after every operation that touches
@@ -44,7 +43,6 @@ fn assert_node_columns_aligned(ui: &Ui) {
     let n = &ui.layout.cache.nodes;
     let len = n.desired.len();
     assert_eq!(n.text_spans.len(), len, "text_spans length drift");
-    assert_eq!(n.available.len(), len, "available length drift");
     assert_eq!(n.scroll_content.len(), len, "scroll_content length drift");
     assert!(n.live <= len, "live {} > total {}", n.live, len);
 }
@@ -233,42 +231,6 @@ fn subtree_snapshot_covers_every_descendant() {
 }
 
 #[test]
-fn subtree_skip_restores_descendant_available_q() {
-    // Contract for downstream consumers (e.g. the encode cache) that
-    // read `LayoutResult.available_q` at every visited node:
-    // descendants of a measure-cache hit must carry their correct
-    // `available_q` even though `measure()` short-circuits at the
-    // subtree root and never visits them. `resize_for` zeros the
-    // column at frame start, so a missing restore would leave
-    // descendants at `AvailableKey::ZERO`.
-    let mut ui = Ui::new();
-    let build = |ui: &mut Ui| {
-        Panel::vstack().with_id("group").show(ui, |ui| {
-            Frame::new().with_id("c1").size(10.0).show(ui);
-            Frame::new().with_id("c2").size(20.0).show(ui);
-        });
-    };
-    let read_avail = |ui: &Ui| -> Vec<crate::layout::cache::AvailableKey> {
-        ui.layout.results[Layer::Main as usize].available_q.clone()
-    };
-    run_frame(&mut ui, build);
-    let cold = read_avail(&ui);
-    // Cold frame must have populated every descendant — no slot left
-    // at `AVAIL_UNSET` (the frame-init sentinel).
-    assert!(
-        cold.iter().all(|v| *v != crate::layout::cache::AVAIL_UNSET),
-        "cold frame must populate `available_q` for every node",
-    );
-
-    run_frame(&mut ui, build);
-    let warm = read_avail(&ui);
-    assert_eq!(
-        cold, warm,
-        "subtree-skip must restore descendants' `available_q` from the snapshot",
-    );
-}
-
-#[test]
 fn subtree_skip_preserves_descendant_rects() {
     // Identical frames must produce identical arranged rects for
     // every node, even when the parent (and so the whole subtree) is
@@ -296,13 +258,11 @@ fn subtree_skip_preserves_descendant_rects() {
 
 #[test]
 fn quantize_available_axis_invariants() {
-    // The `i32::MAX` sentinel for `INFINITY` is load-bearing for cache-key
-    // equality across all three caches (Measure / Encode / Compose). Pin:
-    // `INFINITY` quantizes to `i32::MAX` independently per axis, both axes
-    // together also do, and the `AVAIL_UNSET = i32::MIN` sentinel cannot
-    // collide with any legal output (inputs are non-negative; `INFINITY`
-    // sits at the opposite extreme).
-    use super::{AVAIL_UNSET, quantize_available};
+    // The `i32::MAX` sentinel for `INFINITY` is load-bearing for the
+    // measure cache's `(subtree_hash, available_q)` key. Pin:
+    // `INFINITY` quantizes to `i32::MAX` independently per axis, both
+    // axes together also do.
+    use super::quantize_available;
     let inf = f32::INFINITY;
     assert_eq!(
         quantize_available(Size::new(inf, 100.4)),
@@ -315,11 +275,6 @@ fn quantize_available_axis_invariants() {
     assert_eq!(
         quantize_available(Size::new(inf, inf)),
         glam::IVec2::splat(i32::MAX),
-    );
-    assert_ne!(
-        quantize_available(Size::new(inf, inf)),
-        AVAIL_UNSET,
-        "INFINITY-quantized key must not collide with AVAIL_UNSET",
     );
     assert_eq!(quantize_available(Size::ZERO), glam::IVec2::ZERO);
 }
