@@ -32,17 +32,17 @@ const ANCHOR: Rect = Rect {
 fn record_with_popup(ui: &mut Ui, config: ClickOutside) -> (PopupResponse, bool) {
     let mut popup_resp: Option<PopupResponse> = None;
     Panel::vstack()
-        .with_id("main-bg")
+        .id_salt("main-bg")
         .size((Sizing::FILL, Sizing::FILL))
         .sense(crate::Sense::CLICK)
         .show(ui, |ui| {
             let r = Popup::anchored_to(ANCHOR)
-                .with_id("test-popup")
+                .id_salt("test-popup")
                 .click_outside(config)
                 .padding(4.0)
                 .show(ui, |ui| {
                     Panel::vstack()
-                        .with_id("popup-content")
+                        .id_salt("popup-content")
                         .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
                         .show(ui, |_| {});
                 });
@@ -122,16 +122,16 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     {
         let open = &mut open;
         Panel::vstack()
-            .with_id("main-bg")
+            .id_salt("main-bg")
             .size((Sizing::FILL, Sizing::FILL))
             .show(&mut ui, |ui| {
                 if *open {
                     let r = Popup::anchored_to(ANCHOR)
-                        .with_id("test-popup")
+                        .id_salt("test-popup")
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui| {
                             Panel::vstack()
-                                .with_id("popup-content")
+                                .id_salt("popup-content")
                                 .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
                                 .show(ui, |_| {});
                         });
@@ -151,16 +151,16 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     let display = Display::from_physical(SURFACE, 1.0);
     let _frame_out = ui.run_frame(display, |ui| {
         Panel::vstack()
-            .with_id("main-bg")
+            .id_salt("main-bg")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 if open {
                     let r = Popup::anchored_to(ANCHOR)
-                        .with_id("test-popup")
+                        .id_salt("test-popup")
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui| {
                             Panel::vstack()
-                                .with_id("popup-content")
+                                .id_salt("popup-content")
                                 .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
                                 .show(ui, |_| {});
                         });

@@ -214,7 +214,7 @@ mod tests {
             .size((Sizing::FILL, Sizing::Hug))
             .show(&mut ui, |ui| {
                 Text::new("lorem ipsum dolor sit amet")
-                    .with_id("msg")
+                    .id_salt("msg")
                     .wrapping()
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui);
@@ -248,7 +248,7 @@ mod tests {
             .size((Sizing::FILL, Sizing::Hug))
             .show(&mut ui, |ui| {
                 Text::new("hello world")
-                    .with_id("msg")
+                    .id_salt("msg")
                     .wrapping()
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui);
@@ -293,8 +293,8 @@ mod tests {
         let root = Panel::hstack()
             .size((Sizing::Hug, Sizing::Hug))
             .show(&mut ui, |ui| {
-                Text::new("abc").with_id("a").show(ui);
-                Text::new("defgh").with_id("b").show(ui);
+                Text::new("abc").id_salt("a").show(ui);
+                Text::new("defgh").id_salt("b").show(ui);
             })
             .node;
         // `end_frame` populates `tree.rollups` (leaf intrinsic reads it).

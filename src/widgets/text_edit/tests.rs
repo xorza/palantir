@@ -155,7 +155,7 @@ fn typing_inserts_text_when_focused() {
     // dispatch has rects to hit-test.
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -179,7 +179,7 @@ fn typing_inserts_text_when_focused() {
     begin(&mut ui, UVec2::new(200, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -201,7 +201,7 @@ fn keystrokes_ignored_when_not_focused() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -219,7 +219,7 @@ fn escape_blurs_focus() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -236,7 +236,7 @@ fn escape_blurs_focus() {
     begin(&mut ui, UVec2::new(200, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -255,7 +255,7 @@ fn caret_clamps_after_external_buffer_shrink() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -269,7 +269,7 @@ fn caret_clamps_after_external_buffer_shrink() {
     begin(&mut ui, UVec2::new(200, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -287,7 +287,7 @@ fn caret_clamps_after_external_buffer_shrink() {
     begin(&mut ui, UVec2::new(200, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -311,7 +311,7 @@ fn text_event_inserts_at_caret_when_focused() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -323,7 +323,7 @@ fn text_event_inserts_at_caret_when_focused() {
     begin(&mut ui, UVec2::new(200, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -341,7 +341,7 @@ fn pointer_state_respects_pointer_left() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -357,7 +357,7 @@ fn pointer_state_respects_pointer_left() {
     begin(&mut ui, UVec2::new(200, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -379,11 +379,11 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     // Frame 1: lay out both widgets so cascades have rects.
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
         Button::new()
-            .with_id("plain")
+            .id_salt("plain")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -396,11 +396,11 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     begin(&mut ui, UVec2::new(400, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
         Button::new()
-            .with_id("plain")
+            .id_salt("plain")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -421,11 +421,11 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     begin(&mut ui, UVec2::new(400, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
         Button::new()
-            .with_id("plain")
+            .id_salt("plain")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -444,11 +444,11 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
         Button::new()
-            .with_id("plain")
+            .id_salt("plain")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -458,11 +458,11 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
     begin(&mut ui, UVec2::new(400, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
         Button::new()
-            .with_id("plain")
+            .id_salt("plain")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -477,11 +477,11 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
     begin(&mut ui, UVec2::new(400, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
         Button::new()
-            .with_id("plain")
+            .id_salt("plain")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -499,7 +499,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -514,7 +514,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     begin(&mut ui, UVec2::new(400, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -531,7 +531,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     begin(&mut ui, UVec2::new(400, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("editor")
+            .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -558,7 +558,7 @@ fn click_lands_caret_at_pressed_position() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("ed")
+            .id_salt("ed")
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -573,7 +573,7 @@ fn click_lands_caret_at_pressed_position() {
     begin(&mut ui, UVec2::new(300, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("ed")
+            .id_salt("ed")
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -588,7 +588,7 @@ fn click_lands_caret_at_pressed_position() {
     begin(&mut ui, UVec2::new(300, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("ed")
+            .id_salt("ed")
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -616,7 +616,7 @@ fn click_uses_overridden_padding() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("ed")
+            .id_salt("ed")
             .padding(Spacing::xy(24.0, 6.0))
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
@@ -629,7 +629,7 @@ fn click_uses_overridden_padding() {
     begin(&mut ui, UVec2::new(300, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("ed")
+            .id_salt("ed")
             .padding(Spacing::xy(24.0, 6.0))
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
@@ -643,7 +643,7 @@ fn click_uses_overridden_padding() {
     begin(&mut ui, UVec2::new(300, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
-            .with_id("ed")
+            .id_salt("ed")
             .padding(Spacing::xy(24.0, 6.0))
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
@@ -667,11 +667,11 @@ fn two_textedits_only_one_focused_at_a_time() {
 
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut a)
-            .with_id("a")
+            .id_salt("a")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
         TextEdit::new(&mut b)
-            .with_id("b")
+            .id_salt("b")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -689,11 +689,11 @@ fn two_textedits_only_one_focused_at_a_time() {
     begin(&mut ui, UVec2::new(400, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut a)
-            .with_id("a")
+            .id_salt("a")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
         TextEdit::new(&mut b)
-            .with_id("b")
+            .id_salt("b")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -712,11 +712,11 @@ fn two_textedits_only_one_focused_at_a_time() {
     begin(&mut ui, UVec2::new(400, 80));
     Panel::hstack().show(&mut ui, |ui| {
         TextEdit::new(&mut a)
-            .with_id("a")
+            .id_salt("a")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
         TextEdit::new(&mut b)
-            .with_id("b")
+            .id_salt("b")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
@@ -761,7 +761,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     Panel::vstack().show(&mut ui, |ui| {
         btn_node = Some(
             Button::new()
-                .with_id("btn")
+                .id_salt("btn")
                 .label("hi")
                 .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                 .show(ui)
@@ -770,7 +770,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
         txt_node = Some(Text::new("hi").show(ui).node);
         ed_node = Some(
             TextEdit::new(&mut buf)
-                .with_id("ed")
+                .id_salt("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui)
                 .node,
@@ -879,7 +879,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     Panel::vstack().show(&mut ui, |ui| {
         btn_node = Some(
             Button::new()
-                .with_id("btn")
+                .id_salt("btn")
                 .label("hi")
                 .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                 .show(ui)
@@ -888,7 +888,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
         txt_node = Some(Text::new("hi").show(ui).node);
         ed_node = Some(
             TextEdit::new(&mut buf)
-                .with_id("ed")
+                .id_salt("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui)
                 .node,
@@ -946,7 +946,7 @@ fn textedit_style_override_replaces_default_theme() {
     Panel::hstack().show(&mut ui, |ui| {
         leaf = Some(
             TextEdit::new(&mut buf)
-                .with_id("ed")
+                .id_salt("ed")
                 .style(style)
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui)
@@ -977,7 +977,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     Panel::hstack().show(&mut ui, |ui| {
         leaf_node = Some(
             TextEdit::new(&mut buf)
-                .with_id("ed")
+                .id_salt("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui)
                 .node,
@@ -1024,7 +1024,7 @@ fn pushed_shape_uses_style_overridden_line_height() {
     Panel::hstack().show(&mut ui, |ui| {
         leaf_node = Some(
             TextEdit::new(&mut buf)
-                .with_id("ed")
+                .id_salt("ed")
                 .style(style)
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui)
@@ -1059,7 +1059,7 @@ fn line_height_override_changes_caret_rect_height() {
         let mut leaf = None;
         Panel::hstack().show(&mut ui, |ui| {
             let mut e = TextEdit::new(&mut buf)
-                .with_id("ed")
+                .id_salt("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
             if let Some(s) = style.clone() {
                 e = e.style(s);
@@ -1072,7 +1072,7 @@ fn line_height_override_changes_caret_rect_height() {
         begin(&mut ui, UVec2::new(300, 80));
         Panel::hstack().show(&mut ui, |ui| {
             let mut e = TextEdit::new(&mut buf)
-                .with_id("ed")
+                .id_salt("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
             if let Some(s) = style.clone() {
                 e = e.style(s);

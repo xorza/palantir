@@ -15,7 +15,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
             .padding(10.0)
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .position((30.0, 40.0))
                     .size((20.0, 20.0))
                     .show(ui);
@@ -44,12 +44,12 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .position((10.0, 5.0))
                     .size((30.0, 15.0))
                     .show(ui);
                 Frame::new()
-                    .with_id("b")
+                    .id_salt("b")
                     .position((50.0, 60.0))
                     .size((20.0, 20.0))
                     .show(ui);
@@ -73,7 +73,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("neg")
+                    .id_salt("neg")
                     .position((-5.0, -5.0))
                     .size((20.0, 20.0))
                     .show(ui);
@@ -122,7 +122,7 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
             canvas
                 .show(ui, |ui| {
                     Frame::new()
-                        .with_id("filler")
+                        .id_salt("filler")
                         .position((10.0, 10.0))
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui);
@@ -149,12 +149,12 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .position((0.0, 0.0))
                     .size((10.0, 10.0))
                     .show(ui);
                 Frame::new()
-                    .with_id("collapsed")
+                    .id_salt("collapsed")
                     .position((100.0, 100.0))
                     .size((50.0, 50.0))
                     .collapsed()
@@ -184,7 +184,7 @@ fn canvas_ignores_child_align() {
             .show(ui, |ui| {
                 child = Some(
                     Frame::new()
-                        .with_id("aligned")
+                        .id_salt("aligned")
                         .position((30.0, 40.0))
                         .size((50.0, 50.0))
                         // Right/Bottom would matter on Stack/ZStack/Grid;

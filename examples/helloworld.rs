@@ -256,7 +256,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                 .disabled(false)
                 .show(ui, |ui| {
                     Panel::zstack()
-                        .with_id("spill_demo")
+                        .id_salt("spill_demo")
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(16.0)
                         .margin(5)
@@ -270,7 +270,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         }))
                         .show(ui, |ui| {
                             Button::new()
-                                .with_id("spiller")
+                                .id_salt("spiller")
                                 .label("spilling")
                                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                                 .margin((-24.0, -16.0, 0.0, 0.0))

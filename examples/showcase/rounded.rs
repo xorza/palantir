@@ -40,7 +40,7 @@ pub fn build(ui: &mut Ui) {
 
 fn labeled_card(ui: &mut Ui, id: &'static str, surface: Surface, _label: &str) {
     Panel::zstack()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
         .background(surface)
         .show(ui, |ui| {
@@ -54,7 +54,7 @@ fn labeled_card(ui: &mut Ui, id: &'static str, surface: Surface, _label: &str) {
 /// rounded → respects the corner radius.
 fn spiller(ui: &mut Ui, id: impl std::hash::Hash) {
     Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::Fixed(360.0), Sizing::Fixed(420.0)))
         .margin((-60.0, -60.0, -60.0, -60.0))
         .background(Background {

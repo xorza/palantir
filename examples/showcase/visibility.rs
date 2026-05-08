@@ -16,7 +16,7 @@ pub fn build(ui: &mut Ui) {
 
 fn row(ui: &mut Ui, id: &'static str, middle: Visibility) {
     Panel::hstack()
-        .with_id(id)
+        .id_salt(id)
         .gap(12.0)
         .size((Sizing::FILL, Sizing::Fixed(60.0)))
         .padding(8.0)
@@ -29,7 +29,7 @@ fn row(ui: &mut Ui, id: &'static str, middle: Visibility) {
 
 fn tile<I: std::hash::Hash>(ui: &mut Ui, id: I, c: Color, vis: Visibility) {
     Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
         .visibility(vis)
         .background(Background {

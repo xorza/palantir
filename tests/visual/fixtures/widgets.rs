@@ -32,7 +32,7 @@ fn frame_filled_with_stroke_matches_golden() {
     let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
         Panel::vstack().padding(20.0).show(ui, |ui| {
             Frame::new()
-                .with_id("card")
+                .id_salt("card")
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Background {
                     fill: Color::rgb(0.20, 0.30, 0.55),
@@ -69,7 +69,7 @@ fn surface_rounded_clips_full_fill_child() {
             })
             .show(ui, |ui| {
                 Panel::zstack()
-                    .with_id("rounded")
+                    .id_salt("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Surface::clip_rounded_with_bg(Background {
                         fill: Color::TRANSPARENT,
@@ -81,7 +81,7 @@ fn surface_rounded_clips_full_fill_child() {
                     }))
                     .show(ui, |ui| {
                         Frame::new()
-                            .with_id("inner")
+                            .id_salt("inner")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
                                 fill: black,
@@ -115,7 +115,7 @@ fn rounded_clip_survives_surface_resize() {
             .padding(10.0)
             .show(ui, |ui| {
                 Panel::zstack()
-                    .with_id("rounded")
+                    .id_salt("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Surface::clip_rounded_with_bg(Background {
                         fill: Color::rgb(0.2, 0.2, 0.3),
@@ -165,7 +165,7 @@ fn interleaved_shapes_paint_in_record_order() {
                     stroke: None,
                 });
                 Frame::new()
-                    .with_id("cyan")
+                    .id_salt("cyan")
                     .background(Background {
                         fill: Color::rgb(0.0, 1.0, 1.0),
                         ..Default::default()
@@ -179,7 +179,7 @@ fn interleaved_shapes_paint_in_record_order() {
                     stroke: None,
                 });
                 Frame::new()
-                    .with_id("yellow")
+                    .id_salt("yellow")
                     .background(Background {
                         fill: Color::rgb(1.0, 1.0, 0.0),
                         ..Default::default()

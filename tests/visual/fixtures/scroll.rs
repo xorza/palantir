@@ -38,13 +38,13 @@ fn scroll_vertical_overflow_matches_golden() {
         light_thumb_theme(ui);
         Panel::vstack().padding(8.0).show(ui, |ui| {
             Scroll::vertical()
-                .with_id("scroll")
+                .id_salt("scroll")
                 .gap(3.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for i in 0..30u32 {
                         Frame::new()
-                            .with_id(("row", i))
+                            .id_salt(("row", i))
                             .background(Background {
                                 fill: ROW,
                                 radius: Corners::all(3.0),
@@ -71,13 +71,13 @@ fn scroll_horizontal_overflow_matches_golden() {
         light_thumb_theme(ui);
         Panel::vstack().padding(8.0).show(ui, |ui| {
             Scroll::horizontal()
-                .with_id("scroll")
+                .id_salt("scroll")
                 .gap(3.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for i in 0..30u32 {
                         Frame::new()
-                            .with_id(("col", i))
+                            .id_salt(("col", i))
                             .background(Background {
                                 fill: ROW,
                                 radius: Corners::all(3.0),
@@ -105,11 +105,11 @@ fn scroll_xy_overflow_matches_golden() {
         light_thumb_theme(ui);
         Panel::vstack().padding(8.0).show(ui, |ui| {
             Scroll::both()
-                .with_id("scroll")
+                .id_salt("scroll")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Frame::new()
-                        .with_id("big")
+                        .id_salt("big")
                         .background(Background {
                             fill: ROW,
                             radius: Corners::all(6.0),
@@ -136,11 +136,11 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
         light_thumb_theme(ui);
         Panel::vstack().padding(8.0).show(ui, |ui| {
             Scroll::vertical()
-                .with_id("scroll")
+                .id_salt("scroll")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Frame::new()
-                        .with_id("short")
+                        .id_salt("short")
                         .background(Background {
                             fill: ROW,
                             radius: Corners::all(3.0),
@@ -168,14 +168,14 @@ fn scroll_with_user_padding_matches_golden() {
         light_thumb_theme(ui);
         Panel::vstack().padding(8.0).show(ui, |ui| {
             Scroll::vertical()
-                .with_id("scroll")
+                .id_salt("scroll")
                 .padding(16.0)
                 .gap(3.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for i in 0..20u32 {
                         Frame::new()
-                            .with_id(("row", i))
+                            .id_salt(("row", i))
                             .background(Background {
                                 fill: ROW,
                                 radius: Corners::all(3.0),
@@ -211,7 +211,7 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
         Panel::hstack().padding(8.0).gap(8.0).show(ui, |ui| {
             for tag in ["a", "b"] {
                 Panel::vstack()
-                    .with_id(("card", tag))
+                    .id_salt(("card", tag))
                     .padding(6.0)
                     .background(Surface::clip_rect_with_bg(Background {
                         fill: CARD,
@@ -221,13 +221,13 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         Scroll::vertical()
-                            .with_id(("scroll", tag))
+                            .id_salt(("scroll", tag))
                             .gap(3.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 for i in 0..25u32 {
                                     Frame::new()
-                                        .with_id((tag, "row", i))
+                                        .id_salt((tag, "row", i))
                                         .background(Background {
                                             fill: ROW,
                                             radius: Corners::all(3.0),

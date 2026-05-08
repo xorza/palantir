@@ -20,7 +20,7 @@ fn input_state_press_release_emits_click() {
     let _root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::new()
-                .with_id("target")
+                .id_salt("target")
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -36,7 +36,7 @@ fn input_state_press_release_emits_click() {
     let mut got_click = false;
     Panel::hstack().show(&mut ui, |ui| {
         let r = Button::new()
-            .with_id("target")
+            .id_salt("target")
             .label("hi")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
@@ -50,7 +50,7 @@ fn input_state_press_release_emits_click() {
     let mut still_clicking = false;
     Panel::hstack().show(&mut ui, |ui| {
         still_clicking = Button::new()
-            .with_id("target")
+            .id_salt("target")
             .label("hi")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui)
@@ -68,7 +68,7 @@ fn stack_with_sense_none_passes_clicks_through() {
         .padding(20.0) // creates "background" area to click
         .show(&mut ui, |ui| {
             Button::new()
-                .with_id("inside")
+                .id_salt("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui);
         })
@@ -82,7 +82,7 @@ fn stack_with_sense_none_passes_clicks_through() {
     let mut child_clicked = false;
     let stack_resp = Panel::hstack().padding(20.0).show(&mut ui, |ui| {
         child_clicked = Button::new()
-            .with_id("inside")
+            .id_salt("inside")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .show(ui)
             .clicked();
@@ -104,12 +104,12 @@ fn stack_with_sense_click_captures_clicks() {
     // `auto_stable` would give different ids (different call sites in the test).
     let mut ui = ui_at(UVec2::new(200, 100));
     let _stack_node = Panel::hstack()
-        .with_id("clickable_card")
+        .id_salt("clickable_card")
         .padding(20.0)
         .sense(Sense::CLICK)
         .show(&mut ui, |ui| {
             Button::new()
-                .with_id("inside")
+                .id_salt("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui);
         })
@@ -120,12 +120,12 @@ fn stack_with_sense_click_captures_clicks() {
 
     ui.begin_frame(Display::default());
     let stack_resp = Panel::hstack()
-        .with_id("clickable_card")
+        .id_salt("clickable_card")
         .padding(20.0)
         .sense(Sense::CLICK)
         .show(&mut ui, |ui| {
             Button::new()
-                .with_id("inside")
+                .id_salt("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -141,12 +141,12 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
     // Useful for tooltips, cursor changes, row highlights.
     let mut ui = ui_at(UVec2::new(200, 100));
     let _stack_node = Panel::hstack()
-        .with_id("hover_only")
+        .id_salt("hover_only")
         .padding(20.0)
         .sense(Sense::HOVER)
         .show(&mut ui, |ui| {
             Button::new()
-                .with_id("inside")
+                .id_salt("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui);
         })
@@ -163,12 +163,12 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
     ui.begin_frame(Display::default());
     let mut child_clicked = false;
     let stack_resp = Panel::hstack()
-        .with_id("hover_only")
+        .id_salt("hover_only")
         .padding(20.0)
         .sense(Sense::HOVER)
         .show(&mut ui, |ui| {
             child_clicked = Button::new()
-                .with_id("inside")
+                .id_salt("inside")
                 .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                 .show(ui)
                 .clicked();
@@ -194,7 +194,7 @@ fn input_state_release_outside_does_not_click() {
     let _root = Panel::hstack()
         .show(&mut ui, |ui| {
             Button::new()
-                .with_id("target")
+                .id_salt("target")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         })
@@ -209,7 +209,7 @@ fn input_state_release_outside_does_not_click() {
     let mut got_click = false;
     Panel::hstack().show(&mut ui, |ui| {
         got_click = Button::new()
-            .with_id("target")
+            .id_salt("target")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui)
             .clicked();
@@ -231,12 +231,12 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("clipper")
+            .id_salt("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .background(Surface::clip_rect())
             .show(ui, |ui| {
                 Button::new()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui);
             });
@@ -252,12 +252,12 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("clipper")
+            .id_salt("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .background(Surface::clip_rect())
             .show(ui, |ui| {
                 clicked = Button::new()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui)
                     .clicked();
@@ -280,12 +280,12 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
     let mut ui = ui_at(UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("zoomer")
+            .id_salt("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
             .show(ui, |ui| {
                 Button::new()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui);
             });
@@ -299,12 +299,12 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("zoomer")
+            .id_salt("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(2.0))
             .show(ui, |ui| {
                 clicked = Button::new()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui)
                     .clicked();
@@ -323,12 +323,12 @@ fn click_outside_zoomed_bounds_does_not_hit() {
     let mut ui = ui_at(UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("zoomer")
+            .id_salt("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(0.5))
             .show(ui, |ui| {
                 Button::new()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui);
             });
@@ -343,12 +343,12 @@ fn click_outside_zoomed_bounds_does_not_hit() {
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("zoomer")
+            .id_salt("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .transform(TranslateScale::from_scale(0.5))
             .show(ui, |ui| {
                 clicked = Button::new()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui)
                     .clicked();
@@ -371,7 +371,7 @@ mod drag {
 
     fn build_clickable(ui: &mut Ui) {
         Panel::hstack()
-            .with_id("target")
+            .id_salt("target")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .sense(Sense::CLICK)
             .show(ui, |_| {});
@@ -489,7 +489,7 @@ mod drag {
         let build = |ui: &mut Ui| {
             Panel::hstack().show(ui, |ui| {
                 Panel::hstack()
-                    .with_id("target")
+                    .id_salt("target")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .sense(Sense::CLICK)
                     .show(ui, |_| {});
@@ -595,12 +595,12 @@ mod scroll_routing {
         // routes to outer.
         let mut ui = ui_at(UVec2::new(300, 300));
         Panel::zstack()
-            .with_id("outer")
+            .id_salt("outer")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |ui| {
                 Panel::zstack()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                     .sense(Sense::SCROLL)
                     .show(ui, |_| {});
@@ -611,12 +611,12 @@ mod scroll_routing {
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
         Panel::zstack()
-            .with_id("outer")
+            .id_salt("outer")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |ui| {
                 Panel::zstack()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                     .sense(Sense::SCROLL)
                     .show(ui, |_| {});
@@ -632,7 +632,7 @@ mod scroll_routing {
     fn scroll_delta_zero_for_non_target() {
         let mut ui = ui_at(UVec2::new(200, 200));
         Panel::zstack()
-            .with_id("scroller")
+            .id_salt("scroller")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |_| {});
@@ -642,7 +642,7 @@ mod scroll_routing {
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 9.0)));
         Panel::zstack()
-            .with_id("scroller")
+            .id_salt("scroller")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |_| {});
@@ -655,7 +655,7 @@ mod scroll_routing {
     fn pointer_left_clears_scroll_target() {
         let mut ui = ui_at(UVec2::new(200, 200));
         Panel::zstack()
-            .with_id("scroller")
+            .id_salt("scroller")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |_| {});
@@ -666,7 +666,7 @@ mod scroll_routing {
         ui.on_input(InputEvent::PointerLeft);
         ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
         Panel::zstack()
-            .with_id("scroller")
+            .id_salt("scroller")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |_| {});
@@ -889,7 +889,7 @@ mod keyboard {
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
-                .with_id("editable")
+                .id_salt("editable")
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -905,7 +905,7 @@ mod keyboard {
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
-                .with_id("editable")
+                .id_salt("editable")
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -939,7 +939,7 @@ mod keyboard {
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
-                .with_id("editable")
+                .id_salt("editable")
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -952,7 +952,7 @@ mod keyboard {
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
-                .with_id("editable")
+                .id_salt("editable")
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -986,12 +986,12 @@ mod keyboard {
         begin(&mut ui, glam::UVec2::new(400, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
-                .with_id("editable")
+                .id_salt("editable")
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
             Button::new()
-                .with_id("plain")
+                .id_salt("plain")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -1006,12 +1006,12 @@ mod keyboard {
         begin(&mut ui, glam::UVec2::new(400, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
-                .with_id("editable")
+                .id_salt("editable")
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
             Button::new()
-                .with_id("plain")
+                .id_salt("plain")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -1039,7 +1039,7 @@ mod keyboard {
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
-                .with_id("editable")
+                .id_salt("editable")
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -1089,7 +1089,7 @@ mod keyboard {
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
-                .with_id("editable")
+                .id_salt("editable")
                 .focusable(true)
                 .visibility(Visibility::Hidden)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
@@ -1120,7 +1120,7 @@ mod keyboard {
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().show(&mut ui, |ui| {
             Button::new()
-                .with_id("editable")
+                .id_salt("editable")
                 .focusable(true)
                 .disabled(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))

@@ -17,7 +17,7 @@ fn text_paragraph_matches_golden() {
     let img = h.render(UVec2::new(360, 140), 1.0, DARK_BG, |ui| {
         Panel::vstack().padding(16.0).gap(6.0).show(ui, |ui| {
             Text::new("Palantir")
-                .with_id("title")
+                .id_salt("title")
                 .style(
                     TextStyle::default()
                         .with_font_size(20.0)
@@ -25,7 +25,7 @@ fn text_paragraph_matches_golden() {
                 )
                 .show(ui);
             Text::new("Immediate-mode UI with WPF-style layout.")
-                .with_id("body")
+                .id_salt("body")
                 .style(
                     TextStyle::default()
                         .with_font_size(13.0)
@@ -33,7 +33,7 @@ fn text_paragraph_matches_golden() {
                 )
                 .show(ui);
             Text::new("Rendered headlessly through wgpu.")
-                .with_id("body2")
+                .id_salt("body2")
                 .style(
                     TextStyle::default()
                         .with_font_size(13.0)

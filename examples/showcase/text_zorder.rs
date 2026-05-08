@@ -15,7 +15,7 @@ pub fn build(ui: &mut Ui) {
         .padding(16.0)
         .show(ui, |ui| {
             Text::new("Z-order — paint order honored across quads + text")
-                .with_id(("hdr", "title"))
+                .id_salt(("hdr", "title"))
                 .style(TextStyle::default().with_font_size(14.0))
                 .show(ui);
 
@@ -25,14 +25,14 @@ pub fn build(ui: &mut Ui) {
                 "per group with text) so quads and text interleave per group ",
                 "in the encoder pass."
             ))
-            .with_id(("hdr", "sub"))
+            .id_salt(("hdr", "sub"))
             .style(TextStyle::default().with_font_size(12.0))
             .wrapping()
             .show(ui);
 
             // Two side-by-side cells.
             Panel::hstack()
-                .with_id("z-row")
+                .id_salt("z-row")
                 .gap(20.0)
                 .size((Sizing::FILL, Sizing::Fixed(220.0)))
                 .show(ui, |ui| {
@@ -61,26 +61,26 @@ pub fn build(ui: &mut Ui) {
 ///   (bg, label, occluder); the occluder correctly covers the label.
 fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, quad_after: bool) {
     Panel::vstack()
-        .with_id(("cell", id))
+        .id_salt(("cell", id))
         .size((Sizing::FILL, Sizing::FILL))
         .gap(8.0)
         .show(ui, |ui| {
             Text::new(caption)
-                .with_id(("caption", id))
+                .id_salt(("caption", id))
                 .style(TextStyle::default().with_font_size(11.0))
                 .wrapping()
                 .show(ui);
 
             // The demo: ZStack of background + label + (maybe) occluder.
             Panel::zstack()
-                .with_id(("box", id))
+                .id_salt(("box", id))
                 .size((Sizing::FILL, Sizing::FILL))
                 .padding(12.0)
                 .show(ui, |ui| {
                     // Background panel with accent fill — required to demo
                     // "label paints on top of an earlier quad".
                     Frame::new()
-                        .with_id(("bg", id))
+                        .id_salt(("bg", id))
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background {
                             fill: accent,
@@ -93,7 +93,7 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
                     // `quad_after` is true, the occluder declared next
                     // covers it.
                     Text::new("T-shirt")
-                        .with_id(("label", id))
+                        .id_salt(("label", id))
                         .style(
                             TextStyle::default()
                                 .with_font_size(28.0)
@@ -105,7 +105,7 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
                         // Occluder declared AFTER the text. Smaller than
                         // the ZStack but big enough to cover the label.
                         Frame::new()
-                            .with_id(("occluder", id))
+                            .id_salt(("occluder", id))
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
                             .background(Background {
                                 fill: Color::hex(0x1a1a1a),

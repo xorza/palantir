@@ -55,12 +55,12 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                 // descendant). intrinsic_min ≈ 0 — fully shrinkable.
                 left_node = Some(
                     Panel::vstack()
-                        .with_id("left")
+                        .id_salt("left")
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(12.0)
                         .show(ui, |ui| {
                             Frame::new()
-                                .with_id("left-bg")
+                                .id_salt("left-bg")
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .show(ui);
                         })
@@ -70,20 +70,20 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                 // intrinsic_min = 180 + 24 padding = 204 — rigid below.
                 right_node = Some(
                     Panel::vstack()
-                        .with_id("right")
+                        .id_salt("right")
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(12.0)
                         .show(ui, |ui| {
                             Panel::zstack()
-                                .with_id("right-z")
+                                .id_salt("right-z")
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .show(ui, |ui| {
                                     Frame::new()
-                                        .with_id("right-bg")
+                                        .id_salt("right-bg")
                                         .size((Sizing::FILL, Sizing::FILL))
                                         .show(ui);
                                     Frame::new()
-                                        .with_id("right-fixed")
+                                        .id_salt("right-fixed")
                                         .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
                                         .show(ui);
                                 });
@@ -176,7 +176,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui, |ui| {
                         for label in LABELS {
-                            Button::new().with_id(*label).label(*label).show(ui);
+                            Button::new().id_salt(*label).label(*label).show(ui);
                         }
                     });
 
@@ -197,12 +197,12 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                                     [("c1", 132.0), ("c2", 60.0), ("c3", 80.0), ("c4", 100.0)]
                                 {
                                     Panel::vstack()
-                                        .with_id(id)
+                                        .id_salt(id)
                                         .size((Sizing::FILL, Sizing::FILL))
                                         .padding(12.0)
                                         .show(ui, |ui| {
                                             Frame::new()
-                                                .with_id((id, "swatch"))
+                                                .id_salt((id, "swatch"))
                                                 .size((
                                                     Sizing::Fixed(content_w),
                                                     Sizing::Fixed(40.0),

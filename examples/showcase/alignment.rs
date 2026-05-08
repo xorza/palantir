@@ -39,7 +39,7 @@ pub fn build(ui: &mut Ui) {
 
 fn chip(ui: &mut Ui, id: &'static str, c: Color, align: Align) {
     Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
         .align(align)
         .background(Background {

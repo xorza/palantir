@@ -31,7 +31,7 @@ pub fn build(ui: &mut Ui) {
 
 fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
-        .with_id(id)
+        .id_salt(id)
         .gap(8.0)
         .size((Sizing::FILL, Sizing::Hug))
         .show(ui, body);
@@ -47,7 +47,7 @@ fn swatch_bg(c: Color) -> Background {
 
 fn fixed_box(ui: &mut Ui, id: &'static str, w: f32, c: Color) {
     Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(40.0)))
         .background(swatch_bg(c))
         .show(ui);
@@ -55,7 +55,7 @@ fn fixed_box(ui: &mut Ui, id: &'static str, w: f32, c: Color) {
 
 fn hug_box(ui: &mut Ui, id: &'static str, pad_x: f32) {
     Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::Hug, Sizing::Fixed(40.0)))
         .padding((pad_x, 0.0, pad_x, 0.0))
         .background(swatch_bg(swatch::C))
@@ -64,7 +64,7 @@ fn hug_box(ui: &mut Ui, id: &'static str, pad_x: f32) {
 
 fn fill_box(ui: &mut Ui, id: &'static str, weight: f32) {
     Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::Fill(weight), Sizing::Fixed(40.0)))
         .background(swatch_bg(swatch::A))
         .show(ui);

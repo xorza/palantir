@@ -28,7 +28,7 @@ pub fn build(ui: &mut Ui) {
 
             section(ui, "wide", "wrapping paragraph in a 360 px panel", |ui| {
                 Panel::vstack()
-                    .with_id("wide-inner")
+                    .id_salt("wide-inner")
                     .size((Sizing::Fixed(360.0), Sizing::Hug))
                     .padding(8.0)
                     .show(ui, |ui| {
@@ -45,7 +45,7 @@ pub fn build(ui: &mut Ui) {
                 "same text in a 140 px panel — wraps to more lines",
                 |ui| {
                     Panel::vstack()
-                        .with_id("narrow-inner")
+                        .id_salt("narrow-inner")
                         .size((Sizing::Fixed(140.0), Sizing::Hug))
                         .padding(8.0)
                         .show(ui, |ui| {
@@ -63,7 +63,7 @@ pub fn build(ui: &mut Ui) {
                 "unbreakable word in a 40 px slot — overflows at intrinsic_min",
                 |ui| {
                     Panel::vstack()
-                        .with_id("overflow-inner")
+                        .id_salt("overflow-inner")
                         .size((Sizing::Fixed(40.0), Sizing::Hug))
                         .padding(4.0)
                         .show(ui, |ui| {
@@ -91,7 +91,7 @@ pub fn build_layouts(ui: &mut Ui) {
                 "two Hug columns: paragraph wraps to fit, label stays natural",
                 |ui| {
                     Grid::new()
-                        .with_id("two-hug-inner")
+                        .id_salt("two-hug-inner")
                         .cols(Rc::from([Track::hug(), Track::hug()]))
                         .rows(Rc::from([Track::hug()]))
                         .gap_xy(0.0, 16.0)
@@ -115,7 +115,7 @@ pub fn build_layouts(ui: &mut Ui) {
                 "property grid: Hug label column + Fill value column with wrapping",
                 |ui| {
                     Grid::new()
-                        .with_id("property-grid-inner")
+                        .id_salt("property-grid-inner")
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
@@ -158,7 +158,7 @@ pub fn build_layouts(ui: &mut Ui) {
                 "chat: Fixed avatar + Fill wrapping message",
                 |ui| {
                     Panel::vstack()
-                        .with_id("chat-list")
+                        .id_salt("chat-list")
                         .size((Sizing::FILL, Sizing::Hug))
                         .gap(8.0)
                         .show(ui, |ui| {
@@ -187,12 +187,12 @@ pub fn build_layouts(ui: &mut Ui) {
 /// showcase panel already contains the demo.
 fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
         .show(ui, |ui| {
             Text::new(title)
-                .with_id(("section-title", id))
+                .id_salt(("section-title", id))
                 .style(TextStyle::default().with_font_size(12.0))
                 .show(ui);
             body(ui);
@@ -202,12 +202,12 @@ fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce
 /// One chat row: avatar (Fixed circle) + Fill wrapping message.
 fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'static str) {
     Panel::hstack()
-        .with_id(("chat-row", key))
+        .id_salt(("chat-row", key))
         .size((Sizing::FILL, Sizing::Hug))
         .gap(10.0)
         .show(ui, |ui| {
             Frame::new()
-                .with_id(("avatar", key))
+                .id_salt(("avatar", key))
                 .size((Sizing::Fixed(36.0), Sizing::Fixed(36.0)))
                 .background(Background {
                     fill: avatar_color,
@@ -216,7 +216,7 @@ fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'stat
                 })
                 .show(ui);
             Text::new(message)
-                .with_id(("message", key))
+                .id_salt(("message", key))
                 .style(TextStyle::default().with_font_size(14.0))
                 .size((Sizing::FILL, Sizing::Hug))
                 .wrapping()

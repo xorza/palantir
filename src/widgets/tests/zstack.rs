@@ -19,11 +19,11 @@ fn zstack_layers_children_without_painting_background() {
     Panel::hstack().show(&mut ui, |ui| {
         zstack_node = Some(
             Panel::zstack()
-                .with_id("layered")
+                .id_salt("layered")
                 .show(ui, |ui| {
                     bg_node = Some(
                         Frame::new()
-                            .with_id("bg")
+                            .id_salt("bg")
                             .size((Sizing::Fixed(120.0), Sizing::Fixed(80.0)))
                             .background(Background {
                                 fill: Color::rgb(0.1, 0.1, 0.2),
@@ -34,7 +34,7 @@ fn zstack_layers_children_without_painting_background() {
                     );
                     fg_node = Some(
                         Button::new()
-                            .with_id("fg")
+                            .id_salt("fg")
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
                             .show(ui)
                             .node,
@@ -81,12 +81,12 @@ fn zstack_aligns_child_per_axis() {
         let mut child_node = None;
         Panel::hstack().show(&mut ui, |ui| {
             Panel::zstack()
-                .with_id("box")
+                .id_salt("box")
                 .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
                 .show(ui, |ui| {
                     child_node = Some(
                         Frame::new()
-                            .with_id("c")
+                            .id_salt("c")
                             .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                             .align(*align)
                             .background(Background {

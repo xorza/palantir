@@ -35,7 +35,7 @@ impl WidgetId {
     /// Repeated calls from the same source location (a loop or a closure
     /// helper) all produce the same id; `Ui::node` silently disambiguates by
     /// mixing in a per-id occurrence counter. Override with
-    /// [`crate::tree::element::Configure::with_id`] when call order isn't
+    /// [`crate::tree::element::Configure::id_salt`] when call order isn't
     /// stable across frames.
     #[track_caller]
     pub(crate) const fn auto_stable() -> Self {

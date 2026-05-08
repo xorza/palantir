@@ -58,7 +58,7 @@ fn interleaved_shapes_record_correct_order() {
         .show(&mut ui, |ui| {
             ui.add_shape(pos_rect(0));
             Frame::new()
-                .with_id("c0")
+                .id_salt("c0")
                 .background(Background {
                     fill: Color::rgb(0.0, 1.0, 0.0),
                     ..Default::default()
@@ -67,7 +67,7 @@ fn interleaved_shapes_record_correct_order() {
                 .show(ui);
             ui.add_shape(pos_rect(1));
             Frame::new()
-                .with_id("c1")
+                .id_salt("c1")
                 .background(Background {
                     fill: Color::rgb(0.0, 0.0, 1.0),
                     ..Default::default()
@@ -166,7 +166,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
             // Single child, no shapes inside.
             child_id = Some(
                 Frame::new()
-                    .with_id("only-child")
+                    .id_salt("only-child")
                     .background(Background {
                         fill: Color::rgb(0.0, 1.0, 0.0),
                         ..Default::default()
@@ -248,10 +248,10 @@ fn empty_tree_has_no_hashes() {
 fn same_authoring_produces_same_hash() {
     let h1 = record_hash(|ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8),
@@ -263,10 +263,10 @@ fn same_authoring_produces_same_hash() {
     });
     let h2 = record_hash(|ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8),
@@ -283,10 +283,10 @@ fn same_authoring_produces_same_hash() {
 fn changing_fill_color_changes_hash() {
     let h1 = record_hash(|ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8),
@@ -298,10 +298,10 @@ fn changing_fill_color_changes_hash() {
     });
     let h2 = record_hash(|ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(0.9, 0.4, 0.8),
@@ -320,10 +320,10 @@ fn changing_fill_color_changes_hash() {
     let mut ui1 = Ui::new();
     ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut child1 = None;
-    Panel::hstack().with_id("root").show(&mut ui1, |ui| {
+    Panel::hstack().id_salt("root").show(&mut ui1, |ui| {
         child1 = Some(
             Frame::new()
-                .with_id("a")
+                .id_salt("a")
                 .size(50.0)
                 .background(Background {
                     fill: Color::rgb(0.2, 0.4, 0.8),
@@ -338,10 +338,10 @@ fn changing_fill_color_changes_hash() {
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let mut child2 = None;
-    Panel::hstack().with_id("root").show(&mut ui2, |ui| {
+    Panel::hstack().id_salt("root").show(&mut ui2, |ui| {
         child2 = Some(
             Frame::new()
-                .with_id("a")
+                .id_salt("a")
                 .size(50.0)
                 .background(Background {
                     fill: Color::rgb(0.9, 0.4, 0.8),
@@ -364,8 +364,8 @@ fn changing_fill_color_changes_hash() {
 fn widget_id_does_not_affect_hash() {
     // Same authoring, different ids → same hash. The hash captures
     // *value*, the WidgetId is the *key* into the prev-map.
-    let h1 = record_hash(|ui| Panel::hstack().with_id("a").show(ui, |_| {}).node);
-    let h2 = record_hash(|ui| Panel::hstack().with_id("b").show(ui, |_| {}).node);
+    let h1 = record_hash(|ui| Panel::hstack().id_salt("a").show(ui, |_| {}).node);
+    let h2 = record_hash(|ui| Panel::hstack().id_salt("b").show(ui, |_| {}).node);
     assert_eq!(h1, h2);
 }
 
@@ -378,14 +378,14 @@ fn changing_layout_property_changes_hash() {
             "size",
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
                     .show(ui, |_| {})
                     .node
             },
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .size((Sizing::Fixed(101.0), Sizing::Fixed(50.0)))
                     .show(ui, |_| {})
                     .node
@@ -395,14 +395,14 @@ fn changing_layout_property_changes_hash() {
             "padding",
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .padding(8.0)
                     .show(ui, |_| {})
                     .node
             },
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .padding(12.0)
                     .show(ui, |_| {})
                     .node
@@ -412,14 +412,14 @@ fn changing_layout_property_changes_hash() {
             "visibility",
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .visibility(Visibility::Visible)
                     .show(ui, |_| {})
                     .node
             },
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .visibility(Visibility::Hidden)
                     .show(ui, |_| {})
                     .node
@@ -429,14 +429,14 @@ fn changing_layout_property_changes_hash() {
             "justify",
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .justify(Justify::Start)
                     .show(ui, |_| {})
                     .node
             },
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .justify(Justify::Center)
                     .show(ui, |_| {})
                     .node
@@ -446,14 +446,14 @@ fn changing_layout_property_changes_hash() {
             "focusable",
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .focusable(false)
                     .show(ui, |_| {})
                     .node
             },
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .focusable(true)
                     .show(ui, |_| {})
                     .node
@@ -463,14 +463,14 @@ fn changing_layout_property_changes_hash() {
             "disabled",
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .disabled(false)
                     .show(ui, |_| {})
                     .node
             },
             |ui| {
                 Panel::hstack()
-                    .with_id("root")
+                    .id_salt("root")
                     .disabled(true)
                     .show(ui, |_| {})
                     .node
@@ -493,7 +493,7 @@ fn shape_order_matters_for_hash() {
     let mut n1 = None;
     Panel::hstack().show(&mut ui1, |ui| {
         // Push a Frame then add a manual Text shape via a Button.
-        n1 = Some(Button::new().with_id("a").label("X").show(ui).node);
+        n1 = Some(Button::new().id_salt("a").label("X").show(ui).node);
     });
     ui1.end_frame();
 
@@ -502,7 +502,7 @@ fn shape_order_matters_for_hash() {
     ui2.begin_frame(Display::default());
     let mut n2 = None;
     Panel::hstack().show(&mut ui2, |ui| {
-        n2 = Some(Button::new().with_id("a").label("X").show(ui).node);
+        n2 = Some(Button::new().id_salt("a").label("X").show(ui).node);
     });
     ui2.end_frame();
 
@@ -522,7 +522,7 @@ fn changing_text_content_changes_hash() {
     ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut a = None;
     Panel::hstack().show(&mut ui1, |ui| {
-        a = Some(Text::new("Hello").with_id("t").show(ui).node);
+        a = Some(Text::new("Hello").id_salt("t").show(ui).node);
     });
     ui1.end_frame();
 
@@ -530,7 +530,7 @@ fn changing_text_content_changes_hash() {
     ui2.begin_frame(Display::default());
     let mut b = None;
     Panel::hstack().show(&mut ui2, |ui| {
-        b = Some(Text::new("World").with_id("t").show(ui).node);
+        b = Some(Text::new("World").id_salt("t").show(ui).node);
     });
     ui2.end_frame();
 
@@ -548,10 +548,10 @@ fn child_hash_does_not_affect_parent_hash() {
     let mut ui1 = Ui::new();
     ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let parent1 = Panel::hstack()
-        .with_id("root")
+        .id_salt("root")
         .show(&mut ui1, |ui| {
             Frame::new()
-                .with_id("c")
+                .id_salt("c")
                 .size(50.0)
                 .background(Background {
                     fill: Color::rgb(0.2, 0.4, 0.8),
@@ -565,10 +565,10 @@ fn child_hash_does_not_affect_parent_hash() {
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let parent2 = Panel::hstack()
-        .with_id("root")
+        .id_salt("root")
         .show(&mut ui2, |ui| {
             Frame::new()
-                .with_id("c")
+                .id_salt("c")
                 .size(50.0)
                 .background(Background {
                     fill: Color::rgb(0.9, 0.4, 0.8),
@@ -603,10 +603,10 @@ fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
 fn subtree_hash_stable_across_frames() {
     let build = |ui: &mut Ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8),
@@ -614,7 +614,7 @@ fn subtree_hash_stable_across_frames() {
                     })
                     .show(ui);
                 Frame::new()
-                    .with_id("b")
+                    .id_salt("b")
                     .size(30.0)
                     .background(Background {
                         fill: Color::rgb(0.9, 0.1, 0.1),
@@ -633,10 +633,10 @@ fn subtree_hash_stable_across_frames() {
 fn subtree_hash_changes_when_descendant_changes() {
     let h1 = record_subtree_hash(|ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8),
@@ -648,10 +648,10 @@ fn subtree_hash_changes_when_descendant_changes() {
     });
     let h2 = record_subtree_hash(|ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(0.9, 0.4, 0.8),
@@ -671,10 +671,10 @@ fn subtree_hash_changes_when_descendant_changes() {
 fn subtree_hash_changes_on_sibling_reorder() {
     let h_ab = record_subtree_hash(|ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8),
@@ -682,7 +682,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                     })
                     .show(ui);
                 Frame::new()
-                    .with_id("b")
+                    .id_salt("b")
                     .size(30.0)
                     .background(Background {
                         fill: Color::rgb(0.9, 0.1, 0.1),
@@ -694,10 +694,10 @@ fn subtree_hash_changes_on_sibling_reorder() {
     });
     let h_ba = record_subtree_hash(|ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("b")
+                    .id_salt("b")
                     .size(30.0)
                     .background(Background {
                         fill: Color::rgb(0.9, 0.1, 0.1),
@@ -705,7 +705,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                     })
                     .show(ui);
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8),
@@ -730,7 +730,7 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     let mut ui1 = Ui::new();
     ui1.begin_frame(Display::default());
     let leaf1 = Frame::new()
-        .with_id("a")
+        .id_salt("a")
         .size(50.0)
         .background(Background {
             fill: Color::rgb(0.2, 0.4, 0.8),
@@ -743,7 +743,7 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let leaf2 = Frame::new()
-        .with_id("a")
+        .id_salt("a")
         .size(50.0)
         .background(Background {
             fill: Color::rgb(0.2, 0.4, 0.8),
@@ -774,7 +774,7 @@ fn transform_change_affects_subtree_but_not_node_hash() {
 
     let mut ui1 = ui_at(UVec2::new(200, 200));
     let n1 = Panel::hstack()
-        .with_id("root")
+        .id_salt("root")
         .transform(TranslateScale::IDENTITY)
         .show(&mut ui1, |_| {})
         .node;
@@ -782,7 +782,7 @@ fn transform_change_affects_subtree_but_not_node_hash() {
 
     let mut ui2 = ui_at(UVec2::new(200, 200));
     let n2 = Panel::hstack()
-        .with_id("root")
+        .id_salt("root")
         .transform(TranslateScale::from_translation(Vec2::new(10.0, 0.0)))
         .show(&mut ui2, |_| {})
         .node;
@@ -817,17 +817,17 @@ fn grid_per_node_hash_independent_of_arena_slot() {
     // Frame 1: target grid recorded first. Slot 0.
     let mut ui1 = ui_at(UVec2::new(200, 200));
     let mut g1 = None;
-    Panel::vstack().with_id("root").show(&mut ui1, |ui| {
+    Panel::vstack().id_salt("root").show(&mut ui1, |ui| {
         g1 = Some(
             Grid::new()
-                .with_id("target")
+                .id_salt("target")
                 .cols(cols.clone())
                 .rows(rows.clone())
                 .show(ui, |_| {})
                 .node,
         );
         Grid::new()
-            .with_id("other")
+            .id_salt("other")
             .cols(cols.clone())
             .rows(rows.clone())
             .show(ui, |_| {});
@@ -838,15 +838,15 @@ fn grid_per_node_hash_independent_of_arena_slot() {
     // gets arena slot 1 instead of 0.
     let mut ui2 = ui_at(UVec2::new(200, 200));
     let mut g2 = None;
-    Panel::vstack().with_id("root").show(&mut ui2, |ui| {
+    Panel::vstack().id_salt("root").show(&mut ui2, |ui| {
         Grid::new()
-            .with_id("other")
+            .id_salt("other")
             .cols(cols.clone())
             .rows(rows.clone())
             .show(ui, |_| {});
         g2 = Some(
             Grid::new()
-                .with_id("target")
+                .id_salt("target")
                 .cols(cols.clone())
                 .rows(rows.clone())
                 .show(ui, |_| {})
@@ -874,14 +874,14 @@ fn subtree_end_rolls_up_during_recording() {
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
     let root = Panel::hstack()
-        .with_id("root")
+        .id_salt("root")
         .show(&mut ui, |ui| {
-            Frame::new().with_id("a").size(10.0).show(ui);
-            Panel::hstack().with_id("inner").show(ui, |ui| {
-                Frame::new().with_id("b").size(10.0).show(ui);
-                Frame::new().with_id("c").size(10.0).show(ui);
+            Frame::new().id_salt("a").size(10.0).show(ui);
+            Panel::hstack().id_salt("inner").show(ui, |ui| {
+                Frame::new().id_salt("b").size(10.0).show(ui);
+                Frame::new().id_salt("c").size(10.0).show(ui);
             });
-            Frame::new().with_id("d").size(10.0).show(ui);
+            Frame::new().id_salt("d").size(10.0).show(ui);
         })
         .node;
     // Tree (pre-order):  0=root  1=a  2=inner  3=b  4=c  5=d
@@ -923,11 +923,11 @@ fn subtree_end_handles_deep_nesting() {
     // Linear chain: depth-N stacks each containing one stack until a leaf.
     fn nest(ui: &mut Ui, depth: usize) {
         if depth == 0 {
-            Frame::new().with_id(("leaf", depth)).size(10.0).show(ui);
+            Frame::new().id_salt(("leaf", depth)).size(10.0).show(ui);
             return;
         }
         Panel::vstack()
-            .with_id(("nest", depth))
+            .id_salt(("nest", depth))
             .show(ui, |ui| nest(ui, depth - 1));
     }
     let mut ui = Ui::new();
@@ -959,9 +959,9 @@ fn subtree_end_handles_deep_nesting() {
 fn subtree_hash_rollup_root_local_across_two_roots() {
     fn build(ui: &mut Ui, root_a_color: Color) -> u32 {
         // Root A — content varies via `root_a_color`.
-        Panel::vstack().with_id("root-a").show(ui, |ui| {
+        Panel::vstack().id_salt("root-a").show(ui, |ui| {
             Frame::new()
-                .with_id("a-leaf")
+                .id_salt("a-leaf")
                 .size(50.0)
                 .background(Background {
                     fill: root_a_color,
@@ -972,8 +972,8 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
         // Capture the index where root B will start, then record root B
         // (identical across both invocations).
         let b_first = ui.forest.tree(Layer::Main).records.len() as u32;
-        Panel::vstack().with_id("root-b").show(ui, |ui| {
-            Frame::new().with_id("b-leaf").size(30.0).show(ui);
+        Panel::vstack().id_salt("root-b").show(ui, |ui| {
+            Frame::new().id_salt("b-leaf").size(30.0).show(ui);
         });
         b_first
     }
@@ -1015,13 +1015,13 @@ fn ui_layer_records_popup_into_separate_tree() {
         min: glam::Vec2::new(50.0, 60.0),
         size: crate::primitives::size::Size::new(100.0, 80.0),
     };
-    Panel::vstack().with_id("main-root").show(&mut ui, |ui| {
-        Frame::new().with_id("main-leaf").size(50.0).show(ui);
-        Frame::new().with_id("main-leaf-2").size(30.0).show(ui);
+    Panel::vstack().id_salt("main-root").show(&mut ui, |ui| {
+        Frame::new().id_salt("main-leaf").size(50.0).show(ui);
+        Frame::new().id_salt("main-leaf-2").size(30.0).show(ui);
     });
     ui.layer(Layer::Popup, popup_anchor, |ui| {
-        Panel::vstack().with_id("popup-root").show(ui, |ui| {
-            Frame::new().with_id("popup-leaf").size(20.0).show(ui);
+        Panel::vstack().id_salt("popup-root").show(ui, |ui| {
+            Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
         });
     });
     ui.end_frame();
@@ -1057,8 +1057,8 @@ fn ui_layer_records_popup_into_separate_tree() {
 #[test]
 fn empty_popup_body_leaves_popup_tree_empty() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::vstack().with_id("only-main").show(&mut ui, |ui| {
-        Frame::new().with_id("leaf").size(20.0).show(ui);
+    Panel::vstack().id_salt("only-main").show(&mut ui, |ui| {
+        Frame::new().id_salt("leaf").size(20.0).show(ui);
     });
     ui.layer(Layer::Popup, Rect::ZERO, |_| {});
     ui.end_frame();
@@ -1082,26 +1082,26 @@ fn forest_independence_across_recording_orders() {
     };
     let mut ui_p_first = ui_at(UVec2::new(400, 400));
     ui_p_first.layer(Layer::Popup, popup_anchor, |ui| {
-        Panel::vstack().with_id("popup-root").show(ui, |ui| {
-            Frame::new().with_id("popup-leaf").size(20.0).show(ui);
+        Panel::vstack().id_salt("popup-root").show(ui, |ui| {
+            Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
         });
     });
     Panel::vstack()
-        .with_id("main-root")
+        .id_salt("main-root")
         .show(&mut ui_p_first, |ui| {
-            Frame::new().with_id("main-leaf").size(50.0).show(ui);
+            Frame::new().id_salt("main-leaf").size(50.0).show(ui);
         });
     ui_p_first.end_frame();
 
     let mut ui_m_first = ui_at(UVec2::new(400, 400));
     Panel::vstack()
-        .with_id("main-root")
+        .id_salt("main-root")
         .show(&mut ui_m_first, |ui| {
-            Frame::new().with_id("main-leaf").size(50.0).show(ui);
+            Frame::new().id_salt("main-leaf").size(50.0).show(ui);
         });
     ui_m_first.layer(Layer::Popup, popup_anchor, |ui| {
-        Panel::vstack().with_id("popup-root").show(ui, |ui| {
-            Frame::new().with_id("popup-leaf").size(20.0).show(ui);
+        Panel::vstack().id_salt("popup-root").show(ui, |ui| {
+            Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
         });
     });
     ui_m_first.end_frame();
@@ -1127,11 +1127,11 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
         min: glam::Vec2::new(50.0, 100.0),
         size: crate::primitives::size::Size::new(200.0, 200.0),
     };
-    Panel::vstack().with_id("outer-main").show(&mut ui, |ui| {
-        Button::new().with_id("trigger").label("menu").show(ui);
+    Panel::vstack().id_salt("outer-main").show(&mut ui, |ui| {
+        Button::new().id_salt("trigger").label("menu").show(ui);
         ui.layer(Layer::Popup, popup_anchor, |ui| {
-            Panel::vstack().with_id("popup-body").show(ui, |ui| {
-                Button::new().with_id("popup-item").label("copy").show(ui);
+            Panel::vstack().id_salt("popup-body").show(ui, |ui| {
+                Button::new().id_salt("popup-item").label("copy").show(ui);
             });
         });
     });
@@ -1207,24 +1207,24 @@ fn mid_recording_popup_keeps_trees_independent() {
         size: crate::primitives::size::Size::new(100.0, 80.0),
     };
     let parent = Panel::vstack()
-        .with_id("main-parent")
+        .id_salt("main-parent")
         .show(&mut ui, |ui| {
             ui.add_shape(marker(0));
-            Frame::new().with_id("mc1").size(20.0).show(ui);
+            Frame::new().id_salt("mc1").size(20.0).show(ui);
             ui.add_shape(marker(1));
-            Frame::new().with_id("mc2").size(20.0).show(ui);
+            Frame::new().id_salt("mc2").size(20.0).show(ui);
             ui.add_shape(marker(2));
             ui.layer(Layer::Popup, popup_anchor, |ui| {
-                Panel::vstack().with_id("popup-root").show(ui, |ui| {
+                Panel::vstack().id_salt("popup-root").show(ui, |ui| {
                     ui.add_shape(marker(10));
-                    Frame::new().with_id("popup-leaf").size(10.0).show(ui);
+                    Frame::new().id_salt("popup-leaf").size(10.0).show(ui);
                     ui.add_shape(marker(11));
-                    Frame::new().with_id("popup-leaf-2").size(10.0).show(ui);
+                    Frame::new().id_salt("popup-leaf-2").size(10.0).show(ui);
                 });
             });
             ui.add_shape(marker(3));
-            Frame::new().with_id("mc3").size(20.0).show(ui);
-            Frame::new().with_id("mc4").size(20.0).show(ui);
+            Frame::new().id_salt("mc3").size(20.0).show(ui);
+            Frame::new().id_salt("mc4").size(20.0).show(ui);
             ui.add_shape(marker(4));
         })
         .node;
@@ -1299,14 +1299,14 @@ fn extras_columns_split_by_field_kind() {
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
     Panel::hstack()
-        .with_id("panel-with-gap")
+        .id_salt("panel-with-gap")
         .gap(8.0)
         .show(&mut ui, |ui| {
             Frame::new()
-                .with_id("leaf-with-min")
+                .id_salt("leaf-with-min")
                 .min_size(Size::new(20.0, 20.0))
                 .show(ui);
-            Frame::new().with_id("plain-leaf").size(10.0).show(ui);
+            Frame::new().id_salt("plain-leaf").size(10.0).show(ui);
         });
     ui.end_frame();
 
@@ -1330,13 +1330,13 @@ fn child_iter_traverses_correctly_after_finalize() {
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
     let root = Panel::hstack()
-        .with_id("root")
+        .id_salt("root")
         .show(&mut ui, |ui| {
-            Frame::new().with_id("a").size(10.0).show(ui);
-            Panel::hstack().with_id("inner").show(ui, |ui| {
-                Frame::new().with_id("b").size(10.0).show(ui);
+            Frame::new().id_salt("a").size(10.0).show(ui);
+            Panel::hstack().id_salt("inner").show(ui, |ui| {
+                Frame::new().id_salt("b").size(10.0).show(ui);
             });
-            Frame::new().with_id("c").size(10.0).show(ui);
+            Frame::new().id_salt("c").size(10.0).show(ui);
         })
         .node;
     ui.end_frame();

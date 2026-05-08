@@ -16,10 +16,10 @@ pub fn build(ui: &mut Ui) {
             // Default style: framework-provided theme. Hover/press/disabled
             // states all visible without any per-button override.
             row(ui, "default", |ui| {
-                Button::new().with_id("d-1").label("normal").show(ui);
-                Button::new().with_id("d-2").label("normal 2").show(ui);
+                Button::new().id_salt("d-1").label("normal").show(ui);
+                Button::new().id_salt("d-2").label("normal 2").show(ui);
                 Button::new()
-                    .with_id("d-3")
+                    .id_salt("d-3")
                     .label("disabled")
                     .disabled(true)
                     .show(ui);
@@ -29,17 +29,17 @@ pub fn build(ui: &mut Ui) {
             // override demonstrating a different visual treatment.
             row(ui, "outlined", |ui| {
                 Button::new()
-                    .with_id("o-1")
+                    .id_salt("o-1")
                     .style(outlined_style())
                     .label("normal")
                     .show(ui);
                 Button::new()
-                    .with_id("o-2")
+                    .id_salt("o-2")
                     .style(outlined_style())
                     .label("normal 2")
                     .show(ui);
                 Button::new()
-                    .with_id("o-3")
+                    .id_salt("o-3")
                     .style(outlined_style())
                     .label("disabled")
                     .disabled(true)
@@ -49,12 +49,12 @@ pub fn build(ui: &mut Ui) {
             // Danger style: bold red fill, sharp corners.
             row(ui, "custom", |ui| {
                 Button::new()
-                    .with_id("c-1")
+                    .id_salt("c-1")
                     .style(danger_style())
                     .label("delete")
                     .show(ui);
                 Button::new()
-                    .with_id("c-2")
+                    .id_salt("c-2")
                     .style(danger_style())
                     .label("danger")
                     .show(ui);
@@ -64,7 +64,7 @@ pub fn build(ui: &mut Ui) {
 
 fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))
         .gap(8.0)
         .show(ui, body);

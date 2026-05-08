@@ -24,7 +24,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
     Panel::hstack().show(&mut ui, |ui| {
         // No surface set anywhere → no clip, no chrome.
         let n = Panel::zstack()
-            .with_id("none")
+            .id_salt("none")
             .size(50.0)
             .show(ui, |_| {})
             .node;
@@ -32,7 +32,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 
         // Paint-only Background via From<Background>: chrome, no clip.
         let n = Panel::zstack()
-            .with_id("paint-only")
+            .id_salt("paint-only")
             .size(50.0)
             .background(Background {
                 fill: Color::rgb(0.5, 0.5, 0.5),
@@ -44,7 +44,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 
         // Surface::scissor — clip + transparent chrome.
         let n = Panel::zstack()
-            .with_id("scissor")
+            .id_salt("scissor")
             .size(50.0)
             .background(Surface::clip_rect())
             .show(ui, |_| {})
@@ -53,7 +53,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 
         // Surface::clipped(bg) — clip + paint.
         let n = Panel::zstack()
-            .with_id("clipped")
+            .id_salt("clipped")
             .size(50.0)
             .background(Surface::clip_rect_with_bg(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
@@ -65,7 +65,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 
         // Surface::rounded(bg) with non-zero radius — Rounded survives.
         let n = Panel::zstack()
-            .with_id("rounded")
+            .id_salt("rounded")
             .size(50.0)
             .background(Surface::clip_rounded_with_bg(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
@@ -78,7 +78,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 
         // Surface::rounded(bg) with zero radius — apply_to downgrades.
         let n = Panel::zstack()
-            .with_id("rounded-zero")
+            .id_salt("rounded-zero")
             .size(50.0)
             .background(Surface::clip_rounded_with_bg(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
@@ -111,7 +111,7 @@ fn panel_hugs_largest_child_and_layers_them() {
     Panel::hstack().show(&mut ui, |ui| {
         panel_node = Some(
             Panel::zstack()
-                .with_id("card")
+                .id_salt("card")
                 .padding(10.0)
                 .background(Background {
                     fill: Color::rgb(0.1, 0.1, 0.15),
@@ -121,14 +121,14 @@ fn panel_hugs_largest_child_and_layers_them() {
                 .show(ui, |ui| {
                     a_node = Some(
                         Button::new()
-                            .with_id("a")
+                            .id_salt("a")
                             .size((Sizing::Fixed(80.0), Sizing::Fixed(30.0)))
                             .show(ui)
                             .node,
                     );
                     b_node = Some(
                         Button::new()
-                            .with_id("b")
+                            .id_salt("b")
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(50.0)))
                             .show(ui)
                             .node,
@@ -177,13 +177,13 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     let mut child_node = None;
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("p")
+            .id_salt("p")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
             .padding(10.0)
             .show(ui, |ui| {
                 child_node = Some(
                     Frame::new()
-                        .with_id("filler")
+                        .id_salt("filler")
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background {
                             fill: Color::rgb(0.5, 0.5, 0.5),
@@ -212,7 +212,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
     let mut ui = ui_at(UVec2::new(400, 200));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("locked")
+            .id_salt("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
             .background(Background {
@@ -222,7 +222,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
             .disabled(true)
             .show(ui, |ui| {
                 Button::new()
-                    .with_id("inside")
+                    .id_salt("inside")
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                     .show(ui);
             });
@@ -235,7 +235,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("locked")
+            .id_salt("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
             .background(Background {
@@ -245,7 +245,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
             .disabled(true)
             .show(ui, |ui| {
                 clicked = Button::new()
-                    .with_id("inside")
+                    .id_salt("inside")
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                     .show(ui)
                     .clicked();

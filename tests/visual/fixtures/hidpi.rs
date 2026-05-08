@@ -26,7 +26,7 @@ fn dashboard_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(800, 600), 2.0, DARK_BG, |ui| {
         Grid::new()
-            .with_id("shell")
+            .id_salt("shell")
             .cols([Track::fixed(110.0), Track::fill()])
             .rows([Track::fixed(40.0), Track::fill(), Track::fixed(24.0)])
             .gap(8.0)
@@ -35,7 +35,7 @@ fn dashboard_matches_golden() {
             .show(ui, |ui| {
                 // Header: title + action buttons, spans both columns.
                 Panel::hstack()
-                    .with_id("header")
+                    .id_salt("header")
                     .grid_cell((0, 0))
                     .grid_span((1, 2))
                     .padding((10.0, 14.0, 10.0, 14.0))
@@ -50,7 +50,7 @@ fn dashboard_matches_golden() {
                     })
                     .show(ui, |ui| {
                         Text::new("Palantir")
-                            .with_id("brand")
+                            .id_salt("brand")
                             .style(
                                 TextStyle::default()
                                     .with_font_size(16.0)
@@ -58,16 +58,16 @@ fn dashboard_matches_golden() {
                             )
                             .show(ui);
                         Frame::new()
-                            .with_id("spacer")
+                            .id_salt("spacer")
                             .size((Sizing::FILL, Sizing::Fixed(1.0)))
                             .show(ui);
-                        Button::new().with_id("btn-save").label("save").show(ui);
-                        Button::new().with_id("btn-export").label("export").show(ui);
+                        Button::new().id_salt("btn-save").label("save").show(ui);
+                        Button::new().id_salt("btn-export").label("export").show(ui);
                     });
 
                 // Sidebar: vertical stack of tinted nav items.
                 Panel::vstack()
-                    .with_id("sidebar")
+                    .id_salt("sidebar")
                     .grid_cell((1, 0))
                     .padding(8.0)
                     .gap(4.0)
@@ -79,7 +79,7 @@ fn dashboard_matches_golden() {
                     .show(ui, |ui| {
                         for i in 0..5 {
                             Frame::new()
-                                .with_id(("nav-bg", i))
+                                .id_salt(("nav-bg", i))
                                 .size((Sizing::FILL, Sizing::Fixed(28.0)))
                                 .padding((6.0, 8.0, 6.0, 8.0))
                                 .background(Background {
@@ -97,7 +97,7 @@ fn dashboard_matches_golden() {
 
                 // Content: 2x2 grid of cards.
                 Grid::new()
-                    .with_id("cards")
+                    .id_salt("cards")
                     .grid_cell((1, 1))
                     .cols([Track::fill(), Track::fill()])
                     .rows([Track::fill(), Track::fill()])
@@ -113,7 +113,7 @@ fn dashboard_matches_golden() {
                             let row = (i / 2) as u16;
                             let col = (i % 2) as u16;
                             Panel::vstack()
-                                .with_id(("card", i))
+                                .id_salt(("card", i))
                                 .grid_cell((row, col))
                                 .padding(12.0)
                                 .gap(6.0)
@@ -127,7 +127,7 @@ fn dashboard_matches_golden() {
                                 })
                                 .show(ui, |ui| {
                                     Text::new("Card")
-                                        .with_id(("card-title", i))
+                                        .id_salt(("card-title", i))
                                         .style(
                                             TextStyle::default()
                                                 .with_font_size(14.0)
@@ -135,7 +135,7 @@ fn dashboard_matches_golden() {
                                         )
                                         .show(ui);
                                     Text::new("Some metric here")
-                                        .with_id(("card-body", i))
+                                        .id_salt(("card-body", i))
                                         .style(
                                             TextStyle::default()
                                                 .with_font_size(11.0)
@@ -148,7 +148,7 @@ fn dashboard_matches_golden() {
 
                 // Footer status bar.
                 Panel::hstack()
-                    .with_id("footer")
+                    .id_salt("footer")
                     .grid_cell((2, 0))
                     .grid_span((1, 2))
                     .padding((4.0, 10.0, 4.0, 10.0))
@@ -159,7 +159,7 @@ fn dashboard_matches_golden() {
                     })
                     .show(ui, |ui| {
                         Text::new("ready · 4 cards · scale 2.0")
-                            .with_id("status")
+                            .id_salt("status")
                             .style(
                                 TextStyle::default()
                                     .with_font_size(11.0)

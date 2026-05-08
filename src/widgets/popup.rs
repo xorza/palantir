@@ -59,11 +59,11 @@ pub struct Popup {
     surface: Option<Surface>,
     padding: f32,
     click_outside: ClickOutside,
-    /// Optional caller-supplied stable key for derived `WidgetId`s
+    /// Optional caller-supplied stable seed for derived `WidgetId`s
     /// (eater + body). Lets multiple simultaneous popups coexist
-    /// without ID collisions; defaults to a key derived from the
+    /// without ID collisions; defaults to a seed derived from the
     /// anchor rect.
-    id_key: Option<u64>,
+    id_seed: Option<WidgetId>,
 }
 
 impl Popup {
@@ -74,7 +74,7 @@ impl Popup {
             surface: None,
             padding: 0.0,
             click_outside: ClickOutside::Dismiss,
-            id_key: None,
+            id_seed: None,
         }
     }
 
@@ -93,27 +93,27 @@ impl Popup {
         self
     }
 
-    /// Override the auto-derived id base. Use when multiple popups
-    /// are open in the same frame and their default
-    /// anchor-derived ids would collide.
-    pub fn with_id(mut self, key: impl std::hash::Hash) -> Self {
-        self.id_key = Some(WidgetId::from_hash(key).0);
+    /// Override the auto-derived id base by hashing `key`. Use when
+    /// multiple popups are open in the same frame and their default
+    /// anchor-derived seeds would collide.
+    pub fn id_salt(mut self, key: impl std::hash::Hash) -> Self {
+        self.id_seed = Some(WidgetId::from_hash(key));
+        self
+    }
+
+    /// Override the auto-derived id base with a precomputed seed.
+    pub fn id(mut self, seed: WidgetId) -> Self {
+        self.id_seed = Some(seed);
         self
     }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> PopupResponse {
         let surface_rect = ui.display.logical_rect();
-        // Both `Configure::with_id` and `WidgetId::from_hash` apply
-        // `FxHash` to their input, so passing the *same* tuple key
-        // to both gives the same id. Going through `WidgetId.with(...)`
-        // here would hash a `WidgetId` (`u64` of an FNV/FxHash) and
-        // produce a different id than `Configure::with_id` would.
-        let id_seed: u64 = self
-            .id_key
-            .unwrap_or_else(|| WidgetId::from_hash(("palantir.popup", self.anchor)).0);
-        let eater_key = (id_seed, "eater");
-        let body_key = (id_seed, "body");
-        let eater_id = WidgetId::from_hash(eater_key);
+        let seed = self
+            .id_seed
+            .unwrap_or_else(|| WidgetId::from_hash(("palantir.popup", self.anchor)));
+        let eater_id = seed.with("eater");
+        let body_id = seed.with("body");
         // Eater root: full-surface invisible `Sense::CLICK` leaf.
         // Records first in the `Popup` layer scope so it paints
         // *under* the body and (via reverse-iter hit-test) the
@@ -121,7 +121,7 @@ impl Popup {
         // outside the body's rect fall through to the eater.
         ui.layer(Layer::Popup, surface_rect, |ui| {
             Frame::new()
-                .with_id(eater_key)
+                .id(eater_id)
                 .size((Sizing::FILL, Sizing::FILL))
                 .sense(Sense::CLICK)
                 .show(ui);
@@ -135,7 +135,7 @@ impl Popup {
         let mut body_resp: Option<Response> = None;
         ui.layer(Layer::Popup, self.anchor, |ui| {
             let mut panel = Panel::vstack()
-                .with_id(body_key)
+                .id(body_id)
                 .padding(padding)
                 .sense(Sense::CLICK);
             if let Some(s) = surface {

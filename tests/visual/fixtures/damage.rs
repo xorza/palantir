@@ -62,7 +62,7 @@ fn static_scene_repeats_clean() {
                 ..Default::default()
             })
             .show(ui, |ui| {
-                Button::new().with_id("hi").label("hello").show(ui);
+                Button::new().id_salt("hi").label("hello").show(ui);
             });
     };
 
@@ -113,7 +113,7 @@ fn single_button_change_paints_button_only() {
                     ..Default::default()
                 })
                 .show(ui, |ui| {
-                    Button::new().with_id("b").label(label).show(ui);
+                    Button::new().id_salt("b").label(label).show(ui);
                 });
         }
     };

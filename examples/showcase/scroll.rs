@@ -18,7 +18,7 @@ pub fn build(ui: &mut Ui) {
                 .show(ui, |ui| {
                     card(ui, "v-card", "vertical", |ui| {
                         Scroll::vertical()
-                            .with_id("rows-scroll")
+                            .id_salt("rows-scroll")
                             .size((Sizing::FILL, Sizing::FILL))
                             .gap(4.0)
                             .show(ui, |ui| {
@@ -30,7 +30,7 @@ pub fn build(ui: &mut Ui) {
 
                     card(ui, "h-card", "horizontal", |ui| {
                         Scroll::horizontal()
-                            .with_id("cols-scroll")
+                            .id_salt("cols-scroll")
                             .size((Sizing::FILL, Sizing::FILL))
                             .gap(4.0)
                             .show(ui, |ui| {
@@ -42,7 +42,7 @@ pub fn build(ui: &mut Ui) {
 
                     card(ui, "xy-card", "two-axis", |ui| {
                         Scroll::both()
-                            .with_id("grid-scroll")
+                            .id_salt("grid-scroll")
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 grid(ui);
@@ -54,13 +54,13 @@ pub fn build(ui: &mut Ui) {
 
 fn card(ui: &mut Ui, key: &'static str, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
-        .with_id(key)
+        .id_salt(key)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(8.0)
         .gap(6.0)
         .show(ui, |ui| {
             Text::new(label)
-                .with_id((key, "title"))
+                .id_salt((key, "title"))
                 .style(TextStyle::default().with_font_size(12.0))
                 .show(ui);
             body(ui);
@@ -78,7 +78,7 @@ fn on_swatch_text() -> TextStyle {
 
 fn row(ui: &mut Ui, ns: &'static str, i: u32) {
     Panel::hstack()
-        .with_id((ns, "scroll-row", i))
+        .id_salt((ns, "scroll-row", i))
         .size((Sizing::FILL, Sizing::Fixed(28.0)))
         .padding((10.0, 6.0))
         .background(Background {
@@ -88,7 +88,7 @@ fn row(ui: &mut Ui, ns: &'static str, i: u32) {
         })
         .show(ui, |ui| {
             Text::new(label_for(i))
-                .with_id((ns, "scroll-row-label", i))
+                .id_salt((ns, "scroll-row-label", i))
                 .style(on_swatch_text())
                 .show(ui);
         });
@@ -96,7 +96,7 @@ fn row(ui: &mut Ui, ns: &'static str, i: u32) {
 
 fn col(ui: &mut Ui, i: u32) {
     Panel::vstack()
-        .with_id(("h", "scroll-col", i))
+        .id_salt(("h", "scroll-col", i))
         .size((Sizing::Fixed(60.0), Sizing::FILL))
         .padding((6.0, 10.0))
         .background(Background {
@@ -106,7 +106,7 @@ fn col(ui: &mut Ui, i: u32) {
         })
         .show(ui, |ui| {
             Text::new(label_for(i))
-                .with_id(("h", "scroll-col-label", i))
+                .id_salt(("h", "scroll-col-label", i))
                 .style(on_swatch_text())
                 .show(ui);
         });
@@ -117,15 +117,15 @@ fn grid(ui: &mut Ui) {
     // VStack/HStack. Both-axes Scroll measures with INF on both axes,
     // so the inner stacks size to natural content and overflow the
     // viewport on both sides.
-    Panel::vstack().with_id("xy-grid").gap(4.0).show(ui, |ui| {
+    Panel::vstack().id_salt("xy-grid").gap(4.0).show(ui, |ui| {
         for r in 0..16u32 {
             Panel::hstack()
-                .with_id(("xy-row", r))
+                .id_salt(("xy-row", r))
                 .gap(4.0)
                 .show(ui, |ui| {
                     for c in 0..12u32 {
                         Panel::hstack()
-                            .with_id(("xy-cell", r, c))
+                            .id_salt(("xy-cell", r, c))
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                             .padding((6.0, 4.0))
                             .background(Background {
@@ -135,7 +135,7 @@ fn grid(ui: &mut Ui) {
                             })
                             .show(ui, |ui| {
                                 Text::new(cell_label(r, c))
-                                    .with_id(("xy-cell-label", r, c))
+                                    .id_salt(("xy-cell-label", r, c))
                                     .style(on_swatch_text().with_font_size(11.0))
                                     .show(ui);
                             });

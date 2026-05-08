@@ -13,9 +13,9 @@ fn collapsed_child_consumes_no_space_in_hstack() {
     let root = Panel::hstack()
         .gap(10.0)
         .show(&mut ui, |ui| {
-            Frame::new().with_id("a").size(40.0).show(ui);
-            Frame::new().with_id("gone").size(40.0).collapsed().show(ui);
-            Frame::new().with_id("b").size(40.0).show(ui);
+            Frame::new().id_salt("a").size(40.0).show(ui);
+            Frame::new().id_salt("gone").size(40.0).collapsed().show(ui);
+            Frame::new().id_salt("b").size(40.0).show(ui);
         })
         .node;
     ui.end_frame();
@@ -45,16 +45,16 @@ fn collapsed_does_not_consume_fill_weight() {
     let root = Panel::hstack()
         .show(&mut ui, |ui| {
             Frame::new()
-                .with_id("a")
+                .id_salt("a")
                 .size((Sizing::Fill(1.0), Sizing::Hug))
                 .show(ui);
             Frame::new()
-                .with_id("gone")
+                .id_salt("gone")
                 .size((Sizing::Fill(3.0), Sizing::Hug))
                 .collapsed()
                 .show(ui);
             Frame::new()
-                .with_id("b")
+                .id_salt("b")
                 .size((Sizing::Fill(1.0), Sizing::Hug))
                 .show(ui);
         })
@@ -84,7 +84,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
         .gap(10.0)
         .show(&mut ui, |ui| {
             Frame::new()
-                .with_id("a")
+                .id_salt("a")
                 .size(40.0)
                 .background(Background {
                     fill: Color::rgb(1.0, 0.0, 0.0),
@@ -92,7 +92,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                 })
                 .show(ui);
             Frame::new()
-                .with_id("hid")
+                .id_salt("hid")
                 .size(40.0)
                 .background(Background {
                     fill: Color::rgb(0.0, 1.0, 0.0),
@@ -101,7 +101,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                 .hidden()
                 .show(ui);
             Frame::new()
-                .with_id("b")
+                .id_salt("b")
                 .size(40.0)
                 .background(Background {
                     fill: Color::rgb(0.0, 0.0, 1.0),
@@ -143,7 +143,7 @@ fn hidden_button_does_not_click() {
     let mut ui = ui_at(UVec2::new(400, 200));
     Panel::hstack().show(&mut ui, |ui| {
         Button::new()
-            .with_id("invisible")
+            .id_salt("invisible")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .hidden()
             .show(ui);
@@ -156,7 +156,7 @@ fn hidden_button_does_not_click() {
     let mut clicked = false;
     Panel::hstack().show(&mut ui, |ui| {
         clicked = Button::new()
-            .with_id("invisible")
+            .id_salt("invisible")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .hidden()
             .show(ui)
@@ -187,11 +187,11 @@ fn hstack_child_align_per_axis_with_overrides() {
             .child_align(Align::v(VAlign::Center))
             .show(&mut ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                     .show(ui);
                 let mut b = Frame::new()
-                    .with_id("b")
+                    .id_salt("b")
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)));
                 if let Some(a) = *second_override {
                     b = b.align(a);

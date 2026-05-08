@@ -23,7 +23,7 @@ pub fn build(ui: &mut Ui) {
             // Left: clipped — child rect spills via negative margin, but the
             // scissor on the panel cuts it at the panel border.
             Panel::zstack()
-                .with_id("clipped")
+                .id_salt("clipped")
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Surface::clip_rect_with_bg(bounded_panel()))
                 .show(ui, |ui| {
@@ -32,7 +32,7 @@ pub fn build(ui: &mut Ui) {
 
             // Right: same content, no clip — the spilling rect leaks past the panel.
             Panel::zstack()
-                .with_id("unclipped")
+                .id_salt("unclipped")
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(bounded_panel())
                 .show(ui, |ui| {
@@ -43,7 +43,7 @@ pub fn build(ui: &mut Ui) {
 
 fn spiller(ui: &mut Ui, id: &'static str) {
     Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::Fixed(220.0), Sizing::Fixed(80.0)))
         .margin((-40.0, -30.0, 0.0, 0.0))
         .background(Background {
