@@ -75,3 +75,22 @@ fn id_salt_overrides_auto_stability() {
         id_of(Button::new().id_salt("k")),
     );
 }
+
+/// `Configure::auto_id()` re-derives the id at *its* call site, not the
+/// constructor's. A helper that builds widgets internally collapses every
+/// `Button::new()` to the helper's source line, but appending `.auto_id()`
+/// at the call site recovers per-line distinctness. Pins the
+/// `#[track_caller]` attribute on the method.
+#[test]
+fn auto_id_redirects_to_call_site() {
+    fn helper() -> Button {
+        Button::new()
+    }
+    // Without `.auto_id()`, both `helper()` invocations resolve to the
+    // same `Button::new()` source location — same id.
+    assert_eq!(id_of(helper()), id_of(helper()));
+    // With `.auto_id()` on different source lines, the ids diverge.
+    let a = id_of(helper().auto_id());
+    let b = id_of(helper().auto_id());
+    assert_distinct("auto_id() at call site", a, b);
+}

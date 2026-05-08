@@ -469,6 +469,18 @@ pub trait Configure: Sized {
         self
     }
 
+    /// Re-derive an auto id at the *current* call site. Use when a builder
+    /// helper constructs the widget (so `*::new()` resolved to the helper's
+    /// source location) and you want each caller to get a distinct id —
+    /// `helper().auto_id().show(ui)` reads the caller's `(file, line, col)`.
+    #[track_caller]
+    fn auto_id(mut self) -> Self {
+        let e = self.element_mut();
+        e.id = WidgetId::auto_stable();
+        e.auto_id = true;
+        self
+    }
+
     fn size(mut self, s: impl Into<Sizes>) -> Self {
         let s = s.into();
         s.w.assert_non_negative();
