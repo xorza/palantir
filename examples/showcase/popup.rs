@@ -79,7 +79,8 @@ pub fn build(ui: &mut Ui) {
     };
 
     let mut chosen: Option<&'static str> = None;
-    Popup::anchored_to(anchor)
+    let resp = Popup::anchored_to(anchor)
+        .with_id("popup-showcase.menu")
         .padding(6.0)
         .background(Surface::from(Background {
             fill: Color::hex(0x2a2a2a),
@@ -103,9 +104,12 @@ pub fn build(ui: &mut Ui) {
             }
         });
 
+    let s = ui.state_mut::<MenuState>(menu_id);
     if let Some(label) = chosen {
-        let s = ui.state_mut::<MenuState>(menu_id);
         s.last_choice = Some(label);
+        s.open = false;
+    } else if resp.dismissed {
+        // Outside click — close the popup.
         s.open = false;
     }
 }

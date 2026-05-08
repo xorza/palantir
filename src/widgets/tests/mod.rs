@@ -1,6 +1,7 @@
 mod canvas;
 mod frame;
 mod panel;
+mod popup;
 mod scroll;
 mod track_caller;
 mod visibility;
