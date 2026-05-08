@@ -68,14 +68,19 @@ Each slice compiles + ships the showcase.
   `[Main, Popup]`, `records.end()` ranges abut, anchor passes through;
   illegal mid-`Panel::show` call panics with a clear message.
 
-### 3. Pipeline loop conversion
-Convert these entry points to iterate `tree.roots`:
-- `LayoutEngine::run` — `run(root.first_node, root.anchor_rect)` per root.
-- `Cascades::run` — already loops; just drive from `tree.roots`.
-- `Encoder::encode` — one `encode_node` per root, in order.
-- HitIndex / Damage — no edit; reverse-iter already gives topmost-first
-  once roots are layer-sorted, and damage already takes screen rects.
-- Showcase must render identically (single-root path collapses).
+### 3. Pipeline loop conversion  ✅ shipped
+- `Encoder::encode` — `src/renderer/frontend/encoder/mod.rs:86` loops
+  `for root in &tree.roots { encode_node(...) }`.
+- `Cascades::run` — walks `0..tree.records.len()` in storage order
+  (`src/ui/cascade.rs:141`); multi-root falls out for free since each
+  root's first node has no parent on the ancestor stack.
+- HitIndex / Damage — no edit needed; reverse-iter gives topmost-first
+  once roots are layer-sorted, and damage works on screen rects.
+- `LayoutEngine::run` — loops `tree.roots`, calling measure+arrange per
+  root against `slot.anchor_rect` (`src/layout/mod.rs:184`). Empty
+  `roots` is the no-widgets-recorded path (zero-sized result).
+- `Ui::end_frame` — single-root pluck deleted; `layout.run` is called
+  with just `(&tree, &mut text)`.
 
 ### 4. `Popup` widget + showcase tab
 - `Popup::anchored_to(rect: Rect, |ui| { … })` with `ClickOutside`

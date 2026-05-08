@@ -122,14 +122,7 @@ impl Ui {
         self.frontend.sweep_removed(removed);
         self.state.sweep_removed(removed);
 
-        // Multi-root pipeline conversion lands in step 3 of
-        // docs/popups.md; today the manifest holds at most one Main
-        // root, so a single `run` is bit-identical to the prior single-
-        // root call. The `else` branch covers the empty-tree frame.
-        let main_root = self.tree.roots.first().map(|r| NodeId(r.first_node));
-        let layout = self
-            .layout
-            .run(&self.tree, main_root, surface, &mut self.text);
+        let layout = self.layout.run(&self.tree, &mut self.text);
 
         self.scrolls.refresh(&self.tree, layout, &mut self.state);
 
