@@ -202,10 +202,9 @@ impl State {
             }
         };
 
-        self.ui.begin_frame(self.display);
-        build_ui(&mut self.ui, &mut self.click_count);
         let clear = self.ui.theme.window_clear;
-        let frame_out = self.ui.end_frame();
+        let clicks = &mut self.click_count;
+        let frame_out = self.ui.run_frame(self.display, |ui| build_ui(ui, clicks));
         self.backend.submit(&frame.texture, clear, frame_out);
 
         frame.present();

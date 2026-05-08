@@ -241,26 +241,18 @@ fn bench(c: &mut Criterion) {
 
     group.bench_function("measure/cached", |b| {
         let mut ui = Ui::new();
-        ui.begin_frame(display);
-        build(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, build);
         b.iter(|| {
-            ui.begin_frame(display);
-            build(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build));
         });
     });
 
     group.bench_function("measure/forced_miss", |b| {
         let mut ui = Ui::new();
-        ui.begin_frame(display);
-        build(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, build);
         b.iter(|| {
             internals::clear_measure_cache(&mut ui);
-            ui.begin_frame(display);
-            build(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build));
         });
     });
 
@@ -279,30 +271,22 @@ fn bench(c: &mut Criterion) {
     //   pipeline.
     group.bench_function("scroll/idle", |b| {
         let mut ui = Ui::new();
-        ui.begin_frame(display);
-        build_scrolling(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, build_scrolling);
         b.iter(|| {
-            ui.begin_frame(display);
-            build_scrolling(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build_scrolling));
         });
     });
 
     group.bench_function("scroll/active", |b| {
         let mut ui = Ui::new();
         // Frame 1: register the scroll viewport's rect/content/cascade.
-        ui.begin_frame(display);
-        build_scrolling(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, build_scrolling);
         // Hover the pointer over the viewport so wheel events route to
         // the scroll target. `recompute_scroll_target` reads cascades,
         // so this needs the post-frame-1 cascade index.
         ui.on_input(InputEvent::PointerMoved(Vec2::new(640.0, 400.0)));
         // Frame 2: apply pointer-route + warm caches a second time.
-        ui.begin_frame(display);
-        build_scrolling(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, build_scrolling);
         let mut sign: f32 = 1.0;
         b.iter(|| {
             // Alternating ±1 px keeps the offset bounded near 0 across
@@ -311,9 +295,7 @@ fn bench(c: &mut Criterion) {
             // is non-zero, so cascade_fp still busts.
             ui.on_input(InputEvent::Scroll(Vec2::new(0.0, sign)));
             sign = -sign;
-            ui.begin_frame(display);
-            build_scrolling(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build_scrolling));
         });
     });
 
@@ -322,26 +304,18 @@ fn bench(c: &mut Criterion) {
     // baseline for the measure cache.
     group.bench_function("heavy/measure/cached", |b| {
         let mut ui = fresh_heavy_ui();
-        ui.begin_frame(display);
-        build_heavy(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, build_heavy);
         b.iter(|| {
-            ui.begin_frame(display);
-            build_heavy(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build_heavy));
         });
     });
 
     group.bench_function("heavy/measure/forced_miss", |b| {
         let mut ui = fresh_heavy_ui();
-        ui.begin_frame(display);
-        build_heavy(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, build_heavy);
         b.iter(|| {
             internals::clear_measure_cache(&mut ui);
-            ui.begin_frame(display);
-            build_heavy(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build_heavy));
         });
     });
 
@@ -351,26 +325,18 @@ fn bench(c: &mut Criterion) {
     // deleted). Kept as another baseline for measure.
     group.bench_function("dense/measure/cached", |b| {
         let mut ui = Ui::new();
-        ui.begin_frame(display);
-        build_dense(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, build_dense);
         b.iter(|| {
-            ui.begin_frame(display);
-            build_dense(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build_dense));
         });
     });
 
     group.bench_function("dense/measure/forced_miss", |b| {
         let mut ui = Ui::new();
-        ui.begin_frame(display);
-        build_dense(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, build_dense);
         b.iter(|| {
             internals::clear_measure_cache(&mut ui);
-            ui.begin_frame(display);
-            build_dense(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build_dense));
         });
     });
 

@@ -180,20 +180,20 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     let mut ui = Ui::new();
     // Warm caches so we audit a steady-state alloc, not first-frame init.
     for _ in 0..4 {
-        ui.begin_frame(display);
-        Button::new()
-            .label("hello")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, |ui| {
+            Button::new()
+                .label("hello")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui);
+        });
     }
     let r = with_audit(|| {
-        ui.begin_frame(display);
-        Button::new()
-            .label("hello")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(&mut ui);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, |ui| {
+            Button::new()
+                .label("hello")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui);
+        });
     });
     let mut bt = r
         .traces

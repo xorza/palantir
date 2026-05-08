@@ -92,7 +92,7 @@ impl Ui {
 
     /// Start recording a frame. A stray `scale_factor` of `0.0` from winit
     /// would collapse the UI to a single physical pixel — assert against it.
-    pub fn begin_frame(&mut self, display: Display) {
+    pub(crate) fn begin_frame(&mut self, display: Display) {
         assert!(
             display.scale_factor >= f32::EPSILON,
             "Display::scale_factor must be ≥ f32::EPSILON; got {}",
@@ -111,7 +111,7 @@ impl Ui {
     /// assumption that the host will present this frame — see
     /// [`Self::invalidate_prev_frame`] for the rewind path when that
     /// assumption breaks.
-    pub fn end_frame(&mut self) -> FrameOutput<'_> {
+    pub(crate) fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
         self.forest.end_frame(surface);
         let removed = self.ids.end_frame();
@@ -145,7 +145,8 @@ impl Ui {
     }
 
     /// Record + finalize a frame, settling state mutations in a single
-    /// host call.
+    /// host call. The only public entry point for driving a frame —
+    /// hosts call this once per redraw.
     ///
     /// Runs `build` once. If the frame contained input that could have
     /// mutated user state (any click / press / key / text / scroll),
@@ -156,8 +157,7 @@ impl Ui {
     /// painted.
     ///
     /// Idle frames (animation tick, occlusion change, host repaint
-    /// without input) run a single pass — same cost as the bare
-    /// `begin_frame` + `end_frame` path.
+    /// without input) run a single pass.
     ///
     /// `build` runs up to twice per call, so it must be `FnMut`. Most
     /// build closures wrap a free function and trivially satisfy this.
