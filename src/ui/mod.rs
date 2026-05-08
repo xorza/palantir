@@ -117,7 +117,6 @@ impl Ui {
         let removed = self.ids.end_frame();
         self.text.sweep_removed(removed);
         self.layout.sweep_removed(removed);
-        self.frontend.sweep_removed(removed);
         self.state.sweep_removed(removed);
 
         let results = self.layout.run(&self.forest, &mut self.text);

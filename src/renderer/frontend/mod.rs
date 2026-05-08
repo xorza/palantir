@@ -24,7 +24,6 @@ use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::tree::Layer;
 use crate::tree::forest::Forest;
-use crate::tree::widget_id::WidgetId;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
 use strum::EnumCount as _;
@@ -99,13 +98,5 @@ impl Frontend {
             display.logical_rect(),
         );
         self.composer.compose(cmds, display)
-    }
-
-    /// Drop encoder cache entries for `WidgetId`s that vanished this
-    /// frame. Called from `Ui::end_frame` with the same `removed` slice
-    /// that the measure cache and text reuse map consume; keeps every
-    /// cross-frame cache eviction-locked.
-    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        self.encoder.sweep_removed(removed);
     }
 }

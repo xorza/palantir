@@ -3,7 +3,6 @@ use crate::layout::cache::{ArenaSnapshot, AvailableKey};
 use crate::primitives::{color::Color, size::Size};
 use crate::support::testing::{begin, ui_at};
 use crate::tree::Layer;
-use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::theme::Background;
@@ -249,22 +248,20 @@ fn subtree_skip_restores_descendant_available_q() {
             Frame::new().with_id("c2").size(20.0).show(ui);
         });
     };
+    let read_avail = |ui: &Ui| -> Vec<crate::layout::cache::AvailableKey> {
+        ui.layout.results[Layer::Main as usize].available_q.clone()
+    };
     run_frame(&mut ui, build);
-    let n = ui.forest.tree(Layer::Main).records.len();
-    let cold: Vec<_> = (0..n)
-        .map(|i| ui.layout.results[Layer::Main as usize].available_q(NodeId(i as u32)))
-        .collect();
-    // Cold frame must have populated every descendant — every slot is
-    // `Some(real_value)`, never `None` (the UNSET frame-init sentinel).
+    let cold = read_avail(&ui);
+    // Cold frame must have populated every descendant — no slot left
+    // at `AVAIL_UNSET` (the frame-init sentinel).
     assert!(
-        cold.iter().all(Option::is_some),
+        cold.iter().all(|v| *v != crate::layout::cache::AVAIL_UNSET),
         "cold frame must populate `available_q` for every node",
     );
 
     run_frame(&mut ui, build);
-    let warm: Vec<_> = (0..n)
-        .map(|i| ui.layout.results[Layer::Main as usize].available_q(NodeId(i as u32)))
-        .collect();
+    let warm = read_avail(&ui);
     assert_eq!(
         cold, warm,
         "subtree-skip must restore descendants' `available_q` from the snapshot",

@@ -2,10 +2,10 @@
 
 WPF-style short-circuit: skip a node's measure when neither its
 authoring inputs nor its incoming `available` size changed since last
-frame. Composes with damage. Same `(subtree_hash, available_q)` key is
-reused by the [encode cache](../renderer/frontend/encoder/encode-cache.md),
-which mirrors the SoA arena + snapshot shape and is eviction-locked to
-this cache via the shared `removed` sweep.
+frame. Composes with damage. The only cross-frame cache in the render
+path — encode and compose were both removed after benches showed they
+contributed < 1% (see `docs/encode-cache-investigation.md`,
+`docs/compose-cache-under-scroll.md`).
 
 Code lives in `cache/` (this directory's sibling).
 

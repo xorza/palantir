@@ -30,10 +30,9 @@ pub(crate) struct NodeHash(pub(crate) u64);
 ///   intrinsic cache.
 /// - `subtree[i]` — rollup of `node[i]` together with the subtree
 ///   hashes of `i`'s direct children, in declaration order. Equality
-///   across frames means nothing in the subtree changed; the cross-frame
-///   measure cache and encode cache both key on this. See
-///   `src/layout/measure-cache.md` and
-///   `src/renderer/frontend/encoder/encode-cache.md`.
+///   across frames means nothing in the subtree changed; the
+///   cross-frame measure cache keys on this. See
+///   `src/layout/measure-cache.md`.
 /// - `has_grid[i]` — bit `i` is true iff the subtree rooted at node
 ///   `i` contains any `LayoutMode::Grid` node. Fast-path skip for
 ///   `MeasureCache`'s grid-hug snapshot/restore walk. Conceptually a

@@ -9,11 +9,11 @@
 //!   axis under test rebuilds from scratch while the other two stay pure
 //!   cache hits.
 //!
-//! Ratio of `cached / forced_miss` quantifies the cache's contribution on
-//! a comparable workload across all three axes. See
-//! `src/layout/measure-cache.md`,
-//! `src/renderer/frontend/encoder/encode-cache.md`,
-//! `src/renderer/frontend/composer/compose-cache.md`.
+//! Ratio of `cached / forced_miss` quantifies the cache's contribution
+//! on a comparable workload. See `src/layout/measure-cache.md`. The
+//! encode and compose caches were removed after their contributions
+//! turned out to be < 1% — see `docs/encode-cache-investigation.md`
+//! and `docs/compose-cache-under-scroll.md`.
 //!
 //! Gated behind the `bench-deep` feature so default `cargo bench` runs
 //! only the steady-state aggregate in `frame.rs`. Run with
@@ -26,8 +26,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use palantir::support::internals;
 use palantir::{
-    Background, Color, Configure, Corners, CosmicMeasure, Display, Frame, InputEvent, Panel,
-    Scroll, Sizing, Stroke, Surface, Text, TextStyle, Ui, share,
+    Background, Color, Configure, Corners, CosmicMeasure, Display, Frame, InputEvent, Panel, Rect,
+    Scroll, Shape, Sizing, Stroke, Surface, Text, TextStyle, Ui, share,
 };
 use std::hint::black_box;
 
@@ -36,6 +36,13 @@ const ROWS_PER_GROUP: usize = 10;
 
 const HEAVY_GROUPS: usize = 50;
 const HEAVY_ROWS_PER_GROUP: usize = 8;
+
+const DENSE_GROUPS: usize = 80;
+const DENSE_ROWS_PER_GROUP: usize = 12;
+/// Decorative shapes pushed onto each row's stack via `add_shape`.
+/// Inflates cmd count per node so encode cache hit/miss is dominated
+/// by cmd-stream copy size, not just per-node walk overhead.
+const DENSE_SHAPES_PER_ROW: usize = 6;
 
 fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -137,8 +144,7 @@ fn build_heavy(ui: &mut Ui) {
                                 .background(row_surface)
                                 .show(ui, |ui| {
                                     // Inner zstack adds a nesting level — exercises
-                                    // the encode subtree-skip threshold and gives
-                                    // the composer another EnterSubtree to track.
+                                    // measure on a deeper tree.
                                     Panel::zstack()
                                         .with_id(("h-avatar-wrap", g, r))
                                         .size((Sizing::Fixed(24.0), Sizing::Fixed(24.0)))
@@ -164,58 +170,99 @@ fn build_heavy(ui: &mut Ui) {
         });
 }
 
-#[derive(Copy, Clone)]
-enum Axis {
-    Measure,
-    Encode,
-}
-
-impl Axis {
-    fn name(self) -> &'static str {
-        match self {
-            Axis::Measure => "measure",
-            Axis::Encode => "encode",
-        }
-    }
-
-    fn clear(self, ui: &mut Ui) {
-        match self {
-            Axis::Measure => internals::clear_measure_cache(ui),
-            Axis::Encode => internals::clear_encode_cache(ui),
-        }
-    }
+/// Encode-stressing workload: dense per-node shape decoration. Each
+/// row gets `DENSE_SHAPES_PER_ROW` decorative `RoundedRect` shapes
+/// pushed via `add_shape`, in addition to the row's avatar + two
+/// labels. Goal: inflate cmd count per leaf so the encode cache's
+/// memcpy-vs-walk asymmetry shows up if there is one. Keeps
+/// `Sizing::Fixed` everywhere so measure stays cheap and the encode
+/// signal isn't drowned by text shaping.
+fn build_dense(ui: &mut Ui) {
+    let avatar_bg = Background {
+        fill: Color::hex(0x3a4a5c),
+        stroke: None,
+        radius: Corners::all(8.0),
+    };
+    Panel::vstack()
+        .with_id("dense-root")
+        .gap(2.0)
+        .padding(4.0)
+        .size((Sizing::FILL, Sizing::Hug))
+        .show(ui, |ui| {
+            for g in 0..DENSE_GROUPS {
+                Panel::vstack()
+                    .with_id(("d-group", g))
+                    .gap(1.0)
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .show(ui, |ui| {
+                        for r in 0..DENSE_ROWS_PER_GROUP {
+                            Panel::hstack()
+                                .with_id(("d-row", g, r))
+                                .gap(4.0)
+                                .padding(2.0)
+                                .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                                .show(ui, |ui| {
+                                    // Decorative shapes attached directly
+                                    // to the panel — emitted as DrawRect
+                                    // by the encoder, no descendant
+                                    // structure to amortize over.
+                                    for s in 0..DENSE_SHAPES_PER_ROW {
+                                        let x = (s as f32) * 4.0;
+                                        ui.add_shape(Shape::RoundedRect {
+                                            local_rect: Some(Rect::new(x, 2.0, 3.0, 16.0)),
+                                            radius: Corners::all(1.5),
+                                            fill: Color::hex(0x556677),
+                                            stroke: None,
+                                        });
+                                    }
+                                    Frame::new()
+                                        .with_id(("d-avatar", g, r))
+                                        .size((Sizing::Fixed(16.0), Sizing::Fixed(16.0)))
+                                        .background(avatar_bg)
+                                        .show(ui);
+                                    Text::new("name")
+                                        .with_id(("d-name", g, r))
+                                        .style(TextStyle::default().with_font_size(11.0))
+                                        .show(ui);
+                                    Text::new("meta")
+                                        .with_id(("d-meta", g, r))
+                                        .style(TextStyle::default().with_font_size(10.0))
+                                        .show(ui);
+                                });
+                        }
+                    });
+            }
+        });
 }
 
 fn bench(c: &mut Criterion) {
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
     let mut group = c.benchmark_group("caches");
 
-    for axis in [Axis::Measure, Axis::Encode] {
-        group.bench_function(format!("{}/cached", axis.name()), |b| {
-            let mut ui = Ui::new();
+    group.bench_function("measure/cached", |b| {
+        let mut ui = Ui::new();
+        ui.begin_frame(display);
+        build(&mut ui);
+        let _ = ui.end_frame();
+        b.iter(|| {
             ui.begin_frame(display);
             build(&mut ui);
-            let _ = ui.end_frame();
-            b.iter(|| {
-                ui.begin_frame(display);
-                build(&mut ui);
-                black_box(ui.end_frame());
-            });
+            black_box(ui.end_frame());
         });
+    });
 
-        group.bench_function(format!("{}/forced_miss", axis.name()), |b| {
-            let mut ui = Ui::new();
+    group.bench_function("measure/forced_miss", |b| {
+        let mut ui = Ui::new();
+        ui.begin_frame(display);
+        build(&mut ui);
+        let _ = ui.end_frame();
+        b.iter(|| {
+            internals::clear_measure_cache(&mut ui);
             ui.begin_frame(display);
             build(&mut ui);
-            let _ = ui.end_frame();
-            b.iter(|| {
-                axis.clear(&mut ui);
-                ui.begin_frame(display);
-                build(&mut ui);
-                black_box(ui.end_frame());
-            });
+            black_box(ui.end_frame());
         });
-    }
+    });
 
     // Whole-pipeline cost under scroll. Wrapping the workload in a
     // `Scroll` adds an ancestor `current_transform` that mutates per
@@ -270,38 +317,62 @@ fn bench(c: &mut Criterion) {
         });
     });
 
-    // Heavy-workload variants. Same cached-vs-forced-miss split as the
-    // light arms, but the workload exercises composer slow paths
-    // (rounded-stencil clips on every group + row, real cosmic-text
-    // shaping, deeper nesting, strokes). Originally added to verify
-    // the compose-cache deletion was justified; kept as a heavier
-    // baseline for the remaining caches.
-    for axis in [Axis::Measure, Axis::Encode] {
-        group.bench_function(format!("heavy/{}/cached", axis.name()), |b| {
-            let mut ui = fresh_heavy_ui();
+    // Heavy-workload variant: rounded-stencil clips on every group +
+    // row, real cosmic-text shaping, deeper nesting, strokes. Heavier
+    // baseline for the measure cache.
+    group.bench_function("heavy/measure/cached", |b| {
+        let mut ui = fresh_heavy_ui();
+        ui.begin_frame(display);
+        build_heavy(&mut ui);
+        let _ = ui.end_frame();
+        b.iter(|| {
             ui.begin_frame(display);
             build_heavy(&mut ui);
-            let _ = ui.end_frame();
-            b.iter(|| {
-                ui.begin_frame(display);
-                build_heavy(&mut ui);
-                black_box(ui.end_frame());
-            });
+            black_box(ui.end_frame());
         });
+    });
 
-        group.bench_function(format!("heavy/{}/forced_miss", axis.name()), |b| {
-            let mut ui = fresh_heavy_ui();
+    group.bench_function("heavy/measure/forced_miss", |b| {
+        let mut ui = fresh_heavy_ui();
+        ui.begin_frame(display);
+        build_heavy(&mut ui);
+        let _ = ui.end_frame();
+        b.iter(|| {
+            internals::clear_measure_cache(&mut ui);
             ui.begin_frame(display);
             build_heavy(&mut ui);
-            let _ = ui.end_frame();
-            b.iter(|| {
-                axis.clear(&mut ui);
-                ui.begin_frame(display);
-                build_heavy(&mut ui);
-                black_box(ui.end_frame());
-            });
+            black_box(ui.end_frame());
         });
-    }
+    });
+
+    // Dense-workload variant: many decorative shapes per row inflate
+    // cmd count, originally added to expose any encode-cache value in
+    // a high-cmd-density workload (none found; encode cache later
+    // deleted). Kept as another baseline for measure.
+    group.bench_function("dense/measure/cached", |b| {
+        let mut ui = Ui::new();
+        ui.begin_frame(display);
+        build_dense(&mut ui);
+        let _ = ui.end_frame();
+        b.iter(|| {
+            ui.begin_frame(display);
+            build_dense(&mut ui);
+            black_box(ui.end_frame());
+        });
+    });
+
+    group.bench_function("dense/measure/forced_miss", |b| {
+        let mut ui = Ui::new();
+        ui.begin_frame(display);
+        build_dense(&mut ui);
+        let _ = ui.end_frame();
+        b.iter(|| {
+            internals::clear_measure_cache(&mut ui);
+            ui.begin_frame(display);
+            build_dense(&mut ui);
+            black_box(ui.end_frame());
+        });
+    });
 
     group.finish();
 }
