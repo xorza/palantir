@@ -6,23 +6,25 @@ use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
 use crate::primitives::transform::TranslateScale;
 use crate::shape::Shape;
-use crate::tree::NodeId;
-use crate::tree::Tree;
 use crate::tree::element::{Configure, Element, LayoutMode, ScrollAxes};
+use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
+use crate::tree::{Layer, NodeId};
 use crate::ui::Ui;
 use crate::ui::state::StateMap;
 use crate::widgets::Response;
 use crate::widgets::theme::{ScrollbarTheme, Surface};
 use glam::Vec2;
+use strum::EnumCount as _;
 
 /// One scroll widget recorded this frame: the stable `WidgetId` keying
-/// its [`ScrollState`] row plus the per-frame `NodeId` for reading
-/// arranged rect / measured content. Pushed during recording, drained
-/// in `Ui::end_frame` after arrange.
+/// its [`ScrollState`] row, the layer it was recorded into, and the
+/// per-frame `NodeId` for reading arranged rect / measured content.
+/// Pushed during recording, drained in `Ui::end_frame` after arrange.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollNode {
     pub(crate) id: WidgetId,
+    pub(crate) layer: Layer,
     pub(crate) node: NodeId,
 }
 
@@ -72,8 +74,15 @@ impl ScrollRegistry {
     /// post-arrange / pre-cascade so next frame's record clamps with
     /// up-to-date numbers; the current frame's pan already used last
     /// frame's clamp.
-    pub(crate) fn refresh(&self, tree: &Tree, layout: &LayoutResult, state: &mut StateMap) {
+    pub(crate) fn refresh(
+        &self,
+        forest: &Forest,
+        results: &[LayoutResult; Layer::COUNT],
+        state: &mut StateMap,
+    ) {
         for s in self.nodes.iter().copied() {
+            let tree = forest.tree(s.layer);
+            let layout = &results[s.layer as usize];
             assert!(
                 s.node.index() < layout.rect.len(),
                 "scroll registry entry references node {} past tree length {}",
@@ -223,7 +232,8 @@ impl Scroll {
             push_bar(ui, viewport, outer, content, offset, Axis::Y, pan.y, &theme);
             push_bar(ui, viewport, outer, content, offset, Axis::X, pan.x, &theme);
         });
-        ui.scrolls.push(ScrollNode { id, node });
+        let layer = ui.forest.recording.current_layer;
+        ui.scrolls.push(ScrollNode { id, layer, node });
 
         let resp_state = ui.response_for(id);
         Response {

@@ -10,6 +10,8 @@ use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::shape::Shape;
 use crate::text::{SharedCosmic, cosmic::CosmicMeasure, share};
+#[allow(unused_imports)]
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::tree::{NodeId, Tree, TreeItem};
 use crate::widgets::panel::Panel;
@@ -103,8 +105,8 @@ pub(crate) fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBu
     // `ui.frontend.encoder.cmds()` instead.
     let mut encoder = Encoder::default();
     encoder.encode(
-        &ui.tree,
-        &ui.layout.result,
+        &ui.forest,
+        &ui.layout.results,
         &ui.cascades.result,
         filter,
         ui.display.logical_rect(),

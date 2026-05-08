@@ -10,6 +10,7 @@ use crate::Ui;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::color::Color;
 use crate::support::testing::{ui_at, ui_with_text};
+use crate::tree::Layer;
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
@@ -20,7 +21,7 @@ use std::rc::Rc;
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
 fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
-    let shaped = support::shaped_text(&ui.layout.result, node);
+    let shaped = support::shaped_text(&ui.layout.results[Layer::Main as usize], node);
     assert!(
         shaped.measured.h > 32.0,
         "expected multi-line wrapped height, got h={}",
@@ -95,7 +96,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
     });
     ui.end_frame();
 
-    let r = ui.layout.result.rect[zstack_node.unwrap().index()];
+    let r = ui.layout.results[Layer::Main as usize].rect[zstack_node.unwrap().index()];
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -129,9 +130,12 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                 );
             });
         ui.end_frame();
-        support::shaped_text(&ui.layout.result, value_node.unwrap())
-            .measured
-            .h
+        support::shaped_text(
+            &ui.layout.results[Layer::Main as usize],
+            value_node.unwrap(),
+        )
+        .measured
+        .h
     }
 
     let h_wide = measure(2000);
@@ -181,7 +185,10 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     });
     ui.end_frame();
 
-    let shaped = support::shaped_text(&ui.layout.result, value_node.unwrap());
+    let shaped = support::shaped_text(
+        &ui.layout.results[Layer::Main as usize],
+        value_node.unwrap(),
+    );
     assert!(
         shaped.measured.h > 32.0,
         "Fill grid + Fill col should wrap text under constrained width; got h={}",
@@ -239,7 +246,9 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
         });
     ui.end_frame();
 
-    let h = ui.layout.result.rect[grid_node.unwrap().index()].size.h;
+    let h = ui.layout.results[Layer::Main as usize].rect[grid_node.unwrap().index()]
+        .size
+        .h;
     assert!(
         h > 50.0,
         "grid must size to wrapped row heights, not single-line × 2; got h={h}"
@@ -286,7 +295,9 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
         });
     ui.end_frame();
 
-    let h = ui.layout.result.rect[grid_node.unwrap().index()].size.h;
+    let h = ui.layout.results[Layer::Main as usize].rect[grid_node.unwrap().index()]
+        .size
+        .h;
     assert!(
         h > 30.0,
         "ZStack must pass `INF` on Hug axes so nested grid measures \

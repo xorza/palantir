@@ -1,6 +1,7 @@
 use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::support::testing::{click_at, encode_cmds, ui_at};
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -19,10 +20,15 @@ fn collapsed_child_consumes_no_space_in_hstack() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let a = ui.layout.result.rect[kids[0].index()];
-    let gone = ui.layout.result.rect[kids[1].index()];
-    let b = ui.layout.result.rect[kids[2].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let a = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+    let gone = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
+    let b = ui.layout.results[Layer::Main as usize].rect[kids[2].index()];
 
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.size.w, 40.0);
@@ -55,9 +61,14 @@ fn collapsed_does_not_consume_fill_weight() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let a = ui.layout.result.rect[kids[0].index()];
-    let b = ui.layout.result.rect[kids[2].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let a = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+    let b = ui.layout.results[Layer::Main as usize].rect[kids[2].index()];
     // Collapsed sibling's weight (3.0) is dropped — remaining two fills split 50/50.
     assert_eq!(a.size.w, 200.0);
     assert_eq!(b.size.w, 200.0);
@@ -101,9 +112,14 @@ fn hidden_keeps_slot_but_emits_no_draws() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let hid = ui.layout.result.rect[kids[1].index()];
-    let b = ui.layout.result.rect[kids[2].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let hid = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
+    let b = ui.layout.results[Layer::Main as usize].rect[kids[2].index()];
     // Hidden node still occupies its slot.
     assert_eq!(hid.size.w, 40.0);
     // ...so b's offset includes hidden's width + both gaps.
@@ -185,9 +201,14 @@ fn hstack_child_align_per_axis_with_overrides() {
             .node;
         ui.end_frame();
 
-        let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-        let a = ui.layout.result.rect[kids[0].index()];
-        let b = ui.layout.result.rect[kids[1].index()];
+        let kids: Vec<_> = ui
+            .forest
+            .tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id)
+            .collect();
+        let a = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+        let b = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
         assert_eq!(a.min.y, 40.0, "case: {label} a inherits default");
         assert_eq!(a.size.h, 20.0, "case: {label} a.size.h");
         assert_eq!(b.min.y, *second_y, "case: {label} b");

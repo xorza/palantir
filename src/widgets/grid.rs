@@ -129,7 +129,7 @@ impl Grid {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
-        let idx = ui.tree.grid.push_def(self.def);
+        let idx = ui.forest.active_tree_mut().grid.push_def(self.def);
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
 

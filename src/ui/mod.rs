@@ -12,8 +12,9 @@ use crate::renderer::frontend::{FrameOutput, Frontend};
 use crate::shape::Shape;
 use crate::text::{SharedCosmic, TextMeasurer};
 use crate::tree::element::Element;
+use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{Layer, NodeId, Tree};
+use crate::tree::{Layer, NodeId};
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::seen_ids::SeenIds;
@@ -29,7 +30,7 @@ use crate::widgets::theme::{Surface, Theme};
 /// upload time. Pointer events from winit are converted at the boundary
 /// (`handle_event` / `InputEvent::from_winit`).
 pub struct Ui {
-    pub(crate) tree: Tree,
+    pub(crate) forest: Forest,
     pub theme: Theme,
 
     /// Per-frame `WidgetId` tracker — collision detection,
@@ -66,7 +67,7 @@ impl Default for Ui {
 impl Ui {
     pub fn new() -> Self {
         Self {
-            tree: Tree::default(),
+            forest: Forest::default(),
             theme: Theme::default(),
             ids: SeenIds::default(),
             state: StateMap::default(),
@@ -98,7 +99,7 @@ impl Ui {
             display.scale_factor,
         );
         self.display = display;
-        self.tree.begin_frame();
+        self.forest.begin_frame();
         self.ids.begin_frame();
         self.scrolls.begin_frame();
     }
@@ -112,35 +113,34 @@ impl Ui {
     /// assumption breaks.
     pub fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
-        // Hashes are pure functions of recorded inputs and don't depend on
-        // layout output, so we compute them up front. Layout reads them to
-        // skip text reshape for unchanged Text nodes; damage reads them after.
-        self.tree.end_frame(surface);
+        self.forest.end_frame(surface);
         let removed = self.ids.end_frame();
         self.text.sweep_removed(removed);
         self.layout.sweep_removed(removed);
         self.frontend.sweep_removed(removed);
         self.state.sweep_removed(removed);
 
-        let layout = self.layout.run(&self.tree, &mut self.text);
+        let results = self.layout.run(&self.forest, &mut self.text);
 
-        self.scrolls.refresh(&self.tree, layout, &mut self.state);
+        self.scrolls.refresh(&self.forest, results, &mut self.state);
 
-        let cascades = self.cascades.run(&self.tree, layout);
+        let cascades = self.cascades.run(&self.forest, results);
         self.input.end_frame(cascades);
-        let damage = self.damage.compute(&self.tree, cascades, removed, surface);
+        let damage = self
+            .damage
+            .compute(&self.forest, cascades, removed, surface);
 
-        // Encoder filter is `Some` only on Partial frames. Full
-        // re-encodes everything; Skip will be ignored by `submit`,
-        // but we still encode normally so the next non-Skip frame
-        // doesn't have stale cache state.
         let damage_filter = match damage {
             DamagePaint::Partial(r) => Some(r),
             DamagePaint::Full | DamagePaint::Skip => None,
         };
-        let buffer =
-            self.frontend
-                .build(&self.tree, layout, cascades, damage_filter, &self.display);
+        let buffer = self.frontend.build(
+            &self.forest,
+            results,
+            cascades,
+            damage_filter,
+            &self.display,
+        );
 
         FrameOutput { buffer, damage }
     }
@@ -211,11 +211,6 @@ impl Ui {
         f: impl FnOnce(&mut Ui),
     ) -> NodeId {
         element.id = self.ids.record(element.id, element.auto_id);
-        // Apply the surface's clip mode to the element (with Rounded
-        // → Rect downgrade for zero-radius paint), and pass the
-        // chrome (paint Background) to the tree to land in
-        // `Tree::chrome_table`. Element doesn't carry chrome — chrome
-        // is a per-node-call concern, paired with the body.
         let chrome = surface.map(|s| {
             element.clip = match s.clip {
                 ClipMode::Rounded if s.paint.radius.approx_zero() => ClipMode::Rect,
@@ -223,9 +218,9 @@ impl Ui {
             };
             s.paint
         });
-        let node = self.tree.open_node(element, chrome);
+        let node = self.forest.open_node(element, chrome);
         f(self);
-        self.tree.close_node();
+        self.forest.close_node();
         node
     }
 
@@ -233,7 +228,7 @@ impl Ui {
         if shape.is_noop() {
             return;
         }
-        self.tree.add_shape(shape);
+        self.forest.add_shape(shape);
     }
 
     /// Record `body` as a side layer — its first widget becomes a new
@@ -248,11 +243,9 @@ impl Ui {
     /// V1 requires the egui-style pattern: record `Main` content first,
     /// then call `ui.layer(...)` after the outer scope closes.
     pub fn layer<R>(&mut self, layer: Layer, anchor: Rect, body: impl FnOnce(&mut Ui) -> R) -> R {
-        // `Tree::push_layer` enforces v1's top-level rule —
-        // `current_layer == Main` and `open_frames[Main].is_empty()`.
-        self.tree.push_layer(layer, anchor);
+        self.forest.push_layer(layer, anchor);
         let result = body(self);
-        self.tree.pop_layer();
+        self.forest.pop_layer();
         result
     }
 }

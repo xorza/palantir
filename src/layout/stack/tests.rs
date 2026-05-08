@@ -1,6 +1,7 @@
 use crate::layout::types::{align::Align, sizing::Sizing};
 use crate::primitives::rect::Rect;
 use crate::support::testing::ui_at;
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -22,24 +23,29 @@ fn hstack_arranges_two_buttons_side_by_side() {
     ui.end_frame();
 
     assert_eq!(
-        ui.layout.result.rect[root.index()],
+        ui.layout.results[Layer::Main as usize].rect[root.index()],
         Rect::new(0.0, 0.0, 800.0, 600.0)
     );
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
     assert_eq!(kids.len(), 2);
 
     // "Hi" measures 2*8=16 wide. Height = `line_height_px` = font_size *
     // LINE_HEIGHT_MULT = 16 * 1.2 = 19.2. Default `ButtonTheme.padding`
     // is `Spacing::xy(12.0, 6.0)`, so the button hugs label + padding:
     // 16 + 12 + 12 = 40 wide, 19.2 + 6 + 6 = 31.2 tall.
-    let a = ui.layout.result.rect[kids[0].index()];
+    let a = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.min.y, 0.0);
     assert_eq!(a.size.w, 40.0);
     assert_eq!(a.size.h, 31.2);
 
-    let b = ui.layout.result.rect[kids[1].index()];
+    let b = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
     assert_eq!(b.min.x, 40.0);
     assert_eq!(b.size.w, 100.0);
     assert_eq!(b.size.h, 31.2);
@@ -58,9 +64,14 @@ fn vstack_with_fill_distributes_remainder() {
 
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let fixed = ui.layout.result.rect[kids[0].index()];
-    let filler = ui.layout.result.rect[kids[1].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let fixed = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+    let filler = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
 
     assert_eq!(fixed.size.h, 50.0);
     assert_eq!(filler.min.y, 50.0);
@@ -84,9 +95,14 @@ fn hstack_fill_weights_split_remainder_proportionally() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let a = ui.layout.result.rect[kids[0].index()];
-    let b = ui.layout.result.rect[kids[1].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let a = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+    let b = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
     // 400 leftover / 4 weight = 100 per weight unit → a=100, b=300.
     assert_eq!(a.size.w, 100.0);
     assert_eq!(b.size.w, 300.0);
@@ -112,9 +128,14 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let a = ui.layout.result.rect[kids[0].index()];
-    let b = ui.layout.result.rect[kids[1].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let a = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+    let b = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
     assert_eq!(a.size.w, 200.0);
     assert_eq!(b.size.w, 200.0);
     assert_eq!(a.min.x, 0.0);
@@ -147,10 +168,17 @@ fn hstack_justify_distributes_leftover() {
             .node;
         ui.end_frame();
 
-        let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
+        let kids: Vec<_> = ui
+            .forest
+            .tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id)
+            .collect();
         for (i, want_x) in expected_xs.iter().enumerate() {
             assert_eq!(
-                ui.layout.result.rect[kids[i].index()].min.x,
+                ui.layout.results[Layer::Main as usize].rect[kids[i].index()]
+                    .min
+                    .x,
                 *want_x,
                 "case: {label} child[{i}].min.x",
             );
@@ -175,12 +203,37 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
     // Fill consumes leftover → first child still pinned to start.
-    assert_eq!(ui.layout.result.rect[kids[0].index()].min.x, 0.0);
-    assert_eq!(ui.layout.result.rect[kids[1].index()].min.x, 40.0);
-    assert_eq!(ui.layout.result.rect[kids[1].index()].size.w, 120.0);
-    assert_eq!(ui.layout.result.rect[kids[2].index()].min.x, 160.0);
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[0].index()]
+            .min
+            .x,
+        0.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[1].index()]
+            .min
+            .x,
+        40.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[1].index()]
+            .size
+            .w,
+        120.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[2].index()]
+            .min
+            .x,
+        160.0
+    );
 }
 
 #[test]
@@ -196,10 +249,30 @@ fn hstack_gap_inserts_space_between_children() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    assert_eq!(ui.layout.result.rect[kids[0].index()].min.x, 0.0);
-    assert_eq!(ui.layout.result.rect[kids[1].index()].min.x, 50.0);
-    assert_eq!(ui.layout.result.rect[kids[2].index()].min.x, 100.0);
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[0].index()]
+            .min
+            .x,
+        0.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[1].index()]
+            .min
+            .x,
+        50.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[2].index()]
+            .min
+            .x,
+        100.0
+    );
 }
 
 #[test]
@@ -217,8 +290,13 @@ fn hstack_align_center_centers_child_on_cross_axis() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let r = ui.layout.result.rect[kids[0].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let r = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
     // Cross axis is height (100); child is 20 tall → centered at (100-20)/2 = 40.
     assert_eq!(r.min.y, 40.0);
     assert_eq!(r.size.h, 20.0);
@@ -245,12 +323,17 @@ fn negative_left_margin_spills_outside_slot() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
     assert_eq!(kids.len(), 1);
 
     // Rendered rect (what the renderer paints, what hit-test uses) is shifted
     // 10px left of the slot and full Fixed-50 wide — i.e. spilled.
-    let r = ui.layout.result.rect[button_node.unwrap().index()];
+    let r = ui.layout.results[Layer::Main as usize].rect[button_node.unwrap().index()];
     assert_eq!(r.min.x, -10.0, "rendered rect spills 10px left of slot");
     assert_eq!(r.min.y, 0.0);
     assert_eq!(
@@ -313,10 +396,15 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let a = ui.layout.result.rect[kids[0].index()];
-    let hidden = ui.layout.result.rect[kids[1].index()];
-    let b = ui.layout.result.rect[kids[2].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let a = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+    let hidden = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
+    let b = ui.layout.results[Layer::Main as usize].rect[kids[2].index()];
 
     assert_eq!((a.min.x, a.size.w), (0.0, 20.0));
     // collapsed: zero-size rect at cursor (= a.right). Cursor stays here.

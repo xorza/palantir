@@ -3,6 +3,7 @@ use crate::Ui;
 use crate::layout::types::display::Display;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::support::testing::{begin, new_ui_text, ui_at};
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
 use crate::ui::damage::DamagePaint;
@@ -42,7 +43,7 @@ fn auto_id_collisions_disambiguate() {
         chip(ui);
     });
     // 1 panel + 3 chips = 4 distinct ids, no panic.
-    assert_eq!(ui.tree.records.len(), 4);
+    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 4);
 }
 
 /// Helper: drive one full frame with an empty root so we can inspect
@@ -70,7 +71,7 @@ fn empty_ui_drives_a_frame_safely() {
         assert!(frame.buffer.groups.is_empty());
     }
 
-    assert_eq!(ui.tree.records.len(), 0);
+    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 0);
     assert!(ui.damage.prev.is_empty());
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage.rect.is_none());
@@ -88,7 +89,7 @@ fn empty_then_populated_frame() {
     ui.end_frame();
 
     drain_one_frame(&mut ui);
-    assert_eq!(ui.tree.records.len(), 1);
+    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
     assert!(!ui.damage.prev.is_empty());
 }
 
@@ -154,7 +155,7 @@ fn prev_frame_captures_arranged_rect() {
         .show(&mut ui)
         .node;
     ui.end_frame();
-    let arranged = ui.layout.result.rect[frame_node.index()];
+    let arranged = ui.layout.results[Layer::Main as usize].rect[frame_node.index()];
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.rect, arranged);
@@ -175,7 +176,10 @@ fn prev_frame_captures_authoring_hash() {
     ui.end_frame();
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
-    assert_eq!(snap.hash, ui.tree.rollups.node[frame_node.index()]);
+    assert_eq!(
+        snap.hash,
+        ui.forest.tree(Layer::Main).rollups.node[frame_node.index()]
+    );
 }
 
 #[test]

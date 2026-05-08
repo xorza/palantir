@@ -6,17 +6,19 @@ use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::shape::Shape;
 use crate::tree::element::{
-    BoundsExtras, Element, ElementSplit, LayoutCore, LayoutMode, PaintAttrs, PanelExtras,
+    BoundsExtras, Element, ElementSplit, LayoutCore, LayoutMode, PanelExtras,
 };
 use crate::tree::node_hash::{NodeHash, SubtreeRollups};
-use crate::tree::widget_id::WidgetId;
+use crate::tree::record::NodeRecord;
 use crate::widgets::grid::GridDef;
-use soa_rs::{Soa, Soars};
+use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
-use strum::EnumCount as _;
 
 pub(crate) mod element;
+pub(crate) mod forest;
 pub(crate) mod node_hash;
+pub(crate) mod record;
+pub(crate) mod recording;
 pub(crate) mod widget_id;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -29,14 +31,14 @@ impl NodeId {
     }
 }
 
-/// Paint / hit-test order across roots. Lower variants paint first
+/// Paint / hit-test order across layers. Lower variants paint first
 /// (under) and hit-test last (under). Total order — popups beat the
 /// main tree, modals beat popups, tooltips beat modals, debug beats
 /// everything. See `docs/popups.md`.
 ///
 /// `#[repr(u8)]` + the contiguous variant layout means `layer as usize`
-/// is a valid index into `[T; Layer::COUNT]` per-layer storage on
-/// `Tree`. `Layer::COUNT` comes from `strum::EnumCount`.
+/// is a valid index into `[T; Layer::COUNT]` per-layer storage. With
+/// the forest topology each variant owns its own [`Tree`] arena.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, strum::EnumCount)]
 pub enum Layer {
@@ -48,149 +50,28 @@ pub enum Layer {
     Debug = 4,
 }
 
-/// One entry per recorded root in the multi-root tree. `first_node`
-/// indexes `tree.records`; `anchor_rect` is the surface rect for
-/// `Main`/`Modal` and the anchor screen-rect for `Popup`/`Tooltip`.
-/// Sorted by `layer` at `Tree::end_frame` so every pipeline pass walks
-/// roots in paint order.
+impl Layer {
+    /// Paint order (low → high). Iterate trees in this order so layers
+    /// paint bottom-up; reverse for topmost-first hit-test traversal.
+    pub(crate) const PAINT_ORDER: [Layer; <Layer as strum::EnumCount>::COUNT] = [
+        Layer::Main,
+        Layer::Popup,
+        Layer::Modal,
+        Layer::Tooltip,
+        Layer::Debug,
+    ];
+}
+
+/// One root within a single layer's [`Tree`]. Multiple roots in the
+/// same tree happen for popups (eater + body recorded as two
+/// top-level scopes) and any future `Ui::layer` scope that opens
+/// non-contiguous top-level subtrees in the same layer.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RootSlot {
     pub(crate) first_node: u32,
-    pub(crate) layer: Layer,
-    #[allow(
-        dead_code,
-        reason = "consumed by docs/popups.md step 3 (pipeline conversion)"
-    )]
+    /// Surface rect for `Main`/`Modal`, anchor screen-rect for
+    /// `Popup`/`Tooltip`. Read by `LayoutEngine::run` per root.
     pub(crate) anchor_rect: Rect,
-}
-
-/// One entry on `RecordingState::layer_stack` — saved
-/// `(current_layer, current_root_id)` from before a `push_layer`
-/// scope, restored on the matching `pop_layer`.
-#[derive(Clone, Copy, Debug)]
-struct LayerScope {
-    layer: Layer,
-    root_id: u16,
-}
-
-/// Recording-only state: alive only between `Tree::begin_frame` and
-/// `Tree::end_frame`. Reset once per frame; capacities retained across
-/// frames so steady-state recording is alloc-free.
-#[derive(Default)]
-pub(crate) struct RecordingState {
-    /// Per-layer ancestor stack indexed by `layer as usize`. Only one
-    /// layer is active at a time during recording (`current_layer`);
-    /// the others sit empty between scopes. Empty outside the
-    /// `begin_frame` ↔ root `close_node` window.
-    pub(crate) open_frames: [Vec<NodeId>; Layer::COUNT],
-    /// Per-layer anchor rect set at `Ui::layer` entry; read by
-    /// `open_node`'s lazy root push. `Main`'s slot is patched at
-    /// `end_frame` once the surface is known.
-    layer_anchor: [Rect; Layer::COUNT],
-    /// Active layer for the next `open_node`. `Main` between/outside
-    /// `Ui::layer` scopes; switched by `push_layer` / `pop_layer`.
-    current_layer: Layer,
-    /// Index into `RootManifest::slots` of the slot the next
-    /// `open_node` will tag records with. `u16::MAX` is the sentinel
-    /// "no slot yet for the active scope" — set at `begin_frame` and
-    /// at every `push_layer` so the scope's first `open_node` mints
-    /// a fresh slot.
-    current_root_id: u16,
-    /// Save-stack for nested `push_layer` scopes — one entry per
-    /// open layer scope. Empty outside any layer scope.
-    layer_stack: Vec<LayerScope>,
-}
-
-impl RecordingState {
-    /// Reset to begin-frame defaults; capacity retained.
-    fn reset(&mut self) {
-        for s in &mut self.open_frames {
-            s.clear();
-        }
-        // `Main`'s anchor is patched at `end_frame` once the surface
-        // is known; other layer anchors are caller-supplied at
-        // `push_layer`.
-        self.layer_anchor = [Rect::ZERO; Layer::COUNT];
-        self.current_layer = Layer::Main;
-        self.current_root_id = u16::MAX;
-        self.layer_stack.clear();
-    }
-}
-
-/// Multi-root manifest: the layer-sorted root slot list, the
-/// per-`NodeId` root-id tag, plus retained scratch buffers for the
-/// end-frame layer sort. v2's reorder pass (see `docs/popups.md`)
-/// will hang its `record_perm` / `inv_perm` / per-column scratches
-/// off this struct too — keeping the data and its scratch in one
-/// place.
-#[derive(Default)]
-pub(crate) struct RootManifest {
-    /// Multi-root manifest. Populated lazily by `open_node`, sorted by
-    /// layer at `Tree::end_frame`. Every pipeline pass iterates this
-    /// slice. Empty when no nodes were recorded this frame.
-    pub(crate) slots: Vec<RootSlot>,
-    /// Per-`NodeId` tag — index into `slots` *after* the layer-sort
-    /// in `end_frame`. Recording stamps the pre-sort index in
-    /// `open_node`; `end_frame` remaps via the sort permutation so
-    /// downstream readers see post-sort indices. Parallel to
-    /// `Tree::records` (length = N). Capacity retained across frames.
-    ///
-    /// First reader is the v2 reorder pass (see `docs/popups.md`);
-    /// step 1 ships the column populated for tests but does not yet
-    /// act on it.
-    pub(crate) id_per_node: Vec<u16>,
-    /// Sort scratch — initial sort permutation
-    /// `order[i] = old_root_idx`. Cleared each `end_frame`.
-    sort_order: Vec<u16>,
-    /// Sort scratch — `old_to_new[old_root_idx] = new_root_idx`.
-    /// Cleared each `end_frame`.
-    sort_old_to_new: Vec<u16>,
-    /// Sort scratch — out-of-place rebuild target for the sorted
-    /// `slots` slice. Swapped with `slots` after the sort completes;
-    /// capacity retained.
-    sort_scratch: Vec<RootSlot>,
-}
-
-impl RootManifest {
-    /// Reset to begin-frame defaults; capacity retained.
-    fn reset(&mut self) {
-        self.slots.clear();
-        self.id_per_node.clear();
-    }
-
-    /// Stable-sort `slots` by layer and remap `id_per_node[]` from
-    /// pre-sort indices (stamped at `open_node` time) to post-sort
-    /// indices. Downstream readers always see post-sort indices, so
-    /// `id_per_node[i]` directly indexes `slots`.
-    fn sort_and_remap(&mut self) {
-        let n_roots = self.slots.len();
-        if n_roots == 0 {
-            return;
-        }
-        let order = &mut self.sort_order;
-        order.clear();
-        order.extend(0..n_roots as u16);
-        // Stable sort keeps recording-order ties.
-        order.sort_by_key(|&i| self.slots[i as usize].layer);
-
-        let old_to_new = &mut self.sort_old_to_new;
-        old_to_new.clear();
-        old_to_new.resize(n_roots, 0);
-        for (new_i, &old_i) in order.iter().enumerate() {
-            old_to_new[old_i as usize] = new_i as u16;
-        }
-
-        let scratch = &mut self.sort_scratch;
-        scratch.clear();
-        for &old_i in order.iter() {
-            scratch.push(self.slots[old_i as usize]);
-        }
-        std::mem::swap(&mut self.slots, scratch);
-
-        for tag in self.id_per_node.iter_mut() {
-            *tag = old_to_new[*tag as usize];
-        }
-    }
 }
 
 /// **Per-NodeId columns** — `Soa<NodeRecord>` indexed by `NodeId.0`, in
@@ -207,71 +88,40 @@ impl RootManifest {
 ///   subtree (parent + descendants); the gap between children's
 ///   sub-ranges holds the parent's direct shapes in record order.
 ///
-/// Record order between direct shapes and child enters is recoverable
-/// from `shapes.start` — each child captures the shape buffer length at
-/// its open, so a parent shape pushed before child C appears at index
-/// `< C.shapes.start` and one pushed after C closes appears at index
-/// `>= C.shapes.start + C.shapes.len`. Encoder and hash both walk
-/// `tree.children(id)` in declaration order and emit shapes from the
-/// gaps; no separate event stream needed.
-///
-/// Recording: `open_node` pushes a `NodeRecord`, `add_shape` pushes
-/// onto the flat shape buffer, `close_node` finalizes `shapes` len.
-/// No deferred-pending or linearization — columns are final the moment
-/// the root closes.
+/// Each [`Tree`] is a single layer's arena. Per-layer trees live on
+/// [`forest::Forest`] and share no record/shape storage — mid-recording
+/// `Ui::layer` calls dispatch into the destination tree without
+/// interleaving, eliminating the prior reorder pass.
 #[derive(Default)]
 pub(crate) struct Tree {
     // -- Per-NodeId mandatory columns ------------------------------------
-    /// SoA storage of per-NodeId data. Five parallel slices live behind
-    /// one `Soa`: `widget_id`, `shapes`, `end`, `layout`, `attrs`.
-    /// `open_node` pushes one `NodeRecord` (atomic across all five),
-    /// `close_node` finalizes the `shapes` span in place.
     pub(crate) records: Soa<NodeRecord>,
 
     // -- Per-NodeId sparse side tables -----------------------------------
-    /// Per-node bounds + transform + parent-relative placement (`min_size`,
-    /// `max_size`, `position`, `grid`, `transform`). Sparse — most leaves
-    /// leave them all default. Split from panel-only fields so leaves that
-    /// only set bounds don't bloat their slot with `gap`/`justify`/etc.
     pub(crate) bounds: SparseColumn<BoundsExtras>,
-    /// Panel-only knobs (`gap`, `line_gap`, `justify`, `child_align`).
-    /// Sparse — leaves never write these, so the column stays small even in
-    /// large trees; ~16B/entry vs the old ~64B unified extras.
     pub(crate) panel: SparseColumn<PanelExtras>,
-    /// Chrome (panel `Background`) stored sparsely. Decoupled from the
-    /// extras columns because chrome is panel-common while bounds/panel
-    /// fields are mostly default.
     pub(crate) chrome: SparseColumn<Background>,
 
     // -- Flat shape buffer -----------------------------------------------
-    /// Flat shape storage in record order. `records.shape_span()[i]` is the
-    /// range belonging to node `i`'s subtree (parent + all descendants);
-    /// the gaps between children's sub-ranges hold the parent's direct
-    /// shapes in record order.
     pub(crate) shapes: Vec<Shape>,
 
     // -- Frame-scoped sub-storage ----------------------------------------
-    /// Frame-scoped grid storage: track defs (addressed by
-    /// `LayoutMode::Grid(u16)`). Per-track hug arrays live on `LayoutResult`
-    /// since the tree is read-only after recording. Cleared per frame,
-    /// capacity retained.
     pub(crate) grid: GridArena,
 
-    // -- Recording-only state --------------------------------------------
-    /// Recording-only scratch (per-layer ancestor stacks, current
-    /// layer / root-id, save-stack for nested scopes). Reset by
-    /// `begin_frame`; dead after `end_frame`.
-    pub(crate) recording: RecordingState,
+    // -- Roots -----------------------------------------------------------
+    /// Top-level root slots in this tree, in record order. Each slot's
+    /// `first_node` indexes `records`; pipeline passes iterate the
+    /// slice. Empty when no nodes were recorded into this tree this
+    /// frame.
+    pub(crate) roots: Vec<RootSlot>,
 
-    // -- Multi-root manifest ---------------------------------------------
-    /// Layer-sorted root slot list + per-`NodeId` root tag + sort
-    /// scratch. See [`RootManifest`].
-    pub(crate) manifest: RootManifest,
+    // -- Recording-only ancestor stack -----------------------------------
+    /// Ancestor stack for this tree's currently-open scope. Empty
+    /// outside the `begin_frame` ↔ root `close_node` window. Capacity
+    /// retained.
+    pub(crate) open_frames: Vec<NodeId>,
 
     // -- Output (populated by `end_frame`) -------------------------------
-    /// Per-node hash + subtree rollup hash + has-grid bitset.
-    /// Populated by [`Self::end_frame`]; capacity retained across frames.
-    /// See [`SubtreeRollups`].
     pub(crate) rollups: SubtreeRollups,
 }
 
@@ -284,103 +134,25 @@ impl Tree {
         self.shapes.clear();
         self.grid.clear();
         self.rollups.has_grid.clear();
-        self.recording.reset();
-        self.manifest.reset();
+        self.roots.clear();
+        self.open_frames.clear();
     }
 
-    /// Enter a layer scope — `Ui::layer`'s `body` records into this
-    /// scope until the matching [`Self::pop_layer`]. v1 only allows
-    /// entry from `Main` with no node open; nested popups are a v2
-    /// concern (see `docs/popups.md`).
-    pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Rect) {
-        let rec = &mut self.recording;
-        assert_eq!(
-            rec.current_layer,
-            Layer::Main,
-            "Ui::layer must be called from the Main scope (current: {:?})",
-            rec.current_layer,
-        );
+    /// Finalize this tree: populate `rollups.node` + `rollups.subtree`.
+    /// Capacity retained across frames.
+    pub(crate) fn end_frame(&mut self) {
         assert!(
-            rec.open_frames[Layer::Main as usize].is_empty(),
-            "Ui::layer must be called at top-level recording (no node currently open)",
+            self.open_frames.is_empty(),
+            "end_frame called with {} node(s) still open — a widget builder forgot close_node",
+            self.open_frames.len(),
         );
-        rec.layer_stack.push(LayerScope {
-            layer: rec.current_layer,
-            root_id: rec.current_root_id,
-        });
-        rec.current_layer = layer;
-        // Sentinel: the next `open_node` in this scope will mint a
-        // fresh `RootSlot` and overwrite this with `slots.len() - 1`.
-        rec.current_root_id = u16::MAX;
-        rec.layer_anchor[layer as usize] = anchor;
-    }
-
-    /// Close the layer scope opened by [`Self::push_layer`]. Body must
-    /// have closed every node it opened.
-    pub(crate) fn pop_layer(&mut self) {
-        let rec = &mut self.recording;
-        assert!(
-            rec.open_frames[rec.current_layer as usize].is_empty(),
-            "Ui::layer body left {} node(s) open in layer {:?}",
-            rec.open_frames[rec.current_layer as usize].len(),
-            rec.current_layer,
-        );
-        let outer = rec
-            .layer_stack
-            .pop()
-            .expect("pop_layer called without a matching push_layer");
-        rec.current_layer = outer.layer;
-        rec.current_root_id = outer.root_id;
-    }
-
-    /// Finalize the recorded frame: stamp the implicit `Main` root,
-    /// stable-sort `roots` by layer, walk every node and populate
-    /// `self.rollups.node` + `self.rollups.subtree`. Pure read over the
-    /// rest of the tree; safe to call any time after recording
-    /// completes. Capacity retained across frames.
-    pub(crate) fn end_frame(&mut self, main_anchor: Rect) {
-        for (layer_idx, stack) in self.recording.open_frames.iter().enumerate() {
-            assert!(
-                stack.is_empty(),
-                "end_frame called with {} node(s) still open in layer {} — a widget builder forgot close_node",
-                stack.len(),
-                layer_idx,
-            );
-        }
-        assert_eq!(
-            self.recording.current_layer,
-            Layer::Main,
-            "end_frame called with active layer {:?} — Ui::layer body forgot to return",
-            self.recording.current_layer,
-        );
-        // `Main` slots are pushed lazily in `open_node` with the
-        // begin-frame placeholder anchor; patch them now that the
-        // surface is known. Other layers carry caller-supplied anchors.
-        self.recording.layer_anchor[Layer::Main as usize] = main_anchor;
-        for r in &mut self.manifest.slots {
-            if r.layer == Layer::Main {
-                r.anchor_rect = main_anchor;
-            }
-        }
-        // Verify storage-order coverage *before* sorting by layer so the
-        // walk doesn't need a side allocation to recover record order.
-        #[cfg(debug_assertions)]
-        self.assert_recording_invariants();
-        self.manifest.sort_and_remap();
-
+        self.rollups.reset_hashes_for(self.records.len());
         self.compute_node_hashes();
         self.compute_subtree_hashes();
     }
 
-    /// Per-node authoring hash. Hashes layout / extras / chrome, then
-    /// walks `direct_items` interleaving each direct shape with a
-    /// `0xFF` marker per child to preserve "shape vs child boundary"
-    /// ordering across siblings.
     fn compute_node_hashes(&mut self) {
         let n = self.records.len();
-        self.rollups.node.clear();
-        self.rollups.node.reserve(n);
-
         for i in 0..n {
             let mut h = Hasher::new();
             self.records.layout()[i].hash(&mut h);
@@ -407,15 +179,8 @@ impl Tree {
         }
     }
 
-    /// Subtree-hash rollup, reverse pre-order so children fill before
-    /// parents read. `transform` folds in here (not into `node[i]`) so
-    /// the encode cache invalidates on transform-only changes while
-    /// damage rect-diffing keeps owning paint-position drift.
     fn compute_subtree_hashes(&mut self) {
         let n = self.records.len();
-        self.rollups.subtree.clear();
-        self.rollups.subtree.resize_with(n, NodeHash::default);
-
         for i in (0..n).rev() {
             let end = self.records.subtree_end()[i];
             let mut h = Hasher::new();
@@ -435,74 +200,28 @@ impl Tree {
         }
     }
 
-    /// Cross-column structural invariants. Every top-level record is a
-    /// root (lazy-pushed in `open_node`), so `roots` covers `records`
-    /// and `shapes` contiguously starting at 0 — no gaps, no overlaps,
-    /// no orphans. Debug-only.
-    #[cfg(debug_assertions)]
-    fn assert_recording_invariants(&self) {
-        let slots = &self.manifest.slots;
-        if slots.is_empty() {
-            debug_assert!(
-                self.records.is_empty(),
-                "non-empty records ({}) without any root slot",
-                self.records.len(),
-            );
-            return;
-        }
-        // Caller-contract: `slots` is in record order — `open_node`'s
-        // lazy push appends in record order, and this fires before the
-        // layer-sort in `end_frame`.
-        let mut next_rec = 0u32;
-        let mut next_shape = 0u32;
-        for root in slots {
-            debug_assert_eq!(
-                root.first_node, next_rec,
-                "roots must abut in record order — no gaps, no overlap",
-            );
-            let i = root.first_node as usize;
-            let s = self.records.shape_span()[i];
-            debug_assert_eq!(
-                s.start, next_shape,
-                "root {i}'s shapes must abut the previous root's",
-            );
-            next_rec = self.records.subtree_end()[i];
-            next_shape = s.start + s.len;
-        }
-        debug_assert_eq!(
-            next_rec as usize,
-            self.records.len(),
-            "roots must cover every record",
-        );
-        debug_assert_eq!(
-            next_shape as usize,
-            self.shapes.len(),
-            "roots must cover every shape",
-        );
-    }
-
-    /// Push a node as a child of the currently-open node (or as the root if
-    /// no node is open) and make it the new tip. Pair with `close_node`.
-    pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
-        let layer_idx = self.recording.current_layer as usize;
-        let parent = self.recording.open_frames[layer_idx].last().copied();
+    /// Push a node as a child of the currently-open node (or as a new
+    /// root if `open_frames` is empty) and make it the new tip.
+    ///
+    /// `anchor` is consumed *only* when this open mints a new
+    /// `RootSlot` (no parent on the stack); for child opens it's
+    /// discarded. Callers without a meaningful anchor pass
+    /// `Rect::ZERO`. The dead-parameter case is a known wart — see
+    /// the "open question" in `docs/tree-redesign.md` §8 about
+    /// splitting into `open_root` + `open_child`.
+    pub(crate) fn open_node(
+        &mut self,
+        element: Element,
+        chrome: Option<Background>,
+        anchor: Rect,
+    ) -> NodeId {
+        let parent = self.open_frames.last().copied();
         let new_id = NodeId(self.records.len() as u32);
         if parent.is_none() {
-            // Top-level node within the active layer scope — seed a
-            // root. `Main`'s anchor is the begin-frame placeholder
-            // (patched in `end_frame`); other layers carry the anchor
-            // passed to `Ui::layer`.
-            self.manifest.slots.push(RootSlot {
+            self.roots.push(RootSlot {
                 first_node: new_id.0,
-                layer: self.recording.current_layer,
-                anchor_rect: self.recording.layer_anchor[layer_idx],
+                anchor_rect: anchor,
             });
-            assert!(
-                self.manifest.slots.len() <= u16::MAX as usize,
-                "more than {} roots recorded in a single frame",
-                u16::MAX,
-            );
-            self.recording.current_root_id = (self.manifest.slots.len() - 1) as u16;
         }
         if let LayoutMode::Grid(idx) = element.mode {
             assert!(
@@ -518,10 +237,6 @@ impl Tree {
             panel,
         } = element.split();
 
-        // If the parent is a `Grid`, validate the child's `GridCell` against
-        // the grid's track counts now — once at recording time — instead of
-        // inside every measure pass. Empty grids (zero rows or cols) skip
-        // validation; their measure pass shortcuts to `Size::ZERO`.
         if let Some(parent_id) = parent
             && let LayoutMode::Grid(grid_idx) = self.records.layout()[parent_id.0 as usize].mode
         {
@@ -550,11 +265,6 @@ impl Tree {
         self.panel.push((!panel.is_default()).then_some(panel));
         self.chrome.push(chrome);
 
-        // Leaf marker. `close_node` rolls each closing subtree up
-        // into its parent's slot, so `records.subtree_end()[i]` is final the
-        // moment the root's `close_node` returns. `shapes.len` is
-        // filled at close (placeholder 0); the other fields are final
-        // here.
         self.records.push(NodeRecord {
             widget_id,
             shape_span: Span::new(self.shapes.len() as u32, 0),
@@ -563,44 +273,28 @@ impl Tree {
             attrs,
         });
         self.rollups.has_grid.grow(self.records.len());
-        self.manifest
-            .id_per_node
-            .push(self.recording.current_root_id);
-        self.recording.open_frames[layer_idx].push(new_id);
+        self.open_frames.push(new_id);
         new_id
     }
 
-    /// Pop the currently-open node back to its parent and roll its
-    /// `records.subtree_end()[…]` up into the parent's slot. Panics if no node
-    /// is open.
     pub(crate) fn close_node(&mut self) {
-        let layer_idx = self.recording.current_layer as usize;
-        let closing = self.recording.open_frames[layer_idx]
+        let closing = self
+            .open_frames
             .pop()
             .expect("close_node called with no open node");
 
-        // Finalize the closing node's `shapes` span (placeholder set
-        // to 0 at open time).
         let i = closing.index();
         let shapes_len = self.shapes.len() as u32;
         let shapes = &mut self.records.shape_span_mut()[i];
         shapes.len = shapes_len - shapes.start;
         let end = self.records.subtree_end()[i];
 
-        // Roll up `subtree_has_grid`: this node's bit is true iff its
-        // own layout is `Grid` or any descendant's bit is set (set as
-        // grandchildren closed). After deciding for `i`, OR into the
-        // parent's bit so the chain propagates to the root.
         if matches!(self.records.layout()[i].mode, LayoutMode::Grid(_)) {
             self.rollups.has_grid.insert(i);
         }
         let i_has_grid = self.rollups.has_grid.contains(i);
 
-        // Roll up only into a parent inside the *same* layer scope.
-        // Per-layer `open_frames` automatically isolates scopes — a
-        // popup root closing leaves its layer's stack empty without
-        // touching `Main`'s tip.
-        if let Some(&parent) = self.recording.open_frames[layer_idx].last() {
+        if let Some(&parent) = self.open_frames.last() {
             let pi = parent.index();
             let ends = self.records.subtree_end_mut();
             if ends[pi] < end {
@@ -612,25 +306,21 @@ impl Tree {
         }
     }
 
-    /// Append a shape to the currently-open tip. The shape's position
-    /// in the flat buffer encodes its paint order — shapes pushed
-    /// before any child end up at indices below the child's
-    /// `shapes.start`, shapes between two children sit between their
-    /// sub-ranges, etc. Targeting is positional (whichever `Ui` is
-    /// open).
     pub(crate) fn add_shape(&mut self, shape: Shape) {
         assert!(
-            !self.recording.open_frames[self.recording.current_layer as usize].is_empty(),
+            !self.open_frames.is_empty(),
             "add_shape called with no open node",
         );
         self.shapes.push(shape);
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+
     /// Iterate children of `parent` in declaration order, each tagged
     /// with its collapse state (`Child::Active` / `Child::Collapsed`).
-    /// Use `.filter_map(Child::active)` for active-only iteration, or
-    /// match on `Child` when collapsed children still need handling
-    /// (arrange loops zero their subtrees at the parent's anchor).
+    /// Use `.filter_map(Child::active)` for active-only iteration.
     pub(crate) fn children(&self, parent: NodeId) -> ChildIter<'_> {
         let pi = parent.0 as usize;
         ChildIter {
@@ -640,33 +330,20 @@ impl Tree {
         }
     }
 
-    // -- Per-node read accessors -----------------------------------------
-
-    /// Iterate `node`'s direct contents in record order. Wrapper over
-    /// [`TreeItems::new`] for callers that hold a `&Tree`; the
-    /// hash compute reaches for `TreeItems::new` directly so it can
-    /// keep `&mut self.rollups` live.
     pub(crate) fn tree_items(&self, node: NodeId) -> TreeItems<'_> {
         TreeItems::new(&self.records, &self.shapes, node)
     }
 
-    /// Bounds extras for a node (`min_size`, `max_size`, `position`, `grid`,
-    /// `transform`), falling back to `BoundsExtras::DEFAULT` when the node has
-    /// no side-table entry.
     pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
         self.bounds
             .get(id.index())
             .unwrap_or(&BoundsExtras::DEFAULT)
     }
 
-    /// Panel extras for a node (`gap`, `line_gap`, `justify`, `child_align`),
-    /// falling back to `PanelExtras::DEFAULT` when the node has no entry.
-    /// Leaves never set these, so the column stays small.
     pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {
         self.panel.get(id.index()).unwrap_or(&PanelExtras::DEFAULT)
     }
 
-    /// Chrome for `id`, or `None` if the node has no chrome.
     pub(crate) fn chrome_for(&self, id: NodeId) -> Option<&Background> {
         self.chrome.get(id.index())
     }
@@ -678,21 +355,12 @@ pub(crate) struct ChildIter<'a> {
     end: u32,
 }
 
-/// One step in the record-order walk of a node's direct contents.
-/// `Child` carries the visibility tag the same way `ChildIter` does;
-/// callers that don't need it (e.g. encoder) just use `child.id`.
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum TreeItem<'a> {
     Shape(&'a Shape),
     Child(Child),
 }
 
-/// Child of a parent, tagged with its `Visibility`. Yielded by
-/// [`Tree::children`]; replaces the
-/// `if tree.is_collapsed(c) {…} continue;` boilerplate that used to
-/// live in every arrange driver. `visibility` is the cached value of
-/// `tree.records.layout()[id.index()].visibility` — read once during
-/// iteration.
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct Child {
     pub(crate) id: NodeId,
@@ -700,11 +368,6 @@ pub(crate) struct Child {
 }
 
 impl Child {
-    /// `Some(id)` when the child is active (not collapsed), `None`
-    /// when collapsed. Pairs with `.filter_map(Child::active)` for
-    /// active-only loops. Hidden counts as active here — it still
-    /// participates in layout (occupies space), only paint/hit-test
-    /// short-circuit at the cascade.
     #[inline]
     pub(crate) fn active(self) -> Option<NodeId> {
         (!self.visibility.is_collapsed()).then_some(self.id)
@@ -724,12 +387,6 @@ impl<'a> Iterator for ChildIter<'a> {
     }
 }
 
-/// Iterator over a node's direct contents in record order. Yields
-/// each direct shape interleaved with each direct child at the
-/// position the child was opened. Construct via [`TreeItems::new`]
-/// from the column slices, or [`Tree::direct_items`] from a `&Tree`.
-/// The two-constructor surface exists so methods that need
-/// `&mut self.rollups` can still iterate without a `&self` borrow.
 pub(crate) struct TreeItems<'a> {
     shapes_col: &'a [Span],
     layouts: &'a [LayoutCore],
@@ -801,10 +458,6 @@ impl GridArena {
         self.defs.clear();
     }
 
-    /// Append a `GridDef` referencing user-owned `Rc<[Track]>` rows +
-    /// cols; return its index. The index is stamped into a
-    /// `LayoutMode::Grid(idx)` on the owning panel's `Element`. `Rc`
-    /// clones are refcount-only.
     pub(crate) fn push_def(&mut self, def: GridDef) -> u16 {
         assert!(
             self.defs.len() < u16::MAX as usize,
@@ -814,34 +467,6 @@ impl GridArena {
         self.defs.push(def);
         idx
     }
-}
-
-/// Per-NodeId record. One push per `open_node`, finalized by
-/// `close_node`. Stored as `Soa<NodeRecord>` on `Tree.records` so each
-/// field becomes its own contiguous slice — passes that read only one
-/// or two fields don't pull the rest into cache.
-#[derive(Soars, Clone, Copy, Debug)]
-#[soa_derive(Debug)]
-pub(crate) struct NodeRecord {
-    /// Author-supplied identity. Read by hit-test, state map, damage diff.
-    pub widget_id: WidgetId,
-    /// Span into `Tree.shapes`: covers every shape recorded inside
-    /// this node's open→close window, including descendants. `len` is
-    /// set at `close_node` from `shapes.len() - start`. Stored as a
-    /// `Span` (rather than just `start` + a "look at next node"
-    /// trick) so a node with shapes pushed AFTER its only child closes
-    /// — e.g. `Scroll` with bars at slot N — gets a correct count for
-    /// the child's subtree.
-    pub shape_span: Span,
-    /// Exclusive end in NodeId space: one past the last descendant
-    /// in pre-order. `i + 1 == subtree_end` for a leaf.
-    pub subtree_end: u32,
-    /// Layout-pass column: geometry + visibility. Bundled because the
-    /// hot measure/arrange path reads all six fields together.
-    pub layout: LayoutCore,
-    /// 1-byte packed paint/input flags (sense / disabled / clip /
-    /// focusable). Read by cascade / encoder / hit-test.
-    pub attrs: PaintAttrs,
 }
 
 #[cfg(test)]

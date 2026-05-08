@@ -2,6 +2,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::support::testing::{click_at, shapes_of, ui_at};
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -90,9 +91,9 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
     ui.end_frame();
 
     for (name, id, expected_clip, expects_chrome) in &cases {
-        let clip = ui.tree.records.attrs()[id.index()].clip_mode();
+        let clip = ui.forest.tree(Layer::Main).records.attrs()[id.index()].clip_mode();
         assert_eq!(clip, *expected_clip, "[{name}] clip mode");
-        let chrome = ui.tree.chrome_for(*id);
+        let chrome = ui.forest.tree(Layer::Main).chrome_for(*id);
         assert_eq!(
             chrome.is_some(),
             *expects_chrome,
@@ -139,13 +140,13 @@ fn panel_hugs_largest_child_and_layers_them() {
     ui.end_frame();
 
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
-    let panel = ui.layout.result.rect[panel_node.unwrap().index()];
+    let panel = ui.layout.results[Layer::Main as usize].rect[panel_node.unwrap().index()];
     assert_eq!(panel.size.w, 100.0);
     assert_eq!(panel.size.h, 70.0);
 
     // Both children laid out at panel's inner top-left (10, 10), at their own size.
-    let a = ui.layout.result.rect[a_node.unwrap().index()];
-    let b = ui.layout.result.rect[b_node.unwrap().index()];
+    let a = ui.layout.results[Layer::Main as usize].rect[a_node.unwrap().index()];
+    let b = ui.layout.results[Layer::Main as usize].rect[b_node.unwrap().index()];
     assert_eq!((a.min.x, a.min.y), (10.0, 10.0));
     assert_eq!((b.min.x, b.min.y), (10.0, 10.0));
     assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
@@ -153,11 +154,16 @@ fn panel_hugs_largest_child_and_layers_them() {
 
     // Panel chrome lives in `Tree::chrome_table`, not in the shapes list.
     assert!(
-        shapes_of(&ui.tree, panel_node.unwrap()).next().is_none(),
+        shapes_of(ui.forest.tree(Layer::Main), panel_node.unwrap())
+            .next()
+            .is_none(),
         "panel chrome doesn't show up in the shape stream"
     );
     assert!(
-        ui.tree.chrome_for(panel_node.unwrap()).is_some(),
+        ui.forest
+            .tree(Layer::Main)
+            .chrome_for(panel_node.unwrap())
+            .is_some(),
         "panel chrome recorded in chrome table",
     );
 }
@@ -190,7 +196,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     });
     ui.end_frame();
 
-    let child = ui.layout.result.rect[child_node.unwrap().index()];
+    let child = ui.layout.results[Layer::Main as usize].rect[child_node.unwrap().index()];
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
     assert_eq!(child.min.x, 10.0);
     assert_eq!(child.min.y, 10.0);

@@ -5,10 +5,12 @@ use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
 use crate::shape::Shape;
+use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{NodeId, Tree, TreeItem, node_hash::NodeHash};
-use crate::ui::cascade::CascadeResult;
+use crate::tree::{Layer, NodeId, Tree, TreeItem, node_hash::NodeHash};
+use crate::ui::cascade::{Cascade, CascadeResult};
 use cache::EncodeCache;
+use strum::EnumCount as _;
 
 /// Bookkeeping captured before recursing so we can write the cached
 /// subtree back after children have appended their cmds. `cmd_lo` /
@@ -71,29 +73,34 @@ pub(crate) struct Encoder {
 }
 
 impl Encoder {
-    /// Encode `tree` into the encoder's owned command buffer using last
-    /// frame's cache for subtree skips (when `damage_filter.is_none()`),
-    /// and return a borrow of the freshly-encoded result.
+    /// Encode every tree in `forest` into the encoder's owned command
+    /// buffer in paint order. Per-tree result and cascade rows are
+    /// looked up by layer.
     pub(crate) fn encode(
         &mut self,
-        tree: &Tree,
-        layout: &LayoutResult,
+        forest: &Forest,
+        results: &[LayoutResult; Layer::COUNT],
         cascades: &CascadeResult,
         damage_filter: Option<Rect>,
         viewport: Rect,
     ) -> &RenderCmdBuffer {
         self.cmds.clear();
-        for root in &tree.manifest.slots {
-            encode_node(
-                tree,
-                layout,
-                cascades,
-                damage_filter,
-                viewport,
-                &mut self.cache,
-                NodeId(root.first_node),
-                &mut self.cmds,
-            );
+        for layer in Layer::PAINT_ORDER {
+            let tree = forest.tree(layer);
+            let layout = &results[layer as usize];
+            let rows = cascades.rows_for(layer);
+            for root in &tree.roots {
+                encode_node(
+                    tree,
+                    layout,
+                    rows,
+                    damage_filter,
+                    viewport,
+                    &mut self.cache,
+                    NodeId(root.first_node),
+                    &mut self.cmds,
+                );
+            }
         }
         &self.cmds
     }
@@ -176,27 +183,18 @@ fn emit_one_shape(
 fn encode_node(
     tree: &Tree,
     layout: &LayoutResult,
-    cascades: &CascadeResult,
+    rows: &[Cascade],
     damage_filter: Option<Rect>,
     viewport: Rect,
     cache: &mut EncodeCache,
     id: NodeId,
     out: &mut RenderCmdBuffer,
 ) -> bool {
-    // Hidden / Collapsed: paint nothing for this node or its subtree.
-    // The cascade table already composed self + ancestors; recursing skips
-    // the whole subtree because we early-return at the top of every node.
-    if cascades.rows[id.index()].invisible {
+    if rows[id.index()].invisible {
         return false;
     }
 
-    // Viewport cull: a subtree whose screen-space rect doesn't touch
-    // the surface paints zero pixels. Skip emission entirely (cmds and
-    // cache replay). Returning `true` taints any cache-pending ancestor
-    // so it doesn't snapshot a partial subtree — viewport position
-    // isn't in the cache key, so a future frame that scrolls the
-    // subtree on-screen would replay the cull.
-    if !cascades.rows[id.index()].screen_rect.intersects(viewport) {
+    if !rows[id.index()].screen_rect.intersects(viewport) {
         return true;
     }
 
@@ -273,7 +271,7 @@ fn encode_node(
     let clip = mode.is_clip();
     let chrome = tree.chrome_for(id).copied();
 
-    let paints = damage_filter.is_none_or(|d| cascades.rows[id.index()].screen_rect.intersects(d));
+    let paints = damage_filter.is_none_or(|d| rows[id.index()].screen_rect.intersects(d));
 
     // Chrome paints BEFORE the clip is pushed. The clip rect is
     // deflated by the chrome's stroke width (so children don't paint
@@ -362,7 +360,7 @@ fn encode_node(
                 tainted |= encode_node(
                     tree,
                     layout,
-                    cascades,
+                    rows,
                     damage_filter,
                     viewport,
                     cache,

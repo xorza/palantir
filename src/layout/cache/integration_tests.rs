@@ -11,6 +11,7 @@ use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
 use crate::support::testing::{begin, encode_cmds, new_ui_text, ui_with_text};
+use crate::tree::Layer;
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::widgets::theme::{Background, Surface};
@@ -32,7 +33,7 @@ fn assert_warm_rects_match_cold(
     ui.end_frame();
     let cold: Vec<_> = cold_nodes
         .iter()
-        .map(|n| ui.layout.result.rect[n.index()])
+        .map(|n| ui.layout.results[Layer::Main as usize].rect[n.index()])
         .collect();
 
     begin(ui, size);
@@ -41,7 +42,7 @@ fn assert_warm_rects_match_cold(
     ui.end_frame();
     let warm: Vec<_> = warm_nodes
         .iter()
-        .map(|n| ui.layout.result.rect[n.index()])
+        .map(|n| ui.layout.results[Layer::Main as usize].rect[n.index()])
         .collect();
 
     assert_eq!(cold, warm, "{msg}");
@@ -330,7 +331,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         ui.end_frame();
         let warm_rects: Vec<_> = warm_nodes
             .iter()
-            .map(|n| ui.layout.result.rect[n.index()])
+            .map(|n| ui.layout.results[Layer::Main as usize].rect[n.index()])
             .collect();
 
         crate::support::internals::clear_measure_cache(&mut ui);
@@ -340,7 +341,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         ui.end_frame();
         let cold_rects: Vec<_> = cold_nodes
             .iter()
-            .map(|n| ui.layout.result.rect[n.index()])
+            .map(|n| ui.layout.results[Layer::Main as usize].rect[n.index()])
             .collect();
 
         assert_eq!(

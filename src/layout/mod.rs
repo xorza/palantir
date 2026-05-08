@@ -13,8 +13,11 @@ use crate::primitives::size::Size;
 use crate::shape::TextWrap;
 use crate::text::TextMeasurer;
 use crate::tree::element::{LayoutCore, LayoutMode, ScrollAxes};
+use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{NodeId, Tree};
+use crate::tree::{Layer, NodeId, Tree};
+use std::array;
+use strum::EnumCount as _;
 
 pub(crate) mod axis;
 pub(crate) mod cache;
@@ -73,25 +76,43 @@ impl LayoutScratch {
     }
 }
 
-/// Persistent layout engine. Three field groups, each with its own
-/// lifetime:
+/// Persistent layout engine. Field groups by lifetime:
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
 ///   Cleared at the top of every `run`.
-/// - `result` — per-frame output (rects + text shapes). Read by
-///   encoder / hit-index after `run` returns. Exposed via
-///   [`LayoutEngine::result`].
+/// - `result` / `results` — per-frame output (rects + text shapes).
+///   Read by encoder / hit-index after `run` returns. **Two-state
+///   swap invariant**: while iterating trees inside `run`, `result`
+///   IS the active tree's result; the corresponding
+///   `results[active_layer as usize]` slot is held empty (swapped
+///   out before measure starts, swapped back after arrange ends).
+///   Outside `run` (every other consumer's view), `result` is empty
+///   and `results[layer]` holds each tree's finalized output.
+///   Internal measure/arrange code reads `self.result` because the
+///   recursive paths predate the multi-tree layout; this carries a
+///   load-bearing assumption that they only ever run inside one of
+///   `run`'s swap windows.
 /// - `cache` — cross-frame measure cache. See [`cache`] and
 ///   `src/layout/measure-cache.md`.
-///
-/// Cross-frame text reuse used to live here too; it now sits behind
-/// `TextMeasurer` (`unbounded_for` / `cached_wrap` / `shape_wrap`) so
-/// the dispatch-skip and the cache live in one place.
-#[derive(Default)]
 pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
+    /// Active tree's result during `run`; empty between trees and
+    /// between frames. See struct-level doc for the swap invariant.
     pub(crate) result: LayoutResult,
+    /// Per-layer finalized results, populated by `run` via swap.
+    pub(crate) results: [LayoutResult; Layer::COUNT],
     pub(crate) cache: MeasureCache,
+}
+
+impl Default for LayoutEngine {
+    fn default() -> Self {
+        Self {
+            scratch: LayoutScratch::default(),
+            result: LayoutResult::default(),
+            results: array::from_fn(|_| LayoutResult::default()),
+            cache: MeasureCache::default(),
+        }
+    }
 }
 
 /// Quantize wrap target to ~0.1 logical px. Coarse enough to absorb
@@ -174,46 +195,42 @@ impl LayoutEngine {
         v
     }
 
-    /// Run measure + arrange for every root in `tree.manifest.slots`, each
-    /// against its own `anchor_rect`. Reuses internal scratch — call
-    /// this each frame for amortized zero-alloc layout (after warmup).
-    /// Output lands in `self.result`.
-    ///
-    /// `text` carries the shaper (or the mono fallback inside it) and is
-    /// borrowed for the duration of the call so wrapping leaves can reshape
-    /// against the parent-committed width during measure.
-    pub(crate) fn run(&mut self, tree: &Tree, text: &mut TextMeasurer) -> &LayoutResult {
+    /// Run measure + arrange for every root in every layer's tree.
+    /// Iterates trees in `Layer::PAINT_ORDER`; each tree's output is
+    /// swapped into `self.results[layer as usize]`.
+    pub(crate) fn run(
+        &mut self,
+        forest: &Forest,
+        text: &mut TextMeasurer,
+    ) -> &[LayoutResult; Layer::COUNT] {
         assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
-        self.scratch.resize_for(tree);
-        self.result.resize_for(tree);
-        // Empty `tree.manifest.slots` ⇒ no widgets recorded this frame.
-        // Result is sized to `tree.records.len() == 0`, so downstream
-        // consumers walk zero entries — return the freshly-cleared result.
-        for slot in &tree.manifest.slots {
-            let root = NodeId(slot.first_node);
-            let anchor = slot.anchor_rect;
-            // Root slot grows past its anchor when measured content
-            // exceeds it, so the parent-≥-child invariant from
-            // `resolve_axis_size` (Fill/Hug ≥ hug_with_margin) holds
-            // at the root too. Downstream (cascade/composer/backend)
-            // tolerates out-of-surface rects; the GPU scissor clips at
-            // the viewport. `Fixed` is unaffected: it short-circuits
-            // in `resolve_axis_size` and never reads `hug_with_margin`.
-            let desired = self.measure(tree, root, anchor.size, text);
-            let arranged = Rect {
-                min: anchor.min,
-                size: anchor.size.max(desired),
-            };
-            self.arrange(tree, root, arranged);
+        for layer in Layer::PAINT_ORDER {
+            let tree = forest.tree(layer);
+            std::mem::swap(&mut self.result, &mut self.results[layer as usize]);
+            self.result.resize_for(tree);
+            if !tree.is_empty() {
+                self.scratch.resize_for(tree);
+                for slot in &tree.roots {
+                    let root = NodeId(slot.first_node);
+                    let anchor = slot.anchor_rect;
+                    let desired = self.measure(tree, root, anchor.size, text);
+                    let arranged = Rect {
+                        min: anchor.min,
+                        size: anchor.size.max(desired),
+                    };
+                    self.arrange(tree, root, arranged);
+                }
+            }
+            std::mem::swap(&mut self.result, &mut self.results[layer as usize]);
         }
         assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
-        &self.result
+        &self.results
     }
 
     /// Bottom-up measure dispatcher. Children call back via this method to
