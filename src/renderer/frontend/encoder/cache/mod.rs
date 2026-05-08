@@ -9,9 +9,9 @@
 //! length = total cached cmds across all snapshots) and `data`
 //! (length = total cached payload words). Per-`WidgetId`
 //! [`EncodeSnapshot`] picks two contiguous ranges out of those.
-//! Bookkeeping (`live` count, compaction trigger) is shared with
-//! [`ComposeCache`] via [`LiveArena`]; `starts` rides on `kinds`'s
-//! live count by the parallel-length invariant.
+//! Bookkeeping (`live` count, compaction trigger) uses [`LiveArena`];
+//! `starts` rides on `kinds`'s live count by the parallel-length
+//! invariant.
 //!
 //! **Subtree-relative storage**: `data` stores `rect.min` with the
 //! snapshot root's `origin` already subtracted. On replay the caller
@@ -26,7 +26,6 @@
 //! the starts.
 //!
 //! [`MeasureCache`]: crate::layout::cache::MeasureCache
-//! [`ComposeCache`]: crate::renderer::frontend::composer::cache::ComposeCache
 //! [`EncodeSnapshot`]: EncodeSnapshot
 
 use crate::common::cache_arena::LiveArena;

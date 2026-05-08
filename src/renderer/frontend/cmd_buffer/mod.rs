@@ -3,22 +3,18 @@
 //! Three columns: a 1-byte kind discriminant per command, a `u32` start
 //! offset into a payload arena, and the arena itself. Consumers walk
 //! `kinds` / `starts` by index and read each payload with the typed
-//! `read::<T>()` helper — no command-enum is ever materialized. Index
-//! iteration lets the composer fast-forward past `EnterSubtree` ranges
-//! on a compose-cache hit.
+//! `read::<T>()` helper — no command-enum is ever materialized.
 //!
-//! Two roles in one stream. Most variants (`PushClip`, `Push/PopTransform`,
-//! `DrawRect`, `DrawText`, …) are paint ops that the composer scales,
-//! snaps, and groups into the `RenderBuffer`. The `EnterSubtree` /
-//! `ExitSubtree` pair is **not** a paint op — it's cache coordination.
-//! The encoder emits them around any subtree it considered cache-eligible
-//! so the composer can attempt a `ComposeCache::try_splice` on enter
-//! (skipping the inner cmd range on a hit) and a `write_subtree` on exit
-//! (recording the produced quads/texts/groups on a miss). The encoder
-//! has its own cache keyed on the same `(WidgetId, subtree_hash, avail)`
-//! triple, but the composer cache adds a `cascade_fp` (parent transform /
-//! scissor / DPI hash) the encoder cannot know — so the markers must
-//! stay in the cmd stream rather than collapse at encode time.
+//! Two roles in one stream. Most variants (`PushClip`,
+//! `Push/PopTransform`, `DrawRect`, `DrawText`, …) are paint ops the
+//! composer scales, snaps, and groups into the `RenderBuffer`. The
+//! `EnterSubtree` / `ExitSubtree` pair is **not** a paint op — it's an
+//! encode-cache marker. The encoder brackets any subtree it considered
+//! cache-eligible so its own [`EncodeCache`] can fast-forward past
+//! cached cmd ranges on replay. The composer skips both variants
+//! silently.
+//!
+//! [`EncodeCache`]: crate::renderer::frontend::encoder::cache::EncodeCache
 //!
 //! Memory: a tagged-enum representation would size to its largest
 //! variant (~80 B with padding), so a sequence of
@@ -58,12 +54,11 @@ pub(crate) enum CmdKind {
     DrawRect,
     DrawRectStroked,
     DrawText,
-    /// Brackets a subtree the encoder considered cache-eligible. Carries
-    /// the subtree's `WidgetId` plus the kinds-array index of its
-    /// matching [`CmdKind::ExitSubtree`] (patched by `push_exit_subtree`)
-    /// so a composer-cache hit can fast-forward past the cmd range.
-    /// `EnterSubtree` drives `ComposeCache::try_splice`; `ExitSubtree`
-    /// drives `ComposeCache::write_subtree` on the miss path.
+    /// Brackets a subtree the encoder considered cache-eligible.
+    /// Carries the subtree's `WidgetId` plus the kinds-array index of
+    /// its matching [`CmdKind::ExitSubtree`] (patched by
+    /// `push_exit_subtree`) so the encode cache's replay path can
+    /// fast-forward past the cmd range. The composer ignores both.
     EnterSubtree,
     ExitSubtree,
 }

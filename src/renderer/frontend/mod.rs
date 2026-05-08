@@ -101,12 +101,11 @@ impl Frontend {
         self.composer.compose(cmds, display)
     }
 
-    /// Drop encoder + composer cache entries for `WidgetId`s that
-    /// vanished this frame. Called from `Ui::end_frame` with the same
-    /// `removed` slice that the measure cache and text reuse map
-    /// consume; keeps every cross-frame cache eviction-locked.
+    /// Drop encoder cache entries for `WidgetId`s that vanished this
+    /// frame. Called from `Ui::end_frame` with the same `removed` slice
+    /// that the measure cache and text reuse map consume; keeps every
+    /// cross-frame cache eviction-locked.
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         self.encoder.sweep_removed(removed);
-        self.composer.sweep_removed(removed);
     }
 }
