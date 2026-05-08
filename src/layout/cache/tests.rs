@@ -244,11 +244,11 @@ fn subtree_skip_preserves_descendant_rects() {
     };
     run_frame(&mut ui, build);
     let n = ui.forest.tree(Layer::Main).records.len();
-    let layout1 = &ui.layout.results[Layer::Main as usize];
+    let layout1 = &ui.layout.result[Layer::Main];
     let rects1: Vec<_> = (0..n).map(|i| layout1.rect[i]).collect();
 
     run_frame(&mut ui, build);
-    let layout2 = &ui.layout.results[Layer::Main as usize];
+    let layout2 = &ui.layout.result[Layer::Main];
     let rects2: Vec<_> = (0..n).map(|i| layout2.rect[i]).collect();
     assert_eq!(
         rects1, rects2,

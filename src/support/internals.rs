@@ -25,9 +25,9 @@ pub fn clear_measure_cache(ui: &mut Ui) {
 /// layout results. Lets the cascade bench isolate cascade cost without
 /// re-running record / measure / arrange / encode / compose. The
 /// caller must have called `Ui::end_frame` at least once after the
-/// most recent recording so `ui.layout.results` is populated.
+/// most recent recording so `ui.layout.result` is populated.
 pub fn run_cascades(ui: &mut Ui) {
-    let _ = ui.cascades.run(&ui.forest, &ui.layout.results);
+    let _ = ui.cascades.run(&ui.forest, &ui.layout.result);
 }
 
 /// Render-debug knob: when `on`, every frame loads with `LoadOp::Clear`

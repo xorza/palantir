@@ -309,7 +309,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
 
     // Mask geometry: encoded rect is the panel's layout rect deflated
     // by stroke.width=2; each corner radius is reduced by the same.
-    let panel_rect = ui.layout.results[Layer::Main as usize].rect[panel_node.unwrap().index()];
+    let panel_rect = ui.layout.result[Layer::Main].rect[panel_node.unwrap().index()];
     let expected_rect = panel_rect.deflated_by(Spacing::all(2.0));
     let start = cmds.starts[rounded_idx];
     let payload: PushClipRoundedPayload = cmds.read(start);

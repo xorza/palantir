@@ -5,7 +5,7 @@
 
 use crate::TextStyle;
 use crate::Ui;
-use crate::layout::result::{LayoutResult, ShapedText};
+use crate::layout::result::{LayerResult, ShapedText};
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
@@ -17,7 +17,7 @@ use std::rc::Rc;
 /// single-Text leaves; a multi-text caller should index
 /// `result.text_shapes[span.range()]` itself rather than pretend index
 /// 0 is meaningful.
-pub(crate) fn shaped_text(result: &LayoutResult, id: NodeId) -> ShapedText {
+pub(crate) fn shaped_text(result: &LayerResult, id: NodeId) -> ShapedText {
     let span = result.text_spans[id.index()];
     assert_eq!(
         span.len, 1,
