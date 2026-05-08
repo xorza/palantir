@@ -673,43 +673,40 @@ The `WidgetId`-shared-across-layers case (e.g. a button id used
 in both popup and Main) keeps one cache entry rather than two —
 small win on memory, no cost on correctness.
 
-### Q6. `Tree::open_node`'s dead `anchor` parameter → **C: doc it; revisit later** (open)
+### Q6. `Tree::open_node`'s dead `anchor` parameter → **B: pending-anchor on `Tree`**
 
-Today's `Tree::open_node(element, chrome, anchor)` consumes
+`Tree::open_node(element, chrome, anchor)` used to consume
 `anchor` only when minting a new `RootSlot` (no parent on the
-ancestor stack). For child opens it's discarded. The signature
-implies the anchor is always relevant, when really it's
+ancestor stack); for child opens it was discarded. The signature
+implied the anchor was always relevant, when really it was
 "load-bearing in 5% of calls, dead in 95%."
 
 **Options considered:**
 
 - **A. Split into `open_root` + `open_child`.** Two single-purpose
-  methods. `Forest::open_node` dispatches based on
-  `tree.open_frames.is_empty()`. Function name conveys what the
-  signature does. ~+15 LOC (private `open_inner` helper to dedup
-  the shared body).
-- **B. Pending-anchor on `Tree`.** `Tree::set_pending_anchor(rect)`
-  called from `Forest::push_layer`; `Tree::open_node(element,
-  chrome)` reads pending anchor on root mint. Cleanest signature
-  but pushes recording-time concern (anchor for next root) into
-  per-tree state — a category error since `Forest::recording`
-  owns recording-time state.
-- **C. Keep current signature, document the wart.** Comment on
-  `Tree::open_node` explaining the parameter is consumed only on
-  root mints. Zero LOC delta. Preserves the wart's visibility but
-  doesn't fix it.
+  methods, dispatched by `Forest` based on `open_frames.is_empty()`.
+  Clean signatures but ~+15 LOC of helper to dedup shared body.
+- **B. Pending-anchor on `Tree`.** `Tree::pending_anchor: Rect`
+  field, set by `Forest::push_layer`, read by `Tree::open_node`
+  on root mint. `open_node`'s signature loses the dead parameter.
+- **C. Keep current signature, document the wart.** Zero-LOC
+  patch via doc comment.
 
-**Decision: C for now**, with the dead-parameter case flagged in
-the function's doc comment so future readers don't trip on it.
+**Decision: B.** Tree gained `pending_anchor: Rect` and
+`Tree::open_node(element, chrome)` lost the parameter. The
+"category error" worry against B (anchor as recording-time
+state) didn't survive scrutiny — `RootSlot.anchor_rect` is
+already per-tree state, so "next anchor about to be stamped" is
+in the same conceptual neighborhood. The mailbox semantics work
+because the anchor is *transient*: each `push_layer` overwrites
+the slot, each root mint consumes it, and the in-between stale
+value is harmless because nothing reads it until the next mint.
 
-**Why open**: this is purely an internal-to-`tree/mod.rs` cleanup
-— external callers go through `Forest::open_node` and never see
-`Tree::open_node` directly. The cost-benefit of A vs C is
-small either way; the choice depends on whether `tree/mod.rs`
-ever grows enough that the dead parameter is worth the +15 LOC
-of split. Revisit when the next non-trivial change to the
-recording API comes up. Lean if/when revisited: **A**, because
-the function name carrying the meaning is worth the helper.
+**Trade-off accepted:** if `Forest::push_layer`'s `current_layer
+== Main` assert is ever lifted to allow same-layer nesting (the
+deferred Q5 nested-popup feature), `pending_anchor` would need
+a per-tree save-stack — `~5 LOC`, tied to enabling the feature
+itself.
 
 ---
 
