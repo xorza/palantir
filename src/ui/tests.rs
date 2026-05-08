@@ -463,3 +463,86 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     );
     ui.end_frame();
 }
+
+/// `Ui::run_frame` re-records when the frame contained input that
+/// could plausibly drive a state mutation (action input), and runs
+/// the build closure exactly once otherwise. Action-event coverage
+/// has to be exact: false positives waste CPU silently, false
+/// negatives leave the popup-dismissal class of bugs unfixed.
+#[test]
+fn run_frame_pass_count_matches_action_trigger() {
+    use crate::input::keyboard::Key;
+    use crate::input::{InputEvent, PointerButton};
+    use crate::layout::types::display::Display;
+    use glam::Vec2;
+    use std::cell::Cell;
+
+    const SURFACE: UVec2 = UVec2::new(100, 100);
+    let display = Display::from_physical(SURFACE, 1.0);
+    type Prime = fn(&mut Ui);
+    // (case label, what to fire between frames, expected build calls)
+    let cases: &[(&str, Prime, usize)] = &[
+        ("idle", |_ui| {}, 1),
+        (
+            "hover only",
+            |ui| ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0))),
+            1,
+        ),
+        (
+            "modifiers only",
+            |ui| {
+                ui.on_input(InputEvent::ModifiersChanged(
+                    crate::input::keyboard::Modifiers::NONE,
+                ))
+            },
+            1,
+        ),
+        (
+            "click",
+            |ui| {
+                ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+                ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+                ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+            },
+            2,
+        ),
+        (
+            "keydown",
+            |ui| {
+                ui.on_input(InputEvent::KeyDown {
+                    key: Key::Enter,
+                    repeat: false,
+                })
+            },
+            2,
+        ),
+        (
+            "scroll",
+            |ui| ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 10.0))),
+            2,
+        ),
+    ];
+
+    for (label, prime, expected) in cases {
+        let mut ui = ui_at(SURFACE);
+        // Establish a baseline frame so the under-test `run_frame`
+        // diffs against a real prior recording, not the
+        // never-painted initial state.
+        Panel::vstack().with_id("root").show(&mut ui, |_| {});
+        ui.end_frame();
+
+        prime(&mut ui);
+
+        let count = Cell::new(0u32);
+        let _ = ui.run_frame(display, |ui| {
+            count.set(count.get() + 1);
+            Panel::vstack().with_id("root").show(ui, |_| {});
+        });
+        assert_eq!(
+            count.get() as usize,
+            *expected,
+            "{label}: expected {expected} build invocation(s), got {}",
+            count.get(),
+        );
+    }
+}
