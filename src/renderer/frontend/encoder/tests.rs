@@ -4,10 +4,11 @@ use super::super::cmd_buffer::{
 };
 use super::align_text_in;
 use crate::Ui;
+use crate::input::sense::Sense;
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, display::Display,
-    sense::Sense, sizing::Sizing,
+    sizing::Sizing,
 };
 use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
 use crate::support::testing::{begin, encode_cmds, encode_cmds_filtered, ui_at};

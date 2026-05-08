@@ -1,7 +1,6 @@
 use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
 use crate::layout::types::span::Span;
-use crate::layout::types::visibility::Visibility;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::shape::Shape;
@@ -10,6 +9,7 @@ use crate::tree::element::{
 };
 use crate::tree::node_hash::{NodeHash, SubtreeRollups};
 use crate::tree::record::NodeRecord;
+use crate::tree::visibility::Visibility;
 use crate::widgets::grid::GridDef;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
@@ -19,6 +19,7 @@ pub(crate) mod forest;
 pub(crate) mod node_hash;
 pub(crate) mod record;
 pub(crate) mod recording;
+pub(crate) mod visibility;
 pub(crate) mod widget_id;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

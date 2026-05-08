@@ -1,5 +1,5 @@
 use crate::input::keyboard::{Key, KeyPress};
-use crate::layout::types::sense::Sense;
+use crate::input::sense::Sense;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;

@@ -27,7 +27,7 @@ fn paint_attrs_round_trip() {
         ),
     ];
     for (label, sense, disabled, clip, focusable) in cases {
-        let f = PaintAttrs::pack(*sense, *disabled, *clip, *focusable);
+        let f = NodeFlags::pack(*sense, *disabled, *clip, *focusable);
         assert_eq!(f.sense(), *sense, "case: {label} sense");
         assert_eq!(f.is_disabled(), *disabled, "case: {label} disabled");
         assert_eq!(f.clip_mode(), *clip, "case: {label} clip");
@@ -37,5 +37,5 @@ fn paint_attrs_round_trip() {
 
 #[test]
 fn fits_in_one_byte() {
-    assert_eq!(std::mem::size_of::<PaintAttrs>(), 1);
+    assert_eq!(std::mem::size_of::<NodeFlags>(), 1);
 }

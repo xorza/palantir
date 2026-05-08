@@ -1,6 +1,7 @@
 use crate::Ui;
+use crate::input::sense::Sense;
 use crate::input::{InputEvent, PointerButton};
-use crate::layout::types::{display::Display, sense::Sense, sizing::Sizing};
+use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::support::testing::{begin, click_at, press_at, release_left, ui_at};
 use crate::tree::element::Configure;
 use crate::widgets::theme::Surface;
@@ -358,9 +359,9 @@ fn click_outside_zoomed_bounds_does_not_hit() {
 
 mod drag {
     use crate::Ui;
+    use crate::input::sense::Sense;
     use crate::input::{InputEvent, PointerButton};
     use crate::layout::types::display::Display;
-    use crate::layout::types::sense::Sense;
     use crate::layout::types::sizing::Sizing;
     use crate::support::testing::ui_at;
     use crate::tree::element::Configure;
@@ -579,7 +580,7 @@ mod scroll {
 
 mod scroll_routing {
     use crate::input::InputEvent;
-    use crate::layout::types::sense::Sense;
+    use crate::input::sense::Sense;
     use crate::layout::types::sizing::Sizing;
     use crate::support::testing::ui_at;
     use crate::tree::element::Configure;
@@ -1079,9 +1080,9 @@ mod keyboard {
         // alive.
         use crate::Ui;
         use crate::layout::types::sizing::Sizing;
-        use crate::layout::types::visibility::Visibility;
         use crate::support::testing::{begin, click_at};
         use crate::tree::element::Configure;
+        use crate::tree::visibility::Visibility;
         use crate::widgets::{button::Button, panel::Panel};
 
         let mut ui = Ui::new();

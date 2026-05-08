@@ -1,4 +1,4 @@
-use crate::layout::types::sense::Sense;
+use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::tree::Layer;

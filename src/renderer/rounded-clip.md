@@ -31,7 +31,7 @@ mismatch in exchange for skipping the stencil pass).
 
 ## Storage
 
-- `PaintAttrs.clip: ClipMode` — 2 bits packed in the per-node attrs
+- `NodeFlags.clip: ClipMode` — 2 bits packed in the per-node attrs
   byte. Hot-path reads (cascade, encoder, hit-test) hit this directly.
 - `Tree.chrome_idx: Vec<u16>` — index column parallel to
   `layout`/`paint`, `Tree::NO_CHROME` (`u16::MAX`) for nodes without

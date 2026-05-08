@@ -7,8 +7,8 @@
 //! Downstream phases (damage diff, input hit-test, renderer encoder)
 //! take `&CascadeResult` as their single frozen-state handle.
 
+use crate::input::sense::Sense;
 use crate::layout::result::LayoutResult;
-use crate::layout::types::sense::Sense;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
 use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
