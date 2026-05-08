@@ -92,11 +92,8 @@ absolute terms.
 `TINY_SUBTREE_THRESHOLD = 4` skips cache lookup + write (and gates
 `EnterSubtree` / `ExitSubtree` marker emission) for subtrees of `<=` 4
 nodes: a handful of `draw_rect` / `draw_text` calls is cheaper to
-re-emit than the hashmap miss + insert + marker pair it would replace,
-and tiny subtrees never benefit from the composer-cache splice. The
-threshold was raised from 1 when the markers landed; see
-`composer/compose-cache.md` for the bench that motivated the change.
+re-emit than the hashmap miss + insert + marker pair it would replace.
 
-Future-work items (composer cache, hit-hint propagation,
-damage-aware encode replay, SIMD `bump_rect_min`, coarser
-`available_q` quantization) live in `docs/roadmap/`.
+Future-work items (hit-hint propagation, damage-aware encode replay,
+SIMD `bump_rect_min`, coarser `available_q` quantization) live in
+`docs/roadmap/`.

@@ -1,34 +1,13 @@
 use super::cmd_buffer::{
-    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, EnterSubtreePayload,
-    PushClipRoundedPayload, RenderCmdBuffer,
+    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, PushClipRoundedPayload,
+    RenderCmdBuffer,
 };
-use crate::common::hash::Hasher;
-use crate::layout::cache::AvailableKey;
 use crate::layout::types::display::Display;
 use crate::primitives::corners::Corners;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, RenderBuffer, TextRun};
-use crate::tree::node_hash::NodeHash;
-use crate::tree::widget_id::WidgetId;
-use cache::ComposeCache;
 use glam::UVec2;
-use std::hash::Hasher as _;
-
-pub(crate) mod cache;
-
-/// Cold-frame state captured at `EnterSubtree` so `ExitSubtree` can
-/// write the snapshot back. Mirrors `encoder::SubtreeFrame` (same
-/// shape, different per-cache key fields).
-struct SubtreeFrame {
-    wid: WidgetId,
-    subtree_hash: NodeHash,
-    avail: AvailableKey,
-    cascade_fp: u64,
-    quads_lo: u32,
-    texts_lo: u32,
-    groups_lo: u32,
-}
 
 /// Owns the four-variable invariant that drives `out.groups`
 /// emission: `current` scissor, the open group's `quads_start` /
@@ -92,18 +71,6 @@ impl GroupBuilder {
         self.last_was_text = false;
     }
 
-    /// Rebase `quads_start` / `texts_start` onto the current `out`
-    /// lengths without pushing a group. Used after
-    /// `ComposeCache::try_splice` extends `out` — the splice's own
-    /// `DrawGroup`s are already sealed in `out.groups`, so we just
-    /// continue from the splice tail under the unchanged scissor.
-    /// Caller flushed before splicing, so `last_was_text` is already
-    /// false here.
-    fn rebase(&mut self, out: &RenderBuffer) {
-        self.quads_start = out.quads.len() as u32;
-        self.texts_start = out.texts.len() as u32;
-    }
-
     /// Apply the text-then-quad split rule: if the prior draw in the
     /// current group was text, flush so the next quad renders
     /// *after* the text. Same scissor continues into the new group.
@@ -138,8 +105,6 @@ pub(crate) struct Composer {
     /// restores them as a unit.
     clip_stack: Vec<ClipFrame>,
     transform_stack: Vec<TranslateScale>,
-    subtree_stack: Vec<SubtreeFrame>,
-    pub(crate) cache: ComposeCache,
     pub(crate) buffer: RenderBuffer,
 }
 
@@ -171,7 +136,6 @@ impl Composer {
 
         self.clip_stack.clear();
         self.transform_stack.clear();
-        self.subtree_stack.clear();
         let mut current_transform = TranslateScale::IDENTITY;
         let mut group = GroupBuilder::default();
 
@@ -272,70 +236,9 @@ impl Composer {
                     out.quads
                         .push(Quad::new(phys_rect, fill, phys_radius, phys_stroke));
                 }
-                CmdKind::EnterSubtree => {
-                    let payload: EnterSubtreePayload = cmds.read(start);
-                    let wid = payload.wid;
-                    let subtree_hash = payload.subtree_hash;
-                    let avail = payload.avail;
-                    let cascade_fp = cascade_fingerprint(
-                        current_transform,
-                        self.clip_stack.last().map(|f| f.scissor),
-                        scale,
-                        snap,
-                        viewport_phys,
-                    );
-
-                    // Finalize the parent's accumulated group BEFORE
-                    // splicing or recording a fresh subtree. Without
-                    // this, the cached subtree's first group would
-                    // merge with the parent's tail and break the
-                    // splice's group ranges.
-                    group.flush(out);
-
-                    if self
-                        .cache
-                        .try_splice(wid, subtree_hash, avail, cascade_fp, out)
-                    {
-                        // Splice's `DrawGroup`s are sealed; continue
-                        // the open group from the post-splice tail
-                        // under the unchanged scissor. Fast-forward
-                        // past the cached cmd range to its matching
-                        // `ExitSubtree` at `payload.exit_idx`.
-                        group.rebase(out);
-                        i = payload.exit_idx as usize + 1;
-                        continue;
-                    }
-
-                    // Miss: record where the subtree's contributions
-                    // start so `ExitSubtree` can snapshot them.
-                    self.subtree_stack.push(SubtreeFrame {
-                        wid,
-                        subtree_hash,
-                        avail,
-                        cascade_fp,
-                        quads_lo: out.quads.len() as u32,
-                        texts_lo: out.texts.len() as u32,
-                        groups_lo: out.groups.len() as u32,
-                    });
-                }
-                CmdKind::ExitSubtree => {
-                    // Finalize the inner subtree's last open group so
-                    // its full output is captured before snapshotting.
-                    group.flush(out);
-
-                    if let Some(frame) = self.subtree_stack.pop() {
-                        self.cache.write_subtree(
-                            frame.wid,
-                            frame.subtree_hash,
-                            frame.avail,
-                            frame.cascade_fp,
-                            &out.quads[frame.quads_lo as usize..],
-                            &out.texts[frame.texts_lo as usize..],
-                            &out.groups[frame.groups_lo as usize..],
-                            frame.quads_lo,
-                            frame.texts_lo,
-                        );
-                    }
+                CmdKind::EnterSubtree | CmdKind::ExitSubtree => {
+                    // Encoder-cache markers — only the encode-side
+                    // replay path reads them. Composer skips past.
                 }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
@@ -372,42 +275,6 @@ impl Composer {
 
         &self.buffer
     }
-
-    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        self.cache.sweep_removed(removed);
-    }
-}
-
-/// Hash the cascade inputs that the subtree's physical-px output
-/// depends on. Any change here misses the cache; equality round-trips
-/// to a byte-identical splice. `f32` fields hash by bit-pattern so
-/// `-0.0 != 0.0` distinctions don't get folded. `viewport` is in the
-/// key because `scissor_from_logical` clamps text-run bounds against
-/// it — a window resize at constant DPI changes those clamps without
-/// touching `scale`, so without this a stale snapshot would splice.
-#[inline]
-fn cascade_fingerprint(
-    t: TranslateScale,
-    parent_scissor: Option<URect>,
-    scale: f32,
-    snap: bool,
-    viewport: UVec2,
-) -> u64 {
-    let mut h = Hasher::new();
-    h.pod(&t);
-    match parent_scissor {
-        None => h.write_u8(0),
-        // `URect` lacks bytemuck derives; pod a fixed-size view of its
-        // four u32s instead.
-        Some(r) => {
-            h.write_u8(1);
-            h.pod(&[r.x, r.y, r.w, r.h]);
-        }
-    }
-    h.write_u32(scale.to_bits());
-    h.write_u8(snap as u8);
-    h.pod(&viewport);
-    h.finish()
 }
 
 fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {

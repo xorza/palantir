@@ -28,19 +28,6 @@ pub fn clear_encode_cache(ui: &mut Ui) {
     ui.frontend.encoder.cache.clear();
 }
 
-/// Drop every cross-frame compose-cache entry, forcing the next frame's
-/// composer to re-compose every subtree from scratch. See
-/// `benches/compose_cache.rs`.
-pub fn clear_compose_cache(ui: &mut Ui) {
-    ui.frontend.composer.cache.clear();
-}
-
-/// Number of widgets currently snapshotted in the compose cache. Used by
-/// the compose-cache bench to confirm population under each workload.
-pub fn compose_cache_snapshot_count(ui: &Ui) -> usize {
-    ui.frontend.composer.cache.snapshots.len()
-}
-
 /// Run only `Cascades::run` against the just-finished frame's forest +
 /// layout results. Lets the cascade bench isolate cascade cost without
 /// re-running record / measure / arrange / encode / compose. The
