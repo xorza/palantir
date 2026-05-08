@@ -15,32 +15,36 @@ use crate::harness::Harness;
 fn text_paragraph_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(360, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack().padding(16.0).gap(6.0).show(ui, |ui| {
-            Text::new("Palantir")
-                .id_salt("title")
-                .style(
-                    TextStyle::default()
-                        .with_font_size(20.0)
-                        .with_color(Color::rgb(0.92, 0.94, 1.00)),
-                )
-                .show(ui);
-            Text::new("Immediate-mode UI with WPF-style layout.")
-                .id_salt("body")
-                .style(
-                    TextStyle::default()
-                        .with_font_size(13.0)
-                        .with_color(Color::rgb(0.72, 0.76, 0.84)),
-                )
-                .show(ui);
-            Text::new("Rendered headlessly through wgpu.")
-                .id_salt("body2")
-                .style(
-                    TextStyle::default()
-                        .with_font_size(13.0)
-                        .with_color(Color::rgb(0.72, 0.76, 0.84)),
-                )
-                .show(ui);
-        });
+        Panel::vstack()
+            .auto_id()
+            .padding(16.0)
+            .gap(6.0)
+            .show(ui, |ui| {
+                Text::new("Palantir")
+                    .id_salt("title")
+                    .style(
+                        TextStyle::default()
+                            .with_font_size(20.0)
+                            .with_color(Color::rgb(0.92, 0.94, 1.00)),
+                    )
+                    .show(ui);
+                Text::new("Immediate-mode UI with WPF-style layout.")
+                    .id_salt("body")
+                    .style(
+                        TextStyle::default()
+                            .with_font_size(13.0)
+                            .with_color(Color::rgb(0.72, 0.76, 0.84)),
+                    )
+                    .show(ui);
+                Text::new("Rendered headlessly through wgpu.")
+                    .id_salt("body2")
+                    .style(
+                        TextStyle::default()
+                            .with_font_size(13.0)
+                            .with_color(Color::rgb(0.72, 0.76, 0.84)),
+                    )
+                    .show(ui);
+            });
     });
     let tol = Tolerance {
         per_channel: 4,

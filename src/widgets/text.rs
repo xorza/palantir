@@ -18,7 +18,7 @@ use std::borrow::Cow;
 /// the field you want:
 ///
 /// ```ignore
-/// Text::new("hi").style(TextStyle { color: red, ..ui.theme.text })
+/// Text::new("hi").auto_id().style(TextStyle { color: red, ..ui.theme.text })
 /// ```
 pub struct Text {
     element: Element,
@@ -29,10 +29,9 @@ pub struct Text {
 }
 
 impl Text {
-    #[track_caller]
     pub fn new(text: impl Into<Cow<'static, str>>) -> Self {
         Self {
-            element: Element::new_auto(LayoutMode::Leaf),
+            element: Element::new(LayoutMode::Leaf),
             text: text.into(),
             style: None,
             wrap: TextWrap::Single,

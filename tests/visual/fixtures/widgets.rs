@@ -17,6 +17,7 @@ fn button_hello_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(256, 96), 1.0, DARK_BG, |ui| {
         Button::new()
+            .auto_id()
             .label("hello")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui);
@@ -30,7 +31,7 @@ fn button_hello_matches_golden() {
 fn frame_filled_with_stroke_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack().padding(20.0).show(ui, |ui| {
+        Panel::vstack().auto_id().padding(20.0).show(ui, |ui| {
             Frame::new()
                 .id_salt("card")
                 .size((Sizing::FILL, Sizing::FILL))
@@ -61,6 +62,7 @@ fn surface_rounded_clips_full_fill_child() {
     let black = Color::rgb(0.0, 0.0, 0.0);
     let img = h.render(UVec2::new(220, 220), 1.0, DARK_BG, |ui| {
         Panel::vstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(20.0)
             .background(Background {
@@ -111,6 +113,7 @@ fn rounded_clip_survives_surface_resize() {
     let mut h = Harness::new();
     let scene = |ui: &mut palantir::Ui| {
         Panel::vstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(10.0)
             .show(ui, |ui| {
@@ -155,6 +158,7 @@ fn interleaved_shapes_paint_in_record_order() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(220, 60), 1.0, DARK_BG, |ui| {
         Panel::hstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(0.0)
             .show(ui, |ui| {

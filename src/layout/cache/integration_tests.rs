@@ -62,6 +62,7 @@ fn cache_hit_preserves_grid_cell_rects() {
     let cases: &[(&str, Build)] = &[
         ("single_grid", |ui, capture| {
             Panel::vstack()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Grid::new()
@@ -73,6 +74,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("Title:")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
@@ -80,6 +82,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             );
                             capture.push(
                                 Text::new("value column")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .wrapping()
                                     .grid_cell((0, 1))
@@ -91,6 +94,7 @@ fn cache_hit_preserves_grid_cell_rects() {
         }),
         ("nested_grids", |ui, capture| {
             Panel::vstack()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Grid::new()
@@ -101,6 +105,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("outer-L")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
@@ -136,6 +141,7 @@ fn cache_hit_preserves_grid_cell_rects() {
         }),
         ("sibling_grids", |ui, capture| {
             Panel::vstack()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Grid::new()
@@ -146,6 +152,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("L1:")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
@@ -153,6 +160,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             );
                             capture.push(
                                 Text::new("v1")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 1))
                                     .show(ui)
@@ -167,6 +175,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                         .show(ui, |ui| {
                             capture.push(
                                 Text::new("Description:")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
@@ -174,6 +183,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             );
                             capture.push(
                                 Text::new("end")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 2))
                                     .show(ui)
@@ -202,6 +212,7 @@ fn cache_hit_preserves_grid_cell_rects() {
 fn encoded_buffer_stable_across_cache_hit_boundary() {
     let build = |ui: &mut Ui| {
         Panel::vstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(8.0)
             .gap(6.0)
@@ -229,6 +240,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                             .gap_xy(6.0, 8.0)
                             .show(ui, |ui| {
                                 Text::new("Title:")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui);
@@ -236,15 +248,18 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                                     "The quick brown fox jumps over the lazy dog. \
                                      Pack my box with five dozen liquor jugs.",
                                 )
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 1))
                                 .show(ui);
                                 Text::new("Tag:")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((1, 0))
                                     .show(ui);
                                 Text::new("layout, grid, intrinsic, wrapping")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .wrapping()
                                     .grid_cell((1, 1))
@@ -286,6 +301,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
     let build = |ui: &mut Ui, capture: &mut Vec<NodeId>| {
         capture.clear();
         Panel::vstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Panel::zstack()
@@ -301,6 +317,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                             .show(ui, |ui| {
                                 capture.push(
                                     Text::new("Title:")
+                                        .auto_id()
                                         .style(TextStyle::default().with_font_size(14.0))
                                         .grid_cell((0, 0))
                                         .show(ui)
@@ -311,6 +328,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                         "Lorem ipsum dolor sit amet, consectetur \
                                          adipiscing elit, sed do eiusmod tempor.",
                                     )
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .wrapping()
                                     .grid_cell((0, 1))

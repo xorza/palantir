@@ -1,5 +1,5 @@
 //! Popup-layer showcase. A trigger button toggles `MenuState.open`;
-//! while open, `Popup::anchored_to(...)` records a side root in the
+//! while open, `Popup::anchored_to(...).auto_id()` records a side root in the
 //! `Popup` layer that paints above the main tree, escapes ancestor
 //! clip, and hit-tests on top.
 //!
@@ -36,6 +36,7 @@ pub fn build(ui: &mut Ui) {
                 "Click the button to open a popup. The popup paints \
                       above the main tree on the Popup layer.",
             )
+            .auto_id()
             .show(ui);
 
             Panel::hstack()
@@ -55,7 +56,7 @@ pub fn build(ui: &mut Ui) {
                         .state_mut::<MenuState>(menu_id)
                         .last_choice
                         .unwrap_or("(no selection yet)");
-                    Text::new(label).show(ui);
+                    Text::new(label).auto_id().show(ui);
                 });
         });
 

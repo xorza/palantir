@@ -10,6 +10,7 @@ use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Text
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .gap(20.0)
         .padding(16.0)
@@ -22,7 +23,7 @@ pub fn build(ui: &mut Ui) {
             Text::new(concat!(
                 "Composer splits draw groups on every text→quad transition; ",
                 "the wgpu backend keeps a pool of glyphon TextRenderers (one ",
-                "per group with text) so quads and text interleave per group ",
+                "per group with text).auto_id() so quads and text interleave per group ",
                 "in the encoder pass."
             ))
             .id_salt(("hdr", "sub"))

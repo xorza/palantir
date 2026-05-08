@@ -50,9 +50,8 @@ pub struct TextEdit<'a> {
 }
 
 impl<'a> TextEdit<'a> {
-    #[track_caller]
     pub fn new(text: &'a mut String) -> Self {
-        let mut element = Element::new_auto(LayoutMode::Leaf);
+        let mut element = Element::new(LayoutMode::Leaf);
         element.sense = Sense::CLICK;
         element.focusable = true;
         // `Element::padding` left at zero — `show()` substitutes

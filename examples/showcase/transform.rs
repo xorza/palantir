@@ -4,12 +4,14 @@ use palantir::{Background, Configure, Corners, Frame, Panel, Sizing, TranslateSc
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
+        .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Translate.
             cell(ui, "translate", |ui| {
                 Panel::zstack()
+                    .auto_id()
                     .transform(TranslateScale::from_translation(Vec2::new(40.0, 30.0)))
                     .show(ui, |ui| {
                         tile(ui, "t-tile");
@@ -19,6 +21,7 @@ pub fn build(ui: &mut Ui) {
             // Scale (descendants paint at 1.5×, including stroke widths).
             cell(ui, "scale", |ui| {
                 Panel::zstack()
+                    .auto_id()
                     .transform(TranslateScale::from_scale(1.5))
                     .show(ui, |ui| {
                         tile(ui, "s-tile");

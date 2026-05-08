@@ -153,7 +153,7 @@ fn typing_inserts_text_when_focused() {
 
     // Frame 1: build, then end_frame to populate the cascade so focus
     // dispatch has rects to hit-test.
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -177,7 +177,7 @@ fn typing_inserts_text_when_focused() {
     });
 
     begin(&mut ui, UVec2::new(200, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -199,7 +199,7 @@ fn keystrokes_ignored_when_not_focused() {
         repeat: false,
     });
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -217,7 +217,7 @@ fn escape_blurs_focus() {
     let mut buf = String::from("text");
     let id = WidgetId::from_hash("editor");
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -234,7 +234,7 @@ fn escape_blurs_focus() {
     });
 
     begin(&mut ui, UVec2::new(200, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -253,7 +253,7 @@ fn caret_clamps_after_external_buffer_shrink() {
     let mut ui = ui_with_text(UVec2::new(200, 80));
     let mut buf = String::from("hello");
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -267,7 +267,7 @@ fn caret_clamps_after_external_buffer_shrink() {
         repeat: false,
     });
     begin(&mut ui, UVec2::new(200, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -285,7 +285,7 @@ fn caret_clamps_after_external_buffer_shrink() {
         repeat: false,
     });
     begin(&mut ui, UVec2::new(200, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -309,7 +309,7 @@ fn text_event_inserts_at_caret_when_focused() {
     let mut ui = ui_with_text(UVec2::new(200, 80));
     let mut buf = String::new();
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -321,7 +321,7 @@ fn text_event_inserts_at_caret_when_focused() {
     ui.on_input(InputEvent::Text(TextChunk::new("héllo").unwrap()));
 
     begin(&mut ui, UVec2::new(200, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -339,7 +339,7 @@ fn pointer_state_respects_pointer_left() {
     let mut ui = ui_with_text(UVec2::new(200, 80));
     let mut buf = String::new();
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -355,7 +355,7 @@ fn pointer_state_respects_pointer_left() {
     });
 
     begin(&mut ui, UVec2::new(200, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -377,7 +377,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     let mut buf = String::new();
 
     // Frame 1: lay out both widgets so cascades have rects.
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -394,7 +394,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
 
     // Re-record so cascades survive, then click on the Button.
     begin(&mut ui, UVec2::new(400, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -419,7 +419,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
         repeat: false,
     });
     begin(&mut ui, UVec2::new(400, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -442,7 +442,7 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
     ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
     let mut buf = String::new();
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -456,7 +456,7 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
 
     click_at(&mut ui, Vec2::new(50.0, 20.0));
     begin(&mut ui, UVec2::new(400, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -475,7 +475,7 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
         repeat: false,
     });
     begin(&mut ui, UVec2::new(400, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -497,7 +497,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     let mut ui = ui_with_text(UVec2::new(400, 80));
     let mut buf = String::from("ab");
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -512,7 +512,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
         repeat: false,
     });
     begin(&mut ui, UVec2::new(400, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -529,7 +529,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     });
 
     begin(&mut ui, UVec2::new(400, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("editor")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -556,7 +556,7 @@ fn click_lands_caret_at_pressed_position() {
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hello world");
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("ed")
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
@@ -571,7 +571,7 @@ fn click_lands_caret_at_pressed_position() {
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
 
     begin(&mut ui, UVec2::new(300, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("ed")
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
@@ -586,7 +586,7 @@ fn click_lands_caret_at_pressed_position() {
         repeat: false,
     });
     begin(&mut ui, UVec2::new(300, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("ed")
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
@@ -614,7 +614,7 @@ fn click_uses_overridden_padding() {
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hello world");
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("ed")
             .padding(Spacing::xy(24.0, 6.0))
@@ -627,7 +627,7 @@ fn click_uses_overridden_padding() {
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
 
     begin(&mut ui, UVec2::new(300, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("ed")
             .padding(Spacing::xy(24.0, 6.0))
@@ -641,7 +641,7 @@ fn click_uses_overridden_padding() {
         repeat: false,
     });
     begin(&mut ui, UVec2::new(300, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
             .id_salt("ed")
             .padding(Spacing::xy(24.0, 6.0))
@@ -665,7 +665,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     let id_a = WidgetId::from_hash("a");
     let id_b = WidgetId::from_hash("b");
 
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut a)
             .id_salt("a")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -687,7 +687,7 @@ fn two_textedits_only_one_focused_at_a_time() {
         repeat: false,
     });
     begin(&mut ui, UVec2::new(400, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut a)
             .id_salt("a")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -710,7 +710,7 @@ fn two_textedits_only_one_focused_at_a_time() {
         repeat: false,
     });
     begin(&mut ui, UVec2::new(400, 80));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut a)
             .id_salt("a")
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
@@ -758,7 +758,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     let mut btn_node = None;
     let mut txt_node = None;
     let mut ed_node = None;
-    Panel::vstack().show(&mut ui, |ui| {
+    Panel::vstack().auto_id().show(&mut ui, |ui| {
         btn_node = Some(
             Button::new()
                 .id_salt("btn")
@@ -767,7 +767,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
                 .show(ui)
                 .node,
         );
-        txt_node = Some(Text::new("hi").show(ui).node);
+        txt_node = Some(Text::new("hi").auto_id().show(ui).node);
         ed_node = Some(
             TextEdit::new(&mut buf)
                 .id_salt("ed")
@@ -815,8 +815,8 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     ui.theme.text.color = Color::rgb(1.0, 0.0, 0.0);
 
     let mut node = None;
-    Panel::hstack().show(&mut ui, |ui| {
-        node = Some(Text::new("hi").show(ui).node);
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
+        node = Some(Text::new("hi").auto_id().show(ui).node);
     });
     ui.end_frame();
 
@@ -840,9 +840,10 @@ fn text_widget_color_override_wins_over_theme() {
     ui.theme.text.color = Color::rgb(1.0, 0.0, 0.0);
 
     let mut node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         node = Some(
             Text::new("hi")
+                .auto_id()
                 .style(TextStyle::default().with_color(Color::rgb(0.0, 1.0, 0.0)))
                 .show(ui)
                 .node,
@@ -876,7 +877,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     let mut btn_node = None;
     let mut txt_node = None;
     let mut ed_node = None;
-    Panel::vstack().show(&mut ui, |ui| {
+    Panel::vstack().auto_id().show(&mut ui, |ui| {
         btn_node = Some(
             Button::new()
                 .id_salt("btn")
@@ -885,7 +886,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
                 .show(ui)
                 .node,
         );
-        txt_node = Some(Text::new("hi").show(ui).node);
+        txt_node = Some(Text::new("hi").auto_id().show(ui).node);
         ed_node = Some(
             TextEdit::new(&mut buf)
                 .id_salt("ed")
@@ -943,7 +944,7 @@ fn textedit_style_override_replaces_default_theme() {
         ..TextEditTheme::default()
     };
     let mut leaf = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         leaf = Some(
             TextEdit::new(&mut buf)
                 .id_salt("ed")
@@ -974,7 +975,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hi");
     let mut leaf_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         leaf_node = Some(
             TextEdit::new(&mut buf)
                 .id_salt("ed")
@@ -1021,7 +1022,7 @@ fn pushed_shape_uses_style_overridden_line_height() {
         ..TextEditTheme::default()
     };
     let mut leaf_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         leaf_node = Some(
             TextEdit::new(&mut buf)
                 .id_salt("ed")
@@ -1057,7 +1058,7 @@ fn line_height_override_changes_caret_rect_height() {
         // Focus the editor so the caret shape is pushed.
         let mut buf = String::new();
         let mut leaf = None;
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             let mut e = TextEdit::new(&mut buf)
                 .id_salt("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));
@@ -1070,7 +1071,7 @@ fn line_height_override_changes_caret_rect_height() {
         click_at(&mut ui, Vec2::new(20.0, 20.0));
         // Re-record so the focused branch fires this frame.
         begin(&mut ui, UVec2::new(300, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             let mut e = TextEdit::new(&mut buf)
                 .id_salt("ed")
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)));

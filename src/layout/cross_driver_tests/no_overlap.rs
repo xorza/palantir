@@ -71,9 +71,10 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
         let mut left = None;
         let mut right = None;
         Panel::vstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(&mut ui, |ui| {
-                let mut g = Grid::new();
+                let mut g = Grid::new().auto_id();
                 if let Some(s) = *grid_main {
                     g = g.size((s, Sizing::Hug));
                 }
@@ -83,6 +84,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                     .show(ui, |ui| {
                         left = Some(
                             Text::new(long_text)
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 0))
@@ -91,6 +93,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                         );
                         right = Some(
                             Text::new("right column")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .grid_cell((0, 1))
                                 .show(ui)
@@ -121,6 +124,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
     let mut prop_value = None;
 
     Panel::vstack()
+        .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
@@ -133,6 +137,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                     .show(ui, |ui| {
                         hug_left = Some(
                             Text::new(PARAGRAPH)
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 0))
@@ -141,6 +146,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                         );
                         hug_right = Some(
                             Text::new("right column")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .grid_cell((0, 1))
                                 .show(ui)
@@ -159,6 +165,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                     .show(ui, |ui| {
                         prop_label = Some(
                             Text::new("Title:")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .grid_cell((0, 0))
                                 .show(ui)
@@ -166,6 +173,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                         );
                         prop_value = Some(
                             Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 1))
@@ -201,6 +209,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 fn property_grid_emits_distinct_drawtext_x_positions() {
     let mut ui = ui_with_text(UVec2::new(1500, 900));
     Panel::vstack()
+        .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
@@ -212,15 +221,18 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
                 .gap_xy(6.0, 16.0)
                 .show(ui, |ui| {
                     Text::new("Title:")
+                        .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
                         .grid_cell((0, 0))
                         .show(ui);
                     Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
+                        .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
                         .wrapping()
                         .grid_cell((0, 1))
                         .show(ui);
                     Text::new("Description:")
+                        .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
                         .grid_cell((1, 0))
                         .show(ui);
@@ -250,19 +262,19 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
     let mut ui = ui_with_text(UVec2::new(1620, 980));
-    Panel::vstack()
+    Panel::vstack().auto_id()
         .padding(12.0)
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
-            Panel::hstack()
+            Panel::hstack().auto_id()
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |_| {});
-            Panel::zstack()
+            Panel::zstack().auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .padding(16.0)
                 .show(ui, |ui| {
-                    Panel::vstack()
+                    Panel::vstack().auto_id()
                         .gap(16.0)
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
@@ -272,12 +284,12 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                     .rows(Rc::from([Track::hug()]))
                                     .gap_xy(0.0, 16.0)
                                     .show(ui, |ui| {
-                                        Text::new(PARAGRAPH)
+                                        Text::new(PARAGRAPH).auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
                                             .wrapping()
                                             .grid_cell((0, 0))
                                             .show(ui);
-                                        Text::new("right column")
+                                        Text::new("right column").auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
                                             .grid_cell((0, 1))
                                             .show(ui);
@@ -290,31 +302,31 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                     .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
                                     .gap_xy(6.0, 16.0)
                                     .show(ui, |ui| {
-                                        Text::new("Title:")
+                                        Text::new("Title:").auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
                                             .grid_cell((0, 0))
                                             .show(ui);
                                         Text::new(
                                             "Lorem Ipsum is simply dummy text of the printing industry.",
-                                        )
+                                        ).auto_id()
                                         .style(TextStyle::default().with_font_size(14.0))
                                         .wrapping()
                                         .grid_cell((0, 1))
                                         .show(ui);
-                                        Text::new("Description:")
+                                        Text::new("Description:").auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
                                             .grid_cell((1, 0))
                                             .show(ui);
-                                        Text::new(PARAGRAPH)
+                                        Text::new(PARAGRAPH).auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
                                             .wrapping()
                                             .grid_cell((1, 1))
                                             .show(ui);
-                                        Text::new("Tags:")
+                                        Text::new("Tags:").auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
                                             .grid_cell((2, 0))
                                             .show(ui);
-                                        Text::new("layout, grid, intrinsic, wrapping, css")
+                                        Text::new("layout, grid, intrinsic, wrapping, css").auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
                                             .wrapping()
                                             .grid_cell((2, 1))

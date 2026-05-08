@@ -11,6 +11,7 @@ use std::rc::Rc;
 fn grid_fixed_and_fill_columns_split_remainder() {
     let mut ui = ui_at(UVec2::new(400, 200));
     let root = Grid::new()
+        .auto_id()
         .cols([Track::fixed(120.0), Track::fill()])
         .rows([Track::fill()])
         .size((Sizing::FILL, Sizing::FILL))
@@ -44,6 +45,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     // plus default `ButtonTheme.padding = Spacing::xy(12.0, 6.0)`, so
     // the button width is `label_w + 24`.
     let root = Grid::new()
+        .auto_id()
         .cols([Track::hug(), Track::fill()])
         .rows([Track::hug(), Track::hug()])
         .size((Sizing::FILL, Sizing::FILL))
@@ -87,6 +89,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
 fn grid_fill_weights_split_remainder_proportionally() {
     let mut ui = ui_at(UVec2::new(400, 100));
     let root = Grid::new()
+        .auto_id()
         .cols([Track::fill_weight(1.0), Track::fill_weight(3.0)])
         .rows([Track::fill()])
         .size((Sizing::FILL, Sizing::FILL))
@@ -118,6 +121,7 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
     // Fill col 0 wants 100 (1/4 of 400), but min=200 → it clamps to 200,
     // remaining 200 distributes to col 1 (weight 3 → 200).
     let root = Grid::new()
+        .auto_id()
         .cols([Track::fill_weight(1.0).min(200.0), Track::fill_weight(3.0)])
         .rows([Track::fill()])
         .size((Sizing::FILL, Sizing::FILL))
@@ -148,6 +152,7 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
     let mut ui = ui_at(UVec2::new(400, 100));
     // Fill col 0 wants 300 (3/4 of 400) but max=150 → clamps; col 1 takes 250.
     let root = Grid::new()
+        .auto_id()
         .cols([Track::fill_weight(3.0).max(150.0), Track::fill_weight(1.0)])
         .rows([Track::fill()])
         .size((Sizing::FILL, Sizing::FILL))
@@ -192,7 +197,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
             Track::fixed(100.0),
         ];
         let secondary = [Track::fixed(40.0), Track::fixed(40.0)];
-        let mut g = Grid::new();
+        let mut g = Grid::new().auto_id();
         if *swap {
             g = g.rows(primary).cols(secondary);
         } else {
@@ -248,6 +253,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
     // `ui.layout` is forced to the surface size regardless of Sizing.
     let mut grid_node = None;
     let _root = Panel::hstack()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             grid_node = Some(
@@ -279,6 +285,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
 
     let mut ui = ui_at(UVec2::new(200, 200));
     let root = Grid::new()
+        .auto_id()
         .cols([Track::fixed(100.0)])
         .rows([Track::fixed(100.0)])
         .show(&mut ui, |ui| {
@@ -340,6 +347,7 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
     // 3×3 of fixed-50 cells with gap=10. A 2×2 cell starting at (0,0)
     // covers rows 0-1 and cols 0-1: w = 50+10+50 = 110, h = same.
     let root = Grid::new()
+        .auto_id()
         .cols([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
         .rows([Track::fixed(50.0), Track::fixed(50.0), Track::fixed(50.0)])
         .gap(10.0)
@@ -387,6 +395,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     let mut grid_node = None;
     let mut ghost_node = None;
     Panel::hstack()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             grid_node = Some(
@@ -430,6 +439,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
     let mut grid_node = None;
     let mut kids = Vec::new();
     Panel::hstack()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             grid_node = Some(

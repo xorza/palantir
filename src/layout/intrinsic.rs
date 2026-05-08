@@ -211,6 +211,7 @@ mod tests {
         let mut ui = Ui::new();
         ui.begin_frame(Display::from_physical(UVec2::new(400, 300), 1.0));
         let root = Panel::hstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::Hug))
             .show(&mut ui, |ui| {
                 Text::new("lorem ipsum dolor sit amet")
@@ -245,6 +246,7 @@ mod tests {
         let mut ui = Ui::new();
         ui.begin_frame(Display::from_physical(UVec2::new(400, 300), 1.0));
         let root = Panel::hstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::Hug))
             .show(&mut ui, |ui| {
                 Text::new("hello world")
@@ -291,6 +293,7 @@ mod tests {
         let mut ui = Ui::new();
         ui.begin_frame(Display::from_physical(UVec2::new(400, 300), 1.0));
         let root = Panel::hstack()
+            .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
             .show(&mut ui, |ui| {
                 Text::new("abc").id_salt("a").show(ui);

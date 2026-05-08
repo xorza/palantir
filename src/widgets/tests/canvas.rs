@@ -11,7 +11,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     let mut canvas_node = None;
     let mut a_node = None;
     let mut b_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         canvas_node = Some(
             Panel::canvas()
                 .id_salt("c")

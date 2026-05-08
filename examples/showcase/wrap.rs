@@ -11,6 +11,7 @@ use palantir::{
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .gap(20.0)
         .padding(16.0)
@@ -23,7 +24,7 @@ pub fn build(ui: &mut Ui) {
             Text::new(concat!(
                 "Children flow along main axis; when the next child wouldn't fit, ",
                 "wrap to a new line. `.gap` spaces siblings within a line; ",
-                "`.line_gap` spaces lines. `.justify(...)` applies per-line.",
+                "`.line_gap` spaces lines. `.justify(...).auto_id()` applies per-line.",
             ))
             .id_salt(("hdr", "sub"))
             .style(TextStyle::default().with_font_size(12.0))

@@ -23,10 +23,12 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     let mut ui = ui_with_text(UVec2::new(400, 400));
     let mut text_node = None;
     Panel::vstack()
+        .auto_id()
         .size((Sizing::Fixed(60.0), Sizing::Hug))
         .show(&mut ui, |ui| {
             text_node = Some(
                 Text::new(PARAGRAPH)
+                    .auto_id()
                     .style(TextStyle::default().with_font_size(16.0))
                     .wrapping()
                     .show(ui)
@@ -213,18 +215,18 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     fn build(ui: &mut crate::Ui) -> (crate::tree::NodeId, crate::tree::NodeId) {
         let mut grid_node = None;
         let mut section_node = None;
-        Panel::vstack()
+        Panel::vstack().auto_id()
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Panel::zstack()
+                Panel::zstack().auto_id()
                     .padding(16.0)
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Panel::vstack()
+                        Panel::vstack().auto_id()
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                section_node = Some(Panel::vstack()
+                                section_node = Some(Panel::vstack().auto_id()
                                     .size((Sizing::FILL, Sizing::Hug))
                                     .gap(6.0)
                                     .show(ui, |ui| {
@@ -243,12 +245,12 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                 .show(ui, |ui| {
                                                     Text::new(
                                                         "the quick brown fox jumps over the lazy dog",
-                                                    )
+                                                    ).auto_id()
                                                     .style(TextStyle::default().with_font_size(14.0))
                                                     .wrapping()
                                                     .grid_cell((0, 0))
                                                     .show(ui);
-                                                    Text::new("right column")
+                                                    Text::new("right column").auto_id()
                                                         .style(
                                                             TextStyle::default()
                                                                 .with_font_size(14.0),
@@ -326,6 +328,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
 fn nonwrapping_text_minconent_equals_full_width() {
     let mut ui = ui_with_text(UVec2::new(400, 200));
     let label_node = Text::new("right column")
+        .auto_id()
         .style(TextStyle::default().with_font_size(14.0))
         .show(&mut ui)
         .node;
@@ -371,6 +374,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
             .show(ui, |ui| {
                 paragraph_node = Some(
                     Text::new("the quick brown fox jumps over the lazy dog")
+                        .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
                         .wrapping()
                         .grid_cell((0, 0))
@@ -379,6 +383,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                 );
                 label_node = Some(
                     Text::new("right column")
+                        .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
                         .grid_cell((0, 1))
                         .show(ui)
@@ -425,8 +430,10 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
 /// emitted commands. Used by the multi-text-per-leaf pinning tests.
 fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::tree::NodeId {
     let mut leaf = None;
-    Panel::vstack().show(ui, |ui| {
-        leaf = Some(ui.node(Element::new_auto(LayoutMode::Leaf), None, |ui| {
+    Panel::vstack().auto_id().show(ui, |ui| {
+        let mut element = Element::new(LayoutMode::Leaf);
+        element.id = crate::WidgetId::from_hash("multi-text-leaf");
+        leaf = Some(ui.node(element, None, |ui| {
             ui.add_shape(Shape::Text {
                 local_rect: Some(Rect::new(0.0, 0.0, 100.0, 20.0)),
                 text: Cow::Borrowed("first"),

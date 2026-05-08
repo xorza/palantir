@@ -3,31 +3,33 @@ use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
+        .auto_id()
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             cell(ui, "HStack", |ui| {
-                Panel::hstack().gap(6.0).show(ui, |ui| {
+                Panel::hstack().auto_id().gap(6.0).show(ui, |ui| {
                     sw(ui, "h-a", 40.0, 40.0, swatch::A);
                     sw(ui, "h-b", 40.0, 40.0, swatch::A);
                     sw(ui, "h-c", 40.0, 40.0, swatch::A);
                 });
             });
             cell(ui, "VStack", |ui| {
-                Panel::vstack().gap(6.0).show(ui, |ui| {
+                Panel::vstack().auto_id().gap(6.0).show(ui, |ui| {
                     sw(ui, "v-a", 60.0, 24.0, swatch::A);
                     sw(ui, "v-b", 60.0, 24.0, swatch::A);
                     sw(ui, "v-c", 60.0, 24.0, swatch::A);
                 });
             });
             cell(ui, "ZStack", |ui| {
-                Panel::zstack().show(ui, |ui| {
+                Panel::zstack().auto_id().show(ui, |ui| {
                     sw(ui, "z-back", 80.0, 80.0, swatch::A);
                     sw(ui, "z-front", 50.0, 50.0, swatch::B);
                 });
             });
             cell(ui, "Canvas", |ui| {
                 Panel::canvas()
+                    .auto_id()
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         positioned(ui, "p1", 10.0, 10.0, swatch::A);

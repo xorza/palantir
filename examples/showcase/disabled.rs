@@ -2,6 +2,7 @@ use palantir::{Button, Configure, Panel, Sizing, Text, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
+        .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {

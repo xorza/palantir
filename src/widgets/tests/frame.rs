@@ -13,7 +13,7 @@ use glam::UVec2;
 fn frame_paints_a_single_rounded_rect() {
     let mut ui = ui_at(UVec2::new(200, 100));
     let mut frame_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         frame_node = Some(
             Frame::new()
                 .id_salt("decoration")
@@ -55,7 +55,7 @@ fn frame_with_sense_click_is_clickable() {
     use glam::Vec2;
 
     let mut ui = ui_at(UVec2::new(200, 100));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Frame::new()
             .id_salt("hitbox")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
@@ -68,7 +68,7 @@ fn frame_with_sense_click_is_clickable() {
 
     ui.begin_frame(Display::default());
     let mut clicked = false;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         clicked = Frame::new()
             .id_salt("hitbox")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))

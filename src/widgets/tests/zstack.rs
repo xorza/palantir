@@ -16,7 +16,7 @@ fn zstack_layers_children_without_painting_background() {
     let mut zstack_node = None;
     let mut bg_node = None;
     let mut fg_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         zstack_node = Some(
             Panel::zstack()
                 .id_salt("layered")
@@ -79,7 +79,7 @@ fn zstack_aligns_child_per_axis() {
     for (label, align, expected) in cases {
         let mut ui = ui_at(UVec2::new(400, 400));
         let mut child_node = None;
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Panel::zstack()
                 .id_salt("box")
                 .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))

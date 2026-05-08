@@ -26,15 +26,19 @@ pub fn build(ui: &mut Ui) {
     ui.set_focus_policy(policy);
 
     Panel::vstack()
+        .auto_id()
         .padding(20.0)
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            Text::new("TextEdit — single-line editable text leaf.").show(ui);
+            Text::new("TextEdit — single-line editable text leaf.")
+                .auto_id()
+                .show(ui);
             Text::new(
                 "Click to focus, type to insert, arrows / Home / End / Backspace / Delete \
                  navigate, Escape blurs.",
             )
+            .auto_id()
             .wrapping()
             .show(ui);
 

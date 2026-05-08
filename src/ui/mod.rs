@@ -250,6 +250,12 @@ impl Ui {
         surface: Option<Surface>,
         f: impl FnOnce(&mut Ui),
     ) -> NodeId {
+        assert!(
+            element.id != WidgetId::default(),
+            "widget recorded without a `WidgetId` — chain `.id_salt(key)`, \
+             `.id(precomputed)`, or `.auto_id()` on the builder before `.show(ui)`. \
+             `Foo::new()` no longer derives an id automatically.",
+        );
         element.id = self.ids.record(element.id, element.auto_id);
         let chrome = surface.map(|s| {
             element.clip = match s.clip {

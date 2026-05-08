@@ -21,7 +21,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 
     let mut ui = ui_at(UVec2::new(200, 200));
     let mut cases: Vec<(&str, crate::tree::NodeId, ClipMode, bool)> = Vec::new();
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         // No surface set anywhere → no clip, no chrome.
         let n = Panel::zstack()
             .id_salt("none")
@@ -108,7 +108,7 @@ fn panel_hugs_largest_child_and_layers_them() {
     let mut panel_node = None;
     let mut a_node = None;
     let mut b_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         panel_node = Some(
             Panel::zstack()
                 .id_salt("card")
@@ -175,7 +175,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     // otherwise expand to surface.)
     let mut ui = ui_at(UVec2::new(400, 400));
     let mut child_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("p")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
@@ -210,7 +210,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
     use glam::Vec2;
 
     let mut ui = ui_at(UVec2::new(400, 200));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
@@ -233,7 +233,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 
     ui.begin_frame(Display::default());
     let mut clicked = false;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("locked")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))

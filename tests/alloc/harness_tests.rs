@@ -182,6 +182,7 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     for _ in 0..4 {
         let _ = ui.run_frame(display, |ui| {
             Button::new()
+                .auto_id()
                 .label("hello")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui);
@@ -190,6 +191,7 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     let r = with_audit(|| {
         let _ = ui.run_frame(display, |ui| {
             Button::new()
+                .auto_id()
                 .label("hello")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui);

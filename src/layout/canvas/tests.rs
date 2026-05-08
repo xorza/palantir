@@ -11,6 +11,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
+            .auto_id()
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .padding(10.0)
             .show(ui, |ui| {
@@ -41,6 +42,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
+            .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
@@ -70,6 +72,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
+            .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
@@ -115,7 +118,7 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
     for (label, fixed_size, expected) in cases {
         let mut ui = Ui::new();
         let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
-            let mut canvas = Panel::canvas();
+            let mut canvas = Panel::canvas().auto_id();
             if let Some(s) = *fixed_size {
                 canvas = canvas.size((Sizing::Fixed(s), Sizing::Fixed(s)));
             }
@@ -146,6 +149,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
+            .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
@@ -180,6 +184,7 @@ fn canvas_ignores_child_align() {
     let mut child = None;
     let _panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
+            .auto_id()
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .show(ui, |ui| {
                 child = Some(

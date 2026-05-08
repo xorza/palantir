@@ -17,8 +17,8 @@ fn shapes_attached_to_button_node() {
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
     let mut button_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
-        button_node = Some(Button::new().label("X").show(ui).node);
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
+        button_node = Some(Button::new().auto_id().label("X").show(ui).node);
     });
 
     // Chrome (the button background) lives in `Tree::chrome_table`,
@@ -54,6 +54,7 @@ fn interleaved_shapes_record_correct_order() {
     }
     let mut ui = ui_at(UVec2::new(200, 200));
     let p = Panel::vstack()
+        .auto_id()
         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
         .show(&mut ui, |ui| {
             ui.add_shape(pos_rect(0));
@@ -161,6 +162,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     let mut ui = ui_at(UVec2::new(200, 200));
     let mut child_id = None;
     let parent_id = Panel::vstack()
+        .auto_id()
         .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
         .show(&mut ui, |ui| {
             // Single child, no shapes inside.
@@ -491,7 +493,7 @@ fn shape_order_matters_for_hash() {
     let mut ui1 = Ui::new();
     ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut n1 = None;
-    Panel::hstack().show(&mut ui1, |ui| {
+    Panel::hstack().auto_id().show(&mut ui1, |ui| {
         // Push a Frame then add a manual Text shape via a Button.
         n1 = Some(Button::new().id_salt("a").label("X").show(ui).node);
     });
@@ -501,7 +503,7 @@ fn shape_order_matters_for_hash() {
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let mut n2 = None;
-    Panel::hstack().show(&mut ui2, |ui| {
+    Panel::hstack().auto_id().show(&mut ui2, |ui| {
         n2 = Some(Button::new().id_salt("a").label("X").show(ui).node);
     });
     ui2.end_frame();
@@ -521,7 +523,7 @@ fn changing_text_content_changes_hash() {
     let mut ui1 = Ui::new();
     ui1.begin_frame(Display::from_physical(UVec2::new(200, 200), 1.0));
     let mut a = None;
-    Panel::hstack().show(&mut ui1, |ui| {
+    Panel::hstack().auto_id().show(&mut ui1, |ui| {
         a = Some(Text::new("Hello").id_salt("t").show(ui).node);
     });
     ui1.end_frame();
@@ -529,7 +531,7 @@ fn changing_text_content_changes_hash() {
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let mut b = None;
-    Panel::hstack().show(&mut ui2, |ui| {
+    Panel::hstack().auto_id().show(&mut ui2, |ui| {
         b = Some(Text::new("World").id_salt("t").show(ui).node);
     });
     ui2.end_frame();

@@ -10,10 +10,11 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     How vexingly quick daft zebras jump!";
 
 /// "text" tab — basic single-text wrapping mechanics in fixed-width
-/// containers. The simplest demonstrations of `Text::new(...).wrapping()`
+/// containers. The simplest demonstrations of `Text::new(...).auto_id().wrapping()`
 /// and the intrinsic-min overflow rule.
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
+        .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
@@ -22,7 +23,9 @@ pub fn build(ui: &mut Ui) {
                 "single",
                 "single-line label, hugs natural width",
                 |ui| {
-                    Text::new("The quick brown fox jumps over the lazy dog").show(ui);
+                    Text::new("The quick brown fox jumps over the lazy dog")
+                        .auto_id()
+                        .show(ui);
                 },
             );
 
@@ -33,6 +36,7 @@ pub fn build(ui: &mut Ui) {
                     .padding(8.0)
                     .show(ui, |ui| {
                         Text::new(PARAGRAPH)
+                            .auto_id()
                             .style(TextStyle::default().with_font_size(14.0))
                             .wrapping()
                             .show(ui);
@@ -50,6 +54,7 @@ pub fn build(ui: &mut Ui) {
                         .padding(8.0)
                         .show(ui, |ui| {
                             Text::new(PARAGRAPH)
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .show(ui);
@@ -68,6 +73,7 @@ pub fn build(ui: &mut Ui) {
                         .padding(4.0)
                         .show(ui, |ui| {
                             Text::new("supercalifragilistic")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .show(ui);
@@ -82,6 +88,7 @@ pub fn build(ui: &mut Ui) {
 /// chat-message HStack with Fill text (Step C).
 pub fn build_layouts(ui: &mut Ui) {
     Panel::vstack()
+        .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
@@ -97,11 +104,13 @@ pub fn build_layouts(ui: &mut Ui) {
                         .gap_xy(0.0, 16.0)
                         .show(ui, |ui| {
                             Text::new(PARAGRAPH)
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 0))
                                 .show(ui);
                             Text::new("right column")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .grid_cell((0, 1))
                                 .show(ui);
@@ -122,28 +131,34 @@ pub fn build_layouts(ui: &mut Ui) {
                         .gap_xy(6.0, 16.0)
                         .show(ui, |ui| {
                             Text::new("Title:")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .grid_cell((0, 0))
                                 .show(ui);
                             Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 1))
                                 .show(ui);
                             Text::new("Description:")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .grid_cell((1, 0))
                                 .show(ui);
                             Text::new(PARAGRAPH)
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((1, 1))
                                 .show(ui);
                             Text::new("Tags:")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .grid_cell((2, 0))
                                 .show(ui);
                             Text::new("layout, grid, intrinsic, wrapping, css")
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((2, 1))
