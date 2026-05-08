@@ -626,56 +626,84 @@ tests stay passing.
    - Test: top-level Main + Popup frame → reorder runs; resulting
      storage matches today's pre-step-2 storage byte-for-byte.
 
-3. **Generalize reorder to multi-root, top-level recording.** Drop
-   the gate; apply real permutation. With top-level recording each
-   root's records are already contiguous in record order, so the
-   permutation reduces to "concat buckets in layer-sort order"; for
-   the Main-then-Popup case it's identity. Implement the full
-   algorithm anyway — every column gets permuted, `end[]` rebases by
-   `new_i = inv_perm[old_i]`, `shapes` buffer permutes by record
-   order, sparse cols rebuild via `clear()` + push, `roots[i].first_node`
-   updates to `inv_perm[old_first_node]`, `subtree_has_grid` rebuilds.
-   - Test: storage post-reorder for top-level Main + Popup matches
-     today's behavior.
-   - Test: top-level Popup-then-Main records `[Popup, Main]` in
-     `records`; after reorder the buckets concat as `[Main, Popup]`,
-     `roots[0].first_node` points at Main's first node, all `end[]`
-     values rebased correctly.
-   - Test: an empty popup body (`ui.layer(Popup, anchor, |_| {})`
-     records no nodes, no `RootSlot` pushed) leaves the tree
-     unchanged — single-root Main fast-path still applies.
+3. **Generalize reorder to multi-root, top-level recording.** ✅ shipped
+   `Tree::reorder_records` builds `record_perm` by bucketing records
+   by `id_per_node` (= post-sort layer order), then permutes the SoA
+   columns + the flat `shapes` buffer + the `bounds`/`panel`/`chrome`
+   sparse `idx` columns + the `rollups.has_grid` bitset + the
+   `manifest.id_per_node` tag. `subtree_end` rebases per record:
+   `new_end = new_i + (old_end - old_i)` (the formula relies on each
+   root's old subtree being contiguous, which holds for top-level
+   recording — step 4 generalizes for mid-recording). Sparse `table`
+   slices stay put — the dense storage is keyed by table position,
+   not NodeId, so only the `idx` column needs permuting.
+   `slots[i].first_node` rewrites to `inv_perm[old_first_node]`. All
+   reorder scratch (`record_perm`, `inv_perm`, the SoA / shapes /
+   bitset / id-per-node rebuild targets, the per-record
+   `new_shape_starts` index) lives on `Tree.reorder_scratch`,
+   capacity-retained.
+   - Test ✓ — `ui_layer_records_popup_root_after_main_in_paint_order`:
+     Main-then-Popup recording yields identity permutation; storage
+     unchanged.
+   - Test ✓ — `reorder_compacts_popup_recorded_before_main_into_layer_order`:
+     Popup-recorded-first compacts to Main-first storage; `subtree_end`,
+     `slots[i].first_node`, and `id_per_node` all match the new layout.
+   - Test ✓ — `empty_popup_body_does_not_push_a_root_slot`: empty
+     `Ui::layer` body adds no root; Main-only fast path applies.
 
-4. **Lift the mid-recording assert.** Drop `push_layer`'s
-   `open_frames[Main].is_empty()` check. Remove the v1 panic test
-   in `tree/tests.rs:1022`. The `current_layer == Main` assert stays
-   (we only support entering layers from Main; nested popups need
-   `current_layer == Main` lifted in step 5).
-   - Test: `Main { mc1, mc2, Popup { ps1, ps2 }, mc3, mc4 }` →
-     `record_perm` reorders to `[parent, mc1, mc2, mc3, mc4,
-     popup_root, ps1, ps2]`. `roots[0].first_node = 0`,
-     `roots[1].first_node = 5`. `tree.children(parent)` yields
-     `[mc1, mc2, mc3, mc4]` — no popup leak.
-   - Test: `subtree_hash[parent]` is invariant when popup body
-     varies; popup's hash isn't folded into parent's rollup.
-   - Test: showcase popup tab no longer panics on click.
+4. **Lift the mid-recording assert.** ✅ shipped
+   `push_layer`'s `open_frames[Main].is_empty()` check is gone; the
+   `current_layer == Main` assert stays. `Tree::reorder_records`
+   generalizes the `subtree_end` rebase via a reverse walk over old
+   records — same-bucket children from old `subtree_end` are visited
+   recursively to compute each parent's true new subtree extent,
+   foreign-rooted descendants skipped.
+   - **Shape-buffer cross-bucket leak fix.** The reorder pass also
+     gained a `shape_root_id: Vec<u16>` parallel column to
+     `tree.shapes`, stamped at `add_shape` time from
+     `recording.current_root_id`. The emit walk filters direct shapes
+     by this tag: a Main parent that's still open when a popup body
+     pushes its shapes ends up with `shape_span.len` covering those
+     foreign shapes (set at the parent's close), and without the
+     filter the reorder would attribute them to the parent as direct
+     shapes — giving the parent a `shape_span` pointing at text
+     shapes that layout never shaped (layout shapes texts only at
+     `LayoutMode::Leaf`), and the encoder then panicking with
+     `text-shape ordinal 0 out of bounds for span len 0`.
+   - Test ✓ — `mid_recording_popup_compacts_into_layer_order`:
+     `Main { parent, mc1, mc2, Popup { ps_panel, ps_leaf, ps_leaf2 },
+     mc3, mc4 }` reorders to `[parent, mc1, mc2, mc3, mc4, popup_root,
+     ps_leaf, ps_leaf2]`. `tree.children(parent)` excludes popup;
+     shape buffer length matches unique-shape count.
+   - Test ✓ — `mid_recording_popup_with_text_renders_through_encoder`:
+     mirror of the showcase scenario (outer Main panel with trigger
+     button + mid-recording popup body, no trailing Main child) runs
+     end-to-end through `Ui::end_frame` → `encode_cmds` without
+     panic. Asserts outer panel's `shape_span` owns only the trigger
+     label; popup root's owns only "copy" — pinning the
+     `shape_root_id` filter.
+   - The v1 panic test (`ui_layer_panics_when_called_inside_an_open_panel`)
+     was deleted as part of the assert lift.
 
-5. **Nested popups.** Lift `push_layer`'s `current_layer == Main`
-   assert. `current_root_id` save/restore on `layer_stack` already
-   handles the bookkeeping. Update `assert_recording_invariants`'s
-   post-reorder check to allow ≥2 non-Main roots.
-   - Test: `Main { Popup { Popup { … } } }` → three buckets, layer
-     sort places them in `[Main, Popup_outer, Popup_inner]` order.
-   - Test: a popup body that opens two top-level nodes (each its
-     own `RootSlot` since `open_frames[Popup]` empties between
-     them) → two Popup-layer roots, both reordered to the end.
+5. **Nested popups (popup-from-popup).** ❌ rejected — defer until
+   needed. Use case: submenus, tooltips/modals raised from inside an
+   open popup. Workaround: split into two phases — trigger inside
+   popup writes a flag to `Ui::state_mut`; frame-level conditional
+   renders the second layer at top level. Cost in app code: a
+   `state_mut` call and an `if`. Cost in latency: zero (both render
+   in the same frame). Cost to support: one assert lifted
+   (`current_layer == Main` in `push_layer`), one fixture; the
+   `LayerScope` save/restore plumbing was already shipped in step 1.
+   Flip when a real motivating case shows up — most likely submenu
+   chains, since the two-phase pattern feels truly awkward there.
 
-6. **Showcase verification + cleanup.** Run `cargo run --example
-   showcase`, click the popup tab's "menu" trigger, verify the popup
-   paints below the trigger and clicking an item closes the popup
-   without panic. Update `docs/popups.md` step 4's "⏳ partial" to
-   "✅ shipped" once `ClickOutside::Dismiss` is also wired (or split
-   that into its own follow-up). Delete the now-redundant "Required
-   user pattern in v1" example earlier in this doc.
+6. **Showcase verification + cleanup.** ✅ shipped
+   `examples/showcase/popup.rs` is the canonical mid-recording
+   pattern (no two-phase split needed): `Popup::anchored_to(...).show()`
+   is called from inside the central panel's `show` body when
+   `MenuState.open` is true. Verified by user: clicking "menu" opens
+   the dropdown, clicking a menu item updates `last_choice` and
+   closes the popup, no panic.
 
 #### Out of scope for v2
 
