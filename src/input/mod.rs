@@ -201,6 +201,14 @@ pub struct InputState {
     pub(crate) focused: Option<WidgetId>,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub focus_policy: FocusPolicy,
+    /// Set in `on_input` when an event arrives that could plausibly
+    /// drive a state mutation (clicks, keys, text, scroll). Read by
+    /// `Ui::run_frame` to decide whether to re-record the frame after
+    /// pass 1's `end_frame` drains the input queues. Hover-only events
+    /// (`PointerMoved`, `PointerLeft`) and modifier changes don't flip
+    /// it — they fire too often and don't typically mutate user state.
+    /// Reset by `Ui::run_frame` after the decision is made.
+    pub(crate) had_action_this_frame: bool,
 }
 
 impl Default for InputState {
@@ -224,12 +232,23 @@ impl InputState {
             modifiers: Modifiers::NONE,
             focused: None,
             focus_policy: FocusPolicy::default(),
+            had_action_this_frame: false,
         }
     }
 
     /// Feed a palantir-native input event. Hit-tests against the
     /// frozen `CascadeResult` from this frame's most recent run.
     pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &CascadeResult) {
+        if matches!(
+            event,
+            InputEvent::PointerPressed(_)
+                | InputEvent::PointerReleased(_)
+                | InputEvent::KeyDown { .. }
+                | InputEvent::Text(_)
+                | InputEvent::Scroll(_)
+        ) {
+            self.had_action_this_frame = true;
+        }
         match event {
             InputEvent::PointerMoved(p) => {
                 self.pointer.pos = Some(p);
@@ -296,16 +315,31 @@ impl InputState {
         }
     }
 
+    /// Read and reset [`Self::had_action_this_frame`]. Called by
+    /// [`crate::Ui::run_frame`] to decide whether to run a discarded
+    /// pre-pass for state-mutation settling.
+    pub(crate) fn take_action_flag(&mut self) -> bool {
+        std::mem::take(&mut self.had_action_this_frame)
+    }
+
+    /// Drain the per-frame input queues without touching cascade-
+    /// dependent state (active/focused eviction, hover recompute).
+    /// Used by [`crate::Ui::run_frame`] for the discarded pass — pass
+    /// 2's recording must see empty queues so `Response::clicked()`
+    /// returns `false` everywhere and clicks aren't double-fired.
+    /// Capacity-retained on the backing buffers.
+    pub(crate) fn drain_per_frame_queues(&mut self) {
+        self.clicked_this_frame.clear();
+        self.frame_scroll_delta = Vec2::ZERO;
+        self.frame_keys.clear();
+        self.frame_text.clear();
+    }
+
     /// Recompute hover, drop transient per-frame flags, evict captured
     /// widgets that disappeared from the tree. Call after
     /// `Cascades::run` (whose result `cascades` is passed here).
     pub(crate) fn end_frame(&mut self, cascades: &CascadeResult) {
-        self.clicked_this_frame.clear();
-        self.frame_scroll_delta = Vec2::ZERO;
-        // Capacity-retained — `Vec::clear` and `String::clear` keep the
-        // backing buffer so steady-state typing stays alloc-free.
-        self.frame_keys.clear();
-        self.frame_text.clear();
+        self.drain_per_frame_queues();
         // `modifiers` deliberately persists: modifier state is a running
         // snapshot, not per-frame. Held shift across multiple frames must
         // stay `true`.

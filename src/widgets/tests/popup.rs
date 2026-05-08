@@ -107,6 +107,77 @@ fn click_outside_popup_dismisses_and_blocks_main() {
     );
 }
 
+/// `Ui::run_frame` settles popup dismissal in a single host call.
+/// Pass 1 records the open popup, sees the eater click, sets
+/// `dismissed = true`, host flips `open = false`. Pass 2 sees
+/// `open == false` and records no popup. The painted tree (pass 2)
+/// has no popup-layer widgets — no stale frame ever reaches submit.
+#[test]
+fn run_frame_settles_popup_dismissal_in_one_call() {
+    use crate::layout::types::display::Display;
+
+    let mut ui = ui_at(SURFACE);
+    // Frame 0: popup open, no input. Single pass.
+    let mut open = true;
+    {
+        let open = &mut open;
+        Panel::vstack()
+            .with_id("main-bg")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(&mut ui, |ui| {
+                if *open {
+                    let r = Popup::anchored_to(ANCHOR)
+                        .with_id("test-popup")
+                        .click_outside(ClickOutside::Dismiss)
+                        .show(ui, |ui| {
+                            Panel::vstack()
+                                .with_id("popup-content")
+                                .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
+                                .show(ui, |_| {});
+                        });
+                    if r.dismissed {
+                        *open = false;
+                    }
+                }
+            });
+        ui.end_frame();
+    }
+
+    // Pop the press outside the popup body.
+    click_at(&mut ui, Vec2::new(300.0, 300.0));
+
+    // Frame 1: run_frame should re-record once dismissal fires, so
+    // pass 2's painted tree has zero `Layer::Popup` nodes.
+    let display = Display::from_physical(SURFACE, 1.0);
+    let _frame_out = ui.run_frame(display, |ui| {
+        Panel::vstack()
+            .with_id("main-bg")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                if open {
+                    let r = Popup::anchored_to(ANCHOR)
+                        .with_id("test-popup")
+                        .click_outside(ClickOutside::Dismiss)
+                        .show(ui, |ui| {
+                            Panel::vstack()
+                                .with_id("popup-content")
+                                .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
+                                .show(ui, |_| {});
+                        });
+                    if r.dismissed {
+                        open = false;
+                    }
+                }
+            });
+    });
+    assert!(!open, "host flag must flip to false in pass 1");
+    assert_eq!(
+        ui.forest.tree(crate::tree::Layer::Popup).records.len(),
+        0,
+        "painted tree (pass 2) must contain no Popup-layer widgets",
+    );
+}
+
 /// `Block` mode swallows outside clicks silently — no dismissal
 /// signal, but Main still doesn't see the click.
 #[test]

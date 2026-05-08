@@ -242,10 +242,9 @@ impl State {
             self.new_surface = false;
         }
 
-        self.ui.begin_frame(self.display);
-        build_root(&mut self.ui, &mut self.active);
         let clear = self.ui.theme.window_clear;
-        let frame_out = self.ui.end_frame();
+        let active = &mut self.active;
+        let frame_out = self.ui.run_frame(self.display, |ui| build_root(ui, active));
 
         if frame_out.can_skip_rendering() {
             return;
