@@ -57,8 +57,7 @@ impl Forest {
 
     pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
         let layer = self.recording.current_layer;
-        let anchor = self.recording.current_anchor;
-        self.trees[layer as usize].open_node(element, chrome, anchor)
+        self.trees[layer as usize].open_node(element, chrome)
     }
 
     pub(crate) fn close_node(&mut self) {
@@ -78,7 +77,8 @@ impl Forest {
             "Ui::layer must be called from the Main scope (current: {:?})",
             self.recording.current_layer,
         );
-        self.recording.push_scope(layer, anchor);
+        self.trees[layer as usize].pending_anchor = anchor;
+        self.recording.push_scope(layer);
     }
 
     pub(crate) fn pop_layer(&mut self) {

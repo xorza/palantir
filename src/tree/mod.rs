@@ -121,6 +121,15 @@ pub(crate) struct Tree {
     /// retained.
     pub(crate) open_frames: Vec<NodeId>,
 
+    /// Anchor that the next `open_node` will stamp on a freshly-minted
+    /// `RootSlot`. Set by `Forest::push_layer` for non-`Main` layers;
+    /// `Main`'s value stays at `Rect::ZERO` until `Forest::end_frame`
+    /// patches every `Main` root's anchor to the surface. Single
+    /// "mailbox" slot — overwritten by each `push_layer` to this tree;
+    /// stale value between mints is harmless because nothing reads it
+    /// until the next root open.
+    pub(crate) pending_anchor: Rect,
+
     // -- Output (populated by `end_frame`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
 }
@@ -136,6 +145,7 @@ impl Tree {
         self.rollups.has_grid.clear();
         self.roots.clear();
         self.open_frames.clear();
+        self.pending_anchor = Rect::ZERO;
     }
 
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`.
@@ -201,26 +211,16 @@ impl Tree {
     }
 
     /// Push a node as a child of the currently-open node (or as a new
-    /// root if `open_frames` is empty) and make it the new tip.
-    ///
-    /// `anchor` is consumed *only* when this open mints a new
-    /// `RootSlot` (no parent on the stack); for child opens it's
-    /// discarded. Callers without a meaningful anchor pass
-    /// `Rect::ZERO`. The dead-parameter case is a known wart — see
-    /// the "open question" in `docs/tree-redesign.md` §8 about
-    /// splitting into `open_root` + `open_child`.
-    pub(crate) fn open_node(
-        &mut self,
-        element: Element,
-        chrome: Option<Background>,
-        anchor: Rect,
-    ) -> NodeId {
+    /// root if `open_frames` is empty) and make it the new tip. Root
+    /// mints stamp `self.pending_anchor` onto the new `RootSlot`;
+    /// child opens don't read the anchor.
+    pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
         let parent = self.open_frames.last().copied();
         let new_id = NodeId(self.records.len() as u32);
         if parent.is_none() {
             self.roots.push(RootSlot {
                 first_node: new_id.0,
-                anchor_rect: anchor,
+                anchor_rect: self.pending_anchor,
             });
         }
         if let LayoutMode::Grid(idx) = element.mode {
