@@ -34,11 +34,13 @@ pub(crate) fn shaped_text(result: &LayerResult, id: NodeId) -> ShapedText {
 pub(crate) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> NodeId {
     let mut text_node = None;
     Grid::new()
+        .auto_id()
         .cols(Rc::from([Track::hug(), Track::hug()]))
         .rows(Rc::from([Track::hug()]))
         .show(ui, |ui| {
             text_node = Some(
                 Text::new(paragraph)
+                    .auto_id()
                     .style(TextStyle::default().with_font_size(16.0))
                     .wrapping()
                     .grid_cell((0, 0))
@@ -46,6 +48,7 @@ pub(crate) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
                     .node,
             );
             Text::new("right column")
+                .auto_id()
                 .style(TextStyle::default().with_font_size(16.0))
                 .grid_cell((0, 1))
                 .show(ui);
@@ -58,8 +61,9 @@ pub(crate) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
 /// pattern. Returns the message text node.
 pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_px: f32) -> NodeId {
     let mut message_node = None;
-    Panel::vstack().show(ui, |ui| {
+    Panel::vstack().auto_id().show(ui, |ui| {
         Panel::hstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
@@ -68,6 +72,7 @@ pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
                     .show(ui);
                 message_node = Some(
                     Text::new(text)
+                        .auto_id()
                         .style(TextStyle::default().with_font_size(text_px))
                         .size((Sizing::FILL, Sizing::Hug))
                         .wrapping()

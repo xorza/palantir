@@ -355,19 +355,17 @@ pub struct Element {
 }
 
 impl Element {
-    /// Marks the id as auto-generated (see [`Self::auto_id`]). Used by
-    /// `*::new()` widget constructors that derive the id from
-    /// `WidgetId::auto_stable()`.
-    #[track_caller]
-    pub(crate) fn new_auto(mode: LayoutMode) -> Self {
-        Self::new_inner(WidgetId::auto_stable(), mode, true)
-    }
-
-    fn new_inner(id: WidgetId, mode: LayoutMode, auto_id: bool) -> Self {
+    /// Build an `Element` with an *unset* id. Widget constructors call
+    /// this; the caller must then chain one of [`Configure::id_salt`],
+    /// [`Configure::id`], or [`Configure::auto_id`] before `show()`,
+    /// otherwise the [`crate::ui::Ui::node`] write-path asserts. No
+    /// implicit `auto_stable` derivation in constructors keeps
+    /// `#[track_caller]` off every widget `*::new`.
+    pub(crate) fn new(mode: LayoutMode) -> Self {
         Self {
-            id,
+            id: WidgetId::default(),
             mode,
-            auto_id,
+            auto_id: false,
             size: Sizes::default(),
             min_size: Size::ZERO,
             max_size: Size::INF,

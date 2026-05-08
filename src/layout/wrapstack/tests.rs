@@ -410,11 +410,13 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
         let mut wrap_node = None;
         let mut kids = Vec::new();
         Panel::vstack()
+            .auto_id()
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 wrap_node = Some(
                     Panel::wrap_hstack()
+                        .auto_id()
                         .gap(6.0)
                         .line_gap(6.0)
                         .size((Sizing::FILL, Sizing::Hug))

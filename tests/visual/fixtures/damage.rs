@@ -54,6 +54,7 @@ fn static_scene_repeats_clean() {
 
     let scene = |ui: &mut palantir::Ui| {
         Panel::vstack()
+            .auto_id()
             .padding(12.0)
             .gap(8.0)
             .size((Sizing::FILL, Sizing::FILL))
@@ -105,6 +106,7 @@ fn single_button_change_paints_button_only() {
     let frame_with = |label: &'static str| {
         move |ui: &mut palantir::Ui| {
             Panel::vstack()
+                .auto_id()
                 .padding(12.0)
                 .gap(8.0)
                 .size((Sizing::FILL, Sizing::FILL))

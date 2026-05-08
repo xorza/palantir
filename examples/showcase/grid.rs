@@ -3,6 +3,7 @@ use palantir::{Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
+        .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {

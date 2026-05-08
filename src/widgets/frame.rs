@@ -14,10 +14,9 @@ pub struct Frame {
 }
 
 impl Frame {
-    #[track_caller]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self::for_element(Element::new_auto(LayoutMode::Leaf))
+        Self::for_element(Element::new(LayoutMode::Leaf))
     }
 
     pub fn for_element(element: Element) -> Self {

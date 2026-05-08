@@ -11,6 +11,7 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, UVec2::new(800, 600), |ui| {
         Panel::zstack()
+            .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new().id_salt("a").size((40.0, 20.0)).show(ui);
@@ -28,6 +29,7 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
+            .auto_id()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .padding(8.0)
             .show(ui, |ui| {
@@ -84,7 +86,9 @@ fn zstack_per_axis_alignment() {
     for (label, parent_align, children) in &cases {
         let mut ui = Ui::new();
         let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
-            let mut p = Panel::zstack().size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)));
+            let mut p = Panel::zstack()
+                .auto_id()
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)));
             if let Some(a) = *parent_align {
                 p = p.child_align(a);
             }
@@ -122,6 +126,7 @@ fn zstack_fill_child_stretches_to_inner() {
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
+            .auto_id()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .padding(10.0)
             .show(ui, |ui| {
@@ -153,6 +158,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
+            .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
@@ -172,6 +178,7 @@ fn zstack_collapsed_child_does_not_grow_panel() {
     let mut ui = Ui::new();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::zstack()
+            .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new().id_salt("a").size((20.0, 20.0)).show(ui);

@@ -13,6 +13,7 @@ fn empty_frame_alloc_free() {
 fn button_only_alloc_free() {
     audit_steady_state("button_only", AllocBudget::ZERO, |ui| {
         Button::new()
+            .auto_id()
             .label("hello")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui);
@@ -41,6 +42,7 @@ fn grid_8x8_alloc_free() {
     let rows: Rc<[Track]> = Rc::from([Track::fill(); 8]);
     audit_steady_state("grid_8x8", AllocBudget::ZERO, move |ui| {
         Grid::new()
+            .auto_id()
             .cols(Rc::clone(&cols))
             .rows(Rc::clone(&rows))
             .size((Sizing::FILL, Sizing::FILL))
@@ -67,8 +69,9 @@ fn damage_animated_rect_alloc_free() {
     audit_steady_state("damage_animated_rect", AllocBudget::ZERO, move |ui| {
         tick = tick.wrapping_add(1);
         let w = 100.0 + (tick % 200) as f32;
-        Panel::vstack().show(ui, |ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
             Frame::new()
+                .auto_id()
                 .background(Background {
                     fill: Color::WHITE,
                     ..Default::default()
@@ -82,7 +85,7 @@ fn damage_animated_rect_alloc_free() {
 #[test]
 fn static_text_label_alloc_free() {
     audit_steady_state("static_text_label", AllocBudget::ZERO, |ui| {
-        Text::new("hello world").show(ui);
+        Text::new("hello world").auto_id().show(ui);
     });
 }
 

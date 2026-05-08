@@ -18,6 +18,7 @@ fn vstack_fill_weights_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(160, 200), 1.0, DARK_BG, |ui| {
         Panel::vstack()
+            .auto_id()
             .padding(8.0)
             .gap(4.0)
             .size((Sizing::FILL, Sizing::FILL))
@@ -115,6 +116,7 @@ fn zstack_centered_button_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(240, 160), 1.0, DARK_BG, |ui| {
         Panel::zstack()
+            .auto_id()
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {

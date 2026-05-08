@@ -72,6 +72,7 @@ pub(crate) fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(
     begin(ui, surface);
     let mut inner = None;
     Panel::hstack()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             inner = Some(f(ui));

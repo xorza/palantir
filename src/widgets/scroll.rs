@@ -130,24 +130,20 @@ pub struct Scroll {
 }
 
 impl Scroll {
-    #[track_caller]
     pub fn vertical() -> Self {
         Self::with_axes(ScrollAxes::Vertical)
     }
 
-    #[track_caller]
     pub fn horizontal() -> Self {
         Self::with_axes(ScrollAxes::Horizontal)
     }
 
-    #[track_caller]
     pub fn both() -> Self {
         Self::with_axes(ScrollAxes::Both)
     }
 
-    #[track_caller]
     fn with_axes(axes: ScrollAxes) -> Self {
-        let mut element = Element::new_auto(LayoutMode::Scroll(axes));
+        let mut element = Element::new(LayoutMode::Scroll(axes));
         element.sense = Sense::Scroll;
         Self {
             element,

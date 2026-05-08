@@ -279,6 +279,7 @@ impl State {
 
 fn build_root(ui: &mut Ui, active: &mut usize) {
     Panel::vstack()
+        .auto_id()
         .padding(12.0)
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
@@ -289,6 +290,7 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
             // hovered-state fill so it reads as "selected" — minimal
             // override on top of the default theme.
             Panel::wrap_hstack()
+                .auto_id()
                 .gap(6.0)
                 .line_gap(6.0)
                 .size((Sizing::FILL, Sizing::Hug))
@@ -309,6 +311,7 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
             // `surface` + `border` so the showcase cards sit visually
             // contained against the window's `bg`.
             Panel::zstack()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .padding(16.0)
                 .background(Background {

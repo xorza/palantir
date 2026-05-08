@@ -43,6 +43,7 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
     let mut node = None;
     Panel::zstack()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
@@ -58,6 +59,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
     let mut node = None;
     Panel::canvas()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
@@ -73,7 +75,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
     let mut ui = ui_at(UVec2::new(800, 600));
     let mut zstack_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         zstack_node = Some(
             Panel::zstack()
                 .id_salt("hug-z")
@@ -113,15 +115,18 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
         let mut ui = ui_with_text(UVec2::new(surface_w, 400));
         let mut value_node = None;
         Grid::new()
+            .auto_id()
             .cols(Rc::from([Track::hug(), Track::fill()]))
             .rows(Rc::from([Track::hug()]))
             .show(&mut ui, |ui| {
                 Text::new("Label:")
+                    .auto_id()
                     .style(TextStyle::default().with_font_size(14.0))
                     .grid_cell((0, 0))
                     .show(ui);
                 value_node = Some(
                     Text::new("the quick brown fox jumps over the lazy dog")
+                        .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
                         .wrapping()
                         .grid_cell((0, 1))
@@ -160,18 +165,21 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
 fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     let mut ui = ui_with_text(UVec2::new(200, 400));
     let mut value_node = None;
-    Panel::vstack().show(&mut ui, |ui| {
+    Panel::vstack().auto_id().show(&mut ui, |ui| {
         Grid::new()
+            .auto_id()
             .size((Sizing::FILL, Sizing::Hug))
             .cols(Rc::from([Track::hug(), Track::fill()]))
             .rows(Rc::from([Track::hug()]))
             .show(ui, |ui| {
                 Text::new("Label:")
+                    .auto_id()
                     .style(TextStyle::default().with_font_size(14.0))
                     .grid_cell((0, 0))
                     .show(ui);
                 value_node = Some(
                     Text::new("the quick brown fox jumps over the lazy dog")
+                        .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
                         .wrapping()
                         .grid_cell((0, 1))
@@ -203,6 +211,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
     let mut ui = ui_with_text(UVec2::new(400, 600));
     let mut grid_node = None;
     Panel::vstack()
+        .auto_id()
         .size((Sizing::FILL, Sizing::Hug))
         .show(&mut ui, |ui| {
             grid_node = Some(
@@ -213,6 +222,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                     .rows(Rc::from([Track::hug(), Track::hug()]))
                     .show(ui, |ui| {
                         Text::new("Title:")
+                            .auto_id()
                             .style(TextStyle::default().with_font_size(14.0))
                             .grid_cell((0, 0))
                             .show(ui);
@@ -221,15 +231,18 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                              pack my box with five dozen liquor jugs how \
                              vexingly quick daft zebras jump",
                         )
+                        .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
                         .wrapping()
                         .grid_cell((0, 1))
                         .show(ui);
                         Text::new("Tags:")
+                            .auto_id()
                             .style(TextStyle::default().with_font_size(14.0))
                             .grid_cell((1, 0))
                             .show(ui);
                         Text::new("layout, grid, intrinsic, wrapping, css")
+                            .auto_id()
                             .style(TextStyle::default().with_font_size(14.0))
                             .wrapping()
                             .grid_cell((1, 1))
@@ -257,6 +270,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
     let mut ui = ui_with_text(UVec2::new(400, 600));
     let mut grid_node = None;
     Panel::vstack()
+        .auto_id()
         .size((Sizing::Fixed(400.0), Sizing::Hug))
         .show(&mut ui, |ui| {
             Panel::zstack()
@@ -271,6 +285,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                             .rows(Rc::from([Track::hug()]))
                             .show(ui, |ui| {
                                 Text::new("Label:")
+                                    .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui);
@@ -278,6 +293,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                                     "the quick brown fox jumps over the lazy dog \
                                      pack my box with five dozen liquor jugs",
                                 )
+                                .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 1))

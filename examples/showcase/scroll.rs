@@ -2,6 +2,7 @@ use palantir::{Background, Color, Configure, Corners, Panel, Scroll, Sizing, Tex
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
+        .auto_id()
         .gap(8.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
@@ -9,10 +10,12 @@ pub fn build(ui: &mut Ui) {
                 "Scroll — hover a card and pan with the wheel / two-finger scroll. \
                  Cards are vertical · horizontal · two-axis.",
             )
+            .auto_id()
             .style(TextStyle::default().with_font_size(13.0))
             .show(ui);
 
             Panel::hstack()
+                .auto_id()
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {

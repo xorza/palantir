@@ -63,18 +63,15 @@ pub struct Popup {
 }
 
 impl Popup {
-    #[track_caller]
     pub fn anchored_to(anchor: Rect) -> Self {
-        let mut element = Element::new_auto(LayoutMode::VStack);
-        // Mix the anchor rect into the auto-derived id so popups in a
-        // loop sharing one source line still get distinct ids per
-        // distinct anchor — preserves loop stability without forcing
-        // the user to call `.id_salt(...)`. `auto_id` stays true so
-        // `.auto_id()` at the call site still rederives cleanly.
-        element.id = element.id.with(anchor);
+        let mut element = Element::new(LayoutMode::VStack);
         // Inside-body clicks land here so they don't fall through to the
         // eater leaf underneath. User can override with `.sense(...)`.
         element.sense = Sense::CLICK;
+        // Caller must chain `.id_salt(...)` / `.id(...)` / `.auto_id()`
+        // before `show()` — the `Ui::node` write-path asserts on default id.
+        // Multiple popups sharing one show-site need distinct keys to
+        // avoid colliding (the anchor is no longer auto-mixed in).
         Self {
             anchor,
             click_outside: ClickOutside::Dismiss,

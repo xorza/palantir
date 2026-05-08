@@ -217,14 +217,17 @@ impl State {
 
 fn build_ui(ui: &mut Ui, clicks: &mut u32) {
     Panel::vstack()
+        .auto_id()
         .padding(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Row 1: counter + reset buttons.
             Panel::hstack()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
                     let counter = Button::new()
+                        .auto_id()
                         .label(format!("clicks: {clicks}"))
                         .size((Sizing::FILL, Sizing::Hug))
                         .min_size((120.0, 60.0))
@@ -236,6 +239,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                     }
 
                     let reset = Button::new()
+                        .auto_id()
                         .label("reset")
                         .size((Sizing::FILL, Sizing::Hug))
                         .min_size((0.0, 10.0))
@@ -252,6 +256,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
             //
             //
             Panel::hstack()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .disabled(false)
                 .show(ui, |ui| {
@@ -278,6 +283,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         });
 
                     Panel::zstack()
+                        .auto_id()
                         .size((Sizing::FILL, Sizing::FILL))
                         .padding(16.0)
                         .margin(5)
@@ -291,6 +297,7 @@ fn build_ui(ui: &mut Ui, clicks: &mut u32) {
                         })
                         .show(ui, |ui| {
                             Button::new()
+                                .auto_id()
                                 .align(Align::CENTER)
                                 .label("centered")
                                 .show(ui);

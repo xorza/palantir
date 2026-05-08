@@ -18,6 +18,7 @@ fn input_state_press_release_emits_click() {
     // Frame 1: build, layout, end_frame to populate last_rects.
     begin(&mut ui, UVec2::new(200, 80));
     let _root = Panel::hstack()
+        .auto_id()
         .show(&mut ui, |ui| {
             Button::new()
                 .id_salt("target")
@@ -34,7 +35,7 @@ fn input_state_press_release_emits_click() {
     // Frame 2: rebuild; widgets should observe the click in build_ui.
     begin(&mut ui, UVec2::new(200, 80));
     let mut got_click = false;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         let r = Button::new()
             .id_salt("target")
             .label("hi")
@@ -48,7 +49,7 @@ fn input_state_press_release_emits_click() {
     ui.end_frame();
     begin(&mut ui, UVec2::new(200, 80));
     let mut still_clicking = false;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         still_clicking = Button::new()
             .id_salt("target")
             .label("hi")
@@ -65,6 +66,7 @@ fn stack_with_sense_none_passes_clicks_through() {
     // doesn't fire `clicked` on the stack. Clicking on a child still fires on the child.
     let mut ui = ui_at(UVec2::new(200, 100));
     let _stack_node = Panel::hstack()
+        .auto_id()
         .padding(20.0) // creates "background" area to click
         .show(&mut ui, |ui| {
             Button::new()
@@ -80,7 +82,7 @@ fn stack_with_sense_none_passes_clicks_through() {
 
     ui.begin_frame(Display::default());
     let mut child_clicked = false;
-    let stack_resp = Panel::hstack().padding(20.0).show(&mut ui, |ui| {
+    let stack_resp = Panel::hstack().auto_id().padding(20.0).show(&mut ui, |ui| {
         child_clicked = Button::new()
             .id_salt("inside")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
@@ -192,6 +194,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
 fn input_state_release_outside_does_not_click() {
     let mut ui = ui_at(UVec2::new(400, 80));
     let _root = Panel::hstack()
+        .auto_id()
         .show(&mut ui, |ui| {
             Button::new()
                 .id_salt("target")
@@ -207,7 +210,7 @@ fn input_state_release_outside_does_not_click() {
 
     ui.begin_frame(Display::default());
     let mut got_click = false;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         got_click = Button::new()
             .id_salt("target")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
@@ -229,7 +232,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
 
     // Frame 1: build + layout so last_rects gets populated.
     begin(&mut ui, UVec2::new(400, 400));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
@@ -250,7 +253,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     // Frame 2: read .clicked() from the button's response.
     ui.begin_frame(Display::default());
     let mut clicked = false;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
@@ -278,7 +281,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
     // (0,0,100,100). A click at logical (5,5) must hit; a click at (75,75)
     // (inside world bounds, outside logical bounds) must also hit.
     let mut ui = ui_at(UVec2::new(400, 400));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
@@ -297,7 +300,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
 
     ui.begin_frame(Display::default());
     let mut clicked = false;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
@@ -321,7 +324,7 @@ fn click_outside_zoomed_bounds_does_not_hit() {
     use crate::primitives::transform::TranslateScale;
 
     let mut ui = ui_at(UVec2::new(400, 400));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
@@ -341,7 +344,7 @@ fn click_outside_zoomed_bounds_does_not_hit() {
 
     ui.begin_frame(Display::default());
     let mut clicked = false;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("zoomer")
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
@@ -487,7 +490,7 @@ mod drag {
         // doesn't auto-fill the surface and swallow the press.
         let surface = UVec2::new(400, 400);
         let build = |ui: &mut Ui| {
-            Panel::hstack().show(ui, |ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::hstack()
                     .id_salt("target")
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
@@ -887,7 +890,7 @@ mod keyboard {
         let mut ui = Ui::new();
         ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
         begin(&mut ui, glam::UVec2::new(200, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Button::new()
                 .id_salt("editable")
                 .focusable(true)
@@ -903,7 +906,7 @@ mod keyboard {
         );
 
         begin(&mut ui, glam::UVec2::new(200, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Button::new()
                 .id_salt("editable")
                 .focusable(true)
@@ -937,7 +940,7 @@ mod keyboard {
         assert_eq!(ui.focus_policy(), crate::FocusPolicy::ClearOnMiss);
 
         begin(&mut ui, glam::UVec2::new(200, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Button::new()
                 .id_salt("editable")
                 .focusable(true)
@@ -950,7 +953,7 @@ mod keyboard {
         assert!(ui.focused_id().is_some());
 
         begin(&mut ui, glam::UVec2::new(200, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Button::new()
                 .id_salt("editable")
                 .focusable(true)
@@ -984,7 +987,7 @@ mod keyboard {
         let mut ui = Ui::new();
         ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
         begin(&mut ui, glam::UVec2::new(400, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Button::new()
                 .id_salt("editable")
                 .focusable(true)
@@ -1004,7 +1007,7 @@ mod keyboard {
         );
 
         begin(&mut ui, glam::UVec2::new(400, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Button::new()
                 .id_salt("editable")
                 .focusable(true)
@@ -1037,7 +1040,7 @@ mod keyboard {
 
         let mut ui = Ui::new();
         begin(&mut ui, glam::UVec2::new(200, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Button::new()
                 .id_salt("editable")
                 .focusable(true)
@@ -1051,7 +1054,7 @@ mod keyboard {
 
         // Next frame omits the focusable widget entirely.
         begin(&mut ui, glam::UVec2::new(200, 80));
-        Panel::hstack().show(&mut ui, |_ui| {});
+        Panel::hstack().auto_id().show(&mut ui, |_ui| {});
         ui.end_frame();
         assert_eq!(
             ui.focused_id(),
@@ -1087,7 +1090,7 @@ mod keyboard {
 
         let mut ui = Ui::new();
         begin(&mut ui, glam::UVec2::new(200, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Button::new()
                 .id_salt("editable")
                 .focusable(true)
@@ -1118,7 +1121,7 @@ mod keyboard {
 
         let mut ui = Ui::new();
         begin(&mut ui, glam::UVec2::new(200, 80));
-        Panel::hstack().show(&mut ui, |ui| {
+        Panel::hstack().auto_id().show(&mut ui, |ui| {
             Button::new()
                 .id_salt("editable")
                 .focusable(true)

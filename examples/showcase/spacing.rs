@@ -24,6 +24,7 @@ fn tile() -> Background {
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
+        .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {

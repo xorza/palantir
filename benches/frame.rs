@@ -21,14 +21,14 @@ fn build_ui(ui: &mut Ui) {
     let canvas_dots = 3 * SCALE;
     let prop_rows = 4 + SCALE;
 
-    Panel::vstack()
+    Panel::vstack().auto_id()
         .gap(8.0)
         .padding(12.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Header bar — HStack with title, spacer (Fill), action buttons.
             // Exercises stack Fill leftover + Hug siblings + child_align.
-            Panel::hstack()
+            Panel::hstack().auto_id()
                 .gap(8.0)
                 .size((Sizing::FILL, Sizing::Hug))
                 .child_align(Align::CENTER)
@@ -47,13 +47,13 @@ fn build_ui(ui: &mut Ui) {
                 });
 
             // Body — HStack with Fixed sidebar + Fill main column.
-            Panel::hstack()
+            Panel::hstack().auto_id()
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     // Sidebar: VStack of fill-width buttons + a justify Center
                     // sub-stack to exercise that branch too.
-                    Panel::vstack()
+                    Panel::vstack().auto_id()
                         .gap(4.0)
                         .padding(8.0)
                         .size((Sizing::Fixed(220.0), Sizing::FILL))
@@ -68,7 +68,7 @@ fn build_ui(ui: &mut Ui) {
                                 .size((Sizing::FILL, Sizing::Fixed(1.0)))
                                 .margin(4.0)
                                 .show(ui);
-                            Panel::hstack()
+                            Panel::hstack().auto_id()
                                 .gap(2.0)
                                 .justify(Justify::Center)
                                 .size((Sizing::FILL, Sizing::Hug))
@@ -83,7 +83,7 @@ fn build_ui(ui: &mut Ui) {
 
                     // Main column: VStack of property grid + chat list +
                     // canvas overlay + footer ZStack.
-                    Panel::vstack()
+                    Panel::vstack().auto_id()
                         .gap(10.0)
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
@@ -168,7 +168,7 @@ fn build_ui(ui: &mut Ui) {
 
                             // Canvas with absolutely-positioned dots — exercises
                             // the canvas measure/arrange path.
-                            Panel::canvas()
+                            Panel::canvas().auto_id()
                                 .size((Sizing::FILL, Sizing::Fixed(80.0)))
                                 .show(ui, |ui| {
                                     for i in 0..canvas_dots {
@@ -182,13 +182,13 @@ fn build_ui(ui: &mut Ui) {
                 });
 
             // Footer: ZStack overlay — bg frame + centered status text.
-            Panel::zstack()
+            Panel::zstack().auto_id()
                 .size((Sizing::FILL, Sizing::Fixed(36.0)))
                 .show(ui, |ui| {
                     Frame::new().id_salt("footer-bg")
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui);
-                    Panel::hstack()
+                    Panel::hstack().auto_id()
                         .padding(6.0)
                         .gap(6.0)
                         .child_align(Align::CENTER)

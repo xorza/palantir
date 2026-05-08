@@ -20,7 +20,7 @@ fn duplicate_widget_id_panics() {
     // with a release `assert!`.
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Button::new().id_salt("dup").show(ui);
         Button::new().id_salt("dup").show(ui);
     });
@@ -33,11 +33,11 @@ fn duplicate_widget_id_panics() {
 #[test]
 fn auto_id_collisions_disambiguate() {
     fn chip(ui: &mut crate::Ui) {
-        Frame::new().show(ui);
+        Frame::new().auto_id().show(ui);
     }
     let mut ui = Ui::new();
     ui.begin_frame(Display::default());
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         chip(ui);
         chip(ui);
         chip(ui);
@@ -50,7 +50,7 @@ fn auto_id_collisions_disambiguate() {
 /// the post-`end_frame` state of the repaint gate.
 fn drain_one_frame(ui: &mut Ui) {
     begin(ui, UVec2::new(100, 100));
-    Panel::hstack().show(ui, |_| {});
+    Panel::hstack().auto_id().show(ui, |_| {});
     ui.end_frame();
 }
 
@@ -238,7 +238,7 @@ fn text_reshape_skipped_when_unchanged_across_frames() {
 
     let render = |ui: &mut Ui| {
         begin(ui, UVec2::new(400, 200));
-        Panel::vstack().show(ui, |ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
             Text::new("the quick brown fox").id_salt("hello").show(ui);
         });
         ui.end_frame();
@@ -271,14 +271,14 @@ fn text_reshape_runs_when_content_changes() {
     let mut ui = new_ui_text();
 
     begin(&mut ui, UVec2::new(400, 200));
-    Panel::vstack().show(&mut ui, |ui| {
+    Panel::vstack().auto_id().show(&mut ui, |ui| {
         Text::new("first").id_salt("changing").show(ui);
     });
     ui.end_frame();
     let before = ui.text.measure_calls;
 
     begin(&mut ui, UVec2::new(400, 200));
-    Panel::vstack().show(&mut ui, |ui| {
+    Panel::vstack().auto_id().show(&mut ui, |ui| {
         Text::new("second").id_salt("changing").show(ui);
     });
     ui.end_frame();
@@ -303,6 +303,7 @@ fn wrapping_text_reshape_skipped_when_unchanged() {
     let render = |ui: &mut Ui| {
         begin(ui, UVec2::new(400, 200));
         Panel::vstack()
+            .auto_id()
             .size((Sizing::Fixed(60.0), Sizing::Hug))
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog")
@@ -375,7 +376,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     let mut ui = new_ui_text();
 
     begin(&mut ui, UVec2::new(400, 200));
-    Panel::vstack().show(&mut ui, |ui| {
+    Panel::vstack().auto_id().show(&mut ui, |ui| {
         Text::new("hello").id_salt("transient").show(ui);
     });
     ui.end_frame();
@@ -386,7 +387,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     );
 
     begin(&mut ui, UVec2::new(400, 200));
-    Panel::vstack().show(&mut ui, |_ui| {});
+    Panel::vstack().auto_id().show(&mut ui, |_ui| {});
     ui.end_frame();
     assert!(
         !ui.text.reuse.contains_key(&(wid, 0)),
@@ -408,6 +409,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
     let render = |ui: &mut Ui, slot_w: f32| {
         begin(ui, UVec2::new(400, 200));
         Panel::vstack()
+            .auto_id()
             .size((Sizing::Fixed(slot_w), Sizing::Hug))
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog")

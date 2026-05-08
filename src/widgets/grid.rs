@@ -62,7 +62,6 @@ pub struct Grid {
 }
 
 impl Grid {
-    #[track_caller]
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         // Mode is patched at `show()` time once `grid.push_def` returns the
@@ -70,7 +69,7 @@ impl Grid {
         // bounds-check rejects, so any code path that reaches the tree
         // without going through `show()` panics loudly.
         Self {
-            element: Element::new_auto(LayoutMode::Grid(PENDING_GRID_IDX)),
+            element: Element::new(LayoutMode::Grid(PENDING_GRID_IDX)),
             surface: None,
             def: GridDef {
                 rows: empty_tracks(),

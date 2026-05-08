@@ -1,10 +1,9 @@
-//! Regression: every public widget constructor must propagate
-//! `#[track_caller]` so two calls on different source lines produce
-//! distinct `WidgetId`s. Forgetting the attribute collapses all calls
-//! of that constructor onto one auto id — the `Ui::node` occurrence
-//! counter still disambiguates within a frame, but cross-frame state
-//! stability degrades to global-positional (egui-tier). These tests
-//! fail loudly so the regression doesn't ship.
+//! Pin: [`Configure::auto_id`] is `#[track_caller]` and resolves a stable
+//! id at the *call site*. Two `.auto_id()` calls on different source lines
+//! must produce distinct `WidgetId`s — that's the cross-frame-stability
+//! contract for builders that opt into auto ids. Dropping the attribute
+//! collapses all calls onto one id (occurrence-counter disambiguation
+//! still works within a frame, but state stability degrades).
 
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
@@ -14,8 +13,8 @@ use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, tex
 fn assert_distinct(label: &str, a: WidgetId, b: WidgetId) {
     assert_ne!(
         a, b,
-        "{label}: two calls on different lines produced the same auto id — \
-         the constructor is missing `#[track_caller]` (or one of its callees is)."
+        "{label}: two `.auto_id()` calls on different lines produced the same id — \
+         `Configure::auto_id` is missing `#[track_caller]`."
     );
 }
 
@@ -24,38 +23,65 @@ fn id_of<W: Configure>(mut w: W) -> WidgetId {
 }
 
 #[test]
-fn constructors_propagate_track_caller() {
-    // Each pair calls the same constructor twice on adjacent source lines.
-    // `#[track_caller]` makes the two calls produce distinct auto ids;
-    // dropping the attribute on any constructor (or one of its callees)
-    // collapses the pair to identical ids.
+fn auto_id_propagates_track_caller_through_every_widget() {
+    // For each widget builder, two `.auto_id()` calls on adjacent source
+    // lines must yield distinct ids. The case list covers every public
+    // constructor so a regression in any one is caught.
     type Case = (&'static str, fn() -> (WidgetId, WidgetId));
     let cases: &[Case] = &[
-        ("Button::new", || {
-            (id_of(Button::new()), id_of(Button::new()))
+        ("Button", || {
+            (
+                id_of(Button::new().auto_id()),
+                id_of(Button::new().auto_id()),
+            )
         }),
-        ("Frame::new", || (id_of(Frame::new()), id_of(Frame::new()))),
-        ("Grid::new", || (id_of(Grid::new()), id_of(Grid::new()))),
-        ("Text::new", || {
-            (id_of(Text::new("x")), id_of(Text::new("x")))
+        ("Frame", || {
+            (id_of(Frame::new().auto_id()), id_of(Frame::new().auto_id()))
+        }),
+        ("Grid", || {
+            (id_of(Grid::new().auto_id()), id_of(Grid::new().auto_id()))
+        }),
+        ("Text", || {
+            (
+                id_of(Text::new("x").auto_id()),
+                id_of(Text::new("x").auto_id()),
+            )
         }),
         ("Panel::hstack", || {
-            (id_of(Panel::hstack()), id_of(Panel::hstack()))
+            (
+                id_of(Panel::hstack().auto_id()),
+                id_of(Panel::hstack().auto_id()),
+            )
         }),
         ("Panel::vstack", || {
-            (id_of(Panel::vstack()), id_of(Panel::vstack()))
+            (
+                id_of(Panel::vstack().auto_id()),
+                id_of(Panel::vstack().auto_id()),
+            )
         }),
         ("Panel::zstack", || {
-            (id_of(Panel::zstack()), id_of(Panel::zstack()))
+            (
+                id_of(Panel::zstack().auto_id()),
+                id_of(Panel::zstack().auto_id()),
+            )
         }),
         ("Panel::canvas", || {
-            (id_of(Panel::canvas()), id_of(Panel::canvas()))
+            (
+                id_of(Panel::canvas().auto_id()),
+                id_of(Panel::canvas().auto_id()),
+            )
         }),
         ("Panel::wrap_hstack", || {
-            (id_of(Panel::wrap_hstack()), id_of(Panel::wrap_hstack()))
+            (
+                id_of(Panel::wrap_hstack().auto_id()),
+                id_of(Panel::wrap_hstack().auto_id()),
+            )
         }),
         ("Panel::wrap_vstack", || {
-            (id_of(Panel::wrap_vstack()), id_of(Panel::wrap_vstack()))
+            (
+                id_of(Panel::wrap_vstack().auto_id()),
+                id_of(Panel::wrap_vstack().auto_id()),
+            )
         }),
     ];
     for (label, mk) in cases {
@@ -64,30 +90,27 @@ fn constructors_propagate_track_caller() {
     }
 }
 
-/// Sanity: `id_salt(...)` overrides the auto id, so two calls with the
-/// same explicit key on different lines produce the *same* id — the
-/// symmetric counterpart of the tests above. Confirms `auto_id` flips
-/// off correctly when an explicit key is supplied.
+/// Sanity: `id_salt(...)` overrides `auto_id`, so two calls with the
+/// same explicit key on different lines produce the *same* id.
 #[test]
-fn id_salt_overrides_auto_stability() {
+fn id_salt_overrides_auto_id() {
     assert_eq!(
         id_of(Button::new().id_salt("k")),
         id_of(Button::new().id_salt("k")),
     );
 }
 
-/// `Configure::auto_id()` re-derives the id at *its* call site, not the
-/// constructor's. A helper that builds widgets internally collapses every
-/// `Button::new()` to the helper's source line, but appending `.auto_id()`
-/// at the call site recovers per-line distinctness. Pins the
-/// `#[track_caller]` attribute on the method.
+/// `Configure::auto_id()` re-derives the id at *its* call site. A helper
+/// that builds widgets internally collapses every helper-internal
+/// `.auto_id()` to one source location; appending `.auto_id()` at the
+/// caller recovers per-line distinctness.
 #[test]
 fn auto_id_redirects_to_call_site() {
     fn helper() -> Button {
-        Button::new()
+        Button::new().auto_id()
     }
-    // Without `.auto_id()`, both `helper()` invocations resolve to the
-    // same `Button::new()` source location — same id.
+    // Both `helper()` invocations resolve `.auto_id()` inside the helper
+    // body — same source line, same id.
     assert_eq!(id_of(helper()), id_of(helper()));
     // With `.auto_id()` on different source lines, the ids diverge.
     let a = id_of(helper().auto_id());

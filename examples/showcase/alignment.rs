@@ -5,12 +5,14 @@ use palantir::{
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
+        .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // HStack with `child_align(VAlign::Center)`. All children inherit unless
             // they override. The orange one explicitly aligns to the bottom.
             Panel::hstack()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::Fixed(120.0)))
                 .gap(8.0)
                 .padding(8.0)
@@ -25,6 +27,7 @@ pub fn build(ui: &mut Ui) {
             // VStack with `child_align(HAlign::Right)` — children stack vertically,
             // packed to the right edge by default; "b-self-left" overrides.
             Panel::vstack()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .gap(8.0)
                 .padding(8.0)

@@ -78,7 +78,7 @@ fn baseline_draw_rect_count_cases() {
     ];
     for (label, scene, expected) in cases {
         let mut ui = ui_at(UVec2::new(200, 200));
-        Panel::hstack().show(&mut ui, |ui| match scene {
+        Panel::hstack().auto_id().show(&mut ui, |ui| match scene {
             Scene::Empty => {}
             Scene::FrameWithFill => {
                 Frame::new()
@@ -129,7 +129,7 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
     use crate::primitives::corners::Corners;
     use crate::shape::Shape;
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         // Attach to the outer hstack BEFORE opening any child — the
         // tree's contiguity invariant requires shapes to be added to
         // the last-pushed node before its children open.
@@ -165,8 +165,8 @@ fn text_shape_emits_draw_text() {
     use crate::Text;
     use crate::support::testing::ui_with_text;
     let mut ui = ui_with_text(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
-        Text::new("hi").show(ui);
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
+        Text::new("hi").auto_id().show(ui);
     });
     ui.end_frame();
     let cmds = encode_cmds(&ui);
@@ -183,7 +183,7 @@ fn text_shape_emits_draw_text() {
 #[test]
 fn clip_only_surface_emits_clip_but_no_draw() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("clip_only")
             .size(50.0)
@@ -207,7 +207,7 @@ fn clip_emits_balanced_push_pop() {
     let mut ui = ui_at(UVec2::new(200, 200));
     // Outer HStack opts out of the default-on clip so we can count just the
     // ZStack's pair under test.
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("clip")
             .size(50.0)
@@ -272,7 +272,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::stroke::Stroke;
     let mut ui = ui_at(UVec2::new(200, 200));
     let mut panel_node = None;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         panel_node = Some(
             Panel::zstack()
                 .id_salt("rounded")
@@ -320,7 +320,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
 #[test]
 fn clip_rounded_falls_back_to_scissor_without_background() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("rounded_no_bg")
             .size(80.0)
@@ -434,7 +434,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     // Frame 1: build, layout, end_frame so the hit index is populated.
     begin(&mut ui, UVec2::new(400, 400));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::canvas()
             .id_salt("mid")
             .size(200.0)
@@ -541,7 +541,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     // Frame 2: rebuild and read clicked() on each widget.
     ui.begin_frame(Display::default());
     let mut got = (false, false, false);
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::canvas()
             .id_salt("mid")
             .size(200.0)
@@ -594,7 +594,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 #[test]
 fn nested_clips_each_emit_their_own_pair() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
             .id_salt("outer")
             .size(Sizing::Fixed(100.0))
@@ -621,18 +621,22 @@ fn nested_clips_each_emit_their_own_pair() {
 fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     let mut ui = ui_at(UVec2::new(100, 100));
     let mut child_node = None;
-    Panel::vstack().disabled(true).show(&mut ui, |ui| {
-        child_node = Some(
-            Frame::new()
-                .size(Sizing::Fixed(40.0))
-                .background(Background {
-                    fill: Color::rgb(1.0, 0.0, 0.0),
-                    ..Default::default()
-                })
-                .show(ui)
-                .node,
-        );
-    });
+    Panel::vstack()
+        .auto_id()
+        .disabled(true)
+        .show(&mut ui, |ui| {
+            child_node = Some(
+                Frame::new()
+                    .auto_id()
+                    .size(Sizing::Fixed(40.0))
+                    .background(Background {
+                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        ..Default::default()
+                    })
+                    .show(ui)
+                    .node,
+            );
+        });
     ui.end_frame();
 
     let cascades = &ui.cascades.result;
@@ -697,7 +701,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     // having an invalid key (mono fallback uses `TextCacheKey::INVALID`).
     ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
     begin(&mut ui, UVec2::new(400, 400));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Button::new()
             .id_salt("padded")
             .label("ok")
@@ -745,7 +749,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
 #[test]
 fn damage_filter_skips_drawrect_outside_dirty_region() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Frame::new()
             .id_salt("a")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
@@ -784,7 +788,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
 #[test]
 fn damage_filter_keeps_drawrect_inside_dirty_region() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Frame::new()
             .id_salt("a")
             .size(50.0)
@@ -845,7 +849,7 @@ fn damage_filter_preserves_clip_pushpop() {
 #[test]
 fn damage_filter_preserves_transform_pushpop() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::hstack()
             .id_salt("transformed")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
@@ -886,6 +890,7 @@ fn damage_filter_preserves_transform_pushpop() {
 fn viewport_cull_skips_offscreen_subtree() {
     let mut ui = ui_at(UVec2::new(100, 100));
     Panel::canvas()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             Frame::new()
@@ -915,6 +920,7 @@ fn viewport_cull_skips_offscreen_subtree() {
 fn viewport_cull_keeps_onscreen_sibling() {
     let mut ui = ui_at(UVec2::new(100, 100));
     Panel::canvas()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             Frame::new()

@@ -9,7 +9,7 @@ impl WidgetId {
     pub fn from_hash(h: impl Hash) -> Self {
         let mut hasher = FxHasher::default();
         h.hash(&mut hasher);
-        Self(hasher.finish())
+        Self::nonzero(hasher.finish())
     }
 
     /// Derive a child id by mixing `h` into this id. Useful for nested widgets
@@ -18,7 +18,15 @@ impl WidgetId {
         let mut hasher = FxHasher::default();
         self.0.hash(&mut hasher);
         h.hash(&mut hasher);
-        Self(hasher.finish())
+        Self::nonzero(hasher.finish())
+    }
+
+    /// Avoid the all-zero hash that would collide with [`Self::default`]
+    /// (used as the "unset" sentinel by [`crate::tree::element::Element::new`]).
+    /// FxHasher returns 0 for all-zero input (e.g. `(0u16, 0u16)`); a plain
+    /// rotate-and-bias replaces it with `1` without skewing other outputs.
+    fn nonzero(h: u64) -> Self {
+        Self(if h == 0 { 1 } else { h })
     }
 
     /// Stable across frames as long as the call site is unchanged. Const so

@@ -11,6 +11,7 @@ use glam::UVec2;
 fn collapsed_child_consumes_no_space_in_hstack() {
     let mut ui = ui_at(UVec2::new(400, 100));
     let root = Panel::hstack()
+        .auto_id()
         .gap(10.0)
         .show(&mut ui, |ui| {
             Frame::new().id_salt("a").size(40.0).show(ui);
@@ -43,6 +44,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 fn collapsed_does_not_consume_fill_weight() {
     let mut ui = ui_at(UVec2::new(400, 100));
     let root = Panel::hstack()
+        .auto_id()
         .show(&mut ui, |ui| {
             Frame::new()
                 .id_salt("a")
@@ -81,6 +83,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 
     let mut ui = ui_at(UVec2::new(400, 100));
     let root = Panel::hstack()
+        .auto_id()
         .gap(10.0)
         .show(&mut ui, |ui| {
             Frame::new()
@@ -141,7 +144,7 @@ fn hidden_button_does_not_click() {
     use glam::Vec2;
 
     let mut ui = ui_at(UVec2::new(400, 200));
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         Button::new()
             .id_salt("invisible")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
@@ -154,7 +157,7 @@ fn hidden_button_does_not_click() {
 
     ui.begin_frame(Display::default());
     let mut clicked = false;
-    Panel::hstack().show(&mut ui, |ui| {
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
         clicked = Button::new()
             .id_salt("invisible")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
@@ -183,6 +186,7 @@ fn hstack_child_align_per_axis_with_overrides() {
     for (label, second_override, second_y) in cases {
         let mut ui = ui_at(UVec2::new(200, 100));
         let root = Panel::hstack()
+            .auto_id()
             .size((Sizing::FILL, Sizing::Fixed(100.0)))
             .child_align(Align::v(VAlign::Center))
             .show(&mut ui, |ui| {

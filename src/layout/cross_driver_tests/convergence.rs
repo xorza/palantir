@@ -48,6 +48,7 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
         let mut left_node = None;
         let mut right_node = None;
         let row_node = Panel::hstack()
+            .auto_id()
             .gap(12.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(&mut ui, |ui| {
@@ -161,6 +162,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     for w in (480u32..=900).step_by(1) {
         ui.begin_frame(Display::from_physical(UVec2::new(w, 600), 1.0));
         Panel::vstack()
+            .auto_id()
             .padding(12.0)
             .gap(12.0)
             .size((Sizing::FILL, Sizing::FILL))
@@ -171,6 +173,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                 // produce different row counts (non-monotonic
                 // height-vs-width).
                 Panel::wrap_hstack()
+                    .auto_id()
                     .gap(6.0)
                     .line_gap(6.0)
                     .size((Sizing::FILL, Sizing::Hug))
@@ -186,10 +189,12 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                 // overshoot when the toolbar consumed more height than
                 // expected.
                 Panel::zstack()
+                    .auto_id()
                     .size((Sizing::FILL, Sizing::FILL))
                     .padding(16.0)
                     .show(ui, |ui| {
                         Panel::hstack()
+                            .auto_id()
                             .gap(12.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
