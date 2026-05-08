@@ -22,13 +22,13 @@ fn surface_display() -> Display {
 /// is honored. The root expands to surface; the panel's `vstack` slot
 /// then hands the scroll exactly its declared size.
 fn build(ui: &mut crate::ui::Ui, viewport_h: f32, content_h: f32) {
-    Panel::vstack().with_id("root").show(ui, |ui| {
+    Panel::vstack().id_salt("root").show(ui, |ui| {
         Scroll::vertical()
-            .with_id("scroll")
+            .id_salt("scroll")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(viewport_h)))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("content")
+                    .id_salt("content")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(content_h)))
                     .show(ui);
             });
@@ -92,13 +92,13 @@ fn wheel_delta_advances_offset_with_clamp() {
 fn horizontal_scroll_pans_only_x() {
     let mut ui = ui_at(SURFACE);
     let build_h = |ui: &mut crate::ui::Ui| {
-        Panel::vstack().with_id("root").show(ui, |ui| {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::horizontal()
-                .with_id("hscroll")
+                .id_salt("hscroll")
                 .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
                 .show(ui, |ui| {
                     Frame::new()
-                        .with_id("hcontent")
+                        .id_salt("hcontent")
                         .size((Sizing::Fixed(800.0), Sizing::Fixed(40.0)))
                         .show(ui);
                 });
@@ -127,13 +127,13 @@ fn horizontal_scroll_pans_only_x() {
 fn both_axis_scroll_pans_both_axes() {
     let mut ui = ui_at(SURFACE);
     let build_xy = |ui: &mut crate::ui::Ui| {
-        Panel::vstack().with_id("root").show(ui, |ui| {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::both()
-                .with_id("xy")
+                .id_salt("xy")
                 .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                 .show(ui, |ui| {
                     Frame::new()
-                        .with_id("xy-content")
+                        .id_salt("xy-content")
                         .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
                         .show(ui);
                 });
@@ -203,14 +203,14 @@ fn scroll_records_content_extent() {
             match axis {
                 Axis::V => {
                     Scroll::vertical()
-                        .with_id("scroll")
+                        .id_salt("scroll")
                         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                         .gap(4.0)
                         .show(ui, |ui| {
                             // 3 rows of 28h, 4px gap → 28*3 + 4*2 = 92.
                             for i in 0..3u32 {
                                 Frame::new()
-                                    .with_id(("row", i))
+                                    .id_salt(("row", i))
                                     .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
                                     .show(ui);
                             }
@@ -219,14 +219,14 @@ fn scroll_records_content_extent() {
                 }
                 Axis::H => {
                     Scroll::horizontal()
-                        .with_id("scroll")
+                        .id_salt("scroll")
                         .size((Sizing::Fixed(200.0), Sizing::Fixed(60.0)))
                         .gap(8.0)
                         .show(ui, |ui| {
                             // 2 cols of 60w, 8px gap → 60*2 + 8 = 128.
                             for i in 0..2u32 {
                                 Frame::new()
-                                    .with_id(("col", i))
+                                    .id_salt(("col", i))
                                     .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                                     .show(ui);
                             }
@@ -235,15 +235,15 @@ fn scroll_records_content_extent() {
                 }
                 Axis::XY => {
                     Scroll::both()
-                        .with_id("scroll")
+                        .id_salt("scroll")
                         .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                         .show(ui, |ui| {
                             Frame::new()
-                                .with_id("wide")
+                                .id_salt("wide")
                                 .size((Sizing::Fixed(300.0), Sizing::Fixed(60.0)))
                                 .show(ui);
                             Frame::new()
-                                .with_id("tall")
+                                .id_salt("tall")
                                 .size((Sizing::Fixed(80.0), Sizing::Fixed(250.0)))
                                 .show(ui);
                         })
@@ -251,7 +251,7 @@ fn scroll_records_content_extent() {
                 }
                 Axis::Empty => {
                     Scroll::vertical()
-                        .with_id("empty")
+                        .id_salt("empty")
                         .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                         .show(ui, |_| {})
                         .node
@@ -285,15 +285,15 @@ fn scroll_content_survives_measure_cache_hit() {
     let surface = UVec2::new(400, 600);
     let display = Display::from_physical(surface, 1.0);
     let build = |ui: &mut Ui| {
-        Panel::vstack().with_id("root").show(ui, |ui| {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::vertical()
-                .with_id("scroll")
+                .id_salt("scroll")
                 .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                 .gap(4.0)
                 .show(ui, |ui| {
                     for i in 0..3u32 {
                         Frame::new()
-                            .with_id(("row", i))
+                            .id_salt(("row", i))
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
                             .show(ui);
                     }
@@ -497,13 +497,13 @@ mod bars {
     #[test]
     fn vertical_overflow_emits_thumb_shape_after_settle() {
         let (ui, node) = record_two_frames(UVec2::new(400, 600), |ui| {
-            Panel::vstack().with_id("root").show(ui, |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
-                    .with_id("scroll")
+                    .id_salt("scroll")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
-                            .with_id("tall")
+                            .id_salt("tall")
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
                             .show(ui);
                     });
@@ -518,13 +518,13 @@ mod bars {
     #[test]
     fn no_bar_when_content_fits_viewport() {
         let (ui, node) = record_two_frames(UVec2::new(400, 400), |ui| {
-            Panel::vstack().with_id("root").show(ui, |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
-                    .with_id("scroll")
+                    .id_salt("scroll")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
-                            .with_id("short")
+                            .id_salt("short")
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(50.0)))
                             .show(ui);
                     });
@@ -547,14 +547,14 @@ mod bars {
         let surface = UVec2::new(400, 300);
         let mut ui = ui_at(surface);
         let build = |ui: &mut Ui| {
-            Panel::vstack().with_id("root").show(ui, |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
-                    .with_id("scroll")
+                    .id_salt("scroll")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui, |ui| {
                         for i in 0..30u32 {
                             Frame::new()
-                                .with_id(("row", i))
+                                .id_salt(("row", i))
                                 .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
                                 .show(ui);
                         }
@@ -578,13 +578,13 @@ mod bars {
         let mut ui = ui_at(surface);
         let build = |ui: &mut Ui| {
             Panel::hstack()
-                .with_id("root")
+                .id_salt("root")
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for tag in ["v", "h", "xy"] {
                         Panel::vstack()
-                            .with_id(("card", tag))
+                            .id_salt(("card", tag))
                             .padding(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Surface::clip_rect_with_bg(Background {
@@ -593,14 +593,14 @@ mod bars {
                             }))
                             .show(ui, |ui| {
                                 let s = match tag {
-                                    "v" => Scroll::vertical().with_id(("scroll", tag)),
-                                    "h" => Scroll::horizontal().with_id(("scroll", tag)),
-                                    _ => Scroll::both().with_id(("scroll", tag)),
+                                    "v" => Scroll::vertical().id_salt(("scroll", tag)),
+                                    "h" => Scroll::horizontal().id_salt(("scroll", tag)),
+                                    _ => Scroll::both().id_salt(("scroll", tag)),
                                 };
                                 s.size((Sizing::FILL, Sizing::FILL)).show(ui, |ui| {
                                     for i in 0..40u32 {
                                         Frame::new()
-                                            .with_id((tag, "item", i))
+                                            .id_salt((tag, "item", i))
                                             .size((Sizing::Fixed(120.0), Sizing::Fixed(28.0)))
                                             .show(ui);
                                     }
@@ -630,13 +630,13 @@ mod bars {
         let surface = UVec2::new(400, 600);
         let mut ui = ui_at(surface);
         let build = |ui: &mut Ui| {
-            Panel::vstack().with_id("root").show(ui, |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
-                    .with_id("scroll")
+                    .id_salt("scroll")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
-                            .with_id("tall")
+                            .id_salt("tall")
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
                             .show(ui);
                     });
@@ -666,14 +666,14 @@ mod bars {
         let surface = UVec2::new(400, 600);
         let mut ui = ui_at(surface);
         let build = |ui: &mut Ui| {
-            Panel::vstack().with_id("root").show(ui, |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
-                    .with_id("scroll")
+                    .id_salt("scroll")
                     .padding(16.0)
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
-                            .with_id("tall")
+                            .id_salt("tall")
                             .size((Sizing::Fixed(100.0), Sizing::Fixed(800.0)))
                             .show(ui);
                     });
@@ -705,14 +705,14 @@ mod bars {
         // Bar should sit at x = outer.w - theme.width = 200 - 8 = 192,
         // NOT at viewport.w = 160 (which would overlap user padding).
         let (ui, node) = record_two_frames(UVec2::new(400, 600), |ui| {
-            Panel::vstack().with_id("root").show(ui, |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
-                    .with_id("scroll")
+                    .id_salt("scroll")
                     .padding(16.0)
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
-                            .with_id("tall")
+                            .id_salt("tall")
                             .size((Sizing::Fixed(100.0), Sizing::Fixed(800.0)))
                             .show(ui);
                     });
@@ -762,13 +762,13 @@ mod bars {
         };
 
         let build = |ui: &mut Ui, content_h: f32| {
-            Panel::vstack().with_id("root").show(ui, |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
-                    .with_id("scroll")
+                    .id_salt("scroll")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
-                            .with_id("body")
+                            .id_salt("body")
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(content_h)))
                             .show(ui);
                     });
@@ -807,13 +807,13 @@ mod bars {
     #[test]
     fn both_axes_overflow_emits_two_thumbs() {
         let (ui, node) = record_two_frames(UVec2::new(400, 400), |ui| {
-            Panel::vstack().with_id("root").show(ui, |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::both()
-                    .with_id("scroll")
+                    .id_salt("scroll")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
-                            .with_id("big")
+                            .id_salt("big")
                             .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
                             .show(ui);
                     });
@@ -836,13 +836,13 @@ mod bars {
     #[test]
     fn both_axes_bars_dont_overlap_at_corner() {
         let (ui, node) = record_two_frames(UVec2::new(400, 400), |ui| {
-            Panel::vstack().with_id("root").show(ui, |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::both()
-                    .with_id("scroll")
+                    .id_salt("scroll")
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                     .show(ui, |ui| {
                         Frame::new()
-                            .with_id("big")
+                            .id_salt("big")
                             .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
                             .show(ui);
                     });

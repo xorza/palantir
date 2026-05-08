@@ -27,7 +27,7 @@ fn nested_vstack_64_alloc_free() {
                 return;
             }
             Panel::vstack()
-                .with_id(depth)
+                .id_salt(depth)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| rec(ui, depth - 1));
         }
@@ -48,7 +48,7 @@ fn grid_8x8_alloc_free() {
                 for r in 0..8u16 {
                     for c in 0..8u16 {
                         Frame::new()
-                            .with_id((r, c))
+                            .id_salt((r, c))
                             .background(Background {
                                 fill: Color::WHITE,
                                 ..Default::default()
@@ -90,7 +90,7 @@ fn static_text_label_alloc_free() {
 fn state_map_counter_alloc_free() {
     let id = WidgetId::from_hash("counter");
     audit_steady_state("state_map_counter", AllocBudget::ZERO, move |ui| {
-        Frame::new().with_id("counter").show(ui);
+        Frame::new().id_salt("counter").show(ui);
         let n = ui.state_mut::<u32>(id);
         *n = n.wrapping_add(1);
     });

@@ -282,7 +282,7 @@ pub struct Element {
     /// caller used `Foo::new()` without an explicit key). `Ui::node` silently
     /// disambiguates colliding auto ids by mixing in a per-id occurrence
     /// counter; explicit-key collisions still hard-assert as caller bugs.
-    /// Cleared by [`Configure::with_id`].
+    /// Cleared by [`Configure::id_salt`] / [`Configure::id`].
     pub(crate) auto_id: bool,
 
     // ---- Own size + alignment (read by every parent layout) ------------------
@@ -451,9 +451,20 @@ pub trait Configure: Sized {
     /// per-widget state separate. Clears the `auto_id` flag, so explicit-key
     /// collisions surface as hard asserts in `Ui::node` rather than getting
     /// silently disambiguated.
-    fn with_id(mut self, key: impl std::hash::Hash) -> Self {
+    fn id_salt(mut self, key: impl std::hash::Hash) -> Self {
         let e = self.element_mut();
         e.id = WidgetId::from_hash(key);
+        e.auto_id = false;
+        self
+    }
+
+    /// Override this widget's id with a precomputed [`WidgetId`]. Use when
+    /// the id was derived elsewhere (parent → child via [`WidgetId::with`],
+    /// shared seed for sibling widgets) so [`Self::id_salt`] would re-hash
+    /// a value the caller already constructed. Clears `auto_id`.
+    fn id(mut self, id: WidgetId) -> Self {
+        let e = self.element_mut();
+        e.id = id;
         e.auto_id = false;
         self
     }

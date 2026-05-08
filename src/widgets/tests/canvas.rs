@@ -14,11 +14,11 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     Panel::hstack().show(&mut ui, |ui| {
         canvas_node = Some(
             Panel::canvas()
-                .with_id("c")
+                .id_salt("c")
                 .show(ui, |ui| {
                     a_node = Some(
                         Frame::new()
-                            .with_id("a")
+                            .id_salt("a")
                             .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                             .position(Vec2::new(10.0, 5.0))
                             .show(ui)
@@ -26,7 +26,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                     );
                     b_node = Some(
                         Frame::new()
-                            .with_id("b")
+                            .id_salt("b")
                             .size((Sizing::Fixed(30.0), Sizing::Fixed(60.0)))
                             .position(Vec2::new(80.0, 40.0))
                             .show(ui)

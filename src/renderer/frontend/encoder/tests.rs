@@ -82,7 +82,7 @@ fn baseline_draw_rect_count_cases() {
             Scene::Empty => {}
             Scene::FrameWithFill => {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size(50.0)
                     .background(Background {
                         fill: Color::rgb(1.0, 0.0, 0.0),
@@ -91,11 +91,11 @@ fn baseline_draw_rect_count_cases() {
                     .show(ui);
             }
             Scene::InvisibleFrame => {
-                Frame::new().with_id("invisible").size(50.0).show(ui);
+                Frame::new().id_salt("invisible").size(50.0).show(ui);
             }
             Scene::FrameWithDegenerateBackground => {
                 Frame::new()
-                    .with_id("degenerate")
+                    .id_salt("degenerate")
                     .size(50.0)
                     .background(Background {
                         fill: Color::TRANSPARENT,
@@ -106,7 +106,7 @@ fn baseline_draw_rect_count_cases() {
             }
             Scene::FrameWithClipRectSurface => {
                 Frame::new()
-                    .with_id("clip_only")
+                    .id_salt("clip_only")
                     .size(50.0)
                     .background(Surface::clip_rect())
                     .show(ui);
@@ -139,7 +139,7 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
             fill: Color::rgb(1.0, 0.0, 0.0),
             stroke: None,
         });
-        Frame::new().with_id("host").size(50.0).show(ui);
+        Frame::new().id_salt("host").size(50.0).show(ui);
     });
     ui.end_frame();
     let cmds = encode_cmds(&ui);
@@ -185,7 +185,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("clip_only")
+            .id_salt("clip_only")
             .size(50.0)
             .background(Surface::clip_rect())
             .show(ui, |_| {});
@@ -209,12 +209,12 @@ fn clip_emits_balanced_push_pop() {
     // ZStack's pair under test.
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("clip")
+            .id_salt("clip")
             .size(50.0)
             .background(Surface::clip_rect())
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size(40.0)
                     .background(Background {
                         fill: Color::rgb(0.5, 0.5, 0.5),
@@ -275,7 +275,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     Panel::hstack().show(&mut ui, |ui| {
         panel_node = Some(
             Panel::zstack()
-                .with_id("rounded")
+                .id_salt("rounded")
                 .size(80.0)
                 .background(Surface::clip_rounded_with_bg(Background {
                     fill: Color::rgb(0.2, 0.2, 0.2),
@@ -286,7 +286,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                     radius: Corners::all(8.0),
                 }))
                 .show(ui, |ui| {
-                    Frame::new().with_id("c").size(40.0).show(ui);
+                    Frame::new().id_salt("c").size(40.0).show(ui);
                 })
                 .node,
         );
@@ -322,14 +322,14 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("rounded_no_bg")
+            .id_salt("rounded_no_bg")
             .size(80.0)
             .background(Surface {
                 paint: Background::default(),
                 clip: ClipMode::Rounded,
             })
             .show(ui, |ui| {
-                Frame::new().with_id("c").size(40.0).show(ui);
+                Frame::new().id_salt("c").size(40.0).show(ui);
             });
     });
     ui.end_frame();
@@ -436,13 +436,13 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::canvas()
-            .with_id("mid")
+            .id_salt("mid")
             .size(200.0)
             .background(Surface::clip_rect())
             .transform(xform)
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("V")
+                    .id_salt("V")
                     .position((0.0, 0.0))
                     .size(30.0)
                     .background(Background {
@@ -452,7 +452,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .sense(Sense::CLICK)
                     .show(ui);
                 Frame::new()
-                    .with_id("D")
+                    .id_salt("D")
                     .position((40.0, 0.0))
                     .size(30.0)
                     .background(Background {
@@ -463,7 +463,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .disabled(true)
                     .show(ui);
                 Frame::new()
-                    .with_id("H")
+                    .id_salt("H")
                     .position((80.0, 0.0))
                     .size(30.0)
                     .background(Background {
@@ -543,13 +543,13 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let mut got = (false, false, false);
     Panel::hstack().show(&mut ui, |ui| {
         Panel::canvas()
-            .with_id("mid")
+            .id_salt("mid")
             .size(200.0)
             .background(Surface::clip_rect())
             .transform(xform)
             .show(ui, |ui| {
                 got.0 = Frame::new()
-                    .with_id("V")
+                    .id_salt("V")
                     .position((0.0, 0.0))
                     .size(30.0)
                     .background(Background {
@@ -560,7 +560,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .show(ui)
                     .clicked();
                 got.1 = Frame::new()
-                    .with_id("D")
+                    .id_salt("D")
                     .position((40.0, 0.0))
                     .size(30.0)
                     .background(Background {
@@ -572,7 +572,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .show(ui)
                     .clicked();
                 got.2 = Frame::new()
-                    .with_id("H")
+                    .id_salt("H")
                     .position((80.0, 0.0))
                     .size(30.0)
                     .background(Background {
@@ -596,12 +596,12 @@ fn nested_clips_each_emit_their_own_pair() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::zstack()
-            .with_id("outer")
+            .id_salt("outer")
             .size(Sizing::Fixed(100.0))
             .background(Surface::clip_rect())
             .show(ui, |ui| {
                 Panel::zstack()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size(Sizing::Fixed(50.0))
                     .background(Surface::clip_rect())
                     .show(ui, |_| {});
@@ -699,7 +699,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().show(&mut ui, |ui| {
         Button::new()
-            .with_id("padded")
+            .id_salt("padded")
             .label("ok")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
@@ -747,7 +747,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
         Frame::new()
-            .with_id("a")
+            .id_salt("a")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .background(Background {
                 fill: Color::rgb(1.0, 0.0, 0.0),
@@ -755,7 +755,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
             })
             .show(ui);
         Frame::new()
-            .with_id("b")
+            .id_salt("b")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .background(Background {
                 fill: Color::rgb(0.0, 1.0, 0.0),
@@ -786,7 +786,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
         Frame::new()
-            .with_id("a")
+            .id_salt("a")
             .size(50.0)
             .background(Background {
                 fill: Color::rgb(1.0, 0.0, 0.0),
@@ -806,14 +806,14 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
 #[test]
 fn damage_filter_preserves_clip_pushpop() {
     let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::hstack().with_id("outer").show(&mut ui, |ui| {
+    Panel::hstack().id_salt("outer").show(&mut ui, |ui| {
         Panel::hstack()
-            .with_id("clipped")
+            .id_salt("clipped")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .background(Surface::clip_rect())
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size(20.0)
                     .background(Background {
                         fill: Color::rgb(1.0, 0.0, 0.0),
@@ -847,12 +847,12 @@ fn damage_filter_preserves_transform_pushpop() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().show(&mut ui, |ui| {
         Panel::hstack()
-            .with_id("transformed")
+            .id_salt("transformed")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .transform(TranslateScale::from_translation(Vec2::new(5.0, 5.0)))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("inner")
+                    .id_salt("inner")
                     .size(20.0)
                     .background(Background {
                         fill: Color::rgb(1.0, 0.0, 0.0),
@@ -889,7 +889,7 @@ fn viewport_cull_skips_offscreen_subtree() {
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             Frame::new()
-                .with_id("off")
+                .id_salt("off")
                 .position((500.0, 500.0))
                 .size(20.0)
                 .background(Background {
@@ -918,7 +918,7 @@ fn viewport_cull_keeps_onscreen_sibling() {
         .size((Sizing::FILL, Sizing::FILL))
         .show(&mut ui, |ui| {
             Frame::new()
-                .with_id("on")
+                .id_salt("on")
                 .position((10.0, 10.0))
                 .size(20.0)
                 .background(Background {
@@ -927,7 +927,7 @@ fn viewport_cull_keeps_onscreen_sibling() {
                 })
                 .show(ui);
             Frame::new()
-                .with_id("off")
+                .id_salt("off")
                 .position((500.0, 500.0))
                 .size(20.0)
                 .background(Background {

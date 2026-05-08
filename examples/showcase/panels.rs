@@ -41,7 +41,7 @@ pub fn build(ui: &mut Ui) {
 /// Plain layout cell: padding + gap, no decoration.
 fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .gap(8.0)
@@ -50,7 +50,7 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
 
 fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
     Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(h)))
         .background(Background {
             fill: c,
@@ -62,7 +62,7 @@ fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
 
 fn positioned(ui: &mut Ui, id: &'static str, x: f32, y: f32, c: Color) {
     Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .position((x, y))
         .size(40.0)
         .background(Background {

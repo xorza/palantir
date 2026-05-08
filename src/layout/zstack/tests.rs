@@ -13,8 +13,8 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
         Panel::zstack()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
-                Frame::new().with_id("a").size((40.0, 20.0)).show(ui);
-                Frame::new().with_id("b").size((10.0, 80.0)).show(ui);
+                Frame::new().id_salt("a").size((40.0, 20.0)).show(ui);
+                Frame::new().id_salt("b").size((10.0, 80.0)).show(ui);
             })
             .node
     });
@@ -31,8 +31,8 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .padding(8.0)
             .show(ui, |ui| {
-                Frame::new().with_id("a").size((20.0, 20.0)).show(ui);
-                Frame::new().with_id("b").size((30.0, 30.0)).show(ui);
+                Frame::new().id_salt("a").size((20.0, 20.0)).show(ui);
+                Frame::new().id_salt("b").size((30.0, 30.0)).show(ui);
             })
             .node
     });
@@ -91,7 +91,7 @@ fn zstack_per_axis_alignment() {
             p.show(ui, |ui| {
                 for (i, ((w, h), align, _)) in children.iter().enumerate() {
                     Frame::new()
-                        .with_id(("c", i))
+                        .id_salt(("c", i))
                         .size((*w, *h))
                         .align(*align)
                         .show(ui);
@@ -126,7 +126,7 @@ fn zstack_fill_child_stretches_to_inner() {
             .padding(10.0)
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("filler")
+                    .id_salt("filler")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
             })
@@ -156,7 +156,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("filler")
+                    .id_salt("filler")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
             })
@@ -174,9 +174,9 @@ fn zstack_collapsed_child_does_not_grow_panel() {
         Panel::zstack()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
-                Frame::new().with_id("a").size((20.0, 20.0)).show(ui);
+                Frame::new().id_salt("a").size((20.0, 20.0)).show(ui);
                 Frame::new()
-                    .with_id("hidden")
+                    .id_salt("hidden")
                     .size((100.0, 100.0))
                     .collapsed()
                     .show(ui);

@@ -28,7 +28,7 @@ pub fn build(ui: &mut Ui) {
     let mut clicked = false;
 
     Panel::vstack()
-        .with_id("popup-root")
+        .id_salt("popup-root")
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
@@ -39,11 +39,11 @@ pub fn build(ui: &mut Ui) {
             .show(ui);
 
             Panel::hstack()
-                .with_id("popup-trigger-row")
+                .id_salt("popup-trigger-row")
                 .gap(12.0)
                 .show(ui, |ui| {
                     let r = Button::new()
-                        .with_id("popup-trigger")
+                        .id_salt("popup-trigger")
                         .label("menu")
                         .show(ui);
                     if r.clicked() {
@@ -80,7 +80,7 @@ pub fn build(ui: &mut Ui) {
 
     let mut chosen: Option<&'static str> = None;
     let resp = Popup::anchored_to(anchor)
-        .with_id("popup-showcase.menu")
+        .id_salt("popup-showcase.menu")
         .padding(6.0)
         .background(Surface::from(Background {
             fill: Color::hex(0x2a2a2a),
@@ -93,7 +93,7 @@ pub fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             for label in ["copy", "paste", "delete"] {
                 if Button::new()
-                    .with_id(("popup-item", label))
+                    .id_salt(("popup-item", label))
                     .label(label)
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui)

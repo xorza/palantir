@@ -35,9 +35,9 @@ const BLUE: Color = Color::rgb(0.2, 0.4, 0.8);
 const RED: Color = Color::rgb(0.9, 0.4, 0.8);
 
 fn one_frame(ui: &mut Ui, color: Color) {
-    Panel::hstack().with_id("root").show(ui, |ui| {
+    Panel::hstack().id_salt("root").show(ui, |ui| {
         Frame::new()
-            .with_id("a")
+            .id_salt("a")
             .size(50.0)
             .background(Background {
                 fill: color,
@@ -113,9 +113,9 @@ fn fill_change_marks_only_the_changed_leaf() {
 fn sibling_reflow_marks_downstream_neighbor_dirty() {
     let mut ui = Ui::new();
     let build = |a_size: f32, ui: &mut Ui| {
-        Panel::hstack().with_id("root").show(ui, |ui| {
+        Panel::hstack().id_salt("root").show(ui, |ui| {
             Frame::new()
-                .with_id("a")
+                .id_salt("a")
                 .size((Sizing::Fixed(a_size), Sizing::Fixed(20.0)))
                 .background(Background {
                     fill: Color::rgb(0.2, 0.4, 0.8),
@@ -123,7 +123,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                 })
                 .show(ui);
             Frame::new()
-                .with_id("b")
+                .id_salt("b")
                 .size((Sizing::Fixed(30.0), Sizing::Fixed(20.0)))
                 .background(Background {
                     fill: Color::rgb(0.5, 0.5, 0.5),
@@ -154,14 +154,14 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
 fn removed_widget_contributes_prev_rect_to_damage() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
-        Panel::hstack().with_id("root").show(ui, |ui| {
-            Button::new().with_id("gone").label("X").show(ui);
+        Panel::hstack().id_salt("root").show(ui, |ui| {
+            Button::new().id_salt("gone").label("X").show(ui);
         });
     });
     let prev_button_rect = ui.damage.prev[&WidgetId::from_hash("gone")].rect;
 
     frame(&mut ui, |ui| {
-        Panel::hstack().with_id("root").show(ui, |_| {});
+        Panel::hstack().id_salt("root").show(ui, |_| {});
     });
 
     // The button no longer exists in the tree, so it's not in
@@ -180,12 +180,12 @@ fn removed_widget_contributes_prev_rect_to_damage() {
 fn added_widget_contributes_curr_rect_to_damage() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
-        Panel::hstack().with_id("root").show(ui, |_| {});
+        Panel::hstack().id_salt("root").show(ui, |_| {});
     });
     frame(&mut ui, |ui| {
-        Panel::hstack().with_id("root").show(ui, |ui| {
+        Panel::hstack().id_salt("root").show(ui, |ui| {
             Frame::new()
-                .with_id("new")
+                .id_salt("new")
                 .size(50.0)
                 .background(Background {
                     fill: Color::rgb(0.2, 0.4, 0.8),
@@ -282,12 +282,12 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
         begin(ui, UVec2::new(400, 400));
         Panel::hstack()
-            .with_id("outer")
+            .id_salt("outer")
             .transform(TranslateScale::from_translation(translate))
             .show(ui, |ui| {
                 *child = Some(
                     Frame::new()
-                        .with_id("c")
+                        .id_salt("c")
                         .size(40.0)
                         .background(Background {
                             fill,
@@ -332,12 +332,12 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
         begin(ui, UVec2::new(400, 400));
         Panel::hstack()
-            .with_id("outer")
+            .id_salt("outer")
             .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
             .show(ui, |ui| {
                 *child = Some(
                     Frame::new()
-                        .with_id("c")
+                        .id_salt("c")
                         .size(40.0)
                         .background(Background {
                             fill: Color::rgb(0.2, 0.4, 0.8),
@@ -585,11 +585,11 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     // (3000, 0, 50, 60).
     let scene = |ui: &mut Ui| {
         Panel::hstack()
-            .with_id("root")
+            .id_salt("root")
             .size((Sizing::Fixed(3050.0), Sizing::Fixed(60.0)))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("big")
+                    .id_salt("big")
                     .size((3000.0, 60.0))
                     .background(Background {
                         fill: BLUE,
@@ -597,7 +597,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
                     })
                     .show(ui);
                 Frame::new()
-                    .with_id("small")
+                    .id_salt("small")
                     .size((50.0, 60.0))
                     .background(Background {
                         fill: BLUE,
@@ -698,9 +698,9 @@ fn button_hover_damage_covers_only_the_button() {
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         begin(ui, UVec2::new(400, 400));
-        Panel::vstack().with_id("root").show(ui, |ui| {
-            *hot = Some(Button::new().with_id("hot").label("Hover me").show(ui).node);
-            *cold = Some(Button::new().with_id("cold").label("Quiet").show(ui).node);
+        Panel::vstack().id_salt("root").show(ui, |ui| {
+            *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
+            *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
         });
         ui.end_frame();
     };
@@ -761,9 +761,9 @@ fn button_unhover_damage_covers_only_the_button() {
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         begin(ui, UVec2::new(400, 400));
-        Panel::vstack().with_id("root").show(ui, |ui| {
-            *hot = Some(Button::new().with_id("hot").label("Hover me").show(ui).node);
-            *cold = Some(Button::new().with_id("cold").label("Quiet").show(ui).node);
+        Panel::vstack().id_salt("root").show(ui, |ui| {
+            *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
+            *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
         });
         ui.end_frame();
     };

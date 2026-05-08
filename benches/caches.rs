@@ -46,44 +46,44 @@ const DENSE_SHAPES_PER_ROW: usize = 6;
 
 fn build(ui: &mut Ui) {
     Panel::vstack()
-        .with_id("nested-root")
+        .id_salt("nested-root")
         .gap(4.0)
         .padding(8.0)
         .size((Sizing::FILL, Sizing::Hug))
         .show(ui, |ui| {
             for g in 0..GROUPS {
                 Panel::vstack()
-                    .with_id(("group", g))
+                    .id_salt(("group", g))
                     .gap(2.0)
                     .padding(4.0)
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui, |ui| {
                         Text::new("Group header")
-                            .with_id(("g-hdr", g))
+                            .id_salt(("g-hdr", g))
                             .style(palantir::TextStyle::default().with_font_size(14.0))
                             .show(ui);
                         for r in 0..ROWS_PER_GROUP {
                             Panel::hstack()
-                                .with_id(("row", g, r))
+                                .id_salt(("row", g, r))
                                 .gap(6.0)
                                 .size((Sizing::FILL, Sizing::Hug))
                                 .show(ui, |ui| {
                                     Frame::new()
-                                        .with_id(("avatar", g, r))
+                                        .id_salt(("avatar", g, r))
                                         .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
                                         .show(ui);
                                     Text::new("row name")
-                                        .with_id(("name", g, r))
+                                        .id_salt(("name", g, r))
                                         .style(palantir::TextStyle::default().with_font_size(12.0))
                                         .show(ui);
                                     Text::new("meta info")
-                                        .with_id(("meta", g, r))
+                                        .id_salt(("meta", g, r))
                                         .style(palantir::TextStyle::default().with_font_size(11.0))
                                         .show(ui);
                                 });
                         }
                         Frame::new()
-                            .with_id(("g-ftr", g))
+                            .id_salt(("g-ftr", g))
                             .size((Sizing::FILL, Sizing::Fixed(2.0)))
                             .show(ui);
                     });
@@ -118,26 +118,26 @@ fn build_heavy(ui: &mut Ui) {
         radius: Corners::all(10.0),
     };
     Panel::vstack()
-        .with_id("heavy-root")
+        .id_salt("heavy-root")
         .gap(6.0)
         .padding(12.0)
         .size((Sizing::FILL, Sizing::Hug))
         .show(ui, |ui| {
             for g in 0..HEAVY_GROUPS {
                 Panel::vstack()
-                    .with_id(("h-group", g))
+                    .id_salt(("h-group", g))
                     .gap(4.0)
                     .padding(8.0)
                     .size((Sizing::FILL, Sizing::Hug))
                     .background(group_surface)
                     .show(ui, |ui| {
                         Text::new("Group header — interesting copy that wraps")
-                            .with_id(("h-g-hdr", g))
+                            .id_salt(("h-g-hdr", g))
                             .style(TextStyle::default().with_font_size(15.0))
                             .show(ui);
                         for r in 0..HEAVY_ROWS_PER_GROUP {
                             Panel::hstack()
-                                .with_id(("h-row", g, r))
+                                .id_salt(("h-row", g, r))
                                 .gap(8.0)
                                 .padding(6.0)
                                 .size((Sizing::FILL, Sizing::Hug))
@@ -146,21 +146,21 @@ fn build_heavy(ui: &mut Ui) {
                                     // Inner zstack adds a nesting level — exercises
                                     // measure on a deeper tree.
                                     Panel::zstack()
-                                        .with_id(("h-avatar-wrap", g, r))
+                                        .id_salt(("h-avatar-wrap", g, r))
                                         .size((Sizing::Fixed(24.0), Sizing::Fixed(24.0)))
                                         .show(ui, |ui| {
                                             Frame::new()
-                                                .with_id(("h-avatar", g, r))
+                                                .id_salt(("h-avatar", g, r))
                                                 .size((Sizing::FILL, Sizing::FILL))
                                                 .background(avatar_bg)
                                                 .show(ui);
                                         });
                                     Text::new("row name with longer text content")
-                                        .with_id(("h-name", g, r))
+                                        .id_salt(("h-name", g, r))
                                         .style(TextStyle::default().with_font_size(13.0))
                                         .show(ui);
                                     Text::new("meta info — secondary detail")
-                                        .with_id(("h-meta", g, r))
+                                        .id_salt(("h-meta", g, r))
                                         .style(TextStyle::default().with_font_size(11.0))
                                         .show(ui);
                                 });
@@ -184,20 +184,20 @@ fn build_dense(ui: &mut Ui) {
         radius: Corners::all(8.0),
     };
     Panel::vstack()
-        .with_id("dense-root")
+        .id_salt("dense-root")
         .gap(2.0)
         .padding(4.0)
         .size((Sizing::FILL, Sizing::Hug))
         .show(ui, |ui| {
             for g in 0..DENSE_GROUPS {
                 Panel::vstack()
-                    .with_id(("d-group", g))
+                    .id_salt(("d-group", g))
                     .gap(1.0)
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui, |ui| {
                         for r in 0..DENSE_ROWS_PER_GROUP {
                             Panel::hstack()
-                                .with_id(("d-row", g, r))
+                                .id_salt(("d-row", g, r))
                                 .gap(4.0)
                                 .padding(2.0)
                                 .size((Sizing::FILL, Sizing::Fixed(20.0)))
@@ -216,16 +216,16 @@ fn build_dense(ui: &mut Ui) {
                                         });
                                     }
                                     Frame::new()
-                                        .with_id(("d-avatar", g, r))
+                                        .id_salt(("d-avatar", g, r))
                                         .size((Sizing::Fixed(16.0), Sizing::Fixed(16.0)))
                                         .background(avatar_bg)
                                         .show(ui);
                                     Text::new("name")
-                                        .with_id(("d-name", g, r))
+                                        .id_salt(("d-name", g, r))
                                         .style(TextStyle::default().with_font_size(11.0))
                                         .show(ui);
                                     Text::new("meta")
-                                        .with_id(("d-meta", g, r))
+                                        .id_salt(("d-meta", g, r))
                                         .style(TextStyle::default().with_font_size(10.0))
                                         .show(ui);
                                 });
@@ -344,7 +344,7 @@ fn bench(c: &mut Criterion) {
 }
 
 fn build_scrolling(ui: &mut Ui) {
-    Scroll::vertical().with_id("scroll-root").show(ui, build);
+    Scroll::vertical().id_salt("scroll-root").show(ui, build);
 }
 
 /// New `Ui` with a fresh cosmic shaper installed. Heavy workload uses

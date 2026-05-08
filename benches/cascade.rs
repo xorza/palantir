@@ -23,14 +23,14 @@ use std::hint::black_box;
 /// pushes a fresh `HitEntry`.
 fn build_flat(ui: &mut Ui, n: usize) {
     Panel::vstack()
-        .with_id("root")
+        .id_salt("root")
         .gap(2.0)
         .padding(4.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             for i in 0..n {
                 Frame::new()
-                    .with_id(("row", i))
+                    .id_salt(("row", i))
                     .size((Sizing::FILL, Sizing::Fixed(20.0)))
                     .show(ui);
             }

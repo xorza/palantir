@@ -63,7 +63,7 @@ pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
             .size((Sizing::FILL, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("avatar")
+                    .id_salt("avatar")
                     .size((Sizing::Fixed(avatar_w), Sizing::Fixed(40.0)))
                     .show(ui);
                 message_node = Some(

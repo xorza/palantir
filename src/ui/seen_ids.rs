@@ -54,7 +54,7 @@ impl SeenIds {
         assert!(
             auto,
             "WidgetId collision — id {id:?} recorded twice this frame. \
-             Two explicit `.with_id(key)` calls produced the same hash; \
+             Two explicit `.id_salt(key)` calls produced the same hash; \
              pick distinct keys. Duplicate ids silently corrupt focus, \
              scroll, click capture, and hit-testing.",
         );
@@ -64,7 +64,7 @@ impl SeenIds {
         assert!(
             self.curr.insert(disambiguated),
             "auto-id disambiguation collided with an explicit id ({disambiguated:?}) \
-             — an explicit `.with_id(key)` produced the same hash as an auto-generated \
+             — an explicit `.id_salt(key)` produced the same hash as an auto-generated \
              id at occurrence {counter}. Pick a different explicit key.",
         );
         disambiguated

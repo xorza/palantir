@@ -33,14 +33,14 @@ fn build_ui(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::Hug))
                 .child_align(Align::CENTER)
                 .show(ui, |ui| {
-                    Text::new("Complex Layout Showcase").with_id("title")
+                    Text::new("Complex Layout Showcase").id_salt("title")
                         .style(palantir::TextStyle::default().with_font_size(20.0))
                         .show(ui);
-                    Frame::new().with_id("title-spacer")
+                    Frame::new().id_salt("title-spacer")
                         .size((Sizing::FILL, Sizing::Fixed(1.0)))
                         .show(ui);
                     for i in 0..5 {
-                        Button::new().with_id(("hdr", i))
+                        Button::new().id_salt(("hdr", i))
                             .label(format!("Action {i}"))
                             .show(ui);
                     }
@@ -59,12 +59,12 @@ fn build_ui(ui: &mut Ui) {
                         .size((Sizing::Fixed(220.0), Sizing::FILL))
                         .show(ui, |ui| {
                             for i in 0..sidebar_items {
-                                Button::new().with_id(("side", i))
+                                Button::new().id_salt(("side", i))
                                     .label(format!("Sidebar item {i}"))
                                     .size((Sizing::FILL, Sizing::Hug))
                                     .show(ui);
                             }
-                            Frame::new().with_id("sb-divider")
+                            Frame::new().id_salt("sb-divider")
                                 .size((Sizing::FILL, Sizing::Fixed(1.0)))
                                 .margin(4.0)
                                 .show(ui);
@@ -74,7 +74,7 @@ fn build_ui(ui: &mut Ui) {
                                 .size((Sizing::FILL, Sizing::Hug))
                                 .show(ui, |ui| {
                                     for i in 0..3 {
-                                        Button::new().with_id(("sb-foot", i))
+                                        Button::new().id_salt(("sb-foot", i))
                                             .label(format!("F{i}"))
                                             .show(ui);
                                     }
@@ -91,7 +91,7 @@ fn build_ui(ui: &mut Ui) {
                             // with wrapping text. The motivating Step B
                             // pattern from intrinsic.md.
                             let rows: Vec<Track> = (0..prop_rows).map(|_| Track::hug()).collect();
-                            Grid::new().with_id("props")
+                            Grid::new().id_salt("props")
                                 .cols(Rc::from([
                                     Track::hug().min(80.0),
                                     Track::fill(),
@@ -120,16 +120,16 @@ fn build_ui(ui: &mut Ui) {
                                     ];
                                     for row in 0..prop_rows {
                                         let r = row as u16;
-                                        Text::new(labels[row % labels.len()]).with_id(("plbl", row))
+                                        Text::new(labels[row % labels.len()]).id_salt(("plbl", row))
                                             .style(palantir::TextStyle::default().with_font_size(14.0))
                                             .grid_cell((r, 0))
                                             .show(ui);
-                                        Text::new(values[row % values.len()]).with_id(("pval", row))
+                                        Text::new(values[row % values.len()]).id_salt(("pval", row))
                                             .style(palantir::TextStyle::default().with_font_size(14.0))
                                             .wrapping()
                                             .grid_cell((r, 1))
                                             .show(ui);
-                                        Button::new().with_id(("pact", row))
+                                        Button::new().id_salt(("pact", row))
                                             .label("Edit")
                                             .grid_cell((r, 2))
                                             .show(ui);
@@ -143,21 +143,21 @@ fn build_ui(ui: &mut Ui) {
                             // the closure body, so every iter would resolve
                             // to the same source location and collide.
                             for i in 0..chat_messages {
-                                Panel::hstack().with_id(("chat-row", i))
+                                Panel::hstack().id_salt(("chat-row", i))
                                     .gap(8.0)
                                     .size((Sizing::FILL, Sizing::Hug))
                                     .show(ui, |ui| {
-                                        Frame::new().with_id(("avatar", i))
+                                        Frame::new().id_salt(("avatar", i))
                                             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                                             .show(ui);
-                                        Panel::vstack().with_id(("chat-text", i))
+                                        Panel::vstack().id_salt(("chat-text", i))
                                             .gap(2.0)
                                             .size((Sizing::FILL, Sizing::Hug))
                                             .show(ui, |ui| {
-                                                Text::new(format!("user_{i}")).with_id(("from", i))
+                                                Text::new(format!("user_{i}")).id_salt(("from", i))
                                                     .style(palantir::TextStyle::default().with_font_size(12.0))
                                                     .show(ui);
-                                                Text::new("This is a longer message body that should wrap inside the Fill stack column without breaking words inside any single token.",).with_id(("msg", i))
+                                                Text::new("This is a longer message body that should wrap inside the Fill stack column without breaking words inside any single token.",).id_salt(("msg", i))
                                                 .style(palantir::TextStyle::default().with_font_size(13.0))
                                                 .wrapping()
                                                 .size((Sizing::FILL, Sizing::Hug))
@@ -172,7 +172,7 @@ fn build_ui(ui: &mut Ui) {
                                 .size((Sizing::FILL, Sizing::Fixed(80.0)))
                                 .show(ui, |ui| {
                                     for i in 0..canvas_dots {
-                                        Frame::new().with_id(("dot", i))
+                                        Frame::new().id_salt(("dot", i))
                                             .size((Sizing::Fixed(16.0), Sizing::Fixed(16.0)))
                                             .position((i as f32 * 22.0, 12.0 + (i % 3) as f32 * 18.0))
                                             .show(ui);
@@ -185,7 +185,7 @@ fn build_ui(ui: &mut Ui) {
             Panel::zstack()
                 .size((Sizing::FILL, Sizing::Fixed(36.0)))
                 .show(ui, |ui| {
-                    Frame::new().with_id("footer-bg")
+                    Frame::new().id_salt("footer-bg")
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui);
                     Panel::hstack()
@@ -194,13 +194,13 @@ fn build_ui(ui: &mut Ui) {
                         .child_align(Align::CENTER)
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
-                            Text::new("Ready").with_id("footer-status")
+                            Text::new("Ready").id_salt("footer-status")
                                 .style(palantir::TextStyle::default().with_font_size(12.0))
                                 .show(ui);
-                            Frame::new().with_id("footer-spacer")
+                            Frame::new().id_salt("footer-spacer")
                                 .size((Sizing::FILL, Sizing::Fixed(1.0)))
                                 .show(ui);
-                            Text::new("v1.2.3 · 42 nodes").with_id("footer-meta")
+                            Text::new("v1.2.3 · 42 nodes").id_salt("footer-meta")
                                 .style(palantir::TextStyle::default().with_font_size(12.0))
                                 .show(ui);
                         });

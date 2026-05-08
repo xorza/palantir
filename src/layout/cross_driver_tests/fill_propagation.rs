@@ -76,10 +76,10 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
     Panel::hstack().show(&mut ui, |ui| {
         zstack_node = Some(
             Panel::zstack()
-                .with_id("hug-z")
+                .id_salt("hug-z")
                 .show(ui, |ui| {
                     Frame::new()
-                        .with_id("fill-child")
+                        .id_salt("fill-child")
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background {
                             fill: Color::rgb(0.5, 0.5, 0.5),
@@ -87,7 +87,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                         })
                         .show(ui);
                     Frame::new()
-                        .with_id("fixed-child")
+                        .id_salt("fixed-child")
                         .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                         .show(ui);
                 })
@@ -207,7 +207,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
         .show(&mut ui, |ui| {
             grid_node = Some(
                 Grid::new()
-                    .with_id("pg")
+                    .id_salt("pg")
                     .size((Sizing::FILL, Sizing::Hug))
                     .cols(Rc::from([Track::hug(), Track::fill()]))
                     .rows(Rc::from([Track::hug(), Track::hug()]))
@@ -260,12 +260,12 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
         .size((Sizing::Fixed(400.0), Sizing::Hug))
         .show(&mut ui, |ui| {
             Panel::zstack()
-                .with_id("hug-z")
+                .id_salt("hug-z")
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
                     grid_node = Some(
                         Grid::new()
-                            .with_id("nested-grid")
+                            .id_salt("nested-grid")
                             .size((Sizing::FILL, Sizing::Hug))
                             .cols(Rc::from([Track::hug(), Track::fill()]))
                             .rows(Rc::from([Track::hug()]))

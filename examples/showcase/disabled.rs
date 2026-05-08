@@ -15,17 +15,17 @@ pub fn build(ui: &mut Ui) {
 
 fn section(ui: &mut Ui, id: &'static str, label: &'static str, disabled: bool) {
     Panel::vstack()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .gap(8.0)
         .disabled(disabled)
         .show(ui, |ui| {
-            Text::new(label).with_id((id, "label")).show(ui);
+            Text::new(label).id_salt((id, "label")).show(ui);
             Button::new()
-                .with_id((id, "btn1"))
+                .id_salt((id, "btn1"))
                 .label("click me")
                 .show(ui);
-            Button::new().with_id((id, "btn2")).label("or me").show(ui);
+            Button::new().id_salt((id, "btn2")).label("or me").show(ui);
         });
 }

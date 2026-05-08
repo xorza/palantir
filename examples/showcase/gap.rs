@@ -15,14 +15,14 @@ pub fn build(ui: &mut Ui) {
 
 fn row(ui: &mut Ui, id: &'static str, gap: f32) {
     Panel::hstack()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::FILL, Sizing::Fixed(48.0)))
         .padding(8.0)
         .gap(gap)
         .show(ui, |ui| {
             for i in 0..5 {
                 Frame::new()
-                    .with_id((id, i))
+                    .id_salt((id, i))
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(32.0)))
                     .background(Background {
                         fill: swatch::A,

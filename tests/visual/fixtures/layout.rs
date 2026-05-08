@@ -23,7 +23,7 @@ fn vstack_fill_weights_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("a")
+                    .id_salt("a")
                     .size((Sizing::FILL, Sizing::Fill(1.0)))
                     .background(Background {
                         fill: Color::rgb(0.85, 0.30, 0.30),
@@ -31,7 +31,7 @@ fn vstack_fill_weights_matches_golden() {
                     })
                     .show(ui);
                 Frame::new()
-                    .with_id("b")
+                    .id_salt("b")
                     .size((Sizing::FILL, Sizing::Fill(2.0)))
                     .background(Background {
                         fill: Color::rgb(0.30, 0.85, 0.40),
@@ -39,7 +39,7 @@ fn vstack_fill_weights_matches_golden() {
                     })
                     .show(ui);
                 Frame::new()
-                    .with_id("c")
+                    .id_salt("c")
                     .size((Sizing::FILL, Sizing::Fill(1.0)))
                     .background(Background {
                         fill: Color::rgb(0.30, 0.50, 0.95),
@@ -58,7 +58,7 @@ fn grid_mixed_tracks_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(320, 200), 1.0, DARK_BG, |ui| {
         Grid::new()
-            .with_id("g")
+            .id_salt("g")
             .cols([Track::fixed(80.0), Track::fill(), Track::fixed(60.0)])
             .rows([Track::fixed(40.0), Track::fill()])
             .gap(6.0)
@@ -66,7 +66,7 @@ fn grid_mixed_tracks_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Frame::new()
-                    .with_id("header")
+                    .id_salt("header")
                     .grid_cell((0, 0))
                     .grid_span((1, 3))
                     .background(Background {
@@ -76,7 +76,7 @@ fn grid_mixed_tracks_matches_golden() {
                     })
                     .show(ui);
                 Frame::new()
-                    .with_id("side")
+                    .id_salt("side")
                     .grid_cell((1, 0))
                     .background(Background {
                         fill: Color::rgb(0.35, 0.45, 0.30),
@@ -85,7 +85,7 @@ fn grid_mixed_tracks_matches_golden() {
                     })
                     .show(ui);
                 Frame::new()
-                    .with_id("body")
+                    .id_salt("body")
                     .grid_cell((1, 1))
                     .background(Background {
                         fill: Color::rgb(0.20, 0.20, 0.28),
@@ -94,7 +94,7 @@ fn grid_mixed_tracks_matches_golden() {
                     })
                     .show(ui);
                 Frame::new()
-                    .with_id("aside")
+                    .id_salt("aside")
                     .grid_cell((1, 2))
                     .background(Background {
                         fill: Color::rgb(0.50, 0.30, 0.45),
@@ -127,7 +127,7 @@ fn zstack_centered_button_matches_golden() {
             })
             .show(ui, |ui| {
                 Button::new()
-                    .with_id("btn")
+                    .id_salt("btn")
                     .align(Align::CENTER)
                     .label("centered")
                     .show(ui);

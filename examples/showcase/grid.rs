@@ -11,7 +11,7 @@ pub fn build(ui: &mut Ui) {
             //    Row 0 spans all three as a header band.
             cell(ui, "shell", |ui| {
                 Grid::new()
-                    .with_id("shell-grid")
+                    .id_salt("shell-grid")
                     .cols([Track::fixed(140.0), Track::fill(), Track::hug()])
                     .rows([Track::fixed(36.0), Track::fill()])
                     .gap(8.0)
@@ -37,7 +37,7 @@ pub fn build(ui: &mut Ui) {
             //    pixel. Resize the window to watch the sidebar saturate.
             cell(ui, "min/max", |ui| {
                 Grid::new()
-                    .with_id("clamped")
+                    .id_salt("clamped")
                     .cols([
                         Track::fill_weight(1.0).min(200.0).max(300.0),
                         Track::fill_weight(2.0),
@@ -55,7 +55,7 @@ pub fn build(ui: &mut Ui) {
 
 fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(12.0)
         .gap(8.0)
@@ -71,7 +71,7 @@ fn grid_tile(
     color: Color,
 ) {
     let mut f = Frame::new()
-        .with_id(id)
+        .id_salt(id)
         .grid_cell(cell)
         .background(Background {
             fill: color,

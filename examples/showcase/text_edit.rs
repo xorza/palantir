@@ -39,18 +39,18 @@ pub fn build(ui: &mut Ui) {
             .show(ui);
 
             Panel::hstack()
-                .with_id("editors")
+                .id_salt("editors")
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
                     TextEdit::new(&mut buf_a)
-                        .with_id("editor_a")
+                        .id_salt("editor_a")
                         .placeholder("first field")
                         .size((Sizing::FILL, Sizing::Hug))
                         .min_size((180.0, 32.0))
                         .show(ui);
                     TextEdit::new(&mut buf_b)
-                        .with_id("editor_b")
+                        .id_salt("editor_b")
                         .placeholder("second field")
                         .size((Sizing::FILL, Sizing::Hug))
                         .min_size((180.0, 32.0))
@@ -58,7 +58,7 @@ pub fn build(ui: &mut Ui) {
                 });
 
             Panel::hstack()
-                .with_id("controls")
+                .id_salt("controls")
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
@@ -67,7 +67,7 @@ pub fn build(ui: &mut Ui) {
                         FocusPolicy::PreserveOnMiss => "policy: PreserveOnMiss",
                     };
                     if Button::new()
-                        .with_id("policy_toggle")
+                        .id_salt("policy_toggle")
                         .label(label)
                         .min_size((220.0, 32.0))
                         .show(ui)
@@ -80,7 +80,7 @@ pub fn build(ui: &mut Ui) {
                         *ui.state_mut::<FocusPolicy>(policy_id) = next;
                     }
                     if Button::new()
-                        .with_id("clear")
+                        .id_salt("clear")
                         .label("clear both")
                         .min_size((140.0, 32.0))
                         .show(ui)

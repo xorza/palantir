@@ -16,7 +16,7 @@ pub fn build(ui: &mut Ui) {
         .padding(16.0)
         .show(ui, |ui| {
             Text::new("WrapHStack / WrapVStack")
-                .with_id(("hdr", "title"))
+                .id_salt(("hdr", "title"))
                 .style(TextStyle::default().with_font_size(14.0))
                 .show(ui);
 
@@ -25,7 +25,7 @@ pub fn build(ui: &mut Ui) {
                 "wrap to a new line. `.gap` spaces siblings within a line; ",
                 "`.line_gap` spaces lines. `.justify(...)` applies per-line.",
             ))
-            .with_id(("hdr", "sub"))
+            .id_salt(("hdr", "sub"))
             .style(TextStyle::default().with_font_size(12.0))
             .wrapping()
             .show(ui);
@@ -37,7 +37,7 @@ pub fn build(ui: &mut Ui) {
                 "WrapHStack: tag cloud (Justify::Start)",
                 |ui| {
                     Panel::wrap_hstack()
-                        .with_id("tags")
+                        .id_salt("tags")
                         .size((Sizing::FILL, Sizing::Hug))
                         .gap(8.0)
                         .line_gap(8.0)
@@ -56,7 +56,7 @@ pub fn build(ui: &mut Ui) {
                 "WrapHStack: per-line Justify::Center, equal-size badges",
                 |ui| {
                     Panel::wrap_hstack()
-                        .with_id("centered-row")
+                        .id_salt("centered-row")
                         .size((Sizing::FILL, Sizing::Hug))
                         .gap(10.0)
                         .line_gap(10.0)
@@ -76,7 +76,7 @@ pub fn build(ui: &mut Ui) {
                 "WrapVStack: vertical flow, wraps to new column",
                 |ui| {
                     Panel::wrap_vstack()
-                        .with_id("vwrap-col")
+                        .id_salt("vwrap-col")
                         .size((Sizing::Hug, Sizing::Fixed(160.0)))
                         .gap(6.0)
                         .line_gap(12.0)
@@ -118,7 +118,7 @@ const TAGS: &[&str] = &[
 /// text. Uses a translucent accent so chips harmonize with the palette.
 fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
     Panel::hstack()
-        .with_id(("chip-row", &key))
+        .id_salt(("chip-row", &key))
         .padding((10.0, 4.0))
         .background(Background {
             fill: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.20),
@@ -130,7 +130,7 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
         })
         .show(ui, |ui| {
             Text::new(label)
-                .with_id(("chip-label", &key))
+                .id_salt(("chip-label", &key))
                 .style(TextStyle::default().with_font_size(12.0))
                 .show(ui);
         });
@@ -138,7 +138,7 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
 
 fn badge<H: std::hash::Hash>(ui: &mut Ui, key: H) {
     Frame::new()
-        .with_id(("badge", &key))
+        .id_salt(("badge", &key))
         .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))
         .background(Background {
             fill: swatch::A,
@@ -151,12 +151,12 @@ fn badge<H: std::hash::Hash>(ui: &mut Ui, key: H) {
 /// Plain section: title + body, no card decoration.
 fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
-        .with_id(id)
+        .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
         .show(ui, |ui| {
             Text::new(title)
-                .with_id(("section-title", id))
+                .id_salt(("section-title", id))
                 .style(TextStyle::default().with_font_size(12.0))
                 .show(ui);
             body(ui);

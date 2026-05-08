@@ -232,12 +232,12 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                             "two Hug columns: paragraph wraps to fit, \
                                              label stays natural",
                                         )
-                                        .with_id("section-title")
+                                        .id_salt("section-title")
                                         .style(TextStyle::default().with_font_size(12.0))
                                         .show(ui);
                                         grid_node = Some(
                                             Grid::new()
-                                                .with_id("grid")
+                                                .id_salt("grid")
                                                 .cols(Rc::from([Track::hug(), Track::hug()]))
                                                 .rows(Rc::from([Track::hug()]))
                                                 .show(ui, |ui| {
@@ -364,7 +364,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         let mut paragraph_node = None;
         let mut label_node = None;
         Grid::new()
-            .with_id("grid")
+            .id_salt("grid")
             .cols(Rc::from([Track::hug(), Track::hug()]))
             .rows(Rc::from([Track::hug()]))
             .size((Sizing::FILL, Sizing::Hug))

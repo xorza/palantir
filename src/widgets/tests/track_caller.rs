@@ -64,14 +64,14 @@ fn constructors_propagate_track_caller() {
     }
 }
 
-/// Sanity: `with_id(...)` overrides the auto id, so two calls with the
+/// Sanity: `id_salt(...)` overrides the auto id, so two calls with the
 /// same explicit key on different lines produce the *same* id — the
 /// symmetric counterpart of the tests above. Confirms `auto_id` flips
 /// off correctly when an explicit key is supplied.
 #[test]
-fn with_id_overrides_auto_stability() {
+fn id_salt_overrides_auto_stability() {
     assert_eq!(
-        id_of(Button::new().with_id("k")),
-        id_of(Button::new().with_id("k")),
+        id_of(Button::new().id_salt("k")),
+        id_of(Button::new().id_salt("k")),
     );
 }
