@@ -22,7 +22,7 @@ struct MenuState {
 }
 
 pub fn build(ui: &mut Ui) {
-    let menu_id = WidgetId::from_hash("popup-showcase.menu");
+    let menu_id = WidgetId::from_hash("popup-root");
 
     let mut trigger_rect: Option<Rect> = None;
     let mut clicked = false;
