@@ -590,6 +590,93 @@ root (top-level Main + Popup). Add fixtures that:
   popup) end-to-end through `Ui::end_frame` to confirm the showcase
   panic is gone.
 
+#### Implementation steps
+
+Each step compiles + ships green. Tests pin the new behavior; existing
+tests stay passing.
+
+1. **Per-record `root_id` column.** Add `Tree::root_id: Vec<u16>`
+   parallel to `records`, plus recording-only `current_root_id: u16`
+   and `layer_stack: Vec<(Layer, u16)>` for `push_layer` save/restore.
+   `begin_frame` clears them. `open_node` pushes `current_root_id`
+   onto `root_id`; when a new `RootSlot` is pushed (entering a layer
+   scope's first node), `current_root_id` is updated to the new
+   slot's index *before* the push. `push_layer` saves
+   `(current_layer, current_root_id)`, sets `current_root_id` to a
+   sentinel (`u16::MAX`) so the next `open_node` mints a fresh slot.
+   `pop_layer` restores. v1 top-level assert stays — no behavior
+   change yet. After `end_frame`'s `roots.sort_by_key(layer)`, remap
+   `root_id[]` via `old_root_idx → new_root_idx` so `root_id[i]`
+   indexes the post-sort `roots` slice.
+   - Test: top-level `Main { … }` then `ui.layer(Popup, …)` →
+     `root_id` matches the post-sort root index for each record.
+   - Test: top-level `ui.layer(Popup, …)` then `Main { … }` →
+     remap places Main's records at root_id=0, Popup's at root_id=1.
+
+2. **Reorder pass scaffolding (Main-only fast path).** Add
+   `Tree::reorder_records()` called at the top of `end_frame`,
+   *before* `assert_recording_invariants` and the hash passes. Gate:
+   `if roots.len() <= 1 && roots[0].layer == Layer::Main { return; }`.
+   Allocates the scratch buffers (`record_perm`, `inv_perm`,
+   per-column scratches) but no real work yet. With v1's top-level
+   assert still in place, multi-root frames skip the gate and run
+   identity permutations. All existing tests must pass bit-identically.
+   - Test: a Main-only frame → no scratch allocation observable
+     (capacity-retained; first frame allocates, steady state reuses).
+   - Test: top-level Main + Popup frame → reorder runs; resulting
+     storage matches today's pre-step-2 storage byte-for-byte.
+
+3. **Generalize reorder to multi-root, top-level recording.** Drop
+   the gate; apply real permutation. With top-level recording each
+   root's records are already contiguous in record order, so the
+   permutation reduces to "concat buckets in layer-sort order"; for
+   the Main-then-Popup case it's identity. Implement the full
+   algorithm anyway — every column gets permuted, `end[]` rebases by
+   `new_i = inv_perm[old_i]`, `shapes` buffer permutes by record
+   order, sparse cols rebuild via `clear()` + push, `roots[i].first_node`
+   updates to `inv_perm[old_first_node]`, `subtree_has_grid` rebuilds.
+   - Test: storage post-reorder for top-level Main + Popup matches
+     today's behavior.
+   - Test: top-level Popup-then-Main records `[Popup, Main]` in
+     `records`; after reorder the buckets concat as `[Main, Popup]`,
+     `roots[0].first_node` points at Main's first node, all `end[]`
+     values rebased correctly.
+   - Test: an empty popup body (`ui.layer(Popup, anchor, |_| {})`
+     records no nodes, no `RootSlot` pushed) leaves the tree
+     unchanged — single-root Main fast-path still applies.
+
+4. **Lift the mid-recording assert.** Drop `push_layer`'s
+   `open_frames[Main].is_empty()` check. Remove the v1 panic test
+   in `tree/tests.rs:1022`. The `current_layer == Main` assert stays
+   (we only support entering layers from Main; nested popups need
+   `current_layer == Main` lifted in step 5).
+   - Test: `Main { mc1, mc2, Popup { ps1, ps2 }, mc3, mc4 }` →
+     `record_perm` reorders to `[parent, mc1, mc2, mc3, mc4,
+     popup_root, ps1, ps2]`. `roots[0].first_node = 0`,
+     `roots[1].first_node = 5`. `tree.children(parent)` yields
+     `[mc1, mc2, mc3, mc4]` — no popup leak.
+   - Test: `subtree_hash[parent]` is invariant when popup body
+     varies; popup's hash isn't folded into parent's rollup.
+   - Test: showcase popup tab no longer panics on click.
+
+5. **Nested popups.** Lift `push_layer`'s `current_layer == Main`
+   assert. `current_root_id` save/restore on `layer_stack` already
+   handles the bookkeeping. Update `assert_recording_invariants`'s
+   post-reorder check to allow ≥2 non-Main roots.
+   - Test: `Main { Popup { Popup { … } } }` → three buckets, layer
+     sort places them in `[Main, Popup_outer, Popup_inner]` order.
+   - Test: a popup body that opens two top-level nodes (each its
+     own `RootSlot` since `open_frames[Popup]` empties between
+     them) → two Popup-layer roots, both reordered to the end.
+
+6. **Showcase verification + cleanup.** Run `cargo run --example
+   showcase`, click the popup tab's "menu" trigger, verify the popup
+   paints below the trigger and clicking an item closes the popup
+   without panic. Update `docs/popups.md` step 4's "⏳ partial" to
+   "✅ shipped" once `ClickOutside::Dismiss` is also wired (or split
+   that into its own follow-up). Delete the now-redundant "Required
+   user pattern in v1" example earlier in this doc.
+
 #### Out of scope for v2
 
 - Cross-frame reorder caching (the reorder is cheap; redo each frame).
