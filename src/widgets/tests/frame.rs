@@ -1,4 +1,5 @@
-use crate::layout::types::{sense::Sense, sizing::Sizing};
+use crate::input::sense::Sense;
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::support::testing::{click_at, shapes_of, ui_at};

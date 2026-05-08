@@ -1,14 +1,14 @@
 //! Per-node element data: `Element` (wide builder form), the columns
-//! `Tree` stores it in (`LayoutCore`, `PaintAttrs`, `NodeMeta`), and
+//! `Tree` stores it in (`LayoutCore`, `NodeFlags`, `NodeMeta`), and
 //! `ElementExtras` (rarely-set side table).
 //!
 //! Adding a field to `Element` requires routing it to one of the
 //! columns. Column choice is by *reader*: layout passes touch only
 //! `LayoutCore`; cascade / encoder / hit-test read the 1-byte
-//! `PaintAttrs` column densely; identity (`widget_id`) lives on
+//! `NodeFlags` column densely; identity (`widget_id`) lives on
 //! `NodeMeta`.
 //!
-//! | field      | Element | LayoutCore | PaintAttrs | NodeMeta | ElementExtras |
+//! | field      | Element | LayoutCore | NodeFlags | NodeMeta | ElementExtras |
 //! |------------|:-------:|:----------:|:----------:|:--------:|:-------------:|
 //! | id         |    ✓    |            |            |    ✓     |               |
 //! | mode       |    ✓    |     ✓      |            |          |               |
@@ -36,11 +36,13 @@
 //! inside `Tree.extras` is filled at `open_node` time. `Configure`
 //! (the trait) provides one chained setter per row.
 
+use crate::input::sense::Sense;
 use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
-    justify::Justify, sense::Sense, sizing::Sizes, visibility::Visibility,
+    justify::Justify, sizing::Sizes,
 };
 use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
+use crate::tree::visibility::Visibility;
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 
@@ -400,7 +402,7 @@ impl Element {
             align: self.align,
             visibility: self.visibility,
         };
-        let attrs = PaintAttrs::pack(self.sense, self.disabled, self.clip, self.focusable);
+        let attrs = NodeFlags::pack(self.sense, self.disabled, self.clip, self.focusable);
         let bounds = BoundsExtras {
             transform: self.transform,
             position: self.position,
@@ -431,7 +433,7 @@ impl Element {
 /// columns.
 pub(crate) struct ElementSplit {
     pub(crate) layout: LayoutCore,
-    pub(crate) attrs: PaintAttrs,
+    pub(crate) attrs: NodeFlags,
     pub(crate) id: WidgetId,
     pub(crate) bounds: BoundsExtras,
     pub(crate) panel: PanelExtras,
@@ -583,11 +585,11 @@ pub trait Configure: Sized {
 ///
 /// `bits`: 0-2=sense tag, 3=disabled, 4-5=clip mode, 6=focusable, 7=reserved.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub(crate) struct PaintAttrs {
+pub(crate) struct NodeFlags {
     pub(crate) bits: u8,
 }
 
-impl PaintAttrs {
+impl NodeFlags {
     const SENSE_MASK: u8 = 0b111;
     const DISABLED: u8 = 1 << 3;
     const CLIP_SHIFT: u8 = 4;

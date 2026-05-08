@@ -1,7 +1,7 @@
+use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::result::LayoutResult;
 use crate::layout::types::clip_mode::ClipMode;
-use crate::layout::types::sense::Sense;
 use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
 use crate::primitives::transform::TranslateScale;

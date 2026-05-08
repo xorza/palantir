@@ -27,6 +27,32 @@ struct SubtreeFrame {
     enter_patch: EnterPatch,
 }
 
+/// Whether `encode_node` produced a complete, self-contained cmd stream
+/// for its subtree. `Elided` means some node within (this one or a
+/// descendant) was skipped without writing cmds — currently only the
+/// off-screen-cull path. An ancestor seeing `Elided` must NOT write a
+/// cache snapshot covering it: replaying the snapshot at a different
+/// scroll position would be missing the elided child's cmds.
+///
+/// Distinguished from `Visibility::Hidden`/`Collapsed` elision because
+/// visibility is folded into `subtree_hash` (so a snapshot-write that
+/// elided an invisible child stays correct on replay — the hash will
+/// only match when the child is still invisible). Off-screen culling
+/// has no such hash signal.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum EncodeOutcome {
+    Complete,
+    Elided,
+}
+
+impl EncodeOutcome {
+    fn absorb(&mut self, child: Self) {
+        if child == Self::Elided {
+            *self = Self::Elided;
+        }
+    }
+}
+
 /// Skip cache lookup + write for subtrees of `<=` this many nodes.
 /// A small subtree's encode work (a handful of `draw_rect` /
 /// `draw_text`) is cheaper than the hashmap miss + insert + marker
@@ -188,13 +214,13 @@ fn encode_node(
     cache: &mut EncodeCache,
     id: NodeId,
     out: &mut RenderCmdBuffer,
-) -> bool {
+) -> EncodeOutcome {
     if rows[id.index()].invisible {
-        return false;
+        return EncodeOutcome::Complete;
     }
 
     if !rows[id.index()].screen_rect.intersects(viewport) {
-        return true;
+        return EncodeOutcome::Elided;
     }
 
     // Cross-frame subtree-skip cache (Phase 3). Reads run on every
@@ -223,7 +249,7 @@ fn encode_node(
     if let Some((wid, hash, avail)) = cache_key
         && cache.try_replay(wid, hash, avail, out, layout.rect[id.index()].min)
     {
-        return false;
+        return EncodeOutcome::Complete;
     }
 
     // Bracket cache-eligible subtrees with `EnterSubtree`/`ExitSubtree`
@@ -340,7 +366,7 @@ fn encode_node(
     // Shapes paint *outside* the owner's pan transform so they stay
     // anchored to the owner regardless of scroll offset; transform is
     // pushed/popped per child accordingly.
-    let mut tainted = false;
+    let mut outcome = EncodeOutcome::Complete;
     let mut text_ordinal: u16 = 0;
     for item in tree.tree_items(id) {
         match item {
@@ -356,7 +382,7 @@ fn encode_node(
                 if let Some(t) = transform {
                     out.push_transform(t);
                 }
-                tainted |= encode_node(
+                outcome.absorb(encode_node(
                     tree,
                     layout,
                     rows,
@@ -365,7 +391,7 @@ fn encode_node(
                     cache,
                     child.id,
                     out,
-                );
+                ));
                 if transform.is_some() {
                     out.pop_transform();
                 }
@@ -379,7 +405,7 @@ fn encode_node(
 
     if let Some(p) = cache_pending {
         out.push_exit_subtree(p.enter_patch);
-        if !tainted {
+        if outcome == EncodeOutcome::Complete {
             let cmd_hi = out.kinds.len() as u32;
             let data_hi = out.data.len() as u32;
             cache.write_subtree(
@@ -394,7 +420,7 @@ fn encode_node(
         }
     }
 
-    tainted
+    outcome
 }
 
 /// Position a text run's bounding box inside a leaf's arranged rect per

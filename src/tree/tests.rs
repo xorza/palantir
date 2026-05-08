@@ -371,7 +371,7 @@ fn widget_id_does_not_affect_hash() {
 
 #[test]
 fn changing_layout_property_changes_hash() {
-    use crate::layout::types::visibility::Visibility;
+    use crate::tree::visibility::Visibility;
     type Build = fn(&mut Ui) -> NodeId;
     let cases: &[(&str, Build, Build)] = &[
         (

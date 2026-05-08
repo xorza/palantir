@@ -1,7 +1,7 @@
 //! Per-NodeId record stored in `Tree`'s SoA arena.
 
 use crate::layout::types::span::Span;
-use crate::tree::element::{LayoutCore, PaintAttrs};
+use crate::tree::element::{LayoutCore, NodeFlags};
 use crate::tree::widget_id::WidgetId;
 use soa_rs::Soars;
 
@@ -30,5 +30,5 @@ pub(crate) struct NodeRecord {
     pub layout: LayoutCore,
     /// 1-byte packed paint/input flags (sense / disabled / clip /
     /// focusable). Read by cascade / encoder / hit-test.
-    pub attrs: PaintAttrs,
+    pub attrs: NodeFlags,
 }
