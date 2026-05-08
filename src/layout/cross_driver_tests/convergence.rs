@@ -17,6 +17,7 @@
 use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::support::testing::{new_ui_text, ui_with_text};
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
@@ -93,9 +94,9 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
             .node;
         ui.end_frame();
 
-        let row = ui.layout.result.rect[row_node.index()];
-        let left = ui.layout.result.rect[left_node.unwrap().index()];
-        let right = ui.layout.result.rect[right_node.unwrap().index()];
+        let row = ui.layout.results[Layer::Main as usize].rect[row_node.index()];
+        let left = ui.layout.results[Layer::Main as usize].rect[left_node.unwrap().index()];
+        let right = ui.layout.results[Layer::Main as usize].rect[right_node.unwrap().index()];
 
         // The right cell's intrinsic_min along X is the Fixed
         // descendant's 180 + the cell's 24 padding = 204. When the

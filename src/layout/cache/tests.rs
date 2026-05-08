@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey};
 use crate::primitives::{color::Color, size::Size};
 use crate::support::testing::{begin, ui_at};
+use crate::tree::Layer;
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
@@ -249,9 +250,9 @@ fn subtree_skip_restores_descendant_available_q() {
         });
     };
     run_frame(&mut ui, build);
-    let n = ui.tree.records.len();
+    let n = ui.forest.tree(Layer::Main).records.len();
     let cold: Vec<_> = (0..n)
-        .map(|i| ui.layout.result.available_q(NodeId(i as u32)))
+        .map(|i| ui.layout.results[Layer::Main as usize].available_q(NodeId(i as u32)))
         .collect();
     // Cold frame must have populated every descendant — every slot is
     // `Some(real_value)`, never `None` (the UNSET frame-init sentinel).
@@ -262,7 +263,7 @@ fn subtree_skip_restores_descendant_available_q() {
 
     run_frame(&mut ui, build);
     let warm: Vec<_> = (0..n)
-        .map(|i| ui.layout.result.available_q(NodeId(i as u32)))
+        .map(|i| ui.layout.results[Layer::Main as usize].available_q(NodeId(i as u32)))
         .collect();
     assert_eq!(
         cold, warm,
@@ -283,12 +284,12 @@ fn subtree_skip_preserves_descendant_rects() {
         });
     };
     run_frame(&mut ui, build);
-    let n = ui.tree.records.len();
-    let layout1 = &ui.layout.result;
+    let n = ui.forest.tree(Layer::Main).records.len();
+    let layout1 = &ui.layout.results[Layer::Main as usize];
     let rects1: Vec<_> = (0..n).map(|i| layout1.rect[i]).collect();
 
     run_frame(&mut ui, build);
-    let layout2 = &ui.layout.result;
+    let layout2 = &ui.layout.results[Layer::Main as usize];
     let rects2: Vec<_> = (0..n).map(|i| layout2.rect[i]).collect();
     assert_eq!(
         rects1, rects2,

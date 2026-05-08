@@ -47,6 +47,23 @@ pub(crate) struct SubtreeRollups {
     pub(crate) has_grid: fixedbitset::FixedBitSet,
 }
 
+impl SubtreeRollups {
+    /// Reset the *hash* columns and size them for `n` records. `node`
+    /// is cleared with reserved capacity (filled by appending during
+    /// `compute_node_hashes`); `subtree` is cleared and resized with
+    /// default values (written by indexed assignment in
+    /// `compute_subtree_hashes`'s reverse pre-order walk). `has_grid`
+    /// is *not* touched here — its lifecycle is owned by recording
+    /// (cleared at `begin_frame`, populated by `open_node`/`close_node`,
+    /// permuted by `reorder_records`).
+    pub(crate) fn reset_hashes_for(&mut self, n: usize) {
+        self.node.clear();
+        self.node.reserve(n);
+        self.subtree.clear();
+        self.subtree.resize_with(n, NodeHash::default);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::common::hash::Hasher;

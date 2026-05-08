@@ -11,6 +11,7 @@ use crate::layout::types::{
 };
 use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
 use crate::support::testing::{begin, encode_cmds, encode_cmds_filtered, ui_at};
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::theme::{Background, Surface};
@@ -307,7 +308,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
 
     // Mask geometry: encoded rect is the panel's layout rect deflated
     // by stroke.width=2; each corner radius is reduced by the same.
-    let panel_rect = ui.layout.result.rect[panel_node.unwrap().index()];
+    let panel_rect = ui.layout.results[Layer::Main as usize].rect[panel_node.unwrap().index()];
     let expected_rect = panel_rect.deflated_by(Spacing::all(2.0));
     let start = cmds.starts[rounded_idx];
     let payload: PushClipRoundedPayload = cmds.read(start);
@@ -1020,8 +1021,8 @@ fn encode_cache_hits_on_damage_filtered_frame_without_writing() {
     let off_screen = Rect::new(10_000.0, 10_000.0, 10.0, 10.0);
     let viewport = ui.display.logical_rect();
     ui.frontend.encoder.encode(
-        &ui.tree,
-        &ui.layout.result,
+        &ui.forest,
+        &ui.layout.results,
         &ui.cascades.result,
         Some(off_screen),
         viewport,

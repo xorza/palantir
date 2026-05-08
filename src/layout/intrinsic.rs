@@ -193,6 +193,7 @@ mod tests {
     use super::*;
     use crate::Ui;
     use crate::layout::types::{display::Display, sizing::Sizing};
+    use crate::tree::Layer;
     use crate::tree::element::Configure;
     use crate::widgets::{panel::Panel, text::Text};
     use glam::UVec2;
@@ -221,7 +222,8 @@ mod tests {
         ui.end_frame();
 
         let child = ui
-            .tree
+            .forest
+            .tree(Layer::Main)
             .children(root)
             .map(|c| c.id)
             .next()
@@ -253,15 +255,25 @@ mod tests {
             .node;
         ui.end_frame();
 
-        let child = ui.tree.children(root).map(|c| c.id).next().unwrap();
+        let child = ui
+            .forest
+            .tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id)
+            .next()
+            .unwrap();
         let slot = LenReq::MinContent.slot(Axis::X);
 
         const SENTINEL: f32 = 1234.5;
         ui.layout.scratch.intrinsics[child.index()][slot] = SENTINEL;
 
-        let v = ui
-            .layout
-            .intrinsic(&ui.tree, child, Axis::X, LenReq::MinContent, &mut ui.text);
+        let v = ui.layout.intrinsic(
+            ui.forest.tree(Layer::Main),
+            child,
+            Axis::X,
+            LenReq::MinContent,
+            &mut ui.text,
+        );
         assert_eq!(
             v, SENTINEL,
             "cache hit must return the stored value verbatim, not recompute"
@@ -293,15 +305,19 @@ mod tests {
             entry[slot] = f32::NAN;
         }
 
-        let _ = ui
-            .layout
-            .intrinsic(&ui.tree, root, Axis::X, LenReq::MaxContent, &mut ui.text);
+        let _ = ui.layout.intrinsic(
+            ui.forest.tree(Layer::Main),
+            root,
+            Axis::X,
+            LenReq::MaxContent,
+            &mut ui.text,
+        );
 
         assert!(
             !ui.layout.scratch.intrinsics[root.index()][slot].is_nan(),
             "root slot must be cached"
         );
-        for c in ui.tree.children(root).map(|c| c.id) {
+        for c in ui.forest.tree(Layer::Main).children(root).map(|c| c.id) {
             assert!(
                 !ui.layout.scratch.intrinsics[c.index()][slot].is_nan(),
                 "child {} slot must be cached after parent query",

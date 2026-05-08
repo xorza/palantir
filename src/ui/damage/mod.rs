@@ -19,8 +19,9 @@
 use crate::primitives::rect::Rect;
 #[cfg(test)]
 use crate::tree::NodeId;
+use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
-use crate::tree::{Tree, node_hash::NodeHash};
+use crate::tree::{Layer, node_hash::NodeHash};
 use crate::ui::cascade::CascadeResult;
 use rustc_hash::FxHashMap;
 
@@ -108,58 +109,53 @@ impl Damage {
     /// resize-to-zero), but cheap to handle.
     pub(crate) fn compute(
         &mut self,
-        tree: &Tree,
+        forest: &Forest,
         cascades: &CascadeResult,
         removed: &[WidgetId],
         surface: Rect,
     ) -> DamagePaint {
-        // Surface change ⇒ swapchain reconfigure ⇒ backbuffer recreate
-        // on the next `submit`, which forces `LoadOp::Clear`. The
-        // encoder must match: produce a full paint (damage = None)
-        // even when no widgets are dirty, so the freshly-cleared
-        // backbuffer is fully repainted instead of left as clear color
-        // outside a tiny damage scissor. Roll prev forward and bail.
         let surface_changed = self.prev_surface != Some(surface);
         self.prev_surface = Some(surface);
         if surface_changed {
-            // Stale rects from the prior surface would skew the next
-            // frame's diff; full repaint reseeds prev from scratch below.
             self.prev.clear();
         }
         #[cfg(test)]
         self.dirty.clear();
         let mut acc: Option<Rect> = None;
 
-        let cascade_rows = &cascades.rows;
-        let n = tree.records.len();
-        let widget_ids = tree.records.widget_id();
-        for i in 0..n {
-            let wid = widget_ids[i];
-            let curr_rect = cascade_rows[i].screen_rect;
-            let curr_hash = tree.rollups.node[i];
-            let curr = NodeSnapshot {
-                rect: curr_rect,
-                hash: curr_hash,
-            };
+        for layer in Layer::PAINT_ORDER {
+            let tree = forest.tree(layer);
+            let rows = cascades.rows_for(layer);
+            let n = tree.records.len();
+            let widget_ids = tree.records.widget_id();
+            for i in 0..n {
+                let wid = widget_ids[i];
+                let curr_rect = rows[i].screen_rect;
+                let curr_hash = tree.rollups.node[i];
+                let curr = NodeSnapshot {
+                    rect: curr_rect,
+                    hash: curr_hash,
+                };
 
-            let dirty = match self.prev.insert(wid, curr) {
-                None => {
-                    extend(&mut acc, curr_rect);
-                    true
+                let dirty = match self.prev.insert(wid, curr) {
+                    None => {
+                        extend(&mut acc, curr_rect);
+                        true
+                    }
+                    Some(snap) if snap.hash == curr_hash && snap.rect == curr_rect => false,
+                    Some(snap) => {
+                        extend(&mut acc, snap.rect);
+                        extend(&mut acc, curr_rect);
+                        true
+                    }
+                };
+                #[cfg(test)]
+                if dirty {
+                    self.dirty.push(NodeId(i as u32));
                 }
-                Some(snap) if snap.hash == curr_hash && snap.rect == curr_rect => false,
-                Some(snap) => {
-                    extend(&mut acc, snap.rect);
-                    extend(&mut acc, curr_rect);
-                    true
-                }
-            };
-            #[cfg(test)]
-            if dirty {
-                self.dirty.push(NodeId(i as u32));
+                #[cfg(not(test))]
+                let _ = dirty;
             }
-            #[cfg(not(test))]
-            let _ = dirty;
         }
 
         // Evict last-frame snapshots for removed widgets; their rect

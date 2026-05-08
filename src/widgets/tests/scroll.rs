@@ -4,6 +4,7 @@ use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::support::testing::{ui_at, under_outer};
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
 use crate::widgets::frame::Frame;
@@ -257,8 +258,8 @@ fn scroll_records_content_extent() {
                 }
             }
         });
-        let rect = ui.layout.result.rect[scroll_node.index()];
-        let content = ui.layout.result.scroll_content[scroll_node.index()];
+        let rect = ui.layout.results[Layer::Main as usize].rect[scroll_node.index()];
+        let content = ui.layout.results[Layer::Main as usize].scroll_content[scroll_node.index()];
         assert_eq!(content, *expected, "case: {label} content");
         // Viewport honors the Scroll's Fixed size, ignoring overflow content.
         let want_view = match axis {
@@ -333,6 +334,7 @@ mod bars {
     use crate::layout::types::sizing::Sizing;
     use crate::shape::Shape;
     use crate::support::testing::{shapes_of, ui_at};
+    use crate::tree::Layer;
     use crate::tree::NodeId;
     use crate::tree::element::Configure;
     use crate::tree::widget_id::WidgetId;
@@ -469,7 +471,8 @@ mod bars {
         build(&mut ui);
         let scroll_id = WidgetId::from_hash("scroll");
         let idx = ui
-            .tree
+            .forest
+            .tree(Layer::Main)
             .records
             .widget_id()
             .iter()
@@ -479,7 +482,7 @@ mod bars {
     }
 
     fn count_positioned(ui: &Ui, node: NodeId) -> usize {
-        shapes_of(&ui.tree, node)
+        shapes_of(ui.forest.tree(Layer::Main), node)
             .filter(|s| {
                 matches!(
                     s,
@@ -718,7 +721,7 @@ mod bars {
         });
         let theme = theme();
         let expected_x = 200.0 - theme.width;
-        let overlays: Vec<_> = shapes_of(&ui.tree, node)
+        let overlays: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), node)
             .filter_map(|s| match s {
                 Shape::RoundedRect {
                     local_rect: Some(rect),
@@ -853,7 +856,7 @@ mod bars {
         // gap is the empty strip between content and bar.
         let inner = 200.0 - theme.width - theme.gap;
         let outer_far = 200.0 - theme.width; // bar.cross_pos
-        let overlays: Vec<_> = shapes_of(&ui.tree, node)
+        let overlays: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), node)
             .filter_map(|s| match s {
                 Shape::RoundedRect {
                     local_rect: Some(rect),

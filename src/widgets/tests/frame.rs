@@ -2,6 +2,7 @@ use crate::layout::types::{sense::Sense, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::support::testing::{click_at, shapes_of, ui_at};
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, panel::Panel};
@@ -28,14 +29,21 @@ fn frame_paints_a_single_rounded_rect() {
     ui.end_frame();
 
     // Chrome lives in `Tree::chrome_table`, not in the shape stream.
-    assert!(shapes_of(&ui.tree, frame_node.unwrap()).next().is_none());
     assert!(
-        ui.tree.chrome_for(frame_node.unwrap()).is_some(),
+        shapes_of(ui.forest.tree(Layer::Main), frame_node.unwrap())
+            .next()
+            .is_none()
+    );
+    assert!(
+        ui.forest
+            .tree(Layer::Main)
+            .chrome_for(frame_node.unwrap())
+            .is_some(),
         "frame chrome recorded in chrome table",
     );
 
     // Default sense is None — frame is not a hit-test target.
-    let r = ui.layout.result.rect[frame_node.unwrap().index()];
+    let r = ui.layout.results[Layer::Main as usize].rect[frame_node.unwrap().index()];
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);
 }

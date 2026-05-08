@@ -9,6 +9,7 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::support::testing::{encode_cmds, ui_with_text};
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
@@ -99,7 +100,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
             });
         ui.end_frame();
 
-        let layout = &ui.layout.result;
+        let layout = &ui.layout.results[Layer::Main as usize];
         let lr = layout.rect[left.unwrap().index()];
         let rr = layout.rect[right.unwrap().index()];
         assert!(lr.size.w > 0.0, "case: {label_id} left col width");
@@ -176,7 +177,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
         });
     ui.end_frame();
 
-    let layout = &ui.layout.result;
+    let layout = &ui.layout.results[Layer::Main as usize];
     let l1 = layout.rect[hug_left.unwrap().index()];
     let r1 = layout.rect[hug_right.unwrap().index()];
     let l2 = layout.rect[prop_label.unwrap().index()];

@@ -1,6 +1,7 @@
 use super::{AxisScratch, resolve_axis};
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::support::testing::ui_at;
+use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel};
 use glam::UVec2;
@@ -20,9 +21,14 @@ fn grid_fixed_and_fill_columns_split_remainder() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let left = ui.layout.result.rect[kids[0].index()];
-    let right = ui.layout.result.rect[kids[1].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let left = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+    let right = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
     assert_eq!(left.size.w, 120.0);
     assert_eq!(left.min.x, 0.0);
     assert_eq!(right.size.w, 280.0);
@@ -61,10 +67,15 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let short_btn = ui.layout.result.rect[kids[0].index()];
-    let long_btn = ui.layout.result.rect[kids[1].index()];
-    let body = ui.layout.result.rect[kids[2].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let short_btn = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+    let long_btn = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
+    let body = ui.layout.results[Layer::Main as usize].rect[kids[2].index()];
     // Hug col = max(40, 80) = 80 → x boundary at 80.
     assert_eq!(body.min.x, 80.0);
     assert_eq!(body.size.w, 320.0);
@@ -85,9 +96,24 @@ fn grid_fill_weights_split_remainder_proportionally() {
         })
         .node;
     ui.end_frame();
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    assert_eq!(ui.layout.result.rect[kids[0].index()].size.w, 100.0);
-    assert_eq!(ui.layout.result.rect[kids[1].index()].size.w, 300.0);
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[0].index()]
+            .size
+            .w,
+        100.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[1].index()]
+            .size
+            .w,
+        300.0
+    );
 }
 
 #[test]
@@ -105,9 +131,24 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
         })
         .node;
     ui.end_frame();
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    assert_eq!(ui.layout.result.rect[kids[0].index()].size.w, 200.0);
-    assert_eq!(ui.layout.result.rect[kids[1].index()].size.w, 200.0);
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[0].index()]
+            .size
+            .w,
+        200.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[1].index()]
+            .size
+            .w,
+        200.0
+    );
 }
 
 #[test]
@@ -124,9 +165,24 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
         })
         .node;
     ui.end_frame();
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    assert_eq!(ui.layout.result.rect[kids[0].index()].size.w, 150.0);
-    assert_eq!(ui.layout.result.rect[kids[1].index()].size.w, 250.0);
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[0].index()]
+            .size
+            .w,
+        150.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[1].index()]
+            .size
+            .w,
+        250.0
+    );
 }
 
 #[test]
@@ -168,9 +224,14 @@ fn grid_span_covers_multiple_tracks_with_gap() {
             .node;
         ui.end_frame();
 
-        let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-        let header = ui.layout.result.rect[kids[0].index()];
-        let body = ui.layout.result.rect[kids[1].index()];
+        let kids: Vec<_> = ui
+            .forest
+            .tree(Layer::Main)
+            .children(root)
+            .map(|c| c.id)
+            .collect();
+        let header = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+        let body = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
         // (primary, secondary) → (x, y) when not swapped; (y, x) when swapped.
         let (h_pri_min, h_pri_size, h_sec_size) = if *swap {
             (header.min.y, header.size.h, header.size.w)
@@ -216,7 +277,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
         })
         .node;
     ui.end_frame();
-    let r = ui.layout.result.rect[grid_node.unwrap().index()];
+    let r = ui.layout.results[Layer::Main as usize].rect[grid_node.unwrap().index()];
     assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
     assert_eq!(r.size.h, 40.0);
 }
@@ -242,8 +303,13 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
         })
         .node;
     ui.end_frame();
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let r = ui.layout.result.rect[kids[0].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let r = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
     assert_eq!(r.size.w, 20.0);
     assert_eq!(r.size.h, 20.0);
     assert_eq!(r.min.x, 80.0);
@@ -300,9 +366,14 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
         .node;
     ui.end_frame();
 
-    let kids: Vec<_> = ui.tree.children(root).map(|c| c.id).collect();
-    let big = ui.layout.result.rect[kids[0].index()];
-    let corner = ui.layout.result.rect[kids[1].index()];
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
+    let big = ui.layout.results[Layer::Main as usize].rect[kids[0].index()];
+    let corner = ui.layout.results[Layer::Main as usize].rect[kids[1].index()];
 
     assert_eq!((big.min.x, big.min.y), (0.0, 0.0));
     assert_eq!((big.size.w, big.size.h), (110.0, 110.0));
@@ -350,11 +421,11 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
         });
     ui.end_frame();
 
-    let r = ui.layout.result.rect[grid_node.unwrap().index()];
+    let r = ui.layout.results[Layer::Main as usize].rect[grid_node.unwrap().index()];
     assert_eq!(r.size.w, 0.0);
     assert_eq!(r.size.h, 0.0);
 
-    let ghost = ui.layout.result.rect[ghost_node.unwrap().index()];
+    let ghost = ui.layout.results[Layer::Main as usize].rect[ghost_node.unwrap().index()];
     assert_eq!(ghost.size.w, 0.0);
     assert_eq!(ghost.size.h, 0.0);
 }
@@ -410,12 +481,29 @@ fn grid_multi_row_hug_heights_resolve_independently() {
         });
     ui.end_frame();
 
-    assert_eq!(ui.layout.result.rect[kids[0].index()].size.h, 10.0);
-    assert_eq!(ui.layout.result.rect[kids[1].index()].size.h, 80.0);
-    assert_eq!(ui.layout.result.rect[kids[2].index()].size.h, 30.0);
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[0].index()]
+            .size
+            .h,
+        10.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[1].index()]
+            .size
+            .h,
+        80.0
+    );
+    assert_eq!(
+        ui.layout.results[Layer::Main as usize].rect[kids[2].index()]
+            .size
+            .h,
+        30.0
+    );
     // Grid hugs to sum + (n-1)*0 (no row gap set) = 120.
     assert_eq!(
-        ui.layout.result.rect[grid_node.unwrap().index()].size.h,
+        ui.layout.results[Layer::Main as usize].rect[grid_node.unwrap().index()]
+            .size
+            .h,
         120.0
     );
 }
