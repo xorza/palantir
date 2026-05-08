@@ -258,8 +258,8 @@ fn scroll_records_content_extent() {
                 }
             }
         });
-        let rect = ui.layout.results[Layer::Main as usize].rect[scroll_node.index()];
-        let content = ui.layout.results[Layer::Main as usize].scroll_content[scroll_node.index()];
+        let rect = ui.layout.result[Layer::Main].rect[scroll_node.index()];
+        let content = ui.layout.result[Layer::Main].scroll_content[scroll_node.index()];
         assert_eq!(content, *expected, "case: {label} content");
         // Viewport honors the Scroll's Fixed size, ignoring overflow content.
         let want_view = match axis {

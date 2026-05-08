@@ -1,18 +1,17 @@
 use super::cmd_buffer::RenderCmdBuffer;
-use crate::layout::result::LayoutResult;
+use crate::layout::result::{LayerResult, LayoutResult};
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
 use crate::shape::Shape;
 use crate::tree::forest::Forest;
-use crate::tree::{Layer, NodeId, Tree, TreeItem};
+use crate::tree::{NodeId, Tree, TreeItem};
 use crate::ui::cascade::{Cascade, CascadeResult};
-use strum::EnumCount as _;
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU
 /// work, no scale/snap math — that lives in the backend's process
-/// step. Pure function over `(&Tree, &LayoutResult, &Cascades)`, so
+/// step. Pure function over `(&Tree, &LayerResult, &Cascades)`, so
 /// the same call works in unit tests with no device. Reads
 /// invisibility cascade from `Cascades` so encoder and hit-index
 /// can't drift.
@@ -36,14 +35,14 @@ impl Encoder {
     pub(crate) fn encode(
         &mut self,
         forest: &Forest,
-        results: &[LayoutResult; Layer::COUNT],
+        results: &LayoutResult,
         cascades: &CascadeResult,
         damage_filter: Option<Rect>,
         viewport: Rect,
     ) -> &RenderCmdBuffer {
         self.cmds.clear();
         for (layer, tree) in forest.iter_paint_order() {
-            let layout = &results[layer as usize];
+            let layout = &results[layer];
             let rows = cascades.rows_for(layer);
             for root in &tree.roots {
                 encode_node(
@@ -68,7 +67,7 @@ impl Encoder {
 /// increments it after this function emits a text run.
 fn emit_one_shape(
     tree: &Tree,
-    layout: &LayoutResult,
+    layout: &LayerResult,
     id: NodeId,
     owner_rect: Rect,
     shape: &Shape,
@@ -132,7 +131,7 @@ fn emit_one_shape(
 
 fn encode_node(
     tree: &Tree,
-    layout: &LayoutResult,
+    layout: &LayerResult,
     rows: &[Cascade],
     damage_filter: Option<Rect>,
     viewport: Rect,

@@ -1,15 +1,17 @@
 use crate::layout::types::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
-use crate::tree::Tree;
+use crate::tree::{Layer, Tree};
+use std::ops::{Index, IndexMut};
+use strum::EnumCount as _;
 
-/// Per-frame layout *output* — strictly the state read after the layout
-/// pass by the encoder + hit-index. Intermediate scratch (desired
-/// sizes, grid track hugs) lives on `LayoutScratch` directly. SoA
-/// columns indexed by `NodeId.0`. Capacity is reused across frames via
+/// Per-layer layout output — the SoA columns the encoder + hit-index
+/// read after the layout pass. Intermediate scratch (desired sizes,
+/// grid track hugs) lives on `LayoutScratch` directly. SoA columns
+/// indexed by `NodeId.0`. Capacity is reused across frames via
 /// `resize_for`.
 #[derive(Default)]
-pub(crate) struct LayoutResult {
+pub(crate) struct LayerResult {
     pub(crate) rect: Vec<Rect>,
     /// Flat per-frame buffer of shaped text runs. Grows during the
     /// measure pass: each `Shape::Text` on each leaf appends one
@@ -28,6 +30,31 @@ pub(crate) struct LayoutResult {
     pub(crate) scroll_content: Vec<Size>,
 }
 
+/// Per-frame layout output across all layers. Wraps a fixed-size
+/// `[LayerResult; Layer::COUNT]` so callers index by `Layer` directly
+/// (`result[Layer::Main]`) instead of casting through `usize`. Returned
+/// by `LayoutEngine::run`; the encoder, cascade, hit-index, and tests
+/// all read it.
+#[derive(Default)]
+pub(crate) struct LayoutResult {
+    pub(crate) layers: [LayerResult; Layer::COUNT],
+}
+
+impl Index<Layer> for LayoutResult {
+    type Output = LayerResult;
+    #[inline]
+    fn index(&self, layer: Layer) -> &LayerResult {
+        &self.layers[layer as usize]
+    }
+}
+
+impl IndexMut<Layer> for LayoutResult {
+    #[inline]
+    fn index_mut(&mut self, layer: Layer) -> &mut LayerResult {
+        &mut self.layers[layer as usize]
+    }
+}
+
 /// Result of shaping one `Shape::Text` during the measure pass. `Tree`
 /// records only the authoring inputs; this is the layout-side derived state.
 #[derive(Clone, Copy, Debug)]
@@ -36,7 +63,7 @@ pub(crate) struct ShapedText {
     pub key: TextCacheKey,
 }
 
-impl LayoutResult {
+impl LayerResult {
     pub(crate) fn resize_for(&mut self, tree: &Tree) {
         let n = tree.records.len();
         self.rect.clear();

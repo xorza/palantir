@@ -15,7 +15,6 @@ use crate::ui::state::StateMap;
 use crate::widgets::Response;
 use crate::widgets::theme::{ScrollbarTheme, Surface};
 use glam::Vec2;
-use strum::EnumCount as _;
 
 /// One scroll widget recorded this frame: the stable `WidgetId` keying
 /// its [`ScrollState`] row, the layer it was recorded into, and the
@@ -74,15 +73,10 @@ impl ScrollRegistry {
     /// post-arrange / pre-cascade so next frame's record clamps with
     /// up-to-date numbers; the current frame's pan already used last
     /// frame's clamp.
-    pub(crate) fn refresh(
-        &self,
-        forest: &Forest,
-        results: &[LayoutResult; Layer::COUNT],
-        state: &mut StateMap,
-    ) {
+    pub(crate) fn refresh(&self, forest: &Forest, results: &LayoutResult, state: &mut StateMap) {
         for s in self.nodes.iter().copied() {
             let tree = forest.tree(s.layer);
-            let layout = &results[s.layer as usize];
+            let layout = &results[s.layer];
             assert!(
                 s.node.index() < layout.rect.len(),
                 "scroll registry entry references node {} past tree length {}",

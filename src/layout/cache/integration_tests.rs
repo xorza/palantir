@@ -33,7 +33,7 @@ fn assert_warm_rects_match_cold(
     ui.end_frame();
     let cold: Vec<_> = cold_nodes
         .iter()
-        .map(|n| ui.layout.results[Layer::Main as usize].rect[n.index()])
+        .map(|n| ui.layout.result[Layer::Main].rect[n.index()])
         .collect();
 
     begin(ui, size);
@@ -42,7 +42,7 @@ fn assert_warm_rects_match_cold(
     ui.end_frame();
     let warm: Vec<_> = warm_nodes
         .iter()
-        .map(|n| ui.layout.results[Layer::Main as usize].rect[n.index()])
+        .map(|n| ui.layout.result[Layer::Main].rect[n.index()])
         .collect();
 
     assert_eq!(cold, warm, "{msg}");
@@ -331,7 +331,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         ui.end_frame();
         let warm_rects: Vec<_> = warm_nodes
             .iter()
-            .map(|n| ui.layout.results[Layer::Main as usize].rect[n.index()])
+            .map(|n| ui.layout.result[Layer::Main].rect[n.index()])
             .collect();
 
         crate::support::internals::clear_measure_cache(&mut ui);
@@ -341,7 +341,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         ui.end_frame();
         let cold_rects: Vec<_> = cold_nodes
             .iter()
-            .map(|n| ui.layout.results[Layer::Main as usize].rect[n.index()])
+            .map(|n| ui.layout.result[Layer::Main].rect[n.index()])
             .collect();
 
         assert_eq!(

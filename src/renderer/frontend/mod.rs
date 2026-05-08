@@ -22,11 +22,9 @@ use crate::primitives::rect::Rect;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::tree::Layer;
 use crate::tree::forest::Forest;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
-use strum::EnumCount as _;
 
 /// One frame's CPU output: the composed render buffer and what the
 /// GPU should do with it. Returned from [`Ui::end_frame`], consumed
@@ -85,7 +83,7 @@ impl Frontend {
     pub(crate) fn build(
         &mut self,
         forest: &Forest,
-        results: &[LayoutResult; Layer::COUNT],
+        results: &LayoutResult,
         cascades: &CascadeResult,
         damage_filter: Option<Rect>,
         display: &Display,

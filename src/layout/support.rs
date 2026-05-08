@@ -141,7 +141,7 @@ pub(crate) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
     };
     let start = node.index();
     let end = (tree.records.subtree_end()[start]) as usize;
-    layout.results[layout.active_layer as usize].rect[start..end].fill(zero);
+    layout.result[layout.active_layer].rect[start..end].fill(zero);
 }
 
 /// Max over non-collapsed children's outer intrinsic on `axis`. Used by

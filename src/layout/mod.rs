@@ -16,8 +16,6 @@ use crate::tree::element::{LayoutCore, LayoutMode, ScrollAxes};
 use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
 use crate::tree::{Layer, NodeId, Tree};
-use std::array;
-use strum::EnumCount as _;
 
 pub(crate) mod axis;
 pub(crate) mod cache;
@@ -80,35 +78,22 @@ impl LayoutScratch {
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
 ///   Cleared at the top of every `run`.
-/// - `results` — per-frame output (rects + text shapes), one slot per
-///   `Layer`. Internal measure/arrange code reads/writes
-///   `self.results[self.active_layer as usize]`; outside `run` every
+/// - `result` — per-frame output, one [`LayerResult`] slot per `Layer`,
+///   indexed via `result[layer]`. Internal measure/arrange code
+///   reads/writes `self.result[self.active_layer]`; outside `run` every
 ///   slot is the finalized output for its layer.
-/// - `active_layer` — which layer's result the recursive measure/arrange
+/// - `active_layer` — which layer's slot the recursive measure/arrange
 ///   currently writes to. Set at the top of each iteration in `run`;
 ///   between/outside `run` invocations its value is whatever the last
 ///   iteration left, but no recursive code runs there to read it.
 /// - `cache` — cross-frame measure cache. See [`cache`] and
 ///   `src/layout/measure-cache.md`.
+#[derive(Default)]
 pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
-    /// Per-layer finalized results. While `run` iterates layers, the
-    /// active layer's slot is the recursive code's write target via
-    /// `self.active_layer`.
-    pub(crate) results: [LayoutResult; Layer::COUNT],
+    pub(crate) result: LayoutResult,
     pub(crate) active_layer: Layer,
     pub(crate) cache: MeasureCache,
-}
-
-impl Default for LayoutEngine {
-    fn default() -> Self {
-        Self {
-            scratch: LayoutScratch::default(),
-            results: array::from_fn(|_| LayoutResult::default()),
-            active_layer: Layer::default(),
-            cache: MeasureCache::default(),
-        }
-    }
 }
 
 /// Quantize wrap target to ~0.1 logical px. Coarse enough to absorb
@@ -193,13 +178,9 @@ impl LayoutEngine {
 
     /// Run measure + arrange for every root in every layer's tree.
     /// Iterates trees in `Layer::PAINT_ORDER`; each tree's output
-    /// lands in `self.results[layer as usize]` directly. Recursive
+    /// lands in `self.result[layer]` directly. Recursive
     /// measure/arrange reads the active slot via `self.active_layer`.
-    pub(crate) fn run(
-        &mut self,
-        forest: &Forest,
-        text: &mut TextMeasurer,
-    ) -> &[LayoutResult; Layer::COUNT] {
+    pub(crate) fn run(&mut self, forest: &Forest, text: &mut TextMeasurer) -> &LayoutResult {
         assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
@@ -207,7 +188,7 @@ impl LayoutEngine {
         for layer in Layer::PAINT_ORDER {
             let tree = forest.tree(layer);
             self.active_layer = layer;
-            self.results[layer as usize].resize_for(tree);
+            self.result[layer].resize_for(tree);
             if !tree.is_empty() {
                 self.scratch.resize_for(tree);
                 for slot in &tree.roots {
@@ -226,7 +207,7 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
-        &self.results
+        &self.result
     }
 
     /// Bottom-up measure dispatcher. Children call back via this method to
@@ -266,17 +247,17 @@ impl LayoutEngine {
             // Append the snapshot's flat text-shape range to the live
             // per-frame buffer, then rebase its subtree-local spans by
             // `dest_start` into the per-node `text_spans` column.
-            let dest_start = self.results[self.active_layer as usize].text_shapes.len() as u32;
-            self.results[self.active_layer as usize]
+            let dest_start = self.result[self.active_layer].text_shapes.len() as u32;
+            self.result[self.active_layer]
                 .text_shapes
                 .extend_from_slice(hit.arenas.text_shapes);
             for (i, snap_span) in hit.arenas.text_spans.iter().enumerate() {
-                self.results[self.active_layer as usize].text_spans[curr_start + i] = Span {
+                self.result[self.active_layer].text_spans[curr_start + i] = Span {
                     start: dest_start + snap_span.start,
                     len: snap_span.len,
                 };
             }
-            self.results[self.active_layer as usize].scroll_content[curr_start..curr_end]
+            self.result[self.active_layer].scroll_content[curr_start..curr_end]
                 .copy_from_slice(hit.arenas.scroll_content);
             // Restore per-grid hug arrays. `grid::arrange` reads
             // `LayoutEngine.scratch.grid.hugs`, populated only by
@@ -299,7 +280,7 @@ impl LayoutEngine {
         // append + nested cache-hit appends both fall inside this
         // range). Used to rebase per-node spans to subtree-local form
         // when snapshotting below.
-        let text_shapes_lo = self.results[self.active_layer as usize].text_shapes.len() as u32;
+        let text_shapes_lo = self.result[self.active_layer].text_shapes.len() as u32;
 
         let bounds = tree.bounds(node);
         let (min_size, max_size) = (bounds.min_size, bounds.max_size);
@@ -373,19 +354,18 @@ impl LayoutEngine {
             // trip. Empty spans (`Span::default()` with start=0)
             // round-trip through `saturating_sub` correctly: 0 - lo
             // = 0.
-            let text_shapes_hi = self.results[self.active_layer as usize].text_shapes.len() as u32;
+            let text_shapes_hi = self.result[self.active_layer].text_shapes.len() as u32;
             self.cache.write_subtree(
                 cache_wid,
                 cache_hash,
                 cache_avail,
                 SubtreeArenas {
                     desired: &self.scratch.desired[start..end],
-                    text_spans: &self.results[self.active_layer as usize].text_spans[start..end],
+                    text_spans: &self.result[self.active_layer].text_spans[start..end],
                     text_spans_base: text_shapes_lo,
-                    scroll_content: &self.results[self.active_layer as usize].scroll_content
-                        [start..end],
+                    scroll_content: &self.result[self.active_layer].scroll_content[start..end],
                     hugs: &self.scratch.tmp_hugs,
-                    text_shapes: &self.results[self.active_layer as usize].text_shapes
+                    text_shapes: &self.result[self.active_layer].text_shapes
                         [text_shapes_lo as usize..text_shapes_hi as usize],
                 },
             );
@@ -500,7 +480,7 @@ impl LayoutEngine {
                     ),
                     ScrollAxes::Both => zstack::measure(self, tree, node, Size::INF, text),
                 };
-                self.results[self.active_layer as usize].scroll_content[node.index()] = raw;
+                self.result[self.active_layer].scroll_content[node.index()] = raw;
                 match axes {
                     ScrollAxes::Vertical => Size::new(raw.w, 0.0),
                     ScrollAxes::Horizontal => Size::new(0.0, raw.h),
@@ -522,7 +502,7 @@ impl LayoutEngine {
         let mode = style.mode;
 
         let rendered = slot.deflated_by(style.margin);
-        self.results[self.active_layer as usize].rect[node.index()] = rendered;
+        self.result[self.active_layer].rect[node.index()] = rendered;
         let inner = rendered.deflated_by(style.padding);
 
         match mode {
@@ -554,7 +534,7 @@ impl LayoutEngine {
         available_w: f32,
         text: &mut TextMeasurer,
     ) -> Size {
-        let span_start = self.results[self.active_layer as usize].text_shapes.len() as u32;
+        let span_start = self.result[self.active_layer].text_shapes.len() as u32;
         let mut s = Size::ZERO;
         let mut ordinal: u16 = 0;
         for ts in leaf_text_shapes(tree, node) {
@@ -575,9 +555,8 @@ impl LayoutEngine {
                  widen the within-node ordinal width if this trips",
             );
         }
-        let span_len =
-            self.results[self.active_layer as usize].text_shapes.len() as u32 - span_start;
-        self.results[self.active_layer as usize].text_spans[node.index()] = Span {
+        let span_len = self.result[self.active_layer].text_shapes.len() as u32 - span_start;
+        self.result[self.active_layer].text_spans[node.index()] = Span {
             start: span_start,
             len: span_len,
         };
@@ -627,12 +606,10 @@ impl LayoutEngine {
             unbounded
         };
 
-        self.results[self.active_layer as usize]
-            .text_shapes
-            .push(ShapedText {
-                measured: result.size,
-                key: result.key,
-            });
+        self.result[self.active_layer].text_shapes.push(ShapedText {
+            measured: result.size,
+            key: result.key,
+        });
         result.size
     }
 }

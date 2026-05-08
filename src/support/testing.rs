@@ -106,7 +106,7 @@ pub(crate) fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBu
     let mut encoder = Encoder::default();
     encoder.encode(
         &ui.forest,
-        &ui.layout.results,
+        &ui.layout.result,
         &ui.cascades.result,
         filter,
         ui.display.logical_rect(),
