@@ -82,15 +82,26 @@ Each slice compiles + ships the showcase.
 - `Ui::end_frame` — single-root pluck deleted; `layout.run` is called
   with just `(&tree, &mut text)`.
 
-### 4. `Popup` widget + showcase tab
-- `Popup::anchored_to(rect: Rect, |ui| { … })` with `ClickOutside`
-  flag.
-- Anchor rect = caller-supplied screen rect (typically last-frame
-  `Response.state.rect` of the trigger). One-frame stale on first open
-  is acceptable (matches Scroll's wheel-pan posture).
-- New `examples/showcase/popup.rs`: dropdown menu, hover tooltip, and
-  a confirm modal stub.
-- Verifies: clip escape, hit-test priority, draw order across layers.
+### 4. `Popup` widget + showcase tab  ⏳ partial (dropdown only)
+- `Popup::anchored_to(rect: Rect)` with `.background`, `.padding`,
+  `.click_outside(...)` builders; `.show(ui, body)` records into
+  `Layer::Popup` via `Ui::layer`. Body is wrapped in an internal
+  `Panel::vstack` so the layer's first node opens unconditionally.
+  See `src/widgets/popup.rs`.
+- Anchor rect = caller-supplied screen rect; first frame after open
+  is one frame stale (matches Scroll's wheel-pan posture).
+- `ClickOutside::{Block, Dismiss}` enum is exposed but the dismissal
+  signal is not yet plumbed through `Response`; both modes currently
+  behave like `Block`. Wire dismissal alongside step 5/6.
+- `examples/showcase/popup.rs`: dropdown menu (button toggles
+  `MenuState.open`; popup hosts three menu-item buttons; selecting
+  one writes `last_choice` and closes the popup).
+- Tooltip + confirm-modal stubs deferred to steps 5/6 — they need
+  `Modal::show` + `Tooltip::for_widget` rather than reusing `Popup`.
+- Verifies (by inspection in showcase): clip escape (popup paints
+  outside the central tab panel's clip), hit-test priority (clicks on
+  popup items beat clicks on the trigger row underneath), draw order
+  (popup paints over the toolbar).
 
 ### 5. `Modal` click-eat leaf
 - `Modal::show(|ui| …)` records (a) a full-surface `RoundedRect` with
@@ -381,13 +392,215 @@ exclude the popup's old range, rewrite affected shape/bounds/panel
 indices, rewrite `roots[i].first_node`. `WidgetId`s are stable. The
 hash pass would run after the reorder.
 
-**Recommendation:** ship v1 (top-level only) through to step 6 with
-the awkward user pattern in showcase, then implement end-frame
-reorder when (a) showcase or a real app exposes the friction, or
-(b) sub-menus / context menus land and need to nest popups inside
-popup bodies. Don't pre-build it — the tradeoff between "current
-restriction is fine" and "reorder fixup is worth its complexity"
-needs a real workload to weigh.
+**Status:** the showcase popup tab (`examples/showcase/popup.rs`)
+records the popup inline from inside the central `Panel::show` body,
+which trips v1's top-level assert and panics on the trigger click.
+It's a pinned regression target for v2; expand the awkward two-phase
+workaround only if v2 stalls. The design below replaces the original
+"motivated when…" recommendation — we're motivated now.
+
+### v2 plan: end-frame reorder (concrete)
+
+#### Recording state with mid-recording layers
+
+After Main recording completes, with one mid-recording popup opened
+inside `Panel::show`:
+
+```
+records: [parent, mc1, mc2, popup_root, ps1, ps2, mc3, mc4]
+ends:    [parent → past mc4,
+          mc1 → mc2, mc2 → popup_root, popup_root → mc3, ps1, ps2,
+          mc3 → mc4, mc4 → past mc4]
+roots:   [(first_node=0,   layer=Main,  …),
+          (first_node=3,   layer=Popup, …)]
+shapes:  interleaved similarly — popup's shape range sits between
+         mc2's and mc3's in the flat buffer.
+```
+
+Two breakages versus v1 invariants:
+
+1. `tree.children(parent)` walks `next..ends[parent]` stepping by
+   `ends[next]`. With popup interleaved, it yields popup_root as a
+   spurious child of `parent`. Same problem in `subtree_hash` rollup
+   (`src/tree/mod.rs:296`), `Cascades::run` (`src/ui/cascade.rs:141`,
+   walks `0..n` linearly assuming pre-order = storage order),
+   `LayoutEngine::run` per-root entry points, the encoder's
+   `encode_node` (`src/renderer/frontend/encoder/mod.rs:176`), grid
+   measure/arrange (`src/layout/grid/mod.rs:344`, `:548`), and every
+   `for i in 0..n` linear scan in damage / measure-cache / encode
+   cache.
+2. `assert_recording_invariants` (`src/tree/mod.rs:320`) requires
+   roots to abut in record order with no gaps — popup at index 3
+   leaves a gap in Main's coverage [0, 3) and [6, 8).
+
+The fix: rearrange `records` (and the columns indexed by `NodeId`)
+so each root's records are contiguous in storage order and roots
+appear in layer order. Once that's true, every existing walk works
+unchanged and `0..n` regains its pre-order = storage-order property.
+
+#### Per-record root tag
+
+Add a `root_id: u16` parallel column on `Tree`, indexed by `NodeId.0`:
+
+- Stamped at `open_node` from a new recording-only field
+  `Tree::current_root_id: u16`.
+- `current_root_id` is set on each `RootSlot` push (in `open_node`
+  when `open_frames[layer]` is empty) — the root's own index in
+  `tree.roots` at push time. Saved/restored by `push_layer` /
+  `pop_layer` so a nested popup's root_id reverts to the outer
+  scope's on close.
+- `u16` matches the practical roots-per-frame ceiling (already
+  bounded by `Layer::COUNT × open scopes`); promote to `u32` if a
+  workload ever proves us wrong.
+
+`root_id` is _not_ a third hash input or a paint-time attribute —
+it's recording-only scratch. `compute_subtree_hashes` runs after the
+reorder, so hashes stay invariant of recording order.
+
+#### Reorder algorithm (in `Tree::end_frame`, before hashes)
+
+Inputs at entry: `records` (length N), `shapes` (length S), sparse
+columns, `roots` (sorted by record order), `root_id[0..N]`.
+
+1. **Stable-sort `roots` by layer.** Already done; keep position.
+2. **Build `record_perm: Vec<u32>` of length N.** Walk
+   `roots` in layer-sorted order. For each root R, scan
+   `0..N` and append every `i` where `root_id[i] == R.idx_in_roots`
+   to `record_perm`. Linear in N per root, ≤ small-constant roots,
+   so O(N · roots) ≈ O(N).
+3. **Build `inv_perm: Vec<u32>`** so `inv_perm[old_i] = new_i`.
+4. **Permute `records` (SoA columns).** For each old-`NodeRecord`
+   field (`widget_id`, `shapes`, `end`, `layout`, `attrs`), apply
+   the permutation: `new[inv_perm[old_i]] = old[old_i]`. soa-rs
+   doesn't ship a permute; do per-column with a scratch buffer
+   capacity-retained on `Tree`.
+5. **Rewrite `end[]`** post-permute: for each new record at position
+   `i`, `new_end[i] = inv_perm[old_end[i] - 1] + 1` only if every
+   old NodeId in `[i, old_end[i])` maps to a contiguous new range
+   `[i, new_end[i])`. The compaction-by-bucket guarantees this for
+   the records of a single root; and since each root's records sit
+   contiguously in the new order, descendants land contiguously.
+   Concretely: `new_end[i] = i + (old_end[old_i] - old_i)` — the
+   subtree length is preserved, only the base shifts.
+6. **Permute the shape buffer.** Walk records in new order; for
+   each new record `i` (= old record `old_i`), copy
+   `old_shapes[old_shapes_span.start..old_shapes_span.start+len]`
+   into `new_shapes`. Track the new start, write back into the
+   record's `shapes.start`. `len` carries over unchanged. One pass,
+   O(S).
+7. **Permute sparse side columns** (`bounds`, `panel`, `chrome`)
+   and the `subtree_has_grid` bitset by the same `inv_perm`.
+   Sparse columns expose `clear`/`push`/`get`; rebuild via
+   `clear()` + push in new order.
+8. **Rewrite `roots[i].first_node`** to its new position
+   (`inv_perm[old_first_node]`).
+9. **Drop `root_id`** for the frame (or leave it in place as
+   debug-only — re-stamped each `begin_frame`).
+
+After step 9 the tree looks identical to what v1 produces for the
+same final structure, so `compute_node_hashes` /
+`compute_subtree_hashes` and every downstream pass run unchanged.
+
+#### Edge cases
+
+- **Empty popup body.** `ui.layer(Popup, anchor, |_| {})` records no
+  nodes → no `RootSlot` pushed. The popup contributes zero records
+  to the reorder; `roots` only has Main. Same path as v1's "popup
+  was conditionally not opened."
+- **Nested popups.** A popup body that opens its own popup pushes a
+  third `RootSlot`. `current_root_id` save/restore on `push_layer`
+  guarantees each record gets the right tag. Reorder treats the
+  inner popup as a separate bucket; layer-order sort places it
+  after the outer popup. _Pin with a unit test._
+- **Popup recorded but never opened a node.** A `Ui::layer` scope
+  with no `open_node` inside the body never pushes a `RootSlot` — no
+  bucket, nothing to reorder. The empty layer scope is silent.
+- **`Main` as the only recorded layer.** `record_perm` becomes the
+  identity (one bucket covering all records in storage order).
+  The permutation pass should fast-path this — bail out if `roots`
+  has only the implicit Main slot.
+- **Shape order across siblings.** Each record's `shapes.start /
+  len` covers parent + descendants. Within a root's bucket, shapes
+  stay in old relative order (we walk old records in old order
+  inside each bucket). Across roots, popups' shapes move to the
+  end of `shapes`. `TreeItems` walks by `shapes.start` per record
+  — unaffected.
+- **Empty Main with popup-only frame.** A frame that records only a
+  popup (no Main root) still produces `roots = [popup_slot]`. Main
+  bucket is empty; popup bucket fills `record_perm` directly. The
+  empty-Main `assert_recording_invariants` path needs to allow a
+  zero-length Main bucket at the front (or skip the implicit-Main
+  push if no Main records existed).
+
+#### Cost
+
+- One scratch `Vec<u32>` of length N for `record_perm` and one for
+  `inv_perm` (capacity-retained on `Tree`).
+- One scratch buffer per SoA column (or one combined `Vec<NodeRecord>`
+  if soa-rs supports rebuild from a slice — TBD).
+- One scratch `Vec<Shape>` for the shape permutation.
+- O(N) work per record + O(S) for shapes + O(N) per sparse column.
+  Comparable to `compute_subtree_hashes`; should fit in the same
+  per-frame budget without showing up in a profile.
+
+#### Open questions
+
+1. **soa-rs permutation primitive.** Does soa-rs offer in-place
+   permute, or do we have to drain into per-column scratch and rebuild?
+   Affects step 4. If neither, the pragmatic path is a temporary
+   `Vec<NodeRecord>`, one rebuild per frame.
+2. **Sparse-column rebuild cost.** `bounds`/`panel`/`chrome` are
+   sparse — most leaves leave them default. Permuting via `clear()` +
+   push in new order is O(populated entries), cheaper than O(N). Pin
+   with a microbench before optimizing further.
+3. **`subtree_has_grid` bitset permutation.** `FixedBitSet` doesn't
+   permute in place. Either rebuild after compute_subtree_hashes
+   (which already walks the new layout) or accept an extra O(N)
+   bit-shuffle pass.
+4. **Should the reorder run only when a non-Main root exists?** Yes
+   — the common case is Main-only and pays the no-op fast-path. Gate
+   the pass on `roots.len() > 1 || roots[0].layer != Main`.
+5. **Debug invariant updates.** `assert_recording_invariants` runs
+   _before_ the layer sort today (`src/tree/mod.rs:244`). After v2
+   it needs to assert post-reorder — roots cover records contiguously
+   in layer order. Worth adding a pre-reorder invariant too: each
+   bucket (per root_id) is contiguous in record-order pre-order
+   (i.e. root_id only changes when a new root opens or a layer pop
+   returns to its parent's tag).
+
+#### Test plan
+
+Mirrors the `tree/tests.rs` fixtures already in place for v1 multi-
+root (top-level Main + Popup). Add fixtures that:
+
+- record `Main { mc1, mc2, Popup { ps1, ps2 }, mc3, mc4 }` and
+  assert post-`end_frame` storage order is `[parent, mc1, mc2, mc3,
+  mc4, popup_root, ps1, ps2]`.
+- assert `tree.children(parent)` yields exactly `[mc1, mc2, mc3,
+  mc4]` — no popup leak.
+- assert `subtree_hash[parent]` is invariant across "popup body
+  varies" perturbations (rollup terminates at `parent.end` which now
+  excludes popup).
+- record nested popups (`Main { Popup { Popup { … } } }`) and pin
+  the three-bucket layout.
+- pin per-frame `Main`-only fast path: with no `ui.layer` calls,
+  `record_perm` is identity and `records` storage is bit-identical
+  to a v1 run.
+- repeat the existing showcase scenario (button click → mid-record
+  popup) end-to-end through `Ui::end_frame` to confirm the showcase
+  panic is gone.
+
+#### Out of scope for v2
+
+- Cross-frame reorder caching (the reorder is cheap; redo each frame).
+- Reorder during recording (eager-at-`pop_layer`). Lazy at `end_frame`
+  is simpler and matches the "one fixup pass" doc target.
+- Restructuring `Cascades::run` to walk per-root explicitly. With
+  the reorder in place, `0..n` storage-order remains valid pre-order;
+  no change needed.
+- `Ui::layer` from inside a leaf widget. Leaves don't run a `body`
+  closure today — there's no recording window in which to call
+  `ui.layer`. Not blocked, just unreachable.
 
 ### Hit-test ordering
 
