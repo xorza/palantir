@@ -7,7 +7,4 @@
         let eater_id = WidgetId::from_hash(eater_key);
 
 - gradients, textures
-- how with autostabe id work in release
--showcase agent testing
-
-remove begin end frame or make them private
+- showcase agent testing

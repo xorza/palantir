@@ -215,9 +215,7 @@ fn bench_frame(c: &mut Criterion) {
 
     c.bench_function("frame/end_frame", |b| {
         b.iter(|| {
-            ui.begin_frame(display);
-            build_ui(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build_ui));
         });
     });
 
@@ -232,9 +230,7 @@ fn bench_frame(c: &mut Criterion) {
             let h = 640 + ((frame / 7) % 320);
             frame = frame.wrapping_add(1);
             let display = Display::from_physical(glam::UVec2::new(w, h), 2.0);
-            ui.begin_frame(display);
-            build_ui(&mut ui);
-            black_box(ui.end_frame());
+            black_box(ui.run_frame(display, build_ui));
         });
     });
 }

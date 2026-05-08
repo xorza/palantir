@@ -85,7 +85,7 @@ impl Harness {
         physical: UVec2,
         scale: f32,
         clear: Color,
-        scene: impl FnOnce(&mut Ui),
+        scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
         let target = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.visual_test.target"),
@@ -104,9 +104,9 @@ impl Harness {
             view_formats: &[],
         });
 
-        self.ui.begin_frame(Display::from_physical(physical, scale));
-        scene(&mut self.ui);
-        let frame_out = self.ui.end_frame();
+        let frame_out = self
+            .ui
+            .run_frame(Display::from_physical(physical, scale), scene);
         self.backend.submit(&target, clear, frame_out);
 
         readback(&self.device, &self.queue, &target, physical)

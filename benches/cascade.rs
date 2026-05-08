@@ -45,9 +45,7 @@ fn bench_cascade(c: &mut Criterion) {
         // Build once, end_frame once to populate layout.results, then
         // measure cascades.run in isolation.
         let mut ui = Ui::new();
-        ui.begin_frame(display);
-        build_flat(&mut ui, n);
-        let _ = ui.end_frame();
+        let _ = ui.run_frame(display, |ui| build_flat(ui, n));
 
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| {

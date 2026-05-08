@@ -108,9 +108,7 @@ where
 
 #[inline]
 fn run_frame<S: FnMut(&mut Ui)>(ui: &mut Ui, display: Display, scene: &mut S) {
-    ui.begin_frame(display);
-    scene(ui);
-    let _ = ui.end_frame();
+    let _ = ui.run_frame(display, scene);
 }
 
 fn finish_audit(
