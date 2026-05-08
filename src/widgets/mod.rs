@@ -2,6 +2,7 @@ pub(crate) mod button;
 pub(crate) mod frame;
 pub(crate) mod grid;
 pub(crate) mod panel;
+pub(crate) mod popup;
 pub(crate) mod scroll;
 pub(crate) mod text;
 pub(crate) mod text_edit;
