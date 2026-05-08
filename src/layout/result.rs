@@ -1,4 +1,3 @@
-use crate::layout::cache::{AVAIL_UNSET, AvailableKey};
 use crate::layout::types::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
@@ -20,12 +19,6 @@ pub(crate) struct LayoutResult {
     /// Per-node `Span` into `text_shapes`. Empty span (`len: 0`) for
     /// nodes that didn't shape text. Same length as `rect`.
     pub(crate) text_spans: Vec<Span>,
-    /// Per-node quantized `available` size, the dimensional half of
-    /// the cross-frame cache key. Written on every measure entry,
-    /// restored from a snapshot on cache-hit subtrees. Read by the
-    /// encode cache (and any other consumer keyed on the same
-    /// `(subtree_hash, available_q)` shape as `MeasureCache`).
-    pub(crate) available_q: Vec<AvailableKey>,
     /// Measured content extent for each `LayoutMode::Scroll{V, H, XY}`
     /// node. ScrollV stores `(max_w, sum_h + gap)`; ScrollH the mirror;
     /// ScrollXY stores `(max_w, max_h)`. Read by `Ui::end_frame` to
@@ -51,8 +44,6 @@ impl LayoutResult {
         self.text_shapes.clear();
         self.text_spans.clear();
         self.text_spans.resize(n, Span::default());
-        self.available_q.clear();
-        self.available_q.resize(n, AVAIL_UNSET);
         self.scroll_content.clear();
         self.scroll_content.resize(n, Size::ZERO);
     }

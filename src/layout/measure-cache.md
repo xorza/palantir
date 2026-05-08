@@ -20,13 +20,17 @@ Code lives in `cache/` (this directory's sibling).
   recursion. `available_q` (integer-px-quantized) gates `Hug` / `Fill`
   variance.
 - **Single-arena storage.** Three flat node-indexed arenas
-  (`desired`, `text`, `available`) shared across all snapshots, plus
-  a per-`WidgetId` map of 24-byte `ArenaSnapshot { subtree_hash,
-  nodes: Span, hugs: Span }`. Per-grid hug arrays for
-  `LayoutMode::Grid` descendants live in a separate `hugs` arena.
-  Liveness bookkeeping rides on the shared [`LiveArena`] primitive
-  (`src/common/cache_arena.rs`); the three node-indexed arenas share
-  `desired.live`, `hugs` tracks its own. In-place rewrite on same-len
+  (`desired`, `text_spans`, `scroll_content`) shared across all
+  snapshots, plus a per-`WidgetId` map of 40-byte
+  `ArenaSnapshot { subtree_hash, available_q, nodes: Span, hugs: Span,
+  text_shapes: Span }`. The dimensional cache key (`available_q`) is
+  inline on the snapshot — the validity check on `try_lookup` doesn't
+  hit a parallel arena. Per-grid hug arrays for `LayoutMode::Grid`
+  descendants live in a separate `hugs` arena; flat shaped-text runs
+  live in `text_shapes_arena`. Liveness bookkeeping rides on the
+  shared [`LiveArena`] primitive (`src/common/cache_arena.rs`); the
+  three node-indexed arenas share `nodes.live`; `hugs` and
+  `text_shapes_arena` track their own. In-place rewrite on same-len
   writes; append + mark-garbage on size changes; lazy compaction when
   `arena.len() > live × COMPACT_RATIO` (= 2) and `live > COMPACT_FLOOR`
   (= 64).
