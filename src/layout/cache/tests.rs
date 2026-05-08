@@ -298,10 +298,33 @@ fn subtree_skip_preserves_descendant_rects() {
 }
 
 #[test]
-fn quantize_available_handles_infinity() {
-    use super::quantize_available;
-    let q = quantize_available(Size::new(f32::INFINITY, 100.4));
-    assert_eq!(q, glam::IVec2::new(i32::MAX, 100));
+fn quantize_available_axis_invariants() {
+    // The `i32::MAX` sentinel for `INFINITY` is load-bearing for cache-key
+    // equality across all three caches (Measure / Encode / Compose). Pin:
+    // `INFINITY` quantizes to `i32::MAX` independently per axis, both axes
+    // together also do, and the `AVAIL_UNSET = i32::MIN` sentinel cannot
+    // collide with any legal output (inputs are non-negative; `INFINITY`
+    // sits at the opposite extreme).
+    use super::{AVAIL_UNSET, quantize_available};
+    let inf = f32::INFINITY;
+    assert_eq!(
+        quantize_available(Size::new(inf, 100.4)),
+        glam::IVec2::new(i32::MAX, 100),
+    );
+    assert_eq!(
+        quantize_available(Size::new(50.7, inf)),
+        glam::IVec2::new(51, i32::MAX),
+    );
+    assert_eq!(
+        quantize_available(Size::new(inf, inf)),
+        glam::IVec2::splat(i32::MAX),
+    );
+    assert_ne!(
+        quantize_available(Size::new(inf, inf)),
+        AVAIL_UNSET,
+        "INFINITY-quantized key must not collide with AVAIL_UNSET",
+    );
+    assert_eq!(quantize_available(Size::ZERO), glam::IVec2::ZERO);
 }
 
 #[test]

@@ -7,6 +7,19 @@
 //! iteration lets the composer fast-forward past `EnterSubtree` ranges
 //! on a compose-cache hit.
 //!
+//! Two roles in one stream. Most variants (`PushClip`, `Push/PopTransform`,
+//! `DrawRect`, `DrawText`, …) are paint ops that the composer scales,
+//! snaps, and groups into the `RenderBuffer`. The `EnterSubtree` /
+//! `ExitSubtree` pair is **not** a paint op — it's cache coordination.
+//! The encoder emits them around any subtree it considered cache-eligible
+//! so the composer can attempt a `ComposeCache::try_splice` on enter
+//! (skipping the inner cmd range on a hit) and a `write_subtree` on exit
+//! (recording the produced quads/texts/groups on a miss). The encoder
+//! has its own cache keyed on the same `(WidgetId, subtree_hash, avail)`
+//! triple, but the composer cache adds a `cascade_fp` (parent transform /
+//! scissor / DPI hash) the encoder cannot know — so the markers must
+//! stay in the cmd stream rather than collapse at encode time.
+//!
 //! Memory: a tagged-enum representation would size to its largest
 //! variant (~80 B with padding), so a sequence of
 //! `PopClip`/`PopTransform` would pay full-variant storage. Here Pops
