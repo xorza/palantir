@@ -65,9 +65,9 @@ Two options were on the table:
   frame, fanned from `SeenIds`'s removed slice along with the other
   caches.
 
-The `EnterSubtree` / `ExitSubtree` markers in `RenderCmdBuffer` stay
-— the encode cache still uses them. The composer just walks past
-both variants now.
+The `EnterSubtree` / `ExitSubtree` markers in `RenderCmdBuffer` were
+also removed when the encode cache was subsequently deleted (see
+`encode-cache.md`). They had no other consumer.
 
 ## Bring it back if
 

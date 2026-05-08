@@ -236,10 +236,6 @@ impl Composer {
                     out.quads
                         .push(Quad::new(phys_rect, fill, phys_radius, phys_stroke));
                 }
-                CmdKind::EnterSubtree | CmdKind::ExitSubtree => {
-                    // Encoder-cache markers — only the encode-side
-                    // replay path reads them. Composer skips past.
-                }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(t.rect);

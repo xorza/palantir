@@ -2,7 +2,7 @@ use crate::layout::cache::{AVAIL_UNSET, AvailableKey};
 use crate::layout::types::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
-use crate::tree::{NodeId, Tree};
+use crate::tree::Tree;
 
 /// Per-frame layout *output* — strictly the state read after the layout
 /// pass by the encoder + hit-index. Intermediate scratch (desired
@@ -55,16 +55,5 @@ impl LayoutResult {
         self.available_q.resize(n, AVAIL_UNSET);
         self.scroll_content.clear();
         self.scroll_content.resize(n, Size::ZERO);
-    }
-
-    /// Per-node quantized `available` size last passed to this node's
-    /// measure. `None` when this node was never visited by the current
-    /// frame's layout `run` (collapsed root, empty frame, or — defensively
-    /// — any future caller that reads a slot before `measure` writes it).
-    /// Read by the encode cache.
-    #[inline]
-    pub(crate) fn available_q(&self, id: NodeId) -> Option<AvailableKey> {
-        let v = self.available_q[id.index()];
-        if v == AVAIL_UNSET { None } else { Some(v) }
     }
 }

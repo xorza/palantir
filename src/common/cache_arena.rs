@@ -1,13 +1,13 @@
-//! Bookkeeping primitive shared by `MeasureCache` and `EncodeCache`:
-//! a `Vec<T>` arena paired with a `live: usize` element count, plus
-//! the compaction-trigger heuristics. Each cache holds one
-//! `LiveArena<T>` per independently-tracked element type and
-//! coordinates them at the snapshot level (the per-snapshot type and
-//! the in-place rewrite work stay cache-specific).
+//! Bookkeeping primitive used by `MeasureCache`: a `Vec<T>` arena
+//! paired with a `live: usize` element count, plus the
+//! compaction-trigger heuristics. The cache holds one `LiveArena<T>`
+//! per independently-tracked element type and coordinates them at
+//! the snapshot level (the per-snapshot type and the in-place rewrite
+//! work stay cache-specific).
 //!
 //! Multiple parallel arenas of identical length share a single live
-//! counter (e.g. encode-cache `starts` rides on `kinds.live`,
-//! measure-cache `text` and `available` ride on `desired.live`).
+//! counter (e.g. measure-cache `text` and `available` ride on
+//! `desired.live`).
 
 /// Compact when arena length exceeds `live × COMPACT_RATIO` — i.e. at
 /// least half the arena is garbage.

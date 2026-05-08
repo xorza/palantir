@@ -21,13 +21,6 @@ pub fn clear_measure_cache(ui: &mut Ui) {
     cache.snapshots.clear();
 }
 
-/// Drop every cross-frame encode-cache entry, forcing the next frame's
-/// encoder to re-encode every subtree from scratch. See
-/// `benches/encode_cache.rs`.
-pub fn clear_encode_cache(ui: &mut Ui) {
-    ui.frontend.encoder.cache.clear();
-}
-
 /// Run only `Cascades::run` against the just-finished frame's forest +
 /// layout results. Lets the cascade bench isolate cascade cost without
 /// re-running record / measure / arrange / encode / compose. The

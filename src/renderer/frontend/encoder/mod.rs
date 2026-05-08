@@ -1,100 +1,31 @@
-use super::cmd_buffer::{EnterPatch, RenderCmdBuffer};
+use super::cmd_buffer::RenderCmdBuffer;
+use crate::layout::result::LayoutResult;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
-use crate::layout::{cache::AvailableKey, result::LayoutResult};
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
 use crate::shape::Shape;
 use crate::tree::forest::Forest;
-use crate::tree::widget_id::WidgetId;
-use crate::tree::{Layer, NodeId, Tree, TreeItem, node_hash::NodeHash};
+use crate::tree::{Layer, NodeId, Tree, TreeItem};
 use crate::ui::cascade::{Cascade, CascadeResult};
-use cache::EncodeCache;
 use strum::EnumCount as _;
 
-/// Bookkeeping captured before recursing so we can write the cached
-/// subtree back after children have appended their cmds. `cmd_lo` /
-/// `data_lo` snapshot `out`'s arena lengths at entry; the hi ends are
-/// read after recursion to form the subtree's spans. Mirrors
-/// `composer::SubtreeFrame` (same shape, different per-cache key
-/// fields).
-struct SubtreeFrame {
-    wid: WidgetId,
-    subtree_hash: NodeHash,
-    avail: AvailableKey,
-    cmd_lo: u32,
-    data_lo: u32,
-    enter_patch: EnterPatch,
-}
-
-/// Whether `encode_node` produced a complete, self-contained cmd stream
-/// for its subtree. `Elided` means some node within (this one or a
-/// descendant) was skipped without writing cmds — currently only the
-/// off-screen-cull path. An ancestor seeing `Elided` must NOT write a
-/// cache snapshot covering it: replaying the snapshot at a different
-/// scroll position would be missing the elided child's cmds.
+/// Walk the tree pre-order and emit logical-px paint commands. No GPU
+/// work, no scale/snap math — that lives in the backend's process
+/// step. Pure function over `(&Tree, &LayoutResult, &Cascades)`, so
+/// the same call works in unit tests with no device. Reads
+/// invisibility cascade from `Cascades` so encoder and hit-index
+/// can't drift.
 ///
-/// Distinguished from `Visibility::Hidden`/`Collapsed` elision because
-/// visibility is folded into `subtree_hash` (so a snapshot-write that
-/// elided an invisible child stays correct on replay — the hash will
-/// only match when the child is still invisible). Off-screen culling
-/// has no such hash signal.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum EncodeOutcome {
-    Complete,
-    Elided,
-}
-
-impl EncodeOutcome {
-    fn absorb(&mut self, child: Self) {
-        if child == Self::Elided {
-            *self = Self::Elided;
-        }
-    }
-}
-
-/// Skip cache lookup + write for subtrees of `<=` this many nodes.
-/// A small subtree's encode work (a handful of `draw_rect` /
-/// `draw_text`) is cheaper than the hashmap miss + insert + marker
-/// emission it would replace. The win shows on cold / forced-miss
-/// frames where every parent miss falls through to per-leaf cache I/O.
-///
-/// Also gates `EnterSubtree`/`ExitSubtree` marker emission — they're
-/// only useful for subtrees the composer cache might want to skip,
-/// and small subtrees never will.
-const TINY_SUBTREE_THRESHOLD: u32 = 4;
-
-/// Walk the tree pre-order and emit logical-px paint commands. No GPU work,
-/// no scale/snap math — that lives in the backend's process step. Pure
-/// function over `(&Tree, &LayoutResult, &Cascades)`, so the same call works
-/// in unit tests with no device. Reads invisibility cascade from `Cascades`
-/// so encoder and hit-index can't drift.
-///
-/// `damage_filter` enables Step 5 of the damage-rendering plan: when
-/// `Some(rect)`, leaf paint commands (`DrawRect`/`DrawText`) are skipped
-/// for nodes whose arranged rect doesn't intersect the filter. Clip and
-/// transform push/pop pairs are *always* emitted so descendant scissor
-/// state and group boundaries (composer text↔quad split) stay correct.
-/// `None` paints everything — used for the first frame, full-repaint
-/// fallback, and existing tests.
-///
-/// Owns the cross-frame subtree-skip cache (`EncodeCache`) and exposes
-/// the encode entry point. The output [`RenderCmdBuffer`] stays on
-/// [`Frontend`](crate::renderer::frontend::Frontend) since the composer also reads
-/// it; the cache lives here because nothing else in the frontend touches
-/// it.
-///
-/// Cache **reads** run on every frame (full and damage-filtered): a
-/// cached replay reproduces the prior full-paint cmd stream byte-for-byte
-/// and is correctly scissored by the backend. Cache **writes** are
-/// gated on `damage_filter.is_none()` — a partial-paint frame skips
-/// per-leaf shapes outside the dirty region, so recording its output
-/// would lie about the snapshot covering the full subtree. Snapshot age
-/// is therefore bounded by the last full-paint frame, not the last
-/// frame. See `cache::EncodeCache` for the cascade-not-in-key argument.
+/// `damage_filter` enables damage-aware partial paint: when
+/// `Some(rect)`, leaf paint commands (`DrawRect`/`DrawText`) are
+/// skipped for nodes whose arranged rect doesn't intersect the
+/// filter. Clip and transform push/pop pairs are *always* emitted so
+/// descendant scissor state and group boundaries (composer text↔quad
+/// split) stay correct. `None` paints everything — used for the
+/// first frame and full-repaint fallback.
 #[derive(Default)]
 pub(crate) struct Encoder {
-    pub(crate) cache: EncodeCache,
     pub(crate) cmds: RenderCmdBuffer,
 }
 
@@ -121,17 +52,12 @@ impl Encoder {
                     rows,
                     damage_filter,
                     viewport,
-                    &mut self.cache,
                     NodeId(root.first_node),
                     &mut self.cmds,
                 );
             }
         }
         &self.cmds
-    }
-
-    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        self.cache.sweep_removed(removed);
     }
 }
 
@@ -204,78 +130,24 @@ fn emit_one_shape(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn encode_node(
     tree: &Tree,
     layout: &LayoutResult,
     rows: &[Cascade],
     damage_filter: Option<Rect>,
     viewport: Rect,
-    cache: &mut EncodeCache,
     id: NodeId,
     out: &mut RenderCmdBuffer,
-) -> EncodeOutcome {
+) {
     if rows[id.index()].invisible {
-        return EncodeOutcome::Complete;
+        return;
     }
 
+    // Off-screen subtree cull. Skips the whole subtree's recursion
+    // when its screen-space bounds don't intersect the viewport.
     if !rows[id.index()].screen_rect.intersects(viewport) {
-        return EncodeOutcome::Elided;
+        return;
     }
-
-    // Cross-frame subtree-skip cache (Phase 3). Reads run on every
-    // frame (full or damage-filtered): replaying a cached subtree
-    // restores the *complete* cmd stream from the prior full-paint
-    // frame, which is byte-identical to a fresh full encode and is
-    // correctly scissored downstream by the backend's damage rect.
-    // Writes are gated on full-paint frames only — a damage-filtered
-    // frame skips per-leaf paint for nodes outside the dirty region,
-    // so writing back would record a partial subtree and lie about
-    // coverage. Cache snapshot age is therefore bounded by the *last
-    // full-paint* frame, not the last frame. See `cache::EncodeCache`.
-    let subtree_size = tree.records.subtree_end()[id.index()] - id.index() as u32;
-    let cache_key = if subtree_size > TINY_SUBTREE_THRESHOLD {
-        layout.available_q(id).map(|avail| {
-            (
-                tree.records.widget_id()[id.index()],
-                tree.rollups.subtree[id.index()],
-                avail,
-            )
-        })
-    } else {
-        None
-    };
-
-    if let Some((wid, hash, avail)) = cache_key
-        && cache.try_replay(wid, hash, avail, out, layout.rect[id.index()].min)
-    {
-        return EncodeOutcome::Complete;
-    }
-
-    // Bracket cache-eligible subtrees with `EnterSubtree`/`ExitSubtree`
-    // markers on full-paint frames only. The markers go *inside* the
-    // snapshot range (cmd_lo is captured before `push_enter_subtree`
-    // so the open cmd is at index `cmd_lo`; the close is the last cmd
-    // in the range). Composer reads `EnterSubtree` to attempt a splice
-    // (fast-forwarding past the matching `ExitSubtree` on a hit) and
-    // uses `ExitSubtree` to write the snapshot back on a miss.
-    let cache_pending = if damage_filter.is_none()
-        && let Some((wid, subtree_hash, avail)) = cache_key
-    {
-        let cmd_lo = out.kinds.len() as u32;
-        let data_lo = out.data.len() as u32;
-        let enter_patch = out.push_enter_subtree(wid, subtree_hash, avail);
-        Some(SubtreeFrame {
-            wid,
-            subtree_hash,
-            avail,
-            cmd_lo,
-            data_lo,
-            enter_patch,
-        })
-    } else {
-        None
-    };
 
     let rect = layout.rect[id.index()];
 
@@ -345,18 +217,19 @@ fn encode_node(
     // transforms via `cascades`) doesn't intersect the dirty region.
     // Damage rects in `damage_filter` are also screen-space, so the
     // comparison is consistent under arbitrary transform stacks.
-    // Push/PopClip and Push/PopTransform are still emitted (above and
-    // below) so scissor groups and child transforms stay coherent.
-    // `None` filter ⇒ paint everything.
+    // Push/PopClip and Push/PopTransform are still emitted (above
+    // and below) so scissor groups and child transforms stay
+    // coherent. `None` filter ⇒ paint everything.
     //
-    // Clip culling (skipping leaves outside the active ancestor clip)
-    // intentionally does NOT live here: it would make cmd shape
-    // depend on screen position, breaking the encode cache's
-    // authoring-only key. The composer culls per-cmd at compose time.
+    // Clip culling (skipping leaves outside the active ancestor
+    // clip) intentionally does NOT live in the encoder: cmd shape
+    // would depend on screen position, complicating downstream
+    // walks. The composer culls per-cmd at compose time instead.
 
-    // Skip Push/PopTransform when the transform is identity — composing
-    // identity is a no-op, so emitting the pair just wastes two cmd
-    // slots and a `transform_stack` push/pop in the composer.
+    // Skip Push/PopTransform when the transform is identity —
+    // composing identity is a no-op, so emitting the pair just
+    // wastes two cmd slots and a `transform_stack` push/pop in the
+    // composer.
     let transform = tree
         .bounds(id)
         .transform
@@ -366,7 +239,6 @@ fn encode_node(
     // Shapes paint *outside* the owner's pan transform so they stay
     // anchored to the owner regardless of scroll offset; transform is
     // pushed/popped per child accordingly.
-    let mut outcome = EncodeOutcome::Complete;
     let mut text_ordinal: u16 = 0;
     for item in tree.tree_items(id) {
         match item {
@@ -382,16 +254,7 @@ fn encode_node(
                 if let Some(t) = transform {
                     out.push_transform(t);
                 }
-                outcome.absorb(encode_node(
-                    tree,
-                    layout,
-                    rows,
-                    damage_filter,
-                    viewport,
-                    cache,
-                    child.id,
-                    out,
-                ));
+                encode_node(tree, layout, rows, damage_filter, viewport, child.id, out);
                 if transform.is_some() {
                     out.pop_transform();
                 }
@@ -402,25 +265,6 @@ fn encode_node(
     if clip {
         out.pop_clip();
     }
-
-    if let Some(p) = cache_pending {
-        out.push_exit_subtree(p.enter_patch);
-        if outcome == EncodeOutcome::Complete {
-            let cmd_hi = out.kinds.len() as u32;
-            let data_hi = out.data.len() as u32;
-            cache.write_subtree(
-                p.wid,
-                p.subtree_hash,
-                p.avail,
-                out,
-                (p.cmd_lo..cmd_hi).into(),
-                (p.data_lo..data_hi).into(),
-                layout.rect[id.index()].min,
-            );
-        }
-    }
-
-    outcome
 }
 
 /// Position a text run's bounding box inside a leaf's arranged rect per
@@ -447,8 +291,6 @@ fn align_text_in(leaf: Rect, measured: Size, align: Align) -> Rect {
         measured.h,
     )
 }
-
-pub(crate) mod cache;
 
 #[cfg(test)]
 mod tests;

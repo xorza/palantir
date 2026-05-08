@@ -1,99 +1,84 @@
-# Encode cache
+# No encode cache
 
-Subtree-skip on the encoder, mirroring the
-[measure cache](../../../layout/measure-cache.md). Same key shape, same
-arena pattern, but stores `RenderCmdBuffer` slices instead of `desired` sizes.
+Removed in May 2026, shortly after the compose cache. Replaces the
+previous design doc.
 
-Code lives in `cache/` (this directory's sibling). The `Encoder` struct
-owns the cache + cmd buffer and is the entry point from
-`Frontend::build`.
+## Why we don't cache encode
 
-## Mechanism
+Encode-cache contribution measured at **0.06%–0.9% of frame time**
+across four workloads (light/heavy/dense/scroll). Full data:
+`docs/encode-cache-investigation.md`. For comparison the measure
+cache delivers ~35% on the same workloads.
 
-- **Key**: `(WidgetId, subtree_hash, available_q)` — same triple the
-  `MeasureCache` uses.
-- **Subtree-relative storage.** `data_arena` stores `rect.min` with the
-  snapshot root's `origin` already subtracted. On replay the encoder
-  translates back by the *current* frame's `layout.rect(id).min`, so a
-  cached subtree survives parent origin shifts (scroll, resize,
-  reflowed siblings) without invalidating. Net offset over an
-  unchanged frame is zero — replay is byte-identical to a cold encode
-  (pinned by `encode_cache_warm_frame_matches_cold_encode`).
-- **Cascade is NOT in the key.** Inside a cached subtree the encoder
-  reads `is_invisible` (descendant invisibility comes from authoring +
-  in-subtree ancestors, captured in `subtree_hash`), `attrs.is_clip()`
-  and `extras.transform` (authoring, in `subtree_hash`), and
-  `screen_rect` only when `damage_filter.is_some()`. A cache hit
-  early-returns before that read, so `screen_rect` never influences
-  a hit — even on damage-filtered frames, where reads are allowed
-  (writes are still gated on full-paint; see "Damage-filter gate"
-  below).
-- **Damage-filter gate.** Reads run on every frame: a hit replays
-  the prior full-paint cmd stream byte-for-byte and the backend
-  scissor handles the damage rect. Writes run only when
-  `damage_filter.is_none()` — a partial-paint frame skips per-leaf
-  shapes outside the dirty region, so recording its output would
-  store an incomplete snapshot and lie about coverage. Snapshot age
-  is bounded by the last full-paint frame.
+The encoder is genuinely fast. It walks the SoA `Tree` columns
+(cache-friendly), branches on `LayoutMode`, and pushes typed payloads
+to a `Vec<u32>`. The cache replay was a `Vec::extend_from_slice` plus
+per-cmd `start` adjust plus per-rect-cmd `rect.min` translate. Both
+paths are O(cmds) memcpy-shaped; the constants are close enough that
+re-encoding from scratch and replaying from cache run within ~1 µs of
+each other.
 
-## Storage
+The dense workload (6× shapes per row) was the giveaway: more cmds
+should mean more amortization, but cache contribution **dropped to
+0.06%**. The cache amortized nothing — it just did equal work in a
+different shape.
 
-- `EncodeSnapshot { subtree_hash, available_q, cmds: Span, data: Span }`,
-  32 bytes.
-- Three SoA arenas — `kinds_arena`, `starts_arena` (parallel,
-  subtree-relative offsets), `data_arena` — plus an
-  `FxHashMap<WidgetId, EncodeSnapshot>` index. Same `COMPACT_RATIO = 2`
-  / `COMPACT_FLOOR = 64` as `MeasureCache`; eviction-locked via the
-  shared `removed` sweep in `Ui::end_frame`.
-- Hot path: same `subtree_hash` ⇒ identical cmd shape and payload
-  sizes ⇒ in-place rewrite preserves snapshot positions. Size mismatch
-  appends and marks the old range as garbage; tracked via `live_cmds`
-  / `live_data` for the compaction trigger.
+## What was here
 
-## Replay primitives
+- `EncodeCache` — `FxHashMap<WidgetId, EncodeSnapshot>` over three
+  parallel `LiveArena`s for `CmdKind`, `start: u32`, and `data: u32`
+  (one snapshot per cache-eligible subtree).
+- **Subtree-relative storage**: each cmd's `rect.min` was stored
+  with the snapshot root's origin subtracted, then translated back
+  by the current frame's origin on replay. Survived parent scroll /
+  reflow without invalidating. Implemented by `bump_rect_min`,
+  pinned by `CmdKind::has_leading_rect` + const offset asserts on
+  every payload struct.
+- **Subtree-relative `start` offsets** — payload offsets stored as
+  offsets into the snapshot's local `data` slice, not the global
+  arena. Compaction could move snapshots without touching them.
+- `try_replay` / `write_subtree` — append cached cmds rebasing
+  starts + rects on hit; rewrite snapshot in place (same hash) or
+  append fresh (size mismatch) on miss.
+- `EnterSubtree` / `ExitSubtree` cmd kinds in `RenderCmdBuffer`,
+  along with `EnterSubtreePayload`, `EnterPatch`,
+  `push_enter_subtree`, `push_exit_subtree`. Bracketed every
+  cache-eligible subtree so the composer cache could splice over
+  them; second consumer (this encode cache) used them to fast-forward
+  past cached cmd ranges on replay. Both consumers now gone — the
+  variants and machinery were removed with this cache.
+- `EncodeOutcome::{Complete, Elided}` — encoder return type, governed
+  whether `write_subtree` ran (off-screen-elided subtrees would
+  produce incomplete snapshots if cached). With no cache, `encode_node`
+  returns `()`; off-screen culling is just an early `return`.
+- `TINY_SUBTREE_THRESHOLD = 4` — gated cache lookup + marker emission
+  for tiny subtrees. Gone.
+- `sweep_removed` integration on `Frontend` — fanout to encode + (then
+  also) compose cache. With both render-side caches gone,
+  `Frontend::sweep_removed` itself was removed; `Ui::end_frame` no
+  longer forwards the `removed` slice to the frontend.
+- `clear_encode_cache` in `internals` — A/B helper for the bench.
+- A pile of cache integration tests in
+  `src/renderer/frontend/encoder/tests.rs`.
 
-- `RenderCmdBuffer::extend_from_cached(kinds, starts, data, offset)`
-  copies a cached subtree's slices into the live cmd buffer and shifts
-  every rect-bearing payload's `rect.min` by `offset`.
-- `bump_rect_min(kinds, starts, data, offset)` is the shared rect-shift
-  helper, used by both `extend_from_cached` (replay) and
-  `EncodeCache::write_subtree` (subtract origin at insertion time).
-- `available_q` lives on `LayoutResult` (promoted from `LayoutScratch`
-  to make it readable from the encoder without reaching into the
-  engine).
+## What stayed
 
-## Tests
+- The encoder itself: tree walk + cmd emission. Slightly simpler now
+  (no marker emission, no cache_pending plumbing, no
+  `EncodeOutcome` propagation).
+- **Off-screen subtree culling**: if a node's screen rect doesn't
+  intersect the viewport, the encoder early-returns and skips its
+  whole subtree. Independent of the cache.
+- **Damage filter**: leaf paint cmds skipped for nodes outside the
+  damage rect. Clip / transform pairs still emitted so scissor groups
+  and child transforms stay coherent.
 
-- `src/renderer/frontend/encoder/cache/tests.rs` — unit tests for the
-  cache itself: round-trip at same/shifted origin, hash and
-  `available_q` mismatch, in-place rewrite preserves positions, size
-  change marks garbage, `sweep_removed` evicts and decrements live
-  counters, compaction preserves lookups, `clear`.
-- `src/renderer/frontend/encoder/tests.rs::encode_cache_warm_frame_matches_cold_encode`
-  — integration test: warm-cache replay through `Frontend::build` is
-  byte-identical to a fresh cold encode.
+## Bring it back if
 
-## Bench
+- A future refactor makes encoder *expensive* — per-glyph layout
+  inside encode, per-shape SDF prep, etc. Today encode is cheap
+  because it's pure tree walk + payload push.
+- A workload bench shows encode > 5% of frame time with no cache.
+  Today it's < 5% even on the dense workload.
 
-`benches/encode_cache.rs`, A/B'd against an otherwise-identical
-warm-cache frame with `internals::clear_encode_cache()` between iterations
-(measure cache held hot in both arms, so the delta is purely
-encoder work). Times are `end_frame()` end-to-end.
-
-| Workload | cached | forced miss | win |
-|---|---|---|---|
-| `flat`   (~1000 leaves)            | 75.9 µs | 86.4 µs | 12.2 % |
-| `nested` (100 × 32 nodes ≈ 3200)   | 376 µs  | 417 µs  | 9.8 %  |
-
-The end-to-end percentage is diluted by the composer pass, which runs
-in both arms; the encoder pass itself saves substantially more in
-absolute terms.
-
-`TINY_SUBTREE_THRESHOLD = 4` skips cache lookup + write (and gates
-`EnterSubtree` / `ExitSubtree` marker emission) for subtrees of `<=` 4
-nodes: a handful of `draw_rect` / `draw_text` calls is cheaper to
-re-emit than the hashmap miss + insert + marker pair it would replace.
-
-Future-work items (hit-hint propagation, damage-aware encode replay,
-SIMD `bump_rect_min`, coarser `available_q` quantization) live in
-`docs/roadmap/`.
+Otherwise: the work doesn't exist to cache.
