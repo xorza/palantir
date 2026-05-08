@@ -136,7 +136,7 @@ impl Cascades {
         let layout_col = tree.records.layout();
         let attrs_col = tree.records.attrs();
         let widget_ids = tree.records.widget_id();
-        let ends = tree.records.end();
+        let ends = tree.records.subtree_end();
 
         for i in 0..n {
             while let Some(top) = self.stack.last() {

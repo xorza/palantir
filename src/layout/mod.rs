@@ -174,7 +174,7 @@ impl LayoutEngine {
         v
     }
 
-    /// Run measure + arrange for every root in `tree.roots`, each
+    /// Run measure + arrange for every root in `tree.manifest.slots`, each
     /// against its own `anchor_rect`. Reuses internal scratch — call
     /// this each frame for amortized zero-alloc layout (after warmup).
     /// Output lands in `self.result`.
@@ -189,10 +189,10 @@ impl LayoutEngine {
         );
         self.scratch.resize_for(tree);
         self.result.resize_for(tree);
-        // Empty `tree.roots` ⇒ no widgets recorded this frame. Result is
-        // sized to `tree.records.len() == 0`, so downstream consumers
-        // walk zero entries — return the freshly-cleared result.
-        for slot in &tree.roots {
+        // Empty `tree.manifest.slots` ⇒ no widgets recorded this frame.
+        // Result is sized to `tree.records.len() == 0`, so downstream
+        // consumers walk zero entries — return the freshly-cleared result.
+        for slot in &tree.manifest.slots {
             let root = NodeId(slot.first_node);
             let anchor = slot.anchor_rect;
             // Root slot grows past its anchor when measured content
@@ -241,7 +241,7 @@ impl LayoutEngine {
         // resize since outer-leaf measure is `available`-dependent
         // for `Hug` / `Fill` axes.
         let cache_wid = tree.records.widget_id()[node.index()];
-        let cache_hash = tree.hashes.subtree[node.index()];
+        let cache_hash = tree.rollups.subtree[node.index()];
         let cache_avail = quantize_available(available);
         // Record this node's quantized `available` before any
         // short-circuit. Downstream consumers (encode cache, etc.)
@@ -255,7 +255,7 @@ impl LayoutEngine {
             let curr_end = curr_start + hit.arenas.desired.len();
             // Subtree hash includes child count + per-child rollups,
             // so a length mismatch here would mean the rollup is broken.
-            assert_eq!(curr_end, (tree.records.end()[curr_start]) as usize);
+            assert_eq!(curr_end, (tree.records.subtree_end()[curr_start]) as usize);
             self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
             // Append the snapshot's flat text-shape range to the live
             // per-frame buffer, then rebase its subtree-local spans by
@@ -279,7 +279,7 @@ impl LayoutEngine {
             // any ancestor of a Grid leaves hugs zeroed and the
             // grid would collapse every cell to (0, 0). Pinned by
             // `widgets::tests::grid_cells_arranged_correctly_on_cache_hit_frame`.
-            if tree.subtree_has_grid.contains(curr_start) {
+            if tree.rollups.has_grid.contains(curr_start) {
                 self.scratch
                     .grid
                     .hugs
@@ -353,13 +353,13 @@ impl LayoutEngine {
         // empty for grid-free subtrees.
         {
             let start = node.index();
-            let end = (tree.records.end()[start]) as usize;
+            let end = (tree.records.subtree_end()[start]) as usize;
             // The snapshot's root `available_q` must match the value
             // written at measure entry; cache hits restore it back into
             // `result.available_q` and downstream caches key on it.
             assert_eq!(self.result.available_q[start], cache_avail);
             self.scratch.tmp_hugs.clear();
-            if tree.subtree_has_grid.contains(start) {
+            if tree.rollups.has_grid.contains(start) {
                 self.scratch.grid.hugs.snapshot_subtree(
                     tree,
                     start..end,
@@ -594,7 +594,7 @@ impl LayoutEngine {
         text: &mut TextMeasurer,
     ) -> Size {
         let wid = tree.records.widget_id()[node.index()];
-        let curr_hash = tree.hashes.node[node.index()];
+        let curr_hash = tree.rollups.node[node.index()];
 
         // Refresh the unbounded measurement only when the authoring hash
         // has shifted. Crucially, when only the wrap target changed

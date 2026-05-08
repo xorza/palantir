@@ -83,7 +83,7 @@ impl Encoder {
         viewport: Rect,
     ) -> &RenderCmdBuffer {
         self.cmds.clear();
-        for root in &tree.roots {
+        for root in &tree.manifest.slots {
             encode_node(
                 tree,
                 layout,
@@ -210,12 +210,12 @@ fn encode_node(
     // so writing back would record a partial subtree and lie about
     // coverage. Cache snapshot age is therefore bounded by the *last
     // full-paint* frame, not the last frame. See `cache::EncodeCache`.
-    let subtree_size = tree.records.end()[id.index()] - id.index() as u32;
+    let subtree_size = tree.records.subtree_end()[id.index()] - id.index() as u32;
     let cache_key = if subtree_size > TINY_SUBTREE_THRESHOLD {
         layout.available_q(id).map(|avail| {
             (
                 tree.records.widget_id()[id.index()],
-                tree.hashes.subtree[id.index()],
+                tree.rollups.subtree[id.index()],
                 avail,
             )
         })

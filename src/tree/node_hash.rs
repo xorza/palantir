@@ -21,7 +21,9 @@
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct NodeHash(pub(crate) u64);
 
-/// Per-node hash data populated by [`super::Tree::end_frame`].
+/// Subtree-wide rollup data populated by [`super::Tree::end_frame`].
+/// All three slices/sets index by `NodeId.0` and are length
+/// `records.len()` after `end_frame`. Capacity retained across frames.
 ///
 /// - `node[i]` — authoring hash of node `i` alone (layout / paint /
 ///   extras / shapes / grid def). Read by damage diff and the leaf
@@ -32,13 +34,17 @@ pub(crate) struct NodeHash(pub(crate) u64);
 ///   measure cache and encode cache both key on this. See
 ///   `src/layout/measure-cache.md` and
 ///   `src/renderer/frontend/encoder/encode-cache.md`.
-///
-/// Both vecs are length `records.len()` after `end_frame`. Capacity
-/// retained across frames.
+/// - `has_grid[i]` — bit `i` is true iff the subtree rooted at node
+///   `i` contains any `LayoutMode::Grid` node. Fast-path skip for
+///   `MeasureCache`'s grid-hug snapshot/restore walk. Conceptually a
+///   structure summary, not a hash, but bundled here because it has
+///   the same lifecycle as the hash columns (populated by `end_frame`,
+///   indexed by `NodeId`, read by the same caches).
 #[derive(Default)]
-pub(crate) struct NodeHashes {
+pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<NodeHash>,
     pub(crate) subtree: Vec<NodeHash>,
+    pub(crate) has_grid: fixedbitset::FixedBitSet,
 }
 
 #[cfg(test)]
