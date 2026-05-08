@@ -174,43 +174,40 @@ impl LayoutEngine {
         v
     }
 
-    /// Run measure + arrange for `root` given the surface rect. Reuses
-    /// internal scratch — call this each frame for amortized zero-alloc
-    /// layout (after warmup). Output lands in `self.result`.
+    /// Run measure + arrange for every root in `tree.roots`, each
+    /// against its own `anchor_rect`. Reuses internal scratch — call
+    /// this each frame for amortized zero-alloc layout (after warmup).
+    /// Output lands in `self.result`.
     ///
     /// `text` carries the shaper (or the mono fallback inside it) and is
     /// borrowed for the duration of the call so wrapping leaves can reshape
     /// against the parent-committed width during measure.
-    pub(crate) fn run(
-        &mut self,
-        tree: &Tree,
-        root: Option<NodeId>,
-        surface: Rect,
-        text: &mut TextMeasurer,
-    ) -> &LayoutResult {
+    pub(crate) fn run(&mut self, tree: &Tree, text: &mut TextMeasurer) -> &LayoutResult {
         assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
         self.scratch.resize_for(tree);
         self.result.resize_for(tree);
-        // No root ⇒ no widgets recorded this frame. Result is sized to
-        // `tree.records.len() == 0`, so downstream consumers walk zero
-        // entries — return the freshly-cleared result without measuring.
-        if let Some(root) = root {
-            // Root slot grows past the surface when measured content
+        // Empty `tree.roots` ⇒ no widgets recorded this frame. Result is
+        // sized to `tree.records.len() == 0`, so downstream consumers
+        // walk zero entries — return the freshly-cleared result.
+        for slot in &tree.roots {
+            let root = NodeId(slot.first_node);
+            let anchor = slot.anchor_rect;
+            // Root slot grows past its anchor when measured content
             // exceeds it, so the parent-≥-child invariant from
             // `resolve_axis_size` (Fill/Hug ≥ hug_with_margin) holds
             // at the root too. Downstream (cascade/composer/backend)
             // tolerates out-of-surface rects; the GPU scissor clips at
             // the viewport. `Fixed` is unaffected: it short-circuits
             // in `resolve_axis_size` and never reads `hug_with_margin`.
-            let desired = self.measure(tree, root, surface.size, text);
-            let slot = Rect {
-                min: surface.min,
-                size: surface.size.max(desired),
+            let desired = self.measure(tree, root, anchor.size, text);
+            let arranged = Rect {
+                min: anchor.min,
+                size: anchor.size.max(desired),
             };
-            self.arrange(tree, root, slot);
+            self.arrange(tree, root, arranged);
         }
         assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
