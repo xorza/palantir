@@ -145,6 +145,47 @@ impl Ui {
         FrameOutput { buffer, damage }
     }
 
+    /// Record + finalize a frame, settling state mutations in a single
+    /// host call.
+    ///
+    /// Runs `build` once. If the frame contained input that could have
+    /// mutated user state (any click / press / key / text / scroll),
+    /// discards the recording, snapshots damage's prev-frame state, and
+    /// runs `build` a second time. The second pass sees drained input
+    /// queues, so widgets read `clicked() == false` everywhere and the
+    /// recording reflects post-mutation state. Only the second pass is
+    /// painted.
+    ///
+    /// Idle frames (animation tick, occlusion change, host repaint
+    /// without input) run a single pass — same cost as the bare
+    /// `begin_frame` + `end_frame` path.
+    ///
+    /// `build` runs up to twice per call, so it must be `FnMut`. Most
+    /// build closures wrap a free function and trivially satisfy this.
+    ///
+    /// See `docs/repaint.md` for the full design rationale.
+    pub fn run_frame(
+        &mut self,
+        display: Display,
+        mut build: impl FnMut(&mut Ui),
+    ) -> FrameOutput<'_> {
+        if self.input.take_action_flag() {
+            // Discarded pass: only the input drain matters for pass 2
+            // (so widgets see `clicked() == false`). Tree state is
+            // wiped by pass 2's begin_frame; damage / encode never ran,
+            // so `damage.prev` and the render buffer stay at frame-0's
+            // values. Sweeps and state evictions are deferred to pass 2
+            // and self-correct.
+            self.begin_frame(display);
+            build(self);
+            self.input.drain_per_frame_queues();
+        }
+
+        self.begin_frame(display);
+        build(self);
+        self.end_frame()
+    }
+
     /// Feed a palantir-native input event. Hosts mirror this with their
     /// own redraw-scheduling — palantir doesn't track a repaint gate,
     /// since whether to call `window.request_redraw()` is a host
