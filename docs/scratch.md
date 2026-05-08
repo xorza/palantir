@@ -1,3 +1,4 @@
 - `impl WidgetId` instead of `impl Hash`
 - gradients, textures
 - how with autostabe id work in release
+-showcase agent testing
