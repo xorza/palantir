@@ -159,7 +159,7 @@ fn content_intrinsic(
 /// the recorded shapes."
 fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasurer) -> f32 {
     let wid = tree.records.widget_id()[node.index()];
-    let curr_hash = tree.hashes.node[node.index()];
+    let curr_hash = tree.rollups.node[node.index()];
     let mut acc = 0.0_f32;
     for (ordinal, ts) in leaf_text_shapes(tree, node).enumerate() {
         let ordinal = ordinal as u16;
@@ -284,7 +284,7 @@ mod tests {
                 Text::new("defgh").with_id("b").show(ui);
             })
             .node;
-        // `end_frame` populates `tree.hashes` (leaf intrinsic reads it).
+        // `end_frame` populates `tree.rollups` (leaf intrinsic reads it).
         // Then clear *just the queried slot* on every node so we can
         // observe which nodes the parent query repopulates.
         ui.end_frame();

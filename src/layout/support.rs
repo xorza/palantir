@@ -33,14 +33,14 @@ pub(crate) fn leaf_text_shapes(
     node: NodeId,
 ) -> impl Iterator<Item = LeafTextShape<'_>> {
     // Direct slice into `tree.shapes` for `node`. Leaves have no children,
-    // so the `records.shapes()[i]` span is exactly the leaf's own direct
+    // so the `records.shape_span()[i]` span is exactly the leaf's own direct
     // shapes — contiguous, no child boundaries to skip.
     debug_assert_eq!(
-        tree.records.end()[node.index()],
+        tree.records.subtree_end()[node.index()],
         node.0 + 1,
         "leaf_text_shapes called on non-leaf node {node:?}",
     );
-    let span = tree.records.shapes()[node.index()];
+    let span = tree.records.shape_span()[node.index()];
     let lo = span.start as usize;
     let hi = lo + span.len as usize;
     tree.shapes[lo..hi].iter().filter_map(|s| match s {
@@ -140,7 +140,7 @@ pub(crate) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId,
         size: Size::ZERO,
     };
     let start = node.index();
-    let end = (tree.records.end()[start]) as usize;
+    let end = (tree.records.subtree_end()[start]) as usize;
     for i in start..end {
         layout.result.rect[i] = zero;
     }

@@ -79,12 +79,12 @@ fn interleaved_shapes_record_correct_order() {
     // direct shape indices, encoding the shape→child→shape→child→shape
     // interleave purely via spans.
     let pi = p.index();
-    let p_shapes = ui.tree.records.shapes()[pi];
+    let p_shapes = ui.tree.records.shape_span()[pi];
     assert_eq!(p_shapes.len, 3, "parent owns 3 direct shapes");
     let children: Vec<_> = ui.tree.children(p).map(|c| c.id).collect();
     assert_eq!(children.len(), 2);
-    let c0_shapes = ui.tree.records.shapes()[children[0].index()];
-    let c1_shapes = ui.tree.records.shapes()[children[1].index()];
+    let c0_shapes = ui.tree.records.shape_span()[children[0].index()];
+    let c1_shapes = ui.tree.records.shape_span()[children[1].index()];
     assert_eq!(
         c0_shapes.start,
         p_shapes.start + 1,
@@ -179,21 +179,21 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     // Parent and child share `end` (parent has only this one child),
     // which is the bug trigger.
     assert_eq!(
-        ui.tree.records.end()[parent],
-        ui.tree.records.end()[child],
+        ui.tree.records.subtree_end()[parent],
+        ui.tree.records.subtree_end()[child],
         "test setup: parent's only child shares the parent's end NodeId"
     );
 
     // Parent's subtree contains both bar shapes.
     assert_eq!(
-        ui.tree.records.shapes()[parent].len,
+        ui.tree.records.shape_span()[parent].len,
         2,
         "parent's subtree owns both slot-N shapes"
     );
     // Child's subtree contains zero shapes — the trailing bars belong
     // to the parent, not the child.
     assert_eq!(
-        ui.tree.records.shapes()[child].len,
+        ui.tree.records.shape_span()[child].len,
         0,
         "child's subtree must NOT include parent's slot-N shapes"
     );
@@ -217,7 +217,7 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = ui_at(UVec2::new(200, 200));
     let target = f(&mut ui);
     ui.end_frame();
-    ui.tree.hashes.node[target.index()]
+    ui.tree.rollups.node[target.index()]
 }
 
 #[test]
@@ -231,8 +231,8 @@ fn empty_tree_has_no_hashes() {
     ui.tree.end_frame(Rect::ZERO);
 
     assert_eq!(ui.tree.records.len(), 0);
-    assert!(ui.tree.hashes.node.is_empty());
-    assert!(ui.tree.hashes.subtree.is_empty());
+    assert!(ui.tree.rollups.node.is_empty());
+    assert!(ui.tree.rollups.subtree.is_empty());
 }
 
 #[test]
@@ -345,8 +345,8 @@ fn changing_fill_color_changes_hash() {
     ui2.end_frame();
 
     assert_ne!(
-        ui1.tree.hashes.node[child1.unwrap().index()],
-        ui2.tree.hashes.node[child2.unwrap().index()],
+        ui1.tree.rollups.node[child1.unwrap().index()],
+        ui2.tree.rollups.node[child2.unwrap().index()],
         "different fill must produce different hash",
     );
 }
@@ -498,8 +498,8 @@ fn shape_order_matters_for_hash() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.hashes.node[n1.unwrap().index()],
-        ui2.tree.hashes.node[n2.unwrap().index()],
+        ui1.tree.rollups.node[n1.unwrap().index()],
+        ui2.tree.rollups.node[n2.unwrap().index()],
     );
 }
 
@@ -526,8 +526,8 @@ fn changing_text_content_changes_hash() {
     ui2.end_frame();
 
     assert_ne!(
-        ui1.tree.hashes.node[a.unwrap().index()],
-        ui2.tree.hashes.node[b.unwrap().index()]
+        ui1.tree.rollups.node[a.unwrap().index()],
+        ui2.tree.rollups.node[b.unwrap().index()]
     );
 }
 
@@ -571,8 +571,8 @@ fn child_hash_does_not_affect_parent_hash() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.hashes.node[parent1.index()],
-        ui2.tree.hashes.node[parent2.index()],
+        ui1.tree.rollups.node[parent1.index()],
+        ui2.tree.rollups.node[parent2.index()],
         "parent hash captures only its own fields, not children's",
     );
 }
@@ -587,7 +587,7 @@ fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = ui_at(UVec2::new(200, 200));
     let target = f(&mut ui);
     ui.end_frame();
-    ui.tree.hashes.subtree[target.index()]
+    ui.tree.rollups.subtree[target.index()]
 }
 
 #[test]
@@ -745,12 +745,12 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.hashes.node[leaf1.index()],
-        ui2.tree.hashes.node[leaf2.index()]
+        ui1.tree.rollups.node[leaf1.index()],
+        ui2.tree.rollups.node[leaf2.index()]
     );
     assert_eq!(
-        ui1.tree.hashes.subtree[leaf1.index()],
-        ui2.tree.hashes.subtree[leaf2.index()]
+        ui1.tree.rollups.subtree[leaf1.index()],
+        ui2.tree.rollups.subtree[leaf2.index()]
     );
 }
 
@@ -780,13 +780,13 @@ fn transform_change_affects_subtree_but_not_node_hash() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.hashes.node[n1.index()],
-        ui2.tree.hashes.node[n2.index()],
+        ui1.tree.rollups.node[n1.index()],
+        ui2.tree.rollups.node[n2.index()],
         "transform change must NOT change per-node hash",
     );
     assert_ne!(
-        ui1.tree.hashes.subtree[n1.index()],
-        ui2.tree.hashes.subtree[n2.index()],
+        ui1.tree.rollups.subtree[n1.index()],
+        ui2.tree.rollups.subtree[n2.index()],
         "transform change MUST change subtree hash (encode cache key)",
     );
 }
@@ -847,8 +847,8 @@ fn grid_per_node_hash_independent_of_arena_slot() {
     ui2.end_frame();
 
     assert_eq!(
-        ui1.tree.hashes.node[g1.unwrap().index()],
-        ui2.tree.hashes.node[g2.unwrap().index()],
+        ui1.tree.rollups.node[g1.unwrap().index()],
+        ui2.tree.rollups.node[g2.unwrap().index()],
         "grid arena slot must not contribute to the per-node hash",
     );
 }
@@ -877,12 +877,12 @@ fn subtree_end_rolls_up_during_recording() {
         .node;
     // Tree (pre-order):  0=root  1=a  2=inner  3=b  4=c  5=d
     assert_eq!(ui.tree.records.len(), 6);
-    assert_eq!(ui.tree.records.end()[root.index()], 6, "root");
-    assert_eq!(ui.tree.records.end()[1], 2, "leaf a");
-    assert_eq!(ui.tree.records.end()[2], 5, "inner spans b,c");
-    assert_eq!(ui.tree.records.end()[3], 4, "leaf b");
-    assert_eq!(ui.tree.records.end()[4], 5, "leaf c");
-    assert_eq!(ui.tree.records.end()[5], 6, "leaf d");
+    assert_eq!(ui.tree.records.subtree_end()[root.index()], 6, "root");
+    assert_eq!(ui.tree.records.subtree_end()[1], 2, "leaf a");
+    assert_eq!(ui.tree.records.subtree_end()[2], 5, "inner spans b,c");
+    assert_eq!(ui.tree.records.subtree_end()[3], 4, "leaf b");
+    assert_eq!(ui.tree.records.subtree_end()[4], 5, "leaf c");
+    assert_eq!(ui.tree.records.subtree_end()[5], 6, "leaf d");
 }
 
 #[test]
@@ -904,12 +904,12 @@ fn subtree_end_handles_deep_nesting() {
     assert_eq!(n, 17, "16 stacks + 1 leaf");
     for i in 0..(n - 1) {
         assert_eq!(
-            ui.tree.records.end()[i as usize],
+            ui.tree.records.subtree_end()[i as usize],
             n,
             "every ancestor on the chain points past the leaf",
         );
     }
-    assert_eq!(ui.tree.records.end()[(n - 1) as usize], n, "leaf");
+    assert_eq!(ui.tree.records.subtree_end()[(n - 1) as usize], n, "leaf");
 }
 
 /// Pin: `subtree_hash` rollup is root-local. Multi-root prep — when
@@ -944,13 +944,13 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
         let mut ui = ui_at(UVec2::new(200, 200));
         let b_first = build(&mut ui, Color::rgb(1.0, 0.0, 0.0));
         ui.end_frame();
-        (ui.tree.hashes.subtree[b_first as usize], b_first)
+        (ui.tree.rollups.subtree[b_first as usize], b_first)
     };
     let (h_b2, b_first2) = {
         let mut ui = ui_at(UVec2::new(200, 200));
         let b_first = build(&mut ui, Color::rgb(0.0, 1.0, 0.0));
         ui.end_frame();
-        (ui.tree.hashes.subtree[b_first as usize], b_first)
+        (ui.tree.rollups.subtree[b_first as usize], b_first)
     };
     assert_eq!(
         b_first1, b_first2,
@@ -987,7 +987,7 @@ fn ui_layer_records_popup_root_after_main_in_paint_order() {
     });
     ui.end_frame();
 
-    let roots = &ui.tree.roots;
+    let roots = &ui.tree.manifest.slots;
     assert_eq!(roots.len(), 2, "expected Main + Popup");
     assert_eq!(roots[0].layer, Layer::Main, "Main paints first");
     assert_eq!(roots[1].layer, Layer::Popup, "Popup paints over Main");
@@ -1006,15 +1006,81 @@ fn ui_layer_records_popup_root_after_main_in_paint_order() {
     // popup's end[popup_first] stops at records.len().
     let n = ui.tree.records.len() as u32;
     assert_eq!(
-        ui.tree.records.end()[0],
+        ui.tree.records.subtree_end()[0],
         popup_first as u32,
         "Main's subtree must end where Popup's begins",
     );
     assert_eq!(
-        ui.tree.records.end()[popup_first],
+        ui.tree.records.subtree_end()[popup_first],
         n,
         "Popup's subtree covers the rest of records",
     );
+
+    // `root_id` is per-NodeId, post-sort: every Main record carries
+    // root_id=0, every Popup record carries root_id=1. Since Main was
+    // recorded first and Main < Popup in layer order, the post-sort
+    // and pre-sort indices coincide.
+    assert_eq!(ui.tree.manifest.id_per_node.len(), n as usize);
+    for i in 0..popup_first {
+        assert_eq!(
+            ui.tree.manifest.id_per_node[i], 0,
+            "main record {i} → root_id 0"
+        );
+    }
+    for i in popup_first..(n as usize) {
+        assert_eq!(
+            ui.tree.manifest.id_per_node[i], 1,
+            "popup record {i} → root_id 1"
+        );
+    }
+}
+
+/// Pin: when a popup is recorded *before* Main at top level, the
+/// post-sort `root_id` remap puts Main's records at root_id=0 and
+/// Popup's at root_id=1 — independent of recording order. Confirms
+/// the `sort_old_to_new` remap path actually fires.
+#[test]
+fn ui_layer_remaps_root_id_when_popup_recorded_before_main() {
+    let mut ui = ui_at(UVec2::new(400, 400));
+    let popup_anchor = Rect {
+        min: glam::Vec2::new(10.0, 10.0),
+        size: crate::primitives::size::Size::new(60.0, 60.0),
+    };
+    // Popup recorded first — pre-sort root index 0.
+    ui.layer(Layer::Popup, popup_anchor, |ui| {
+        Panel::vstack().with_id("popup-root").show(ui, |ui| {
+            Frame::new().with_id("popup-leaf").size(20.0).show(ui);
+        });
+    });
+    // Main recorded second — pre-sort root index 1.
+    Panel::vstack().with_id("main-root").show(&mut ui, |ui| {
+        Frame::new().with_id("main-leaf").size(50.0).show(ui);
+    });
+    ui.end_frame();
+
+    let roots = &ui.tree.manifest.slots;
+    assert_eq!(roots.len(), 2);
+    assert_eq!(roots[0].layer, Layer::Main, "Main wins layer-sort");
+    assert_eq!(roots[1].layer, Layer::Popup);
+
+    // Popup occupies records [0, popup_end); Main occupies
+    // [popup_end, n). After remap, root_id for popup records is 1
+    // (Popup is now at roots[1]); main records carry root_id 0.
+    let popup_end = ui.tree.records.subtree_end()[0] as usize;
+    let n = ui.tree.records.len();
+    assert!(popup_end > 0 && popup_end < n);
+    for i in 0..popup_end {
+        assert_eq!(
+            ui.tree.manifest.id_per_node[i], 1,
+            "popup record {i} → post-sort root_id 1",
+        );
+    }
+    for i in popup_end..n {
+        assert_eq!(
+            ui.tree.manifest.id_per_node[i], 0,
+            "main record {i} → post-sort root_id 0",
+        );
+    }
 }
 
 #[test]

@@ -15,7 +15,7 @@ pub(crate) struct LayoutResult {
     /// Flat per-frame buffer of shaped text runs. Grows during the
     /// measure pass: each `Shape::Text` on each leaf appends one
     /// entry. Indexed via `text_spans[node]`. Mirrors `tree.shapes` +
-    /// `records.shapes()` for the layout-derived counterpart.
+    /// `records.shape_span()` for the layout-derived counterpart.
     pub(crate) text_shapes: Vec<ShapedText>,
     /// Per-node `Span` into `text_shapes`. Empty span (`len: 0`) for
     /// nodes that didn't shape text. Same length as `rect`.
