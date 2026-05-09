@@ -106,7 +106,7 @@ impl Damage {
     /// the `force_full` branch — so the next frame paints the whole
     /// surface regardless of the diff. Called by `Ui::begin_frame`
     /// when the surface changed, the previous frame wasn't acked, or
-    /// it's the first frame, and by [`crate::Ui::invalidate_prev_frame`]
+    /// it's the first frame, and by [`crate::Ui::surface_invalidated`]
     /// for explicit host-driven resets.
     pub(crate) fn invalidate_prev(&mut self) {
         self.prev.clear();

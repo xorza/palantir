@@ -159,12 +159,12 @@ impl Ui {
     ///    than last frame.
     /// 2. **Frame skipped** — previous `FrameOutput` wasn't marked
     ///    `Submitted` (surface acquire failed, host dropped, panic in
-    ///    error arm). `Ui::invalidate_prev_frame` also lands here.
+    ///    error arm). `Ui::surface_invalidated` also lands here.
     /// 3. **First frame** — `prev_surface` is `None` by default.
     ///
     /// `Damage::compute` reads the post-reset state (`prev_surface ==
     /// None`) and short-circuits to `DamagePaint::Full`. Hosts don't
-    /// need to call `invalidate_prev_frame` in surface-error paths —
+    /// need to call `surface_invalidated` in surface-error paths —
     /// it's the default behaviour.
     pub(crate) fn begin_frame(&mut self, display: Display) {
         assert!(
@@ -193,7 +193,7 @@ impl Ui {
     /// the frontend's `RenderBuffer`. Returns the painted output ready for
     /// `WgpuBackend::submit`. Damage's prev-state is committed here on the
     /// assumption that the host will present this frame — see
-    /// [`Self::invalidate_prev_frame`] for the rewind path when that
+    /// [`Self::surface_invalidated`] for the rewind path when that
     /// assumption breaks.
     pub(crate) fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
@@ -371,7 +371,7 @@ impl Ui {
     /// didn't reach a successful `WgpuBackend::submit`. Use this only
     /// when something *else* invalidated the backbuffer that's outside
     /// `submit`'s knowledge (e.g. an external pipeline overwrote it).
-    pub fn invalidate_prev_frame(&mut self) {
+    pub fn surface_invalidated(&mut self) {
         self.damage.invalidate_prev();
     }
 

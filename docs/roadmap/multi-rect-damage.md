@@ -124,7 +124,7 @@ known correctness gotchas.
    `animated_parent_transform_unions_old_and_new_positions`).
 5. **Z-order changes.** Sibling reorder damages the union of
    affected siblings via `subtree_hash` rolling up child order.
-6. **Skipped frames.** `Ui::invalidate_prev_frame` rewinds the prev
+6. **Skipped frames.** `Ui::surface_invalidated` rewinds the prev
    snapshot. Not enforced; see open follow-up H2.
 7. **TBDR mobile.** Multi-pass damage can be net-negative on tilers.
    Desktop-first.
@@ -220,7 +220,7 @@ success path) marks `Submitted`; the next `begin_frame`
 auto-rewinds `damage.prev_surface` if state isn't `Submitted`. A
 host that drops a `FrameOutput` (surface error, panic in error
 arm, anything) gets one wasted `Full` frame, not silent damage
-smear. `invalidate_prev_frame` is now rarely needed —
+smear. `surface_invalidated` is now rarely needed —
 documented as "use only when something *outside*
 `submit`'s knowledge invalidated the backbuffer".
 

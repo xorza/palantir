@@ -86,14 +86,6 @@ struct State {
     backend: WgpuBackend,
     ui: Ui,
     display: palantir::Display,
-    /// Set when the swapchain's contents are stale — acquire failed
-    /// (Occluded / Timeout / Validation / Outdated / Lost) or surface
-    /// was just reconfigured. Consumed at the top of `draw()` to
-    /// invalidate damage's prev-frame snapshot, forcing the next
-    /// `compute` to return `Full` instead of `Skip` against an
-    /// unpainted backbuffer. Initial `true` so frame 1 rewinds
-    /// explicitly rather than relying on damage's first-frame heuristic.
-    new_surface: bool,
     active: usize,
     fps_window_start: std::time::Instant,
     fps_window_frames: u32,
@@ -185,7 +177,6 @@ impl ApplicationHandler for App {
             backend,
             ui,
             display,
-            new_surface: true,
             active: 0,
             fps_window_start: std::time::Instant::now(),
             fps_window_frames: 0,
@@ -248,7 +239,7 @@ impl ApplicationHandler for App {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 state.display.scale_factor = scale_factor as f32;
                 state.repaint_requested = true;
-                state.new_surface = true;
+                state.ui.surface_invalidated();
             }
             WindowEvent::Resized(new) => {
                 let max = state.device.limits().max_texture_dimension_2d;
@@ -256,7 +247,8 @@ impl ApplicationHandler for App {
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
                 state.display.physical = glam::UVec2::new(state.config.width, state.config.height);
-                state.new_surface = true;
+
+                state.ui.surface_invalidated();
                 state.repaint_requested = true;
             }
             WindowEvent::RedrawRequested => state.draw(),
@@ -277,20 +269,36 @@ impl State {
             self.fps_window_frames = 0;
         }
 
+        use wgpu::CurrentSurfaceTexture::*;
+        let frame = match self.surface.get_current_texture() {
+            Success(f) => f,
+            Suboptimal(_) | Outdated | Lost => {
+                tracing::warn!("Surface texture is suboptimal, outdated, or lost");
+                self.surface.configure(&self.device, &self.config);
+
+                self.ui.surface_invalidated();
+                self.repaint_requested = true;
+                return;
+            }
+            Timeout | Validation => {
+                tracing::warn!("Surface texture is timeout or validation");
+
+                self.ui.surface_invalidated();
+                self.repaint_requested = true;
+                return;
+            }
+            Occluded => {
+                tracing::warn!("Surface texture is occluded");
+                return;
+            }
+        };
+
         self.repaint_requested = false;
 
-        // todo
-        if self.new_surface {
-            self.ui.invalidate_prev_frame();
-            self.new_surface = false;
-        }
-
         let clear = self.ui.theme.window_clear;
-        let active = &mut self.active;
-        let now = self.start.elapsed();
         let frame_out = self
             .ui
-            .run_frame(self.display, now, |ui| build_root(ui, active));
+            .run_frame(self.display, self.start.elapsed(), |ui| build_root(ui, &mut self.active));
 
         if frame_out.repaint_requested() {
             self.repaint_requested = true;
@@ -299,27 +307,6 @@ impl State {
         if frame_out.can_skip_rendering() {
             return;
         }
-
-        use wgpu::CurrentSurfaceTexture::*;
-
-        let frame = match self.surface.get_current_texture() {
-            Success(f) => f,
-            Suboptimal(_) | Outdated | Lost => {
-                self.surface.configure(&self.device, &self.config);
-                self.new_surface = true;
-                self.repaint_requested = true;
-                return;
-            }
-            Timeout | Validation => {
-                self.new_surface = true;
-                self.repaint_requested = true;
-                return;
-            }
-            Occluded => {
-                self.new_surface = true;
-                return;
-            }
-        };
 
         self.backend.submit(&frame.texture, clear, frame_out);
 
