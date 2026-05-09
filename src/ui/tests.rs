@@ -74,7 +74,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 0);
     assert!(ui.damage.prev.is_empty());
     assert!(ui.damage.dirty.is_empty());
-    assert!(ui.damage.rect.is_none());
+    assert!(ui.damage.region.is_empty());
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
         DamagePaint::Skip

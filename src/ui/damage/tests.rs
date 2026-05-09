@@ -3,7 +3,7 @@ use crate::Ui;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
-use crate::support::testing::begin;
+use crate::support::testing::{begin, damage_region};
 use crate::tree::Layer;
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
@@ -59,7 +59,7 @@ fn first_frame_marks_every_node_dirty() {
         ui.damage.dirty.len(),
         ui.forest.tree(Layer::Main).records.len()
     );
-    assert!(ui.damage.rect.is_some());
+    assert!(!ui.damage.region.is_empty());
 }
 
 /// Pin: re-recording identical authoring → zero dirty nodes,
@@ -75,7 +75,7 @@ fn unchanged_authoring_produces_no_damage() {
     frame(&mut ui, build);
 
     assert!(ui.damage.dirty.is_empty());
-    assert!(ui.damage.rect.is_none());
+    assert!(ui.damage.region.is_empty());
 }
 
 /// Pin: an authoring change on one leaf marks just that leaf
@@ -101,7 +101,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     // doesn't move the rect, so prev == curr; the union is the
     // single rect.
     assert_eq!(
-        ui.damage.rect,
+        ui.damage.region.iter().next(),
         Some(ui.layout.result[Layer::Main].rect[dirty_id.index()])
     );
 }
@@ -169,7 +169,12 @@ fn removed_widget_contributes_prev_rect_to_damage() {
     // The root is dirty (its own arranged rect collapsed since
     // the only child is gone), so damage = union(root rect,
     // prev button rect).
-    let damage = ui.damage.rect.expect("removed widget must produce damage");
+    let damage = ui
+        .damage
+        .region
+        .iter()
+        .next()
+        .expect("removed widget must produce damage");
     assert!(damage.size.w >= prev_button_rect.size.w);
     assert!(damage.size.h >= prev_button_rect.size.h);
 }
@@ -202,7 +207,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
-    assert!(ui.damage.rect.is_some());
+    assert!(!ui.damage.region.is_empty());
 }
 
 // --- Ui::damage_filter ---------------------------------------------------
@@ -219,7 +224,7 @@ fn damage_filter_returns_full_on_first_frame() {
     });
     // First frame: every node is "added" → damage rect is the union
     // of every screen rect → ratio > 0.5 → filter returns Full.
-    assert!(ui.damage.rect.is_some());
+    assert!(!ui.damage.region.is_empty());
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
         DamagePaint::Full
@@ -238,10 +243,15 @@ fn damage_filter_returns_partial_when_small() {
     frame(&mut ui, |ui| {
         one_frame(ui, RED);
     });
-    let r = ui.damage.rect.expect("single-leaf change → some damage");
+    let r = ui
+        .damage
+        .region
+        .iter()
+        .next()
+        .expect("single-leaf change → some damage");
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
-        DamagePaint::Partial(r)
+        DamagePaint::Partial(damage_region(r))
     );
 }
 
@@ -312,7 +322,12 @@ fn child_under_transformed_parent_damage_in_screen_space() {
         min: child_layout_rect.min + translate,
         size: child_layout_rect.size,
     };
-    let damage_rect = ui.damage.rect.expect("child changed → some damage");
+    let damage_rect = ui
+        .damage
+        .region
+        .iter()
+        .next()
+        .expect("child changed → some damage");
     assert!(
         damage_rect.min.x >= 100.0 - 0.5,
         "damage min.x must reflect parent translate; got {damage_rect:?}, expected near {expected_screen_rect:?}",
@@ -356,7 +371,12 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // Child layout rect didn't change. Parent's transform shifted by
     // (50, 0). Prev screen rect = (0,0,40,40); curr = (50,0,40,40);
     // damage union = (0,0,90,40).
-    let damage = ui.damage.rect.expect("transform animation → damage");
+    let damage = ui
+        .damage
+        .region
+        .iter()
+        .next()
+        .expect("transform animation → damage");
     assert_eq!(
         damage,
         Rect::new(0.0, 0.0, 90.0, 40.0),
@@ -391,7 +411,7 @@ fn no_damage_means_skip() {
 
 fn damage_with(r: Rect) -> Damage {
     Damage {
-        rect: Some(r),
+        region: damage_region(r),
         ..Damage::default()
     }
 }
@@ -407,7 +427,7 @@ fn damage_filter_threshold_cases() {
             "small_1pct",
             Rect::new(0.0, 0.0, 10.0, 10.0),
             TEST_SURFACE,
-            DamagePaint::Partial(Rect::new(0.0, 0.0, 10.0, 10.0)),
+            DamagePaint::Partial(damage_region(Rect::new(0.0, 0.0, 10.0, 10.0))),
         ),
         (
             "large_64pct",
@@ -419,7 +439,7 @@ fn damage_filter_threshold_cases() {
             "exact_50pct_stays_partial",
             Rect::new(0.0, 0.0, 50.0, 100.0),
             TEST_SURFACE,
-            DamagePaint::Partial(Rect::new(0.0, 0.0, 50.0, 100.0)),
+            DamagePaint::Partial(damage_region(Rect::new(0.0, 0.0, 50.0, 100.0))),
         ),
         (
             "zero_area_surface",
@@ -670,16 +690,17 @@ fn stable_surface_does_not_short_circuit() {
     ui.begin_frame(DISPLAY);
     build(&mut ui, RED);
     let partial = ui.end_frame().damage;
-    let DamagePaint::Partial(r) = partial else {
+    let DamagePaint::Partial(region) = partial else {
         panic!(
             "stable surface + one-leaf change should produce a partial \
              repaint, got {partial:?} — surface-change short-circuit fired incorrectly",
         );
     };
     // Damage rect = the 50×50 frame's rect. Well below 50% of 200×200.
+    let total_area = region.total_area();
     assert!(
-        r.area() / DISPLAY.logical_rect().area() < 0.5,
-        "damage rect should be small (partial repaint range), got {r:?}",
+        total_area / DISPLAY.logical_rect().area() < 0.5,
+        "damage region should be small (partial repaint range), got {region:?}",
     );
 }
 
@@ -737,10 +758,10 @@ fn button_hover_damage_covers_only_the_button() {
         ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.index()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage.rect, Some(hot_rect));
+    assert_eq!(ui.damage.region.iter().next(), Some(hot_rect));
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
-        DamagePaint::Partial(hot_rect),
+        DamagePaint::Partial(damage_region(hot_rect)),
         "small per-button damage must not trip the full-repaint heuristic",
     );
 
@@ -784,9 +805,9 @@ fn button_unhover_damage_covers_only_the_button() {
         ui.forest.tree(Layer::Main).records.widget_id()[ui.damage.dirty[0].index()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage.rect, Some(hot_rect));
+    assert_eq!(ui.damage.region.iter().next(), Some(hot_rect));
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
-        DamagePaint::Partial(hot_rect),
+        DamagePaint::Partial(damage_region(hot_rect)),
     );
 }

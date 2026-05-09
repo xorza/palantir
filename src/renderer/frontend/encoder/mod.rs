@@ -8,6 +8,7 @@ use crate::shape::Shape;
 use crate::tree::forest::Forest;
 use crate::tree::{NodeId, Tree, TreeItem};
 use crate::ui::cascade::{Cascade, CascadeResult};
+use crate::ui::damage::region::DamageRegion;
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU
 /// work, no scale/snap math — that lives in the backend's process
@@ -17,12 +18,12 @@ use crate::ui::cascade::{Cascade, CascadeResult};
 /// can't drift.
 ///
 /// `damage_filter` enables damage-aware partial paint: when
-/// `Some(rect)`, leaf paint commands (`DrawRect`/`DrawText`) are
-/// skipped for nodes whose arranged rect doesn't intersect the
-/// filter. Clip and transform push/pop pairs are *always* emitted so
-/// descendant scissor state and group boundaries (composer text↔quad
-/// split) stay correct. `None` paints everything — used for the
-/// first frame and full-repaint fallback.
+/// `Some(region)`, leaf paint commands (`DrawRect`/`DrawText`) are
+/// skipped for nodes whose arranged rect doesn't intersect any rect
+/// in the region. Clip and transform push/pop pairs are *always*
+/// emitted so descendant scissor state and group boundaries
+/// (composer text↔quad split) stay correct. `None` paints
+/// everything — used for the first frame and full-repaint fallback.
 #[derive(Default)]
 pub(crate) struct Encoder {
     pub(crate) cmds: RenderCmdBuffer,
@@ -37,7 +38,7 @@ impl Encoder {
         forest: &Forest,
         results: &LayoutResult,
         cascades: &CascadeResult,
-        damage_filter: Option<Rect>,
+        damage_filter: Option<&DamageRegion>,
         viewport: Rect,
     ) -> &RenderCmdBuffer {
         self.cmds.clear();
@@ -133,7 +134,7 @@ fn encode_node(
     tree: &Tree,
     layout: &LayerResult,
     rows: &[Cascade],
-    damage_filter: Option<Rect>,
+    damage_filter: Option<&DamageRegion>,
     viewport: Rect,
     id: NodeId,
     out: &mut RenderCmdBuffer,
@@ -167,7 +168,8 @@ fn encode_node(
     let clip = mode.is_clip();
     let chrome = tree.chrome_for(id).copied();
 
-    let paints = damage_filter.is_none_or(|d| rows[id.index()].screen_rect.intersects(d));
+    let paints =
+        damage_filter.is_none_or(|region| region.any_intersects(rows[id.index()].screen_rect));
 
     // Chrome paints BEFORE the clip is pushed. The clip rect is
     // deflated by the chrome's stroke width (so children don't paint
