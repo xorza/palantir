@@ -93,3 +93,19 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.ash]
 opt-level = 3
+[profile.dev.package.glyphon]
+opt-level = 3
+[profile.dev.package.cosmic-text]
+opt-level = 3
+[profile.dev.package.swash]
+opt-level = 3
+[profile.dev.package.rustybuzz]
+opt-level = 3
+[profile.dev.package.fontdb]
+opt-level = 3
+[profile.dev.package.ttf-parser]
+opt-level = 3
+[profile.dev.package."owned_ttf_parser"]
+opt-level = 3
+[profile.dev.package.font-types]
+opt-level = 3
