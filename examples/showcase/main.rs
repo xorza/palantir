@@ -221,7 +221,10 @@ impl ApplicationHandler for App {
         } = event
         {
             state.ui.debug_overlay = match state.ui.debug_overlay {
-                None => Some(DebugOverlayConfig { damage_rect: true }),
+                None => Some(DebugOverlayConfig {
+                    damage_rect: true,
+                    ..Default::default()
+                }),
                 Some(_) => None,
             };
             eprintln!(
