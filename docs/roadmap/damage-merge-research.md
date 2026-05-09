@@ -161,6 +161,107 @@ blocking every threshold question. Numbers from it decide whether
 to ship a proximity-merge threshold at all, and if so what the
 per-backend defaults should be.
 
+## Bench results (Apple Silicon, Metal)
+
+`benches/damage_merge_gpu.rs` drives `Ui::run_frame` →
+`WgpuBackend::submit` → `device.poll(Wait)` so criterion's window
+includes GPU exec + sync. 32×32 grid (~1056 nodes), 1280×800 @2×
+DPI, mono fallback shaper, headless surface texture.
+
+Two cells in row 0 flip colour. Damage is forced via
+`internals::force_frame_damage_to_rects` to either two separate
+rects (one per cell) or one merged bbox spanning both.
+
+### Two-cell merge sweep
+
+| gap (cells) | separate (2 passes) | merged (1 bbox) | Δ (sep − merged) |
+|---|---|---|---|
+| 1  | 1.700 ms | 1.632 ms | **+68 µs** (merged wins) |
+| 2  | 1.690 ms | 1.678 ms | +12 µs |
+| 4  | 1.694 ms | 1.650 ms | +44 µs |
+| 8  | 1.696 ms | 1.645 ms | +51 µs |
+| 16 | 1.656 ms | 1.789 ms | **−133 µs** (separate wins) |
+| 24 | 1.645 ms | 1.917 ms | **−272 µs** (separate wins) |
+| 31 | 1.694 ms | 1.675 ms | +19 µs (noise — bbox almost full row) |
+
+**Crossover sits between gap 8 and 16** — i.e. between ~5 600 px²
+and ~11 200 px² of additional overdraw on this workload. A
+proximity-merge threshold of ~7 000–8 000 px² would track this
+crossover.
+
+### Single-pass scaling (1 pass, varying damage width)
+
+| damage width (cells) | time |
+|---|---|
+| 1  | 1.681 ms |
+| 2  | 1.668 ms |
+| 4  | 1.669 ms |
+| 8  | 1.700 ms |
+| 16 | 1.706 ms |
+| 31 | 1.672 ms |
+
+Essentially flat. Pixel cost is small enough relative to the
+~1.65 ms per-frame floor (queue submit, GPU sync, backbuffer→
+surface copy) that it's lost in the noise. So the "merged is
+slower at gap 16" effect is **not** raw fragment-shader cost on
+the gap area — it's the **CPU encoder cost** of visiting all the
+unchanged-but-bbox-covered cells (subtree damage cull lets two
+disjoint rects skip the subtrees in between, but a merged bbox
+forces them all to be re-encoded into the cmd buffer).
+
+### What the data actually says
+
+1. **Per-frame floor on Apple Silicon Metal is ~1.65 ms.** The
+   `device.poll(Wait)` round-trip + backbuffer→surface copy +
+   queue submit constants dominate. Proximity-merge thresholds
+   shift frame time by tens to hundreds of µs (3–15 % of the
+   floor). Real but small.
+2. **Cost model is asymmetric.** Drawing extra pixels in a
+   merged bbox is cheap GPU-side. The dominant penalty for
+   merging on this platform is **CPU encode cost** — more
+   leaves walked, more cmds emitted, more compose work — when
+   the bbox covers nodes the subtree cull would have skipped.
+3. **Pass-setup cost is small enough** that two narrow scissors
+   beat one wide one once the gap is ~10+ cells. Iced's "merge
+   if union_excess ≤ 20_000 px²" would over-merge here; the
+   actual crossover is closer to ~7_000 px² for our quad shader.
+4. **Strict-overlap (today) is defensible.** The gain from a
+   proximity threshold is bounded by the per-frame floor —
+   ~50–200 µs at best, with negative outcomes once the bbox
+   crosses the encode-cost cliff. Realistic workloads (per
+   `benches/damage.rs`) stay at 1–2 rects with small distances,
+   where merging would help by ~50 µs per frame. Not zero, but
+   not urgent either.
+5. **Cross-platform numbers needed.** Apple Silicon's TBDR
+   tile-store overhead might push the threshold one way; a
+   discrete IMR GPU (NVIDIA / AMD) might push it the other.
+   The test should be re-run on at least one IMR system before
+   any threshold ships.
+
+### What changed in the conclusion
+
+The earlier draft (above) recommended a cost-model threshold
+calibrated per-backend at init time. That's still the right
+*shape*, but the numbers say the win on the current platform is
+small enough that:
+
+- Shipping a proximity threshold now without IMR data risks
+  picking the wrong direction.
+- The CPU encoder cost — which the original cost model didn't
+  account for — needs to be in the formula. The right merge
+  rule is closer to:
+
+  ```
+  merge if  (gap_area * pixel_cost) + (extra_leaves_in_bbox * encode_cost)
+           <  (extra_pass_count * pass_setup_cost)
+  ```
+
+  and the second term *grows fast* on dense scenes.
+
+- A simpler, defensible position: **stay strict-overlap, revisit
+  if a real workload demonstrates a measurable win**. Mark this
+  doc as the source of record; don't ship code change.
+
 ## Sources
 
 - [iced damage.rs](https://github.com/iced-rs/iced/blob/master/graphics/src/damage.rs)
