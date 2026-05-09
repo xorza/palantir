@@ -4,8 +4,8 @@
 
 - **Multi-rect damage.** N=8 region with LVGL-style merge + Slint
   min-growth fallback at the cap; backend replays one render pass
-  per rect; coverage threshold 0.7. Design + post-implementation
-  review in `multi-rect-damage.md` / `multi-rect-damage-review.md`.
+  per rect; coverage threshold 0.7. Design rationale + open
+  follow-ups in `multi-rect-damage.md`.
 
 ## Next
 
