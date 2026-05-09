@@ -80,6 +80,15 @@ impl Surface {
             clip: ClipMode::Rounded,
         }
     }
+
+    /// True when this surface contributes nothing to the frame — its
+    /// paint is invisible AND it doesn't clip. Use to filter
+    /// transparent default surfaces before installing them on an
+    /// element. Mirrors `Background::is_noop` and `Stroke::is_noop`.
+    #[inline]
+    pub fn is_noop(&self) -> bool {
+        self.paint.is_noop() && !self.clip.is_clip()
+    }
 }
 
 /// Sugar: `.background(Background { … })` keeps working — paint-only with
@@ -134,11 +143,25 @@ impl Default for Theme {
 /// whole "text look" with one assignment, and so future axes (font
 /// family, weight, italic, letter-spacing) extend a single struct
 /// rather than scattering across [`Theme`].
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+///
+/// `Animatable` derived: `color` interpolates; `font_size_px` and
+/// `line_height_mult` are `#[animate(snap)]` because animating font
+/// size invalidates the text-shape cache every frame and animating
+/// leading doesn't read meaningfully.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Animatable,
+)]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this
     /// directly; [`crate::Text`] / [`crate::TextEdit`] fall back to it
     /// when their builder didn't set a size.
+    #[animate(snap)]
     pub font_size_px: f32,
     /// Default fill color for [`crate::Text`] runs that didn't call
     /// `.color(...)`. Button / TextEdit have their own state-dependent
@@ -150,6 +173,7 @@ pub struct TextStyle {
     /// natural leading ([`crate::text::LINE_HEIGHT_MULT`], 1.2). Per-
     /// widget override on TextEdit lives on the builder
     /// (`TextEdit::line_height_mult`).
+    #[animate(snap)]
     pub line_height_mult: f32,
 }
 
@@ -277,78 +301,61 @@ pub struct WidgetLook {
 }
 
 /// Resolved + per-frame animated values for a [`WidgetLook`]. Built
-/// by [`WidgetLook::animate`]; widgets read flat fields and call
-/// [`Self::background`] to assemble the paint-ready chrome.
+/// by [`WidgetLook::animate`]. Widgets read `background` and `text`
+/// directly; both fields are already-animated.
+///
+/// `text.color` is the animated color; `text.font_size_px` and
+/// `text.line_height_mult` are snap-carried from the picked
+/// `WidgetLook` (or the fallback) — see `TextStyle`'s
+/// `#[animate(snap)]` markings.
 #[derive(Clone, Copy, Debug)]
 pub struct AnimatedLook {
-    pub fill: Color,
-    /// `width = 0` (or transparent color) means "no stroke" — handled
-    /// by [`Self::background`] when assembling the paint-ready chrome.
-    pub stroke: Stroke,
-    pub radius: Corners,
-    pub text_color: Color,
-    pub font_size_px: f32,
-    pub line_height_mult: f32,
+    pub background: Background,
+    pub text: TextStyle,
 }
 
 impl AnimatedLook {
-    /// Assemble a paint-ready [`Background`]. Drops the stroke when
-    /// the animated width has collapsed below epsilon or the color is
-    /// transparent — keeps "stroked → no-stroke" transitions from
-    /// leaking a phantom hairline.
-    pub fn background(&self) -> Background {
-        Background {
-            fill: self.fill,
-            stroke: (self.stroke.width > f32::EPSILON && !self.stroke.color.approx_transparent())
-                .then_some(self.stroke),
-            radius: self.radius,
-        }
-    }
-
+    /// Convenience: `text.line_height_for(text.font_size_px)`. Widgets
+    /// rendering `Shape::Text` need this paired with `font_size_px`
+    /// for the shaper.
     pub fn line_height_px(&self) -> f32 {
-        self.font_size_px * self.line_height_mult
+        self.text.line_height_for(self.text.font_size_px)
     }
 }
 
 impl WidgetLook {
-    /// Slots reserved by [`Self::animate`] (4 of them: fill, stroke
-    /// color, stroke width, text color). Widgets that mix in
-    /// additional animations on the same `WidgetId` start their own
-    /// slots at `WIDGETLOOK_SLOTS` to avoid collision.
-    pub const WIDGETLOOK_SLOTS: u8 = 4;
+    /// Slots reserved by [`Self::animate`] (2: background, text).
+    /// Widgets that mix in additional animations on the same
+    /// `WidgetId` start their own slots at `WIDGETLOOK_SLOTS` to
+    /// avoid collision.
+    pub const WIDGETLOOK_SLOTS: u8 = 2;
 
-    /// Resolve the look's components to flat values, animating each
-    /// non-trivial component toward the target via `spec`. Pass
-    /// `spec = None` to snap (the call shape stays the same — caller
-    /// doesn't fork on whether motion is configured).
+    /// Resolve the look to flat animated values. `Background` (fill +
+    /// stroke) animates as one slot; `TextStyle` (color animated,
+    /// font/leading snapped) as another. Pass `spec = None` to snap
+    /// everything; call shape stays the same so callers don't fork
+    /// on motion.
     ///
-    /// `fallback_text` provides defaults for `self.text == None`
-    /// (typically `ui.theme.text.clone()` from the caller; clone
-    /// because `&ui.theme.text` would conflict with the `&mut Ui`).
+    /// `fallback_text` is used when `self.text == None` — pass
+    /// `ui.theme.text` (TextStyle is `Copy`).
     pub fn animate(
         &self,
         ui: &mut Ui,
         id: WidgetId,
-        fallback_text: &TextStyle,
+        fallback_text: TextStyle,
         spec: Option<AnimSpec>,
     ) -> AnimatedLook {
-        let bg = self.background.unwrap_or_default();
-        let stroke = bg.stroke.unwrap_or(Stroke {
-            width: 0.0,
-            color: Color::TRANSPARENT,
-        });
-        let text = self.text.as_ref().unwrap_or(fallback_text);
-        AnimatedLook {
-            fill: ui.animate(id, AnimSlot(0), bg.fill, spec),
-            stroke: Stroke {
-                color: ui.animate(id, AnimSlot(1), stroke.color, spec),
-                width: ui.animate(id, AnimSlot(2), stroke.width, spec),
-            },
-            radius: bg.radius,
-            text_color: ui.animate(id, AnimSlot(3), text.color, spec),
-            font_size_px: text.font_size_px,
-            line_height_mult: text.line_height_mult,
+        let mut background = ui.animate(id, AnimSlot(0), self.background.unwrap_or_default(), spec);
+        // The `Option<Stroke>` blanket always returns `Some` from
+        // arithmetic — a "stroked → no-stroke" animation would
+        // otherwise leave a width-0 / transparent stroke that paints
+        // a phantom hairline. Collapse to `None` here so
+        // `look.background` is paint-ready.
+        if background.stroke.is_some_and(|s| s.is_noop()) {
+            background.stroke = None;
         }
+        let text = ui.animate(id, AnimSlot(1), self.text.unwrap_or(fallback_text), spec);
+        AnimatedLook { background, text }
     }
 }
 
@@ -669,74 +676,101 @@ mod tests {
         }
     }
 
-    /// `AnimatedLook::background()` collapses the stroke to `None`
-    /// when its width is below epsilon or the color has zero alpha
-    /// (lets "stroked → no-stroke" transitions land cleanly without
-    /// leaving a phantom hairline). Visible strokes pass through.
+    /// `WidgetLook::animate` collapses an animated stroke whose width
+    /// or color has decayed to zero — "stroked → no-stroke"
+    /// transitions land cleanly with `look.background.stroke == None`.
+    /// Visible strokes pass through unchanged.
     #[test]
-    fn animated_look_background_drops_invisible_stroke() {
-        let mk = |stroke: Stroke| AnimatedLook {
+    fn widget_look_animate_collapses_invisible_stroke() {
+        use crate::Ui;
+        use crate::layout::types::display::Display;
+        use crate::primitives::background::Background;
+        use crate::tree::widget_id::WidgetId;
+        use std::cell::Cell;
+        use std::time::Duration;
+
+        let mut ui = Ui::new();
+        let display = Display::from_physical(glam::UVec2::new(100, 100), 1.0);
+        let id = WidgetId::from_hash("look-stroke-test");
+        let fallback = TextStyle::default();
+
+        let bg = |stroke: Option<Stroke>| Background {
             fill: Color::hex(0x202020),
             stroke,
             radius: Corners::all(2.0),
-            text_color: Color::hex(0xffffff),
-            font_size_px: 14.0,
-            line_height_mult: 1.2,
         };
+        let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
+        let mut run = |stroke: Option<Stroke>| {
+            let look = WidgetLook {
+                background: Some(bg(stroke)),
+                text: None,
+            };
+            captured.set(None);
+            let _ = ui.run_frame(display, Duration::ZERO, |ui| {
+                captured.set(Some(look.animate(ui, id, fallback, None)));
+            });
+            captured.get().expect("animate ran")
+        };
+
         // Visible stroke kept.
-        let visible = mk(Stroke {
-            width: 1.0,
-            color: Color::hex(0x808080),
-        });
-        assert!(visible.background().stroke.is_some(), "visible stroke kept");
-
-        // Zero width → dropped.
-        let zero_width = mk(Stroke {
-            width: 0.0,
-            color: Color::hex(0x808080),
-        });
         assert!(
-            zero_width.background().stroke.is_none(),
-            "width=0 stroke dropped",
+            run(Some(Stroke {
+                width: 1.0,
+                color: Color::hex(0x808080),
+            }))
+            .background
+            .stroke
+            .is_some(),
+            "visible stroke kept",
         );
 
-        // Transparent color → dropped (even with non-zero width).
-        let transparent = mk(Stroke {
-            width: 1.0,
-            color: Color::TRANSPARENT,
-        });
-        assert!(
-            transparent.background().stroke.is_none(),
-            "transparent stroke dropped",
-        );
+        // Width-zero, transparent-color, and sub-epsilon all collapse
+        // to None.
+        for (label, s) in [
+            (
+                "width=0",
+                Stroke {
+                    width: 0.0,
+                    color: Color::hex(0x808080),
+                },
+            ),
+            (
+                "transparent color",
+                Stroke {
+                    width: 1.0,
+                    color: Color::TRANSPARENT,
+                },
+            ),
+            (
+                "sub-epsilon width",
+                Stroke {
+                    width: f32::EPSILON * 0.5,
+                    color: Color::hex(0x808080),
+                },
+            ),
+        ] {
+            assert!(
+                run(Some(s)).background.stroke.is_none(),
+                "{label} stroke dropped",
+            );
+        }
 
-        // Sub-epsilon width → dropped.
-        let tiny = mk(Stroke {
-            width: f32::EPSILON * 0.5,
-            color: Color::hex(0x808080),
-        });
-        assert!(
-            tiny.background().stroke.is_none(),
-            "sub-epsilon width dropped"
-        );
+        // None stroke stays None.
+        assert!(run(None).background.stroke.is_none(), "None stays None");
     }
 
-    /// `AnimatedLook::line_height_px` is `font_size_px *
-    /// line_height_mult`. Trivial but pinned because the formula is
-    /// duplicated across widgets — centralizing it here means the
-    /// formula only changes in one place.
+    /// `AnimatedLook::line_height_px` delegates to `TextStyle`'s
+    /// formula (`font_size_px * line_height_mult`). Pinned because the
+    /// shaper depends on it staying in sync with widget render code.
     #[test]
-    fn animated_look_line_height_px_is_size_times_mult() {
+    fn animated_look_line_height_px_delegates_to_text_style() {
         let look = AnimatedLook {
-            fill: Color::TRANSPARENT,
-            stroke: Stroke {
-                width: 0.0,
+            background: Background::default(),
+            text: TextStyle {
+                font_size_px: 16.0,
                 color: Color::TRANSPARENT,
+                line_height_mult: 1.5,
             },
-            radius: Corners::ZERO,
-            text_color: Color::TRANSPARENT,
-            font_size_px: 16.0,
-            line_height_mult: 1.5,
         };
         assert!((look.line_height_px() - 24.0).abs() < 1e-6);
     }

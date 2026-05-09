@@ -1,7 +1,7 @@
-use crate::primitives::approx::approx_zero;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::stroke::Stroke;
+use palantir_anim_derive::Animatable;
 
 /// Paint data shared by container widgets (`Frame`, `Panel`, `Grid`)
 /// and per-state widget visuals: fill colour, optional stroke, and
@@ -11,10 +11,19 @@ use crate::primitives::stroke::Stroke;
 /// Pure data, no methods that need a `Ui` — paint emission goes
 /// through `Tree::chrome_table` and the encoder, not through
 /// shape-list registration.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+///
+/// `Animatable` derived: fill and stroke interpolate componentwise;
+/// `radius` is `#[animate(snap)]` (corner-radius morphing across
+/// states is rarely-wanted polish and would require `Corners:
+/// Animatable`). Stroke uses the `Option<T>` blanket impl with
+/// "None means transparent zero-width stroke" sentinel.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Hash, serde::Serialize, serde::Deserialize, Animatable,
+)]
 pub struct Background {
     pub fill: Color,
     pub stroke: Option<Stroke>,
+    #[animate(snap)]
     pub radius: Corners,
 }
 
@@ -24,11 +33,6 @@ impl Background {
     /// emitting a `DrawRect` for no-op chrome so transparent
     /// `Surface::scissor()` defaults don't leak draw commands.
     pub fn is_noop(&self) -> bool {
-        let no_fill = self.fill.approx_transparent();
-        let no_stroke = match self.stroke {
-            None => true,
-            Some(s) => approx_zero(s.width) || s.color.approx_transparent(),
-        };
-        no_fill && no_stroke
+        self.fill.is_noop() && self.stroke.is_none_or(|s| s.is_noop())
     }
 }

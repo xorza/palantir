@@ -9,6 +9,7 @@
 //! cache benches and to assert cache population in tests. Production
 //! code should never need them.
 
+use crate::animation::animatable::Animatable;
 use crate::{Ui, WgpuBackend};
 
 /// Drop every cross-frame measure-cache entry, forcing the next frame
@@ -38,4 +39,12 @@ pub fn run_cascades(ui: &mut Ui) {
 /// repainted this frame.
 pub fn set_clear_on_damage(backend: &mut WgpuBackend, on: bool) {
     backend.debug_clear_on_damage = on;
+}
+
+/// Number of animation rows currently allocated for type `T`, or `0`
+/// if no typed map for `T` has ever been touched. Used by tests to
+/// assert "no rows" / "row exists" without allocating a typed map as
+/// a side effect.
+pub fn anim_row_count<T: Animatable>(ui: &Ui) -> usize {
+    ui.anim.try_typed::<T>().map_or(0, |t| t.rows.len())
 }

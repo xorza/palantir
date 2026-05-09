@@ -1,3 +1,9 @@
+// Re-import `palantir` as a self-alias so proc-macros that emit
+// `::palantir::Animatable` paths (from `palantir-anim-derive`) resolve
+// when the derive is used *inside* the crate (e.g. on `Stroke`,
+// `Background`). Outside the crate this path resolves naturally.
+extern crate self as palantir;
+
 pub(crate) mod animation;
 pub(crate) mod common;
 pub(crate) mod input;
@@ -15,6 +21,9 @@ pub(crate) mod widgets;
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use animation::{AnimSlot, AnimSpec};
+// Same-name re-export: the derive lives in the macro namespace,
+// the trait in the type namespace — `use palantir::Animatable;` pulls
+// both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
 pub use input::sense::Sense;
 pub use input::{FocusPolicy, InputEvent, InputState, PointerButton, PointerState, ResponseState};
@@ -25,6 +34,7 @@ pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
+pub use palantir_anim_derive::Animatable;
 pub use primitives::color::Color;
 pub use primitives::corners::Corners;
 pub use primitives::rect::Rect;
