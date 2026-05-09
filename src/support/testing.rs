@@ -102,7 +102,7 @@ pub(crate) fn encode_cmds(ui: &Ui) -> RenderCmdBuffer {
 }
 
 pub(crate) fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBuffer {
-    encode_cmds_with_region(ui, filter.map(damage_region).as_ref())
+    encode_cmds_with_region(ui, filter.map(DamageRegion::from).as_ref())
 }
 
 /// Multi-rect variant of [`encode_cmds_filtered`]. Builds a region
@@ -134,13 +134,4 @@ fn encode_cmds_with_region(ui: &Ui, region: Option<&DamageRegion>) -> RenderCmdB
         ui.display.logical_rect(),
     );
     std::mem::take(&mut encoder.cmds)
-}
-
-/// Wrap a single rect in a [`DamageRegion`]. Test convenience; lives
-/// here (not as a `cfg(test)` constructor on `DamageRegion`) per the
-/// CLAUDE.md rule against test-only methods on production types.
-pub(crate) fn damage_region(r: Rect) -> DamageRegion {
-    let mut region = DamageRegion::default();
-    region.add(r);
-    region
 }

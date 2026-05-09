@@ -3,7 +3,7 @@ use crate::Ui;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
-use crate::support::testing::{begin, damage_region};
+use crate::support::testing::begin;
 use crate::tree::Layer;
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
@@ -251,7 +251,7 @@ fn damage_filter_returns_partial_when_small() {
         .expect("single-leaf change → some damage");
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
-        DamagePaint::Partial(damage_region(r))
+        DamagePaint::Partial(r.into())
     );
 }
 
@@ -407,54 +407,86 @@ fn no_damage_means_skip() {
     assert_eq!(d.filter(TEST_SURFACE), DamagePaint::Skip);
 }
 
-fn damage_with(r: Rect) -> Damage {
-    Damage {
-        region: damage_region(r),
-        ..Damage::default()
-    }
-}
-
-/// Heuristic: total coverage = `total_area / surface_area`; strictly
-/// above `FULL_REPAINT_THRESHOLD` (0.7) ⇒ Full, otherwise Partial.
-/// The check is `>`, not `>=`, so a rect at exactly the threshold
-/// stays Partial. A zero-area surface forces Full (divide-by-zero
-/// guard).
+/// Heuristic: total coverage = `sum(rect.area()) / surface_area`;
+/// strictly above `FULL_REPAINT_THRESHOLD` (0.7) ⇒ Full, otherwise
+/// Partial. The check is `>`, not `>=`, so coverage exactly at the
+/// threshold stays Partial. A zero-area surface forces Full
+/// (divide-by-zero guard). The `total_area` sum is over per-rect
+/// areas, so two non-overlapping damage rects collectively crossing
+/// the threshold escalate to Full even though neither rect alone
+/// does.
 #[test]
 fn damage_filter_threshold_cases() {
-    let cases: &[(&str, Rect, Rect, DamagePaint)] = &[
+    use super::region::DamageRegion;
+    fn region(rects: &[Rect]) -> DamageRegion {
+        let mut r = DamageRegion::default();
+        for rect in rects {
+            r.add(*rect);
+        }
+        r
+    }
+    // Two distant rects on the 100×100 surface — bbox(A,B) = 10000
+    // exceeds A.area() + B.area() in both pairs, so the LVGL merge
+    // rule rejects and the region keeps both.
+    const PAIR_BELOW: [Rect; 2] = [
+        // total_area = 7000 / 10000 = 0.70 → stays Partial (`>` is strict).
+        Rect::new(0.0, 0.0, 35.0, 100.0),
+        Rect::new(65.0, 0.0, 35.0, 100.0),
+    ];
+    const PAIR_ABOVE: [Rect; 2] = [
+        // total_area = 7200 / 10000 = 0.72 → escalates Full.
+        Rect::new(0.0, 0.0, 36.0, 100.0),
+        Rect::new(64.0, 0.0, 36.0, 100.0),
+    ];
+    let cases: &[(&str, &[Rect], Rect, DamagePaint)] = &[
         (
             "small_1pct",
-            Rect::new(0.0, 0.0, 10.0, 10.0),
+            &[Rect::new(0.0, 0.0, 10.0, 10.0)],
             TEST_SURFACE,
-            DamagePaint::Partial(damage_region(Rect::new(0.0, 0.0, 10.0, 10.0))),
+            DamagePaint::Partial(Rect::new(0.0, 0.0, 10.0, 10.0).into()),
         ),
         (
             "large_81pct_above_threshold",
-            Rect::new(0.0, 0.0, 90.0, 90.0),
+            &[Rect::new(0.0, 0.0, 90.0, 90.0)],
             TEST_SURFACE,
             DamagePaint::Full,
         ),
         (
             "below_threshold_64pct_stays_partial",
-            Rect::new(0.0, 0.0, 80.0, 80.0),
+            &[Rect::new(0.0, 0.0, 80.0, 80.0)],
             TEST_SURFACE,
-            DamagePaint::Partial(damage_region(Rect::new(0.0, 0.0, 80.0, 80.0))),
+            DamagePaint::Partial(Rect::new(0.0, 0.0, 80.0, 80.0).into()),
         ),
         (
             "exact_70pct_stays_partial",
-            Rect::new(0.0, 0.0, 70.0, 100.0),
+            &[Rect::new(0.0, 0.0, 70.0, 100.0)],
             TEST_SURFACE,
-            DamagePaint::Partial(damage_region(Rect::new(0.0, 0.0, 70.0, 100.0))),
+            DamagePaint::Partial(Rect::new(0.0, 0.0, 70.0, 100.0).into()),
+        ),
+        (
+            "two_rect_sum_at_threshold_stays_partial",
+            &PAIR_BELOW,
+            TEST_SURFACE,
+            DamagePaint::Partial(region(&PAIR_BELOW)),
+        ),
+        (
+            "two_rect_sum_above_threshold_escalates_full",
+            &PAIR_ABOVE,
+            TEST_SURFACE,
+            DamagePaint::Full,
         ),
         (
             "zero_area_surface",
-            Rect::new(0.0, 0.0, 1.0, 1.0),
+            &[Rect::new(0.0, 0.0, 1.0, 1.0)],
             Rect::ZERO,
             DamagePaint::Full,
         ),
     ];
-    for (label, dmg, surface, want) in cases {
-        let d = damage_with(*dmg);
+    for (label, rects, surface, want) in cases {
+        let d = Damage {
+            region: region(rects),
+            ..Damage::default()
+        };
         assert_eq!(d.filter(*surface), *want, "case: {label}");
     }
 }
@@ -766,7 +798,7 @@ fn button_hover_damage_covers_only_the_button() {
     assert_eq!(ui.damage.region.iter().next(), Some(hot_rect));
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
-        DamagePaint::Partial(damage_region(hot_rect)),
+        DamagePaint::Partial(hot_rect.into()),
         "small per-button damage must not trip the full-repaint heuristic",
     );
 
@@ -813,6 +845,6 @@ fn button_unhover_damage_covers_only_the_button() {
     assert_eq!(ui.damage.region.iter().next(), Some(hot_rect));
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
-        DamagePaint::Partial(damage_region(hot_rect)),
+        DamagePaint::Partial(hot_rect.into()),
     );
 }
