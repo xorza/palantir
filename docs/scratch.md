@@ -12,4 +12,4 @@ debug overlay for damage rects
 
 cosmic and glyphon optimizationf or release
 
-encapsulate cosmic
+why backend needs cosmic
