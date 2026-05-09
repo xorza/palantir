@@ -6,4 +6,4 @@ anim slot automate
 
 debug overlay for damage rects
 
- animate option for appearance
+ animate option for appearing stroke
