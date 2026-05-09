@@ -226,9 +226,15 @@ fn damage_rect_overlay_strokes_dirty_region() {
 /// far-apart rects), each scissored to its own pass, leaving the
 /// centre magenta-flashed (read: untouched by the main draw passes).
 ///
-/// The assertion is a coverage check rather than a precise rect
-/// match: the centre region must remain mostly magenta, demonstrating
-/// the multi-rect win without coupling to exact pixel boundaries.
+/// Three pinned regions:
+/// 1. **Centre** must be fully magenta — proves the disjoint rects
+///    didn't union into a Full repaint.
+/// 2. **Top-left corner** must contain its painted (greenish) color,
+///    not magenta. Catches "force_clear applied to all passes" —
+///    that regression would have pass 1 clear the backbuffer (wiping
+///    pass 0's painted TL corner) before painting only its own rect.
+/// 3. **Bottom-right corner** must contain its painted (rust-red)
+///    color. Symmetric check.
 #[test]
 fn corner_pair_change_keeps_center_unpainted() {
     let mut h = Harness::new();
@@ -280,10 +286,10 @@ fn corner_pair_change_keeps_center_unpainted() {
 
     save_debug("corner_pair_change_keeps_center_unpainted", &f2);
 
-    // The centre 100×100 region (50..150 on each axis) lies outside
-    // both corner rects + their AA padding. With multi-rect damage it
-    // must be entirely magenta. Under the old single-union behaviour
-    // it would be entirely painted (Full path) — i.e. zero magenta.
+    // (1) Centre 100×100 region (50..150) lies outside both corner
+    // rects + AA padding. Under multi-rect damage it must be entirely
+    // magenta; under the old single-union behaviour it would be
+    // entirely painted (Full path) → zero magenta.
     let mut centre_total = 0u32;
     let mut centre_magenta = 0u32;
     for y in 50..150 {
@@ -301,6 +307,28 @@ fn corner_pair_change_keeps_center_unpainted() {
         "centre 100×100 must be fully magenta — multi-rect damage \
          should keep the two corner rects disjoint instead of unioning \
          them across the whole surface and tripping Full repaint",
+    );
+
+    // (2) + (3) Sample one interior pixel of each corner. The
+    // foreground colours have a unique dominant channel (TL green, BR
+    // red), so the assertion is "dominant channel beats magenta's
+    // (255, 0, 255) pattern" — robust under sRGB / gamma variation.
+    // The regression these guard against: `force_clear` applied to
+    // every pass instead of just the first. Pass 1 would `LoadOp::Clear`
+    // the whole backbuffer to magenta, wiping pass 0's painted TL
+    // before painting only its own (BR) rect.
+    let Rgba([tl_r, tl_g, tl_b, _]) = *f2.get_pixel(5, 5);
+    assert!(
+        tl_g > tl_r && tl_g > tl_b,
+        "top-left corner pixel should be green-dominant (its painted \
+         fill 0.2/0.7/0.4), got rgb=({tl_r},{tl_g},{tl_b}) — pass 0's \
+         paint was likely wiped by a later pass's Clear",
+    );
+    let Rgba([br_r, br_g, br_b, _]) = *f2.get_pixel(195, 195);
+    assert!(
+        br_r > br_g && br_r > br_b,
+        "bottom-right corner pixel should be red-dominant (its painted \
+         fill 0.7/0.3/0.2), got rgb=({br_r},{br_g},{br_b})",
     );
 }
 
