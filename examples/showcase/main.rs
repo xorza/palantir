@@ -8,6 +8,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
 
 mod alignment;
+mod animations;
 mod buttons;
 mod clip;
 mod disabled;
@@ -53,6 +54,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("spacing", spacing::build),
     ("buttons", buttons::build),
     ("popup", popup::build),
+    ("animations", animations::build),
 ];
 
 fn main() {
