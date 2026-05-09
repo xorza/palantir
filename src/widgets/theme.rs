@@ -393,15 +393,14 @@ pub struct TextEditTheme {
 }
 
 impl TextEditTheme {
-    /// Pick the visual state for `state.disabled` + `focused`.
-    /// Disabled wins over focused; otherwise normal. `state.disabled`
-    /// is the cascaded ancestor-or-self flag — caller can merge
-    /// `state.disabled |= element.disabled` for lag-free response to
-    /// its own self-toggle (mirrors Button's pattern).
-    pub fn pick(&self, state: ResponseState, focused: bool) -> &WidgetLook {
+    /// Pick the visual state. Disabled wins over focused; otherwise
+    /// normal. `state.disabled` is the cascaded ancestor-or-self flag
+    /// — caller can merge `state.disabled |= element.disabled` for
+    /// lag-free response to its own self-toggle (mirrors Button).
+    pub fn pick(&self, state: ResponseState) -> &WidgetLook {
         if state.disabled {
             &self.disabled
-        } else if focused {
+        } else if state.focused {
             &self.focused
         } else {
             &self.normal

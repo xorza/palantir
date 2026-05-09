@@ -155,6 +155,12 @@ pub struct PointerState {
 /// hover/press. Widgets that need lag-free self-disabled visuals also
 /// merge their own `Element::disabled` (`state.disabled |= element.disabled`)
 /// before reading the field.
+///
+/// `focused` is `true` when this widget currently holds keyboard focus
+/// (`Ui::focused_id() == Some(id)`). Updated synchronously with focus
+/// changes, so unlike `hovered`/`pressed` it isn't one-frame stale —
+/// a widget that just called `ui.request_focus(id)` reads `true` on
+/// the same frame.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct ResponseState {
     pub rect: Option<Rect>,
@@ -162,6 +168,7 @@ pub struct ResponseState {
     pub pressed: bool,
     pub clicked: bool,
     pub disabled: bool,
+    pub focused: bool,
 }
 
 /// Live input state machine: the things that survive across input events
@@ -422,6 +429,7 @@ impl InputState {
         let pressed = me_captured && me_under_pointer;
         let hovered = me_under_pointer && (nothing_captured || me_captured);
         let clicked = self.clicked_this_frame.contains(&id);
+        let focused = self.focused == Some(id);
 
         ResponseState {
             rect,
@@ -429,6 +437,7 @@ impl InputState {
             pressed,
             clicked,
             disabled,
+            focused,
         }
     }
 

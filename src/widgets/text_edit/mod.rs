@@ -106,7 +106,7 @@ impl<'a> TextEdit<'a> {
         response.disabled |= self.element.disabled;
         let fallback_text = ui.theme.text.clone();
         let look = theme
-            .pick(response, is_focused)
+            .pick(response)
             .animate(ui, id, &fallback_text, theme.anim);
         let font_size = look.font_size_px;
         let line_height_mult = look.line_height_mult;
