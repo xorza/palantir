@@ -69,10 +69,10 @@ pub(crate) struct TextRenderer {
     /// [`super::WgpuBackend::set_text_shaper`]. Must be the *same*
     /// [`TextShaper`] the host installed on `Ui`, otherwise lookups
     /// in [`Self::prepare_group`] miss against keys minted on a
-    /// different cache. `None` ⇒ text rendering is silently skipped
-    /// (mono-fallback path on the `Ui` side already produces invalid
-    /// keys, so the no-shaper case matches up).
-    shaper: Option<TextShaper>,
+    /// different cache. Default = [`TextShaper::default`] (mono);
+    /// [`Self::prepare_group`] silently skips when the shaper has no
+    /// cosmic ([`TextShaper::with_render_split`] returns `None`).
+    shaper: TextShaper,
     atlas: TextAtlas,
     viewport: Viewport,
     swash_cache: SwashCache,
@@ -116,7 +116,7 @@ impl TextRenderer {
         let viewport = Viewport::new(device, &cache);
         let swash_cache = SwashCache::new();
         Self {
-            shaper: None,
+            shaper: TextShaper::default(),
             atlas,
             viewport,
             swash_cache,
@@ -132,7 +132,7 @@ impl TextRenderer {
     /// to [`crate::Ui::set_text_shaper`] so layout and rendering see
     /// one buffer cache.
     pub(crate) fn set_shaper(&mut self, shaper: TextShaper) {
-        self.shaper = Some(shaper);
+        self.shaper = shaper;
     }
 
     /// True if any group has been prepared this frame and should render.
@@ -167,81 +167,85 @@ impl TextRenderer {
         runs: &[TextRun],
         mode: StencilMode,
     ) -> bool {
-        let Some(shaper) = self.shaper.clone() else {
-            return false;
-        };
-        shaper.with_render_split(|split| {
-            let RenderSplit {
-                font_system,
-                lookup,
-            } = split;
+        // Clone to release the `&self.shaper` borrow for the closure
+        // body — refcount bump, ~free. `with_render_split` returns
+        // `None` when the shaper is mono (no cosmic to split), which
+        // we surface as `false` (no work done this group).
+        let shaper = self.shaper.clone();
+        shaper
+            .with_render_split(|split| {
+                let RenderSplit {
+                    font_system,
+                    lookup,
+                } = split;
 
-            // Skip-empty without materializing a Vec<TextArea>. Two
-            // passes over `runs` (count + filter_map into the iterator
-            // handed to prepare). Both are O(runs.len()) on typical
-            // handfuls of runs per group, and avoid the
-            // lifetime-laundering scratch field.
-            let resolvable = runs.iter().filter(|r| lookup.get(r.key).is_some()).count();
-            if resolvable == 0 {
-                return false;
-            }
+                // Skip-empty without materializing a Vec<TextArea>. Two
+                // passes over `runs` (count + filter_map into the iterator
+                // handed to prepare). Both are O(runs.len()) on typical
+                // handfuls of runs per group, and avoid the
+                // lifetime-laundering scratch field.
+                let resolvable = runs.iter().filter(|r| lookup.get(r.key).is_some()).count();
+                if resolvable == 0 {
+                    return false;
+                }
 
-            // Grow target pool to accommodate `group_idx`. Each
-            // renderer is small (one wgpu vertex buffer + a
-            // Vec<GlyphToRender>); pipelines are reused via
-            // `atlas.get_or_create_pipeline`.
-            let depth_stencil = match mode {
-                StencilMode::Plain => None,
-                StencilMode::Stencil => Some(super::stencil_test_state()),
-            };
-            let (pool, ready) = match mode {
-                StencilMode::Plain => (&mut self.renderers, &mut self.ready),
-                StencilMode::Stencil => (&mut self.stencil_renderers, &mut self.stencil_ready),
-            };
-            while pool.len() <= group_idx {
-                let renderer = GlyphonRenderer::new(
-                    &mut self.atlas,
+                // Grow target pool to accommodate `group_idx`. Each
+                // renderer is small (one wgpu vertex buffer + a
+                // Vec<GlyphToRender>); pipelines are reused via
+                // `atlas.get_or_create_pipeline`.
+                let depth_stencil = match mode {
+                    StencilMode::Plain => None,
+                    StencilMode::Stencil => Some(super::stencil_test_state()),
+                };
+                let (pool, ready) = match mode {
+                    StencilMode::Plain => (&mut self.renderers, &mut self.ready),
+                    StencilMode::Stencil => (&mut self.stencil_renderers, &mut self.stencil_ready),
+                };
+                while pool.len() <= group_idx {
+                    let renderer = GlyphonRenderer::new(
+                        &mut self.atlas,
+                        device,
+                        wgpu::MultisampleState::default(),
+                        depth_stencil.clone(),
+                    );
+                    pool.push(renderer);
+                }
+                ready.grow(pool.len());
+
+                let text_areas = runs.iter().filter_map(|r| {
+                    lookup.get(r.key).map(|buffer| TextArea {
+                        buffer,
+                        left: r.origin.x,
+                        top: r.origin.y,
+                        scale,
+                        bounds: text_bounds(r.bounds),
+                        default_color: glyphon_color(r.color),
+                        custom_glyphs: &[],
+                    })
+                });
+
+                let result = pool[group_idx].prepare(
                     device,
-                    wgpu::MultisampleState::default(),
-                    depth_stencil.clone(),
+                    queue,
+                    font_system,
+                    &mut self.atlas,
+                    &self.viewport,
+                    text_areas,
+                    &mut self.swash_cache,
                 );
-                pool.push(renderer);
-            }
-            ready.grow(pool.len());
 
-            let text_areas = runs.iter().filter_map(|r| {
-                lookup.get(r.key).map(|buffer| TextArea {
-                    buffer,
-                    left: r.origin.x,
-                    top: r.origin.y,
-                    scale,
-                    bounds: text_bounds(r.bounds),
-                    default_color: glyphon_color(r.color),
-                    custom_glyphs: &[],
-                })
-            });
-
-            let result = pool[group_idx].prepare(
-                device,
-                queue,
-                font_system,
-                &mut self.atlas,
-                &self.viewport,
-                text_areas,
-                &mut self.swash_cache,
-            );
-
-            if let Err(e) = result {
-                tracing::error!(?e, group_idx, ?mode, "glyphon prepare failed");
-                ready.remove(group_idx);
-                return false;
-            }
-            ready.insert(group_idx);
-            if group_idx + 1 > self.high_water {
-                self.high_water = group_idx + 1;
-            }
-            true
-        })
+                if let Err(e) = result {
+                    tracing::error!(?e, group_idx, ?mode, "glyphon prepare failed");
+                    ready.remove(group_idx);
+                    return false;
+                }
+                ready.insert(group_idx);
+                if group_idx + 1 > self.high_water {
+                    self.high_water = group_idx + 1;
+                }
+                true
+            })
+            .unwrap_or(false)
     }
 
     /// Render the prepared text for `group_idx` from the `mode` pool.

@@ -9,7 +9,7 @@ use crate::layout::types::{
 };
 use crate::primitives::{rect::Rect, size::Size};
 use crate::shape::{Shape, TextWrap};
-use crate::text::TextMeasurer;
+use crate::text::TextShaper;
 use crate::tree::element::LayoutCore;
 use crate::tree::{Child, NodeId, Tree};
 use glam::Vec2;
@@ -154,7 +154,7 @@ pub(crate) fn children_max_intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> f32 {
     let mut m = 0.0f32;
     for c in tree.children(node).filter_map(Child::active) {
@@ -240,7 +240,7 @@ pub(crate) fn measure_per_axis_hug(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
 ) -> Size {
     let style = tree.records.layout()[node.index()];

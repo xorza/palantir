@@ -13,7 +13,7 @@ use crate::layout::types::display::Display;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::{FrameOutput, Frontend};
 use crate::shape::Shape;
-use crate::text::{TextMeasurer, TextShaper};
+use crate::text::TextShaper;
 use crate::tree::element::Element;
 use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
@@ -52,7 +52,7 @@ pub struct Ui {
     /// Cross-frame `WidgetId → Any` widget state. See [`StateMap`].
     pub(crate) state: StateMap,
 
-    pub(crate) text: TextMeasurer,
+    pub(crate) text: TextShaper,
     pub(crate) layout: LayoutEngine,
     pub(crate) frontend: Frontend,
 
@@ -113,7 +113,7 @@ impl Ui {
             theme: Theme::default(),
             ids: SeenIds::default(),
             state: StateMap::default(),
-            text: TextMeasurer::default(),
+            text: TextShaper::default(),
             layout: LayoutEngine::default(),
             frontend: Frontend::default(),
             input: InputState::new(),
@@ -134,7 +134,7 @@ impl Ui {
     /// see the same buffer cache. Tests leave this unset and run on the
     /// deterministic mono fallback.
     pub fn set_text_shaper(&mut self, shaper: TextShaper) {
-        self.text.set_text_shaper(shaper);
+        self.text = shaper;
     }
 
     /// Start recording a frame. A stray `scale_factor` of `0.0` from winit
@@ -167,7 +167,7 @@ impl Ui {
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
 
-        let results = self.layout.run(&self.forest, &mut self.text);
+        let results = self.layout.run(&self.forest, &self.text);
 
         self.scrolls.refresh(&self.forest, results, &mut self.state);
 

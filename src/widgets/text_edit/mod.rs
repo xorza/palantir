@@ -259,7 +259,7 @@ fn handle_input(
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos())
     {
         let local_x = ptr.x - rect.min.x - pad_left;
-        state.caret = caret_from_x(text, local_x, font_size, line_height_px, &mut ui.text);
+        state.caret = caret_from_x(text, local_x, font_size, line_height_px, &ui.text);
     }
 
     if !is_focused {
@@ -349,7 +349,7 @@ fn caret_from_x(
     target_x: f32,
     font_size: f32,
     line_height_px: f32,
-    m: &mut crate::text::TextMeasurer,
+    m: &crate::text::TextShaper,
 ) -> usize {
     let mut best_off = 0usize;
     let mut best_dist = target_x.abs();

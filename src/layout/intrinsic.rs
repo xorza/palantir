@@ -16,7 +16,7 @@ use super::support::{AxisCtx, leaf_text_shapes, resolve_axis_size};
 use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, stack, wrapstack, zstack};
 use crate::layout::types::sizing::Sizing;
 use crate::shape::TextWrap;
-use crate::text::TextMeasurer;
+use crate::text::TextShaper;
 use crate::tree::element::ScrollAxes;
 use crate::tree::{NodeId, Tree};
 
@@ -73,7 +73,7 @@ pub(crate) fn compute(
     node: NodeId,
     axis: Axis,
     req: LenReq,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> f32 {
     let style = tree.records.layout()[node.index()];
     if style.visibility.is_collapsed() {
@@ -121,7 +121,7 @@ fn content_intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
     mode: LayoutMode,
 ) -> f32 {
     match mode {
@@ -158,7 +158,7 @@ fn content_intrinsic(
 /// don't drive size. Lives here rather than in a `leaf` module because
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
-fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &mut TextMeasurer) -> f32 {
+fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &TextShaper) -> f32 {
     let wid = tree.records.widget_id()[node.index()];
     let curr_hash = tree.rollups.node[node.index()];
     let mut acc = 0.0_f32;
@@ -275,7 +275,7 @@ mod tests {
             child,
             Axis::X,
             LenReq::MinContent,
-            &mut ui.text,
+            &ui.text,
         );
         assert_eq!(
             v, SENTINEL,
@@ -314,7 +314,7 @@ mod tests {
             root,
             Axis::X,
             LenReq::MaxContent,
-            &mut ui.text,
+            &ui.text,
         );
 
         assert!(

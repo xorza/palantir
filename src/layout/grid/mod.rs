@@ -2,7 +2,7 @@ use super::support::{AxisAlignPair, place_axis, resolved_axis_align, zero_subtre
 use super::{Axis, LayoutEngine, LenReq};
 use crate::layout::types::{align::AxisAlign, sizing::Sizing, span::Span, track::Track};
 use crate::primitives::{rect::Rect, size::Size};
-use crate::text::TextMeasurer;
+use crate::text::TextShaper;
 use crate::tree::element::LayoutMode;
 use crate::tree::{Child, NodeId, Tree};
 use fixedbitset::FixedBitSet;
@@ -331,7 +331,7 @@ pub(crate) fn measure(
     node: NodeId,
     idx: u16,
     inner_avail: Size,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> Size {
     let depth = layout.scratch.grid.depth_stack.enter();
     let result = measure_inner(layout, tree, node, idx, depth, inner_avail, text);
@@ -346,7 +346,7 @@ fn measure_inner(
     idx: u16,
     depth: usize,
     inner_avail: Size,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> Size {
     let GridShape {
         n_rows,
@@ -851,7 +851,7 @@ pub(crate) fn intrinsic(
     idx: u16,
     axis: Axis,
     req: LenReq,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> f32 {
     let def = &tree.grid.defs[idx as usize];
     let (tracks, gap, n_tracks) = match axis {

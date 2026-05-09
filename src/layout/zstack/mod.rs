@@ -4,7 +4,7 @@ use super::support::{
 };
 use super::{Axis, LayoutEngine, LenReq};
 use crate::primitives::{rect::Rect, size::Size};
-use crate::text::TextMeasurer;
+use crate::text::TextShaper;
 use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
@@ -20,7 +20,7 @@ pub(crate) fn intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> f32 {
     children_max_intrinsic(layout, tree, node, axis, req, text)
 }
@@ -41,7 +41,7 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> Size {
     measure_per_axis_hug(layout, tree, node, inner_avail, text, |_, _, d| d)
 }

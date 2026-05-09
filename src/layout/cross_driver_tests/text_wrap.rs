@@ -99,21 +99,21 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node,
         Axis::X,
         LenReq::MaxContent,
-        &mut ui.text,
+        &ui.text,
     );
     let min_w = ui.layout.intrinsic(
         ui.forest.tree(Layer::Main),
         node,
         Axis::X,
         LenReq::MinContent,
-        &mut ui.text,
+        &ui.text,
     );
     let max_h = ui.layout.intrinsic(
         ui.forest.tree(Layer::Main),
         node,
         Axis::Y,
         LenReq::MaxContent,
-        &mut ui.text,
+        &ui.text,
     );
 
     assert!(
@@ -339,14 +339,14 @@ fn nonwrapping_text_minconent_equals_full_width() {
         label_node,
         Axis::X,
         LenReq::MaxContent,
-        &mut ui.text,
+        &ui.text,
     );
     let min_w = ui.layout.intrinsic(
         ui.forest.tree(Layer::Main),
         label_node,
         Axis::X,
         LenReq::MinContent,
-        &mut ui.text,
+        &ui.text,
     );
     assert!(
         (min_w - max_w).abs() <= 0.5,
@@ -402,7 +402,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         probe_label,
         Axis::X,
         LenReq::MaxContent,
-        &mut probe.text,
+        &probe.text,
     );
     assert!(label_full > 0.0);
 
@@ -459,7 +459,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::tree::NodeId {
 
 /// Pin: a custom widget that pushes two `Shape::Text` to the same
 /// node has both runs shaped (`text_spans[node].len == 2`) at distinct
-/// `TextCacheKey`s (no `TextMeasurer.reuse` collision). Replaces the
+/// `TextCacheKey`s (no `TextShaper.reuse` collision). Replaces the
 /// old "one Shape::Text per leaf" hard assert.
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {

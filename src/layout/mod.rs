@@ -11,7 +11,7 @@ use crate::layout::wrapstack::WrapScratch;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::shape::TextWrap;
-use crate::text::TextMeasurer;
+use crate::text::TextShaper;
 use crate::tree::element::{LayoutCore, LayoutMode, ScrollAxes};
 use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
@@ -145,7 +145,7 @@ fn resolve_desired(
 impl LayoutEngine {
     /// Drop cross-frame measure-cache entries for `WidgetId`s that
     /// vanished this frame. Called from `Ui::end_frame` with the same
-    /// `removed` slice that `Damage` and `TextMeasurer` consume.
+    /// `removed` slice that `Damage` and `TextShaper` consume.
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         self.cache.sweep_removed(removed);
     }
@@ -164,7 +164,7 @@ impl LayoutEngine {
         node: NodeId,
         axis: Axis,
         req: LenReq,
-        text: &mut TextMeasurer,
+        text: &TextShaper,
     ) -> f32 {
         let slot = req.slot(axis);
         let cached = self.scratch.intrinsics[node.index()][slot];
@@ -180,7 +180,7 @@ impl LayoutEngine {
     /// Iterates trees in `Layer::PAINT_ORDER`; each tree's output
     /// lands in `self.result[layer]` directly. Recursive
     /// measure/arrange reads the active slot via `self.active_layer`.
-    pub(crate) fn run(&mut self, forest: &Forest, text: &mut TextMeasurer) -> &LayoutResult {
+    pub(crate) fn run(&mut self, forest: &Forest, text: &TextShaper) -> &LayoutResult {
         assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
@@ -218,7 +218,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available: Size,
-        text: &mut TextMeasurer,
+        text: &TextShaper,
     ) -> Size {
         let style = tree.records.layout()[node.index()];
         if style.visibility.is_collapsed() {
@@ -420,7 +420,7 @@ impl LayoutEngine {
         node: NodeId,
         style: LayoutCore,
         available: Size,
-        text: &mut TextMeasurer,
+        text: &TextShaper,
     ) -> Size {
         // For each axis: if this node has a declared `Fixed` size, that's the
         // outer width children see — `inner = fixed - padding`. Otherwise
@@ -532,7 +532,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available_w: f32,
-        text: &mut TextMeasurer,
+        text: &TextShaper,
     ) -> Size {
         let span_start = self.result[self.active_layer].text_shapes.len() as u32;
         let mut s = Size::ZERO;
@@ -574,7 +574,7 @@ impl LayoutEngine {
         line_height_px: f32,
         wrap: TextWrap,
         available_w: f32,
-        text: &mut TextMeasurer,
+        text: &TextShaper,
     ) -> Size {
         let wid = tree.records.widget_id()[node.index()];
         let curr_hash = tree.rollups.node[node.index()];

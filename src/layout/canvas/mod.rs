@@ -1,7 +1,7 @@
 use super::support::{measure_per_axis_hug, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
 use crate::primitives::{rect::Rect, size::Size};
-use crate::text::TextMeasurer;
+use crate::text::TextShaper;
 use crate::tree::{Child, NodeId, Tree};
 
 #[cfg(test)]
@@ -21,7 +21,7 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> Size {
     // Active children only: a collapsed child at (100,100) must not
     // inflate the canvas's content size. `desired` is already ZERO for
@@ -62,7 +62,7 @@ pub(crate) fn intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> f32 {
     let mut max = 0.0_f32;
     for c in tree.children(node).filter_map(Child::active) {
