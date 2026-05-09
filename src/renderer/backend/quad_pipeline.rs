@@ -40,6 +40,11 @@ pub(crate) struct QuadPipeline {
     /// across frames; capacity grows monotonically.
     mask_buffer: Option<wgpu::Buffer>,
     mask_capacity: usize,
+    /// Single-instance buffer holding the partial-repaint pre-clear quad
+    /// (full-viewport, opaque, clear color). Drawn before regular groups
+    /// inside the damage scissor so `LoadOp::Load` doesn't leak last
+    /// frame's AA-fringe pixels into this frame's blends.
+    clear_buffer: wgpu::Buffer,
     /// Cached creation inputs needed to lazy-build `stencil` later.
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
@@ -156,6 +161,13 @@ impl QuadPipeline {
             mapped_at_creation: false,
         });
 
+        let clear_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("palantir.quad.clear"),
+            size: std::mem::size_of::<Quad>() as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             pipeline,
             bind_group,
@@ -165,6 +177,7 @@ impl QuadPipeline {
             stencil: None,
             mask_buffer: None,
             mask_capacity: 0,
+            clear_buffer,
             shader,
             color_format: format,
             bind_layout,
@@ -324,6 +337,45 @@ impl QuadPipeline {
             return;
         }
         pass.draw(0..4, instances.into());
+    }
+
+    /// Upload the partial-repaint pre-clear quad: full-viewport rect
+    /// filled with `color` at alpha 1, no stroke, no rounding. Drawn
+    /// inside the damage scissor before regular groups so AA fringes
+    /// blend over the clear color, not over last frame's pixels.
+    pub(crate) fn upload_clear(&self, queue: &wgpu::Queue, viewport: Vec2, color: Color) {
+        let q = Quad::new(
+            Rect {
+                min: glam::Vec2::ZERO,
+                size: Size {
+                    w: viewport.x,
+                    h: viewport.y,
+                },
+            },
+            color,
+            Corners::default(),
+            None,
+        );
+        queue.write_buffer(&self.clear_buffer, 0, bytemuck::bytes_of(&q));
+    }
+
+    /// Bind the appropriate pipeline + clear buffer and draw one
+    /// instance. In `stencil` mode the pass has a stencil attachment,
+    /// so the no-stencil base pipeline can't run; uses `stencil_test`
+    /// at reference 0 instead — the stencil is cleared to 0 each pass,
+    /// so `Equal(0)` matches every pixel and `write_mask=0` keeps
+    /// stencil intact.
+    pub(crate) fn draw_clear<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
+        if stencil {
+            let s = self.stencil.as_ref().expect("ensure_stencil first");
+            pass.set_pipeline(&s.stencil_test);
+            pass.set_stencil_reference(0);
+        } else {
+            pass.set_pipeline(&self.pipeline);
+        }
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, self.clear_buffer.slice(..));
+        pass.draw(0..4, 0..1);
     }
 
     /// Upload `masks` (one `Quad` per rounded clip in the frame) to the

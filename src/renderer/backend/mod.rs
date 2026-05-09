@@ -321,6 +321,11 @@ impl WgpuBackend {
             &buffer.quads,
         );
 
+        if damage_scissor.is_some() {
+            self.quad
+                .upload_clear(&self.queue, buffer.viewport_phys_f, clear);
+        }
+
         // Prepare text per-group outside the encoder/pass borrow scope so
         // glyphon can upload to the atlas + per-renderer vertex buffer
         // freely. Viewport uniform updated once for all renderers in the
@@ -385,6 +390,18 @@ impl WgpuBackend {
                 multiview_mask: None,
             });
             let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
+
+            // Partial-repaint pre-clear: paint the damage region with
+            // clear color (alpha 1) before drawing dirty content.
+            // Without this, `LoadOp::Load` leaves last frame's pixels
+            // in place; new draws with AA fringe alpha < 1 blend over
+            // them, accumulating color drift across animation frames
+            // (manifests as "stays hovered after I move away").
+            if let Some(scissor) = damage_scissor {
+                pass.set_scissor_rect(scissor.x, scissor.y, scissor.w, scissor.h);
+                self.quad.draw_clear(&mut pass, use_stencil);
+            }
+
             // Re-bind the quad pipeline per group: glyphon's
             // `render_group` clobbers state, and the stencil path
             // alternates mask/test pipelines anyway. Re-bind cost is
