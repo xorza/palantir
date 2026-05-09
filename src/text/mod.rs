@@ -56,9 +56,9 @@ pub struct TextShaper {
 
 impl TextShaper {
     /// Wrap a freshly-built [`CosmicMeasure`] for sharing.
-    pub fn new(cosmic: CosmicMeasure) -> Self {
+    pub fn new(measure: CosmicMeasure) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(cosmic)),
+            inner: Rc::new(RefCell::new(measure)),
         }
     }
 
@@ -87,8 +87,8 @@ impl TextShaper {
     /// held for the closure's duration, so `body` must not re-enter
     /// any `TextShaper` method on the same handle.
     pub(crate) fn with_render_split<R>(&self, body: impl FnOnce(RenderSplit<'_>) -> R) -> R {
-        let mut cosmic = self.inner.borrow_mut();
-        body(cosmic.split_for_render())
+        let mut inner = self.inner.borrow_mut();
+        body(inner.split_for_render())
     }
 }
 
@@ -222,19 +222,19 @@ fn mono_measure(
     }
 }
 
-/// Free-function dispatch into the shaper. Takes `&self.cosmic` so
+/// Free-function dispatch into the shaper. Takes `&self.shaper` so
 /// the cached entry points can invoke it while holding a
 /// `&mut TextReuseEntry` from `reuse` — `&mut self` would over-borrow.
 #[inline]
 fn dispatch(
-    cosmic: &Option<TextShaper>,
+    shaper: &Option<TextShaper>,
     text: &str,
     font_size_px: f32,
     line_height_px: f32,
     max_width_px: Option<f32>,
 ) -> MeasureResult {
-    match cosmic {
-        Some(c) => c.measure(text, font_size_px, line_height_px, max_width_px),
+    match shaper {
+        Some(s) => s.measure(text, font_size_px, line_height_px, max_width_px),
         None => mono_measure(text, font_size_px, line_height_px, max_width_px),
     }
 }
@@ -263,7 +263,7 @@ pub(crate) struct WrapReuse {
 /// rasterization see the same buffer cache.
 #[derive(Default)]
 pub struct TextMeasurer {
-    pub(crate) cosmic: Option<TextShaper>,
+    pub(crate) shaper: Option<TextShaper>,
     /// Total `measure` calls made through this façade. Read by tests
     /// pinning reshape-skip behaviour; cheap enough to leave on in
     /// release.
@@ -291,13 +291,13 @@ impl TextMeasurer {
     /// replay a `TextCacheKey` minted by the old shaper against the new
     /// one. If you ever need to support a swap, also invalidate the
     /// measure cache, encode cache, and text reuse map at the swap point.
-    pub fn set_text_shaper(&mut self, cosmic: TextShaper) {
+    pub fn set_text_shaper(&mut self, shaper: TextShaper) {
         assert!(
-            self.cosmic.is_none(),
+            self.shaper.is_none(),
             "TextMeasurer::set_text_shaper called twice; see doc comment — \
              swapping shapers requires invalidating measure + encode caches"
         );
-        self.cosmic = Some(cosmic);
+        self.shaper = Some(cosmic);
     }
 
     /// Identity-cached unbounded shape for `wid`, refreshing it (and
@@ -323,7 +323,7 @@ impl TextMeasurer {
             other => other,
         };
         self.measure_calls += 1;
-        let unbounded = dispatch(&self.cosmic, text, font_size_px, line_height_px, None);
+        let unbounded = dispatch(&self.shaper, text, font_size_px, line_height_px, None);
         let new = TextReuseEntry {
             hash,
             unbounded,
@@ -367,7 +367,7 @@ impl TextMeasurer {
         }
         self.measure_calls += 1;
         let m = dispatch(
-            &self.cosmic,
+            &self.shaper,
             text,
             font_size_px,
             line_height_px,
@@ -406,7 +406,7 @@ impl TextMeasurer {
         // straddles a multibyte char Rust panics with the right message.
         let prefix = &text[..byte_offset];
         self.measure_calls += 1;
-        dispatch(&self.cosmic, prefix, font_size_px, line_height_px, None)
+        dispatch(&self.shaper, prefix, font_size_px, line_height_px, None)
             .size
             .w
     }
