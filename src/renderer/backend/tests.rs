@@ -1,8 +1,9 @@
-//! Backend draw-schedule tests. The backend's `submit` method does GPU
-//! work that's hard to inspect in a unit test; instead we mirror its
-//! draw-ordering logic in the pure `render_schedule` helper here and
-//! pin the order against expected sequences.
+//! Pin per-frame render schedule against `for_each_step`'s actual
+//! emit order — same module the production renderer
+//! ([`super::WgpuBackend::render_groups`]) consumes, so the asserted
+//! sequence can't drift from the real wgpu dispatch.
 
+use super::schedule::{RenderStep, for_each_step};
 use crate::layout::types::span::Span;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
@@ -11,42 +12,57 @@ use crate::primitives::urect::URect;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, RenderBuffer, TextRun};
 use crate::text::TextCacheKey;
-use crate::ui::damage::DamagePaint;
 use glam::{UVec2, Vec2};
 
-/// One step of the backend's per-frame draw schedule. Used here to pin
-/// draw ordering without a GPU. `PreClear` is the partial-repaint
-/// pre-clear quad; `Quads(i)` draws group `i`'s quads; `Text(i)`
-/// renders text scoped to group `i`.
+/// "Simplified" view of the render schedule — strips bookkeeping
+/// (`SetScissor`, `SetStencilRef`) that the tests don't care to pin
+/// directly, and folds the dual-use `MaskQuad` step into the
+/// distinguishing variants `MaskWrite` / `MaskClear` based on the
+/// stencil reference at emit time. Stencil tests assert on this view;
+/// raw [`RenderStep`] is also tested by `setscissor_steps_present`
+/// for fidelity that scissor narrowing actually happens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RenderStep {
+enum DrawOp {
     PreClear,
+    MaskWrite(u32),
+    MaskClear(u32),
     Quads(usize),
     Text(usize),
 }
 
-/// Pure function describing the order of operations
-/// [`super::WgpuBackend::submit`] performs on `buffer` under `damage`.
-/// On `Partial` repaints, a `PreClear` step paints the damage scissor
-/// with the clear color so AA fringes blend over a clean background
-/// rather than last frame's pixels (the fix for the animation
-/// stuck-hover bug). Per-group: emit `Quads(i)` if the group has
-/// quads, then `Text(i)` if the group has text. Mirrors the loop in
-/// `submit`.
-fn render_schedule(buffer: &RenderBuffer, damage: DamagePaint) -> Vec<RenderStep> {
+fn collect(
+    buffer: &RenderBuffer,
+    damage_scissor: Option<URect>,
+    mask_indices: &[Option<u32>],
+    use_stencil: bool,
+) -> Vec<RenderStep> {
     let mut steps = Vec::new();
-    if matches!(damage, DamagePaint::Partial(_)) {
-        steps.push(RenderStep::PreClear);
-    }
-    for (i, g) in buffer.groups.iter().enumerate() {
-        if g.quads.len != 0 {
-            steps.push(RenderStep::Quads(i));
-        }
-        if g.texts.len != 0 {
-            steps.push(RenderStep::Text(i));
-        }
-    }
+    for_each_step(buffer, damage_scissor, mask_indices, use_stencil, |s| {
+        steps.push(s);
+    });
     steps
+}
+
+fn simplify(steps: &[RenderStep]) -> Vec<DrawOp> {
+    let mut current_ref: u32 = 0;
+    let mut out = Vec::new();
+    for s in steps {
+        match s {
+            RenderStep::PreClear => out.push(DrawOp::PreClear),
+            RenderStep::SetScissor(_) => {}
+            RenderStep::SetStencilRef(v) => current_ref = *v,
+            RenderStep::MaskQuad(mi) => {
+                if current_ref == 0 {
+                    out.push(DrawOp::MaskClear(*mi));
+                } else {
+                    out.push(DrawOp::MaskWrite(*mi));
+                }
+            }
+            RenderStep::Quads { group, .. } => out.push(DrawOp::Quads(*group)),
+            RenderStep::Text { group } => out.push(DrawOp::Text(*group)),
+        }
+    }
+    out
 }
 
 fn dummy_quad() -> Quad {
@@ -72,16 +88,30 @@ fn dummy_text() -> TextRun {
     }
 }
 
+/// Builds a 100×100 buffer with the given groups. Quads/texts pools
+/// have one slot each so any non-empty span is valid.
+fn buf_with(groups: Vec<DrawGroup>, has_rounded_clip: bool) -> RenderBuffer {
+    RenderBuffer {
+        quads: vec![dummy_quad(); 4],
+        texts: vec![dummy_text(); 4],
+        groups,
+        viewport_phys: UVec2::new(100, 100),
+        viewport_phys_f: Vec2::new(100.0, 100.0),
+        scale: 1.0,
+        has_rounded_clip,
+    }
+}
+
+// ---------- High-level ordering (was `render_schedule_*`) -----------
+
 /// Pin: text in group 0 renders *between* group 0's quads and group 1's
-/// quads, so a child quad declared after a label can occlude it. This
-/// is the per-group z-order contract — the showcase tab `text z-order`
+/// quads, so a child quad declared after a label can occlude it. The
+/// per-group z-order contract — the showcase tab `text z-order`
 /// demonstrates the visual outcome.
 #[test]
-fn render_schedule_interleaves_text_per_group() {
-    let buf = RenderBuffer {
-        quads: vec![dummy_quad(); 3],
-        texts: vec![dummy_text()],
-        groups: vec![
+fn text_interleaves_per_group() {
+    let buf = buf_with(
+        vec![
             // Group 0: 2 quads + 1 text
             DrawGroup {
                 scissor: None,
@@ -97,37 +127,26 @@ fn render_schedule_interleaves_text_per_group() {
                 texts: Span::new(1, 0),
             },
         ],
-        viewport_phys: UVec2::new(100, 100),
-        viewport_phys_f: Vec2::new(100.0, 100.0),
-        scale: 1.0,
-        has_rounded_clip: false,
-    };
+        false,
+    );
     assert_eq!(
-        render_schedule(&buf, DamagePaint::Full),
-        vec![
-            RenderStep::Quads(0),
-            RenderStep::Text(0),
-            RenderStep::Quads(1),
-        ],
+        simplify(&collect(&buf, None, &[], false)),
+        vec![DrawOp::Quads(0), DrawOp::Text(0), DrawOp::Quads(1)],
     );
 }
 
 /// Edge case: a group with text but no quads (e.g. a Hug parent whose
 /// only paint is its label). Schedule must still emit `Text(i)`.
 #[test]
-fn render_schedule_emits_text_for_quadless_group() {
-    let buf = RenderBuffer {
-        quads: vec![dummy_quad()],
-        texts: vec![dummy_text(); 2],
-        groups: vec![
-            // Group 0: 1 quad only
+fn text_emits_for_quadless_group() {
+    let buf = buf_with(
+        vec![
             DrawGroup {
                 scissor: None,
                 rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 0),
             },
-            // Group 1: text only, no quads
             DrawGroup {
                 scissor: None,
                 rounded_clip: None,
@@ -135,53 +154,189 @@ fn render_schedule_emits_text_for_quadless_group() {
                 texts: Span::new(0, 2),
             },
         ],
-        viewport_phys: UVec2::new(100, 100),
-        viewport_phys_f: Vec2::new(100.0, 100.0),
-        scale: 1.0,
-        has_rounded_clip: false,
-    };
+        false,
+    );
     assert_eq!(
-        render_schedule(&buf, DamagePaint::Full),
-        vec![RenderStep::Quads(0), RenderStep::Text(1)],
+        simplify(&collect(&buf, None, &[], false)),
+        vec![DrawOp::Quads(0), DrawOp::Text(1)],
     );
 }
 
-/// Pin: under `Partial` damage, a `PreClear` step runs *before* any
-/// group draws. The pre-clear paints the damage scissor with clear
-/// color (alpha 1) so subsequent AA-fringe (alpha < 1) draws blend
-/// over a clean background rather than last frame's pixels —
-/// otherwise animation frames would compound prior fringes and
-/// manifest as stuck-hover residue.
+/// Pin: under partial damage, a `PreClear` step runs *before* any
+/// group draws. Without it, `LoadOp::Load` leaves last frame's pixels
+/// in place; new draws with AA fringe alpha < 1 blend over them and
+/// drift across frames (manifests as "stays hovered after I move
+/// away"). Counter-pin: `None` damage skips `PreClear` entirely.
 #[test]
-fn render_schedule_emits_preclear_under_partial_damage() {
-    let buf = RenderBuffer {
-        quads: vec![dummy_quad()],
-        texts: vec![dummy_text()],
-        groups: vec![DrawGroup {
+fn preclear_emits_under_partial_damage() {
+    let buf = buf_with(
+        vec![DrawGroup {
             scissor: None,
             rounded_clip: None,
             quads: Span::new(0, 1),
             texts: Span::new(0, 1),
         }],
-        viewport_phys: UVec2::new(100, 100),
-        viewport_phys_f: Vec2::new(100.0, 100.0),
-        scale: 1.0,
-        has_rounded_clip: false,
-    };
-    let damage = DamagePaint::Partial(Rect::new(0.0, 0.0, 50.0, 50.0));
+        false,
+    );
+    let damage = Some(URect::new(0, 0, 50, 50));
     assert_eq!(
-        render_schedule(&buf, damage),
+        simplify(&collect(&buf, damage, &[], false)),
+        vec![DrawOp::PreClear, DrawOp::Quads(0), DrawOp::Text(0),],
+    );
+    assert_eq!(
+        simplify(&collect(&buf, None, &[], false)),
+        vec![DrawOp::Quads(0), DrawOp::Text(0)],
+    );
+}
+
+// ---------- Stencil-path coverage --------------------------------
+
+/// Pin: a stencil-clipped group with quads and text emits the full
+/// bracket — mask write at `ref=1`, quads, text, mask clear at
+/// `ref=0` — so the next group sees a clean stencil regardless of
+/// clip ordering. Pre-`render_schedule` tests didn't cover this; the
+/// stencil ordering bug class was visible only via visual fixtures.
+#[test]
+fn stencil_group_brackets_draws_with_mask_write_clear() {
+    let buf = buf_with(
+        vec![DrawGroup {
+            scissor: Some(URect::new(0, 0, 100, 100)),
+            rounded_clip: Some(Corners::all(8.0)),
+            quads: Span::new(0, 2),
+            texts: Span::new(0, 1),
+        }],
+        true,
+    );
+    let mask_indices = &[Some(0u32)];
+    assert_eq!(
+        simplify(&collect(&buf, None, mask_indices, true)),
         vec![
-            RenderStep::PreClear,
-            RenderStep::Quads(0),
-            RenderStep::Text(0),
+            DrawOp::MaskWrite(0),
+            DrawOp::Quads(0),
+            DrawOp::Text(0),
+            DrawOp::MaskClear(0),
         ],
     );
-    // Counter-pin: `Full` skips `PreClear` (the render-pass `LoadOp`
-    // already clears the whole attachment) and `Skip` doesn't run a
-    // pass at all.
+}
+
+/// Pin: in a stencil-attached pass, a *non-rounded* group still runs
+/// at `stencil_ref = 0` (matches the cleared stencil so `Equal(0)`
+/// passes everywhere) but emits no mask quads. Mixed in with a
+/// rounded sibling, each retains its own bracket — the rounded
+/// group's mask write/clear must not bleed into the non-rounded
+/// neighbor.
+#[test]
+fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
+    let buf = buf_with(
+        vec![
+            // Group 0: rounded clip
+            DrawGroup {
+                scissor: Some(URect::new(0, 0, 100, 100)),
+                rounded_clip: Some(Corners::all(8.0)),
+                quads: Span::new(0, 1),
+                texts: Span::new(0, 0),
+            },
+            // Group 1: plain (no rounded clip)
+            DrawGroup {
+                scissor: Some(URect::new(0, 0, 100, 100)),
+                rounded_clip: None,
+                quads: Span::new(1, 1),
+                texts: Span::new(0, 1),
+            },
+        ],
+        true,
+    );
+    let mask_indices = &[Some(0u32), None];
     assert_eq!(
-        render_schedule(&buf, DamagePaint::Full),
-        vec![RenderStep::Quads(0), RenderStep::Text(0)],
+        simplify(&collect(&buf, None, mask_indices, true)),
+        vec![
+            // Rounded bracket
+            DrawOp::MaskWrite(0),
+            DrawOp::Quads(0),
+            DrawOp::MaskClear(0),
+            // Plain group: no mask write/clear, just draw
+            DrawOp::Quads(1),
+            DrawOp::Text(1),
+        ],
+    );
+}
+
+/// Pin: a stencil-pass group with text but no quads still emits the
+/// mask bracket. Without it, the text would render unstenciled —
+/// rounded clip would silently leak past the mask boundary.
+#[test]
+fn stencil_text_only_group_still_brackets_with_mask() {
+    let buf = buf_with(
+        vec![DrawGroup {
+            scissor: Some(URect::new(0, 0, 100, 100)),
+            rounded_clip: Some(Corners::all(8.0)),
+            quads: Span::new(0, 0),
+            texts: Span::new(0, 1),
+        }],
+        true,
+    );
+    let mask_indices = &[Some(0u32)];
+    assert_eq!(
+        simplify(&collect(&buf, None, mask_indices, true)),
+        vec![DrawOp::MaskWrite(0), DrawOp::Text(0), DrawOp::MaskClear(0),],
+    );
+}
+
+// ---------- Fidelity over the granular RenderStep sequence ---------
+
+/// Pin: under partial damage, the very first emitted step is
+/// `SetScissor(damage_scissor)`, and the per-group `SetScissor`
+/// narrows further. Confirms the schedule actually emits the scissor
+/// transitions production code relies on.
+#[test]
+fn setscissor_steps_present_under_partial_damage() {
+    let buf = buf_with(
+        vec![DrawGroup {
+            scissor: Some(URect::new(10, 10, 50, 50)),
+            rounded_clip: None,
+            quads: Span::new(0, 1),
+            texts: Span::new(0, 0),
+        }],
+        false,
+    );
+    let damage = URect::new(0, 0, 80, 80);
+    let steps = collect(&buf, Some(damage), &[], false);
+    // First two: scissor to damage, then PreClear.
+    assert_eq!(steps[0], RenderStep::SetScissor(damage));
+    assert_eq!(steps[1], RenderStep::PreClear);
+    // Group 0's effective scissor is intersection (10,10,50,50) ∩ damage = (10,10,50,50).
+    assert_eq!(steps[2], RenderStep::SetScissor(URect::new(10, 10, 50, 50)));
+    // Then quads.
+    assert!(matches!(steps[3], RenderStep::Quads { group: 0, .. }));
+}
+
+/// Pin: a group whose scissor is disjoint from the damage rect emits
+/// no steps (no scissor set, no draws). The damage filter is applied
+/// at schedule time, not delegated to the GPU scissor.
+#[test]
+fn group_outside_damage_emits_no_steps() {
+    let buf = buf_with(
+        vec![
+            // Group 0: in damage
+            DrawGroup {
+                scissor: Some(URect::new(0, 0, 30, 30)),
+                rounded_clip: None,
+                quads: Span::new(0, 1),
+                texts: Span::new(0, 0),
+            },
+            // Group 1: outside damage
+            DrawGroup {
+                scissor: Some(URect::new(60, 60, 30, 30)),
+                rounded_clip: None,
+                quads: Span::new(1, 1),
+                texts: Span::new(0, 0),
+            },
+        ],
+        false,
+    );
+    let damage = URect::new(0, 0, 40, 40);
+    assert_eq!(
+        simplify(&collect(&buf, Some(damage), &[], false)),
+        vec![DrawOp::PreClear, DrawOp::Quads(0)],
     );
 }

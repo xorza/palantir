@@ -1,6 +1,8 @@
 mod quad_pipeline;
+mod schedule;
 
 use self::quad_pipeline::QuadPipeline;
+use self::schedule::{RenderStep, for_each_step};
 use super::frontend::FrameOutput;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, spacing::Spacing, stroke::Stroke, urect::URect,
@@ -427,17 +429,6 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            // Partial-repaint pre-clear: paint the damage region with
-            // clear color (alpha 1) before drawing dirty content.
-            // Without this, `LoadOp::Load` leaves last frame's pixels
-            // in place; new draws with AA fringe alpha < 1 blend over
-            // them, accumulating color drift across animation frames
-            // (manifests as "stays hovered after I move away").
-            if let Some(scissor) = damage_scissor {
-                pass.set_scissor_rect(scissor.x, scissor.y, scissor.w, scissor.h);
-                self.quad.draw_clear(&mut pass, use_stencil);
-            }
-
             self.render_groups(&mut pass, buffer, damage_scissor, use_stencil, text_mode);
         }
 
@@ -471,15 +462,12 @@ impl WgpuBackend {
         }
     }
 
-    /// Pre-order paint of every group in `buffer`. Each group emits, in
-    /// order: optional stencil mask-write, quads (stencil-tested if
-    /// `use_stencil`, plain otherwise), text, optional stencil
-    /// mask-clear. The scissor is the intersection of `g.scissor` and
-    /// `damage_scissor`; groups that don't intersect the damage region
-    /// or that clip to zero area are skipped. Re-binds the quad
-    /// pipeline per group because glyphon's `render_group` clobbers
-    /// state and the stencil path alternates mask/test pipelines —
-    /// re-bind cost is a few state setters, cheap relative to draws.
+    /// Dispatch every step in the per-frame schedule
+    /// ([`schedule::for_each_step`]) to the wgpu render pass. Logic
+    /// for *what* runs in *what order* lives in the schedule module;
+    /// this method is purely the wgpu translation layer for each
+    /// `RenderStep`. Tests reuse the same schedule emitter to assert
+    /// on the sequence without GPU.
     fn render_groups<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -488,79 +476,38 @@ impl WgpuBackend {
         use_stencil: bool,
         text_mode: text::StencilMode,
     ) {
-        let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
-        let text_scissor = damage_scissor.unwrap_or(full_viewport);
-
-        for (i, g) in buffer.groups.iter().enumerate() {
-            let group_scissor = g.scissor.unwrap_or(full_viewport);
-            let effective = match damage_scissor {
-                Some(d) => match group_scissor.intersect(d) {
-                    Some(r) => r,
-                    None => continue,
-                },
-                None => group_scissor,
-            };
-            if effective.w == 0 || effective.h == 0 {
-                continue;
-            }
-            pass.set_scissor_rect(effective.x, effective.y, effective.w, effective.h);
-
-            if use_stencil {
-                let mask_idx = self.mask_indices[i];
-                let stencil_ref: u32 = if mask_idx.is_some() { 1 } else { 0 };
-                pass.set_stencil_reference(stencil_ref);
-                // Per-group invariant: each rounded group writes its
-                // mask, draws, then clears the mask back to 0 so the
-                // next group sees a clean stencil regardless of clip
-                // ordering. Wasteful when consecutive groups share the
-                // same mask, but correct; dedup is a follow-up.
-                if let Some(mi) = mask_idx {
+        for_each_step(
+            buffer,
+            damage_scissor,
+            &self.mask_indices,
+            use_stencil,
+            |step| match step {
+                RenderStep::PreClear => {
+                    self.quad.draw_clear(pass, use_stencil);
+                }
+                RenderStep::SetScissor(r) => {
+                    pass.set_scissor_rect(r.x, r.y, r.w, r.h);
+                }
+                RenderStep::SetStencilRef(v) => {
+                    pass.set_stencil_reference(v);
+                }
+                RenderStep::MaskQuad(mi) => {
                     self.quad.bind_mask_write(pass);
                     self.quad.draw_mask(pass, mi);
                 }
-                if g.quads.len != 0 {
-                    self.quad.bind_stencil_test(pass);
-                    self.quad.draw_range(pass, g.quads);
+                RenderStep::Quads { range, .. } => {
+                    if use_stencil {
+                        self.quad.bind_stencil_test(pass);
+                    } else {
+                        self.quad.bind(pass);
+                    }
+                    self.quad.draw_range(pass, range);
                 }
-                if g.texts.len != 0 {
-                    pass.set_scissor_rect(
-                        text_scissor.x,
-                        text_scissor.y,
-                        text_scissor.w,
-                        text_scissor.h,
-                    );
-                    self.text.render_group(i, pass, text_mode);
+                RenderStep::Text { group } => {
+                    self.text.render_group(group, pass, text_mode);
                 }
-                if let Some(mi) = mask_idx {
-                    // Replace(0) re-stencils the rounded region back to
-                    // 0; subsequent groups that don't re-write their
-                    // own mask see clean stencil. The mask-clear's
-                    // `fs_mask` discards outside the SDF, so a wider
-                    // scissor (carried over from text) still produces
-                    // the same stencil writes.
-                    pass.set_stencil_reference(0);
-                    self.quad.bind_mask_write(pass);
-                    self.quad.draw_mask(pass, mi);
-                }
-            } else if g.quads.len != 0 || g.texts.len != 0 {
-                if g.quads.len != 0 {
-                    self.quad.bind(pass);
-                    self.quad.draw_range(pass, g.quads);
-                }
-                if g.texts.len != 0 {
-                    // Text uses a full-viewport scissor + per-area
-                    // `bounds` for clipping (set in compose). Under
-                    // partial repaint we narrow to the damage rect.
-                    pass.set_scissor_rect(
-                        text_scissor.x,
-                        text_scissor.y,
-                        text_scissor.w,
-                        text_scissor.h,
-                    );
-                    self.text.render_group(i, pass, text_mode);
-                }
-            }
-        }
+            },
+        );
     }
 
     /// Draw the debug overlay onto the swapchain texture *after* the
