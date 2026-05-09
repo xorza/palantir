@@ -10,9 +10,9 @@
 
 use std::path::Path;
 
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 use image::{Rgba, RgbaImage};
-use palantir::{Background, Button, Color, Configure, DebugOverlayConfig, Panel, Sizing};
+use palantir::{Background, Button, Color, Configure, DebugOverlayConfig, Frame, Panel, Sizing};
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
@@ -212,5 +212,94 @@ fn damage_rect_overlay_strokes_dirty_region() {
         red < total / 4,
         "red pixel count {red}/{total} suggests the overlay flooded \
          the surface — should be a thin stroke around the dirty rect."
+    );
+}
+
+/// The motivating workload for multi-rect damage. Two tiny corner
+/// frames change between frames; the rest of the canvas is static.
+/// Under the old single-rect-union accumulator the union of the two
+/// dirty corners would span the whole canvas (top-left + bottom-right
+/// → bbox = entire surface), trip the 50 %-coverage heuristic, and
+/// escalate to `DamagePaint::Full` — so `clear_damage` would flash
+/// the entire canvas magenta. Under the multi-rect region the corners
+/// stay as two disjoint rects (the LVGL merge rule rejects merging
+/// far-apart rects), each scissored to its own pass, leaving the
+/// centre magenta-flashed (read: untouched by the main draw passes).
+///
+/// The assertion is a coverage check rather than a precise rect
+/// match: the centre region must remain mostly magenta, demonstrating
+/// the multi-rect win without coupling to exact pixel boundaries.
+#[test]
+fn corner_pair_change_keeps_center_unpainted() {
+    let mut h = Harness::new();
+    let size = UVec2::new(200, 200);
+
+    let scene = |tl_label: &'static str, br_label: &'static str| {
+        move |ui: &mut palantir::Ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(Background {
+                    fill: Color::rgb(0.15, 0.15, 0.18),
+                    ..Default::default()
+                })
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt(("tl", tl_label))
+                        .position(Vec2::new(0.0, 0.0))
+                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .background(Background {
+                            fill: Color::rgb(0.2, 0.7, 0.4),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    Frame::new()
+                        .id_salt(("br", br_label))
+                        .position(Vec2::new(180.0, 180.0))
+                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .background(Background {
+                            fill: Color::rgb(0.7, 0.3, 0.2),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        }
+    };
+
+    // Frame 1 seeds Damage.prev with the original corners.
+    let _f1 = h.render(size, 1.0, DARK_BG, scene("a", "a"));
+
+    // Frame 2 changes both corners (different `id_salt`s + different
+    // background hashes) so each contributes a small damage rect.
+    h.ui.debug_overlay = Some(DebugOverlayConfig {
+        clear_damage: true,
+        ..Default::default()
+    });
+    let f2 = h.render(size, 1.0, VIS_CLEAR, scene("b", "b"));
+    h.ui.debug_overlay = None;
+
+    save_debug("corner_pair_change_keeps_center_unpainted", &f2);
+
+    // The centre 100×100 region (50..150 on each axis) lies outside
+    // both corner rects + their AA padding. With multi-rect damage it
+    // must be entirely magenta. Under the old single-union behaviour
+    // it would be entirely painted (Full path) — i.e. zero magenta.
+    let mut centre_total = 0u32;
+    let mut centre_magenta = 0u32;
+    for y in 50..150 {
+        for x in 50..150 {
+            let Rgba([r, g, b, _]) = *f2.get_pixel(x, y);
+            centre_total += 1;
+            if r > 240 && g < 16 && b > 240 {
+                centre_magenta += 1;
+            }
+        }
+    }
+    eprintln!("corner-pair centre: {centre_magenta}/{centre_total} magenta");
+    assert_eq!(
+        centre_magenta, centre_total,
+        "centre 100×100 must be fully magenta — multi-rect damage \
+         should keep the two corner rects disjoint instead of unioning \
+         them across the whole surface and tripping Full repaint",
     );
 }
