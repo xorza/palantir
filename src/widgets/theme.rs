@@ -324,11 +324,14 @@ impl AnimatedLook {
 }
 
 impl WidgetLook {
-    /// Slots reserved by [`Self::animate`] (2: background, text).
-    /// Widgets that mix in additional animations on the same
-    /// `WidgetId` start their own slots at `WIDGETLOOK_SLOTS` to
-    /// avoid collision.
-    pub const WIDGETLOOK_SLOTS: u8 = 2;
+    /// Slots [`Self::animate`] reserves on the widget's id.
+    const SLOT_BG: AnimSlot = AnimSlot(0);
+    const SLOT_TEXT: AnimSlot = AnimSlot(1);
+    /// First slot index a widget can use for its own animations on
+    /// top of `WidgetLook::animate`. Stays in sync with the consts
+    /// above via `+ 1` — adding a new internal slot bumps this
+    /// automatically.
+    pub const WIDGETLOOK_SLOTS: u8 = Self::SLOT_TEXT.0 + 1;
 
     /// Resolve the look to flat animated values. `Background` (fill +
     /// stroke) animates as one slot; `TextStyle` (color animated,
@@ -345,7 +348,8 @@ impl WidgetLook {
         fallback_text: TextStyle,
         spec: Option<AnimSpec>,
     ) -> AnimatedLook {
-        let mut background = ui.animate(id, AnimSlot(0), self.background.unwrap_or_default(), spec);
+        let mut background =
+            ui.animate(id, Self::SLOT_BG, self.background.unwrap_or_default(), spec);
         // The `Option<Stroke>` blanket always returns `Some` from
         // arithmetic — a "stroked → no-stroke" animation would
         // otherwise leave a width-0 / transparent stroke that paints
@@ -354,7 +358,12 @@ impl WidgetLook {
         if background.stroke.is_some_and(|s| s.is_noop()) {
             background.stroke = None;
         }
-        let text = ui.animate(id, AnimSlot(1), self.text.unwrap_or(fallback_text), spec);
+        let text = ui.animate(
+            id,
+            Self::SLOT_TEXT,
+            self.text.unwrap_or(fallback_text),
+            spec,
+        );
         AnimatedLook { background, text }
     }
 }
