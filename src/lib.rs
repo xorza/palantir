@@ -1,3 +1,4 @@
+pub(crate) mod animation;
 pub(crate) mod common;
 pub(crate) mod input;
 pub(crate) mod layout;
@@ -11,6 +12,9 @@ pub(crate) mod tree;
 pub(crate) mod ui;
 pub(crate) mod widgets;
 
+pub use animation::easing::Easing;
+pub use animation::spring::Spring;
+pub use animation::{AnimSlot, AnimSpec};
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
 pub use input::sense::Sense;
 pub use input::{FocusPolicy, InputEvent, InputState, PointerButton, PointerState, ResponseState};
