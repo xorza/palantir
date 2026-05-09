@@ -3,7 +3,9 @@
 //! shader at `quad.wgsl` next to this file.
 
 use crate::layout::types::span::Span;
-use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size, urect::URect};
+use crate::primitives::{
+    color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke, urect::URect,
+};
 use crate::renderer::quad::Quad;
 use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
@@ -45,6 +47,12 @@ pub(crate) struct QuadPipeline {
     /// inside the damage scissor so `LoadOp::Load` doesn't leak last
     /// frame's AA-fringe pixels into this frame's blends.
     clear_buffer: wgpu::Buffer,
+    /// Single-instance buffer holding the debug damage-overlay quad
+    /// (transparent fill, red stroke at the damaged region). Drawn onto
+    /// the swapchain texture *after* the backbuffer→surface copy, so it
+    /// never touches the backbuffer and produces no ghosts. Only
+    /// written when `WgpuBackend::debug_damage_overlay` is on.
+    overlay_buffer: wgpu::Buffer,
     /// Cached creation inputs needed to lazy-build `stencil` later.
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
@@ -168,6 +176,13 @@ impl QuadPipeline {
             mapped_at_creation: false,
         });
 
+        let overlay_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("palantir.quad.overlay"),
+            size: std::mem::size_of::<Quad>() as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             pipeline,
             bind_group,
@@ -178,6 +193,7 @@ impl QuadPipeline {
             mask_buffer: None,
             mask_capacity: 0,
             clear_buffer,
+            overlay_buffer,
             shader,
             color_format: format,
             bind_layout,
@@ -375,6 +391,24 @@ impl QuadPipeline {
         }
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.clear_buffer.slice(..));
+        pass.draw(0..4, 0..1);
+    }
+
+    /// Upload the debug damage-overlay quad: a stroked rect at `rect`
+    /// (physical px) with transparent fill, drawn after the
+    /// backbuffer→surface copy so it never lands on the backbuffer.
+    pub(crate) fn upload_overlay(&self, queue: &wgpu::Queue, rect: Rect, stroke: Stroke) {
+        let q = Quad::new(rect, Color::TRANSPARENT, Corners::default(), Some(stroke));
+        queue.write_buffer(&self.overlay_buffer, 0, bytemuck::bytes_of(&q));
+    }
+
+    /// Bind the no-stencil base pipeline + overlay buffer and draw one
+    /// instance. Used in the post-copy overlay pass on the swapchain
+    /// texture (no stencil attachment, no scissor).
+    pub(crate) fn draw_overlay<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, self.overlay_buffer.slice(..));
         pass.draw(0..4, 0..1);
     }
 

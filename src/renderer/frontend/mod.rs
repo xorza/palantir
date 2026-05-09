@@ -25,6 +25,7 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::tree::forest::Forest;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
+use crate::ui::debug_overlay::DebugOverlayConfig;
 
 /// One frame's CPU output: the composed render buffer and what the
 /// GPU should do with it. Returned from [`Ui::end_frame`], consumed
@@ -39,6 +40,10 @@ pub struct FrameOutput<'a> {
     pub(crate) buffer: &'a RenderBuffer,
     pub(crate) damage: DamagePaint,
     pub(crate) repaint_requested: bool,
+    /// Snapshot of [`crate::Ui::debug_overlay`] at end-of-frame. Read
+    /// by the wgpu backend to draw the requested visualizations onto
+    /// the swapchain texture after the backbuffer→surface copy.
+    pub(crate) debug_overlay: Option<DebugOverlayConfig>,
 }
 
 impl FrameOutput<'_> {
