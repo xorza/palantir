@@ -29,24 +29,24 @@ use crate::ui::debug_overlay::DebugOverlayConfig;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-/// Shared state tracking whether the most recently produced
-/// [`FrameOutput`] actually reached the GPU. Held by both
-/// [`crate::Ui`] and `FrameOutput` (via `Arc`); written by
-/// `Ui::end_frame` (→ `Pending`) and `WgpuBackend::submit` on a
-/// successful submit path (→ `Submitted`). Read by `Ui::begin_frame`,
-/// which auto-rewinds `damage.prev_surface` when the last frame's
-/// state is anything other than `Submitted`. The "host dropped a
-/// `FrameOutput` without submitting it" bug class becomes
-/// "next frame is `Full`" — wasteful but correct, instead of silent
-/// damage smear.
+/// Submission status of the most recently produced [`FrameOutput`].
+/// Held by both [`crate::Ui`] and `FrameOutput` (via `Arc`); written
+/// by `Ui::end_frame` (→ `Pending`) and `WgpuBackend::submit` on the
+/// success path (→ `Submitted`). Read by `Ui::begin_frame`, which
+/// auto-rewinds `damage.prev_surface` whenever the last frame's
+/// state isn't `Submitted` (host dropped the `FrameOutput`, surface
+/// acquire failed, or it's the very first frame from
+/// `FrameState::default()` — which leaves the underlying byte at
+/// `Initial`). Turns "host dropped a `FrameOutput`" into "next frame
+/// is `Full`" — wasteful but correct, instead of silent damage smear.
 ///
-/// `AtomicU8` is overkill for the single-threaded path the renderer
-/// actually runs on, but cheap and lets `Ui` / `FrameOutput` stay
-/// `Send`/`Sync` compatible without further constraints.
+/// `AtomicU8` is overkill for the single-threaded renderer path, but
+/// cheap and lets `Ui` / `FrameOutput` stay `Send`/`Sync` compatible
+/// without further constraints.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FrameState(Arc<AtomicU8>);
 
-const FRAME_STATE_IDLE: u8 = 0;
+const FRAME_STATE_INITIAL: u8 = 0;
 const FRAME_STATE_PENDING: u8 = 1;
 const FRAME_STATE_SUBMITTED: u8 = 2;
 
@@ -59,9 +59,6 @@ impl FrameState {
     }
     pub(crate) fn was_last_submitted(&self) -> bool {
         self.0.load(Ordering::Relaxed) == FRAME_STATE_SUBMITTED
-    }
-    pub(crate) fn reset_to_idle(&self) {
-        self.0.store(FRAME_STATE_IDLE, Ordering::Relaxed);
     }
 }
 
