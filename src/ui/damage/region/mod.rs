@@ -8,11 +8,11 @@
 //! 1. Drop empty (zero-area) input.
 //! 2. Drop input already contained by an existing rect.
 //! 3. Cascade-absorb: while any existing rect is contained by the
-//!    candidate OR fits the LVGL "merge if `bbox(A,B) ≤ |A|+|B|`"
-//!    rule (i.e. overlapping or edge-touching), remove it from the
-//!    array and grow the candidate by the union. The cascade is
-//!    important — absorbing one rect may bring the candidate into
-//!    overlap with another.
+//!    candidate OR fits the proximity-merge rule
+//!    `bbox(A,B).area() ≤ MERGE_AREA_RATIO * (|A| + |B|)`, remove it
+//!    from the array and grow the candidate by the union. The
+//!    cascade is important — absorbing one rect may bring the
+//!    candidate into overlap with another.
 //! 4. Append if there's room; otherwise min-growth-merge into the
 //!    existing rect whose union with the candidate adds the least
 //!    area (Slint's `add_box` heuristic).
@@ -28,6 +28,18 @@ use tinyvec::ArrayVec;
 /// (Step 2) guarantees `len ≤ DAMAGE_RECT_CAP`, so the inline storage
 /// never spills.
 pub(crate) const DAMAGE_RECT_CAP: usize = 8;
+
+/// Proximity-merge ratio. Two rects collapse into one when the
+/// bounding box's area is at most `MERGE_AREA_RATIO ×` the sum of
+/// their individual areas — i.e. up to 30 % overdraw waste relative
+/// to the actual changed area is acceptable. `1.0` reproduces the
+/// strict LVGL rule (overlap or edge-touch only); `> 1.0` admits
+/// near-but-not-overlapping pairs. Picked at 1.3 so axis-adjacent
+/// damage (one cell + its immediate neighbour with a 2 px gap)
+/// merges, but two cells more than one stride apart don't —
+/// matches the GPU bench crossover (`damage_merge_gpu`) on Apple
+/// Silicon. Tunable; see `docs/roadmap/damage-merge-research.md`.
+pub(crate) const MERGE_AREA_RATIO: f32 = 1.3;
 
 /// Set of damage rects, kept in screen space. `Copy` so
 /// [`super::DamagePaint`] threads through `FrameOutput` and the
@@ -75,7 +87,8 @@ impl DamageRegion {
         loop {
             let absorbed = self.rects.iter().position(|e| {
                 candidate.contains_rect(*e)
-                    || candidate.union(*e).area() <= candidate.area() + e.area()
+                    || candidate.union(*e).area()
+                        <= MERGE_AREA_RATIO * (candidate.area() + e.area())
             });
             match absorbed {
                 Some(i) => {

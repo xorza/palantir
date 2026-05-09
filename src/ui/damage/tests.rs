@@ -473,15 +473,18 @@ fn animated_parent_transform_unions_old_and_new_positions() {
 
     // Child layout rect didn't change. Parent's transform shifted by
     // (50, 0). Prev screen rect = (0,0,40,40); curr = (50,0,40,40);
-    // gap of 10 px between them. Under the LVGL merge rule the bbox
-    // waste (400 px²) exceeds the savings, so the region keeps both
-    // rects separate — exactly the point of multi-rect damage. The
-    // backend paints two scissored passes instead of one big one.
+    // gap of 10 px between them. bbox = 90×40 = 3600, sum = 3200,
+    // ratio 1.125 ≤ 1.3 — the proximity rule merges into one bbox.
+    // (A larger animation distance would keep the two rects split;
+    // pinned by `transform_animation_keeps_far_positions_split`.)
     let rects: Vec<Rect> = ui.damage.region.iter_rects().collect();
-    assert_eq!(rects.len(), 2, "transform animation → two damage rects");
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
-    assert!(rects.contains(&prev) && rects.contains(&curr), "{rects:?}");
+    assert_eq!(
+        rects,
+        vec![prev.union(curr)],
+        "transform animation under 1.3× ratio → one merged bbox",
+    );
     // Only the child is dirty: its authoring is unchanged but its
     // screen rect moved (rect comparison catches this). The parent
     // panel's own paint is unaffected by its own transform — the
@@ -494,6 +497,47 @@ fn animated_parent_transform_unions_old_and_new_positions() {
         .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
         .collect();
     assert_eq!(dirty_widget_ids, vec![WidgetId::from_hash("c")]);
+}
+
+/// Sister case to the test above: a *large* animation distance keeps
+/// the two screen rects split. Pinning both ends of the merge rule
+/// means a tighter ratio constant won't silently flip behaviour
+/// without breaking a test.
+#[test]
+fn transform_animation_keeps_far_positions_split() {
+    let mut ui = Ui::new();
+    let mut child_node = None;
+    let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
+        begin(ui, UVec2::new(400, 400));
+        Panel::hstack()
+            .id_salt("outer")
+            .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+            .show(ui, |ui| {
+                *child = Some(
+                    Frame::new()
+                        .id_salt("c")
+                        .size(40.0)
+                        .background(Background {
+                            fill: Color::rgb(0.2, 0.4, 0.8),
+                            ..Default::default()
+                        })
+                        .show(ui)
+                        .node,
+                );
+            });
+        end_frame_acked(ui);
+    };
+
+    build(0.0, &mut ui, &mut child_node);
+    build(200.0, &mut ui, &mut child_node);
+
+    // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600.
+    // bbox 240×40 = 9600. ratio 9600/3200 = 3.0 ≫ 1.3 — split.
+    let rects: Vec<Rect> = ui.damage.region.iter_rects().collect();
+    let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
+    let curr = Rect::new(200.0, 0.0, 40.0, 40.0);
+    assert_eq!(rects.len(), 2, "far transform animation → two rects");
+    assert!(rects.contains(&prev) && rects.contains(&curr), "{rects:?}");
 }
 
 // --- Damage::filter heuristic ---------------------------------------------
