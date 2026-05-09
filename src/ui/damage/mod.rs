@@ -125,7 +125,7 @@ impl Damage {
     /// `surface`). `self.prev` is rolled forward in the same pass —
     /// the diff reads each `WidgetId`'s old entry via `insert`, then
     /// evicts last-frame entries listed in `removed` (precomputed by
-    /// [`crate::ui::seen_ids::SeenIds`] so damage and `text` reuse the diff).
+    /// [`crate::tree::seen_ids::SeenIds`] so damage and `text` reuse the diff).
     ///
     /// Rects are tracked in **screen space** (read straight off
     /// `Cascade.screen_rect`). This makes damage match where the GPU

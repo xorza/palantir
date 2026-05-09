@@ -8,6 +8,7 @@ use crate::primitives::rect::Rect;
 use crate::shape::Shape;
 use crate::tree::element::Element;
 use crate::tree::recording::RecordingState;
+use crate::tree::seen_ids::SeenIds;
 use crate::tree::{Layer, NodeId, Tree};
 use std::array;
 use strum::EnumCount as _;
@@ -24,6 +25,11 @@ use strum::EnumCount as _;
 pub(crate) struct Forest {
     pub(crate) trees: [Tree; Layer::COUNT],
     pub(crate) recording: RecordingState,
+    /// Forest-wide `WidgetId` tracker — collision detection across
+    /// all layers, removed-widget diff, and frame rollover. Lives here
+    /// (not on `Ui`) so the uniqueness invariant is enforced at the
+    /// recording-arena layer instead of by orchestrator convention.
+    pub(crate) ids: SeenIds,
 }
 
 impl Default for Forest {
@@ -31,6 +37,7 @@ impl Default for Forest {
         Self {
             trees: array::from_fn(|_| Tree::default()),
             recording: RecordingState::default(),
+            ids: SeenIds::default(),
         }
     }
 }
@@ -38,6 +45,7 @@ impl Default for Forest {
 impl Forest {
     pub(crate) fn begin_frame(&mut self) {
         self.recording.reset();
+        self.ids.begin_frame();
         for t in &mut self.trees {
             t.begin_frame();
         }
