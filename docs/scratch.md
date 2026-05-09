@@ -10,5 +10,4 @@ debug overlay for damage rects
 
  multiple damage rects
 
-
-   pub(crate) debug_clear_on_damage: bool, - remove
+cosmic and glyphon optimizationf or release

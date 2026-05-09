@@ -52,8 +52,6 @@ struct Backbuffer {
     /// never use rounded clip never allocate this. Recreated alongside
     /// the color texture on resize / format change.
     stencil: Option<StencilAttachment>,
-    size: wgpu::Extent3d,
-    format: wgpu::TextureFormat,
 }
 
 struct StencilAttachment {
@@ -156,7 +154,7 @@ impl WgpuBackend {
     fn ensure_backbuffer(&mut self, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> bool {
         let needs_new = match &self.backbuffer {
             None => true,
-            Some(b) => b.size != size || b.format != format,
+            Some(b) => b.tex.size() != size || b.tex.format() != format,
         };
         if !needs_new {
             return false;
@@ -186,8 +184,6 @@ impl WgpuBackend {
             // frame. Without this, wgpu validation rejects the pass
             // (mismatched attachment sizes).
             stencil: None,
-            size,
-            format,
         });
         true
     }
@@ -206,7 +202,7 @@ impl WgpuBackend {
         }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.stencil"),
-            size: bb.size,
+            size: bb.tex.size(),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -385,7 +381,7 @@ impl WgpuBackend {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("palantir.renderer.encoder"),
+                label: Some("palantir.renderer.main"),
             });
         {
             // Stencil attachment is built around `&backbuffer`, so its
@@ -416,7 +412,7 @@ impl WgpuBackend {
                     }),
                 });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("palantir.renderer.pass"),
+                label: Some("palantir.renderer.main.pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &backbuffer.view,
                     resolve_target: None,
@@ -461,7 +457,7 @@ impl WgpuBackend {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            backbuffer.size,
+            backbuffer.tex.size(),
         );
 
         if let Some(config) = frame.debug_overlay {
@@ -630,7 +626,7 @@ impl WgpuBackend {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("palantir.renderer.skip_copy"),
+                label: Some("palantir.renderer.skip"),
             });
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
@@ -645,7 +641,7 @@ impl WgpuBackend {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            backbuffer.size,
+            backbuffer.tex.size(),
         );
         self.queue.submit(std::iter::once(encoder.finish()));
     }
