@@ -1,4 +1,4 @@
-use crate::animation::{AnimSlot, AnimSpec};
+use crate::animation::AnimSlot;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::primitives::background::Background;
@@ -92,14 +92,16 @@ impl Button {
             color: Color::TRANSPARENT,
         });
 
-        // Interpolate paint properties toward the target state. Spec is
-        // intentionally fast (120ms) so click feedback feels immediate
-        // while still smoothing color transitions on hover.
+        // Interpolate paint properties toward the target state. Spec
+        // is theme-controlled — `AnimSpec::INSTANT` disables animation
+        // globally (accessibility, debug, snapshot tests). Default is
+        // `AnimSpec::FAST` (120ms ease-out-cubic).
         let id = element.id;
-        let fill = ui.animate(id, SLOT_FILL, target_bg.fill, AnimSpec::FAST);
-        let stroke_color = ui.animate(id, SLOT_STROKE_COLOR, target_stroke.color, AnimSpec::FAST);
-        let stroke_width = ui.animate(id, SLOT_STROKE_WIDTH, target_stroke.width, AnimSpec::FAST);
-        let text_color = ui.animate(id, SLOT_TEXT_COLOR, target_text.color, AnimSpec::FAST);
+        let anim = style.anim;
+        let fill = ui.animate(id, SLOT_FILL, target_bg.fill, anim);
+        let stroke_color = ui.animate(id, SLOT_STROKE_COLOR, target_stroke.color, anim);
+        let stroke_width = ui.animate(id, SLOT_STROKE_WIDTH, target_stroke.width, anim);
+        let text_color = ui.animate(id, SLOT_TEXT_COLOR, target_text.color, anim);
 
         let animated_bg = Background {
             fill,

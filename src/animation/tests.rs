@@ -27,6 +27,48 @@ fn linear_100ms() -> AnimSpec {
     }
 }
 
+/// `AnimSpec::INSTANT` is the default and must be a true noop:
+/// snaps to target, drops any existing row, and reports settled
+/// (so the caller doesn't request a repaint). Switching from a
+/// real spec to INSTANT must reset cleanly, not carry the in-flight
+/// `current` forward.
+#[test]
+fn instant_is_noop_and_drops_row() {
+    let mut map = AnimMapTyped::<f32>::default();
+    let id = wid("a");
+
+    // INSTANT on a fresh slot: snaps, settled, no row inserted.
+    let r = map.tick(id, SLOT, 1.0, AnimSpec::INSTANT, 0.016);
+    assert_eq!(r.current, 1.0);
+    assert!(r.settled);
+    assert!(
+        map.rows.is_empty(),
+        "INSTANT must not allocate a row on a fresh slot",
+    );
+    assert_eq!(AnimSpec::default(), AnimSpec::INSTANT);
+
+    // Mid-flight on FAST: row exists.
+    let _ = map.tick(id, SLOT, 0.0, AnimSpec::FAST, 0.0);
+    let _ = map.tick(id, SLOT, 1.0, AnimSpec::FAST, 0.05);
+    assert_eq!(map.rows.len(), 1);
+
+    // Switching to INSTANT mid-flight: snap and drop the row.
+    let r = map.tick(id, SLOT, 1.0, AnimSpec::INSTANT, 0.016);
+    assert_eq!(r.current, 1.0);
+    assert!(r.settled);
+    assert!(
+        map.rows.is_empty(),
+        "INSTANT must drop the stale row so a future non-INSTANT \
+         call starts fresh from `target`, not from in-flight current",
+    );
+
+    // Switching back to FAST: first-touch snaps to new target with no
+    // residual `current` from before.
+    let r = map.tick(id, SLOT, 5.0, AnimSpec::FAST, 0.016);
+    assert_eq!(r.current, 5.0, "post-INSTANT first-touch snaps");
+    assert!(r.settled);
+}
+
 #[test]
 fn first_touch_returns_target_and_settled() {
     let mut map = AnimMapTyped::<f32>::default();

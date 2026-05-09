@@ -724,13 +724,7 @@ fn button_hover_damage_covers_only_the_button() {
     // `on_input` recomputes hover against the existing hit_index
     // immediately, so the *next* recording sees `hovered=true` and
     // emits the hovered fill. Damage = button rect only.
-    //
-    // Button visuals animate (120ms FAST). Bump `dt` past the spec so
-    // the animator settles in one tick and the hash diff is the full
-    // hover→normal delta (not a partial in-flight value), keeping the
-    // dirty-rect assertion deterministic.
     ui.on_input(InputEvent::PointerMoved(target));
-    ui.dt = 0.2;
     build(&mut ui, &mut hot_node, &mut cold_node);
 
     assert_eq!(
@@ -774,22 +768,16 @@ fn button_unhover_damage_covers_only_the_button() {
         ui.end_frame();
     };
 
-    // Settle two frames with cursor over the hot button. Bump `dt` so
-    // the hover animation completes within these warmup frames; with
-    // dt=0 the animator would stay frozen at `normal` and the unhover
-    // assertion below would see no diff.
+    // Settle two frames with cursor over the hot button.
     build(&mut ui, &mut hot_node, &mut cold_node);
     let hot_rect = ui.layout.result[Layer::Main].rect[hot_node.unwrap().index()];
     ui.on_input(InputEvent::PointerMoved(hot_rect.min + Vec2::new(5.0, 5.0)));
-    ui.dt = 0.2;
     build(&mut ui, &mut hot_node, &mut cold_node);
     build(&mut ui, &mut hot_node, &mut cold_node);
     assert!(ui.damage.dirty.is_empty(), "settled hover");
 
-    // Pointer leaves the button. Same `dt` bump so the unhover
-    // animation lands in one frame.
+    // Pointer leaves the button.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
-    ui.dt = 0.2;
     build(&mut ui, &mut hot_node, &mut cold_node);
     assert_eq!(ui.damage.dirty.len(), 1);
     assert_eq!(

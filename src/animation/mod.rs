@@ -14,6 +14,7 @@ mod tests;
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
 use crate::animation::spring::Spring;
+use crate::primitives::approx::approx_zero;
 use crate::primitives::color::Color;
 use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
@@ -35,6 +36,14 @@ pub enum AnimSpec {
 }
 
 impl AnimSpec {
+    /// Zero-duration: tick snaps `current = target` and reports
+    /// settled on the same frame the target moves. Use to disable
+    /// animation while keeping the call shape (e.g. accessibility
+    /// preferences, debug builds, tests).
+    pub const INSTANT: Self = Self::Duration {
+        secs: 0.0,
+        ease: Easing::Linear,
+    };
     /// 120 ms ease-out-cubic. Snappy hover/press default.
     pub const FAST: Self = Self::Duration {
         secs: 0.12,
@@ -58,6 +67,28 @@ impl AnimSpec {
 
     pub const fn spring(stiffness: f32, damping: f32) -> Self {
         Self::Spring(Spring { stiffness, damping })
+    }
+
+    /// True when this spec is mathematically a no-op: `tick` will
+    /// snap to target on every call, never request a repaint, never
+    /// allocate a row. Pipeline code that wants to skip animation
+    /// dispatch entirely (avoiding the row probe + repaint flag)
+    /// should branch on this. Currently any `Duration { secs ≈ 0 }`
+    /// (including [`Self::INSTANT`]); springs are never instant by
+    /// construction (their settle path requires at least one tick).
+    pub fn is_instant(self) -> bool {
+        matches!(self, Self::Duration { secs, .. } if approx_zero(secs) || secs < 0.0)
+    }
+}
+
+impl Default for AnimSpec {
+    /// `INSTANT`. Animation is opt-in: callers (themes, widgets) pick
+    /// a real spec when motion is wanted. The library default is to
+    /// snap, so nothing animates unless someone asked for it — keeps
+    /// tests deterministic and avoids a default that requests
+    /// repaints behind the caller's back.
+    fn default() -> Self {
+        Self::INSTANT
     }
 }
 
@@ -96,6 +127,11 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// returns settled — there's no animation on appearance, by
     /// design. Subsequent calls detect retarget vs steady-state and
     /// advance by `dt` seconds.
+    ///
+    /// `AnimSpec::INSTANT` (and any `Duration { secs <= 0, .. }`)
+    /// short-circuits: snap to target, drop any stored row, return
+    /// settled. No allocation, no repaint request — using INSTANT is
+    /// indistinguishable from not calling `animate` at all.
     pub(crate) fn tick(
         &mut self,
         id: WidgetId,
@@ -104,6 +140,16 @@ impl<T: Animatable> AnimMapTyped<T> {
         spec: AnimSpec,
         dt: f32,
     ) -> TickResult<T> {
+        if spec.is_instant() {
+            // Drop any stale row so `current` doesn't carry over if
+            // the caller switches back to a real spec.
+            self.rows.remove(&(id, slot));
+            return TickResult {
+                current: target,
+                settled: true,
+            };
+        }
+
         let row = match self.rows.entry((id, slot)) {
             Entry::Vacant(v) => {
                 v.insert(AnimRow {
