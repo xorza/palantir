@@ -584,4 +584,160 @@ mod tests {
         // equality is just as strong — every field round-trips.
         assert_eq!(serialized, reserialized);
     }
+
+    /// `WidgetLook` round-trips through TOML for both variants
+    /// (background present / absent, text override / inherit).
+    /// Pinned because theme files are a public surface.
+    #[test]
+    fn widget_look_serde_roundtrip() {
+        let cases = [
+            WidgetLook::default(),
+            WidgetLook {
+                background: Some(Background {
+                    fill: Color::hex(0x336699),
+                    stroke: Some(Stroke {
+                        width: 1.5,
+                        color: Color::hex(0xffffff),
+                    }),
+                    radius: Corners::all(6.0),
+                }),
+                text: Some(TextStyle::default().with_font_size(20.0)),
+            },
+        ];
+        for look in cases {
+            let s = toml::to_string_pretty(&look).expect("serialize");
+            let back: WidgetLook = toml::from_str(&s).expect("parse");
+            assert_eq!(look, back);
+        }
+    }
+
+    /// `ButtonTheme::pick` precedence: disabled > pressed > hovered >
+    /// normal. Table-driven sweep — every state combination resolves
+    /// to the right slot, so reordering the if-cascade silently is
+    /// caught.
+    #[test]
+    fn button_theme_pick_precedence() {
+        let theme = ButtonTheme::default();
+        let s = |hovered, pressed, disabled| ResponseState {
+            rect: None,
+            hovered,
+            pressed,
+            clicked: false,
+            disabled,
+            focused: false,
+        };
+        let cases: &[(ResponseState, &WidgetLook, &str)] = &[
+            (s(false, false, false), &theme.normal, "normal"),
+            (s(true, false, false), &theme.hovered, "hovered"),
+            (s(true, true, false), &theme.pressed, "pressed > hovered"),
+            (s(false, false, true), &theme.disabled, "disabled (idle)"),
+            (s(true, true, true), &theme.disabled, "disabled wins all"),
+        ];
+        for (state, expected, label) in cases {
+            assert!(
+                std::ptr::eq(theme.pick(*state), *expected),
+                "{label}: pick should return the matching slot",
+            );
+        }
+    }
+
+    /// `TextEditTheme::pick`: disabled > focused > normal. Reads
+    /// `state.focused` from `ResponseState` (no separate parameter
+    /// since `focused` is in-state now).
+    #[test]
+    fn text_edit_theme_pick_precedence() {
+        let theme = TextEditTheme::default();
+        let s = |focused, disabled| ResponseState {
+            rect: None,
+            hovered: false,
+            pressed: false,
+            clicked: false,
+            disabled,
+            focused,
+        };
+        let cases: &[(ResponseState, &WidgetLook, &str)] = &[
+            (s(false, false), &theme.normal, "normal"),
+            (s(true, false), &theme.focused, "focused"),
+            (s(false, true), &theme.disabled, "disabled (unfocused)"),
+            (s(true, true), &theme.disabled, "disabled wins focus"),
+        ];
+        for (state, expected, label) in cases {
+            assert!(
+                std::ptr::eq(theme.pick(*state), *expected),
+                "{label}: pick should return the matching slot",
+            );
+        }
+    }
+
+    /// `AnimatedLook::background()` collapses the stroke to `None`
+    /// when its width is below epsilon or the color has zero alpha
+    /// (lets "stroked → no-stroke" transitions land cleanly without
+    /// leaving a phantom hairline). Visible strokes pass through.
+    #[test]
+    fn animated_look_background_drops_invisible_stroke() {
+        let mk = |stroke: Stroke| AnimatedLook {
+            fill: Color::hex(0x202020),
+            stroke,
+            radius: Corners::all(2.0),
+            text_color: Color::hex(0xffffff),
+            font_size_px: 14.0,
+            line_height_mult: 1.2,
+        };
+        // Visible stroke kept.
+        let visible = mk(Stroke {
+            width: 1.0,
+            color: Color::hex(0x808080),
+        });
+        assert!(visible.background().stroke.is_some(), "visible stroke kept");
+
+        // Zero width → dropped.
+        let zero_width = mk(Stroke {
+            width: 0.0,
+            color: Color::hex(0x808080),
+        });
+        assert!(
+            zero_width.background().stroke.is_none(),
+            "width=0 stroke dropped",
+        );
+
+        // Transparent color → dropped (even with non-zero width).
+        let transparent = mk(Stroke {
+            width: 1.0,
+            color: Color::TRANSPARENT,
+        });
+        assert!(
+            transparent.background().stroke.is_none(),
+            "transparent stroke dropped",
+        );
+
+        // Sub-epsilon width → dropped.
+        let tiny = mk(Stroke {
+            width: f32::EPSILON * 0.5,
+            color: Color::hex(0x808080),
+        });
+        assert!(
+            tiny.background().stroke.is_none(),
+            "sub-epsilon width dropped"
+        );
+    }
+
+    /// `AnimatedLook::line_height_px` is `font_size_px *
+    /// line_height_mult`. Trivial but pinned because the formula is
+    /// duplicated across widgets — centralizing it here means the
+    /// formula only changes in one place.
+    #[test]
+    fn animated_look_line_height_px_is_size_times_mult() {
+        let look = AnimatedLook {
+            fill: Color::TRANSPARENT,
+            stroke: Stroke {
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+            radius: Corners::ZERO,
+            text_color: Color::TRANSPARENT,
+            font_size_px: 16.0,
+            line_height_mult: 1.5,
+        };
+        assert!((look.line_height_px() - 24.0).abs() < 1e-6);
+    }
 }

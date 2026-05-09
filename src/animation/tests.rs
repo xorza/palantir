@@ -79,6 +79,41 @@ fn instant_duration_is_noop_and_drops_row() {
     assert!(r.settled);
 }
 
+/// Sub-epsilon drift between `target` and `current` must snap rather
+/// than starting a full ease/spring cycle. Otherwise tiny float
+/// quantization in the caller (rounded theme colors, sub-pixel rect
+/// drift) would spuriously request repaints frame after frame for
+/// changes the user can't see.
+#[test]
+fn target_within_settle_eps_snaps_without_animating() {
+    let mut map = AnimMapTyped::<f32>::default();
+    let id = wid("a");
+    let spec = AnimSpec::Duration {
+        secs: 1.0,
+        ease: Easing::Linear,
+    };
+    // Settle the row at 0.0.
+    let _ = map.tick(id, SLOT, 0.0, spec, 0.016);
+
+    // Retarget to a value within settle epsilon (POS_EPS = 0.001).
+    let r = map.tick(id, SLOT, 0.0005, spec, 0.016);
+    assert_eq!(
+        r.current, 0.0005,
+        "snap-if-close must reach the new target exactly",
+    );
+    assert!(
+        r.settled,
+        "sub-eps drift must report settled (no repaint requested)",
+    );
+
+    // Springs follow the same rule.
+    let mut map = AnimMapTyped::<f32>::default();
+    let _ = map.tick(id, SLOT, 0.0, AnimSpec::SPRING, 0.016);
+    let r = map.tick(id, SLOT, 0.0005, AnimSpec::SPRING, 0.016);
+    assert_eq!(r.current, 0.0005);
+    assert!(r.settled, "spring with sub-eps target diff must snap");
+}
+
 #[test]
 fn first_touch_returns_target_and_settled() {
     let mut map = AnimMapTyped::<f32>::default();
@@ -294,4 +329,155 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     );
     assert!(map.vec2s.rows.is_empty(), "vec2 slots for `id` must drop",);
     assert!(map.colors.rows.is_empty(), "color slots for `id` must drop",);
+}
+
+/// `Ui::animate(..., None)` must:
+/// - return `target` unchanged,
+/// - never allocate a row,
+/// - never request a repaint.
+/// `None` is the API-level signal "this caller didn't ask for motion."
+#[test]
+fn animate_with_none_spec_snaps_and_skips_repaint() {
+    let mut ui = ui_at(SURFACE);
+    let id = wid("anim-none");
+    Frame::new().id_salt("anim-none").show(&mut ui);
+    ui.end_frame();
+
+    let display = Display::from_physical(SURFACE, 1.0);
+    let frame = ui.run_frame(display, Duration::from_millis(16), |ui| {
+        let v1 = ui.animate(id, SLOT, 7.0_f32, None);
+        let v2 = ui.animate(id, SLOT, 9.0_f32, None);
+        assert_eq!(v1, 7.0);
+        assert_eq!(v2, 9.0);
+        Frame::new().id_salt("anim-none").show(ui);
+    });
+    assert!(
+        !frame.repaint_requested(),
+        "None spec must never request a repaint",
+    );
+    assert!(
+        ui.anim.scalars.rows.is_empty(),
+        "None spec must not allocate a row",
+    );
+}
+
+/// Switching from `Some(spec)` to `None` mid-flight must drop the
+/// stale row so a future `Some(spec)` retarget starts fresh from the
+/// new target rather than carrying in-flight `current` forward.
+#[test]
+fn animate_some_then_none_drops_stale_row() {
+    let mut ui = ui_at(SURFACE);
+    let id = wid("anim-toggle");
+    Frame::new().id_salt("anim-toggle").show(&mut ui);
+    ui.end_frame();
+
+    let display = Display::from_physical(SURFACE, 1.0);
+    // Frame A: animate to 1.0 with FAST (in flight).
+    let _ = ui.run_frame(display, Duration::from_millis(0), |ui| {
+        let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
+        Frame::new().id_salt("anim-toggle").show(ui);
+    });
+    let _ = ui.run_frame(display, Duration::from_millis(50), |ui| {
+        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
+        Frame::new().id_salt("anim-toggle").show(ui);
+    });
+    assert!(
+        !ui.anim.scalars.rows.is_empty(),
+        "Some(FAST) must allocate a row mid-flight",
+    );
+
+    // Frame B: switch to None — the stale row should drop.
+    let _ = ui.run_frame(display, Duration::from_millis(60), |ui| {
+        let _ = ui.animate(id, SLOT, 1.0_f32, None);
+        Frame::new().id_salt("anim-toggle").show(ui);
+    });
+    assert!(
+        ui.anim.scalars.rows.is_empty(),
+        "None spec must drop the stale row inserted by a prior Some()",
+    );
+}
+
+/// `WidgetLook::animate` resolves the look's optional components to
+/// flat values and returns an `AnimatedLook` with the right defaults.
+/// Walks both branches: with `spec = None` (snap, no rows) and with a
+/// real spec (rows allocated for non-trivial components).
+#[test]
+fn widget_look_animate_resolves_components_and_falls_back() {
+    use crate::primitives::background::Background;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    use crate::widgets::theme::{AnimatedLook, TextStyle, WidgetLook};
+    use std::cell::Cell;
+
+    let mut ui = ui_at(SURFACE);
+    let id = wid("look-test");
+    Frame::new().id_salt("look-test").show(&mut ui);
+    ui.end_frame();
+
+    let display = Display::from_physical(SURFACE, 1.0);
+
+    let bg = Background {
+        fill: Color::hex(0x336699),
+        stroke: Some(Stroke {
+            width: 2.0,
+            color: Color::hex(0xffffff),
+        }),
+        radius: Corners::all(4.0),
+    };
+    let look = WidgetLook {
+        background: Some(bg),
+        text: None, // → falls back to TextStyle default
+    };
+    let fallback = TextStyle::default();
+
+    // None spec: snaps to target, no rows allocated. Use Cell to
+    // capture out of the FnMut closure.
+    let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
+    let _ = ui.run_frame(display, Duration::from_millis(16), |ui| {
+        captured.set(Some(look.animate(ui, id, &fallback, None)));
+        Frame::new().id_salt("look-test").show(ui);
+    });
+    let snap = captured.get().expect("animate ran");
+    assert_eq!(snap.fill, bg.fill, "None: fill snaps to target");
+    assert_eq!(snap.stroke.width, 2.0, "None: stroke width snaps");
+    assert_eq!(snap.stroke.color, bg.stroke.unwrap().color);
+    assert_eq!(snap.radius, bg.radius);
+    assert_eq!(
+        snap.text_color, fallback.color,
+        "None: text falls back to fallback_text",
+    );
+    assert_eq!(snap.font_size_px, fallback.font_size_px);
+    assert_eq!(snap.line_height_mult, fallback.line_height_mult);
+    assert!(
+        ui.anim.scalars.rows.is_empty() && ui.anim.colors.rows.is_empty(),
+        "None spec: WidgetLook::animate must allocate no rows",
+    );
+
+    // Some(FAST) spec, retargeting to a different fill: a row gets
+    // allocated for the in-flight color animation.
+    let look2 = WidgetLook {
+        background: Some(Background {
+            fill: Color::hex(0xff0000),
+            ..bg
+        }),
+        text: None,
+    };
+    let _ = ui.run_frame(display, Duration::from_millis(32), |ui| {
+        let _ = look2.animate(ui, id, &fallback, Some(AnimSpec::FAST));
+        Frame::new().id_salt("look-test").show(ui);
+    });
+    assert!(
+        !ui.anim.colors.rows.is_empty(),
+        "Some(FAST) on changed fill must allocate a Color row",
+    );
+}
+
+/// `WidgetLook::animate` reserves slots `0..WIDGETLOOK_SLOTS`. Pin
+/// the const so widgets that mix in additional animations on the
+/// same id know where their range starts.
+#[test]
+fn widget_look_slots_const_matches_implementation() {
+    use crate::widgets::theme::WidgetLook;
+    // 4 components: fill (color), stroke color, stroke width, text color.
+    assert_eq!(WidgetLook::WIDGETLOOK_SLOTS, 4);
 }
