@@ -104,14 +104,14 @@ pub struct WgpuBackend {
     quad: QuadPipeline,
     text: TextRenderer,
     /// Color format the quad pipeline + text atlas were built for.
-    /// Tracked here so [`Self::ensure_backbuffer`] detects swapchain
-    /// format changes and rebuilds the text atlas + glyphon pipelines
-    /// automatically — hosts don't need a separate format-change call.
-    /// The quad pipeline itself is *not* currently rebuilt on format
-    /// change (would require recreating both the no-stencil and
-    /// stencil pipeline variants); format change after construction is
-    /// a rare host event and the existing showcase/helloworld pin a
-    /// fixed surface format at startup.
+    /// Fixed at [`Self::new`]; [`Self::ensure_backbuffer`] hard-asserts
+    /// that the swapchain texture handed to `submit` keeps this format
+    /// across the backend's lifetime. Format change requires
+    /// recreating the backend — partial in-place rebuild (atlas only,
+    /// quad pipeline left stale) was previously possible and would
+    /// silently mis-render quads. We'd rather fail loudly until a
+    /// real format-flip use case shows up and we wire the full
+    /// rebuild path.
     color_format: wgpu::TextureFormat,
     /// Persistent off-screen render target; lazily created on first
     /// submit and recreated when the surface size or format changes.
@@ -146,24 +146,26 @@ impl WgpuBackend {
     }
 
     /// Lazily (re)create the backbuffer to match the surface texture's
-    /// size and format. Returns `true` if the backbuffer was just
-    /// (re)created — caller treats that as a forced full repaint
-    /// (the new texture's contents are undefined until the first pass
-    /// writes to it). Also rebuilds the text atlas + glyphon pipelines
-    /// when the swapchain format flips, so a format change is fully
-    /// transparent to the host.
+    /// size. Returns `true` if the backbuffer was just (re)created —
+    /// caller treats that as a forced full repaint (the new texture's
+    /// contents are undefined until the first pass writes to it).
+    /// Hard-asserts that the swapchain format hasn't changed since
+    /// construction; see [`Self::color_format`].
     fn ensure_backbuffer(&mut self, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> bool {
+        assert_eq!(
+            self.color_format, format,
+            "WgpuBackend was built for surface format {:?}; got {:?} this submit. \
+             Mid-session format change isn't yet supported (quad pipeline + text \
+             atlas were built against the original format). Recreate the \
+             WgpuBackend with the new format.",
+            self.color_format, format,
+        );
         let needs_new = match &self.backbuffer {
             None => true,
-            Some(b) => b.tex.size() != size || b.tex.format() != format,
+            Some(b) => b.tex.size() != size,
         };
         if !needs_new {
             return false;
-        }
-        if self.color_format != format {
-            self.text
-                .rebuild_for_format(&self.device, &self.queue, format);
-            self.color_format = format;
         }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.backbuffer"),
