@@ -1,6 +1,5 @@
 use crate::input::keyboard::{Key, KeyPress};
 use crate::input::sense::Sense;
-use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
@@ -8,7 +7,7 @@ use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::TextEditTheme;
+use crate::widgets::theme::{Surface, TextEditTheme};
 use std::borrow::Cow;
 
 /// Cross-frame state for one [`TextEdit`]. Stored in [`Ui`]'s
@@ -97,22 +96,20 @@ impl<'a> TextEdit<'a> {
         if self.element.margin == Spacing::ZERO {
             self.element.margin = theme.margin;
         }
-        // Pick the per-state style. Disabled wins over focus — a
-        // disabled editor that still happens to hold focus paints with
-        // its disabled visuals (mirrors Button).
-        let state = if self.element.disabled {
-            theme.disabled.clone()
-        } else if is_focused {
-            theme.focused.clone()
-        } else {
-            theme.normal.clone()
-        };
-        // `None` text inherits the global `Theme::text` (same rule as
-        // Button's per-state `text`). Apps changing `theme.text.color`
-        // recolor every editor that didn't override.
-        let text_style = state.text.unwrap_or_else(|| ui.theme.text.clone());
-        let font_size = text_style.font_size_px;
-        let line_height_mult = text_style.line_height_mult;
+        // Pick the per-state look + animate its visual components.
+        // Disabled wins over focus — a disabled editor that still
+        // happens to hold focus paints with its disabled visuals
+        // (mirrors Button). State.disabled comes from the cascade
+        // (one-frame stale); OR self-disabled in for lag-free
+        // response to a freshly toggled `.disabled(true)`.
+        let mut response = ui.response_for(id);
+        response.disabled |= self.element.disabled;
+        let fallback_text = ui.theme.text.clone();
+        let look = theme
+            .pick(response, is_focused)
+            .animate(ui, id, &fallback_text, theme.anim);
+        let font_size = look.font_size_px;
+        let line_height_mult = look.line_height_mult;
         // The renderer deflates by `element.padding` when laying out
         // `Shape::Text` (see `encoder::mod.rs`). Reading the same value
         // here keeps the caret rect aligned with the glyphs.
@@ -141,10 +138,7 @@ impl<'a> TextEdit<'a> {
         // Chrome paints via `Tree::chrome_for` — encoder emits it before
         // any clip. The surface's clip stays `None` (TextEdit's caret
         // and selection handle their own painting; no rect-clipping).
-        let surface = state
-            .background
-            .or(Some(Background::default()))
-            .map(crate::widgets::theme::Surface::from);
+        let surface = Some(Surface::from(look.background()));
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
         let resp_node = ui.node(self.element, surface, |ui| {
@@ -154,7 +148,7 @@ impl<'a> TextEdit<'a> {
             let (display, color) = if text_ptr.is_empty() && !is_focused {
                 (placeholder.clone(), theme.placeholder)
             } else {
-                (Cow::Owned(text_ptr.clone()), text_style.color)
+                (Cow::Owned(text_ptr.clone()), look.text_color)
             };
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {

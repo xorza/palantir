@@ -1,21 +1,12 @@
-use crate::animation::AnimSlot;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
-use crate::primitives::background::Background;
-use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::{ButtonTheme, Surface};
 use std::borrow::Cow;
-
-const SLOT_FILL: AnimSlot = AnimSlot(0);
-const SLOT_STROKE_COLOR: AnimSlot = AnimSlot(1);
-const SLOT_STROKE_WIDTH: AnimSlot = AnimSlot(2);
-const SLOT_TEXT_COLOR: AnimSlot = AnimSlot(3);
 
 pub struct Button {
     element: Element,
@@ -76,48 +67,22 @@ impl Button {
         // Cascade lags by a frame; OR self-disabled in so a freshly
         // toggled `.disabled(true)` lands disabled visuals immediately.
         state.disabled |= element.disabled;
-        let target = style.pick(state);
-        let target_bg = target.background.unwrap_or_default();
-        let target_text = target.text.clone().unwrap_or_else(|| ui.theme.text.clone());
-        let target_stroke = target_bg.stroke.unwrap_or(Stroke {
-            width: 0.0,
-            color: Color::TRANSPARENT,
-        });
-
-        // Interpolate paint properties toward the target state. When
-        // `style.anim` is `None` (the default — animation is opt-in),
-        // each call snaps to target without allocating a row.
-        let id = element.id;
-        let anim = style.anim;
-        let fill = ui.animate(id, SLOT_FILL, target_bg.fill, anim);
-        let stroke_color = ui.animate(id, SLOT_STROKE_COLOR, target_stroke.color, anim);
-        let stroke_width = ui.animate(id, SLOT_STROKE_WIDTH, target_stroke.width, anim);
-        let text_color = ui.animate(id, SLOT_TEXT_COLOR, target_text.color, anim);
-
-        let animated_bg = Background {
-            fill,
-            stroke: (stroke_width > f32::EPSILON && !stroke_color.approx_transparent()).then_some(
-                Stroke {
-                    width: stroke_width,
-                    color: stroke_color,
-                },
-            ),
-            radius: target_bg.radius,
-        };
-        let surface = Some(Surface::from(animated_bg));
+        let fallback_text = ui.theme.text.clone();
+        let look = style
+            .pick(state)
+            .animate(ui, element.id, &fallback_text, style.anim);
+        let surface = Some(Surface::from(look.background()));
         let label = self.label.clone();
         let label_align = self.label_align;
-        let font_size_px = target_text.font_size_px;
-        let line_height_px = font_size_px * target_text.line_height_mult;
 
         let node = ui.node(element, surface, |ui| {
             if !label.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_rect: None,
                     text: label,
-                    color: text_color,
-                    font_size_px,
-                    line_height_px,
+                    color: look.text_color,
+                    font_size_px: look.font_size_px,
+                    line_height_px: look.line_height_px(),
                     wrap: TextWrap::Single,
                     align: label_align,
                 });
