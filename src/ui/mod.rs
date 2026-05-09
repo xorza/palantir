@@ -3,6 +3,7 @@ pub(crate) mod damage;
 pub(crate) mod seen_ids;
 pub(crate) mod state;
 
+use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
 use crate::layout::types::clip_mode::ClipMode;
@@ -82,6 +83,11 @@ pub struct Ui {
     /// can re-arm a redraw even when input is idle. Reset at the top
     /// of each `run_frame` (across both discard + paint passes).
     pub(crate) repaint_requested: bool,
+
+    /// Per-`(WidgetId, AnimSlot)` animation rows. Read/written via
+    /// [`Self::animate_f32`]; evicted on the same `removed` sweep as
+    /// `StateMap` / text / layout caches.
+    pub(crate) anim: AnimMap,
 }
 
 impl Default for Ui {
@@ -108,6 +114,7 @@ impl Ui {
             dt: 0.0,
             time: Duration::ZERO,
             repaint_requested: false,
+            anim: AnimMap::default(),
         }
     }
 
@@ -147,6 +154,7 @@ impl Ui {
         self.text.sweep_removed(removed);
         self.layout.sweep_removed(removed);
         self.state.sweep_removed(removed);
+        self.anim.sweep_removed(removed);
 
         let results = self.layout.run(&self.forest, &mut self.text);
 
@@ -238,6 +246,31 @@ impl Ui {
     /// Idempotent within a frame.
     pub fn request_repaint(&mut self) {
         self.repaint_requested = true;
+    }
+
+    /// Advance an `f32`-typed animation row keyed by `(id, slot)`,
+    /// returning the current interpolated value. First touch snaps
+    /// `current = target` (no animation on appearance). Subsequent
+    /// calls detect retarget and ease/spring toward the new target,
+    /// requesting a repaint each frame until settled.
+    ///
+    /// `slot` lets a single widget animate multiple values
+    /// independently (hover, press, focus, custom). Define slots as
+    /// `const` next to the widget's state struct.
+    ///
+    /// See `docs/animations.md` for the full design.
+    pub fn animate_f32(
+        &mut self,
+        id: WidgetId,
+        slot: AnimSlot,
+        target: f32,
+        spec: AnimSpec,
+    ) -> f32 {
+        let r = self.anim.tick_f32(id, slot, target, spec, self.dt);
+        if !r.settled {
+            self.repaint_requested = true;
+        }
+        r.current
     }
 
     /// Feed a palantir-native input event. Hosts mirror this with their
