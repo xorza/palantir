@@ -149,7 +149,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     // Frame 1: run_frame should re-record once dismissal fires, so
     // pass 2's painted tree has zero `Layer::Popup` nodes.
     let display = Display::from_physical(SURFACE, 1.0);
-    let _frame_out = ui.run_frame(display, |ui| {
+    let _frame_out = ui.run_frame(display, std::time::Duration::ZERO, |ui| {
         Panel::vstack()
             .id_salt("main-bg")
             .size((Sizing::FILL, Sizing::FILL))

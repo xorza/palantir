@@ -39,6 +39,9 @@ struct State {
     display: palantir::Display,
     first_paint: bool,
     click_count: u32,
+    /// Captured at `Ui::new()`; `start.elapsed()` per frame is the
+    /// monotonic timestamp passed to [`Ui::run_frame`].
+    start: Instant,
 }
 
 impl ApplicationHandler for App {
@@ -125,6 +128,7 @@ impl ApplicationHandler for App {
             display,
             first_paint: false,
             click_count: 0,
+            start: Instant::now(),
         });
     }
 
@@ -204,13 +208,20 @@ impl State {
 
         let clear = self.ui.theme.window_clear;
         let clicks = &mut self.click_count;
-        let frame_out = self.ui.run_frame(self.display, |ui| build_ui(ui, clicks));
+        let now = self.start.elapsed();
+        let frame_out = self
+            .ui
+            .run_frame(self.display, now, |ui| build_ui(ui, clicks));
+        let repaint = frame_out.repaint_requested();
         self.backend.submit(&frame.texture, clear, frame_out);
 
         frame.present();
         if !self.first_paint {
             tracing::info!("first paint succeeded");
             self.first_paint = true;
+        }
+        if repaint {
+            self.window.request_redraw();
         }
     }
 }

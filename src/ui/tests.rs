@@ -536,7 +536,7 @@ fn run_frame_pass_count_matches_action_trigger() {
         prime(&mut ui);
 
         let count = Cell::new(0u32);
-        let _ = ui.run_frame(display, |ui| {
+        let _ = ui.run_frame(display, std::time::Duration::ZERO, |ui| {
             count.set(count.get() + 1);
             Panel::vstack().id_salt("root").show(ui, |_| {});
         });
@@ -545,6 +545,85 @@ fn run_frame_pass_count_matches_action_trigger() {
             *expected,
             "{label}: expected {expected} build invocation(s), got {}",
             count.get(),
+        );
+    }
+}
+
+/// `Ui::run_frame` plumbs `now` and `request_repaint` end-to-end:
+/// per-call `now` lands in `Ui::time`, the derived `dt` clamps to
+/// `MAX_DT`, `repaint_requested` resets at the top of every call, and
+/// the flag set during recording surfaces on `FrameOutput`.
+#[test]
+fn run_frame_plumbs_now_dt_and_repaint_request() {
+    use crate::ui::MAX_DT;
+    use std::time::Duration;
+
+    const SURFACE: UVec2 = UVec2::new(100, 100);
+    let display = Display::from_physical(SURFACE, 1.0);
+
+    let mut ui = ui_at(SURFACE);
+    Panel::vstack().id_salt("root").show(&mut ui, |_| {});
+    ui.end_frame();
+
+    // Frame A: idle, no repaint request, now = 16ms.
+    {
+        let frame = ui.run_frame(display, Duration::from_millis(16), |ui| {
+            Panel::vstack().id_salt("root").show(ui, |_| {});
+        });
+        assert!(
+            !frame.repaint_requested(),
+            "no widget called request_repaint — flag must stay false",
+        );
+    }
+    assert_eq!(ui.time, Duration::from_millis(16));
+    assert!(
+        (ui.dt - 0.016).abs() < 1e-6,
+        "Ui::dt should be (now - prev) in seconds; got {}",
+        ui.dt,
+    );
+
+    // Frame B: widget calls request_repaint, now = 32ms (16ms later).
+    {
+        let frame = ui.run_frame(display, Duration::from_millis(32), |ui| {
+            Panel::vstack().id_salt("root").show(ui, |_| {});
+            ui.request_repaint();
+        });
+        assert!(
+            frame.repaint_requested(),
+            "request_repaint during recording must surface on FrameOutput",
+        );
+    }
+    assert_eq!(ui.time, Duration::from_millis(32));
+    assert!(
+        (ui.dt - 0.016).abs() < 1e-6,
+        "Ui::dt should be next-frame delta; got {}",
+        ui.dt,
+    );
+
+    // Frame C: oversized gap (5s pause) clamps dt to MAX_DT, but
+    // `time` still tracks the host's true clock — only `dt` clamps so
+    // animation math doesn't teleport.
+    {
+        let _ = ui.run_frame(display, Duration::from_millis(5_032), |ui| {
+            Panel::vstack().id_salt("root").show(ui, |_| {});
+        });
+    }
+    assert_eq!(ui.time, Duration::from_millis(5_032));
+    assert!(
+        (ui.dt - MAX_DT).abs() < 1e-6,
+        "Ui::dt should clamp at MAX_DT; got {}",
+        ui.dt,
+    );
+
+    // Frame D: prior frame's repaint_requested must NOT leak — the flag
+    // resets at the top of every run_frame regardless of pass count.
+    {
+        let frame = ui.run_frame(display, Duration::from_millis(5_048), |ui| {
+            Panel::vstack().id_salt("root").show(ui, |_| {});
+        });
+        assert!(
+            !frame.repaint_requested(),
+            "repaint_requested must reset at the top of run_frame",
         );
     }
 }

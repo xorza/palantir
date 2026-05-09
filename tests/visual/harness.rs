@@ -106,7 +106,11 @@ impl Harness {
 
         let frame_out = self
             .ui
-            .run_frame(Display::from_physical(physical, scale), scene);
+            .run_frame(
+                Display::from_physical(physical, scale),
+                std::time::Duration::ZERO,
+                scene,
+            );
         self.backend.submit(&target, clear, frame_out);
 
         readback(&self.device, &self.queue, &target, physical)
