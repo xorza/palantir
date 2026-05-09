@@ -28,6 +28,7 @@ pub fn build(ui: &mut Ui) {
                  different AnimSpec. Hover any control to see the button-fade \
                  driven by the same primitive.",
             )
+            .wrapping()
             .auto_id()
             .show(ui);
 
