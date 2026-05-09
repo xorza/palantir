@@ -1,7 +1,6 @@
 pub(crate) mod cascade;
 pub(crate) mod damage;
 pub(crate) mod debug_overlay;
-pub(crate) mod seen_ids;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
@@ -21,7 +20,6 @@ use crate::tree::{Layer, NodeId};
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::debug_overlay::DebugOverlayConfig;
-use crate::ui::seen_ids::SeenIds;
 use crate::ui::state::StateMap;
 use crate::widgets::scroll::ScrollRegistry;
 use crate::widgets::theme::{Surface, Theme};
@@ -44,10 +42,6 @@ pub(crate) const MAX_DT: f32 = 0.1;
 pub struct Ui {
     pub(crate) forest: Forest,
     pub theme: Theme,
-
-    /// Per-frame `WidgetId` tracker — collision detection,
-    /// removed-widget diff, and frame rollover. See [`SeenIds`].
-    pub(crate) ids: SeenIds,
 
     /// Cross-frame `WidgetId → Any` widget state. See [`StateMap`].
     pub(crate) state: StateMap,
@@ -121,7 +115,6 @@ impl Ui {
         Self {
             forest: Forest::default(),
             theme: Theme::default(),
-            ids: SeenIds::default(),
             state: StateMap::default(),
             text: TextShaper::default(),
             layout: LayoutEngine::default(),
@@ -190,7 +183,6 @@ impl Ui {
         self.frame_state.reset_to_idle();
         self.display = display;
         self.forest.begin_frame();
-        self.ids.begin_frame();
         self.scrolls.begin_frame();
     }
 
@@ -204,7 +196,8 @@ impl Ui {
     pub(crate) fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
         self.forest.end_frame(surface);
-        let removed = self.ids.end_frame();
+        self.forest.ids.end_frame();
+        let removed = self.forest.ids.removed.as_slice();
         self.text.sweep_removed(removed);
         self.layout.sweep_removed(removed);
         self.state.sweep_removed(removed);
@@ -420,7 +413,7 @@ impl Ui {
              `.id(precomputed)`, or `.auto_id()` on the builder before `.show(ui)`. \
              `Foo::new()` no longer derives an id automatically.",
         );
-        element.id = self.ids.record(element.id, element.auto_id);
+        element.id = self.forest.ids.record(element.id, element.auto_id);
         let chrome = surface.map(|s| {
             element.clip = match s.clip {
                 ClipMode::Rounded if s.paint.radius.approx_zero() => ClipMode::Rect,

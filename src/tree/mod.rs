@@ -19,6 +19,7 @@ pub(crate) mod forest;
 pub(crate) mod node_hash;
 pub(crate) mod record;
 pub(crate) mod recording;
+pub(crate) mod seen_ids;
 pub(crate) mod visibility;
 pub(crate) mod widget_id;
 

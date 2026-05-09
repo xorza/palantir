@@ -31,8 +31,12 @@ pub(crate) struct SeenIds {
     /// [`Self::end_frame`].
     prev: FxHashSet<WidgetId>,
     /// Diff output: widgets present in `prev` but not in `curr`.
-    /// Repopulated each frame; `Vec` because consumers only iterate.
-    removed: Vec<WidgetId>,
+    /// Repopulated by [`Self::end_frame`]; consumers iterate via a
+    /// shared borrow on the field. Public-in-crate so callers can
+    /// hold `&seen.removed` across other shared `&forest` reads — a
+    /// `fn end_frame(&mut self) -> &[..]` accessor would tie the
+    /// returned slice to the `&mut self` and block those reads.
+    pub(crate) removed: Vec<WidgetId>,
     /// Per-original-id occurrence counter for auto-id collision
     /// disambiguation. Bumped by [`Self::next_dup`] when an auto id
     /// collides; cleared each frame.
@@ -78,15 +82,15 @@ impl SeenIds {
         disambiguated
     }
 
-    /// Compute the removed-widget list for this frame, then commit
-    /// the rollover (`curr → prev`). Returning the diff before the
-    /// swap means the borrow stays valid for the consumers that fan
-    /// it out (text cache eviction, damage rect accumulation, etc.).
-    /// The swap is the "this frame is committed" signal — it's
-    /// deliberately HERE rather than in `begin_frame` so a discarded
-    /// recording (run_frame two-pass mode) doesn't overwrite the last
-    /// painted frame's snapshot.
-    pub(crate) fn end_frame(&mut self) -> &[WidgetId] {
+    /// Populate `self.removed` with widgets present in `prev` but not
+    /// in `curr`, then commit the rollover (`curr → prev`). Callers
+    /// then read `&seen.removed` to fan the diff out to consumers
+    /// (text cache eviction, damage rect accumulation, etc.). The
+    /// swap is the "this frame is committed" signal — deliberately
+    /// HERE rather than in `begin_frame` so a discarded recording
+    /// (run_frame two-pass mode) doesn't overwrite the last painted
+    /// frame's snapshot.
+    pub(crate) fn end_frame(&mut self) {
         self.removed.clear();
         for wid in &self.prev {
             if !self.curr.contains(wid) {
@@ -95,6 +99,5 @@ impl SeenIds {
         }
         std::mem::swap(&mut self.curr, &mut self.prev);
         self.curr.clear();
-        &self.removed
     }
 }
