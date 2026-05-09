@@ -36,40 +36,79 @@ pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 
 use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 
-/// Shared, cloneable handle to a [`CosmicMeasure`]. Same instance is
-/// installed on the `Ui` (for layout-time measurement) and read by the
-/// wgpu backend each `submit` (for shaping + rasterization), so both
-/// sides see one buffer cache.
+/// Shared, cloneable text shaper. Holds (1) an optional [`CosmicMeasure`]
+/// for real shaping (`None` ⇒ mono fallback), (2) a cross-frame reuse
+/// cache keyed by `(WidgetId, ordinal)` so layout skips `measure`
+/// dispatch when a `Text` leaf's inputs are unchanged, and (3) a
+/// `measure_calls` counter for cache-effectiveness tests.
 ///
 /// Single-threaded by design (`Rc` inside); access is sequential —
-/// measure during layout, prepare/render during the wgpu frame — so
-/// the `RefCell` is just runtime insurance against accidental
-/// re-entry. Cloning is cheap (refcount bump).
+/// measurement during layout, prepare/render during the wgpu frame —
+/// so the `RefCell` is just runtime insurance against accidental
+/// re-entry. Cloning is cheap (refcount bump). The same handle goes
+/// on `Ui` (via [`crate::Ui::set_text_shaper`]) and on
+/// [`crate::WgpuBackend`] (via [`crate::WgpuBackend::set_text_shaper`])
+/// so both sides see one buffer cache.
 ///
-/// Proxy methods ([`Self::measure`], [`Self::with_render_split`])
-/// hide the `borrow_mut()` so call sites read like ordinary method
-/// calls. Construct via [`Self::new`] or [`Self::with_bundled_fonts`].
-#[derive(Clone)]
+/// Two paths, picked at construction:
+///
+/// - [`Self::mono`] / [`Self::default`] — primitive shaping (every
+///   glyph is `font_size_px * 0.5` wide). Renderer drops these runs
+///   (their [`TextCacheKey`] is [`TextCacheKey::INVALID`]). Useful
+///   for tests, headless drivers, and the `Ui::default()` state.
+/// - [`Self::with_bundled_fonts`] / [`Self::with_cosmic`] — real
+///   shaping via cosmic-text.
+#[derive(Clone, Default)]
 pub struct TextShaper {
-    inner: Rc<RefCell<CosmicMeasure>>,
+    inner: Rc<RefCell<ShaperInner>>,
+}
+
+/// Shared mutable state behind the `Rc<RefCell<...>>` in [`TextShaper`].
+/// Both [`crate::Ui`] (layout-time measurement + reuse cache) and
+/// [`crate::WgpuBackend`] (shaping during render) borrow this; backend
+/// only touches `cosmic` via [`TextShaper::with_render_split`].
+#[derive(Default)]
+struct ShaperInner {
+    /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
+    cosmic: Option<CosmicMeasure>,
+    /// Total `measure` calls dispatched (cache misses). Cache hits
+    /// don't increment. Read by tests pinning reshape-skip behaviour.
+    measure_calls: u64,
+    /// Cross-frame cache of shaping output keyed by
+    /// `(WidgetId, within-node text-shape ordinal)`, validity-checked
+    /// by authoring hash. The ordinal disambiguates leaves with
+    /// multiple `Shape::Text` runs. The wrap slot's `target_q`
+    /// quantization is layout policy chosen at the call site.
+    reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
 }
 
 impl TextShaper {
-    /// Wrap a freshly-built [`CosmicMeasure`] for sharing.
-    pub fn new(measure: CosmicMeasure) -> Self {
+    /// Mono fallback shaper. Every glyph is `font_size_px * 0.5` wide;
+    /// returned [`MeasureResult::key`] is [`TextCacheKey::INVALID`] so
+    /// the renderer drops these runs cleanly. Same as [`Self::default`].
+    pub fn mono() -> Self {
+        Self::default()
+    }
+
+    /// Real shaping via the supplied [`CosmicMeasure`]. The shaper's
+    /// shaped-buffer cache is shared across all clones of this handle.
+    pub fn with_cosmic(cosmic: CosmicMeasure) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(measure)),
+            inner: Rc::new(RefCell::new(ShaperInner {
+                cosmic: Some(cosmic),
+                ..Default::default()
+            })),
         }
     }
 
-    /// Convenience constructor: bundled fonts, ready to install on
-    /// `Ui`. Equivalent to `TextShaper::new(CosmicMeasure::with_bundled_fonts())`.
+    /// Convenience: cosmic-backed shaper with bundled fonts loaded.
     pub fn with_bundled_fonts() -> Self {
-        Self::new(CosmicMeasure::with_bundled_fonts())
+        Self::with_cosmic(CosmicMeasure::with_bundled_fonts())
     }
 
-    /// Shape `text` and return its measurement. Forwards to
-    /// [`CosmicMeasure::measure`] under a `borrow_mut`.
+    /// Shape `text` and return its measurement. Bypasses the per-widget
+    /// reuse cache — direct dispatch to cosmic (if installed) or mono.
+    /// Used by [`Self::caret_x`] and other prefix/probe paths.
     pub fn measure(
         &self,
         text: &str,
@@ -77,18 +116,178 @@ impl TextShaper {
         line_height_px: f32,
         max_width_px: Option<f32>,
     ) -> MeasureResult {
+        let mut inner = self.inner.borrow_mut();
+        inner.measure_calls += 1;
+        inner.dispatch(text, font_size_px, line_height_px, max_width_px)
+    }
+
+    /// Identity-cached unbounded shape for `wid`, refreshing it (and
+    /// clearing any stale wrap entry) when the authoring hash has
+    /// shifted.
+    pub(crate) fn shape_unbounded(
+        &self,
+        wid: WidgetId,
+        ordinal: u16,
+        hash: NodeHash,
+        text: &str,
+        font_size_px: f32,
+        line_height_px: f32,
+    ) -> MeasureResult {
+        let mut inner = self.inner.borrow_mut();
+        let inner = &mut *inner;
+        // Cache hit: same authoring hash, return last frame's result.
+        if let Entry::Occupied(o) = inner.reuse.entry((wid, ordinal))
+            && o.get().hash == hash
+        {
+            return o.get().unbounded;
+        }
+        inner.measure_calls += 1;
+        let unbounded = inner.dispatch(text, font_size_px, line_height_px, None);
+        inner.reuse.insert(
+            (wid, ordinal),
+            TextReuseEntry {
+                hash,
+                unbounded,
+                wrap: None,
+            },
+        );
+        unbounded
+    }
+
+    /// Identity-cached wrap shape for `wid` at the caller-quantized
+    /// `target_q`. Hits when the same wrap target was used last frame;
+    /// otherwise dispatches and refreshes the entry. Must be preceded
+    /// by [`Self::shape_unbounded`] on the same `(wid, ordinal)` so the
+    /// parent entry exists.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn shape_wrap(
+        &self,
+        wid: WidgetId,
+        ordinal: u16,
+        text: &str,
+        font_size_px: f32,
+        line_height_px: f32,
+        target: f32,
+        target_q: u32,
+    ) -> MeasureResult {
+        let mut inner = self.inner.borrow_mut();
+        let inner = &mut *inner;
+        let entry = match inner.reuse.entry((wid, ordinal)) {
+            Entry::Occupied(o) => o,
+            Entry::Vacant(_) => panic!(
+                "shape_wrap requires a prior shape_unbounded call on the same (wid, ordinal)",
+            ),
+        };
+        if let Some(w) = entry.get().wrap
+            && w.target_q == target_q
+        {
+            return w.result;
+        }
+        inner.measure_calls += 1;
+        let m = inner.dispatch(text, font_size_px, line_height_px, Some(target));
+        // Re-borrow `entry` because dispatch took `&mut inner` over the
+        // whole struct; the prior borrow ended at the early-return.
+        inner
+            .reuse
+            .get_mut(&(wid, ordinal))
+            .expect("entry just confirmed to exist")
+            .wrap = Some(WrapReuse {
+            target_q,
+            result: m,
+        });
+        m
+    }
+
+    /// Unbounded measured width of `text[..byte_offset]`, used for
+    /// caret-x positioning inside an editor. Bypasses the per-`WidgetId`
+    /// reuse cache because the prefix changes with caret movement and
+    /// editing — caching every prefix would bloat the table without
+    /// the savings the cache exists for. A future `byte_to_x` API on
+    /// `MeasureResult` (cosmic exposes one via `Buffer::layout_runs`)
+    /// will replace this when multi-line / IME / drag-select land.
+    ///
+    /// Panics if `byte_offset` doesn't fall on a UTF-8 character
+    /// boundary — same surface as `&text[..byte_offset]`.
+    pub(crate) fn caret_x(
+        &self,
+        text: &str,
+        byte_offset: usize,
+        font_size_px: f32,
+        line_height_px: f32,
+    ) -> f32 {
+        if byte_offset == 0 || text.is_empty() {
+            return 0.0;
+        }
+        let prefix = &text[..byte_offset];
+        self.measure(prefix, font_size_px, line_height_px, None)
+            .size
+            .w
+    }
+
+    /// Drop reuse entries for the supplied removed-widget set. Called
+    /// from `Ui::end_frame` against the same per-frame diff fed to
+    /// `Damage::compute` so cleanup stays bounded under widget churn
+    /// without a second `seen_ids` scan.
+    pub(crate) fn sweep_removed(&self, removed: &[WidgetId]) {
+        if removed.is_empty() {
+            return;
+        }
+        // O(N·M) linear scan, but typical sweep sizes are tiny (1-10
+        // removed) and the keep-it-alloc-free property is more
+        // important than asymptotic tightness here.
         self.inner
             .borrow_mut()
-            .measure(text, font_size_px, line_height_px, max_width_px)
+            .reuse
+            .retain(|(wid, _), _| !removed.contains(wid));
+    }
+
+    /// Total `measure` calls dispatched through this shaper (cache
+    /// misses only). Read by tests pinning cache-effectiveness; cheap
+    /// enough to leave on in release.
+    #[allow(dead_code)] // read only from `#[cfg(test)]` modules
+    pub(crate) fn measure_calls(&self) -> u64 {
+        self.inner.borrow().measure_calls
+    }
+
+    /// `true` if a reuse entry exists for `(wid, ordinal)`. Test-only
+    /// observability into the per-widget measure cache; used by sweep
+    /// fixtures to confirm entries land and get evicted.
+    #[allow(dead_code)] // read only from `#[cfg(test)]` modules
+    pub(crate) fn has_reuse_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
+        self.inner.borrow().reuse.contains_key(&(wid, ordinal))
     }
 
     /// Run `body` against a [`RenderSplit`] of the inner cosmic state
-    /// (`&mut FontSystem` + read-only buffer lookup). The borrow is
+    /// (`&mut FontSystem` + read-only buffer lookup). Returns `None`
+    /// when the shaper is mono (no cosmic to split). The borrow is
     /// held for the closure's duration, so `body` must not re-enter
     /// any `TextShaper` method on the same handle.
-    pub(crate) fn with_render_split<R>(&self, body: impl FnOnce(RenderSplit<'_>) -> R) -> R {
+    pub(crate) fn with_render_split<R>(
+        &self,
+        body: impl FnOnce(RenderSplit<'_>) -> R,
+    ) -> Option<R> {
         let mut inner = self.inner.borrow_mut();
-        body(inner.split_for_render())
+        let cosmic = inner.cosmic.as_mut()?;
+        Some(body(cosmic.split_for_render()))
+    }
+}
+
+impl ShaperInner {
+    /// Bypass-cache dispatch: cosmic if installed, mono otherwise.
+    /// Caller is responsible for incrementing `measure_calls` on cache
+    /// misses (we don't bump it here because some paths — `shape_wrap`,
+    /// `caret_x` — already account for it).
+    fn dispatch(
+        &mut self,
+        text: &str,
+        font_size_px: f32,
+        line_height_px: f32,
+        max_width_px: Option<f32>,
+    ) -> MeasureResult {
+        match self.cosmic.as_mut() {
+            Some(c) => c.measure(text, font_size_px, line_height_px, max_width_px),
+            None => mono_measure(text, font_size_px, line_height_px, max_width_px),
+        }
     }
 }
 
@@ -222,27 +421,10 @@ fn mono_measure(
     }
 }
 
-/// Free-function dispatch into the shaper. Takes `&self.shaper` so
-/// the cached entry points can invoke it while holding a
-/// `&mut TextReuseEntry` from `reuse` — `&mut self` would over-borrow.
-#[inline]
-fn dispatch(
-    shaper: &Option<TextShaper>,
-    text: &str,
-    font_size_px: f32,
-    line_height_px: f32,
-    max_width_px: Option<f32>,
-) -> MeasureResult {
-    match shaper {
-        Some(s) => s.measure(text, font_size_px, line_height_px, max_width_px),
-        None => mono_measure(text, font_size_px, line_height_px, max_width_px),
-    }
-}
-
 /// Cached unbounded shape + most-recent wrap result, validity-checked
 /// by authoring `hash`.
 #[derive(Clone, Copy)]
-pub(crate) struct TextReuseEntry {
+struct TextReuseEntry {
     hash: NodeHash,
     unbounded: MeasureResult,
     wrap: Option<WrapReuse>,
@@ -252,178 +434,9 @@ pub(crate) struct TextReuseEntry {
 /// quantized wrap target) and the `MeasureResult` that came out of
 /// shaping at that target.
 #[derive(Clone, Copy)]
-pub(crate) struct WrapReuse {
+struct WrapReuse {
     target_q: u32,
     result: MeasureResult,
-}
-
-/// Ui-side measurement façade. Holds an optional shared handle to the real
-/// shaper; falls through to [`mono_measure`] when nothing is installed.
-/// The renderer holds its own clone of the same handle so layout and
-/// rasterization see the same buffer cache.
-#[derive(Default)]
-pub struct TextMeasurer {
-    pub(crate) shaper: Option<TextShaper>,
-    /// Total `measure` calls made through this façade. Read by tests
-    /// pinning reshape-skip behaviour; cheap enough to leave on in
-    /// release.
-    pub(crate) measure_calls: u64,
-    /// Cross-frame cache of shaping output keyed by
-    /// `(WidgetId, within-node text-shape ordinal)`, validity-checked
-    /// by authoring hash. Lets layout skip the `measure` dispatch
-    /// (and the underlying string-hash + `RefCell` lock around
-    /// `CosmicMeasure`) when a Text leaf's inputs are unchanged across
-    /// frames. The ordinal disambiguates leaves with multiple
-    /// `Shape::Text` runs — without it, the second run's entry would
-    /// overwrite the first's. The wrap slot's `target_q` quantization
-    /// is layout policy chosen at the call site.
-    pub(crate) reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
-}
-
-impl TextMeasurer {
-    /// Install a shared shaper handle. Pass the same `TextShaper` to the
-    /// renderer (`WgpuBackend::set_text_shaper`) so both sides see one cache.
-    ///
-    /// Call exactly once, before the first frame. The measure cache and
-    /// encode cache key shaping outputs (`measured`, `TextCacheKey`) on
-    /// `(WidgetId, subtree_hash, available_q)` — shaper identity is *not*
-    /// in either key. Swapping shapers mid-session would let a cache hit
-    /// replay a `TextCacheKey` minted by the old shaper against the new
-    /// one. If you ever need to support a swap, also invalidate the
-    /// measure cache, encode cache, and text reuse map at the swap point.
-    pub fn set_text_shaper(&mut self, shaper: TextShaper) {
-        assert!(
-            self.shaper.is_none(),
-            "TextMeasurer::set_text_shaper called twice; see doc comment — \
-             swapping shapers requires invalidating measure + encode caches"
-        );
-        self.shaper = Some(shaper);
-    }
-
-    /// Identity-cached unbounded shape for `wid`, refreshing it (and
-    /// clearing any stale wrap entry) when the authoring hash has
-    /// shifted.
-    pub(crate) fn shape_unbounded(
-        &mut self,
-        wid: WidgetId,
-        ordinal: u16,
-        hash: NodeHash,
-        text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-    ) -> MeasureResult {
-        // One hash lookup, all paths: `Entry` gives us a slot that
-        // can be read, overwritten, or inserted into without
-        // re-hashing. The early-return arm consumes the entry on hit;
-        // every other arm falls through to one shared dispatch +
-        // write. Disjoint field borrows let `dispatch` run while the
-        // slot borrow is held.
-        let slot = match self.reuse.entry((wid, ordinal)) {
-            Entry::Occupied(o) if o.get().hash == hash => return o.get().unbounded,
-            other => other,
-        };
-        self.measure_calls += 1;
-        let unbounded = dispatch(&self.shaper, text, font_size_px, line_height_px, None);
-        let new = TextReuseEntry {
-            hash,
-            unbounded,
-            wrap: None,
-        };
-        match slot {
-            Entry::Occupied(mut o) => *o.get_mut() = new,
-            Entry::Vacant(v) => {
-                v.insert(new);
-            }
-        }
-        unbounded
-    }
-
-    /// Identity-cached wrap shape for `wid` at the caller-quantized
-    /// `target_q`. Hits when the same wrap target was used last frame;
-    /// otherwise dispatches and refreshes the entry. Must be preceded
-    /// by [`Self::shape_unbounded`] on the same `(wid, ordinal)` so the
-    /// parent entry exists.
-    #[allow(clippy::too_many_arguments)]
-    pub fn shape_wrap(
-        &mut self,
-        wid: WidgetId,
-        ordinal: u16,
-        text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        target: f32,
-        target_q: u32,
-    ) -> MeasureResult {
-        let entry = match self.reuse.entry((wid, ordinal)) {
-            Entry::Occupied(o) => o,
-            Entry::Vacant(_) => panic!(
-                "shape_wrap requires a prior shape_unbounded call on the same (wid, ordinal)",
-            ),
-        };
-        if let Some(w) = entry.get().wrap
-            && w.target_q == target_q
-        {
-            return w.result;
-        }
-        self.measure_calls += 1;
-        let m = dispatch(
-            &self.shaper,
-            text,
-            font_size_px,
-            line_height_px,
-            Some(target),
-        );
-        entry.into_mut().wrap = Some(WrapReuse {
-            target_q,
-            result: m,
-        });
-        m
-    }
-
-    /// Unbounded measured width of `text[..byte_offset]`, used for
-    /// caret-x positioning inside an editor. Bypasses the per-`WidgetId`
-    /// reuse cache because the prefix changes with caret movement and
-    /// editing — caching every prefix would bloat the table without
-    /// the savings the cache exists for. A future `byte_to_x` API on
-    /// `MeasureResult` (cosmic exposes one via `Buffer::layout_runs`)
-    /// will replace this when multi-line / IME / drag-select land; this
-    /// helper is the v1 single-line stand-in.
-    ///
-    /// Panics if `byte_offset` doesn't fall on a UTF-8 character
-    /// boundary — same surface as `&text[..byte_offset]`. Callers
-    /// must clamp to a real grapheme/codepoint boundary.
-    pub(crate) fn caret_x(
-        &mut self,
-        text: &str,
-        byte_offset: usize,
-        font_size_px: f32,
-        line_height_px: f32,
-    ) -> f32 {
-        if byte_offset == 0 || text.is_empty() {
-            return 0.0;
-        }
-        // Slice indexing handles the boundary check; if `byte_offset`
-        // straddles a multibyte char Rust panics with the right message.
-        let prefix = &text[..byte_offset];
-        self.measure_calls += 1;
-        dispatch(&self.shaper, prefix, font_size_px, line_height_px, None)
-            .size
-            .w
-    }
-
-    /// Drop reuse entries for the supplied removed-widget set. Mirrors
-    /// the same per-frame diff fed to `Damage::compute` so cleanup
-    /// stays bounded under widget churn without a second `seen_ids`
-    /// scan.
-    pub fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        if removed.is_empty() {
-            return;
-        }
-        // O(N·M) linear scan, but typical sweep sizes are tiny (1-10
-        // removed) and the keep-it-alloc-free property is more
-        // important than asymptotic tightness here.
-        self.reuse.retain(|(wid, _), _| !removed.contains(wid));
-    }
 }
 
 #[cfg(test)]
@@ -492,7 +505,7 @@ mod tests {
             ("lh_independent_tall", "abc", 2, 16.0, 24.0, 16.0),
         ];
         for (label, text, offset, fs, lh_v, expected) in cases {
-            let mut m = TextMeasurer::default();
+            let m = TextShaper::default();
             assert_eq!(
                 m.caret_x(text, *offset, *fs, *lh_v),
                 *expected,
@@ -506,21 +519,21 @@ mod tests {
         // The `measure_calls` counter pins reshape-skip behavior in
         // existing tests; pin that caret_x participates in it (no
         // free measurements) so a future caller can detect over-call.
-        let mut m = TextMeasurer::default();
-        let before = m.measure_calls;
+        let m = TextShaper::default();
+        let before = m.measure_calls();
         let _ = m.caret_x("abc", 2, 16.0, lh(16.0));
-        assert_eq!(m.measure_calls, before + 1);
+        assert_eq!(m.measure_calls(), before + 1);
         // Zero-offset shortcut must not bump the counter.
-        let zero_before = m.measure_calls;
+        let zero_before = m.measure_calls();
         let _ = m.caret_x("abc", 0, 16.0, lh(16.0));
-        assert_eq!(m.measure_calls, zero_before);
+        assert_eq!(m.measure_calls(), zero_before);
     }
 
     #[test]
     #[should_panic]
     fn caret_x_panics_inside_multibyte_codepoint() {
         // "é" is two UTF-8 bytes; offset 1 splits it.
-        let mut m = TextMeasurer::default();
+        let m = TextShaper::default();
         let _ = m.caret_x("é", 1, 16.0, lh(16.0));
     }
 
@@ -551,7 +564,7 @@ mod tests {
         // node_hash tests), so callers that change leading must produce
         // a different hash — pin that the measure cache respects the
         // hash distinction.
-        let mut m = TextMeasurer::default();
+        let m = TextShaper::default();
         let wid = WidgetId::from_hash("a");
         let h1 = NodeHash(1);
         let h2 = NodeHash(2);
@@ -574,7 +587,7 @@ mod tests {
         // dispatch-without-cache when the unbounded entry is missing.
         // Pin the panic so a future caller that wraps without priming
         // first fails loudly instead of silently losing the cache.
-        let mut m = TextMeasurer::default();
+        let m = TextShaper::default();
         let wid = WidgetId::from_hash("a");
         m.shape_wrap(wid, 0, "hi", 16.0, 16.0, 100.0, 100);
     }
@@ -597,8 +610,7 @@ mod tests {
         // approach the full-string width at the final offset. We don't
         // pin exact pixel values — those depend on font metrics — just
         // the monotonicity invariant any consumer relies on.
-        let mut m = TextMeasurer::default();
-        m.set_text_shaper(crate::text::TextShaper::with_bundled_fonts());
+        let m = TextShaper::with_bundled_fonts();
         let s = "hello";
         let widths: Vec<f32> = (0..=s.len())
             .map(|i| m.caret_x(s, i, 16.0, 16.0 * LINE_HEIGHT_MULT))

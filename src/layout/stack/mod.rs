@@ -4,7 +4,7 @@ use super::support::{
 use super::{Axis, LayoutEngine, LenReq};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::{rect::Rect, size::Size};
-use crate::text::TextMeasurer;
+use crate::text::TextShaper;
 use crate::tree::{Child, NodeId, Tree};
 
 /// One Fill child as the freeze loop sees it. Pushed onto
@@ -35,7 +35,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner: Size,
     axis: Axis,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> Size {
     let gap = tree.panel(node).gap;
     let cross_avail = axis.cross(inner);
@@ -269,7 +269,7 @@ pub(crate) fn intrinsic(
     main_axis: Axis,
     query_axis: Axis,
     req: LenReq,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> f32 {
     let gap = tree.panel(node).gap;
     if main_axis == query_axis {

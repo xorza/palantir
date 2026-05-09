@@ -7,7 +7,7 @@
 //!    per-id store (focus, scroll, click capture, hit-test).
 //! 2. **Removed-widget diff.** At `end_frame`, computes which ids
 //!    were present last frame but absent this frame. Both
-//!    [`crate::ui::damage::Damage`] and [`crate::text::TextMeasurer`]
+//!    [`crate::ui::damage::Damage`] and [`crate::text::TextShaper`]
 //!    consume this list to evict per-widget state — sharing the diff
 //!    keeps each consumer at `O(removed)` instead of `O(map)`.
 //! 3. **Frame rollover.** The `curr → prev` swap happens in

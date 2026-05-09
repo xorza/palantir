@@ -17,7 +17,7 @@ use super::support::{JustifyOffsets, cross_place, justify_offsets, zero_subtree}
 use super::{Axis, LayoutEngine, LenReq};
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::{rect::Rect, size::Size};
-use crate::text::TextMeasurer;
+use crate::text::TextShaper;
 use crate::tree::{Child, NodeId, Tree};
 
 /// One child's contribution to the current line. `m` always comes from
@@ -105,7 +105,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner: Size,
     axis: Axis,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> Size {
     let panel = tree.panel(node);
     let gap = panel.gap;
@@ -303,7 +303,7 @@ pub(crate) fn intrinsic(
     main_axis: Axis,
     query_axis: Axis,
     req: LenReq,
-    text: &mut TextMeasurer,
+    text: &TextShaper,
 ) -> f32 {
     let gap = tree.panel(node).gap;
     if main_axis == query_axis {
