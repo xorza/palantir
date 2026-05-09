@@ -581,7 +581,7 @@ fn display_change_forces_full_repaint() {
     }
 }
 
-/// Pin: `Ui::invalidate_prev_frame` rewinds damage so the next
+/// Pin: `Ui::surface_invalidated` rewinds damage so the next
 /// `end_frame` returns `Full` even when widgets are unchanged. This
 /// is the host's escape hatch for "I called `end_frame` but never
 /// presented" — failed surface acquire (Occluded / Timeout /
@@ -589,7 +589,7 @@ fn display_change_forces_full_repaint() {
 /// `compute` would produce `Skip` against an unpainted backbuffer
 /// and the window stays black until something forces a real change.
 #[test]
-fn invalidate_prev_frame_forces_next_frame_to_full() {
+fn surface_invalidated_forces_next_frame_to_full() {
     let mut ui = Ui::new();
     let build = |ui: &mut Ui| {
         one_frame(ui, BLUE);
@@ -611,7 +611,7 @@ fn invalidate_prev_frame_forces_next_frame_to_full() {
     assert_second_is_skip(&mut ui);
 
     // Host says "last `end_frame`'s output didn't actually paint."
-    ui.invalidate_prev_frame();
+    ui.surface_invalidated();
 
     // Next frame must be `Full` even though authoring is identical
     // and the surface didn't move — damage has no valid prev to diff
@@ -622,7 +622,7 @@ fn invalidate_prev_frame_forces_next_frame_to_full() {
     assert_eq!(
         out.damage,
         DamagePaint::Full,
-        "invalidate_prev_frame must force the next compute to Full",
+        "surface_invalidated must force the next compute to Full",
     );
     out.frame_state.mark_submitted();
 

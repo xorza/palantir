@@ -97,11 +97,11 @@ impl FrameOutput<'_> {
     /// Only safe to early-bail when *the previous frame's `submit`
     /// actually presented*. If a host called `end_frame` and then
     /// failed to present (Occluded surface, validation error, lost
-    /// device), it must call [`Ui::invalidate_prev_frame`] before
+    /// device), it must call [`Ui::surface_invalidated`] before
     /// the next `end_frame`; otherwise this method will return `true`
     /// against an unpainted backbuffer and the window stays black.
     ///
-    /// [`Ui::invalidate_prev_frame`]: crate::Ui::invalidate_prev_frame
+    /// [`Ui::surface_invalidated`]: crate::Ui::surface_invalidated
     pub fn can_skip_rendering(&self) -> bool {
         self.damage == DamagePaint::Skip
     }
