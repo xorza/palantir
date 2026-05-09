@@ -102,13 +102,21 @@ impl DamageRegion {
             .min_by(|(_, a), (_, b)| {
                 let growth_a = a.union(candidate).area() - a.area();
                 let growth_b = b.union(candidate).area() - b.area();
-                growth_a
-                    .partial_cmp(&growth_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                growth_a.total_cmp(&growth_b)
             })
             .map(|(i, _)| i)
             .expect("DAMAGE_RECT_CAP > 0");
         self.rects[i] = self.rects[i].union(candidate);
+    }
+}
+
+/// Wrap a single rect — the region's `add` policy applies, so a
+/// zero-area rect yields an empty region.
+impl From<Rect> for DamageRegion {
+    fn from(r: Rect) -> Self {
+        let mut region = Self::default();
+        region.add(r);
+        region
     }
 }
 

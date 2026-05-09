@@ -155,33 +155,9 @@ glyph cells incorrectly; stencil over union doesn't).
 
 # Open follow-ups (priority order)
 
-## High — quick wins
-
-### 1. Pin multi-rect threshold escalation in the test sweep
-
-`damage_filter_threshold_cases` (`src/ui/damage/tests.rs`) is all
-single-rect cases. The new threshold (0.7) is applied to the *sum*
-of per-rect areas — that's the actual escalation logic the multi-
-rect change introduced, and it isn't pinned. Add a case with two
-non-overlapping rects whose `total_area` sum sits just below
-threshold (stays Partial) + another just above (escalates Full).
-
-### 2. Inline the `damage_region` test helper
-
-`support/testing.rs:123` is a two-line helper called from two sites,
-introduced as a CLAUDE.md-compliance workaround. The doc comment
-justifying its existence is itself a smell — inline at the call
-sites, delete the helper.
-
-### 3. `partial_cmp(...).unwrap_or(Equal)` → `total_cmp` in min-growth
-
-`src/ui/damage/region/mod.rs:99-105`. Defensive against NaN that
-can't occur (`Rect::area()` is `w * h` from internally-non-NaN
-fields). One-line cleanup.
-
 ## Medium — real value, more thought
 
-### 4. Rename `damage` shadow in `WgpuBackend::submit`
+### 1. Rename `damage` shadow in `WgpuBackend::submit`
 
 `backend/mod.rs:267, :284-288`. `frame.damage` is shadowed by
 `damage` after the `backbuffer_recreated` escalation. Rename to
@@ -189,7 +165,7 @@ fields). One-line cleanup.
 asked for" and "what we rendered" is obvious — especially in the
 debug-overlay call (`damage` shadow is what the overlay sees).
 
-### 5. `Region::any_intersects` strictness vs. `add` symmetry
+### 2. `Region::any_intersects` strictness vs. `add` symmetry
 
 `region/mod.rs:51` calls `Rect::intersects` (strict `<`); two damage
 rects sharing an edge merge in `add` (LVGL rule fires via
@@ -197,14 +173,14 @@ rects sharing an edge merge in `add` (LVGL rule fires via
 reports false in `any_intersects`. Asymmetric. Either document the
 strictness or add an `intersects_or_touches` variant.
 
-### 6. `iter` → `iter_rects` rename
+### 3. `iter` → `iter_rects` rename
 
 Once `DamageRegion` has `is_empty`, `total_area`, `any_intersects`,
 the bare `iter` reads ambiguously. Trivial rename.
 
 ## Lower — defer / debug-only / data-driven
 
-### 7. Assert `upload_clear` ↔ per-pass `PreClear` correlation
+### 4. Assert `upload_clear` ↔ per-pass `PreClear` correlation
 
 `backend/mod.rs:365-368` uploads the clear-quad buffer iff
 `damage_scissors` is non-empty; the schedule emits `PreClear` on
@@ -213,7 +189,7 @@ Correlated by construction; nothing pins it. A `debug_assert!`
 ("partial pass with empty `clear_buffer` is a bug") would catch a
 future decorrelation.
 
-### 8. Skip `PreClear` when first pass `LoadOp::Clear` already ran
+### 5. Skip `PreClear` when first pass `LoadOp::Clear` already ran
 
 Force-clear-first-pass case: `LoadOp::Clear` paints clear color over
 the whole backbuffer, *then* `PreClear` paints clear color a second
@@ -221,7 +197,7 @@ time inside the damage rect. Wasted draw. The fix would thread the
 load op into the schedule, coupling two modules currently kept
 apart. Defer; document as known debug-only inefficiency.
 
-### 9. `force_clear` semantic for trail-style demos
+### 6. `force_clear` semantic for trail-style demos
 
 `force_clear` applies to the first pass only. A bouncing-cursor demo
 + `clear_damage` would show the cursor's current rect flash but the
@@ -229,7 +205,7 @@ trail rect *not* flash (pass 1 loaded over pass 0's magenta). The
 existing fixture works because both rects are first-time damage.
 If user-visible: move the conditional inside the loop.
 
-### 10. `DAMAGE_RECT_CAP = 8` tuning
+### 7. `DAMAGE_RECT_CAP = 8` tuning
 
 Slint ships 3, LVGL 32. Eight was a guess. The cost of `8` vs `4`
 is mostly: how often the min-growth merge fires, and how badly it
