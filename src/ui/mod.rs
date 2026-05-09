@@ -260,7 +260,7 @@ impl Ui {
     /// independently (hover, press, focus, custom). Define slots as
     /// `const` next to the widget's state struct.
     ///
-    /// See `docs/animations.md` for the full design.
+    /// See `src/animation/animations.md` for the full design.
     /// Advance an animation row keyed by `(id, slot)`, returning the
     /// current interpolated value. Generic over `T: Animatable`
     /// (`f32`, `Vec2`, `Color`).

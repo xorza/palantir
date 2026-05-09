@@ -1,5 +1,6 @@
 //! Per-`(WidgetId, AnimSlot)` animation rows, generic over
-//! [`Animatable`]. See `docs/animations.md` for the design rationale.
+//! [`Animatable`]. See `animations.md` (next to this file) for the
+//! design rationale.
 //!
 //! Storage is type-erased: [`AnimMap`] holds one boxed
 //! [`AnimMapTyped<T>`] per `TypeId` actually used. Adding a new
