@@ -2,7 +2,9 @@ mod quad_pipeline;
 
 use self::quad_pipeline::QuadPipeline;
 use super::frontend::FrameOutput;
-use crate::primitives::{color::Color, urect::URect};
+use crate::primitives::{
+    color::Color, rect::Rect, size::Size, spacing::Spacing, stroke::Stroke, urect::URect,
+};
 use crate::renderer::quad::Quad;
 use crate::text::SharedCosmic;
 use crate::ui::damage::DamagePaint;
@@ -13,6 +15,19 @@ use crate::ui::damage::DamagePaint;
 /// padding the scissor would clip the AA fringe and leave a
 /// 1-px-hard edge along the damage boundary.
 const DAMAGE_AA_PADDING: u32 = 2;
+
+/// Stroke color for the debug damage overlay (see
+/// [`crate::DebugOverlayConfig::damage_rect`]). Bright opaque red —
+/// picked for contrast against any UI palette, not theme-driven.
+const DAMAGE_OVERLAY_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
+
+/// Stroke width for the debug damage overlay, in logical pixels.
+/// Multiplied by `scale_factor` at submit time.
+const DAMAGE_OVERLAY_STROKE_WIDTH: f32 = 2.0;
+
+/// How far the overlay rect is inset from the damage rect, in logical
+/// pixels. Centers the stroke fully inside the highlighted region.
+const DAMAGE_OVERLAY_INSET: f32 = 1.0;
 
 mod text;
 use text::TextRenderer;
@@ -497,6 +512,48 @@ impl WgpuBackend {
             },
             backbuffer.size,
         );
+
+        // Debug damage overlay: stroked red rect over the damaged
+        // region, drawn onto the swapchain texture with `LoadOp::Load`.
+        // Backbuffer is unaffected — next frame's `LoadOp::Load` reads
+        // a clean texture, so no ghost stroke accumulates. Skip frames
+        // returned above; here `damage` is `Full` or `Partial`.
+        let draw_damage_overlay = frame.debug_overlay.is_some_and(|c| c.damage_rect);
+        if draw_damage_overlay {
+            let damage_rect_phys = match damage {
+                DamagePaint::Partial(r) => r.scaled_by(buffer.scale, true),
+                DamagePaint::Full => Rect {
+                    min: glam::Vec2::ZERO,
+                    size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
+                },
+                DamagePaint::Skip => unreachable!("Skip handled above"),
+            };
+            let inset_px = (DAMAGE_OVERLAY_INSET * buffer.scale).max(1.0);
+            let overlay_rect = damage_rect_phys.deflated_by(Spacing::all(inset_px));
+            let stroke = Stroke {
+                width: DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale,
+                color: DAMAGE_OVERLAY_COLOR,
+            };
+            self.quad.upload_overlay(&self.queue, overlay_rect, stroke);
+            let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("palantir.renderer.overlay"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &surface_view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.quad.draw_overlay(&mut pass);
+        }
 
         self.queue.submit(std::iter::once(encoder.finish()));
 

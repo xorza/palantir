@@ -1,5 +1,6 @@
 pub(crate) mod cascade;
 pub(crate) mod damage;
+pub(crate) mod debug_overlay;
 pub(crate) mod seen_ids;
 pub(crate) mod state;
 
@@ -19,6 +20,7 @@ use crate::tree::widget_id::WidgetId;
 use crate::tree::{Layer, NodeId};
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::{Damage, DamagePaint};
+use crate::ui::debug_overlay::DebugOverlayConfig;
 use crate::ui::seen_ids::SeenIds;
 use crate::ui::state::StateMap;
 use crate::widgets::scroll::ScrollRegistry;
@@ -89,6 +91,13 @@ pub struct Ui {
     /// [`Self::animate`]; evicted on the same `removed` sweep as
     /// `StateMap` / text / layout caches.
     pub(crate) anim: AnimMap,
+
+    /// Per-frame debug overlay config. `None` disables the subsystem
+    /// entirely; `Some(config)` enables the flagged visualizations.
+    /// Copied into [`FrameOutput`] so the wgpu backend draws the
+    /// requested overlays onto the swapchain after the
+    /// backbuffer→surface copy.
+    pub debug_overlay: Option<DebugOverlayConfig>,
 }
 
 impl Default for Ui {
@@ -116,6 +125,7 @@ impl Ui {
             time: Duration::ZERO,
             repaint_requested: false,
             anim: AnimMap::default(),
+            debug_overlay: None,
         }
     }
 
@@ -183,6 +193,7 @@ impl Ui {
             buffer,
             damage,
             repaint_requested: self.repaint_requested,
+            debug_overlay: self.debug_overlay,
         }
     }
 

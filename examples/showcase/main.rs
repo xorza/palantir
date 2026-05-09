@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
 use palantir::WgpuBackend;
-use palantir::{Background, Button, Color, Configure, InputEvent, Panel, Sizing, Ui};
+use palantir::{
+    Background, Button, Color, Configure, DebugOverlayConfig, InputEvent, Panel, Sizing, Ui,
+};
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 mod alignment;
@@ -205,6 +208,32 @@ impl ApplicationHandler for App {
         let Some(state) = self.state.as_mut() else {
             return;
         };
+
+        if let WindowEvent::KeyboardInput {
+            event:
+                KeyEvent {
+                    physical_key: PhysicalKey::Code(KeyCode::F12),
+                    state: ElementState::Pressed,
+                    repeat: false,
+                    ..
+                },
+            ..
+        } = event
+        {
+            state.ui.debug_overlay = match state.ui.debug_overlay {
+                None => Some(DebugOverlayConfig { damage_rect: true }),
+                Some(_) => None,
+            };
+            eprintln!(
+                "[F12] debug overlay: {}",
+                if state.ui.debug_overlay.is_some() {
+                    "on"
+                } else {
+                    "off"
+                }
+            );
+            state.repaint_requested = true;
+        }
 
         if let Some(ev) = InputEvent::from_winit(&event, state.display.scale_factor) {
             state.ui.on_input(ev);

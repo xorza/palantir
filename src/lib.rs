@@ -52,6 +52,7 @@ pub use tree::element::{Configure, Element, LayoutMode};
 pub use tree::visibility::Visibility;
 pub use tree::widget_id::WidgetId;
 pub use ui::Ui;
+pub use ui::debug_overlay::DebugOverlayConfig;
 pub use widgets::Response;
 pub use widgets::button::Button;
 pub use widgets::frame::Frame;
