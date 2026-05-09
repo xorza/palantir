@@ -72,45 +72,27 @@ impl Button {
         if element.margin == Spacing::ZERO {
             element.margin = style.margin;
         }
-        let target = if element.disabled {
-            style.disabled.clone()
-        } else {
-            let state = ui.response_for(element.id);
-            if state.pressed {
-                style.pressed.clone()
-            } else if state.hovered {
-                style.hovered.clone()
-            } else {
-                style.normal.clone()
-            }
-        };
-
+        let mut state = ui.response_for(element.id);
+        // Cascade lags by a frame; OR self-disabled in so a freshly
+        // toggled `.disabled(true)` lands disabled visuals immediately.
+        state.disabled |= element.disabled;
+        let target = style.pick(state);
         let target_bg = target.background.unwrap_or_default();
-        let target_text = target.text.unwrap_or_else(|| ui.theme.text.clone());
+        let target_text = target.text.clone().unwrap_or_else(|| ui.theme.text.clone());
         let target_stroke = target_bg.stroke.unwrap_or(Stroke {
             width: 0.0,
             color: Color::TRANSPARENT,
         });
 
-        // Interpolate paint properties toward the target state when
-        // the theme configures motion (`style.anim = Some(spec)`);
-        // otherwise snap. Theme default is `None` — animation is
-        // opt-in.
+        // Interpolate paint properties toward the target state. When
+        // `style.anim` is `None` (the default — animation is opt-in),
+        // each call snaps to target without allocating a row.
         let id = element.id;
-        let (fill, stroke_color, stroke_width, text_color) = match style.anim {
-            Some(anim) => (
-                ui.animate(id, SLOT_FILL, target_bg.fill, anim),
-                ui.animate(id, SLOT_STROKE_COLOR, target_stroke.color, anim),
-                ui.animate(id, SLOT_STROKE_WIDTH, target_stroke.width, anim),
-                ui.animate(id, SLOT_TEXT_COLOR, target_text.color, anim),
-            ),
-            None => (
-                target_bg.fill,
-                target_stroke.color,
-                target_stroke.width,
-                target_text.color,
-            ),
-        };
+        let anim = style.anim;
+        let fill = ui.animate(id, SLOT_FILL, target_bg.fill, anim);
+        let stroke_color = ui.animate(id, SLOT_STROKE_COLOR, target_stroke.color, anim);
+        let stroke_width = ui.animate(id, SLOT_STROKE_WIDTH, target_stroke.width, anim);
+        let text_color = ui.animate(id, SLOT_TEXT_COLOR, target_text.color, anim);
 
         let animated_bg = Background {
             fill,

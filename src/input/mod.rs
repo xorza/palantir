@@ -149,12 +149,19 @@ pub struct PointerState {
 
 /// Snapshot of one widget's interaction state for the current frame.
 /// `rect` is the widget's last-frame logical-pixel rect (`None` on first frame).
+///
+/// `disabled` is the **cascaded** disabled flag (the widget OR any ancestor),
+/// read from the previous frame's cascade — one-frame stale, like
+/// hover/press. Widgets that need lag-free self-disabled visuals also
+/// merge their own `Element::disabled` (`state.disabled |= element.disabled`)
+/// before reading the field.
 #[derive(Default, Clone, Copy, Debug)]
 pub struct ResponseState {
     pub rect: Option<Rect>,
     pub hovered: bool,
     pub pressed: bool,
     pub clicked: bool,
+    pub disabled: bool,
 }
 
 /// Live input state machine: the things that survive across input events
@@ -398,10 +405,16 @@ impl InputState {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &CascadeResult) -> ResponseState {
-        let rect = cascades
+        let entry = cascades
             .by_id
             .get(&id)
-            .map(|&i| cascades.entries[i as usize].rect);
+            .map(|&i| &cascades.entries[i as usize]);
+        let rect = entry.map(|e| e.rect);
+        // Cascade flattens parent-disabled into each entry, so this is
+        // the **effective** ancestor-or-self disabled — one frame stale.
+        // Widgets that need lag-free self-toggle response merge their
+        // own `element.disabled` on top after calling.
+        let disabled = entry.is_some_and(|e| e.disabled);
         let me_under_pointer = self.hovered == Some(id);
         let me_captured = self.active == Some(id);
         let nothing_captured = self.active.is_none();
@@ -415,6 +428,7 @@ impl InputState {
             hovered,
             pressed,
             clicked,
+            disabled,
         }
     }
 

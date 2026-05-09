@@ -35,6 +35,10 @@ pub(crate) struct HitEntry {
     pub(crate) rect: Rect,
     pub(crate) sense: Sense,
     pub(crate) focusable: bool,
+    /// Effective disabled (self OR any ancestor). Mirrors what
+    /// `cascaded_off` already used to null `sense`/`focusable`,
+    /// preserved here so per-widget responses can read it.
+    pub(crate) disabled: bool,
 }
 
 struct Frame {
@@ -209,6 +213,7 @@ fn run_tree(
             rect: visible_rect,
             sense,
             focusable,
+            disabled,
         });
 
         rows.push(row);
