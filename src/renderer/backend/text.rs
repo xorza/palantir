@@ -65,7 +65,6 @@ const POOL_SHRINK_RATIO: usize = 2;
 /// scratch. Capacity retains across frames; pool grows to historical
 /// high water.
 pub(crate) struct TextRenderer {
-    cache: Cache,
     atlas: TextAtlas,
     viewport: Viewport,
     swash_cache: SwashCache,
@@ -109,7 +108,6 @@ impl TextRenderer {
         let viewport = Viewport::new(device, &cache);
         let swash_cache = SwashCache::new();
         Self {
-            cache,
             atlas,
             viewport,
             swash_cache,
@@ -119,23 +117,6 @@ impl TextRenderer {
             stencil_ready: FixedBitSet::new(),
             high_water: 0,
         }
-    }
-
-    /// Re-create on surface format change (e.g. after window recreation).
-    /// Replaces the atlas + drops the renderer pool (each renderer holds
-    /// pipeline state tied to the old format).
-    pub(crate) fn rebuild_for_format(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        format: wgpu::TextureFormat,
-    ) {
-        self.atlas = TextAtlas::new(device, queue, &self.cache, format);
-        self.renderers.clear();
-        self.ready.clear();
-        self.stencil_renderers.clear();
-        self.stencil_ready.clear();
-        self.high_water = 0;
     }
 
     /// True if any group has been prepared this frame and should render.

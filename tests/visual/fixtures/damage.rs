@@ -42,6 +42,19 @@ fn count_non_magenta(img: &RgbaImage) -> u32 {
     n
 }
 
+fn count_red(img: &RgbaImage) -> u32 {
+    let mut n = 0u32;
+    for p in img.pixels() {
+        let Rgba([r, g, b, _]) = *p;
+        // sRGB → pure red is (255, 0, 0). Tolerance for AA fringes.
+        let is_red = r > 240 && g < 16 && b < 16;
+        if is_red {
+            n += 1;
+        }
+    }
+    n
+}
+
 /// Two identical frames of a tiny static scene. After frame 1 seeds
 /// `Damage.prev`, frame 2's diff should yield empty damage — and so
 /// the magenta-clear pass should produce an entirely magenta image.
@@ -137,4 +150,67 @@ fn single_button_change_paints_button_only() {
     let painted = count_non_magenta(&f2);
     let total = size.x * size.y;
     eprintln!("single-change frame 2 painted {painted}/{total} pixels");
+}
+
+/// Smoke-pin: with `DebugOverlayConfig::damage_rect = true`, the
+/// post-copy overlay pass actually puts red stroke pixels on the
+/// swapchain. Without coverage, "the F12 toggle does nothing" would
+/// regress silently — no other test exercises the post-copy pass.
+///
+/// Setup mirrors `single_button_change_paints_button_only`: frame 1
+/// seeds `Damage.prev` with label "a"; frame 2 flips to "b" so damage
+/// diff yields `Partial(rect)`, then enables the overlay so the post-
+/// copy pass strokes that rect on the surface texture.
+///
+/// Assertion is intentionally a smoke check (red pixel count > 0)
+/// rather than precise rect geometry — the exact damage rect depends
+/// on damage-tracking internals that this test shouldn't couple to.
+#[test]
+fn damage_rect_overlay_strokes_dirty_region() {
+    let mut h = Harness::new();
+    let size = UVec2::new(160, 96);
+
+    let frame_with = |label: &'static str| {
+        move |ui: &mut palantir::Ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(12.0)
+                .gap(8.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(Background {
+                    fill: Color::rgb(0.15, 0.15, 0.18),
+                    ..Default::default()
+                })
+                .show(ui, |ui| {
+                    Button::new().id_salt("c").label(label).show(ui);
+                });
+        }
+    };
+
+    let _f1 = h.render(size, 1.0, DARK_BG, frame_with("a"));
+
+    h.ui.debug_overlay = Some(DebugOverlayConfig {
+        damage_rect: true,
+        ..Default::default()
+    });
+    let f2 = h.render(size, 1.0, DARK_BG, frame_with("b"));
+    h.ui.debug_overlay = None;
+
+    save_debug("damage_rect_overlay_strokes_dirty_region", &f2);
+
+    let red = count_red(&f2);
+    let total = size.x * size.y;
+    eprintln!("damage_rect overlay frame 2: {red}/{total} red pixels");
+    assert!(
+        red > 0,
+        "expected red overlay stroke pixels on the surface; \
+         got {red}/{total} — post-copy overlay pass didn't reach the swapchain."
+    );
+    // Sanity upper bound: the overlay is a 2px stroke around the
+    // damage rect, never the whole surface.
+    assert!(
+        red < total / 4,
+        "red pixel count {red}/{total} suggests the overlay flooded \
+         the surface — should be a thin stroke around the dirty rect."
+    );
 }
