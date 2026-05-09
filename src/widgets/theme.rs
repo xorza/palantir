@@ -1,4 +1,5 @@
 use crate::animation::AnimSpec;
+use crate::input::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 pub use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -454,6 +455,25 @@ impl Default for ButtonTheme {
             padding: Spacing::xy(12.0, 6.0),
             margin: Spacing::ZERO,
             anim: None,
+        }
+    }
+}
+
+impl ButtonTheme {
+    /// Pick the visual state for `state`. Disabled wins over
+    /// hover/press; pressed wins over hover; otherwise normal.
+    /// `state.disabled` is the cascaded ancestor-or-self flag — if
+    /// the caller wants lag-free response to its own self-toggle,
+    /// merge `state.disabled |= element.disabled` before calling.
+    pub fn pick(&self, state: ResponseState) -> &ButtonStateStyle {
+        if state.disabled {
+            &self.disabled
+        } else if state.pressed {
+            &self.pressed
+        } else if state.hovered {
+            &self.hovered
+        } else {
+            &self.normal
         }
     }
 }

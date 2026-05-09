@@ -222,7 +222,7 @@ fn animate_drives_repaint_until_settle() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     let frame = ui.run_frame(display, Duration::ZERO, |ui| {
-        let _ = ui.animate(id, SLOT, 0.0_f32, AnimSpec::FAST);
+        let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
         Frame::new().id_salt("anim-test").show(ui);
     });
     assert!(
@@ -231,7 +231,7 @@ fn animate_drives_repaint_until_settle() {
     );
 
     let frame = ui.run_frame(display, Duration::from_millis(16), |ui| {
-        let _ = ui.animate(id, SLOT, 1.0_f32, AnimSpec::FAST);
+        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
         Frame::new().id_salt("anim-test").show(ui);
     });
     assert!(
@@ -244,7 +244,7 @@ fn animate_drives_repaint_until_settle() {
     for i in 0..100 {
         now += Duration::from_millis(16);
         let frame = ui.run_frame(display, now, |ui| {
-            let _ = ui.animate(id, SLOT, 1.0_f32, AnimSpec::FAST);
+            let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
             Frame::new().id_salt("anim-test").show(ui);
         });
         if !frame.repaint_requested() {

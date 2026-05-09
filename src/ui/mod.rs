@@ -261,20 +261,34 @@ impl Ui {
     /// `const` next to the widget's state struct.
     ///
     /// See `docs/animations.md` for the full design.
+    /// Advance an animation row keyed by `(id, slot)`, returning the
+    /// current interpolated value. Generic over `T: Animatable`
+    /// (`f32`, `Vec2`, `Color`).
+    ///
+    /// `spec`:
+    /// - `Some(s)` — tick toward `target` per spec; ease/spring math,
+    ///   first-touch snap, retarget detection, settle check, repaint
+    ///   request all run as expected.
+    /// - `None` — snap to `target`, drop any stale row, do **not**
+    ///   request a repaint. `None` is the API-level signal "this
+    ///   caller didn't ask for motion" (typically from
+    ///   `theme.button.anim: Option<AnimSpec>`).
+    ///
+    /// Slot lets one widget animate multiple values independently;
+    /// declare slot consts next to the widget's state struct.
     pub fn animate<T: Animatable>(
         &mut self,
         id: WidgetId,
         slot: AnimSlot,
         target: T,
-        spec: AnimSpec,
+        spec: Option<AnimSpec>,
     ) -> T {
-        // Degenerate Duration{secs ≈ 0} short-circuits at the tick
-        // entry — drop any stale row, return target. Springs and real
-        // Durations dispatch normally. Callers that want "maybe
-        // animate" (e.g. `theme.button.anim: Option<AnimSpec>`) check
-        // the Option themselves and skip this call when None — that
-        // keeps `Ui::animate`'s contract narrow ("tick this row") and
-        // surfaces the animate-or-not decision at the use site.
+        let Some(spec) = spec else {
+            // Drop stale row so a future Some(_) starts fresh from
+            // `target` rather than carrying in-flight `current`.
+            T::slot_mut(&mut self.anim).rows.remove(&(id, slot));
+            return target;
+        };
         let r = T::slot_mut(&mut self.anim).tick(id, slot, target, spec, self.dt);
         if !r.settled {
             self.repaint_requested = true;
