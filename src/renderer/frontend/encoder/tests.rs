@@ -11,7 +11,9 @@ use crate::layout::types::{
     sizing::Sizing,
 };
 use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
-use crate::support::testing::{begin, encode_cmds, encode_cmds_filtered, ui_at};
+use crate::support::testing::{
+    begin, encode_cmds, encode_cmds_filtered, encode_cmds_with_rects, ui_at,
+};
 use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
@@ -883,6 +885,47 @@ fn damage_filter_preserves_transform_pushpop() {
     assert!(
         pushes >= 1,
         "filtered-out transformed node still emits its transform pair"
+    );
+}
+
+/// Pin: a multi-rect damage region paints leaves intersecting *any*
+/// rect and skips leaves that miss every rect. Three corner frames at
+/// (0,0)/(160,0)/(0,160), each 40×40; a region with two damage rects
+/// covering the top-left and top-right corners must paint exactly
+/// those two and skip the bottom-left.
+#[test]
+fn damage_filter_paints_leaves_in_any_rect() {
+    let mut ui = ui_at(UVec2::new(200, 200));
+    Panel::canvas()
+        .auto_id()
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(&mut ui, |ui| {
+            for (key, x, y) in &[("tl", 0.0, 0.0), ("tr", 160.0, 0.0), ("bl", 0.0, 160.0)] {
+                Frame::new()
+                    .id_salt(*key)
+                    .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                    .position(Vec2::new(*x, *y))
+                    .background(Background {
+                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            }
+        });
+    ui.end_frame();
+
+    // Two damage rects that each cover one corner; the bottom-left
+    // corner falls outside both. The rects are far apart, so the
+    // merge policy keeps them separate.
+    let rects = [
+        Rect::new(0.0, 0.0, 50.0, 50.0),
+        Rect::new(150.0, 0.0, 50.0, 50.0),
+    ];
+    let cmds = encode_cmds_with_rects(&ui, &rects);
+    assert_eq!(
+        count_draw_rects(&cmds),
+        2,
+        "two top corners inside damage, bottom corner outside both",
     );
 }
 

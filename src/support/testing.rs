@@ -102,16 +102,35 @@ pub(crate) fn encode_cmds(ui: &Ui) -> RenderCmdBuffer {
 }
 
 pub(crate) fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBuffer {
+    encode_cmds_with_region(ui, filter.map(damage_region).as_ref())
+}
+
+/// Multi-rect variant of [`encode_cmds_filtered`]. Builds a region
+/// from `rects` (each fed through [`DamageRegion::add`] so the merge
+/// policy applies) and encodes against it. Empty slice ⇒ no filter.
+pub(crate) fn encode_cmds_with_rects(ui: &Ui, rects: &[Rect]) -> RenderCmdBuffer {
+    let region = if rects.is_empty() {
+        None
+    } else {
+        let mut r = DamageRegion::default();
+        for rect in rects {
+            r.add(*rect);
+        }
+        Some(r)
+    };
+    encode_cmds_with_region(ui, region.as_ref())
+}
+
+fn encode_cmds_with_region(ui: &Ui, region: Option<&DamageRegion>) -> RenderCmdBuffer {
     // Fresh `Encoder` per call → empty cache, every encode is a cold
     // build. Tests that want to verify cache-replay output use
     // `ui.frontend.encoder.cmds()` instead.
-    let region = filter.map(damage_region);
     let mut encoder = Encoder::default();
     encoder.encode(
         &ui.forest,
         &ui.layout.result,
         &ui.cascades.result,
-        region.as_ref(),
+        region,
         ui.display.logical_rect(),
     );
     std::mem::take(&mut encoder.cmds)
