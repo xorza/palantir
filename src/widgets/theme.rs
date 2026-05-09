@@ -1,4 +1,4 @@
-use crate::animation::AnimSpec;
+use crate::animation::{AnimSlot, AnimSpec};
 use crate::input::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 pub use crate::primitives::background::Background;
@@ -6,6 +6,8 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
+use crate::tree::widget_id::WidgetId;
+use crate::ui::Ui;
 
 // Default palette: Ayu Mirage High Contrast. Mirrors
 // `assets/reference-palette.toml` — that file is the hand-edited source
@@ -256,23 +258,103 @@ impl Default for ScrollbarTheme {
     }
 }
 
-/// Paint settings for one [`crate::TextEdit`] state — `normal` (the
-/// idle / unfocused state), `focused`, or `disabled`. Same shape as
-/// [`ButtonStateStyle`] and follows the same inheritance rule:
-/// `Some(x)` overrides; `None` inherits the framework default for that
-/// field. `background = None` inherits [`Background::default`] (paints
+/// Paint settings for one widget state — the same shape that Button
+/// (`normal`/`hovered`/`pressed`/`disabled`) and TextEdit
+/// (`normal`/`focused`/`disabled`) both reach for. `Some(x)`
+/// overrides; `None` inherits the framework default for that field.
+/// `background = None` inherits [`Background::default`] (paints
 /// nothing — `Ui::add_shape` filters no-op shapes). `text = None`
 /// inherits [`Theme::text`], so an app changing `theme.text.color`
-/// moves every editor's buffer text along with every button label.
+/// moves every label that didn't override it.
+///
+/// Per-theme `pick(state)` returns `&WidgetLook`; widgets call
+/// [`Self::animate`] to interpolate the look's components and get an
+/// [`AnimatedLook`] ready to render with.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TextEditStateStyle {
+pub struct WidgetLook {
     pub background: Option<Background>,
     pub text: Option<TextStyle>,
 }
 
-/// Three-state TextEdit theme. The leaf type ([`TextEditStateStyle`])
-/// lives next to it; widget reads `theme.{normal,focused,disabled}`
-/// based on `Element::disabled` and focus.
+/// Resolved + per-frame animated values for a [`WidgetLook`]. Built
+/// by [`WidgetLook::animate`]; widgets read flat fields and call
+/// [`Self::background`] to assemble the paint-ready chrome.
+#[derive(Clone, Copy, Debug)]
+pub struct AnimatedLook {
+    pub fill: Color,
+    /// `width = 0` (or transparent color) means "no stroke" — handled
+    /// by [`Self::background`] when assembling the paint-ready chrome.
+    pub stroke: Stroke,
+    pub radius: Corners,
+    pub text_color: Color,
+    pub font_size_px: f32,
+    pub line_height_mult: f32,
+}
+
+impl AnimatedLook {
+    /// Assemble a paint-ready [`Background`]. Drops the stroke when
+    /// the animated width has collapsed below epsilon or the color is
+    /// transparent — keeps "stroked → no-stroke" transitions from
+    /// leaking a phantom hairline.
+    pub fn background(&self) -> Background {
+        Background {
+            fill: self.fill,
+            stroke: (self.stroke.width > f32::EPSILON && !self.stroke.color.approx_transparent())
+                .then_some(self.stroke),
+            radius: self.radius,
+        }
+    }
+
+    pub fn line_height_px(&self) -> f32 {
+        self.font_size_px * self.line_height_mult
+    }
+}
+
+impl WidgetLook {
+    /// Slots reserved by [`Self::animate`] (4 of them: fill, stroke
+    /// color, stroke width, text color). Widgets that mix in
+    /// additional animations on the same `WidgetId` start their own
+    /// slots at `WIDGETLOOK_SLOTS` to avoid collision.
+    pub const WIDGETLOOK_SLOTS: u8 = 4;
+
+    /// Resolve the look's components to flat values, animating each
+    /// non-trivial component toward the target via `spec`. Pass
+    /// `spec = None` to snap (the call shape stays the same — caller
+    /// doesn't fork on whether motion is configured).
+    ///
+    /// `fallback_text` provides defaults for `self.text == None`
+    /// (typically `ui.theme.text.clone()` from the caller; clone
+    /// because `&ui.theme.text` would conflict with the `&mut Ui`).
+    pub fn animate(
+        &self,
+        ui: &mut Ui,
+        id: WidgetId,
+        fallback_text: &TextStyle,
+        spec: Option<AnimSpec>,
+    ) -> AnimatedLook {
+        let bg = self.background.unwrap_or_default();
+        let stroke = bg.stroke.unwrap_or(Stroke {
+            width: 0.0,
+            color: Color::TRANSPARENT,
+        });
+        let text = self.text.as_ref().unwrap_or(fallback_text);
+        AnimatedLook {
+            fill: ui.animate(id, AnimSlot(0), bg.fill, spec),
+            stroke: Stroke {
+                color: ui.animate(id, AnimSlot(1), stroke.color, spec),
+                width: ui.animate(id, AnimSlot(2), stroke.width, spec),
+            },
+            radius: bg.radius,
+            text_color: ui.animate(id, AnimSlot(3), text.color, spec),
+            font_size_px: text.font_size_px,
+            line_height_mult: text.line_height_mult,
+        }
+    }
+}
+
+/// Three-state TextEdit theme. The leaf type ([`WidgetLook`]) lives
+/// next to it; widget reads `theme.{normal,focused,disabled}` based
+/// on `Element::disabled` and focus. Use [`Self::pick`] to select.
 ///
 /// State-independent fields (`caret`, `caret_width`, `placeholder`,
 /// `selection`, `padding`, `margin`) live flat on the theme — they
@@ -285,9 +367,9 @@ pub struct TextEditStateStyle {
 /// custom theme rather than passing zero.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TextEditTheme {
-    pub normal: TextEditStateStyle,
-    pub focused: TextEditStateStyle,
-    pub disabled: TextEditStateStyle,
+    pub normal: WidgetLook,
+    pub focused: WidgetLook,
+    pub disabled: WidgetLook,
     pub placeholder: Color,
     pub caret: Color,
     /// Width of the caret rect in logical px. The caret is painted as
@@ -303,6 +385,28 @@ pub struct TextEditTheme {
     pub padding: Spacing,
     /// Default margin around the editor.
     pub margin: Spacing,
+    /// Spec applied to fill/stroke/text transitions between states.
+    /// Default `None` — animation is opt-in (matches `ButtonTheme`).
+    /// Round-trips through serde so theme files configure motion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anim: Option<AnimSpec>,
+}
+
+impl TextEditTheme {
+    /// Pick the visual state for `state.disabled` + `focused`.
+    /// Disabled wins over focused; otherwise normal. `state.disabled`
+    /// is the cascaded ancestor-or-self flag — caller can merge
+    /// `state.disabled |= element.disabled` for lag-free response to
+    /// its own self-toggle (mirrors Button's pattern).
+    pub fn pick(&self, state: ResponseState, focused: bool) -> &WidgetLook {
+        if state.disabled {
+            &self.disabled
+        } else if focused {
+            &self.focused
+        } else {
+            &self.normal
+        }
+    }
 }
 
 impl Default for TextEditTheme {
@@ -340,15 +444,15 @@ impl Default for TextEditTheme {
         let acc = palette::ACCENT;
         let selection = Color::linear_rgba(acc.r, acc.g, acc.b, 0.25);
         Self {
-            normal: TextEditStateStyle {
+            normal: WidgetLook {
                 background: Some(normal_bg),
                 text: None,
             },
-            focused: TextEditStateStyle {
+            focused: WidgetLook {
                 background: Some(focused_bg),
                 text: None,
             },
-            disabled: TextEditStateStyle {
+            disabled: WidgetLook {
                 background: Some(disabled_bg),
                 text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
             },
@@ -358,27 +462,14 @@ impl Default for TextEditTheme {
             selection,
             padding: Spacing::xy(8.0, 6.0),
             margin: Spacing::ZERO,
+            anim: None,
         }
     }
 }
 
-/// Paint settings for one [`crate::Button`] state — `normal`,
-/// `hovered`, `pressed`, or `disabled`. Same shape as
-/// [`TextEditStateStyle`] and follows the same inheritance rule:
-/// `Some(x)` overrides; `None` inherits the framework default for that
-/// field. `background = None` inherits [`Background::default`] (paints
-/// nothing — `Ui::add_shape` filters no-op shapes). `text = None`
-/// inherits [`Theme::text`], so an app changing `theme.text.color`
-/// moves every button label that didn't override it.
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ButtonStateStyle {
-    pub background: Option<Background>,
-    pub text: Option<TextStyle>,
-}
-
-/// Four-state button theme. The leaf type ([`ButtonStateStyle`]) lives
-/// next to it; widget reads `theme.{normal,hovered,pressed,disabled}`
-/// based on the live response state and `Element::disabled`.
+/// Four-state button theme. The leaf type ([`WidgetLook`]) is shared
+/// with `TextEditTheme`; widget reads `theme.{normal,hovered,pressed,
+/// disabled}` based on the live response state and `Element::disabled`.
 ///
 /// `padding`/`margin` apply when the user didn't call `.padding(...)`
 /// / `.margin(...)` on the builder. The "user didn't override" check
@@ -387,10 +478,10 @@ pub struct ButtonStateStyle {
 /// rather than passing zero.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
-    pub normal: ButtonStateStyle,
-    pub hovered: ButtonStateStyle,
-    pub pressed: ButtonStateStyle,
-    pub disabled: ButtonStateStyle,
+    pub normal: WidgetLook,
+    pub hovered: WidgetLook,
+    pub pressed: WidgetLook,
+    pub disabled: WidgetLook,
     /// Default padding inside the button (around the label).
     /// Applied at `show()` time when the builder hasn't set padding.
     pub padding: Spacing,
@@ -436,19 +527,19 @@ impl Default for ButtonTheme {
             radius: Corners::all(4.0),
         };
         Self {
-            normal: ButtonStateStyle {
+            normal: WidgetLook {
                 background: bg(palette::ELEM_HOVER),
                 text: None,
             },
-            hovered: ButtonStateStyle {
+            hovered: WidgetLook {
                 background: bg(palette::ELEM_ACTIVE),
                 text: None,
             },
-            pressed: ButtonStateStyle {
+            pressed: WidgetLook {
                 background: Some(pressed_bg),
                 text: None,
             },
-            disabled: ButtonStateStyle {
+            disabled: WidgetLook {
                 background: bg(palette::ELEM),
                 text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
             },
@@ -465,7 +556,7 @@ impl ButtonTheme {
     /// `state.disabled` is the cascaded ancestor-or-self flag — if
     /// the caller wants lag-free response to its own self-toggle,
     /// merge `state.disabled |= element.disabled` before calling.
-    pub fn pick(&self, state: ResponseState) -> &ButtonStateStyle {
+    pub fn pick(&self, state: ResponseState) -> &WidgetLook {
         if state.disabled {
             &self.disabled
         } else if state.pressed {

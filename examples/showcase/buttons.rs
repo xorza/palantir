@@ -4,8 +4,8 @@
 //! from the framework default. Default styling demoed in the first row.
 
 use palantir::{
-    Background, Button, ButtonStateStyle, ButtonTheme, Color, Configure, Corners, Panel, Sizing,
-    Stroke, TextStyle, Ui,
+    Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Sizing, Stroke, TextStyle,
+    Ui, WidgetLook,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -86,25 +86,25 @@ fn outlined_style() -> ButtonTheme {
         radius: Corners::all(4.0),
     };
     ButtonTheme {
-        normal: ButtonStateStyle {
+        normal: WidgetLook {
             background: Some(bg(Color::TRANSPARENT, stroke)),
             text: None,
         },
-        hovered: ButtonStateStyle {
+        hovered: WidgetLook {
             background: Some(bg(
                 Color::linear_rgba(accent.r, accent.g, accent.b, 0.18),
                 stroke,
             )),
             text: None,
         },
-        pressed: ButtonStateStyle {
+        pressed: WidgetLook {
             background: Some(bg(
                 Color::linear_rgba(accent.r, accent.g, accent.b, 0.35),
                 stroke,
             )),
             text: None,
         },
-        disabled: ButtonStateStyle {
+        disabled: WidgetLook {
             background: Some(bg(
                 Color::TRANSPARENT,
                 Some(Stroke {
@@ -127,19 +127,19 @@ fn danger_style() -> ButtonTheme {
         radius: Corners::all(2.0),
     };
     ButtonTheme {
-        normal: ButtonStateStyle {
+        normal: WidgetLook {
             background: Some(bg(red)),
             text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
-        hovered: ButtonStateStyle {
+        hovered: WidgetLook {
             background: Some(bg(Color::hex(0xff7e6a))),
             text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
-        pressed: ButtonStateStyle {
+        pressed: WidgetLook {
             background: Some(bg(Color::hex(0xc74734))),
             text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
-        disabled: ButtonStateStyle {
+        disabled: WidgetLook {
             background: Some(bg(Color::linear_rgba(red.r, red.g, red.b, 0.4))),
             text: Some(TextStyle::default().with_color(Color::linear_rgba(1.0, 1.0, 1.0, 0.55))),
         },

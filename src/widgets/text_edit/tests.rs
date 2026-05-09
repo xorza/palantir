@@ -932,12 +932,12 @@ fn textedit_style_override_replaces_default_theme() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::shape::Shape;
-    use crate::widgets::theme::TextEditStateStyle;
+    use crate::widgets::theme::WidgetLook;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hi");
     let style = TextEditTheme {
-        normal: TextEditStateStyle {
+        normal: WidgetLook {
             text: Some(TextStyle::default().with_line_height_mult(3.0)),
             ..TextEditTheme::default().normal
         },
@@ -1011,11 +1011,11 @@ fn pushed_shape_uses_style_overridden_line_height() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::shape::Shape;
-    use crate::widgets::theme::TextEditStateStyle;
+    use crate::widgets::theme::WidgetLook;
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hi");
     let style = TextEditTheme {
-        normal: TextEditStateStyle {
+        normal: WidgetLook {
             text: Some(TextStyle::default().with_line_height_mult(2.0)),
             ..TextEditTheme::default().normal
         },
@@ -1051,7 +1051,7 @@ fn line_height_override_changes_caret_rect_height() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::shape::Shape;
-    use crate::widgets::theme::TextEditStateStyle;
+    use crate::widgets::theme::WidgetLook;
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {
         let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
@@ -1095,7 +1095,7 @@ fn line_height_override_changes_caret_rect_height() {
 
     let default = caret_height(None);
     let doubled = caret_height(Some(TextEditTheme {
-        focused: TextEditStateStyle {
+        focused: WidgetLook {
             text: Some(TextStyle::default().with_line_height_mult(2.0)),
             ..TextEditTheme::default().focused
         },

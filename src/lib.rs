@@ -52,6 +52,6 @@ pub use widgets::scroll::Scroll;
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
 pub use widgets::theme::{
-    Background, ButtonStateStyle, ButtonTheme, ScrollbarTheme, Surface, TextEditStateStyle,
-    TextEditTheme, TextStyle, Theme,
+    AnimatedLook, Background, ButtonTheme, ScrollbarTheme, Surface, TextEditTheme, TextStyle,
+    Theme, WidgetLook,
 };
