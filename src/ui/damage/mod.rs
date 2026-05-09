@@ -6,15 +6,17 @@
 //! A node is **dirty** if its `(rect, authoring-hash)` differs from
 //! the entry keyed by the same `WidgetId` in `Damage.prev`, OR it
 //! had no entry (added). A `WidgetId` present in `Damage.prev` with
-//! no matching node this frame contributes its prev rect to damage
-//! (removed). The damage rect is the union of every contribution.
+//! no matching node this frame contributes its prev rect (removed).
+//! Each contribution is folded into a [`region::DamageRegion`] via
+//! its merge policy; the result drives the encoder filter and the
+//! per-pass scissor list in the backend.
 //!
 //! `Damage.dirty` is a test-only per-node dirty list (added /
 //! hash-changed / rect-changed). Production builds don't accumulate
-//! it — the rect aggregator (`self.rect`) is the actually-consumed
-//! output. Reintroduce `dirty` to production when an identity-based
-//! consumer lands (per-node command cache, multi-rect damage, debug
-//! overlay — see `docs/roadmap/damage.md`).
+//! it — the region is the actually-consumed output. Multi-rect
+//! damage was implemented rect-by-rect through the region and
+//! didn't end up needing per-node identity, so the test-only
+//! gating stays.
 
 use crate::primitives::rect::Rect;
 #[cfg(test)]
@@ -43,11 +45,12 @@ pub(crate) struct NodeSnapshot {
 /// reads to produce that output.
 ///
 /// `dirty` lists every added / hash-changed / rect-changed node in
-/// pre-order paint order. `rect` is the smallest rect enclosing all
-/// dirty contributions plus every removed widget's prev rect.
-/// `None` when no node is dirty — legitimate when the host
-/// requested a redraw but nothing actually changed (e.g., an
-/// animation tick that didn't advance any visible state).
+/// pre-order paint order (test-only). `region` accumulates the
+/// per-rect contributions (added node's curr rect, changed node's
+/// prev + curr, removed widget's prev rect) through
+/// [`region::DamageRegion::add`]'s merge policy — empty region ⇒
+/// nothing changed, so the host-requested redraw maps to
+/// [`DamagePaint::Skip`].
 ///
 /// `prev` is the per-`WidgetId` snapshot map carried over from last
 /// frame; it's mutated in place during `compute` (read old, write

@@ -5,105 +5,98 @@ fn collect(region: &DamageRegion) -> Vec<Rect> {
     region.iter().collect()
 }
 
-/// Sweep covering each branch of [`DamageRegion::add`]:
-///
-/// - empty input → no-op
-/// - input contained by an existing rect → no-op
-/// - input contains an existing rect → drops the contained slot
-/// - LVGL rule fires (touching / overlapping) → merges into one
-/// - distant disjoint inputs → kept as separate slots
-/// - cascade absorption — adding a "bridge" rect coalesces neighbours
+/// `add` ignores zero-area input — empty rects contribute nothing.
 #[test]
-fn add_policy_cases() {
-    // empty
+fn add_empty_is_noop() {
     let mut region = DamageRegion::default();
     region.add(Rect::new(10.0, 10.0, 0.0, 0.0));
-    assert!(region.is_empty(), "empty rects must be ignored");
+    assert!(region.is_empty());
+}
 
-    // already covered (small inside big)
+/// Step 2: a rect already covered by an existing slot adds nothing.
+#[test]
+fn add_already_covered_is_noop() {
     let mut region = DamageRegion::default();
     region.add(Rect::new(0.0, 0.0, 100.0, 100.0));
     region.add(Rect::new(10.0, 10.0, 5.0, 5.0));
-    assert_eq!(
-        collect(&region),
-        vec![Rect::new(0.0, 0.0, 100.0, 100.0)],
-        "rect already inside an existing rect adds nothing",
-    );
+    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
+}
 
-    // input contains existing — replace
+/// Step 3: a rect that contains an existing slot replaces it.
+#[test]
+fn add_swallows_contained_existing() {
     let mut region = DamageRegion::default();
     region.add(Rect::new(10.0, 10.0, 5.0, 5.0));
     region.add(Rect::new(0.0, 0.0, 100.0, 100.0));
-    assert_eq!(
-        collect(&region),
-        vec![Rect::new(0.0, 0.0, 100.0, 100.0)],
-        "bigger rect should swallow the contained slot",
-    );
+    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
+}
 
-    // axis-aligned overlap — bbox waste is small enough; LVGL rule fires
+/// LVGL rule fires for axis-aligned overlap: bbox waste is small,
+/// so the merge wins.
+#[test]
+fn add_merges_axis_aligned_overlap() {
     let mut region = DamageRegion::default();
     region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
     region.add(Rect::new(5.0, 0.0, 10.0, 10.0));
-    assert_eq!(
-        collect(&region),
-        vec![Rect::new(0.0, 0.0, 15.0, 10.0)],
-        "axis-aligned overlap should merge",
-    );
+    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 15.0, 10.0)]);
+}
 
-    // edge-touching — non-strict ≤, still merges (one big run)
+/// Edge-touching pairs merge (the LVGL rule is non-strict `≤`, so
+/// `bbox = sum` still triggers).
+#[test]
+fn add_merges_edge_touching() {
     let mut region = DamageRegion::default();
     region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
     region.add(Rect::new(10.0, 0.0, 10.0, 10.0));
-    assert_eq!(
-        collect(&region),
-        vec![Rect::new(0.0, 0.0, 20.0, 10.0)],
-        "edge-touching pair should merge",
-    );
+    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 20.0, 10.0)]);
+}
 
-    // Diagonal overlap with significant bbox waste stays separate.
-    // bbox(A,B) = 225, |A|+|B| = 200 — rule rejects the merge so the
-    // 25 px² of empty corners in the bbox aren't paid for.
+/// Diagonal overlap: bbox waste exceeds the savings (225 vs. 200),
+/// so the rule rejects and both rects stay.
+#[test]
+fn add_keeps_diagonal_overlap_split() {
     let mut region = DamageRegion::default();
     let a = Rect::new(0.0, 0.0, 10.0, 10.0);
     let b = Rect::new(5.0, 5.0, 10.0, 10.0);
     region.add(a);
     region.add(b);
-    let rects = collect(&region);
-    assert_eq!(
-        rects.len(),
-        2,
-        "diagonal overlap with bbox waste must stay split: {rects:?}",
-    );
+    assert_eq!(collect(&region).len(), 2);
+}
 
-    // distant disjoint — stay separate
+/// Distant disjoint rects (the corner-pair pathology) stay split.
+#[test]
+fn add_keeps_far_corners_split() {
     let mut region = DamageRegion::default();
     let a = Rect::new(0.0, 0.0, 5.0, 5.0);
     let b = Rect::new(995.0, 995.0, 5.0, 5.0);
     region.add(a);
     region.add(b);
     let rects = collect(&region);
-    assert_eq!(rects.len(), 2, "far corners must not merge: {rects:?}");
+    assert_eq!(rects.len(), 2);
     assert!(rects.contains(&a) && rects.contains(&b));
+}
 
-    // cascade — two distant rects stay split, then a "bridge" rect
-    // overlapping both pulls them into one.
+/// Cascade: a "bridge" rect that contains two previously-disjoint
+/// rects collapses the region. This is the path that justifies the
+/// `loop` in `add` — absorbing one rect lets the candidate absorb the
+/// next.
+#[test]
+fn add_cascade_absorbs_through_bridge() {
     let mut region = DamageRegion::default();
     region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
     region.add(Rect::new(100.0, 0.0, 10.0, 10.0));
     assert_eq!(collect(&region).len(), 2);
     region.add(Rect::new(0.0, 0.0, 110.0, 10.0));
-    assert_eq!(
-        collect(&region),
-        vec![Rect::new(0.0, 0.0, 110.0, 10.0)],
-        "bridge rect that contains both should collapse the region",
-    );
+    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 110.0, 10.0)]);
 }
 
-/// Nine disjoint corner rects on a 1000×1000 surface: the first 8
-/// fill the array, the 9th hits the cap and triggers the min-growth
-/// merge into the geometrically nearest existing rect.
+/// Step 4: at the cap, the ninth rect triggers the min-growth fallback.
+/// The exact merge target is unstable (multiple slots can produce
+/// identical growth depending on iteration order); we only pin that
+/// (a) the cap holds, and (b) some slot now equals the bbox of the
+/// colliding pair.
 #[test]
-fn nine_disjoint_corners_pick_min_growth_merge() {
+fn nine_disjoint_corners_min_growth_at_cap() {
     let mut region = DamageRegion::default();
     let corners = [
         Rect::new(0.0, 0.0, 5.0, 5.0),
@@ -120,26 +113,24 @@ fn nine_disjoint_corners_pick_min_growth_merge() {
     }
     assert_eq!(region.iter().count(), DAMAGE_RECT_CAP);
 
-    // Ninth rect lives next to the centre-top corner (495,0).
-    // Min-growth picks that neighbour to merge with — distance to any
-    // other slot is ≥ ~100 px on at least one axis.
+    // Ninth rect overlaps the centre-top corner; that's the unique
+    // min-growth target (other slots are ≥ ~100 px away on at least
+    // one axis).
     let extra = Rect::new(490.0, 5.0, 10.0, 5.0);
     region.add(extra);
     assert_eq!(region.iter().count(), DAMAGE_RECT_CAP);
+    let merged = Rect::new(495.0, 0.0, 5.0, 5.0).union(extra);
     let rects = collect(&region);
     assert!(
-        rects.iter().any(|r| {
-            // Merged slot is the bbox of (495,0,5,5) ∪ (490,5,10,5).
-            *r == Rect::new(490.0, 0.0, 10.0, 10.0)
-        }),
-        "expected min-growth merge with centre-top corner: {rects:?}",
+        rects.contains(&merged),
+        "expected the bbox of the colliding pair as one slot: {rects:?}",
     );
 }
 
-/// `total_area` sums per-rect areas without subtracting overlap. With
-/// the merge policy in place, overlapping pairs collapse to one rect
-/// before they reach the sum, so the over-count is bounded by the
-/// "min-growth merged at cap" case.
+/// `total_area` sums per-rect areas without subtracting overlap.
+/// With the merge policy, overlapping pairs collapse before they
+/// reach the sum; this disjoint case is the contract the
+/// full-repaint heuristic relies on.
 #[test]
 fn total_area_sums_disjoint_rects() {
     let mut region = DamageRegion::default();

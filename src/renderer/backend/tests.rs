@@ -189,6 +189,49 @@ fn preclear_emits_under_partial_damage() {
     );
 }
 
+/// Pin the multi-pass invariant `WgpuBackend::submit` relies on: with
+/// two damage rects, the schedule is replayed once per rect and each
+/// replay emits its own `PreClear` followed by group draws scissored
+/// to that rect. Two corner rects + two groups (one inside each rect)
+/// → pass A only emits group 0, pass B only emits group 1.
+#[test]
+fn schedule_replays_per_damage_rect() {
+    // Two groups whose own scissors carve the surface into two halves.
+    let buf = buf_with(
+        vec![
+            DrawGroup {
+                scissor: Some(URect::new(0, 0, 50, 100)),
+                rounded_clip: None,
+                quads: Span::new(0, 1),
+                texts: Span::new(0, 0),
+            },
+            DrawGroup {
+                scissor: Some(URect::new(50, 0, 50, 100)),
+                rounded_clip: None,
+                quads: Span::new(1, 1),
+                texts: Span::new(0, 0),
+            },
+        ],
+        false,
+    );
+    // Damage rect A covers only group 0; rect B covers only group 1.
+    let pass_a = collect(&buf, Some(URect::new(0, 0, 50, 100)), &[], false);
+    let pass_b = collect(&buf, Some(URect::new(50, 0, 50, 100)), &[], false);
+    let mut combined = pass_a;
+    combined.extend(pass_b);
+    assert_eq!(
+        simplify(&combined),
+        vec![
+            // Pass A: PreClear inside rect A, then group 0.
+            DrawOp::PreClear,
+            DrawOp::Quads(0),
+            // Pass B: PreClear inside rect B, then group 1.
+            DrawOp::PreClear,
+            DrawOp::Quads(1),
+        ],
+    );
+}
+
 // ---------- Stencil-path coverage --------------------------------
 
 /// Pin: a stencil-clipped group with quads and text emits the full

@@ -52,9 +52,12 @@ impl DamageRegion {
         self.rects.iter().any(|d| r.intersects(*d))
     }
 
-    /// Sum of per-rect areas. Step 1 keeps `len ≤ 1`, so this is the
-    /// single rect's area; Step 2 makes it the (possibly over-counted)
-    /// total used for the full-repaint coverage check.
+    /// Sums per-rect areas without subtracting overlap. The merge
+    /// policy collapses overlapping pairs into one rect before they
+    /// reach this sum, so the only way to over-count is the
+    /// diagonal-overlap path where the bbox-waste rule rejects the
+    /// merge — rare and conservative (biases toward `Full` repaint
+    /// at the boundary). Drives the full-repaint coverage check.
     pub(crate) fn total_area(&self) -> f32 {
         self.rects.iter().map(|r| r.area()).sum()
     }

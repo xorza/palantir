@@ -13,7 +13,7 @@ use bytemuck::{Pod, Zeroable};
 /// the field order. No tail padding: vertex buffer strides only need
 /// 4-byte alignment, unlike std140 uniforms.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 pub(crate) struct Quad {
     pub(crate) rect: Rect,
     pub(crate) fill: Color,
