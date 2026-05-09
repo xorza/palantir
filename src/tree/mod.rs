@@ -64,6 +64,16 @@ impl Layer {
     ];
 }
 
+/// One entry on `Tree::open_frames`. Carries the open node's
+/// `NodeId` plus a `disabled` cascade bit propagated at push time
+/// (`parent.ancestor_or_self_disabled || new_node.disabled`) so
+/// `Tree::ancestor_disabled` is an O(1) read.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct OpenFrame {
+    pub(crate) node: NodeId,
+    pub(crate) ancestor_or_self_disabled: bool,
+}
+
 /// One root within a single layer's [`Tree`]. Multiple roots in the
 /// same tree happen for popups (eater + body recorded as two
 /// top-level scopes) and any future `Ui::layer` scope that opens
@@ -121,7 +131,12 @@ pub(crate) struct Tree {
     /// Ancestor stack for this tree's currently-open scope. Empty
     /// outside the `begin_frame` ↔ root `close_node` window. Capacity
     /// retained.
-    pub(crate) open_frames: Vec<NodeId>,
+    ///
+    /// Each frame carries a precomputed `ancestor_or_self_disabled`
+    /// bit: on push, OR the new node's `disabled` with the parent
+    /// frame's bit. That makes `ancestor_disabled` a one-element
+    /// load (read from `last()`) instead of an O(depth) walk.
+    pub(crate) open_frames: Vec<OpenFrame>,
 
     /// Anchor that the next `open_node` will stamp on a freshly-minted
     /// `RootSlot`. Set by `Forest::push_layer` for non-`Main` layers;
@@ -224,7 +239,8 @@ impl Tree {
     /// mints stamp `self.pending_anchor` onto the new `RootSlot`;
     /// child opens don't read the anchor.
     pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
-        let parent = self.open_frames.last().copied();
+        let parent_frame = self.open_frames.last().copied();
+        let parent = parent_frame.map(|f| f.node);
         let new_id = NodeId(self.records.len() as u32);
         if parent.is_none() {
             self.roots.push(RootSlot {
@@ -282,15 +298,35 @@ impl Tree {
             attrs,
         });
         self.rollups.has_grid.grow(self.records.len());
-        self.open_frames.push(new_id);
+        let ancestor_or_self_disabled =
+            parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || attrs.is_disabled();
+        self.open_frames.push(OpenFrame {
+            node: new_id,
+            ancestor_or_self_disabled,
+        });
         new_id
+    }
+
+    /// True when any currently-open ancestor in this tree's recording
+    /// scope has `disabled=true`. Lets widgets see inherited-disabled
+    /// at record time, in the *same* frame the ancestor was opened —
+    /// `cascade.disabled` is one frame stale, so without this an
+    /// inherited-disabled child paints alive on first appearance and
+    /// then animates to disabled. O(1): the bit is propagated on
+    /// `open_node` push, so `last()` already encodes the OR over the
+    /// whole open chain.
+    pub(crate) fn ancestor_disabled(&self) -> bool {
+        self.open_frames
+            .last()
+            .is_some_and(|f| f.ancestor_or_self_disabled)
     }
 
     pub(crate) fn close_node(&mut self) {
         let closing = self
             .open_frames
             .pop()
-            .expect("close_node called with no open node");
+            .expect("close_node called with no open node")
+            .node;
 
         let i = closing.index();
         let shapes_len = self.shapes.len() as u32;
@@ -303,7 +339,7 @@ impl Tree {
         }
         let i_has_grid = self.rollups.has_grid.contains(i);
 
-        if let Some(&parent) = self.open_frames.last() {
+        if let Some(parent) = self.open_frames.last().map(|f| f.node) {
             let pi = parent.index();
             let ends = self.records.subtree_end_mut();
             if ends[pi] < end {

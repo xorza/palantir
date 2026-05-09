@@ -406,7 +406,13 @@ impl Ui {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
-        self.input.response_for(id, &self.cascades.result)
+        let mut state = self.input.response_for(id, &self.cascades.result);
+        // Cascade lags by a frame; OR in any open ancestor's
+        // `disabled=true` from this frame's recording so a widget
+        // appearing inside a freshly-disabled subtree paints disabled
+        // on its first frame instead of animating from alive.
+        state.disabled |= self.forest.ancestor_disabled();
+        state
     }
 
     pub(crate) fn node(

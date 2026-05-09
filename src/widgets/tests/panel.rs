@@ -204,6 +204,35 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     assert_eq!(child.size.h, 80.0);
 }
 
+/// Regression: a child recorded inside a `.disabled(true)` panel
+/// must see `state.disabled = true` *during recording* on its very
+/// first frame. Cascade lags by a frame, so without
+/// `Forest::ancestor_disabled` first-frame `response_for` returned
+/// `disabled=false`, which made the animation cache snap to the
+/// alive look on insertion and animate to disabled on frame 2 —
+/// visible in the showcase as a flash of "alive" disabled buttons.
+#[test]
+fn child_inside_disabled_panel_sees_disabled_at_record_time() {
+    use crate::tree::widget_id::WidgetId;
+    let mut ui = ui_at(UVec2::new(200, 200));
+    let child_id = WidgetId::from_hash("child");
+    let mut observed = None;
+    Panel::vstack()
+        .auto_id()
+        .disabled(true)
+        .show(&mut ui, |ui| {
+            // Query before opening the child — the disabled panel is
+            // open in `Tree::open_frames`, child isn't yet.
+            observed = Some(ui.response_for(child_id));
+            Frame::new().id(child_id).size(10.0).show(ui);
+        });
+    ui.end_frame();
+    assert!(
+        observed.expect("query ran").disabled,
+        "child inside disabled panel must see disabled at record time",
+    );
+}
+
 #[test]
 fn disabled_panel_suppresses_clicks_on_descendants() {
     use crate::layout::types::display::Display;

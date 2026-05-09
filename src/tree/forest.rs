@@ -112,6 +112,13 @@ impl Forest {
         &self.trees[layer as usize]
     }
 
+    /// Active recording layer's `Tree::ancestor_disabled`. Read by
+    /// `Ui::response_for` to OR inherited-disabled into the response
+    /// state without waiting for next-frame cascade.
+    pub(crate) fn ancestor_disabled(&self) -> bool {
+        self.trees[self.recording.current_layer as usize].ancestor_disabled()
+    }
+
     /// Mutably borrow the tree owned by `layer`.
     #[inline]
     pub(crate) fn tree_mut(&mut self, layer: Layer) -> &mut Tree {
