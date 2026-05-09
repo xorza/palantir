@@ -10,8 +10,14 @@
 //!    [`crate::ui::damage::Damage`] and [`crate::text::TextMeasurer`]
 //!    consume this list to evict per-widget state — sharing the diff
 //!    keeps each consumer at `O(removed)` instead of `O(map)`.
-//! 3. **Frame rollover.** `begin_frame` swaps `curr → prev` and
-//!    clears `curr` — no clone, capacity retained both sides.
+//! 3. **Frame rollover.** The `curr → prev` swap happens in
+//!    `end_frame` (after the diff), NOT `begin_frame`. This is
+//!    load-bearing for `Ui::run_frame`'s two-pass mode: the discard
+//!    pass calls `begin_frame` + `record` but never `end_frame`, so
+//!    its recording must not overwrite the last painted frame's
+//!    snapshot. Putting the swap on the commit point (end_frame)
+//!    keeps `prev` pointed at the *last painted* frame regardless of
+//!    how many discard passes ran.
 
 use crate::tree::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -34,11 +40,13 @@ pub(crate) struct SeenIds {
 }
 
 impl SeenIds {
-    /// Roll into a new frame: this-frame's `curr` becomes
-    /// last-frame's `prev`, and the new `curr` is empty. Swap rather
-    /// than clone — capacity stays on both sides.
+    /// Reset per-build state at the top of a frame. Clears the
+    /// `curr` recording set + the auto-id disambiguation counter.
+    /// **Doesn't touch `prev`** — that holds the last *painted* frame's
+    /// recording, established by [`Self::end_frame`]. A run_frame
+    /// two-pass discard build calls `begin_frame` then never reaches
+    /// `end_frame`, so `prev` must be preserved across the discard.
     pub(crate) fn begin_frame(&mut self) {
-        std::mem::swap(&mut self.curr, &mut self.prev);
         self.curr.clear();
         self.dup.clear();
     }
@@ -70,10 +78,14 @@ impl SeenIds {
         disambiguated
     }
 
-    /// Compute the removed-widget list for this frame and return a
-    /// borrow of it. Must be called once between recording and the
-    /// consumers that fan the diff out (text cache eviction, damage
-    /// rect accumulation, etc.).
+    /// Compute the removed-widget list for this frame, then commit
+    /// the rollover (`curr → prev`). Returning the diff before the
+    /// swap means the borrow stays valid for the consumers that fan
+    /// it out (text cache eviction, damage rect accumulation, etc.).
+    /// The swap is the "this frame is committed" signal — it's
+    /// deliberately HERE rather than in `begin_frame` so a discarded
+    /// recording (run_frame two-pass mode) doesn't overwrite the last
+    /// painted frame's snapshot.
     pub(crate) fn end_frame(&mut self) -> &[WidgetId] {
         self.removed.clear();
         for wid in &self.prev {
@@ -81,6 +93,8 @@ impl SeenIds {
                 self.removed.push(*wid);
             }
         }
+        std::mem::swap(&mut self.curr, &mut self.prev);
+        self.curr.clear();
         &self.removed
     }
 }

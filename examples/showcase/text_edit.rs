@@ -95,8 +95,12 @@ pub fn build(ui: &mut Ui) {
                     }
                 });
 
-            Text::new(format!("buffer A ({:>2} bytes): {}", buf_a.len(), buf_a)).show(ui);
-            Text::new(format!("buffer B ({:>2} bytes): {}", buf_b.len(), buf_b)).show(ui);
+            Text::new(format!("buffer A ({:>2} bytes): {}", buf_a.len(), buf_a))
+                .auto_id()
+                .show(ui);
+            Text::new(format!("buffer B ({:>2} bytes): {}", buf_b.len(), buf_b))
+                .auto_id()
+                .show(ui);
         });
 
     *ui.state_mut::<String>(buf_a_id) = buf_a;
