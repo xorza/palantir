@@ -1,12 +1,21 @@
+use crate::animation::{AnimSlot, AnimSpec};
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
+use crate::primitives::background::Background;
+use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
+use crate::primitives::stroke::Stroke;
 use crate::shape::{Shape, TextWrap};
 use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::{ButtonTheme, Surface};
 use std::borrow::Cow;
+
+const SLOT_FILL: AnimSlot = AnimSlot(0);
+const SLOT_STROKE_COLOR: AnimSlot = AnimSlot(1);
+const SLOT_STROKE_WIDTH: AnimSlot = AnimSlot(2);
+const SLOT_TEXT_COLOR: AnimSlot = AnimSlot(3);
 
 pub struct Button {
     element: Element,
@@ -63,32 +72,59 @@ impl Button {
         if element.margin == Spacing::ZERO {
             element.margin = style.margin;
         }
-        let v = if element.disabled {
-            style.disabled
+        let target = if element.disabled {
+            style.disabled.clone()
         } else {
             let state = ui.response_for(element.id);
             if state.pressed {
-                style.pressed
+                style.pressed.clone()
             } else if state.hovered {
-                style.hovered
+                style.hovered.clone()
             } else {
-                style.normal
+                style.normal.clone()
             }
         };
 
-        let surface = Some(Surface::from(v.background.unwrap_or_default()));
-        let text_style = v.text.unwrap_or_else(|| ui.theme.text.clone());
+        let target_bg = target.background.unwrap_or_default();
+        let target_text = target.text.unwrap_or_else(|| ui.theme.text.clone());
+        let target_stroke = target_bg.stroke.unwrap_or(Stroke {
+            width: 0.0,
+            color: Color::TRANSPARENT,
+        });
+
+        // Interpolate paint properties toward the target state. Spec is
+        // intentionally fast (120ms) so click feedback feels immediate
+        // while still smoothing color transitions on hover.
+        let id = element.id;
+        let fill = ui.animate(id, SLOT_FILL, target_bg.fill, AnimSpec::FAST);
+        let stroke_color = ui.animate(id, SLOT_STROKE_COLOR, target_stroke.color, AnimSpec::FAST);
+        let stroke_width = ui.animate(id, SLOT_STROKE_WIDTH, target_stroke.width, AnimSpec::FAST);
+        let text_color = ui.animate(id, SLOT_TEXT_COLOR, target_text.color, AnimSpec::FAST);
+
+        let animated_bg = Background {
+            fill,
+            stroke: (stroke_width > f32::EPSILON && !stroke_color.approx_transparent()).then_some(
+                Stroke {
+                    width: stroke_width,
+                    color: stroke_color,
+                },
+            ),
+            radius: target_bg.radius,
+        };
+        let surface = Some(Surface::from(animated_bg));
         let label = self.label.clone();
         let label_align = self.label_align;
+        let font_size_px = target_text.font_size_px;
+        let line_height_px = font_size_px * target_text.line_height_mult;
 
         let node = ui.node(element, surface, |ui| {
             if !label.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_rect: None,
                     text: label,
-                    color: text_style.color,
-                    font_size_px: text_style.font_size_px,
-                    line_height_px: text_style.font_size_px * text_style.line_height_mult,
+                    color: text_color,
+                    font_size_px,
+                    line_height_px,
                     wrap: TextWrap::Single,
                     align: label_align,
                 });
