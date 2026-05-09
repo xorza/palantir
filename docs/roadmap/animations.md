@@ -1,62 +1,46 @@
 # Animations
 
-Today there's no animation primitive. Widgets that want motion (hover
-fade, scroll-to, tab indicator slide) hand-roll an `f32` in
-`StateMap`, advance it from elapsed time on each frame, and call
-`ui.request_repaint()` until done. Works, doesn't compose, every
-widget reinvents easing.
+Primitive shipped (`src/animation/` + `palantir-anim-derive`). See
+`src/animation/animations.md` for design rationale (posture,
+non-goals, damage-split decision). What's left is follow-up
+consumers and unresolved tuning questions.
 
-## Why this matters
+## Deferred consumers
 
-Animation is what separates "renders correctly" from "feels right."
-The cost of *not* having a primitive isn't that things look bad — it's
-that nobody bothers, because the per-widget bookkeeping (clock, easing
-curve, request-repaint loop, terminate-on-removal) is tedious. With a
-primitive, animating becomes `let t = ui.animate(id, 200ms,
-EaseOutCubic)` and the rest is interpolation.
+Each is tracked here because it wants animation but is blocked on
+something else; not "more animation primitive work."
 
-## What we want
+- **Sliding tab-indicator bar.** Material-style underline that
+  physically moves between active tabs. Today the toolbar tab swap
+  fades via the per-button color animation — the *slide* variant
+  needs a separate overlay rect with `Vec2` spring. Low value vs the
+  fade-only version we already have.
+- **Popup reveal/dismiss (alpha + scale).** Needs an API change so
+  the popup widget controls when to stop recording — otherwise
+  dismissal is instant (the popup vanishes the frame the host flips
+  `open = false`, no chance to fade out). Track alongside
+  `docs/popups.md`-equivalent work.
+- **Smooth `Scroll::scroll_to(WidgetId)`.** Trivial spring upgrade
+  once `scroll_to` exists; the scroll roadmap (`docs/roadmap/scroll.md`)
+  has it as a Now item.
 
-Animation as a thin reader on top of `StateMap` + the existing
-repaint-request path:
+## Open questions
 
-- **`Animation` struct in `StateMap`.** Per-`(WidgetId, slot)`
-  start-time, duration, easing curve. `ui.animate(id, dur, ease)`
-  returns the current 0..1 progress and registers a repaint request
-  for the next frame if not finished.
-- **Multiple slots per widget.** Hover, press, focus, custom — each
-  is its own (id, slot). No clash.
-- **Spring option.** Critically-damped spring (stiffness, damping,
-  velocity) alongside duration-based easing — better for
-  drag-release ("toss the panel back into place") and continuously
-  retargetable values.
-- **Frame budget.** Animations clamp to a max-substep so a hitched
-  frame doesn't teleport. Settle threshold ends the animation
-  cleanly so we stop requesting repaints.
-- **Eviction.** Removed `WidgetId` drops the animation row in the
-  same `removed` sweep as `StateMap`/caches.
-
-## What it solves
-
-- **Hover/press/focus transitions** without per-widget clock
-  bookkeeping.
-- **`scroll_to` smoothness** — pairs with the scroll roadmap's
-  programmatic `scroll_to`.
-- **Tab/selection indicators** that slide between targets.
-- **Reveal/dismiss** for popups and tooltips (paired with layering).
-- **Repaint scheduling** — one place that decides "frame is animating,
-  request another" instead of every widget reinventing it.
-
-## What it explicitly is not
-
-- Not a timeline / keyframe editor. One value, one curve, one slot.
-  Compose by stacking slots.
-- Not a state-machine layer. Widgets still drive their own
-  `Hover→Pressed→Released` logic; animation just smooths the
-  resulting target value.
-- Not GPU-side. Interpolation runs on the CPU during record;
-  rendering sees only the final values.
-
-Block on a real workload that wants it (tab transitions in showcase,
-or scroll-to landing). Premature without that — the slot/spring
-shapes calcify wrong.
+- **Spring physics quality at high refresh.** Semi-implicit Euler is
+  fine at 60+ Hz. If 120 / 240 Hz hosts surface stiffness explosion
+  at very-stiff springs, switch to the analytical critically-damped
+  solution. No reports yet; park.
+- **`request_repaint` granularity.** Bool today (next frame, period).
+  If we ever animate at sub-refresh rates (e.g., 2 Hz pulse), upgrade
+  to `Option<Duration>` ("repaint within at most N ms") so the host
+  can sleep between ticks.
+- **Cross-frame continuity on widget reappearance.** A popup that
+  fades out, gets removed, then re-shows starts at `current = target`
+  (no anim — first-touch snaps). If we ever want continuity, persist
+  the row by domain key in a separate side-table; don't bolt it onto
+  `WidgetId`.
+- **Snap-if-close epsilon for compound types.** Currently shares the
+  spring's `POS_EPS = 0.001` / `VEL_EPS = 0.01`. Tuned for normalized
+  0..1 values; pixel-scale `Vec2` works because we hit settle quickly
+  anyway. May need per-type thresholds if a `Background` animation
+  visibly stutters before settling.
