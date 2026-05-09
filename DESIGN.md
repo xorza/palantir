@@ -104,7 +104,7 @@ Native panels only — no Taffy, no flex/grid backend dependency. Grid is implem
 
 ## State outside the tree
 
-Per-widget state (scroll offset, text cursor selection, animation, focus flags) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). The tree is throwaway; state persists. Access via `Ui::state_mut::<T>(id)` — creates with `T::default()` on first touch, panics on type mismatch (collision = caller bug). Rows for any `WidgetId` not recorded this frame are dropped in `end_frame` via the same `removed` slice fed to `Damage`, `TextMeasurer`, and `MeasureCache` — one source of truth for "this widget went away."
+Per-widget state (scroll offset, text cursor selection, animation, focus flags) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). The tree is throwaway; state persists. Access via `Ui::state_mut::<T>(id)` — creates with `T::default()` on first touch, panics on type mismatch (collision = caller bug). Rows for any `WidgetId` not recorded this frame are dropped in `end_frame` via the same `removed` slice fed to `Damage`, `TextShaper`, and `MeasureCache` — one source of truth for "this widget went away."
 
 Focus is a separate field (`InputState.focused: Option<WidgetId>`) since it's global, not per-widget. `FocusPolicy` controls whether pressing on a non-focusable surface clears focus or preserves it.
 
@@ -148,7 +148,7 @@ Cases handled:
 
 ## Rendering
 
-Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The composer turns commands into physical-px instanced quads grouped by scissor; `WgpuBackend` submits one render pass per surface. Text runs via `glyphon` + `cosmic-text` interleave with quads inside each scissor group, sharing one `TextAtlas` + `SwashCache`. The shaper (mono fallback for tests, real cosmic shaper for hosts) is threaded through measure as `&mut TextMeasurer` so wrapping leaves can reshape against the parent-committed width during the bottom-up pass.
+Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The composer turns commands into physical-px instanced quads grouped by scissor; `WgpuBackend` submits one render pass per surface. Text runs via `glyphon` + `cosmic-text` interleave with quads inside each scissor group, sharing one `TextAtlas` + `SwashCache`. A single `TextShaper` handle (mono fallback for tests, real cosmic shaper for hosts) is shared between `Ui` (via `set_text_shaper`) and `WgpuBackend` so layout-time measurement and render-time shaping hit the same buffer cache; wrapping leaves reshape against the parent-committed width during the bottom-up measure pass, and a `(WidgetId, ordinal)`-keyed reuse cache short-circuits unchanged leaves.
 
 **Subtree-skip caches** mirror the measure cache:
 
@@ -156,6 +156,8 @@ Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The com
 - **Compose cache** — same key, stores composed quads.
 
 **Damage** is a tri-state (`DamagePaint`): `Full` (re-paint everything), `Partial(rect)` (encoder filters cmds whose screen rect intersects), `Skip` (no diff vs prev frame, no submit). `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `end_frame` is forced to `Full`.
+
+**Debug overlay.** `Ui::debug_overlay: Option<DebugOverlayConfig>` (in `src/ui/debug_overlay.rs`) gates per-frame visualizations: `damage_rect` strokes the damaged region, `clear_damage` flips `Partial` frames' main-pass `LoadOp::Clear` so the undamaged region flashes the clear color (damage scissor still narrows draws). Drawn after the backbuffer→surface copy so they don't ghost across frames.
 
 Single render pass per surface, instanced draws. `wgpu::RenderBundle` for unchanged subtrees is a possible future addition on top of the encode cache.
 

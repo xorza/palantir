@@ -43,11 +43,11 @@ Five passes per frame on an arena `Tree` rebuilt every frame (with `tree.end_fra
 4. **Cascade** (pre-order) — `Cascades::run` flattens disabled/invisible/clip/transform and builds the hit index in the same walk; consumed by encoder *and* hit-test so they can't drift.
 5. **Encode + Compose + Paint** — `Encoder` → `RenderCmdBuffer` (subtree-skip via the encode cache, same key as measure); `Composer` groups by scissor, snaps to physical pixels (compose cache mirrors); `WgpuBackend` submits instanced quads. `Damage` returns `Full` / `Partial(rect)` / `Skip`.
 
-Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). Access via `Ui::state_mut::<T>(id)`; rows for `WidgetId`s not recorded this frame are dropped in `end_frame` via the same `removed` slice that `Damage`, `TextMeasurer`, and `MeasureCache` consume.
+Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). Access via `Ui::state_mut::<T>(id)`; rows for `WidgetId`s not recorded this frame are dropped in `end_frame` via the same `removed` slice that `Damage`, `TextShaper`, and `MeasureCache` consume.
 
 **Tree = SoA columns indexed by `NodeId.0`:** `records: Soa<NodeRecord>` (via `soa-rs`) packs six per-node columns — `widget_id` (hit-test + state map + damage), `kinds: Span` / `shapes: Span` (encoder lookups), `end: u32` (pre-order skip; `i + 1 == end` for a leaf — every walk), `layout: LayoutCore` (mode/size/padding/margin/align/visibility, bundled because measure reads all six together), `attrs: PaintAttrs` (1-byte sense/disabled/clip/focusable — cascade/encoder). Adjacent on the tree but outside the SoA: `kinds: Vec<TreeOp>` (record stream), `shapes: Vec<Shape>` (flat shape buffer), `extras: SparseColumn<ElementExtras>` (rare fields: transform / position / grid cell), `chrome: SparseColumn<Background>` (panel chrome), `hashes: NodeHashes` (per-node + subtree-rollup, populated in `end_frame`; key for cross-frame caches). soa-rs lays each `NodeRecord` field out as its own contiguous slice, so each pass touches only the columns it needs. Atomic push across the SoA columns means `open_node` writes all six per-node fields together — they can't drift. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, not on the tree.
 
-**Cross-frame work-skip caches.** `MeasureCache` (`src/layout/cache/`) and the encode/compose caches (`src/renderer/frontend/{encoder,composer}/cache/`) are keyed on `(WidgetId, subtree_hash, available_q)`. A hit blits last frame's subtree (`desired` + `text_shapes` + `RenderCmd` slice) and skips recursion. Same `removed` sweep evicts all three plus `StateMap` and `TextMeasurer`. **`Damage` is a tri-state** `DamagePaint` (`Full` / `Partial(Rect)` / `Skip`); `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present.
+**Cross-frame work-skip caches.** `MeasureCache` (`src/layout/cache/`) and the encode/compose caches (`src/renderer/frontend/{encoder,composer}/`) are keyed on `(WidgetId, subtree_hash, available_q)`. A hit blits last frame's subtree (`desired` + `text_shapes` + `RenderCmd` slice) and skips recursion. Same `removed` sweep evicts all three plus `StateMap` and `TextShaper`. **`Damage` is a tri-state** `DamagePaint` (`Full` / `Partial(Rect)` / `Skip`); `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present.
 
 **Layered recording.** `Forest` (`src/tree/forest.rs`) holds one `Tree` per `Layer` variant (`Main`/`Popup`/`Modal`/`Tooltip`/`Debug`); `Ui::layer(layer, anchor, body)` switches the active arena for the body's duration. Pipeline passes iterate `Layer::PAINT_ORDER` bottom-up for paint and reverse for hit-test (topmost-first, so popups reject pointers without per-node z-index). `Popup` widget (`src/widgets/popup.rs`) is the canonical consumer.
 
@@ -60,12 +60,15 @@ Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → 
 - `src/primitives/` — pure geometry: Rect/Size/Color/Stroke/Corners/Spacing/Transform/Visuals/num/approx/urect
 - `src/shape.rs` — Shape enum (RoundedRect, Line, Text)
 - `src/tree/` — Tree (SoA + subtree_end), NodeId, GridDef, hash, `Layer` enum, `Forest` (per-layer arenas); `tree/element/` (Element builder, LayoutCore/PaintCore columns, PaintAttrs, Configure); `tree/widget_id.rs`
-- `src/text/` — cosmic-text measurement + glyphon rendering glue
+- `src/text/` — `TextShaper` (cosmic-text measurement + per-`(WidgetId, ordinal)` reuse cache) + glyphon rendering glue; mono fallback for headless
 - `src/layout/` — LayoutEngine + drivers (stack/wrapstack/zstack/canvas/grid), intrinsic, cache; `layout/types/` (Sizing/Align/Justify/Sense/Visibility/Display/Track/Span/GridCell — layout vocabulary)
 - `src/input/` — InputState, HitIndex (O(1) by-id lookup over Cascades)
 - `src/renderer/` — frontend (encode/compose) + backend (wgpu) + gpu (Quad/RenderBuffer)
-- `src/ui/` — Ui recorder, cascade pass, seen-id tracking, damage
-- `src/widgets/` — Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, Styled, Theme, Popup
+- `src/ui/` — Ui recorder, cascade pass, seen-id tracking, damage, `DebugOverlayConfig` (per-frame damage-rect / clear-damage visualizations)
+- `src/widgets/` — Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, TextEdit, Scroll, Popup, Theme
+- `src/animation/` — `Animatable` trait + tween/spring drivers (state-map keyed); `anim-derive/` workspace member provides `#[derive(Animatable)]`
+- `src/common/` — shared scaffolding: `CacheArena`, `SparseColumn`, hashing helpers
+- `src/support/` — `internals` (cfg-gated test/bench reach-in surface) + `testing` fixtures
 - `examples/{helloworld.rs, showcase/}` — minimal driver + multi-page demo
 - `benches/` — criterion (layout, measure_cache); `docs/` — in-flight notes; `DESIGN.md` — full rationale
 
