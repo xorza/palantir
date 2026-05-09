@@ -11,6 +11,7 @@ use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
 use crate::ui::damage::DamagePaint;
+use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::debug_overlay::DebugOverlayConfig;
 
 /// Pad the damage scissor by this many physical pixels on every
@@ -550,31 +551,42 @@ impl WgpuBackend {
         config: DebugOverlayConfig,
     ) {
         if config.damage_rect {
-            // Step 1: Partial carries a region with a single rect;
-            // Step 6 of the multi-rect-damage roadmap loops the
-            // overlay over every rect.
-            let damage_rect_phys = match damage {
-                DamagePaint::Partial(region) => region
-                    .iter()
-                    .next()
-                    .map(|r| r.scaled_by(buffer.scale, true))
-                    .unwrap_or(Rect {
-                        min: glam::Vec2::ZERO,
-                        size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
-                    }),
-                DamagePaint::Full => Rect {
-                    min: glam::Vec2::ZERO,
-                    size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
-                },
-                DamagePaint::Skip => unreachable!("Skip filtered before draw_debug_overlay"),
-            };
+            // One stroked outline per damage rect — `Partial(region)`
+            // contributes the whole region; `Full` contributes a
+            // single full-viewport outline. All quads ride one
+            // instanced draw inside one pass so a single
+            // `queue.write_buffer` covers them (per-iteration writes
+            // to the same buffer would all collapse to the last
+            // value at submit time).
             let inset_px = (DAMAGE_OVERLAY_INSET * buffer.scale).max(1.0);
-            let overlay_rect = damage_rect_phys.deflated_by(Spacing::all(inset_px));
             let stroke = Stroke {
                 width: DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale,
                 color: DAMAGE_OVERLAY_COLOR,
             };
-            self.quad.upload_overlay(&self.queue, overlay_rect, stroke);
+            let mut overlay_rects: tinyvec::ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
+            match damage {
+                DamagePaint::Partial(region) => {
+                    for r in region.iter() {
+                        overlay_rects.push(
+                            r.scaled_by(buffer.scale, true)
+                                .deflated_by(Spacing::all(inset_px)),
+                        );
+                    }
+                }
+                DamagePaint::Full => overlay_rects.push(
+                    Rect {
+                        min: glam::Vec2::ZERO,
+                        size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
+                    }
+                    .deflated_by(Spacing::all(inset_px)),
+                ),
+                DamagePaint::Skip => unreachable!("Skip filtered before draw_debug_overlay"),
+            }
+            if overlay_rects.is_empty() {
+                return;
+            }
+            self.quad
+                .upload_overlays(&self.device, &self.queue, &overlay_rects, stroke);
             let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("palantir.renderer.overlay.damage_rect"),
@@ -592,7 +604,8 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            self.quad.draw_overlay(&mut pass);
+            self.quad
+                .draw_overlays(&mut pass, overlay_rects.len() as u32);
         }
     }
 

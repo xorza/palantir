@@ -73,12 +73,18 @@ pub(crate) struct Damage {
     pub(crate) prev_surface: Option<Rect>,
 }
 
-/// Damage-area ratio above which the renderer should skip the
-/// per-node filter and clear-redraw the whole surface. Below this,
-/// the bookkeeping (scissor + LoadOp::Load + backbuffer copy) wins;
-/// above it, the savings are eaten by the overhead. 0.5 matches
-/// LVGL's `LV_INV_BUF_SIZE` heuristic.
-pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.5;
+/// Coverage ratio above which the renderer should skip the per-node
+/// filter and clear-redraw the whole surface. Below this, the
+/// bookkeeping (per-pass scissor + `LoadOp::Load` + backbuffer copy)
+/// wins; above it, the savings are eaten by the overhead. The
+/// previous 0.5 was tuned for the single-rect-union accumulator
+/// where two unrelated tiny corners would blow the union to ~100 %
+/// and trip the threshold despite < 1 % of pixels actually
+/// changing. The multi-rect region keeps disjoint corners disjoint
+/// at the data structure level, so the threshold is now applied to
+/// the *sum* of per-rect areas — corner-pair pathologies stay well
+/// below 0.7.
+pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
 /// What the GPU should do with this frame. Keeps three cases that
 /// were previously squashed into `Option<Rect>` distinct so the

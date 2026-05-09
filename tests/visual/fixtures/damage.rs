@@ -303,3 +303,88 @@ fn corner_pair_change_keeps_center_unpainted() {
          them across the whole surface and tripping Full repaint",
     );
 }
+
+/// Pin: with `DebugOverlayConfig::damage_rect = true` and a multi-
+/// rect region, the post-copy overlay pass strokes *each* damage
+/// rect independently. Same scene shape as
+/// `corner_pair_change_keeps_center_unpainted`; we assert that red
+/// overlay pixels appear in *both* corner regions and not in the
+/// centre, which would only happen if the loop in
+/// `draw_debug_overlay` actually iterates the region's rects.
+#[test]
+fn corner_pair_overlay_strokes_each_rect() {
+    let mut h = Harness::new();
+    let size = UVec2::new(200, 200);
+
+    let scene = |tl_label: &'static str, br_label: &'static str| {
+        move |ui: &mut palantir::Ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(Background {
+                    fill: Color::rgb(0.15, 0.15, 0.18),
+                    ..Default::default()
+                })
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt(("tl", tl_label))
+                        .position(Vec2::new(0.0, 0.0))
+                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .background(Background {
+                            fill: Color::rgb(0.2, 0.7, 0.4),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    Frame::new()
+                        .id_salt(("br", br_label))
+                        .position(Vec2::new(180.0, 180.0))
+                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .background(Background {
+                            fill: Color::rgb(0.7, 0.3, 0.2),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        }
+    };
+
+    let _f1 = h.render(size, 1.0, DARK_BG, scene("a", "a"));
+
+    h.ui.debug_overlay = Some(DebugOverlayConfig {
+        damage_rect: true,
+        ..Default::default()
+    });
+    let f2 = h.render(size, 1.0, DARK_BG, scene("b", "b"));
+    h.ui.debug_overlay = None;
+
+    save_debug("corner_pair_overlay_strokes_each_rect", &f2);
+
+    // Count red pixels in three quadrants: top-left corner area
+    // (must have stroke), bottom-right corner area (must have
+    // stroke), and the centre 100×100 (must NOT — the overlay
+    // should be two thin strokes, not one big one spanning the
+    // whole surface).
+    let count_red_in = |x_range: std::ops::Range<u32>, y_range: std::ops::Range<u32>| {
+        let mut n = 0u32;
+        for y in y_range {
+            for x in x_range.clone() {
+                let Rgba([r, g, b, _]) = *f2.get_pixel(x, y);
+                if r > 240 && g < 16 && b < 16 {
+                    n += 1;
+                }
+            }
+        }
+        n
+    };
+    let tl_red = count_red_in(0..40, 0..40);
+    let br_red = count_red_in(160..200, 160..200);
+    let centre_red = count_red_in(50..150, 50..150);
+    eprintln!("overlay reds: tl={tl_red} br={br_red} centre={centre_red}");
+    assert!(tl_red > 0, "top-left corner must be outlined");
+    assert!(br_red > 0, "bottom-right corner must be outlined");
+    assert_eq!(
+        centre_red, 0,
+        "centre 100×100 must be free of overlay strokes — Step 6 \
+         should outline each damage rect, not their union",
+    );
+}
