@@ -356,11 +356,6 @@ impl WgpuBackend {
                 .upload_masks(&self.device, &self.queue, &self.masks);
         }
 
-        let backbuffer = self
-            .backbuffer
-            .as_ref()
-            .expect("ensure_backbuffer just succeeded");
-
         self.quad.upload(
             &self.device,
             &self.queue,
@@ -396,80 +391,55 @@ impl WgpuBackend {
                 label: Some("palantir.renderer.main"),
             });
 
-        // One render pass per damage rect. Empty `damage_scissors`
-        // (Full repaint, or all rects clamped to zero) collapses to a
-        // single Clear+full-viewport pass. With multiple scissors the
-        // first pass loads (so last frame's pixels carry through),
-        // each subsequent pass also loads — otherwise we'd erase
-        // earlier passes' output. The `force_clear` debug-overlay
-        // path applies to the first pass only, so undamaged regions
-        // flash but later damage rects' painted pixels survive.
-        let pass_count = self.damage_scissors.len().max(1);
-        for pass_idx in 0..pass_count {
-            let scissor = self.damage_scissors.get(pass_idx).copied();
-            let load_op = match scissor {
-                Some(_) if !(force_clear && pass_idx == 0) => wgpu::LoadOp::Load,
-                _ => clear_op,
-            };
-            tracing::trace!(
-                pass = pass_idx,
-                of = pass_count,
-                ?scissor,
-                "wgpu_backend.submit.pass"
-            );
-
-            // Stencil attachment is built around `&backbuffer`, so its
-            // lifetime needs to outlive the pass — extract before the
-            // descriptor block.
-            let stencil_view = if use_stencil {
-                Some(
-                    &backbuffer
-                        .stencil
-                        .as_ref()
-                        .expect("ensure_stencil populated this")
-                        .view,
-                )
-            } else {
-                None
-            };
-            let depth_stencil_attachment =
-                stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
-                    view,
-                    depth_ops: None,
-                    stencil_ops: Some(wgpu::Operations {
-                        // Cleared every pass — stencil contents never
-                        // need to survive across passes (the cmd-buffer
-                        // replays mask writes on every frame regardless
-                        // of cache hits).
-                        load: wgpu::LoadOp::Clear(0),
-                        store: wgpu::StoreOp::Discard,
-                    }),
-                });
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("palantir.renderer.main.pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &backbuffer.view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: load_op,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            self.render_groups(&mut pass, buffer, scissor, use_stencil, text_mode);
+        // Two paths, branching on whether the frame is a Full or
+        // Partial repaint:
+        // - `damage_scissors` empty ⇒ Full: single pass, Clear,
+        //   no scissor.
+        // - `damage_scissors` non-empty ⇒ Partial: one pass per
+        //   rect. The first pass uses Clear iff `force_clear` is on
+        //   (debug overlay's "flash undamaged" mode), otherwise
+        //   Load — preserves last frame's pixels outside the rect.
+        //   Every subsequent pass uses Load so the prior pass's
+        //   output survives.
+        if self.damage_scissors.is_empty() {
+            tracing::trace!(of = 1, "wgpu_backend.submit.pass.full");
+            self.run_one_pass(&mut encoder, buffer, None, clear_op, use_stencil, text_mode);
+        } else {
+            let n = self.damage_scissors.len();
+            for (i, scissor) in self.damage_scissors.iter().copied().enumerate() {
+                let load_op = if i == 0 && force_clear {
+                    clear_op
+                } else {
+                    wgpu::LoadOp::Load
+                };
+                tracing::trace!(
+                    pass = i,
+                    of = n,
+                    ?scissor,
+                    "wgpu_backend.submit.pass.partial"
+                );
+                self.run_one_pass(
+                    &mut encoder,
+                    buffer,
+                    Some(scissor),
+                    load_op,
+                    use_stencil,
+                    text_mode,
+                );
+            }
         }
 
         // Copy the just-painted backbuffer onto the swapchain texture.
         // Both share format + size (`ensure_backbuffer` enforces it),
         // so this is a single direct copy — no blit pipeline required.
+        let backbuffer_tex = &self
+            .backbuffer
+            .as_ref()
+            .expect("ensure_backbuffer just succeeded")
+            .tex;
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &backbuffer.tex,
+                texture: backbuffer_tex,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
@@ -480,7 +450,7 @@ impl WgpuBackend {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            backbuffer.tex.size(),
+            backbuffer_tex.size(),
         );
 
         if let Some(config) = frame.debug_overlay {
@@ -492,6 +462,67 @@ impl WgpuBackend {
         if self.text.has_prepared() {
             self.text.end_frame();
         }
+    }
+
+    /// Open one render pass against the backbuffer with the given
+    /// load op + scissor, then dispatch the schedule into it via
+    /// [`Self::render_groups`]. Stencil attachment is added when the
+    /// frame has rounded clips; cleared every pass since the
+    /// schedule re-stamps masks per group.
+    fn run_one_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        buffer: &RenderBuffer,
+        scissor: Option<URect>,
+        load_op: wgpu::LoadOp<wgpu::Color>,
+        use_stencil: bool,
+        text_mode: text::StencilMode,
+    ) {
+        let backbuffer = self
+            .backbuffer
+            .as_ref()
+            .expect("ensure_backbuffer just succeeded");
+        let stencil_view = if use_stencil {
+            Some(
+                &backbuffer
+                    .stencil
+                    .as_ref()
+                    .expect("ensure_stencil populated this")
+                    .view,
+            )
+        } else {
+            None
+        };
+        let depth_stencil_attachment =
+            stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
+                view,
+                depth_ops: None,
+                stencil_ops: Some(wgpu::Operations {
+                    // Cleared every pass — stencil contents never need
+                    // to survive across passes (the cmd-buffer replays
+                    // mask writes on every frame regardless of cache
+                    // hits).
+                    load: wgpu::LoadOp::Clear(0),
+                    store: wgpu::StoreOp::Discard,
+                }),
+            });
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("palantir.renderer.main.pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &backbuffer.view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: load_op,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        self.render_groups(&mut pass, buffer, scissor, use_stencil, text_mode);
     }
 
     /// Dispatch every step in the per-frame schedule
