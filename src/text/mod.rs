@@ -222,7 +222,7 @@ pub(crate) struct WrapReuse {
 /// rasterization see the same buffer cache.
 #[derive(Default)]
 pub struct TextMeasurer {
-    cosmic: Option<SharedCosmic>,
+    pub(crate) cosmic: Option<SharedCosmic>,
     /// Total `measure` calls made through this façade. Read by tests
     /// pinning reshape-skip behaviour; cheap enough to leave on in
     /// release.

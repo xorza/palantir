@@ -194,6 +194,7 @@ impl Ui {
             damage,
             repaint_requested: self.repaint_requested,
             debug_overlay: self.debug_overlay,
+            cosmic: self.text.cosmic.as_ref(),
         }
     }
 

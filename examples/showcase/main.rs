@@ -162,7 +162,7 @@ impl ApplicationHandler for App {
         };
         surface.configure(&device, &config);
 
-        let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
+        let backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         let mut ui = Ui::new();
         // Library default is no button animation (`anim = None`).
@@ -172,9 +172,9 @@ impl ApplicationHandler for App {
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
         );
-        let cosmic = palantir::share(palantir::CosmicMeasure::with_bundled_fonts());
-        ui.set_cosmic(cosmic.clone());
-        backend.set_cosmic(cosmic);
+        ui.set_cosmic(palantir::share(
+            palantir::CosmicMeasure::with_bundled_fonts(),
+        ));
 
         window.request_redraw();
         self.state = Some(State {
