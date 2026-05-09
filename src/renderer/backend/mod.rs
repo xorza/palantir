@@ -302,6 +302,7 @@ impl WgpuBackend {
         // backbuffer → swapchain so something gets presented.
         if let DamagePaint::Skip = effective_damage {
             self.copy_backbuffer_to_surface(surface_tex);
+            frame.frame_state.mark_submitted();
             return;
         }
 
@@ -463,6 +464,7 @@ impl WgpuBackend {
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.quad.end_frame();
+        frame.frame_state.mark_submitted();
 
         if self.text.has_prepared() {
             self.text.end_frame();

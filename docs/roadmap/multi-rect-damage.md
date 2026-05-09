@@ -212,15 +212,17 @@ once the fixture exists.
 Slint ships 3, LVGL 32. Eight was a guess. Re-decide once a real
 workload bench exists; until then `8` is fine.
 
-### `frame.damage` staleness debug-assert (cross-listed in `damage.md`)
+### ~~`frame.damage` staleness~~ — landed as self-healing
 
-If the host calls `Ui::end_frame` without a matching `submit`, or
-submits out of order, the `Damage.prev` map is rolled forward but
-the backbuffer isn't painted — next frame's diff is wrong.
-`Ui::invalidate_prev_frame` covers the documented case (surface
-lost / outdated); a debug-assert in `submit` ("haven't seen
-`end_frame` since last submit") would catch host-loop bugs at the
-source. Defer until a real bug is filed.
+Replaced with a `FrameState` (`Arc<AtomicU8>`) shared between `Ui`
+and `FrameOutput`. `end_frame` marks `Pending`; `submit` (on every
+success path) marks `Submitted`; the next `begin_frame`
+auto-rewinds `damage.prev_surface` if state isn't `Submitted`. A
+host that drops a `FrameOutput` (surface error, panic in error
+arm, anything) gets one wasted `Full` frame, not silent damage
+smear. `invalidate_prev_frame` is now rarely needed —
+documented as "use only when something *outside*
+`submit`'s knowledge invalidated the backbuffer".
 
 ## References
 

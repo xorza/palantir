@@ -54,7 +54,5 @@
 - **AA fringe leakage at scissor boundaries.** Encoder filter uses
   unpadded rect; backend scissor is padded by `DAMAGE_AA_PADDING`.
   Adjacent leaves whose AA fringe extends into the padded scissor
-  may show stale pixels. No fixture today.
-- **`frame.damage` stale if host skips submit.** A debug-assert in
-  `WgpuBackend::submit` ("we haven't seen `end_frame` since last
-  submit") would catch host-loop bugs. Defer until filed.
+  may show stale pixels. No fixture today. See
+  `multi-rect-damage.md` for the full symmetric framing.

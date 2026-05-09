@@ -33,6 +33,16 @@ pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
     ui.begin_frame(Display::from_physical(size, 1.0));
 }
 
+/// `ui.end_frame()` plus a fake "submit" — keeps the
+/// frame-state contract happy in tests that drive frames
+/// without going through a real `WgpuBackend::submit`.
+/// Without it, `Ui::begin_frame`'s auto-rewind kicks in and
+/// every frame's damage escalates to `Full`.
+pub(crate) fn end_frame_acked(ui: &mut Ui) {
+    let out = ui.end_frame();
+    out.frame_state.mark_submitted();
+}
+
 pub(crate) fn ui_at(size: UVec2) -> Ui {
     let mut ui = Ui::new();
     begin(&mut ui, size);

@@ -279,6 +279,7 @@ impl State {
 
         self.repaint_requested = false;
 
+        // todo
         if self.new_surface {
             self.ui.invalidate_prev_frame();
             self.new_surface = false;
