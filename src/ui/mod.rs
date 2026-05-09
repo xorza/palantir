@@ -13,7 +13,7 @@ use crate::layout::types::display::Display;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::{FrameOutput, Frontend};
 use crate::shape::Shape;
-use crate::text::{TextShaper, TextMeasurer};
+use crate::text::{TextMeasurer, TextShaper};
 use crate::tree::element::Element;
 use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
@@ -134,7 +134,7 @@ impl Ui {
     /// see the same buffer cache. Tests leave this unset and run on the
     /// deterministic mono fallback.
     pub fn set_text_shaper(&mut self, shaper: TextShaper) {
-        self.text.set_text_shaper(cosmic);
+        self.text.set_text_shaper(shaper);
     }
 
     /// Start recording a frame. A stray `scale_factor` of `0.0` from winit
@@ -194,7 +194,6 @@ impl Ui {
             damage,
             repaint_requested: self.repaint_requested,
             debug_overlay: self.debug_overlay,
-            cosmic: self.text.cosmic.as_ref(),
         }
     }
 

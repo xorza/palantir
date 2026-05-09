@@ -65,6 +65,14 @@ const POOL_SHRINK_RATIO: usize = 2;
 /// scratch. Capacity retains across frames; pool grows to historical
 /// high water.
 pub(crate) struct TextRenderer {
+    /// Shared shaper handle, installed via
+    /// [`super::WgpuBackend::set_text_shaper`]. Must be the *same*
+    /// [`TextShaper`] the host installed on `Ui`, otherwise lookups
+    /// in [`Self::prepare_group`] miss against keys minted on a
+    /// different cache. `None` ⇒ text rendering is silently skipped
+    /// (mono-fallback path on the `Ui` side already produces invalid
+    /// keys, so the no-shaper case matches up).
+    shaper: Option<TextShaper>,
     atlas: TextAtlas,
     viewport: Viewport,
     swash_cache: SwashCache,
@@ -108,6 +116,7 @@ impl TextRenderer {
         let viewport = Viewport::new(device, &cache);
         let swash_cache = SwashCache::new();
         Self {
+            shaper: None,
             atlas,
             viewport,
             swash_cache,
@@ -117,6 +126,13 @@ impl TextRenderer {
             stencil_ready: FixedBitSet::new(),
             high_water: 0,
         }
+    }
+
+    /// Install the shared shaper handle. Pass the same [`TextShaper`]
+    /// to [`crate::Ui::set_text_shaper`] so layout and rendering see
+    /// one buffer cache.
+    pub(crate) fn set_shaper(&mut self, shaper: TextShaper) {
+        self.shaper = Some(shaper);
     }
 
     /// True if any group has been prepared this frame and should render.
@@ -137,23 +153,24 @@ impl TextRenderer {
     }
 
     /// Build glyphon `TextArea`s from `runs` (looked up in the shared
-    /// cosmic cache) and call `prepare` on the pool slot at
+    /// shaper's buffer cache) and call `prepare` on the pool slot at
     /// `group_idx`. `mode` selects the no-stencil or stencil-aware
     /// pool — both share `atlas`. Returns `false` and skips work if no
     /// shaper is installed or no runs resolve to a buffer. The pool
     /// grows on demand if `group_idx` exceeds its current length.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepare_group(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        cosmic: &TextShaper,
         scale: f32,
         group_idx: usize,
         runs: &[TextRun],
         mode: StencilMode,
     ) -> bool {
-        cosmic.with_render_split(|split| {
+        let Some(shaper) = self.shaper.clone() else {
+            return false;
+        };
+        shaper.with_render_split(|split| {
             let RenderSplit {
                 font_system,
                 lookup,
