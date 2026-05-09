@@ -1686,6 +1686,7 @@ dependencies = [
  "glyphon",
  "image",
  "padding-struct",
+ "palantir-anim-derive",
  "pollster",
  "rayon",
  "rustc-hash 2.1.2",
@@ -1698,6 +1699,15 @@ dependencies = [
  "tracing-subscriber",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "palantir-anim-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

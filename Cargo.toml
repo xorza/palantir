@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "anim-derive"]
+
 [package]
 name = "palantir"
 version = "0.1.0"
@@ -8,6 +11,7 @@ exclude = ["tmp/", "references/"]
 doctest = false
 
 [dependencies]
+palantir-anim-derive = { path = "anim-derive" }
 bytemuck = { version = "*", features = ["derive"] }
 encase = "*"
 fixedbitset = "*"
