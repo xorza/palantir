@@ -581,57 +581,6 @@ fn display_change_forces_full_repaint() {
     }
 }
 
-/// Pin: `Ui::surface_invalidated` rewinds damage so the next
-/// `end_frame` returns `Full` even when widgets are unchanged. This
-/// is the host's escape hatch for "I called `end_frame` but never
-/// presented" — failed surface acquire (Occluded / Timeout /
-/// Validation), surface reconfigure, etc. Without it, the next
-/// `compute` would produce `Skip` against an unpainted backbuffer
-/// and the window stays black until something forces a real change.
-#[test]
-fn surface_invalidated_forces_next_frame_to_full() {
-    let mut ui = Ui::new();
-    let build = |ui: &mut Ui| {
-        one_frame(ui, BLUE);
-    };
-
-    // Two warm frames: first is `Full`, second is `Skip` (steady
-    // state). `frame` runs end_frame_acked to simulate a successful
-    // submit; without that, the auto-rewind path would already force
-    // `Full` on the second frame, masking the explicit-invalidate
-    // behaviour we're trying to pin.
-    frame(&mut ui, build);
-    let assert_second_is_skip = |ui: &mut Ui| {
-        ui.begin_frame(DISPLAY);
-        build(ui);
-        let out = ui.end_frame();
-        assert_eq!(out.damage, DamagePaint::Skip);
-        out.frame_state.mark_submitted();
-    };
-    assert_second_is_skip(&mut ui);
-
-    // Host says "last `end_frame`'s output didn't actually paint."
-    ui.surface_invalidated();
-
-    // Next frame must be `Full` even though authoring is identical
-    // and the surface didn't move — damage has no valid prev to diff
-    // against, so it falls back to a clear+repaint.
-    ui.begin_frame(DISPLAY);
-    build(&mut ui);
-    let out = ui.end_frame();
-    assert_eq!(
-        out.damage,
-        DamagePaint::Full,
-        "surface_invalidated must force the next compute to Full",
-    );
-    out.frame_state.mark_submitted();
-
-    // And once a real frame paints, steady-state `Skip` resumes.
-    ui.begin_frame(DISPLAY);
-    build(&mut ui);
-    assert_eq!(ui.end_frame().damage, DamagePaint::Skip);
-}
-
 /// Pin (precise bug reproducer): the showcase resize-flicker fired
 /// when surface changed AND the damage rect was small enough to fall
 /// below the area threshold — only a few descendants shifted while

@@ -81,10 +81,11 @@ pub struct Ui {
     /// elapsed-since-start without re-threading `dt`.
     pub(crate) time: Duration,
 
-    /// Set by [`Self::request_repaint`] during recording; copied into
-    /// [`FrameOutput::repaint_requested`] at end-of-frame so the host
-    /// can re-arm a redraw even when input is idle. Reset at the top
-    /// of each `run_frame` (across both discard + paint passes).
+    /// Set by [`Self::animate`] each frame an animation hasn't
+    /// settled; copied into [`FrameOutput::repaint_requested`] at
+    /// end-of-frame so the host can re-arm a redraw even when input
+    /// is idle. Reset at the top of each `run_frame` (across both
+    /// discard + paint passes).
     pub(crate) repaint_requested: bool,
 
     /// Per-`(WidgetId, AnimSlot)` animation rows. Read/written via
@@ -159,13 +160,13 @@ impl Ui {
     ///    than last frame.
     /// 2. **Frame skipped** — previous `FrameOutput` wasn't marked
     ///    `Submitted` (surface acquire failed, host dropped, panic in
-    ///    error arm). `Ui::surface_invalidated` also lands here.
+    ///    error arm).
     /// 3. **First frame** — `prev_surface` is `None` by default.
     ///
     /// `Damage::compute` reads the post-reset state (`prev_surface ==
-    /// None`) and short-circuits to `DamagePaint::Full`. Hosts don't
-    /// need to call `surface_invalidated` in surface-error paths —
-    /// it's the default behaviour.
+    /// None`) and short-circuits to `DamagePaint::Full`. The
+    /// auto-rewind covers the surface-error and dropped-frame cases,
+    /// so hosts don't need any explicit "invalidate" call.
     pub(crate) fn begin_frame(&mut self, display: Display) {
         assert!(
             display.scale_factor >= f32::EPSILON,
@@ -192,9 +193,9 @@ impl Ui {
     /// and hit-index, compute hashes and damage, and encode + compose into
     /// the frontend's `RenderBuffer`. Returns the painted output ready for
     /// `WgpuBackend::submit`. Damage's prev-state is committed here on the
-    /// assumption that the host will present this frame — see
-    /// [`Self::surface_invalidated`] for the rewind path when that
-    /// assumption breaks.
+    /// assumption that the host will submit this frame — if the host
+    /// drops the `FrameOutput` instead, the next `begin_frame`'s
+    /// auto-rewind reverts the commit.
     pub(crate) fn end_frame(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
         self.forest.end_frame(surface);
@@ -294,14 +295,6 @@ impl Ui {
         self.end_frame()
     }
 
-    /// Ask the host to schedule another frame even if no input arrives.
-    /// Animation tickers call this each frame they haven't settled;
-    /// hosts honor the request via [`FrameOutput::repaint_requested`].
-    /// Idempotent within a frame.
-    pub fn request_repaint(&mut self) {
-        self.repaint_requested = true;
-    }
-
     /// Advance an animation row keyed by `(id, slot)`, returning the
     /// current interpolated value. Generic over `T: Animatable` —
     /// implemented for `f32`, `Vec2`, `Color`. First touch snaps
@@ -363,16 +356,6 @@ impl Ui {
     /// concern (winit ↔ ui boundary).
     pub fn on_input(&mut self, event: InputEvent) {
         self.input.on_input(event, &self.cascades.result);
-    }
-
-    /// Drop damage's prev-frame snapshot so the next `end_frame` is
-    /// forced to return `DamagePaint::Full`. **Rarely needed by hosts**
-    /// — `begin_frame` auto-rewinds when the previous `FrameOutput`
-    /// didn't reach a successful `WgpuBackend::submit`. Use this only
-    /// when something *else* invalidated the backbuffer that's outside
-    /// `submit`'s knowledge (e.g. an external pipeline overwrote it).
-    pub fn surface_invalidated(&mut self) {
-        self.damage.invalidate_prev();
     }
 
     /// Borrow the cross-frame state row for `id`, creating it via

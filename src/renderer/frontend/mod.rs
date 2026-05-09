@@ -94,25 +94,20 @@ impl FrameOutput<'_> {
     /// backbuffer already holds the right pixels. Hosts can skip
     /// `surface.get_current_texture()` + `submit` + `present` entirely.
     ///
-    /// Only safe to early-bail when *the previous frame's `submit`
-    /// actually presented*. If a host called `end_frame` and then
-    /// failed to present (Occluded surface, validation error, lost
-    /// device), it must call [`Ui::surface_invalidated`] before
-    /// the next `end_frame`; otherwise this method will return `true`
-    /// against an unpainted backbuffer and the window stays black.
-    ///
-    /// [`Ui::surface_invalidated`]: crate::Ui::surface_invalidated
+    /// Safe by construction: if the previous frame's `submit` didn't
+    /// run (host dropped the `FrameOutput`, surface acquire failed,
+    /// etc.), the framework's auto-rewind in `Ui::begin_frame`
+    /// forced this frame to `Full`, so this method returns `false`
+    /// and the host paints. No "invalidate" call needed in
+    /// surface-error paths.
     pub fn can_skip_rendering(&self) -> bool {
         self.damage == DamagePaint::Skip
     }
 
-    /// `true` when at least one widget called [`Ui::request_repaint`]
-    /// during this frame. Hosts honor by calling
-    /// `window.request_redraw()` (or equivalent) after present, so the
-    /// next frame runs even if input is idle. Used by animation
-    /// tickers that haven't settled.
-    ///
-    /// [`Ui::request_repaint`]: crate::Ui::request_repaint
+    /// `true` when an animation tick during this frame hasn't
+    /// settled (set by `Ui::animate`). Hosts honor by calling
+    /// `window.request_redraw()` (or equivalent) after present, so
+    /// the next frame runs even when input is idle.
     pub fn repaint_requested(&self) -> bool {
         self.repaint_requested
     }
