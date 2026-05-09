@@ -157,26 +157,55 @@ glyph cells incorrectly; stencil over union doesn't).
 
 Hygiene/speculation pruned. What's actually open:
 
-### AA fringe leakage at scissor boundaries
+### Symmetric scissor-boundary leakage
 
-The real correctness issue. Encoder filter
-(`encoder/mod.rs:172`) tests `region.any_intersects(rect)` against
-the unpadded rect; backend pads each scissor by `DAMAGE_AA_PADDING`
-(`backend/mod.rs:22`). A leaf whose nominal bounds touch but don't
-cross a damage rect's edge gets *skipped* by the encoder, while its
-AA fringe (1–2 px) falls inside the padded scissor — leaving stale
-last-frame pixels along the boundary. Pre-existing under single-
-rect; multi-rect creates more boundaries so more chances to bite.
+The scissor-padding/encoder-filter asymmetry. Backend pads each
+scissor by `DAMAGE_AA_PADDING = 2` px (`backend/mod.rs:22`); the
+encoder filter (`encoder/mod.rs:172`) tests
+`region.any_intersects(rect)` against the un-padded rect.
 
-This subsumes the `Region::any_intersects` strictness asymmetry
-(same root cause: strict `<` rejection at the boundary).
+The padding solves the **outgoing-fringe** problem: a *changed* leaf
+inside the damage rect whose AA / stroke / glyph metrics extend past
+the rect's edge — the padded scissor accepts those pixels. Without
+padding the scissor would clip them and leave a 1-px-hard edge at
+the boundary. Good.
 
-Fix is mechanical: pad the rect in the filter by the same logical-px
-amount, e.g. expose `Region::any_intersects_padded(r, pad)` and
-thread the pad value from the backend's `DAMAGE_AA_PADDING`. Blocker
-is the test fixture — needs a high-DPI pixel-readback case at a
-known boundary to pin the regression. Workload-driven; do when a
-visual artifact actually shows up.
+But the same padding *creates* the **incoming-fringe** problem.
+The 2-px strip just outside the damage rect overlaps the rendered
+bounds of *adjacent unchanged* leaves (their strokes, italic
+descenders, glyph fringes — anything extending past the layout
+rect). The pass's `PreClear` / `LoadOp::Clear` paints clear color
+across that strip; the encoder skipped the unchanged leaf, so its
+fringe is never re-emitted; visible artifact: a slice of the
+unchanged leaf's stroke / fringe along the boundary got wiped.
+
+| | Without padding | With padding (today) |
+|---|---|---|
+| Outgoing fringe (changed leaf inside damage) | clipped → 1-px hard edge | painted correctly |
+| Incoming fringe (unchanged leaf adjacent to damage) | preserved | overwritten → missing slice |
+
+Subsumes the `any_intersects` strictness asymmetry (same root
+cause: the encoder-side test is `<` while the scissor inflates).
+
+Fix is symmetric: pad the *encoder filter* by the same amount, so
+adjacent unchanged leaves get included whenever the padded scissor
+reaches into them. Mechanical change — add a
+`Region::any_intersects_padded(rect, pad)` (or fatten the input
+rect inline) and thread `DAMAGE_AA_PADDING` (in logical px) to the
+filter call site.
+
+**Why we haven't hit this yet.** Production scenes use filled rects
+and plain text inside the body — neither overhangs the layout rect.
+The artifact only appears when something with rendered bounds
+larger than its layout rect (stroked panel, italic glyph descender,
+shadow, blur) sits *adjacent* to a frequently-changing widget. No
+fixture exercises that combination today. Whichever workload first
+needs a stroked panel next to a hovering button is the trigger.
+
+**Tunable on the side**: `DAMAGE_AA_PADDING = 2` was picked
+defensively. Most AA bleeds < 1 px; halving the padding shrinks the
+leakage zone without losing the outgoing fringe. Worth evaluating
+once the fixture exists.
 
 ### `DAMAGE_RECT_CAP = 8` tuning
 
