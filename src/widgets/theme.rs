@@ -1,3 +1,4 @@
+use crate::animation::AnimSpec;
 use crate::layout::types::clip_mode::ClipMode;
 pub use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -394,6 +395,14 @@ pub struct ButtonTheme {
     pub padding: Spacing,
     /// Default margin around the button.
     pub margin: Spacing,
+    /// Spec applied to fill/stroke/text transitions between states.
+    /// Default [`AnimSpec::FAST`] (120ms ease-out-cubic). Set to
+    /// [`AnimSpec::INSTANT`] to disable button animation globally
+    /// (accessibility, debug builds, snapshot tests). `#[serde(skip)]`
+    /// — animation policy is process-time, not on-disk; theme files
+    /// round-trip with the default spec.
+    #[serde(skip)]
+    pub anim: AnimSpec,
 }
 
 impl Default for ButtonTheme {
@@ -445,6 +454,7 @@ impl Default for ButtonTheme {
             },
             padding: Spacing::xy(12.0, 6.0),
             margin: Spacing::ZERO,
+            anim: AnimSpec::default(),
         }
     }
 }
