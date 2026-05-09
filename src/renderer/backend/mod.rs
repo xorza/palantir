@@ -95,7 +95,7 @@ pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
 /// wgpu backend: owns the quad pipeline + text renderer and cloned
 /// device/queue handles (cheap, Arc-backed). The text side holds a shared
 /// handle to the same `CosmicMeasure` the Ui side measures against (set via
-/// [`Self::set_cosmic`]) — without it, text rendering is silently skipped.
+/// [`Self::set_text_shaper`]) — without it, text rendering is silently skipped.
 /// No layout, no encode, no compose — those happen elsewhere and arrive
 /// here as a `RenderBuffer`.
 pub struct WgpuBackend {

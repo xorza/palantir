@@ -12,7 +12,7 @@
 use crate::primitives::color::Color;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::TextRun;
-use crate::text::SharedCosmic;
+use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
 use fixedbitset::FixedBitSet;
 use glam::UVec2;
@@ -147,7 +147,7 @@ impl TextRenderer {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        cosmic: &SharedCosmic,
+        cosmic: &TextShaper,
         scale: f32,
         group_idx: usize,
         runs: &[TextRun],

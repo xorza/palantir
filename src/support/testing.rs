@@ -9,7 +9,7 @@ use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::shape::Shape;
-use crate::text::SharedCosmic;
+use crate::text::TextShaper;
 #[allow(unused_imports)]
 use crate::tree::Layer;
 use crate::tree::element::Configure;
@@ -48,15 +48,15 @@ pub(crate) fn new_ui_text() -> Ui {
     // Cosmic-text's `FontSystem` parses bundled font bytes on
     // construction — expensive (multiple ms). Tests that loop over
     // many widths or sizes call `ui_with_text` per iteration; sharing
-    // one `SharedCosmic` per thread amortizes the parse across the
+    // one `TextShaper` per thread amortizes the parse across the
     // thread's lifetime and cuts cross-driver test runtime ~10×.
     // Fine because cosmic state across tests is just a glyph cache —
     // tests assert on layout output, not cache contents.
     thread_local! {
-        static SHARED: SharedCosmic = SharedCosmic::with_bundled_fonts();
+        static SHARED: TextShaper = TextShaper::with_bundled_fonts();
     }
     let mut ui = Ui::new();
-    SHARED.with(|c| ui.set_cosmic(c.clone()));
+    SHARED.with(|c| ui.set_text_shaper(c.clone()));
     ui
 }
 

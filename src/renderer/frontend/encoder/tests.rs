@@ -693,13 +693,13 @@ fn align_text_in_clamps_negative_slack_to_top_left() {
 /// deflated by padding), not in the padding-inclusive outer rect.
 #[test]
 fn encoder_text_alignment_respects_leaf_padding() {
-    use crate::text::SharedCosmic;
+    use crate::text::TextShaper;
     use crate::widgets::button::Button;
 
     let mut ui = Ui::new();
     // Real shaper required so the encoder doesn't drop the text run as
     // having an invalid key (mono fallback uses `TextCacheKey::INVALID`).
-    ui.set_cosmic(SharedCosmic::with_bundled_fonts());
+    ui.set_text_shaper(TextShaper::with_bundled_fonts());
     begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Button::new()

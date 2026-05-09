@@ -113,7 +113,7 @@ impl ApplicationHandler for App {
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
         );
-        ui.set_cosmic(palantir::SharedCosmic::with_bundled_fonts());
+        ui.set_text_shaper(palantir::TextShaper::with_bundled_fonts());
 
         window.request_redraw();
         self.state = Some(State {
