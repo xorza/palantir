@@ -51,7 +51,7 @@ pub(crate) struct QuadPipeline {
     /// (transparent fill, red stroke at the damaged region). Drawn onto
     /// the swapchain texture *after* the backbuffer→surface copy, so it
     /// never touches the backbuffer and produces no ghosts. Only
-    /// written when `WgpuBackend::debug_damage_overlay` is on.
+    /// written when `DebugOverlayConfig::damage_rect` is on.
     overlay_buffer: wgpu::Buffer,
     /// Cached creation inputs needed to lazy-build `stencil` later.
     shader: wgpu::ShaderModule,

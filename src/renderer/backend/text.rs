@@ -88,11 +88,14 @@ pub(crate) struct TextRenderer {
     ready: FixedBitSet,
     /// Same shape as `ready`, for `stencil_renderers`.
     stencil_ready: FixedBitSet,
-    /// Highest `group_idx + 1` prepared this frame. Used by
-    /// [`Self::end_frame`] to truncate the pool down to the slots that
-    /// were actually used, so a frame burst (e.g. an open modal with
-    /// many labels) doesn't leave its renderer slots — and their wgpu
-    /// vertex buffers — alive forever after the modal closes.
+    /// Highest `group_idx + 1` prepared this frame across **either**
+    /// pool. Used by [`Self::end_frame`] to shrink whichever pool grew
+    /// past `2 × high_water`. Shared because a given frame is either
+    /// all-`Plain` or all-`Stencil` (the surrounding render pass picks
+    /// one), so `high_water` reflects the active mode's group count
+    /// and the inactive pool — if it overshot in a prior frame —
+    /// trims down without losing live state (its `ready` bits were
+    /// already cleared, slots are unused).
     high_water: usize,
 }
 
