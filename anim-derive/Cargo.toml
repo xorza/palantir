@@ -1,0 +1,12 @@
+[package]
+name = "palantir-anim-derive"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "*"
+quote = "*"
+syn = { version = "*", features = ["full"] }
