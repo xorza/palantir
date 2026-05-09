@@ -1,18 +1,18 @@
 //! Damage visualization. Renders a static scene twice into the same
 //! Harness (so `Damage.prev` carries between frames). The second
-//! render flips `debug_clear_on_damage` on and uses a striking
-//! magenta clear: pixels outside the damage scissor stay magenta,
-//! pixels inside flash the freshly-painted content. The PNG goes to
-//! `tests/visual/output/damage/<name>.png` for inspection — the
-//! tests assert nothing beyond "second-frame damage shouldn't repaint
-//! the whole panel" so they're useful as a diagnostic without
+//! render flips `DebugOverlayConfig::clear_damage` on and uses a
+//! striking magenta clear: pixels outside the damage scissor stay
+//! magenta, pixels inside flash the freshly-painted content. The PNG
+//! goes to `tests/visual/output/damage/<name>.png` for inspection —
+//! the tests assert nothing beyond "second-frame damage shouldn't
+//! repaint the whole panel" so they're useful as a diagnostic without
 //! coupling to specific damage rects.
 
 use std::path::Path;
 
 use glam::UVec2;
 use image::{Rgba, RgbaImage};
-use palantir::{Background, Button, Color, Configure, Panel, Sizing};
+use palantir::{Background, Button, Color, Configure, DebugOverlayConfig, Panel, Sizing};
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
@@ -71,9 +71,12 @@ fn static_scene_repeats_clean() {
     let _f1 = h.render(size, 1.0, DARK_BG, scene);
 
     // Frame 2: same scene, but flash undamaged pixels magenta.
-    palantir::support::internals::set_clear_on_damage(&mut h.backend, true);
+    h.ui.debug_overlay = Some(DebugOverlayConfig {
+        clear_damage: true,
+        ..Default::default()
+    });
     let f2 = h.render(size, 1.0, VIS_CLEAR, scene);
-    palantir::support::internals::set_clear_on_damage(&mut h.backend, false);
+    h.ui.debug_overlay = None;
 
     save_debug("static_scene_repeats_clean", &f2);
 
@@ -122,9 +125,12 @@ fn single_button_change_paints_button_only() {
 
     let _f1 = h.render(size, 1.0, DARK_BG, frame_with("a"));
 
-    palantir::support::internals::set_clear_on_damage(&mut h.backend, true);
+    h.ui.debug_overlay = Some(DebugOverlayConfig {
+        clear_damage: true,
+        ..Default::default()
+    });
     let f2 = h.render(size, 1.0, VIS_CLEAR, frame_with("b"));
-    palantir::support::internals::set_clear_on_damage(&mut h.backend, false);
+    h.ui.debug_overlay = None;
 
     save_debug("single_button_change_paints_button_only", &f2);
 

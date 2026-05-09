@@ -9,8 +9,8 @@
 //! cache benches and to assert cache population in tests. Production
 //! code should never need them.
 
+use crate::Ui;
 use crate::animation::animatable::Animatable;
-use crate::{Ui, WgpuBackend};
 
 /// Drop every cross-frame measure-cache entry, forcing the next frame
 /// to re-measure every leaf from scratch. See `benches/measure_cache.rs`.
@@ -29,16 +29,6 @@ pub fn clear_measure_cache(ui: &mut Ui) {
 /// most recent recording so `ui.layout.result` is populated.
 pub fn run_cascades(ui: &mut Ui) {
     let _ = ui.cascades.run(&ui.forest, &ui.layout.result);
-}
-
-/// Render-debug knob: when `on`, every frame loads with `LoadOp::Clear`
-/// (the submit-time clear color) even on `DamagePaint::Partial`. The
-/// scissor still applies, so only the dirty region paints — surrounding
-/// pixels flash the clear color. Used by the damage-visualization
-/// fixtures in `tests/visual/` to see exactly which pixels were
-/// repainted this frame.
-pub fn set_clear_on_damage(backend: &mut WgpuBackend, on: bool) {
-    backend.debug_clear_on_damage = on;
 }
 
 /// Number of animation rows currently allocated for type `T`, or `0`

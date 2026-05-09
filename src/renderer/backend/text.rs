@@ -94,9 +94,6 @@ pub(crate) struct TextRenderer {
     /// many labels) doesn't leave its renderer slots — and their wgpu
     /// vertex buffers — alive forever after the modal closes.
     high_water: usize,
-    /// Reusable scratch for `TextArea`s built each `prepare_group` call.
-    /// Capacity retained.
-    scratch: Vec<TextArea<'static>>,
 }
 
 impl TextRenderer {
@@ -120,7 +117,6 @@ impl TextRenderer {
             ready: FixedBitSet::new(),
             stencil_ready: FixedBitSet::new(),
             high_water: 0,
-            scratch: Vec::new(),
         }
     }
 
@@ -184,27 +180,17 @@ impl TextRenderer {
         };
         let mut cosmic = cosmic.borrow_mut();
 
-        let mut scratch = with_transient_textareas(&mut self.scratch);
-
         let RenderSplit {
             font_system,
             lookup,
         } = cosmic.split_for_render();
-        for r in runs {
-            let Some(buffer) = lookup.get(r.key) else {
-                continue;
-            };
-            scratch.push(TextArea {
-                buffer,
-                left: r.origin.x,
-                top: r.origin.y,
-                scale,
-                bounds: text_bounds(r.bounds),
-                default_color: glyphon_color(r.color),
-                custom_glyphs: &[],
-            });
-        }
-        if scratch.is_empty() {
+
+        // Skip-empty without materializing a Vec<TextArea>. Two passes
+        // over `runs` (count + filter_map into the iterator handed to
+        // prepare). Both are O(runs.len()) on typical handfuls of runs
+        // per group, and avoid the lifetime-laundering scratch field.
+        let resolvable = runs.iter().filter(|r| lookup.get(r.key).is_some()).count();
+        if resolvable == 0 {
             return false;
         }
 
@@ -230,19 +216,27 @@ impl TextRenderer {
         }
         ready.grow(pool.len());
 
+        let text_areas = runs.iter().filter_map(|r| {
+            lookup.get(r.key).map(|buffer| TextArea {
+                buffer,
+                left: r.origin.x,
+                top: r.origin.y,
+                scale,
+                bounds: text_bounds(r.bounds),
+                default_color: glyphon_color(r.color),
+                custom_glyphs: &[],
+            })
+        });
+
         let result = pool[group_idx].prepare(
             device,
             queue,
             font_system,
             &mut self.atlas,
             &self.viewport,
-            scratch.iter().cloned(),
+            text_areas,
             &mut self.swash_cache,
         );
-        // `scratch` drops here — its `Drop` impl clears the underlying
-        // vec, so the `'static` placeholder is restored before the next
-        // call.
-        drop(scratch);
 
         if let Err(e) = result {
             tracing::warn!(?e, group_idx, ?mode, "glyphon prepare failed");
@@ -299,48 +293,6 @@ impl TextRenderer {
         self.stencil_ready.clear();
         self.high_water = 0;
     }
-}
-
-/// Guard around the renderer's `Vec<TextArea<'static>>` scratch that
-/// re-types the placeholder lifetime to a frame-local one. Clears on
-/// drop, so the `'static` placeholder is restored before any subsequent
-/// caller observes it.
-struct TransientTextAreas<'a> {
-    inner: &'a mut Vec<TextArea<'a>>,
-}
-
-impl<'a> std::ops::Deref for TransientTextAreas<'a> {
-    type Target = Vec<TextArea<'a>>;
-    fn deref(&self) -> &Self::Target {
-        self.inner
-    }
-}
-
-impl<'a> std::ops::DerefMut for TransientTextAreas<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner
-    }
-}
-
-impl Drop for TransientTextAreas<'_> {
-    fn drop(&mut self) {
-        self.inner.clear();
-    }
-}
-
-/// Re-type a `Vec<TextArea<'static>>` (kept with `'static` as a
-/// placeholder so the field can exist with no runtime owner) as a
-/// frame-local `Vec<TextArea<'a>>`. The returned guard clears the vec
-/// on drop, so the `'static` placeholder is sound for the next caller.
-///
-/// SAFETY: every `TextArea` pushed must be dropped before this function
-/// returns *to its parent caller* — the `Drop` impl on the returned
-/// guard handles that, so the call site only needs to keep the guard
-/// alive until it's done with the borrows.
-fn with_transient_textareas<'a>(scratch: &'a mut Vec<TextArea<'static>>) -> TransientTextAreas<'a> {
-    scratch.clear();
-    let inner: &mut Vec<TextArea<'_>> = unsafe { std::mem::transmute(scratch) };
-    TransientTextAreas { inner }
 }
 
 fn text_bounds(b: URect) -> TextBounds {

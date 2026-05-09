@@ -60,7 +60,7 @@ pub struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pub backend: WgpuBackend,
-    ui: Ui,
+    pub ui: Ui,
 }
 
 impl Harness {
