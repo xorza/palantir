@@ -7,3 +7,5 @@ anim slot automate
 debug overlay for damage rects
 
  animate option for appearing stroke
+
+ multiple damage rects
