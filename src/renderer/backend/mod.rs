@@ -6,8 +6,10 @@ use crate::primitives::{
     color::Color, rect::Rect, size::Size, spacing::Spacing, stroke::Stroke, urect::URect,
 };
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::SharedCosmic;
 use crate::ui::damage::DamagePaint;
+use crate::ui::debug_overlay::DebugOverlayConfig;
 
 /// Pad the damage scissor by this many physical pixels on every
 /// side. Quads and glyphs may anti-alias slightly outside their
@@ -513,20 +515,45 @@ impl WgpuBackend {
             backbuffer.size,
         );
 
-        // Debug damage overlay: stroked red rect over the damaged
-        // region, drawn onto the swapchain texture with `LoadOp::Load`.
-        // Backbuffer is unaffected — next frame's `LoadOp::Load` reads
-        // a clean texture, so no ghost stroke accumulates. Skip frames
-        // returned above; here `damage` is `Full` or `Partial`.
-        let draw_damage_overlay = frame.debug_overlay.is_some_and(|c| c.damage_rect);
-        if draw_damage_overlay {
+        if let Some(config) = frame.debug_overlay {
+            self.draw_debug_overlay(surface_tex, &mut encoder, buffer, damage, config);
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        if self.text.has_prepared() {
+            self.text.end_frame();
+        }
+    }
+
+    /// Re-create text atlas/renderer after a surface format change.
+    pub fn surface_format_changed(&mut self, format: wgpu::TextureFormat) {
+        self.text
+            .rebuild_for_format(&self.device, &self.queue, format);
+    }
+
+    /// Draw the debug overlay onto the swapchain texture *after* the
+    /// backbuffer→surface copy. The overlay never lands on the
+    /// backbuffer, so next frame's `LoadOp::Load` reads clean pixels
+    /// and there's no ghost stroke. Each `bool` on `config` toggles a
+    /// distinct visualization; the function is a no-op when all flags
+    /// are off. Caller already filtered `DamagePaint::Skip`.
+    fn draw_debug_overlay(
+        &mut self,
+        surface_tex: &wgpu::Texture,
+        encoder: &mut wgpu::CommandEncoder,
+        buffer: &RenderBuffer,
+        damage: DamagePaint,
+        config: DebugOverlayConfig,
+    ) {
+        if config.damage_rect {
             let damage_rect_phys = match damage {
                 DamagePaint::Partial(r) => r.scaled_by(buffer.scale, true),
                 DamagePaint::Full => Rect {
                     min: glam::Vec2::ZERO,
                     size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
                 },
-                DamagePaint::Skip => unreachable!("Skip handled above"),
+                DamagePaint::Skip => unreachable!("Skip filtered before draw_debug_overlay"),
             };
             let inset_px = (DAMAGE_OVERLAY_INSET * buffer.scale).max(1.0);
             let overlay_rect = damage_rect_phys.deflated_by(Spacing::all(inset_px));
@@ -537,7 +564,7 @@ impl WgpuBackend {
             self.quad.upload_overlay(&self.queue, overlay_rect, stroke);
             let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("palantir.renderer.overlay"),
+                label: Some("palantir.renderer.overlay.damage_rect"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &surface_view,
                     resolve_target: None,
@@ -554,18 +581,6 @@ impl WgpuBackend {
             });
             self.quad.draw_overlay(&mut pass);
         }
-
-        self.queue.submit(std::iter::once(encoder.finish()));
-
-        if self.text.has_prepared() {
-            self.text.end_frame();
-        }
-    }
-
-    /// Re-create text atlas/renderer after a surface format change.
-    pub fn surface_format_changed(&mut self, format: wgpu::TextureFormat) {
-        self.text
-            .rebuild_for_format(&self.device, &self.queue, format);
     }
 
     /// Copy the persistent backbuffer onto the swapchain texture
