@@ -177,8 +177,8 @@ impl Ui {
             .damage
             .compute(&self.forest, cascades, removed, surface);
 
-        let damage_filter = match damage {
-            DamagePaint::Partial(r) => Some(r),
+        let damage_filter = match &damage {
+            DamagePaint::Partial(region) => Some(region),
             DamagePaint::Full | DamagePaint::Skip => None,
         };
         let buffer = self.frontend.build(

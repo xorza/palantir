@@ -290,22 +290,13 @@ impl WgpuBackend {
         // Convert the logical damage rect (Partial only) to a
         // physical-px scissor, padded for AA bleed and clamped to the
         // surface. `Full` skips this and paints the whole viewport.
+        // Step 1: region carries a single rect (multi-rect dispatch
+        // lands in Step 3 of the multi-rect-damage roadmap).
         let damage_scissor = match damage {
-            DamagePaint::Partial(r) => {
-                let phys = r.scaled_by(buffer.scale, true);
-                let pad = DAMAGE_AA_PADDING as f32;
-                let mins_x = (phys.min.x - pad).max(0.0) as u32;
-                let mins_y = (phys.min.y - pad).max(0.0) as u32;
-                let maxs_x =
-                    ((phys.min.x + phys.size.w + pad).max(0.0) as u32).min(buffer.viewport_phys.x);
-                let maxs_y =
-                    ((phys.min.y + phys.size.h + pad).max(0.0) as u32).min(buffer.viewport_phys.y);
-                if maxs_x > mins_x && maxs_y > mins_y {
-                    Some(URect::new(mins_x, mins_y, maxs_x - mins_x, maxs_y - mins_y))
-                } else {
-                    None
-                }
-            }
+            DamagePaint::Partial(region) => region
+                .iter()
+                .next()
+                .and_then(|r| logical_rect_to_phys_scissor(r, buffer)),
             DamagePaint::Full => None,
             DamagePaint::Skip => unreachable!("handled above"),
         };
@@ -532,8 +523,18 @@ impl WgpuBackend {
         config: DebugOverlayConfig,
     ) {
         if config.damage_rect {
+            // Step 1: Partial carries a region with a single rect;
+            // Step 6 of the multi-rect-damage roadmap loops the
+            // overlay over every rect.
             let damage_rect_phys = match damage {
-                DamagePaint::Partial(r) => r.scaled_by(buffer.scale, true),
+                DamagePaint::Partial(region) => region
+                    .iter()
+                    .next()
+                    .map(|r| r.scaled_by(buffer.scale, true))
+                    .unwrap_or(Rect {
+                        min: glam::Vec2::ZERO,
+                        size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
+                    }),
                 DamagePaint::Full => Rect {
                     min: glam::Vec2::ZERO,
                     size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
@@ -598,6 +599,25 @@ impl WgpuBackend {
             backbuffer.tex.size(),
         );
         self.queue.submit(std::iter::once(encoder.finish()));
+    }
+}
+
+/// Convert a logical-px damage rect to a physical-px scissor, padded
+/// by [`DAMAGE_AA_PADDING`] on every side and clamped to the
+/// viewport. Returns `None` if the result clamps to zero area —
+/// callers degrade that case to "loaded but not drawn" inside the
+/// pass.
+fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
+    let phys = r.scaled_by(buffer.scale, true);
+    let pad = DAMAGE_AA_PADDING as f32;
+    let mins_x = (phys.min.x - pad).max(0.0) as u32;
+    let mins_y = (phys.min.y - pad).max(0.0) as u32;
+    let maxs_x = ((phys.min.x + phys.size.w + pad).max(0.0) as u32).min(buffer.viewport_phys.x);
+    let maxs_y = ((phys.min.y + phys.size.h + pad).max(0.0) as u32).min(buffer.viewport_phys.y);
+    if maxs_x > mins_x && maxs_y > mins_y {
+        Some(URect::new(mins_x, mins_y, maxs_x - mins_x, maxs_y - mins_y))
+    } else {
+        None
     }
 }
 

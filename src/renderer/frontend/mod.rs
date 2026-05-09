@@ -18,13 +18,13 @@ pub(crate) mod encoder;
 
 use crate::layout::result::LayoutResult;
 use crate::layout::types::display::Display;
-use crate::primitives::rect::Rect;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::tree::forest::Forest;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
+use crate::ui::damage::region::DamageRegion;
 use crate::ui::debug_overlay::DebugOverlayConfig;
 
 /// One frame's CPU output: the composed render buffer and what the
@@ -102,7 +102,7 @@ impl Frontend {
         forest: &Forest,
         results: &LayoutResult,
         cascades: &CascadeResult,
-        damage_filter: Option<Rect>,
+        damage_filter: Option<&DamageRegion>,
         display: &Display,
     ) -> &RenderBuffer {
         let cmds = self.encoder.encode(

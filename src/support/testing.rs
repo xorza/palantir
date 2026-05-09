@@ -14,6 +14,7 @@ use crate::text::TextShaper;
 use crate::tree::Layer;
 use crate::tree::element::Configure;
 use crate::tree::{NodeId, Tree, TreeItem};
+use crate::ui::damage::region::DamageRegion;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -104,13 +105,23 @@ pub(crate) fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBu
     // Fresh `Encoder` per call → empty cache, every encode is a cold
     // build. Tests that want to verify cache-replay output use
     // `ui.frontend.encoder.cmds()` instead.
+    let region = filter.map(damage_region);
     let mut encoder = Encoder::default();
     encoder.encode(
         &ui.forest,
         &ui.layout.result,
         &ui.cascades.result,
-        filter,
+        region.as_ref(),
         ui.display.logical_rect(),
     );
     std::mem::take(&mut encoder.cmds)
+}
+
+/// Wrap a single rect in a [`DamageRegion`]. Test convenience; lives
+/// here (not as a `cfg(test)` constructor on `DamageRegion`) per the
+/// CLAUDE.md rule against test-only methods on production types.
+pub(crate) fn damage_region(r: Rect) -> DamageRegion {
+    let mut region = DamageRegion::default();
+    region.add(r);
+    region
 }

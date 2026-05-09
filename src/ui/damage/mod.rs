@@ -23,7 +23,10 @@ use crate::tree::forest::Forest;
 use crate::tree::node_hash::NodeHash;
 use crate::tree::widget_id::WidgetId;
 use crate::ui::cascade::CascadeResult;
+use crate::ui::damage::region::DamageRegion;
 use rustc_hash::FxHashMap;
+
+pub(crate) mod region;
 
 /// Per-widget snapshot retained across frames so the next frame's
 /// `Damage::compute` can diff `(rect, hash)` against the previous
@@ -56,12 +59,13 @@ pub(crate) struct NodeSnapshot {
 /// partial paint instead, the cleared backbuffer would be left as
 /// clear color outside the tiny damage scissor.
 ///
-/// Capacities on `dirty` and `prev` are retained across frames.
+/// Capacities on `dirty` and `prev` are retained across frames;
+/// `region` is inline (`DamageRegion` is `Copy`).
 #[derive(Default)]
 pub(crate) struct Damage {
     #[cfg(test)]
     pub(crate) dirty: Vec<NodeId>,
-    pub(crate) rect: Option<Rect>,
+    pub(crate) region: DamageRegion,
     /// Last frame's per-widget `(rect, hash)` snapshot. Read by the
     /// diff in `compute`, then rolled forward in the same pass.
     pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
@@ -79,12 +83,13 @@ pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.5;
 /// What the GPU should do with this frame. Keeps three cases that
 /// were previously squashed into `Option<Rect>` distinct so the
 /// backend can branch on them: `Full` (clear + paint everything),
-/// `Partial(rect)` (load + scissor to rect), `Skip` (don't paint —
-/// backbuffer already holds the right pixels; just present it).
+/// `Partial(region)` (load + scissor; one render pass per rect in
+/// the region), `Skip` (don't paint — backbuffer already holds the
+/// right pixels; just present it).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum DamagePaint {
     Full,
-    Partial(Rect),
+    Partial(DamageRegion),
     Skip,
 }
 
@@ -121,7 +126,7 @@ impl Damage {
         }
         #[cfg(test)]
         self.dirty.clear();
-        let mut acc: Option<Rect> = None;
+        let mut acc = DamageRegion::default();
 
         for (layer, tree) in forest.iter_paint_order() {
             let rows = cascades.rows_for(layer);
@@ -138,13 +143,13 @@ impl Damage {
 
                 let dirty = match self.prev.insert(wid, curr) {
                     None => {
-                        extend(&mut acc, curr_rect);
+                        acc.add(curr_rect);
                         true
                     }
                     Some(snap) if snap.hash == curr_hash && snap.rect == curr_rect => false,
                     Some(snap) => {
-                        extend(&mut acc, snap.rect);
-                        extend(&mut acc, curr_rect);
+                        acc.add(snap.rect);
+                        acc.add(curr_rect);
                         true
                     }
                 };
@@ -161,40 +166,32 @@ impl Damage {
         // contributes to damage so the area they vacated repaints.
         for wid in removed {
             if let Some(snap) = self.prev.remove(wid) {
-                extend(&mut acc, snap.rect);
+                acc.add(snap.rect);
             }
         }
 
-        self.rect = acc;
+        self.region = acc;
         if surface_changed {
             return DamagePaint::Full;
         }
         self.filter(surface)
     }
 
-    /// Resolve `self.rect` against the area threshold. `None`
-    /// accumulator ⇒ `Skip` (no widget changed and the surface is
-    /// stable; the GPU has nothing to do). `Some(rect)` over
-    /// threshold (or zero-area surface) ⇒ `Full`. Otherwise
-    /// `Partial(rect)`.
+    /// Resolve `self.region` against the area threshold. Empty
+    /// region ⇒ `Skip` (no widget changed and the surface is
+    /// stable; the GPU has nothing to do). Coverage above
+    /// [`FULL_REPAINT_THRESHOLD`] (or zero-area surface) ⇒ `Full`.
+    /// Otherwise `Partial(region)`.
     pub(crate) fn filter(&self, surface: Rect) -> DamagePaint {
-        let Some(r) = self.rect else {
+        if self.region.is_empty() {
             return DamagePaint::Skip;
-        };
+        }
         let surface_area = surface.area();
-        if surface_area <= 0.0 || r.area() / surface_area > FULL_REPAINT_THRESHOLD {
+        if surface_area <= 0.0 || self.region.total_area() / surface_area > FULL_REPAINT_THRESHOLD {
             return DamagePaint::Full;
         }
-        DamagePaint::Partial(r)
+        DamagePaint::Partial(self.region)
     }
-}
-
-#[inline]
-fn extend(acc: &mut Option<Rect>, r: Rect) {
-    *acc = Some(match *acc {
-        None => r,
-        Some(a) => a.union(r),
-    });
 }
 
 #[cfg(test)]
