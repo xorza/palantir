@@ -44,7 +44,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         "wrapped paragraph should span multiple lines, got h={}",
         r.size.h,
     );
-    // todo refactor
+
     let shape = shapes_of(ui.forest.tree(Layer::Main), node)
         .next()
         .expect("text shape");
