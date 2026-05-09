@@ -370,18 +370,15 @@ fn animated_parent_transform_unions_old_and_new_positions() {
 
     // Child layout rect didn't change. Parent's transform shifted by
     // (50, 0). Prev screen rect = (0,0,40,40); curr = (50,0,40,40);
-    // damage union = (0,0,90,40).
-    let damage = ui
-        .damage
-        .region
-        .iter()
-        .next()
-        .expect("transform animation → damage");
-    assert_eq!(
-        damage,
-        Rect::new(0.0, 0.0, 90.0, 40.0),
-        "damage must union old (0,0)-(40,40) and new (50,0)-(90,40)",
-    );
+    // gap of 10 px between them. Under the LVGL merge rule the bbox
+    // waste (400 px²) exceeds the savings, so the region keeps both
+    // rects separate — exactly the point of multi-rect damage. The
+    // backend paints two scissored passes instead of one big one.
+    let rects: Vec<Rect> = ui.damage.region.iter().collect();
+    assert_eq!(rects.len(), 2, "transform animation → two damage rects");
+    let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
+    let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
+    assert!(rects.contains(&prev) && rects.contains(&curr), "{rects:?}");
     // Only the child is dirty: its authoring is unchanged but its
     // screen rect moved (rect comparison catches this). The parent
     // panel's own paint is unaffected by its own transform — the

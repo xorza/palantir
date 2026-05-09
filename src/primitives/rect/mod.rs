@@ -51,6 +51,19 @@ impl Rect {
         p.x >= self.min.x && p.y >= self.min.y && p.x < mx.x && p.y < mx.y
     }
 
+    /// True when `self` fully encloses `other`. Equality on the right
+    /// edges counts (so `r.contains_rect(r)` is `true`). Used by the
+    /// damage-region merge policy to drop rects already covered by a
+    /// bigger one.
+    pub const fn contains_rect(&self, other: Self) -> bool {
+        let self_max = self.max();
+        let other_max = other.max();
+        other.min.x >= self.min.x
+            && other.min.y >= self.min.y
+            && other_max.x <= self_max.x
+            && other_max.y <= self_max.y
+    }
+
     /// Inset by `s` on each side, clamping the resulting size at zero. Used for
     /// margin / padding insets in the layout pass.
     pub const fn deflated_by(&self, s: Spacing) -> Self {
