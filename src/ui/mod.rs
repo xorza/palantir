@@ -3,6 +3,7 @@ pub(crate) mod damage;
 pub(crate) mod seen_ids;
 pub(crate) mod state;
 
+use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
@@ -85,7 +86,7 @@ pub struct Ui {
     pub(crate) repaint_requested: bool,
 
     /// Per-`(WidgetId, AnimSlot)` animation rows. Read/written via
-    /// [`Self::animate_f32`]; evicted on the same `removed` sweep as
+    /// [`Self::animate`]; evicted on the same `removed` sweep as
     /// `StateMap` / text / layout caches.
     pub(crate) anim: AnimMap,
 }
@@ -248,8 +249,9 @@ impl Ui {
         self.repaint_requested = true;
     }
 
-    /// Advance an `f32`-typed animation row keyed by `(id, slot)`,
-    /// returning the current interpolated value. First touch snaps
+    /// Advance an animation row keyed by `(id, slot)`, returning the
+    /// current interpolated value. Generic over `T: Animatable` —
+    /// implemented for `f32`, `Vec2`, `Color`. First touch snaps
     /// `current = target` (no animation on appearance). Subsequent
     /// calls detect retarget and ease/spring toward the new target,
     /// requesting a repaint each frame until settled.
@@ -259,14 +261,14 @@ impl Ui {
     /// `const` next to the widget's state struct.
     ///
     /// See `docs/animations.md` for the full design.
-    pub fn animate_f32(
+    pub fn animate<T: Animatable>(
         &mut self,
         id: WidgetId,
         slot: AnimSlot,
-        target: f32,
+        target: T,
         spec: AnimSpec,
-    ) -> f32 {
-        let r = self.anim.tick_f32(id, slot, target, spec, self.dt);
+    ) -> T {
+        let r = T::slot_mut(&mut self.anim).tick(id, slot, target, spec, self.dt);
         if !r.settled {
             self.repaint_requested = true;
         }

@@ -1,15 +1,22 @@
-//! Per-`(WidgetId, AnimSlot)` animation rows. See `docs/animations.md`
-//! for the design rationale; this module is the f32 implementation
-//! (Phase 2). Generic `T: Lerp` lands in Phase 3.
+//! Per-`(WidgetId, AnimSlot)` animation rows, generic over
+//! [`Animatable`]. See `docs/animations.md` for the design rationale.
+//!
+//! Storage is per-type (one [`AnimMapTyped`] field on [`AnimMap`] per
+//! supported `T`) so the hot path stays type-erasure-free. Adding a
+//! new `T` = implement `Animatable` + add a typed slot here.
 
+pub(crate) mod animatable;
 pub(crate) mod easing;
 pub(crate) mod spring;
 #[cfg(test)]
 mod tests;
 
+use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
 use crate::animation::spring::Spring;
+use crate::primitives::color::Color;
 use crate::tree::widget_id::WidgetId;
+use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
@@ -55,44 +62,54 @@ impl AnimSpec {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct AnimRowF32 {
-    pub(crate) current: f32,
-    pub(crate) target: f32,
-    pub(crate) velocity: f32,      // springs only; 0.0 for duration rows
-    pub(crate) elapsed: f32,       // duration only; segment-local seconds
-    pub(crate) segment_start: f32, // duration only; `current` at last retarget
+pub(crate) struct AnimRow<T: Animatable> {
+    pub(crate) current: T,
+    pub(crate) target: T,
+    pub(crate) velocity: T,      // springs only; zero for duration rows
+    pub(crate) elapsed: f32,     // duration only; segment-local seconds
+    pub(crate) segment_start: T, // duration only; `current` at last retarget
     pub(crate) spec: AnimSpec,
 }
 
-#[derive(Default)]
-pub(crate) struct AnimMap {
-    pub(crate) rows: FxHashMap<(WidgetId, AnimSlot), AnimRowF32>,
+/// Per-`T` animation table. Public so it can appear in
+/// [`Animatable::slot_mut`]'s signature, but opaque — fields and
+/// methods are crate-internal.
+pub struct AnimMapTyped<T: Animatable> {
+    pub(crate) rows: FxHashMap<(WidgetId, AnimSlot), AnimRow<T>>,
 }
 
-pub(crate) struct TickResult {
-    pub(crate) current: f32,
+impl<T: Animatable> Default for AnimMapTyped<T> {
+    fn default() -> Self {
+        Self {
+            rows: FxHashMap::default(),
+        }
+    }
+}
+
+pub(crate) struct TickResult<T: Animatable> {
+    pub(crate) current: T,
     pub(crate) settled: bool,
 }
 
-impl AnimMap {
+impl<T: Animatable> AnimMapTyped<T> {
     /// Insert-or-advance. First touch snaps `current = target` and
     /// returns settled — there's no animation on appearance, by
     /// design. Subsequent calls detect retarget vs steady-state and
-    /// advance the row by `dt` seconds.
-    pub(crate) fn tick_f32(
+    /// advance by `dt` seconds.
+    pub(crate) fn tick(
         &mut self,
         id: WidgetId,
         slot: AnimSlot,
-        target: f32,
+        target: T,
         spec: AnimSpec,
         dt: f32,
-    ) -> TickResult {
+    ) -> TickResult<T> {
         let row = match self.rows.entry((id, slot)) {
             Entry::Vacant(v) => {
-                v.insert(AnimRowF32 {
+                v.insert(AnimRow {
                     current: target,
                     target,
-                    velocity: 0.0,
+                    velocity: T::zero(),
                     elapsed: 0.0,
                     segment_start: target,
                     spec,
@@ -109,7 +126,7 @@ impl AnimMap {
 
         // Retarget: duration restarts the segment from `current`;
         // spring keeps velocity (that's half the reason springs exist).
-        if row.target != target {
+        if row.target.sub(target).magnitude() > 0.0 {
             if matches!(spec, AnimSpec::Duration { .. }) {
                 row.segment_start = row.current;
                 row.elapsed = 0.0;
@@ -121,7 +138,7 @@ impl AnimMap {
             AnimSpec::Duration { secs, ease } => {
                 row.elapsed += dt;
                 let t = (row.elapsed / secs.max(f32::EPSILON)).clamp(0.0, 1.0);
-                row.current = lerp(row.segment_start, row.target, ease.apply(t));
+                row.current = T::lerp(row.segment_start, row.target, ease.apply(t));
                 let settled = t >= 1.0;
                 if settled {
                     row.current = row.target;
@@ -143,12 +160,6 @@ impl AnimMap {
         }
     }
 
-    /// Drop every slot belonging to a removed widget. Called from
-    /// `Ui::end_frame` with the same `removed` slice that drives
-    /// `StateMap` / text / layout sweeps. O(rows × removed) — fine
-    /// while widget counts and removal counts are both small; if
-    /// either grows substantially, switch to a two-level map keyed on
-    /// `WidgetId` first.
     pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
         if removed.is_empty() {
             return;
@@ -157,6 +168,27 @@ impl AnimMap {
     }
 }
 
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
+/// Central animation table on [`Ui`]. One typed slot per supported
+/// `T`. Sweep fans out across all slots. Public so it can appear in
+/// [`Animatable::slot_mut`]'s signature, but opaque — fields and
+/// methods are crate-internal.
+#[derive(Default)]
+pub struct AnimMap {
+    pub(crate) scalars: AnimMapTyped<f32>,
+    pub(crate) vec2s: AnimMapTyped<Vec2>,
+    pub(crate) colors: AnimMapTyped<Color>,
+}
+
+impl AnimMap {
+    /// Drop every row (across all typed slots) belonging to a removed
+    /// widget. Called from `Ui::end_frame` with the same `removed`
+    /// slice that drives `StateMap` / text / layout sweeps.
+    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        if removed.is_empty() {
+            return;
+        }
+        self.scalars.sweep_removed(removed);
+        self.vec2s.sweep_removed(removed);
+        self.colors.sweep_removed(removed);
+    }
 }
