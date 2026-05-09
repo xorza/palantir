@@ -74,7 +74,16 @@ Key deps: `wgpu`+`winit`, `glyphon`+`cosmic-text`, `glam`, `rustc-hash`, `rayon`
 
 `./references/` has 29 per-framework notes + a cross-cutting synthesis. **Read `references/SUMMARY.md` first** — it indexes every doc, takes positions on Palantir's design choices, lists anti-patterns + open questions. Each per-framework doc cites `tmp/` source with `file:line` and ends with copy/avoid/simplify recommendations. SUMMARY's "Quick-lookup matrix" (§13) maps task → docs.
 
-`./tmp/` (gitignored) holds the source clones, populated by `./scripts/fetch-refs.sh` (re-runnable). Go to `tmp/` only when a reference note doesn't cover the question. Most relevant by topic:
+**Use `./tmp/` for any in-project scratch — log captures, traces, intermediate
+build artifacts.** The whole directory is gitignored (`**/tmp/`) and lives
+inside the project root, so writes don't trigger the "out-of-tree access"
+permission prompt that `/tmp/` does. Reuse a stable filename
+(`tmp/showcase.log`, `tmp/trace-foo.txt`) so the latest run overwrites
+the previous; don't accumulate dated artifacts.
+
+The same `./tmp/` also holds the reference source clones, populated by
+`./scripts/fetch-refs.sh` (re-runnable). Go to `tmp/<crate>/` only when
+a reference note doesn't cover the question. Most relevant by topic:
 
 - **Layout / measure-arrange** → `tmp/wpf` (the model we emulate), `tmp/taffy`, `tmp/morphorm`, `tmp/yoga`, `tmp/clay` (arena tree)
 - **Immediate-mode patterns** → `tmp/egui`, `tmp/imgui`, `tmp/clay`, `tmp/nuklear`
