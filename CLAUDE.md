@@ -48,6 +48,8 @@ Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → 
 
 **Cross-frame work-skip caches.** `MeasureCache` (`src/layout/cache/`) and the encode/compose caches (`src/renderer/frontend/{encoder,composer}/cache/`) are keyed on `(WidgetId, subtree_hash, available_q)`. A hit blits last frame's subtree (`desired` + `text_shapes` + `RenderCmd` slice) and skips recursion. Same `removed` sweep evicts all three plus `StateMap` and `TextMeasurer`. **`Damage` is a tri-state** `DamagePaint` (`Full` / `Partial(Rect)` / `Skip`); `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present.
 
+**Layered recording.** `Forest` (`src/tree/forest.rs`) holds one `Tree` per `Layer` variant (`Main`/`Popup`/`Modal`/`Tooltip`/`Debug`); `Ui::layer(layer, anchor, body)` switches the active arena for the body's duration. Pipeline passes iterate `Layer::PAINT_ORDER` bottom-up for paint and reverse for hit-test (topmost-first, so popups reject pointers without per-node z-index). `Popup` widget (`src/widgets/popup.rs`) is the canonical consumer.
+
 **`Shape`** (paint primitive: `RoundedRect`, `Text`, `Line`, …) stored flat in `Tree.shapes`, sliced per-node via `records.shapes()[i]` (a `Span` into the buffer). `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. Layout passes ignore Shapes and `attrs`; paint pass ignores hierarchy beyond `end`. **This decoupling is load-bearing — keep it.**
 
 **Sizing (flex-shrink with min-content floor):** `Fixed(n)` = exactly `n` (hard contract; can exceed parent's available). `Hug` = `min(content, available)` floored at `intrinsic_min`. `Fill(weight)` = `available` floored at `intrinsic_min`; with Fill siblings, each gets `leftover * weight / total_weight`, but a sibling whose floor exceeds its share *freezes* at floor and the rest re-divide (CSS Flexbox-style). The `intrinsic_min` floor is the largest non-shrinkable thing on this axis (Fixed descendant, explicit `min_size`, longest unbreakable word). Children clamp DOWN to fit parent — no WPF-style parent-grow. Overflow only happens when rigid descendants don't fit; downstream tolerates it. Canonical impl: `resolve_axis_size` in `src/layout/support.rs` + freeze loop in `src/layout/stack/mod.rs::measure`. Pinned by `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs` and `src/layout/cross_driver_tests/convergence.rs`.
@@ -56,13 +58,13 @@ Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → 
 
 - `src/primitives/` — pure geometry: Rect/Size/Color/Stroke/Corners/Spacing/Transform/Visuals/num/approx/urect
 - `src/shape.rs` — Shape enum (RoundedRect, Line, Text)
-- `src/tree/` — Tree (SoA + subtree_end), NodeId, GridDef, hash; `tree/element/` (Element builder, LayoutCore/PaintCore columns, PaintAttrs, Configure); `tree/widget_id.rs`
+- `src/tree/` — Tree (SoA + subtree_end), NodeId, GridDef, hash, `Layer` enum, `Forest` (per-layer arenas); `tree/element/` (Element builder, LayoutCore/PaintCore columns, PaintAttrs, Configure); `tree/widget_id.rs`
 - `src/text/` — cosmic-text measurement + glyphon rendering glue
 - `src/layout/` — LayoutEngine + drivers (stack/wrapstack/zstack/canvas/grid), intrinsic, cache; `layout/types/` (Sizing/Align/Justify/Sense/Visibility/Display/Track/Span/GridCell — layout vocabulary)
 - `src/input/` — InputState, HitIndex (O(1) by-id lookup over Cascades)
 - `src/renderer/` — frontend (encode/compose) + backend (wgpu) + gpu (Quad/RenderBuffer)
 - `src/ui/` — Ui recorder, cascade pass, seen-id tracking, damage
-- `src/widgets/` — Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, Styled, Theme
+- `src/widgets/` — Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, Styled, Theme, Popup
 - `examples/{helloworld.rs, showcase/}` — minimal driver + multi-page demo
 - `benches/` — criterion (layout, measure_cache); `docs/` — in-flight notes; `DESIGN.md` — full rationale
 

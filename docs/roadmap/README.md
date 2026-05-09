@@ -6,7 +6,6 @@ priority (Now / Next / Later / Speculative).
 ## Now
 
 - [Scroll](scroll.md) — drag-to-pan thumb, `scroll_to`
-- [Layering](layering.md) — overlay / popup layer
 - [Accessibility](accessibility.md) — accesskit integration
 
 ## Categories
@@ -24,14 +23,8 @@ priority (Now / Next / Later / Speculative).
 - [Actions](actions.md) — typed actions, keymap, chord support
 - [Animations](animations.md) — per-widget tween/spring slots
 - [State](state.md) — cross-widget stores, event bus, external writes
-- [Layering](layering.md) — popups, z-order, multi-window
 - [Accessibility](accessibility.md) — accesskit
 - [Tooling](tooling.md) — profiling, snapshots, HiDPI
 - [i18n](i18n.md) — RTL, BiDi
 - [Speculative](speculative.md) — profile-gated micro-optimizations
 - [Scratch](scratch.md) — unsorted ideas
-
-## Sibling docs
-
-- [Popups](../popups.md)
-- [WidgetId trait](../widget-id-trait.md)
