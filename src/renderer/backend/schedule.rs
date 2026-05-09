@@ -48,11 +48,18 @@ pub(crate) enum RenderStep {
 /// says group `i`'s rounded-clip mask is mask quad `j` in the upload
 /// buffer. Ignored when `use_stencil` is `false`.
 ///
+/// `emit_preclear` is `false` when the pass entered with
+/// `LoadOp::Clear` already painting the clear color across the
+/// backbuffer (the debug-overlay `force_clear` path); the redundant
+/// `PreClear` quad is suppressed.
+///
 /// Per-frame ordering invariants pinned by the emitted sequence:
 ///
-/// 1. When `damage_scissor` is `Some`, the very first emitted steps
-///    are `SetScissor(damage_scissor)` then [`PreClear`] — before any
-///    group draws. AA-fringe drift would otherwise accumulate.
+/// 1. When `damage_scissor` is `Some` and `emit_preclear` is `true`,
+///    the very first emitted steps are `SetScissor(damage_scissor)`
+///    then [`PreClear`] — before any group draws. AA-fringe drift
+///    would otherwise accumulate. When `emit_preclear` is `false`
+///    these are skipped (the load-op already cleared).
 /// 2. Each group narrows the scissor (`SetScissor(effective)`) before
 ///    issuing its own draws.
 /// 3. Stencil-path groups bracket their draws with mask write at
@@ -67,6 +74,7 @@ pub(crate) enum RenderStep {
 pub(crate) fn for_each_step(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
+    emit_preclear: bool,
     mask_indices: &[Option<u32>],
     use_stencil: bool,
     mut emit: impl FnMut(RenderStep),
@@ -74,7 +82,9 @@ pub(crate) fn for_each_step(
     let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
     let text_scissor = damage_scissor.unwrap_or(full_viewport);
 
-    if let Some(scissor) = damage_scissor {
+    if let Some(scissor) = damage_scissor
+        && emit_preclear
+    {
         emit(RenderStep::SetScissor(scissor));
         emit(RenderStep::PreClear);
     }

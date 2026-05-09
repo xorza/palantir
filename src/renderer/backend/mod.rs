@@ -270,14 +270,13 @@ impl WgpuBackend {
     /// degrades to a single `Full` pass — correct, just wasteful.
     pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, frame: FrameOutput<'_>) {
         let buffer = frame.buffer;
-        let damage = frame.damage;
         let use_stencil = buffer.has_rounded_clip;
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
             groups = buffer.groups.len(),
             viewport = ?buffer.viewport_phys,
-            ?damage,
+            requested_damage = ?frame.damage,
             rounded_clip = use_stencil,
             "wgpu_backend.submit"
         );
@@ -285,18 +284,23 @@ impl WgpuBackend {
         // Match backbuffer to the swapchain texture. A freshly
         // (re)created backbuffer has undefined contents, so any
         // requested Partial / Skip must escalate to a full clear+paint
-        // this frame.
+        // this frame. `effective_damage` is what we'll actually render;
+        // `frame.damage` is what the host asked for. The two diverge
+        // only on backbuffer recreate, but the debug overlay's
+        // damage-rect outline shows what we *rendered*, not what was
+        // requested, so threading the renamed value through is the
+        // right semantic.
         let backbuffer_recreated = self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
-        let damage = if backbuffer_recreated {
+        let effective_damage = if backbuffer_recreated {
             DamagePaint::Full
         } else {
-            damage
+            frame.damage
         };
 
         // Skip: nothing changed and the backbuffer already holds the
         // right pixels. Bypass the render pass entirely and just copy
         // backbuffer → swapchain so something gets presented.
-        if let DamagePaint::Skip = damage {
+        if let DamagePaint::Skip = effective_damage {
             self.copy_backbuffer_to_surface(surface_tex);
             return;
         }
@@ -310,8 +314,8 @@ impl WgpuBackend {
         // happen in practice unless damage lies entirely outside the
         // surface).
         self.damage_scissors.clear();
-        if let DamagePaint::Partial(region) = damage {
-            for r in region.iter() {
+        if let DamagePaint::Partial(region) = effective_damage {
+            for r in region.iter_rects() {
                 if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
                     self.damage_scissors.push(s);
                 }
@@ -454,10 +458,11 @@ impl WgpuBackend {
         );
 
         if let Some(config) = frame.debug_overlay {
-            self.draw_debug_overlay(surface_tex, &mut encoder, buffer, damage, config);
+            self.draw_debug_overlay(surface_tex, &mut encoder, buffer, effective_damage, config);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
+        self.quad.end_frame();
 
         if self.text.has_prepared() {
             self.text.end_frame();
@@ -469,6 +474,11 @@ impl WgpuBackend {
     /// [`Self::render_groups`]. Stencil attachment is added when the
     /// frame has rounded clips; cleared every pass since the
     /// schedule re-stamps masks per group.
+    ///
+    /// When `load_op` is `Clear`, the schedule's leading `PreClear`
+    /// quad is suppressed — the load-op already painted the clear
+    /// color across the backbuffer, so the redundant per-rect quad
+    /// would draw the same colour a second time.
     fn run_one_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -478,6 +488,7 @@ impl WgpuBackend {
         use_stencil: bool,
         text_mode: text::StencilMode,
     ) {
+        let emit_preclear = !matches!(load_op, wgpu::LoadOp::Clear(_));
         let backbuffer = self
             .backbuffer
             .as_ref()
@@ -522,7 +533,14 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        self.render_groups(&mut pass, buffer, scissor, use_stencil, text_mode);
+        self.render_groups(
+            &mut pass,
+            buffer,
+            scissor,
+            emit_preclear,
+            use_stencil,
+            text_mode,
+        );
     }
 
     /// Dispatch every step in the per-frame schedule
@@ -536,12 +554,14 @@ impl WgpuBackend {
         pass: &mut wgpu::RenderPass<'a>,
         buffer: &RenderBuffer,
         damage_scissor: Option<URect>,
+        emit_preclear: bool,
         use_stencil: bool,
         text_mode: text::StencilMode,
     ) {
         for_each_step(
             buffer,
             damage_scissor,
+            emit_preclear,
             &self.mask_indices,
             use_stencil,
             |step| match step {
@@ -603,7 +623,7 @@ impl WgpuBackend {
             let mut overlay_rects: tinyvec::ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
             match damage {
                 DamagePaint::Partial(region) => {
-                    for r in region.iter() {
+                    for r in region.iter_rects() {
                         overlay_rects.push(
                             r.scaled_by(buffer.scale, true)
                                 .deflated_by(Spacing::all(inset_px)),

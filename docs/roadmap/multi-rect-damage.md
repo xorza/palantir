@@ -13,7 +13,7 @@ for *what* the system does.
 - `DamagePaint::{Full, Partial(DamageRegion), Skip}`
   (`src/ui/damage/mod.rs`).
 - Encoder filter: `region.any_intersects(rect)` per leaf
-  (`src/renderer/frontend/encoder/mod.rs:170`).
+  (`src/renderer/frontend/encoder/mod.rs:172`).
 - Backend: one render pass per rect; first pass uses `Clear` when
   `force_clear`, else `Load`; subsequent passes always `Load`
   (`src/renderer/backend/mod.rs::run_one_pass`).
@@ -153,90 +153,45 @@ glyph cells incorrectly; stencil over union doesn't).
 
 ---
 
-# Open follow-ups (priority order)
+# Open follow-ups
 
-## Medium — real value, more thought
+Hygiene/speculation pruned. What's actually open:
 
-### 1. Rename `damage` shadow in `WgpuBackend::submit`
+### AA fringe leakage at scissor boundaries
 
-`backend/mod.rs:267, :284-288`. `frame.damage` is shadowed by
-`damage` after the `backbuffer_recreated` escalation. Rename to
-`requested` / `effective` so the divergence between "what the host
-asked for" and "what we rendered" is obvious — especially in the
-debug-overlay call (`damage` shadow is what the overlay sees).
+The real correctness issue. Encoder filter
+(`encoder/mod.rs:172`) tests `region.any_intersects(rect)` against
+the unpadded rect; backend pads each scissor by `DAMAGE_AA_PADDING`
+(`backend/mod.rs:22`). A leaf whose nominal bounds touch but don't
+cross a damage rect's edge gets *skipped* by the encoder, while its
+AA fringe (1–2 px) falls inside the padded scissor — leaving stale
+last-frame pixels along the boundary. Pre-existing under single-
+rect; multi-rect creates more boundaries so more chances to bite.
 
-### 2. `Region::any_intersects` strictness vs. `add` symmetry
+This subsumes the `Region::any_intersects` strictness asymmetry
+(same root cause: strict `<` rejection at the boundary).
 
-`region/mod.rs:51` calls `Rect::intersects` (strict `<`); two damage
-rects sharing an edge merge in `add` (LVGL rule fires via
-`area`-equality) but a leaf touching the edge of a damage rect
-reports false in `any_intersects`. Asymmetric. Either document the
-strictness or add an `intersects_or_touches` variant.
+Fix is mechanical: pad the rect in the filter by the same logical-px
+amount, e.g. expose `Region::any_intersects_padded(r, pad)` and
+thread the pad value from the backend's `DAMAGE_AA_PADDING`. Blocker
+is the test fixture — needs a high-DPI pixel-readback case at a
+known boundary to pin the regression. Workload-driven; do when a
+visual artifact actually shows up.
 
-### 3. `iter` → `iter_rects` rename
+### `DAMAGE_RECT_CAP = 8` tuning
 
-Once `DamageRegion` has `is_empty`, `total_area`, `any_intersects`,
-the bare `iter` reads ambiguously. Trivial rename.
+Slint ships 3, LVGL 32. Eight was a guess. Re-decide once a real
+workload bench exists; until then `8` is fine.
 
-## Lower — defer / debug-only / data-driven
+### `frame.damage` staleness debug-assert (cross-listed in `damage.md`)
 
-### 4. Assert `upload_clear` ↔ per-pass `PreClear` correlation
-
-`backend/mod.rs:365-368` uploads the clear-quad buffer iff
-`damage_scissors` is non-empty; the schedule emits `PreClear` on
-every pass with `damage_scissor.is_some()` (`schedule.rs:77-80`).
-Correlated by construction; nothing pins it. A `debug_assert!`
-("partial pass with empty `clear_buffer` is a bug") would catch a
-future decorrelation.
-
-### 5. Skip `PreClear` when first pass `LoadOp::Clear` already ran
-
-Force-clear-first-pass case: `LoadOp::Clear` paints clear color over
-the whole backbuffer, *then* `PreClear` paints clear color a second
-time inside the damage rect. Wasted draw. The fix would thread the
-load op into the schedule, coupling two modules currently kept
-apart. Defer; document as known debug-only inefficiency.
-
-### 6. `force_clear` semantic for trail-style demos
-
-`force_clear` applies to the first pass only. A bouncing-cursor demo
-+ `clear_damage` would show the cursor's current rect flash but the
-trail rect *not* flash (pass 1 loaded over pass 0's magenta). The
-existing fixture works because both rects are first-time damage.
-If user-visible: move the conditional inside the loop.
-
-### 7. `DAMAGE_RECT_CAP = 8` tuning
-
-Slint ships 3, LVGL 32. Eight was a guess. The cost of `8` vs `4`
-is mostly: how often the min-growth merge fires, and how badly it
-degrades quality when it does. Profile against a real workload.
-
-## Hazards (pre-existing; cross-listed in `damage.md`)
-
-### H1. AA fringe leakage at scissor boundaries
-
-Backend pads each *scissor* by `DAMAGE_AA_PADDING`
-(`backend/mod.rs:22`); encoder filter (`encoder/mod.rs:170`) tests
-against the unpadded rect. A leaf adjacent to a damage rect — its
-nominal bounds touch but don't cross — gets *skipped* by the
-encoder, but its AA fringe (1–2 px) falls inside the padded scissor.
-If that leaf's authoring changed, fringe stays as last-frame's
-pixels — visually a 1-px-hard line at the damage boundary.
-Pre-existing for single-rect; multi-rect makes it more likely (more
-boundaries). Fix: pad the rect in the encoder filter by the same
-1–2 logical px, or expose a `Region::any_intersects_padded(r, pad)`.
-No fixture catches this today.
-
-### H2. `frame.damage` is a snapshot from a possibly-stale frame
-
-If the host batches `Ui::end_frame` outputs and submits them
-out-of-order, or skips a `submit` after `end_frame`, the
-`Damage.prev` map is rolled forward but the backbuffer isn't
-painted — next frame's diff is wrong. `Ui::invalidate_prev_frame`
-covers the documented case (surface lost / outdated), but the
-contract that "every `end_frame` is followed by exactly one
-`submit`" isn't enforced. A debug-assert in `submit` ("we haven't
-seen `end_frame` since last submit") would catch host-loop bugs.
+If the host calls `Ui::end_frame` without a matching `submit`, or
+submits out of order, the `Damage.prev` map is rolled forward but
+the backbuffer isn't painted — next frame's diff is wrong.
+`Ui::invalidate_prev_frame` covers the documented case (surface
+lost / outdated); a debug-assert in `submit` ("haven't seen
+`end_frame` since last submit") would catch host-loop bugs at the
+source. Defer until a real bug is filed.
 
 ## References
 
@@ -250,6 +205,6 @@ seen `end_frame` since last submit") would catch host-loop bugs.
 - Skia `SkRegion`, pixman regions — RLE/banded reference.
 - Chromium `cc::DamageTracker` — single-rect baseline.
 - Live code: `src/ui/damage/{mod.rs, region/mod.rs}`,
-  `src/renderer/frontend/encoder/mod.rs:170`,
+  `src/renderer/frontend/encoder/mod.rs:172`,
   `src/renderer/backend/mod.rs::{submit, run_one_pass}`,
   `src/renderer/backend/quad_pipeline.rs::{upload_overlays, draw_overlays}`.

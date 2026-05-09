@@ -101,7 +101,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     // doesn't move the rect, so prev == curr; the union is the
     // single rect.
     assert_eq!(
-        ui.damage.region.iter().next(),
+        ui.damage.region.iter_rects().next(),
         Some(ui.layout.result[Layer::Main].rect[dirty_id.index()])
     );
 }
@@ -172,7 +172,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
     let damage = ui
         .damage
         .region
-        .iter()
+        .iter_rects()
         .next()
         .expect("removed widget must produce damage");
     assert!(damage.size.w >= prev_button_rect.size.w);
@@ -246,7 +246,7 @@ fn damage_filter_returns_partial_when_small() {
     let r = ui
         .damage
         .region
-        .iter()
+        .iter_rects()
         .next()
         .expect("single-leaf change → some damage");
     assert_eq!(
@@ -325,7 +325,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let damage_rect = ui
         .damage
         .region
-        .iter()
+        .iter_rects()
         .next()
         .expect("child changed → some damage");
     assert!(
@@ -374,7 +374,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // waste (400 px²) exceeds the savings, so the region keeps both
     // rects separate — exactly the point of multi-rect damage. The
     // backend paints two scissored passes instead of one big one.
-    let rects: Vec<Rect> = ui.damage.region.iter().collect();
+    let rects: Vec<Rect> = ui.damage.region.iter_rects().collect();
     assert_eq!(rects.len(), 2, "transform animation → two damage rects");
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
@@ -795,7 +795,7 @@ fn button_hover_damage_covers_only_the_button() {
         ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.index()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage.region.iter().next(), Some(hot_rect));
+    assert_eq!(ui.damage.region.iter_rects().next(), Some(hot_rect));
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
         DamagePaint::Partial(hot_rect.into()),
@@ -842,7 +842,7 @@ fn button_unhover_damage_covers_only_the_button() {
         ui.forest.tree(Layer::Main).records.widget_id()[ui.damage.dirty[0].index()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage.region.iter().next(), Some(hot_rect));
+    assert_eq!(ui.damage.region.iter_rects().next(), Some(hot_rect));
     assert_eq!(
         ui.damage.filter(ui.display.logical_rect()),
         DamagePaint::Partial(hot_rect.into()),
