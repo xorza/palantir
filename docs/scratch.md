@@ -7,12 +7,9 @@ anim slot automate
 
 animate option for appearing stroke
 
-multiple damage rects
 
 full repaint on popup discard
 
- #[cfg(test)]        self.dirty.clear();
-
 different max damage region for benching
 
-waiter animated control
+spinner animated control

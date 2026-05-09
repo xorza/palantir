@@ -6,27 +6,18 @@
   min-growth fallback at the cap; backend replays one render pass
   per rect; coverage threshold 0.7. Design rationale + open
   follow-ups in `multi-rect-damage.md`.
+- **Subtree-level damage cull at the encoder.** `encode_node` early-
+  returns when no damage rect intersects the node's `screen_rect`.
+  Bench shows ~4.6 % saving on sparse-damage frames over a 1k-node
+  grid — see `multi-rect-damage.md` "Bench findings" for numbers.
 
 ## Next
 
-- **Subtree-level damage cull at the encoder.** Today the encoder
-  walks every viewport-visible subtree and uses the damage filter
-  only to skip leaf paint cmds (`DrawRect`/`DrawText`); Push/Pop
-  pairs and recursion still happen. Mirror the existing viewport
-  cull at `encoder/mod.rs:147` against `region.any_intersects(
-  screen_rect)` so subtrees outside damage skip recursion entirely.
-  **Soundness caveat:** `Cascade.screen_rect` is the node's own
-  rect, not subtree bbox (`cascade.rs:176`) — descendants of
-  Canvas / non-clipped panels / transformed nodes may overflow.
-  The existing viewport cull already trusts this assumption "by
-  convention"; damage cull inherits the same. Bench-gate before
-  shipping: 1000-node tree + small damage rect → measure encoder
-  time with vs. without.
 - **Incremental hit-index rebuild.** Only update `HitIndex` for dirty
   + cascade-changed nodes.
 - **Debug overlay: flash dirty nodes.** Rect outline landed with
-  Step 6 of multi-rect; per-node flash needs `Damage.dirty`
-  reintroduced to production (currently `#[cfg(test)]`).
+  Step 6 of multi-rect; per-node flash uses `Damage.dirty` (now
+  always populated in production).
 
 ## Later — lower-impact
 
