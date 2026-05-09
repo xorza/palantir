@@ -1694,6 +1694,7 @@ dependencies = [
  "soa-rs",
  "strum",
  "thiserror 2.0.18",
+ "tinyvec",
  "toml",
  "tracing",
  "tracing-subscriber",
