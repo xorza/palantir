@@ -549,10 +549,11 @@ fn run_frame_pass_count_matches_action_trigger() {
     }
 }
 
-/// `Ui::run_frame` plumbs `now` and `request_repaint` end-to-end:
-/// per-call `now` lands in `Ui::time`, the derived `dt` clamps to
-/// `MAX_DT`, `repaint_requested` resets at the top of every call, and
-/// the flag set during recording surfaces on `FrameOutput`.
+/// `Ui::run_frame` plumbs `now`, `dt`, and the repaint-requested
+/// flag end-to-end: per-call `now` lands in `Ui::time`, the derived
+/// `dt` clamps to `MAX_DT`, `repaint_requested` resets at the top
+/// of every call, and a flag set during recording surfaces on
+/// `FrameOutput`.
 #[test]
 fn run_frame_plumbs_now_dt_and_repaint_request() {
     use crate::ui::MAX_DT;
@@ -572,7 +573,7 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
         });
         assert!(
             !frame.repaint_requested(),
-            "no widget called request_repaint — flag must stay false",
+            "no animate-not-settled flag set — must stay false",
         );
     }
     assert_eq!(ui.time, Duration::from_millis(16));
@@ -582,15 +583,18 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
         ui.dt,
     );
 
-    // Frame B: widget calls request_repaint, now = 32ms (16ms later).
+    // Frame B: simulate an unsettled animation tick by setting the
+    // internal flag during recording (production code does this via
+    // `Ui::animate`). The flag must survive end_frame and reach
+    // `FrameOutput`.
     {
         let frame = ui.run_frame(display, Duration::from_millis(32), |ui| {
             Panel::vstack().id_salt("root").show(ui, |_| {});
-            ui.request_repaint();
+            ui.repaint_requested = true;
         });
         assert!(
             frame.repaint_requested(),
-            "request_repaint during recording must surface on FrameOutput",
+            "repaint_requested set during recording must surface on FrameOutput",
         );
     }
     assert_eq!(ui.time, Duration::from_millis(32));

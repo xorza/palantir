@@ -124,8 +124,10 @@ known correctness gotchas.
    `animated_parent_transform_unions_old_and_new_positions`).
 5. **Z-order changes.** Sibling reorder damages the union of
    affected siblings via `subtree_hash` rolling up child order.
-6. **Skipped frames.** `Ui::surface_invalidated` rewinds the prev
-   snapshot. Not enforced; see open follow-up H2.
+6. **Skipped frames.** `Ui::begin_frame`'s auto-rewind (via the
+   shared `FrameState` set by `WgpuBackend::submit`) rewinds the
+   prev snapshot when the previous `FrameOutput` didn't reach
+   submit. No host-facing "invalidate" call needed.
 7. **TBDR mobile.** Multi-pass damage can be net-negative on tilers.
    Desktop-first.
 8. **`VK_KHR_incremental_present`.** Not exposed by wgpu (gfx-rs/wgpu
@@ -220,9 +222,10 @@ success path) marks `Submitted`; the next `begin_frame`
 auto-rewinds `damage.prev_surface` if state isn't `Submitted`. A
 host that drops a `FrameOutput` (surface error, panic in error
 arm, anything) gets one wasted `Full` frame, not silent damage
-smear. `surface_invalidated` is now rarely needed —
-documented as "use only when something *outside*
-`submit`'s knowledge invalidated the backbuffer".
+smear. Combined with `begin_frame`'s display-changed check and
+`submit`'s `ensure_backbuffer` recreate detection, no host-facing
+"invalidate" call is needed at all — `Ui::surface_invalidated`
+was removed.
 
 ## References
 

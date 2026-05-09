@@ -239,7 +239,6 @@ impl ApplicationHandler for App {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 state.display.scale_factor = scale_factor as f32;
                 state.repaint_requested = true;
-                state.ui.surface_invalidated();
             }
             WindowEvent::Resized(new) => {
                 let max = state.device.limits().max_texture_dimension_2d;
@@ -247,8 +246,6 @@ impl ApplicationHandler for App {
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
                 state.display.physical = glam::UVec2::new(state.config.width, state.config.height);
-
-                state.ui.surface_invalidated();
                 state.repaint_requested = true;
             }
             WindowEvent::RedrawRequested => state.draw(),
@@ -269,47 +266,43 @@ impl State {
             self.fps_window_frames = 0;
         }
 
-        use wgpu::CurrentSurfaceTexture::*;
-        let frame = match self.surface.get_current_texture() {
-            Success(f) => f,
-            Suboptimal(_) | Outdated | Lost => {
-                tracing::warn!("Surface texture is suboptimal, outdated, or lost");
-                self.surface.configure(&self.device, &self.config);
-
-                self.ui.surface_invalidated();
-                self.repaint_requested = true;
-                return;
-            }
-            Timeout | Validation => {
-                tracing::warn!("Surface texture is timeout or validation");
-
-                self.ui.surface_invalidated();
-                self.repaint_requested = true;
-                return;
-            }
-            Occluded => {
-                tracing::warn!("Surface texture is occluded");
-                return;
-            }
-        };
-
-        self.repaint_requested = false;
-
+        // `frame_out` borrows `self.ui` (it carries the encoded
+        // `RenderBuffer`), so any reads of `self.ui.*` have to happen
+        // up front.
         let clear = self.ui.theme.window_clear;
-        let frame_out = self
-            .ui
-            .run_frame(self.display, self.start.elapsed(), |ui| build_root(ui, &mut self.active));
 
-        if frame_out.repaint_requested() {
-            self.repaint_requested = true;
-        }
+        // Run the frame first so we can early-out on `Skip` without
+        // touching the swapchain at all. Acquired `SurfaceTexture`s
+        // *must* be presented; dropping one without `present()` leaves
+        // the swapchain in an undefined state and stutters the next
+        // acquire.
+        let frame_out = self.ui.run_frame(self.display, self.start.elapsed(), |ui| {
+            build_root(ui, &mut self.active)
+        });
+        self.repaint_requested = frame_out.repaint_requested();
 
         if frame_out.can_skip_rendering() {
             return;
         }
 
-        self.backend.submit(&frame.texture, clear, frame_out);
+        use wgpu::CurrentSurfaceTexture::*;
+        let frame = match self.surface.get_current_texture() {
+            Success(f) => f,
+            Suboptimal(_) | Outdated | Lost => {
+                tracing::warn!("surface acquire: suboptimal / outdated / lost");
+                self.surface.configure(&self.device, &self.config);
+                self.repaint_requested = true;
+                return;
+            }
+            Timeout | Validation => {
+                tracing::warn!("surface acquire: timeout / validation");
+                self.repaint_requested = true;
+                return;
+            }
+            Occluded => return,
+        };
 
+        self.backend.submit(&frame.texture, clear, frame_out);
         frame.present();
     }
 }
