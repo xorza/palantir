@@ -12,8 +12,10 @@ for *what* the system does.
   (`src/ui/damage/region/mod.rs`).
 - `DamagePaint::{Full, Partial(DamageRegion), Skip}`
   (`src/ui/damage/mod.rs`).
-- Encoder filter: `region.any_intersects(rect)` per leaf
-  (`src/renderer/frontend/encoder/mod.rs:172`).
+- Encoder filter: `region.any_intersects(rect)` per leaf, plus a
+  subtree-cull early-return mirroring the viewport cull
+  (`src/renderer/frontend/encoder/mod.rs::encode_node`). Filtered
+  subtrees emit zero commands.
 - Backend: one render pass per rect; first pass uses `Clear` when
   `force_clear`, else `Load`; subsequent passes always `Load`
   (`src/renderer/backend/mod.rs::run_one_pass`).
@@ -155,10 +157,52 @@ glyph cells incorrectly; stencil over union doesn't).
 
 ---
 
-# Open follow-ups
+# Bench findings (`benches/damage.rs`)
 
-Both items are blocked on a workload that doesn't exist yet — neither
-is action-ready today.
+Workload bench: 32×32 grid (~1056 nodes) at 1280×800 @2× DPI, mono
+fallback shaper, single-threaded.
+
+| Scenario | Without cull | With cull | Δ |
+|---|---|---|---|
+| `skip` | 67.0 µs | 66.7 µs | noise |
+| `single_button_change` | 71.1 µs | 67.8 µs | **−3.3 µs (−4.6 %)** |
+| `two_corner_change` | 71.5 µs | 68.2 µs | **−3.3 µs (−4.6 %)** |
+| `full_repaint` | 118.0 µs | 117.7 µs | noise (cull doesn't fire on Full) |
+
+`DamageRegion::add` microbench (disjoint inputs):
+
+| N | Time | Path |
+|---|---|---|
+| 1–8 | 11–40 ns | append (under cap) |
+| 16 | 617 ns | min-growth fires from 9th rect |
+| 32 | 1.6 µs | min-growth saturated |
+
+Realistic workloads stay at 1–2 rects; min-growth never fires.
+
+# Conclusions
+
+### `DAMAGE_RECT_CAP = 8` — settled (kept)
+
+Decision: keep at 8. Bench shows realistic workloads produce 1–2
+rects; min-growth never fires. Could safely drop to 4 (saves 64 B
+per `DamageRegion`); could raise to 16 with no measurable cost.
+Eight is fine — moving it isn't worth doc churn.
+
+### Subtree damage cull — landed
+
+Implemented in `encoder/mod.rs::encode_node` next to the existing
+viewport cull: skip the whole subtree (recursion + Push/Pop emission)
+when `region.any_intersects(screen_rect)` is false. Same shape, same
+"by convention" trust as the viewport cull. Two encoder tests
+(`damage_filter_culls_subtree_outside_damage`,
+`damage_filter_culls_transformed_subtree_outside_damage`) pin the
+new contract: filtered subtrees emit no commands at all.
+
+Bench shows ~4.6 % win on sparse-damage workloads on a 32×32 grid.
+Wins scale with tree depth — production hierarchies typically deeper
+than this bench's 3 levels. Implementation cost: 6 lines.
+
+# Open follow-ups
 
 ### Symmetric scissor-boundary leakage
 
@@ -195,11 +239,6 @@ frequently-changing widget", which no fixture or app currently has.
 **Side knob:** `DAMAGE_AA_PADDING = 2` is defensive; most AA bleeds
 < 1 px. Halving shrinks the leakage zone. Worth evaluating once a
 fixture exists.
-
-### `DAMAGE_RECT_CAP = 8` tuning
-
-Slint ships 3, LVGL 32. Eight was a guess. Re-decide once a real
-workload bench exists; until then `8` is fine.
 
 ## References
 

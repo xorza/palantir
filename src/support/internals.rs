@@ -54,3 +54,49 @@ pub fn text_shaper_measure_calls(shaper: &TextShaper) -> u64 {
 pub fn text_shaper_has_reuse_entry(shaper: &TextShaper, wid: WidgetId, ordinal: u16) -> bool {
     shaper.inner.borrow().reuse.contains_key(&(wid, ordinal))
 }
+
+/// Number of damage rects produced by the most recent `end_frame`.
+/// `0` for `Skip`/`Full` paths (they don't enumerate rects);
+/// `1..=DAMAGE_RECT_CAP` for `Partial`. Read by benches to verify
+/// scenario shape (e.g. "two-corner change actually produced 2
+/// rects").
+pub fn damage_rect_count(ui: &Ui) -> usize {
+    ui.damage.region.iter_rects().count()
+}
+
+/// Variant of `damage_rect_count` that classifies the frame's
+/// final paint decision. Lets benches partition timings by Skip /
+/// Partial(N) / Full path without the caller reaching into private
+/// types.
+pub fn damage_paint_kind(ui: &Ui) -> &'static str {
+    use crate::ui::damage::DamagePaint;
+    let surface = ui.display.logical_rect();
+    match ui.damage.filter(surface) {
+        DamagePaint::Skip => "skip",
+        DamagePaint::Full => "full",
+        DamagePaint::Partial(_) => "partial",
+    }
+}
+
+/// Build a `DamageRegion` from a slice of rects, for microbenches.
+/// Mirrors what `Damage::compute` does internally without needing a
+/// full `Ui` setup. Returns the rect count after the merge policy
+/// runs — benches use that to verify "8 disjoint inputs produced 8
+/// retained rects" (no min-growth fired) vs "9 inputs produced 8
+/// retained" (min-growth did fire).
+pub fn damage_region_after_adds(rects: &[crate::primitives::rect::Rect]) -> usize {
+    let mut region = crate::ui::damage::region::DamageRegion::default();
+    for r in rects {
+        region.add(*r);
+    }
+    region.iter_rects().count()
+}
+
+/// Simulate a successful `WgpuBackend::submit` for benches that
+/// drive `Ui::run_frame` without a real GPU. Without it,
+/// `Ui::begin_frame`'s auto-rewind would fire every iteration —
+/// every bench frame would escalate to `Full` and the Skip /
+/// Partial scenarios would be unmeasurable.
+pub fn mark_frame_submitted(out: &crate::renderer::frontend::FrameOutput<'_>) {
+    out.frame_state.mark_submitted();
+}

@@ -149,6 +149,21 @@ fn encode_node(
         return;
     }
 
+    // Damage-aware subtree cull. Same shape as the viewport cull
+    // above: if no damage rect intersects this subtree's screen
+    // bounds, the whole subtree contributes nothing this frame —
+    // skip recursion + Push/Pop emission entirely. **Soundness
+    // caveat:** `Cascade.screen_rect` is the node's own paint rect,
+    // not the subtree bbox; descendants of Canvas / non-clipped /
+    // transformed parents may overflow. The viewport cull already
+    // trusts this assumption "by convention"; damage cull inherits
+    // the same. See `docs/roadmap/damage.md`.
+    if let Some(region) = damage_filter
+        && !region.any_intersects(rows[id.index()].screen_rect)
+    {
+        return;
+    }
+
     let rect = layout.rect[id.index()];
 
     // Order: clip is in parent-of-panel space (pre-transform); transform

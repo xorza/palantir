@@ -809,8 +809,15 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
 /// Pin: PushClip/PopClip pairs are emitted even for clipped nodes whose
 /// rect doesn't intersect damage. The composer relies on these for group
 /// boundaries.
+/// Pin: a clipped panel whose subtree doesn't intersect damage gets
+/// fully culled — no clip Push/Pop, no descendant draws. Same shape
+/// as the off-screen viewport cull. The cull is sound when the
+/// clipped subtree's contents stay inside the parent's `screen_rect`
+/// (the typical case). Canvas / unclipped / transformed children
+/// that overflow violate this; that's a documented "by convention"
+/// trust, same as the viewport cull above.
 #[test]
-fn damage_filter_preserves_clip_pushpop() {
+fn damage_filter_culls_subtree_outside_damage() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().id_salt("outer").show(&mut ui, |ui| {
         Panel::hstack()
@@ -834,11 +841,12 @@ fn damage_filter_preserves_clip_pushpop() {
     let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
-    assert_eq!(pushes, pops, "clip push/pop must be balanced");
-    assert!(
-        pushes >= 1,
-        "filtered-out clipped node still emits its clip pair"
+    assert_eq!(
+        pushes, 0,
+        "filtered subtree should emit no clip push (cull),\n\
+         got {pushes}",
     );
+    assert_eq!(pops, 0, "no clip push ⇒ no clip pop");
     assert_eq!(
         count_draw_rects(&cmds),
         0,
@@ -846,10 +854,13 @@ fn damage_filter_preserves_clip_pushpop() {
     );
 }
 
-/// Pin: PushTransform/PopTransform pairs are emitted for filtered-out
-/// nodes too, so descendant transform composition stays correct.
+/// Pin: a transformed panel whose subtree doesn't intersect damage
+/// gets fully culled — no PushTransform/PopTransform, no descendant
+/// draws. Same cull as the clipped variant; same "transform doesn't
+/// move children outside the parent's screen_rect" by-convention
+/// trust.
 #[test]
-fn damage_filter_preserves_transform_pushpop() {
+fn damage_filter_culls_transformed_subtree_outside_damage() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::hstack()
@@ -881,10 +892,15 @@ fn damage_filter_preserves_transform_pushpop() {
         .iter()
         .filter(|k| **k == CmdKind::PopTransform)
         .count();
-    assert_eq!(pushes, pops);
-    assert!(
-        pushes >= 1,
-        "filtered-out transformed node still emits its transform pair"
+    assert_eq!(
+        pushes, 0,
+        "filtered subtree should emit no transform push (cull); got {pushes}",
+    );
+    assert_eq!(pops, 0, "no push ⇒ no pop");
+    assert_eq!(
+        count_draw_rects(&cmds),
+        0,
+        "no rects emitted when nothing intersects damage",
     );
 }
 
