@@ -12,6 +12,7 @@ pub(crate) mod tree;
 pub(crate) mod ui;
 pub(crate) mod widgets;
 
+pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use animation::spring::Spring;
 pub use animation::{AnimSlot, AnimSpec};
