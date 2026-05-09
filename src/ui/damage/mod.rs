@@ -11,15 +11,13 @@
 //! its merge policy; the result drives the encoder filter and the
 //! per-pass scissor list in the backend.
 //!
-//! `Damage.dirty` is a test-only per-node dirty list (added /
-//! hash-changed / rect-changed). Production builds don't accumulate
-//! it — the region is the actually-consumed output. Multi-rect
-//! damage was implemented rect-by-rect through the region and
-//! didn't end up needing per-node identity, so the test-only
-//! gating stays.
+//! `Damage.dirty` is the per-node dirty list (added /
+//! hash-changed / rect-changed) in pre-order paint order. Always
+//! populated; tests assert on it directly, and the "flash dirty
+//! nodes" debug overlay (see `docs/roadmap/damage.md`) is the
+//! production consumer.
 
 use crate::primitives::rect::Rect;
-#[cfg(test)]
 use crate::tree::NodeId;
 use crate::tree::forest::Forest;
 use crate::tree::node_hash::NodeHash;
@@ -66,7 +64,6 @@ pub(crate) struct NodeSnapshot {
 /// `region` is inline (`DamageRegion` is `Copy`).
 #[derive(Default)]
 pub(crate) struct Damage {
-    #[cfg(test)]
     pub(crate) dirty: Vec<NodeId>,
     pub(crate) region: DamageRegion,
     /// Last frame's per-widget `(rect, hash)` snapshot. Read by the
@@ -149,7 +146,6 @@ impl Damage {
         // frame's begin_frame comparison.
         let force_full = self.prev_surface.is_none();
         self.prev_surface = Some(surface);
-        #[cfg(test)]
         self.dirty.clear();
         let mut acc = DamageRegion::default();
 
@@ -178,12 +174,9 @@ impl Damage {
                         true
                     }
                 };
-                #[cfg(test)]
                 if dirty {
                     self.dirty.push(NodeId(i as u32));
                 }
-                #[cfg(not(test))]
-                let _ = dirty;
             }
         }
 
