@@ -65,17 +65,12 @@ impl DamageRegion {
     /// Fold `r` into the region per the policy described at the top
     /// of this module.
     pub(crate) fn add(&mut self, r: Rect) {
-        // 1. Skip empty contributions.
         if r.area() <= 0.0 {
             return;
         }
-        // 2. Skip if already covered.
         if self.rects.iter().any(|e| e.contains_rect(r)) {
             return;
         }
-        // 3. Cascade-absorb: pull in any existing rect the candidate
-        //    contains or merges with; each absorption grows the
-        //    candidate, which may absorb more on the next pass.
         let mut candidate = r;
         loop {
             let absorbed = self.rects.iter().position(|e| {
@@ -90,7 +85,6 @@ impl DamageRegion {
                 None => break,
             }
         }
-        // 4. Append, or min-growth-merge if at cap.
         if self.rects.len() < DAMAGE_RECT_CAP {
             self.rects.push(candidate);
             return;
