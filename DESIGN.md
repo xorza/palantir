@@ -142,7 +142,9 @@ Cases handled:
 
 **Don't bubble events.** Topmost widget at the point handles, then it's done. Routed events (WPF tunnel/bubble) encourage accidental coupling; egui omitted them and never regretted it.
 
-**Hit-test is rect-only today.** Hit shapes per node (`RoundedRect`/`Path`/`None` for click-through overlays) and explicit layers (`LayerId = (Order, AreaIndex)` with `Background/Main/Foreground/Tooltip/Popup/Debug`) are open extensions — the cascade snapshot can carry per-node hit shapes and a layer field whenever a real workload (rounded buttons rejecting corners, popup ordering) demands them.
+**Hit-test is rect-only today.** Hit shapes per node (`RoundedRect`/`Path`/`None` for click-through overlays) are still an open extension — the cascade snapshot can carry per-node hit shapes whenever a real workload (rounded buttons rejecting corners) demands them.
+
+**Layers are explicit.** `Layer` (`Main`/`Popup`/`Modal`/`Tooltip`/`Debug`) is an enum on the recorder; `Ui::layer(layer, anchor, body)` switches the active arena for the body's duration. The tree is a `Forest` of one `Tree` per layer (`src/tree/forest.rs`); pipeline passes iterate `Layer::PAINT_ORDER` bottom-up for paint and reverse for hit-test, so popups paint above and reject pointers first without per-node z-index. Explicit z-order within a layer (Clay-style `zIndex`) is deferred until two siblings in the same layer need it.
 
 ## Rendering
 
