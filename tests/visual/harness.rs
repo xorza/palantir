@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, CosmicMeasure, Display, SharedCosmic, Ui, WgpuBackend, share};
+use palantir::{Color, Display, SharedCosmic, Ui, WgpuBackend};
 use pollster::FutureExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -53,7 +53,7 @@ thread_local! {
     /// we keep one per worker thread instead of globally. Fonts load
     /// once per thread; cargo test reuses workers across tests so the
     /// cost amortizes.
-    static COSMIC: SharedCosmic = share(CosmicMeasure::with_bundled_fonts());
+    static COSMIC: SharedCosmic = SharedCosmic::with_bundled_fonts();
 }
 
 pub struct Harness {

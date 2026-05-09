@@ -34,19 +34,62 @@ pub(crate) mod cosmic;
 /// Single source — cosmic and the theme default move together.
 pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 
-use crate::text::cosmic::CosmicMeasure;
+use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 
-/// Shared handle to a [`CosmicMeasure`], cloned into both [`TextMeasurer`]
-/// (Ui-side measurement) and the renderer's `TextRenderer` (wgpu-side
-/// shaping + rasterization). Single-threaded by design (`Rc`); access is
-/// sequential — measure during layout, prepare/render during the wgpu
-/// frame — so the `RefCell` is just runtime insurance against accidental
-/// re-entry.
-pub type SharedCosmic = Rc<RefCell<CosmicMeasure>>;
+/// Shared, cloneable handle to a [`CosmicMeasure`]. Same instance is
+/// installed on the `Ui` (for layout-time measurement) and read by the
+/// wgpu backend each `submit` (for shaping + rasterization), so both
+/// sides see one buffer cache.
+///
+/// Single-threaded by design (`Rc` inside); access is sequential —
+/// measure during layout, prepare/render during the wgpu frame — so
+/// the `RefCell` is just runtime insurance against accidental
+/// re-entry. Cloning is cheap (refcount bump).
+///
+/// Proxy methods ([`Self::measure`], [`Self::with_render_split`])
+/// hide the `borrow_mut()` so call sites read like ordinary method
+/// calls. Construct via [`Self::new`] or [`Self::with_bundled_fonts`].
+#[derive(Clone)]
+pub struct SharedCosmic {
+    inner: Rc<RefCell<CosmicMeasure>>,
+}
 
-/// Wrap a fresh [`CosmicMeasure`] for sharing between Ui and renderer.
-pub fn share(cosmic: CosmicMeasure) -> SharedCosmic {
-    Rc::new(RefCell::new(cosmic))
+impl SharedCosmic {
+    /// Wrap a freshly-built [`CosmicMeasure`] for sharing.
+    pub fn new(cosmic: CosmicMeasure) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(cosmic)),
+        }
+    }
+
+    /// Convenience constructor: bundled fonts, ready to install on
+    /// `Ui`. Equivalent to `SharedCosmic::new(CosmicMeasure::with_bundled_fonts())`.
+    pub fn with_bundled_fonts() -> Self {
+        Self::new(CosmicMeasure::with_bundled_fonts())
+    }
+
+    /// Shape `text` and return its measurement. Forwards to
+    /// [`CosmicMeasure::measure`] under a `borrow_mut`.
+    pub fn measure(
+        &self,
+        text: &str,
+        font_size_px: f32,
+        line_height_px: f32,
+        max_width_px: Option<f32>,
+    ) -> MeasureResult {
+        self.inner
+            .borrow_mut()
+            .measure(text, font_size_px, line_height_px, max_width_px)
+    }
+
+    /// Run `body` against a [`RenderSplit`] of the inner cosmic state
+    /// (`&mut FontSystem` + read-only buffer lookup). The borrow is
+    /// held for the closure's duration, so `body` must not re-enter
+    /// any `SharedCosmic` method on the same handle.
+    pub(crate) fn with_render_split<R>(&self, body: impl FnOnce(RenderSplit<'_>) -> R) -> R {
+        let mut cosmic = self.inner.borrow_mut();
+        body(cosmic.split_for_render())
+    }
 }
 
 /// Stable identifier for a shaped text run, computed at authoring time so
@@ -191,9 +234,7 @@ fn dispatch(
     max_width_px: Option<f32>,
 ) -> MeasureResult {
     match cosmic {
-        Some(c) => c
-            .borrow_mut()
-            .measure(text, font_size_px, line_height_px, max_width_px),
+        Some(c) => c.measure(text, font_size_px, line_height_px, max_width_px),
         None => mono_measure(text, font_size_px, line_height_px, max_width_px),
     }
 }
@@ -557,9 +598,7 @@ mod tests {
         // pin exact pixel values — those depend on font metrics — just
         // the monotonicity invariant any consumer relies on.
         let mut m = TextMeasurer::default();
-        m.set_cosmic(crate::text::share(
-            crate::text::cosmic::CosmicMeasure::with_bundled_fonts(),
-        ));
+        m.set_cosmic(crate::text::SharedCosmic::with_bundled_fonts());
         let s = "hello";
         let widths: Vec<f32> = (0..=s.len())
             .map(|i| m.caret_x(s, i, 16.0, 16.0 * LINE_HEIGHT_MULT))

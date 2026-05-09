@@ -9,7 +9,7 @@ use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::shape::Shape;
-use crate::text::{SharedCosmic, cosmic::CosmicMeasure, share};
+use crate::text::SharedCosmic;
 #[allow(unused_imports)]
 use crate::tree::Layer;
 use crate::tree::element::Configure;
@@ -53,7 +53,7 @@ pub(crate) fn new_ui_text() -> Ui {
     // Fine because cosmic state across tests is just a glyph cache —
     // tests assert on layout output, not cache contents.
     thread_local! {
-        static SHARED: SharedCosmic = share(CosmicMeasure::with_bundled_fonts());
+        static SHARED: SharedCosmic = SharedCosmic::with_bundled_fonts();
     }
     let mut ui = Ui::new();
     SHARED.with(|c| ui.set_cosmic(c.clone()));
