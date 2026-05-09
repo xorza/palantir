@@ -128,6 +128,12 @@ pub struct WgpuBackend {
     /// group, uploaded via [`QuadPipeline::upload_masks`]. Cleared at the
     /// start of each stencil frame; capacity retained.
     masks: Vec<Quad>,
+    /// Retained scratch for per-frame damage scissors. One entry per
+    /// rect in `DamagePaint::Partial(region)` after physical-px scaling
+    /// plus AA padding plus viewport clamping; rects that clamp to zero
+    /// area are filtered out. `Full` and `Skip` leave it empty.
+    /// Capacity reused across frames so steady-state allocs stay zero.
+    damage_scissors: Vec<URect>,
 }
 
 impl WgpuBackend {
@@ -143,6 +149,7 @@ impl WgpuBackend {
             backbuffer: None,
             mask_indices: Vec::new(),
             masks: Vec::new(),
+            damage_scissors: Vec::new(),
         }
     }
 
@@ -287,19 +294,22 @@ impl WgpuBackend {
             return;
         }
 
-        // Convert the logical damage rect (Partial only) to a
-        // physical-px scissor, padded for AA bleed and clamped to the
-        // surface. `Full` skips this and paints the whole viewport.
-        // Step 1: region carries a single rect (multi-rect dispatch
-        // lands in Step 3 of the multi-rect-damage roadmap).
-        let damage_scissor = match damage {
-            DamagePaint::Partial(region) => region
-                .iter()
-                .next()
-                .and_then(|r| logical_rect_to_phys_scissor(r, buffer)),
-            DamagePaint::Full => None,
-            DamagePaint::Skip => unreachable!("handled above"),
-        };
+        // Build the per-frame scissor list. `Full` → empty list →
+        // single Clear+full-viewport pass. `Partial` → one entry per
+        // rect in the region after physical-px scaling, AA padding,
+        // and viewport clamping; rects that clamp to zero area are
+        // filtered out. If the filter empties the list the frame
+        // degrades to a Full repaint (correct, just wasteful — won't
+        // happen in practice unless damage lies entirely outside the
+        // surface).
+        self.damage_scissors.clear();
+        if let DamagePaint::Partial(region) = damage {
+            for r in region.iter() {
+                if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
+                    self.damage_scissors.push(s);
+                }
+            }
+        }
         let clear_op = wgpu::LoadOp::Clear(wgpu::Color {
             r: clear.r as f64,
             g: clear.g as f64,
@@ -307,11 +317,6 @@ impl WgpuBackend {
             a: clear.a as f64,
         });
         let force_clear = frame.debug_overlay.is_some_and(|c| c.clear_damage);
-        let load_op = if damage_scissor.is_some() && !force_clear {
-            wgpu::LoadOp::Load
-        } else {
-            clear_op
-        };
 
         // Stencil path activates whenever the encoded frame contains a
         // `PushClipRounded`. Lazy-init the stencil texture + pipeline
@@ -356,7 +361,7 @@ impl WgpuBackend {
             &buffer.quads,
         );
 
-        if damage_scissor.is_some() {
+        if !self.damage_scissors.is_empty() {
             self.quad
                 .upload_clear(&self.queue, buffer.viewport_phys_f, clear);
         }
@@ -383,7 +388,29 @@ impl WgpuBackend {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.main"),
             });
-        {
+
+        // One render pass per damage rect. Empty `damage_scissors`
+        // (Full repaint, or all rects clamped to zero) collapses to a
+        // single Clear+full-viewport pass. With multiple scissors the
+        // first pass loads (so last frame's pixels carry through),
+        // each subsequent pass also loads — otherwise we'd erase
+        // earlier passes' output. The `force_clear` debug-overlay
+        // path applies to the first pass only, so undamaged regions
+        // flash but later damage rects' painted pixels survive.
+        let pass_count = self.damage_scissors.len().max(1);
+        for pass_idx in 0..pass_count {
+            let scissor = self.damage_scissors.get(pass_idx).copied();
+            let load_op = match scissor {
+                Some(_) if !(force_clear && pass_idx == 0) => wgpu::LoadOp::Load,
+                _ => clear_op,
+            };
+            tracing::trace!(
+                pass = pass_idx,
+                of = pass_count,
+                ?scissor,
+                "wgpu_backend.submit.pass"
+            );
+
             // Stencil attachment is built around `&backbuffer`, so its
             // lifetime needs to outlive the pass — extract before the
             // descriptor block.
@@ -403,7 +430,7 @@ impl WgpuBackend {
                     view,
                     depth_ops: None,
                     stencil_ops: Some(wgpu::Operations {
-                        // Cleared every frame — stencil contents never
+                        // Cleared every pass — stencil contents never
                         // need to survive across passes (the cmd-buffer
                         // replays mask writes on every frame regardless
                         // of cache hits).
@@ -427,7 +454,7 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            self.render_groups(&mut pass, buffer, damage_scissor, use_stencil, text_mode);
+            self.render_groups(&mut pass, buffer, scissor, use_stencil, text_mode);
         }
 
         // Copy the just-painted backbuffer onto the swapchain texture.
