@@ -80,6 +80,41 @@ fn unchanged_authoring_produces_no_damage() {
     assert!(ui.damage.region.is_empty());
 }
 
+/// Regression: a `Skip` frame that the host bypasses (no
+/// `backend.submit` → no `mark_submitted`) must not force the next
+/// frame to `Full`. `end_frame` marks `Skip` as submitted directly so
+/// the next `begin_frame`'s auto-rewind doesn't kick in.
+#[test]
+fn skip_frame_does_not_force_next_to_full() {
+    let mut ui = Ui::new();
+    ui.begin_frame(DISPLAY);
+    one_frame(&mut ui, BLUE);
+    let first = ui.end_frame();
+    assert_eq!(first.damage, DamagePaint::Full);
+    first.frame_state.mark_submitted();
+
+    // Identical content → Skip. Drop the FrameOutput WITHOUT calling
+    // mark_submitted (simulates the host taking the
+    // `can_skip_rendering()` early-return path).
+    ui.begin_frame(DISPLAY);
+    one_frame(&mut ui, BLUE);
+    let skip = ui.end_frame();
+    assert_eq!(skip.damage, DamagePaint::Skip);
+    drop(skip);
+
+    // Next frame: still no diff. Pre-fix this returned Full because
+    // the previous Skip never reached `mark_submitted`, so begin_frame
+    // saw Pending and rewound prev.
+    ui.begin_frame(DISPLAY);
+    one_frame(&mut ui, BLUE);
+    let next = ui.end_frame();
+    assert_eq!(
+        next.damage,
+        DamagePaint::Skip,
+        "Skip frames must not poison the next frame into Full"
+    );
+}
+
 /// Pin: an authoring change on one leaf marks just that leaf
 /// dirty; the parent (whose own fields didn't change and whose
 /// rect is identical) stays clean.

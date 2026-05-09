@@ -179,6 +179,12 @@ impl Ui {
             .is_some_and(|prev| prev != new_surface);
         let frame_skipped = !self.frame_state.was_last_submitted();
         if display_changed || frame_skipped {
+            tracing::debug!(
+                display_changed,
+                frame_skipped,
+                first_frame = self.damage.prev_surface.is_none(),
+                "damage.invalidate_prev"
+            );
             self.damage.invalidate_prev();
         }
         self.frame_state.reset_to_idle();
@@ -226,7 +232,13 @@ impl Ui {
             &self.display,
         );
 
-        self.frame_state.mark_pending();
+        // Skip needs no host submit; mark concluded directly so the next
+        // begin_frame doesn't auto-rewind to Full.
+        if matches!(damage, DamagePaint::Skip) {
+            self.frame_state.mark_submitted();
+        } else {
+            self.frame_state.mark_pending();
+        }
         FrameOutput {
             buffer,
             damage,
