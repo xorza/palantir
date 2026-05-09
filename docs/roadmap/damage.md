@@ -3,7 +3,8 @@
 ## Next
 
 - **Multi-rect damage.** N disjoint regions instead of one union;
-  avoids 50 % heuristic tripping on unrelated corners.
+  avoids 50 % heuristic tripping on unrelated corners. Design + steps
+  in `multi-rect-damage.md`.
 - **Incremental hit-index rebuild.** Only update `HitIndex` for dirty
   + cascade-changed nodes.
 - **Debug overlay.** Flash dirty nodes + outline damage rect.
