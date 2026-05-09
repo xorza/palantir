@@ -402,7 +402,8 @@ fn no_damage_means_skip() {
     let d = Damage::default();
     // No damage rect → `filter` returns `Skip` (no work to do; the
     // backbuffer already holds the right pixels). Distinct from
-    // `Full` ("everything changed"), which is what `>50%` produces.
+    // `Full` ("everything changed"), which is what coverage above
+    // [`FULL_REPAINT_THRESHOLD`] produces.
     assert_eq!(d.filter(TEST_SURFACE), DamagePaint::Skip);
 }
 
@@ -413,8 +414,9 @@ fn damage_with(r: Rect) -> Damage {
     }
 }
 
-/// Heuristic: ratio = damage_area / surface_area; > 50% ⇒ Full,
-/// otherwise Partial. The check is `>`, not `>=`, so exactly 50%
+/// Heuristic: total coverage = `total_area / surface_area`; strictly
+/// above `FULL_REPAINT_THRESHOLD` (0.7) ⇒ Full, otherwise Partial.
+/// The check is `>`, not `>=`, so a rect at exactly the threshold
 /// stays Partial. A zero-area surface forces Full (divide-by-zero
 /// guard).
 #[test]
@@ -427,16 +429,22 @@ fn damage_filter_threshold_cases() {
             DamagePaint::Partial(damage_region(Rect::new(0.0, 0.0, 10.0, 10.0))),
         ),
         (
-            "large_64pct",
-            Rect::new(0.0, 0.0, 80.0, 80.0),
+            "large_81pct_above_threshold",
+            Rect::new(0.0, 0.0, 90.0, 90.0),
             TEST_SURFACE,
             DamagePaint::Full,
         ),
         (
-            "exact_50pct_stays_partial",
-            Rect::new(0.0, 0.0, 50.0, 100.0),
+            "below_threshold_64pct_stays_partial",
+            Rect::new(0.0, 0.0, 80.0, 80.0),
             TEST_SURFACE,
-            DamagePaint::Partial(damage_region(Rect::new(0.0, 0.0, 50.0, 100.0))),
+            DamagePaint::Partial(damage_region(Rect::new(0.0, 0.0, 80.0, 80.0))),
+        ),
+        (
+            "exact_70pct_stays_partial",
+            Rect::new(0.0, 0.0, 70.0, 100.0),
+            TEST_SURFACE,
+            DamagePaint::Partial(damage_region(Rect::new(0.0, 0.0, 70.0, 100.0))),
         ),
         (
             "zero_area_surface",
