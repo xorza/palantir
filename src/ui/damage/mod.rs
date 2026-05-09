@@ -1,7 +1,7 @@
 //! Per-frame damage detection. Computed in [`Ui::end_frame`] after
 //! `compute_hashes`; rebuilds the prev-frame snapshot in the same
-//! pass so the diff reads the old entry and writes the new one per
-//! node.
+//! pass via the `entry()` API — vacant slots get inserted, occupied
+//! slots get diffed and either updated or evicted.
 //!
 //! A node is **dirty** if its `(rect, authoring-hash)` differs from
 //! the entry keyed by the same `WidgetId` in `Damage.prev`, OR it
@@ -10,6 +10,14 @@
 //! Each contribution is folded into a [`region::DamageRegion`] via
 //! its merge policy; the result drives the encoder filter and the
 //! per-pass scissor list in the backend.
+//!
+//! **Painting-only invariant.** `Damage.prev` only holds entries for
+//! widgets that painted on their last recorded frame (have chrome OR
+//! direct shapes — see `Tree.rollups.paints`). Non-painting nodes
+//! contribute zero pixels, so they're skipped on insert. A
+//! painting→non-painting transition evicts the entry in the same
+//! diff loop; the prev rect contributes (clear those pixels), the
+//! curr rect doesn't.
 //!
 //! `Damage.dirty` is the per-node dirty list (added /
 //! hash-changed / rect-changed) in pre-order paint order. Always
@@ -29,14 +37,13 @@ use std::collections::hash_map::Entry;
 
 pub(crate) mod region;
 
-/// Per-widget snapshot retained across frames so the next frame's
-/// `Damage::compute` can diff `(rect, hash)` against the previous
-/// value. Indexed by stable [`WidgetId`].
-/// Per-painting-widget snapshot held in [`Damage::prev`]. Only widgets
-/// that painted last frame have an entry — non-painting nodes (e.g. a
-/// popup's invisible click-eater) contribute no pixels and are skipped
-/// at insert time, so their full-surface rect can't trip the
-/// full-repaint coverage threshold on add or remove.
+/// Per-painting-widget snapshot held in [`Damage::prev`], keyed by
+/// stable [`WidgetId`]. Only widgets that painted last frame have an
+/// entry — non-painting nodes (e.g. a popup's invisible click-eater)
+/// are skipped on insert, so their full-surface rect can't trip the
+/// full-repaint coverage threshold on add or remove. The diff in
+/// [`Damage::compute`] reads the prev value and either updates or
+/// evicts it in place.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
     /// Screen-space rect from last frame's `Cascade.screen_rect`.
@@ -72,8 +79,12 @@ pub(crate) struct NodeSnapshot {
 pub(crate) struct Damage {
     pub(crate) dirty: Vec<NodeId>,
     pub(crate) region: DamageRegion,
-    /// Last frame's per-widget `(rect, hash)` snapshot. Read by the
-    /// diff in `compute`, then rolled forward in the same pass.
+    /// Last frame's snapshot, **only for widgets that painted last
+    /// frame** (see the painting-only invariant in the module doc).
+    /// Read by the diff in `compute`, then updated/inserted/evicted
+    /// in place per node. Cross-layer uniqueness of `WidgetId` is
+    /// already enforced by `SeenIds::record` at recording time, so
+    /// the bare `WidgetId` key is safe.
     pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
     /// Last frame's surface rect. `None` on first frame.
     pub(crate) prev_surface: Option<Rect>,
@@ -118,14 +129,23 @@ impl Damage {
         self.prev_surface = None;
     }
 
-    /// Diff against the just-finished frame and return the filtered
-    /// damage rect ready for the encoder filter and the backend
-    /// scissor: `Some(rect)` → partial repaint, `None` → full repaint
-    /// (no diff, area above [`FULL_REPAINT_THRESHOLD`], or degenerate
-    /// `surface`). `self.prev` is rolled forward in the same pass —
-    /// the diff reads each `WidgetId`'s old entry via `insert`, then
-    /// evicts last-frame entries listed in `removed` (precomputed by
-    /// [`crate::tree::seen_ids::SeenIds`] so damage and `text` reuse the diff).
+    /// Diff against the just-finished frame and return a
+    /// [`DamagePaint`] ready for the renderer:
+    ///
+    /// - [`DamagePaint::Skip`] — empty region, nothing changed.
+    /// - [`DamagePaint::Partial`] — coverage below
+    ///   [`FULL_REPAINT_THRESHOLD`].
+    /// - [`DamagePaint::Full`] — first frame / surface change /
+    ///   degenerate surface / coverage above the threshold.
+    ///
+    /// `self.prev` is rolled forward in the same pass via the
+    /// `entry()` API: vacant slot with a painting node inserts; an
+    /// occupied slot whose snapshot is unchanged is a no-op; an
+    /// occupied slot whose node still paints but changed updates;
+    /// an occupied slot whose node stopped painting is evicted.
+    /// Last-frame entries listed in `removed` (precomputed by
+    /// [`crate::tree::seen_ids::SeenIds`] so damage and `text` reuse
+    /// the diff) are dropped afterwards.
     ///
     /// Rects are tracked in **screen space** (read straight off
     /// `Cascade.screen_rect`). This makes damage match where the GPU

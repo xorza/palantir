@@ -294,19 +294,11 @@ fn removed_widget_contributes_prev_rect_to_damage() {
         Panel::hstack().id_salt("root").show(ui, |_| {});
     });
 
-    // The button no longer exists in the tree, so it's not in
-    // `dirty` — but its prev rect must still influence damage.
-    // The root is dirty (its own arranged rect collapsed since
-    // the only child is gone), so damage = union(root rect,
-    // prev button rect).
-    let damage = ui
-        .damage
-        .region
-        .iter_rects()
-        .next()
-        .expect("removed widget must produce damage");
-    assert!(damage.size.w >= prev_button_rect.size.w);
-    assert!(damage.size.h >= prev_button_rect.size.h);
+    // Button is gone; root Panel is non-painting (no chrome) so it
+    // never entered prev. Only contribution is the Button's prev
+    // rect, surfaced via the `removed` list.
+    let rects: Vec<Rect> = ui.damage.region.iter_rects().collect();
+    assert_eq!(rects, vec![prev_button_rect]);
 }
 
 /// Pin: an added widget that wasn't in last frame contributes

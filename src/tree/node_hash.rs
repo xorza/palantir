@@ -45,6 +45,17 @@ pub(crate) struct NodeHash(pub(crate) u64);
 ///   contribute zero rect on add/remove/change, so a full-surface eater
 ///   doesn't blow past the full-repaint threshold. Populated alongside
 ///   `node` in `compute_node_hashes`.
+///
+///   **Lives here, not in `NodeFlags.attrs`.** The other per-node 1-byte
+///   flags (sense / disabled / clip / focusable) are *recording-time
+///   authoring inputs* set by `NodeFlags::pack()` at `open_node`;
+///   `paints` is *derived at end_frame* from `chrome` + `shape_span`
+///   (only known after `close_node`). Mixing the two would silently
+///   break "attrs == what the user typed", and the hash pass already
+///   covers chrome + shapes — packing `paints` into `attrs` would
+///   either hash it redundantly or need a special mask. A future
+///   subtree-rollup variant for whole-subtree skipping would also
+///   belong here, not in `attrs`.
 #[derive(Default)]
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<NodeHash>,
