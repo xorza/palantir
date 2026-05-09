@@ -6,7 +6,6 @@
     pub anim: AnimSpec,
 
 
-state: ResponseState, focused: bool
 
 skip animations if target ~= current
 
