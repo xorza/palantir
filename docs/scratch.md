@@ -7,9 +7,6 @@ anim slot automate
 
 animate option for appearing stroke
 
-
-full repaint on popup discard
-
-different max damage region for benching
-
 spinner animated control
+
+forest tree and mod.rs renames
