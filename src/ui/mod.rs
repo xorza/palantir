@@ -133,7 +133,7 @@ impl Ui {
     /// at startup and clone it into both `Ui` and the wgpu backend so they
     /// see the same buffer cache. Tests leave this unset and run on the
     /// deterministic mono fallback.
-    pub fn set_text_shaper(&mut self, cosmic: TextShaper) {
+    pub fn set_text_shaper(&mut self, shaper: TextShaper) {
         self.text.set_text_shaper(cosmic);
     }
 
