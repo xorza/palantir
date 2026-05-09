@@ -111,35 +111,45 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         quote! { #f: <#ty as ::core::default::Default>::default(), }
     });
 
+    // `#[inline]` on each method: Animatable is a tight math trait
+    // called per frame per animation, often across crate boundaries
+    // (palantir's `tick` calling derived impls in user code). Forces
+    // availability for cross-crate inlining.
     let expanded = quote! {
         impl #impl_generics ::palantir::Animatable for #name #ty_generics #where_clause {
+            #[inline]
             fn lerp(a: Self, b: Self, t: f32) -> Self {
                 Self {
                     #(#lerp_anim)*
                     #(#lerp_snap)*
                 }
             }
+            #[inline]
             fn sub(self, other: Self) -> Self {
                 Self {
                     #(#sub_anim)*
                     #(#sub_snap)*
                 }
             }
+            #[inline]
             fn add(self, other: Self) -> Self {
                 Self {
                     #(#add_anim)*
                     #(#add_snap)*
                 }
             }
+            #[inline]
             fn scale(self, k: f32) -> Self {
                 Self {
                     #(#scale_anim)*
                     #(#scale_snap)*
                 }
             }
+            #[inline]
             fn magnitude(self) -> f32 {
                 #magnitude_body
             }
+            #[inline]
             fn zero() -> Self {
                 Self {
                     #(#zero_anim)*

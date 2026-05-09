@@ -283,13 +283,21 @@ impl Ui {
         target: T,
         spec: Option<AnimSpec>,
     ) -> T {
-        let Some(spec) = spec else {
-            // Drop stale row so a future Some(_) starts fresh from
-            // `target` rather than carrying in-flight `current`.
-            T::slot_mut(&mut self.anim).rows.remove(&(id, slot));
+        // Merge `None` and instant-degenerate specs (`Duration { secs ≈ 0 }`)
+        // into one snap path. `tick` then handles only real motion.
+        let Some(spec) = spec.filter(|s| !s.is_instant()) else {
+            // Drop stale row so a future `Some(_)` starts fresh from
+            // `target`. `try_typed_mut` avoids allocating a typed map
+            // just to remove from one that may not exist.
+            if let Some(typed) = self.anim.try_typed_mut::<T>() {
+                typed.rows.remove(&(id, slot));
+            }
             return target;
         };
-        let r = T::slot_mut(&mut self.anim).tick(id, slot, target, spec, self.dt);
+        let r = self
+            .anim
+            .typed_mut::<T>()
+            .tick(id, slot, target, spec, self.dt);
         if !r.settled {
             self.repaint_requested = true;
         }

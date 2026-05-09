@@ -170,22 +170,20 @@ impl Shape {
                 stroke,
                 ..
             } => {
-                let no_fill = fill.approx_transparent();
+                let no_fill = fill.is_noop();
                 let no_stroke = match stroke {
                     None => true,
-                    Some(s) => approx_zero(s.width) || s.color.approx_transparent(),
+                    Some(s) => approx_zero(s.width) || s.color.is_noop(),
                 };
                 local_rect_paint_empty(local_rect) || (no_fill && no_stroke)
             }
-            Shape::Line { width, color, .. } => approx_zero(*width) || color.approx_transparent(),
+            Shape::Line { width, color, .. } => approx_zero(*width) || color.is_noop(),
             Shape::Text {
                 text,
                 color,
                 local_rect,
                 ..
-            } => {
-                local_rect_paint_empty(local_rect) || text.is_empty() || color.approx_transparent()
-            }
+            } => local_rect_paint_empty(local_rect) || text.is_empty() || color.is_noop(),
         }
     }
 }

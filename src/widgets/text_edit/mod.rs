@@ -104,12 +104,12 @@ impl<'a> TextEdit<'a> {
         // response to a freshly toggled `.disabled(true)`.
         let mut response = ui.response_for(id);
         response.disabled |= self.element.disabled;
-        let fallback_text = ui.theme.text.clone();
+        let fallback_text = ui.theme.text;
         let look = theme
             .pick(response)
-            .animate(ui, id, &fallback_text, theme.anim);
-        let font_size = look.font_size_px;
-        let line_height_mult = look.line_height_mult;
+            .animate(ui, id, fallback_text, theme.anim);
+        let font_size = look.text.font_size_px;
+        let line_height_mult = look.text.line_height_mult;
         // The renderer deflates by `element.padding` when laying out
         // `Shape::Text` (see `encoder::mod.rs`). Reading the same value
         // here keeps the caret rect aligned with the glyphs.
@@ -138,7 +138,7 @@ impl<'a> TextEdit<'a> {
         // Chrome paints via `Tree::chrome_for` — encoder emits it before
         // any clip. The surface's clip stays `None` (TextEdit's caret
         // and selection handle their own painting; no rect-clipping).
-        let surface = Some(Surface::from(look.background()));
+        let surface = Some(Surface::from(look.background));
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
         let resp_node = ui.node(self.element, surface, |ui| {
@@ -148,7 +148,7 @@ impl<'a> TextEdit<'a> {
             let (display, color) = if text_ptr.is_empty() && !is_focused {
                 (placeholder.clone(), theme.placeholder)
             } else {
-                (Cow::Owned(text_ptr.clone()), look.text_color)
+                (Cow::Owned(text_ptr.clone()), look.text.color)
             };
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {

@@ -67,11 +67,11 @@ impl Button {
         // Cascade lags by a frame; OR self-disabled in so a freshly
         // toggled `.disabled(true)` lands disabled visuals immediately.
         state.disabled |= element.disabled;
-        let fallback_text = ui.theme.text.clone();
+        let fallback_text = ui.theme.text;
         let look = style
             .pick(state)
-            .animate(ui, element.id, &fallback_text, style.anim);
-        let surface = Some(Surface::from(look.background()));
+            .animate(ui, element.id, fallback_text, style.anim);
+        let surface = Some(Surface::from(look.background));
         let label = self.label.clone();
         let label_align = self.label_align;
 
@@ -80,8 +80,8 @@ impl Button {
                 ui.add_shape(Shape::Text {
                     local_rect: None,
                     text: label,
-                    color: look.text_color,
-                    font_size_px: look.font_size_px,
+                    color: look.text.color,
+                    font_size_px: look.text.font_size_px,
                     line_height_px: look.line_height_px(),
                     wrap: TextWrap::Single,
                     align: label_align,

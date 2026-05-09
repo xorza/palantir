@@ -1,9 +1,12 @@
 //! Per-`(WidgetId, AnimSlot)` animation rows, generic over
 //! [`Animatable`]. See `docs/animations.md` for the design rationale.
 //!
-//! Storage is per-type (one [`AnimMapTyped`] field on [`AnimMap`] per
-//! supported `T`) so the hot path stays type-erasure-free. Adding a
-//! new `T` = implement `Animatable` + add a typed slot here.
+//! Storage is type-erased: [`AnimMap`] holds one boxed
+//! [`AnimMapTyped<T>`] per `TypeId` actually used. Adding a new
+//! `Animatable` type costs no central edits — first call to
+//! `Ui::animate::<T>` allocates the typed slot on demand.
+//! `#[derive(Animatable)]` from `palantir-anim-derive` wires the
+//! math; this module wires the storage.
 
 pub(crate) mod animatable;
 pub(crate) mod easing;
@@ -14,10 +17,9 @@ mod tests;
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
 use crate::primitives::approx::approx_zero;
-use crate::primitives::color::Color;
 use crate::tree::widget_id::WidgetId;
-use glam::Vec2;
 use rustc_hash::FxHashMap;
+use std::any::{Any, TypeId};
 use std::collections::hash_map::Entry;
 
 /// Slot index for stacking multiple animations on one widget. Widgets
@@ -105,13 +107,12 @@ pub(crate) struct AnimRow<T: Animatable> {
     pub(crate) velocity: T,      // springs only; zero for duration rows
     pub(crate) elapsed: f32,     // duration only; segment-local seconds
     pub(crate) segment_start: T, // duration only; `current` at last retarget
-    pub(crate) spec: AnimSpec,
 }
 
-/// Per-`T` animation table. Public so it can appear in
-/// [`Animatable::slot_mut`]'s signature, but opaque — fields and
-/// methods are crate-internal.
-pub struct AnimMapTyped<T: Animatable> {
+/// Per-`T` animation table. Lives inside [`AnimMap`] behind a boxed
+/// trait object keyed by `TypeId`; allocated on first
+/// `Ui::animate::<T>` call.
+pub(crate) struct AnimMapTyped<T: Animatable> {
     pub(crate) rows: FxHashMap<(WidgetId, AnimSlot), AnimRow<T>>,
 }
 
@@ -134,10 +135,9 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// design. Subsequent calls detect retarget vs steady-state and
     /// advance by `dt` seconds.
     ///
-    /// `AnimSpec::INSTANT` (and any `Duration { secs <= 0, .. }`)
-    /// short-circuits: snap to target, drop any stored row, return
-    /// settled. No allocation, no repaint request — using INSTANT is
-    /// indistinguishable from not calling `animate` at all.
+    /// Caller (`Ui::animate`) is responsible for filtering instant
+    /// specs (`AnimSpec::is_instant()`) before calling this — tick
+    /// itself assumes a real motion spec, no degenerate cases.
     pub(crate) fn tick(
         &mut self,
         id: WidgetId,
@@ -146,16 +146,6 @@ impl<T: Animatable> AnimMapTyped<T> {
         spec: AnimSpec,
         dt: f32,
     ) -> TickResult<T> {
-        if spec.is_instant() {
-            // Drop any stale row so `current` doesn't carry over if
-            // the caller switches back to a real spec.
-            self.rows.remove(&(id, slot));
-            return TickResult {
-                current: target,
-                settled: true,
-            };
-        }
-
         let row = match self.rows.entry((id, slot)) {
             Entry::Vacant(v) => {
                 v.insert(AnimRow {
@@ -164,7 +154,6 @@ impl<T: Animatable> AnimMapTyped<T> {
                     velocity: T::zero(),
                     elapsed: 0.0,
                     segment_start: target,
-                    spec,
                 });
                 return TickResult {
                     current: target,
@@ -173,8 +162,6 @@ impl<T: Animatable> AnimMapTyped<T> {
             }
             Entry::Occupied(o) => o.into_mut(),
         };
-
-        row.spec = spec;
 
         // Retarget: duration restarts the segment from `current`;
         // spring keeps velocity (that's half the reason springs exist).
@@ -245,18 +232,76 @@ impl<T: Animatable> AnimMapTyped<T> {
     }
 }
 
-/// Central animation table on [`Ui`]. One typed slot per supported
-/// `T`. Sweep fans out across all slots. Public so it can appear in
-/// [`Animatable::slot_mut`]'s signature, but opaque — fields and
-/// methods are crate-internal.
+/// Type-erased operations every typed map exposes — sweep removed
+/// widgets, plus `Any` for downcast back to the concrete map.
+trait AnyTyped: 'static {
+    fn sweep_removed(&mut self, removed: &[WidgetId]);
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+    /// Used by [`AnimMap::try_typed`] (read-only inspection from
+    /// `support::internals` — bench/test helpers). Allowed-dead in
+    /// production builds without the `internals` feature where the
+    /// support module is `cfg`-gated out, but the method must exist
+    /// on the trait so the dyn-object layout stays consistent.
+    #[allow(dead_code)]
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
+    fn sweep_removed(&mut self, removed: &[WidgetId]) {
+        AnimMapTyped::<T>::sweep_removed(self, removed);
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// Central animation table on [`Ui`]. Typed maps allocated on demand
+/// keyed by `TypeId`. Adding a new [`Animatable`] type costs no
+/// central edits — first `Ui::animate::<T>` call boxes a fresh
+/// `AnimMapTyped<T>`.
 #[derive(Default)]
-pub struct AnimMap {
-    pub(crate) scalars: AnimMapTyped<f32>,
-    pub(crate) vec2s: AnimMapTyped<Vec2>,
-    pub(crate) colors: AnimMapTyped<Color>,
+pub(crate) struct AnimMap {
+    by_type: FxHashMap<TypeId, Box<dyn AnyTyped>>,
 }
 
 impl AnimMap {
+    /// Get-or-create the typed map for `T`. Allocates on first call
+    /// per `T`; subsequent calls hit the hashmap and downcast.
+    pub(crate) fn typed_mut<T: Animatable>(&mut self) -> &mut AnimMapTyped<T> {
+        self.by_type
+            .entry(TypeId::of::<T>())
+            .or_insert_with(|| Box::<AnimMapTyped<T>>::default())
+            .as_any_mut()
+            .downcast_mut::<AnimMapTyped<T>>()
+            .expect("TypeId is stable per T, downcast cannot fail")
+    }
+
+    /// Borrow the typed map for `T` if it exists. Used by the
+    /// `Ui::animate(.., None)` short-circuit to drop a stale row
+    /// without allocating a fresh typed map.
+    pub(crate) fn try_typed_mut<T: Animatable>(&mut self) -> Option<&mut AnimMapTyped<T>> {
+        self.by_type
+            .get_mut(&TypeId::of::<T>())?
+            .as_any_mut()
+            .downcast_mut::<AnimMapTyped<T>>()
+    }
+
+    /// Read-only borrow of the typed map for `T`, if it exists. Used
+    /// by [`crate::support::internals`] (tests/benches) to inspect
+    /// row counts without allocating a typed map. Allowed-dead in
+    /// non-`internals` production builds where the only caller is
+    /// `cfg`-gated out.
+    #[allow(dead_code)]
+    pub(crate) fn try_typed<T: Animatable>(&self) -> Option<&AnimMapTyped<T>> {
+        self.by_type
+            .get(&TypeId::of::<T>())?
+            .as_any()
+            .downcast_ref::<AnimMapTyped<T>>()
+    }
+
     /// Drop every row (across all typed slots) belonging to a removed
     /// widget. Called from `Ui::end_frame` with the same `removed`
     /// slice that drives `StateMap` / text / layout sweeps.
@@ -264,8 +309,8 @@ impl AnimMap {
         if removed.is_empty() {
             return;
         }
-        self.scalars.sweep_removed(removed);
-        self.vec2s.sweep_removed(removed);
-        self.colors.sweep_removed(removed);
+        for typed in self.by_type.values_mut() {
+            typed.sweep_removed(removed);
+        }
     }
 }

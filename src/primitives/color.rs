@@ -1,5 +1,14 @@
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Default,
+    bytemuck::Pod,
+    bytemuck::Zeroable,
+    palantir_anim_derive::Animatable,
+)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
@@ -84,8 +93,10 @@ impl Color {
         a: 1.0,
     };
 
-    /// Alpha within `EPS` of zero — paints nothing.
-    pub const fn approx_transparent(self) -> bool {
+    /// Alpha within `EPS` of zero — paints nothing. Mirrors the
+    /// `is_noop` predicate on `Stroke` / `Background` / `Surface` /
+    /// `Shape`; consistent name across primitives.
+    pub const fn is_noop(self) -> bool {
         super::approx::approx_zero(self.a)
     }
 

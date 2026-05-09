@@ -1,120 +1,128 @@
 //! Vocabulary for "things that can animate." A type is `Animatable`
 //! when it supports linear interpolation, vector add/sub/scale, and
-//! has a magnitude (used by spring settle checks). Implemented for
-//! `f32`, `Vec2`, `Color`. Add a new type by implementing the trait
-//! and adding a typed slot to [`AnimMap`].
+//! has a magnitude (used by spring settle checks). Built-in impls
+//! cover `f32`, `Vec2`, `Color`. Domain types (`Stroke`,
+//! `Background`, ...) opt in via `#[derive(Animatable)]` — see
+//! `palantir-anim-derive` and the type-erased `AnimMap` storage.
 
-use crate::animation::{AnimMap, AnimMapTyped};
-use crate::primitives::color::Color;
 use glam::Vec2;
 
+/// Math-only trait. Storage is decoupled (type-erased `AnimMap`
+/// keyed on `TypeId`), so adding a new `Animatable` type doesn't
+/// require touching central code.
 pub trait Animatable: Copy + 'static {
     fn lerp(a: Self, b: Self, t: f32) -> Self;
     fn sub(self, other: Self) -> Self;
     fn add(self, other: Self) -> Self;
     fn scale(self, k: f32) -> Self;
     /// Length used to compare against the settle threshold. For
-    /// scalars: `|self|`. For vectors: Euclidean norm.
+    /// scalars: `|self|`. For vectors: Euclidean norm. For derived
+    /// compound types: sqrt of sum-of-squared component magnitudes.
     fn magnitude(self) -> f32;
     fn zero() -> Self;
-    /// Per-type slot in the central [`AnimMap`]. Lets `Ui::animate` be
-    /// generic over `T` without runtime type-erasure.
-    fn slot_mut(am: &mut AnimMap) -> &mut AnimMapTyped<Self>;
 }
 
 impl Animatable for f32 {
+    #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         a + (b - a) * t
     }
+    #[inline]
     fn sub(self, other: Self) -> Self {
         self - other
     }
+    #[inline]
     fn add(self, other: Self) -> Self {
         self + other
     }
+    #[inline]
     fn scale(self, k: f32) -> Self {
         self * k
     }
+    #[inline]
     fn magnitude(self) -> f32 {
         self.abs()
     }
+    #[inline]
     fn zero() -> Self {
         0.0
-    }
-    fn slot_mut(am: &mut AnimMap) -> &mut AnimMapTyped<Self> {
-        &mut am.scalars
     }
 }
 
 impl Animatable for Vec2 {
+    #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         a + (b - a) * t
     }
+    #[inline]
     fn sub(self, other: Self) -> Self {
         self - other
     }
+    #[inline]
     fn add(self, other: Self) -> Self {
         self + other
     }
+    #[inline]
     fn scale(self, k: f32) -> Self {
         self * k
     }
+    #[inline]
     fn magnitude(self) -> f32 {
         self.length()
     }
+    #[inline]
     fn zero() -> Self {
         Vec2::ZERO
     }
-    fn slot_mut(am: &mut AnimMap) -> &mut AnimMapTyped<Self> {
-        &mut am.vec2s
+}
+
+/// Blanket impl for `Option<T: Animatable>`. Treats `None` as the
+/// `T::zero()` sentinel (which by convention is the "invisible /
+/// neutral" value for the type — transparent color, zero-width
+/// stroke, etc.). The arithmetic always returns `Some(...)`; output
+/// collapse back to `None` is the consumer's job (e.g. Background's
+/// `is_noop` check filters invisible strokes at paint time).
+///
+/// This is what makes `#[derive(Animatable)]` work on structs with
+/// optional sub-components like `Background.stroke: Option<Stroke>`.
+impl<T: Animatable> Animatable for Option<T> {
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        Some(T::lerp(
+            a.unwrap_or_else(T::zero),
+            b.unwrap_or_else(T::zero),
+            t,
+        ))
+    }
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        Some(T::sub(
+            self.unwrap_or_else(T::zero),
+            other.unwrap_or_else(T::zero),
+        ))
+    }
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        Some(T::add(
+            self.unwrap_or_else(T::zero),
+            other.unwrap_or_else(T::zero),
+        ))
+    }
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        Some(T::scale(self.unwrap_or_else(T::zero), k))
+    }
+    #[inline]
+    fn magnitude(self) -> f32 {
+        T::magnitude(self.unwrap_or_else(T::zero))
+    }
+    #[inline]
+    fn zero() -> Self {
+        Some(T::zero())
     }
 }
 
-impl Animatable for Color {
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
-        Color {
-            r: a.r + (b.r - a.r) * t,
-            g: a.g + (b.g - a.g) * t,
-            b: a.b + (b.b - a.b) * t,
-            a: a.a + (b.a - a.a) * t,
-        }
-    }
-    fn sub(self, other: Self) -> Self {
-        Color {
-            r: self.r - other.r,
-            g: self.g - other.g,
-            b: self.b - other.b,
-            a: self.a - other.a,
-        }
-    }
-    fn add(self, other: Self) -> Self {
-        Color {
-            r: self.r + other.r,
-            g: self.g + other.g,
-            b: self.b + other.b,
-            a: self.a + other.a,
-        }
-    }
-    fn scale(self, k: f32) -> Self {
-        Color {
-            r: self.r * k,
-            g: self.g * k,
-            b: self.b * k,
-            a: self.a * k,
-        }
-    }
-    fn magnitude(self) -> f32 {
-        (self.r * self.r + self.g * self.g + self.b * self.b + self.a * self.a).sqrt()
-    }
-    fn zero() -> Self {
-        Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.0,
-        }
-    }
-    fn slot_mut(am: &mut AnimMap) -> &mut AnimMapTyped<Self> {
-        &mut am.colors
-    }
-}
+// `Color` derives `Animatable` (see `primitives/color.rs`) — the
+// generated impl is identical to the hand-written one used to live
+// here; per-component lerp/add/sub/scale, sqrt-of-sum-of-squares
+// magnitude, all-zeros for `zero()`.
