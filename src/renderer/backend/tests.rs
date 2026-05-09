@@ -36,10 +36,27 @@ fn collect(
     mask_indices: &[Option<u32>],
     use_stencil: bool,
 ) -> Vec<RenderStep> {
+    collect_with_preclear(buffer, damage_scissor, true, mask_indices, use_stencil)
+}
+
+fn collect_with_preclear(
+    buffer: &RenderBuffer,
+    damage_scissor: Option<URect>,
+    emit_preclear: bool,
+    mask_indices: &[Option<u32>],
+    use_stencil: bool,
+) -> Vec<RenderStep> {
     let mut steps = Vec::new();
-    for_each_step(buffer, damage_scissor, mask_indices, use_stencil, |s| {
-        steps.push(s);
-    });
+    for_each_step(
+        buffer,
+        damage_scissor,
+        emit_preclear,
+        mask_indices,
+        use_stencil,
+        |s| {
+            steps.push(s);
+        },
+    );
     steps
 }
 
@@ -185,6 +202,15 @@ fn preclear_emits_under_partial_damage() {
     );
     assert_eq!(
         simplify(&collect(&buf, None, &[], false)),
+        vec![DrawOp::Quads(0), DrawOp::Text(0)],
+    );
+
+    // `emit_preclear = false` (caller's pass entered with
+    // `LoadOp::Clear` already painting the clear color) suppresses
+    // the leading PreClear quad even when damage_scissor is Some.
+    // Group narrowing still happens.
+    assert_eq!(
+        simplify(&collect_with_preclear(&buf, damage, false, &[], false)),
         vec![DrawOp::Quads(0), DrawOp::Text(0)],
     );
 }

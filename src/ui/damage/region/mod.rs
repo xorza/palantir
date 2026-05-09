@@ -42,7 +42,7 @@ impl DamageRegion {
         self.rects.is_empty()
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = Rect> + '_ {
+    pub(crate) fn iter_rects(&self) -> impl Iterator<Item = Rect> + '_ {
         self.rects.iter().copied()
     }
 

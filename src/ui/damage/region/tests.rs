@@ -2,7 +2,7 @@ use super::{DAMAGE_RECT_CAP, DamageRegion};
 use crate::primitives::rect::Rect;
 
 fn collect(region: &DamageRegion) -> Vec<Rect> {
-    region.iter().collect()
+    region.iter_rects().collect()
 }
 
 /// `add` ignores zero-area input — empty rects contribute nothing.
@@ -111,14 +111,14 @@ fn nine_disjoint_corners_min_growth_at_cap() {
     for c in corners {
         region.add(c);
     }
-    assert_eq!(region.iter().count(), DAMAGE_RECT_CAP);
+    assert_eq!(region.iter_rects().count(), DAMAGE_RECT_CAP);
 
     // Ninth rect overlaps the centre-top corner; that's the unique
     // min-growth target (other slots are ≥ ~100 px away on at least
     // one axis).
     let extra = Rect::new(490.0, 5.0, 10.0, 5.0);
     region.add(extra);
-    assert_eq!(region.iter().count(), DAMAGE_RECT_CAP);
+    assert_eq!(region.iter_rects().count(), DAMAGE_RECT_CAP);
     let merged = Rect::new(495.0, 0.0, 5.0, 5.0).union(extra);
     let rects = collect(&region);
     assert!(
