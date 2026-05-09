@@ -159,6 +159,15 @@ impl Ui {
     /// None`) and short-circuits to `DamagePaint::Full`. The
     /// auto-rewind covers the surface-error and dropped-frame cases,
     /// so hosts don't need any explicit "invalidate" call.
+    ///
+    /// `frame_state` is **not** reset here. It encodes the submission
+    /// status of the *last painted* frame (`mark_pending` in
+    /// `end_frame`, `mark_submitted` by the host or by the `Skip`
+    /// path) — strictly cross-frame. `run_frame`'s discarded pre-pass
+    /// calls `begin_frame` a second time without an intervening
+    /// `end_frame`; touching `frame_state` here would make pass 2
+    /// misread that as "host dropped pass 1's frame" and force `Full`
+    /// repaint on every input event (including clicks on empty bg).
     pub(crate) fn begin_frame(&mut self, display: Display) {
         assert!(
             display.scale_factor >= f32::EPSILON,
@@ -180,7 +189,6 @@ impl Ui {
             );
             self.damage.invalidate_prev();
         }
-        self.frame_state.reset_to_idle();
         self.display = display;
         self.forest.begin_frame();
         self.scrolls.begin_frame();

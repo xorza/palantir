@@ -173,6 +173,52 @@ fn popup_eater_does_not_force_full_repaint() {
     );
 }
 
+/// Regression: a click on empty background (no widget hit, no
+/// state change) must not force the next paint to `Full`. The
+/// discarded pre-pass in `run_frame` (triggered by any pointer /
+/// key event via `had_action_this_frame`) calls `begin_frame` →
+/// `reset_to_idle`, then never reaches `end_frame`. Pass 2's
+/// `begin_frame` then sees `frame_state == IDLE` and treats it as
+/// "host dropped the previous frame", invalidating prev_surface
+/// and forcing `DamagePaint::Full`.
+#[test]
+fn click_on_empty_bg_does_not_force_full() {
+    use crate::input::PointerButton;
+    use std::time::Duration;
+    let mut ui = Ui::new();
+    let build = |ui: &mut Ui| {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
+            Frame::new()
+                .id_salt("a")
+                .size(50.0)
+                .background(Background {
+                    fill: BLUE,
+                    ..Default::default()
+                })
+                .show(ui);
+        });
+    };
+    // Frame 0 (cold): expect Full. Submit.
+    ui.run_frame(DISPLAY, Duration::ZERO, build)
+        .frame_state
+        .mark_submitted();
+    // Frame 1 (warm): nothing changed → Skip.
+    let warm = ui.run_frame(DISPLAY, Duration::ZERO, build);
+    assert_eq!(warm.damage, DamagePaint::Skip);
+    drop(warm);
+
+    // Click on empty background (far from the 50×50 frame at origin).
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let after_click = ui.run_frame(DISPLAY, Duration::ZERO, build);
+    assert!(
+        !matches!(after_click.damage, DamagePaint::Full),
+        "click on empty bg escalated to Full repaint: {:?}",
+        after_click.damage,
+    );
+}
+
 /// Regression: a `Skip` frame that the host bypasses (no
 /// `backend.submit` → no `mark_submitted`) must not force the next
 /// frame to `Full`. `end_frame` marks `Skip` as submitted directly so
