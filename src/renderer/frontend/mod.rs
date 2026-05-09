@@ -38,6 +38,7 @@ use crate::ui::damage::DamagePaint;
 pub struct FrameOutput<'a> {
     pub(crate) buffer: &'a RenderBuffer,
     pub(crate) damage: DamagePaint,
+    pub(crate) repaint_requested: bool,
 }
 
 impl FrameOutput<'_> {
@@ -55,6 +56,17 @@ impl FrameOutput<'_> {
     /// [`Ui::invalidate_prev_frame`]: crate::Ui::invalidate_prev_frame
     pub fn can_skip_rendering(&self) -> bool {
         self.damage == DamagePaint::Skip
+    }
+
+    /// `true` when at least one widget called [`Ui::request_repaint`]
+    /// during this frame. Hosts honor by calling
+    /// `window.request_redraw()` (or equivalent) after present, so the
+    /// next frame runs even if input is idle. Used by animation
+    /// tickers that haven't settled.
+    ///
+    /// [`Ui::request_repaint`]: crate::Ui::request_repaint
+    pub fn repaint_requested(&self) -> bool {
+        self.repaint_requested
     }
 }
 

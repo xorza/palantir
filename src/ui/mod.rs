@@ -21,6 +21,14 @@ use crate::ui::seen_ids::SeenIds;
 use crate::ui::state::StateMap;
 use crate::widgets::scroll::ScrollRegistry;
 use crate::widgets::theme::{Surface, Theme};
+use std::time::Duration;
+
+/// Hard upper bound on per-frame `dt` derived from `now` deltas in
+/// [`Ui::run_frame`]. Anything longer (debugger pause, laptop suspend,
+/// dropped vsync) is clamped so animation tickers freeze for one frame
+/// instead of teleporting through state. `Ui::time` still tracks the
+/// host's true clock; only `Ui::dt` is clamped.
+pub(crate) const MAX_DT: f32 = 0.1;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].
@@ -56,6 +64,24 @@ pub struct Ui {
     /// refresh their `ScrollState` rows after arrange.
     // todo move to tree?
     pub(crate) scrolls: ScrollRegistry,
+
+    /// Seconds elapsed since the previous `run_frame`, clamped to
+    /// [`MAX_DT`]. Derived from `now - prev_now` per call (not
+    /// accumulated across discard passes). Tests that drive frames via
+    /// `begin_frame` directly leave this at `0.0` (frozen time).
+    pub(crate) dt: f32,
+
+    /// Current frame's host-supplied timestamp (last `now` passed to
+    /// [`Self::run_frame`]). Monotonic. Animation rows store an
+    /// absolute `Duration` start-time and read this to compute
+    /// elapsed-since-start without re-threading `dt`.
+    pub(crate) time: Duration,
+
+    /// Set by [`Self::request_repaint`] during recording; copied into
+    /// [`FrameOutput::repaint_requested`] at end-of-frame so the host
+    /// can re-arm a redraw even when input is idle. Reset at the top
+    /// of each `run_frame` (across both discard + paint passes).
+    pub(crate) repaint_requested: bool,
 }
 
 impl Default for Ui {
@@ -79,6 +105,9 @@ impl Ui {
             display: Display::default(),
             damage: Damage::default(),
             scrolls: ScrollRegistry::default(),
+            dt: 0.0,
+            time: Duration::ZERO,
+            repaint_requested: false,
         }
     }
 
@@ -141,12 +170,23 @@ impl Ui {
             &self.display,
         );
 
-        FrameOutput { buffer, damage }
+        FrameOutput {
+            buffer,
+            damage,
+            repaint_requested: self.repaint_requested,
+        }
     }
 
     /// Record + finalize a frame, settling state mutations in a single
     /// host call. The only public entry point for driving a frame —
     /// hosts call this once per redraw.
+    ///
+    /// `now` is monotonic time since a host-defined epoch (typically
+    /// `Instant::now() - start_instant`, i.e. `start.elapsed()`). `Ui`
+    /// stores it as [`Self::time`] and derives [`Self::dt`] (clamped to
+    /// [`MAX_DT`] seconds) for animation tickers. The first call's
+    /// `dt` is `now - Duration::ZERO` clamped — pass `Duration::ZERO`
+    /// or a freshly-captured `start.elapsed()` to keep it small.
     ///
     /// Runs `build` once. If the frame contained input that could have
     /// mutated user state (any click / press / key / text / scroll),
@@ -154,7 +194,8 @@ impl Ui {
     /// runs `build` a second time. The second pass sees drained input
     /// queues, so widgets read `clicked() == false` everywhere and the
     /// recording reflects post-mutation state. Only the second pass is
-    /// painted.
+    /// painted. `now` is applied once across both passes — the
+    /// discarded pass observes the same clock the painted pass does.
     ///
     /// Idle frames (animation tick, occlusion change, host repaint
     /// without input) run a single pass.
@@ -166,8 +207,14 @@ impl Ui {
     pub fn run_frame(
         &mut self,
         display: Display,
+        now: Duration,
         mut build: impl FnMut(&mut Ui),
     ) -> FrameOutput<'_> {
+        let raw_dt = now.saturating_sub(self.time);
+        self.dt = raw_dt.as_secs_f32().min(MAX_DT);
+        self.time = now;
+        self.repaint_requested = false;
+
         if self.input.take_action_flag() {
             // Discarded pass: only the input drain matters for pass 2
             // (so widgets see `clicked() == false`). Tree state is
@@ -183,6 +230,14 @@ impl Ui {
         self.begin_frame(display);
         build(self);
         self.end_frame()
+    }
+
+    /// Ask the host to schedule another frame even if no input arrives.
+    /// Animation tickers call this each frame they haven't settled;
+    /// hosts honor the request via [`FrameOutput::repaint_requested`].
+    /// Idempotent within a frame.
+    pub fn request_repaint(&mut self) {
+        self.repaint_requested = true;
     }
 
     /// Feed a palantir-native input event. Hosts mirror this with their

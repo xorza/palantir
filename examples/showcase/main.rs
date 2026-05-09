@@ -93,10 +93,14 @@ struct State {
     fps_window_start: std::time::Instant,
     fps_window_frames: u32,
     /// Host-side repaint gate. Set on input / resize / scale change /
-    /// surface failure / `Occluded(false)`. Cleared at the top of
-    /// `draw()`. Read in `about_to_wait` to decide whether to ask
-    /// winit for a redraw.
+    /// surface failure / `Occluded(false)` / and via
+    /// `FrameOutput::repaint_requested()` for animation tickers.
+    /// Cleared at the top of `draw()`. Read in `about_to_wait` to
+    /// decide whether to ask winit for a redraw.
     repaint_requested: bool,
+    /// Captured at `Ui::new()`; `start.elapsed()` per frame is the
+    /// monotonic timestamp passed to [`Ui::run_frame`].
+    start: std::time::Instant,
 }
 
 impl ApplicationHandler for App {
@@ -178,6 +182,7 @@ impl ApplicationHandler for App {
             fps_window_start: std::time::Instant::now(),
             fps_window_frames: 0,
             repaint_requested: true,
+            start: std::time::Instant::now(),
         });
     }
 
@@ -244,7 +249,14 @@ impl State {
 
         let clear = self.ui.theme.window_clear;
         let active = &mut self.active;
-        let frame_out = self.ui.run_frame(self.display, |ui| build_root(ui, active));
+        let now = self.start.elapsed();
+        let frame_out = self
+            .ui
+            .run_frame(self.display, now, |ui| build_root(ui, active));
+
+        if frame_out.repaint_requested() {
+            self.repaint_requested = true;
+        }
 
         if frame_out.can_skip_rendering() {
             return;

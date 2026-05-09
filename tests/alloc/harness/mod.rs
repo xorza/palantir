@@ -108,7 +108,7 @@ where
 
 #[inline]
 fn run_frame<S: FnMut(&mut Ui)>(ui: &mut Ui, display: Display, scene: &mut S) {
-    let _ = ui.run_frame(display, scene);
+    let _ = ui.run_frame(display, std::time::Duration::ZERO, scene);
 }
 
 fn finish_audit(
