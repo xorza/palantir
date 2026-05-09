@@ -230,7 +230,10 @@ impl Ui {
             // wiped by pass 2's begin_frame; damage / encode never ran,
             // so `damage.prev` and the render buffer stay at frame-0's
             // values. Sweeps and state evictions are deferred to pass 2
-            // and self-correct.
+            // and self-correct. `SeenIds`'s rollover swap lives in
+            // `end_frame` (NOT `begin_frame`) so this discarded
+            // recording doesn't overwrite the last painted frame's
+            // `prev`-snapshot — see the doc comment there.
             self.begin_frame(display);
             build(self);
             self.input.drain_per_frame_queues();
