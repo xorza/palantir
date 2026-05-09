@@ -8,3 +8,5 @@ anim slot automate
 animate option for appearing stroke
 
 multiple damage rects
+
+full repaint on popup discard
