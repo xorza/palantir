@@ -13,7 +13,7 @@ use crate::layout::types::display::Display;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::{FrameOutput, Frontend};
 use crate::shape::Shape;
-use crate::text::{SharedCosmic, TextMeasurer};
+use crate::text::{TextShaper, TextMeasurer};
 use crate::tree::element::Element;
 use crate::tree::forest::Forest;
 use crate::tree::widget_id::WidgetId;
@@ -129,12 +129,12 @@ impl Ui {
         }
     }
 
-    /// Install a shared shaper handle. Apps construct one [`SharedCosmic`]
+    /// Install a shared shaper handle. Apps construct one [`TextShaper`]
     /// at startup and clone it into both `Ui` and the wgpu backend so they
     /// see the same buffer cache. Tests leave this unset and run on the
     /// deterministic mono fallback.
-    pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
-        self.text.set_cosmic(cosmic);
+    pub fn set_text_shaper(&mut self, cosmic: TextShaper) {
+        self.text.set_text_shaper(cosmic);
     }
 
     /// Start recording a frame. A stray `scale_factor` of `0.0` from winit

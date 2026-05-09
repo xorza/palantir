@@ -50,11 +50,11 @@ use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 /// hide the `borrow_mut()` so call sites read like ordinary method
 /// calls. Construct via [`Self::new`] or [`Self::with_bundled_fonts`].
 #[derive(Clone)]
-pub struct SharedCosmic {
+pub struct TextShaper {
     inner: Rc<RefCell<CosmicMeasure>>,
 }
 
-impl SharedCosmic {
+impl TextShaper {
     /// Wrap a freshly-built [`CosmicMeasure`] for sharing.
     pub fn new(cosmic: CosmicMeasure) -> Self {
         Self {
@@ -63,7 +63,7 @@ impl SharedCosmic {
     }
 
     /// Convenience constructor: bundled fonts, ready to install on
-    /// `Ui`. Equivalent to `SharedCosmic::new(CosmicMeasure::with_bundled_fonts())`.
+    /// `Ui`. Equivalent to `TextShaper::new(CosmicMeasure::with_bundled_fonts())`.
     pub fn with_bundled_fonts() -> Self {
         Self::new(CosmicMeasure::with_bundled_fonts())
     }
@@ -85,7 +85,7 @@ impl SharedCosmic {
     /// Run `body` against a [`RenderSplit`] of the inner cosmic state
     /// (`&mut FontSystem` + read-only buffer lookup). The borrow is
     /// held for the closure's duration, so `body` must not re-enter
-    /// any `SharedCosmic` method on the same handle.
+    /// any `TextShaper` method on the same handle.
     pub(crate) fn with_render_split<R>(&self, body: impl FnOnce(RenderSplit<'_>) -> R) -> R {
         let mut cosmic = self.inner.borrow_mut();
         body(cosmic.split_for_render())
@@ -227,7 +227,7 @@ fn mono_measure(
 /// `&mut TextReuseEntry` from `reuse` — `&mut self` would over-borrow.
 #[inline]
 fn dispatch(
-    cosmic: &Option<SharedCosmic>,
+    cosmic: &Option<TextShaper>,
     text: &str,
     font_size_px: f32,
     line_height_px: f32,
@@ -263,7 +263,7 @@ pub(crate) struct WrapReuse {
 /// rasterization see the same buffer cache.
 #[derive(Default)]
 pub struct TextMeasurer {
-    pub(crate) cosmic: Option<SharedCosmic>,
+    pub(crate) cosmic: Option<TextShaper>,
     /// Total `measure` calls made through this façade. Read by tests
     /// pinning reshape-skip behaviour; cheap enough to leave on in
     /// release.
@@ -281,8 +281,8 @@ pub struct TextMeasurer {
 }
 
 impl TextMeasurer {
-    /// Install a shared shaper handle. Pass the same `SharedCosmic` to the
-    /// renderer (`WgpuBackend::set_cosmic`) so both sides see one cache.
+    /// Install a shared shaper handle. Pass the same `TextShaper` to the
+    /// renderer (`WgpuBackend::set_text_shaper`) so both sides see one cache.
     ///
     /// Call exactly once, before the first frame. The measure cache and
     /// encode cache key shaping outputs (`measured`, `TextCacheKey`) on
@@ -291,10 +291,10 @@ impl TextMeasurer {
     /// replay a `TextCacheKey` minted by the old shaper against the new
     /// one. If you ever need to support a swap, also invalidate the
     /// measure cache, encode cache, and text reuse map at the swap point.
-    pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
+    pub fn set_text_shaper(&mut self, cosmic: TextShaper) {
         assert!(
             self.cosmic.is_none(),
-            "TextMeasurer::set_cosmic called twice; see doc comment — \
+            "TextMeasurer::set_text_shaper called twice; see doc comment — \
              swapping shapers requires invalidating measure + encode caches"
         );
         self.cosmic = Some(cosmic);
@@ -598,7 +598,7 @@ mod tests {
         // pin exact pixel values — those depend on font metrics — just
         // the monotonicity invariant any consumer relies on.
         let mut m = TextMeasurer::default();
-        m.set_cosmic(crate::text::SharedCosmic::with_bundled_fonts());
+        m.set_text_shaper(crate::text::TextShaper::with_bundled_fonts());
         let s = "hello";
         let widths: Vec<f32> = (0..=s.len())
             .map(|i| m.caret_x(s, i, 16.0, 16.0 * LINE_HEIGHT_MULT))

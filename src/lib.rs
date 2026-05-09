@@ -45,7 +45,7 @@ pub use primitives::transform::TranslateScale;
 pub use renderer::backend::WgpuBackend;
 pub use renderer::frontend::FrameOutput;
 pub use shape::Shape;
-pub use text::SharedCosmic;
+pub use text::TextShaper;
 pub use text::cosmic::CosmicMeasure;
 pub use tree::Layer;
 pub use tree::element::{Configure, Element, LayoutMode};
