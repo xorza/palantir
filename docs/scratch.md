@@ -2,8 +2,9 @@
 - showcase agent testing
 
 clip to account for padding
+
 anim slot automate
 
- animate option for appearing stroke
+animate option for appearing stroke
 
- multiple damage rects
+multiple damage rects
