@@ -25,12 +25,18 @@ use crate::tree::widget_id::WidgetId;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::region::DamageRegion;
 use rustc_hash::FxHashMap;
+use std::collections::hash_map::Entry;
 
 pub(crate) mod region;
 
 /// Per-widget snapshot retained across frames so the next frame's
 /// `Damage::compute` can diff `(rect, hash)` against the previous
 /// value. Indexed by stable [`WidgetId`].
+/// Per-painting-widget snapshot held in [`Damage::prev`]. Only widgets
+/// that painted last frame have an entry — non-painting nodes (e.g. a
+/// popup's invisible click-eater) contribute no pixels and are skipped
+/// at insert time, so their full-surface rect can't trip the
+/// full-repaint coverage threshold on add or remove.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
     /// Screen-space rect from last frame's `Cascade.screen_rect`.
@@ -155,21 +161,36 @@ impl Damage {
             for i in 0..n {
                 let wid = widget_ids[i];
                 let curr_rect = rows[i].screen_rect;
-                let curr_hash = tree.rollups.node[i];
+                let curr_paints = tree.rollups.paints.contains(i);
                 let curr = NodeSnapshot {
                     rect: curr_rect,
-                    hash: curr_hash,
+                    hash: tree.rollups.node[i],
                 };
 
-                let dirty = match self.prev.insert(wid, curr) {
-                    None => {
+                // Invariant: `self.prev` only holds entries for widgets
+                // that painted last frame. Non-painting nodes contribute
+                // zero rect, so a never-painted widget needs no snapshot
+                // and a painting→non-painting transition evicts the
+                // entry. Hash equality across an Occupied match implies
+                // the same paint contribution (chrome + shapes are
+                // hashed), so the unchanged arm needs no explicit
+                // `curr_paints` check.
+                let dirty = match self.prev.entry(wid) {
+                    Entry::Vacant(_) if !curr_paints => false,
+                    Entry::Vacant(e) => {
+                        e.insert(curr);
                         acc.add(curr_rect);
                         true
                     }
-                    Some(snap) if snap.hash == curr_hash && snap.rect == curr_rect => false,
-                    Some(snap) => {
-                        acc.add(snap.rect);
-                        acc.add(curr_rect);
+                    Entry::Occupied(e) if *e.get() == curr => false,
+                    Entry::Occupied(mut e) => {
+                        acc.add(e.get().rect);
+                        if curr_paints {
+                            acc.add(curr_rect);
+                            e.insert(curr);
+                        } else {
+                            e.remove();
+                        }
                         true
                     }
                 };
@@ -179,8 +200,9 @@ impl Damage {
             }
         }
 
-        // Evict last-frame snapshots for removed widgets; their rect
-        // contributes to damage so the area they vacated repaints.
+        // Evict last-frame snapshots for removed widgets. Every
+        // remaining `prev` entry painted last frame (invariant), so its
+        // rect always contributes.
         for wid in removed {
             if let Some(snap) = self.prev.remove(wid) {
                 acc.add(snap.rect);

@@ -174,13 +174,20 @@ impl Tree {
             if let Some(p) = self.panel.get(i) {
                 p.hash(&mut h);
             }
-            self.chrome.get(i).hash(&mut h);
-
+            let chrome = self.chrome.get(i);
+            chrome.hash(&mut h);
+            let mut has_direct_shape = false;
             for item in TreeItems::new(&self.records, &self.shapes, NodeId(i as u32)) {
                 match item {
-                    TreeItem::Shape(s) => s.hash(&mut h),
+                    TreeItem::Shape(s) => {
+                        has_direct_shape = true;
+                        s.hash(&mut h);
+                    }
                     TreeItem::Child(_) => h.write_u8(0xFF),
                 }
+            }
+            if chrome.is_some() || has_direct_shape {
+                self.rollups.paints.set(i, true);
             }
 
             if let LayoutMode::Grid(idx) = self.records.layout()[i].mode {

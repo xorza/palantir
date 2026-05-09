@@ -90,7 +90,9 @@ fn empty_then_populated_frame() {
 
     drain_one_frame(&mut ui);
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
-    assert!(!ui.damage.prev.is_empty());
+    // Root Panel is non-painting (no chrome, no shapes) so prev stays
+    // empty — only painting widgets are tracked.
+    assert!(ui.damage.prev.is_empty());
 }
 
 /// Pin: `begin_frame` panics if `display.scale_factor` is below
@@ -138,7 +140,9 @@ fn prev_frame_populated_after_end_frame() {
     let prev = &ui.damage.prev;
     let root_id = WidgetId::from_hash("root");
     let frame_id = WidgetId::from_hash("a");
-    assert!(prev.contains_key(&root_id));
+    // Root Panel has no chrome and no direct shapes — non-painting,
+    // so it's not snapshotted. The Frame paints (background) and is.
+    assert!(!prev.contains_key(&root_id));
     assert!(prev.contains_key(&frame_id));
 }
 
@@ -195,7 +199,9 @@ fn prev_frame_drops_disappeared_widgets() {
     Panel::hstack().id_salt("root").show(&mut ui, |_| {});
     ui.end_frame();
     assert!(!ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
-    assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("root")));
+    // Root Panel is non-painting so it never enters prev — the
+    // remaining-after-eviction check is just that "gone" is gone.
+    assert!(!ui.damage.prev.contains_key(&WidgetId::from_hash("root")));
 }
 
 #[test]

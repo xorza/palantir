@@ -8,6 +8,7 @@ use crate::tree::Layer;
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
 use crate::tree::widget_id::WidgetId;
+use crate::widgets::popup::Popup;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -50,17 +51,17 @@ fn one_frame(ui: &mut Ui, color: Color) {
 }
 
 /// Pin: the very first frame has no `prev_frame` entries, so every
-/// node is "added" → all nodes dirty, damage covers their union.
+/// painting node is "added" → marked dirty and contributes its rect.
+/// The root Panel records no chrome and no direct shapes, so it's
+/// non-painting and stays out of `dirty`/`region`.
 #[test]
-fn first_frame_marks_every_node_dirty() {
+fn first_frame_marks_every_painting_node_dirty() {
     let mut ui = Ui::new();
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
-    assert_eq!(
-        ui.damage.dirty.len(),
-        ui.forest.tree(Layer::Main).records.len()
-    );
+    let painting = ui.forest.tree(Layer::Main).rollups.paints.count_ones(..);
+    assert_eq!(ui.damage.dirty.len(), painting);
     assert!(!ui.damage.region.is_empty());
 }
 
@@ -78,6 +79,98 @@ fn unchanged_authoring_produces_no_damage() {
 
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage.region.is_empty());
+}
+
+/// Pin: a widget that loses its background between frames flips from
+/// painting to non-painting. The diff must (a) contribute its prev
+/// rect to damage so the prior pixels get cleared, (b) drop the entry
+/// from `prev` so the next frame sees it as truly absent, and (c)
+/// contribute no curr rect.
+#[test]
+fn paints_to_non_paints_transition_evicts_and_clears() {
+    let mut ui = Ui::new();
+    let with_bg = |ui: &mut Ui| {
+        Panel::hstack().id_salt("root").show(ui, |ui| {
+            Frame::new()
+                .id_salt("a")
+                .size(50.0)
+                .background(Background {
+                    fill: BLUE,
+                    ..Default::default()
+                })
+                .show(ui);
+        });
+    };
+    let no_bg = |ui: &mut Ui| {
+        Panel::hstack().id_salt("root").show(ui, |ui| {
+            Frame::new().id_salt("a").size(50.0).show(ui);
+        });
+    };
+    frame(&mut ui, with_bg);
+    let id = WidgetId::from_hash("a");
+    assert!(ui.damage.prev.contains_key(&id));
+
+    frame(&mut ui, no_bg);
+    assert!(
+        !ui.damage.prev.contains_key(&id),
+        "paints→non-paints transition must evict the prev entry"
+    );
+    let rects: Vec<_> = ui.damage.region.iter_rects().collect();
+    assert_eq!(
+        rects,
+        vec![Rect::new(0.0, 0.0, 50.0, 50.0)],
+        "damage must contain only the prev rect (curr doesn't paint)"
+    );
+}
+
+/// Regression: a popup's full-surface invisible click-eater leaf must
+/// not contribute to damage on add or remove. Otherwise opening or
+/// dismissing a popup blows past the full-repaint coverage threshold.
+/// Sole signal here is that filter stays `Partial` — no full-surface
+/// rect lands in `region`.
+#[test]
+fn popup_eater_does_not_force_full_repaint() {
+    let mut ui = Ui::new();
+    let anchor = Rect::new(40.0, 40.0, 60.0, 30.0);
+    // Frame 1: popup open. Eater (full-surface) + body (small).
+    ui.begin_frame(DISPLAY);
+    Popup::anchored_to(anchor)
+        .id_salt("p")
+        .background(Background {
+            fill: BLUE,
+            ..Default::default()
+        })
+        .show(&mut ui, |ui| {
+            Frame::new()
+                .id_salt("body-leaf")
+                .size(60.0)
+                .background(Background {
+                    fill: RED,
+                    ..Default::default()
+                })
+                .show(ui);
+        });
+    end_frame_acked(&mut ui);
+
+    // Frame 2: popup gone. Body + eater both removed. Without the
+    // paints-gate, the eater's full-surface prev rect would dominate
+    // the region.
+    ui.begin_frame(DISPLAY);
+    Frame::new().id_salt("placeholder").size(10.0).show(&mut ui);
+    let out = ui.end_frame();
+    let DamagePaint::Partial(region) = out.damage else {
+        panic!(
+            "popup dismissal escalated to {:?}; eater contributed full-surface \
+             rect despite painting nothing",
+            out.damage
+        );
+    };
+    let surface_area = DISPLAY.logical_rect().area();
+    assert!(
+        region.total_area() / surface_area < 0.5,
+        "damage region covers {:.1}% of surface — eater leaked into damage",
+        100.0 * region.total_area() / surface_area
+    );
 }
 
 /// Regression: a `Skip` frame that the host bypasses (no
@@ -248,25 +341,6 @@ fn added_widget_contributes_curr_rect_to_damage() {
 }
 
 // --- Ui::damage_filter ---------------------------------------------------
-
-/// Pin: `filter()` returns `Full` when the damage rect covers
-/// most of the surface — the encoder + backend treat that as
-/// "paint everything" so they don't pay per-node filter cost on what
-/// would be a full repaint anyway.
-#[test]
-fn damage_filter_returns_full_on_first_frame() {
-    let mut ui = Ui::new();
-    frame(&mut ui, |ui| {
-        one_frame(ui, BLUE);
-    });
-    // First frame: every node is "added" → damage rect is the union
-    // of every screen rect → ratio > 0.5 → filter returns Full.
-    assert!(!ui.damage.region.is_empty());
-    assert_eq!(
-        ui.damage.filter(ui.display.logical_rect()),
-        DamagePaint::Full
-    );
-}
 
 /// Pin: a single-leaf fill flip stays in the partial-repaint regime —
 /// `filter(surface)` returns `Partial(rect)`, because the rect is well
@@ -526,20 +600,6 @@ fn damage_filter_threshold_cases() {
         };
         assert_eq!(d.filter(*surface), *want, "case: {label}");
     }
-}
-
-/// Pin: on the first frame `Damage::filter` returns `Full` — every
-/// node is "added," damage = full surface, ratio = 1.0 > 0.5.
-#[test]
-fn first_frame_filter_is_full() {
-    let mut ui = Ui::new();
-    frame(&mut ui, |ui| {
-        one_frame(ui, BLUE);
-    });
-    assert_eq!(
-        ui.damage.filter(ui.display.logical_rect()),
-        DamagePaint::Full
-    );
 }
 
 /// Pin: a Display change between frames (resize or scale-factor)
