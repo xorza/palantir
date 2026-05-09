@@ -297,7 +297,7 @@ impl TextMeasurer {
             "TextMeasurer::set_text_shaper called twice; see doc comment — \
              swapping shapers requires invalidating measure + encode caches"
         );
-        self.shaper = Some(cosmic);
+        self.shaper = Some(shaper);
     }
 
     /// Identity-cached unbounded shape for `wid`, refreshing it (and

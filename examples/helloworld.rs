@@ -99,7 +99,7 @@ impl ApplicationHandler for App {
         };
         surface.configure(&device, &config);
 
-        let backend = WgpuBackend::new(device.clone(), queue.clone(), format);
+        let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         tracing::info!(
             ?format,
@@ -113,7 +113,9 @@ impl ApplicationHandler for App {
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
         );
-        ui.set_text_shaper(palantir::TextShaper::with_bundled_fonts());
+        let shaper = palantir::TextShaper::with_bundled_fonts();
+        ui.set_text_shaper(shaper.clone());
+        backend.set_text_shaper(shaper);
 
         window.request_redraw();
         self.state = Some(State {

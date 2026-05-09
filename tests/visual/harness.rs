@@ -66,9 +66,11 @@ pub struct Harness {
 impl Harness {
     pub fn new() -> Self {
         let g = gpu();
-        let backend = WgpuBackend::new(g.device.clone(), g.queue.clone(), FORMAT);
+        let mut backend = WgpuBackend::new(g.device.clone(), g.queue.clone(), FORMAT);
         let mut ui = Ui::new();
-        ui.set_text_shaper(COSMIC.with(|c| c.clone()));
+        let shaper = COSMIC.with(|c| c.clone());
+        ui.set_text_shaper(shaper.clone());
+        backend.set_text_shaper(shaper);
 
         Self {
             device: g.device.clone(),

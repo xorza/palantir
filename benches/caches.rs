@@ -27,7 +27,7 @@ use glam::Vec2;
 use palantir::support::internals;
 use palantir::{
     Background, Color, Configure, Corners, Display, Frame, InputEvent, Panel, Rect, Scroll, Shape,
-    TextShaper, Sizing, Stroke, Surface, Text, TextStyle, Ui,
+    Sizing, Stroke, Surface, Text, TextShaper, TextStyle, Ui,
 };
 use std::hint::black_box;
 
