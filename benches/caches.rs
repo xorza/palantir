@@ -26,8 +26,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use palantir::support::internals;
 use palantir::{
-    Background, Color, Configure, Corners, CosmicMeasure, Display, Frame, InputEvent, Panel, Rect,
-    Scroll, Shape, Sizing, Stroke, Surface, Text, TextStyle, Ui, share,
+    Background, Color, Configure, Corners, Display, Frame, InputEvent, Panel, Rect, Scroll, Shape,
+    SharedCosmic, Sizing, Stroke, Surface, Text, TextStyle, Ui,
 };
 use std::hint::black_box;
 
@@ -354,7 +354,7 @@ fn build_scrolling(ui: &mut Ui) {
 /// `b.iter` invocations amortizes font-database parsing.
 fn fresh_heavy_ui() -> Ui {
     let mut ui = Ui::new();
-    ui.set_cosmic(share(CosmicMeasure::with_bundled_fonts()));
+    ui.set_cosmic(SharedCosmic::with_bundled_fonts());
     ui
 }
 
