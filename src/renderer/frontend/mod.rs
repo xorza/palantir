@@ -46,7 +46,9 @@ use std::sync::atomic::{AtomicU8, Ordering};
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FrameState(Arc<AtomicU8>);
 
-const FRAME_STATE_INITIAL: u8 = 0;
+// FrameState::default() leaves the inner byte at 0, which doesn't
+// match SUBMITTED below — so the first `was_last_submitted` returns
+// false and the first `Ui::begin_frame` rewinds, exactly as wanted.
 const FRAME_STATE_PENDING: u8 = 1;
 const FRAME_STATE_SUBMITTED: u8 = 2;
 
