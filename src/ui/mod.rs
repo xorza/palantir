@@ -11,7 +11,7 @@ use crate::layout::LayoutEngine;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::display::Display;
 use crate::primitives::rect::Rect;
-use crate::renderer::frontend::{FrameOutput, Frontend};
+use crate::renderer::frontend::{FrameOutput, FrameState, Frontend};
 use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::tree::element::Element;
@@ -98,6 +98,16 @@ pub struct Ui {
     /// requested overlays onto the swapchain after the
     /// backbuffer→surface copy.
     pub debug_overlay: Option<DebugOverlayConfig>,
+
+    /// Self-healing frame-lifecycle state. Cloned into each
+    /// [`FrameOutput`]; `WgpuBackend::submit` marks `Submitted` on
+    /// success. The next [`Self::begin_frame`] auto-rewinds
+    /// `damage.prev_surface` if the previous frame's state isn't
+    /// `Submitted` — i.e. the host dropped or skipped a
+    /// `FrameOutput`. Without this, `Damage.prev` would roll forward
+    /// against an unpainted backbuffer and partial-repaint the next
+    /// frame would smear.
+    pub(crate) frame_state: FrameState,
 }
 
 impl Default for Ui {
@@ -126,6 +136,7 @@ impl Ui {
             repaint_requested: false,
             anim: AnimMap::default(),
             debug_overlay: None,
+            frame_state: FrameState::default(),
         }
     }
 
@@ -139,12 +150,38 @@ impl Ui {
 
     /// Start recording a frame. A stray `scale_factor` of `0.0` from winit
     /// would collapse the UI to a single physical pixel — assert against it.
+    ///
+    /// Single detection point for "the world changed since last
+    /// `end_frame`". Three triggers all funnel into the same reset
+    /// (clear `damage.prev`, set `prev_surface = None`):
+    ///
+    /// 1. **Display changed** — host passed a different size or scale
+    ///    than last frame.
+    /// 2. **Frame skipped** — previous `FrameOutput` wasn't marked
+    ///    `Submitted` (surface acquire failed, host dropped, panic in
+    ///    error arm). `Ui::invalidate_prev_frame` also lands here.
+    /// 3. **First frame** — `prev_surface` is `None` by default.
+    ///
+    /// `Damage::compute` reads the post-reset state (`prev_surface ==
+    /// None`) and short-circuits to `DamagePaint::Full`. Hosts don't
+    /// need to call `invalidate_prev_frame` in surface-error paths —
+    /// it's the default behaviour.
     pub(crate) fn begin_frame(&mut self, display: Display) {
         assert!(
             display.scale_factor >= f32::EPSILON,
             "Display::scale_factor must be ≥ f32::EPSILON; got {}",
             display.scale_factor,
         );
+        let new_surface = display.logical_rect();
+        let display_changed = self
+            .damage
+            .prev_surface
+            .is_some_and(|prev| prev != new_surface);
+        let frame_skipped = !self.frame_state.was_last_submitted();
+        if display_changed || frame_skipped {
+            self.damage.invalidate_prev();
+        }
+        self.frame_state.reset_to_idle();
         self.display = display;
         self.forest.begin_frame();
         self.ids.begin_frame();
@@ -189,11 +226,13 @@ impl Ui {
             &self.display,
         );
 
+        self.frame_state.mark_pending();
         FrameOutput {
             buffer,
             damage,
             repaint_requested: self.repaint_requested,
             debug_overlay: self.debug_overlay,
+            frame_state: self.frame_state.clone(),
         }
     }
 
@@ -327,15 +366,13 @@ impl Ui {
     }
 
     /// Drop damage's prev-frame snapshot so the next `end_frame` is
-    /// forced to return `DamagePaint::Full`. Hosts call this when the
-    /// last `end_frame`'s output didn't actually reach the swapchain
-    /// — failed surface acquire (Occluded, Timeout, Outdated, Lost,
-    /// Validation), surface reconfigure, or any other path that
-    /// short-circuits `submit` + `present`. Without the rewind, the
-    /// next frame's diff would compare against snapshots from a frame
-    /// that was never painted and incorrectly return `Skip`.
+    /// forced to return `DamagePaint::Full`. **Rarely needed by hosts**
+    /// — `begin_frame` auto-rewinds when the previous `FrameOutput`
+    /// didn't reach a successful `WgpuBackend::submit`. Use this only
+    /// when something *else* invalidated the backbuffer that's outside
+    /// `submit`'s knowledge (e.g. an external pipeline overwrote it).
     pub fn invalidate_prev_frame(&mut self) {
-        self.damage.prev_surface = None;
+        self.damage.invalidate_prev();
     }
 
     /// Borrow the cross-frame state row for `id`, creating it via

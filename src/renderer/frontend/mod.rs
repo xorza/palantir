@@ -26,6 +26,44 @@ use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::debug_overlay::DebugOverlayConfig;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
+
+/// Shared state tracking whether the most recently produced
+/// [`FrameOutput`] actually reached the GPU. Held by both
+/// [`crate::Ui`] and `FrameOutput` (via `Arc`); written by
+/// `Ui::end_frame` (→ `Pending`) and `WgpuBackend::submit` on a
+/// successful submit path (→ `Submitted`). Read by `Ui::begin_frame`,
+/// which auto-rewinds `damage.prev_surface` when the last frame's
+/// state is anything other than `Submitted`. The "host dropped a
+/// `FrameOutput` without submitting it" bug class becomes
+/// "next frame is `Full`" — wasteful but correct, instead of silent
+/// damage smear.
+///
+/// `AtomicU8` is overkill for the single-threaded path the renderer
+/// actually runs on, but cheap and lets `Ui` / `FrameOutput` stay
+/// `Send`/`Sync` compatible without further constraints.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct FrameState(Arc<AtomicU8>);
+
+const FRAME_STATE_IDLE: u8 = 0;
+const FRAME_STATE_PENDING: u8 = 1;
+const FRAME_STATE_SUBMITTED: u8 = 2;
+
+impl FrameState {
+    pub(crate) fn mark_pending(&self) {
+        self.0.store(FRAME_STATE_PENDING, Ordering::Relaxed);
+    }
+    pub(crate) fn mark_submitted(&self) {
+        self.0.store(FRAME_STATE_SUBMITTED, Ordering::Relaxed);
+    }
+    pub(crate) fn was_last_submitted(&self) -> bool {
+        self.0.load(Ordering::Relaxed) == FRAME_STATE_SUBMITTED
+    }
+    pub(crate) fn reset_to_idle(&self) {
+        self.0.store(FRAME_STATE_IDLE, Ordering::Relaxed);
+    }
+}
 
 /// One frame's CPU output: the composed render buffer and what the
 /// GPU should do with it. Returned from [`Ui::end_frame`], consumed
@@ -44,6 +82,11 @@ pub struct FrameOutput<'a> {
     /// by the wgpu backend to draw the requested visualizations onto
     /// the swapchain texture after the backbuffer→surface copy.
     pub(crate) debug_overlay: Option<DebugOverlayConfig>,
+    /// Shared with `Ui::frame_state`. Set to `Pending` by
+    /// `Ui::end_frame` and (on success) to `Submitted` by
+    /// `WgpuBackend::submit`. The next `Ui::begin_frame` auto-rewinds
+    /// damage if it doesn't see `Submitted`.
+    pub(crate) frame_state: FrameState,
 }
 
 impl FrameOutput<'_> {

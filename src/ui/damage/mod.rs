@@ -103,6 +103,19 @@ pub(crate) enum DamagePaint {
 }
 
 impl Damage {
+    /// Invalidate the previous-frame snapshot: clears the per-widget
+    /// `prev` map and `prev_surface`. `compute` treats
+    /// `prev_surface == None` as "force `DamagePaint::Full`" — see
+    /// the `force_full` branch — so the next frame paints the whole
+    /// surface regardless of the diff. Called by `Ui::begin_frame`
+    /// when the surface changed, the previous frame wasn't acked, or
+    /// it's the first frame, and by [`crate::Ui::invalidate_prev_frame`]
+    /// for explicit host-driven resets.
+    pub(crate) fn invalidate_prev(&mut self) {
+        self.prev.clear();
+        self.prev_surface = None;
+    }
+
     /// Diff against the just-finished frame and return the filtered
     /// damage rect ready for the encoder filter and the backend
     /// scissor: `Some(rect)` → partial repaint, `None` → full repaint
@@ -128,11 +141,14 @@ impl Damage {
         removed: &[WidgetId],
         surface: Rect,
     ) -> DamagePaint {
-        let surface_changed = self.prev_surface != Some(surface);
+        // `prev_surface == None` is the "treat as a fresh frame"
+        // signal. `Ui::begin_frame` clears it (and `prev`) when the
+        // surface changed, the previous `FrameOutput` wasn't acked,
+        // or it's the very first frame; this `compute` doesn't need
+        // to repeat that detection. Always update for the next
+        // frame's begin_frame comparison.
+        let force_full = self.prev_surface.is_none();
         self.prev_surface = Some(surface);
-        if surface_changed {
-            self.prev.clear();
-        }
         #[cfg(test)]
         self.dirty.clear();
         let mut acc = DamageRegion::default();
@@ -180,7 +196,7 @@ impl Damage {
         }
 
         self.region = acc;
-        if surface_changed {
+        if force_full {
             return DamagePaint::Full;
         }
         self.filter(surface)

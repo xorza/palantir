@@ -3,7 +3,7 @@ use crate::Ui;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
-use crate::support::testing::begin;
+use crate::support::testing::{begin, end_frame_acked};
 use crate::tree::Layer;
 use crate::tree::NodeId;
 use crate::tree::element::Configure;
@@ -20,12 +20,14 @@ const DISPLAY: Display = Display {
     pixel_snap: true,
 };
 
-/// Drive one frame with the given builder. Closure receives `ui`
-/// after `begin_frame`.
+/// Drive one frame with the given builder, then simulate a
+/// successful `WgpuBackend::submit` so the next frame's
+/// auto-rewind doesn't fire. Closure receives `ui` after
+/// `begin_frame`.
 fn frame(ui: &mut Ui, f: impl FnOnce(&mut Ui)) {
     ui.begin_frame(DISPLAY);
     f(ui);
-    ui.end_frame();
+    end_frame_acked(ui);
 }
 
 /// The standard "root with one 50×50 frame" tree used by most damage
@@ -307,7 +309,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                         .node,
                 );
             });
-        ui.end_frame();
+        end_frame_acked(ui);
     };
 
     build(Color::rgb(0.2, 0.4, 0.8), &mut ui, &mut child_node);
@@ -362,7 +364,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                         .node,
                 );
             });
-        ui.end_frame();
+        end_frame_acked(ui);
     };
 
     build(0.0, &mut ui, &mut child_node);
@@ -538,17 +540,26 @@ fn display_change_forces_full_repaint() {
         // Steady-state: Full first frame, then Skip on identical re-record.
         ui.begin_frame(DISPLAY);
         build(&mut ui);
-        assert_eq!(ui.end_frame().damage, DamagePaint::Full, "case: {label} f1");
+        let f1 = ui.end_frame();
+        assert_eq!(f1.damage, DamagePaint::Full, "case: {label} f1");
+        f1.frame_state.mark_submitted();
         ui.begin_frame(DISPLAY);
         build(&mut ui);
-        assert_eq!(ui.end_frame().damage, DamagePaint::Skip, "case: {label} f2");
+        let f2 = ui.end_frame();
+        assert_eq!(f2.damage, DamagePaint::Skip, "case: {label} f2");
+        f2.frame_state.mark_submitted();
         assert!(ui.damage.dirty.is_empty(), "case: {label} steady");
 
         // Mutate Display; identical authoring; must short-circuit to Full.
         ui.begin_frame(*mutated);
         build(&mut ui);
-        let after = ui.end_frame().damage;
-        assert_eq!(after, DamagePaint::Full, "case: {label} display change");
+        let mutated_frame = ui.end_frame();
+        assert_eq!(
+            mutated_frame.damage,
+            DamagePaint::Full,
+            "case: {label} display change"
+        );
+        mutated_frame.frame_state.mark_submitted();
         assert!(
             !ui.damage.dirty.is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
@@ -584,13 +595,20 @@ fn invalidate_prev_frame_forces_next_frame_to_full() {
         one_frame(ui, BLUE);
     };
 
-    // Two warm frames: first is `Full`, second is `Skip` (steady state).
-    ui.begin_frame(DISPLAY);
-    build(&mut ui);
-    assert_eq!(ui.end_frame().damage, DamagePaint::Full);
-    ui.begin_frame(DISPLAY);
-    build(&mut ui);
-    assert_eq!(ui.end_frame().damage, DamagePaint::Skip);
+    // Two warm frames: first is `Full`, second is `Skip` (steady
+    // state). `frame` runs end_frame_acked to simulate a successful
+    // submit; without that, the auto-rewind path would already force
+    // `Full` on the second frame, masking the explicit-invalidate
+    // behaviour we're trying to pin.
+    frame(&mut ui, build);
+    let assert_second_is_skip = |ui: &mut Ui| {
+        ui.begin_frame(DISPLAY);
+        build(ui);
+        let out = ui.end_frame();
+        assert_eq!(out.damage, DamagePaint::Skip);
+        out.frame_state.mark_submitted();
+    };
+    assert_second_is_skip(&mut ui);
 
     // Host says "last `end_frame`'s output didn't actually paint."
     ui.invalidate_prev_frame();
@@ -600,12 +618,13 @@ fn invalidate_prev_frame_forces_next_frame_to_full() {
     // against, so it falls back to a clear+repaint.
     ui.begin_frame(DISPLAY);
     build(&mut ui);
-    let d = ui.end_frame().damage;
+    let out = ui.end_frame();
     assert_eq!(
-        d,
+        out.damage,
         DamagePaint::Full,
         "invalidate_prev_frame must force the next compute to Full",
     );
+    out.frame_state.mark_submitted();
 
     // And once a real frame paints, steady-state `Skip` resumes.
     ui.begin_frame(DISPLAY);
@@ -666,10 +685,10 @@ fn small_damage_with_surface_change_forces_full_repaint() {
 
     ui.begin_frame(big);
     scene(&mut ui);
-    ui.end_frame();
+    end_frame_acked(&mut ui);
     ui.begin_frame(big);
     scene(&mut ui);
-    ui.end_frame();
+    end_frame_acked(&mut ui);
     assert!(ui.damage.dirty.is_empty());
 
     // Inject: nudge widget "a"'s prev rect so the next diff sees a
@@ -714,11 +733,16 @@ fn stable_surface_does_not_short_circuit() {
     // Warm up: two identical frames bring damage to steady state.
     ui.begin_frame(DISPLAY);
     build(&mut ui, BLUE);
-    ui.end_frame();
+    end_frame_acked(&mut ui);
     ui.begin_frame(DISPLAY);
     build(&mut ui, BLUE);
-    let warm = ui.end_frame().damage;
-    assert_eq!(warm, DamagePaint::Skip, "warm steady-state with no diff");
+    let warm = ui.end_frame();
+    assert_eq!(
+        warm.damage,
+        DamagePaint::Skip,
+        "warm steady-state with no diff"
+    );
+    warm.frame_state.mark_submitted();
     assert!(ui.damage.dirty.is_empty());
 
     // Frame 3: same surface, *one leaf* changes color. Diff must
@@ -760,7 +784,7 @@ fn button_hover_damage_covers_only_the_button() {
             *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
             *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
         });
-        ui.end_frame();
+        end_frame_acked(ui);
     };
 
     // Pointer parked off-button. Settle for two frames so hit-test +
@@ -823,7 +847,7 @@ fn button_unhover_damage_covers_only_the_button() {
             *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
             *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
         });
-        ui.end_frame();
+        end_frame_acked(ui);
     };
 
     // Settle two frames with cursor over the hot button.
