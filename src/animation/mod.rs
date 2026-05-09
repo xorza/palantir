@@ -186,6 +186,24 @@ impl<T: Animatable> AnimMapTyped<T> {
             row.target = target;
         }
 
+        // Snap-if-close fast path. If `current` is already within
+        // settle epsilon of `target` and there's no residual velocity,
+        // skip the spec math: snap exactly, report settled, no
+        // repaint request. This swallows sub-eps drift in the caller
+        // (theme color rounded to nearest ulp, etc.) that would
+        // otherwise drive a full ease/spring cycle for a visually
+        // imperceptible change.
+        if row.current.sub(row.target).magnitude() < crate::animation::spring::POS_EPS
+            && row.velocity.magnitude() < crate::animation::spring::VEL_EPS
+        {
+            row.current = row.target;
+            row.velocity = T::zero();
+            return TickResult {
+                current: row.target,
+                settled: true,
+            };
+        }
+
         match spec {
             AnimSpec::Duration { secs, ease } => {
                 row.elapsed += dt;
