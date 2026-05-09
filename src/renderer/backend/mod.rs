@@ -129,12 +129,14 @@ pub struct WgpuBackend {
     /// group, uploaded via [`QuadPipeline::upload_masks`]. Cleared at the
     /// start of each stencil frame; capacity retained.
     masks: Vec<Quad>,
-    /// Retained scratch for per-frame damage scissors. One entry per
-    /// rect in `DamagePaint::Partial(region)` after physical-px scaling
-    /// plus AA padding plus viewport clamping; rects that clamp to zero
+    /// Per-frame damage scissors. One entry per rect in
+    /// `DamagePaint::Partial(region)` after physical-px scaling plus
+    /// AA padding plus viewport clamping; rects that clamp to zero
     /// area are filtered out. `Full` and `Skip` leave it empty.
-    /// Capacity reused across frames so steady-state allocs stay zero.
-    damage_scissors: Vec<URect>,
+    /// Bounded by [`DAMAGE_RECT_CAP`] (the merge policy guarantees
+    /// the region never holds more), so inline storage suffices and
+    /// no heap allocation ever runs.
+    damage_scissors: tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]>,
 }
 
 impl WgpuBackend {
@@ -150,7 +152,7 @@ impl WgpuBackend {
             backbuffer: None,
             mask_indices: Vec::new(),
             masks: Vec::new(),
-            damage_scissors: Vec::new(),
+            damage_scissors: Default::default(),
         }
     }
 
@@ -249,19 +251,23 @@ impl WgpuBackend {
     ///
     /// Three damage paths, branching on `frame.damage`:
     ///
-    /// - [`DamagePaint::Full`]: `LoadOp::Clear(clear)` + paint every
-    ///   group at its native scissor. First frame, post-resize, post-
-    ///   format-change, and area-over-threshold all land here.
-    /// - [`DamagePaint::Partial(rect)`][DamagePaint::Partial]:
-    ///   `LoadOp::Load` (preserves last frame) + intersects every
-    ///   group's scissor with the damage rect. Logical-px in;
-    ///   the backend pads for AA bleed and clamps to surface.
-    /// - [`DamagePaint::Skip`]: render pass is skipped entirely.
-    ///   The persistent backbuffer already holds last frame's pixels,
-    ///   so submit just copies it to the swapchain texture and returns.
+    /// - [`DamagePaint::Full`]: a single `LoadOp::Clear(clear)` pass
+    ///   paints every group at its native scissor. First frame,
+    ///   post-resize, post-format-change, and coverage-above-threshold
+    ///   all land here.
+    /// - [`DamagePaint::Partial(region)`][DamagePaint::Partial]: one
+    ///   render pass per rect in the region. Each pass `LoadOp::Load`s
+    ///   the backbuffer (preserving last frame outside the rect) and
+    ///   the schedule narrows every group's scissor to that pass's
+    ///   damage rect. Logical-px in; the backend scales, pads for AA
+    ///   bleed, and clamps to surface; rects that clamp to zero area
+    ///   are filtered out.
+    /// - [`DamagePaint::Skip`]: no render pass at all. The persistent
+    ///   backbuffer already holds last frame's pixels, so submit just
+    ///   copies it to the swapchain texture and returns.
     ///
-    /// A `Partial` rect that clamps to zero physical-px area
-    /// degrades to "loaded but not drawn" inside the pass.
+    /// A region whose every rect clamps to zero physical-px area
+    /// degrades to a single `Full` pass — correct, just wasteful.
     pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, frame: FrameOutput<'_>) {
         let buffer = frame.buffer;
         let damage = frame.damage;

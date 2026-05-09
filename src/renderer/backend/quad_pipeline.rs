@@ -7,8 +7,10 @@ use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke, urect::URect,
 };
 use crate::renderer::quad::Quad;
+use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
+use tinyvec::ArrayVec;
 use wgpu::util::DeviceExt;
 
 #[derive(Copy, Clone, Debug, ShaderType)]
@@ -403,10 +405,12 @@ impl QuadPipeline {
 
     /// Upload one or more debug damage-overlay quads (stroked rects
     /// in physical px, transparent fill). Each entry corresponds to a
-    /// rect in `DamagePaint::Partial(region)`. Grows the buffer to
-    /// the next power of two when needed, mirroring the mask buffer's
-    /// dynamic-resize pattern. Drawn after the backbuffer→surface
-    /// copy so they never land on the backbuffer.
+    /// rect in `DamagePaint::Partial(region)`. Drawn after the
+    /// backbuffer→surface copy so they never land on the backbuffer.
+    /// Buffer grows to the next power of two when needed, mirroring
+    /// the mask buffer's dynamic-resize pattern; the GPU upload uses
+    /// stack-bounded scratch (≤ `DAMAGE_RECT_CAP`) so steady-state
+    /// frames are alloc-free.
     pub(crate) fn upload_overlays(
         &mut self,
         device: &wgpu::Device,
@@ -426,14 +430,20 @@ impl QuadPipeline {
                 mapped_at_creation: false,
             });
         }
-        // Build the per-instance quads on the stack via a small scratch
-        // vec. `rects.len()` is bounded by `DAMAGE_RECT_CAP` (8), so
-        // this allocation is small and warmed.
-        let quads: Vec<Quad> = rects
-            .iter()
-            .map(|r| Quad::new(*r, Color::TRANSPARENT, Corners::default(), Some(stroke)))
-            .collect();
-        queue.write_buffer(&self.overlay_buffer, 0, bytemuck::cast_slice(&quads));
+        let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
+        for r in rects {
+            quads.push(Quad::new(
+                *r,
+                Color::TRANSPARENT,
+                Corners::default(),
+                Some(stroke),
+            ));
+        }
+        queue.write_buffer(
+            &self.overlay_buffer,
+            0,
+            bytemuck::cast_slice(quads.as_slice()),
+        );
     }
 
     /// Bind the no-stencil base pipeline + overlay buffer and draw

@@ -7,6 +7,7 @@ use palantir_anim_derive::Animatable;
     Clone,
     Copy,
     Debug,
+    Default,
     PartialEq,
     bytemuck::Pod,
     bytemuck::Zeroable,
