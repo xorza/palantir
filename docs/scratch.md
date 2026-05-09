@@ -9,5 +9,3 @@ debug overlay for damage rects
  animate option for appearing stroke
 
  multiple damage rects
-
-cosmic and glyphon optimizationf or release
