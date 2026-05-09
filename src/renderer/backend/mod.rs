@@ -9,7 +9,6 @@ use crate::primitives::{
 };
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::text::SharedCosmic;
 use crate::ui::damage::DamagePaint;
 use crate::ui::debug_overlay::DebugOverlayConfig;
 
@@ -216,12 +215,6 @@ impl WgpuBackend {
         bb.stencil = Some(StencilAttachment { tex, view });
     }
 
-    /// Install the shared shaper handle. Pass the same `SharedCosmic` to
-    /// [`crate::Ui::set_cosmic`] so layout and rendering see one cache.
-    pub fn set_cosmic(&mut self, cosmic: SharedCosmic) {
-        self.text.set_cosmic(cosmic);
-    }
-
     /// Render one frame to the persistent backbuffer, then copy the
     /// backbuffer onto the swapchain texture. The caller's surface
     /// texture must have `COPY_DST` usage (set in
@@ -370,14 +363,26 @@ impl WgpuBackend {
         // glyphon can upload to the atlas + per-renderer vertex buffer
         // freely. Viewport uniform updated once for all renderers in the
         // pool — they share the atlas-bound pipeline + viewport state.
-        self.text.update_viewport(&self.queue, buffer.viewport_phys);
-        for (i, g) in buffer.groups.iter().enumerate() {
-            if g.texts.len == 0 {
-                continue;
+        // No shaper installed (`frame.cosmic` is `None`) means text
+        // rendering is silently skipped — same fallback as the old
+        // backend-side cosmic-not-set path.
+        if let Some(cosmic) = frame.cosmic {
+            self.text.update_viewport(&self.queue, buffer.viewport_phys);
+            for (i, g) in buffer.groups.iter().enumerate() {
+                if g.texts.len == 0 {
+                    continue;
+                }
+                let runs = &buffer.texts[g.texts.range()];
+                self.text.prepare_group(
+                    &self.device,
+                    &self.queue,
+                    cosmic,
+                    buffer.scale,
+                    i,
+                    runs,
+                    text_mode,
+                );
             }
-            let runs = &buffer.texts[g.texts.range()];
-            self.text
-                .prepare_group(&self.device, &self.queue, buffer.scale, i, runs, text_mode);
         }
 
         let mut encoder = self

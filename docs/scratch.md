@@ -11,3 +11,5 @@ debug overlay for damage rects
  multiple damage rects
 
 cosmic and glyphon optimizationf or release
+
+encapsulate cosmic

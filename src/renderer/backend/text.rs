@@ -65,7 +65,6 @@ const POOL_SHRINK_RATIO: usize = 2;
 /// scratch. Capacity retains across frames; pool grows to historical
 /// high water.
 pub(crate) struct TextRenderer {
-    cosmic: Option<SharedCosmic>,
     cache: Cache,
     atlas: TextAtlas,
     viewport: Viewport,
@@ -110,7 +109,6 @@ impl TextRenderer {
         let viewport = Viewport::new(device, &cache);
         let swash_cache = SwashCache::new();
         Self {
-            cosmic: None,
             cache,
             atlas,
             viewport,
@@ -121,12 +119,6 @@ impl TextRenderer {
             stencil_ready: FixedBitSet::new(),
             high_water: 0,
         }
-    }
-
-    /// Install the shared shaper handle. Pass the same `SharedCosmic` to
-    /// [`crate::Ui::set_cosmic`] so layout and rendering see one cache.
-    pub(crate) fn set_cosmic(&mut self, cosmic: SharedCosmic) {
-        self.cosmic = Some(cosmic);
     }
 
     /// Re-create on surface format change (e.g. after window recreation).
@@ -169,18 +161,17 @@ impl TextRenderer {
     /// pool — both share `atlas`. Returns `false` and skips work if no
     /// shaper is installed or no runs resolve to a buffer. The pool
     /// grows on demand if `group_idx` exceeds its current length.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepare_group(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        cosmic: &SharedCosmic,
         scale: f32,
         group_idx: usize,
         runs: &[TextRun],
         mode: StencilMode,
     ) -> bool {
-        let Some(cosmic) = self.cosmic.as_ref() else {
-            return false;
-        };
         let mut cosmic = cosmic.borrow_mut();
 
         let RenderSplit {

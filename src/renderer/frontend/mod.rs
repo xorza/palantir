@@ -22,6 +22,7 @@ use crate::primitives::rect::Rect;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::text::SharedCosmic;
 use crate::tree::forest::Forest;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
@@ -44,6 +45,12 @@ pub struct FrameOutput<'a> {
     /// by the wgpu backend to draw the requested visualizations onto
     /// the swapchain texture after the backbuffer→surface copy.
     pub(crate) debug_overlay: Option<DebugOverlayConfig>,
+    /// Borrow of the shared shaper handle [`crate::Ui::set_cosmic`]
+    /// installed. Backend reads this each `submit` so the host wires
+    /// the shaper exactly once (on `Ui`); the backend doesn't carry
+    /// its own copy. `None` ⇒ no shaper installed; text rendering is
+    /// silently skipped at submit time (same fallback as before).
+    pub(crate) cosmic: Option<&'a SharedCosmic>,
 }
 
 impl FrameOutput<'_> {
