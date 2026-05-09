@@ -157,7 +157,8 @@ glyph cells incorrectly; stencil over union doesn't).
 
 # Open follow-ups
 
-Hygiene/speculation pruned. What's actually open:
+Both items are blocked on a workload that doesn't exist yet — neither
+is action-ready today.
 
 ### Symmetric scissor-boundary leakage
 
@@ -169,63 +170,36 @@ encoder filter (`encoder/mod.rs:172`) tests
 The padding solves the **outgoing-fringe** problem: a *changed* leaf
 inside the damage rect whose AA / stroke / glyph metrics extend past
 the rect's edge — the padded scissor accepts those pixels. Without
-padding the scissor would clip them and leave a 1-px-hard edge at
-the boundary. Good.
+it, the scissor would clip the fringe and leave a 1-px-hard edge.
 
-But the same padding *creates* the **incoming-fringe** problem.
-The 2-px strip just outside the damage rect overlaps the rendered
-bounds of *adjacent unchanged* leaves (their strokes, italic
-descenders, glyph fringes — anything extending past the layout
-rect). The pass's `PreClear` / `LoadOp::Clear` paints clear color
-across that strip; the encoder skipped the unchanged leaf, so its
-fringe is never re-emitted; visible artifact: a slice of the
-unchanged leaf's stroke / fringe along the boundary got wiped.
+But the same padding *creates* the **incoming-fringe** problem. The
+2-px strip just outside the damage rect overlaps the rendered bounds
+of *adjacent unchanged* leaves (strokes, italic descenders, glyph
+fringes). `PreClear` / `LoadOp::Clear` paints clear color across
+that strip; the encoder skipped the unchanged leaf, so its fringe
+is never re-emitted — a slice of the leaf's overhang gets wiped.
 
 | | Without padding | With padding (today) |
 |---|---|---|
 | Outgoing fringe (changed leaf inside damage) | clipped → 1-px hard edge | painted correctly |
 | Incoming fringe (unchanged leaf adjacent to damage) | preserved | overwritten → missing slice |
 
-Subsumes the `any_intersects` strictness asymmetry (same root
-cause: the encoder-side test is `<` while the scissor inflates).
+**Fix:** pad the *encoder filter* by the same amount. Mechanical —
+add a `Region::any_intersects_padded(rect, pad)` and thread
+`DAMAGE_AA_PADDING` (in logical px) to the filter call site.
 
-Fix is symmetric: pad the *encoder filter* by the same amount, so
-adjacent unchanged leaves get included whenever the padded scissor
-reaches into them. Mechanical change — add a
-`Region::any_intersects_padded(rect, pad)` (or fatten the input
-rect inline) and thread `DAMAGE_AA_PADDING` (in logical px) to the
-filter call site.
+**Why invisible today:** production scenes use filled rects + plain
+text — neither overhangs. Trigger is "stroked element next to a
+frequently-changing widget", which no fixture or app currently has.
 
-**Why we haven't hit this yet.** Production scenes use filled rects
-and plain text inside the body — neither overhangs the layout rect.
-The artifact only appears when something with rendered bounds
-larger than its layout rect (stroked panel, italic glyph descender,
-shadow, blur) sits *adjacent* to a frequently-changing widget. No
-fixture exercises that combination today. Whichever workload first
-needs a stroked panel next to a hovering button is the trigger.
-
-**Tunable on the side**: `DAMAGE_AA_PADDING = 2` was picked
-defensively. Most AA bleeds < 1 px; halving the padding shrinks the
-leakage zone without losing the outgoing fringe. Worth evaluating
-once the fixture exists.
+**Side knob:** `DAMAGE_AA_PADDING = 2` is defensive; most AA bleeds
+< 1 px. Halving shrinks the leakage zone. Worth evaluating once a
+fixture exists.
 
 ### `DAMAGE_RECT_CAP = 8` tuning
 
 Slint ships 3, LVGL 32. Eight was a guess. Re-decide once a real
 workload bench exists; until then `8` is fine.
-
-### ~~`frame.damage` staleness~~ — landed as self-healing
-
-Replaced with a `FrameState` (`Arc<AtomicU8>`) shared between `Ui`
-and `FrameOutput`. `end_frame` marks `Pending`; `submit` (on every
-success path) marks `Submitted`; the next `begin_frame`
-auto-rewinds `damage.prev_surface` if state isn't `Submitted`. A
-host that drops a `FrameOutput` (surface error, panic in error
-arm, anything) gets one wasted `Full` frame, not silent damage
-smear. Combined with `begin_frame`'s display-changed check and
-`submit`'s `ensure_backbuffer` recreate detection, no host-facing
-"invalidate" call is needed at all — `Ui::surface_invalidated`
-was removed.
 
 ## References
 
