@@ -14,7 +14,6 @@ pub(crate) mod widgets;
 
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
-pub use animation::spring::Spring;
 pub use animation::{AnimSlot, AnimSpec};
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
 pub use input::sense::Sense;
