@@ -60,7 +60,11 @@ use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 ///   shaping via cosmic-text.
 #[derive(Clone, Default)]
 pub struct TextShaper {
-    inner: Rc<RefCell<ShaperInner>>,
+    /// `pub(crate)` for [`crate::support::internals`] observability
+    /// helpers. Direct field access from inside the crate is fine; the
+    /// invariants live in the mutating methods of `TextShaper`, not in
+    /// encapsulation theater.
+    pub(crate) inner: Rc<RefCell<ShaperInner>>,
 }
 
 /// Shared mutable state behind the `Rc<RefCell<...>>` in [`TextShaper`].
@@ -68,18 +72,20 @@ pub struct TextShaper {
 /// [`crate::WgpuBackend`] (shaping during render) borrow this; backend
 /// only touches `cosmic` via [`TextShaper::with_render_split`].
 #[derive(Default)]
-struct ShaperInner {
+pub(crate) struct ShaperInner {
     /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
     cosmic: Option<CosmicMeasure>,
     /// Total `measure` calls dispatched (cache misses). Cache hits
-    /// don't increment. Read by tests pinning reshape-skip behaviour.
-    measure_calls: u64,
+    /// don't increment. Read by tests pinning reshape-skip behaviour
+    /// via [`crate::support::internals::text_shaper_measure_calls`].
+    pub(crate) measure_calls: u64,
     /// Cross-frame cache of shaping output keyed by
     /// `(WidgetId, within-node text-shape ordinal)`, validity-checked
     /// by authoring hash. The ordinal disambiguates leaves with
     /// multiple `Shape::Text` runs. The wrap slot's `target_q`
-    /// quantization is layout policy chosen at the call site.
-    reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
+    /// quantization is layout policy chosen at the call site. Read by
+    /// tests via [`crate::support::internals::text_shaper_has_reuse_entry`].
+    pub(crate) reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
 }
 
 impl TextShaper {
@@ -239,22 +245,6 @@ impl TextShaper {
             .borrow_mut()
             .reuse
             .retain(|(wid, _), _| !removed.contains(wid));
-    }
-
-    /// Total `measure` calls dispatched through this shaper (cache
-    /// misses only). Read by tests pinning cache-effectiveness; cheap
-    /// enough to leave on in release.
-    #[allow(dead_code)] // read only from `#[cfg(test)]` modules
-    pub(crate) fn measure_calls(&self) -> u64 {
-        self.inner.borrow().measure_calls
-    }
-
-    /// `true` if a reuse entry exists for `(wid, ordinal)`. Test-only
-    /// observability into the per-widget measure cache; used by sweep
-    /// fixtures to confirm entries land and get evicted.
-    #[allow(dead_code)] // read only from `#[cfg(test)]` modules
-    pub(crate) fn has_reuse_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
-        self.inner.borrow().reuse.contains_key(&(wid, ordinal))
     }
 
     /// Run `body` against a [`RenderSplit`] of the inner cosmic state
@@ -424,7 +414,7 @@ fn mono_measure(
 /// Cached unbounded shape + most-recent wrap result, validity-checked
 /// by authoring `hash`.
 #[derive(Clone, Copy)]
-struct TextReuseEntry {
+pub(crate) struct TextReuseEntry {
     hash: NodeHash,
     unbounded: MeasureResult,
     wrap: Option<WrapReuse>,
@@ -520,13 +510,19 @@ mod tests {
         // existing tests; pin that caret_x participates in it (no
         // free measurements) so a future caller can detect over-call.
         let m = TextShaper::default();
-        let before = m.measure_calls();
+        let before = crate::support::internals::text_shaper_measure_calls(&m);
         let _ = m.caret_x("abc", 2, 16.0, lh(16.0));
-        assert_eq!(m.measure_calls(), before + 1);
+        assert_eq!(
+            crate::support::internals::text_shaper_measure_calls(&m),
+            before + 1
+        );
         // Zero-offset shortcut must not bump the counter.
-        let zero_before = m.measure_calls();
+        let zero_before = crate::support::internals::text_shaper_measure_calls(&m);
         let _ = m.caret_x("abc", 0, 16.0, lh(16.0));
-        assert_eq!(m.measure_calls(), zero_before);
+        assert_eq!(
+            crate::support::internals::text_shaper_measure_calls(&m),
+            zero_before
+        );
     }
 
     #[test]
