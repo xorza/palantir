@@ -16,6 +16,7 @@ mod tests;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
+use crate::animation::spring::{POS_EPS, VEL_EPS, step as spring_step};
 use crate::primitives::approx::approx_zero;
 use crate::tree::widget_id::WidgetId;
 use rustc_hash::FxHashMap;
@@ -165,7 +166,9 @@ impl<T: Animatable> AnimMapTyped<T> {
 
         // Retarget: duration restarts the segment from `current`;
         // spring keeps velocity (that's half the reason springs exist).
-        if row.target.sub(target).magnitude() > 0.0 {
+        // `Animatable: PartialEq` lets us short-circuit with a
+        // bytewise compare on the steady-state path.
+        if row.target != target {
             if matches!(spec, AnimSpec::Duration { .. }) {
                 row.segment_start = row.current;
                 row.elapsed = 0.0;
@@ -180,9 +183,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         // (theme color rounded to nearest ulp, etc.) that would
         // otherwise drive a full ease/spring cycle for a visually
         // imperceptible change.
-        if row.current.sub(row.target).magnitude() < crate::animation::spring::POS_EPS
-            && row.velocity.magnitude() < crate::animation::spring::VEL_EPS
-        {
+        if row.current.sub(row.target).magnitude() < POS_EPS && row.velocity.magnitude() < VEL_EPS {
             row.current = row.target;
             row.velocity = T::zero();
             return TickResult {
@@ -206,7 +207,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                 }
             }
             AnimSpec::Spring { stiffness, damping } => {
-                let step = crate::animation::spring::step(
+                let step = spring_step(
                     stiffness,
                     damping,
                     row.current,

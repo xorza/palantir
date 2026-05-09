@@ -10,7 +10,13 @@ use glam::Vec2;
 /// Math-only trait. Storage is decoupled (type-erased `AnimMap`
 /// keyed on `TypeId`), so adding a new `Animatable` type doesn't
 /// require touching central code.
-pub trait Animatable: Copy + 'static {
+///
+/// `PartialEq` supertrait lets `tick` short-circuit retarget
+/// detection with a bytewise compare — most frames have an unchanged
+/// target, so we skip the sub + magnitude pair on the steady-state
+/// path. All built-in and derived types already implement
+/// `PartialEq`.
+pub trait Animatable: Copy + PartialEq + 'static {
     fn lerp(a: Self, b: Self, t: f32) -> Self;
     fn sub(self, other: Self) -> Self;
     fn add(self, other: Self) -> Self;
