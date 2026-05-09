@@ -31,8 +31,8 @@ fn add_swallows_contained_existing() {
     assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
 }
 
-/// LVGL rule fires for axis-aligned overlap: bbox waste is small,
-/// so the merge wins.
+/// Proximity rule fires for axis-aligned overlap: bbox area
+/// (150) is well under `MERGE_AREA_RATIO × (100 + 100) = 260`.
 #[test]
 fn add_merges_axis_aligned_overlap() {
     let mut region = DamageRegion::default();
@@ -41,8 +41,8 @@ fn add_merges_axis_aligned_overlap() {
     assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 15.0, 10.0)]);
 }
 
-/// Edge-touching pairs merge (the LVGL rule is non-strict `≤`, so
-/// `bbox = sum` still triggers).
+/// Edge-touching pairs merge (bbox = 200 = sum, well under
+/// the 1.3× threshold).
 #[test]
 fn add_merges_edge_touching() {
     let mut region = DamageRegion::default();
@@ -51,13 +51,38 @@ fn add_merges_edge_touching() {
     assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 20.0, 10.0)]);
 }
 
-/// Diagonal overlap: bbox waste exceeds the savings (225 vs. 200),
-/// so the rule rejects and both rects stay.
+/// Near-but-not-overlapping pairs merge under the 1.3× ratio.
+/// Two 10×10 rects 2 px apart: bbox = 22×10 = 220, sum = 200,
+/// ratio 1.10 ≤ 1.30. The strict-overlap rule rejected this; the
+/// new rule accepts.
 #[test]
-fn add_keeps_diagonal_overlap_split() {
+fn add_merges_near_disjoint_under_ratio() {
+    let mut region = DamageRegion::default();
+    region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
+    region.add(Rect::new(12.0, 0.0, 10.0, 10.0));
+    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 22.0, 10.0)]);
+}
+
+/// Diagonal overlap (15×15 bbox = 225, sum = 200, ratio 1.125)
+/// merges under the 1.3× rule. The strict-overlap rule rejected
+/// this case.
+#[test]
+fn add_merges_diagonal_overlap_under_ratio() {
     let mut region = DamageRegion::default();
     let a = Rect::new(0.0, 0.0, 10.0, 10.0);
     let b = Rect::new(5.0, 5.0, 10.0, 10.0);
+    region.add(a);
+    region.add(b);
+    assert_eq!(collect(&region), vec![a.union(b)]);
+}
+
+/// Pair just over the 1.3× ceiling stays split: two 10×10 rects
+/// 7 px apart give bbox = 27×10 = 270, sum = 200, ratio 1.35 > 1.30.
+#[test]
+fn add_keeps_pair_above_ratio_split() {
+    let mut region = DamageRegion::default();
+    let a = Rect::new(0.0, 0.0, 10.0, 10.0);
+    let b = Rect::new(17.0, 0.0, 10.0, 10.0);
     region.add(a);
     region.add(b);
     assert_eq!(collect(&region).len(), 2);

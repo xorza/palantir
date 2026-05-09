@@ -7,9 +7,14 @@ for *what* the system does.
 
 ## Shipped design
 
-- `DamageRegion` is `tinyvec::ArrayVec<[Rect; 8]>` with the LVGL-style
-  merge cascade + Slint min-growth fallback at the cap
-  (`src/ui/damage/region/mod.rs`).
+- `DamageRegion` is `tinyvec::ArrayVec<[Rect; 8]>` with a
+  proximity-merge cascade (`union ≤ MERGE_AREA_RATIO × (|A|+|B|)`,
+  `MERGE_AREA_RATIO = 1.3`) plus Slint min-growth fallback at the
+  cap (`src/ui/damage/region/mod.rs`). The 1.3× ratio admits
+  axis-adjacent pairs (gap of one stride or less) but rejects
+  cells more than one stride apart — calibrated against the GPU
+  bench crossover. `1.0` reproduces the strict LVGL "overlap or
+  edge-touch" rule; raise to admit more proximity merging.
 - `DamagePaint::{Full, Partial(DamageRegion), Skip}`
   (`src/ui/damage/mod.rs`).
 - Encoder filter: `region.any_intersects(rect)` per leaf, plus a
