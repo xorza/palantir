@@ -396,13 +396,12 @@ pub struct ButtonTheme {
     /// Default margin around the button.
     pub margin: Spacing,
     /// Spec applied to fill/stroke/text transitions between states.
-    /// Default [`AnimSpec::FAST`] (120ms ease-out-cubic). Set to
-    /// [`AnimSpec::INSTANT`] to disable button animation globally
-    /// (accessibility, debug builds, snapshot tests). `#[serde(skip)]`
-    /// — animation policy is process-time, not on-disk; theme files
-    /// round-trip with the default spec.
-    #[serde(skip)]
-    pub anim: AnimSpec,
+    /// Default `None` — animation is opt-in. Themes that want motion
+    /// set this to `Some(AnimSpec::FAST)`, `Some(AnimSpec::SPRING)`,
+    /// or any custom spec. Round-trips through serde so theme files
+    /// can configure motion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anim: Option<AnimSpec>,
 }
 
 impl Default for ButtonTheme {
@@ -454,7 +453,7 @@ impl Default for ButtonTheme {
             },
             padding: Spacing::xy(12.0, 6.0),
             margin: Spacing::ZERO,
-            anim: AnimSpec::default(),
+            anim: None,
         }
     }
 }

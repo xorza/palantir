@@ -268,17 +268,13 @@ impl Ui {
         target: T,
         spec: AnimSpec,
     ) -> T {
-        // Pipeline-level fast-path for instant specs (the library
-        // default): no dispatch into the typed map, no repaint
-        // request, no extra frame. Drop any stale row that may have
-        // been left behind by a prior non-instant spec on this slot
-        // so a future switch back to animated starts fresh from
-        // `target`. `tick` re-checks `is_instant` defensively for
-        // direct internal callers.
-        if spec.is_instant() {
-            T::slot_mut(&mut self.anim).rows.remove(&(id, slot));
-            return target;
-        }
+        // Degenerate Duration{secs ≈ 0} short-circuits at the tick
+        // entry — drop any stale row, return target. Springs and real
+        // Durations dispatch normally. Callers that want "maybe
+        // animate" (e.g. `theme.button.anim: Option<AnimSpec>`) check
+        // the Option themselves and skip this call when None — that
+        // keeps `Ui::animate`'s contract narrow ("tick this row") and
+        // surfaces the animate-or-not decision at the use site.
         let r = T::slot_mut(&mut self.anim).tick(id, slot, target, spec, self.dt);
         if !r.settled {
             self.repaint_requested = true;

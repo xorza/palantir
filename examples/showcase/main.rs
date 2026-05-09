@@ -162,10 +162,9 @@ impl ApplicationHandler for App {
         let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
         let mut ui = Ui::new();
-        // Library default is `AnimSpec::INSTANT` (animation is opt-in).
-        // Showcase exists to demo the animation primitive — turn on the
-        // standard 120ms hover/press fade for buttons.
-        ui.theme.button.anim = palantir::AnimSpec::SPRING;
+        // Library default is no button animation (`anim = None`).
+        // Showcase exists to demo the animation primitive — opt in.
+        ui.theme.button.anim = Some(palantir::AnimSpec::SPRING);
         let display = palantir::Display::from_physical(
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,

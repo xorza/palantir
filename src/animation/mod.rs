@@ -13,7 +13,6 @@ mod tests;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
-use crate::animation::spring::Spring;
 use crate::primitives::approx::approx_zero;
 use crate::primitives::color::Color;
 use crate::tree::widget_id::WidgetId;
@@ -29,21 +28,38 @@ use std::collections::hash_map::Entry;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AnimSlot(pub u8);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// How a value moves toward its target. Animation itself is opt-in
+/// at the call site — pass `None` to [`crate::Ui::animate`] (or omit
+/// the field on a theme) when you want snap-to-target behavior.
+/// `AnimSpec` only describes what motion looks like *when there is
+/// motion*; "no animation" lives in `Option<AnimSpec>`, not as a
+/// variant here.
+///
+/// Wire format is internally tagged on `kind` (snake_case), so theme
+/// files read cleanly:
+///
+/// ```toml
+/// [theme.button.anim]
+/// kind = "duration"
+/// secs = 0.12
+/// ease = "out_cubic"
+///
+/// [theme.button.anim]
+/// kind = "spring"
+/// stiffness = 170.0
+/// damping = 26.0
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AnimSpec {
+    /// Eased interpolation over `secs` seconds. `secs ≈ 0` collapses
+    /// to a snap (single-frame settle).
     Duration { secs: f32, ease: Easing },
-    Spring(Spring),
+    /// Critically-damped spring (semi-implicit Euler).
+    Spring { stiffness: f32, damping: f32 },
 }
 
 impl AnimSpec {
-    /// Zero-duration: tick snaps `current = target` and reports
-    /// settled on the same frame the target moves. Use to disable
-    /// animation while keeping the call shape (e.g. accessibility
-    /// preferences, debug builds, tests).
-    pub const INSTANT: Self = Self::Duration {
-        secs: 0.0,
-        ease: Easing::Linear,
-    };
     /// 120 ms ease-out-cubic. Snappy hover/press default.
     pub const FAST: Self = Self::Duration {
         secs: 0.12,
@@ -56,39 +72,29 @@ impl AnimSpec {
     };
     /// Critically-damped spring tuned as a general-purpose default
     /// (Apple-style soft spring).
-    pub const SPRING: Self = Self::Spring(Spring {
+    pub const SPRING: Self = Self::Spring {
         stiffness: 170.0,
         damping: 26.0,
-    });
+    };
 
     pub const fn duration(secs: f32, ease: Easing) -> Self {
         Self::Duration { secs, ease }
     }
 
     pub const fn spring(stiffness: f32, damping: f32) -> Self {
-        Self::Spring(Spring { stiffness, damping })
+        Self::Spring { stiffness, damping }
     }
 
-    /// True when this spec is mathematically a no-op: `tick` will
-    /// snap to target on every call, never request a repaint, never
-    /// allocate a row. Pipeline code that wants to skip animation
-    /// dispatch entirely (avoiding the row probe + repaint flag)
-    /// should branch on this. Currently any `Duration { secs ≈ 0 }`
-    /// (including [`Self::INSTANT`]); springs are never instant by
-    /// construction (their settle path requires at least one tick).
+    /// True when this spec collapses to a single-frame snap — a
+    /// `Duration` with sub-epsilon (or negative) `secs`. Springs are
+    /// never instant by construction. `Ui::animate` short-circuits on
+    /// this *and* on `None`, so a manually-constructed
+    /// `Duration { secs: 0.0 }` behaves identically to passing `None`.
     pub fn is_instant(self) -> bool {
-        matches!(self, Self::Duration { secs, .. } if approx_zero(secs) || secs < 0.0)
-    }
-}
-
-impl Default for AnimSpec {
-    /// `INSTANT`. Animation is opt-in: callers (themes, widgets) pick
-    /// a real spec when motion is wanted. The library default is to
-    /// snap, so nothing animates unless someone asked for it — keeps
-    /// tests deterministic and avoids a default that requests
-    /// repaints behind the caller's back.
-    fn default() -> Self {
-        Self::INSTANT
+        match self {
+            Self::Duration { secs, .. } => approx_zero(secs) || secs < 0.0,
+            Self::Spring { .. } => false,
+        }
     }
 }
 
@@ -194,8 +200,15 @@ impl<T: Animatable> AnimMapTyped<T> {
                     settled,
                 }
             }
-            AnimSpec::Spring(spring) => {
-                let step = spring.step(row.current, row.velocity, row.target, dt);
+            AnimSpec::Spring { stiffness, damping } => {
+                let step = crate::animation::spring::step(
+                    stiffness,
+                    damping,
+                    row.current,
+                    row.velocity,
+                    row.target,
+                    dt,
+                );
                 row.current = step.current;
                 row.velocity = step.velocity;
                 TickResult {

@@ -2,7 +2,8 @@
 //! is normalized 0..1 progress; output is the eased value (also 0..1
 //! for "out" curves; may overshoot for `OutBack`).
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Easing {
     Linear,
     OutCubic,

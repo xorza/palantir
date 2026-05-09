@@ -92,16 +92,25 @@ impl Button {
             color: Color::TRANSPARENT,
         });
 
-        // Interpolate paint properties toward the target state. Spec
-        // is theme-controlled — `AnimSpec::INSTANT` disables animation
-        // globally (accessibility, debug, snapshot tests). Default is
-        // `AnimSpec::FAST` (120ms ease-out-cubic).
+        // Interpolate paint properties toward the target state when
+        // the theme configures motion (`style.anim = Some(spec)`);
+        // otherwise snap. Theme default is `None` — animation is
+        // opt-in.
         let id = element.id;
-        let anim = style.anim;
-        let fill = ui.animate(id, SLOT_FILL, target_bg.fill, anim);
-        let stroke_color = ui.animate(id, SLOT_STROKE_COLOR, target_stroke.color, anim);
-        let stroke_width = ui.animate(id, SLOT_STROKE_WIDTH, target_stroke.width, anim);
-        let text_color = ui.animate(id, SLOT_TEXT_COLOR, target_text.color, anim);
+        let (fill, stroke_color, stroke_width, text_color) = match style.anim {
+            Some(anim) => (
+                ui.animate(id, SLOT_FILL, target_bg.fill, anim),
+                ui.animate(id, SLOT_STROKE_COLOR, target_stroke.color, anim),
+                ui.animate(id, SLOT_STROKE_WIDTH, target_stroke.width, anim),
+                ui.animate(id, SLOT_TEXT_COLOR, target_text.color, anim),
+            ),
+            None => (
+                target_bg.fill,
+                target_stroke.color,
+                target_stroke.width,
+                target_text.color,
+            ),
+        };
 
         let animated_bg = Background {
             fill,
