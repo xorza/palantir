@@ -953,6 +953,79 @@ mod bars {
         );
     }
 
+    /// Cold-mount bar geometry must match steady-state frame-2 bar
+    /// geometry. Pins the regression where the cold-mount two-pass
+    /// record emitted bars sized off pass-A's stale `viewport` (= full
+    /// outer, reservation not yet seen), so frame 2's bars then
+    /// shrunk by `theme.width + theme.gap` on the main axis — visible
+    /// as scrollbars "changing size a bit" on the first input event
+    /// after a tab switch. The fix derives bar geometry from `outer -
+    /// reservation - user_padding` (all stable at record time)
+    /// instead of the cached `viewport`.
+    #[test]
+    fn cold_mount_bar_geometry_matches_frame_two() {
+        use crate::primitives::rect::Rect;
+        use std::time::Duration;
+        let surface = UVec2::new(400, 600);
+        let mut ui = ui_at(surface);
+        let scene = |ui: &mut Ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
+                Scroll::both()
+                    .id_salt("scroll")
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id_salt("big")
+                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                            .show(ui);
+                    });
+            });
+        };
+        let scroll_id = WidgetId::from_hash("scroll");
+        let bar_rects = |ui: &Ui| -> Vec<Rect> {
+            let tree = ui.forest.tree(Layer::Main);
+            let idx = tree
+                .records
+                .widget_id()
+                .iter()
+                .position(|w| *w == scroll_id)
+                .expect("scroll widget recorded");
+            let mut rects: Vec<_> = shapes_of(tree, NodeId(idx as u32))
+                .filter_map(|s| match s {
+                    Shape::RoundedRect {
+                        local_rect: Some(r),
+                        ..
+                    } => Some(*r),
+                    _ => None,
+                })
+                .collect();
+            rects.sort_by(|a, b| {
+                a.min
+                    .x
+                    .total_cmp(&b.min.x)
+                    .then(a.min.y.total_cmp(&b.min.y))
+            });
+            rects
+        };
+
+        let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
+        let f1 = bar_rects(&ui);
+        assert_eq!(f1.len(), 2, "cold-mount must emit both V + H thumbs");
+
+        ui.begin_frame(Display::from_physical(surface, 1.0));
+        scene(&mut ui);
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
+        let f2 = bar_rects(&ui);
+
+        assert_eq!(
+            f1, f2,
+            "bar shapes on cold-mount frame must match steady-state \
+             frame 2 (regression: pass-B used pass-A's stale viewport \
+             → bars shrank by theme.width + theme.gap on next frame)",
+        );
+    }
+
     /// Cold-mount with content that fits in the viewport: NO gutter
     /// reservation, no relayout fires, viewport stays at full outer.
     /// Pairs with the cold-mount-overflow test as the negative case.

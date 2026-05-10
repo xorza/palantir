@@ -72,13 +72,16 @@ pub(crate) fn bar_geometry(
 /// Emit one bar (track + thumb) along `axis` if `panned` and content
 /// overflows. Track + thumb sit at the cross-axis far edge of the
 /// **outer** rect (so they land in the reserved gutter even when the
-/// viewport panel has user padding) and run the **viewport**'s
-/// main-axis extent (so the V/H bars don't overlap at the corner when
-/// both are present).
+/// viewport panel has user padding) and run `outer.main -
+/// other_reservation` (so the V/H bars don't overlap at the corner
+/// when both are present, and the length stays stable across the
+/// cold-mount two-pass record — `viewport` from cached state lags
+/// reservation by one pass and would shrink by `theme.width +
+/// theme.gap` on the second frame).
 #[allow(clippy::too_many_arguments)]
 fn push_bar(
     ui: &mut Ui,
-    viewport: Size,
+    bar_viewport: Size,
     outer: Size,
     content: Size,
     offset: Vec2,
@@ -89,7 +92,7 @@ fn push_bar(
     if !panned {
         return;
     }
-    let main = axis.main(viewport);
+    let main = axis.main(bar_viewport);
     let cross_outer = axis.cross(outer);
     let main_content = axis.main(content);
     let main_offset = axis.main_v(offset);
@@ -212,7 +215,6 @@ impl Scroll {
         if !scroll.seen {
             ui.request_relayout();
         }
-        let viewport = scroll.viewport;
         let outer_size = scroll.outer;
         let content = scroll.content;
         let overflow = scroll.overflow;
@@ -228,6 +230,23 @@ impl Scroll {
         // cold-mount overlap, no empty strip when content fits.
         let reserve_y = bar_reservation(pan.y && overflow.1, &theme);
         let reserve_x = bar_reservation(pan.x && overflow.0, &theme);
+
+        // Bar geometry is derived from outer - reservation - user
+        // padding rather than the cached `viewport`. The cached
+        // viewport lags by one arrange pass during cold-mount: pass A
+        // arranges without reservation (overflow not yet seen) and
+        // writes `viewport = outer - user_padding`; pass B records bars
+        // off that stale value, and frame 2's pass A finally writes
+        // `viewport = outer - reserve - user_padding`, shrinking the
+        // bar by ~12px visibly. `outer_size`, the reservations, and
+        // the inner padding are all known at record time and stable,
+        // so this expression matches the steady-state viewport every
+        // frame.
+        let user_pad = self.element.padding;
+        let bar_viewport = Size::new(
+            (outer_size.w - reserve_y - user_pad.horiz()).max(0.0),
+            (outer_size.h - reserve_x - user_pad.vert()).max(0.0),
+        );
 
         // Outer: bare ZStack that holds the inner viewport + bar
         // shapes. Its padding is the reservation gutter — encoder's
@@ -288,7 +307,7 @@ impl Scroll {
             // padding.
             push_bar(
                 ui,
-                viewport,
+                bar_viewport,
                 outer_size,
                 content,
                 offset,
@@ -298,7 +317,7 @@ impl Scroll {
             );
             push_bar(
                 ui,
-                viewport,
+                bar_viewport,
                 outer_size,
                 content,
                 offset,
