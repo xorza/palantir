@@ -101,6 +101,15 @@ pub struct Ui {
     /// against an unpainted backbuffer and partial-repaint the next
     /// frame would smear.
     pub(crate) frame_state: FrameState,
+
+    /// Set by [`Self::request_relayout`] when a widget realizes (after
+    /// measure) that its record-time decisions used stale state and
+    /// the frame should be re-recorded. `run_frame` consumes this
+    /// after the record phase: if true, it discards pass A, runs
+    /// `build` again, re-runs the record phase, then paints. Capped
+    /// at one re-record per `run_frame` — the second pass paints
+    /// regardless of what it requests.
+    pub(crate) relayout_requested: bool,
 }
 
 impl Default for Ui {
@@ -129,6 +138,7 @@ impl Ui {
             anim: AnimMap::default(),
             debug_overlay: None,
             frame_state: FrameState::default(),
+            relayout_requested: false,
         }
     }
 
@@ -191,19 +201,48 @@ impl Ui {
         self.display = display;
         self.forest.begin_frame();
         self.scrolls.begin_frame();
+        // Drop any leftover relayout request from a previous frame's
+        // pass A that didn't get consumed. Belt-and-suspenders —
+        // current `run_frame` always consumes via `mem::replace`, but
+        // a future restructure that adds new entry points shouldn't
+        // smuggle a stale flag across frames.
+        self.relayout_requested = false;
     }
 
-    /// Finalize the just-recorded frame: measure + arrange, rebuild cascades
-    /// and hit-index, compute hashes and damage, and encode + compose into
-    /// the frontend's `RenderBuffer`. Returns the painted output ready for
-    /// `WgpuBackend::submit`. Damage's prev-state is committed here on the
-    /// assumption that the host will submit this frame — if the host
-    /// drops the `FrameOutput` instead, the next `begin_frame`'s
-    /// auto-rewind reverts the commit.
+    /// Test-only convenience that drives a single record+paint pass.
+    /// Discards any `request_relayout` signal — it can't replay
+    /// `build` without a closure, so tests that want to verify
+    /// relayout-aware behavior must drive [`Self::run_frame`]
+    /// instead. Production goes through `run_frame` directly.
+    #[allow(dead_code)]
     pub(crate) fn end_frame(&mut self) -> FrameOutput<'_> {
+        self.end_frame_record_phase();
+        // Drop any relayout request so it doesn't leak into the next
+        // `end_frame` call's record phase.
+        self.relayout_requested = false;
+        self.end_frame_paint_phase()
+    }
+
+    /// Record-derived half of `end_frame`: finalize per-node hashes,
+    /// diff against the last painted frame's seen-ids, sweep evicted
+    /// state, run measure/arrange, refresh per-widget state rows.
+    /// Returns `true` when a widget called [`Self::request_relayout`]
+    /// during refresh — the caller (ie. `run_frame`) should discard
+    /// this pass, re-record, and run the record phase again before
+    /// paint.
+    ///
+    /// `SeenIds::diff_for_sweep` (NOT `commit_rollover`) is what runs
+    /// here — the rollover commit is paint-phase work. Diffing without
+    /// committing means a discarded pass A still has access to the
+    /// true last-painted frame as its `prev` reference, so `removed`
+    /// is correct in every pass and damage always diffs against the
+    /// painted frame, not against pass A's discarded tree.
+    pub(crate) fn end_frame_record_phase(&mut self) -> bool {
         let surface = self.display.logical_rect();
         self.forest.end_frame(surface);
-        self.forest.ids.end_frame();
+        // Diff vs last-painted, sweep caches BEFORE layout.run so the
+        // measure cache compaction sees a consistent live-set.
+        self.forest.ids.diff_for_sweep();
         let removed = &self.forest.ids.removed;
         self.text.sweep_removed(removed);
         self.layout.sweep_removed(removed);
@@ -211,9 +250,30 @@ impl Ui {
         self.anim.end_frame(removed);
 
         let results = self.layout.run(&self.forest, &self.text);
+        // Funnel both signals through `relayout_requested`: scroll's
+        // overflow flip from refresh, plus anything a widget called
+        // `Ui::request_relayout` for directly during record. One
+        // `mem::replace` consumes both.
+        self.relayout_requested |= self.scrolls.refresh(&self.forest, results, &mut self.state);
+        std::mem::replace(&mut self.relayout_requested, false)
+    }
 
-        self.scrolls.refresh(&self.forest, results, &mut self.state);
+    /// Paint-derived half of `end_frame`: commit the seen-id rollover
+    /// (this pass becomes the next frame's `prev`), then cascade /
+    /// hit-index / damage diff / encode / compose. Reads the
+    /// `LayoutResult` produced by the most recent
+    /// [`Self::end_frame_record_phase`] call (still owned by
+    /// `self.layout`). Damage is computed exactly once per frame.
+    pub(crate) fn end_frame_paint_phase(&mut self) -> FrameOutput<'_> {
+        let surface = self.display.logical_rect();
+        // record_phase already populated `forest.ids.removed` against
+        // the still-untouched last-painted `prev`. Commit the rollover
+        // here — pass A's `removed` survives via the field; we just
+        // need to slide curr → prev for next frame's diff.
+        self.forest.ids.commit_rollover();
+        let removed = &self.forest.ids.removed;
 
+        let results = &self.layout.result;
         let cascades = self.cascades.run(&self.forest, results);
         self.input.end_frame(cascades);
         let damage = self
@@ -232,8 +292,6 @@ impl Ui {
             &self.display,
         );
 
-        // Skip needs no host submit; mark concluded directly so the next
-        // begin_frame doesn't auto-rewind to Full.
         if matches!(damage, DamagePaint::Skip) {
             self.frame_state.mark_submitted();
         } else {
@@ -246,6 +304,15 @@ impl Ui {
             debug_overlay: self.debug_overlay,
             frame_state: self.frame_state.clone(),
         }
+    }
+
+    /// Signal that record-time decisions made this pass were based on
+    /// stale measure-time state, and the framework should re-record
+    /// the frame after measure has run with fresh inputs. Capped at
+    /// one re-record per `run_frame` — calling this during the second
+    /// pass is a no-op (paints anyway, accepting one frame of settle).
+    pub fn request_relayout(&mut self) {
+        self.relayout_requested = true;
     }
 
     /// Record + finalize a frame, settling state mutations in a single
@@ -286,24 +353,30 @@ impl Ui {
         self.time = now;
         self.repaint_requested = false;
 
-        if self.input.take_action_flag() {
-            // Discarded pass: only the input drain matters for pass 2
-            // (so widgets see `clicked() == false`). Tree state is
-            // wiped by pass 2's begin_frame; damage / encode never ran,
-            // so `damage.prev` and the render buffer stay at frame-0's
-            // values. Sweeps and state evictions are deferred to pass 2
-            // and self-correct. `SeenIds`'s rollover swap lives in
-            // `end_frame` (NOT `begin_frame`) so this discarded
-            // recording doesn't overwrite the last painted frame's
-            // `prev`-snapshot — see the doc comment there.
-            self.begin_frame(display);
-            build(self);
-            self.input.drain_per_frame_queues();
-        }
-
+        // Pass A: record + measure + refresh. We always run the
+        // record phase here so widgets that called
+        // `Ui::request_relayout` get their signal picked up. If pass
+        // A also drains an input action OR a relayout was requested,
+        // pass B runs (record again with the post-drain / post-flag
+        // state, then paint). Otherwise pass A's record carries
+        // straight into the paint phase below.
         self.begin_frame(display);
         build(self);
-        self.end_frame()
+        let action_flag = self.input.take_action_flag();
+        let needs_relayout = self.end_frame_record_phase();
+        if action_flag {
+            self.input.drain_per_frame_queues();
+        }
+        if action_flag || needs_relayout {
+            // Pass B. Re-record with drained input / corrected state,
+            // re-run record phase. This is also a hard cap on
+            // relayout — pass B's `request_relayout` is ignored.
+            self.begin_frame(display);
+            build(self);
+            self.end_frame_record_phase();
+            self.relayout_requested = false;
+        }
+        self.end_frame_paint_phase()
     }
 
     /// Advance an animation row keyed by `(id, slot)`, returning the

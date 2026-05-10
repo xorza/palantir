@@ -38,7 +38,7 @@ pub(crate) struct ScrollNode {
 
 /// Cross-frame state row for one [`Scroll`] widget. Persisted via
 /// `Ui::state_mut` keyed by the widget's `WidgetId` and refreshed in
-/// `Ui::end_frame` after arrange — `viewport`/`content`/`outer`
+/// `Ui::end_frame` after arrange — `viewport`/`content`/`overflow`
 /// reflect the just-finished frame, while `offset` is the *next*
 /// frame's starting pan position. Clamping uses the previous frame's
 /// numbers, so a single frame after a resize may render with a stale
@@ -52,12 +52,19 @@ pub(crate) struct ScrollNode {
 ///   with the OUTER far edge (otherwise it'd land inside any
 ///   user-set padding).
 /// - `content` — measured content extent on the panned axes.
+/// - `overflow` — `(x, y)` per-axis: did this axis's content overflow
+///   the viewport on the most recent measure? Read at *record time*
+///   to decide whether to reserve a scrollbar gutter on the cross
+///   axis. When `refresh` flips this away from the value record-time
+///   used, it requests a relayout so the same frame re-records with
+///   the corrected reservation — no cold-mount overlap.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct ScrollState {
     pub(crate) offset: Vec2,
     pub(crate) viewport: Size,
     pub(crate) outer: Size,
     pub(crate) content: Size,
+    pub(crate) overflow: (bool, bool),
 }
 
 /// Per-frame registry of recorded [`Scroll`] widgets. Pushed during
@@ -82,7 +89,19 @@ impl ScrollRegistry {
     /// post-arrange / pre-cascade so next frame's record clamps with
     /// up-to-date numbers; the current frame's pan already used last
     /// frame's clamp.
-    pub(crate) fn refresh(&self, forest: &Forest, results: &LayoutResult, state: &mut StateMap) {
+    ///
+    /// Returns `true` if any scroll's `overflow` flag changed since
+    /// last refresh — i.e. the record-time reservation decision was
+    /// based on stale data and needs to re-run with corrected state.
+    /// `Ui::end_frame_record_phase` propagates this as
+    /// `Ui::request_relayout`'s effective signal for scrollbars.
+    pub(crate) fn refresh(
+        &self,
+        forest: &Forest,
+        results: &LayoutResult,
+        state: &mut StateMap,
+    ) -> bool {
+        let mut overflow_changed = false;
         for s in self.nodes.iter().copied() {
             let tree = forest.tree(s.layer);
             let layout = &results[s.layer];
@@ -98,10 +117,15 @@ impl ScrollRegistry {
             let inner_pad = tree.records.layout()[s.inner.index()].padding;
             let viewport = inner_rect.deflated_by(inner_pad).size;
             let content = layout.scroll_content[s.inner.index()];
+            let new_overflow = (content.w > viewport.w, content.h > viewport.h);
             let row = state.get_or_insert_with::<ScrollState, _>(s.id, Default::default);
             row.viewport = viewport;
             row.outer = outer;
             row.content = content;
+            if row.overflow != new_overflow {
+                row.overflow = new_overflow;
+                overflow_changed = true;
+            }
             // End-frame re-clamp: pairs with the record-time clamp in
             // `Scroll::show`, which only had last frame's numbers.
             let max_x = (content.w - viewport.w).max(0.0);
@@ -109,6 +133,7 @@ impl ScrollRegistry {
             row.offset.x = row.offset.x.clamp(0.0, max_x);
             row.offset.y = row.offset.y.clamp(0.0, max_y);
         }
+        overflow_changed
     }
 }
 
@@ -187,20 +212,25 @@ impl Scroll {
         row.offset = offset;
         // Snapshot inputs before the body borrows `ui`. Bar geometry
         // uses last frame's measurements (same one-frame staleness as
-        // the wheel-pan clamp).
+        // the wheel-pan clamp). `overflow` is read here for the
+        // reservation decision below; if it disagrees with this
+        // frame's measure, `ScrollRegistry::refresh` requests a
+        // relayout and the same frame re-records with the corrected
+        // value.
         let viewport = row.viewport;
         let outer_size = row.outer;
         let content = row.content;
+        let overflow = row.overflow;
         let theme = ui.theme.scrollbar.clone();
 
-        // Reservation: each panned axis with overflow donates
-        // `theme.width` of cross-axis space for the bar to land in.
-        // The split layout (outer ZStack hosting the viewport panel
-        // + bar shapes) keeps the reservation on the OUTER node so
-        // the encoder's padding-deflated clip on the inner panel
-        // doesn't swallow the bars.
-        let reserve_y = bar_reservation(pan.y, content.h, viewport.h, &theme);
-        let reserve_x = bar_reservation(pan.x, content.w, viewport.w, &theme);
+        // Reservation: a panned axis with current-state overflow
+        // donates `theme.width + theme.gap` of cross-axis space for
+        // the bar to land in. When `overflow` flips after measure,
+        // refresh requests a relayout so this same frame re-records
+        // with the right reservation — no cold-mount overlap, and no
+        // empty strip when content fits.
+        let reserve_y = bar_reservation(pan.y && overflow.1, &theme);
+        let reserve_x = bar_reservation(pan.x && overflow.0, &theme);
 
         // Outer: bare ZStack that holds the viewport panel + bar
         // shapes. Carries spatial fields (size, margin, align,
@@ -307,11 +337,14 @@ impl Configure for Scroll {
 
 /// Cross-axis space stolen from children when this axis's bar is
 /// shown: the bar's `width` plus a `gap` strip of empty padding so
-/// the bar doesn't touch the visible content. Returns 0 when no bar
-/// is needed (axis not panned, or content fits).
+/// the bar doesn't touch the visible content. Returns 0 when the
+/// axis isn't currently overflowing (or isn't panned at all). The
+/// caller passes the post-relayout `overflow.{x,y}` flag from
+/// `ScrollState`, so this stays a pure function of "is the bar
+/// drawn this frame."
 #[inline]
-fn bar_reservation(panned: bool, content: f32, viewport: f32, theme: &ScrollbarTheme) -> f32 {
-    if panned && content > viewport {
+fn bar_reservation(visible: bool, theme: &ScrollbarTheme) -> f32 {
+    if visible {
         theme.width + theme.gap
     } else {
         0.0
