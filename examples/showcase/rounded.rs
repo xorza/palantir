@@ -7,7 +7,7 @@ use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stro
 fn card() -> Background {
     Background {
         fill: Color::hex(0x252525),
-        stroke: Some(Stroke {
+        stroke: Stroke {
             width: 1.5,
             color: Color::hex(0x4d5663),
         }),

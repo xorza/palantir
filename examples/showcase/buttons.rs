@@ -123,7 +123,7 @@ fn danger_style() -> ButtonTheme {
     let red = Color::hex(0xff5e44);
     let bg = |fill| Background {
         fill,
-        stroke: None,
+        stroke: Stroke::ZERO,
         radius: Corners::all(2.0),
     };
     ButtonTheme {

@@ -123,7 +123,7 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
         .padding((10.0, 4.0))
         .background(Background {
             fill: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.20),
-            stroke: Some(Stroke {
+            stroke: Stroke {
                 width: 1.0,
                 color: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.45),
             }),

@@ -85,7 +85,7 @@ pub fn build(ui: &mut Ui) {
         .padding(6.0)
         .background(Surface::from(Background {
             fill: Color::hex(0x2a2a2a),
-            stroke: Some(Stroke {
+            stroke: Stroke {
                 width: 1.0,
                 color: Color::hex(0x4a4a4a),
             }),
