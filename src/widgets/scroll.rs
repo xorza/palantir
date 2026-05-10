@@ -20,17 +20,6 @@ use std::ops::RangeInclusive;
 // into discrete notches so we can compose `step.powf(notches)` for zoom.
 const SCROLL_LINE_PIXELS: f32 = 40.0;
 
-/// Quantized zoom ladder bucket: round `zoom` to the nearest `2^(1/8)`
-/// step (~9% increments) to keep the text-shape cache from
-/// re-shaping every frame under continuous zoom.
-fn snap_zoom_to_ladder(zoom: f32) -> f32 {
-    // log2(zoom) * 8, rounded, then back. Clamp at the bottom so
-    // very small zooms can't underflow log2.
-    let z = zoom.max(1e-6);
-    let bucket = (z.log2() * 8.0).round();
-    (bucket / 8.0).exp2()
-}
-
 /// What kind of input triggers a zoom step. See [`ZoomConfig::modifier`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ZoomModifier {
@@ -73,7 +62,7 @@ impl Default for ZoomConfig {
     fn default() -> Self {
         Self {
             range: 0.1..=10.0,
-            step: 1.1,
+            step: 1.03,
             modifier: ZoomModifier::CtrlOrCmd,
             pivot: ZoomPivot::Pointer,
         }
@@ -348,7 +337,6 @@ impl Scroll {
             //    coords stays fixed across the scale change.
             if let (Some(cfg), Some(p)) = (self.zoom.as_ref(), pivot_local) {
                 let new_zoom = (row.zoom * zoom_delta).clamp(*cfg.range.start(), *cfg.range.end());
-                let new_zoom = snap_zoom_to_ladder(new_zoom);
                 let dz_eff = if row.zoom > 0.0 {
                     new_zoom / row.zoom
                 } else {
