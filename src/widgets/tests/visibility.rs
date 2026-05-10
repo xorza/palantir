@@ -1,8 +1,8 @@
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::support::testing::{click_at, encode_cmds, ui_at};
-use crate::tree::Layer;
-use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;

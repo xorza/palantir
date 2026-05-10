@@ -14,11 +14,11 @@
 
 use super::support::{AxisCtx, leaf_text_shapes, resolve_axis_size};
 use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, stack, wrapstack, zstack};
+use crate::forest::element::ScrollAxes;
+use crate::forest::tree::{NodeId, Tree};
 use crate::layout::types::sizing::Sizing;
 use crate::shape::TextWrap;
 use crate::text::TextShaper;
-use crate::tree::element::ScrollAxes;
-use crate::tree::{NodeId, Tree};
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -193,9 +193,9 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &TextShaper) -
 mod tests {
     use super::*;
     use crate::Ui;
+    use crate::forest::element::Configure;
+    use crate::forest::tree::Layer;
     use crate::layout::types::{display::Display, sizing::Sizing};
-    use crate::tree::Layer;
-    use crate::tree::element::Configure;
     use crate::widgets::{panel::Panel, text::Text};
     use glam::UVec2;
 

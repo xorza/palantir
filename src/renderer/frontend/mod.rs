@@ -16,12 +16,12 @@ pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 
+use crate::forest::Forest;
 use crate::layout::result::LayoutResult;
 use crate::layout::types::display::Display;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::tree::forest::Forest;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
 use crate::ui::damage::region::DamageRegion;

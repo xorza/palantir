@@ -10,11 +10,11 @@
 //!   while `Block` swallows it silently.
 
 use crate::Ui;
+use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::support::testing::{begin, click_at, ui_at};
-use crate::tree::element::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup, PopupResponse};
 use glam::{UVec2, Vec2};
@@ -49,7 +49,7 @@ fn record_with_popup(ui: &mut Ui, config: ClickOutside) -> (PopupResponse, bool)
             popup_resp = Some(r);
         });
     // Read the Main panel's response post-recording.
-    let main_id = crate::tree::widget_id::WidgetId::from_hash("main-bg");
+    let main_id = crate::forest::widget_id::WidgetId::from_hash("main-bg");
     let main_panel_clicked = ui.response_for(main_id).clicked;
     (popup_resp.unwrap(), main_panel_clicked)
 }
@@ -172,7 +172,10 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     });
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
-        ui.forest.tree(crate::tree::Layer::Popup).records.len(),
+        ui.forest
+            .tree(crate::forest::tree::Layer::Popup)
+            .records
+            .len(),
         0,
         "painted tree (pass 2) must contain no Popup-layer widgets",
     );

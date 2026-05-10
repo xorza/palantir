@@ -1,12 +1,12 @@
 pub(crate) mod keyboard;
 pub(crate) mod sense;
 
+use crate::forest::widget_id::WidgetId;
 use crate::input::keyboard::{
     Key, KeyPress, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
 };
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
-use crate::tree::widget_id::WidgetId;
 use crate::ui::cascade::CascadeResult;
 use glam::Vec2;
 use rustc_hash::FxHashSet;

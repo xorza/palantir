@@ -1,12 +1,12 @@
 use super::{apply_key, next_char_boundary, prev_char_boundary};
 use crate::Spacing;
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
+use crate::forest::widget_id::WidgetId;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::sizing::Sizing;
 use crate::support::testing::{begin, click_at, shapes_of, ui_with_text};
-use crate::tree::Layer;
-use crate::tree::element::Configure;
-use crate::tree::widget_id::WidgetId;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
@@ -778,7 +778,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     });
     ui.end_frame();
 
-    let read_fs = |node: crate::tree::NodeId| -> f32 {
+    let read_fs = |node: crate::forest::tree::NodeId| -> f32 {
         shapes_of(ui.forest.tree(Layer::Main), node)
             .find_map(|s| match s {
                 Shape::Text { font_size_px, .. } => Some(*font_size_px),
@@ -897,7 +897,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     });
     ui.end_frame();
 
-    let read_lh = |node: crate::tree::NodeId| -> f32 {
+    let read_lh = |node: crate::forest::tree::NodeId| -> f32 {
         shapes_of(ui.forest.tree(Layer::Main), node)
             .find_map(|s| match s {
                 Shape::Text { line_height_px, .. } => Some(*line_height_px),

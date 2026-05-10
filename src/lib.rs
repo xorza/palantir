@@ -6,6 +6,7 @@ extern crate self as palantir;
 
 pub(crate) mod animation;
 pub(crate) mod common;
+pub(crate) mod forest;
 pub(crate) mod input;
 pub(crate) mod layout;
 pub(crate) mod primitives;
@@ -14,7 +15,6 @@ pub(crate) mod shape;
 #[cfg(any(test, feature = "internals"))]
 pub mod support;
 pub(crate) mod text;
-pub(crate) mod tree;
 pub(crate) mod ui;
 pub(crate) mod widgets;
 
@@ -24,6 +24,10 @@ pub use animation::{AnimSlot, AnimSpec};
 // Same-name re-export: the derive lives in the macro namespace,
 // the trait in the type namespace — `use palantir::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
+pub use forest::element::{Configure, Element, LayoutMode};
+pub use forest::tree::Layer;
+pub use forest::visibility::Visibility;
+pub use forest::widget_id::WidgetId;
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
 pub use input::sense::Sense;
 pub use input::{FocusPolicy, InputEvent, InputState, PointerButton, PointerState, ResponseState};
@@ -47,10 +51,6 @@ pub use renderer::frontend::FrameOutput;
 pub use shape::Shape;
 pub use text::TextShaper;
 pub use text::cosmic::CosmicMeasure;
-pub use tree::Layer;
-pub use tree::element::{Configure, Element, LayoutMode};
-pub use tree::visibility::Visibility;
-pub use tree::widget_id::WidgetId;
 pub use ui::Ui;
 pub use ui::debug_overlay::DebugOverlayConfig;
 pub use widgets::Response;

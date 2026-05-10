@@ -144,7 +144,7 @@ Cases handled:
 
 **Hit-test is rect-only today.** Hit shapes per node (`RoundedRect`/`Path`/`None` for click-through overlays) are still an open extension — the cascade snapshot can carry per-node hit shapes whenever a real workload (rounded buttons rejecting corners) demands them.
 
-**Layers are explicit.** `Layer` (`Main`/`Popup`/`Modal`/`Tooltip`/`Debug`) is an enum on the recorder; `Ui::layer(layer, anchor, body)` switches the active arena for the body's duration. The tree is a `Forest` of one `Tree` per layer (`src/tree/forest.rs`); pipeline passes iterate `Layer::PAINT_ORDER` bottom-up for paint and reverse for hit-test, so popups paint above and reject pointers first without per-node z-index. Explicit z-order within a layer (Clay-style `zIndex`) is deferred until two siblings in the same layer need it.
+**Layers are explicit.** `Layer` (`Main`/`Popup`/`Modal`/`Tooltip`/`Debug`) is an enum on the recorder; `Ui::layer(layer, anchor, body)` switches the active arena for the body's duration. The tree is a `Forest` of one `Tree` per layer (`src/forest/mod.rs`); pipeline passes iterate `Layer::PAINT_ORDER` bottom-up for paint and reverse for hit-test, so popups paint above and reject pointers first without per-node z-index. Explicit z-order within a layer (Clay-style `zIndex`) is deferred until two siblings in the same layer need it.
 
 ## Rendering
 

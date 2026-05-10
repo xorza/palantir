@@ -22,7 +22,7 @@ impl WidgetId {
     }
 
     /// Avoid the all-zero hash that would collide with [`Self::default`]
-    /// (used as the "unset" sentinel by [`crate::tree::element::Element::new`]).
+    /// (used as the "unset" sentinel by [`crate::forest::element::Element::new`]).
     /// FxHasher returns 0 for all-zero input (e.g. `(0u16, 0u16)`); a plain
     /// rotate-and-bias replaces it with `1` without skewing other outputs.
     fn nonzero(h: u64) -> Self {
@@ -43,7 +43,7 @@ impl WidgetId {
     /// Repeated calls from the same source location (a loop or a closure
     /// helper) all produce the same id; `Ui::node` silently disambiguates by
     /// mixing in a per-id occurrence counter. Override with
-    /// [`crate::tree::element::Configure::id_salt`] when call order isn't
+    /// [`crate::forest::element::Configure::id_salt`] when call order isn't
     /// stable across frames.
     #[track_caller]
     pub(crate) const fn auto_stable() -> Self {

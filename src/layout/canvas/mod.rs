@@ -1,8 +1,8 @@
 use super::support::{measure_per_axis_hug, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
+use crate::forest::tree::{Child, NodeId, Tree};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
-use crate::tree::{Child, NodeId, Tree};
 
 #[cfg(test)]
 mod tests;

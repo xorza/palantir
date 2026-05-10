@@ -1,4 +1,7 @@
 use crate::Ui;
+use crate::forest::element::Configure;
+use crate::forest::rollups::NodeHash;
+use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{display::Display, justify::Justify, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
@@ -6,8 +9,6 @@ use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
 use crate::shape::Shape;
 use crate::support::testing::{encode_cmds, shapes_of, ui_at, ui_with_text};
-use crate::tree::element::Configure;
-use crate::tree::{Layer, NodeId, node_hash::NodeHash};
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -373,7 +374,7 @@ fn widget_id_does_not_affect_hash() {
 
 #[test]
 fn changing_layout_property_changes_hash() {
-    use crate::tree::visibility::Visibility;
+    use crate::forest::visibility::Visibility;
     type Build = fn(&mut Ui) -> NodeId;
     let cases: &[(&str, Build, Build)] = &[
         (

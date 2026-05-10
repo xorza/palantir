@@ -1,6 +1,8 @@
 use super::support;
 use super::support::{chat_message, two_hug_cols_with_wrap};
 use crate::TextStyle;
+use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::tree::Layer;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
@@ -9,8 +11,6 @@ use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
 use crate::support::testing::{begin, encode_cmds, shapes_of, ui_with_text};
-use crate::tree::Layer;
-use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::borrow::Cow;
@@ -212,7 +212,7 @@ fn hstack_fill_clamped_below_min_content_keeps_rect_at_slot() {
 /// label's natural width — non-wrapping text cannot be broken.
 #[test]
 fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
-    fn build(ui: &mut crate::Ui) -> (crate::tree::NodeId, crate::tree::NodeId) {
+    fn build(ui: &mut crate::Ui) -> (crate::forest::tree::NodeId, crate::forest::tree::NodeId) {
         let mut grid_node = None;
         let mut section_node = None;
         Panel::vstack().auto_id()
@@ -363,7 +363,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
 /// width.
 #[test]
 fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
-    fn build(ui: &mut crate::Ui) -> (crate::tree::NodeId, crate::tree::NodeId) {
+    fn build(ui: &mut crate::Ui) -> (crate::forest::tree::NodeId, crate::forest::tree::NodeId) {
         let mut paragraph_node = None;
         let mut label_node = None;
         Grid::new()
@@ -428,7 +428,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
 ///   slot 1: "second-with-different-text" at `Some((0, 22)+100x20)`.
 /// Returns the leaf NodeId so callers can read `text_spans` /
 /// emitted commands. Used by the multi-text-per-leaf pinning tests.
-fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::tree::NodeId {
+fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
     let mut leaf = None;
     Panel::vstack().auto_id().show(ui, |ui| {
         let mut element = Element::new(LayoutMode::Leaf);

@@ -5,10 +5,10 @@
 
 use crate::TextStyle;
 use crate::Ui;
+use crate::forest::element::Configure;
+use crate::forest::tree::NodeId;
 use crate::layout::result::{LayerResult, ShapedText};
 use crate::layout::types::{sizing::Sizing, track::Track};
-use crate::tree::NodeId;
-use crate::tree::element::Configure;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use std::rc::Rc;
 

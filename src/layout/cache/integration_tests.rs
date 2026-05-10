@@ -6,14 +6,14 @@
 
 use crate::TextStyle;
 use crate::Ui;
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
+use crate::forest::tree::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
 use crate::support::testing::{begin, encode_cmds, new_ui_text, ui_with_text};
-use crate::tree::Layer;
-use crate::tree::NodeId;
-use crate::tree::element::Configure;
 use crate::widgets::theme::{Background, Surface};
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;

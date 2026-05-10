@@ -3,6 +3,10 @@
 #![cfg(test)]
 
 use crate::Ui;
+use crate::forest::element::Configure;
+#[allow(unused_imports)]
+use crate::forest::tree::Layer;
+use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::rect::Rect;
@@ -10,10 +14,6 @@ use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::shape::Shape;
 use crate::text::TextShaper;
-#[allow(unused_imports)]
-use crate::tree::Layer;
-use crate::tree::element::Configure;
-use crate::tree::{NodeId, Tree, TreeItem};
 use crate::ui::damage::region::DamageRegion;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};

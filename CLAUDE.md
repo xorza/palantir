@@ -49,7 +49,7 @@ Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → 
 
 **Cross-frame work-skip caches.** `MeasureCache` (`src/layout/cache/`) and the encode/compose caches (`src/renderer/frontend/{encoder,composer}/`) are keyed on `(WidgetId, subtree_hash, available_q)`. A hit blits last frame's subtree (`desired` + `text_shapes` + `RenderCmd` slice) and skips recursion. Same `removed` sweep evicts all three plus `StateMap` and `TextShaper`. **`Damage` is a tri-state** `DamagePaint` (`Full` / `Partial(Rect)` / `Skip`); `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present.
 
-**Layered recording.** `Forest` (`src/tree/forest.rs`) holds one `Tree` per `Layer` variant (`Main`/`Popup`/`Modal`/`Tooltip`/`Debug`); `Ui::layer(layer, anchor, body)` switches the active arena for the body's duration. Pipeline passes iterate `Layer::PAINT_ORDER` bottom-up for paint and reverse for hit-test (topmost-first, so popups reject pointers without per-node z-index). `Popup` widget (`src/widgets/popup.rs`) is the canonical consumer.
+**Layered recording.** `Forest` (`src/forest/mod.rs`) holds one `Tree` per `Layer` variant (`Main`/`Popup`/`Modal`/`Tooltip`/`Debug`); `Ui::layer(layer, anchor, body)` switches the active arena for the body's duration. Pipeline passes iterate `Layer::PAINT_ORDER` bottom-up for paint and reverse for hit-test (topmost-first, so popups reject pointers without per-node z-index). `Popup` widget (`src/widgets/popup.rs`) is the canonical consumer.
 
 **`Shape`** (paint primitive: `RoundedRect`, `Text`, `Line`, …) stored flat in `Tree.shapes`, sliced per-node via `records.shapes()[i]` (a `Span` into the buffer). `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. Layout passes ignore Shapes and `attrs`; paint pass ignores hierarchy beyond `end`. **This decoupling is load-bearing — keep it.**
 
@@ -59,7 +59,7 @@ Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → 
 
 - `src/primitives/` — pure geometry: Rect/Size/Color/Stroke/Corners/Spacing/Transform/Visuals/num/approx/urect
 - `src/shape.rs` — Shape enum (RoundedRect, Line, Text)
-- `src/tree/` — Tree (SoA + subtree_end), NodeId, GridDef, hash, `Layer` enum, `Forest` (per-layer arenas); `tree/element/` (Element builder, LayoutCore/PaintCore columns, PaintAttrs, Configure); `tree/widget_id.rs`
+- `src/forest/` — `Forest` (per-layer arenas, `mod.rs`), `tree/` (per-layer `Tree`: SoA + subtree_end, `NodeId`, `Layer`, `GridArena`), `element/` (Element builder, `LayoutCore`/`NodeFlags` columns, `Configure`), `node.rs` (`NodeRecord`), `rollups.rs` (per-node + subtree hashes), `seen_ids.rs`, `visibility.rs`, `widget_id.rs`
 - `src/text/` — `TextShaper` (cosmic-text measurement + per-`(WidgetId, ordinal)` reuse cache) + glyphon rendering glue; mono fallback for headless
 - `src/layout/` — LayoutEngine + drivers (stack/wrapstack/zstack/canvas/grid), intrinsic, cache; `layout/types/` (Sizing/Align/Justify/Sense/Visibility/Display/Track/Span/GridCell — layout vocabulary)
 - `src/input/` — InputState, HitIndex (O(1) by-id lookup over Cascades)

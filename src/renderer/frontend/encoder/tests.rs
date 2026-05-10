@@ -4,6 +4,9 @@ use super::super::cmd_buffer::{
 };
 use super::align_text_in;
 use crate::Ui;
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
+use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{
@@ -14,9 +17,6 @@ use crate::primitives::{color::Color, rect::Rect, size::Size, transform::Transla
 use crate::support::testing::{
     begin, encode_cmds, encode_cmds_filtered, encode_cmds_with_rects, ui_at,
 };
-use crate::tree::Layer;
-use crate::tree::element::Configure;
-use crate::tree::widget_id::WidgetId;
 use crate::widgets::theme::{Background, Surface};
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};

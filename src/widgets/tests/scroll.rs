@@ -1,12 +1,12 @@
 use crate::Ui;
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
+use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::support::testing::{ui_at, under_outer};
-use crate::tree::Layer;
-use crate::tree::element::Configure;
-use crate::tree::widget_id::WidgetId;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::{Scroll, ScrollState};
@@ -330,13 +330,13 @@ fn scroll_content_survives_measure_cache_hit() {
 
 mod bars {
     use crate::Ui;
+    use crate::forest::element::Configure;
+    use crate::forest::tree::{Layer, NodeId};
+    use crate::forest::widget_id::WidgetId;
     use crate::layout::types::display::Display;
     use crate::layout::types::sizing::Sizing;
     use crate::shape::Shape;
     use crate::support::testing::{shapes_of, ui_at};
-    use crate::tree::element::Configure;
-    use crate::tree::widget_id::WidgetId;
-    use crate::tree::{Layer, NodeId};
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::{Scroll, bar_geometry};

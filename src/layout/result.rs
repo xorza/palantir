@@ -1,7 +1,7 @@
+use crate::forest::tree::{Layer, Tree};
 use crate::layout::types::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
-use crate::tree::{Layer, Tree};
 use std::ops::{Index, IndexMut};
 use strum::EnumCount as _;
 

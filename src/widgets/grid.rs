@@ -1,6 +1,6 @@
+use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::transform::TranslateScale;
-use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::Surface;
@@ -128,7 +128,7 @@ impl Grid {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
-        let active_layer = ui.forest.recording.current_layer;
+        let active_layer = ui.forest.current_layer();
         let idx = ui.forest.tree_mut(active_layer).grid.push_def(self.def);
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
