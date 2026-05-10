@@ -40,7 +40,7 @@ pub(crate) struct NodeHash(pub(crate) u64);
 ///   the same lifecycle as the hash columns (populated by `end_frame`,
 ///   indexed by `NodeId`, read by the same caches).
 /// - `paints[i]` — bit `i` is true iff node `i` directly contributes
-///   pixels (has chrome OR records ≥1 direct `Shape`). Read by the
+///   pixels (has chrome OR records ≥1 direct `ShapeRecord`). Read by the
 ///   damage diff: nodes that paint nothing (e.g. invisible click-eaters)
 ///   contribute zero rect on add/remove/change, so a full-surface eater
 ///   doesn't blow past the full-repaint threshold. Populated alongside
@@ -91,12 +91,12 @@ mod tests {
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
-    use crate::shape::{Shape, TextWrap};
+    use crate::shape::{ShapeRecord, TextWrap};
     use std::borrow::Cow;
     use std::hash::{Hash, Hasher as _};
 
-    fn text_shape(line_height_px: f32, local_rect: Option<Rect>) -> Shape {
-        Shape::Text {
+    fn text_shape(line_height_px: f32, local_rect: Option<Rect>) -> ShapeRecord {
+        ShapeRecord::Text {
             local_rect,
             text: Cow::Borrowed("hi"),
             color: Color::WHITE,
@@ -107,13 +107,13 @@ mod tests {
         }
     }
 
-    fn hash_shape(s: &Shape) -> u64 {
+    fn hash_shape(s: &ShapeRecord) -> u64 {
         let mut h = Hasher::new();
         s.hash(&mut h);
         h.finish()
     }
 
-    /// Pin: every authoring-relevant `Shape::Text` field participates
+    /// Pin: every authoring-relevant `ShapeRecord::Text` field participates
     /// in the node hash. Without this, the measure cache would
     /// conflate runs whose shaped buffers genuinely differ
     /// (`line_height_px` → different `Metrics::new`) or whose paint
@@ -123,7 +123,7 @@ mod tests {
     fn text_shape_hash_distinguishes_each_authoring_field() {
         let r_a = Some(Rect::new(0.0, 0.0, 10.0, 10.0));
         let r_b = Some(Rect::new(5.0, 5.0, 10.0, 10.0));
-        let cases: [(&str, Shape, Shape); 3] = [
+        let cases: [(&str, ShapeRecord, ShapeRecord); 3] = [
             (
                 "line_height_px",
                 text_shape(16.0 * 1.2, None),

@@ -18,6 +18,7 @@ mod disabled;
 mod gap;
 mod grid;
 mod justify;
+mod mesh;
 mod pan_zoom;
 mod panels;
 mod popup;
@@ -58,6 +59,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("buttons", buttons::build),
     ("popup", popup::build),
     ("animations", animations::build),
+    ("mesh", mesh::build),
 ];
 
 fn main() {

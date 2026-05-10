@@ -95,7 +95,7 @@ impl Color {
 
     /// Alpha within `EPS` of zero — paints nothing. Mirrors the
     /// `is_noop` predicate on `Stroke` / `Background` / `Surface` /
-    /// `Shape`; consistent name across primitives.
+    /// `ShapeRecord`; consistent name across primitives.
     pub const fn is_noop(self) -> bool {
         super::approx::approx_zero(self.a)
     }

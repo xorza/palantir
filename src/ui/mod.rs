@@ -13,6 +13,7 @@ use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
 use crate::layout::scroll::ScrollLayoutState;
 use crate::layout::types::display::Display;
+use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::{FrameOutput, FrameState, Frontend};
 use crate::shape::Shape;
@@ -504,11 +505,27 @@ impl Ui {
         node
     }
 
-    pub fn add_shape(&mut self, shape: Shape) {
+    pub fn add_shape(&mut self, shape: Shape<'_>) {
         if shape.is_noop() {
             return;
         }
         self.forest.add_shape(shape);
+    }
+
+    /// Convenience wrapper for the common "draw this mesh at the
+    /// owner's full rect, tint white" case.
+    #[inline]
+    pub fn add_mesh(&mut self, mesh: &Mesh) {
+        self.add_shape(Shape::Mesh {
+            mesh,
+            local_rect: None,
+            tint: crate::primitives::color::Color {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            },
+        });
     }
 
     /// Record `body` as a side layer — its first widget becomes a new

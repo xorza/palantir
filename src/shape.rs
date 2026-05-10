@@ -1,4 +1,7 @@
+use crate::common::hash::Hasher as FxHasher;
 use crate::layout::types::align::Align;
+use crate::layout::types::span::Span;
+use crate::primitives::mesh::{Mesh, MeshVertex};
 use crate::primitives::{
     approx::approx_zero, color::Color, corners::Corners, rect::Rect, stroke::Stroke,
 };
@@ -6,8 +9,50 @@ use glam::Vec2;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 
+/// User-facing paint primitive. Pushed into the active tree via
+/// [`crate::Ui::add_shape`], which copies the data into the per-frame
+/// arena and converts to the internal [`ShapeRecord`] form.
+///
+/// The `'a` lifetime is borrowed by [`Shape::Mesh`]; the other three
+/// variants infer `Shape<'static>` and behave identically at the call
+/// site to today's owned variants.
 #[derive(Clone, Debug)]
-pub enum Shape {
+pub enum Shape<'a> {
+    RoundedRect {
+        local_rect: Option<Rect>,
+        radius: Corners,
+        fill: Color,
+        stroke: Stroke,
+    },
+    Line {
+        a: Vec2,
+        b: Vec2,
+        width: f32,
+        color: Color,
+    },
+    Text {
+        local_rect: Option<Rect>,
+        text: Cow<'static, str>,
+        color: Color,
+        font_size_px: f32,
+        line_height_px: f32,
+        wrap: TextWrap,
+        align: Align,
+    },
+    /// User-supplied colored triangle mesh. The framework copies
+    /// `mesh.vertices` / `mesh.indices` into the active `Tree`'s mesh
+    /// arena at `add_shape` time, so `mesh` only has to outlive the
+    /// call. `tint` multiplies every vertex color in the shader —
+    /// lets the same mesh paint in different colors without rebuilding.
+    Mesh {
+        mesh: &'a Mesh,
+        local_rect: Option<Rect>,
+        tint: Color,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ShapeRecord {
     /// Filled/stroked rounded rectangle. With `local_rect = None` it covers
     /// the owner node's full arranged rect (position/size come from layout).
     /// With `local_rect = Some(r)` it paints `r` at owner-relative coords —
@@ -61,19 +106,32 @@ pub enum Shape {
         /// defaults to [`crate::text::LINE_HEIGHT_MULT`] (1.2). Carrying
         /// the resolved px on the shape — instead of a multiplier the
         /// shaper would re-resolve — means the shaper doesn't have to
-        /// know about widget conventions, and two `Shape::Text` runs at
+        /// know about widget conventions, and two `ShapeRecord::Text` runs at
         /// the same font-size but different leading correctly produce
         /// distinct cached shaped buffers (via [`TextCacheKey::lh_q`]).
         line_height_px: f32,
         wrap: TextWrap,
         align: Align,
     },
+    /// User-supplied colored triangle mesh. Vertex/index data lives in
+    /// the active `Tree`'s `mesh_vertices` / `mesh_indices` arenas;
+    /// these spans index into them. `content_hash` summarizes
+    /// vertex+index bytes for cache identity — two frames with
+    /// identical mesh content share a hash even though their span
+    /// offsets differ.
+    Mesh {
+        local_rect: Option<Rect>,
+        tint: Color,
+        vertices: Span,
+        indices: Span,
+        content_hash: u64,
+    },
 }
 
-/// Wrap mode for [`Shape::Text`].
+/// Wrap mode for [`ShapeRecord::Text`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TextWrap {
-    /// Shape once at unbounded width and never reshape. Used by every text
+    /// ShapeRecord once at unbounded width and never reshape. Used by every text
     /// run that fits on a single line — labels, headings, anything that
     /// shouldn't wrap.
     Single,
@@ -83,12 +141,12 @@ pub enum TextWrap {
     Wrap,
 }
 
-impl Hash for Shape {
+impl Hash for ShapeRecord {
     /// Discriminant tags are stable (`RoundedRect=0`, `Line=1`, `Text=2`) so
     /// cache keys don't shift if variants are reordered.
     fn hash<H: Hasher>(&self, h: &mut H) {
         match self {
-            Shape::RoundedRect {
+            ShapeRecord::RoundedRect {
                 local_rect,
                 radius,
                 fill,
@@ -106,14 +164,14 @@ impl Hash for Shape {
                 fill.hash(h);
                 stroke.hash(h);
             }
-            Shape::Line { a, b, width, color } => {
+            ShapeRecord::Line { a, b, width, color } => {
                 h.write_u8(1);
                 h.write(bytemuck::bytes_of(a));
                 h.write(bytemuck::bytes_of(b));
                 h.write_u32(width.to_bits());
                 color.hash(h);
             }
-            Shape::Text {
+            ShapeRecord::Text {
                 local_rect,
                 text,
                 color,
@@ -136,8 +194,37 @@ impl Hash for Shape {
                 h.write_u32(line_height_px.to_bits());
                 h.write_u16(((align.raw() as u16) << 8) | *wrap as u8 as u16);
             }
+            ShapeRecord::Mesh {
+                local_rect,
+                tint,
+                vertices: _,
+                indices: _,
+                content_hash,
+            } => {
+                h.write_u8(3);
+                match local_rect {
+                    None => h.write_u8(0),
+                    Some(r) => {
+                        h.write_u8(1);
+                        r.hash(h);
+                    }
+                }
+                tint.hash(h);
+                h.write_u64(*content_hash);
+            }
         }
     }
+}
+
+/// Hash a mesh's vertex + index bytes into a stable content id. Two
+/// meshes with identical bytes hash identically; different bytes
+/// (added vertex, reordered index, recolored vertex) hash differently.
+pub(crate) fn mesh_content_hash(vertices: &[MeshVertex], indices: &[u16]) -> u64 {
+    use std::hash::Hasher as _;
+    let mut h = FxHasher::new();
+    h.write(bytemuck::cast_slice(vertices));
+    h.write(bytemuck::cast_slice(indices));
+    h.finish()
 }
 
 /// True iff `local_rect` is set with a degenerate or negative extent
@@ -152,10 +239,10 @@ fn local_rect_paint_empty(local_rect: &Option<Rect>) -> bool {
     local_rect.is_some_and(|r| r.size.w <= EPS || r.size.h <= EPS)
 }
 
-impl Shape {
-    /// True if this shape paints nothing visible (transparent fill + no stroke,
-    /// zero-width line, empty text, etc.). `Ui::add_shape` filters these out so
-    /// widgets can push speculatively without guarding.
+impl Shape<'_> {
+    /// True if this shape paints nothing visible. `Ui::add_shape`
+    /// filters these out so widgets can push speculatively without
+    /// guarding.
     pub fn is_noop(&self) -> bool {
         match self {
             Shape::RoundedRect {
@@ -171,6 +258,94 @@ impl Shape {
                 local_rect,
                 ..
             } => local_rect_paint_empty(local_rect) || text.is_empty() || color.is_noop(),
+            Shape::Mesh {
+                mesh,
+                local_rect,
+                tint,
+            } => {
+                local_rect_paint_empty(local_rect)
+                    || tint.is_noop()
+                    || mesh.is_empty()
+                    || mesh.indices.len() < 3
+                    || mesh.indices.len() % 3 != 0
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::primitives::color::Color;
+    use glam::Vec2;
+
+    fn tri(color: Color) -> Vec<MeshVertex> {
+        vec![
+            MeshVertex::new(Vec2::new(0.0, 0.0), color),
+            MeshVertex::new(Vec2::new(1.0, 0.0), color),
+            MeshVertex::new(Vec2::new(0.5, 1.0), color),
+        ]
+    }
+
+    #[test]
+    fn mesh_content_hash_stable_for_identical_input() {
+        let v = tri(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+        let i = vec![0u16, 1, 2];
+        assert_eq!(mesh_content_hash(&v, &i), mesh_content_hash(&v, &i));
+    }
+
+    #[test]
+    fn mesh_content_hash_changes_on_reordered_indices() {
+        let v = tri(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
+        let h0 = mesh_content_hash(&v, &[0, 1, 2]);
+        let h1 = mesh_content_hash(&v, &[0, 2, 1]);
+        assert_ne!(h0, h1);
+    }
+
+    #[test]
+    fn shape_mesh_hash_excludes_span_offsets() {
+        // Same content_hash + local_rect + tint → same Shape hash even
+        // when spans differ (frame-local storage offsets must not bleed
+        // into identity).
+        use std::hash::Hasher as _;
+        let a = ShapeRecord::Mesh {
+            local_rect: None,
+            tint: Color {
+                r: 0.0,
+                g: 1.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            vertices: Span::new(0, 3),
+            indices: Span::new(0, 3),
+            content_hash: 0xdead_beef,
+        };
+        let b = ShapeRecord::Mesh {
+            local_rect: None,
+            tint: Color {
+                r: 0.0,
+                g: 1.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            vertices: Span::new(1234, 3),
+            indices: Span::new(5678, 3),
+            content_hash: 0xdead_beef,
+        };
+        let mut ha = FxHasher::new();
+        let mut hb = FxHasher::new();
+        a.hash(&mut ha);
+        b.hash(&mut hb);
+        assert_eq!(ha.finish(), hb.finish());
     }
 }

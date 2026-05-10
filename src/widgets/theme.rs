@@ -109,7 +109,7 @@ pub struct TextStyle {
     pub color: Color,
     /// Line-height-to-font-size ratio. Drives the shaper's leading and
     /// the caret rect height (locked together via
-    /// `Shape::Text.line_height_px`). Default matches cosmic-text's
+    /// `ShapeRecord::Text.line_height_px`). Default matches cosmic-text's
     /// natural leading ([`crate::text::LINE_HEIGHT_MULT`], 1.2). Per-
     /// widget override on TextEdit lives on the builder
     /// (`TextEdit::line_height_mult`).
@@ -256,7 +256,7 @@ pub struct AnimatedLook {
 
 impl AnimatedLook {
     /// Convenience: `text.line_height_for(text.font_size_px)`. Widgets
-    /// rendering `Shape::Text` need this paired with `font_size_px`
+    /// rendering `ShapeRecord::Text` need this paired with `font_size_px`
     /// for the shaper.
     pub fn line_height_px(&self) -> f32 {
         self.text.line_height_for(self.text.font_size_px)

@@ -6,7 +6,7 @@ use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
-use crate::shape::Shape;
+use crate::shape::ShapeRecord;
 use crate::ui::cascade::{Cascade, CascadeResult};
 use crate::ui::damage::region::DamageRegion;
 
@@ -64,19 +64,19 @@ impl Encoder {
 /// Emit one shape at `owner_rect`. Pulled out of `encode_node` so the
 /// child-interleave loop can call it without duplicating the per-variant
 /// match. `text_ordinal` is the within-node index of the next
-/// `Shape::Text` to consume from `layout.text_spans[id]`; the caller
+/// `ShapeRecord::Text` to consume from `layout.text_spans[id]`; the caller
 /// increments it after this function emits a text run.
 fn emit_one_shape(
     tree: &Tree,
     layout: &LayerResult,
     id: NodeId,
     owner_rect: Rect,
-    shape: &Shape,
+    shape: &ShapeRecord,
     text_ordinal: u16,
     out: &mut RenderCmdBuffer,
 ) {
     match shape {
-        Shape::RoundedRect {
+        ShapeRecord::RoundedRect {
             local_rect,
             radius,
             fill,
@@ -91,7 +91,7 @@ fn emit_one_shape(
             };
             out.draw_rect(r, *radius, *fill, *stroke);
         }
-        Shape::Text {
+        ShapeRecord::Text {
             local_rect,
             color,
             align,
@@ -124,8 +124,27 @@ fn emit_one_shape(
                 shaped.key,
             );
         }
-        Shape::Line { .. } => {
+        ShapeRecord::Line { .. } => {
             tracing::trace!(?shape, "encoder: dropping unsupported shape");
+        }
+        ShapeRecord::Mesh {
+            local_rect,
+            tint,
+            vertices,
+            indices,
+            content_hash: _,
+        } => {
+            // Mesh verts are owner-local logical px; origin maps them
+            // into the parent's logical-px coords for the composer.
+            // `local_rect`'s top-left, if given, offsets within the
+            // owner; otherwise the owner's own top-left is the origin.
+            let origin = match local_rect {
+                None => owner_rect.min,
+                Some(lr) => owner_rect.min + lr.min,
+            };
+            let verts = &tree.mesh_vertices[vertices.range()];
+            let idx = &tree.mesh_indices[indices.range()];
+            out.draw_mesh(origin, *tint, verts, idx);
         }
     }
 }
@@ -274,11 +293,11 @@ fn encode_node(
     let mut text_ordinal: u16 = 0;
     for item in tree.tree_items(id) {
         match item {
-            TreeItem::Shape(shape) => {
+            TreeItem::ShapeRecord(shape) => {
                 if paints {
                     emit_one_shape(tree, layout, id, rect, shape, text_ordinal, out);
                 }
-                if matches!(shape, Shape::Text { .. }) {
+                if matches!(shape, ShapeRecord::Text { .. }) {
                     text_ordinal += 1;
                 }
             }

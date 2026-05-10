@@ -82,7 +82,7 @@ pub(crate) struct ShaperInner {
     /// Cross-frame cache of shaping output keyed by
     /// `(WidgetId, within-node text-shape ordinal)`, validity-checked
     /// by authoring hash. The ordinal disambiguates leaves with
-    /// multiple `Shape::Text` runs. The wrap slot's `target_q`
+    /// multiple `ShapeRecord::Text` runs. The wrap slot's `target_q`
     /// quantization is layout policy chosen at the call site. Read by
     /// tests via [`crate::support::internals::text_shaper_has_reuse_entry`].
     pub(crate) reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
@@ -112,7 +112,7 @@ impl TextShaper {
         Self::with_cosmic(CosmicMeasure::with_bundled_fonts())
     }
 
-    /// Shape `text` and return its measurement. Bypasses the per-widget
+    /// ShapeRecord `text` and return its measurement. Bypasses the per-widget
     /// reuse cache — direct dispatch to cosmic (if installed) or mono.
     /// Used by [`Self::caret_x`] and other prefix/probe paths.
     pub fn measure(
@@ -279,7 +279,7 @@ impl ShaperInner {
 }
 
 /// Stable identifier for a shaped text run, computed at authoring time so
-/// `Shape::Text` can carry it through the encoder/composer and the renderer
+/// `ShapeRecord::Text` can carry it through the encoder/composer and the renderer
 /// can look up the matching shaped buffer without rehashing.
 ///
 /// Three quantized fields rather than one collapsed `u64` so the renderer
@@ -297,7 +297,7 @@ pub struct TextCacheKey {
     pub size_q: u32,
     /// `max_width_px * 64`, rounded; `u32::MAX` encodes `None` (unbounded).
     pub max_w_q: u32,
-    /// `line_height_px * 64`, rounded. Two `Shape::Text` runs at the
+    /// `line_height_px * 64`, rounded. Two `ShapeRecord::Text` runs at the
     /// same font-size but different leading produce different shaped
     /// buffers (different `Metrics::new`), so the key has to discriminate.
     pub lh_q: u32,

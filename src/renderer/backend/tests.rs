@@ -29,6 +29,7 @@ enum DrawOp {
     MaskClear(u32),
     Quads(usize),
     Text(usize),
+    Meshes(usize),
 }
 
 fn collect(
@@ -61,6 +62,7 @@ fn simplify(steps: &[RenderStep]) -> Vec<DrawOp> {
             }
             RenderStep::Quads { group, .. } => out.push(DrawOp::Quads(*group)),
             RenderStep::Text { group } => out.push(DrawOp::Text(*group)),
+            RenderStep::Meshes { group, .. } => out.push(DrawOp::Meshes(*group)),
         }
     }
     out
@@ -95,6 +97,9 @@ fn buf_with(groups: Vec<DrawGroup>, has_rounded_clip: bool) -> RenderBuffer {
     RenderBuffer {
         quads: vec![dummy_quad(); 4],
         texts: vec![dummy_text(); 4],
+        meshes: Vec::new(),
+        mesh_vertices: Vec::new(),
+        mesh_indices: Vec::new(),
         groups,
         viewport_phys: UVec2::new(100, 100),
         viewport_phys_f: Vec2::new(100.0, 100.0),
@@ -119,6 +124,7 @@ fn text_interleaves_per_group() {
                 rounded_clip: None,
                 quads: Span::new(0, 2),
                 texts: Span::new(0, 1),
+                meshes: Span::default(),
             },
             // Group 1: 1 quad, no text
             DrawGroup {
@@ -126,6 +132,7 @@ fn text_interleaves_per_group() {
                 rounded_clip: None,
                 quads: Span::new(2, 1),
                 texts: Span::new(1, 0),
+                meshes: Span::default(),
             },
         ],
         false,
@@ -147,12 +154,14 @@ fn text_emits_for_quadless_group() {
                 rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 0),
+                meshes: Span::default(),
             },
             DrawGroup {
                 scissor: None,
                 rounded_clip: None,
                 quads: Span::new(1, 0),
                 texts: Span::new(0, 2),
+                meshes: Span::default(),
             },
         ],
         false,
@@ -176,6 +185,7 @@ fn preclear_emits_under_partial_damage() {
             rounded_clip: None,
             quads: Span::new(0, 1),
             texts: Span::new(0, 1),
+            meshes: Span::default(),
         }],
         false,
     );
@@ -205,12 +215,14 @@ fn schedule_replays_per_damage_rect() {
                 rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 0),
+                meshes: Span::default(),
             },
             DrawGroup {
                 scissor: Some(URect::new(50, 0, 50, 100)),
                 rounded_clip: None,
                 quads: Span::new(1, 1),
                 texts: Span::new(0, 0),
+                meshes: Span::default(),
             },
         ],
         false,
@@ -248,6 +260,7 @@ fn stencil_group_brackets_draws_with_mask_write_clear() {
             rounded_clip: Some(Corners::all(8.0)),
             quads: Span::new(0, 2),
             texts: Span::new(0, 1),
+            meshes: Span::default(),
         }],
         true,
     );
@@ -279,6 +292,7 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
                 rounded_clip: Some(Corners::all(8.0)),
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 0),
+                meshes: Span::default(),
             },
             // Group 1: plain (no rounded clip)
             DrawGroup {
@@ -286,6 +300,7 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
                 rounded_clip: None,
                 quads: Span::new(1, 1),
                 texts: Span::new(0, 1),
+                meshes: Span::default(),
             },
         ],
         true,
@@ -316,6 +331,7 @@ fn stencil_text_only_group_still_brackets_with_mask() {
             rounded_clip: Some(Corners::all(8.0)),
             quads: Span::new(0, 0),
             texts: Span::new(0, 1),
+            meshes: Span::default(),
         }],
         true,
     );
@@ -340,6 +356,7 @@ fn setscissor_steps_present_under_partial_damage() {
             rounded_clip: None,
             quads: Span::new(0, 1),
             texts: Span::new(0, 0),
+            meshes: Span::default(),
         }],
         false,
     );
@@ -367,6 +384,7 @@ fn group_outside_damage_emits_no_steps() {
                 rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 0),
+                meshes: Span::default(),
             },
             // Group 1: outside damage
             DrawGroup {
@@ -374,6 +392,7 @@ fn group_outside_damage_emits_no_steps() {
                 rounded_clip: None,
                 quads: Span::new(1, 1),
                 texts: Span::new(0, 0),
+                meshes: Span::default(),
             },
         ],
         false,

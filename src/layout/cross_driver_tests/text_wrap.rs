@@ -9,7 +9,7 @@ use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
-use crate::shape::{Shape, TextWrap};
+use crate::shape::{Shape, ShapeRecord, TextWrap};
 use crate::support::testing::{begin, encode_cmds, shapes_of, ui_with_text};
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -49,8 +49,8 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         .next()
         .expect("text shape");
     let wrap = match shape {
-        Shape::Text { wrap, .. } => *wrap,
-        _ => panic!("expected Shape::Text"),
+        ShapeRecord::Text { wrap, .. } => *wrap,
+        _ => panic!("expected ShapeRecord::Text"),
     };
     assert_eq!(wrap, TextWrap::Wrap);
     let shaped = support::shaped_text(&ui.layout.result[Layer::Main], node);
@@ -426,7 +426,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     }
 }
 
-/// Two `Shape::Text` runs in one leaf:
+/// Two `ShapeRecord::Text` runs in one leaf:
 ///   slot 0: "first" at `local_rect: Some((0, 0)+100x20)`,
 ///   slot 1: "second-with-different-text" at `Some((0, 22)+100x20)`.
 /// Returns the leaf NodeId so callers can read `text_spans` /
@@ -460,10 +460,10 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
     leaf.unwrap()
 }
 
-/// Pin: a custom widget that pushes two `Shape::Text` to the same
+/// Pin: a custom widget that pushes two `ShapeRecord::Text` to the same
 /// node has both runs shaped (`text_spans[node].len == 2`) at distinct
 /// `TextCacheKey`s (no `TextShaper.reuse` collision). Replaces the
-/// old "one Shape::Text per leaf" hard assert.
+/// old "one ShapeRecord::Text per leaf" hard assert.
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     let mut ui = ui_with_text(UVec2::new(400, 400));
@@ -473,7 +473,7 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     let span = ui.layout.result[Layer::Main].text_spans[leaf.index()];
     assert_eq!(
         span.len, 2,
-        "leaf with two Shape::Text should record two text-shape entries"
+        "leaf with two ShapeRecord::Text should record two text-shape entries"
     );
     let first = ui.layout.result[Layer::Main].text_shapes[span.start as usize];
     let second = ui.layout.result[Layer::Main].text_shapes[(span.start + 1) as usize];
@@ -496,7 +496,7 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     );
 }
 
-/// Pin: encoder emits one `DrawText` per `Shape::Text` in record
+/// Pin: encoder emits one `DrawText` per `ShapeRecord::Text` in record
 /// order, and `local_rect: Some(lr)` shifts the emitted rect by
 /// `lr.min` (relative to the owner). Without per-shape `text_ordinal`
 /// indexing or the `local_rect` branch, the second run would either
@@ -516,7 +516,7 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
     assert_eq!(
         drawn.len(),
         2,
-        "leaf with two Shape::Text must emit two DrawText cmds; got {drawn:?}"
+        "leaf with two ShapeRecord::Text must emit two DrawText cmds; got {drawn:?}"
     );
     drawn.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
     let [low, high] = [drawn[0], drawn[1]];

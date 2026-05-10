@@ -39,6 +39,10 @@ pub(crate) enum RenderStep {
     Quads { group: usize, range: Span },
     /// Render the group's text via the glyphon pool slot.
     Text { group: usize },
+    /// Bind the mesh pipeline + issue one `draw_indexed` per
+    /// `MeshDraw` in `range`. Consumer pulls per-draw spans from
+    /// `RenderBuffer.meshes`.
+    Meshes { group: usize, range: Span },
 }
 
 /// Walk `buffer.groups` and emit one [`RenderStep`] at a time via
@@ -115,6 +119,16 @@ pub(crate) fn for_each_step(
                 emit(RenderStep::SetScissor(text_scissor));
                 emit(RenderStep::Text { group: i });
             }
+            if g.meshes.len != 0 {
+                // Restore the group's own scissor in case the text
+                // expansion widened it; mesh draws clip against the
+                // group's region same as quads.
+                emit(RenderStep::SetScissor(effective));
+                emit(RenderStep::Meshes {
+                    group: i,
+                    range: g.meshes,
+                });
+            }
             if let Some(mi) = mask_idx {
                 // Replace(0) re-stencils the rounded region back to
                 // 0; subsequent groups that don't re-write their own
@@ -125,7 +139,7 @@ pub(crate) fn for_each_step(
                 emit(RenderStep::SetStencilRef(0));
                 emit(RenderStep::MaskQuad(mi));
             }
-        } else if g.quads.len != 0 || g.texts.len != 0 {
+        } else if g.quads.len != 0 || g.texts.len != 0 || g.meshes.len != 0 {
             if g.quads.len != 0 {
                 emit(RenderStep::Quads {
                     group: i,
@@ -138,6 +152,13 @@ pub(crate) fn for_each_step(
                 // partial repaint we narrow to the damage rect.
                 emit(RenderStep::SetScissor(text_scissor));
                 emit(RenderStep::Text { group: i });
+            }
+            if g.meshes.len != 0 {
+                emit(RenderStep::SetScissor(effective));
+                emit(RenderStep::Meshes {
+                    group: i,
+                    range: g.meshes,
+                });
             }
         }
     }

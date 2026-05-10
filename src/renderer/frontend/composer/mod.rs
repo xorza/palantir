@@ -1,12 +1,13 @@
 use super::cmd_buffer::{
-    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, PushClipRoundedPayload,
-    RenderCmdBuffer,
+    CmdKind, DrawMeshPayload, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload,
+    PushClipRoundedPayload, RenderCmdBuffer,
 };
 use crate::layout::types::display::Display;
 use crate::primitives::corners::Corners;
+use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::{DrawGroup, RenderBuffer, TextRun};
+use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, TextRun};
 use glam::UVec2;
 
 /// Owns the four-variable invariant that drives `out.groups`
@@ -24,11 +25,34 @@ struct GroupBuilder {
     rounded: Option<Corners>,
     quads_start: u32,
     texts_start: u32,
-    /// `true` iff the most recent draw appended to the in-flight
-    /// group was a text run. Mutated only by `GroupBuilder` methods —
-    /// keep private so the text-then-quad split rule stays a struct
-    /// invariant rather than caller discipline.
-    last_was_text: bool,
+    meshes_start: u32,
+    /// Tracks the most recent draw kind in the in-flight group. A
+    /// draw-kind transition (quad↔text↔mesh) flushes so paint order
+    /// within a group matches record order — simplest correct
+    /// behavior; profile later if it shows up as a hotspot.
+    last_kind: Option<DrawKind>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DrawKind {
+    Quad,
+    Text,
+    Mesh,
+}
+
+impl DrawKind {
+    /// Render order within a group: quads paint first, then text, then
+    /// meshes. A kind transition that would emit something *before*
+    /// what's already in the group (lower order than `last_kind`)
+    /// forces a flush. Equal or higher order is fine — the natural
+    /// per-group draw sequence preserves record order.
+    fn order(self) -> u8 {
+        match self {
+            DrawKind::Quad => 0,
+            DrawKind::Text => 1,
+            DrawKind::Mesh => 2,
+        }
+    }
 }
 
 impl GroupBuilder {
@@ -39,17 +63,20 @@ impl GroupBuilder {
     fn flush(&mut self, out: &mut RenderBuffer) {
         let q_end = out.quads.len() as u32;
         let t_end = out.texts.len() as u32;
-        if q_end > self.quads_start || t_end > self.texts_start {
+        let m_end = out.meshes.len() as u32;
+        if q_end > self.quads_start || t_end > self.texts_start || m_end > self.meshes_start {
             out.groups.push(DrawGroup {
                 scissor: self.current,
                 rounded_clip: self.rounded,
                 quads: (self.quads_start..q_end).into(),
                 texts: (self.texts_start..t_end).into(),
+                meshes: (self.meshes_start..m_end).into(),
             });
         }
         self.quads_start = q_end;
         self.texts_start = t_end;
-        self.last_was_text = false;
+        self.meshes_start = m_end;
+        self.last_kind = None;
     }
 
     /// Switch to a new clip (scissor + optional rounded), flushing the
@@ -68,25 +95,34 @@ impl GroupBuilder {
             self.current = scissor;
             self.rounded = rounded;
         }
-        self.last_was_text = false;
+        self.last_kind = None;
     }
 
-    /// Apply the text-then-quad split rule: if the prior draw in the
-    /// current group was text, flush so the next quad renders
-    /// *after* the text. Same scissor continues into the new group.
-    fn before_quad(&mut self, out: &mut RenderBuffer) {
-        if self.last_was_text {
+    /// Apply the kind-transition split rule: if the prior draw in the
+    /// in-flight group was a different kind, flush so paint order
+    /// matches record order. Same scissor continues into the new group.
+    fn before_draw(&mut self, kind: DrawKind, out: &mut RenderBuffer) {
+        if let Some(prev) = self.last_kind
+            && kind.order() < prev.order()
+        {
             self.flush(out);
         }
+        self.last_kind = Some(kind);
     }
 
-    /// Sole entry point for emitting a text run — appends to
-    /// `out.texts` and flags `last_was_text` so the next quad triggers
-    /// the text-then-quad split. Routing through this method keeps the
-    /// flag a struct invariant.
+    fn push_quad(&mut self, out: &mut RenderBuffer, quad: Quad) {
+        self.before_draw(DrawKind::Quad, out);
+        out.quads.push(quad);
+    }
+
     fn push_text(&mut self, out: &mut RenderBuffer, run: TextRun) {
+        self.before_draw(DrawKind::Text, out);
         out.texts.push(run);
-        self.last_was_text = true;
+    }
+
+    fn push_mesh(&mut self, out: &mut RenderBuffer, draw: MeshDraw) {
+        self.before_draw(DrawKind::Mesh, out);
+        out.meshes.push(draw);
     }
 }
 
@@ -128,6 +164,9 @@ impl Composer {
 
         out.quads.clear();
         out.texts.clear();
+        out.meshes.clear();
+        out.mesh_vertices.clear();
+        out.mesh_indices.clear();
         out.groups.clear();
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
@@ -225,7 +264,6 @@ impl Composer {
                             continue;
                         }
                     }
-                    group.before_quad(out);
                     let world_radius = radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
@@ -233,8 +271,49 @@ impl Composer {
                         width: stroke.width * current_transform.scale * scale,
                         color: stroke.color,
                     };
-                    out.quads
-                        .push(Quad::new(phys_rect, fill, phys_radius, phys_stroke));
+                    group.push_quad(out, Quad::new(phys_rect, fill, phys_radius, phys_stroke));
+                }
+                CmdKind::DrawMesh => {
+                    let p: DrawMeshPayload = cmds.read(start);
+                    // Per-vertex transform: shift by `origin` (logical
+                    // px owner-relative → world), apply the active
+                    // transform, then DPI-scale. No pixel-snap: the
+                    // mesh is user geometry; snapping arbitrary
+                    // vertices changes shape.
+                    let v_start = p.v_start as usize;
+                    let v_end = v_start + p.v_len as usize;
+                    let i_start = p.i_start as usize;
+                    let i_end = i_start + p.i_len as usize;
+                    let phys_v_start = out.mesh_vertices.len() as u32;
+                    let tint = p.tint;
+                    for v in &cmds.mesh_vertices[v_start..v_end] {
+                        let world = current_transform.apply_point(v.pos + p.origin);
+                        // Premultiplied-alpha tinting: component-wise
+                        // multiply works for both rgb and alpha. The
+                        // backend pipeline doesn't take a tint uniform
+                        // — it's baked in here.
+                        let c = v.color;
+                        out.mesh_vertices.push(MeshVertex {
+                            pos: world * scale,
+                            color: crate::primitives::color::Color {
+                                r: c.r * tint.r,
+                                g: c.g * tint.g,
+                                b: c.b * tint.b,
+                                a: c.a * tint.a,
+                            },
+                        });
+                    }
+                    let phys_i_start = out.mesh_indices.len() as u32;
+                    out.mesh_indices
+                        .extend_from_slice(&cmds.mesh_indices[i_start..i_end]);
+                    group.push_mesh(
+                        out,
+                        MeshDraw {
+                            vertices: (phys_v_start..phys_v_start + p.v_len).into(),
+                            indices: (phys_i_start..phys_i_start + p.i_len).into(),
+                            tint: p.tint,
+                        },
+                    );
                 }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);

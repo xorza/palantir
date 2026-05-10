@@ -749,7 +749,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     // TextEdit. Per-state overrides (set on
     // `theme.text_edit.normal.text` etc.) win on top.
     use crate::TextStyle;
-    use crate::shape::Shape;
+    use crate::shape::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
@@ -787,7 +787,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     let read_fs = |node: crate::forest::tree::NodeId| -> f32 {
         shapes_of(ui.forest.tree(Layer::Main), node)
             .find_map(|s| match s {
-                Shape::Text { font_size_px, .. } => Some(*font_size_px),
+                ShapeRecord::Text { font_size_px, .. } => Some(*font_size_px),
                 _ => None,
             })
             .unwrap()
@@ -814,7 +814,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
 #[test]
 fn theme_text_color_used_when_text_widget_does_not_override() {
     use crate::primitives::color::Color;
-    use crate::shape::Shape;
+    use crate::shape::ShapeRecord;
     use crate::widgets::text::Text;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
@@ -828,7 +828,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     ui.end_frame_paint_phase();
     let color = shapes_of(ui.forest.tree(Layer::Main), node.unwrap())
         .find_map(|s| match s {
-            Shape::Text { color, .. } => Some(*color),
+            ShapeRecord::Text { color, .. } => Some(*color),
             _ => None,
         })
         .unwrap();
@@ -839,7 +839,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
 fn text_widget_color_override_wins_over_theme() {
     use crate::TextStyle;
     use crate::primitives::color::Color;
-    use crate::shape::Shape;
+    use crate::shape::ShapeRecord;
     use crate::widgets::text::Text;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
@@ -859,7 +859,7 @@ fn text_widget_color_override_wins_over_theme() {
     ui.end_frame_paint_phase();
     let color = shapes_of(ui.forest.tree(Layer::Main), node.unwrap())
         .find_map(|s| match s {
-            Shape::Text { color, .. } => Some(*color),
+            ShapeRecord::Text { color, .. } => Some(*color),
             _ => None,
         })
         .unwrap();
@@ -871,7 +871,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     // Pin: every text-rendering widget falls back to `theme.text` for
     // leading. TextEdit's `normal` slot can override on top.
     use crate::TextStyle;
-    use crate::shape::Shape;
+    use crate::shape::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
@@ -906,7 +906,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     let read_lh = |node: crate::forest::tree::NodeId| -> f32 {
         shapes_of(ui.forest.tree(Layer::Main), node)
             .find_map(|s| match s {
-                Shape::Text { line_height_px, .. } => Some(*line_height_px),
+                ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
                 _ => None,
             })
             .unwrap()
@@ -934,10 +934,10 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 fn textedit_style_override_replaces_default_theme() {
     // Pin: `.style(TextEditTheme { ... })` replaces the default theme
     // wholesale. A custom leading on the bundle's `text` field flows
-    // onto the recorded `Shape::Text`.
+    // onto the recorded `ShapeRecord::Text`.
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::shape::Shape;
+    use crate::shape::ShapeRecord;
     use crate::widgets::theme::WidgetLook;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
@@ -964,7 +964,7 @@ fn textedit_style_override_replaces_default_theme() {
     ui.end_frame_paint_phase();
     let lh = shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
         .find_map(|s| match s {
-            Shape::Text { line_height_px, .. } => Some(*line_height_px),
+            ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
             _ => None,
         })
         .unwrap();
@@ -973,12 +973,12 @@ fn textedit_style_override_replaces_default_theme() {
 
 #[test]
 fn pushed_shape_carries_default_line_height_from_theme() {
-    // Pin: with no per-widget override, the `Shape::Text` recorded by
+    // Pin: with no per-widget override, the `ShapeRecord::Text` recorded by
     // TextEdit declares `line_height_px = font_size * theme.line_height_mult`
     // (default 1.2 from `crate::text::LINE_HEIGHT_MULT`). The shaper
     // and the caret rect both read this value, so a wrong default
     // would put both renderers out of sync.
-    use crate::shape::Shape;
+    use crate::shape::ShapeRecord;
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hi");
     let mut leaf_node = None;
@@ -995,14 +995,14 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     ui.end_frame_paint_phase();
     let text_shape =
         shapes_of(ui.forest.tree(Layer::Main), leaf_node.unwrap()).find_map(|s| match s {
-            Shape::Text {
+            ShapeRecord::Text {
                 font_size_px,
                 line_height_px,
                 ..
             } => Some((*font_size_px, *line_height_px)),
             _ => None,
         });
-    let (fs, lh) = text_shape.expect("TextEdit pushes a Shape::Text for non-empty buffer");
+    let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");
     assert_eq!(fs, 16.0);
     assert!(
         (lh - 16.0 * crate::text::LINE_HEIGHT_MULT).abs() < 1e-5,
@@ -1013,11 +1013,11 @@ fn pushed_shape_carries_default_line_height_from_theme() {
 #[test]
 fn pushed_shape_uses_style_overridden_line_height() {
     // Pin: a custom `line_height_mult` set via `.style()` propagates
-    // onto the recorded `Shape::Text` so the shaper produces a buffer
+    // onto the recorded `ShapeRecord::Text` so the shaper produces a buffer
     // at the requested leading — not just the caret rect.
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::shape::Shape;
+    use crate::shape::ShapeRecord;
     use crate::widgets::theme::WidgetLook;
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hi");
@@ -1043,7 +1043,7 @@ fn pushed_shape_uses_style_overridden_line_height() {
     ui.end_frame_paint_phase();
     let lh = shapes_of(ui.forest.tree(Layer::Main), leaf_node.unwrap())
         .find_map(|s| match s {
-            Shape::Text { line_height_px, .. } => Some(*line_height_px),
+            ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
             _ => None,
         })
         .unwrap();
@@ -1057,7 +1057,7 @@ fn line_height_override_changes_caret_rect_height() {
     // override 2.0 → 32 px tall.
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::shape::Shape;
+    use crate::shape::ShapeRecord;
     use crate::widgets::theme::WidgetLook;
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {
@@ -1089,10 +1089,10 @@ fn line_height_override_changes_caret_rect_height() {
             leaf = Some(e.show(ui).node);
         });
         ui.end_frame_record_phase();
-        ui.end_frame_paint_phase(); // Caret = the only sub-rect Shape pushed (no selection in v1).
+        ui.end_frame_paint_phase(); // Caret = the only sub-rect ShapeRecord pushed (no selection in v1).
         shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
             .find_map(|s| match s {
-                Shape::RoundedRect {
+                ShapeRecord::RoundedRect {
                     local_rect: Some(rect),
                     ..
                 } => Some(rect.size.h),
