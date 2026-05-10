@@ -11,6 +11,7 @@ use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
 use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
+use crate::layout::scroll::ScrollLayoutState;
 use crate::layout::types::display::Display;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::{FrameOutput, FrameState, Frontend};
@@ -433,14 +434,16 @@ impl Ui {
     /// Mutable access to the scroll state row for the widget at
     /// `id`. Inserts a default row on first access. The widget
     /// reads/writes the snapshot at record time (offset clamp,
-    /// reservation guess, bar geometry) and refresh writes the
-    /// layout-derived fields after arrange. State lives on
-    /// [`LayoutEngine::scroll_states`] (not `StateMap`) so the
-    /// layout subsystem owns its own concern.
-    pub(crate) fn scroll_state(
-        &mut self,
-        id: WidgetId,
-    ) -> &mut crate::layout::scroll::ScrollLayoutState {
+    /// reservation guess, bar geometry); the layout's scroll driver
+    /// writes the layout-derived fields during measure + arrange.
+    /// State lives on [`LayoutEngine::scroll_states`] (not `StateMap`)
+    /// so the layout subsystem owns its own concern.
+    ///
+    /// Keyed internally by the inner viewport's id (`id.with("__viewport")`)
+    /// because that's the WidgetId the layout subsystem sees on the
+    /// `LayoutMode::Scroll` node — callers stay on the public outer
+    /// id and this hop is invisible.
+    pub(crate) fn scroll_state(&mut self, id: WidgetId) -> &mut ScrollLayoutState {
         self.layout.scroll_states.entry(id).or_default()
     }
 

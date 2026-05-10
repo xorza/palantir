@@ -15,9 +15,9 @@ use crate::widgets::theme::ScrollbarTheme;
 use glam::Vec2;
 
 // `ScrollLayoutState` lives on `LayoutEngine::scroll_states` rather
-// than `StateMap` — it's a layout-derived concern, refresh writes
-// the layout fields after arrange, and the widget reads/mutates the
-// row at record time via [`Ui::scroll_state`].
+// than `StateMap` — it's a layout-derived concern, the scroll driver
+// writes the layout fields during measure + arrange, and the widget
+// reads/mutates the row at record time via [`Ui::scroll_state`].
 //
 // Bar drawing + reservation logic stay here as widget concerns; the
 // layout primitive itself is unaware of scrollbars.
@@ -178,20 +178,26 @@ impl Scroll {
 
         // Record-time clamp + reservation-guess: both use *last*
         // frame's `viewport`/`content`/`overflow`. The matching
-        // re-clamp in `LayoutEngine::refresh_scrolls` corrects with
-        // fresh numbers post-arrange. Off-axis offsets stay at 0 for
-        // single-axis scrolls.
+        // re-clamp in `scroll::arrange` corrects with fresh numbers
+        // post-arrange. Off-axis offsets stay at 0 for single-axis
+        // scrolls.
         //
         // Cold-mount: state is default (`seen == false`) → the
         // reservation guess defaults to `(false, false)`, wrong, so
         // we request a relayout. After this pass's record + measure
-        // + refresh, `seen` is true and pass B records with the
+        // + arrange, `seen` is true and pass B records with the
         // measured reservation in place. Subsequent overflow flips
         // mid-life produce a one-frame visual blip — accepted on
         // the same tier as the wheel-pan clamp's staleness.
+        // Input routes by `Sense::Scroll`, which sits on the outer
+        // ZStack (so wheel events over the bar gutter still pan the
+        // viewport). Layout state, however, is keyed by the inner
+        // viewport node's id — that's the `LayoutMode::Scroll` node
+        // the driver writes to.
+        let scroll_id = id.with("__viewport");
         let delta = ui.input.scroll_delta_for(id);
         let scroll = {
-            let row = ui.scroll_state(id);
+            let row = ui.scroll_state(scroll_id);
             let max_x = (row.content.w - row.viewport.w).max(0.0);
             let max_y = (row.content.h - row.viewport.h).max(0.0);
             if pan.x {
@@ -202,6 +208,7 @@ impl Scroll {
             }
             *row
         };
+        //todo
         if !scroll.seen {
             ui.request_relayout();
         }
@@ -252,7 +259,7 @@ impl Scroll {
         // clip mask), and the actual `Scroll` layout mode that runs
         // children with INF on panned axes.
         let mut inner = Element::new(self.element.mode);
-        inner.id = id.with("__viewport");
+        inner.id = scroll_id;
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;
         inner.gap = self.element.gap;
