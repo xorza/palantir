@@ -1,7 +1,7 @@
 //! Driver-level tests for [`super::measure`] and [`super::arrange`]:
-//! INF-axis measure, content-extent recording into
-//! [`super::ScrollContent`], and the cache-hit fallback (no entry
-//! pushed; widget refresh keeps state from last frame).
+//! INF-axis measure, content-extent recording into the persistent
+//! [`super::ScrollLayoutState`] row, and the cache-hit fallback
+//! (driver doesn't fire; row keeps last frame's `content`).
 
 use crate::Ui;
 use crate::forest::element::Configure;
@@ -19,8 +19,8 @@ const SURFACE: UVec2 = UVec2::new(400, 300);
 
 /// Read the post-frame `ScrollState` for the scroll widget at
 /// `id_salt`. State is what the codebase reads at record time and is
-/// the stable observation point — `LayoutEngine::scroll_content` is
-/// per-frame and may be empty on measure-cache hits.
+/// the stable observation point — on measure-cache hits the driver
+/// doesn't run, but the persisted row keeps last frame's value.
 fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
     *ui.scroll_state(WidgetId::from_hash(id_salt))
 }
@@ -121,6 +121,7 @@ fn state_survives_across_frames() {
     let f2 = state_for(&mut ui, "scroll");
     assert_eq!(f1.content, f2.content);
     assert_eq!(f1.viewport, f2.viewport);
+    assert_eq!(f1.outer, f2.outer);
     assert!(f1.seen, "first frame's relayout populated state");
     assert!(f2.seen);
     // Sanity: pinned numbers.
