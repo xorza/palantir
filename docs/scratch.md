@@ -1,7 +1,7 @@
 - gradients, textures
 - showcase agent testing
 
-clip to account for padding
+damage regions + clip does not work correctly
 
 anim slot automate
 
