@@ -36,9 +36,10 @@ pub fn run_cascades(ui: &mut Ui) {
 /// Number of animation rows currently allocated for type `T`, or `0`
 /// if no typed map for `T` has ever been touched. Used by tests to
 /// assert "no rows" / "row exists" without allocating a typed map as
-/// a side effect.
-pub fn anim_row_count<T: Animatable>(ui: &Ui) -> usize {
-    ui.anim.try_typed::<T>().map_or(0, |t| t.rows.len())
+/// a side effect. Takes `&mut Ui` because the type-erased downcast
+/// goes through `as_any_mut`.
+pub fn anim_row_count<T: Animatable>(ui: &mut Ui) -> usize {
+    ui.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
 }
 
 /// Total `measure` calls dispatched through `shaper` (cache misses

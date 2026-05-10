@@ -8,6 +8,8 @@ use crate::animation::animatable::Animatable;
 
 pub(crate) const POS_EPS: f32 = 0.001;
 pub(crate) const VEL_EPS: f32 = 0.01;
+pub(crate) const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;
+pub(crate) const VEL_EPS_SQ: f32 = VEL_EPS * VEL_EPS;
 
 pub(crate) struct SpringStep<T: Animatable> {
     pub(crate) current: T,
@@ -30,7 +32,8 @@ pub(crate) fn step<T: Animatable>(
     let new_velocity = velocity.add(accel.scale(dt));
     let new_current = current.add(new_velocity.scale(dt));
     let new_displacement = new_current.sub(target);
-    let settled = new_displacement.magnitude() < POS_EPS && new_velocity.magnitude() < VEL_EPS;
+    let settled = new_displacement.magnitude_squared() < POS_EPS_SQ
+        && new_velocity.magnitude_squared() < VEL_EPS_SQ;
     if settled {
         SpringStep {
             current: target,
