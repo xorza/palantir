@@ -128,6 +128,14 @@ pub(crate) struct AnimRow<T: Animatable> {
     /// animation site went away) gets evicted. Without this the
     /// `(WidgetId, AnimSlot)` map only shrinks on full widget removal.
     pub(crate) touched: bool,
+    /// `Ui::frame_id` at the last `tick` that ran the integrator
+    /// step. A second `tick` in the same frame (multi-pass record:
+    /// `run_frame` re-runs `build` after an input action drains) sees
+    /// this match and short-circuits the dt-driven advance, so the
+    /// integrator advances exactly once per host frame. Retarget
+    /// logic still runs in the short-circuited call so pass B's
+    /// post-action target replaces pass A's stale one.
+    pub(crate) advanced_at: u64,
 }
 
 /// Per-`T` animation table. Lives inside [`AnimMap`] behind a boxed
@@ -176,6 +184,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         target: T,
         spec: AnimSpec,
         dt: f32,
+        frame_id: u64,
     ) -> TickResult<T> {
         let row = match self.rows.entry((id, slot)) {
             Entry::Vacant(v) => {
@@ -186,6 +195,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                     elapsed: 0.0,
                     segment_start: target,
                     touched: true,
+                    advanced_at: frame_id,
                 });
                 return TickResult {
                     current: target,
@@ -195,6 +205,8 @@ impl<T: Animatable> AnimMapTyped<T> {
             Entry::Occupied(o) => o.into_mut(),
         };
         row.touched = true;
+        let already_advanced = row.advanced_at == frame_id;
+        row.advanced_at = frame_id;
 
         // Retarget: duration restarts the segment from `current`;
         // spring keeps velocity *only when it aids motion toward the
@@ -240,6 +252,18 @@ impl<T: Animatable> AnimMapTyped<T> {
             return TickResult {
                 current: row.target,
                 settled: true,
+            };
+        }
+
+        // Multi-pass guard: pass A already advanced the integrator
+        // this frame. Pass B's retarget logic (above) updated `target`
+        // / `segment_start` / `velocity` for the new post-action
+        // state, but we don't add another dt of motion — that would
+        // double the animation speed on any input frame.
+        if already_advanced {
+            return TickResult {
+                current: row.current,
+                settled: false,
             };
         }
 
