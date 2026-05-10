@@ -46,7 +46,9 @@ pub(crate) mod region;
 /// evicts it in place.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
-    /// Screen-space rect from last frame's `Cascade.screen_rect`.
+    /// Screen-space rect from last frame's `Cascade.visible_rect`
+    /// (raw transformed rect intersected with ancestor clip), so
+    /// scrolled-offscreen children don't inflate the damage region.
     pub(crate) rect: Rect,
     /// Authoring hash from last frame's `Tree.hashes`.
     pub(crate) hash: NodeHash,
@@ -180,7 +182,7 @@ impl Damage {
             let widget_ids = tree.records.widget_id();
             for i in 0..n {
                 let wid = widget_ids[i];
-                let curr_rect = rows[i].screen_rect;
+                let curr_rect = rows[i].visible_rect;
                 let curr_paints = tree.rollups.paints.contains(i);
                 let curr = NodeSnapshot {
                     rect: curr_rect,
