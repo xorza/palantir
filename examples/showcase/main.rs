@@ -242,13 +242,13 @@ impl ApplicationHandler for App {
         } = event
         {
             let mut cfg = state.ui.debug_overlay.unwrap_or_default();
-            cfg.clear_damage = !cfg.clear_damage;
+            cfg.dim_undamaged = !cfg.dim_undamaged;
             state.ui.debug_overlay = if cfg == DebugOverlayConfig::default() {
                 None
             } else {
                 Some(cfg)
             };
-            eprintln!("[F10] darken undamaged: {}", cfg.clear_damage);
+            eprintln!("[F10] darken undamaged: {}", cfg.dim_undamaged);
             state.repaint_requested = true;
         }
 
