@@ -428,6 +428,19 @@ impl Ui {
              `Foo::new()` no longer derives an id automatically.",
         );
         element.id = self.forest.ids.record(element.id, element.auto_id);
+        // Two-layer noop policy for chrome (mirrors `Ui::add_shape`'s
+        // single-layer filter for free-form shapes):
+        //   1. Authoring filter (here): drop a fully-noop surface
+        //      outright — no chrome row, no clip flag, no per-node
+        //      hash contribution. Catches `Surface::from(default_bg)`
+        //      / explicit transparent surfaces at install time.
+        //   2. Encode-time filter (`encode_chrome`): for surfaces
+        //      whose clip is meaningful but whose paint has decayed
+        //      to noop via animation, keep the chrome row (the
+        //      encoder reads it for clip-inset math) but skip the
+        //      `draw_rect` paint emit.
+        // The two cases are complementary, not redundant.
+        let surface = surface.filter(|s| !s.is_noop());
         let chrome = surface.map(|s| {
             element.clip = match s.clip {
                 ClipMode::Rounded if s.paint.radius.approx_zero() => ClipMode::Rect,
