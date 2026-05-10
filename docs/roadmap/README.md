@@ -19,4 +19,5 @@ priority (Now / Next / Later / Speculative).
 - [State](state.md) — cross-widget stores, event bus, external writes
 - [Tooling](tooling.md) — profiling, snapshots, HiDPI
 - [Speculative](speculative.md) — profile-gated micro-optimizations
+- [Deferred shapes](deferred-shapes.md) — post-arrange shape emission (scrollbars, focus ring, connectors)
 - [Scratch](scratch.md) — unsorted ideas
