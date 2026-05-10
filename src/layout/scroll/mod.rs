@@ -70,14 +70,33 @@ mod tests;
 /// - `seen` — set true by `arrange` after the first frame. Read by
 ///   the widget to detect a cold-mount and trigger a relayout pass
 ///   so pass B records with the measured reservation in place.
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollLayoutState {
     pub(crate) offset: Vec2,
+    /// Uniform zoom; `1.0` = no zoom. Mutated only by [`Scroll`] widgets
+    /// configured via `with_zoom*`. The driver leaves it alone.
+    pub(crate) zoom: f32,
     pub(crate) viewport: Size,
     pub(crate) outer: Size,
+    /// Unscaled content extent. Multiply by `zoom` for the
+    /// user-perceived (post-paint) extent.
     pub(crate) content: Size,
     pub(crate) overflow: (bool, bool),
     pub(crate) seen: bool,
+}
+
+impl Default for ScrollLayoutState {
+    fn default() -> Self {
+        Self {
+            offset: Vec2::ZERO,
+            zoom: 1.0,
+            viewport: Size::ZERO,
+            outer: Size::ZERO,
+            content: Size::ZERO,
+            overflow: (false, false),
+            seen: false,
+        }
+    }
 }
 
 /// Cross-frame map of [`ScrollLayoutState`] keyed by the inner
@@ -172,12 +191,16 @@ pub(crate) fn arrange(
     };
     let entry = engine.scroll_states.entry(wid).or_default();
     let viewport = inner.size;
+    let zoom = entry.zoom;
     entry.viewport = viewport;
     entry.outer = outer;
-    entry.overflow = (entry.content.w > viewport.w, entry.content.h > viewport.h);
+    entry.overflow = (
+        entry.content.w * zoom > viewport.w,
+        entry.content.h * zoom > viewport.h,
+    );
     entry.seen = true;
-    let max_x = (entry.content.w - viewport.w).max(0.0);
-    let max_y = (entry.content.h - viewport.h).max(0.0);
+    let max_x = (entry.content.w * zoom - viewport.w).max(0.0);
+    let max_y = (entry.content.h * zoom - viewport.h).max(0.0);
     entry.offset.x = entry.offset.x.clamp(0.0, max_x);
     entry.offset.y = entry.offset.y.clamp(0.0, max_y);
 }

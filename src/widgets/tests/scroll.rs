@@ -819,6 +819,98 @@ mod bars {
         );
     }
 
+    /// Zooming a `Scroll::both` shrinks the thumb by the same factor
+    /// the content grows. Drive zoom by writing `state.zoom` directly
+    /// across frames, then read the emitted thumb's main-axis extent
+    /// from the OUTER node's local-rect shapes.
+    #[test]
+    fn zoomed_content_shrinks_thumb_proportionally() {
+        let surface = UVec2::new(400, 400);
+        let mut ui = ui_at(surface);
+        let build = |ui: &mut Ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
+                Scroll::both()
+                    .id_salt("scroll")
+                    .with_zoom()
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id_salt("big")
+                            .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                            .show(ui);
+                    });
+            });
+        };
+        // Frame 1 + 2: settle at zoom = 1.
+        build(&mut ui);
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
+        crate::support::testing::begin(&mut ui, surface);
+        build(&mut ui);
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
+        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+        let outer_node = {
+            let node_ids = ui.forest.tree(Layer::Main).records.widget_id();
+            let outer_id = WidgetId::from_hash("scroll");
+            let idx = node_ids.iter().position(|w| *w == outer_id).unwrap();
+            NodeId(idx as u32)
+        };
+        let z1_thumbs: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), outer_node)
+            .filter_map(|s| match s {
+                Shape::RoundedRect {
+                    local_rect: Some(r),
+                    ..
+                } => Some(*r),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(z1_thumbs.len(), 2, "z=1: V + H thumbs");
+        let v1 = z1_thumbs
+            .iter()
+            .find(|r| r.size.h > r.size.w)
+            .unwrap()
+            .size
+            .h;
+
+        // Bump zoom to 2.0 and re-run two frames so arrange + record
+        // both observe the scaled content.
+        ui.scroll_state(scroll_id).zoom = 2.0;
+        crate::support::testing::begin(&mut ui, surface);
+        build(&mut ui);
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
+        crate::support::testing::begin(&mut ui, surface);
+        build(&mut ui);
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
+        let z2_thumbs: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), outer_node)
+            .filter_map(|s| match s {
+                Shape::RoundedRect {
+                    local_rect: Some(r),
+                    ..
+                } => Some(*r),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");
+        let v2 = z2_thumbs
+            .iter()
+            .find(|r| r.size.h > r.size.w)
+            .unwrap()
+            .size
+            .h;
+        assert!(v2 < v1, "thumb should shrink under zoom (v1={v1}, v2={v2})");
+        // Thumb height ratio ≈ (viewport / scaled_content) ratio. At
+        // z=1 viewport/content = 188/400; at z=2, 188/800. So v2/v1
+        // should be ≈ 0.5 (within the min_thumb_px floor and rounding).
+        let ratio = v2 / v1;
+        assert!(
+            (0.45..=0.55).contains(&ratio),
+            "thumb shrink ratio off; v1={v1} v2={v2} ratio={ratio}"
+        );
+    }
+
     #[test]
     fn both_axes_overflow_emits_two_thumbs() {
         let (ui, node) = record_two_frames(UVec2::new(400, 400), |ui| {

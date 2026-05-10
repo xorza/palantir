@@ -54,6 +54,13 @@ pub enum InputEvent {
     /// should add to its vertical offset). Multiple events in one frame
     /// accumulate into [`InputState::frame_scroll_delta`].
     Scroll(Vec2),
+    /// Multiplicative zoom factor from a touch / touchpad pinch gesture.
+    /// `1.0` is identity; `1.05` zooms in 5%, `0.95` zooms out 5%.
+    /// Multiple events in one frame multiply into
+    /// [`InputState::frame_zoom_delta`]. Wheel-based zoom is *not*
+    /// translated into `Zoom` — the active scroll widget decides at
+    /// record time whether wheel ticks count as pan or zoom.
+    Zoom(f32),
     /// Logical key was pressed. `repeat` reflects OS-level key repeat
     /// (held keys re-emit). Modifier state isn't carried on the event;
     /// consumers read the latest [`Modifiers`] from `InputState`. We
@@ -109,6 +116,7 @@ impl InputEvent {
             // / swipes right (reveal content to the right means panning
             // *into* it, i.e. content shifts left); flip both so positive
             // means "advance the scroll offset."
+            WindowEvent::PinchGesture { delta, .. } => Some(InputEvent::Zoom(1.0 + *delta as f32)),
             WindowEvent::MouseWheel { delta, .. } => Some(match *delta {
                 MouseScrollDelta::LineDelta(x, y) => {
                     InputEvent::Scroll(Vec2::new(-x, -y) * SCROLL_LINE_PIXELS)
@@ -192,6 +200,12 @@ pub struct InputState {
     /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
     /// in [`Self::end_frame`]. Read by scroll widgets at record time.
     pub(crate) frame_scroll_delta: Vec2,
+    /// Multiplicative pinch-zoom delta accumulated this frame; `1.0` =
+    /// no zoom. Cleared in [`Self::end_frame`]. Read by scroll widgets
+    /// configured with a `ZoomConfig`. Wheel-based zoom is computed
+    /// at the widget from [`Self::frame_scroll_delta`] under the
+    /// `ZoomConfig::modifier` gate, not accumulated here.
+    pub(crate) frame_zoom_delta: f32,
     /// Keystrokes accumulated this frame, awaiting drain by the focused
     /// widget at record time. Capacity-retained across frames; cleared
     /// in [`Self::end_frame`] regardless of whether anything consumed
@@ -242,6 +256,7 @@ impl InputState {
             press_pos: None,
             clicked_this_frame: FxHashSet::default(),
             frame_scroll_delta: Vec2::ZERO,
+            frame_zoom_delta: 1.0,
             frame_keys: Vec::new(),
             frame_text: String::new(),
             modifiers: Modifiers::NONE,
@@ -261,6 +276,7 @@ impl InputState {
                 | InputEvent::KeyDown { .. }
                 | InputEvent::Text(_)
                 | InputEvent::Scroll(_)
+                | InputEvent::Zoom(_)
         ) {
             self.had_action_this_frame = true;
         }
@@ -312,6 +328,9 @@ impl InputState {
             InputEvent::Scroll(d) => {
                 self.frame_scroll_delta += d;
             }
+            InputEvent::Zoom(f) => {
+                self.frame_zoom_delta *= f;
+            }
             // Right/Middle: not yet wired through to widgets. Silently drop.
             InputEvent::PointerPressed(_) | InputEvent::PointerReleased(_) => {}
             InputEvent::KeyDown { key, repeat } => {
@@ -346,6 +365,7 @@ impl InputState {
     pub(crate) fn drain_per_frame_queues(&mut self) {
         self.clicked_this_frame.clear();
         self.frame_scroll_delta = Vec2::ZERO;
+        self.frame_zoom_delta = 1.0;
         self.frame_keys.clear();
         self.frame_text.clear();
     }
@@ -393,6 +413,18 @@ impl InputState {
             self.frame_scroll_delta
         } else {
             Vec2::ZERO
+        }
+    }
+
+    /// Returns this frame's pinch-zoom factor if `id` is the current
+    /// scroll hit-target; otherwise `1.0`. Pinch ingest is unconditional
+    /// (touch already disambiguates intent), so widgets get the raw
+    /// multiplicative factor regardless of `ZoomConfig::modifier`.
+    pub(crate) fn zoom_delta_for(&self, id: WidgetId) -> f32 {
+        if self.scroll_target == Some(id) {
+            self.frame_zoom_delta
+        } else {
+            1.0
         }
     }
 
