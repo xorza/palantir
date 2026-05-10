@@ -31,14 +31,14 @@ pub(crate) const DAMAGE_RECT_CAP: usize = 8;
 
 /// Proximity-merge ratio. Two rects collapse into one when the
 /// bounding box's area is at most `MERGE_AREA_RATIO ×` the sum of
-/// their individual areas — i.e. up to 30 % overdraw waste relative
+/// their individual areas — i.e. up to 60 % overdraw waste relative
 /// to the actual changed area is acceptable. `1.0` reproduces the
 /// strict LVGL rule (overlap or edge-touch only); `> 1.0` admits
-/// near-but-not-overlapping pairs. Picked at 1.3 so axis-adjacent
-/// damage (one cell + its immediate neighbour with a 2 px gap)
-/// merges, but two cells more than one stride apart don't —
-/// matches the GPU bench crossover (`damage_merge_gpu`) on Apple
-/// Silicon. Tunable; see `docs/roadmap/damage-merge-research.md`.
+/// near-but-not-overlapping pairs. Picked at 1.6 so axis-adjacent
+/// damage (one cell + its near neighbour with a moderate gap)
+/// merges, but two cells far apart don't — matches the GPU bench
+/// crossover (`damage_merge_gpu`) on Apple Silicon. Tunable; see
+/// `docs/roadmap/damage-merge-research.md`.
 pub(crate) const MERGE_AREA_RATIO: f32 = 1.6;
 
 /// Set of damage rects, kept in screen space. `Copy` so

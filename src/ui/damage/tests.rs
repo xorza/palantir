@@ -604,10 +604,10 @@ fn no_damage_means_skip() {
 /// strictly above `FULL_REPAINT_THRESHOLD` (0.7) ⇒ Full, otherwise
 /// Partial. The check is `>`, not `>=`, so coverage exactly at the
 /// threshold stays Partial. A zero-area surface forces Full
-/// (divide-by-zero guard). The `total_area` sum is over per-rect
-/// areas, so two non-overlapping damage rects collectively crossing
-/// the threshold escalate to Full even though neither rect alone
-/// does.
+/// (divide-by-zero guard). `total_area` sums per-rect areas of the
+/// post-merge region, so adjacent rects that the proximity-merge
+/// rule collapses contribute their merged-bbox area (which here
+/// equals the input sum since they tile cleanly).
 #[test]
 fn damage_filter_threshold_cases() {
     use super::region::DamageRegion;
@@ -618,18 +618,25 @@ fn damage_filter_threshold_cases() {
         }
         r
     }
-    // Two distant rects on the 100×100 surface — bbox(A,B) = 10000
-    // exceeds A.area() + B.area() in both pairs, so the LVGL merge
-    // rule rejects and the region keeps both.
+    // Adjacent halves on the 100×100 surface — the proximity-merge
+    // policy collapses each pair into one rect whose area equals the
+    // input sum, so the region's `total_area` lands exactly at the
+    // threshold (or just above) and the strict `>` decision logic
+    // is what's under test. Non-mergeable split-pair geometry at the
+    // 0.7 threshold is mathematically impossible under
+    // `MERGE_AREA_RATIO = 1.6` (would need `bbox > 1.12 × surface`),
+    // so threshold-edge two-rect cases all collapse here first.
     const PAIR_BELOW: [Rect; 2] = [
-        // total_area = 7000 / 10000 = 0.70 → stays Partial (`>` is strict).
+        // Merges to Rect(0,0,70,100); total_area = 7000 / 10000 = 0.70
+        // → stays Partial (`>` is strict).
         Rect::new(0.0, 0.0, 35.0, 100.0),
-        Rect::new(65.0, 0.0, 35.0, 100.0),
+        Rect::new(35.0, 0.0, 35.0, 100.0),
     ];
     const PAIR_ABOVE: [Rect; 2] = [
-        // total_area = 7200 / 10000 = 0.72 → escalates Full.
+        // Merges to Rect(0,0,72,100); total_area = 7200 / 10000 = 0.72
+        // → escalates Full.
         Rect::new(0.0, 0.0, 36.0, 100.0),
-        Rect::new(64.0, 0.0, 36.0, 100.0),
+        Rect::new(36.0, 0.0, 36.0, 100.0),
     ];
     let cases: &[(&str, &[Rect], Rect, DamagePaint)] = &[
         (
