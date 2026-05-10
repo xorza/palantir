@@ -209,6 +209,7 @@ fn encode_node(
         // still applies. Padding semantics here match how children
         // are laid out (parent's inner rect = rect - padding), so a
         // child with `margin(0)` lands flush with the clip edge.
+        //
         let stroke = chrome.map_or(0.0, |bg| bg.stroke.width);
         let padding = tree.records.layout()[id.index()].padding;
         let inset = Spacing {

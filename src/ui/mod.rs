@@ -57,11 +57,12 @@ pub struct Ui {
     /// [`DamagePaint`] — `Full`, `Partial(rect)`, or `Skip`.
     pub(crate) damage: Damage,
 
-    /// Per-frame record-side metadata for every [`Scroll`](crate::widgets::scroll::Scroll)
-    /// widget recorded this frame. Pushed by `Scroll::show`,
-    /// `refresh`-ed by `end_frame_record_phase` after `layout.run` to
-    /// update each widget's `ScrollState` row from the just-arranged
-    /// rects + measured content extent. Cleared in `begin_frame`.
+    /// Per-frame record-side metadata for every scroll widget
+    /// recorded this frame. Pushed by `Scroll::show`, drained by
+    /// [`crate::widgets::scroll::refresh`] after `layout.run` to
+    /// update each widget's [`crate::widgets::scroll::ScrollState`]
+    /// and signal relayout when overflow flipped. Cleared in
+    /// `begin_frame`.
     pub(crate) scroll_widgets: ScrollWidgets,
 
     /// Seconds elapsed since the previous `run_frame`, clamped to
@@ -239,12 +240,14 @@ impl Ui {
         self.anim.end_frame(removed);
 
         self.layout.run(&self.forest, &self.text);
-        // Funnel both signals through `relayout_requested`: every
-        // scroll widget whose `overflow` flag flipped (record-time
-        // reservation decision was stale), plus anything a widget
-        // called `Ui::request_relayout` for directly during record.
-        // One `mem::replace` consumes both.
-        self.relayout_requested |= self.scroll_widgets.refresh(&self.layout, &mut self.state);
+        // Drain this frame's scroll widget records: refresh
+        // `ScrollState` rows from arranged rects + measured content
+        // extent. When `overflow` flipped vs the record-time guess,
+        // request relayout so the same frame re-records with
+        // corrected reservation.
+        if crate::widgets::scroll::refresh(&self.scroll_widgets, &self.layout, &mut self.state) {
+            self.relayout_requested = true;
+        }
         std::mem::replace(&mut self.relayout_requested, false)
     }
 
