@@ -6,8 +6,10 @@ use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::result::LayoutResult;
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::shape::Shape;
@@ -19,13 +21,19 @@ use glam::Vec2;
 
 /// One scroll widget recorded this frame: the stable `WidgetId` keying
 /// its [`ScrollState`] row, the layer it was recorded into, and the
-/// per-frame `NodeId` for reading arranged rect / measured content.
-/// Pushed during recording, drained in `Ui::end_frame` after arrange.
+/// per-frame `NodeId`s for the outer container and the inner viewport
+/// panel. Pushed during recording, drained in `Ui::end_frame` after
+/// arrange. The viewport panel owns the clip + pan transform; the
+/// outer node holds the scrollbar gutter reservation. Two ids so
+/// `refresh` can read the outer rect (for bar positioning) and the
+/// inner rect (for the user-visible viewport size and content extent)
+/// from a single frame's layout result.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollNode {
     pub(crate) id: WidgetId,
     pub(crate) layer: Layer,
-    pub(crate) node: NodeId,
+    pub(crate) outer: NodeId,
+    pub(crate) inner: NodeId,
 }
 
 /// Cross-frame state row for one [`Scroll`] widget. Persisted via
@@ -57,7 +65,7 @@ pub(crate) struct ScrollState {
 /// widget's [`ScrollState`] row. Capacity-retained across frames.
 #[derive(Default)]
 pub(crate) struct ScrollRegistry {
-    nodes: Vec<ScrollNode>,
+    pub(crate) nodes: Vec<ScrollNode>,
 }
 
 impl ScrollRegistry {
@@ -79,16 +87,17 @@ impl ScrollRegistry {
             let tree = forest.tree(s.layer);
             let layout = &results[s.layer];
             assert!(
-                s.node.index() < layout.rect.len(),
-                "scroll registry entry references node {} past tree length {}",
-                s.node.index(),
+                s.outer.index() < layout.rect.len() && s.inner.index() < layout.rect.len(),
+                "scroll registry entry references nodes ({}, {}) past tree length {}",
+                s.outer.index(),
+                s.inner.index(),
                 layout.rect.len(),
             );
-            let outer_rect = layout.rect[s.node.index()];
-            let pad = tree.records.layout()[s.node.index()].padding;
-            let outer = outer_rect.size;
-            let viewport = outer_rect.deflated_by(pad).size;
-            let content = layout.scroll_content[s.node.index()];
+            let outer = layout.rect[s.outer.index()].size;
+            let inner_rect = layout.rect[s.inner.index()];
+            let inner_pad = tree.records.layout()[s.inner.index()].padding;
+            let viewport = inner_rect.deflated_by(inner_pad).size;
+            let content = layout.scroll_content[s.inner.index()];
             let row = state.get_or_insert_with::<ScrollState, _>(s.id, Default::default);
             row.viewport = viewport;
             row.outer = outer;
@@ -180,46 +189,111 @@ impl Scroll {
         // uses last frame's measurements (same one-frame staleness as
         // the wheel-pan clamp).
         let viewport = row.viewport;
-        let outer = row.outer;
+        let outer_size = row.outer;
         let content = row.content;
         let theme = ui.theme.scrollbar.clone();
 
-        let mut element = self.element;
         // Reservation: each panned axis with overflow donates
-        // `theme.width` to the far-edge padding. Adds to any user-set
-        // padding rather than replacing it. Reservation collapses when
-        // overflow goes away; one frame later the inner area expands.
-        element.padding.right += bar_reservation(pan.y, content.h, viewport.h, &theme);
-        element.padding.bottom += bar_reservation(pan.x, content.w, viewport.w, &theme);
-        if offset != Vec2::ZERO {
-            element.transform = Some(TranslateScale::from_translation(-offset));
-        }
+        // `theme.width` of cross-axis space for the bar to land in.
+        // The split layout (outer ZStack hosting the viewport panel
+        // + bar shapes) keeps the reservation on the OUTER node so
+        // the encoder's padding-deflated clip on the inner panel
+        // doesn't swallow the bars.
+        let reserve_y = bar_reservation(pan.y, content.h, viewport.h, &theme);
+        let reserve_x = bar_reservation(pan.x, content.w, viewport.w, &theme);
 
+        // Outer: bare ZStack that holds the viewport panel + bar
+        // shapes. Carries spatial fields (size, margin, align,
+        // min/max, sense for wheel input, visibility, disabled,
+        // chrome). No clip, no transform, no Scroll layout — just a
+        // container with reservation padding so its inner rect
+        // matches the viewport rect.
+        let mut outer = Element::new(LayoutMode::ZStack);
+        outer.id = id;
+        outer.auto_id = self.element.auto_id;
+        outer.size = self.element.size;
+        outer.min_size = self.element.min_size;
+        outer.max_size = self.element.max_size;
+        outer.margin = self.element.margin;
+        outer.align = self.element.align;
+        outer.position = self.element.position;
+        outer.grid = self.element.grid;
+        outer.sense = self.element.sense;
+        outer.disabled = self.element.disabled;
+        outer.focusable = self.element.focusable;
+        outer.visibility = self.element.visibility;
+        outer.padding = Spacing {
+            right: reserve_y,
+            bottom: reserve_x,
+            ..Spacing::ZERO
+        };
+
+        // Inner viewport: owns the clip, the pan transform, the
+        // user-set padding (which the encoder uses to deflate the
+        // clip mask), and the actual `Scroll` layout mode that runs
+        // children with INF on panned axes.
+        let mut inner = Element::new(self.element.mode);
+        inner.id = id.with("__viewport");
+        inner.size = (Sizing::FILL, Sizing::FILL).into();
+        inner.padding = self.element.padding;
+        inner.gap = self.element.gap;
+        inner.line_gap = self.element.line_gap;
+        inner.justify = self.element.justify;
+        inner.child_align = self.element.child_align;
+        inner.chrome = self.element.chrome;
         // Scroll is always clipped — `with_axes` set `ClipMode::Rect`
         // by default; if the caller upgraded to `Rounded` via
         // `Configure::clip_rounded`, that wins.
-        if matches!(element.clip, ClipMode::None) {
-            element.clip = ClipMode::Rect;
+        inner.clip = if matches!(self.element.clip, ClipMode::None) {
+            ClipMode::Rect
+        } else {
+            self.element.clip
+        };
+        if offset != Vec2::ZERO {
+            inner.transform = Some(TranslateScale::from_translation(-offset));
         }
-        let node = ui.node(element, |ui| {
-            body(ui);
-            // Bars push *after* the body → they land in the trailing
-            // shape slot (after every child), so the encoder paints
-            // them on top of content. They paint owner-relative under
-            // the viewport's clip and outside the owner's pan, so
-            // they stay anchored in the reserved strips while content
-            // scrolls. Chrome paint is emitted by the encoder via
-            // `Tree::chrome_for`, so the panel's own background sits
-            // behind these bars.
-            push_bar(ui, viewport, outer, content, offset, Axis::Y, pan.y, &theme);
-            push_bar(ui, viewport, outer, content, offset, Axis::X, pan.x, &theme);
+
+        let mut inner_node = NodeId(0);
+        let outer_node = ui.node(outer, |ui| {
+            inner_node = ui.node(inner, |ui| body(ui));
+            // Bars push *after* the viewport panel → they're siblings
+            // of the inner panel under the outer ZStack, painted on
+            // top of it (record order = paint order). They use
+            // `local_rect` in the OUTER's frame so the cross-axis
+            // edge sits in the reserved gutter even when the
+            // viewport panel has user padding.
+            push_bar(
+                ui,
+                viewport,
+                outer_size,
+                content,
+                offset,
+                Axis::Y,
+                pan.y,
+                &theme,
+            );
+            push_bar(
+                ui,
+                viewport,
+                outer_size,
+                content,
+                offset,
+                Axis::X,
+                pan.x,
+                &theme,
+            );
         });
         let layer = ui.forest.current_layer();
-        ui.scrolls.push(ScrollNode { id, layer, node });
+        ui.scrolls.push(ScrollNode {
+            id,
+            layer,
+            outer: outer_node,
+            inner: inner_node,
+        });
 
         let resp_state = ui.response_for(id);
         Response {
-            node,
+            node: outer_node,
             state: resp_state,
         }
     }

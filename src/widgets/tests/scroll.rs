@@ -258,8 +258,18 @@ fn scroll_records_content_extent() {
                 }
             }
         });
+        // Scroll's `Response.node` is the OUTER container; the
+        // inner viewport panel (with `LayoutMode::Scroll`) is a
+        // child of it and owns the measured `scroll_content`.
+        let viewport_node = ui
+            .scrolls
+            .nodes
+            .iter()
+            .find(|s| s.outer == scroll_node)
+            .expect("scroll registry entry for recorded Scroll")
+            .inner;
         let rect = ui.layout.result[Layer::Main].rect[scroll_node.index()];
-        let content = ui.layout.result[Layer::Main].scroll_content[scroll_node.index()];
+        let content = ui.layout.result[Layer::Main].scroll_content[viewport_node.index()];
         assert_eq!(content, *expected, "case: {label} content");
         // Viewport honors the Scroll's Fixed size, ignoring overflow content.
         let want_view = match axis {
