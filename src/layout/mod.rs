@@ -7,7 +7,7 @@ use crate::layout::cache::{MeasureCache, SubtreeArenas, quantize_available};
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::result::{LayoutResult, ShapedText};
-use crate::layout::scroll::ScrollContent;
+use crate::layout::scroll::{ScrollContent, ScrollStates};
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{AxisCtx, leaf_text_shapes, resolve_axis_size, zero_subtree};
 use crate::layout::types::sizing::Sizing;
@@ -98,10 +98,15 @@ pub(crate) struct LayoutEngine {
     pub(crate) result: LayoutResult,
     pub(crate) active_layer: Layer,
     /// Per-layer per-Scroll-node content extents pushed by
-    /// [`scroll::measure`]. Read by `widgets::scroll::refresh` after
-    /// arrange to update each scroll widget's `ScrollState.content`.
-    /// Cleared at the top of every [`Self::run`].
+    /// [`scroll::measure`]. Read by [`Self::refresh_scrolls`] after
+    /// arrange. Cleared at the top of every [`Self::run`].
     pub(crate) scroll_content: ScrollContent,
+    /// Cross-frame `WidgetId → ScrollLayoutState` for every scroll
+    /// widget. Owned here (not in `StateMap`) because the contents
+    /// are layout-derived; refresh writes layout fields, the widget
+    /// reads at record time and mutates `offset` from input. See
+    /// [`scroll::ScrollLayoutState`].
+    pub(crate) scroll_states: ScrollStates,
     pub(crate) cache: MeasureCache,
 }
 
@@ -157,6 +162,9 @@ impl LayoutEngine {
     /// `removed` slice that `Damage` and `TextShaper` consume.
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         self.cache.sweep_removed(removed);
+        for wid in removed {
+            self.scroll_states.remove(wid);
+        }
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on
@@ -217,6 +225,9 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
+
+        self.refresh_scrolls(forest);
+
         &self.result
     }
 
@@ -587,4 +598,62 @@ impl LayoutEngine {
         });
         result.size
     }
+
+    /// Walk every layer's tree, find each `LayoutMode::Scroll` node,
+    /// and update the matching [`ScrollLayoutState`] row from this
+    /// frame's arranged rects + measured content extent. Discovered
+    /// by mode tag — `Scroll::show` records two nodes (outer ZStack +
+    /// inner Scroll panel) in pre-order, so `outer == inner - 1` in
+    /// the records array.
+    ///
+    /// On a measure-cache hit the scroll driver doesn't fire and
+    /// [`ScrollContent`] lacks an entry — we keep last frame's
+    /// `content` (cache hit ⟹ identical measure).
+    fn refresh_scrolls(&mut self, forest: &Forest) {
+        for layer in Layer::PAINT_ORDER {
+            let tree = forest.tree(layer);
+            let n = tree.records.len();
+            for inner_idx in 0..n {
+                let mode = tree.records.layout()[inner_idx].mode;
+                if !matches!(mode, LayoutMode::Scroll(_)) {
+                    continue;
+                }
+                // Convention enforced by `Scroll::show`: the inner
+                // Scroll panel is recorded as the first child of an
+                // outer ZStack, so `outer == inner - 1`. Asserted so
+                // a future restructure of the widget trips loudly.
+                assert!(
+                    inner_idx > 0
+                        && matches!(
+                            tree.records.layout()[inner_idx - 1].mode,
+                            LayoutMode::ZStack
+                        ),
+                    "scroll inner at {inner_idx} expected outer ZStack at {} (Scroll::show convention)",
+                    inner_idx.saturating_sub(1),
+                );
+                let outer_idx = inner_idx - 1;
+                let widget_id = tree.records.widget_id()[outer_idx];
+                let inner_padding = tree.records.layout()[inner_idx].padding;
+                let inner_rect = self.result[layer].rect[inner_idx];
+                let outer_size = self.result[layer].rect[outer_idx].size;
+                let viewport = inner_rect.deflated_by(inner_padding).size;
+                let content_lookup = self.scroll_content.lookup(layer, NodeId(inner_idx as u32));
+
+                let entry = self.scroll_states.entry(widget_id).or_default();
+                let content = content_lookup.unwrap_or(entry.content);
+                entry.viewport = viewport;
+                entry.outer = outer_size;
+                entry.content = content;
+                entry.overflow = (content.w > viewport.w, content.h > viewport.h);
+                entry.seen = true;
+                // Re-clamp offset to the new bounds — pairs with the
+                // record-time clamp in `Scroll::show`.
+                let max_x = (content.w - viewport.w).max(0.0);
+                let max_y = (content.h - viewport.h).max(0.0);
+                entry.offset.x = entry.offset.x.clamp(0.0, max_x);
+                entry.offset.y = entry.offset.y.clamp(0.0, max_y);
+            }
+        }
+    }
+
 }

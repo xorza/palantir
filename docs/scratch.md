@@ -3,11 +3,11 @@
   - Animation evolution doubles on 2-pass frames (each pass advances). Punting; document as known limitation; fix with snapshot/restore when  motivated.
 
 
-     if crate::widgets::scroll::refresh(&self.scroll_widgets, &self.layout, &mut self.state) {
-            self.relayout_requested = true;
-        }
+    pub(crate) scroll_content: ScrollContent,+
+    pub(crate) scroll_states: ScrollStates,
 
   erview impl ScrollContent 
+
 
 
   self.forest.ids.diff_for_sweep();

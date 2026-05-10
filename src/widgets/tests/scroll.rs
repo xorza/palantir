@@ -3,13 +3,14 @@ use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
+use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::support::testing::{ui_at, under_outer};
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
-use crate::widgets::scroll::{Scroll, ScrollState};
+use crate::widgets::scroll::Scroll;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 600);
@@ -36,8 +37,7 @@ fn build(ui: &mut crate::ui::Ui, viewport_h: f32, content_h: f32) {
 }
 
 fn read_state(ui: &mut crate::ui::Ui) -> ScrollState {
-    *ui.state
-        .get_or_insert_with::<ScrollState, _>(WidgetId::from_hash("scroll"), Default::default)
+    *ui.scroll_state(WidgetId::from_hash("scroll"))
 }
 
 #[test]
@@ -118,9 +118,7 @@ fn horizontal_scroll_pans_only_x() {
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
     let id = WidgetId::from_hash("hscroll");
-    let row = *ui
-        .state
-        .get_or_insert_with::<ScrollState, _>(id, Default::default);
+    let row = *ui.scroll_state(id);
     assert_eq!(row.offset, Vec2::new(75.0, 0.0));
 }
 
@@ -151,9 +149,7 @@ fn both_axis_scroll_pans_both_axes() {
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
     let id = WidgetId::from_hash("xy");
-    let row = *ui
-        .state
-        .get_or_insert_with::<ScrollState, _>(id, Default::default);
+    let row = *ui.scroll_state(id);
     assert_eq!(row.offset, Vec2::new(40.0, 60.0));
     assert_eq!(
         row.content,
@@ -276,9 +272,7 @@ fn scroll_records_content_extent() {
             }
         });
         let scroll_id = WidgetId::from_hash(scroll_key);
-        let state = *ui
-            .state
-            .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
+        let state = *ui.scroll_state(scroll_id);
         assert_eq!(state.content, *expected, "case: {label} content");
         let rect = ui.layout.result[Layer::Main].rect[scroll_node.index()];
         // Viewport honors the Scroll's Fixed size, ignoring overflow content.
@@ -327,18 +321,14 @@ fn scroll_state_content_survives_measure_cache_hit() {
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
     let scroll_id = WidgetId::from_hash("scroll");
-    let after_first = *ui
-        .state
-        .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
+    let after_first = *ui.scroll_state(scroll_id);
     assert_eq!(after_first.content.h, 92.0);
 
     ui.begin_frame(display);
     build(&mut ui);
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
-    let after_second = *ui
-        .state
-        .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
+    let after_second = *ui.scroll_state(scroll_id);
     assert_eq!(
         after_second.content, after_first.content,
         "ScrollState.content survives a measure-cache hit",
@@ -655,7 +645,6 @@ mod bars {
     #[test]
     fn vertical_overflow_reserves_bar_width_on_inner() {
         use crate::primitives::size::Size;
-        use crate::widgets::scroll::ScrollState;
         let surface = UVec2::new(400, 600);
         let mut ui = ui_at(surface);
         let build = |ui: &mut Ui| {
@@ -678,9 +667,7 @@ mod bars {
         build(&mut ui);
         ui.end_frame_record_phase();
         ui.end_frame_paint_phase();
-        let row = *ui
-            .state
-            .get_or_insert_with::<ScrollState, _>(WidgetId::from_hash("scroll"), Default::default);
+        let row = *ui.scroll_state(WidgetId::from_hash("scroll"));
         assert_eq!(
             row.viewport,
             Size::new(188.0, 200.0),
@@ -693,7 +680,6 @@ mod bars {
     #[test]
     fn user_padding_is_preserved_when_bar_reserves() {
         use crate::primitives::size::Size;
-        use crate::widgets::scroll::ScrollState;
         let surface = UVec2::new(400, 600);
         let mut ui = ui_at(surface);
         let build = |ui: &mut Ui| {
@@ -717,9 +703,7 @@ mod bars {
         build(&mut ui);
         ui.end_frame_record_phase();
         ui.end_frame_paint_phase();
-        let row = *ui
-            .state
-            .get_or_insert_with::<ScrollState, _>(WidgetId::from_hash("scroll"), Default::default);
+        let row = *ui.scroll_state(WidgetId::from_hash("scroll"));
         // Inner x = 200 - (left=16 + right=16 + reservation=8+4) = 156.
         // Inner y = 200 - (top=16 + bottom=16) = 168.
         assert_eq!(row.viewport, Size::new(156.0, 168.0));
@@ -785,14 +769,9 @@ mod bars {
     #[test]
     fn bar_reservation_collapses_when_overflow_disappears() {
         use crate::primitives::size::Size;
-        use crate::widgets::scroll::ScrollState;
         let surface = UVec2::new(400, 600);
         let scroll_id = WidgetId::from_hash("scroll");
-        let read_viewport = |ui: &mut Ui| {
-            ui.state
-                .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default)
-                .viewport
-        };
+        let read_viewport = |ui: &mut Ui| ui.scroll_state(scroll_id).viewport;
 
         let build = |ui: &mut Ui, content_h: f32| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
@@ -935,7 +914,6 @@ mod bars {
     #[test]
     fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
         use crate::primitives::size::Size;
-        use crate::widgets::scroll::ScrollState;
         use std::time::Duration;
         let surface = UVec2::new(400, 600);
         let mut ui = ui_at(surface);
@@ -960,9 +938,7 @@ mod bars {
             });
         };
         let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
-        let row = *ui
-            .state
-            .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
+        let row = *ui.scroll_state(scroll_id);
         let expected = Size::new(200.0 - theme.width - theme.gap, 200.0);
         assert_eq!(
             row.viewport, expected,
@@ -984,7 +960,6 @@ mod bars {
     #[test]
     fn cold_mount_fits_paints_without_gutter_on_first_frame() {
         use crate::primitives::size::Size;
-        use crate::widgets::scroll::ScrollState;
         use std::time::Duration;
         let surface = UVec2::new(400, 600);
         let mut ui = ui_at(surface);
@@ -1003,9 +978,7 @@ mod bars {
             });
         };
         let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
-        let row = *ui
-            .state
-            .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
+        let row = *ui.scroll_state(scroll_id);
         assert_eq!(
             row.viewport,
             Size::new(200.0, 200.0),

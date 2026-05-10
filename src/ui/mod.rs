@@ -229,12 +229,7 @@ impl Ui {
         self.anim.end_frame(removed);
 
         self.layout.run(&self.forest, &self.text);
-        // Refresh per-scroll `ScrollState` rows from this frame's
-        // arranged rects + measured content extent. Discovers scrolls
-        // by walking each layer's tree for `LayoutMode::Scroll`
-        // nodes; relayout (cold-mount only) is requested by
-        // `Scroll::show` itself when `state.seen` is false.
-        crate::widgets::scroll::refresh(&self.forest, &self.layout, &mut self.state);
+
         std::mem::replace(&mut self.relayout_requested, false)
     }
 
@@ -433,6 +428,20 @@ impl Ui {
     /// — that's a `WidgetId` collision, not a runtime condition.
     pub fn state_mut<T: Default + 'static>(&mut self, id: WidgetId) -> &mut T {
         self.state.get_or_insert_with(id, T::default)
+    }
+
+    /// Mutable access to the scroll state row for the widget at
+    /// `id`. Inserts a default row on first access. The widget
+    /// reads/writes the snapshot at record time (offset clamp,
+    /// reservation guess, bar geometry) and refresh writes the
+    /// layout-derived fields after arrange. State lives on
+    /// [`LayoutEngine::scroll_states`] (not `StateMap`) so the
+    /// layout subsystem owns its own concern.
+    pub(crate) fn scroll_state(
+        &mut self,
+        id: WidgetId,
+    ) -> &mut crate::layout::scroll::ScrollLayoutState {
+        self.layout.scroll_states.entry(id).or_default()
     }
 
     /// Currently focused widget id, or `None`. Read by editable widgets
