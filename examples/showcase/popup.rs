@@ -88,7 +88,7 @@ pub fn build(ui: &mut Ui) {
             stroke: Stroke {
                 width: 1.0,
                 color: Color::hex(0x4a4a4a),
-            }),
+            },
             radius: Corners::all(6.0),
         }))
         .show(ui, |ui| {

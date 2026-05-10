@@ -10,7 +10,7 @@ fn bounded_panel() -> Background {
         stroke: Stroke {
             width: 1.5,
             color: Color::hex(0x363636),
-        }),
+        },
         radius: Corners::all(8.0),
     }
 }

@@ -51,7 +51,7 @@ impl Surface {
         Self {
             paint: Background {
                 fill: Color::TRANSPARENT,
-                stroke: None,
+                stroke: Stroke::ZERO,
                 radius: Corners::ZERO,
             },
             clip: ClipMode::Rect,
@@ -348,16 +348,7 @@ impl WidgetLook {
         fallback_text: TextStyle,
         spec: Option<AnimSpec>,
     ) -> AnimatedLook {
-        let mut background =
-            ui.animate(id, Self::SLOT_BG, self.background.unwrap_or_default(), spec);
-        // The `Option<Stroke>` blanket always returns `Some` from
-        // arithmetic — a "stroked → no-stroke" animation would
-        // otherwise leave a width-0 / transparent stroke that paints
-        // a phantom hairline. Collapse to `None` here so
-        // `look.background` is paint-ready.
-        if background.stroke.is_some_and(|s| s.is_noop()) {
-            background.stroke = None;
-        }
+        let background = ui.animate(id, Self::SLOT_BG, self.background.unwrap_or_default(), spec);
         let text = ui.animate(
             id,
             Self::SLOT_TEXT,
@@ -432,26 +423,26 @@ impl Default for TextEditTheme {
         let edge = Color::linear_rgba(m.r, m.g, m.b, 0.18);
         let normal_bg = Background {
             fill: palette::ELEM_HOVER,
-            stroke: Some(Stroke {
+            stroke: Stroke {
                 width: 1.0,
                 color: edge,
-            }),
+            },
             radius,
         };
         let focused_bg = Background {
             fill: palette::ELEM_HOVER,
-            stroke: Some(Stroke {
+            stroke: Stroke {
                 width: 1.5,
                 color: palette::BORDER_FOCUSED,
-            }),
+            },
             radius,
         };
         let disabled_bg = Background {
             fill: palette::ELEM,
-            stroke: Some(Stroke {
+            stroke: Stroke {
                 width: 1.0,
                 color: edge,
-            }),
+            },
             radius,
         };
         // Selection = accent at ~25% alpha — readable wash that doesn't
@@ -525,20 +516,20 @@ impl Default for ButtonTheme {
         let bg = |fill: Color| -> Option<Background> {
             Some(Background {
                 fill,
-                stroke: Some(Stroke {
+                stroke: Stroke {
                     width: 1.0,
                     color: edge,
-                }),
+                },
                 radius: Corners::all(4.0),
             })
         };
         // Pressed = hovered fill + focused stroke (palette has no further fill tier).
         let pressed_bg = Background {
             fill: palette::ELEM_ACTIVE,
-            stroke: Some(Stroke {
+            stroke: Stroke {
                 width: 1.0,
                 color: palette::BORDER_FOCUSED,
-            }),
+            },
             radius: Corners::all(4.0),
         };
         Self {
@@ -611,10 +602,10 @@ mod tests {
             WidgetLook {
                 background: Some(Background {
                     fill: Color::hex(0x336699),
-                    stroke: Some(Stroke {
+                    stroke: Stroke {
                         width: 1.5,
                         color: Color::hex(0xffffff),
-                    }),
+                    },
                     radius: Corners::all(6.0),
                 }),
                 text: Some(TextStyle::default().with_font_size(20.0)),
@@ -683,89 +674,6 @@ mod tests {
                 "{label}: pick should return the matching slot",
             );
         }
-    }
-
-    /// `WidgetLook::animate` collapses an animated stroke whose width
-    /// or color has decayed to zero — "stroked → no-stroke"
-    /// transitions land cleanly with `look.background.stroke == None`.
-    /// Visible strokes pass through unchanged.
-    #[test]
-    fn widget_look_animate_collapses_invisible_stroke() {
-        use crate::Ui;
-        use crate::forest::widget_id::WidgetId;
-        use crate::layout::types::display::Display;
-        use crate::primitives::background::Background;
-        use std::cell::Cell;
-        use std::time::Duration;
-
-        let mut ui = Ui::new();
-        let display = Display::from_physical(glam::UVec2::new(100, 100), 1.0);
-        let id = WidgetId::from_hash("look-stroke-test");
-        let fallback = TextStyle::default();
-
-        let bg = |stroke: Option<Stroke>| Background {
-            fill: Color::hex(0x202020),
-            stroke,
-            radius: Corners::all(2.0),
-        };
-        let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
-        let mut run = |stroke: Option<Stroke>| {
-            let look = WidgetLook {
-                background: Some(bg(stroke)),
-                text: None,
-            };
-            captured.set(None);
-            let _ = ui.run_frame(display, Duration::ZERO, |ui| {
-                captured.set(Some(look.animate(ui, id, fallback, None)));
-            });
-            captured.get().expect("animate ran")
-        };
-
-        // Visible stroke kept.
-        assert!(
-            run(Some(Stroke {
-                width: 1.0,
-                color: Color::hex(0x808080),
-            }))
-            .background
-            .stroke
-            .is_some(),
-            "visible stroke kept",
-        );
-
-        // Width-zero, transparent-color, and sub-epsilon all collapse
-        // to None.
-        for (label, s) in [
-            (
-                "width=0",
-                Stroke {
-                    width: 0.0,
-                    color: Color::hex(0x808080),
-                },
-            ),
-            (
-                "transparent color",
-                Stroke {
-                    width: 1.0,
-                    color: Color::TRANSPARENT,
-                },
-            ),
-            (
-                "sub-epsilon width",
-                Stroke {
-                    width: f32::EPSILON * 0.5,
-                    color: Color::hex(0x808080),
-                },
-            ),
-        ] {
-            assert!(
-                run(Some(s)).background.stroke.is_none(),
-                "{label} stroke dropped",
-            );
-        }
-
-        // None stroke stays None.
-        assert!(run(None).background.stroke.is_none(), "None stays None");
     }
 
     /// `AnimatedLook::line_height_px` delegates to `TextStyle`'s

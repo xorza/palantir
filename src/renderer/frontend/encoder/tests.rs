@@ -13,7 +13,9 @@ use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, display::Display,
     sizing::Sizing,
 };
-use crate::primitives::{color::Color, rect::Rect, size::Size, transform::TranslateScale};
+use crate::primitives::{
+    color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
+};
 use crate::support::testing::{
     begin, encode_cmds, encode_cmds_filtered, encode_cmds_with_rects, ui_at,
 };
@@ -101,7 +103,7 @@ fn baseline_draw_rect_count_cases() {
                     .size(50.0)
                     .background(Background {
                         fill: Color::TRANSPARENT,
-                        stroke: None,
+                        stroke: Stroke::ZERO,
                         ..Default::default()
                     })
                     .show(ui);
@@ -139,7 +141,7 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
             local_rect: None,
             radius: Corners::all(4.0),
             fill: Color::rgb(1.0, 0.0, 0.0),
-            stroke: None,
+            stroke: Stroke::ZERO,
         });
         Frame::new().id_salt("host").size(50.0).show(ui);
     });
@@ -271,7 +273,6 @@ fn clip_emits_balanced_push_pop() {
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
     use crate::primitives::spacing::Spacing;
-    use crate::primitives::stroke::Stroke;
     let mut ui = ui_at(UVec2::new(200, 200));
     let mut panel_node = None;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
@@ -281,10 +282,10 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                 .size(80.0)
                 .background(Surface::clip_rounded_with_bg(Background {
                     fill: Color::rgb(0.2, 0.2, 0.2),
-                    stroke: Some(Stroke {
+                    stroke: Stroke {
                         width: 2.0,
                         color: Color::rgb(1.0, 1.0, 1.0),
-                    }),
+                    },
                     radius: Corners::all(8.0),
                 }))
                 .show(ui, |ui| {

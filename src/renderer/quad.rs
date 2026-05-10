@@ -22,11 +22,7 @@ pub(crate) struct Quad {
 }
 
 impl Quad {
-    pub(crate) fn new(rect: Rect, fill: Color, radius: Corners, stroke: Option<Stroke>) -> Self {
-        let stroke = stroke.unwrap_or(Stroke {
-            width: 0.0,
-            color: Color::default(),
-        });
+    pub(crate) fn new(rect: Rect, fill: Color, radius: Corners, stroke: Stroke) -> Self {
         Self {
             rect,
             fill,

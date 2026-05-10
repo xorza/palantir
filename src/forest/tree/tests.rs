@@ -6,6 +6,7 @@ use crate::layout::types::{display::Display, justify::Justify, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
+use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
 use crate::shape::Shape;
 use crate::support::testing::{encode_cmds, shapes_of, ui_at, ui_with_text};
@@ -50,7 +51,7 @@ fn interleaved_shapes_record_correct_order() {
             local_rect: Some(Rect::new(0.0, 0.0, s, s)),
             radius: Corners::default(),
             fill: Color::rgb(1.0, 0.0, 0.0),
-            stroke: None,
+            stroke: Stroke::ZERO,
         }
     }
     let mut ui = ui_at(UVec2::new(200, 200));
@@ -157,7 +158,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
             local_rect: Some(Rect::new(0.0, 0.0, 10.0, 10.0)),
             radius: Corners::default(),
             fill: Color::rgb(1.0, 0.0, 0.0),
-            stroke: None,
+            stroke: Stroke::ZERO,
         }
     }
     let mut ui = ui_at(UVec2::new(200, 200));
@@ -1191,7 +1192,7 @@ fn mid_recording_popup_keeps_trees_independent() {
             local_rect: Some(Rect::new(0.0, 0.0, w, w)),
             radius: Corners::default(),
             fill: Color::rgb(1.0, 0.0, 0.0),
-            stroke: None,
+            stroke: Stroke::ZERO,
         }
     }
     fn marker_w(s: &Shape) -> u32 {

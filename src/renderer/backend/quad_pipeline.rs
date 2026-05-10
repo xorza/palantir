@@ -385,7 +385,7 @@ impl QuadPipeline {
             },
             color,
             Corners::default(),
-            None,
+            Stroke::ZERO,
         );
         queue.write_buffer(&self.clear_buffer, 0, bytemuck::bytes_of(&q));
         self.clear_buffer_dirty = true;
@@ -457,7 +457,7 @@ impl QuadPipeline {
                 *r,
                 Color::TRANSPARENT,
                 Corners::default(),
-                Some(stroke),
+                stroke,
             ));
         }
         queue.write_buffer(
@@ -541,7 +541,7 @@ impl QuadPipeline {
             },
             Color::default(),
             radius,
-            None,
+            Stroke::ZERO,
         )
     }
 }

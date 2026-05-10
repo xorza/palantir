@@ -37,10 +37,10 @@ fn frame_filled_with_stroke_matches_golden() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Background {
                     fill: Color::rgb(0.20, 0.30, 0.55),
-                    stroke: Some(Stroke {
+                    stroke: Stroke {
                         width: 2.0,
                         color: Color::rgb(0.65, 0.80, 1.00),
-                    }),
+                    },
                     radius: Corners::all(16.0),
                 })
                 .show(ui);
@@ -75,10 +75,10 @@ fn surface_rounded_clips_full_fill_child() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Surface::clip_rounded_with_bg(Background {
                         fill: Color::TRANSPARENT,
-                        stroke: Some(Stroke {
+                        stroke: Stroke {
                             width: 5.0,
                             color: Color::rgb_u8(0, 255, 0),
-                        }),
+                        },
                         radius: Corners::new(4.0, 12.0, 20.0, 28.0),
                     }))
                     .show(ui, |ui| {
@@ -166,7 +166,7 @@ fn interleaved_shapes_paint_in_record_order() {
                     local_rect: Some(Rect::new(0.0, 0.0, 30.0, 60.0)),
                     radius: Corners::default(),
                     fill: Color::rgb(1.0, 0.0, 0.0),
-                    stroke: None,
+                    stroke: Stroke::ZERO,
                 });
                 Frame::new()
                     .id_salt("cyan")
@@ -180,7 +180,7 @@ fn interleaved_shapes_paint_in_record_order() {
                     local_rect: Some(Rect::new(30.0, 0.0, 60.0, 60.0)),
                     radius: Corners::default(),
                     fill: Color::rgb(0.0, 1.0, 0.0),
-                    stroke: None,
+                    stroke: Stroke::ZERO,
                 });
                 Frame::new()
                     .id_salt("yellow")
@@ -194,7 +194,7 @@ fn interleaved_shapes_paint_in_record_order() {
                     local_rect: Some(Rect::new(90.0, 0.0, 60.0, 60.0)),
                     radius: Corners::default(),
                     fill: Color::rgb(0.2, 0.4, 1.0),
-                    stroke: None,
+                    stroke: Stroke::ZERO,
                 });
             });
     });

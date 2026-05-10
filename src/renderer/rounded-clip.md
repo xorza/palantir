@@ -10,7 +10,7 @@ pay zero — no stencil texture, no stencil-variant pipelines.
 Panel::vstack()
     .background(Surface::rounded(Background {
         fill: BG,
-        stroke: Some(Stroke { width: 1.0, color: BORDER }),
+        stroke: Stroke { width: 1.0, color: BORDER }),
         radius: Corners::all(8.0),
     }))
     .show(ui, |ui| { ... });

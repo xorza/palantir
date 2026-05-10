@@ -14,7 +14,12 @@ fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
 }
 
 fn draw(buf: &mut RenderCmdBuffer, r: Rect) {
-    buf.draw_rect(r, Corners::default(), Color::rgb(1.0, 1.0, 1.0), None);
+    buf.draw_rect(
+        r,
+        Corners::default(),
+        Color::rgb(1.0, 1.0, 1.0),
+        Stroke::ZERO,
+    );
 }
 
 fn text(buf: &mut RenderCmdBuffer, r: Rect) {
@@ -328,10 +333,10 @@ fn compose_scales_radius_and_stroke_under_transform() {
                 rect(0.0, 0.0, 50.0, 50.0),
                 Corners::all(8.0),
                 Color::rgb(1.0, 1.0, 1.0),
-                Some(Stroke {
+                Stroke {
                     width: 1.5,
                     color: Color::rgb(0.0, 0.0, 0.0),
-                }),
+                },
             );
             b.pop_transform();
         },

@@ -121,10 +121,10 @@ fn zstack_centered_button_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
                 fill: Color::rgb(0.16, 0.20, 0.28),
-                stroke: Some(Stroke {
+                stroke: Stroke {
                     width: 1.0,
                     color: Color::rgb(0.30, 0.36, 0.46),
-                }),
+                },
                 radius: Corners::all(10.0),
             })
             .show(ui, |ui| {

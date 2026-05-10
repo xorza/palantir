@@ -494,10 +494,10 @@ fn widget_look_animate_resolves_components_and_falls_back() {
 
     let bg = Background {
         fill: Color::hex(0x336699),
-        stroke: Some(Stroke {
+        stroke: Stroke {
             width: 2.0,
             color: Color::hex(0xffffff),
-        }),
+        },
         radius: Corners::all(4.0),
     };
     let look = WidgetLook {
@@ -515,9 +515,11 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     });
     let snap = captured.get().expect("animate ran");
     assert_eq!(snap.background.fill, bg.fill, "None: fill snaps to target");
-    let snap_stroke = snap.background.stroke.expect("visible stroke kept");
-    assert_eq!(snap_stroke.width, 2.0, "None: stroke width snaps");
-    assert_eq!(snap_stroke.color, bg.stroke.unwrap().color);
+    assert_eq!(
+        snap.background.stroke.width, 2.0,
+        "None: stroke width snaps"
+    );
+    assert_eq!(snap.background.stroke.color, bg.stroke.color);
     assert_eq!(snap.background.radius, bg.radius);
     assert_eq!(
         snap.text.color, fallback.color,

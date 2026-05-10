@@ -126,7 +126,7 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
             stroke: Stroke {
                 width: 1.0,
                 color: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.45),
-            }),
+            },
             radius: Corners::all(10.0),
         })
         .show(ui, |ui| {
