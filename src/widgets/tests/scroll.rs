@@ -291,10 +291,9 @@ fn scroll_records_content_extent() {
 
 /// Two identical frames: first populates `ScrollState.content` from
 /// the live measure; second is a measure-cache hit at an ancestor —
-/// the Scroll's measure arm doesn't fire, so no `ScrollContentMeasure`
-/// is pushed this frame. The drain falls back to the previous frame's
-/// `ScrollState.content`, which is correct because cache-hit ⟹
-/// byte-identical measure output.
+/// the Scroll's measure arm doesn't fire, so no write to `content`
+/// happens this frame. The previous frame's `ScrollState.content`
+/// stays valid because cache-hit ⟹ byte-identical measure output.
 #[test]
 fn scroll_state_content_survives_measure_cache_hit() {
     let surface = UVec2::new(400, 600);
