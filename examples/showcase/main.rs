@@ -157,7 +157,8 @@ impl ApplicationHandler for App {
         let mut ui = Ui::new();
         // Library default is no button animation (`anim = None`).
         // Showcase exists to demo the animation primitive — opt in.
-        ui.theme.button.anim = Some(palantir::AnimSpec::SPRING);
+        ui.theme.button.anim = None;
+        // ui.theme.button.anim = Some(palantir::AnimSpec::SPRING);
         let display = palantir::Display::from_physical(
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
