@@ -1,7 +1,7 @@
 //! Vocabulary for "things that can animate." A type is `Animatable`
 //! when it supports linear interpolation, vector add/sub/scale, and
-//! has a magnitude (used by spring settle checks). Built-in impls
-//! cover `f32`, `Vec2`, `Color`. Domain types (`Stroke`,
+//! has a squared magnitude (used by spring settle checks). Built-in
+//! impls cover `f32`, `Vec2`, `Color`. Domain types (`Stroke`,
 //! `Background`, ...) opt in via `#[derive(Animatable)]` — see
 //! `palantir-anim-derive` and the type-erased `AnimMap` storage.
 
@@ -21,10 +21,11 @@ pub trait Animatable: Copy + PartialEq + 'static {
     fn sub(self, other: Self) -> Self;
     fn add(self, other: Self) -> Self;
     fn scale(self, k: f32) -> Self;
-    /// Length used to compare against the settle threshold. For
-    /// scalars: `|self|`. For vectors: Euclidean norm. For derived
-    /// compound types: sqrt of sum-of-squared component magnitudes.
-    fn magnitude(self) -> f32;
+    /// Squared length, compared against `EPS * EPS` for settle checks.
+    /// Squared form avoids a per-frame `sqrt` for the spring termination
+    /// path. For scalars: `self * self`. For vectors: dot(self, self).
+    /// For derived compound types: sum of component squared magnitudes.
+    fn magnitude_squared(self) -> f32;
     fn zero() -> Self;
 }
 
@@ -46,8 +47,8 @@ impl Animatable for f32 {
         self * k
     }
     #[inline]
-    fn magnitude(self) -> f32 {
-        self.abs()
+    fn magnitude_squared(self) -> f32 {
+        self * self
     }
     #[inline]
     fn zero() -> Self {
@@ -73,8 +74,8 @@ impl Animatable for Vec2 {
         self * k
     }
     #[inline]
-    fn magnitude(self) -> f32 {
-        self.length()
+    fn magnitude_squared(self) -> f32 {
+        self.length_squared()
     }
     #[inline]
     fn zero() -> Self {
@@ -119,8 +120,8 @@ impl<T: Animatable> Animatable for Option<T> {
         Some(T::scale(self.unwrap_or_else(T::zero), k))
     }
     #[inline]
-    fn magnitude(self) -> f32 {
-        T::magnitude(self.unwrap_or_else(T::zero))
+    fn magnitude_squared(self) -> f32 {
+        T::magnitude_squared(self.unwrap_or_else(T::zero))
     }
     #[inline]
     fn zero() -> Self {

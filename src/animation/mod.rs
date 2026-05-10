@@ -17,9 +17,8 @@ mod tests;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
-use crate::animation::spring::{POS_EPS, VEL_EPS, step as spring_step};
+use crate::animation::spring::{POS_EPS_SQ, VEL_EPS_SQ, step as spring_step};
 use crate::forest::widget_id::WidgetId;
-use crate::primitives::approx::approx_zero;
 use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 use std::collections::hash_map::Entry;
@@ -184,7 +183,9 @@ impl<T: Animatable> AnimMapTyped<T> {
         // (theme color rounded to nearest ulp, etc.) that would
         // otherwise drive a full ease/spring cycle for a visually
         // imperceptible change.
-        if row.current.sub(row.target).magnitude() < POS_EPS && row.velocity.magnitude() < VEL_EPS {
+        if row.current.sub(row.target).magnitude_squared() < POS_EPS_SQ
+            && row.velocity.magnitude_squared() < VEL_EPS_SQ
+        {
             row.current = row.target;
             row.velocity = T::zero();
             return TickResult {
@@ -196,7 +197,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         match spec {
             AnimSpec::Duration { secs, ease } => {
                 row.elapsed += dt;
-                let t = (row.elapsed / secs.max(f32::EPSILON)).clamp(0.0, 1.0);
+                let t = (row.elapsed / secs).clamp(0.0, 1.0);
                 row.current = T::lerp(row.segment_start, row.target, ease.apply(t));
                 let settled = t >= 1.0;
                 if settled {
@@ -235,17 +236,10 @@ impl<T: Animatable> AnimMapTyped<T> {
 }
 
 /// Type-erased operations every typed map exposes — sweep removed
-/// widgets, plus `Any` for downcast back to the concrete map.
+/// widgets, plus `as_any_mut` for downcast back to the concrete map.
 trait AnyTyped: 'static {
     fn sweep_removed(&mut self, removed: &[WidgetId]);
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    /// Used by [`AnimMap::try_typed`] (read-only inspection from
-    /// `support::internals` — bench/test helpers). Allowed-dead in
-    /// production builds without the `internals` feature where the
-    /// support module is `cfg`-gated out, but the method must exist
-    /// on the trait so the dyn-object layout stays consistent.
-    #[allow(dead_code)]
-    fn as_any(&self) -> &dyn Any;
 }
 
 impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
@@ -253,9 +247,6 @@ impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
         AnimMapTyped::<T>::sweep_removed(self, removed);
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-    fn as_any(&self) -> &dyn Any {
         self
     }
 }
@@ -289,19 +280,6 @@ impl AnimMap {
             .get_mut(&TypeId::of::<T>())?
             .as_any_mut()
             .downcast_mut::<AnimMapTyped<T>>()
-    }
-
-    /// Read-only borrow of the typed map for `T`, if it exists. Used
-    /// by [`crate::support::internals`] (tests/benches) to inspect
-    /// row counts without allocating a typed map. Allowed-dead in
-    /// non-`internals` production builds where the only caller is
-    /// `cfg`-gated out.
-    #[allow(dead_code)]
-    pub(crate) fn try_typed<T: Animatable>(&self) -> Option<&AnimMapTyped<T>> {
-        self.by_type
-            .get(&TypeId::of::<T>())?
-            .as_any()
-            .downcast_ref::<AnimMapTyped<T>>()
     }
 
     /// Drop every row (across all typed slots) belonging to a removed

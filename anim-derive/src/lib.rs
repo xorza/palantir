@@ -2,7 +2,7 @@
 //! struct: animated fields call into the inner `Animatable` impl;
 //! fields marked `#[animate(snap)]` are excluded from arithmetic
 //! (lerp returns target's value, sub/add/scale/zero preserve `self`'s
-//! or pick a default, magnitude contributes 0).
+//! or pick a default, magnitude_squared contributes 0).
 //!
 //! Re-exported as `palantir::Animatable` (the derive shares its name
 //! with the trait, by Rust convention).
@@ -84,22 +84,14 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         quote! { #f: self.#f, }
     });
 
-    let mag_terms: Vec<TokenStream2> = anim
+    let mag_sq_terms: Vec<TokenStream2> = anim
         .iter()
-        .map(|f| {
-            let m: TokenStream2 = quote! { ::palantir::Animatable::magnitude(self.#f) };
-            quote! { (#m * #m) }
-        })
+        .map(|f| quote! { ::palantir::Animatable::magnitude_squared(self.#f) })
         .collect();
-    let magnitude_body = if mag_terms.is_empty() {
+    let magnitude_squared_body = if mag_sq_terms.is_empty() {
         quote! { 0.0_f32 }
     } else {
-        quote! {
-            {
-                let sum: f32 = #(#mag_terms)+*;
-                sum.sqrt()
-            }
-        }
+        quote! { #(#mag_sq_terms)+* }
     };
 
     let zero_anim = anim.iter().map(|f| {
@@ -146,8 +138,8 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
                 }
             }
             #[inline]
-            fn magnitude(self) -> f32 {
-                #magnitude_body
+            fn magnitude_squared(self) -> f32 {
+                #magnitude_squared_body
             }
             #[inline]
             fn zero() -> Self {
