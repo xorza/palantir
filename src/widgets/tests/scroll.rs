@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::tree::{Layer, NodeId};
+use crate::forest::tree::Layer;
 use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::layout::types::display::Display;
@@ -168,16 +168,17 @@ fn both_axis_scroll_pans_both_axes() {
     );
 }
 
-// --- Measure-side: scroll_content captured by the layout pass ---------------
+// --- Measure-side: content extent observed by ScrollState ------------------
 // Pin the contract between the `Scroll(axes)` arm of `measure_dispatch` and
-// `LayoutResult.scroll_content`: content extent lands there, the viewport's
-// own desired stays at zero on the panned axes (so `resolve_desired` falls
-// through to the user's `Sizing`).
+// `ScrollState.content`: content extent flows through the per-frame
+// `LayoutEngine::scroll_measures` Vec into the scroll widget's state row,
+// while the viewport's own desired stays at zero on the panned axes (so
+// `resolve_desired` falls through to the user's `Sizing`).
 
-/// `LayoutResult.scroll_content` records the content extent the
-/// scroll viewport sees. V-axis and H-axis behave like a Stack: sum
-/// along the panned axis, max on the cross. XY behaves like a ZStack:
-/// max per axis. An empty scroll records zero.
+/// `ScrollState.content` records the content extent the scroll
+/// viewport sees. V-axis and H-axis behave like a Stack: sum along
+/// the panned axis, max on the cross. XY behaves like a ZStack: max
+/// per axis. An empty scroll records zero.
 #[test]
 fn scroll_records_content_extent() {
     enum Axis {
@@ -186,13 +187,28 @@ fn scroll_records_content_extent() {
         XY,
         Empty,
     }
-    let cases: &[(&str, Axis, Size)] = &[
-        ("v_axis_sum_main_max_cross", Axis::V, Size::new(180.0, 92.0)),
-        ("h_axis_sum_main_max_cross", Axis::H, Size::new(128.0, 40.0)),
-        ("xy_max_per_axis", Axis::XY, Size::new(300.0, 250.0)),
-        ("empty_records_zero", Axis::Empty, Size::ZERO),
+    let cases: &[(&str, Axis, &str, Size)] = &[
+        (
+            "v_axis_sum_main_max_cross",
+            Axis::V,
+            "scroll",
+            Size::new(180.0, 92.0),
+        ),
+        (
+            "h_axis_sum_main_max_cross",
+            Axis::H,
+            "scroll",
+            Size::new(128.0, 40.0),
+        ),
+        (
+            "xy_max_per_axis",
+            Axis::XY,
+            "scroll",
+            Size::new(300.0, 250.0),
+        ),
+        ("empty_records_zero", Axis::Empty, "empty", Size::ZERO),
     ];
-    for (label, axis, expected) in cases {
+    for (label, axis, scroll_key, expected) in cases {
         let mut ui = Ui::new();
         let surface = match axis {
             Axis::V | Axis::Empty => UVec2::new(400, 600),
@@ -258,27 +274,12 @@ fn scroll_records_content_extent() {
                 }
             }
         });
-        // Scroll's `Response.node` is the OUTER container; the inner
-        // viewport panel (with `LayoutMode::Scroll`) is recorded
-        // immediately after by `Scroll::show`, with its `WidgetId`
-        // derived as `outer.id.with("__viewport")`. Look it up by
-        // that derived id rather than reaching into the post-arrange
-        // hooks, since hooks are typed-bucket-erased.
-        let outer_id = ui.forest.tree(Layer::Main).records.widget_id()[scroll_node.index()];
-        let viewport_id = outer_id.with("__viewport");
-        let viewport_node = NodeId(
-            ui.forest
-                .tree(Layer::Main)
-                .records
-                .widget_id()
-                .iter()
-                .position(|w| *w == viewport_id)
-                .expect("Scroll::show records inner viewport with __viewport id")
-                as u32,
-        );
+        let scroll_id = WidgetId::from_hash(scroll_key);
+        let state = *ui
+            .state
+            .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
+        assert_eq!(state.content, *expected, "case: {label} content");
         let rect = ui.layout.result[Layer::Main].rect[scroll_node.index()];
-        let content = ui.layout.result[Layer::Main].scroll_content[viewport_node.index()];
-        assert_eq!(content, *expected, "case: {label} content");
         // Viewport honors the Scroll's Fixed size, ignoring overflow content.
         let want_view = match axis {
             Axis::V => (200.0, 200.0),
@@ -293,13 +294,14 @@ fn scroll_records_content_extent() {
     }
 }
 
+/// Two identical frames: first populates `ScrollState.content` from
+/// the live measure; second is a measure-cache hit at an ancestor —
+/// the Scroll's measure arm doesn't fire, so no `ScrollContentMeasure`
+/// is pushed this frame. The drain falls back to the previous frame's
+/// `ScrollState.content`, which is correct because cache-hit ⟹
+/// byte-identical measure output.
 #[test]
-fn scroll_content_survives_measure_cache_hit() {
-    // Two frames with identical input: first frame populates
-    // `scroll_content` from the live measure; second frame's measure
-    // cache short-circuits an ancestor and must restore `scroll_content`
-    // verbatim from the snapshot. Pins that the cache plumbing carries
-    // the column rather than re-deriving it.
+fn scroll_state_content_survives_measure_cache_hit() {
     let surface = UVec2::new(400, 600);
     let display = Display::from_physical(surface, 1.0);
     let build = |ui: &mut Ui| {
@@ -336,7 +338,7 @@ fn scroll_content_survives_measure_cache_hit() {
         .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
     assert_eq!(
         after_second.content, after_first.content,
-        "scroll_content survives a measure-cache hit"
+        "ScrollState.content survives a measure-cache hit",
     );
     assert_eq!(after_second.viewport, after_first.viewport);
 }

@@ -1,7 +1,6 @@
 pub(crate) mod cascade;
 pub(crate) mod damage;
 pub(crate) mod debug_overlay;
-pub(crate) mod post_arrange;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
@@ -20,8 +19,8 @@ use crate::text::TextShaper;
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::debug_overlay::DebugOverlayConfig;
-use crate::ui::post_arrange::PostArrangeRegistry;
 use crate::ui::state::StateMap;
+use crate::widgets::scroll::ScrollWidgets;
 use crate::widgets::theme::Theme;
 use std::time::Duration;
 
@@ -58,12 +57,12 @@ pub struct Ui {
     /// [`DamagePaint`] — `Full`, `Partial(rect)`, or `Skip`.
     pub(crate) damage: Damage,
 
-    /// Per-widget post-arrange hooks: registered during recording,
-    /// drained between `layout.run` and `cascades.run`. Drives the
-    /// scrollbar gutter relayout (and any future widget that needs to
-    /// look at this frame's measure-derived rects to update state).
-    /// See `post_arrange::PostArrangeRegistry`.
-    pub(crate) post_arrange: PostArrangeRegistry,
+    /// Per-frame record-side metadata for every [`Scroll`](crate::widgets::scroll::Scroll)
+    /// widget recorded this frame. Pushed by `Scroll::show`,
+    /// `refresh`-ed by `end_frame_record_phase` after `layout.run` to
+    /// update each widget's `ScrollState` row from the just-arranged
+    /// rects + measured content extent. Cleared in `begin_frame`.
+    pub(crate) scroll_widgets: ScrollWidgets,
 
     /// Seconds elapsed since the previous `run_frame`, clamped to
     /// [`MAX_DT`]. Derived from `now - prev_now` per call (not
@@ -135,7 +134,7 @@ impl Ui {
             cascades: Cascades::default(),
             display: Display::default(),
             damage: Damage::default(),
-            post_arrange: PostArrangeRegistry::default(),
+            scroll_widgets: ScrollWidgets::default(),
             dt: 0.0,
             time: Duration::ZERO,
             repaint_requested: false,
@@ -204,7 +203,7 @@ impl Ui {
         }
         self.display = display;
         self.forest.begin_frame();
-        self.post_arrange.begin_frame();
+        self.scroll_widgets.entries.clear();
         // Drop any leftover relayout request from a previous frame's
         // pass A that didn't get consumed. Belt-and-suspenders —
         // current `run_frame` always consumes via `mem::replace`, but
@@ -253,12 +252,13 @@ impl Ui {
         self.state.sweep_removed(removed);
         self.anim.end_frame(removed);
 
-        let results = self.layout.run(&self.forest, &self.text);
+        self.layout.run(&self.forest, &self.text);
         // Funnel both signals through `relayout_requested`: every
-        // post-arrange hook's return (scrollbar overflow flip, etc.)
-        // plus anything a widget called `Ui::request_relayout` for
-        // directly during record. One `mem::replace` consumes both.
-        self.relayout_requested |= self.post_arrange.run_all(results, &mut self.state);
+        // scroll widget whose `overflow` flag flipped (record-time
+        // reservation decision was stale), plus anything a widget
+        // called `Ui::request_relayout` for directly during record.
+        // One `mem::replace` consumes both.
+        self.relayout_requested |= self.scroll_widgets.refresh(&self.layout, &mut self.state);
         std::mem::replace(&mut self.relayout_requested, false)
     }
 
@@ -317,18 +317,6 @@ impl Ui {
     /// pass is a no-op (paints anyway, accepting one frame of settle).
     pub fn request_relayout(&mut self) {
         self.relayout_requested = true;
-    }
-
-    /// Register a [`post_arrange::PostArrange`] hook for this frame on
-    /// the currently-recording layer. The hook fires between
-    /// `layout.run` and `cascades.run`, sees its layer's `LayerResult`
-    /// plus the cross-frame `StateMap`, and can return `true` to
-    /// request a relayout pass. Captures the recording layer here so
-    /// widgets don't have to query `forest.current_layer()` themselves
-    /// before pushing.
-    pub(crate) fn push_post_arrange<T: post_arrange::PostArrange>(&mut self, hook: T) {
-        let layer = self.forest.current_layer();
-        self.post_arrange.push(layer, hook);
     }
 
     /// Record + finalize a frame, settling state mutations in a single
