@@ -25,7 +25,16 @@ use strum::EnumCount as _;
 pub(crate) struct Cascade {
     pub(crate) transform: TranslateScale,
     pub(crate) clip: Option<Rect>,
+    /// Raw transformed layout rect — what the parent transform produces
+    /// for this node, ignoring any ancestor clip. Used as the source for
+    /// `visible_rect` and as the fallback when no clip is active.
     pub(crate) screen_rect: Rect,
+    /// `screen_rect` intersected with the active ancestor clip. This is
+    /// the rect that actually contributes paint to the surface — damage
+    /// tracking and culling read this so an offscreen-by-pan child of a
+    /// clipped scroll viewport doesn't inflate the dirty region with
+    /// pixels that never reach the framebuffer.
+    pub(crate) visible_rect: Rect,
     pub(crate) invisible: bool,
 }
 
@@ -174,10 +183,15 @@ fn run_tree(
         let invisible = parent_inv || !layout_col[i].visibility.is_visible();
 
         let screen_rect = parent_transform.apply_rect(layout.rect[id.index()]);
+        let visible_rect = match parent_clip {
+            Some(c) => screen_rect.intersect(c),
+            None => screen_rect,
+        };
         let row = Cascade {
             transform: parent_transform,
             clip: parent_clip,
             screen_rect,
+            visible_rect,
             invisible,
         };
 
@@ -193,11 +207,6 @@ fn run_tree(
             })
         } else {
             row.clip
-        };
-
-        let visible_rect = match parent_clip {
-            Some(c) => screen_rect.intersect(c),
-            None => screen_rect,
         };
         let cascaded_off = disabled || invisible;
         let sense = if cascaded_off {

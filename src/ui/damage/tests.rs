@@ -1005,3 +1005,62 @@ fn button_unhover_damage_covers_only_the_button() {
         DamagePaint::Partial(hot_rect.into()),
     );
 }
+
+/// Pin: a child whose layout rect overflows a clipped panel (e.g. a
+/// scrolled-offscreen row inside a `Scroll` viewport) contributes
+/// only its *visible* portion to the damage region. The fix replaces
+/// `Cascade.screen_rect` with `Cascade.visible_rect` (raw screen rect
+/// intersected with the active ancestor clip) as the damage rect
+/// source — without it, panning a long list under a small viewport
+/// would inflate the damage union to the full content extent and
+/// trip `FULL_REPAINT_THRESHOLD` every frame.
+#[test]
+fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
+    let mut ui = Ui::new();
+    let mut child_node = None;
+    let viewport_size = 100.0;
+    let child_size = 200.0;
+    let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
+        begin(ui, UVec2::new(400, 400));
+        // Root hstack so the inner zstack honors its `Fixed` size
+        // (root nodes get stretched to the surface anchor by the
+        // layout engine, which would defeat the clip).
+        Panel::hstack().id_salt("clip-host").show(ui, |ui| {
+            Panel::zstack()
+                .id_salt("clip-root")
+                .size((Sizing::Fixed(viewport_size), Sizing::Fixed(viewport_size)))
+                .clip_rect()
+                .show(ui, |ui| {
+                    *child = Some(
+                        Frame::new()
+                            .id_salt("overflow")
+                            .size(child_size)
+                            .background(Background {
+                                fill,
+                                ..Default::default()
+                            })
+                            .show(ui)
+                            .node,
+                    );
+                });
+        });
+        end_frame_acked(ui);
+    };
+
+    build(BLUE, &mut ui, &mut child_node);
+    // Authoring change on the child only — fill flips. The child's
+    // layout rect is `child_size × child_size` (way past the clip),
+    // but the damage rect must stay inside the parent's clip.
+    build(RED, &mut ui, &mut child_node);
+
+    let damage_rect = ui
+        .damage
+        .region
+        .iter_rects()
+        .next()
+        .expect("child changed → some damage");
+    assert!(
+        damage_rect.size.w <= viewport_size + 0.5 && damage_rect.size.h <= viewport_size + 0.5,
+        "damage rect must be clipped to the {viewport_size}px viewport; got {damage_rect:?}",
+    );
+}
