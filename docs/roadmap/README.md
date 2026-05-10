@@ -20,4 +20,5 @@ priority (Now / Next / Later / Speculative).
 - [Tooling](tooling.md) — profiling, snapshots, HiDPI
 - [Speculative](speculative.md) — profile-gated micro-optimizations
 - [Deferred shapes](deferred-shapes.md) — post-arrange shape emission (scrollbars, focus ring, connectors)
+- [Mesh shapes](mesh-shapes.md) — user-supplied colored triangle meshes (flat per-frame arena + spans on Shape)
 - [Scratch](scratch.md) — unsorted ideas
