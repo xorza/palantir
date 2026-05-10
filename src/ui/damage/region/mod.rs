@@ -28,8 +28,9 @@
 //! absorption grows the candidate's area, reducing the next
 //! candidate-vs-existing cost.
 //!
-//! See `docs/roadmap/damage-cluster-merge.md` for the literature
-//! survey, derivation, and tuning notes.
+//! See `docs/roadmap/damage-merge-research.md` for cost-model
+//! derivation and `multi-rect-damage.md` for the wider design
+//! survey.
 
 use crate::primitives::rect::Rect;
 use tinyvec::ArrayVec;
