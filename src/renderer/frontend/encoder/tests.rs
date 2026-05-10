@@ -50,7 +50,7 @@ fn count_draw_rects(cmds: &RenderCmdBuffer) -> usize {
 
 /// Baseline encoder counts: empty tree emits no draws; a Frame with a
 /// fill emits one DrawRect; an invisible Frame (no fill / stroke /
-/// shape) emits none — `Shape::is_noop` filters at `add_shape` time so
+/// shape) emits none — `ShapeRecord::is_noop` filters at `add_shape` time so
 /// the encoder sees no RoundedRect in the tree. Degenerate Backgrounds
 /// (transparent + no stroke) and clip-only Surfaces (`Surface::clip_rect`)
 /// also emit zero `DrawRect`s — the encoder's `bg.is_noop()` guard at
@@ -124,7 +124,7 @@ fn baseline_draw_rect_count_cases() {
 
 /// Pin: the encoder iterates ALL shape variants in the
 /// background phase, not just `Text`. Chrome moved off the shapes
-/// list (now lives in `Tree::chrome_table`), but `Shape::RoundedRect`
+/// list (now lives in `Tree::chrome_table`), but `ShapeRecord::RoundedRect`
 /// remains a valid variant — any custom widget that pushes one via
 /// `ui.add_shape` should still produce a `DrawRect` command. Tested
 /// by manually injecting a `RoundedRect` onto a panel node.
@@ -159,7 +159,7 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
     );
 }
 
-/// Pin: `Shape::Text` runs through the same background-phase
+/// Pin: `ShapeRecord::Text` runs through the same background-phase
 /// iteration. If the loop ever narrowed to a single shape variant
 /// (RoundedRect, say), text labels would silently disappear. The
 /// existing label-bearing tests would still pass because chrome
@@ -409,8 +409,8 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
                 };
                 out.push((p.fill, visible));
             }
-            CmdKind::DrawText => {
-                // Test rasterizer ignores text — encoder tests only assert on rect output.
+            CmdKind::DrawText | CmdKind::DrawMesh => {
+                // Test rasterizer ignores text/mesh — encoder tests only assert on rect output.
             }
         }
     }

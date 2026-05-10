@@ -10,8 +10,9 @@ use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
+use crate::primitives::mesh::MeshVertex;
 use crate::primitives::rect::Rect;
-use crate::shape::Shape;
+use crate::shape::ShapeRecord;
 use crate::widgets::grid::GridDef;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
@@ -128,7 +129,14 @@ pub(crate) struct Tree {
     pub(crate) parents: Vec<NodeId>,
 
     // -- Flat shape buffer -----------------------------------------------
-    pub(crate) shapes: Vec<Shape>,
+    pub(crate) shapes: Vec<ShapeRecord>,
+
+    // -- Flat mesh storage -----------------------------------------------
+    /// Vertex arena for `ShapeRecord::Mesh`. Spans on the mesh shape
+    /// record index into this buffer. Cleared per frame, capacity
+    /// retained.
+    pub(crate) mesh_vertices: Vec<MeshVertex>,
+    pub(crate) mesh_indices: Vec<u16>,
 
     // -- Frame-scoped sub-storage ----------------------------------------
     pub(crate) grid: GridArena,
@@ -173,6 +181,8 @@ impl Tree {
         self.clip_radius.clear();
         self.parents.clear();
         self.shapes.clear();
+        self.mesh_vertices.clear();
+        self.mesh_indices.clear();
         self.grid.clear();
         self.rollups.has_grid.clear();
         self.roots.clear();
@@ -211,7 +221,7 @@ impl Tree {
             let mut has_direct_shape = false;
             for item in TreeItems::new(&self.records, &self.shapes, NodeId(i as u32)) {
                 match item {
-                    TreeItem::Shape(s) => {
+                    TreeItem::ShapeRecord(s) => {
                         has_direct_shape = true;
                         s.hash(&mut h);
                     }
@@ -406,7 +416,7 @@ impl Tree {
         }
     }
 
-    pub(crate) fn add_shape(&mut self, shape: Shape) {
+    pub(crate) fn add_shape(&mut self, shape: ShapeRecord) {
         assert!(
             !self.open_frames.is_empty(),
             "add_shape called with no open node",
@@ -453,7 +463,7 @@ pub(crate) struct ChildIter<'a> {
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum TreeItem<'a> {
-    Shape(&'a Shape),
+    ShapeRecord(&'a ShapeRecord),
     Child(Child),
 }
 
@@ -487,7 +497,7 @@ pub(crate) struct TreeItems<'a> {
     shapes_col: &'a [Span],
     layouts: &'a [LayoutCore],
     ends: &'a [u32],
-    shapes: &'a [Shape],
+    shapes: &'a [ShapeRecord],
     cursor: usize,
     parent_end: usize,
     next_child_id: u32,
@@ -495,7 +505,11 @@ pub(crate) struct TreeItems<'a> {
 }
 
 impl<'a> TreeItems<'a> {
-    pub(crate) fn new(records: &'a Soa<NodeRecord>, shapes: &'a [Shape], node: NodeId) -> Self {
+    pub(crate) fn new(
+        records: &'a Soa<NodeRecord>,
+        shapes: &'a [ShapeRecord],
+        node: NodeId,
+    ) -> Self {
         let shapes_col = records.shape_span();
         let parent = shapes_col[node.index()];
         Self {
@@ -520,7 +534,7 @@ impl<'a> Iterator for TreeItems<'a> {
             if self.cursor < cs_start {
                 let s = &self.shapes[self.cursor];
                 self.cursor += 1;
-                return Some(TreeItem::Shape(s));
+                return Some(TreeItem::ShapeRecord(s));
             }
             let visibility = self.layouts[self.next_child_id as usize].visibility;
             let child = Child {
@@ -534,7 +548,7 @@ impl<'a> Iterator for TreeItems<'a> {
         if self.cursor < self.parent_end {
             let s = &self.shapes[self.cursor];
             self.cursor += 1;
-            return Some(TreeItem::Shape(s));
+            return Some(TreeItem::ShapeRecord(s));
         }
         None
     }

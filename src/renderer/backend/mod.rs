@@ -1,6 +1,8 @@
+mod mesh_pipeline;
 mod quad_pipeline;
 mod schedule;
 
+use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
 use super::frontend::FrameOutput;
@@ -104,6 +106,7 @@ pub struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
     quad: QuadPipeline,
+    mesh: MeshPipeline,
     text: TextRenderer,
     /// Color format the quad pipeline + text atlas were built for.
     /// Fixed at [`Self::new`]; [`Self::ensure_backbuffer`] hard-asserts
@@ -142,11 +145,13 @@ pub struct WgpuBackend {
 impl WgpuBackend {
     pub fn new(device: wgpu::Device, queue: wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let quad = QuadPipeline::new(&device, format);
+        let mesh = MeshPipeline::new(&device, format);
         let text = TextRenderer::new(&device, &queue, format);
         Self {
             device,
             queue,
             quad,
+            mesh,
             text,
             color_format: format,
             backbuffer: None,
@@ -363,6 +368,7 @@ impl WgpuBackend {
         if use_stencil {
             self.ensure_stencil();
             self.quad.ensure_stencil(&self.device);
+            self.mesh.ensure_stencil(&self.device);
             self.mask_indices.resize(buffer.groups.len(), None);
             for (i, g) in buffer.groups.iter().enumerate() {
                 if let (Some(scissor), Some(radius)) = (g.scissor, g.rounded_clip) {
@@ -380,6 +386,14 @@ impl WgpuBackend {
             &self.queue,
             buffer.viewport_phys_f,
             &buffer.quads,
+        );
+
+        self.mesh.upload(
+            &self.device,
+            &self.queue,
+            buffer.viewport_phys_f,
+            &buffer.mesh_vertices,
+            &buffer.mesh_indices,
         );
 
         if !self.damage_scissors.is_empty() {
@@ -633,6 +647,18 @@ impl WgpuBackend {
                 }
                 RenderStep::Text { group } => {
                     self.text.render_group(group, pass, text_mode);
+                }
+                RenderStep::Meshes { range, .. } => {
+                    self.mesh.bind(pass, use_stencil);
+                    let start = range.start as usize;
+                    let end = start + range.len as usize;
+                    for draw in &buffer.meshes[start..end] {
+                        // `draw_indexed` takes a per-call vertex
+                        // offset; pass the mesh's vertex start as
+                        // `base_vertex` so indices stay buffer-local.
+                        self.mesh
+                            .draw(pass, draw.indices.into(), draw.vertices.start as i32);
+                    }
                 }
             },
         );

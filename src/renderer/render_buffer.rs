@@ -1,5 +1,6 @@
 use super::quad::Quad;
 use crate::layout::types::span::Span;
+use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{color::Color, corners::Corners, urect::URect};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
@@ -15,6 +16,12 @@ use glam::{UVec2, Vec2};
 pub(crate) struct RenderBuffer {
     pub(crate) quads: Vec<Quad>,
     pub(crate) texts: Vec<TextRun>,
+    pub(crate) meshes: Vec<MeshDraw>,
+    /// Physical-px vertex pool referenced by `meshes`. Indices in
+    /// `mesh_indices` are vertex-local — the backend issues
+    /// `draw_indexed` with the appropriate `base_vertex`.
+    pub(crate) mesh_vertices: Vec<MeshVertex>,
+    pub(crate) mesh_indices: Vec<u16>,
     pub(crate) groups: Vec<DrawGroup>,
     /// Physical-px viewport, ceil'd. Backends use this as the default scissor
     /// when a group has no clip.
@@ -37,6 +44,9 @@ impl Default for RenderBuffer {
         Self {
             quads: Vec::new(),
             texts: Vec::new(),
+            meshes: Vec::new(),
+            mesh_vertices: Vec::new(),
+            mesh_indices: Vec::new(),
             groups: Vec::new(),
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
@@ -57,6 +67,17 @@ pub(crate) struct DrawGroup {
     pub(crate) rounded_clip: Option<Corners>,
     pub(crate) quads: Span,
     pub(crate) texts: Span,
+    pub(crate) meshes: Span,
+}
+
+/// One mesh draw within a group. Vertex/index slices live in
+/// `RenderBuffer.mesh_vertices` / `.mesh_indices`. `tint` is a
+/// per-draw scalar multiplied into every vertex color in the shader.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct MeshDraw {
+    pub(crate) vertices: Span,
+    pub(crate) indices: Span,
+    pub(crate) tint: Color,
 }
 
 /// One shaped text run placed in physical-px space. The buffer it references

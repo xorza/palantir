@@ -8,7 +8,8 @@ use crate::forest::seen_ids::SeenIds;
 use crate::forest::tree::{Layer, NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
 use crate::primitives::rect::Rect;
-use crate::shape::Shape;
+use crate::layout::types::span::Span;
+use crate::shape::{Shape, ShapeRecord, mesh_content_hash};
 use std::array;
 use strum::EnumCount as _;
 
@@ -137,9 +138,62 @@ impl Forest {
         self.trees[layer as usize].close_node();
     }
 
-    pub(crate) fn add_shape(&mut self, shape: Shape) {
-        let layer = self.recording.current_layer;
-        self.trees[layer as usize].add_shape(shape);
+    /// Convert a user-facing [`Shape`] into a [`ShapeRecord`] and push
+    /// it onto the active tree. The Mesh arm copies vertex/index bytes
+    /// into the active tree's mesh arenas and stamps spans into the
+    /// record; the other three arms are field-for-field passthroughs.
+    pub(crate) fn add_shape(&mut self, shape: Shape<'_>) {
+        let tree = &mut self.trees[self.recording.current_layer as usize];
+        let record = match shape {
+            Shape::RoundedRect {
+                local_rect,
+                radius,
+                fill,
+                stroke,
+            } => ShapeRecord::RoundedRect {
+                local_rect,
+                radius,
+                fill,
+                stroke,
+            },
+            Shape::Line { a, b, width, color } => ShapeRecord::Line { a, b, width, color },
+            Shape::Text {
+                local_rect,
+                text,
+                color,
+                font_size_px,
+                line_height_px,
+                wrap,
+                align,
+            } => ShapeRecord::Text {
+                local_rect,
+                text,
+                color,
+                font_size_px,
+                line_height_px,
+                wrap,
+                align,
+            },
+            Shape::Mesh {
+                mesh,
+                local_rect,
+                tint,
+            } => {
+                let v_start = tree.mesh_vertices.len() as u32;
+                tree.mesh_vertices.extend_from_slice(&mesh.vertices);
+                let i_start = tree.mesh_indices.len() as u32;
+                tree.mesh_indices.extend_from_slice(&mesh.indices);
+                let content_hash = mesh_content_hash(&mesh.vertices, &mesh.indices);
+                ShapeRecord::Mesh {
+                    local_rect,
+                    tint,
+                    vertices: Span::new(v_start, mesh.vertices.len() as u32),
+                    indices: Span::new(i_start, mesh.indices.len() as u32),
+                    content_hash,
+                }
+            }
+        };
+        tree.add_shape(record);
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Rect) {

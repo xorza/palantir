@@ -509,7 +509,7 @@ impl LayoutEngine {
     }
 
     /// Walk a Leaf's recorded shapes and return the content size that drives
-    /// its hugging. For `Shape::Text` runs, this is also where shaping
+    /// its hugging. For `ShapeRecord::Text` runs, this is also where shaping
     /// happens: the shaped buffer + measured size land on
     /// `LayoutResult.text_shapes` so the encoder can pick them up later.
     /// `available_w` flows down from the parent and gates wrapping.
@@ -537,7 +537,7 @@ impl LayoutEngine {
             );
             s = s.max(m);
             ordinal = ordinal.checked_add(1).expect(
-                "more than 65535 Shape::Text per leaf — well past anything sane; \
+                "more than 65535 ShapeRecord::Text per leaf — well past anything sane; \
                  widen the within-node ordinal width if this trips",
             );
         }

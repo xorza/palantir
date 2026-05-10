@@ -7,7 +7,7 @@
 //! into [`NodeArenas`] (`desired`, `text_spans`) so length-equality is
 //! structural; plus two variable-length per-subtree [`LiveArena`]s
 //! (`hugs` for grid descendants, `text_shapes_arena` for
-//! `Shape::Text` runs) — plus a tiny per-`WidgetId` `ArenaSnapshot`
+//! `ShapeRecord::Text` runs) — plus a tiny per-`WidgetId` `ArenaSnapshot`
 //! pointing at a contiguous range. The dimensional cache key
 //! (quantized `available`) lives directly on `ArenaSnapshot` as a
 //! per-snapshot scalar, not in a parallel arena. Steady-state writes
@@ -64,7 +64,7 @@ pub(crate) struct ArenaSnapshot {
     /// descendant `GridDef` (track count + sizing).
     pub(crate) hugs: Span,
     /// Range over `text_shapes_arena`. Variable-length flat buffer of
-    /// shaped text runs for every `Shape::Text` in the subtree, in
+    /// shaped text runs for every `ShapeRecord::Text` in the subtree, in
     /// pre-order. The `text_spans` slice (parallel to `desired`)
     /// stores **subtree-local** spans into this range.
     pub(crate) text_shapes: Span,
@@ -111,7 +111,7 @@ pub(crate) struct SubtreeArenas<'a> {
     /// Empty for grid-free subtrees.
     pub(crate) hugs: &'a [f32],
     /// Flat per-text-shape buffer, in pre-order over the subtree's
-    /// `Shape::Text` runs. Empty for text-free subtrees.
+    /// `ShapeRecord::Text` runs. Empty for text-free subtrees.
     pub(crate) text_shapes: &'a [ShapedText],
 }
 
@@ -223,7 +223,7 @@ pub(crate) struct MeasureCache {
     /// this, a cache hit at any ancestor of a Grid would leave `hugs`
     /// zeroed and the grid would collapse every cell to (0, 0).
     pub(crate) hugs: LiveArena<f32>,
-    /// Flat shaped-text buffer for every `Shape::Text` in every
+    /// Flat shaped-text buffer for every `ShapeRecord::Text` in every
     /// cached subtree, packed in pre-order. Snapshot records
     /// `(text_shapes_start, len)` into this arena. `text_spans`
     /// (per-node, subtree-local) addresses entries within each

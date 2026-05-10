@@ -12,7 +12,7 @@ use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::shape::Shape;
+use crate::shape::ShapeRecord;
 use crate::text::TextShaper;
 use crate::ui::damage::region::DamageRegion;
 use crate::widgets::panel::Panel;
@@ -23,9 +23,9 @@ use std::time::Duration;
 /// interleaved between children (scrollbar overlays, parent-pushed
 /// sub-rects). Production callers on leaves use `Tree::leaf_shapes`
 /// (direct slice, no per-item branch) instead.
-pub(crate) fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &Shape> + '_ {
+pub(crate) fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
     tree.tree_items(node).filter_map(|item| match item {
-        TreeItem::Shape(s) => Some(s),
+        TreeItem::ShapeRecord(s) => Some(s),
         TreeItem::Child(_) => None,
     })
 }

@@ -153,7 +153,7 @@ fn content_intrinsic(
     }
 }
 
-/// Leaf: walk shapes and aggregate. Only `Shape::Text` contributes
+/// Leaf: walk shapes and aggregate. Only `ShapeRecord::Text` contributes
 /// non-zero intrinsics today; other shapes are owner-relative paint and
 /// don't drive size. Lives here rather than in a `leaf` module because
 /// there isn't one — leaves have no driver, the leaf path is just "ask

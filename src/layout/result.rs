@@ -14,7 +14,7 @@ use strum::EnumCount as _;
 pub(crate) struct LayerResult {
     pub(crate) rect: Vec<Rect>,
     /// Flat per-frame buffer of shaped text runs. Grows during the
-    /// measure pass: each `Shape::Text` on each leaf appends one
+    /// measure pass: each `ShapeRecord::Text` on each leaf appends one
     /// entry. Indexed via `text_spans[node]`. Mirrors `tree.shapes` +
     /// `records.shape_span()` for the layout-derived counterpart.
     pub(crate) text_shapes: Vec<ShapedText>,
@@ -48,7 +48,7 @@ impl IndexMut<Layer> for LayoutResult {
     }
 }
 
-/// Result of shaping one `Shape::Text` during the measure pass. `Tree`
+/// Result of shaping one `ShapeRecord::Text` during the measure pass. `Tree`
 /// records only the authoring inputs; this is the layout-side derived state.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ShapedText {

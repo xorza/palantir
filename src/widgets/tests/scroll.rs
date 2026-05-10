@@ -623,7 +623,7 @@ mod bars {
     use crate::forest::widget_id::WidgetId;
     use crate::layout::types::display::Display;
     use crate::layout::types::sizing::Sizing;
-    use crate::shape::Shape;
+    use crate::shape::ShapeRecord;
     use crate::support::testing::{shapes_of, ui_at};
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
@@ -774,7 +774,7 @@ mod bars {
             .filter(|s| {
                 matches!(
                     s,
-                    Shape::RoundedRect {
+                    ShapeRecord::RoundedRect {
                         local_rect: Some(_),
                         ..
                     }
@@ -1014,7 +1014,7 @@ mod bars {
         let expected_x = 200.0 - theme.width;
         let overlays: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), node)
             .filter_map(|s| match s {
-                Shape::RoundedRect {
+                ShapeRecord::RoundedRect {
                     local_rect: Some(rect),
                     ..
                 } => Some(*rect),
@@ -1134,7 +1134,7 @@ mod bars {
         };
         let z1_thumbs: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), outer_node)
             .filter_map(|s| match s {
-                Shape::RoundedRect {
+                ShapeRecord::RoundedRect {
                     local_rect: Some(r),
                     ..
                 } => Some(*r),
@@ -1162,7 +1162,7 @@ mod bars {
         ui.end_frame_paint_phase();
         let z2_thumbs: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), outer_node)
             .filter_map(|s| match s {
-                Shape::RoundedRect {
+                ShapeRecord::RoundedRect {
                     local_rect: Some(r),
                     ..
                 } => Some(*r),
@@ -1240,7 +1240,7 @@ mod bars {
         let outer_far = 200.0 - theme.width; // bar.cross_pos
         let overlays: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), node)
             .filter_map(|s| match s {
-                Shape::RoundedRect {
+                ShapeRecord::RoundedRect {
                     local_rect: Some(rect),
                     ..
                 } => Some(*rect),
@@ -1360,7 +1360,7 @@ mod bars {
                 .expect("scroll widget recorded");
             let mut rects: Vec<_> = shapes_of(tree, NodeId(idx as u32))
                 .filter_map(|s| match s {
-                    Shape::RoundedRect {
+                    ShapeRecord::RoundedRect {
                         local_rect: Some(r),
                         ..
                     } => Some(*r),

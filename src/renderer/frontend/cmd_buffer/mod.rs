@@ -23,10 +23,12 @@
 //! (`DrawTextPayload`) work even when the arena slot starts at a
 //! 4-byte-only-aligned offset.
 
+use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
 use crate::text::TextCacheKey;
+use glam::Vec2;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,6 +45,10 @@ pub(crate) enum CmdKind {
     DrawRect,
     DrawRectStroked,
     DrawText,
+    /// Mesh paint cmd. Payload: [`DrawMeshPayload`]. Vertex/index
+    /// bytes live in [`RenderCmdBuffer::mesh_vertices`] /
+    /// `mesh_indices`, sliced by the payload's spans.
+    DrawMesh,
 }
 
 #[repr(C)]
@@ -77,12 +83,34 @@ pub(crate) struct DrawTextPayload {
     pub(crate) key: TextCacheKey,
 }
 
+/// Mesh draw payload (40 B). Spans are inlined as `(start, len)`
+/// `u32` pairs so the payload is plain Pod — no `Span: Pod` needed.
+/// `origin` is the logical-px translation applied at compose time
+/// before baking the transform/DPI into physical-px verts.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct DrawMeshPayload {
+    pub(crate) origin: Vec2,
+    pub(crate) tint: Color,
+    pub(crate) v_start: u32,
+    pub(crate) v_len: u32,
+    pub(crate) i_start: u32,
+    pub(crate) i_len: u32,
+}
+
 /// Append-only command buffer. See module docs.
 #[derive(Default)]
 pub(crate) struct RenderCmdBuffer {
     pub(crate) kinds: Vec<CmdKind>,
     pub(crate) starts: Vec<u32>,
     pub(crate) data: Vec<u32>,
+    /// Self-contained mesh storage. `DrawMesh` payload spans slice
+    /// into these. Self-containment is load-bearing: the encode cache
+    /// snapshots a sub-range of `kinds`/`starts`/`data` plus a copy
+    /// of these mesh arrays, so replay doesn't need the original
+    /// `Tree` mesh arenas around.
+    pub(crate) mesh_vertices: Vec<MeshVertex>,
+    pub(crate) mesh_indices: Vec<u16>,
 }
 
 impl RenderCmdBuffer {
@@ -90,6 +118,8 @@ impl RenderCmdBuffer {
         self.kinds.clear();
         self.starts.clear();
         self.data.clear();
+        self.mesh_vertices.clear();
+        self.mesh_indices.clear();
     }
 
     #[inline]
@@ -147,6 +177,35 @@ impl RenderCmdBuffer {
     pub(crate) fn draw_text(&mut self, rect: Rect, color: Color, key: TextCacheKey) {
         self.record_start(CmdKind::DrawText);
         write_pod(&mut self.data, DrawTextPayload { rect, color, key });
+    }
+
+    /// Copy `verts` + `idx` into the cmd buffer's mesh arena and
+    /// record a `DrawMesh` cmd. Indices are pushed unchanged; the
+    /// composer (and ultimately the wgpu `draw_indexed`) addresses
+    /// the vertex range with a `base_vertex` offset.
+    pub(crate) fn draw_mesh(
+        &mut self,
+        origin: Vec2,
+        tint: Color,
+        verts: &[MeshVertex],
+        idx: &[u16],
+    ) {
+        let v_start = self.mesh_vertices.len() as u32;
+        self.mesh_vertices.extend_from_slice(verts);
+        let i_start = self.mesh_indices.len() as u32;
+        self.mesh_indices.extend_from_slice(idx);
+        self.record_start(CmdKind::DrawMesh);
+        write_pod(
+            &mut self.data,
+            DrawMeshPayload {
+                origin,
+                tint,
+                v_start,
+                v_len: verts.len() as u32,
+                i_start,
+                i_len: idx.len() as u32,
+            },
+        );
     }
 
     #[inline]

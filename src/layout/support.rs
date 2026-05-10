@@ -10,11 +10,11 @@ use crate::layout::types::{
     align::Align, align::AxisAlign, justify::Justify, sizing::Sizes, sizing::Sizing,
 };
 use crate::primitives::{rect::Rect, size::Size};
-use crate::shape::{Shape, TextWrap};
+use crate::shape::{ShapeRecord, TextWrap};
 use crate::text::TextShaper;
 use glam::Vec2;
 
-/// One `Shape::Text` worth of layout-side inputs. Yielded by
+/// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
 /// [`leaf_text_shapes`]; named so the four fields aren't a tuple.
 pub(crate) struct LeafTextShape<'a> {
     pub(crate) text: &'a str,
@@ -23,7 +23,7 @@ pub(crate) struct LeafTextShape<'a> {
     pub(crate) wrap: TextWrap,
 }
 
-/// Iterate every `Shape::Text` on a leaf. Single source of truth for
+/// Iterate every `ShapeRecord::Text` on a leaf. Single source of truth for
 /// the layout-side leaf walk — `mod.rs::leaf_content_size` drives wrap
 /// shaping, `intrinsic::leaf` drives the unbounded content axis.
 /// Filtering and destructuring happen here so neither side can drift
@@ -44,7 +44,7 @@ pub(crate) fn leaf_text_shapes(
     let lo = span.start as usize;
     let hi = lo + span.len as usize;
     tree.shapes[lo..hi].iter().filter_map(|s| match s {
-        Shape::Text {
+        ShapeRecord::Text {
             text,
             font_size_px,
             line_height_px,
