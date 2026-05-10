@@ -22,6 +22,12 @@
 //! limit of the same predicate, so it falls out of the cluster-grow
 //! loop without a separate branch.
 //!
+//! Intersecting pairs are always merged, regardless of budget —
+//! two overlapping scissor passes would paint the overlap region
+//! twice (`LoadOp::Load` on each), so merging is strictly cheaper
+//! per-overlap-pixel even when the bbox grows. This is the LVGL
+//! strict-overlap rule layered under the SAH proximity merge.
+//!
 //! Two unrelated tiny dirty corners stay distinct: their
 //! union_excess is enormous (≈ surface_area) so the loop rejects
 //! them. A cluster of N nearby rects collapses gradually as each
@@ -116,15 +122,20 @@ impl DamageRegion {
         let budget = self.budget_px;
         let mut candidate = r;
         loop {
+            if let Some(i) = self.rects.iter().position(|e| candidate.intersects(*e)) {
+                let e = self.rects.swap_remove(i);
+                candidate = candidate.union(e);
+                continue;
+            }
             let best = self
                 .rects
                 .iter()
                 .enumerate()
-                .map(|(i, e)| (i, merge_cost(candidate, *e)))
-                .min_by(|a, b| a.1.total_cmp(&b.1));
+                .map(|(i, e)| (i, *e, merge_cost(candidate, *e)))
+                .min_by(|a, b| a.2.total_cmp(&b.2));
             match best {
-                Some((i, cost)) if cost < budget => {
-                    let e = self.rects.swap_remove(i);
+                Some((i, e, cost)) if cost < budget => {
+                    self.rects.swap_remove(i);
                     candidate = candidate.union(e);
                 }
                 _ => break,

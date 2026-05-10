@@ -85,6 +85,26 @@ fn add_keeps_pair_above_budget_split() {
     assert_eq!(collect(&region).len(), 2);
 }
 
+/// Intersecting pair always merges, even with the tightest
+/// possible budget — overlapping scissor passes would paint the
+/// overlap region twice (`LoadOp::Load` on each), so a single
+/// merged pass is strictly cheaper per overlap pixel regardless of
+/// how big the bbox grows. Pins the LVGL strict-overlap rule
+/// layered under the SAH proximity merge.
+#[test]
+fn intersecting_pair_merges_at_zero_budget() {
+    let mut region = DamageRegion::with_budget(0.0);
+    // Tall vertical rect on the left, wide horizontal rect at the
+    // top — a geometry like the popup-tab debug-overlay screenshot.
+    // bbox is much larger than `A.area + B.area`, so the SAH cost
+    // is huge; the intersect override forces the merge anyway.
+    let a = Rect::new(40.0, 40.0, 250.0, 600.0);
+    let b = Rect::new(40.0, 140.0, 1450.0, 100.0);
+    region.add(a);
+    region.add(b);
+    assert_eq!(collect(&region), vec![a.union(b)]);
+}
+
 /// Distant disjoint rects (the corner-pair pathology) stay split
 /// at any reasonable budget. Cost ≈ 1 000 000, way above any
 /// per-pass budget we'd ship.
