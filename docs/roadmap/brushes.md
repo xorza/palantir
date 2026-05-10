@@ -64,11 +64,16 @@ pub enum Brush {
     Image(ImageBrush),
 }
 
-pub struct GradientId(u32);   // index into Ui::brushes.gradients
+/// Content hash of a registered gradient/image. Stable across frames:
+/// the same gradient definition always produces the same id, so it
+/// participates in `Brush`'s `Hash` impl as content (not as a slot
+/// position). The arena is a `FxHashMap<GradientId, _>`, not a `Vec`.
+pub struct GradientId(u64);
+pub struct ImageId(u64);
 
 pub struct LinearGradient {
     pub angle: Radians,             // 0 = →, π/2 = ↓
-    pub stops: SmallVec<[Stop; 4]>, // ≤16 enforced at construction
+    pub stops: ArrayVec<Stop, 16>,  // hard-cap 16, no heap ever
     pub spread: Spread,
     pub interp: Interp,             // Srgb | Linear | Oklab | Oklch{hue}
 }
@@ -76,7 +81,7 @@ pub struct LinearGradient {
 pub struct RadialGradient {
     pub center: Vec2,               // object-space, 0..1
     pub radius: Vec2,               // object-space, 0..1
-    pub stops: SmallVec<[Stop; 4]>,
+    pub stops: ArrayVec<Stop, 16>,
     pub spread: Spread,
     pub interp: Interp,
 }
@@ -84,27 +89,52 @@ pub struct RadialGradient {
 pub struct ConicGradient {
     pub center: Vec2,
     pub start_angle: Radians,
-    pub stops: SmallVec<[Stop; 4]>,
-    pub spread: Spread,             // pad/reflect/repeat
+    pub stops: ArrayVec<Stop, 16>,
+    pub spread: Spread,
     pub interp: Interp,
 }
 
 pub struct Stop { pub offset: f32, pub color: Color }
 
-pub enum Spread { Pad, Repeat, Reflect }
+#[repr(u32)] pub enum Spread { Pad = 0, Repeat = 1, Reflect = 2 }
+#[repr(u32)] pub enum Interp { Linear = 0, Oklab = 1, Srgb = 2 }
+#[repr(u32)] pub enum ImageFit { Stretch = 0, Tile = 1, Fit = 2, Cover = 3 }
 
-pub struct ImageBrush {
-    pub image: ImageId,
-    pub uv: Rect,                   // sub-rect of source image, 0..1
-    pub fit: ImageFit,              // Stretch | Tile | Fit | Cover
+/// Image fill — registered separately so `sizeof(Brush)` stays small.
+/// `uv` and `fit` live on the registered `ImageRegistration`, keyed by
+/// `ImageId`. `Brush::Image(ImageId)` carries 8 B + tag.
+pub struct ImageRegistration {
+    pub image: GpuImageHandle,
+    pub uv: Rect,
+    pub fit: ImageFit,
 }
 ```
 
-`Background` and `Shape::RoundedRect` carry `Brush` instead of `Color`. The
-hot solid path is `Brush::Solid(Color)`, which the composer fast-paths to
-the existing 68 B quad with `brush_kind = SOLID`.
+`sizeof(Brush) ≈ 16 B` (tag + `Color` for the hot solid case, tag + `u64`
+for everything else) — matches today's `Color`-typed `Background.fill`,
+so widening to `Brush` doesn't bloat `Background` / `Stroke` / authoring
+parameters. Image params (uv, fit) live on the registration, not in the
+`Brush` value.
 
+`Background` and `Shape::RoundedRect` carry `Brush` instead of `Color`.
 `Stroke` becomes `Stroke { brush: Brush, width: f32 }` for symmetry.
+`Shape::Line` swaps `color: Color` → `brush: Brush` in the same slice.
+
+### `Animatable` for `Brush`
+
+`Background` and `Stroke` currently derive `Animatable` and lerp colors
+componentwise — Button hover/press depends on it. Generic `Brush` can't
+lerp (no meaning to "halfway between a solid red and a radial gradient"),
+so we hand-write `Animatable for Brush` with one rule:
+
+- `(Brush::Solid(a), Brush::Solid(b))` → componentwise color lerp.
+- Any other pair → **snap at `t = 1.0`** (the discrete-state convention
+  already used for `Corners` via `#[animate(snap)]`).
+
+A test (`button_hover_color_lerp_unchanged`) lands in slice 1 and pins
+the solid-solid path; widget color animations are untouched by the
+migration. Cross-brush morphs (gradient ↔ solid, gradient ↔ gradient)
+are out of scope for v1 and snap.
 
 ## User types vs GPU types
 
@@ -163,40 +193,57 @@ pub(crate) struct Quad {
 #[padding_struct::padding_struct]
 #[repr(C)]
 pub(crate) struct BrushSlot {
-    pub kind: u32,          // 0=solid, 1=linear, 2=radial, 3=conic, 4=image
-    pub spread: u32,        // 0=pad, 1=repeat, 2=reflect (n/a for solid/image)
-    pub solid_or_origin: [f32; 4], // solid: rgba; gradient: (cx,cy,rx,ry)/angle; image: uv_min
-    pub extra: [f32; 4],    // gradient: (lut_row, lut_v, stop_count, _);
-                            // image: (uv_max.x, uv_max.y, atlas_page, fit)
+    /// low 8: kind (0=solid, 1=linear, 2=radial, 3=conic, 4=image).
+    /// high 24: aux index — `lut_row` for gradients, `atlas_page` for image.
+    pub kind: u32,
+    /// low 8: spread (gradients) or fit (image).
+    /// rest: reserved.
+    pub mode: u32,
+    /// kind-dependent payload, *one* `[f32; 4]` (not two — there isn't room):
+    ///   solid:  payload = rgba.
+    ///   linear: payload = (axis_dx, axis_dy, t0, t1) in object-local 0..1.
+    ///   radial: payload = (cx, cy, rx, ry).
+    ///   conic:  payload = (cx, cy, start_angle, _).
+    ///   image:  payload = (uv_min_x, uv_min_y, uv_max_x, uv_max_y).
+    pub payload: [f32; 4],
 }
 ```
 
 `BrushSlot` is the GPU wire encoding of a user-facing `Brush`. The composer
-builds it; nothing outside `renderer/` constructs one. It is not exposed to
-widget code, has no `From<Brush>` impl (the conversion needs `&mut
-GradientLutAtlas` / `&mut ImageAtlas` to allocate slots), and is
-`pub(crate)` only so the backend can bind-group it.
+builds it; nothing outside `renderer/` constructs one. It has no
+`From<Brush>` impl — the conversion needs `&mut GradientLutAtlas` /
+`&mut ImageAtlas` to resolve aux indices — and is `pub(crate)` only so the
+backend can bind-group it.
 
-Net: 16 + 16 + 4 + 24 + 24 = 84 B per quad (was 68). Acceptable — measure
-in `benches/` before merging.
+Net: 16 + 16 + 4 + 24 + 24 = **84 B** per quad (was 68). Verified by hand:
+no auxiliary `[f32; 4]` second slot; gradient row / atlas page / spread /
+fit pack into the spare 24 bits of `kind` and 24 bits of `mode`. A
+`size_of::<Quad>() == 84` test pins the layout. Throughput delta measured
+in `benches/quad_throughput.rs` before merging slice 2.
 
 ### Gradient LUT atlas
 
 `GradientLutAtlas` (`src/renderer/backend/gradient_lut.rs`):
 
-- Single `Rgba8Unorm` texture, 256 px wide, N rows tall (start at 256 rows,
-  grow on demand). Each row is one baked gradient. The shader samples with
-  `linear` filter; spread mode is folded into `t` in shader before the
-  sample.
-- Key: `(stops_hash, interp, gradient_axis_kind)`. `gradient_axis_kind`
-  separates linear/radial/conic only when their stop processing differs
-  (e.g. premultiplied gamma path). LRU eviction; cap at 256 rows initially.
+- Single `Rgba8Unorm` texture, 256 px wide, **256 rows fixed** (no
+  grow-on-demand path until profiling demands it — keep one shape, exercise
+  it well). Each row is one baked gradient. Shader samples with `linear`
+  filter; spread mode is folded into `t` in shader before the sample.
+- **Content-addressed rows.** `lut_row = (stops_hash ^ interp_tag) % 256`.
+  Bake is idempotent: same content → same row, never overwritten with
+  different content. A row collision (two distinct gradients hashing to the
+  same row) is resolved by linear probing into a small overflow set; if
+  the table is genuinely full, oldest-frame entries get re-baked first.
+  This makes encode-cache coherence trivial — a cached `BrushSlot` with
+  `lut_row = 5` always paints the gradient it was baked from, because
+  row 5 either still holds it or got re-baked into a different row.
 - Bake on CPU: convert each stop to OKLab (or selected interp space),
-  interpolate per-texel, premultiply alpha, write to staging row, upload via
-  `queue.write_texture` (single row, never re-create).
-- The atlas lives on the renderer side; the brush surface only stores a
-  `GradientId` that the encoder resolves to `(lut_row, stop_count)` while
-  building the cmd buffer.
+  interpolate per-texel, premultiply alpha, write to staging row
+  (`bake_scratch: [u8; 1024]` retained on the atlas), upload via
+  `queue.write_texture` (single row, never re-create the texture).
+- The atlas lives on the renderer side; the encoder resolves
+  `Brush::LinearGradient(id)` → `BrushSlot { kind, lut_row, mode, payload }`
+  while building the cmd buffer.
 
 ### Image atlas
 
@@ -204,10 +251,25 @@ in `benches/` before merging.
 
 - `Vec<AtlasPage>` of `Rgba8UnormSrgb` 4096² pages. Shelf packer for
   uploads; sort draws by page so each page = one bind group.
-- `ImageId` is opaque to the user (`Ui::upload_image(rgba, size)`),
-  internally `(page: u16, rect: URect)`.
+- `ImageId(u64)` is content hash of the source bytes; `ImageRegistration`
+  in `Ui::brushes` maps `ImageId → (page: u16, rect: URect, uv, fit)`.
 - Sub-page LRU is out of scope for v1 — once uploaded, an image lives until
-  the `Ui` is reset or `Ui::release_image(id)` is called.
+  the renderer's `release_image(id)` is called.
+
+**Upload ownership.** `Ui` doesn't hold a `wgpu::Queue`; the renderer does.
+The image API lives on the app-level renderer handle:
+
+```rust
+impl PalantirRenderer {
+    pub fn upload_image(&mut self, rgba: &[u8], size: USize) -> ImageId;
+    pub fn release_image(&mut self, id: ImageId);
+}
+```
+
+`Ui` consumes ids only — `Brush::Image(id)`. The composer validates each
+id against the live registry; an unknown id paints a magenta debug fill
+(loud, never silent), so a "register before paint" ordering bug surfaces
+immediately in the showcase rather than corrupting the atlas.
 
 ### Shader
 
@@ -238,10 +300,10 @@ within a draw because the composer groups by `(scissor, brush_kind)`.
 When both `fill.kind == SOLID && stroke.kind == SOLID`, the composer
 routes the quad through a solid-only pipeline whose instance struct is the
 slim 68 B `SolidQuad` — same bytes as today's `Quad`. The brush pipeline
-(84 B `Quad`) is bound only when at least one slot in the batch is
-non-solid. This keeps the steady state of solid-color UIs at byte-parity
-with pre-brush builds. The two GPU structs sit side by side in
-`renderer/quad.rs`:
+(84 B `Quad`) is bound only when at least one slot is non-solid (mixed
+solid-fill / gradient-stroke goes through the brush pipeline; that case
+is rare and not worth a third pipeline). The two GPU structs sit side by
+side in `renderer/quad.rs`:
 
 ```rust
 #[repr(C)] #[derive(Pod, Zeroable)]
@@ -251,32 +313,66 @@ pub(crate) struct SolidQuad { rect: Rect, fill: Color, radius: Corners,
 // `Quad` (84 B) above — the brush-pipeline instance.
 ```
 
-Naming convention: `SolidQuad` for the legacy-bytes layout, `Quad` for the
+Naming convention: `SolidQuad` for the slim layout, `Quad` for the
 brush-capable layout. No "Legacy" prefix anywhere — both are first-class
 and both stay in the codebase indefinitely.
 
+### Cmd buffer wire
+
+The encoder splits by kind too, not just the composer:
+
+```rust
+pub(crate) enum DrawCmd {
+    DrawRect       { rect, radius, fill: Color },                   // unchanged
+    DrawRectStroked{ rect, radius, fill: Color, stroke: StrokeRgb },// unchanged
+    DrawRectBrush  { rect, radius, fill: BrushSlot,
+                     stroke: BrushSlot, stroke_width: f32 },        // new
+    // Text, EnterSubtree, … unchanged
+}
+```
+
+Solid panels keep emitting today's `DrawRect` / `DrawRectStroked` — the
+encode cache slice for a solid subtree is byte-identical to pre-brush
+builds, so cached subtrees blit at the same rate. `DrawRectBrush` only
+appears when the encoder resolves a non-solid `Brush`.
+
 ## Cache, hashing, damage
 
-- `Brush` is `Hash + Eq`; gradient/image IDs hash by their content key, not
-  their slot index, so a recycled slot doesn't collide with a previous
-  brush.
+- `GradientId` and `ImageId` are **content hashes**, not slot indices.
+  `Brush::LinearGradient(id).hash()` therefore depends on the gradient's
+  *content*, not on a frame-local position. Two consequences:
+  1. Same gradient definition across frames → same id → encode cache
+     hits correctly.
+  2. Different gradients across frames → different ids → encode cache
+     misses correctly. Frame-local `Vec<LinearGradient>` would have given
+     the wrong answer in both directions.
 - `Background::hash` already runs inside the per-node hash
   (`src/forest/tree/mod.rs:194`); replacing `Color` with `Brush` means
   changing a stop or swapping an image invalidates the encode/compose/measure
   caches automatically. No new wiring.
-- The gradient LUT and image atlas are **renderer-side**; their lifetime is
-  decoupled from `WidgetId`. The encode cache holds onto `(lut_row,
-  atlas_rect)` as part of the cached `RenderCmd` slice; if the atlas
-  reuploads to the same row, the slice stays valid.
+- **LUT atlas and encode cache stay coherent** because rows are
+  content-addressed (see "Gradient LUT atlas"): a cached `BrushSlot` with
+  `lut_row = R` is still valid because the only way `lut_row = R` exists
+  is for the same content the cache baked from. Eviction means
+  "row free for a different hash to claim" — no in-place overwrite of
+  live content.
+- Image atlas: pages aren't evicted within a frame; `release_image` is the
+  only path that frees an atlas slot, and the renderer drops dependent
+  encode-cache entries at the same time.
 - `Damage::Partial` paths still work because the brush eval is per-fragment;
   any rect the damage region covers re-runs the same shader against the
   current LUT/atlas state.
 
 ## Allocation discipline
 
-- `Ui::brushes: BrushArena` retains `Vec<LinearGradient>` /
-  `Vec<RadialGradient>` / `Vec<ConicGradient>`, cleared per frame via
-  `truncate(0)` (capacity preserved).
+- `Ui::brushes: BrushArena` is `FxHashMap<GradientId, LinearGradient>` (and
+  the radial / conic / image-registration analogues), keyed by content
+  hash. Across frames, repeat insertions of the same gradient are O(1)
+  hash-lookup no-ops — no `Vec::push` churn, no per-frame `truncate(0)`.
+  Eviction policy: drop entries unreferenced for N frames (start with
+  N = 60, tune on workload).
+- `Stop` lists are `ArrayVec<Stop, 16>` — heap-free, hard-capped at 16.
+  `LinearGradient::new` `assert!`s the count.
 - `BrushSlot` is `Pod` and lives inline in `Quad`; no per-frame heap.
 - Stop interpolation buffers (256 × `Rgba8`) live in a renderer-side scratch
   `[u8; 1024]`, not allocated each bake.
@@ -284,18 +380,30 @@ and both stay in the codebase indefinitely.
 
 ## Testing
 
-- `src/primitives/brush.rs` unit tests for hash stability and `Brush::Solid`
-  byte-for-byte equality with the legacy `Color` slot.
-- A `src/renderer/backend/gradient_lut/tests.rs` golden test bakes a known
+- `src/primitives/brush.rs` unit tests: hash stability across frames
+  (`GradientId(content_hash)` is deterministic), `Brush::Solid → Brush::Solid`
+  Animatable lerp, snap on cross-brush morphs.
+- `button_hover_color_lerp_unchanged` (in widget tests) — pins that the
+  `Brush::Solid` migration doesn't break Button's hover/press color tween.
+- **Slice 1 pinning test** (`solid_panel_emits_legacy_quad_bytes`) asserts
+  a solid `Background` records to today's exact `Quad` bytes (still 68 B
+  in slice 1; `BrushSlot` doesn't exist yet).
+- **Slice 2 pinning test migration**: the slice-1 test moves from
+  "asserts `Quad` bytes" to "asserts `SolidQuad` bytes *and* asserts the
+  composer routed the panel to the solid pipeline". `size_of::<Quad>() == 84`
+  and `size_of::<SolidQuad>() == 68` get their own assertions in
+  `renderer/quad.rs`.
+- `src/renderer/backend/gradient_lut/tests.rs` golden test bakes a known
   3-stop gradient and pixel-compares the LUT row.
-- A pinning test in `lib.rs` (`brush_solid_path_unchanged_quad_bytes`) that
-  records a `Background { fill: Brush::Solid(red) }` panel and asserts the
-  emitted `Quad` matches the legacy bytes for the same panel pre-migration.
-- A showcase tab `Brushes` exercising linear, radial, conic, image, and
-  stroke-with-gradient. CLAUDE.md's UI rule applies — start the showcase and
-  eyeball it before declaring done.
-- `benches/quad_throughput.rs` (new) measuring 10k mixed-brush quads per
-  frame; flag a regression if solid-only path slows.
+- LUT row collision test: insert two gradients designed to hash to the
+  same row, verify probing places them on distinct rows and both render
+  correctly.
+- Showcase tabs land per-slice (slice 2: linear gradient grid; slice 3:
+  radial + conic; slice 4: image fills + stroke-with-gradient). Slice 1 is
+  rename-only — no new visuals to eyeball, that's expected. CLAUDE.md's UI
+  rule applies from slice 2 onward.
+- `benches/quad_throughput.rs` (new in slice 2) measuring 10k mixed-brush
+  quads per frame; flag a regression if solid-only path slows.
 
 ## Rollout
 
@@ -303,23 +411,32 @@ Five slices, each shippable on its own.
 
 1. **Brush type + Solid migration.** Introduce `Brush` enum with only the
    `Solid(Color)` variant. Replace `Color` on `Background`, `Stroke`,
-   `Shape::RoundedRect`, `Shape::Line`. Keep `BrushSlot` size at the legacy
-   16 B path — same `Quad` bytes, same shader. Pin with the byte-equality
-   test. **Risk: rename churn touches every widget.** Acceptable per the
-   project's "break things freely" posture.
+   `Shape::RoundedRect`, `Shape::Line` (all in this slice — no later
+   straggler renames). Hand-write `Animatable for Brush` with the
+   solid-solid lerp rule. `Quad`/`BrushSlot` don't exist yet — composer
+   stays on today's 68 B `Quad`, calling `brush.as_solid().unwrap()` (debug
+   `expect`) to extract the color. Pin with the byte-equality test and the
+   button-hover-lerp test. **Risk: rename churn touches every widget.**
+   Acceptable per the project's "break things freely" posture.
 
-2. **Linear gradient.** Add `LinearGradient` variant, `BrushArena`,
-   `GradientLutAtlas`, expanded `Quad`/`BrushSlot`, branched shader.
-   Showcase tab gets a linear-gradient row. Spread modes from the start —
-   they're three lines of WGSL each.
+2. **Linear gradient.** Add `LinearGradient` variant, `BrushArena`
+   (FxHashMap, content-keyed), `GradientLutAtlas` (256×256
+   content-addressed rows), `SolidQuad` (renamed today's `Quad`) and the
+   new 84 B `Quad`, `BrushSlot`, `DrawRectBrush` cmd, branched shader,
+   composer routing solid-only batches to `SolidQuad` and any non-solid
+   batch to `Quad`. Migrate the slice-1 pinning test. Showcase tab gets a
+   linear-gradient row. Spread modes from the start — they're three lines
+   of WGSL each.
 
 3. **Radial + conic.** Same atlas, new `kind` arms in the shader, conic AA
    via analytic angular derivative. Pin a conic seam test.
 
-4. **Image fills.** `ImageAtlas`, `Ui::upload_image`, `Brush::Image`. Sort
-   draws by atlas page in the composer; one bind group per page. Start with
-   `Stretch` and `Tile`; `Fit` / `Cover` are CPU-side `uv` adjustments on
-   top of `Stretch`.
+4. **Image fills.** `ImageAtlas`, `PalantirRenderer::upload_image`
+   (renderer-owned, not on `Ui`), `Brush::Image(ImageId)`,
+   `ImageRegistration` in `BrushArena`. Composer sorts draws by atlas page;
+   one bind group per page. Magenta debug fill for unresolved ids. Start
+   with `Stretch` and `Tile`; `Fit` / `Cover` are CPU-side `uv` adjustments
+   on top of `Stretch`.
 
 5. **Polish.** OKLab interpolation default (matches CSS Color 4), gradient
    along stroke if any workload demands it, `release_image` + atlas
@@ -340,8 +457,16 @@ the showcase tab updated.
   choice in a test so a careless flip is visible.
 - Stop count cap: 16 feels right (covers all real UI; LUT bake stays cheap).
   Hard-assert in `LinearGradient::new` rather than silently truncating.
-- Renderer-vs-record separation: should `GradientId` allocation live in
-  `Ui::brushes` (per-frame, simple) or in a renderer-side cache that
-  survives across frames? Per-frame is easier and the LUT cache already
-  amortizes the real cost. Pick per-frame for v1; revisit if profiling
-  shows bake overhead.
+- Should `BrushArena` live on `Ui` or on the renderer? Currently on `Ui`
+  with content-hashed ids and N-frame eviction — gradient registration is
+  authoring-time, not GPU-time, so it logically belongs alongside
+  `StateMap`. The LUT atlas (renderer-side) is keyed by the same content
+  hash, so the two halves stay in sync without a cross-side handshake.
+- LUT row collision overflow: linear-probe within the 256 rows or fall
+  back to a small "extras" row appended on demand? Probe is fine for
+  expected workloads (few dozen distinct gradients/frame); revisit if
+  collisions become a measurable miss rate.
+- Cross-brush `Animatable` morph (gradient ↔ solid) — currently snaps. If
+  designers ask for it, the path is "compose solid as a 2-stop same-color
+  gradient on the fly and lerp stops"; cheap once the LUT bake is
+  amortized but adds complexity. Defer.
