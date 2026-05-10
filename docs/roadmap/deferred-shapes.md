@@ -409,13 +409,23 @@ The contract for any deferred-shape consumer:
   reads.** Authoring or layout changes on those endpoints
   propagate into the owner's `subtree_hash` automatically (via
   existing rollup), so cache misses correctly when geometry
-  needs to change.
-- **External cross-frame state goes through `state_salt`.** Any
-  resolver input that doesn't trace back to a node's authoring —
-  scroll offset, focused id, selection state, tab indicator's
-  active-tab id — gets quantized and hashed into a `u64` salt
-  set on the owner via `tree.set_salt(owner, salt)`. The salt
-  participates in `compute_node_hashes`.
+  needs to change. **`Connector` and `NodeOutline` resolvers
+  invalidate purely through this rollup — they need nothing
+  more.**
+- **External cross-frame state goes through an internal salt.**
+  Some resolvers read state that doesn't trace back to any node's
+  authoring (scroll offset, focused id, active-tab id). For those
+  — only `ScrollBar` and a future `TabIndicator` today — the
+  registry quantizes the relevant state, hashes it, and writes
+  the hash into `Tree.state_salt[owner]` at registration time.
+  `compute_node_hashes` mixes the salt in.
+  **This is an internal mechanism. The salt is not a public API
+  knob, not a `pub(crate)` widget surface, and not something the
+  framework user names or thinks about.** It lives entirely
+  inside the `Resolver` enum's match-arm logic. A widget author
+  writing a custom widget reaches for the registry the same way
+  whether their resolver needs salt or not — the choice is
+  encoded in the `Resolver` variant, not at the call site.
 - **Placeholder shapes are recorded as constants.** All resolved
   geometry is deterministic given (subtree authoring, available_q,
   owner salt). Cache hits replay correct cmds.
