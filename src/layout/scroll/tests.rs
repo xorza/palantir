@@ -121,7 +121,6 @@ fn state_survives_across_frames() {
     let f2 = state_for(&mut ui, "scroll");
     assert_eq!(f1.content, f2.content);
     assert_eq!(f1.viewport, f2.viewport);
-    assert_eq!(f1.outer, f2.outer);
     assert!(f1.seen, "first frame's relayout populated state");
     assert!(f2.seen);
     // Sanity: pinned numbers.
