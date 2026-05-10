@@ -161,10 +161,7 @@ impl NodeArenas {
         self.desired[range.clone()].copy_from_slice(src.desired);
         let base = src.text_spans_base;
         for (dst, s) in self.text_spans[range].iter_mut().zip(src.text_spans.iter()) {
-            *dst = Span {
-                start: s.start.saturating_sub(base),
-                len: s.len,
-            };
+            *dst = s.rebased(base);
         }
     }
 
@@ -172,10 +169,8 @@ impl NodeArenas {
         let start = self.desired.len() as u32;
         self.desired.extend_from_slice(src.desired);
         let base = src.text_spans_base;
-        self.text_spans.extend(src.text_spans.iter().map(|s| Span {
-            start: s.start.saturating_sub(base),
-            len: s.len,
-        }));
+        self.text_spans
+            .extend(src.text_spans.iter().map(|s| s.rebased(base)));
         start
     }
 

@@ -35,7 +35,7 @@ pub(crate) fn leaf_text_shapes(
     // Direct slice into `tree.shapes` for `node`. Leaves have no children,
     // so the `records.shape_span()[i]` span is exactly the leaf's own direct
     // shapes — contiguous, no child boundaries to skip.
-    debug_assert_eq!(
+    assert_eq!(
         tree.records.subtree_end()[node.index()],
         node.0 + 1,
         "leaf_text_shapes called on non-leaf node {node:?}",
