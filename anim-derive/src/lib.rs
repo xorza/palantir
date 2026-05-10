@@ -10,7 +10,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{Data, DataStruct, DeriveInput, Field, Fields, Ident, parse_macro_input};
+use syn::{Data, DataStruct, DeriveInput, Field, Fields, Ident, Type, parse_macro_input};
 
 /// `#[derive(Animatable)]` on a struct with named fields.
 ///
@@ -42,51 +42,54 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         }
     };
 
-    let mut anim: Vec<&Ident> = Vec::new();
-    let mut snap: Vec<&Ident> = Vec::new();
+    let mut anim: Vec<(&Ident, &Type)> = Vec::new();
+    let mut snap: Vec<(&Ident, &Type)> = Vec::new();
     for f in fields {
-        let ident = match f.ident.as_ref() {
-            Some(i) => i,
-            None => continue,
+        let Some(ident) = f.ident.as_ref() else {
+            continue;
         };
-        if is_snap(f) {
-            snap.push(ident);
+        let is_snap = match classify_field(f) {
+            Ok(b) => b,
+            Err(e) => return e.to_compile_error().into(),
+        };
+        if is_snap {
+            snap.push((ident, &f.ty));
         } else {
-            anim.push(ident);
+            anim.push((ident, &f.ty));
         }
     }
 
-    let lerp_anim = anim.iter().map(|f| {
+    let lerp_anim = anim.iter().map(|(f, _)| {
         quote! { #f: ::palantir::Animatable::lerp(a.#f, b.#f, t), }
     });
-    let lerp_snap = snap.iter().map(|f| {
+    let lerp_snap = snap.iter().map(|(f, _)| {
         quote! { #f: b.#f, }
     });
 
-    let sub_anim = anim.iter().map(|f| {
+    let sub_anim = anim.iter().map(|(f, _)| {
         quote! { #f: ::palantir::Animatable::sub(self.#f, other.#f), }
     });
-    let sub_snap = snap.iter().map(|f| {
+    let sub_snap = snap.iter().map(|(f, _)| {
         quote! { #f: self.#f, }
     });
 
-    let add_anim = anim.iter().map(|f| {
+    let add_anim = anim.iter().map(|(f, _)| {
         quote! { #f: ::palantir::Animatable::add(self.#f, other.#f), }
     });
-    let add_snap = snap.iter().map(|f| {
+    let add_snap = snap.iter().map(|(f, _)| {
         quote! { #f: self.#f, }
     });
 
-    let scale_anim = anim.iter().map(|f| {
+    let scale_anim = anim.iter().map(|(f, _)| {
         quote! { #f: ::palantir::Animatable::scale(self.#f, k), }
     });
-    let scale_snap = snap.iter().map(|f| {
+    let scale_snap = snap.iter().map(|(f, _)| {
         quote! { #f: self.#f, }
     });
 
     let mag_sq_terms: Vec<TokenStream2> = anim
         .iter()
-        .map(|f| quote! { ::palantir::Animatable::magnitude_squared(self.#f) })
+        .map(|(f, _)| quote! { ::palantir::Animatable::magnitude_squared(self.#f) })
         .collect();
     let magnitude_squared_body = if mag_sq_terms.is_empty() {
         quote! { 0.0_f32 }
@@ -94,12 +97,10 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         quote! { #(#mag_sq_terms)+* }
     };
 
-    let zero_anim = anim.iter().map(|f| {
-        let ty = field_ty(fields, f);
+    let zero_anim = anim.iter().map(|(f, ty)| {
         quote! { #f: <#ty as ::palantir::Animatable>::zero(), }
     });
-    let zero_snap = snap.iter().map(|f| {
-        let ty = field_ty(fields, f);
+    let zero_snap = snap.iter().map(|(f, ty)| {
         quote! { #f: <#ty as ::core::default::Default>::default(), }
     });
 
@@ -154,30 +155,24 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-fn is_snap(f: &Field) -> bool {
+/// Returns `Ok(true)` if `#[animate(snap)]` (or `skip`) is set on the
+/// field, `Ok(false)` otherwise. Errors on unrecognised idents inside
+/// `#[animate(...)]` so typos like `#[animate(snip)]` fail loud at
+/// compile time instead of silently animating the field.
+fn classify_field(f: &Field) -> syn::Result<bool> {
     let mut snap = false;
     for attr in &f.attrs {
         if !attr.path().is_ident("animate") {
             continue;
         }
-        let _ = attr.parse_nested_meta(|meta| {
+        attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("snap") || meta.path.is_ident("skip") {
                 snap = true;
+                Ok(())
+            } else {
+                Err(meta.error("unknown #[animate(...)] option; expected `snap` or `skip`"))
             }
-            Ok(())
-        });
+        })?;
     }
-    snap
-}
-
-fn field_ty<'a>(
-    fields: &'a syn::punctuated::Punctuated<Field, syn::Token![,]>,
-    name: &Ident,
-) -> &'a syn::Type {
-    for f in fields {
-        if f.ident.as_ref() == Some(name) {
-            return &f.ty;
-        }
-    }
-    unreachable!("field {} not found", name)
+    Ok(snap)
 }

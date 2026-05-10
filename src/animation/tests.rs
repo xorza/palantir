@@ -351,7 +351,7 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     assert_eq!(v(&mut map), 1);
     assert_eq!(c(&mut map), 1);
 
-    map.sweep_removed(&[id]);
+    map.sweep_removed(&FxHashSet::from_iter([id]));
     assert_eq!(
         f(&mut map),
         1,

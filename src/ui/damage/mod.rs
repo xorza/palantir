@@ -32,7 +32,7 @@ use crate::forest::widget_id::WidgetId;
 use crate::primitives::rect::Rect;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::region::DamageRegion;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
 
 pub(crate) mod region;
@@ -160,7 +160,7 @@ impl Damage {
         &mut self,
         forest: &Forest,
         cascades: &CascadeResult,
-        removed: &[WidgetId],
+        removed: &FxHashSet<WidgetId>,
         surface: Rect,
     ) -> DamagePaint {
         // `prev_surface == None` is the "treat as a fresh frame"

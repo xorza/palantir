@@ -34,7 +34,7 @@ use crate::layout::result::ShapedText;
 use crate::layout::types::span::Span;
 use crate::primitives::size::Size;
 use glam::IVec2;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::ops::Range;
 
 /// Snapshot index entry. `nodes` indexes the [`NodeArenas`] columns;
@@ -373,7 +373,7 @@ impl MeasureCache {
     /// arena slots they referenced become garbage; a future
     /// `write_subtree` will compact them out once fragmentation
     /// crosses the threshold.
-    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
                 self.nodes.release(snap.nodes.len);

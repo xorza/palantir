@@ -205,7 +205,7 @@ impl Ui {
         let surface = self.display.logical_rect();
         self.forest.end_frame(surface);
         self.forest.ids.end_frame();
-        let removed = self.forest.ids.removed.as_slice();
+        let removed = &self.forest.ids.removed;
         self.text.sweep_removed(removed);
         self.layout.sweep_removed(removed);
         self.state.sweep_removed(removed);

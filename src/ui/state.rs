@@ -15,7 +15,7 @@
 //! returning a fresh default.
 
 use crate::forest::widget_id::WidgetId;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::any::Any;
 
 #[derive(Default)]
@@ -39,7 +39,7 @@ impl StateMap {
         })
     }
 
-    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         for id in removed {
             self.rows.remove(id);
         }
@@ -78,7 +78,7 @@ mod tests {
     fn sweep_removed_drops_rows() {
         let mut map = StateMap::default();
         *map.get_or_insert_with(wid(1), || 0u32) = 99;
-        map.sweep_removed(&[wid(1)]);
+        map.sweep_removed(&FxHashSet::from_iter([wid(1)]));
         // Re-inserting yields the init value, not the swept-away 99.
         assert_eq!(*map.get_or_insert_with(wid(1), || 0u32), 0);
     }

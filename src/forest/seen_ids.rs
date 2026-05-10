@@ -36,7 +36,10 @@ pub(crate) struct SeenIds {
     /// hold `&seen.removed` across other shared `&forest` reads — a
     /// `fn end_frame(&mut self) -> &[..]` accessor would tie the
     /// returned slice to the `&mut self` and block those reads.
-    pub(crate) removed: Vec<WidgetId>,
+    /// Stored as a `FxHashSet` (not `Vec`) so consumers that test
+    /// per-row membership (`anim`, `text`) get O(1) lookups without
+    /// rebuilding the set each frame.
+    pub(crate) removed: FxHashSet<WidgetId>,
     /// Per-original-id occurrence counter for auto-id collision
     /// disambiguation. Bumped by [`Self::next_dup`] when an auto id
     /// collides; cleared each frame.
@@ -94,7 +97,7 @@ impl SeenIds {
         self.removed.clear();
         for wid in &self.prev {
             if !self.curr.contains(wid) {
-                self.removed.push(*wid);
+                self.removed.insert(*wid);
             }
         }
         std::mem::swap(&mut self.curr, &mut self.prev);
