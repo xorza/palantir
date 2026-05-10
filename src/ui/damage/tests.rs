@@ -513,16 +513,17 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // Child layout rect didn't change. Parent's transform shifted by
     // (50, 0). Prev screen rect = (0,0,40,40); curr = (50,0,40,40);
     // gap of 10 px between them. bbox = 90×40 = 3600, sum = 3200,
-    // ratio 1.125 ≤ 1.3 — the proximity rule merges into one bbox.
-    // (A larger animation distance would keep the two rects split;
-    // pinned by `transform_animation_keeps_far_positions_split`.)
+    // SAH cost = 400 ≪ default budget — the merge rule collapses
+    // into one bbox. (A *much* larger distance would push cost over
+    // the budget; pinned by
+    // `transform_animation_keeps_far_positions_split`.)
     let rects: Vec<Rect> = ui.damage.region.iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
     assert_eq!(
         rects,
         vec![prev.union(curr)],
-        "transform animation under 1.3× ratio → one merged bbox",
+        "near transform animation → one merged bbox",
     );
     // Only the child is dirty: its authoring is unchanged but its
     // screen rect moved (rect comparison catches this). The parent
@@ -538,13 +539,17 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     assert_eq!(dirty_widget_ids, vec![WidgetId::from_hash("c")]);
 }
 
-/// Sister case to the test above: a *large* animation distance keeps
-/// the two screen rects split. Pinning both ends of the merge rule
-/// means a tighter ratio constant won't silently flip behaviour
-/// without breaking a test.
+/// Sister case to the test above: under a tight pass-budget, a
+/// far-apart transform animation keeps prev and curr screen rects
+/// split. Pinning both ends of the merge rule means a budget tweak
+/// can't silently flip behaviour without breaking a test.
 #[test]
 fn transform_animation_keeps_far_positions_split() {
     let mut ui = Ui::new();
+    // Drop the merge budget to strict-overlap-only so the prev/curr
+    // pair (cost 6 400 < default budget) stays split. Pins both
+    // ends of the merge rule against future budget tweaks.
+    ui.damage.budget_px = 0.0;
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
         run_at_acked(ui, UVec2::new(400, 400), |ui| {
@@ -571,7 +576,9 @@ fn transform_animation_keeps_far_positions_split() {
     build(200.0, &mut ui, &mut child_node);
 
     // prev (0,0,40,40) area 1600; curr (200,0,40,40) area 1600.
-    // bbox 240×40 = 9600. ratio 9600/3200 = 3.0 ≫ 1.3 — split.
+    // bbox 240×40 = 9600. SAH cost = 6400 — under the default
+    // 20 000 budget, this would merge; the guard above drops the
+    // budget to 0 to pin the strict-overlap-only branch.
     let rects: Vec<Rect> = ui.damage.region.iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(200.0, 0.0, 40.0, 40.0);
