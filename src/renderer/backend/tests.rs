@@ -11,7 +11,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::urect::URect;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::{DrawGroup, RenderBuffer, TextRun};
+use crate::renderer::render_buffer::{DrawGroup, MeshScene, RenderBuffer, TextRun};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
@@ -97,9 +97,7 @@ fn buf_with(groups: Vec<DrawGroup>, has_rounded_clip: bool) -> RenderBuffer {
     RenderBuffer {
         quads: vec![dummy_quad(); 4],
         texts: vec![dummy_text(); 4],
-        meshes: Vec::new(),
-        mesh_vertices: Vec::new(),
-        mesh_indices: Vec::new(),
+        meshes: MeshScene::default(),
         groups,
         viewport_phys: UVec2::new(100, 100),
         viewport_phys_f: Vec2::new(100.0, 100.0),

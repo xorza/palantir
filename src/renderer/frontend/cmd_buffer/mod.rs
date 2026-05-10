@@ -23,7 +23,7 @@
 //! (`DrawTextPayload`) work even when the arena slot starts at a
 //! 4-byte-only-aligned offset.
 
-use crate::primitives::mesh::MeshVertex;
+use crate::primitives::mesh::{Mesh, MeshVertex};
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
@@ -105,12 +105,11 @@ pub(crate) struct RenderCmdBuffer {
     pub(crate) starts: Vec<u32>,
     pub(crate) data: Vec<u32>,
     /// Self-contained mesh storage. `DrawMesh` payload spans slice
-    /// into these. Self-containment is load-bearing: the encode cache
-    /// snapshots a sub-range of `kinds`/`starts`/`data` plus a copy
-    /// of these mesh arrays, so replay doesn't need the original
-    /// `Tree` mesh arenas around.
-    pub(crate) mesh_vertices: Vec<MeshVertex>,
-    pub(crate) mesh_indices: Vec<u16>,
+    /// into `meshes.vertices` / `meshes.indices`. Self-containment is
+    /// load-bearing: the encode cache snapshots a sub-range of
+    /// `kinds`/`starts`/`data` plus a copy of these mesh arrays, so
+    /// replay doesn't need the original `Tree` mesh arenas around.
+    pub(crate) meshes: Mesh,
 }
 
 impl RenderCmdBuffer {
@@ -118,8 +117,7 @@ impl RenderCmdBuffer {
         self.kinds.clear();
         self.starts.clear();
         self.data.clear();
-        self.mesh_vertices.clear();
-        self.mesh_indices.clear();
+        self.meshes.clear();
     }
 
     #[inline]
@@ -190,10 +188,10 @@ impl RenderCmdBuffer {
         verts: &[MeshVertex],
         idx: &[u16],
     ) {
-        let v_start = self.mesh_vertices.len() as u32;
-        self.mesh_vertices.extend_from_slice(verts);
-        let i_start = self.mesh_indices.len() as u32;
-        self.mesh_indices.extend_from_slice(idx);
+        let v_start = self.meshes.vertices.len() as u32;
+        self.meshes.vertices.extend_from_slice(verts);
+        let i_start = self.meshes.indices.len() as u32;
+        self.meshes.indices.extend_from_slice(idx);
         self.record_start(CmdKind::DrawMesh);
         write_pod(
             &mut self.data,

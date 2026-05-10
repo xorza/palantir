@@ -10,7 +10,7 @@ use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::primitives::mesh::MeshVertex;
+use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::shape::ShapeRecord;
 use crate::widgets::grid::GridDef;
@@ -132,11 +132,10 @@ pub(crate) struct Tree {
     pub(crate) shapes: Vec<ShapeRecord>,
 
     // -- Flat mesh storage -----------------------------------------------
-    /// Vertex arena for `ShapeRecord::Mesh`. Spans on the mesh shape
-    /// record index into this buffer. Cleared per frame, capacity
+    /// Vertex+index arena for `ShapeRecord::Mesh`. Spans on the mesh
+    /// shape record index into this. Cleared per frame, capacity
     /// retained.
-    pub(crate) mesh_vertices: Vec<MeshVertex>,
-    pub(crate) mesh_indices: Vec<u16>,
+    pub(crate) meshes: Mesh,
 
     // -- Frame-scoped sub-storage ----------------------------------------
     pub(crate) grid: GridArena,
@@ -181,8 +180,7 @@ impl Tree {
         self.clip_radius.clear();
         self.parents.clear();
         self.shapes.clear();
-        self.mesh_vertices.clear();
-        self.mesh_indices.clear();
+        self.meshes.clear();
         self.grid.clear();
         self.rollups.has_grid.clear();
         self.roots.clear();

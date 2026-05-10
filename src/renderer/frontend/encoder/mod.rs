@@ -142,8 +142,8 @@ fn emit_one_shape(
                 None => owner_rect.min,
                 Some(lr) => owner_rect.min + lr.min,
             };
-            let verts = &tree.mesh_vertices[vertices.range()];
-            let idx = &tree.mesh_indices[indices.range()];
+            let verts = &tree.meshes.vertices[vertices.range()];
+            let idx = &tree.meshes.indices[indices.range()];
             out.draw_mesh(origin, *tint, verts, idx);
         }
     }

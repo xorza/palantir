@@ -63,7 +63,7 @@ impl GroupBuilder {
     fn flush(&mut self, out: &mut RenderBuffer) {
         let q_end = out.quads.len() as u32;
         let t_end = out.texts.len() as u32;
-        let m_end = out.meshes.len() as u32;
+        let m_end = out.meshes.draws.len() as u32;
         if q_end > self.quads_start || t_end > self.texts_start || m_end > self.meshes_start {
             out.groups.push(DrawGroup {
                 scissor: self.current,
@@ -122,7 +122,7 @@ impl GroupBuilder {
 
     fn push_mesh(&mut self, out: &mut RenderBuffer, draw: MeshDraw) {
         self.before_draw(DrawKind::Mesh, out);
-        out.meshes.push(draw);
+        out.meshes.draws.push(draw);
     }
 }
 
@@ -165,8 +165,6 @@ impl Composer {
         out.quads.clear();
         out.texts.clear();
         out.meshes.clear();
-        out.mesh_vertices.clear();
-        out.mesh_indices.clear();
         out.groups.clear();
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
@@ -284,16 +282,16 @@ impl Composer {
                     let v_end = v_start + p.v_len as usize;
                     let i_start = p.i_start as usize;
                     let i_end = i_start + p.i_len as usize;
-                    let phys_v_start = out.mesh_vertices.len() as u32;
+                    let phys_v_start = out.meshes.arena.vertices.len() as u32;
                     let tint = p.tint;
-                    for v in &cmds.mesh_vertices[v_start..v_end] {
+                    for v in &cmds.meshes.vertices[v_start..v_end] {
                         let world = current_transform.apply_point(v.pos + p.origin);
                         // Premultiplied-alpha tinting: component-wise
                         // multiply works for both rgb and alpha. The
                         // backend pipeline doesn't take a tint uniform
                         // — it's baked in here.
                         let c = v.color;
-                        out.mesh_vertices.push(MeshVertex {
+                        out.meshes.arena.vertices.push(MeshVertex {
                             pos: world * scale,
                             color: crate::primitives::color::Color {
                                 r: c.r * tint.r,
@@ -303,15 +301,16 @@ impl Composer {
                             },
                         });
                     }
-                    let phys_i_start = out.mesh_indices.len() as u32;
-                    out.mesh_indices
-                        .extend_from_slice(&cmds.mesh_indices[i_start..i_end]);
+                    let phys_i_start = out.meshes.arena.indices.len() as u32;
+                    out.meshes
+                        .arena
+                        .indices
+                        .extend_from_slice(&cmds.meshes.indices[i_start..i_end]);
                     group.push_mesh(
                         out,
                         MeshDraw {
                             vertices: (phys_v_start..phys_v_start + p.v_len).into(),
                             indices: (phys_i_start..phys_i_start + p.i_len).into(),
-                            tint: p.tint,
                         },
                     );
                 }
