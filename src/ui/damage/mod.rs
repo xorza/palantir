@@ -31,7 +31,7 @@ use crate::forest::tree::NodeId;
 use crate::forest::widget_id::WidgetId;
 use crate::primitives::rect::Rect;
 use crate::ui::cascade::CascadeResult;
-use crate::ui::damage::region::DamageRegion;
+use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
 
@@ -77,10 +77,15 @@ pub(crate) struct NodeSnapshot {
 ///
 /// Capacities on `dirty` and `prev` are retained across frames;
 /// `region` is inline (`DamageRegion` is `Copy`).
-#[derive(Default)]
 pub(crate) struct Damage {
     pub(crate) dirty: Vec<NodeId>,
     pub(crate) region: DamageRegion,
+    /// Per-pass merge budget (extra-overdraw px) used when
+    /// `compute` builds the next frame's region. Defaults to
+    /// [`DEFAULT_PASS_BUDGET_PX`]; override in place (e.g. from a
+    /// debug-overlay slider, a TBDR backend init, or a test) before
+    /// the next `Ui::end_frame` runs.
+    pub(crate) budget_px: f32,
     /// Last frame's snapshot, **only for widgets that painted last
     /// frame** (see the painting-only invariant in the module doc).
     /// Read by the diff in `compute`, then updated/inserted/evicted
@@ -90,6 +95,18 @@ pub(crate) struct Damage {
     pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
     /// Last frame's surface rect. `None` on first frame.
     pub(crate) prev_surface: Option<Rect>,
+}
+
+impl Default for Damage {
+    fn default() -> Self {
+        Self {
+            dirty: Vec::new(),
+            region: DamageRegion::default(),
+            budget_px: DEFAULT_PASS_BUDGET_PX,
+            prev: FxHashMap::default(),
+            prev_surface: None,
+        }
+    }
 }
 
 /// Coverage ratio above which the renderer should skip the per-node
@@ -174,7 +191,7 @@ impl Damage {
         let force_full = self.prev_surface.is_none();
         self.prev_surface = Some(surface);
         self.dirty.clear();
-        let mut acc = DamageRegion::default();
+        let mut acc = DamageRegion::with_budget(self.budget_px);
 
         for (layer, tree) in forest.iter_paint_order() {
             let rows = cascades.rows_for(layer);
