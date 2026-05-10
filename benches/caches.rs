@@ -27,7 +27,7 @@ use glam::Vec2;
 use palantir::support::internals;
 use palantir::{
     Background, Color, Configure, Corners, Display, Frame, InputEvent, Panel, Rect, Scroll, Shape,
-    Sizing, Stroke, Surface, Text, TextShaper, TextStyle, Ui,
+    Sizing, Stroke, Text, TextShaper, TextStyle, Ui,
 };
 use std::hint::black_box;
 
@@ -99,22 +99,22 @@ fn build(ui: &mut Ui) {
 /// the compose-cache contribution finding from the simpler `build`
 /// workload — if the cache earns < 1% here too, deletion is justified.
 fn build_heavy(ui: &mut Ui) {
-    let group_surface = Surface::clip_rounded_with_bg(Background {
+    let group_bg = Background {
         fill: Color::hex(0x1a1a1a),
-        stroke: Some(Stroke {
+        stroke: Stroke {
             width: 1.5,
             color: Color::hex(0x4d5663),
-        }),
+        },
         radius: Corners::all(12.0),
-    });
-    let row_surface = Surface::clip_rounded_with_bg(Background {
+    };
+    let row_bg = Background {
         fill: Color::hex(0x252525),
-        stroke: None,
+        stroke: Stroke::ZERO,
         radius: Corners::all(6.0),
-    });
+    };
     let avatar_bg = Background {
         fill: Color::hex(0x3a4a5c),
-        stroke: None,
+        stroke: Stroke::ZERO,
         radius: Corners::all(10.0),
     };
     Panel::vstack()
@@ -129,7 +129,8 @@ fn build_heavy(ui: &mut Ui) {
                     .gap(4.0)
                     .padding(8.0)
                     .size((Sizing::FILL, Sizing::Hug))
-                    .background(group_surface)
+                    .background(group_bg)
+                    .clip_rounded()
                     .show(ui, |ui| {
                         Text::new("Group header — interesting copy that wraps")
                             .id_salt(("h-g-hdr", g))
@@ -141,7 +142,8 @@ fn build_heavy(ui: &mut Ui) {
                                 .gap(8.0)
                                 .padding(6.0)
                                 .size((Sizing::FILL, Sizing::Hug))
-                                .background(row_surface)
+                                .background(row_bg)
+                                .clip_rounded()
                                 .show(ui, |ui| {
                                     // Inner zstack adds a nesting level — exercises
                                     // measure on a deeper tree.
@@ -180,7 +182,7 @@ fn build_heavy(ui: &mut Ui) {
 fn build_dense(ui: &mut Ui) {
     let avatar_bg = Background {
         fill: Color::hex(0x3a4a5c),
-        stroke: None,
+        stroke: Stroke::ZERO,
         radius: Corners::all(8.0),
     };
     Panel::vstack()
@@ -212,7 +214,7 @@ fn build_dense(ui: &mut Ui) {
                                             local_rect: Some(Rect::new(x, 2.0, 3.0, 16.0)),
                                             radius: Corners::all(1.5),
                                             fill: Color::hex(0x556677),
-                                            stroke: None,
+                                            stroke: Stroke::ZERO,
                                         });
                                     }
                                     Frame::new()

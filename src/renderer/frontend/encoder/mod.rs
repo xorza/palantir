@@ -201,31 +201,41 @@ fn encode_node(
     }
 
     if clip {
-        // Inset the clip by the chrome's stroke width so children
-        // clip inside the painted stroke ring. With no chrome (paint
-        // dropped because invisible, or clip set without a Surface),
-        // inset is 0 — there's no painted ring to stay inside of.
-        let inset = chrome.map_or(0.0, |bg| bg.stroke.width);
-        let mask_rect = rect.deflated_by(Spacing::all(inset));
+        // Inset the clip by the chrome's stroke width AND the panel's
+        // padding so children clip at the content rect, inside the
+        // painted stroke ring. With no chrome (paint dropped because
+        // invisible, or clip set without a Surface), stroke is 0 —
+        // there's no painted ring to stay inside of, but padding
+        // still applies. Padding semantics here match how children
+        // are laid out (parent's inner rect = rect - padding), so a
+        // child with `margin(0)` lands flush with the clip edge.
+        let stroke = chrome.map_or(0.0, |bg| bg.stroke.width);
+        let padding = tree.records.layout()[id.index()].padding;
+        let inset = Spacing {
+            left: stroke + padding.left,
+            top: stroke + padding.top,
+            right: stroke + padding.right,
+            bottom: stroke + padding.bottom,
+        };
+        let mask_rect = rect.deflated_by(inset);
         match mode {
             ClipMode::Rect => out.push_clip(mask_rect),
             ClipMode::Rounded => {
-                // Reduce each corner radius by `inset` so the mask
-                // curve stays concentric with the painted stroke's
-                // inner edge — both curves have center at
-                // `(rect.min + paint.radius)`. Radius comes from the
-                // dedicated `clip_radius` column, decoupled from
-                // chrome so an invisible-paint rounded surface still
-                // has a mask radius even after chrome was dropped.
+                // Per-corner reduction by the larger of the two
+                // adjacent edge insets. With uniform padding this
+                // keeps the mask curve concentric with the painted
+                // stroke's inner edge; with asymmetric padding the
+                // mask snaps inside both adjacent edges (radius
+                // can't honor concentricity on both axes at once).
                 let painted = tree
                     .clip_radius_for(id)
                     .copied()
                     .expect("ClipMode::Rounded without clip_radius — open_node invariant violated");
                 let mask_radius = Corners {
-                    tl: (painted.tl - inset).max(0.0),
-                    tr: (painted.tr - inset).max(0.0),
-                    br: (painted.br - inset).max(0.0),
-                    bl: (painted.bl - inset).max(0.0),
+                    tl: (painted.tl - inset.top.max(inset.left)).max(0.0),
+                    tr: (painted.tr - inset.top.max(inset.right)).max(0.0),
+                    br: (painted.br - inset.bottom.max(inset.right)).max(0.0),
+                    bl: (painted.bl - inset.bottom.max(inset.left)).max(0.0),
                 };
                 out.push_clip_rounded(mask_rect, mask_radius);
             }
