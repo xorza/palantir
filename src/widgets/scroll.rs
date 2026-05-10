@@ -1,9 +1,5 @@
-use crate::Layer;
-use crate::forest::Forest;
 use crate::forest::element::{Configure, Element, LayoutMode, ScrollAxes};
-use crate::forest::tree::NodeId;
 use crate::input::sense::Sense;
-use crate::layout::LayoutEngine;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
@@ -14,101 +10,17 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::shape::Shape;
 use crate::ui::Ui;
-use crate::ui::state::StateMap;
 use crate::widgets::Response;
 use crate::widgets::theme::ScrollbarTheme;
 use glam::Vec2;
 
-// ---------------------------------------------------------------------------
-// Persistent state
-// ---------------------------------------------------------------------------
-
-/// Cross-frame state row for one [`Scroll`] widget. Persisted via
-/// `Ui::state_mut` keyed by the widget's `WidgetId` and refreshed by
-/// [`refresh`] after arrange — `viewport`/`outer`/`content`/`overflow`
-/// reflect the just-finished frame, while `offset` is the *next*
-/// frame's starting pan position. Single-axis scrolls leave the
-/// un-panned axis at 0.
-///
-/// - `viewport` — INNER (user-padding-deflated) size: what children
-///   see. Drives `content > viewport` overflow checks.
-/// - `outer` — full arranged rect size including any reserved bar
-///   strips. Drives bar positioning so the bar sits flush with the
-///   OUTER far edge.
-/// - `content` — measured content extent on the panned axes.
-/// - `overflow` — `(x, y)` per-axis: did this axis's content overflow
-///   the viewport on the most recent measure? Read at record time
-///   to decide whether to reserve a bar gutter on the cross axis.
-/// - `seen` — set by [`refresh`] after the first frame populates the
-///   other fields. Read by `Scroll::show` to detect a cold-mount and
-///   request a relayout pass so the second pass records with the
-///   measured reservation in place — no cold-mount overlap.
-#[derive(Default, Clone, Copy, Debug)]
-pub(crate) struct ScrollState {
-    pub(crate) offset: Vec2,
-    pub(crate) viewport: Size,
-    pub(crate) outer: Size,
-    pub(crate) content: Size,
-    pub(crate) overflow: (bool, bool),
-    pub(crate) seen: bool,
-}
-
-/// Walk every layer's tree, find each `LayoutMode::Scroll` node, and
-/// update its widget's [`ScrollState`] row from this frame's arranged
-/// rects + measured content extent. Discovered by mode tag — the
-/// scroll widget records two nodes (outer ZStack + inner Scroll
-/// panel) in pre-order, so the inner's preceding sibling/parent in
-/// the records array is the outer.
-///
-/// On a measure-cache hit the scroll driver doesn't fire and
-/// [`crate::layout::scroll::ScrollContent`] lacks an entry for this
-/// scroll — last frame's `ScrollState.content` is then still correct
-/// (cache hit ⟹ identical measure), so we leave the row's `content`
-/// untouched.
-pub(crate) fn refresh(forest: &Forest, layout: &LayoutEngine, state: &mut StateMap) {
-    for layer in Layer::PAINT_ORDER {
-        let tree = forest.tree(layer);
-        let layer_result = &layout.result[layer];
-        let layouts = tree.records.layout();
-        let widget_ids = tree.records.widget_id();
-        for inner_idx in 0..layouts.len() {
-            if !matches!(layouts[inner_idx].mode, LayoutMode::Scroll(_)) {
-                continue;
-            }
-            // Convention enforced by `Scroll::show`: the inner Scroll
-            // panel is recorded as the first child of an outer
-            // ZStack, so `outer == inner - 1` in pre-order. Asserted
-            // here so a future restructure of the widget trips loudly.
-            assert!(
-                inner_idx > 0 && matches!(layouts[inner_idx - 1].mode, LayoutMode::ZStack),
-                "scroll inner at {inner_idx} expected outer ZStack at {} (Scroll::show convention)",
-                inner_idx.saturating_sub(1),
-            );
-            let outer_idx = inner_idx - 1;
-            let widget_id = widget_ids[outer_idx];
-            let inner_padding = layouts[inner_idx].padding;
-            let inner_rect = layer_result.rect[inner_idx];
-            let outer_size = layer_result.rect[outer_idx].size;
-            let viewport = inner_rect.deflated_by(inner_padding).size;
-            let row = state.get_or_insert_with::<ScrollState, _>(widget_id, Default::default);
-            let content = layout
-                .scroll_content
-                .lookup(layer, NodeId(inner_idx as u32))
-                .unwrap_or(row.content);
-            row.viewport = viewport;
-            row.outer = outer_size;
-            row.content = content;
-            row.overflow = (content.w > viewport.w, content.h > viewport.h);
-            row.seen = true;
-            // End-frame re-clamp pairs with the record-time clamp in
-            // `Scroll::show`, which only had last frame's numbers.
-            let max_x = (content.w - viewport.w).max(0.0);
-            let max_y = (content.h - viewport.h).max(0.0);
-            row.offset.x = row.offset.x.clamp(0.0, max_x);
-            row.offset.y = row.offset.y.clamp(0.0, max_y);
-        }
-    }
-}
+// `ScrollLayoutState` lives on `LayoutEngine::scroll_states` rather
+// than `StateMap` — it's a layout-derived concern, refresh writes
+// the layout fields after arrange, and the widget reads/mutates the
+// row at record time via [`Ui::scroll_state`].
+//
+// Bar drawing + reservation logic stay here as widget concerns; the
+// layout primitive itself is unaware of scrollbars.
 
 // ---------------------------------------------------------------------------
 // Bar geometry helpers
@@ -266,37 +178,38 @@ impl Scroll {
 
         // Record-time clamp + reservation-guess: both use *last*
         // frame's `viewport`/`content`/`overflow`. The matching
-        // re-clamp in `refresh` corrects with fresh numbers
-        // post-arrange. Off-axis offsets stay at 0 for single-axis
-        // scrolls.
+        // re-clamp in `LayoutEngine::refresh_scrolls` corrects with
+        // fresh numbers post-arrange. Off-axis offsets stay at 0 for
+        // single-axis scrolls.
         //
-        // Cold-mount: state is default (`seen == false`) → reservation
-        // guess is wrong (defaults to `(false, false)`), so we
-        // request a relayout pass. After this pass's record + measure
+        // Cold-mount: state is default (`seen == false`) → the
+        // reservation guess defaults to `(false, false)`, wrong, so
+        // we request a relayout. After this pass's record + measure
         // + refresh, `seen` is true and pass B records with the
-        // measured reservation in place. No subsequent overflow flip
-        // triggers relayout — same model as the wheel-pan clamp's
-        // accepted one-frame staleness.
+        // measured reservation in place. Subsequent overflow flips
+        // mid-life produce a one-frame visual blip — accepted on
+        // the same tier as the wheel-pan clamp's staleness.
         let delta = ui.input.scroll_delta_for(id);
-        let seen = ui.state_mut::<ScrollState>(id).seen;
-        if !seen {
+        let scroll = {
+            let row = ui.scroll_state(id);
+            let max_x = (row.content.w - row.viewport.w).max(0.0);
+            let max_y = (row.content.h - row.viewport.h).max(0.0);
+            if pan.x {
+                row.offset.x = (row.offset.x + delta.x).clamp(0.0, max_x);
+            }
+            if pan.y {
+                row.offset.y = (row.offset.y + delta.y).clamp(0.0, max_y);
+            }
+            *row
+        };
+        if !scroll.seen {
             ui.request_relayout();
         }
-        let row = ui.state_mut::<ScrollState>(id);
-        let max_x = (row.content.w - row.viewport.w).max(0.0);
-        let max_y = (row.content.h - row.viewport.h).max(0.0);
-        let mut offset = row.offset;
-        if pan.x {
-            offset.x = (offset.x + delta.x).clamp(0.0, max_x);
-        }
-        if pan.y {
-            offset.y = (offset.y + delta.y).clamp(0.0, max_y);
-        }
-        row.offset = offset;
-        let viewport = row.viewport;
-        let outer_size = row.outer;
-        let content = row.content;
-        let overflow = row.overflow;
+        let viewport = scroll.viewport;
+        let outer_size = scroll.outer;
+        let content = scroll.content;
+        let overflow = scroll.overflow;
+        let offset = scroll.offset;
         let theme = ui.theme.scrollbar.clone();
 
         // Reservation: a panned axis with current-state overflow
