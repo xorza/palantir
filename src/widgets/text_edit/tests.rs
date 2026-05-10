@@ -159,8 +159,8 @@ fn typing_inserts_text_when_focused() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Click into the editor so focus lands.
     click_at(&mut ui, Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(id));
@@ -183,8 +183,8 @@ fn typing_inserts_text_when_focused() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(buf, "hi");
 }
 
@@ -205,8 +205,8 @@ fn keystrokes_ignored_when_not_focused() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(buf, "", "unfocused TextEdit must not consume keystrokes");
     assert!(ui.focused_id().is_none());
 }
@@ -223,8 +223,8 @@ fn escape_blurs_focus() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(id));
 
@@ -240,8 +240,8 @@ fn escape_blurs_focus() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(ui.focused_id(), None);
 }
 
@@ -259,7 +259,8 @@ fn caret_clamps_after_external_buffer_shrink() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(50.0, 20.0));
     // Move to end.
     ui.on_input(InputEvent::KeyDown {
@@ -273,8 +274,8 @@ fn caret_clamps_after_external_buffer_shrink() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // External shrink.
     buf = String::from("hi");
 
@@ -291,8 +292,8 @@ fn caret_clamps_after_external_buffer_shrink() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(
         buf, "hi!",
         "clamping must keep insertion at end of shrunken buffer",
@@ -315,7 +316,8 @@ fn text_event_inserts_at_caret_when_focused() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(50.0, 20.0));
 
     ui.on_input(InputEvent::Text(TextChunk::new("héllo").unwrap()));
@@ -327,8 +329,8 @@ fn text_event_inserts_at_caret_when_focused() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(buf, "héllo");
 }
 
@@ -345,8 +347,8 @@ fn pointer_state_respects_pointer_left() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(50.0, 20.0));
     ui.on_input(InputEvent::PointerLeft);
     ui.on_input(InputEvent::KeyDown {
@@ -361,8 +363,8 @@ fn pointer_state_respects_pointer_left() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(buf, "z");
 }
 
@@ -387,8 +389,8 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(WidgetId::from_hash("editor")));
 
@@ -404,8 +406,8 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-    // Button starts at x=180, click at 200.
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase(); // Button starts at x=180, click at 200.
     click_at(&mut ui, Vec2::new(200.0, 20.0));
     assert_eq!(
         ui.focused_id(),
@@ -429,8 +431,8 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(buf, "");
 }
 
@@ -452,8 +454,8 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(50.0, 20.0));
     begin(&mut ui, UVec2::new(400, 80));
     Panel::hstack().auto_id().show(&mut ui, |ui| {
@@ -466,7 +468,8 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(200.0, 20.0));
 
     // PreserveOnMiss: focus stays on editor. Type — lands in buffer.
@@ -485,8 +488,8 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
             .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(buf, "x");
 }
 
@@ -503,8 +506,8 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(50.0, 20.0));
     // Move to End.
     ui.on_input(InputEvent::KeyDown {
@@ -518,8 +521,8 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Pointer moves over the editor without pressing — caret must
     // stay where it was.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 20.0)));
@@ -535,8 +538,8 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Caret was at end (offset 2) when '!' was inserted → "ab!".
     assert_eq!(buf, "ab!");
 }
@@ -562,8 +565,8 @@ fn click_lands_caret_at_pressed_position() {
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Press at x=32 (theme padding 8 + three glyphs × 8 px) → caret=3.
     // Hold the press across the next frame so `state.pressed` is true
     // when handle_input runs.
@@ -577,8 +580,8 @@ fn click_lands_caret_at_pressed_position() {
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Type a marker char while still pressed → it must insert at
     // caret=3, producing "helXlo world".
     ui.on_input(InputEvent::KeyDown {
@@ -592,8 +595,8 @@ fn click_lands_caret_at_pressed_position() {
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Release — caret stays at the press location.
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
@@ -621,8 +624,8 @@ fn click_uses_overridden_padding() {
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(32.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
 
@@ -634,8 +637,8 @@ fn click_uses_overridden_padding() {
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('X'),
         repeat: false,
@@ -648,7 +651,8 @@ fn click_uses_overridden_padding() {
             .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     assert_eq!(
@@ -675,8 +679,8 @@ fn two_textedits_only_one_focused_at_a_time() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Click A.
     click_at(&mut ui, Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(id_a));
@@ -697,7 +701,8 @@ fn two_textedits_only_one_focused_at_a_time() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(a, "1");
     assert_eq!(b, "");
 
@@ -720,7 +725,8 @@ fn two_textedits_only_one_focused_at_a_time() {
             .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
             .show(ui);
     });
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(a, "1", "A's buffer untouched once focus moved to B");
     assert_eq!(b, "2");
 }
@@ -776,8 +782,8 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
                 .node,
         );
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let read_fs = |node: crate::forest::tree::NodeId| -> f32 {
         shapes_of(ui.forest.tree(Layer::Main), node)
             .find_map(|s| match s {
@@ -818,8 +824,8 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         node = Some(Text::new("hi").auto_id().show(ui).node);
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let color = shapes_of(ui.forest.tree(Layer::Main), node.unwrap())
         .find_map(|s| match s {
             Shape::Text { color, .. } => Some(*color),
@@ -849,8 +855,8 @@ fn text_widget_color_override_wins_over_theme() {
                 .node,
         );
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let color = shapes_of(ui.forest.tree(Layer::Main), node.unwrap())
         .find_map(|s| match s {
             Shape::Text { color, .. } => Some(*color),
@@ -895,8 +901,8 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
                 .node,
         );
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let read_lh = |node: crate::forest::tree::NodeId| -> f32 {
         shapes_of(ui.forest.tree(Layer::Main), node)
             .find_map(|s| match s {
@@ -954,7 +960,8 @@ fn textedit_style_override_replaces_default_theme() {
                 .node,
         );
     });
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let lh = shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
         .find_map(|s| match s {
             Shape::Text { line_height_px, .. } => Some(*line_height_px),
@@ -984,8 +991,8 @@ fn pushed_shape_carries_default_line_height_from_theme() {
                 .node,
         );
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let text_shape =
         shapes_of(ui.forest.tree(Layer::Main), leaf_node.unwrap()).find_map(|s| match s {
             Shape::Text {
@@ -1032,8 +1039,8 @@ fn pushed_shape_uses_style_overridden_line_height() {
                 .node,
         );
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let lh = shapes_of(ui.forest.tree(Layer::Main), leaf_node.unwrap())
         .find_map(|s| match s {
             Shape::Text { line_height_px, .. } => Some(*line_height_px),
@@ -1067,7 +1074,8 @@ fn line_height_override_changes_caret_rect_height() {
             }
             leaf = Some(e.show(ui).node);
         });
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         click_at(&mut ui, Vec2::new(20.0, 20.0));
         // Re-record so the focused branch fires this frame.
         begin(&mut ui, UVec2::new(300, 80));
@@ -1080,8 +1088,8 @@ fn line_height_override_changes_caret_rect_height() {
             }
             leaf = Some(e.show(ui).node);
         });
-        ui.end_frame();
-        // Caret = the only sub-rect Shape pushed (no selection in v1).
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase(); // Caret = the only sub-rect Shape pushed (no selection in v1).
         shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
             .find_map(|s| match s {
                 Shape::RoundedRect {

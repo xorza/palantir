@@ -1,25 +1,28 @@
+use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::tree::Layer;
+use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::color::Color;
-use crate::support::testing::{click_at, encode_cmds, ui_at};
+use crate::support::testing::{click_at, encode_cmds, run_at};
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
 fn collapsed_child_consumes_no_space_in_hstack() {
-    let mut ui = ui_at(UVec2::new(400, 100));
-    let root = Panel::hstack()
-        .auto_id()
-        .gap(10.0)
-        .show(&mut ui, |ui| {
-            Frame::new().id_salt("a").size(40.0).show(ui);
-            Frame::new().id_salt("gone").size(40.0).collapsed().show(ui);
-            Frame::new().id_salt("b").size(40.0).show(ui);
-        })
-        .node;
-    ui.end_frame();
+    let mut ui = Ui::new();
+    let mut root = NodeId(0);
+    run_at(&mut ui, UVec2::new(400, 100), |ui| {
+        root = Panel::hstack()
+            .auto_id()
+            .gap(10.0)
+            .show(ui, |ui| {
+                Frame::new().id_salt("a").size(40.0).show(ui);
+                Frame::new().id_salt("gone").size(40.0).collapsed().show(ui);
+                Frame::new().id_salt("b").size(40.0).show(ui);
+            })
+            .node;
+    });
 
     let kids: Vec<_> = ui
         .forest
@@ -42,26 +45,28 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 
 #[test]
 fn collapsed_does_not_consume_fill_weight() {
-    let mut ui = ui_at(UVec2::new(400, 100));
-    let root = Panel::hstack()
-        .auto_id()
-        .show(&mut ui, |ui| {
-            Frame::new()
-                .id_salt("a")
-                .size((Sizing::Fill(1.0), Sizing::Hug))
-                .show(ui);
-            Frame::new()
-                .id_salt("gone")
-                .size((Sizing::Fill(3.0), Sizing::Hug))
-                .collapsed()
-                .show(ui);
-            Frame::new()
-                .id_salt("b")
-                .size((Sizing::Fill(1.0), Sizing::Hug))
-                .show(ui);
-        })
-        .node;
-    ui.end_frame();
+    let mut ui = Ui::new();
+    let mut root = NodeId(0);
+    run_at(&mut ui, UVec2::new(400, 100), |ui| {
+        root = Panel::hstack()
+            .auto_id()
+            .show(ui, |ui| {
+                Frame::new()
+                    .id_salt("a")
+                    .size((Sizing::Fill(1.0), Sizing::Hug))
+                    .show(ui);
+                Frame::new()
+                    .id_salt("gone")
+                    .size((Sizing::Fill(3.0), Sizing::Hug))
+                    .collapsed()
+                    .show(ui);
+                Frame::new()
+                    .id_salt("b")
+                    .size((Sizing::Fill(1.0), Sizing::Hug))
+                    .show(ui);
+            })
+            .node;
+    });
 
     let kids: Vec<_> = ui
         .forest
@@ -81,39 +86,41 @@ fn collapsed_does_not_consume_fill_weight() {
 fn hidden_keeps_slot_but_emits_no_draws() {
     use crate::renderer::frontend::cmd_buffer::CmdKind;
 
-    let mut ui = ui_at(UVec2::new(400, 100));
-    let root = Panel::hstack()
-        .auto_id()
-        .gap(10.0)
-        .show(&mut ui, |ui| {
-            Frame::new()
-                .id_salt("a")
-                .size(40.0)
-                .background(Background {
-                    fill: Color::rgb(1.0, 0.0, 0.0),
-                    ..Default::default()
-                })
-                .show(ui);
-            Frame::new()
-                .id_salt("hid")
-                .size(40.0)
-                .background(Background {
-                    fill: Color::rgb(0.0, 1.0, 0.0),
-                    ..Default::default()
-                })
-                .hidden()
-                .show(ui);
-            Frame::new()
-                .id_salt("b")
-                .size(40.0)
-                .background(Background {
-                    fill: Color::rgb(0.0, 0.0, 1.0),
-                    ..Default::default()
-                })
-                .show(ui);
-        })
-        .node;
-    ui.end_frame();
+    let mut ui = Ui::new();
+    let mut root = NodeId(0);
+    run_at(&mut ui, UVec2::new(400, 100), |ui| {
+        root = Panel::hstack()
+            .auto_id()
+            .gap(10.0)
+            .show(ui, |ui| {
+                Frame::new()
+                    .id_salt("a")
+                    .size(40.0)
+                    .background(Background {
+                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        ..Default::default()
+                    })
+                    .show(ui);
+                Frame::new()
+                    .id_salt("hid")
+                    .size(40.0)
+                    .background(Background {
+                        fill: Color::rgb(0.0, 1.0, 0.0),
+                        ..Default::default()
+                    })
+                    .hidden()
+                    .show(ui);
+                Frame::new()
+                    .id_salt("b")
+                    .size(40.0)
+                    .background(Background {
+                        fill: Color::rgb(0.0, 0.0, 1.0),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            })
+            .node;
+    });
 
     let kids: Vec<_> = ui
         .forest
@@ -140,30 +147,32 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 
 #[test]
 fn hidden_button_does_not_click() {
-    use crate::layout::types::display::Display;
     use glam::Vec2;
 
-    let mut ui = ui_at(UVec2::new(400, 200));
-    Panel::hstack().auto_id().show(&mut ui, |ui| {
-        Button::new()
-            .id_salt("invisible")
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
-            .hidden()
-            .show(ui);
+    let mut ui = Ui::new();
+    let surface = UVec2::new(400, 200);
+    run_at(&mut ui, surface, |ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Button::new()
+                .id_salt("invisible")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .hidden()
+                .show(ui);
+        });
     });
-    ui.end_frame();
 
     click_at(&mut ui, Vec2::new(50.0, 20.0));
 
-    ui.begin_frame(Display::default());
     let mut clicked = false;
-    Panel::hstack().auto_id().show(&mut ui, |ui| {
-        clicked = Button::new()
-            .id_salt("invisible")
-            .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
-            .hidden()
-            .show(ui)
-            .clicked();
+    run_at(&mut ui, surface, |ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            clicked = Button::new()
+                .id_salt("invisible")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .hidden()
+                .show(ui)
+                .clicked();
+        });
     });
     assert!(!clicked, "hidden button should not receive clicks");
 }
@@ -184,26 +193,28 @@ fn hstack_child_align_per_axis_with_overrides() {
         ),
     ];
     for (label, second_override, second_y) in cases {
-        let mut ui = ui_at(UVec2::new(200, 100));
-        let root = Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::Fixed(100.0)))
-            .child_align(Align::v(VAlign::Center))
-            .show(&mut ui, |ui| {
-                Frame::new()
-                    .id_salt("a")
-                    .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
-                    .show(ui);
-                let mut b = Frame::new()
-                    .id_salt("b")
-                    .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)));
-                if let Some(a) = *second_override {
-                    b = b.align(a);
-                }
-                b.show(ui);
-            })
-            .node;
-        ui.end_frame();
+        let mut ui = Ui::new();
+        let mut root = NodeId(0);
+        run_at(&mut ui, UVec2::new(200, 100), |ui| {
+            root = Panel::hstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::Fixed(100.0)))
+                .child_align(Align::v(VAlign::Center))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt("a")
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                        .show(ui);
+                    let mut b = Frame::new()
+                        .id_salt("b")
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)));
+                    if let Some(a) = *second_override {
+                        b = b.align(a);
+                    }
+                    b.show(ui);
+                })
+                .node;
+        });
 
         let kids: Vec<_> = ui
             .forest

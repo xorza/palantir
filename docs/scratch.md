@@ -5,8 +5,7 @@
 
 get layout iof subtree
 
-#[allow(dead_code)]
-    pub(crate) fn end_frame(&mut self) 
+
 
   self.forest.ids.diff_for_sweep();
         let removed = &self.forest.ids.removed; - collaps

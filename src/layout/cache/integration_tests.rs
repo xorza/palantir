@@ -30,7 +30,8 @@ fn assert_warm_rects_match_cold(
 ) {
     let mut cold_nodes = Vec::new();
     build(ui, &mut cold_nodes);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let cold: Vec<_> = cold_nodes
         .iter()
         .map(|n| ui.layout.result[Layer::Main].rect[n.index()])
@@ -39,7 +40,8 @@ fn assert_warm_rects_match_cold(
     begin(ui, size);
     let mut warm_nodes = Vec::new();
     build(ui, &mut warm_nodes);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let warm: Vec<_> = warm_nodes
         .iter()
         .map(|n| ui.layout.result[Layer::Main].rect[n.index()])
@@ -279,12 +281,14 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
 
     let mut ui = ui_with_text(UVec2::new(800, 600));
     build(&mut ui);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let cold = encode_cmds(&ui);
 
     begin(&mut ui, UVec2::new(800, 600));
     build(&mut ui);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let warm = encode_cmds(&ui);
 
     assert_eq!(cold.kinds, warm.kinds, "cmd kind sequence must match");
@@ -346,7 +350,8 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         begin(&mut ui, UVec2::new(w, 600));
         let mut warm_nodes = Vec::new();
         build(&mut ui, &mut warm_nodes);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         let warm_rects: Vec<_> = warm_nodes
             .iter()
             .map(|n| ui.layout.result[Layer::Main].rect[n.index()])
@@ -356,7 +361,8 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         begin(&mut ui, UVec2::new(w, 600));
         let mut cold_nodes = Vec::new();
         build(&mut ui, &mut cold_nodes);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         let cold_rects: Vec<_> = cold_nodes
             .iter()
             .map(|n| ui.layout.result[Layer::Main].rect[n.index()])

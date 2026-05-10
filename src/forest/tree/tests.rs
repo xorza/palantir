@@ -80,8 +80,8 @@ fn interleaved_shapes_record_correct_order() {
             ui.add_shape(pos_rect(2));
         })
         .node;
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Children's `shapes.start` values must fall between the parent's
     // direct shape indices, encoding the shape→child→shape→child→shape
     // interleave purely via spans.
@@ -184,8 +184,8 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
             ui.add_shape(pos_rect());
         })
         .node;
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let parent = parent_id.index();
     let child = child_id.unwrap().index();
 
@@ -229,7 +229,8 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
 fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = ui_at(UVec2::new(200, 200));
     let target = f(&mut ui);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     ui.forest.tree(Layer::Main).rollups.node[target.index()]
 }
 
@@ -337,8 +338,8 @@ fn changing_fill_color_changes_hash() {
                 .node,
         );
     });
-    ui1.end_frame();
-
+    ui1.end_frame_record_phase();
+    ui1.end_frame_paint_phase();
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let mut child2 = None;
@@ -355,8 +356,8 @@ fn changing_fill_color_changes_hash() {
                 .node,
         );
     });
-    ui2.end_frame();
-
+    ui2.end_frame_record_phase();
+    ui2.end_frame_paint_phase();
     assert_ne!(
         ui1.forest.tree(Layer::Main).rollups.node[child1.unwrap().index()],
         ui2.forest.tree(Layer::Main).rollups.node[child2.unwrap().index()],
@@ -499,8 +500,8 @@ fn shape_order_matters_for_hash() {
         // Push a Frame then add a manual Text shape via a Button.
         n1 = Some(Button::new().id_salt("a").label("X").show(ui).node);
     });
-    ui1.end_frame();
-
+    ui1.end_frame_record_phase();
+    ui1.end_frame_paint_phase();
     // Two recordings of the same Button — hashes must match.
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
@@ -508,8 +509,8 @@ fn shape_order_matters_for_hash() {
     Panel::hstack().auto_id().show(&mut ui2, |ui| {
         n2 = Some(Button::new().id_salt("a").label("X").show(ui).node);
     });
-    ui2.end_frame();
-
+    ui2.end_frame_record_phase();
+    ui2.end_frame_paint_phase();
     assert_eq!(
         ui1.forest.tree(Layer::Main).rollups.node[n1.unwrap().index()],
         ui2.forest.tree(Layer::Main).rollups.node[n2.unwrap().index()],
@@ -528,16 +529,16 @@ fn changing_text_content_changes_hash() {
     Panel::hstack().auto_id().show(&mut ui1, |ui| {
         a = Some(Text::new("Hello").id_salt("t").show(ui).node);
     });
-    ui1.end_frame();
-
+    ui1.end_frame_record_phase();
+    ui1.end_frame_paint_phase();
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let mut b = None;
     Panel::hstack().auto_id().show(&mut ui2, |ui| {
         b = Some(Text::new("World").id_salt("t").show(ui).node);
     });
-    ui2.end_frame();
-
+    ui2.end_frame_record_phase();
+    ui2.end_frame_paint_phase();
     assert_ne!(
         ui1.forest.tree(Layer::Main).rollups.node[a.unwrap().index()],
         ui2.forest.tree(Layer::Main).rollups.node[b.unwrap().index()]
@@ -564,8 +565,8 @@ fn child_hash_does_not_affect_parent_hash() {
                 .show(ui);
         })
         .node;
-    ui1.end_frame();
-
+    ui1.end_frame_record_phase();
+    ui1.end_frame_paint_phase();
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let parent2 = Panel::hstack()
@@ -581,8 +582,8 @@ fn child_hash_does_not_affect_parent_hash() {
                 .show(ui);
         })
         .node;
-    ui2.end_frame();
-
+    ui2.end_frame_record_phase();
+    ui2.end_frame_paint_phase();
     assert_eq!(
         ui1.forest.tree(Layer::Main).rollups.node[parent1.index()],
         ui2.forest.tree(Layer::Main).rollups.node[parent2.index()],
@@ -599,7 +600,8 @@ fn child_hash_does_not_affect_parent_hash() {
 fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = ui_at(UVec2::new(200, 200));
     let target = f(&mut ui);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     ui.forest.tree(Layer::Main).rollups.subtree[target.index()]
 }
 
@@ -742,8 +744,8 @@ fn leaf_subtree_hash_depends_on_node_hash() {
         })
         .show(&mut ui1)
         .node;
-    ui1.end_frame();
-
+    ui1.end_frame_record_phase();
+    ui1.end_frame_paint_phase();
     let mut ui2 = Ui::new();
     ui2.begin_frame(Display::default());
     let leaf2 = Frame::new()
@@ -755,8 +757,8 @@ fn leaf_subtree_hash_depends_on_node_hash() {
         })
         .show(&mut ui2)
         .node;
-    ui2.end_frame();
-
+    ui2.end_frame_record_phase();
+    ui2.end_frame_paint_phase();
     assert_eq!(
         ui1.forest.tree(Layer::Main).rollups.node[leaf1.index()],
         ui2.forest.tree(Layer::Main).rollups.node[leaf2.index()]
@@ -782,16 +784,16 @@ fn transform_change_affects_subtree_but_not_node_hash() {
         .transform(TranslateScale::IDENTITY)
         .show(&mut ui1, |_| {})
         .node;
-    ui1.end_frame();
-
+    ui1.end_frame_record_phase();
+    ui1.end_frame_paint_phase();
     let mut ui2 = ui_at(UVec2::new(200, 200));
     let n2 = Panel::hstack()
         .id_salt("root")
         .transform(TranslateScale::from_translation(Vec2::new(10.0, 0.0)))
         .show(&mut ui2, |_| {})
         .node;
-    ui2.end_frame();
-
+    ui2.end_frame_record_phase();
+    ui2.end_frame_paint_phase();
     assert_eq!(
         ui1.forest.tree(Layer::Main).rollups.node[n1.index()],
         ui2.forest.tree(Layer::Main).rollups.node[n2.index()],
@@ -836,8 +838,8 @@ fn grid_per_node_hash_independent_of_arena_slot() {
             .rows(rows.clone())
             .show(ui, |_| {});
     });
-    ui1.end_frame();
-
+    ui1.end_frame_record_phase();
+    ui1.end_frame_paint_phase();
     // Frame 2: same grids, swapped declaration order. Target grid now
     // gets arena slot 1 instead of 0.
     let mut ui2 = ui_at(UVec2::new(200, 200));
@@ -857,8 +859,8 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                 .node,
         );
     });
-    ui2.end_frame();
-
+    ui2.end_frame_record_phase();
+    ui2.end_frame_paint_phase();
     assert_eq!(
         ui1.forest.tree(Layer::Main).rollups.node[g1.unwrap().index()],
         ui2.forest.tree(Layer::Main).rollups.node[g2.unwrap().index()],
@@ -984,7 +986,8 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
     let (h_b1, b_first1) = {
         let mut ui = ui_at(UVec2::new(200, 200));
         let b_first = build(&mut ui, Color::rgb(1.0, 0.0, 0.0));
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         (
             ui.forest.tree(Layer::Main).rollups.subtree[b_first as usize],
             b_first,
@@ -993,7 +996,8 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
     let (h_b2, b_first2) = {
         let mut ui = ui_at(UVec2::new(200, 200));
         let b_first = build(&mut ui, Color::rgb(0.0, 1.0, 0.0));
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         (
             ui.forest.tree(Layer::Main).rollups.subtree[b_first as usize],
             b_first,
@@ -1028,8 +1032,8 @@ fn ui_layer_records_popup_into_separate_tree() {
             Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
         });
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let main_tree = ui.forest.tree(Layer::Main);
     let popup_tree = ui.forest.tree(Layer::Popup);
     assert_eq!(main_tree.roots.len(), 1, "Main has one root");
@@ -1065,8 +1069,8 @@ fn empty_popup_body_leaves_popup_tree_empty() {
         Frame::new().id_salt("leaf").size(20.0).show(ui);
     });
     ui.layer(Layer::Popup, Rect::ZERO, |_| {});
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert_eq!(ui.forest.tree(Layer::Main).roots.len(), 1);
     assert!(
         ui.forest.tree(Layer::Popup).roots.is_empty(),
@@ -1095,8 +1099,8 @@ fn forest_independence_across_recording_orders() {
         .show(&mut ui_p_first, |ui| {
             Frame::new().id_salt("main-leaf").size(50.0).show(ui);
         });
-    ui_p_first.end_frame();
-
+    ui_p_first.end_frame_record_phase();
+    ui_p_first.end_frame_paint_phase();
     let mut ui_m_first = ui_at(UVec2::new(400, 400));
     Panel::vstack()
         .id_salt("main-root")
@@ -1108,8 +1112,8 @@ fn forest_independence_across_recording_orders() {
             Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
         });
     });
-    ui_m_first.end_frame();
-
+    ui_m_first.end_frame_record_phase();
+    ui_m_first.end_frame_paint_phase();
     for layer in [Layer::Main, Layer::Popup] {
         assert_eq!(
             ui_p_first.forest.tree(layer).records.len(),
@@ -1139,7 +1143,8 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
             });
         });
     });
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let _cmds = encode_cmds(&ui);
 
     let main_tree = ui.forest.tree(Layer::Main);
@@ -1232,8 +1237,8 @@ fn mid_recording_popup_keeps_trees_independent() {
             ui.add_shape(marker(4));
         })
         .node;
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let main_tree = ui.forest.tree(Layer::Main);
     let popup_tree = ui.forest.tree(Layer::Popup);
 
@@ -1312,8 +1317,8 @@ fn extras_columns_split_by_field_kind() {
                 .show(ui);
             Frame::new().id_salt("plain-leaf").size(10.0).show(ui);
         });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Panel set `.gap`: one entry in `panel.table`, none in `bounds.table`.
     // Leaf set `.min_size`: one entry in `bounds.table`, none in `panel.table`.
     // Plain leaf set neither: contributes to neither table.
@@ -1343,7 +1348,8 @@ fn child_iter_traverses_correctly_after_finalize() {
             Frame::new().id_salt("c").size(10.0).show(ui);
         })
         .node;
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let kids: Vec<u32> = ui
         .forest
         .tree(Layer::Main)

@@ -17,6 +17,7 @@ use crate::text::TextShaper;
 use crate::ui::damage::region::DamageRegion;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
+use std::time::Duration;
 
 /// Direct shapes of `node` — including panels whose direct shapes are
 /// interleaved between children (scrollbar overlays, parent-pushed
@@ -33,13 +34,24 @@ pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
     ui.begin_frame(Display::from_physical(size, 1.0));
 }
 
-/// `ui.end_frame()` plus a fake "submit" — keeps the
-/// frame-state contract happy in tests that drive frames
-/// without going through a real `WgpuBackend::submit`.
-/// Without it, `Ui::begin_frame`'s auto-rewind kicks in and
-/// every frame's damage escalates to `Full`.
-pub(crate) fn end_frame_acked(ui: &mut Ui) {
-    let out = ui.end_frame();
+/// Drive one full frame through the production [`Ui::run_frame`]
+/// path at the given surface size. Time is frozen at zero — tests
+/// that exercise animation pass `now` themselves via `run_frame`
+/// directly. Discards the returned [`crate::renderer::frontend::FrameOutput`]
+/// so the caller can keep mutating `ui` afterwards.
+pub(crate) fn run_at(ui: &mut Ui, size: UVec2, build: impl FnMut(&mut Ui)) {
+    let display = Display::from_physical(size, 1.0);
+    ui.run_frame(display, Duration::ZERO, build);
+}
+
+/// Same as [`run_at`] but additionally marks the frame as
+/// submitted. Tests that drive frames without going through a real
+/// `WgpuBackend::submit` need this — otherwise
+/// [`Ui::begin_frame`]'s auto-rewind kicks in and every subsequent
+/// frame's damage escalates to `Full`.
+pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, build: impl FnMut(&mut Ui)) {
+    let display = Display::from_physical(size, 1.0);
+    let out = ui.run_frame(display, Duration::ZERO, build);
     out.frame_state.mark_submitted();
 }
 
@@ -75,20 +87,20 @@ pub(crate) fn new_ui_text() -> Ui {
 /// under test can express its own measured size — `ui.layout` always
 /// forces the root to the surface rect, which would mask Hug/Fixed
 /// sizing on the unit-under-test. Returns the inner node.
-pub(crate) fn under_outer<F: FnOnce(&mut Ui) -> NodeId>(
+pub(crate) fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
     ui: &mut Ui,
     surface: UVec2,
-    f: F,
+    mut f: F,
 ) -> NodeId {
-    begin(ui, surface);
     let mut inner = None;
-    Panel::hstack()
-        .auto_id()
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            inner = Some(f(ui));
-        });
-    ui.end_frame();
+    run_at(ui, surface, |ui| {
+        Panel::hstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                inner = Some(f(ui));
+            });
+    });
     inner.unwrap()
 }
 
