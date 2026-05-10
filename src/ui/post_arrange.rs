@@ -10,10 +10,22 @@
 //!
 //! Anyone — built-in widgets here, downstream user code — implements
 //! [`PostArrange`] on a `'static` struct. Storage is per-type: each
-//! unique `T: PostArrange` gets its own `Vec<T>` bucket, type-erased
-//! only at the bucket boundary. No `unsafe`, no payload size cap, no
-//! per-entry heap alloc. One `Box::new` per unique `T` ever (not per
-//! frame).
+//! unique `T: PostArrange` gets its own `Vec<(Layer, T)>` bucket,
+//! type-erased only at the bucket boundary. No `unsafe`, no payload
+//! size cap, no per-entry heap alloc. One `Box::new` per unique `T`
+//! ever (not per frame).
+//!
+//! # Hook self-containment
+//!
+//! `run` receives a single layer's [`LayerResult`] and `&mut StateMap`.
+//! The registry indexes the right layer per entry from the `Layer` it
+//! captured at push time, so hooks don't carry a layer field
+//! themselves and don't see other layers' data. Anything else a hook
+//! needs (widget id, recording-time padding, theme params, ...) lives
+//! on the hook struct itself, captured at push time. The trait
+//! signature stays minimal and hooks are decoupled from the tree's
+//! internal shape — they don't reach into `Forest` to look up data
+//! they were given a chance to record up front.
 //!
 //! # Relayout signal
 //!
@@ -21,28 +33,30 @@
 //! ORs every hook's return into a single output that
 //! `Ui::end_frame_record_phase` propagates as the relayout signal.
 
-use crate::forest::Forest;
-use crate::layout::result::LayoutResult;
+use crate::forest::tree::Layer;
+use crate::layout::result::{LayerResult, LayoutResult};
 use crate::ui::state::StateMap;
 use std::any::{Any, TypeId};
 
 /// Implemented by any `'static` struct that wants to run post-arrange
-/// logic. `run` reads the just-finished `LayoutResult`, optionally
-/// mutates `StateMap` rows, and returns `true` if the widget's
-/// record-time decisions were based on stale state and the frame
-/// needs a relayout pass.
+/// logic. `run` reads the just-finished [`LayerResult`] for the layer
+/// the hook was pushed against, optionally mutates `StateMap` rows,
+/// and returns `true` if the widget's record-time decisions were
+/// based on stale state and the frame needs a relayout pass.
 pub(crate) trait PostArrange: 'static {
-    fn run(&self, forest: &Forest, results: &LayoutResult, state: &mut StateMap) -> bool;
+    fn run(&self, layer: &LayerResult, state: &mut StateMap) -> bool;
 }
 
 trait TypedBucket: Any {
     fn clear(&mut self);
-    fn run_all(&self, forest: &Forest, results: &LayoutResult, state: &mut StateMap) -> bool;
+    fn run_all(&self, results: &LayoutResult, state: &mut StateMap) -> bool;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 struct Bucket<T: PostArrange> {
-    entries: Vec<T>,
+    /// `(layer, hook)` pairs. `run_all` indexes `LayoutResult` by
+    /// `layer` so the trait's `run` receives just the per-layer slice.
+    entries: Vec<(Layer, T)>,
 }
 
 impl<T: PostArrange> Default for Bucket<T> {
@@ -58,10 +72,10 @@ impl<T: PostArrange> TypedBucket for Bucket<T> {
         self.entries.clear();
     }
 
-    fn run_all(&self, forest: &Forest, results: &LayoutResult, state: &mut StateMap) -> bool {
+    fn run_all(&self, results: &LayoutResult, state: &mut StateMap) -> bool {
         let mut relayout = false;
-        for e in &self.entries {
-            relayout |= e.run(forest, results, state);
+        for (layer, hook) in &self.entries {
+            relayout |= hook.run(&results[*layer], state);
         }
         relayout
     }
@@ -85,25 +99,20 @@ impl PostArrangeRegistry {
         }
     }
 
-    /// Register a post-arrange hook for this frame. The first push of
-    /// any new `T` allocates one `Bucket<T>`; subsequent pushes (this
-    /// frame and across frames) reuse it.
-    pub(crate) fn push<T: PostArrange>(&mut self, hook: T) {
-        self.bucket_mut::<T>().entries.push(hook);
+    /// Register a post-arrange hook for this frame on `layer`. The
+    /// first push of any new `T` allocates one `Bucket<T>`; subsequent
+    /// pushes (this frame and across frames) reuse it.
+    pub(crate) fn push<T: PostArrange>(&mut self, layer: Layer, hook: T) {
+        self.bucket_mut::<T>().entries.push((layer, hook));
     }
 
     /// Run every registered hook in bucket order, returning `true` if
     /// any hook requested a relayout. Called by
     /// `Ui::end_frame_record_phase` after `layout.run`.
-    pub(crate) fn run_all(
-        &self,
-        forest: &Forest,
-        results: &LayoutResult,
-        state: &mut StateMap,
-    ) -> bool {
+    pub(crate) fn run_all(&self, results: &LayoutResult, state: &mut StateMap) -> bool {
         let mut relayout = false;
         for (_, b) in &self.buckets {
-            relayout |= b.run_all(forest, results, state);
+            relayout |= b.run_all(results, state);
         }
         relayout
     }
@@ -152,21 +161,21 @@ mod tests {
     }
 
     impl PostArrange for A {
-        fn run(&self, _: &Forest, _: &LayoutResult, _: &mut StateMap) -> bool {
+        fn run(&self, _: &LayerResult, _: &mut StateMap) -> bool {
             A_RUNS.with(|c| c.set(c.get() + 1));
             A_FLAG.with(|c| c.get())
         }
     }
     impl PostArrange for B {
-        fn run(&self, _: &Forest, _: &LayoutResult, _: &mut StateMap) -> bool {
+        fn run(&self, _: &LayerResult, _: &mut StateMap) -> bool {
             B_RUNS.with(|c| c.set(c.get() + 1));
             false
         }
     }
 
     /// Run `body` against a real `Ui::end_frame_record_phase` so the
-    /// registry sees the same `Forest` / `LayoutResult` / `StateMap`
-    /// values production hooks see. Returns the relayout signal.
+    /// registry sees the same `LayoutResult` / `StateMap` values
+    /// production hooks see. Returns the relayout signal.
     fn drive(ui: &mut Ui, body: impl FnOnce(&mut PostArrangeRegistry)) -> bool {
         ui.begin_frame(Display::default());
         body(&mut ui.post_arrange);
@@ -178,9 +187,9 @@ mod tests {
         reset_counters();
         let mut ui = Ui::new();
         let _ = drive(&mut ui, |reg| {
-            reg.push(A);
-            reg.push(B);
-            reg.push(A);
+            reg.push(Layer::Main, A);
+            reg.push(Layer::Main, B);
+            reg.push(Layer::Main, A);
         });
         assert_eq!(A_RUNS.with(|c| c.get()), 2, "A bucket fired twice");
         assert_eq!(B_RUNS.with(|c| c.get()), 1, "B bucket fired once");
@@ -191,16 +200,16 @@ mod tests {
         reset_counters();
         let mut ui = Ui::new();
         let relayout = drive(&mut ui, |reg| {
-            reg.push(A);
-            reg.push(B);
+            reg.push(Layer::Main, A);
+            reg.push(Layer::Main, B);
         });
         assert!(!relayout, "all hooks returned false → no relayout");
 
         reset_counters();
         A_FLAG.with(|c| c.set(true));
         let relayout = drive(&mut ui, |reg| {
-            reg.push(A);
-            reg.push(B);
+            reg.push(Layer::Main, A);
+            reg.push(Layer::Main, B);
         });
         assert!(relayout, "A returned true → relayout requested");
         assert_eq!(
@@ -214,9 +223,9 @@ mod tests {
     fn buckets_are_retained_across_frames() {
         reset_counters();
         let mut ui = Ui::new();
-        let _ = drive(&mut ui, |reg| reg.push(A));
+        let _ = drive(&mut ui, |reg| reg.push(Layer::Main, A));
         let after_first = ui.post_arrange.buckets.len();
-        let _ = drive(&mut ui, |reg| reg.push(A));
+        let _ = drive(&mut ui, |reg| reg.push(Layer::Main, A));
         let after_second = ui.post_arrange.buckets.len();
         assert_eq!(
             after_first, after_second,
@@ -230,8 +239,8 @@ mod tests {
         reset_counters();
         let mut ui = Ui::new();
         let _ = drive(&mut ui, |reg| {
-            reg.push(A);
-            reg.push(A);
+            reg.push(Layer::Main, A);
+            reg.push(Layer::Main, A);
         });
         assert_eq!(A_RUNS.with(|c| c.get()), 2);
         reset_counters();

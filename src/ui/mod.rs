@@ -258,9 +258,7 @@ impl Ui {
         // post-arrange hook's return (scrollbar overflow flip, etc.)
         // plus anything a widget called `Ui::request_relayout` for
         // directly during record. One `mem::replace` consumes both.
-        self.relayout_requested |=
-            self.post_arrange
-                .run_all(&self.forest, results, &mut self.state);
+        self.relayout_requested |= self.post_arrange.run_all(results, &mut self.state);
         std::mem::replace(&mut self.relayout_requested, false)
     }
 
@@ -319,6 +317,18 @@ impl Ui {
     /// pass is a no-op (paints anyway, accepting one frame of settle).
     pub fn request_relayout(&mut self) {
         self.relayout_requested = true;
+    }
+
+    /// Register a [`post_arrange::PostArrange`] hook for this frame on
+    /// the currently-recording layer. The hook fires between
+    /// `layout.run` and `cascades.run`, sees its layer's `LayerResult`
+    /// plus the cross-frame `StateMap`, and can return `true` to
+    /// request a relayout pass. Captures the recording layer here so
+    /// widgets don't have to query `forest.current_layer()` themselves
+    /// before pushing.
+    pub(crate) fn push_post_arrange<T: post_arrange::PostArrange>(&mut self, hook: T) {
+        let layer = self.forest.current_layer();
+        self.post_arrange.push(layer, hook);
     }
 
     /// Record + finalize a frame, settling state mutations in a single
