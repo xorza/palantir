@@ -328,7 +328,21 @@ impl WgpuBackend {
             b: clear.b as f64,
             a: clear.a as f64,
         });
-        let force_clear = frame.debug_overlay.is_some_and(|c| c.clear_damage);
+        // `dim_undamaged` debug mode: every Partial frame, before any
+        // damage passes, draw one full-viewport 40%-translucent black
+        // quad onto the backbuffer with `LoadOp::Load`. Each frame
+        // undamaged pixels are dimmed once; damaged pixels are dimmed
+        // then immediately overwritten by the fresh repaint, so they
+        // stay bright. Across many frames the static background fades
+        // toward black while moving content stays current — far less
+        // jarring than the prior `LoadOp::Clear` flash and visually
+        // pins which regions are actually repainting.
+        let dim_undamaged = frame.debug_overlay.is_some_and(|c| c.dim_undamaged)
+            && !self.damage_scissors.is_empty();
+        if dim_undamaged {
+            self.quad
+                .upload_dim(&self.queue, buffer.viewport_phys_f, 0.4);
+        }
 
         // Stencil path activates whenever the encoded frame contains a
         // `PushClipRounded`. Lazy-init the stencil texture + pipeline
@@ -400,23 +414,23 @@ impl WgpuBackend {
         // Partial repaint:
         // - `damage_scissors` empty ⇒ Full: single pass, Clear,
         //   no scissor.
-        // - `damage_scissors` non-empty ⇒ Partial: one pass per
-        //   rect. The first pass uses Clear iff `force_clear` is on
-        //   (debug overlay's "flash undamaged" mode), otherwise
-        //   Load — preserves last frame's pixels outside the rect.
-        //   Every subsequent pass uses Load so the prior pass's
-        //   output survives.
+        // - `damage_scissors` non-empty ⇒ Partial: an optional dim
+        //   pre-pass (`dim_undamaged`, see above) that paints a
+        //   40% black quad over the full backbuffer with
+        //   `LoadOp::Load`, then one pass per damage rect using
+        //   `LoadOp::Load` so prior pixels (and the dim, where it
+        //   landed) survive outside the scissor. Subsequent passes
+        //   load the prior pass's output the same way.
         if self.damage_scissors.is_empty() {
             tracing::trace!(of = 1, "wgpu_backend.submit.pass.full");
             self.run_one_pass(&mut encoder, buffer, None, clear_op, use_stencil, text_mode);
         } else {
+            if dim_undamaged {
+                tracing::trace!("wgpu_backend.submit.pass.dim");
+                self.run_dim_pass(&mut encoder, use_stencil);
+            }
             let n = self.damage_scissors.len();
             for (i, scissor) in self.damage_scissors.iter().copied().enumerate() {
-                let load_op = if i == 0 && force_clear {
-                    clear_op
-                } else {
-                    wgpu::LoadOp::Load
-                };
                 tracing::trace!(
                     pass = i,
                     of = n,
@@ -427,7 +441,7 @@ impl WgpuBackend {
                     &mut encoder,
                     buffer,
                     Some(scissor),
-                    load_op,
+                    wgpu::LoadOp::Load,
                     use_stencil,
                     text_mode,
                 );
@@ -471,16 +485,55 @@ impl WgpuBackend {
         }
     }
 
+    /// Full-viewport pass that draws one 40%-translucent black quad
+    /// over the backbuffer with `LoadOp::Load`. Runs before partial
+    /// damage passes when the debug `dim_undamaged` flag is on (see
+    /// `dim_undamaged` in [`Self::submit`]). No stencil attachment
+    /// is added even when the frame uses rounded clipping — the dim
+    /// quad paints uniformly across the whole viewport and the
+    /// subsequent partial passes provide their own stencil setup.
+    fn run_dim_pass(&self, encoder: &mut wgpu::CommandEncoder, use_stencil: bool) {
+        let backbuffer = self
+            .backbuffer
+            .as_ref()
+            .expect("ensure_backbuffer just succeeded");
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("palantir.renderer.dim.pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &backbuffer.view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        // Caller passes `use_stencil` for the frame, but this pass
+        // intentionally omits the stencil attachment. The dim quad
+        // is rendered through the no-stencil base pipeline, which
+        // doesn't reference the stencil state. The parameter is
+        // here for symmetry with `run_one_pass` and to let us pin
+        // an assert if a future refactor accidentally requires it.
+        let _ = use_stencil;
+        self.quad.draw_dim(&mut pass);
+    }
+
     /// Open one render pass against the backbuffer with the given
     /// load op + scissor, then dispatch the schedule into it via
     /// [`Self::render_groups`]. Stencil attachment is added when the
     /// frame has rounded clips; cleared every pass since the
     /// schedule re-stamps masks per group.
     ///
-    /// When `load_op` is `Clear`, the schedule's leading `PreClear`
-    /// quad is suppressed — the load-op already painted the clear
-    /// color across the backbuffer, so the redundant per-rect quad
-    /// would draw the same colour a second time.
+    /// The schedule's leading `PreClear` quad always fires when a
+    /// damage scissor is set (Partial frames). Full-path frames pass
+    /// `scissor = None`, so the schedule's PreClear emit is gated
+    /// out at the source and the `LoadOp::Clear` covers the entire
+    /// backbuffer instead.
     fn run_one_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -490,7 +543,6 @@ impl WgpuBackend {
         use_stencil: bool,
         text_mode: text::StencilMode,
     ) {
-        let emit_preclear = !matches!(load_op, wgpu::LoadOp::Clear(_));
         let backbuffer = self
             .backbuffer
             .as_ref()
@@ -535,14 +587,7 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        self.render_groups(
-            &mut pass,
-            buffer,
-            scissor,
-            emit_preclear,
-            use_stencil,
-            text_mode,
-        );
+        self.render_groups(&mut pass, buffer, scissor, use_stencil, text_mode);
     }
 
     /// Dispatch every step in the per-frame schedule
@@ -556,14 +601,12 @@ impl WgpuBackend {
         pass: &mut wgpu::RenderPass<'a>,
         buffer: &RenderBuffer,
         damage_scissor: Option<URect>,
-        emit_preclear: bool,
         use_stencil: bool,
         text_mode: text::StencilMode,
     ) {
         for_each_step(
             buffer,
             damage_scissor,
-            emit_preclear,
             &self.mask_indices,
             use_stencil,
             |step| match step {

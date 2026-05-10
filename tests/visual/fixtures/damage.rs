@@ -1,6 +1,6 @@
 //! Damage visualization. Renders a static scene twice into the same
 //! Harness (so `Damage.prev` carries between frames). The second
-//! render flips `DebugOverlayConfig::clear_damage` on and uses a
+//! render flips `DebugOverlayConfig::dim_undamaged` on and uses a
 //! striking magenta clear: pixels outside the damage scissor stay
 //! magenta, pixels inside flash the freshly-painted content. The PNG
 //! goes to `tests/visual/output/damage/<name>.png` for inspection —
@@ -85,7 +85,7 @@ fn static_scene_repeats_clean() {
 
     // Frame 2: same scene, but flash undamaged pixels magenta.
     h.ui.debug_overlay = Some(DebugOverlayConfig {
-        clear_damage: true,
+        dim_undamaged: true,
         ..Default::default()
     });
     let f2 = h.render(size, 1.0, VIS_CLEAR, scene);
@@ -139,7 +139,7 @@ fn single_button_change_paints_button_only() {
     let _f1 = h.render(size, 1.0, DARK_BG, frame_with("a"));
 
     h.ui.debug_overlay = Some(DebugOverlayConfig {
-        clear_damage: true,
+        dim_undamaged: true,
         ..Default::default()
     });
     let f2 = h.render(size, 1.0, VIS_CLEAR, frame_with("b"));
@@ -219,22 +219,28 @@ fn damage_rect_overlay_strokes_dirty_region() {
 /// frames change between frames; the rest of the canvas is static.
 /// Under the old single-rect-union accumulator the union of the two
 /// dirty corners would span the whole canvas (top-left + bottom-right
-/// → bbox = entire surface), trip the 50 %-coverage heuristic, and
-/// escalate to `DamagePaint::Full` — so `clear_damage` would flash
-/// the entire canvas magenta. Under the multi-rect region the corners
-/// stay as two disjoint rects (the LVGL merge rule rejects merging
-/// far-apart rects), each scissored to its own pass, leaving the
-/// centre magenta-flashed (read: untouched by the main draw passes).
+/// → bbox = entire surface) and trip the 50 %-coverage heuristic to
+/// escalate `DamagePaint::Full`. Under the multi-rect region the
+/// corners stay disjoint (the LVGL merge rule rejects merging
+/// far-apart rects), each scissored to its own pass.
+///
+/// `dim_undamaged` visualisation: the backend paints a full-viewport
+/// 40%-translucent black quad over the backbuffer with `LoadOp::Load`
+/// before any damage passes, then the partial passes paint their
+/// rects at full brightness. The centre — outside both scissors —
+/// therefore reads as frame 1's pixels darkened by ~40%, never as
+/// the clear color (no `LoadOp::Clear` runs).
 ///
 /// Three pinned regions:
-/// 1. **Centre** must be fully magenta — proves the disjoint rects
-///    didn't union into a Full repaint.
-/// 2. **Top-left corner** must contain its painted (greenish) color,
-///    not magenta. Catches "force_clear applied to all passes" —
-///    that regression would have pass 1 clear the backbuffer (wiping
-///    pass 0's painted TL corner) before painting only its own rect.
-/// 3. **Bottom-right corner** must contain its painted (rust-red)
-///    color. Symmetric check.
+/// 1. **Centre** must contain zero magenta pixels — a unioned-Full
+///    repaint or the prior `LoadOp::Clear(VIS_CLEAR)` path would
+///    flash the centre magenta.
+/// 2. **Centre** must be measurably darker than the same pixels in
+///    frame 1 — proves the dim pre-pass actually ran (otherwise
+///    `LoadOp::Load` would just preserve frame 1's pixels verbatim).
+/// 3. **Top-left** stays green-dominant; **bottom-right** stays
+///    red-dominant — fresh paint inside each scissor wins over the
+///    dim that briefly fell on them.
 #[test]
 fn corner_pair_change_keeps_center_unpainted() {
     let mut h = Harness::new();
@@ -272,13 +278,14 @@ fn corner_pair_change_keeps_center_unpainted() {
         }
     };
 
-    // Frame 1 seeds Damage.prev with the original corners.
-    let _f1 = h.render(size, 1.0, DARK_BG, scene("a", "a"));
+    // Frame 1 seeds Damage.prev with the original corners and gives
+    // us the centre's pre-dim brightness for assertion (3).
+    let f1 = h.render(size, 1.0, DARK_BG, scene("a", "a"));
 
     // Frame 2 changes both corners (different `id_salt`s + different
     // background hashes) so each contributes a small damage rect.
     h.ui.debug_overlay = Some(DebugOverlayConfig {
-        clear_damage: true,
+        dim_undamaged: true,
         ..Default::default()
     });
     let f2 = h.render(size, 1.0, VIS_CLEAR, scene("b", "b"));
@@ -287,36 +294,47 @@ fn corner_pair_change_keeps_center_unpainted() {
     save_debug("corner_pair_change_keeps_center_unpainted", &f2);
 
     // (1) Centre 100×100 region (50..150) lies outside both corner
-    // rects + AA padding. Under multi-rect damage it must be entirely
-    // magenta; under the old single-union behaviour it would be
-    // entirely painted (Full path) → zero magenta.
-    let mut centre_total = 0u32;
+    // scissors. Multi-rect damage keeps it that way; a unioned Full
+    // repaint would flash magenta via PreClear / LoadOp::Clear.
+    let centre_total: u32 = 100 * 100;
     let mut centre_magenta = 0u32;
+    // (2) sum of brightness for f1 vs f2 over the centre — the dim
+    // pre-pass should pull f2's centre noticeably darker than f1's.
+    let mut f1_lum: u64 = 0;
+    let mut f2_lum: u64 = 0;
     for y in 50..150 {
         for x in 50..150 {
-            let Rgba([r, g, b, _]) = *f2.get_pixel(x, y);
-            centre_total += 1;
-            if r > 240 && g < 16 && b > 240 {
+            let Rgba([r1, g1, b1, _]) = *f1.get_pixel(x, y);
+            let Rgba([r2, g2, b2, _]) = *f2.get_pixel(x, y);
+            f1_lum += r1 as u64 + g1 as u64 + b1 as u64;
+            f2_lum += r2 as u64 + g2 as u64 + b2 as u64;
+            if r2 > 240 && g2 < 16 && b2 > 240 {
                 centre_magenta += 1;
             }
         }
     }
-    eprintln!("corner-pair centre: {centre_magenta}/{centre_total} magenta");
+    eprintln!(
+        "corner-pair centre: {centre_magenta} magenta (of {centre_total}), f1 lum {f1_lum} → f2 lum {f2_lum}"
+    );
     assert_eq!(
-        centre_magenta, centre_total,
-        "centre 100×100 must be fully magenta — multi-rect damage \
-         should keep the two corner rects disjoint instead of unioning \
-         them across the whole surface and tripping Full repaint",
+        centre_magenta, 0,
+        "centre 100×100 must be free of magenta — dim_undamaged no \
+         longer fires LoadOp::Clear, only a translucent dim pass",
+    );
+    assert!(
+        f2_lum < f1_lum,
+        "dim pre-pass should darken the centre: got f1_lum={f1_lum}, f2_lum={f2_lum}",
     );
 
-    // (2) + (3) Sample one interior pixel of each corner. The
-    // foreground colours have a unique dominant channel (TL green, BR
-    // red), so the assertion is "dominant channel beats magenta's
-    // (255, 0, 255) pattern" — robust under sRGB / gamma variation.
-    // The regression these guard against: `force_clear` applied to
-    // every pass instead of just the first. Pass 1 would `LoadOp::Clear`
-    // the whole backbuffer to magenta, wiping pass 0's painted TL
-    // before painting only its own (BR) rect.
+    // (3) Sample one interior pixel of each corner. The foreground
+    // colours have a unique dominant channel (TL green, BR red), so
+    // the assertion is "dominant channel beats magenta's (255, 0, 255)
+    // pattern" — robust under sRGB / gamma variation. The regression
+    // these guard against: a dim pass that accidentally landed
+    // *after* the partial damage passes would darken the freshly
+    // painted corners too, demoting the dominant channel below the
+    // others (especially TL where 0.4-alpha black over 0.2/0.7/0.4
+    // could pull green below 255).
     let Rgba([tl_r, tl_g, tl_b, _]) = *f2.get_pixel(5, 5);
     assert!(
         tl_g > tl_r && tl_g > tl_b,

@@ -54,6 +54,16 @@ pub(crate) struct QuadPipeline {
     /// refactor that decorrelates the upload guard in `submit` from
     /// the per-pass `PreClear` emit in the schedule.
     clear_buffer_dirty: bool,
+    /// Single-instance buffer holding a translucent-black full-viewport
+    /// quad. Drawn into the backbuffer with `LoadOp::Load` before any
+    /// partial-damage passes when `DebugOverlayConfig::dim_undamaged` is
+    /// on, so each Partial frame darkens prior pixels by 40% and the
+    /// undamaged region fades to black across frames while the damage
+    /// region — repainted at full brightness — stays bright. Holds a
+    /// separate quad from `clear_buffer` because the dim pass and the
+    /// per-partial-pass `PreClear` run in the same encoder; sharing
+    /// one buffer would let the later upload clobber the earlier one.
+    dim_buffer: wgpu::Buffer,
     /// Multi-instance buffer holding debug damage-overlay quads
     /// (transparent fill, red stroke per damaged rect). Drawn onto
     /// the swapchain texture *after* the backbuffer→surface copy, so
@@ -186,6 +196,13 @@ impl QuadPipeline {
             mapped_at_creation: false,
         });
 
+        let dim_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("palantir.quad.dim"),
+            size: std::mem::size_of::<Quad>() as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         // Sized for one quad up front; `upload_overlays` grows it on
         // demand when the damage region carries more rects.
         let overlay_capacity = 1;
@@ -207,6 +224,7 @@ impl QuadPipeline {
             mask_capacity: 0,
             clear_buffer,
             clear_buffer_dirty: false,
+            dim_buffer,
             overlay_buffer,
             overlay_capacity,
             shader,
@@ -371,10 +389,14 @@ impl QuadPipeline {
     }
 
     /// Upload the partial-repaint pre-clear quad: full-viewport rect
-    /// filled with `color` at alpha 1, no stroke, no rounding. Drawn
-    /// inside the damage scissor before regular groups so AA fringes
-    /// blend over the clear color, not over last frame's pixels.
+    /// filled with `color` (alpha forced to 1), no stroke, no
+    /// rounding. Drawn inside the damage scissor before regular
+    /// groups so AA fringes blend over the clear color, not over
+    /// last frame's pixels. Alpha is forced because a translucent
+    /// pre-clear would blend against last frame's pixels and defeat
+    /// the fringe-fix.
     pub(crate) fn upload_clear(&mut self, queue: &wgpu::Queue, viewport: Vec2, color: Color) {
+        let opaque = Color { a: 1.0, ..color };
         let q = Quad::new(
             Rect {
                 min: glam::Vec2::ZERO,
@@ -383,7 +405,7 @@ impl QuadPipeline {
                     h: viewport.y,
                 },
             },
-            color,
+            opaque,
             Corners::default(),
             Stroke::ZERO,
         );
@@ -422,6 +444,43 @@ impl QuadPipeline {
     /// this frame."
     pub(crate) fn end_frame(&mut self) {
         self.clear_buffer_dirty = false;
+    }
+
+    /// Upload one full-viewport translucent-black quad to `dim_buffer`.
+    /// Drawn into the backbuffer before partial-damage passes when
+    /// the debug "darken undamaged" mode is on; see
+    /// [`DebugOverlayConfig::dim_undamaged`](crate::DebugOverlayConfig).
+    /// `alpha` is the linear-space alpha of the dim fill — `0.4` is
+    /// the showcase default. Premultiplied-alpha blending means the
+    /// rgb channel doubles as the "remaining brightness" multiplier:
+    /// 40% alpha → 60% of the underlying pixel survives.
+    pub(crate) fn upload_dim(&self, queue: &wgpu::Queue, viewport: Vec2, alpha: f32) {
+        let q = Quad::new(
+            Rect {
+                min: glam::Vec2::ZERO,
+                size: Size {
+                    w: viewport.x,
+                    h: viewport.y,
+                },
+            },
+            Color::linear_rgba(0.0, 0.0, 0.0, alpha),
+            Corners::default(),
+            Stroke::ZERO,
+        );
+        queue.write_buffer(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
+    }
+
+    /// Bind the no-stencil base pipeline + dim buffer and draw one
+    /// instance. The dim pass runs without a stencil attachment (we
+    /// dim the whole backbuffer with no mask), so the no-stencil
+    /// pipeline is always correct here — unlike `draw_clear`, which
+    /// has to fall back to `stencil_test` when its caller passes a
+    /// stencil-attached pass.
+    pub(crate) fn draw_dim<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_vertex_buffer(0, self.dim_buffer.slice(..));
+        pass.draw(0..4, 0..1);
     }
 
     /// Upload one or more debug damage-overlay quads (stroked rects
