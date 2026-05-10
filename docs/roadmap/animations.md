@@ -39,8 +39,23 @@ something else; not "more animation primitive work."
   (no anim — first-touch snaps). If we ever want continuity, persist
   the row by domain key in a separate side-table; don't bolt it onto
   `WidgetId`.
-- **Snap-if-close epsilon for compound types.** Currently shares the
-  spring's `POS_EPS = 0.001` / `VEL_EPS = 0.01`. Tuned for normalized
-  0..1 values; pixel-scale `Vec2` works because we hit settle quickly
-  anyway. May need per-type thresholds if a `Background` animation
-  visibly stutters before settling.
+- **Settle-epsilon scale contract on `Animatable`.** `POS_EPS = 0.001`
+  / `VEL_EPS = 0.01` are module-private constants in
+  `src/animation/spring.rs`, threaded through
+  `spring::within_settle_eps`. They're tuned for "the magnitude is
+  normalized 0..1 / pixel-scale" — but the `Animatable` trait makes no
+  scale promise, so a future caller animating, say, a 1000-px scroll
+  offset would settle 1e6× tighter than intended (or for a
+  sub-pixel-quantized value, ~never). Today everything happens to fit
+  the implicit range; works by coincidence, not by contract. Two real
+  fixes when this surfaces:
+    - **Associated const on the trait** —
+      `const SETTLE_POS_EPS_SQ: f32 = 1e-6;` plus
+      `const SETTLE_VEL_EPS_SQ: f32 = 1e-4;`, with a doc spelling out
+      what the magnitude-squared range means for the type. Cheapest;
+      mirrors how `zero()` already lives on the trait.
+    - **Per-spec epsilon** — extend `AnimSpec` so the caller picks. More
+      flexible, but pushes a tuning concern into every call site.
+  No reports yet; park behind a real workload (e.g. `Vec2` scroll-offset
+  spring or a `Background` animation that visibly stutters before
+  settling).
