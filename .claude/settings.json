@@ -25,6 +25,7 @@
       "Bash(cargo bench *)",
       "Bash(cargo metadata *)",
       "Bash(cargo add *)",
+      "Bash(cargo tree *)",
 
       "Bash(cargo +nightly test*)",
 
