@@ -1,9 +1,9 @@
-use crate::forest::Forest;
 use crate::forest::element::{Configure, Element, LayoutMode, ScrollAxes};
-use crate::forest::tree::{Layer, NodeId};
+use crate::forest::tree::NodeId;
+use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
-use crate::layout::result::LayoutResult;
+use crate::layout::result::LayerResult;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
@@ -23,14 +23,16 @@ use glam::Vec2;
 /// during `Scroll::show`, drained between `layout.run` and cascade —
 /// at which point [`Self::run`] reads this frame's measured rects +
 /// content extent and updates the scroll's [`ScrollState`] row.
-/// Stores the per-frame outer / inner `NodeId`s the layout result
-/// indexes against; the cross-frame `WidgetId` is derived from `outer`
-/// at run time (`tree.records.widget_id()[outer]`).
+/// Self-contained: every input `run` needs (id, node addresses, inner
+/// padding) lives on the hook itself. Layer is captured by the
+/// registry at push time, not stored here, so `run` only sees the
+/// per-layer `LayerResult` slice.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollHook {
-    pub(crate) layer: Layer,
+    pub(crate) id: WidgetId,
     pub(crate) outer: NodeId,
     pub(crate) inner: NodeId,
+    pub(crate) inner_padding: Spacing,
 }
 
 /// Cross-frame state row for one [`Scroll`] widget. Persisted via
@@ -76,9 +78,7 @@ impl PostArrange for ScrollHook {
     /// the same frame should re-record with corrected state.
     /// `PostArrangeRegistry::run_all` ORs every hook's return into
     /// the relayout signal `Ui::end_frame_record_phase` propagates.
-    fn run(&self, forest: &Forest, results: &LayoutResult, state: &mut StateMap) -> bool {
-        let tree = forest.tree(self.layer);
-        let layout = &results[self.layer];
+    fn run(&self, layout: &LayerResult, state: &mut StateMap) -> bool {
         assert!(
             self.outer.index() < layout.rect.len() && self.inner.index() < layout.rect.len(),
             "scroll hook references nodes ({}, {}) past tree length {}",
@@ -86,27 +86,24 @@ impl PostArrange for ScrollHook {
             self.inner.index(),
             layout.rect.len(),
         );
-        let id = tree.records.widget_id()[self.outer.index()];
         let outer = layout.rect[self.outer.index()].size;
         let inner_rect = layout.rect[self.inner.index()];
-        let inner_pad = tree.records.layout()[self.inner.index()].padding;
-        let viewport = inner_rect.deflated_by(inner_pad).size;
+        let viewport = inner_rect.deflated_by(self.inner_padding).size;
         let content = layout.scroll_content[self.inner.index()];
         let new_overflow = (content.w > viewport.w, content.h > viewport.h);
-        let row = state.get_or_insert_with::<ScrollState, _>(id, Default::default);
+        let row = state.get_or_insert_with::<ScrollState, _>(self.id, Default::default);
         row.viewport = viewport;
         row.outer = outer;
         row.content = content;
         let overflow_changed = row.overflow != new_overflow;
-        if overflow_changed {
-            row.overflow = new_overflow;
-        }
+        row.overflow = new_overflow;
         // End-frame re-clamp: pairs with the record-time clamp in
         // `Scroll::show`, which only had last frame's numbers.
         let max_x = (content.w - viewport.w).max(0.0);
         let max_y = (content.h - viewport.h).max(0.0);
         row.offset.x = row.offset.x.clamp(0.0, max_x);
         row.offset.y = row.offset.y.clamp(0.0, max_y);
+
         overflow_changed
     }
 }
@@ -287,11 +284,11 @@ impl Scroll {
                 &theme,
             );
         });
-        let layer = ui.forest.current_layer();
-        ui.post_arrange.push(ScrollHook {
-            layer,
+        ui.push_post_arrange(ScrollHook {
+            id,
             outer: outer_node,
             inner: inner_node,
+            inner_padding: self.element.padding,
         });
 
         let resp_state = ui.response_for(id);
