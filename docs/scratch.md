@@ -1,7 +1,5 @@
 - showcase agent testing
 
-- - Animation evolution doubles on 2-pass frames (each pass advances). Punting; document as known limitation; fix with snapshot/restore when motivated.
-
   self.forest.ids.diff_for_sweep();
   let removed = &self.forest.ids.removed; - collaps
 

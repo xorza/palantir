@@ -63,6 +63,14 @@ pub struct Ui {
     /// `begin_frame` directly leave this at `0.0` (frozen time).
     pub(crate) dt: f32,
 
+    /// Monotonically increasing per-[`Self::run_frame`] counter. Bumped
+    /// once at the entry to `run_frame`, *before* the (up to two)
+    /// record passes. Animation rows tag the frame they last advanced
+    /// in so a second `tick` from pass B doesn't double-step the
+    /// integrator — pass B reaches a target update, but the dt-driven
+    /// advance only fires once per real frame.
+    pub(crate) frame_id: u64,
+
     /// Current frame's host-supplied timestamp (last `now` passed to
     /// [`Self::run_frame`]). Monotonic. Animation rows store an
     /// absolute `Duration` start-time and read this to compute
@@ -128,6 +136,7 @@ impl Ui {
             display: Display::default(),
             damage: Damage::default(),
             dt: 0.0,
+            frame_id: 0,
             time: Duration::ZERO,
             repaint_requested: false,
             anim: AnimMap::default(),
@@ -327,6 +336,10 @@ impl Ui {
         let raw_dt = now.saturating_sub(self.time);
         self.dt = raw_dt.as_secs_f32().min(MAX_DT);
         self.time = now;
+        // Bump frame_id once per host frame, NOT per pass. Pass B's
+        // anim ticks see the same id as pass A's and short-circuit the
+        // integrator step instead of double-advancing.
+        self.frame_id = self.frame_id.wrapping_add(1);
         self.repaint_requested = false;
 
         // Pass A: record + measure + refresh. We always run the
@@ -404,7 +417,7 @@ impl Ui {
         let r = self
             .anim
             .typed_mut::<T>()
-            .tick(id, slot, target, spec, self.dt);
+            .tick(id, slot, target, spec, self.dt, self.frame_id);
         if !r.settled {
             self.repaint_requested = true;
         }
