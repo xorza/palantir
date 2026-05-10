@@ -69,6 +69,57 @@ fn is_instant_predicate() {
     assert!(!AnimSpec::SPRING.is_instant());
 }
 
+/// `AnimSpec` (with `Easing` payload on the `Duration` variant)
+/// round-trips through TOML. `ButtonTheme.anim` /
+/// `TextEditTheme.anim` are public theme-file fields, so the
+/// internally-tagged-on-`kind` representation has to stay stable
+/// across refactors. Without this test a renamed variant or a
+/// dropped `#[serde(rename_all = "snake_case")]` would compile and
+/// ship silently — no production path actually deserializes a theme
+/// with `anim` set today, so the derives have no other consumer.
+///
+/// Wrapped in a holder struct because TOML's top-level value must be
+/// a table; `Easing` (string-shaped variants) wouldn't serialize on
+/// its own at the root.
+#[test]
+fn anim_spec_serde_roundtrip() {
+    #[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+    struct Holder {
+        spec: AnimSpec,
+    }
+    let cases = [
+        AnimSpec::FAST,
+        AnimSpec::MEDIUM,
+        AnimSpec::SPRING,
+        AnimSpec::Duration {
+            secs: 0.1,
+            ease: Easing::Linear,
+        },
+        AnimSpec::Duration {
+            secs: 0.2,
+            ease: Easing::InOutCubic,
+        },
+        AnimSpec::Duration {
+            secs: 0.3,
+            ease: Easing::OutQuart,
+        },
+        AnimSpec::Duration {
+            secs: 0.4,
+            ease: Easing::OutBack,
+        },
+        AnimSpec::Spring {
+            stiffness: 100.0,
+            damping: 15.0,
+        },
+    ];
+    for spec in cases {
+        let h = Holder { spec };
+        let s = toml::to_string(&h).expect("serialize");
+        let back: Holder = toml::from_str(&s).expect("parse");
+        assert_eq!(back, h, "roundtrip mismatch for {spec:?}\nTOML:\n{s}");
+    }
+}
+
 /// Through `Ui::animate`, a `Duration { secs = 0 }` spec behaves
 /// identically to `None`: snaps to target, drops any in-flight row,
 /// no repaint request. Switching from a real spec to instant-Duration
