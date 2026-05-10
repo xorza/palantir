@@ -24,13 +24,26 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::any::{Any, TypeId};
 use std::collections::hash_map::Entry;
 
-/// Slot index for stacking multiple animations on one widget. Widgets
+/// Slot tag for stacking multiple animations on one widget. Widgets
 /// declare their own slot consts (e.g. `const HOVER: AnimSlot =
-/// AnimSlot(0); const PRESS: AnimSlot = AnimSlot(1);`). Cross-widget
-/// slot identity is meaningless — slot 0 on widget A is unrelated to
-/// slot 0 on widget B.
+/// AnimSlot("hover"); const PRESS: AnimSlot = AnimSlot("press");`).
+/// Cross-widget slot identity is meaningless — `AnimSlot("hover")` on
+/// widget A is unrelated to `AnimSlot("hover")` on widget B (the
+/// hash key is `(WidgetId, AnimSlot)`).
+///
+/// Stored as `&'static str` so the slot reads as a name at the call
+/// site instead of a magic number; equality / hashing falls through
+/// to pointer-then-bytes via the `&str` impls. Same string literal
+/// from multiple call sites compares equal regardless of dedup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AnimSlot(pub u8);
+pub struct AnimSlot(pub &'static str);
+
+impl From<&'static str> for AnimSlot {
+    #[inline]
+    fn from(s: &'static str) -> Self {
+        Self(s)
+    }
+}
 
 /// How a value moves toward its target. Animation itself is opt-in
 /// at the call site — pass `None` to [`crate::Ui::animate`] (or omit

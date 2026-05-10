@@ -15,7 +15,7 @@ use glam::{UVec2, Vec2};
 use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(100, 100);
-const SLOT: AnimSlot = AnimSlot(0);
+const SLOT: AnimSlot = AnimSlot("test");
 
 fn wid(s: &'static str) -> WidgetId {
     WidgetId::from_hash(s)
@@ -396,23 +396,23 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     let other = wid("b");
     let _ = map
         .typed_mut::<f32>()
-        .tick(id, AnimSlot(0), 1.0, AnimSpec::FAST, 0.016);
+        .tick(id, AnimSlot("a"), 1.0, AnimSpec::FAST, 0.016);
     let _ = map
         .typed_mut::<f32>()
-        .tick(id, AnimSlot(1), 2.0, AnimSpec::FAST, 0.016);
+        .tick(id, AnimSlot("b"), 2.0, AnimSpec::FAST, 0.016);
     let _ = map
         .typed_mut::<Vec2>()
-        .tick(id, AnimSlot(0), Vec2::ONE, AnimSpec::FAST, 0.016);
+        .tick(id, AnimSlot("a"), Vec2::ONE, AnimSpec::FAST, 0.016);
     let _ = map.typed_mut::<Color>().tick(
         id,
-        AnimSlot(0),
+        AnimSlot("a"),
         Color::rgb(1.0, 0.0, 0.0),
         AnimSpec::FAST,
         0.016,
     );
     let _ = map
         .typed_mut::<f32>()
-        .tick(other, AnimSlot(0), 9.0, AnimSpec::FAST, 0.016);
+        .tick(other, AnimSlot("a"), 9.0, AnimSpec::FAST, 0.016);
     // No `Ui` here — reach into typed maps via `try_typed_mut`
     // (immutable peek goes through the same `as_any_mut` downcast
     // path; we just read `.rows.len()`).
@@ -448,10 +448,10 @@ fn end_frame_evicts_untouched_slots() {
     // both rows survive, both `touched` flags clear.
     let _ = map
         .typed_mut::<f32>()
-        .tick(id, AnimSlot(0), 1.0, AnimSpec::FAST, 0.016);
+        .tick(id, AnimSlot("a"), 1.0, AnimSpec::FAST, 0.016);
     let _ = map
         .typed_mut::<f32>()
-        .tick(id, AnimSlot(1), 2.0, AnimSpec::FAST, 0.016);
+        .tick(id, AnimSlot("b"), 2.0, AnimSpec::FAST, 0.016);
     map.end_frame(&empty);
     let count = |m: &mut AnimMap| m.try_typed_mut::<f32>().map_or(0, |t| t.rows.len());
     assert_eq!(
@@ -464,7 +464,7 @@ fn end_frame_evicts_untouched_slots() {
     // after `end_frame` cleared its flag, so it should drop.
     let _ = map
         .typed_mut::<f32>()
-        .tick(id, AnimSlot(0), 1.0, AnimSpec::FAST, 0.016);
+        .tick(id, AnimSlot("a"), 1.0, AnimSpec::FAST, 0.016);
     map.end_frame(&empty);
     assert_eq!(
         count(&mut map),
@@ -476,7 +476,7 @@ fn end_frame_evicts_untouched_slots() {
     // dropped rows behave like any other never-seen `(id, slot)`.
     let r = map
         .typed_mut::<f32>()
-        .tick(id, AnimSlot(1), 99.0, AnimSpec::FAST, 0.016);
+        .tick(id, AnimSlot("b"), 99.0, AnimSpec::FAST, 0.016);
     assert_eq!(r.current, 99.0);
     assert!(r.settled, "re-touch after eviction is a fresh first-touch");
 }
@@ -626,14 +626,4 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         crate::support::internals::anim_row_count::<Background>(&mut ui) > 0,
         "Some(FAST) on changed fill must allocate a Background row",
     );
-}
-
-/// `WidgetLook::animate` reserves slots `0..WIDGETLOOK_SLOTS`. Pin
-/// the const so widgets that mix in additional animations on the
-/// same id know where their range starts.
-#[test]
-fn widget_look_slots_const_matches_implementation() {
-    use crate::widgets::theme::WidgetLook;
-    // Background as one slot (fill + stroke), text color as another.
-    assert_eq!(WidgetLook::WIDGETLOOK_SLOTS, 2);
 }

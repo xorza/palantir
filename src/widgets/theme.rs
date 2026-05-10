@@ -265,13 +265,8 @@ impl AnimatedLook {
 
 impl WidgetLook {
     /// Slots [`Self::animate`] reserves on the widget's id.
-    const SLOT_BG: AnimSlot = AnimSlot(0);
-    const SLOT_TEXT: AnimSlot = AnimSlot(1);
-    /// First slot index a widget can use for its own animations on
-    /// top of `WidgetLook::animate`. Stays in sync with the consts
-    /// above via `+ 1` — adding a new internal slot bumps this
-    /// automatically.
-    pub const WIDGETLOOK_SLOTS: u8 = Self::SLOT_TEXT.0 + 1;
+    const SLOT_BG: AnimSlot = AnimSlot("look.bg");
+    const SLOT_TEXT: AnimSlot = AnimSlot("look.text");
 
     /// Resolve the look to flat animated values. `Background` (fill +
     /// stroke) animates as one slot; `TextStyle` (color animated,

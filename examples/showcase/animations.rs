@@ -5,8 +5,8 @@
 //! repaint loop).
 
 use palantir::{
-    AnimSlot, AnimSpec, Background, Button, Color, Configure, Easing, Frame, Panel, Sizing, Text,
-    Ui, WidgetId,
+    AnimSpec, Background, Button, Color, Configure, Easing, Frame, Panel, Sizing, Text, Ui,
+    WidgetId,
 };
 
 #[derive(Default)]
@@ -85,7 +85,7 @@ pub fn build(ui: &mut Ui) {
 
 fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, target_width: f32) {
     let id = WidgetId::from_hash(("anim-bar", key));
-    let width = ui.animate(id, AnimSlot(0), target_width, Some(spec));
+    let width = ui.animate(id, "width", target_width, Some(spec));
     Panel::hstack()
         .id_salt(("anim-row", key))
         .gap(8.0)
