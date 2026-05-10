@@ -11,6 +11,17 @@ const VEL_EPS: f32 = 0.01;
 const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;
 const VEL_EPS_SQ: f32 = VEL_EPS * VEL_EPS;
 
+/// Max per-substep `dt` for semi-implicit Euler. Stability requires
+/// `dt·√k < ~1`; with realistic stiffness up to a few thousand,
+/// 1/240 s keeps the product < 0.3 for `k ≤ 5000` and < 0.13 for the
+/// `(170, 26)` default — well below the instability boundary. Callers
+/// pass wall-clock `dt` (up to `Ui::MAX_DT = 0.1` after a stall);
+/// `step` divides that into substeps of at most `MAX_SUBSTEP_DT`.
+/// Without this, a stalled frame followed by a mid-flight spring tick
+/// blows the integrator up and produces a `current` far past the
+/// target (negative `Sizing::Fixed`, etc.).
+const MAX_SUBSTEP_DT: f32 = 1.0 / 240.0;
+
 /// `(displacement, velocity)` is at the spring's settle floor — the
 /// caller can snap to target and clear residual motion. Single source
 /// of truth for the threshold; consumed both by [`step`] and by the
@@ -34,12 +45,23 @@ pub(crate) fn step<T: Animatable>(
     target: T,
     dt: f32,
 ) -> SpringStep<T> {
-    let displacement = current.sub(target);
-    let spring_force = displacement.scale(-stiffness);
-    let damp_force = velocity.scale(-damping);
-    let accel = spring_force.add(damp_force);
-    let new_velocity = velocity.add(accel.scale(dt));
-    let new_current = current.add(new_velocity.scale(dt));
+    // Sub-step so the inner Euler dt is always safely below the
+    // stability boundary. `ceil(dt / MAX_SUBSTEP_DT)` substeps of
+    // equal width; for the typical 60Hz frame (dt = 0.016) this is 4
+    // substeps, for the worst-case stalled frame (dt = MAX_DT = 0.1)
+    // it's 24. Cheap relative to a single layout pass.
+    let n = (dt / MAX_SUBSTEP_DT).ceil().max(1.0);
+    let sub_dt = dt / n;
+    let mut cur = current;
+    let mut vel = velocity;
+    for _ in 0..(n as u32) {
+        let displacement = cur.sub(target);
+        let spring_force = displacement.scale(-stiffness);
+        let damp_force = vel.scale(-damping);
+        let accel = spring_force.add(damp_force);
+        vel = vel.add(accel.scale(sub_dt));
+        cur = cur.add(vel.scale(sub_dt));
+    }
     // `Animatable::lerp(_, target, 0.0)` is the trick that pulls
     // `#[animate(snap)]` fields from `target` while leaving the
     // animated fields at their freshly-stepped value. Spring math
@@ -48,9 +70,9 @@ pub(crate) fn step<T: Animatable>(
     // frame and only catch up when `SpringStep` snaps to target on
     // settle — duration animations don't have this problem because
     // `lerp` is on the hot path there.
-    let new_current = T::lerp(new_current, target, 0.0);
-    let new_displacement = new_current.sub(target);
-    if within_settle_eps(new_displacement, new_velocity) {
+    let cur = T::lerp(cur, target, 0.0);
+    let displacement = cur.sub(target);
+    if within_settle_eps(displacement, vel) {
         SpringStep {
             current: target,
             velocity: T::zero(),
@@ -58,8 +80,8 @@ pub(crate) fn step<T: Animatable>(
         }
     } else {
         SpringStep {
-            current: new_current,
-            velocity: new_velocity,
+            current: cur,
+            velocity: vel,
             settled: false,
         }
     }

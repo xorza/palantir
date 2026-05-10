@@ -145,6 +145,16 @@ impl<T: Animatable> Default for AnimMapTyped<T> {
     }
 }
 
+/// Dot product via the polarization identity
+/// `2·a·b = |a+b|² − |a|² − |b|²`, expressed in the existing
+/// `Animatable` vocabulary (add + magnitude_squared) so we don't have
+/// to widen the trait. Used only on spring retarget to decide whether
+/// residual velocity aids or opposes motion toward the new target.
+#[inline]
+fn dot<T: Animatable>(a: T, b: T) -> f32 {
+    0.5 * (a.add(b).magnitude_squared() - a.magnitude_squared() - b.magnitude_squared())
+}
+
 pub(crate) struct TickResult<T: Animatable> {
     pub(crate) current: T,
     pub(crate) settled: bool,
@@ -187,19 +197,32 @@ impl<T: Animatable> AnimMapTyped<T> {
         row.touched = true;
 
         // Retarget: duration restarts the segment from `current`;
-        // spring keeps velocity (that's half the reason springs exist).
+        // spring keeps velocity *only when it aids motion toward the
+        // new target* — preserves "fling through" continuations but
+        // kills reversal swings that would otherwise overshoot far
+        // past the new target (e.g. retargeting a toggle while the
+        // spring is mid-flight in the opposite direction).
         // `Animatable: PartialEq` lets us short-circuit with a
         // bytewise compare on the steady-state path.
         if row.target != target {
-            if matches!(spec, AnimSpec::Duration { .. }) {
-                row.segment_start = row.current;
-                row.elapsed = 0.0;
-                // Zero residual spring velocity so a Spring → Duration
-                // switch starts the new segment from rest. Without
-                // this, the snap-if-close check below could falsely
-                // fail and the lerp would compose with leftover spring
-                // motion that has no place in a duration animation.
-                row.velocity = T::zero();
+            match spec {
+                AnimSpec::Duration { .. } => {
+                    row.segment_start = row.current;
+                    row.elapsed = 0.0;
+                    // Zero residual spring velocity so a Spring →
+                    // Duration switch starts the new segment from
+                    // rest. Without this, the snap-if-close check
+                    // below could falsely fail and the lerp would
+                    // compose with leftover spring motion that has no
+                    // place in a duration animation.
+                    row.velocity = T::zero();
+                }
+                AnimSpec::Spring { .. } => {
+                    let to_target = target.sub(row.current);
+                    if dot(row.velocity, to_target) < 0.0 {
+                        row.velocity = T::zero();
+                    }
+                }
             }
             row.target = target;
         }

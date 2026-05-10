@@ -298,6 +298,68 @@ fn spring_with_initial_displacement_converges_within_settle_eps() {
     );
 }
 
+/// Worst-case wall-clock `dt` (= `Ui::MAX_DT` after a stalled frame
+/// or a tab-switch redraw gap) must not blow up the integrator: a
+/// single-step semi-implicit Euler at `dt = 0.1` with default spring
+/// `(170, 26)` produces a `current` far past the target (negative for
+/// the showcase animation widths, triggering the `Sizing::Fixed`
+/// invariant). Pin: stepping a 400→80 spring with `dt = 0.1` keeps
+/// `current` within `[80, 400]`.
+#[test]
+fn spring_step_at_max_dt_stays_bounded() {
+    let mut map = AnimMapTyped::<f32>::default();
+    let id = wid("a");
+    let _ = map.tick(id, SLOT, 400.0, AnimSpec::SPRING, 0.016);
+    let r = map.tick(id, SLOT, 80.0, AnimSpec::SPRING, 0.1);
+    assert!(
+        r.current >= 80.0 && r.current <= 400.0,
+        "spring at dt=MAX_DT must stay between segment endpoints; got {}",
+        r.current,
+    );
+}
+
+/// Spring retarget into the path of motion keeps velocity (the
+/// "fling-through" continuation); retarget *against* the velocity
+/// zeroes it so the new segment can't swing far past the target.
+/// Without the projection, a fast click-then-reverse can drag the
+/// value well below zero / above any plausible bound; the
+/// `Sizing::Fixed` invariant in the showcase relied on this.
+#[test]
+fn spring_retarget_zeroes_opposing_velocity_only() {
+    let mut map = AnimMapTyped::<f32>::default();
+
+    // Aligned: moving toward 1.0, retarget further along the same
+    // direction (2.0). Velocity should survive — that's the fling.
+    let id_aligned = wid("aligned");
+    let _ = map.tick(id_aligned, SLOT, 0.0, AnimSpec::SPRING, 0.016);
+    for _ in 0..3 {
+        let _ = map.tick(id_aligned, SLOT, 1.0, AnimSpec::SPRING, 0.016);
+    }
+    let v_before = map.rows[&(id_aligned, SLOT)].velocity;
+    assert!(v_before > 0.0, "precondition: moving toward 1.0");
+    let _ = map.tick(id_aligned, SLOT, 2.0, AnimSpec::SPRING, 0.0);
+    let v_after = map.rows[&(id_aligned, SLOT)].velocity;
+    assert_eq!(v_after, v_before, "aligned retarget must preserve velocity");
+
+    // Opposed: moving toward 1.0, retarget backward to -1.0. Velocity
+    // points away from the new target — zero it.
+    let id_opposed = wid("opposed");
+    let _ = map.tick(id_opposed, SLOT, 0.0, AnimSpec::SPRING, 0.016);
+    for _ in 0..3 {
+        let _ = map.tick(id_opposed, SLOT, 1.0, AnimSpec::SPRING, 0.016);
+    }
+    assert!(
+        map.rows[&(id_opposed, SLOT)].velocity > 0.0,
+        "precondition: moving toward 1.0"
+    );
+    let _ = map.tick(id_opposed, SLOT, -1.0, AnimSpec::SPRING, 0.0);
+    assert_eq!(
+        map.rows[&(id_opposed, SLOT)].velocity,
+        0.0,
+        "opposing retarget must zero velocity to kill reversal overshoot",
+    );
+}
+
 #[test]
 fn vec2_duration_lerps_componentwise() {
     let mut map = AnimMapTyped::<Vec2>::default();
