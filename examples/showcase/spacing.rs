@@ -94,7 +94,7 @@ pub fn build(ui: &mut Ui) {
                                 stroke: Stroke {
                                     width: 1.0,
                                     color: swatch::B,
-                                }),
+                                },
                                 radius: Corners::all(4.0),
                             })
                             .show(ui);

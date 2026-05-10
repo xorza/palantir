@@ -21,12 +21,21 @@ pub struct Stroke {
 }
 
 impl Stroke {
+    /// Canonical "no stroke" — width 0, transparent color. Equivalent
+    /// to `Stroke::default()` but `const`, so callers can use it in
+    /// const contexts and read it as the sentinel "this background
+    /// has no stroke" without needing `Option<Stroke>` in the type.
+    pub const ZERO: Self = Self {
+        color: Color::TRANSPARENT,
+        width: 0.0,
+    };
+
     /// True when this stroke would paint nothing visible — width is
     /// approximately zero (sub-UI-tolerance) or the color is fully
-    /// transparent. Used by [`Background::is_noop`] and by animated
-    /// "stroked → no-stroke" transitions to collapse a decayed
-    /// `Some(Stroke)` to `None` so it doesn't render as a phantom
-    /// hairline.
+    /// transparent. The animation pipeline lerps `Stroke` directly
+    /// through `Stroke::ZERO`, so a "stroked → no-stroke" transition
+    /// settles at `is_noop()` and the encoder filters it out without
+    /// any `Option` collapse step.
     #[inline]
     pub fn is_noop(&self) -> bool {
         approx_zero(self.width) || self.color.is_noop()

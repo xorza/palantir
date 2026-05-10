@@ -349,7 +349,7 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
                     stroke: palantir::Stroke {
                         width: 1.0,
                         color: Color::hex(0x363636),
-                    }),
+                    },
                     radius: palantir::Corners::all(8.0),
                 })
                 .show(ui, |ui| {

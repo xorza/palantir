@@ -21,7 +21,7 @@ pub enum Shape {
         local_rect: Option<Rect>,
         radius: Corners,
         fill: Color,
-        stroke: Option<Stroke>,
+        stroke: Stroke,
     },
     Line {
         a: Vec2,
@@ -104,13 +104,7 @@ impl Hash for Shape {
                 }
                 radius.hash(h);
                 fill.hash(h);
-                match stroke {
-                    None => h.write_u8(0),
-                    Some(s) => {
-                        h.write_u8(1);
-                        s.hash(h);
-                    }
-                }
+                stroke.hash(h);
             }
             Shape::Line { a, b, width, color } => {
                 h.write_u8(1);
@@ -169,14 +163,7 @@ impl Shape {
                 fill,
                 stroke,
                 ..
-            } => {
-                let no_fill = fill.is_noop();
-                let no_stroke = match stroke {
-                    None => true,
-                    Some(s) => approx_zero(s.width) || s.color.is_noop(),
-                };
-                local_rect_paint_empty(local_rect) || (no_fill && no_stroke)
-            }
+            } => local_rect_paint_empty(local_rect) || (fill.is_noop() && stroke.is_noop()),
             Shape::Line { width, color, .. } => approx_zero(*width) || color.is_noop(),
             Shape::Text {
                 text,

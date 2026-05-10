@@ -225,10 +225,10 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .padding(6.0)
                     .background(Background {
                         fill: Color::rgb(0.16, 0.18, 0.22),
-                        stroke: Some(Stroke {
+                        stroke: Stroke {
                             width: 1.0,
                             color: Color::rgb(0.3, 0.34, 0.42),
-                        }),
+                        },
                         radius: Corners::all(4.0),
                     })
                     .show(ui, |ui| {

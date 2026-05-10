@@ -10,7 +10,7 @@ fn card() -> Background {
         stroke: Stroke {
             width: 1.5,
             color: Color::hex(0x4d5663),
-        }),
+        },
         radius: Corners::all(28.0),
     }
 }

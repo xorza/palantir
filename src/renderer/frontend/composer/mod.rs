@@ -204,11 +204,11 @@ impl Composer {
                     let (rect, radius, fill, stroke) = match kind {
                         CmdKind::DrawRect => {
                             let p: DrawRectPayload = cmds.read(start);
-                            (p.rect, p.radius, p.fill, None)
+                            (p.rect, p.radius, p.fill, Stroke::ZERO)
                         }
                         _ => {
                             let p: DrawRectStrokedPayload = cmds.read(start);
-                            (p.rect, p.radius, p.fill, Some(p.stroke))
+                            (p.rect, p.radius, p.fill, p.stroke)
                         }
                     };
                     let world_rect = current_transform.apply_rect(rect);
@@ -229,10 +229,10 @@ impl Composer {
                     let world_radius = radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
-                    let phys_stroke = stroke.map(|s| Stroke {
-                        width: s.width * current_transform.scale * scale,
-                        color: s.color,
-                    });
+                    let phys_stroke = Stroke {
+                        width: stroke.width * current_transform.scale * scale,
+                        color: stroke.color,
+                    };
                     out.quads
                         .push(Quad::new(phys_rect, fill, phys_radius, phys_stroke));
                 }

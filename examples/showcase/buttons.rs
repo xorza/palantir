@@ -76,10 +76,10 @@ fn outlined_style() -> ButtonTheme {
     // variant reads as "selectable surface" matching the rest of the
     // theme.
     let accent = Color::hex(0x4cd3ff);
-    let stroke = Some(Stroke {
+    let stroke = Stroke {
         width: 1.5,
         color: accent,
-    });
+    };
     let bg = |fill, stroke| Background {
         fill,
         stroke,
@@ -107,10 +107,10 @@ fn outlined_style() -> ButtonTheme {
         disabled: WidgetLook {
             background: Some(bg(
                 Color::TRANSPARENT,
-                Some(Stroke {
+                Stroke {
                     width: 1.5,
                     color: Color::linear_rgba(accent.r, accent.g, accent.b, 0.35),
-                }),
+                },
             )),
             text: Some(TextStyle::default().with_color(Color::hex(0x878a8d))),
         },

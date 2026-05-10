@@ -121,30 +121,25 @@ impl RenderCmdBuffer {
     }
 
     #[inline]
-    pub(crate) fn draw_rect(
-        &mut self,
-        rect: Rect,
-        radius: Corners,
-        fill: Color,
-        stroke: Option<Stroke>,
-    ) {
-        match stroke {
-            None => {
-                self.record_start(CmdKind::DrawRect);
-                write_pod(&mut self.data, DrawRectPayload { rect, radius, fill });
-            }
-            Some(stroke) => {
-                self.record_start(CmdKind::DrawRectStroked);
-                write_pod(
-                    &mut self.data,
-                    DrawRectStrokedPayload {
-                        rect,
-                        radius,
-                        fill,
-                        stroke,
-                    },
-                );
-            }
+    pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: Color, stroke: Stroke) {
+        // Two cmd kinds keep the wire format compact: a stroke-less
+        // rect skips the trailing 24 B of stroke payload. The branch
+        // is on the value, not on `Option`-presence — semantically
+        // identical, no Option machinery upstream.
+        if stroke.is_noop() {
+            self.record_start(CmdKind::DrawRect);
+            write_pod(&mut self.data, DrawRectPayload { rect, radius, fill });
+        } else {
+            self.record_start(CmdKind::DrawRectStroked);
+            write_pod(
+                &mut self.data,
+                DrawRectStrokedPayload {
+                    rect,
+                    radius,
+                    fill,
+                    stroke,
+                },
+            );
         }
     }
 

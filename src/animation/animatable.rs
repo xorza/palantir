@@ -83,53 +83,14 @@ impl Animatable for Vec2 {
     }
 }
 
-/// Blanket impl for `Option<T: Animatable>`. Treats `None` as the
-/// `T::zero()` sentinel (which by convention is the "invisible /
-/// neutral" value for the type — transparent color, zero-width
-/// stroke, etc.). The arithmetic always returns `Some(...)`; output
-/// collapse back to `None` is the consumer's job (e.g. Background's
-/// `is_noop` check filters invisible strokes at paint time).
-///
-/// This is what makes `#[derive(Animatable)]` work on structs with
-/// optional sub-components like `Background.stroke: Option<Stroke>`.
-impl<T: Animatable> Animatable for Option<T> {
-    #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
-        Some(T::lerp(
-            a.unwrap_or_else(T::zero),
-            b.unwrap_or_else(T::zero),
-            t,
-        ))
-    }
-    #[inline]
-    fn sub(self, other: Self) -> Self {
-        Some(T::sub(
-            self.unwrap_or_else(T::zero),
-            other.unwrap_or_else(T::zero),
-        ))
-    }
-    #[inline]
-    fn add(self, other: Self) -> Self {
-        Some(T::add(
-            self.unwrap_or_else(T::zero),
-            other.unwrap_or_else(T::zero),
-        ))
-    }
-    #[inline]
-    fn scale(self, k: f32) -> Self {
-        Some(T::scale(self.unwrap_or_else(T::zero), k))
-    }
-    #[inline]
-    fn magnitude_squared(self) -> f32 {
-        T::magnitude_squared(self.unwrap_or_else(T::zero))
-    }
-    #[inline]
-    fn zero() -> Self {
-        Some(T::zero())
-    }
-}
-
 // `Color` derives `Animatable` (see `primitives/color.rs`) — the
 // generated impl is identical to the hand-written one used to live
-// here; per-component lerp/add/sub/scale, sqrt-of-sum-of-squares
-// magnitude, all-zeros for `zero()`.
+// here; per-component lerp/add/sub/scale, sum-of-squared-component
+// magnitude_squared, all-zeros for `zero()`.
+//
+// No `Option<T>` blanket: when a struct's field is "absent or value"
+// (e.g. a stroke), use a sentinel value (`Stroke::ZERO`) rather
+// than `Option<Stroke>` and let the paint-time `is_noop` filter
+// handle the absent case. The blanket used to be present but
+// always returned `Some(...)` from arithmetic, forcing every
+// consumer to scrub the no-op output back to `None` for hash equality.

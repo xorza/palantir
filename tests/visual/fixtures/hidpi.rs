@@ -42,10 +42,10 @@ fn dashboard_matches_golden() {
                     .gap(8.0)
                     .background(Background {
                         fill: Color::rgb(0.18, 0.22, 0.32),
-                        stroke: Some(Stroke {
+                        stroke: Stroke {
                             width: 1.0,
                             color: Color::rgb(0.30, 0.36, 0.46),
-                        }),
+                        },
                         radius: Corners::all(6.0),
                     })
                     .show(ui, |ui| {
@@ -119,10 +119,10 @@ fn dashboard_matches_golden() {
                                 .gap(6.0)
                                 .background(Background {
                                     fill: *c,
-                                    stroke: Some(Stroke {
+                                    stroke: Stroke {
                                         width: 1.0,
                                         color: Color::rgba(1.0, 1.0, 1.0, 0.18),
-                                    }),
+                                    },
                                     radius: Corners::all(8.0),
                                 })
                                 .show(ui, |ui| {

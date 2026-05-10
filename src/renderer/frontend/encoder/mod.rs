@@ -204,7 +204,7 @@ fn encode_node(
         // clip inside the painted stroke ring. With no chrome (clip
         // set without a Surface — shouldn't happen post-`apply_to`),
         // inset is 0.
-        let inset = chrome.and_then(|bg| bg.stroke).map_or(0.0, |s| s.width);
+        let inset = chrome.map_or(0.0, |bg| bg.stroke.width);
         let mask_rect = rect.deflated_by(Spacing::all(inset));
         match mode {
             ClipMode::Rect => out.push_clip(mask_rect),

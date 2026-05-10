@@ -8,6 +8,7 @@ use crate::layout::types::span::Span;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
+use crate::primitives::stroke::Stroke;
 use crate::primitives::urect::URect;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, RenderBuffer, TextRun};
@@ -87,7 +88,7 @@ fn dummy_quad() -> Quad {
         Rect::new(0.0, 0.0, 10.0, 10.0),
         Color::WHITE,
         Corners::ZERO,
-        None,
+        Stroke::ZERO,
     )
 }
 

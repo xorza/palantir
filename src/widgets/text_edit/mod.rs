@@ -4,6 +4,7 @@ use crate::input::keyboard::{Key, KeyPress};
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
+use crate::primitives::stroke::Stroke;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -189,7 +190,7 @@ impl<'a> TextEdit<'a> {
                     local_rect: Some(caret_rect),
                     radius: Default::default(),
                     fill: theme.caret,
-                    stroke: None,
+                    stroke: Stroke::ZERO,
                 });
             }
         });

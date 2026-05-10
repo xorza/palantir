@@ -8,6 +8,7 @@ use crate::layout::result::LayoutResult;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
+use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -317,7 +318,7 @@ fn push_bar(
             local_rect: Some(track),
             radius,
             fill: theme.track,
-            stroke: None,
+            stroke: Stroke::ZERO,
         });
     }
     let thumb = axis.compose_rect(geom.thumb_offset, cross_pos, geom.thumb_size, theme.width);
@@ -325,6 +326,6 @@ fn push_bar(
         local_rect: Some(thumb),
         radius,
         fill: theme.thumb,
-        stroke: None,
+        stroke: Stroke::ZERO,
     });
 }
