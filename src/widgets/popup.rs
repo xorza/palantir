@@ -1,12 +1,12 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::tree::Layer;
 use crate::input::sense::Sense;
+use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::frame::Frame;
-use crate::widgets::theme::Surface;
 
 /// What happens when the user presses outside the popup's body.
 ///
@@ -59,7 +59,6 @@ pub struct Popup {
     anchor: Rect,
     click_outside: ClickOutside,
     element: Element,
-    surface: Option<Surface>,
 }
 
 impl Popup {
@@ -76,15 +75,7 @@ impl Popup {
             anchor,
             click_outside: ClickOutside::Dismiss,
             element,
-            surface: None,
         }
-    }
-
-    /// Install chrome for the popup body. Accepts a bare `Background`
-    /// (paint-only) or a `Surface` (paint + clip).
-    pub fn background(mut self, s: impl Into<Surface>) -> Self {
-        self.surface = Some(s.into());
-        self
     }
 
     pub fn click_outside(mut self, m: ClickOutside) -> Self {
@@ -108,10 +99,16 @@ impl Popup {
                 .sense(Sense::CLICK)
                 .show(ui);
         });
-        let surface = self.surface.or(ui.theme.panel);
+        let mut element = self.element;
+        if element.chrome.is_none() {
+            element.chrome = ui.theme.panel_background;
+        }
+        if matches!(element.clip, ClipMode::None) {
+            element.clip = ui.theme.panel_clip;
+        }
         let mut body_resp: Option<Response> = None;
         ui.layer(Layer::Popup, self.anchor, |ui| {
-            let node = ui.node(self.element, surface, body);
+            let node = ui.node(element, body);
             body_resp = Some(Response {
                 node,
                 state: ui.response_for(body_id),

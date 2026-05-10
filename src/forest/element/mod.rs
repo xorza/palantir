@@ -43,7 +43,9 @@ use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
     justify::Justify, sizing::Sizes,
 };
-use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
+use crate::primitives::{
+    background::Background, size::Size, spacing::Spacing, transform::TranslateScale,
+};
 use glam::Vec2;
 
 /// How a node arranges its children. Stored on `Element::mode` and read by
@@ -339,12 +341,18 @@ pub struct Element {
     /// skips the subtree everywhere. Cascades implicitly (paint and input
     /// early-return at non-`Visible` nodes).
     pub(crate) visibility: Visibility,
-    /// Storage for the clip flag — written by `ui.node` from the
-    /// `Surface` argument, or set directly by framework-internal
-    /// widgets like `Scroll`. `Rect` = scissor; `Rounded` = scissor +
-    /// stencil mask (radius / inset derived from chrome). `None` = no
-    /// clip. No effect on layout.
+    /// Storage for the clip flag — written by `Configure::clip*`
+    /// methods or set directly by framework-internal widgets like
+    /// `Scroll`. `Rect` = scissor; `Rounded` = scissor + stencil mask
+    /// (radius derived from `chrome.radius` in `Tree::open_node`).
+    /// `None` = no clip. No effect on layout.
     pub(crate) clip: ClipMode,
+    /// Optional paint chrome (fill, stroke, corner radius). Authored
+    /// via `Configure::background`. `Tree::open_node` filters
+    /// invisible paint to `None` and stashes the radius into a
+    /// dedicated `clip_radius` column when `clip` is `Rounded` so
+    /// the encoder reads paint and mask info as independent plumbing.
+    pub(crate) chrome: Option<Background>,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any
     /// ancestor transform; descendants render and hit-test in the world
@@ -383,6 +391,7 @@ impl Element {
             focusable: false,
             visibility: Visibility::Visible,
             clip: ClipMode::None,
+            chrome: None,
             transform: None,
         }
     }
@@ -599,6 +608,36 @@ pub trait Configure: Sized {
     /// Shorthand for [`Visibility::Collapsed`]: skip the node entirely (zero slot).
     fn collapsed(self) -> Self {
         self.visibility(Visibility::Collapsed)
+    }
+
+    /// Paint chrome (fill, stroke, corner radius). `Tree::open_node`
+    /// drops invisible paint to `None` and stashes the radius into
+    /// the encoder's `clip_radius` column when this node also calls
+    /// [`Self::clip_rounded`], so the encoder doesn't run a noop
+    /// guard at draw time.
+    fn background(mut self, bg: Background) -> Self {
+        self.element_mut().chrome = Some(bg);
+        self
+    }
+
+    /// Generic clip setter. Most callers use the [`Self::clip_rect`]
+    /// / [`Self::clip_rounded`] sugars instead.
+    fn clip(mut self, mode: ClipMode) -> Self {
+        self.element_mut().clip = mode;
+        self
+    }
+
+    /// Axis-aligned scissor clip on this node's rect.
+    fn clip_rect(self) -> Self {
+        self.clip(ClipMode::Rect)
+    }
+
+    /// Rounded-corner stencil clip — shape comes from the chrome's
+    /// radius (set via [`Self::background`]). Calling this without
+    /// a chrome leaves the radius at zero, equivalent to
+    /// [`Self::clip_rect`].
+    fn clip_rounded(self) -> Self {
+        self.clip(ClipMode::Rounded)
     }
 }
 

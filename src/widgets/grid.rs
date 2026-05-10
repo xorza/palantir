@@ -1,9 +1,8 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::layout::types::{sizing::Sizing, track::Track};
+use crate::layout::types::{clip_mode::ClipMode, sizing::Sizing, track::Track};
 use crate::primitives::transform::TranslateScale;
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::Surface;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -57,7 +56,6 @@ impl std::hash::Hash for GridDef {
 /// Auto-vs-Star cyclic dependency, no `SharedSizeScope`, no auto-flow).
 pub struct Grid {
     element: Element,
-    surface: Option<Surface>,
     def: GridDef,
 }
 
@@ -70,7 +68,6 @@ impl Grid {
         // without going through `show()` panics loudly.
         Self {
             element: Element::new(LayoutMode::Grid(PENDING_GRID_IDX)),
-            surface: None,
             def: GridDef {
                 rows: empty_tracks(),
                 cols: empty_tracks(),
@@ -121,11 +118,6 @@ impl Grid {
         self
     }
 
-    pub fn background(mut self, s: impl Into<Surface>) -> Self {
-        self.surface = Some(s.into());
-        self
-    }
-
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
         let active_layer = ui.forest.current_layer();
@@ -133,10 +125,14 @@ impl Grid {
         let mut element = self.element;
         element.mode = LayoutMode::Grid(idx);
 
-        // `None` falls back to `theme.panel` (default `None` = pure
-        // layout). See `Theme::panel`.
-        let surface = self.surface.or(ui.theme.panel);
-        let node = ui.node(element, surface, body);
+        // Theme fallback for chrome / clip — see `Panel::show`.
+        if element.chrome.is_none() {
+            element.chrome = ui.theme.panel_background;
+        }
+        if matches!(element.clip, ClipMode::None) {
+            element.clip = ui.theme.panel_clip;
+        }
+        let node = ui.node(element, body);
         let state = ui.response_for(id);
         Response { node, state }
     }

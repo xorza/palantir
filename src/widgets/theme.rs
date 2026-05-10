@@ -30,69 +30,6 @@ mod palette {
     pub const ACCENT: Color = Color::hex(0x9adbfb);
 }
 
-/// Container chrome: optional paint plus optional clip behavior. The clip
-/// reuses `paint.radius`, so paint and clip share one corner-radius source
-/// of truth — no drift, no separate radius field. `Surface::apply_clip`
-/// installs the clip flags onto an `Element`; the caller adds `paint` to
-/// the node body via `paint.add_to(ui)`.
-///
-/// Usable by any container widget (`Panel`, `Grid`, `Scroll`, custom
-/// widgets) — not panel-specific.
-#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Surface {
-    pub paint: Background,
-    pub clip: ClipMode,
-}
-
-impl Surface {
-    /// Pure scissor clip with no painted background — the canonical
-    /// "scroll viewport" / "overflow:hidden" surface.
-    pub const fn clip_rect() -> Self {
-        Self {
-            paint: Background {
-                fill: Color::TRANSPARENT,
-                stroke: Stroke::ZERO,
-                radius: Corners::ZERO,
-            },
-            clip: ClipMode::Rect,
-        }
-    }
-
-    /// Painted background plus scissor clip. Children of the panel are
-    /// scissor-clipped to its rect; rounded paint corners are NOT
-    /// stencil-clipped (use `.clip = ClipMode::Rounded` directly for
-    /// that). Use this for "card with overflow hidden" where you don't
-    /// need the stencil pass cost.
-    pub const fn clip_rect_with_bg(paint: Background) -> Self {
-        Self {
-            paint,
-            clip: ClipMode::Rect,
-        }
-    }
-
-    /// Painted background plus rounded-corner stencil clip. Children
-    /// are stencil-clipped to the paint's rounded corners — the
-    /// stencil render path lights up. If `paint.radius` is zero the
-    /// installer downgrades to scissor clip.
-    pub const fn clip_rounded_with_bg(paint: Background) -> Self {
-        Self {
-            paint,
-            clip: ClipMode::Rounded,
-        }
-    }
-}
-
-/// Sugar: `.background(Background { … })` keeps working — paint-only with
-/// no clip is still expressible without typing the wrapper.
-impl From<Background> for Surface {
-    fn from(paint: Background) -> Self {
-        Self {
-            paint,
-            clip: ClipMode::None,
-        }
-    }
-}
-
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
 ///
@@ -108,13 +45,24 @@ pub struct Theme {
     pub text: TextStyle,
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: Color,
-    /// Default surface for container widgets (`Panel`, `Grid`) when the
-    /// call site didn't pass `.background(...)`. `None` = containers paint
-    /// nothing and don't clip. Setting `Some(...)` lights up every
-    /// unstyled container at once — useful for prototyping (set a thin
-    /// stroke and every panel boundary becomes visible) or for shipping a
-    /// design-system default that clips children to a rounded card shape.
-    pub panel: Option<Surface>,
+    /// Default chrome paint for container widgets (`Panel`, `Grid`,
+    /// `Popup`) that didn't call [`Configure::background`]. `None`
+    /// leaves containers unpainted by default. Setting `Some(...)`
+    /// lights up every unstyled container at once — useful for
+    /// prototyping or shipping a design-system default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel_background: Option<Background>,
+    /// Default clip mode for container widgets that didn't call
+    /// [`Configure::clip_rect`] / [`Configure::clip_rounded`]. Pairs
+    /// with [`Self::panel_background`]; the chrome's `radius` supplies
+    /// the rounded-clip mask geometry.
+    #[serde(default, skip_serializing_if = "is_clip_none")]
+    pub panel_clip: ClipMode,
+}
+
+#[inline]
+fn is_clip_none(c: &ClipMode) -> bool {
+    matches!(c, ClipMode::None)
 }
 
 impl Default for Theme {
@@ -125,7 +73,8 @@ impl Default for Theme {
             text_edit: TextEditTheme::default(),
             text: TextStyle::default(),
             window_clear: palette::TERMINAL_BG,
-            panel: None,
+            panel_background: None,
+            panel_clip: ClipMode::None,
         }
     }
 }

@@ -340,7 +340,7 @@ mod bars {
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::{Scroll, bar_geometry};
-    use crate::widgets::theme::{Background, ScrollbarTheme, Surface};
+    use crate::widgets::theme::{Background, ScrollbarTheme};
     use glam::UVec2;
 
     fn theme() -> ScrollbarTheme {
@@ -587,10 +587,11 @@ mod bars {
                             .id_salt(("card", tag))
                             .padding(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(Surface::clip_rect_with_bg(Background {
+                            .background(Background {
                                 fill: crate::primitives::color::Color::rgb(0.16, 0.20, 0.28),
                                 ..Default::default()
-                            }))
+                            })
+                            .clip_rect()
                             .show(ui, |ui| {
                                 let s = match tag {
                                     "v" => Scroll::vertical().id_salt(("scroll", tag)),

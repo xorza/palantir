@@ -4,7 +4,6 @@
 use glam::UVec2;
 use palantir::{
     Background, Button, Color, Configure, Corners, Frame, Panel, Rect, Shape, Sizing, Stroke,
-    Surface,
 };
 
 use crate::diff::Tolerance;
@@ -73,14 +72,15 @@ fn surface_rounded_clips_full_fill_child() {
                 Panel::zstack()
                     .id_salt("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .background(Surface::clip_rounded_with_bg(Background {
+                    .background(Background {
                         fill: Color::TRANSPARENT,
                         stroke: Stroke {
                             width: 5.0,
                             color: Color::rgb_u8(0, 255, 0),
                         },
                         radius: Corners::new(4.0, 12.0, 20.0, 28.0),
-                    }))
+                    })
+                    .clip_rounded()
                     .show(ui, |ui| {
                         Frame::new()
                             .id_salt("inner")
@@ -120,11 +120,12 @@ fn rounded_clip_survives_surface_resize() {
                 Panel::zstack()
                     .id_salt("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
-                    .background(Surface::clip_rounded_with_bg(Background {
+                    .background(Background {
                         fill: Color::rgb(0.2, 0.2, 0.3),
                         radius: Corners::all(8.0),
                         ..Default::default()
-                    }))
+                    })
+                    .clip_rounded()
                     .show(ui, |_| {});
             });
     };

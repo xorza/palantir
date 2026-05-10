@@ -8,7 +8,7 @@ use crate::primitives::stroke::Stroke;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::{Surface, TextEditTheme};
+use crate::widgets::theme::TextEditTheme;
 use std::borrow::Cow;
 
 /// Cross-frame state for one [`TextEdit`]. Stored in [`Ui`]'s
@@ -137,12 +137,13 @@ impl<'a> TextEdit<'a> {
         // `ui.text` (disjoint from `ui.tree`, so add_shape
         // sequences fine after the measurement returns).
         // Chrome paints via `Tree::chrome_for` — encoder emits it before
-        // any clip. The surface's clip stays `None` (TextEdit's caret
-        // and selection handle their own painting; no rect-clipping).
-        let surface = Some(Surface::from(look.background));
+        // any clip. No clip is set: TextEdit's caret and selection
+        // handle their own painting and don't need rect-clipping.
+        let mut element = self.element;
+        element.chrome = Some(look.background);
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
-        let resp_node = ui.node(self.element, surface, |ui| {
+        let resp_node = ui.node(element, |ui| {
             // Text or placeholder. Empty buffer + unfocused shows the
             // placeholder; focused shows the buffer (even if empty)
             // because we still want the caret to render flush-left.

@@ -10,8 +10,7 @@ use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{
-    align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, display::Display,
-    sizing::Sizing,
+    align::Align, align::HAlign, align::VAlign, display::Display, sizing::Sizing,
 };
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
@@ -19,7 +18,7 @@ use crate::primitives::{
 use crate::support::testing::{
     begin, encode_cmds, encode_cmds_filtered, encode_cmds_with_rects, ui_at,
 };
-use crate::widgets::theme::{Background, Surface};
+use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -112,7 +111,7 @@ fn baseline_draw_rect_count_cases() {
                 Frame::new()
                     .id_salt("clip_only")
                     .size(50.0)
-                    .background(Surface::clip_rect())
+                    .clip_rect()
                     .show(ui);
             }
         });
@@ -191,7 +190,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
         Panel::zstack()
             .id_salt("clip_only")
             .size(50.0)
-            .background(Surface::clip_rect())
+            .clip_rect()
             .show(ui, |_| {});
     });
     ui.end_frame();
@@ -215,7 +214,7 @@ fn clip_emits_balanced_push_pop() {
         Panel::zstack()
             .id_salt("clip")
             .size(50.0)
-            .background(Surface::clip_rect())
+            .clip_rect()
             .show(ui, |ui| {
                 Frame::new()
                     .id_salt("inner")
@@ -280,14 +279,15 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
             Panel::zstack()
                 .id_salt("rounded")
                 .size(80.0)
-                .background(Surface::clip_rounded_with_bg(Background {
+                .background(Background {
                     fill: Color::rgb(0.2, 0.2, 0.2),
                     stroke: Stroke {
                         width: 2.0,
                         color: Color::rgb(1.0, 1.0, 1.0),
                     },
                     radius: Corners::all(8.0),
-                }))
+                })
+                .clip_rounded()
                 .show(ui, |ui| {
                     Frame::new().id_salt("c").size(40.0).show(ui);
                 })
@@ -327,10 +327,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
         Panel::zstack()
             .id_salt("rounded_no_bg")
             .size(80.0)
-            .background(Surface {
-                paint: Background::default(),
-                clip: ClipMode::Rounded,
-            })
+            .clip_rounded()
             .show(ui, |ui| {
                 Frame::new().id_salt("c").size(40.0).show(ui);
             });
@@ -441,7 +438,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         Panel::canvas()
             .id_salt("mid")
             .size(200.0)
-            .background(Surface::clip_rect())
+            .clip_rect()
             .transform(xform)
             .show(ui, |ui| {
                 Frame::new()
@@ -548,7 +545,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         Panel::canvas()
             .id_salt("mid")
             .size(200.0)
-            .background(Surface::clip_rect())
+            .clip_rect()
             .transform(xform)
             .show(ui, |ui| {
                 got.0 = Frame::new()
@@ -601,12 +598,12 @@ fn nested_clips_each_emit_their_own_pair() {
         Panel::zstack()
             .id_salt("outer")
             .size(Sizing::Fixed(100.0))
-            .background(Surface::clip_rect())
+            .clip_rect()
             .show(ui, |ui| {
                 Panel::zstack()
                     .id_salt("inner")
                     .size(Sizing::Fixed(50.0))
-                    .background(Surface::clip_rect())
+                    .clip_rect()
                     .show(ui, |_| {});
             });
     });
@@ -824,7 +821,7 @@ fn damage_filter_culls_subtree_outside_damage() {
         Panel::hstack()
             .id_salt("clipped")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
-            .background(Surface::clip_rect())
+            .clip_rect()
             .show(ui, |ui| {
                 Frame::new()
                     .id_salt("inner")

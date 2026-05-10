@@ -11,8 +11,8 @@
 //! work.
 
 use palantir::{
-    Background, Button, Color, Configure, Corners, Panel, Popup, Rect, Size, Sizing, Stroke,
-    Surface, Text, Ui, WidgetId,
+    Background, Button, Color, Configure, Corners, Panel, Popup, Rect, Size, Sizing, Stroke, Text,
+    Ui, WidgetId,
 };
 
 #[derive(Default)]
@@ -83,14 +83,14 @@ pub fn build(ui: &mut Ui) {
     let resp = Popup::anchored_to(anchor)
         .id_salt("popup-showcase.menu")
         .padding(6.0)
-        .background(Surface::from(Background {
+        .background(Background {
             fill: Color::hex(0x2a2a2a),
             stroke: Stroke {
                 width: 1.0,
                 color: Color::hex(0x4a4a4a),
             },
             radius: Corners::all(6.0),
-        }))
+        })
         .show(ui, |ui| {
             for label in ["copy", "paste", "delete"] {
                 if Button::new()

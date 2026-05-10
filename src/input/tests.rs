@@ -4,7 +4,6 @@ use crate::input::sense::Sense;
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::support::testing::{begin, click_at, press_at, release_left, ui_at};
-use crate::widgets::theme::Surface;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -236,7 +235,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         Panel::zstack()
             .id_salt("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-            .background(Surface::clip_rect())
+            .clip_rect()
             .show(ui, |ui| {
                 Button::new()
                     .id_salt("inner")
@@ -257,7 +256,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         Panel::zstack()
             .id_salt("clipper")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-            .background(Surface::clip_rect())
+            .clip_rect()
             .show(ui, |ui| {
                 clicked = Button::new()
                     .id_salt("inner")
