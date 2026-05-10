@@ -3,10 +3,10 @@
 //! `subtree_hash` and incoming `available` size both match last
 //! frame. See `src/layout/measure-cache.md`.
 //!
-//! **Storage**: SoA arenas — three node-indexed and parallel, bundled
-//! into [`NodeArenas`] (`desired`, `text_spans`, `scroll_content`) so
-//! length-equality is structural; plus two variable-length per-subtree
-//! [`LiveArena`]s (`hugs` for grid descendants, `text_shapes_arena` for
+//! **Storage**: SoA arenas — two node-indexed and parallel, bundled
+//! into [`NodeArenas`] (`desired`, `text_spans`) so length-equality is
+//! structural; plus two variable-length per-subtree [`LiveArena`]s
+//! (`hugs` for grid descendants, `text_shapes_arena` for
 //! `Shape::Text` runs) — plus a tiny per-`WidgetId` `ArenaSnapshot`
 //! pointing at a contiguous range. The dimensional cache key
 //! (quantized `available`) lives directly on `ArenaSnapshot` as a
@@ -14,7 +14,7 @@
 //! are in-place memcpys when the subtree size matches; size mismatches
 //! fall back to append + mark-garbage with periodic compaction.
 //!
-//! `NodeArenas` owns one shared `live` counter for its three columns;
+//! `NodeArenas` owns one shared `live` counter for its two columns;
 //! each variable-length `LiveArena` tracks its own. Compaction
 //! constants live in `src/common/cache_arena.rs`.
 //!
@@ -76,12 +76,12 @@ pub(crate) struct ArenaSnapshot {
 /// is used as a cache-validity gate.
 pub(crate) type AvailableKey = IVec2;
 
-/// Per-subtree slice bundle: borrows into the three parallel
-/// node-indexed arenas (`desired`, `text_spans`, `scroll_content`)
-/// plus the per-grid `hugs` and the flat `text_shapes` payloads. The
-/// three node-indexed slices share length and pre-order alignment;
-/// `hugs` is sized per-grid descendant in `HUG_ORDER`; `text_shapes`
-/// is sized per text-shape in pre-order.
+/// Per-subtree slice bundle: borrows into the two parallel
+/// node-indexed arenas (`desired`, `text_spans`) plus the per-grid
+/// `hugs` and the flat `text_shapes` payloads. The two node-indexed
+/// slices share length and pre-order alignment; `hugs` is sized
+/// per-grid descendant in `HUG_ORDER`; `text_shapes` is sized per
+/// text-shape in pre-order.
 ///
 /// `text_spans` carries spans whose `start` is offset by
 /// `text_spans_base`. [`MeasureCache::write_subtree`] subtracts
@@ -104,9 +104,6 @@ pub(crate) struct SubtreeArenas<'a> {
     /// write (caller's per-frame `text_spans` slice indexes a global
     /// flat buffer, this offset rebases it).
     pub(crate) text_spans_base: u32,
-    /// Per-node measured content extent for `LayoutMode::Scroll`
-    /// descendants, `Size::ZERO` elsewhere.
-    pub(crate) scroll_content: &'a [Size],
     /// Per-grid hug arrays for every `LayoutMode::Grid` descendant
     /// of the subtree, packed in pre-order. Each grid contributes
     /// four arrays in fixed order — cols.max, cols.min, rows.max,
@@ -144,9 +141,9 @@ pub(crate) fn quantize_available(s: Size) -> AvailableKey {
     IVec2::new(quantize_axis(s.w), quantize_axis(s.h))
 }
 
-/// The three node-indexed parallel columns. Length-equality is
-/// structural: every mutation goes through methods that touch all
-/// three at once, so the columns can't drift. `live` counts elements
+/// The two node-indexed parallel columns. Length-equality is
+/// structural: every mutation goes through methods that touch both
+/// at once, so the columns can't drift. `live` counts elements
 /// still referenced by a snapshot; the underlying `Vec`s carry that
 /// plus garbage from released snapshots until the next compact.
 #[derive(Default)]
@@ -156,11 +153,6 @@ pub(crate) struct NodeArenas {
     /// range. Stored **subtree-local** (start relative to the snapshot's
     /// `text_shapes` range start) so spans survive flat-range compaction.
     pub(crate) text_spans: Vec<Span>,
-    /// Per-node measured content extent for `LayoutMode::Scroll`
-    /// (zero elsewhere). Restored on a cache hit so the
-    /// `LayoutResult.scroll_content` slice is populated without
-    /// re-running the stack/zstack measure.
-    pub(crate) scroll_content: Vec<Size>,
     pub(crate) live: usize,
 }
 
@@ -168,16 +160,12 @@ impl NodeArenas {
     fn write_in_place(&mut self, range: Range<usize>, src: &SubtreeArenas<'_>) {
         self.desired[range.clone()].copy_from_slice(src.desired);
         let base = src.text_spans_base;
-        for (dst, s) in self.text_spans[range.clone()]
-            .iter_mut()
-            .zip(src.text_spans.iter())
-        {
+        for (dst, s) in self.text_spans[range].iter_mut().zip(src.text_spans.iter()) {
             *dst = Span {
                 start: s.start.saturating_sub(base),
                 len: s.len,
             };
         }
-        self.scroll_content[range].copy_from_slice(src.scroll_content);
     }
 
     fn append(&mut self, src: &SubtreeArenas<'_>) -> u32 {
@@ -188,17 +176,13 @@ impl NodeArenas {
             start: s.start.saturating_sub(base),
             len: s.len,
         }));
-        self.scroll_content.extend_from_slice(src.scroll_content);
         start
     }
 
     fn extend_from_within(&mut self, src: &Self, range: Range<usize>) -> u32 {
         let start = self.desired.len() as u32;
         self.desired.extend_from_slice(&src.desired[range.clone()]);
-        self.text_spans
-            .extend_from_slice(&src.text_spans[range.clone()]);
-        self.scroll_content
-            .extend_from_slice(&src.scroll_content[range]);
+        self.text_spans.extend_from_slice(&src.text_spans[range]);
         start
     }
 
@@ -220,7 +204,6 @@ impl NodeArenas {
         Self {
             desired: Vec::with_capacity(cap),
             text_spans: Vec::with_capacity(cap),
-            scroll_content: Vec::with_capacity(cap),
             live: 0,
         }
     }
@@ -229,7 +212,6 @@ impl NodeArenas {
     pub(crate) fn clear(&mut self) {
         self.desired.clear();
         self.text_spans.clear();
-        self.scroll_content.clear();
         self.live = 0;
     }
 }
@@ -281,9 +263,8 @@ impl MeasureCache {
             root: self.nodes.desired[nodes.start],
             arenas: SubtreeArenas {
                 desired: &self.nodes.desired[nodes.clone()],
-                text_spans: &self.nodes.text_spans[nodes.clone()],
+                text_spans: &self.nodes.text_spans[nodes],
                 text_spans_base: 0,
-                scroll_content: &self.nodes.scroll_content[nodes],
                 hugs: &self.hugs.items[snap.hugs.range()],
                 text_shapes: &self.text_shapes_arena.items[snap.text_shapes.range()],
             },
@@ -306,7 +287,6 @@ impl MeasureCache {
         arenas: SubtreeArenas<'_>,
     ) {
         assert_eq!(arenas.desired.len(), arenas.text_spans.len());
-        assert_eq!(arenas.desired.len(), arenas.scroll_content.len());
         assert!(!arenas.desired.is_empty(), "snapshot must include the root");
         let new_len = arenas.desired.len() as u32;
         let new_hugs_len = arenas.hugs.len() as u32;

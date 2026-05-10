@@ -21,13 +21,6 @@ pub(crate) struct LayerResult {
     /// Per-node `Span` into `text_shapes`. Empty span (`len: 0`) for
     /// nodes that didn't shape text. Same length as `rect`.
     pub(crate) text_spans: Vec<Span>,
-    /// Measured content extent for each `LayoutMode::Scroll{V, H, XY}`
-    /// node. ScrollV stores `(max_w, sum_h + gap)`; ScrollH the mirror;
-    /// ScrollXY stores `(max_w, max_h)`. Read by `Ui::end_frame` to
-    /// refresh per-scroll-widget state rows for next frame's offset
-    /// clamp. `Size::ZERO` for non-scroll nodes — they don't read this
-    /// column.
-    pub(crate) scroll_content: Vec<Size>,
 }
 
 /// Per-frame layout output across all layers. Wraps a fixed-size
@@ -71,7 +64,5 @@ impl LayerResult {
         self.text_shapes.clear();
         self.text_spans.clear();
         self.text_spans.resize(n, Span::default());
-        self.scroll_content.clear();
-        self.scroll_content.resize(n, Size::ZERO);
     }
 }

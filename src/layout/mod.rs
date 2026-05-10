@@ -75,6 +75,23 @@ impl LayoutScratch {
     }
 }
 
+/// Per-frame measure-time entry for one [`LayoutMode::Scroll`] node.
+/// Pushed by the Scroll arm of `measure_dispatch` after computing the
+/// raw content extent. Drained post-`run` by `ScrollWidgets::refresh`
+/// to refresh per-widget `ScrollState` rows.
+///
+/// Sparse by construction — non-scroll nodes don't appear. On a
+/// measure-cache hit the Scroll arm doesn't fire, so no entry is
+/// pushed; the drain falls back to the previous frame's
+/// `ScrollState.content`, which is correct because a cache hit
+/// implies a byte-identical measure output.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScrollContentMeasure {
+    pub(crate) layer: Layer,
+    pub(crate) inner: NodeId,
+    pub(crate) content: Size,
+}
+
 /// Persistent layout engine. Field groups by lifetime:
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
@@ -82,11 +99,17 @@ impl LayoutScratch {
 /// - `result` — per-frame output, one [`LayerResult`] slot per `Layer`,
 ///   indexed via `result[layer]`. Internal measure/arrange code
 ///   reads/writes `self.result[self.active_layer]`; outside `run` every
-///   slot is the finalized output for its layer.
+///   slot is the finalized output for its layer. Read by the encoder,
+///   cascade, hit-index, and tests.
 /// - `active_layer` — which layer's slot the recursive measure/arrange
 ///   currently writes to. Set at the top of each iteration in `run`;
 ///   between/outside `run` invocations its value is whatever the last
 ///   iteration left, but no recursive code runs there to read it.
+/// - `scroll_measures` — sparse per-frame measure-time output for
+///   [`LayoutMode::Scroll`] nodes (see [`ScrollContentMeasure`]).
+///   Cleared at the top of every `run`. Distinct from `result`
+///   because it isn't paint-pipeline output — its only consumer is
+///   `ScrollWidgets::refresh` post-`run`.
 /// - `cache` — cross-frame measure cache. See [`cache`] and
 ///   `src/layout/measure-cache.md`.
 #[derive(Default)]
@@ -94,6 +117,7 @@ pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
     pub(crate) result: LayoutResult,
     pub(crate) active_layer: Layer,
+    pub(crate) scroll_measures: Vec<ScrollContentMeasure>,
     pub(crate) cache: MeasureCache,
 }
 
@@ -186,6 +210,7 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
+        self.scroll_measures.clear();
         for layer in Layer::PAINT_ORDER {
             let tree = forest.tree(layer);
             self.active_layer = layer;
@@ -258,8 +283,6 @@ impl LayoutEngine {
                     len: snap_span.len,
                 };
             }
-            self.result[self.active_layer].scroll_content[curr_start..curr_end]
-                .copy_from_slice(hit.arenas.scroll_content);
             // Restore per-grid hug arrays. `grid::arrange` reads
             // `LayoutEngine.scratch.grid.hugs`, populated only by
             // `grid::measure`. Without this restore, a cache hit at
@@ -364,7 +387,6 @@ impl LayoutEngine {
                     desired: &self.scratch.desired[start..end],
                     text_spans: &self.result[self.active_layer].text_spans[start..end],
                     text_spans_base: text_shapes_lo,
-                    scroll_content: &self.result[self.active_layer].scroll_content[start..end],
                     hugs: &self.scratch.tmp_hugs,
                     text_shapes: &self.result[self.active_layer].text_shapes
                         [text_shapes_lo as usize..text_shapes_hi as usize],
@@ -455,12 +477,13 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
             LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
-            // Scroll viewports stash content extent in `scroll_content`
-            // for `Ui::end_frame` and return 0 on the panned axes so
-            // `resolve_desired` falls through to the user's `Sizing`
-            // and doesn't grow with content. Single-axis variants run
-            // a stack on the panned axis with that axis fed `INF`;
-            // `Both` runs a zstack with both axes unbounded.
+            // Scroll viewports stash content extent in
+            // `scroll_measures` for `Ui::end_frame_record_phase` and
+            // return 0 on the panned axes so `resolve_desired` falls
+            // through to the user's `Sizing` and doesn't grow with
+            // content. Single-axis variants run a stack on the panned
+            // axis with that axis fed `INF`; `Both` runs a zstack with
+            // both axes unbounded.
             LayoutMode::Scroll(axes) => {
                 let raw = match axes {
                     ScrollAxes::Vertical => stack::measure(
@@ -481,7 +504,11 @@ impl LayoutEngine {
                     ),
                     ScrollAxes::Both => zstack::measure(self, tree, node, Size::INF, text),
                 };
-                self.result[self.active_layer].scroll_content[node.index()] = raw;
+                self.scroll_measures.push(ScrollContentMeasure {
+                    layer: self.active_layer,
+                    inner: node,
+                    content: raw,
+                });
                 match axes {
                     ScrollAxes::Vertical => Size::new(raw.w, 0.0),
                     ScrollAxes::Horizontal => Size::new(0.0, raw.h),

@@ -1,9 +1,8 @@
 use crate::forest::element::{Configure, Element, LayoutMode, ScrollAxes};
-use crate::forest::tree::NodeId;
+use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
-use crate::layout::result::LayerResult;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
@@ -13,26 +12,89 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::shape::Shape;
 use crate::ui::Ui;
-use crate::ui::post_arrange::PostArrange;
-use crate::ui::state::StateMap;
 use crate::widgets::Response;
 use crate::widgets::theme::ScrollbarTheme;
 use glam::Vec2;
 
-/// Per-scroll post-arrange hook. Pushed onto `Ui::post_arrange`
-/// during `Scroll::show`, drained between `layout.run` and cascade —
-/// at which point [`Self::run`] reads this frame's measured rects +
-/// content extent and updates the scroll's [`ScrollState`] row.
-/// Self-contained: every input `run` needs (id, node addresses, inner
-/// padding) lives on the hook itself. Layer is captured by the
-/// registry at push time, not stored here, so `run` only sees the
-/// per-layer `LayerResult` slice.
+/// Per-frame record-side metadata for one [`Scroll`] widget. Pushed
+/// onto `Ui::scroll_widgets` in [`Scroll::show`], drained by
+/// `Ui::end_frame_record_phase` after `layout.run` to refresh the
+/// widget's [`ScrollState`] row. NodeIds are this frame's pre-order
+/// indices (the tree is rebuilt every frame); `inner_padding` is the
+/// user-supplied padding the encoder uses to deflate the clip mask.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ScrollHook {
+pub(crate) struct ScrollWidget {
+    pub(crate) layer: Layer,
     pub(crate) id: WidgetId,
     pub(crate) outer: NodeId,
     pub(crate) inner: NodeId,
     pub(crate) inner_padding: Spacing,
+}
+
+/// Per-frame collection of [`ScrollWidget`] entries pushed during
+/// recording. Drained by [`Self::refresh`] after `layout.run`.
+/// `entries` is `pub(crate)` so callers push/clear directly — the
+/// only method here is the one that does real work.
+#[derive(Default)]
+pub(crate) struct ScrollWidgets {
+    pub(crate) entries: Vec<ScrollWidget>,
+}
+
+impl ScrollWidgets {
+    /// Update each widget's [`ScrollState`] row from this frame's
+    /// arranged rects + measured content extent. Returns `true` if
+    /// any widget's `overflow` flag flipped — signals that the
+    /// record-time reservation decision used stale data and the frame
+    /// should be re-recorded with corrected state.
+    ///
+    /// Content-extent lookup: `LayoutEngine::scroll_measures` carries
+    /// `(layer, inner, content)` for every scroll widget whose
+    /// measure arm fired this frame. On a measure-cache hit at any
+    /// ancestor (or at the scroll itself) the arm doesn't fire and no
+    /// entry is pushed — but the cache hit is keyed on
+    /// `subtree_hash`, so the cached subtree's measure output is
+    /// byte-identical to last frame's. Last frame's
+    /// `ScrollState.content` is therefore still correct, and we just
+    /// leave the row's `content` untouched.
+    pub(crate) fn refresh(
+        &self,
+        layout: &crate::layout::LayoutEngine,
+        state: &mut crate::ui::state::StateMap,
+    ) -> bool {
+        let mut overflow_flipped = false;
+        for w in &self.entries {
+            let rects = &layout.result[w.layer].rect;
+            assert!(
+                w.outer.index() < rects.len() && w.inner.index() < rects.len(),
+                "scroll widget references nodes ({}, {}) past tree length {}",
+                w.outer.index(),
+                w.inner.index(),
+                rects.len(),
+            );
+            let outer = rects[w.outer.index()].size;
+            let viewport = rects[w.inner.index()].deflated_by(w.inner_padding).size;
+            let row = state.get_or_insert_with::<ScrollState, _>(w.id, Default::default);
+            let content = layout
+                .scroll_measures
+                .iter()
+                .find(|m| m.layer == w.layer && m.inner == w.inner)
+                .map(|m| m.content)
+                .unwrap_or(row.content);
+            let new_overflow = (content.w > viewport.w, content.h > viewport.h);
+            overflow_flipped |= row.overflow != new_overflow;
+            row.viewport = viewport;
+            row.outer = outer;
+            row.content = content;
+            row.overflow = new_overflow;
+            // End-frame re-clamp: pairs with the record-time clamp in
+            // `Scroll::show`, which only had last frame's numbers.
+            let max_x = (content.w - viewport.w).max(0.0);
+            let max_y = (content.h - viewport.h).max(0.0);
+            row.offset.x = row.offset.x.clamp(0.0, max_x);
+            row.offset.y = row.offset.y.clamp(0.0, max_y);
+        }
+        overflow_flipped
+    }
 }
 
 /// Cross-frame state row for one [`Scroll`] widget. Persisted via
@@ -64,48 +126,6 @@ pub(crate) struct ScrollState {
     pub(crate) outer: Size,
     pub(crate) content: Size,
     pub(crate) overflow: (bool, bool),
-}
-
-impl PostArrange for ScrollHook {
-    /// Refresh this scroll's [`ScrollState`] row from the
-    /// freshly-arranged viewport + measured content extent. Runs
-    /// post-arrange / pre-cascade so next frame's record clamps with
-    /// up-to-date numbers; the current frame's pan already used last
-    /// frame's clamp.
-    ///
-    /// Returns `true` when the `overflow` flag flipped — the
-    /// record-time reservation decision was based on stale data and
-    /// the same frame should re-record with corrected state.
-    /// `PostArrangeRegistry::run_all` ORs every hook's return into
-    /// the relayout signal `Ui::end_frame_record_phase` propagates.
-    fn run(&self, layout: &LayerResult, state: &mut StateMap) -> bool {
-        assert!(
-            self.outer.index() < layout.rect.len() && self.inner.index() < layout.rect.len(),
-            "scroll hook references nodes ({}, {}) past tree length {}",
-            self.outer.index(),
-            self.inner.index(),
-            layout.rect.len(),
-        );
-        let outer = layout.rect[self.outer.index()].size;
-        let inner_rect = layout.rect[self.inner.index()];
-        let viewport = inner_rect.deflated_by(self.inner_padding).size;
-        let content = layout.scroll_content[self.inner.index()];
-        let new_overflow = (content.w > viewport.w, content.h > viewport.h);
-        let row = state.get_or_insert_with::<ScrollState, _>(self.id, Default::default);
-        row.viewport = viewport;
-        row.outer = outer;
-        row.content = content;
-        let overflow_changed = row.overflow != new_overflow;
-        row.overflow = new_overflow;
-        // End-frame re-clamp: pairs with the record-time clamp in
-        // `Scroll::show`, which only had last frame's numbers.
-        let max_x = (content.w - viewport.w).max(0.0);
-        let max_y = (content.h - viewport.h).max(0.0);
-        row.offset.x = row.offset.x.clamp(0.0, max_x);
-        row.offset.y = row.offset.y.clamp(0.0, max_y);
-
-        overflow_changed
-    }
 }
 
 /// Scroll viewport. Three flavors via constructor:
@@ -284,7 +304,9 @@ impl Scroll {
                 &theme,
             );
         });
-        ui.push_post_arrange(ScrollHook {
+        let layer = ui.forest.current_layer();
+        ui.scroll_widgets.entries.push(ScrollWidget {
+            layer,
             id,
             outer: outer_node,
             inner: inner_node,

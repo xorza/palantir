@@ -33,7 +33,7 @@ fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
     })
 }
 
-/// `NodeArenas` bundles three parallel columns and enforces
+/// `NodeArenas` bundles two parallel columns and enforces
 /// length-equality by construction. Drift would silently corrupt
 /// snapshot lookups (one column reads the right index, another reads
 /// past its end). Pin the invariant after every operation that touches
@@ -43,7 +43,6 @@ fn assert_node_columns_aligned(ui: &Ui) {
     let n = &ui.layout.cache.nodes;
     let len = n.desired.len();
     assert_eq!(n.text_spans.len(), len, "text_spans length drift");
-    assert_eq!(n.scroll_content.len(), len, "scroll_content length drift");
     assert!(n.live <= len, "live {} > total {}", n.live, len);
 }
 
