@@ -1,23 +1,24 @@
 //! Layout-side scroll subsystem. Owns:
 //!
 //! - **Driver** ([`measure`] + [`arrange`]) — minimal: INF-axis
-//!   measure, standard arrange, records the content extent into
-//!   [`ScrollContent`].
-//! - **Cross-frame state** ([`ScrollLayoutState`]) — offset,
-//!   viewport, outer, content, overflow, seen — keyed by `WidgetId`
-//!   on [`LayoutEngine::scroll_states`]. The scroll widget reads and
-//!   mutates this directly; refresh updates the layout-derived
-//!   fields.
-//! - **Refresh** ([`LayoutEngine::refresh_scrolls`]) — runs after
-//!   arrange. Walks each layer's tree for `LayoutMode::Scroll` nodes
-//!   and updates the matching state row.
+//!   measure that records the content extent into the matching
+//!   [`ScrollLayoutState`] row, and a standard arrange that updates
+//!   the layout-derived fields (viewport, overflow, seen) and
+//!   re-clamps `offset` post-arrange. No separate post-pass — the
+//!   driver is the refresh.
+//! - **Cross-frame state** ([`ScrollLayoutState`]) — offset, viewport,
+//!   content, overflow, seen — keyed by the inner viewport node's
+//!   `WidgetId` on [`LayoutEngine::scroll_states`]. The scroll widget
+//!   reads and mutates this directly (via [`Ui::scroll_state`], which
+//!   applies the same `.with("__viewport")` hop transparently).
 //!
 //! Bar-gutter reservation and bar drawing live in
 //! [`crate::widgets::scroll`] — the layout primitive itself is
-//! unaware of scrollbars.
+//! unaware of scrollbars and of the outer ZStack the widget wraps it
+//! in.
 
 use crate::forest::element::ScrollAxes;
-use crate::forest::tree::{Layer, NodeId, Tree};
+use crate::forest::tree::{NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
 use crate::layout::axis::Axis;
 use crate::primitives::rect::Rect;
@@ -25,7 +26,6 @@ use crate::primitives::size::Size;
 use crate::text::TextShaper;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
-use strum::EnumCount as _;
 
 use super::LayoutEngine;
 use super::stack;
@@ -35,77 +35,39 @@ use super::zstack;
 mod tests;
 
 // ---------------------------------------------------------------------------
-// Per-frame content extents
-// ---------------------------------------------------------------------------
-
-/// Per-layer flat Vec of `(inner_node, content_size)` pairs pushed by
-/// [`measure`]. Read by [`LayoutEngine::refresh_scrolls`] after
-/// arrange to update each scroll widget's [`ScrollLayoutState`].
-///
-/// Sparse — only Scroll nodes appear. On a measure-cache hit
-/// [`measure`] doesn't fire and no entry is pushed; refresh falls
-/// back to the persisted state row's `content` (cache-hit ⟹
-/// identical measure ⟹ last frame's value is right).
-#[derive(Default)]
-pub(crate) struct ScrollContent {
-    layers: [Vec<(NodeId, Size)>; Layer::COUNT],
-}
-
-impl ScrollContent {
-    pub(crate) fn clear(&mut self) {
-        for v in &mut self.layers {
-            v.clear();
-        }
-    }
-
-    pub(crate) fn for_layer(&self, layer: Layer) -> &[(NodeId, Size)] {
-        &self.layers[layer as usize]
-    }
-
-    fn for_layer_mut(&mut self, layer: Layer) -> &mut Vec<(NodeId, Size)> {
-        &mut self.layers[layer as usize]
-    }
-
-    /// Linear scan over a per-layer slice. Few scrolls per frame, so
-    /// the scan is cheap.
-    pub(crate) fn lookup(&self, layer: Layer, node: NodeId) -> Option<Size> {
-        self.for_layer(layer)
-            .iter()
-            .find(|(n, _)| *n == node)
-            .map(|(_, s)| *s)
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Cross-frame state — what the scroll widget reads at record time
 // ---------------------------------------------------------------------------
 
 /// Cross-frame state row for one scroll widget. Owned by
 /// [`LayoutEngine::scroll_states`] — *not* `StateMap`, because this
-/// is a layout-derived concern (refresh writes layout fields) and
+/// is a layout-derived concern (the driver writes layout fields) and
 /// belongs in the layout subsystem rather than tangled with widget
 /// state.
 ///
 /// The widget at record time:
 /// - Reads the snapshot via [`Ui::scroll_state`](crate::Ui::scroll_state)
 ///   for offset clamp + reservation guess + bar geometry.
-/// - Mutates `offset` from input (via direct entry access on the
-///   layout's hashmap, or a helper).
+/// - Mutates `offset` from input (via the same entry).
 ///
-/// `refresh` writes layout-derived fields (viewport, outer, content,
-/// overflow, seen) and re-clamps `offset` to the new bounds.
+/// The driver writes layout-derived fields:
+/// - `measure` records `content` (the panned-axis extent).
+/// - `arrange` records `viewport` (inner rect post user-padding),
+///   `overflow`, `seen`, and re-clamps `offset` to the new bounds.
 ///
 /// - `offset` — input-accumulated pan position (next frame's start).
 /// - `viewport` — INNER (user-padding-deflated) size: what children
 ///   see. Drives `content > viewport` overflow checks.
-/// - `outer` — full arranged rect size including any reserved bar
-///   strips. Drives bar positioning so the bar sits flush with the
-///   OUTER far edge.
+/// - `outer` — full arranged rect size of the scroll node including
+///   any reservation gutter. Drives bar positioning so the bar sits
+///   flush with the OUTER far edge. Parent-allocated and stable
+///   across reservation flips (unlike `viewport`, which shrinks when
+///   a gutter appears) — that's why we store it instead of deriving
+///   from `viewport + padding + reservation` at record time.
 /// - `content` — measured content extent on the panned axes.
 /// - `overflow` — `(x, y)` per-axis: did this axis's content overflow
 ///   the viewport on the most recent measure? Read at record time
 ///   to decide whether to reserve a bar gutter on the cross axis.
-/// - `seen` — set true by `refresh` after the first frame. Read by
+/// - `seen` — set true by `arrange` after the first frame. Read by
 ///   the widget to detect a cold-mount and trigger a relayout pass
 ///   so pass B records with the measured reservation in place.
 #[derive(Default, Clone, Copy, Debug)]
@@ -118,9 +80,10 @@ pub(crate) struct ScrollLayoutState {
     pub(crate) seen: bool,
 }
 
-/// Cross-frame map of [`ScrollLayoutState`] keyed by `WidgetId`.
-/// Lives on [`LayoutEngine`]; refresh writes layout-derived fields,
-/// the widget mutates `offset` from input.
+/// Cross-frame map of [`ScrollLayoutState`] keyed by the inner
+/// viewport's `WidgetId`. Lives on [`LayoutEngine`]; the driver
+/// writes layout-derived fields, the widget mutates `offset` from
+/// input.
 pub(crate) type ScrollStates = FxHashMap<WidgetId, ScrollLayoutState>;
 
 // ---------------------------------------------------------------------------
@@ -129,8 +92,14 @@ pub(crate) type ScrollStates = FxHashMap<WidgetId, ScrollLayoutState>;
 
 /// Measure dispatch arm for [`LayoutMode::Scroll`]. Single
 /// child-measurement pass with `INF` on the panned axes — no
-/// reservation, no awareness of bars. Returns the panned-axis-zeroed
-/// `desired` so the viewport's own size doesn't grow with content.
+/// reservation, no awareness of bars. Records the panned-axis content
+/// extent into the persistent state row, and returns the
+/// panned-axis-zeroed `desired` so the viewport's own size doesn't
+/// grow with content.
+///
+/// On a measure-cache hit at any ancestor, this function doesn't run
+/// and the row's `content` keeps last frame's value (cache hit ⟹
+/// identical measure ⟹ identical content extent).
 pub(crate) fn measure(
     engine: &mut LayoutEngine,
     tree: &Tree,
@@ -159,10 +128,8 @@ pub(crate) fn measure(
         ScrollAxes::Both => zstack::measure(engine, tree, node, Size::INF, text),
     };
 
-    engine
-        .scroll_content
-        .for_layer_mut(engine.active_layer)
-        .push((node, raw));
+    let wid = tree.records.widget_id()[node.index()];
+    engine.scroll_states.entry(wid).or_default().content = raw;
 
     match axes {
         ScrollAxes::Vertical => Size::new(raw.w, 0.0),
@@ -171,10 +138,12 @@ pub(crate) fn measure(
     }
 }
 
-/// Arrange dispatch arm for [`LayoutMode::Scroll`]. Plain delegate to
-/// stack/zstack arrange — children land in `inner` (already deflated
-/// by user padding). Bar-gutter reservation, if any, was applied as
-/// `Element.padding` on the *outer* ZStack the widget builds.
+/// Arrange dispatch arm for [`LayoutMode::Scroll`]. Delegates to
+/// stack/zstack arrange so children land in `inner` (already deflated
+/// by user padding), then writes the layout-derived fields onto the
+/// state row: `viewport` is `inner.size`, overflow follows from
+/// `content > viewport` per axis, `seen` flips to true after the
+/// first arrange, and `offset` is re-clamped to the new bounds.
 pub(crate) fn arrange(
     engine: &mut LayoutEngine,
     tree: &Tree,
@@ -187,4 +156,28 @@ pub(crate) fn arrange(
         ScrollAxes::Horizontal => stack::arrange(engine, tree, node, inner, Axis::X),
         ScrollAxes::Both => zstack::arrange(engine, tree, node, inner),
     }
+
+    let wid = tree.records.widget_id()[node.index()];
+    // `outer` = the scroll widget's outer ZStack rect, which is this
+    // node's immediate parent in the record stream — `Scroll::show`
+    // builds it as a wrapper that owns the bar-gutter reservation
+    // padding, so its size is parent-allocated and stable across
+    // reservation flips (unlike viewport, which shrinks when a gutter
+    // appears). Used at record time to position bars flush with the
+    // outer far edge.
+    let outer = if node.index() > 0 {
+        engine.result[engine.active_layer].rect[node.index() - 1].size
+    } else {
+        inner.size
+    };
+    let entry = engine.scroll_states.entry(wid).or_default();
+    let viewport = inner.size;
+    entry.viewport = viewport;
+    entry.outer = outer;
+    entry.overflow = (entry.content.w > viewport.w, entry.content.h > viewport.h);
+    entry.seen = true;
+    let max_x = (entry.content.w - viewport.w).max(0.0);
+    let max_y = (entry.content.h - viewport.h).max(0.0);
+    entry.offset.x = entry.offset.x.clamp(0.0, max_x);
+    entry.offset.y = entry.offset.y.clamp(0.0, max_y);
 }

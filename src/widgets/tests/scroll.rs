@@ -37,7 +37,7 @@ fn build(ui: &mut crate::ui::Ui, viewport_h: f32, content_h: f32) {
 }
 
 fn read_state(ui: &mut crate::ui::Ui) -> ScrollState {
-    *ui.scroll_state(WidgetId::from_hash("scroll"))
+    *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"))
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn horizontal_scroll_pans_only_x() {
     build_h(&mut ui);
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
-    let id = WidgetId::from_hash("hscroll");
+    let id = WidgetId::from_hash("hscroll").with("__viewport");
     let row = *ui.scroll_state(id);
     assert_eq!(row.offset, Vec2::new(75.0, 0.0));
 }
@@ -148,7 +148,7 @@ fn both_axis_scroll_pans_both_axes() {
     build_xy(&mut ui);
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
-    let id = WidgetId::from_hash("xy");
+    let id = WidgetId::from_hash("xy").with("__viewport");
     let row = *ui.scroll_state(id);
     assert_eq!(row.offset, Vec2::new(40.0, 60.0));
     assert_eq!(
@@ -271,7 +271,7 @@ fn scroll_records_content_extent() {
                 }
             }
         });
-        let scroll_id = WidgetId::from_hash(scroll_key);
+        let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");
         let state = *ui.scroll_state(scroll_id);
         assert_eq!(state.content, *expected, "case: {label} content");
         let rect = ui.layout.result[Layer::Main].rect[scroll_node.index()];
@@ -319,7 +319,7 @@ fn scroll_state_content_survives_measure_cache_hit() {
     build(&mut ui);
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
-    let scroll_id = WidgetId::from_hash("scroll");
+    let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
     let after_first = *ui.scroll_state(scroll_id);
     assert_eq!(after_first.content.h, 92.0);
 
@@ -666,7 +666,7 @@ mod bars {
         build(&mut ui);
         ui.end_frame_record_phase();
         ui.end_frame_paint_phase();
-        let row = *ui.scroll_state(WidgetId::from_hash("scroll"));
+        let row = *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"));
         assert_eq!(
             row.viewport,
             Size::new(188.0, 200.0),
@@ -702,7 +702,7 @@ mod bars {
         build(&mut ui);
         ui.end_frame_record_phase();
         ui.end_frame_paint_phase();
-        let row = *ui.scroll_state(WidgetId::from_hash("scroll"));
+        let row = *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"));
         // Inner x = 200 - (left=16 + right=16 + reservation=8+4) = 156.
         // Inner y = 200 - (top=16 + bottom=16) = 168.
         assert_eq!(row.viewport, Size::new(156.0, 168.0));
@@ -769,7 +769,7 @@ mod bars {
     fn bar_reservation_collapses_when_overflow_disappears() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let scroll_id = WidgetId::from_hash("scroll");
+        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let read_viewport = |ui: &mut Ui| ui.scroll_state(scroll_id).viewport;
 
         let build = |ui: &mut Ui, content_h: f32| {
@@ -917,7 +917,7 @@ mod bars {
         let surface = UVec2::new(400, 600);
         let mut ui = ui_at(surface);
         let theme = theme();
-        let scroll_id = WidgetId::from_hash("scroll");
+        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         // One frame, one build closure. With always-reserve we'd see
         // the deflated viewport. With auto-collapse-on-fit we used
         // to see full outer first frame and only deflate next frame
@@ -962,7 +962,7 @@ mod bars {
         use std::time::Duration;
         let surface = UVec2::new(400, 600);
         let mut ui = ui_at(surface);
-        let scroll_id = WidgetId::from_hash("scroll");
+        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let scene = |ui: &mut Ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
