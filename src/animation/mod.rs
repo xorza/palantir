@@ -109,6 +109,12 @@ pub(crate) struct AnimRow<T: Animatable> {
     pub(crate) velocity: T,      // springs only; zero for duration rows
     pub(crate) elapsed: f32,     // duration only; segment-local seconds
     pub(crate) segment_start: T, // duration only; `current` at last retarget
+    /// Set by every `tick`, cleared by `end_frame`. Rows still
+    /// `false` at `end_frame` are dropped — that's how a slot whose
+    /// caller stopped poking it (widget id stuck around but the
+    /// animation site went away) gets evicted. Without this the
+    /// `(WidgetId, AnimSlot)` map only shrinks on full widget removal.
+    pub(crate) touched: bool,
 }
 
 /// Per-`T` animation table. Lives inside [`AnimMap`] behind a boxed
@@ -156,6 +162,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                     velocity: T::zero(),
                     elapsed: 0.0,
                     segment_start: target,
+                    touched: true,
                 });
                 return TickResult {
                     current: target,
@@ -164,6 +171,7 @@ impl<T: Animatable> AnimMapTyped<T> {
             }
             Entry::Occupied(o) => o.into_mut(),
         };
+        row.touched = true;
 
         // Retarget: duration restarts the segment from `current`;
         // spring keeps velocity (that's half the reason springs exist).
@@ -228,21 +236,32 @@ impl<T: Animatable> AnimMapTyped<T> {
         }
     }
 
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        self.rows.retain(|(id, _), _| !removed.contains(id));
+    /// Drop rows for any removed widget *and* any slot whose caller
+    /// stopped poking it this frame; clear the `touched` flag on the
+    /// rows that survive. Single retain pass — both predicates fold
+    /// into one walk.
+    pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
+        self.rows.retain(|(id, _), row| {
+            if removed.contains(id) {
+                return false;
+            }
+            let kept = row.touched;
+            row.touched = false;
+            kept
+        });
     }
 }
 
-/// Type-erased operations every typed map exposes — sweep removed
-/// widgets, plus `as_any_mut` for downcast back to the concrete map.
+/// Type-erased operations every typed map exposes — end-of-frame
+/// sweep, plus `as_any_mut` for downcast back to the concrete map.
 trait AnyTyped: 'static {
-    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
+    fn end_frame(&mut self, removed: &FxHashSet<WidgetId>);
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
-    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        AnimMapTyped::<T>::sweep_removed(self, removed);
+    fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
+        AnimMapTyped::<T>::end_frame(self, removed);
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
@@ -280,16 +299,21 @@ impl AnimMap {
             .downcast_mut::<AnimMapTyped<T>>()
     }
 
-    /// Drop every row (across all typed slots) belonging to a removed
-    /// widget. Called from `Ui::end_frame` with the same `removed`
-    /// set that drives `StateMap` / text / layout sweeps; the set
-    /// gives the per-typed-map `retain` O(1) membership tests.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        if removed.is_empty() || self.by_type.is_empty() {
+    /// Drop rows for removed widgets and for slots that weren't
+    /// poked this frame, then clear the `touched` flags on the rows
+    /// that survive. Called from `Ui::end_frame` once per frame; the
+    /// `removed` set is the same one that drives `StateMap` / text /
+    /// layout sweeps. A `(WidgetId, AnimSlot)` row goes away if
+    /// either (a) the widget itself disappeared or (b) the call site
+    /// that owns the slot stopped reaching for it — without (b),
+    /// abandoned slots would accumulate forever for any widget
+    /// whose id lingers across motion-toggle states.
+    pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
+        if self.by_type.is_empty() {
             return;
         }
         for typed in self.by_type.values_mut() {
-            typed.sweep_removed(removed);
+            typed.end_frame(removed);
         }
     }
 }

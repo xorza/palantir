@@ -351,7 +351,7 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     assert_eq!(v(&mut map), 1);
     assert_eq!(c(&mut map), 1);
 
-    map.sweep_removed(&FxHashSet::from_iter([id]));
+    map.end_frame(&FxHashSet::from_iter([id]));
     assert_eq!(
         f(&mut map),
         1,
@@ -359,6 +359,54 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     );
     assert_eq!(v(&mut map), 0, "vec2 slots for `id` must drop");
     assert_eq!(c(&mut map), 0, "color slots for `id` must drop");
+}
+
+/// `end_frame` also evicts slots that were *not* poked this frame
+/// even when the widget id itself stuck around — without this a
+/// `(WidgetId, AnimSlot)` whose owner stopped calling
+/// `Ui::animate` would linger forever, since the only other drop
+/// trigger is full widget removal.
+#[test]
+fn end_frame_evicts_untouched_slots() {
+    let mut map = AnimMap::default();
+    let id = wid("a");
+    let empty = FxHashSet::default();
+
+    // Touch two slots, then run `end_frame` to commit a "frame":
+    // both rows survive, both `touched` flags clear.
+    let _ = map
+        .typed_mut::<f32>()
+        .tick(id, AnimSlot(0), 1.0, AnimSpec::FAST, 0.016);
+    let _ = map
+        .typed_mut::<f32>()
+        .tick(id, AnimSlot(1), 2.0, AnimSpec::FAST, 0.016);
+    map.end_frame(&empty);
+    let count = |m: &mut AnimMap| m.try_typed_mut::<f32>().map_or(0, |t| t.rows.len());
+    assert_eq!(
+        count(&mut map),
+        2,
+        "both slots must survive the first sweep"
+    );
+
+    // Next frame: only poke slot 0. Slot 1 was never re-touched
+    // after `end_frame` cleared its flag, so it should drop.
+    let _ = map
+        .typed_mut::<f32>()
+        .tick(id, AnimSlot(0), 1.0, AnimSpec::FAST, 0.016);
+    map.end_frame(&empty);
+    assert_eq!(
+        count(&mut map),
+        1,
+        "abandoned slot must drop while the still-poked slot survives",
+    );
+
+    // Re-poke slot 1 — first-touch path snaps to target. Confirms
+    // dropped rows behave like any other never-seen `(id, slot)`.
+    let r = map
+        .typed_mut::<f32>()
+        .tick(id, AnimSlot(1), 99.0, AnimSpec::FAST, 0.016);
+    assert_eq!(r.current, 99.0);
+    assert!(r.settled, "re-touch after eviction is a fresh first-touch");
 }
 
 /// `Ui::animate(..., None)` must: return `target` unchanged, never

@@ -209,7 +209,7 @@ impl Ui {
         self.text.sweep_removed(removed);
         self.layout.sweep_removed(removed);
         self.state.sweep_removed(removed);
-        self.anim.sweep_removed(removed);
+        self.anim.end_frame(removed);
 
         let results = self.layout.run(&self.forest, &self.text);
 
