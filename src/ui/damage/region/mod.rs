@@ -39,7 +39,7 @@ pub(crate) const DAMAGE_RECT_CAP: usize = 8;
 /// merges, but two cells more than one stride apart don't —
 /// matches the GPU bench crossover (`damage_merge_gpu`) on Apple
 /// Silicon. Tunable; see `docs/roadmap/damage-merge-research.md`.
-pub(crate) const MERGE_AREA_RATIO: f32 = 1.3;
+pub(crate) const MERGE_AREA_RATIO: f32 = 1.6;
 
 /// Set of damage rects, kept in screen space. `Copy` so
 /// [`super::DamagePaint`] threads through `FrameOutput` and the
