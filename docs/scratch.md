@@ -11,3 +11,7 @@ ScrollRegistry duplicates DeferredRegistry
 
 
   get rid of ui.scrolls
+
+
+  self.forest.ids.diff_for_sweep();
+        let removed = &self.forest.ids.removed; - collaps
