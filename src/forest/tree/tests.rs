@@ -32,7 +32,8 @@ fn shapes_attached_to_button_node() {
     assert!(
         ui.forest
             .tree(Layer::Main)
-            .chrome_for(button_node.unwrap())
+            .chrome
+            .get(button_node.unwrap().index())
             .is_some(),
         "button chrome recorded in chrome table",
     );

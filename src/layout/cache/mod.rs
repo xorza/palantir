@@ -34,7 +34,7 @@ use crate::layout::result::ShapedText;
 use crate::layout::types::span::Span;
 use crate::primitives::size::Size;
 use glam::IVec2;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use std::ops::Range;
 
 /// Snapshot index entry. `nodes` indexes the [`NodeArenas`] columns;
@@ -191,7 +191,7 @@ impl NodeArenas {
         assert!(self.live <= self.desired.len());
     }
 
-    fn release(&mut self, len: u32) {
+    pub(crate) fn release(&mut self, len: u32) {
         assert!(self.live >= len as usize);
         self.live -= len as usize;
     }
@@ -346,20 +346,6 @@ impl MeasureCache {
             || self.text_shapes_arena.needs_compact()
         {
             self.compact();
-        }
-    }
-
-    /// Drop snapshots for widgets that vanished this frame. The
-    /// arena slots they referenced become garbage; a future
-    /// `write_subtree` will compact them out once fragmentation
-    /// crosses the threshold.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        for wid in removed {
-            if let Some(snap) = self.snapshots.remove(wid) {
-                self.nodes.release(snap.nodes.len);
-                self.hugs.release(snap.hugs.len);
-                self.text_shapes_arena.release(snap.text_shapes.len);
-            }
         }
     }
 
