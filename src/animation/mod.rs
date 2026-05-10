@@ -194,6 +194,12 @@ impl<T: Animatable> AnimMapTyped<T> {
             if matches!(spec, AnimSpec::Duration { .. }) {
                 row.segment_start = row.current;
                 row.elapsed = 0.0;
+                // Zero residual spring velocity so a Spring → Duration
+                // switch starts the new segment from rest. Without
+                // this, the snap-if-close check below could falsely
+                // fail and the lerp would compose with leftover spring
+                // motion that has no place in a duration animation.
+                row.velocity = T::zero();
             }
             row.target = target;
         }

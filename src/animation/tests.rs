@@ -627,3 +627,81 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         "Some(FAST) on changed fill must allocate a Background row",
     );
 }
+
+/// Pin: `#[animate(snap)]` fields update on retarget mid-spring, not
+/// on settle. `Background.radius` is snap; without the
+/// `lerp(_, target, 0.0)` carry in spring `step`, the new radius
+/// would only land when the spring snaps to target.
+#[test]
+fn spring_snap_fields_carry_target_immediately() {
+    use crate::primitives::background::Background;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+
+    let mut map = AnimMapTyped::<Background>::default();
+    let id = wid("snap-carry");
+    let start = Background {
+        fill: Color::rgb(0.0, 0.0, 0.0),
+        stroke: Stroke::ZERO,
+        radius: Corners::all(2.0),
+    };
+    // First touch: snaps current = start, returns settled. No motion
+    // started yet.
+    let _ = map.tick(id, SLOT, start, AnimSpec::SPRING, 0.016);
+
+    // Retarget to a new fill (animated) and a new radius (snap).
+    let target = Background {
+        fill: Color::rgb(1.0, 0.0, 0.0),
+        stroke: Stroke::ZERO,
+        radius: Corners::all(12.0),
+    };
+    let r = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.016);
+    assert!(
+        !r.settled,
+        "spring with a real fill diff must remain in flight after one step",
+    );
+    assert_eq!(
+        r.current.radius, target.radius,
+        "snap field must carry target value on the first stepped frame, not lag until settle",
+    );
+    assert!(
+        r.current.fill.r < target.fill.r - 0.05,
+        "animated fill should still be mid-flight; got {:?}",
+        r.current.fill,
+    );
+}
+
+/// Pin: switching spec from `Spring` to `Duration` mid-flight clears
+/// residual spring velocity. Otherwise the next `Duration` frame
+/// would compose stale velocity into the segment via the
+/// snap-if-close check (which sees nonzero velocity and falls
+/// through) plus a fresh lerp segment from the still-moving
+/// `current`.
+#[test]
+fn spec_switch_spring_to_duration_zeros_velocity() {
+    let mut map = AnimMapTyped::<f32>::default();
+    let id = wid("spec-switch");
+    let _ = map.tick(id, SLOT, 0.0_f32, AnimSpec::SPRING, 0.016);
+    // Build up nonzero velocity by stepping a real spring for a few frames.
+    for _ in 0..5 {
+        let _ = map.tick(id, SLOT, 1.0_f32, AnimSpec::SPRING, 0.016);
+    }
+    let row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
+    assert!(
+        row.velocity.abs() > 0.01,
+        "test setup: spring should have built up velocity by now; got {}",
+        row.velocity,
+    );
+
+    // Retarget under a Duration spec: velocity must zero out.
+    let dur = AnimSpec::Duration {
+        secs: 0.1,
+        ease: Easing::Linear,
+    };
+    let _ = map.tick(id, SLOT, 2.0_f32, dur, 0.016);
+    let row = map.rows.get(&(id, SLOT)).expect("row exists post-switch");
+    assert_eq!(
+        row.velocity, 0.0,
+        "Spring → Duration retarget must zero residual velocity",
+    );
+}

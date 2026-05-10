@@ -40,6 +40,15 @@ pub(crate) fn step<T: Animatable>(
     let accel = spring_force.add(damp_force);
     let new_velocity = velocity.add(accel.scale(dt));
     let new_current = current.add(new_velocity.scale(dt));
+    // `Animatable::lerp(_, target, 0.0)` is the trick that pulls
+    // `#[animate(snap)]` fields from `target` while leaving the
+    // animated fields at their freshly-stepped value. Spring math
+    // (sub/add/scale) passes snap fields through `self.field`, so
+    // without this they'd ride the first-touch value frame after
+    // frame and only catch up when `SpringStep` snaps to target on
+    // settle — duration animations don't have this problem because
+    // `lerp` is on the hot path there.
+    let new_current = T::lerp(new_current, target, 0.0);
     let new_displacement = new_current.sub(target);
     if within_settle_eps(new_displacement, new_velocity) {
         SpringStep {
