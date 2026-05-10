@@ -15,6 +15,7 @@ pub fn build(ui: &mut Ui) {
                  pinch zooms on touchpad. The point under the cursor stays fixed.",
             )
             .auto_id()
+            .wrapping()
             .style(TextStyle::default().with_font_size(13.0))
             .show(ui);
 
