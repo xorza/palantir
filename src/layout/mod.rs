@@ -16,6 +16,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::shape::TextWrap;
 use crate::text::TextShaper;
+use rustc_hash::FxHashSet;
 
 pub(crate) mod axis;
 pub(crate) mod cache;
@@ -146,7 +147,7 @@ impl LayoutEngine {
     /// Drop cross-frame measure-cache entries for `WidgetId`s that
     /// vanished this frame. Called from `Ui::end_frame` with the same
     /// `removed` slice that `Damage` and `TextShaper` consume.
-    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         self.cache.sweep_removed(removed);
     }
 

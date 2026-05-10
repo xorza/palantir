@@ -20,7 +20,7 @@ use crate::animation::easing::Easing;
 use crate::animation::spring::{POS_EPS_SQ, VEL_EPS_SQ, step as spring_step};
 use crate::forest::widget_id::WidgetId;
 use crate::primitives::approx::approx_zero;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::any::{Any, TypeId};
 use std::collections::hash_map::Entry;
 
@@ -228,10 +228,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         }
     }
 
-    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        if removed.is_empty() {
-            return;
-        }
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         self.rows.retain(|(id, _), _| !removed.contains(id));
     }
 }
@@ -239,12 +236,12 @@ impl<T: Animatable> AnimMapTyped<T> {
 /// Type-erased operations every typed map exposes — sweep removed
 /// widgets, plus `as_any_mut` for downcast back to the concrete map.
 trait AnyTyped: 'static {
-    fn sweep_removed(&mut self, removed: &[WidgetId]);
+    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
-    fn sweep_removed(&mut self, removed: &[WidgetId]) {
+    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         AnimMapTyped::<T>::sweep_removed(self, removed);
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
@@ -285,9 +282,10 @@ impl AnimMap {
 
     /// Drop every row (across all typed slots) belonging to a removed
     /// widget. Called from `Ui::end_frame` with the same `removed`
-    /// slice that drives `StateMap` / text / layout sweeps.
-    pub(crate) fn sweep_removed(&mut self, removed: &[WidgetId]) {
-        if removed.is_empty() {
+    /// set that drives `StateMap` / text / layout sweeps; the set
+    /// gives the per-typed-map `retain` O(1) membership tests.
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+        if removed.is_empty() || self.by_type.is_empty() {
             return;
         }
         for typed in self.by_type.values_mut() {

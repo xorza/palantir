@@ -21,7 +21,7 @@
 use crate::forest::rollups::NodeHash;
 use crate::forest::widget_id::WidgetId;
 use crate::primitives::size::Size;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
@@ -234,13 +234,10 @@ impl TextShaper {
     /// from `Ui::end_frame` against the same per-frame diff fed to
     /// `Damage::compute` so cleanup stays bounded under widget churn
     /// without a second `seen_ids` scan.
-    pub(crate) fn sweep_removed(&self, removed: &[WidgetId]) {
+    pub(crate) fn sweep_removed(&self, removed: &FxHashSet<WidgetId>) {
         if removed.is_empty() {
             return;
         }
-        // O(N·M) linear scan, but typical sweep sizes are tiny (1-10
-        // removed) and the keep-it-alloc-free property is more
-        // important than asymptotic tightness here.
         self.inner
             .borrow_mut()
             .reuse
