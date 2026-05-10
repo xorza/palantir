@@ -6,7 +6,7 @@
 use crate::forest::element::Element;
 use crate::forest::seen_ids::SeenIds;
 use crate::forest::tree::{Layer, NodeId, Tree};
-use crate::primitives::background::Background;
+use crate::forest::widget_id::WidgetId;
 use crate::primitives::rect::Rect;
 use crate::shape::Shape;
 use std::array;
@@ -115,9 +115,21 @@ impl Forest {
         }
     }
 
-    pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
+    pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
+        // Resolve the widget id at the recording boundary: builders
+        // produce an unset id by default and chain `id_salt` /
+        // `auto_id` to set it; explicit-id collisions hard-assert in
+        // `SeenIds::record`, auto-id collisions get silently
+        // disambiguated.
+        assert!(
+            element.id != WidgetId::default(),
+            "widget recorded without a `WidgetId` — chain `.id_salt(key)`, \
+             `.id(precomputed)`, or `.auto_id()` on the builder before `.show(ui)`. \
+             `Foo::new()` no longer derives an id automatically.",
+        );
+        element.id = self.ids.record(element.id, element.auto_id);
         let layer = self.recording.current_layer;
-        self.trees[layer as usize].open_node(element, chrome)
+        self.trees[layer as usize].open_node(element)
     }
 
     pub(crate) fn close_node(&mut self) {

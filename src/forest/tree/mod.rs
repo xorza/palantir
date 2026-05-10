@@ -239,7 +239,7 @@ impl Tree {
     /// root if `open_frames` is empty) and make it the new tip. Root
     /// mints stamp `self.pending_anchor` onto the new `RootSlot`;
     /// child opens don't read the anchor.
-    pub(crate) fn open_node(&mut self, element: Element, chrome: Option<Background>) -> NodeId {
+    pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
         let parent_frame = self.open_frames.last().copied();
         let parent = parent_frame.map(|f| f.node);
         let new_id = NodeId(self.records.len() as u32);
@@ -254,6 +254,18 @@ impl Tree {
                 (idx as usize) < self.grid.defs.len(),
                 "LayoutMode::Grid({idx}) references no grid_def — only Grid::show should push grid nodes",
             );
+        }
+        // `ClipMode::Rounded` without a usable radius — caller asked
+        // for a stencil mask but didn't supply corners (no chrome, or
+        // chrome with all-zero radius). Downgrade to scissor: the
+        // stencil pass would mask exactly the rect bbox anyway, and
+        // skipping it saves a render pass. Mirrors what users wrote
+        // by hand before the API split.
+        let chrome = element.chrome;
+        if matches!(element.clip, ClipMode::Rounded)
+            && chrome.is_none_or(|bg| bg.radius.approx_zero())
+        {
+            element.clip = ClipMode::Rect;
         }
         let ElementSplit {
             layout,
