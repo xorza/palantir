@@ -327,6 +327,15 @@ impl Tree {
             attrs,
         });
         self.rollups.has_grid.grow(self.records.len());
+        // Sparse-column length-equality. The five columns
+        // (records + four sparse) must agree on `len`; a missed push
+        // here silently shifts every later node's index. soa-rs guards
+        // the records' six fields; this guards the sparse columns.
+        let n = self.records.len();
+        assert_eq!(self.bounds.idx.len(), n);
+        assert_eq!(self.panel.idx.len(), n);
+        assert_eq!(self.chrome.idx.len(), n);
+        assert_eq!(self.clip_radius.idx.len(), n);
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || attrs.is_disabled();
         self.open_frames.push(OpenFrame {
@@ -416,14 +425,6 @@ impl Tree {
 
     pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {
         self.panel.get(id.index()).unwrap_or(&PanelExtras::DEFAULT)
-    }
-
-    pub(crate) fn chrome_for(&self, id: NodeId) -> Option<&Background> {
-        self.chrome.get(id.index())
-    }
-
-    pub(crate) fn clip_radius_for(&self, id: NodeId) -> Option<&Corners> {
-        self.clip_radius.get(id.index())
     }
 }
 

@@ -181,7 +181,7 @@ fn encode_node(
     // interior.
     let mode = tree.records.attrs()[id.index()].clip_mode();
     let clip = mode.is_clip();
-    let chrome = tree.chrome_for(id).copied();
+    let chrome = tree.chrome.get(id.index()).copied();
 
     let paints =
         damage_filter.is_none_or(|region| region.any_intersects(rows[id.index()].screen_rect));
@@ -228,10 +228,10 @@ fn encode_node(
                 // stroke's inner edge; with asymmetric padding the
                 // mask snaps inside both adjacent edges (radius
                 // can't honor concentricity on both axes at once).
-                let painted = tree
-                    .clip_radius_for(id)
-                    .copied()
-                    .expect("ClipMode::Rounded without clip_radius — open_node invariant violated");
+                let painted =
+                    tree.clip_radius.get(id.index()).copied().expect(
+                        "ClipMode::Rounded without clip_radius — open_node invariant violated",
+                    );
                 let mask_radius = Corners {
                     tl: (painted.tl - inset.top.max(inset.left)).max(0.0),
                     tr: (painted.tr - inset.top.max(inset.right)).max(0.0),

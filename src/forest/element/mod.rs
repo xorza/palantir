@@ -657,6 +657,11 @@ impl NodeFlags {
     const FOCUSABLE: u8 = 1 << 6;
 
     pub(crate) fn pack(sense: Sense, disabled: bool, clip: ClipMode, focusable: bool) -> Self {
+        // Width asserts: `Sense` rides in 3 bits (0..=7), `ClipMode` in 2
+        // bits (0..=3). A future variant past those bounds would silently
+        // bleed into adjacent fields without these.
+        assert!((sense as u8) <= Self::SENSE_MASK);
+        assert!((clip as u8) <= (Self::CLIP_MASK >> Self::CLIP_SHIFT));
         let mut bits = sense as u8;
         if disabled {
             bits |= Self::DISABLED;

@@ -36,7 +36,7 @@ mismatch in exchange for skipping the stencil pass).
 - `Tree.chrome_idx: Vec<u16>` — index column parallel to
   `layout`/`paint`, `Tree::NO_CHROME` (`u16::MAX`) for nodes without
   chrome. `Tree.chrome_table: Vec<Background>` holds the actual entries.
-  Read via `tree.chrome_for(id) -> Option<&Background>`. Single source
+  Read via `tree.chrome.get(id.index()) -> Option<&Background>`. Single source
   of truth for:
   - Painted background (encoder emits `DrawRect` from it).
   - Rounded-clip mask radius (from `chrome.radius`).
@@ -55,7 +55,7 @@ methods that mutate `Element`).
 
 ## Encode flow (per node, in `encoder/mod.rs::encode_node`)
 
-1. **Chrome** — if `tree.chrome_for(id)` is `Some` and not `is_noop()`, emit a
+1. **Chrome** — if `tree.chrome.get(id.index())` is `Some` and not `is_noop()`, emit a
    `DrawRect` with the chrome's `radius` / `fill` / `stroke`. Chrome
    paints **before** the clip is pushed: the clip rect is deflated by
    `stroke.width`, so chrome's own stroke pixels would be clipped if it

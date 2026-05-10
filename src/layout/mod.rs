@@ -154,12 +154,18 @@ fn resolve_desired(
 }
 
 impl LayoutEngine {
-    /// Drop cross-frame measure-cache entries for `WidgetId`s that
-    /// vanished this frame. Called from `Ui::end_frame` with the same
-    /// `removed` slice that `Damage` and `TextShaper` consume.
+    /// Drop cross-frame measure-cache entries and scroll-state rows for
+    /// `WidgetId`s that vanished this frame. Called from `Ui::end_frame`
+    /// with the same `removed` slice that `Damage` and `TextShaper`
+    /// consume. One iteration over `removed`; both stores are reached
+    /// directly because they're co-located on `LayoutEngine`.
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        self.cache.sweep_removed(removed);
         for wid in removed {
+            if let Some(snap) = self.cache.snapshots.remove(wid) {
+                self.cache.nodes.release(snap.nodes.len);
+                self.cache.hugs.release(snap.hugs.len);
+                self.cache.text_shapes_arena.release(snap.text_shapes.len);
+            }
             self.scroll_states.remove(wid);
         }
     }
