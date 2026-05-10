@@ -572,6 +572,25 @@ mod scroll {
     }
 
     #[test]
+    fn pinch_gesture_accumulates_zoom_delta() {
+        let mut state = InputState::new();
+        let cascades = CascadeResult::default();
+        state.on_input(InputEvent::Zoom(1.1), &cascades);
+        state.on_input(InputEvent::Zoom(1.05), &cascades);
+        assert!((state.frame_zoom_delta - 1.155).abs() < 1e-5);
+    }
+
+    #[test]
+    fn end_frame_resets_zoom_delta_to_identity() {
+        let mut state = InputState::new();
+        let cascades = CascadeResult::default();
+        state.on_input(InputEvent::Zoom(1.2), &cascades);
+        assert!((state.frame_zoom_delta - 1.2).abs() < 1e-5);
+        state.end_frame(&cascades);
+        assert_eq!(state.frame_zoom_delta, 1.0);
+    }
+
+    #[test]
     fn end_frame_clears_scroll_delta() {
         let mut state = InputState::new();
         let cascades = CascadeResult::default();

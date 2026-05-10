@@ -18,6 +18,7 @@ mod disabled;
 mod gap;
 mod grid;
 mod justify;
+mod pan_zoom;
 mod panels;
 mod popup;
 mod scroll;
@@ -42,6 +43,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("z-order", text_zorder::build),
     ("panels", panels::build),
     ("scroll", scroll::build),
+    ("pan+zoom", pan_zoom::build),
     ("wrap", wrap::build),
     ("grid", grid::build),
     ("sizing", sizing::build),
