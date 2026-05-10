@@ -1,17 +1,19 @@
 use crate::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
 
-/// Visible panel boundary needed for this demo: the whole point is to
-/// see whether a child rect spills past or gets clipped at the panel
-/// edge — without a stroke, the boundary is invisible.
-fn bounded_panel() -> Background {
+/// Card with a rounded background. Used in three configurations below
+/// (no clip, scissor clip, rounded stencil clip) to demonstrate how
+/// each clip mode interacts with overflowing children. The radius is
+/// large so the difference between rect-scissor and rounded-stencil
+/// reads clearly at the corners.
+fn card() -> Background {
     Background {
         fill: Color::hex(0x252525),
         stroke: Stroke {
             width: 1.5,
-            color: Color::hex(0x363636),
+            color: Color::hex(0x4d5663),
         },
-        radius: Corners::all(8.0),
+        radius: Corners::all(28.0),
     }
 }
 
@@ -21,36 +23,48 @@ pub fn build(ui: &mut Ui) {
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            // Left: clipped — child rect spills via negative margin, but the
-            // scissor on the panel cuts it at the panel border.
+            // No clip: child spills past both the rect bounds and the
+            // rounded corners.
             Panel::zstack()
-                .id_salt("clipped")
+                .id_salt("none")
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(bounded_panel())
-                .clip_rect()
-                .show(ui, |ui| {
-                    spiller(ui, "spilled-clipped");
-                });
+                .background(card())
+                .show(ui, |ui| spiller(ui, ("spill", "none")));
 
-            // Right: same content, no clip — the spilling rect leaks past the panel.
+            // Scissor clip: child cut at the rect bounding box; square
+            // corners visible where the rounded paint thins out.
             Panel::zstack()
-                .id_salt("unclipped")
+                .id_salt("rect")
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(bounded_panel())
-                .show(ui, |ui| {
-                    spiller(ui, "spilled-unclipped");
-                });
+                .background(card())
+                .clip_rect()
+                .show(ui, |ui| spiller(ui, ("spill", "rect")));
+
+            // Rounded stencil clip: child trimmed to the painted
+            // corner radius.
+            Panel::zstack()
+                .id_salt("rounded")
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(card())
+                .clip_rounded()
+                .show(ui, |ui| spiller(ui, ("spill", "rounded")));
         });
 }
 
-fn spiller(ui: &mut Ui, id: &'static str) {
+/// Rectangle that overflows the card on all four sides via negative
+/// margins. The card's clip mode decides what survives:
+/// no clip → spills everywhere; rect → square cut at the rect;
+/// rounded → respects the corner radius. Sized small enough that the
+/// "no clip" overflow doesn't punch out of the showcase area into
+/// the toolbar above.
+fn spiller(ui: &mut Ui, id: impl std::hash::Hash) {
     Frame::new()
         .id_salt(id)
-        .size((Sizing::Fixed(220.0), Sizing::Fixed(80.0)))
-        .margin((-40.0, -30.0, 0.0, 0.0))
+        .size((Sizing::Fixed(240.0), Sizing::Fixed(280.0)))
+        .margin((-24.0, -24.0, -24.0, -24.0))
         .background(Background {
             fill: swatch::B,
-            radius: Corners::all(6.0),
+            radius: Corners::all(0.0),
             ..Default::default()
         })
         .show(ui);
