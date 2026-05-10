@@ -5,18 +5,17 @@
 //!    triggers an assert in `Ui::node` if the same `WidgetId` appears
 //!    twice in one frame — duplicate ids silently corrupt every
 //!    per-id store (focus, scroll, click capture, hit-test).
-//! 2. **Removed-widget diff.** At `end_frame`, computes which ids
-//!    were present last frame but absent this frame. Both
-//!    [`crate::ui::damage::Damage`] and [`crate::text::TextShaper`]
-//!    consume this list to evict per-widget state — sharing the diff
-//!    keeps each consumer at `O(removed)` instead of `O(map)`.
-//! 3. **Frame rollover.** The `curr → prev` swap happens in
-//!    `end_frame` (after the diff), NOT `begin_frame`. This is
-//!    load-bearing for `Ui::run_frame`'s two-pass mode: the discard
-//!    pass calls `begin_frame` + `record` but never `end_frame`, so
-//!    its recording must not overwrite the last painted frame's
-//!    snapshot. Putting the swap on the commit point (end_frame)
-//!    keeps `prev` pointed at the *last painted* frame regardless of
+//! 2. **Removed-widget diff.** [`Self::diff_for_sweep`] computes
+//!    which ids were present last painted frame but absent this
+//!    pass. Both [`crate::ui::damage::Damage`] and
+//!    [`crate::text::TextShaper`] consume this list to evict
+//!    per-widget state — sharing the diff keeps each consumer at
+//!    `O(removed)` instead of `O(map)`.
+//! 3. **Frame rollover.** The `curr → prev` swap is split out into
+//!    [`Self::commit_rollover`], called from `Ui`'s paint phase only.
+//!    Discarded `run_frame` passes (input-action drain or relayout
+//!    discard) call `diff_for_sweep` but skip `commit_rollover`, so
+//!    `prev` stays anchored at the last *painted* frame regardless of
 //!    how many discard passes ran.
 
 use crate::forest::widget_id::WidgetId;
@@ -27,18 +26,18 @@ pub(crate) struct SeenIds {
     /// `WidgetId`s recorded this frame so far. Populated by
     /// [`Self::record`] during `Ui::node`.
     curr: FxHashSet<WidgetId>,
-    /// Last frame's `curr`. Diffed against this frame in
-    /// [`Self::end_frame`].
+    /// Last *painted* frame's `curr`. Diffed against this pass's
+    /// `curr` in [`Self::diff_for_sweep`]; rolled forward by
+    /// [`Self::commit_rollover`] only when this pass actually paints.
     prev: FxHashSet<WidgetId>,
     /// Diff output: widgets present in `prev` but not in `curr`.
-    /// Repopulated by [`Self::end_frame`]; consumers iterate via a
-    /// shared borrow on the field. Public-in-crate so callers can
-    /// hold `&seen.removed` across other shared `&forest` reads — a
-    /// `fn end_frame(&mut self) -> &[..]` accessor would tie the
-    /// returned slice to the `&mut self` and block those reads.
-    /// Stored as a `FxHashSet` (not `Vec`) so consumers that test
-    /// per-row membership (`anim`, `text`) get O(1) lookups without
-    /// rebuilding the set each frame.
+    /// Repopulated by [`Self::diff_for_sweep`]; consumers iterate via
+    /// a shared borrow on the field. Public-in-crate so callers can
+    /// hold `&seen.removed` across other shared `&forest` reads — an
+    /// accessor returning `&[..]` would tie the returned slice to the
+    /// `&mut self` and block those reads. Stored as a `FxHashSet`
+    /// (not `Vec`) so consumers that test per-row membership
+    /// (`anim`, `text`) get O(1) lookups without rebuilding the set.
     pub(crate) removed: FxHashSet<WidgetId>,
     /// Per-original-id occurrence counter for auto-id collision
     /// disambiguation. Bumped by [`Self::next_dup`] when an auto id
@@ -49,10 +48,11 @@ pub(crate) struct SeenIds {
 impl SeenIds {
     /// Reset per-build state at the top of a frame. Clears the
     /// `curr` recording set + the auto-id disambiguation counter.
-    /// **Doesn't touch `prev`** — that holds the last *painted* frame's
-    /// recording, established by [`Self::end_frame`]. A run_frame
-    /// two-pass discard build calls `begin_frame` then never reaches
-    /// `end_frame`, so `prev` must be preserved across the discard.
+    /// **Doesn't touch `prev`** — that holds the last *painted*
+    /// frame's recording, established by [`Self::commit_rollover`].
+    /// A run_frame two-pass discard build calls `begin_frame` then
+    /// never reaches `commit_rollover`, so `prev` must be preserved
+    /// across the discard.
     pub(crate) fn begin_frame(&mut self) {
         self.curr.clear();
         self.dup.clear();
@@ -86,20 +86,27 @@ impl SeenIds {
     }
 
     /// Populate `self.removed` with widgets present in `prev` but not
-    /// in `curr`, then commit the rollover (`curr → prev`). Callers
-    /// then read `&seen.removed` to fan the diff out to consumers
-    /// (text cache eviction, damage rect accumulation, etc.). The
-    /// swap is the "this frame is committed" signal — deliberately
-    /// HERE rather than in `begin_frame` so a discarded recording
-    /// (run_frame two-pass mode) doesn't overwrite the last painted
-    /// frame's snapshot.
-    pub(crate) fn end_frame(&mut self) {
+    /// in `curr`. **Doesn't** commit the rollover — `prev` keeps its
+    /// last-painted-frame snapshot. Callers read `&seen.removed` to
+    /// fan the diff out to consumers (text cache eviction, damage
+    /// rect accumulation, etc.). Safe to call multiple times across
+    /// run_frame passes; each call recomputes `removed` against the
+    /// same `prev`.
+    pub(crate) fn diff_for_sweep(&mut self) {
         self.removed.clear();
         for wid in &self.prev {
             if !self.curr.contains(wid) {
                 self.removed.insert(*wid);
             }
         }
+    }
+
+    /// Commit the rollover: this pass becomes the new `prev` snapshot.
+    /// Called from the painted pass only. A discarded record-only pass
+    /// (run_frame two-pass mode) calls `diff_for_sweep` but skips
+    /// `commit_rollover`, so the painted pass still diffs against the
+    /// true last-painted frame.
+    pub(crate) fn commit_rollover(&mut self) {
         std::mem::swap(&mut self.curr, &mut self.prev);
         self.curr.clear();
     }

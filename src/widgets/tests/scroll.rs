@@ -899,4 +899,92 @@ mod bars {
             h.max().x,
         );
     }
+
+    /// Relayout-on-cold-mount: a freshly mounted scroll whose content
+    /// overflows must paint with the gutter reservation already in
+    /// place on frame 1, not on frame 2. Drives `Ui::run_frame` (the
+    /// production path that honors `request_relayout`); cold-mounts
+    /// the scroll; asserts the post-paint `ScrollState.viewport` is
+    /// the deflated value reflecting the reserved strip.
+    #[test]
+    fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
+        use crate::primitives::size::Size;
+        use crate::widgets::scroll::ScrollState;
+        use std::time::Duration;
+        let surface = UVec2::new(400, 600);
+        let mut ui = ui_at(surface);
+        let theme = theme();
+        let scroll_id = WidgetId::from_hash("scroll");
+        // One frame, one build closure. With always-reserve we'd see
+        // the deflated viewport. With auto-collapse-on-fit we used
+        // to see full outer first frame and only deflate next frame
+        // (the cold-mount overlap bug). Relayout-on-demand: first
+        // frame paints with deflation already applied.
+        let scene = |ui: &mut Ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
+                Scroll::vertical()
+                    .id_salt("scroll")
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id_salt("tall")
+                            .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                            .show(ui);
+                    });
+            });
+        };
+        let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
+        let row = *ui
+            .state
+            .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
+        let expected = Size::new(200.0 - theme.width - theme.gap, 200.0);
+        assert_eq!(
+            row.viewport, expected,
+            "cold-mount overflowing scroll: gutter reservation must be \
+             active on the first painted frame; viewport should already \
+             be deflated by `theme.width + theme.gap` on the cross axis",
+        );
+        assert_eq!(
+            row.overflow,
+            (false, true),
+            "overflow flag must reflect post-relayout measurement (Y \
+             overflows, X doesn't)",
+        );
+    }
+
+    /// Cold-mount with content that fits in the viewport: NO gutter
+    /// reservation, no relayout fires, viewport stays at full outer.
+    /// Pairs with the cold-mount-overflow test as the negative case.
+    #[test]
+    fn cold_mount_fits_paints_without_gutter_on_first_frame() {
+        use crate::primitives::size::Size;
+        use crate::widgets::scroll::ScrollState;
+        use std::time::Duration;
+        let surface = UVec2::new(400, 600);
+        let mut ui = ui_at(surface);
+        let scroll_id = WidgetId::from_hash("scroll");
+        let scene = |ui: &mut Ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
+                Scroll::vertical()
+                    .id_salt("scroll")
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id_salt("short")
+                            .size((Sizing::Fixed(180.0), Sizing::Fixed(50.0)))
+                            .show(ui);
+                    });
+            });
+        };
+        let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
+        let row = *ui
+            .state
+            .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
+        assert_eq!(
+            row.viewport,
+            Size::new(200.0, 200.0),
+            "cold-mount with no overflow: full outer viewport, no strip",
+        );
+        assert_eq!(row.overflow, (false, false));
+    }
 }
