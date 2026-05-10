@@ -531,6 +531,86 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
     }
 }
 
+/// Pivot-anchored zoom can leave `offset` outside the natural pan
+/// range `[min(0, slack), max(0, slack)]` — e.g. zoom-out below
+/// content-fits, then zoom back in so slack flips positive while
+/// offset is still negative. A wheel-pan in that frame must NOT yank
+/// `offset` back into `[0, slack]` (the visible "snap to top" when
+/// the bar reappears). It must rubber-band: pan toward the natural
+/// range works, pan further out is blocked.
+#[test]
+fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
+    use crate::widgets::scroll::{ZoomConfig, ZoomPivot};
+
+    let mut ui = ui_at(SURFACE);
+    let build = |ui: &mut crate::ui::Ui| {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
+            Scroll::both()
+                .id_salt("xy")
+                .with_zoom_config(ZoomConfig {
+                    pivot: ZoomPivot::Pointer,
+                    ..ZoomConfig::default()
+                })
+                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt("content")
+                        .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                        .show(ui);
+                });
+        });
+    };
+    build(&mut ui);
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
+
+    // Park offset.y at a large negative value to simulate the state
+    // pivot zoom-out leaves behind. Stamp it directly on the row to
+    // avoid the multi-frame setup; the path under test is the wheel-
+    // pan clamp, not how we got there.
+    let id = WidgetId::from_hash("xy").with("__viewport");
+    {
+        let row = ui.scroll_state(id);
+        row.offset = Vec2::new(0.0, -50.0);
+    }
+
+    // Pointer over the scroll widget so it claims wheel input, then
+    // a small downward wheel-pan (positive y delta).
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
+    ui.begin_frame(surface_display());
+    build(&mut ui);
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
+
+    let after = *ui.scroll_state(id);
+    // Content (400) overflows viewport (188 with both bars reserved
+    // → see `both_axis_scroll_pans_both_axes` for the same calc), so
+    // natural range is `[0, 212]`. With offset.y starting at -50,
+    // the extended range becomes `[-50, 212]`. Adding +5 yields -45,
+    // which sits inside extended_range — no snap to 0.
+    assert!(
+        (after.offset.y - (-45.0)).abs() < 1e-3,
+        "wheel pan from out-of-range offset snapped: -50 + 5 should be -45, got {}",
+        after.offset.y,
+    );
+
+    // Inverse direction: pan further out should be blocked at the
+    // current value (rubber-band on the away-from-natural side).
+    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, -5.0)));
+    ui.begin_frame(surface_display());
+    build(&mut ui);
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
+    let after2 = *ui.scroll_state(id);
+    assert!(
+        (after2.offset.y - (-45.0)).abs() < 1e-3,
+        "pan further out-of-range should be blocked at current ({}), got {}",
+        -45.0,
+        after2.offset.y,
+    );
+}
+
 // --- Scrollbar geometry ----------------------------------------------------
 // Pin the formulas in `scroll::bar_geometry` against the design-doc math
 // and pin that bar shapes actually land on the scroll node when content

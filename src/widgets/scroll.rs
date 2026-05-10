@@ -350,20 +350,34 @@ impl Scroll {
             // 2) Pan from the wheel delta. Only clamp when pan_delta is
             //    actually nonzero — pure-zoom frames must leave the
             //    pivot-anchored offset alone (otherwise repeated tiny
-            //    pinches near a content edge would each snap offset back
-            //    into `[0, slack]` and drift the world point under the
-            //    cursor). Range is `[min(0, slack), max(0, slack)]` so
-            //    pan honors both natural overflow scrolling (slack > 0)
-            //    and the negative slack zoom-out leaves behind.
+            //    pinches near a content edge would each snap offset
+            //    back into the natural range and drift the world point
+            //    under the cursor).
+            //
+            //    Natural range is `[min(0, slack), max(0, slack)]`:
+            //    `[0, slack]` for overflow, `[slack, 0]` for underflow.
+            //    Pivot-anchored zoom can legitimately leave `offset`
+            //    outside that range — e.g. user zooms out below slack=0
+            //    (offset goes negative to anchor the cursor), then
+            //    zooms back in so slack flips positive while offset is
+            //    still negative. A wheel-pan that frame must NOT yank
+            //    `offset` back to `[0, slack]` (that's the visible
+            //    "snap to top" when the bar reappears). Extend the
+            //    clamp range to include the current offset so pan
+            //    further out-of-range is blocked but pan toward the
+            //    natural range works — the user scrolls back gradually,
+            //    never with a one-frame yank.
             let slack_x = row.content.w * row.zoom - row.viewport.w;
             let slack_y = row.content.h * row.zoom - row.viewport.h;
             if pan.x && pan_delta.x != 0.0 {
-                row.offset.x =
-                    (row.offset.x + pan_delta.x).clamp(slack_x.min(0.0), slack_x.max(0.0));
+                let lo = row.offset.x.min(slack_x.min(0.0));
+                let hi = row.offset.x.max(slack_x.max(0.0));
+                row.offset.x = (row.offset.x + pan_delta.x).clamp(lo, hi);
             }
             if pan.y && pan_delta.y != 0.0 {
-                row.offset.y =
-                    (row.offset.y + pan_delta.y).clamp(slack_y.min(0.0), slack_y.max(0.0));
+                let lo = row.offset.y.min(slack_y.min(0.0));
+                let hi = row.offset.y.max(slack_y.max(0.0));
+                row.offset.y = (row.offset.y + pan_delta.y).clamp(lo, hi);
             }
             *row
         };
