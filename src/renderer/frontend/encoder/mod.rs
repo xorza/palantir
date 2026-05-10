@@ -192,18 +192,19 @@ fn encode_node(
     // also fall outside the deflated region and be clipped. Painting
     // chrome first leaves it unclipped (the panel's SDF self-clips
     // correctly), preserving the stroke ring.
-    if paints
-        && let Some(bg) = chrome
-        && !bg.is_noop()
-    {
+    //
+    // No `is_noop` guard here: `Tree::open_node` already drops chrome
+    // to `None` when the paint is invisible, so reaching this branch
+    // means there's something to paint.
+    if paints && let Some(bg) = chrome {
         out.draw_rect(rect, bg.radius, bg.fill, bg.stroke);
     }
 
     if clip {
         // Inset the clip by the chrome's stroke width so children
-        // clip inside the painted stroke ring. With no chrome (clip
-        // set without a Surface — shouldn't happen post-`apply_to`),
-        // inset is 0.
+        // clip inside the painted stroke ring. With no chrome (paint
+        // dropped because invisible, or clip set without a Surface),
+        // inset is 0 — there's no painted ring to stay inside of.
         let inset = chrome.map_or(0.0, |bg| bg.stroke.width);
         let mask_rect = rect.deflated_by(Spacing::all(inset));
         match mode {
@@ -212,10 +213,14 @@ fn encode_node(
                 // Reduce each corner radius by `inset` so the mask
                 // curve stays concentric with the painted stroke's
                 // inner edge — both curves have center at
-                // `(rect.min + paint.radius)`.
-                let painted = chrome
-                    .map(|bg| bg.radius)
-                    .expect("ClipMode::Rounded without chrome — builder invariant violated");
+                // `(rect.min + paint.radius)`. Radius comes from the
+                // dedicated `clip_radius` column, decoupled from
+                // chrome so an invisible-paint rounded surface still
+                // has a mask radius even after chrome was dropped.
+                let painted = tree
+                    .clip_radius_for(id)
+                    .copied()
+                    .expect("ClipMode::Rounded without clip_radius — open_node invariant violated");
                 let mask_radius = Corners {
                     tl: (painted.tl - inset).max(0.0),
                     tr: (painted.tr - inset).max(0.0),

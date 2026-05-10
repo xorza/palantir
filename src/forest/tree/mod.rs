@@ -1,3 +1,4 @@
+use crate::ClipMode;
 use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
 use crate::forest::element::{
@@ -8,6 +9,7 @@ use crate::forest::rollups::{NodeHash, SubtreeRollups};
 use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
+use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::shape::Shape;
 use crate::widgets::grid::GridDef;
@@ -104,6 +106,12 @@ pub(crate) struct Tree {
     pub(crate) bounds: SparseColumn<BoundsExtras>,
     pub(crate) panel: SparseColumn<PanelExtras>,
     pub(crate) chrome: SparseColumn<Background>,
+    /// Mask radius for nodes whose `clip` is `ClipMode::Rounded`.
+    /// Decoupled from `chrome` so that a node with rounded clip but
+    /// invisible paint (or no paint at all) still has a radius for the
+    /// encoder's stencil-mask path. Set in `open_node` from the
+    /// element's clip mode; absent for `ClipMode::None` / `Rect`.
+    pub(crate) clip_radius: SparseColumn<Corners>,
 
     // -- Flat shape buffer -----------------------------------------------
     pub(crate) shapes: Vec<Shape>,
@@ -148,6 +156,7 @@ impl Tree {
         self.bounds.clear();
         self.panel.clear();
         self.chrome.clear();
+        self.clip_radius.clear();
         self.shapes.clear();
         self.grid.clear();
         self.rollups.has_grid.clear();
@@ -183,6 +192,7 @@ impl Tree {
             }
             let chrome = self.chrome.get(i);
             chrome.hash(&mut h);
+            self.clip_radius.get(i).hash(&mut h);
             let mut has_direct_shape = false;
             for item in TreeItems::new(&self.records, &self.shapes, NodeId(i as u32)) {
                 match item {
@@ -279,7 +289,23 @@ impl Tree {
 
         self.bounds.push((!bounds.is_default()).then_some(bounds));
         self.panel.push((!panel.is_default()).then_some(panel));
-        self.chrome.push(chrome);
+        // Single noop-policy site for chrome:
+        //   * `clip_radius` extracts `chrome.radius` whenever this
+        //     node has `ClipMode::Rounded`, *regardless* of whether
+        //     the paint is invisible — the encoder needs the radius
+        //     for the stencil mask even when the paint isn't drawn.
+        //   * `chrome` itself is dropped to `None` when the paint is
+        //     invisible (`Background::is_noop()`), so the encoder can
+        //     just say "if chrome is some, draw it" — no per-frame
+        //     noop guard downstream.
+        // Together these decouple "paint info" from "mask radius",
+        // so the encoder treats both as plain plumbing.
+        let clip_radius = matches!(attrs.clip_mode(), ClipMode::Rounded)
+            .then(|| chrome.as_ref().map(|bg| bg.radius))
+            .flatten();
+        let chrome_for_paint = chrome.filter(|bg| !bg.is_noop());
+        self.chrome.push(chrome_for_paint);
+        self.clip_radius.push(clip_radius);
 
         self.records.push(NodeRecord {
             widget_id,
@@ -382,6 +408,10 @@ impl Tree {
 
     pub(crate) fn chrome_for(&self, id: NodeId) -> Option<&Background> {
         self.chrome.get(id.index())
+    }
+
+    pub(crate) fn clip_radius_for(&self, id: NodeId) -> Option<&Corners> {
+        self.clip_radius.get(id.index())
     }
 }
 

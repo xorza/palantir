@@ -42,14 +42,16 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             .node;
         cases.push(("paint-only", n, ClipMode::None, true));
 
-        // Surface::scissor — clip + transparent chrome.
+        // Surface::scissor — clip + transparent paint. Chrome is
+        // dropped at install (Tree::open_node filters invisible
+        // paint), so only the clip flag survives.
         let n = Panel::zstack()
             .id_salt("scissor")
             .size(50.0)
             .background(Surface::clip_rect())
             .show(ui, |_| {})
             .node;
-        cases.push(("scissor", n, ClipMode::Rect, true));
+        cases.push(("scissor", n, ClipMode::Rect, false));
 
         // Surface::clipped(bg) — clip + paint.
         let n = Panel::zstack()

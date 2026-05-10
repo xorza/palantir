@@ -80,15 +80,6 @@ impl Surface {
             clip: ClipMode::Rounded,
         }
     }
-
-    /// True when this surface contributes nothing to the frame — its
-    /// paint is invisible AND it doesn't clip. Use to filter
-    /// transparent default surfaces before installing them on an
-    /// element. Mirrors `Background::is_noop` and `Stroke::is_noop`.
-    #[inline]
-    pub fn is_noop(&self) -> bool {
-        self.paint.is_noop() && !self.clip.is_clip()
-    }
 }
 
 /// Sugar: `.background(Background { … })` keeps working — paint-only with
