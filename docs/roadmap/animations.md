@@ -12,7 +12,7 @@ something else; not "more animation primitive work."
 
 - **Sliding tab-indicator bar.** Material-style underline that
   physically moves between active tabs. Today the toolbar tab swap
-  fades via the per-button color animation — the *slide* variant
+  fades via the per-button color animation — the _slide_ variant
   needs a separate overlay rect with `Vec2` spring. Low value vs the
   fade-only version we already have.
 - **Popup reveal/dismiss (alpha + scale).** Needs an API change so
@@ -49,13 +49,13 @@ something else; not "more animation primitive work."
   sub-pixel-quantized value, ~never). Today everything happens to fit
   the implicit range; works by coincidence, not by contract. Two real
   fixes when this surfaces:
-    - **Associated const on the trait** —
-      `const SETTLE_POS_EPS_SQ: f32 = 1e-6;` plus
-      `const SETTLE_VEL_EPS_SQ: f32 = 1e-4;`, with a doc spelling out
-      what the magnitude-squared range means for the type. Cheapest;
-      mirrors how `zero()` already lives on the trait.
-    - **Per-spec epsilon** — extend `AnimSpec` so the caller picks. More
-      flexible, but pushes a tuning concern into every call site.
-  No reports yet; park behind a real workload (e.g. `Vec2` scroll-offset
-  spring or a `Background` animation that visibly stutters before
-  settling).
+  - **Associated const on the trait** —
+    `const SETTLE_POS_EPS_SQ: f32 = 1e-6;` plus
+    `const SETTLE_VEL_EPS_SQ: f32 = 1e-4;`, with a doc spelling out
+    what the magnitude-squared range means for the type. Cheapest;
+    mirrors how `zero()` already lives on the trait.
+  - **Per-spec epsilon** — extend `AnimSpec` so the caller picks. More
+    flexible, but pushes a tuning concern into every call site.
+    No reports yet; park behind a real workload (e.g. `Vec2` scroll-offset
+    spring or a `Background` animation that visibly stutters before
+    settling).
