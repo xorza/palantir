@@ -20,6 +20,12 @@ use std::hash::{Hash, Hasher as _};
 pub(crate) struct NodeId(pub(crate) u32);
 
 impl NodeId {
+    /// Sentinel "no parent" value used in [`Tree::parents`] for root
+    /// slots. `u32::MAX` is unreachable as a real `NodeId` (record cap
+    /// is `u32::MAX - 1` in practice; sparse column caps trip far
+    /// sooner).
+    pub(crate) const ROOT: Self = Self(u32::MAX);
+
     #[inline]
     pub(crate) fn index(self) -> usize {
         self.0 as usize
@@ -113,6 +119,14 @@ pub(crate) struct Tree {
     /// element's clip mode; absent for `ClipMode::None` / `Rect`.
     pub(crate) clip_radius: SparseColumn<Corners>,
 
+    /// Parent `NodeId` per node, or [`NodeId::ROOT`] for roots. Written
+    /// at `open_node` from `open_frames.last()`; lets any post-recording
+    /// pass (arrange, cascade, encode, debug) ask "who's my parent?" in
+    /// O(1) without a backwards `subtree_end` walk. Same lifecycle as
+    /// `records`: cleared in `begin_frame`, pushed in `open_node`,
+    /// length-asserted at the end of `open_node`.
+    pub(crate) parents: Vec<NodeId>,
+
     // -- Flat shape buffer -----------------------------------------------
     pub(crate) shapes: Vec<Shape>,
 
@@ -157,6 +171,7 @@ impl Tree {
         self.panel.clear();
         self.chrome.clear();
         self.clip_radius.clear();
+        self.parents.clear();
         self.shapes.clear();
         self.grid.clear();
         self.rollups.has_grid.clear();
@@ -326,16 +341,18 @@ impl Tree {
             layout,
             attrs,
         });
+        self.parents.push(parent.unwrap_or(NodeId::ROOT));
         self.rollups.has_grid.grow(self.records.len());
-        // Sparse-column length-equality. The five columns
-        // (records + four sparse) must agree on `len`; a missed push
-        // here silently shifts every later node's index. soa-rs guards
-        // the records' six fields; this guards the sparse columns.
+        // Column length-equality. `records` + four sparse + `parents`
+        // must agree on `len`; a missed push silently shifts every
+        // later node's index. soa-rs guards the records' six fields;
+        // this guards the rest.
         let n = self.records.len();
         assert_eq!(self.bounds.idx.len(), n);
         assert_eq!(self.panel.idx.len(), n);
         assert_eq!(self.chrome.idx.len(), n);
         assert_eq!(self.clip_radius.idx.len(), n);
+        assert_eq!(self.parents.len(), n);
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || attrs.is_disabled();
         self.open_frames.push(OpenFrame {

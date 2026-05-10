@@ -177,15 +177,16 @@ pub(crate) fn arrange(
     }
 
     let wid = tree.records.widget_id()[node.index()];
-    // `outer` = the scroll widget's outer ZStack rect, which is this
-    // node's immediate parent in the record stream — `Scroll::show`
+    // `outer` = the scroll widget's outer ZStack rect. `Scroll::show`
     // builds it as a wrapper that owns the bar-gutter reservation
     // padding, so its size is parent-allocated and stable across
     // reservation flips (unlike viewport, which shrinks when a gutter
     // appears). Used at record time to position bars flush with the
-    // outer far edge.
-    let outer = if node.index() > 0 {
-        engine.result[engine.active_layer].rect[node.index() - 1].size
+    // outer far edge. Falls back to `inner.size` for a root-mounted
+    // scroll (no wrapper).
+    let parent = tree.parents[node.index()];
+    let outer = if parent != NodeId::ROOT {
+        engine.result[engine.active_layer].rect[parent.index()].size
     } else {
         inner.size
     };
