@@ -230,6 +230,28 @@ impl ApplicationHandler for App {
             state.repaint_requested = true;
         }
 
+        if let WindowEvent::KeyboardInput {
+            event:
+                KeyEvent {
+                    physical_key: PhysicalKey::Code(KeyCode::F10),
+                    state: ElementState::Pressed,
+                    repeat: false,
+                    ..
+                },
+            ..
+        } = event
+        {
+            let mut cfg = state.ui.debug_overlay.unwrap_or_default();
+            cfg.clear_damage = !cfg.clear_damage;
+            state.ui.debug_overlay = if cfg == DebugOverlayConfig::default() {
+                None
+            } else {
+                Some(cfg)
+            };
+            eprintln!("[F10] darken undamaged: {}", cfg.clear_damage);
+            state.repaint_requested = true;
+        }
+
         if let Some(ev) = InputEvent::from_winit(&event, state.display.scale_factor) {
             state.ui.on_input(ev);
             state.repaint_requested = true;
