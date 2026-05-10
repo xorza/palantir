@@ -20,7 +20,6 @@ use crate::ui::cascade::Cascades;
 use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::debug_overlay::DebugOverlayConfig;
 use crate::ui::state::StateMap;
-use crate::widgets::scroll::ScrollWidgets;
 use crate::widgets::theme::Theme;
 use std::time::Duration;
 
@@ -56,14 +55,6 @@ pub struct Ui {
     /// Per-frame damage state. `Damage::compute` returns
     /// [`DamagePaint`] — `Full`, `Partial(rect)`, or `Skip`.
     pub(crate) damage: Damage,
-
-    /// Per-frame record-side metadata for every scroll widget
-    /// recorded this frame. Pushed by `Scroll::show`, drained by
-    /// [`crate::widgets::scroll::refresh`] after `layout.run` to
-    /// update each widget's [`crate::widgets::scroll::ScrollState`]
-    /// and signal relayout when overflow flipped. Cleared in
-    /// `begin_frame`.
-    pub(crate) scroll_widgets: ScrollWidgets,
 
     /// Seconds elapsed since the previous `run_frame`, clamped to
     /// [`MAX_DT`]. Derived from `now - prev_now` per call (not
@@ -135,7 +126,6 @@ impl Ui {
             cascades: Cascades::default(),
             display: Display::default(),
             damage: Damage::default(),
-            scroll_widgets: ScrollWidgets::default(),
             dt: 0.0,
             time: Duration::ZERO,
             repaint_requested: false,
@@ -204,7 +194,6 @@ impl Ui {
         }
         self.display = display;
         self.forest.begin_frame();
-        self.scroll_widgets.entries.clear();
         // Drop any leftover relayout request from a previous frame's
         // pass A that didn't get consumed. Belt-and-suspenders —
         // current `run_frame` always consumes via `mem::replace`, but
@@ -240,14 +229,12 @@ impl Ui {
         self.anim.end_frame(removed);
 
         self.layout.run(&self.forest, &self.text);
-        // Drain this frame's scroll widget records: refresh
-        // `ScrollState` rows from arranged rects + measured content
-        // extent. When `overflow` flipped vs the record-time guess,
-        // request relayout so the same frame re-records with
-        // corrected reservation.
-        if crate::widgets::scroll::refresh(&self.scroll_widgets, &self.layout, &mut self.state) {
-            self.relayout_requested = true;
-        }
+        // Refresh per-scroll `ScrollState` rows from this frame's
+        // arranged rects + measured content extent. Discovers scrolls
+        // by walking each layer's tree for `LayoutMode::Scroll`
+        // nodes; relayout (cold-mount only) is requested by
+        // `Scroll::show` itself when `state.seen` is false.
+        crate::widgets::scroll::refresh(&self.forest, &self.layout, &mut self.state);
         std::mem::replace(&mut self.relayout_requested, false)
     }
 
