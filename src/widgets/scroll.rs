@@ -1,7 +1,9 @@
+use crate::Layer;
+use crate::forest::Forest;
 use crate::forest::element::{Configure, Element, LayoutMode, ScrollAxes};
-use crate::forest::tree::{Layer, NodeId};
-use crate::forest::widget_id::WidgetId;
+use crate::forest::tree::NodeId;
 use crate::input::sense::Sense;
+use crate::layout::LayoutEngine;
 use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
@@ -37,9 +39,10 @@ use glam::Vec2;
 /// - `overflow` — `(x, y)` per-axis: did this axis's content overflow
 ///   the viewport on the most recent measure? Read at record time
 ///   to decide whether to reserve a bar gutter on the cross axis.
-///   When [`refresh`] flips this away from the value record-time
-///   used, it returns `true` so [`Ui::request_relayout`] re-records
-///   the same frame with corrected reservation — no cold-mount overlap.
+/// - `seen` — set by [`refresh`] after the first frame populates the
+///   other fields. Read by `Scroll::show` to detect a cold-mount and
+///   request a relayout pass so the second pass records with the
+///   measured reservation in place — no cold-mount overlap.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct ScrollState {
     pub(crate) offset: Vec2,
@@ -47,81 +50,64 @@ pub(crate) struct ScrollState {
     pub(crate) outer: Size,
     pub(crate) content: Size,
     pub(crate) overflow: (bool, bool),
+    pub(crate) seen: bool,
 }
 
-// ---------------------------------------------------------------------------
-// Per-frame record-side metadata
-// ---------------------------------------------------------------------------
-
-/// Per-frame record-side metadata for one scroll widget. Pushed onto
-/// `Ui::scroll_widgets` in [`Scroll::show`], drained by [`refresh`]
-/// after `layout.run` to update each widget's [`ScrollState`].
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ScrollWidget {
-    pub(crate) layer: Layer,
-    pub(crate) id: WidgetId,
-    pub(crate) outer: NodeId,
-    pub(crate) inner: NodeId,
-    pub(crate) inner_padding: Spacing,
-}
-
-/// Per-frame collection of [`ScrollWidget`] entries. `entries` is
-/// `pub(crate)` so callers push/clear directly.
-#[derive(Default)]
-pub(crate) struct ScrollWidgets {
-    pub(crate) entries: Vec<ScrollWidget>,
-}
-
-/// Update each scroll widget's [`ScrollState`] row from this frame's
-/// arranged rects + measured content extent. Returns `true` if any
-/// widget's `overflow` flag flipped — signal to
-/// `Ui::end_frame_record_phase` that the record-time reservation
-/// guess used stale data and the frame should re-record.
+/// Walk every layer's tree, find each `LayoutMode::Scroll` node, and
+/// update its widget's [`ScrollState`] row from this frame's arranged
+/// rects + measured content extent. Discovered by mode tag — the
+/// scroll widget records two nodes (outer ZStack + inner Scroll
+/// panel) in pre-order, so the inner's preceding sibling/parent in
+/// the records array is the outer.
 ///
-/// Content lookup: [`crate::layout::scroll::ScrollContent`] holds
-/// `(inner_node, content_size)` for every Scroll node whose driver
-/// fired this frame. On a measure-cache hit the driver doesn't fire
-/// and the entry is missing — last frame's `ScrollState.content` is
-/// then still correct (cache hit ⟹ identical measure), so we leave
-/// the row's `content` untouched.
-pub(crate) fn refresh(
-    widgets: &ScrollWidgets,
-    layout: &crate::layout::LayoutEngine,
-    state: &mut StateMap,
-) -> bool {
-    let mut overflow_flipped = false;
-    for w in &widgets.entries {
-        let layer_result = &layout.result[w.layer];
-        assert!(
-            w.outer.index() < layer_result.rect.len() && w.inner.index() < layer_result.rect.len(),
-            "scroll widget references nodes ({}, {}) past tree length {}",
-            w.outer.index(),
-            w.inner.index(),
-            layer_result.rect.len(),
-        );
-        let outer = layer_result.rect[w.outer.index()].size;
-        let viewport = layer_result.rect[w.inner.index()]
-            .deflated_by(w.inner_padding)
-            .size;
-        let row = state.get_or_insert_with::<ScrollState, _>(w.id, Default::default);
-        let content = layout
-            .scroll_content
-            .lookup(w.layer, w.inner)
-            .unwrap_or(row.content);
-        let new_overflow = (content.w > viewport.w, content.h > viewport.h);
-        overflow_flipped |= row.overflow != new_overflow;
-        row.viewport = viewport;
-        row.outer = outer;
-        row.content = content;
-        row.overflow = new_overflow;
-        // End-frame re-clamp pairs with the record-time clamp in
-        // `Scroll::show`, which only had last frame's numbers.
-        let max_x = (content.w - viewport.w).max(0.0);
-        let max_y = (content.h - viewport.h).max(0.0);
-        row.offset.x = row.offset.x.clamp(0.0, max_x);
-        row.offset.y = row.offset.y.clamp(0.0, max_y);
+/// On a measure-cache hit the scroll driver doesn't fire and
+/// [`crate::layout::scroll::ScrollContent`] lacks an entry for this
+/// scroll — last frame's `ScrollState.content` is then still correct
+/// (cache hit ⟹ identical measure), so we leave the row's `content`
+/// untouched.
+pub(crate) fn refresh(forest: &Forest, layout: &LayoutEngine, state: &mut StateMap) {
+    for layer in Layer::PAINT_ORDER {
+        let tree = forest.tree(layer);
+        let layer_result = &layout.result[layer];
+        let layouts = tree.records.layout();
+        let widget_ids = tree.records.widget_id();
+        for inner_idx in 0..layouts.len() {
+            if !matches!(layouts[inner_idx].mode, LayoutMode::Scroll(_)) {
+                continue;
+            }
+            // Convention enforced by `Scroll::show`: the inner Scroll
+            // panel is recorded as the first child of an outer
+            // ZStack, so `outer == inner - 1` in pre-order. Asserted
+            // here so a future restructure of the widget trips loudly.
+            assert!(
+                inner_idx > 0 && matches!(layouts[inner_idx - 1].mode, LayoutMode::ZStack),
+                "scroll inner at {inner_idx} expected outer ZStack at {} (Scroll::show convention)",
+                inner_idx.saturating_sub(1),
+            );
+            let outer_idx = inner_idx - 1;
+            let widget_id = widget_ids[outer_idx];
+            let inner_padding = layouts[inner_idx].padding;
+            let inner_rect = layer_result.rect[inner_idx];
+            let outer_size = layer_result.rect[outer_idx].size;
+            let viewport = inner_rect.deflated_by(inner_padding).size;
+            let row = state.get_or_insert_with::<ScrollState, _>(widget_id, Default::default);
+            let content = layout
+                .scroll_content
+                .lookup(layer, NodeId(inner_idx as u32))
+                .unwrap_or(row.content);
+            row.viewport = viewport;
+            row.outer = outer_size;
+            row.content = content;
+            row.overflow = (content.w > viewport.w, content.h > viewport.h);
+            row.seen = true;
+            // End-frame re-clamp pairs with the record-time clamp in
+            // `Scroll::show`, which only had last frame's numbers.
+            let max_x = (content.w - viewport.w).max(0.0);
+            let max_y = (content.h - viewport.h).max(0.0);
+            row.offset.x = row.offset.x.clamp(0.0, max_x);
+            row.offset.y = row.offset.y.clamp(0.0, max_y);
+        }
     }
-    overflow_flipped
 }
 
 // ---------------------------------------------------------------------------
@@ -280,10 +266,22 @@ impl Scroll {
 
         // Record-time clamp + reservation-guess: both use *last*
         // frame's `viewport`/`content`/`overflow`. The matching
-        // re-clamp + relayout-on-flip in `refresh` corrects with
-        // fresh numbers post-arrange. Off-axis offsets stay at 0 for
-        // single-axis scrolls.
+        // re-clamp in `refresh` corrects with fresh numbers
+        // post-arrange. Off-axis offsets stay at 0 for single-axis
+        // scrolls.
+        //
+        // Cold-mount: state is default (`seen == false`) → reservation
+        // guess is wrong (defaults to `(false, false)`), so we
+        // request a relayout pass. After this pass's record + measure
+        // + refresh, `seen` is true and pass B records with the
+        // measured reservation in place. No subsequent overflow flip
+        // triggers relayout — same model as the wheel-pan clamp's
+        // accepted one-frame staleness.
         let delta = ui.input.scroll_delta_for(id);
+        let seen = ui.state_mut::<ScrollState>(id).seen;
+        if !seen {
+            ui.request_relayout();
+        }
         let row = ui.state_mut::<ScrollState>(id);
         let max_x = (row.content.w - row.viewport.w).max(0.0);
         let max_y = (row.content.h - row.viewport.h).max(0.0);
@@ -361,9 +359,8 @@ impl Scroll {
             inner.transform = Some(TranslateScale::from_translation(-offset));
         }
 
-        let mut inner_node = NodeId(0);
         let outer_node = ui.node(outer, |ui| {
-            inner_node = ui.node(inner, |ui| body(ui));
+            ui.node(inner, |ui| body(ui));
             // Bars push *after* the viewport panel → siblings under
             // the outer ZStack, painted on top (record order = paint
             // order). Local rects in OUTER frame so they land in the
@@ -389,14 +386,6 @@ impl Scroll {
                 pan.x,
                 &theme,
             );
-        });
-        let layer = ui.forest.current_layer();
-        ui.scroll_widgets.entries.push(ScrollWidget {
-            layer,
-            id,
-            outer: outer_node,
-            inner: inner_node,
-            inner_padding: self.element.padding,
         });
 
         let resp_state = ui.response_for(id);

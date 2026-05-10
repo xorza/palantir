@@ -5,19 +5,28 @@
 
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::tree::Layer;
+use crate::forest::widget_id::WidgetId;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::support::testing::run_at;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
-use crate::widgets::scroll::Scroll;
+use crate::widgets::scroll::{Scroll, ScrollState};
 use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 
+/// Read the post-frame `ScrollState` for the scroll widget at
+/// `id_salt`. State is what the codebase reads at record time and is
+/// the stable observation point — `LayoutEngine::scroll_content` is
+/// per-frame and may be empty on measure-cache hits.
+fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
+    *ui.state
+        .get_or_insert_with::<ScrollState, _>(WidgetId::from_hash(id_salt), Default::default)
+}
+
 /// Vertical scroll measures children with INF on Y; content extent is
-/// the children's full height.
+/// the children's full height. State is populated post-arrange.
 #[test]
 fn vertical_scroll_records_content_extent() {
     let mut ui = Ui::new();
@@ -34,14 +43,7 @@ fn vertical_scroll_records_content_extent() {
                 }
             });
     });
-
-    let entries = ui.layout.scroll_content.for_layer(Layer::Main);
-    assert_eq!(entries.len(), 1, "one scroll widget = one content entry");
-    assert_eq!(
-        entries[0].1.h,
-        5.0 * 50.0,
-        "5 rows × 50 = full content height"
-    );
+    assert_eq!(state_for(&mut ui, "scroll").content.h, 5.0 * 50.0);
 }
 
 /// Horizontal scroll measures children with INF on X.
@@ -64,10 +66,7 @@ fn horizontal_scroll_records_content_extent() {
                 });
         });
     });
-
-    let entries = ui.layout.scroll_content.for_layer(Layer::Main);
-    assert_eq!(entries.len(), 1);
-    let content_w = entries[0].1.w;
+    let content_w = state_for(&mut ui, "scroll").content.w;
     assert!(
         content_w > 200.0,
         "content overflows the 200 viewport on X: got {}",
@@ -90,44 +89,41 @@ fn both_axis_scroll_records_content_extent() {
                     .show(ui);
             });
     });
-
-    let entries = ui.layout.scroll_content.for_layer(Layer::Main);
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].1, Size::new(300.0, 250.0));
+    assert_eq!(
+        state_for(&mut ui, "scroll").content,
+        Size::new(300.0, 250.0)
+    );
 }
 
-/// On a measure-cache hit at an ancestor, the Scroll's measure arm
-/// doesn't fire and `scroll_content` is empty. The widget's `refresh`
-/// then falls back to last frame's `ScrollState.content`.
+/// `ScrollState` survives across frames — record time reads it for
+/// offset clamp + reservation guess + bar geometry.
 #[test]
-fn cache_hit_leaves_scroll_content_empty() {
+fn state_survives_across_frames() {
     let mut ui = Ui::new();
     let build = |ui: &mut Ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::vertical()
                 .id_salt("scroll")
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
+                .size((Sizing::Fixed(150.0), Sizing::Fixed(100.0)))
                 .show(ui, |ui| {
-                    for i in 0..5u32 {
+                    for i in 0..4u32 {
                         Frame::new()
                             .id_salt(("row", i))
-                            .size((Sizing::FILL, Sizing::Fixed(50.0)))
+                            .size((Sizing::FILL, Sizing::Fixed(40.0)))
                             .show(ui);
                     }
                 });
         });
     };
     run_at(&mut ui, SURFACE, build);
-    let after_first = ui.layout.scroll_content.for_layer(Layer::Main).to_vec();
-    assert_eq!(after_first.len(), 1, "driver fired and pushed an entry");
-
-    // Frame 2: identical content. Cache hit at ancestor → scroll
-    // driver doesn't run → no entry this frame.
+    let f1 = state_for(&mut ui, "scroll");
     run_at(&mut ui, SURFACE, build);
-    let after_second = ui.layout.scroll_content.for_layer(Layer::Main);
-    assert!(
-        after_second.is_empty(),
-        "cache hit at ancestor → scroll driver doesn't fire → no entry; got {:?}",
-        after_second,
-    );
+    let f2 = state_for(&mut ui, "scroll");
+    assert_eq!(f1.content, f2.content);
+    assert_eq!(f1.viewport, f2.viewport);
+    assert_eq!(f1.outer, f2.outer);
+    assert!(f1.seen, "first frame's relayout populated state");
+    assert!(f2.seen);
+    // Sanity: pinned numbers.
+    assert_eq!(f1.content.h, 4.0 * 40.0);
 }
