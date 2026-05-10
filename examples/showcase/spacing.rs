@@ -91,7 +91,7 @@ pub fn build(ui: &mut Ui) {
                             .margin((-30.0, 0.0, 0.0, 0.0))
                             .background(Background {
                                 fill: swatch::B,
-                                stroke: Some(Stroke {
+                                stroke: Stroke {
                                     width: 1.0,
                                     color: swatch::B,
                                 }),

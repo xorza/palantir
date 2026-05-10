@@ -7,7 +7,7 @@ use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stro
 fn bounded_panel() -> Background {
     Background {
         fill: Color::hex(0x252525),
-        stroke: Some(Stroke {
+        stroke: Stroke {
             width: 1.5,
             color: Color::hex(0x363636),
         }),
