@@ -179,10 +179,10 @@ impl Forest {
                 local_rect,
                 tint,
             } => {
-                let v_start = tree.mesh_vertices.len() as u32;
-                tree.mesh_vertices.extend_from_slice(&mesh.vertices);
-                let i_start = tree.mesh_indices.len() as u32;
-                tree.mesh_indices.extend_from_slice(&mesh.indices);
+                let v_start = tree.meshes.vertices.len() as u32;
+                tree.meshes.vertices.extend_from_slice(&mesh.vertices);
+                let i_start = tree.meshes.indices.len() as u32;
+                tree.meshes.indices.extend_from_slice(&mesh.indices);
                 let content_hash = mesh_content_hash(&mesh.vertices, &mesh.indices);
                 ShapeRecord::Mesh {
                     local_rect,

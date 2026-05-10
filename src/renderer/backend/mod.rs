@@ -392,8 +392,8 @@ impl WgpuBackend {
             &self.device,
             &self.queue,
             buffer.viewport_phys_f,
-            &buffer.mesh_vertices,
-            &buffer.mesh_indices,
+            &buffer.meshes.arena.vertices,
+            &buffer.meshes.arena.indices,
         );
 
         if !self.damage_scissors.is_empty() {
@@ -652,7 +652,7 @@ impl WgpuBackend {
                     self.mesh.bind(pass, use_stencil);
                     let start = range.start as usize;
                     let end = start + range.len as usize;
-                    for draw in &buffer.meshes[start..end] {
+                    for draw in &buffer.meshes.draws[start..end] {
                         // `draw_indexed` takes a per-call vertex
                         // offset; pass the mesh's vertex start as
                         // `base_vertex` so indices stay buffer-local.
