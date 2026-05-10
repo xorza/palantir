@@ -199,8 +199,11 @@ pub(crate) fn arrange(
         entry.content.h * zoom > viewport.h,
     );
     entry.seen = true;
-    let max_x = (entry.content.w * zoom - viewport.w).max(0.0);
-    let max_y = (entry.content.h * zoom - viewport.h).max(0.0);
-    entry.offset.x = entry.offset.x.clamp(0.0, max_x);
-    entry.offset.y = entry.offset.y.clamp(0.0, max_y);
+    // No offset clamp here. Pivot-anchored zoom (in `Scroll::show`)
+    // can legitimately drift `offset` outside `[0, slack]` to keep the
+    // world point under the cursor fixed; clamping in arrange would
+    // erase that drift every frame and break cursor anchoring during
+    // continuous pinch through a content edge. The widget re-clamps
+    // on actual pan input, which is the only place a stale offset
+    // matters for the user.
 }

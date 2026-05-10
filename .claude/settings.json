@@ -24,12 +24,14 @@
       "Bash(cargo doc *)",
       "Bash(cargo bench *)",
       "Bash(cargo metadata *)",
+      "Bash(cargo add *)",
 
       "Bash(cargo +nightly test*)",
 
       "Bash(git mv:*)",
       "Bash(git add:*)",
       "Bash(git rm:*)",
+      "Bash(git fetch *)",
 
       "Bash(sd:*)",
       "Bash(awk:*)",
@@ -39,10 +41,10 @@
       "Bash(perf script *)",
       "Bash(perf record *)",
 
-      "Bash(scripts/bench-perf.sh)",
-      "Bash(scripts/test-all.sh)",
-      "Bash(FAST=1 scripts/test-all.sh)",
-      "Bash(FAST=1 ./scripts/test-all.sh)",
+      "Bash(scripts/*.sh)",
+      "Bash(./scripts/*-all.sh)",
+      "Bash(FAST=1 scripts/*.sh)",
+      "Bash(FAST=1 ./scripts/*.sh)",
 
       "Bash(npm_config_cache=\"/tmp/npm-cache\" npx --yes jscpd *)"
     ]

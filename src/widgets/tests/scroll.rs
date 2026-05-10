@@ -335,6 +335,202 @@ fn scroll_state_content_survives_measure_cache_hit() {
     assert_eq!(after_second.viewport, after_first.viewport);
 }
 
+// --- Pivot-anchored zoom ---------------------------------------------------
+// Pin the contract that `Scroll::both().with_zoom()` keeps the world point
+// under the cursor fixed across a pinch step. World point in viewport-local
+// coords is `(pointer_local + offset) / zoom`; this must be invariant
+// before/after the zoom step regardless of starting offset, zoom factor, or
+// whether content shrinks below the viewport (negative-offset territory).
+
+#[test]
+fn pinch_zoom_keeps_point_under_cursor_fixed() {
+    use crate::widgets::scroll::{ZoomConfig, ZoomPivot};
+
+    // Outer-frame padding moves the scroll widget off (0,0) so the test
+    // catches widget_origin mishandling (not just a happy-path zero
+    // origin). Mirrors how the showcase nests Scroll inside padded panels.
+    const OUTER_PAD: f32 = 16.0;
+    const TEXT_GAP: f32 = 24.0;
+
+    struct Case {
+        label: &'static str,
+        content_size: f32,
+        pans: &'static [(f32, f32)],
+        pointer: (f32, f32),
+        // One factor per frame, simulating continuous pinch arriving
+        // as many small per-frame deltas (macOS trackpad style)
+        // rather than a single big jump.
+        pinches: &'static [f32],
+    }
+    let cases: &[Case] = &[
+        Case {
+            label: "zoom_in_overflow_single",
+            content_size: 800.0,
+            pans: &[(40.0, 60.0)],
+            pointer: (OUTER_PAD + 50.0, OUTER_PAD + TEXT_GAP + 70.0),
+            pinches: &[1.5],
+        },
+        Case {
+            label: "zoom_out_overflow_single",
+            content_size: 800.0,
+            pans: &[(120.0, 90.0)],
+            pointer: (OUTER_PAD + 30.0, OUTER_PAD + TEXT_GAP + 40.0),
+            pinches: &[0.7],
+        },
+        Case {
+            label: "zoom_out_underflow_single",
+            content_size: 100.0,
+            pans: &[],
+            pointer: (OUTER_PAD + 50.0, OUTER_PAD + TEXT_GAP + 70.0),
+            pinches: &[0.5],
+        },
+        Case {
+            label: "zoom_in_continuous_many_small_steps",
+            content_size: 800.0,
+            pans: &[(40.0, 60.0)],
+            pointer: (OUTER_PAD + 80.0, OUTER_PAD + TEXT_GAP + 110.0),
+            pinches: &[1.02; 30],
+        },
+        Case {
+            label: "zoom_out_continuous_through_underflow",
+            content_size: 300.0,
+            pans: &[],
+            pointer: (OUTER_PAD + 60.0, OUTER_PAD + TEXT_GAP + 90.0),
+            pinches: &[0.97; 40],
+        },
+    ];
+
+    for case in cases {
+        let Case {
+            label,
+            content_size,
+            pans,
+            pointer,
+            pinches,
+        } = *case;
+        let mut ui = ui_at(SURFACE);
+        let build = |ui: &mut crate::ui::Ui| {
+            // Outer padding shifts the scroll origin off (0,0); a
+            // sibling above (`Frame` standing in for the showcase's
+            // wrapping Text) further pushes it down by TEXT_GAP.
+            Panel::vstack()
+                .id_salt("root")
+                .padding(OUTER_PAD)
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt("topbar")
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(TEXT_GAP)))
+                        .show(ui);
+                    Scroll::both()
+                        .id_salt("xy")
+                        .with_zoom_config(ZoomConfig {
+                            pivot: ZoomPivot::Pointer,
+                            ..ZoomConfig::default()
+                        })
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id_salt("content")
+                                .size((Sizing::Fixed(content_size), Sizing::Fixed(content_size)))
+                                .show(ui);
+                        });
+                });
+        };
+
+        // Frame 1 populates the cascade so `response_for(id).rect` is
+        // valid (Scroll's pivot calc reads it next frame).
+        build(&mut ui);
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
+
+        ui.on_input(InputEvent::PointerMoved(Vec2::new(pointer.0, pointer.1)));
+        for &(px, py) in pans {
+            ui.on_input(InputEvent::Scroll(Vec2::new(px, py)));
+            ui.begin_frame(surface_display());
+            build(&mut ui);
+            ui.end_frame_record_phase();
+            ui.end_frame_paint_phase();
+        }
+
+        let id = WidgetId::from_hash("xy").with("__viewport");
+        let before = *ui.scroll_state(id);
+        // Pivot is in widget-local coords. Outer scroll widget sits at
+        // (OUTER_PAD, OUTER_PAD + TEXT_GAP) — pointer minus that origin
+        // is what the widget will see internally.
+        let pivot_local = Vec2::new(pointer.0 - OUTER_PAD, pointer.1 - (OUTER_PAD + TEXT_GAP));
+        let world_before = Vec2::new(
+            (pivot_local.x + before.offset.x) / before.zoom,
+            (pivot_local.y + before.offset.y) / before.zoom,
+        );
+
+        for &pinch in pinches {
+            ui.on_input(InputEvent::Zoom(pinch));
+            ui.begin_frame(surface_display());
+            build(&mut ui);
+            ui.end_frame_record_phase();
+            ui.end_frame_paint_phase();
+        }
+
+        let after = *ui.scroll_state(id);
+        let world_after = Vec2::new(
+            (pivot_local.x + after.offset.x) / after.zoom,
+            (pivot_local.y + after.offset.y) / after.zoom,
+        );
+
+        let dx = (world_after.x - world_before.x).abs();
+        let dy = (world_after.y - world_before.y).abs();
+        assert!(
+            dx < 1e-2 && dy < 1e-2,
+            "case {label}: inner-local world point drifted \
+             before=({:.3},{:.3}) after=({:.3},{:.3}) \
+             (zoom {} → {}, offset {:?} → {:?})",
+            world_before.x,
+            world_before.y,
+            world_after.x,
+            world_after.y,
+            before.zoom,
+            after.zoom,
+            before.offset,
+            after.offset,
+        );
+        // Screen-space invariant. The pivot math preserves the
+        // inner-local world point, but the inner.transform must
+        // also be set up so that point renders *under the cursor in
+        // screen coords*. Mirror the rendering formula:
+        //   screen = inner_origin + child_local * zoom - offset
+        // (anchored at inner_origin via TranslateScale's translation
+        // compensation in `Scroll::show`). Plug in `child_local =
+        // world_after` and assert the result lands on the pointer —
+        // before the rendering fix this drifted by `inner_origin *
+        // (zoom - 1)` per step.
+        let inner_origin = Vec2::new(OUTER_PAD, OUTER_PAD + TEXT_GAP);
+        let predicted_screen = Vec2::new(
+            inner_origin.x + world_after.x * after.zoom - after.offset.x,
+            inner_origin.y + world_after.y * after.zoom - after.offset.y,
+        );
+        let sx = (predicted_screen.x - pointer.0).abs();
+        let sy = (predicted_screen.y - pointer.1).abs();
+        assert!(
+            sx < 1e-2 && sy < 1e-2,
+            "case {label}: world point doesn't land on cursor in screen coords \
+             predicted={:?} cursor=({},{}) (zoom {} → {}, offset {:?} → {:?})",
+            predicted_screen,
+            pointer.0,
+            pointer.1,
+            before.zoom,
+            after.zoom,
+            before.offset,
+            after.offset,
+        );
+        assert!(
+            (after.zoom - before.zoom).abs() > 1e-4,
+            "case {label}: zoom didn't change ({} → {})",
+            before.zoom,
+            after.zoom,
+        );
+    }
+}
+
 // --- Scrollbar geometry ----------------------------------------------------
 // Pin the formulas in `scroll::bar_geometry` against the design-doc math
 // and pin that bar shapes actually land on the scroll node when content

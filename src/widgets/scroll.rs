@@ -347,16 +347,23 @@ impl Scroll {
                     row.zoom = new_zoom;
                 }
             }
-            // 2) Pan from the (possibly zeroed) wheel delta. Clamp
-            //    against `content * zoom - viewport` so wheel pan past
-            //    the zoomed-content edge is rejected this frame too.
-            let max_x = (row.content.w * row.zoom - row.viewport.w).max(0.0);
-            let max_y = (row.content.h * row.zoom - row.viewport.h).max(0.0);
-            if pan.x {
-                row.offset.x = (row.offset.x + pan_delta.x).clamp(0.0, max_x);
+            // 2) Pan from the wheel delta. Only clamp when pan_delta is
+            //    actually nonzero — pure-zoom frames must leave the
+            //    pivot-anchored offset alone (otherwise repeated tiny
+            //    pinches near a content edge would each snap offset back
+            //    into `[0, slack]` and drift the world point under the
+            //    cursor). Range is `[min(0, slack), max(0, slack)]` so
+            //    pan honors both natural overflow scrolling (slack > 0)
+            //    and the negative slack zoom-out leaves behind.
+            let slack_x = row.content.w * row.zoom - row.viewport.w;
+            let slack_y = row.content.h * row.zoom - row.viewport.h;
+            if pan.x && pan_delta.x != 0.0 {
+                row.offset.x =
+                    (row.offset.x + pan_delta.x).clamp(slack_x.min(0.0), slack_x.max(0.0));
             }
-            if pan.y {
-                row.offset.y = (row.offset.y + pan_delta.y).clamp(0.0, max_y);
+            if pan.y && pan_delta.y != 0.0 {
+                row.offset.y =
+                    (row.offset.y + pan_delta.y).clamp(slack_y.min(0.0), slack_y.max(0.0));
             }
             *row
         };
@@ -449,8 +456,23 @@ impl Scroll {
         } else {
             self.element.clip
         };
+        // Children's layout rects are in *absolute* screen coords
+        // (e.g. a cell at inner-local (x,y) has `child.rect.min =
+        // inner.rect.min + (x,y)`). A bare `TranslateScale(-offset,
+        // zoom)` would scale around (0,0), shifting the entire
+        // content by `inner.rect.min * (zoom - 1)` — visible drift
+        // from the cursor anchor. Compensate by translating so the
+        // scale anchors at `inner.rect.min`:
+        //   screen = child.abs * zoom + (origin*(1-zoom) - offset)
+        // which expands to `inner_local * zoom + origin - offset` —
+        // top-left fixed at zoom=any, offset=0; offset translates
+        // the scaled content. Origin is sourced from the previous
+        // frame's response rect (one-frame stale, fine for stable
+        // layouts; the first frame has zoom=1 + offset=0 so the
+        // compensation is 0 either way).
         if offset != Vec2::ZERO || (zoom - 1.0).abs() > f32::EPSILON {
-            inner.transform = Some(TranslateScale::new(-offset, zoom));
+            let origin = widget_origin.unwrap_or(Vec2::ZERO);
+            inner.transform = Some(TranslateScale::new(origin * (1.0 - zoom) - offset, zoom));
         }
 
         let outer_node = ui.node(outer, |ui| {
