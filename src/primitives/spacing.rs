@@ -152,6 +152,18 @@ impl Spacing {
     }
 }
 
+impl std::ops::Add for Spacing {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        Self {
+            left: self.left + rhs.left,
+            top: self.top + rhs.top,
+            right: self.right + rhs.right,
+            bottom: self.bottom + rhs.bottom,
+        }
+    }
+}
+
 impl<T: Num> From<T> for Spacing {
     fn from(v: T) -> Self {
         Self::all(v.as_f32())
