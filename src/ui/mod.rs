@@ -11,7 +11,6 @@ use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
 use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
-use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::display::Display;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::{FrameOutput, FrameState, Frontend};
@@ -415,25 +414,12 @@ impl Ui {
         state
     }
 
-    pub(crate) fn node(&mut self, mut element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
-        assert!(
-            element.id != WidgetId::default(),
-            "widget recorded without a `WidgetId` — chain `.id_salt(key)`, \
-             `.id(precomputed)`, or `.auto_id()` on the builder before `.show(ui)`. \
-             `Foo::new()` no longer derives an id automatically.",
-        );
-        element.id = self.forest.ids.record(element.id, element.auto_id);
-        // Pure plumbing. `Configure::clip*` and `.background()` already
-        // populated `element.clip` / `element.chrome`; `Tree::open_node`
-        // owns the noop policy (drop invisible paint, derive
-        // `clip_radius` for `Rounded` from chrome.radius).
-        if matches!(element.clip, ClipMode::Rounded)
-            && element.chrome.is_none_or(|bg| bg.radius.approx_zero())
-        {
-            element.clip = ClipMode::Rect;
-        }
-        let chrome = element.chrome.take();
-        let node = self.forest.open_node(element, chrome);
+    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
+        // Pure plumbing. `Forest::open_node` resolves the widget id
+        // (collision detect + auto-id disambiguation) and pushes
+        // chrome/clip/radius into their per-tree columns; `Configure`
+        // setters already populated everything else on `element`.
+        let node = self.forest.open_node(element);
         f(self);
         self.forest.close_node();
         node
