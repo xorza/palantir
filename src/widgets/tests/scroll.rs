@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::tree::Layer;
+use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::layout::types::display::Display;
@@ -258,16 +258,24 @@ fn scroll_records_content_extent() {
                 }
             }
         });
-        // Scroll's `Response.node` is the OUTER container; the
-        // inner viewport panel (with `LayoutMode::Scroll`) is a
-        // child of it and owns the measured `scroll_content`.
-        let viewport_node = ui
-            .scrolls
-            .nodes
-            .iter()
-            .find(|s| s.outer == scroll_node)
-            .expect("scroll registry entry for recorded Scroll")
-            .inner;
+        // Scroll's `Response.node` is the OUTER container; the inner
+        // viewport panel (with `LayoutMode::Scroll`) is recorded
+        // immediately after by `Scroll::show`, with its `WidgetId`
+        // derived as `outer.id.with("__viewport")`. Look it up by
+        // that derived id rather than reaching into the post-arrange
+        // hooks, since hooks are typed-bucket-erased.
+        let outer_id = ui.forest.tree(Layer::Main).records.widget_id()[scroll_node.index()];
+        let viewport_id = outer_id.with("__viewport");
+        let viewport_node = NodeId(
+            ui.forest
+                .tree(Layer::Main)
+                .records
+                .widget_id()
+                .iter()
+                .position(|w| *w == viewport_id)
+                .expect("Scroll::show records inner viewport with __viewport id")
+                as u32,
+        );
         let rect = ui.layout.result[Layer::Main].rect[scroll_node.index()];
         let content = ui.layout.result[Layer::Main].scroll_content[viewport_node.index()];
         assert_eq!(content, *expected, "case: {label} content");

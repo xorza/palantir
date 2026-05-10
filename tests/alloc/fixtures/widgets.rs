@@ -1,6 +1,7 @@
 use crate::harness::{AllocBudget, audit_steady_state};
 use palantir::{
-    Background, Button, Color, Configure, Frame, Grid, Panel, Sizing, Text, Track, Ui, WidgetId,
+    Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Text, Track, Ui,
+    WidgetId,
 };
 use std::rc::Rc;
 
@@ -96,5 +97,50 @@ fn state_map_counter_alloc_free() {
         Frame::new().id_salt("counter").show(ui);
         let n = ui.state_mut::<u32>(id);
         *n = n.wrapping_add(1);
+    });
+}
+
+/// Scrollbar with overflowing content. Pins both halves of the
+/// scroll-shaped post-arrange path:
+///
+/// - `PostArrangeRegistry`'s typed-bucket reuse (one `Box::new` for
+///   `ScrollHook` ever, none after warmup).
+/// - `ScrollHook::run` reading `LayoutResult` + mutating `ScrollState`
+///   in place, no per-frame heap touches.
+///
+/// Cold-mount triggers a relayout (pass A + pass B both run record
+/// phase). Two warmup frames absorb that; steady state is back to one
+/// pass per frame and zero allocations.
+#[test]
+fn scroll_overflow_alloc_free() {
+    audit_steady_state("scroll_overflow", AllocBudget::ZERO, |ui| {
+        Scroll::vertical()
+            .id_salt("scroll")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id_salt("tall")
+                    .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                    .show(ui);
+            });
+    });
+}
+
+/// Scrollbar with content that fits inside the viewport: no relayout
+/// flip after the first measure, no gutter reservation. Pairs with
+/// `scroll_overflow_alloc_free` as the negative case — exercises the
+/// hook's `overflow == new_overflow` early-exit path.
+#[test]
+fn scroll_fits_alloc_free() {
+    audit_steady_state("scroll_fits", AllocBudget::ZERO, |ui| {
+        Scroll::vertical()
+            .id_salt("scroll")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id_salt("short")
+                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .show(ui);
+            });
     });
 }

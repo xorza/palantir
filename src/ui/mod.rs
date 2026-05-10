@@ -1,6 +1,7 @@
 pub(crate) mod cascade;
 pub(crate) mod damage;
 pub(crate) mod debug_overlay;
+pub(crate) mod post_arrange;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
@@ -19,8 +20,8 @@ use crate::text::TextShaper;
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::debug_overlay::DebugOverlayConfig;
+use crate::ui::post_arrange::PostArrangeRegistry;
 use crate::ui::state::StateMap;
-use crate::widgets::scroll::ScrollRegistry;
 use crate::widgets::theme::Theme;
 use std::time::Duration;
 
@@ -57,9 +58,12 @@ pub struct Ui {
     /// [`DamagePaint`] — `Full`, `Partial(rect)`, or `Skip`.
     pub(crate) damage: Damage,
 
-    /// Scroll widgets registered during recording so `end_frame` can
-    /// refresh their `ScrollState` rows after arrange.
-    pub(crate) scrolls: ScrollRegistry,
+    /// Per-widget post-arrange hooks: registered during recording,
+    /// drained between `layout.run` and `cascades.run`. Drives the
+    /// scrollbar gutter relayout (and any future widget that needs to
+    /// look at this frame's measure-derived rects to update state).
+    /// See `post_arrange::PostArrangeRegistry`.
+    pub(crate) post_arrange: PostArrangeRegistry,
 
     /// Seconds elapsed since the previous `run_frame`, clamped to
     /// [`MAX_DT`]. Derived from `now - prev_now` per call (not
@@ -131,7 +135,7 @@ impl Ui {
             cascades: Cascades::default(),
             display: Display::default(),
             damage: Damage::default(),
-            scrolls: ScrollRegistry::default(),
+            post_arrange: PostArrangeRegistry::default(),
             dt: 0.0,
             time: Duration::ZERO,
             repaint_requested: false,
@@ -200,7 +204,7 @@ impl Ui {
         }
         self.display = display;
         self.forest.begin_frame();
-        self.scrolls.begin_frame();
+        self.post_arrange.begin_frame();
         // Drop any leftover relayout request from a previous frame's
         // pass A that didn't get consumed. Belt-and-suspenders —
         // current `run_frame` always consumes via `mem::replace`, but
@@ -250,11 +254,13 @@ impl Ui {
         self.anim.end_frame(removed);
 
         let results = self.layout.run(&self.forest, &self.text);
-        // Funnel both signals through `relayout_requested`: scroll's
-        // overflow flip from refresh, plus anything a widget called
-        // `Ui::request_relayout` for directly during record. One
-        // `mem::replace` consumes both.
-        self.relayout_requested |= self.scrolls.refresh(&self.forest, results, &mut self.state);
+        // Funnel both signals through `relayout_requested`: every
+        // post-arrange hook's return (scrollbar overflow flip, etc.)
+        // plus anything a widget called `Ui::request_relayout` for
+        // directly during record. One `mem::replace` consumes both.
+        self.relayout_requested |=
+            self.post_arrange
+                .run_all(&self.forest, results, &mut self.state);
         std::mem::replace(&mut self.relayout_requested, false)
     }
 
