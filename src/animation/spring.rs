@@ -6,10 +6,19 @@
 
 use crate::animation::animatable::Animatable;
 
-pub(crate) const POS_EPS: f32 = 0.001;
-pub(crate) const VEL_EPS: f32 = 0.01;
-pub(crate) const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;
-pub(crate) const VEL_EPS_SQ: f32 = VEL_EPS * VEL_EPS;
+const POS_EPS: f32 = 0.001;
+const VEL_EPS: f32 = 0.01;
+const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;
+const VEL_EPS_SQ: f32 = VEL_EPS * VEL_EPS;
+
+/// `(displacement, velocity)` is at the spring's settle floor — the
+/// caller can snap to target and clear residual motion. Single source
+/// of truth for the threshold; consumed both by [`step`] and by the
+/// snap-if-close fast path in `AnimMapTyped::tick`.
+#[inline]
+pub(crate) fn within_settle_eps<T: Animatable>(displacement: T, velocity: T) -> bool {
+    displacement.magnitude_squared() < POS_EPS_SQ && velocity.magnitude_squared() < VEL_EPS_SQ
+}
 
 pub(crate) struct SpringStep<T: Animatable> {
     pub(crate) current: T,
@@ -32,9 +41,7 @@ pub(crate) fn step<T: Animatable>(
     let new_velocity = velocity.add(accel.scale(dt));
     let new_current = current.add(new_velocity.scale(dt));
     let new_displacement = new_current.sub(target);
-    let settled = new_displacement.magnitude_squared() < POS_EPS_SQ
-        && new_velocity.magnitude_squared() < VEL_EPS_SQ;
-    if settled {
+    if within_settle_eps(new_displacement, new_velocity) {
         SpringStep {
             current: target,
             velocity: T::zero(),

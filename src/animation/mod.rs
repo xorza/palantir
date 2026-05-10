@@ -17,7 +17,7 @@ mod tests;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
-use crate::animation::spring::{POS_EPS_SQ, VEL_EPS_SQ, step as spring_step};
+use crate::animation::spring::{step as spring_step, within_settle_eps};
 use crate::forest::widget_id::WidgetId;
 use crate::primitives::approx::approx_zero;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -192,9 +192,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         // (theme color rounded to nearest ulp, etc.) that would
         // otherwise drive a full ease/spring cycle for a visually
         // imperceptible change.
-        if row.current.sub(row.target).magnitude_squared() < POS_EPS_SQ
-            && row.velocity.magnitude_squared() < VEL_EPS_SQ
-        {
+        if within_settle_eps(row.current.sub(row.target), row.velocity) {
             row.current = row.target;
             row.velocity = T::zero();
             return TickResult {

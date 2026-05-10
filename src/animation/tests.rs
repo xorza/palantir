@@ -4,6 +4,7 @@
 //! plus typed-slot dispatch via `Vec2` and `Color`.
 
 use super::*;
+use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::widget_id::WidgetId;
 use crate::layout::types::display::Display;
@@ -18,6 +19,27 @@ const SLOT: AnimSlot = AnimSlot(0);
 
 fn wid(s: &'static str) -> WidgetId {
     WidgetId::from_hash(s)
+}
+
+/// Common prelude for tests that drive an animated widget through
+/// [`Ui::run_frame`]: spin up a `Ui`, pre-record the widget once so
+/// its state row exists, return the `Ui`, the widget's id, and a
+/// matching `Display`. Per-frame bodies still need to re-record the
+/// widget (`Frame::new().id_salt(salt).show(ui)`) so the persistent
+/// state survives end-of-frame sweeps.
+struct AnimUi {
+    ui: Ui,
+    id: WidgetId,
+    display: Display,
+}
+
+fn setup_anim_ui(salt: &'static str) -> AnimUi {
+    let mut ui = ui_at(SURFACE);
+    let id = wid(salt);
+    Frame::new().id_salt(salt).show(&mut ui);
+    ui.end_frame();
+    let display = Display::from_physical(SURFACE, 1.0);
+    AnimUi { ui, id, display }
 }
 
 fn linear_100ms() -> AnimSpec {
@@ -57,11 +79,11 @@ fn instant_duration_is_noop_and_drops_row() {
         secs: 0.0,
         ease: Easing::Linear,
     });
-    let mut ui = ui_at(SURFACE);
-    let id = wid("anim-instant");
-    Frame::new().id_salt("anim-instant").show(&mut ui);
-    ui.end_frame();
-    let display = Display::from_physical(SURFACE, 1.0);
+    let AnimUi {
+        mut ui,
+        id,
+        display,
+    } = setup_anim_ui("anim-instant");
 
     // Instant on a fresh slot: snaps, no row, no repaint.
     let frame = ui.run_frame(display, Duration::from_millis(0), |ui| {
@@ -273,12 +295,11 @@ fn color_spring_converges_to_target() {
 /// repeated frames eventually settle and stop requesting repaint.
 #[test]
 fn animate_drives_repaint_until_settle() {
-    let mut ui = ui_at(SURFACE);
-    let id = wid("anim-test");
-    Frame::new().id_salt("anim-test").show(&mut ui);
-    ui.end_frame();
-
-    let display = Display::from_physical(SURFACE, 1.0);
+    let AnimUi {
+        mut ui,
+        id,
+        display,
+    } = setup_anim_ui("anim-test");
 
     let frame = ui.run_frame(display, Duration::ZERO, |ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
@@ -414,12 +435,11 @@ fn end_frame_evicts_untouched_slots() {
 /// signal "this caller didn't ask for motion."
 #[test]
 fn animate_with_none_spec_snaps_and_skips_repaint() {
-    let mut ui = ui_at(SURFACE);
-    let id = wid("anim-none");
-    Frame::new().id_salt("anim-none").show(&mut ui);
-    ui.end_frame();
-
-    let display = Display::from_physical(SURFACE, 1.0);
+    let AnimUi {
+        mut ui,
+        id,
+        display,
+    } = setup_anim_ui("anim-none");
     let frame = ui.run_frame(display, Duration::from_millis(16), |ui| {
         let v1 = ui.animate(id, SLOT, 7.0_f32, None);
         let v2 = ui.animate(id, SLOT, 9.0_f32, None);
@@ -442,12 +462,11 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
 /// new target rather than carrying in-flight `current` forward.
 #[test]
 fn animate_some_then_none_drops_stale_row() {
-    let mut ui = ui_at(SURFACE);
-    let id = wid("anim-toggle");
-    Frame::new().id_salt("anim-toggle").show(&mut ui);
-    ui.end_frame();
-
-    let display = Display::from_physical(SURFACE, 1.0);
+    let AnimUi {
+        mut ui,
+        id,
+        display,
+    } = setup_anim_ui("anim-toggle");
     // Frame A: animate to 1.0 with FAST (in flight).
     let _ = ui.run_frame(display, Duration::from_millis(0), |ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
@@ -485,12 +504,11 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::widgets::theme::{AnimatedLook, TextStyle, WidgetLook};
     use std::cell::Cell;
 
-    let mut ui = ui_at(SURFACE);
-    let id = wid("look-test");
-    Frame::new().id_salt("look-test").show(&mut ui);
-    ui.end_frame();
-
-    let display = Display::from_physical(SURFACE, 1.0);
+    let AnimUi {
+        mut ui,
+        id,
+        display,
+    } = setup_anim_ui("look-test");
 
     let bg = Background {
         fill: Color::hex(0x336699),
