@@ -14,11 +14,11 @@
 //! several widths in the swept range; post-fix the second-pass result
 //! is clamped to `new_available` and rendering proceeds.
 
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
 use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::support::testing::{new_ui_text, ui_with_text};
-use crate::tree::Layer;
-use crate::tree::element::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;

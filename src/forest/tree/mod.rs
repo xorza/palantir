@@ -1,27 +1,18 @@
 use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
+use crate::forest::element::{
+    BoundsExtras, Element, ElementSplit, LayoutCore, LayoutMode, PanelExtras,
+};
+use crate::forest::node::NodeRecord;
+use crate::forest::rollups::{NodeHash, SubtreeRollups};
+use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::shape::Shape;
-use crate::tree::element::{
-    BoundsExtras, Element, ElementSplit, LayoutCore, LayoutMode, PanelExtras,
-};
-use crate::tree::node_hash::{NodeHash, SubtreeRollups};
-use crate::tree::record::NodeRecord;
-use crate::tree::visibility::Visibility;
 use crate::widgets::grid::GridDef;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
-
-pub(crate) mod element;
-pub(crate) mod forest;
-pub(crate) mod node_hash;
-pub(crate) mod record;
-pub(crate) mod recording;
-pub(crate) mod seen_ids;
-pub(crate) mod visibility;
-pub(crate) mod widget_id;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct NodeId(pub(crate) u32);

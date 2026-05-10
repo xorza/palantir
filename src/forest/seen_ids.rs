@@ -19,7 +19,7 @@
 //!    keeps `prev` pointed at the *last painted* frame regardless of
 //!    how many discard passes ran.
 
-use crate::tree::widget_id::WidgetId;
+use crate::forest::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Default)]

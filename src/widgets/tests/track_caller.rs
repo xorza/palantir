@@ -5,8 +5,8 @@
 //! collapses all calls onto one id (occurrence-counter disambiguation
 //! still works within a frame, but state stability degrades).
 
-use crate::tree::element::Configure;
-use crate::tree::widget_id::WidgetId;
+use crate::forest::element::Configure;
+use crate::forest::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 
 #[track_caller]

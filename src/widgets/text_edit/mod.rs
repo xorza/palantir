@@ -1,10 +1,10 @@
+use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::widget_id::WidgetId;
 use crate::input::keyboard::{Key, KeyPress};
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
-use crate::tree::element::{Configure, Element, LayoutMode};
-use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::{Surface, TextEditTheme};

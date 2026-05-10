@@ -4,7 +4,7 @@
 //! `FxHasher::default()` directly so the `pod` shortcut and trait
 //! methods are always in scope at the same time.
 //!
-//! Per-domain hashers (e.g. `tree::node_hash::compute_node_hash`) build on
+//! Per-domain hashers (e.g. `tree::rollups::compute_node_hash`) build on
 //! top of this — they own the field-walk and tagged-union policy;
 //! this module owns just the streaming primitive.
 

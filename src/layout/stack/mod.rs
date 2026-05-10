@@ -2,10 +2,10 @@ use super::support::{
     JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
 };
 use super::{Axis, LayoutEngine, LenReq};
+use crate::forest::tree::{Child, NodeId, Tree};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
-use crate::tree::{Child, NodeId, Tree};
 
 /// One Fill child as the freeze loop sees it. Pushed onto
 /// `LayoutScratch::stack_fill` during measure; popped at the end of

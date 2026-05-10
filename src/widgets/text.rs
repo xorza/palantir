@@ -1,6 +1,6 @@
+use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::layout::types::align::Align;
 use crate::shape::{Shape, TextWrap};
-use crate::tree::element::{Configure, Element, LayoutMode};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::TextStyle;

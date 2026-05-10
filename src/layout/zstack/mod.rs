@@ -3,9 +3,9 @@ use super::support::{
     zero_subtree,
 };
 use super::{Axis, LayoutEngine, LenReq};
+use crate::forest::tree::{NodeId, Tree};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
-use crate::tree::{NodeId, Tree};
 use glam::Vec2;
 
 #[cfg(test)]

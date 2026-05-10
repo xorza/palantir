@@ -4,11 +4,11 @@
 //! plus typed-slot dispatch via `Vec2` and `Color`.
 
 use super::*;
+use crate::forest::element::Configure;
+use crate::forest::widget_id::WidgetId;
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
 use crate::support::testing::ui_at;
-use crate::tree::element::Configure;
-use crate::tree::widget_id::WidgetId;
 use crate::widgets::frame::Frame;
 use glam::{UVec2, Vec2};
 use std::time::Duration;

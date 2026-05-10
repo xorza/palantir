@@ -13,7 +13,7 @@ Code lives in `cache/` (this directory's sibling).
 
 - **Subtree-hash rollup.** `Tree.subtree_hashes: Vec<NodeHash>` is
   populated alongside `hashes` in `compute_hashes` via a reverse
-  pre-order walk. Pinned by `tree::tests::subtree_hash_*`.
+  pre-order walk. Pinned by `forest::tree::tests::subtree_hash_*`.
 - **Subtree-skip lookup.** `MeasureCache::try_lookup` fires at every
   non-collapsed node in `LayoutEngine::measure`. A hit blits the whole
   subtree's `desired` + `text_shapes` from the cache and skips

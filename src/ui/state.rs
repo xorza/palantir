@@ -14,7 +14,7 @@
 //! (id collision or accidental reuse) and panics rather than silently
 //! returning a fresh default.
 
-use crate::tree::widget_id::WidgetId;
+use crate::forest::widget_id::WidgetId;
 use rustc_hash::FxHashMap;
 use std::any::Any;
 

@@ -15,10 +15,10 @@
 
 use super::support::{JustifyOffsets, cross_place, justify_offsets, zero_subtree};
 use super::{Axis, LayoutEngine, LenReq};
+use crate::forest::tree::{Child, NodeId, Tree};
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
-use crate::tree::{Child, NodeId, Tree};
 
 /// One child's contribution to the current line. `m` always comes from
 /// the child's main-axis desired size; `x` is the cross contribution

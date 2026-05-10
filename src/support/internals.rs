@@ -11,8 +11,8 @@
 
 use crate::Ui;
 use crate::animation::animatable::Animatable;
+use crate::forest::widget_id::WidgetId;
 use crate::text::TextShaper;
-use crate::tree::widget_id::WidgetId;
 
 /// Drop every cross-frame measure-cache entry, forcing the next frame
 /// to re-measure every leaf from scratch. See `benches/measure_cache.rs`.

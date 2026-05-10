@@ -1,9 +1,9 @@
 use crate::Ui;
+use crate::forest::element::Configure;
 use crate::input::sense::Sense;
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::support::testing::{begin, click_at, press_at, release_left, ui_at};
-use crate::tree::element::Configure;
 use crate::widgets::theme::Surface;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -362,13 +362,13 @@ fn click_outside_zoomed_bounds_does_not_hit() {
 
 mod drag {
     use crate::Ui;
+    use crate::forest::element::Configure;
+    use crate::forest::widget_id::WidgetId;
     use crate::input::sense::Sense;
     use crate::input::{InputEvent, PointerButton};
     use crate::layout::types::display::Display;
     use crate::layout::types::sizing::Sizing;
     use crate::support::testing::ui_at;
-    use crate::tree::element::Configure;
-    use crate::tree::widget_id::WidgetId;
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};
 
@@ -582,11 +582,11 @@ mod scroll {
 }
 
 mod scroll_routing {
+    use crate::forest::element::Configure;
     use crate::input::InputEvent;
     use crate::input::sense::Sense;
     use crate::layout::types::sizing::Sizing;
     use crate::support::testing::ui_at;
-    use crate::tree::element::Configure;
     use crate::widgets::panel::Panel;
     use glam::{UVec2, Vec2};
 
@@ -624,8 +624,8 @@ mod scroll_routing {
                     .sense(Sense::SCROLL)
                     .show(ui, |_| {});
             });
-        let inner_id = crate::tree::widget_id::WidgetId::from_hash("inner");
-        let outer_id = crate::tree::widget_id::WidgetId::from_hash("outer");
+        let inner_id = crate::forest::widget_id::WidgetId::from_hash("inner");
+        let outer_id = crate::forest::widget_id::WidgetId::from_hash("outer");
         assert_eq!(ui.input.scroll_delta_for(inner_id), Vec2::new(0.0, 5.0));
         assert_eq!(ui.input.scroll_delta_for(outer_id), Vec2::ZERO);
         ui.end_frame();
@@ -649,7 +649,7 @@ mod scroll_routing {
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |_| {});
-        let unrelated = crate::tree::widget_id::WidgetId::from_hash("nope");
+        let unrelated = crate::forest::widget_id::WidgetId::from_hash("nope");
         assert_eq!(ui.input.scroll_delta_for(unrelated), Vec2::ZERO);
         ui.end_frame();
     }
@@ -673,7 +673,7 @@ mod scroll_routing {
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |_| {});
-        let id = crate::tree::widget_id::WidgetId::from_hash("scroller");
+        let id = crate::forest::widget_id::WidgetId::from_hash("scroller");
         assert_eq!(
             ui.input.scroll_delta_for(id),
             Vec2::ZERO,
@@ -881,10 +881,10 @@ mod keyboard {
         // when pressed. Under PreserveOnMiss, pressing on empty
         // surface afterwards keeps focus.
         use crate::Ui;
+        use crate::forest::element::Configure;
         use crate::input::PointerButton;
         use crate::layout::types::sizing::Sizing;
         use crate::support::testing::{begin, click_at};
-        use crate::tree::element::Configure;
         use crate::widgets::{button::Button, panel::Panel};
 
         let mut ui = Ui::new();
@@ -902,7 +902,7 @@ mod keyboard {
         click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
         assert_eq!(
             ui.focused_id(),
-            Some(crate::tree::widget_id::WidgetId::from_hash("editable")),
+            Some(crate::forest::widget_id::WidgetId::from_hash("editable")),
         );
 
         begin(&mut ui, glam::UVec2::new(200, 80));
@@ -920,7 +920,7 @@ mod keyboard {
         ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
         assert_eq!(
             ui.focused_id(),
-            Some(crate::tree::widget_id::WidgetId::from_hash("editable")),
+            Some(crate::forest::widget_id::WidgetId::from_hash("editable")),
             "PreserveOnMiss keeps focus when press lands off any focusable widget",
         );
     }
@@ -928,10 +928,10 @@ mod keyboard {
     #[test]
     fn default_policy_is_clear_on_miss() {
         use crate::Ui;
+        use crate::forest::element::Configure;
         use crate::input::PointerButton;
         use crate::layout::types::sizing::Sizing;
         use crate::support::testing::{begin, click_at};
-        use crate::tree::element::Configure;
         use crate::widgets::{button::Button, panel::Panel};
 
         // Pin: a fresh Ui starts with FocusPolicy::ClearOnMiss
@@ -979,9 +979,9 @@ mod keyboard {
         // ClearOnMiss this isn't true — the press lands on a
         // non-focusable widget and clears focus.)
         use crate::Ui;
+        use crate::forest::element::Configure;
         use crate::layout::types::sizing::Sizing;
         use crate::support::testing::{begin, click_at};
-        use crate::tree::element::Configure;
         use crate::widgets::{button::Button, panel::Panel};
 
         let mut ui = Ui::new();
@@ -1003,7 +1003,7 @@ mod keyboard {
         click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
         assert_eq!(
             ui.focused_id(),
-            Some(crate::tree::widget_id::WidgetId::from_hash("editable")),
+            Some(crate::forest::widget_id::WidgetId::from_hash("editable")),
         );
 
         begin(&mut ui, glam::UVec2::new(400, 80));
@@ -1025,7 +1025,7 @@ mod keyboard {
         click_at(&mut ui, glam::Vec2::new(150.0, 20.0));
         assert_eq!(
             ui.focused_id(),
-            Some(crate::tree::widget_id::WidgetId::from_hash("editable")),
+            Some(crate::forest::widget_id::WidgetId::from_hash("editable")),
             "click on non-focusable widget must not steal focus",
         );
     }
@@ -1033,9 +1033,9 @@ mod keyboard {
     #[test]
     fn focus_is_evicted_when_widget_disappears() {
         use crate::Ui;
+        use crate::forest::element::Configure;
         use crate::layout::types::sizing::Sizing;
         use crate::support::testing::{begin, click_at};
-        use crate::tree::element::Configure;
         use crate::widgets::{button::Button, panel::Panel};
 
         let mut ui = Ui::new();
@@ -1067,7 +1067,7 @@ mod keyboard {
     fn request_focus_bypasses_policy() {
         use crate::Ui;
         let mut ui = Ui::new();
-        let id = crate::tree::widget_id::WidgetId::from_hash("manual");
+        let id = crate::forest::widget_id::WidgetId::from_hash("manual");
         ui.request_focus(Some(id));
         assert_eq!(ui.focused_id(), Some(id));
         ui.request_focus(None);
@@ -1082,10 +1082,10 @@ mod keyboard {
         // invisible` and a future split would silently keep one bit
         // alive.
         use crate::Ui;
+        use crate::forest::element::Configure;
+        use crate::forest::visibility::Visibility;
         use crate::layout::types::sizing::Sizing;
         use crate::support::testing::{begin, click_at};
-        use crate::tree::element::Configure;
-        use crate::tree::visibility::Visibility;
         use crate::widgets::{button::Button, panel::Panel};
 
         let mut ui = Ui::new();
@@ -1114,9 +1114,9 @@ mod keyboard {
         // bit just like they drop their `Sense` — keystrokes shouldn't
         // route to a greyed-out field.
         use crate::Ui;
+        use crate::forest::element::Configure;
         use crate::layout::types::sizing::Sizing;
         use crate::support::testing::{begin, click_at};
-        use crate::tree::element::Configure;
         use crate::widgets::{button::Button, panel::Panel};
 
         let mut ui = Ui::new();
@@ -1180,7 +1180,7 @@ mod keyboard {
 /// `Ui::response_for` path.
 mod response_state {
     use super::*;
-    use crate::tree::widget_id::WidgetId;
+    use crate::forest::widget_id::WidgetId;
     use crate::widgets::frame::Frame;
 
     fn focusable_id() -> WidgetId {

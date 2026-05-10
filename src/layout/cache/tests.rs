@@ -1,10 +1,10 @@
 use crate::Ui;
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
+use crate::forest::widget_id::WidgetId;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey};
 use crate::primitives::{color::Color, size::Size};
 use crate::support::testing::{begin, ui_at};
-use crate::tree::Layer;
-use crate::tree::element::Configure;
-use crate::tree::widget_id::WidgetId;
 use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;

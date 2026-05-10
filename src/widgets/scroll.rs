@@ -1,3 +1,7 @@
+use crate::forest::Forest;
+use crate::forest::element::{Configure, Element, LayoutMode, ScrollAxes};
+use crate::forest::tree::{Layer, NodeId};
+use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::result::LayoutResult;
@@ -6,10 +10,6 @@ use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
 use crate::primitives::transform::TranslateScale;
 use crate::shape::Shape;
-use crate::tree::element::{Configure, Element, LayoutMode, ScrollAxes};
-use crate::tree::forest::Forest;
-use crate::tree::widget_id::WidgetId;
-use crate::tree::{Layer, NodeId};
 use crate::ui::Ui;
 use crate::ui::state::StateMap;
 use crate::widgets::Response;
@@ -222,7 +222,7 @@ impl Scroll {
             push_bar(ui, viewport, outer, content, offset, Axis::Y, pan.y, &theme);
             push_bar(ui, viewport, outer, content, offset, Axis::X, pan.x, &theme);
         });
-        let layer = ui.forest.recording.current_layer;
+        let layer = ui.forest.current_layer();
         ui.scrolls.push(ScrollNode { id, layer, node });
 
         let resp_state = ui.response_for(id);

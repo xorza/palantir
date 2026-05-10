@@ -36,14 +36,14 @@
 //! inside `Tree.extras` is filled at `open_node` time. `Configure`
 //! (the trait) provides one chained setter per row.
 
+use crate::forest::visibility::Visibility;
+use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
     justify::Justify, sizing::Sizes,
 };
 use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
-use crate::tree::visibility::Visibility;
-use crate::tree::widget_id::WidgetId;
 use glam::Vec2;
 
 /// How a node arranges its children. Stored on `Element::mode` and read by

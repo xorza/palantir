@@ -1,4 +1,5 @@
 use crate::animation::{AnimSlot, AnimSpec};
+use crate::forest::widget_id::WidgetId;
 use crate::input::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 pub use crate::primitives::background::Background;
@@ -6,7 +7,6 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
-use crate::tree::widget_id::WidgetId;
 use crate::ui::Ui;
 
 // Default palette: Ayu Mirage High Contrast. Mirrors
@@ -692,9 +692,9 @@ mod tests {
     #[test]
     fn widget_look_animate_collapses_invisible_stroke() {
         use crate::Ui;
+        use crate::forest::widget_id::WidgetId;
         use crate::layout::types::display::Display;
         use crate::primitives::background::Background;
-        use crate::tree::widget_id::WidgetId;
         use std::cell::Cell;
         use std::time::Duration;
 

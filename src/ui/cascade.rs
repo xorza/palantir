@@ -7,12 +7,12 @@
 //! Downstream phases (damage diff, input hit-test, renderer encoder)
 //! take `&CascadeResult` as their single frozen-state handle.
 
+use crate::forest::Forest;
+use crate::forest::tree::{Layer, NodeId, Tree};
+use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::result::{LayerResult, LayoutResult};
 use crate::primitives::{rect::Rect, transform::TranslateScale};
-use crate::tree::forest::Forest;
-use crate::tree::widget_id::WidgetId;
-use crate::tree::{Layer, NodeId, Tree};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::array;

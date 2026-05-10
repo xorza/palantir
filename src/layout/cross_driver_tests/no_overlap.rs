@@ -5,12 +5,12 @@
 
 use crate::TextStyle;
 use crate::Ui;
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::support::testing::{encode_cmds, ui_with_text};
-use crate::tree::Layer;
-use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;

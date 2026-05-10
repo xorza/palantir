@@ -4,14 +4,14 @@
 //! caching and result writing.
 
 use super::{Axis, LayoutEngine, LenReq};
+use crate::forest::element::LayoutCore;
+use crate::forest::tree::{Child, NodeId, Tree};
 use crate::layout::types::{
     align::Align, align::AxisAlign, justify::Justify, sizing::Sizes, sizing::Sizing,
 };
 use crate::primitives::{rect::Rect, size::Size};
 use crate::shape::{Shape, TextWrap};
 use crate::text::TextShaper;
-use crate::tree::element::LayoutCore;
-use crate::tree::{Child, NodeId, Tree};
 use glam::Vec2;
 
 /// One `Shape::Text` worth of layout-side inputs. Yielded by

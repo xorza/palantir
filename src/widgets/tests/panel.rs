@@ -1,9 +1,9 @@
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::support::testing::{click_at, shapes_of, ui_at};
-use crate::tree::Layer;
-use crate::tree::element::Configure;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -20,7 +20,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
     use crate::widgets::theme::Surface;
 
     let mut ui = ui_at(UVec2::new(200, 200));
-    let mut cases: Vec<(&str, crate::tree::NodeId, ClipMode, bool)> = Vec::new();
+    let mut cases: Vec<(&str, crate::forest::tree::NodeId, ClipMode, bool)> = Vec::new();
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         // No surface set anywhere → no clip, no chrome.
         let n = Panel::zstack()
@@ -213,7 +213,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
 /// visible in the showcase as a flash of "alive" disabled buttons.
 #[test]
 fn child_inside_disabled_panel_sees_disabled_at_record_time() {
-    use crate::tree::widget_id::WidgetId;
+    use crate::forest::widget_id::WidgetId;
     let mut ui = ui_at(UVec2::new(200, 200));
     let child_id = WidgetId::from_hash("child");
     let mut observed = None;

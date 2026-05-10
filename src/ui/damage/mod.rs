@@ -25,11 +25,11 @@
 //! nodes" debug overlay (see `docs/roadmap/damage.md`) is the
 //! production consumer.
 
+use crate::forest::Forest;
+use crate::forest::rollups::NodeHash;
+use crate::forest::tree::NodeId;
+use crate::forest::widget_id::WidgetId;
 use crate::primitives::rect::Rect;
-use crate::tree::NodeId;
-use crate::tree::forest::Forest;
-use crate::tree::node_hash::NodeHash;
-use crate::tree::widget_id::WidgetId;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::region::DamageRegion;
 use rustc_hash::FxHashMap;
@@ -144,7 +144,7 @@ impl Damage {
     /// occupied slot whose node still paints but changed updates;
     /// an occupied slot whose node stopped painting is evicted.
     /// Last-frame entries listed in `removed` (precomputed by
-    /// [`crate::tree::seen_ids::SeenIds`] so damage and `text` reuse
+    /// [`crate::forest::seen_ids::SeenIds`] so damage and `text` reuse
     /// the diff) are dropped afterwards.
     ///
     /// Rects are tracked in **screen space** (read straight off

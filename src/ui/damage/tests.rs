@@ -1,13 +1,13 @@
 use super::{Damage, DamagePaint};
 use crate::Ui;
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
+use crate::forest::tree::NodeId;
+use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
 use crate::support::testing::{begin, end_frame_acked};
-use crate::tree::Layer;
-use crate::tree::NodeId;
-use crate::tree::element::Configure;
-use crate::tree::widget_id::WidgetId;
 use crate::widgets::popup::Popup;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};

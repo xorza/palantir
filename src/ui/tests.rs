@@ -1,11 +1,11 @@
 use crate::TextStyle;
 use crate::Ui;
+use crate::forest::element::Configure;
+use crate::forest::tree::Layer;
+use crate::forest::widget_id::WidgetId;
 use crate::layout::types::display::Display;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::support::testing::{begin, new_ui_text, ui_at};
-use crate::tree::Layer;
-use crate::tree::element::Configure;
-use crate::tree::widget_id::WidgetId;
 use crate::ui::damage::DamagePaint;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
