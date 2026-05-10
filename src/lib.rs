@@ -63,6 +63,6 @@ pub use widgets::scroll::Scroll;
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
 pub use widgets::theme::{
-    AnimatedLook, Background, ButtonTheme, ScrollbarTheme, Surface, TextEditTheme, TextStyle,
-    Theme, WidgetLook,
+    AnimatedLook, Background, ButtonTheme, ScrollbarTheme, TextEditTheme, TextStyle, Theme,
+    WidgetLook,
 };

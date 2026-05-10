@@ -22,7 +22,7 @@ use crate::ui::damage::{Damage, DamagePaint};
 use crate::ui::debug_overlay::DebugOverlayConfig;
 use crate::ui::state::StateMap;
 use crate::widgets::scroll::ScrollRegistry;
-use crate::widgets::theme::{Surface, Theme};
+use crate::widgets::theme::Theme;
 use std::time::Duration;
 
 /// Hard upper bound on per-frame `dt` derived from `now` deltas in
@@ -415,12 +415,7 @@ impl Ui {
         state
     }
 
-    pub(crate) fn node(
-        &mut self,
-        mut element: Element,
-        surface: Option<Surface>,
-        f: impl FnOnce(&mut Ui),
-    ) -> NodeId {
+    pub(crate) fn node(&mut self, mut element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
         assert!(
             element.id != WidgetId::default(),
             "widget recorded without a `WidgetId` — chain `.id_salt(key)`, \
@@ -428,18 +423,16 @@ impl Ui {
              `Foo::new()` no longer derives an id automatically.",
         );
         element.id = self.forest.ids.record(element.id, element.auto_id);
-        // Just plumbing — the noop policy lives entirely in
-        // `Tree::open_node`: it drops chrome whose paint is invisible,
-        // and stashes the radius into the `clip_radius` column when
-        // the clip mode is rounded so the encoder gets a mask radius
-        // independent of paint visibility.
-        let chrome = surface.map(|s| {
-            element.clip = match s.clip {
-                ClipMode::Rounded if s.paint.radius.approx_zero() => ClipMode::Rect,
-                mode => mode,
-            };
-            s.paint
-        });
+        // Pure plumbing. `Configure::clip*` and `.background()` already
+        // populated `element.clip` / `element.chrome`; `Tree::open_node`
+        // owns the noop policy (drop invisible paint, derive
+        // `clip_radius` for `Rounded` from chrome.radius).
+        if matches!(element.clip, ClipMode::Rounded)
+            && element.chrome.is_none_or(|bg| bg.radius.approx_zero())
+        {
+            element.clip = ClipMode::Rect;
+        }
+        let chrome = element.chrome.take();
         let node = self.forest.open_node(element, chrome);
         f(self);
         self.forest.close_node();

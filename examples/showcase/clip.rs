@@ -1,5 +1,5 @@
 use crate::swatch;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Surface, Ui};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
 
 /// Visible panel boundary needed for this demo: the whole point is to
 /// see whether a child rect spills past or gets clipped at the panel
@@ -26,7 +26,8 @@ pub fn build(ui: &mut Ui) {
             Panel::zstack()
                 .id_salt("clipped")
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(Surface::clip_rect_with_bg(bounded_panel()))
+                .background(bounded_panel())
+                .clip_rect()
                 .show(ui, |ui| {
                     spiller(ui, "spilled-clipped");
                 });

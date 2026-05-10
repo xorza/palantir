@@ -17,7 +17,6 @@ use glam::UVec2;
 #[test]
 fn surface_apply_to_sets_clip_bit_and_chrome() {
     use crate::ClipMode;
-    use crate::widgets::theme::Surface;
 
     let mut ui = ui_at(UVec2::new(200, 200));
     let mut cases: Vec<(&str, crate::forest::tree::NodeId, ClipMode, bool)> = Vec::new();
@@ -48,44 +47,47 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
         let n = Panel::zstack()
             .id_salt("scissor")
             .size(50.0)
-            .background(Surface::clip_rect())
+            .clip_rect()
             .show(ui, |_| {})
             .node;
         cases.push(("scissor", n, ClipMode::Rect, false));
 
-        // Surface::clipped(bg) — clip + paint.
+        // Background + Configure::clip_rect — clip + paint.
         let n = Panel::zstack()
             .id_salt("clipped")
             .size(50.0)
-            .background(Surface::clip_rect_with_bg(Background {
+            .background(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
                 ..Default::default()
-            }))
+            })
+            .clip_rect()
             .show(ui, |_| {})
             .node;
         cases.push(("clipped", n, ClipMode::Rect, true));
 
-        // Surface::rounded(bg) with non-zero radius — Rounded survives.
+        // Background + Configure::clip_rounded with non-zero radius — Rounded survives.
         let n = Panel::zstack()
             .id_salt("rounded")
             .size(50.0)
-            .background(Surface::clip_rounded_with_bg(Background {
+            .background(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
                 radius: Corners::all(4.0),
                 ..Default::default()
-            }))
+            })
+            .clip_rounded()
             .show(ui, |_| {})
             .node;
         cases.push(("rounded", n, ClipMode::Rounded, true));
 
-        // Surface::rounded(bg) with zero radius — apply_to downgrades.
+        // Background + clip_rounded with zero radius — Ui::node downgrades.
         let n = Panel::zstack()
             .id_salt("rounded-zero")
             .size(50.0)
-            .background(Surface::clip_rounded_with_bg(Background {
+            .background(Background {
                 fill: Color::rgb(0.2, 0.2, 0.2),
                 ..Default::default()
-            }))
+            })
+            .clip_rounded()
             .show(ui, |_| {})
             .node;
         cases.push(("rounded-zero", n, ClipMode::Rect, true));

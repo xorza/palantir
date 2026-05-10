@@ -14,7 +14,7 @@ use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
 use crate::support::testing::{begin, encode_cmds, new_ui_text, ui_with_text};
-use crate::widgets::theme::{Background, Surface};
+use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -220,7 +220,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                 Panel::zstack()
                     .id_salt("transformed")
                     .transform(TranslateScale::new(glam::Vec2::new(4.0, 2.0), 1.0))
-                    .background(Surface::clip_rect())
+                    .clip_rect()
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .background(Background {

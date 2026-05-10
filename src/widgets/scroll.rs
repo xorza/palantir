@@ -14,7 +14,7 @@ use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::state::StateMap;
 use crate::widgets::Response;
-use crate::widgets::theme::{ScrollbarTheme, Surface};
+use crate::widgets::theme::ScrollbarTheme;
 use glam::Vec2;
 
 /// One scroll widget recorded this frame: the stable `WidgetId` keying
@@ -127,7 +127,6 @@ impl ScrollRegistry {
 /// follow-up.
 pub struct Scroll {
     element: Element,
-    surface: Option<Surface>,
 }
 
 impl Scroll {
@@ -146,23 +145,11 @@ impl Scroll {
     fn with_axes(axes: ScrollAxes) -> Self {
         let mut element = Element::new(LayoutMode::Scroll(axes));
         element.sense = Sense::Scroll;
-        Self {
-            element,
-            surface: None,
-        }
-    }
-
-    /// Install chrome for the scroll viewport. Accepts a bare `Background`
-    /// (paint-only — clip stays scissor) or a full `Surface`. Scroll
-    /// requires clipping, so `ClipMode::None` on the supplied surface is
-    /// upgraded to `Rect`; `Rect` and `Rounded` pass through.
-    pub fn background(mut self, s: impl Into<Surface>) -> Self {
-        let mut s = s.into();
-        if matches!(s.clip, ClipMode::None) {
-            s.clip = ClipMode::Rect;
-        }
-        self.surface = Some(s);
-        self
+        // Scroll requires clipping; default to `Rect` so callers that
+        // don't override get the cheap scissor path. Callers can still
+        // call `Configure::clip_rounded` to upgrade to a stencil mask.
+        element.clip = ClipMode::Rect;
+        Self { element }
     }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
@@ -208,9 +195,13 @@ impl Scroll {
             element.transform = Some(TranslateScale::from_translation(-offset));
         }
 
-        // Default to scissor when no user surface — Scroll is always clipped.
-        let surface = self.surface.unwrap_or_else(Surface::clip_rect);
-        let node = ui.node(element, Some(surface), |ui| {
+        // Scroll is always clipped — `with_axes` set `ClipMode::Rect`
+        // by default; if the caller upgraded to `Rounded` via
+        // `Configure::clip_rounded`, that wins.
+        if matches!(element.clip, ClipMode::None) {
+            element.clip = ClipMode::Rect;
+        }
+        let node = ui.node(element, |ui| {
             body(ui);
             // Bars push *after* the body → they land in the trailing
             // shape slot (after every child), so the encoder paints

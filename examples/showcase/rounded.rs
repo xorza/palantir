@@ -1,5 +1,5 @@
 use crate::swatch;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Surface, Ui};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
 
 /// Card with a rounded background. Used in three configurations below
 /// (no clip, scissor clip, rounded stencil clip) to demonstrate how
@@ -22,30 +22,29 @@ pub fn build(ui: &mut Ui) {
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // No clip: child spills past the rounded corners.
-            labeled_card(ui, "no_clip", card().into(), "no clip");
+            Panel::zstack()
+                .id_salt("no_clip")
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(card())
+                .show(ui, |ui| spiller(ui, ("spill", "no_clip")));
 
             // Scissor clip: child cut at the rect bounding box, square
             // corners visible where the rounded paint thins out.
-            labeled_card(ui, "scissor", Surface::clip_rect_with_bg(card()), "scissor");
+            Panel::zstack()
+                .id_salt("scissor")
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(card())
+                .clip_rect()
+                .show(ui, |ui| spiller(ui, ("spill", "scissor")));
 
             // Rounded stencil clip: child trimmed to the painted
             // corner radius.
-            labeled_card(
-                ui,
-                "rounded",
-                Surface::clip_rounded_with_bg(card()),
-                "rounded",
-            );
-        });
-}
-
-fn labeled_card(ui: &mut Ui, id: &'static str, surface: Surface, _label: &str) {
-    Panel::zstack()
-        .id_salt(id)
-        .size((Sizing::FILL, Sizing::FILL))
-        .background(surface)
-        .show(ui, |ui| {
-            spiller(ui, ("spill", id));
+            Panel::zstack()
+                .id_salt("rounded")
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(card())
+                .clip_rounded()
+                .show(ui, |ui| spiller(ui, ("spill", "rounded")));
         });
 }
 

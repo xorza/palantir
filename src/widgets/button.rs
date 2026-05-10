@@ -5,7 +5,7 @@ use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::{ButtonTheme, Surface};
+use crate::widgets::theme::ButtonTheme;
 use std::borrow::Cow;
 
 pub struct Button {
@@ -71,11 +71,11 @@ impl Button {
         let look = style
             .pick(state)
             .animate(ui, element.id, fallback_text, style.anim);
-        let surface = Some(Surface::from(look.background));
+        element.chrome = Some(look.background);
         let label = self.label.clone();
         let label_align = self.label_align;
 
-        let node = ui.node(element, surface, |ui| {
+        let node = ui.node(element, |ui| {
             if !label.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_rect: None,

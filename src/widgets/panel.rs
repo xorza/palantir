@@ -1,27 +1,30 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::transform::TranslateScale;
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::Surface;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
-/// (selected via constructor) and optionally paints a `Surface` (paint +
-/// clip) for its own chrome. Cards, rows, columns, and layered overlays all
-/// share this one type — `HStack::new()` / `VStack::new()` / `ZStack::new()`
-/// just preselect the layout.
+/// (selected via constructor) and optionally paints chrome (via
+/// [`Configure::background`]) and/or installs a clip (via
+/// [`Configure::clip_rect`] / [`Configure::clip_rounded`]). Cards,
+/// rows, columns, and layered overlays all share this one type —
+/// `HStack::new()` / `VStack::new()` / `ZStack::new()` just preselect
+/// the layout.
 ///
-/// Default surface is `None`, so a Panel without `.background(...)`
-/// paints nothing and doesn't clip — pure layout.
+/// Default chrome / clip is `None`, so a Panel without
+/// `.background(...)` / `.clip_*()` paints nothing and doesn't clip
+/// — pure layout. The `theme.panel_background` / `theme.panel_clip`
+/// fields supply a framework-wide fallback for any panel that didn't
+/// set its own.
 pub struct Panel {
     element: Element,
-    surface: Option<Surface>,
 }
 
 impl Panel {
     fn auto(mode: LayoutMode) -> Self {
         Self {
             element: Element::new(mode),
-            surface: None,
         }
     }
 
@@ -35,20 +38,19 @@ impl Panel {
         self
     }
 
-    /// Install chrome for this panel. Accepts a bare `Background`
-    /// (paint-only) or a `Surface` (paint + clip). Default is no chrome
-    /// — pure layout.
-    pub fn background(mut self, s: impl Into<Surface>) -> Self {
-        self.surface = Some(s.into());
-        self
-    }
-
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
-        // `None` falls back to `theme.panel` (default `None` =
-        // pure layout). See `Theme::panel`.
-        let surface = self.surface.or(ui.theme.panel);
-        let node = ui.node(self.element, surface, body);
+        // Theme fallback: if the caller left chrome / clip unset,
+        // inherit from `theme.panel_*`. Caller intent (any non-None
+        // value) wins.
+        let mut element = self.element;
+        if element.chrome.is_none() {
+            element.chrome = ui.theme.panel_background;
+        }
+        if matches!(element.clip, ClipMode::None) {
+            element.clip = ui.theme.panel_clip;
+        }
+        let node = ui.node(element, body);
         let state = ui.response_for(id);
         Response { node, state }
     }
