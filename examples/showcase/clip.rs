@@ -18,36 +18,77 @@ fn card() -> Background {
 }
 
 pub fn build(ui: &mut Ui) {
-    Panel::hstack()
+    Panel::vstack()
         .auto_id()
         .gap(16.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            // No clip: child spills past both the rect bounds and the
-            // rounded corners.
-            Panel::zstack()
-                .id_salt("none")
+            // Row 1: no padding on the clipping panel.
+            Panel::hstack()
+                .id_salt("no-padding")
+                .gap(16.0)
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(card())
-                .show(ui, |ui| spiller(ui, ("spill", "none")));
+                .show(ui, |ui| {
+                    // No clip: child spills past both the rect bounds
+                    // and the rounded corners.
+                    Panel::zstack()
+                        .id_salt("none")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(card())
+                        .show(ui, |ui| spiller(ui, ("spill", "none")));
 
-            // Scissor clip: child cut at the rect bounding box; square
-            // corners visible where the rounded paint thins out.
-            Panel::zstack()
-                .id_salt("rect")
-                .size((Sizing::FILL, Sizing::FILL))
-                .background(card())
-                .clip_rect()
-                .show(ui, |ui| spiller(ui, ("spill", "rect")));
+                    // Scissor clip: child cut at the rect bounding
+                    // box; square corners visible where the rounded
+                    // paint thins out.
+                    Panel::zstack()
+                        .id_salt("rect")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(card())
+                        .clip_rect()
+                        .show(ui, |ui| spiller(ui, ("spill", "rect")));
 
-            // Rounded stencil clip: child trimmed to the painted
-            // corner radius.
-            Panel::zstack()
-                .id_salt("rounded")
+                    // Rounded stencil clip: child trimmed to the
+                    // painted corner radius.
+                    Panel::zstack()
+                        .id_salt("rounded")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(card())
+                        .clip_rounded()
+                        .show(ui, |ui| spiller(ui, ("spill", "rounded")));
+                });
+
+            // Row 2: same clip modes, but the panel has padding.
+            // Children clip at the content rect (deflated by padding)
+            // — the spiller's negative margin is measured from inside
+            // the padding, and the clip mask follows the same edge.
+            Panel::hstack()
+                .id_salt("padded")
+                .gap(16.0)
                 .size((Sizing::FILL, Sizing::FILL))
-                .background(card())
-                .clip_rounded()
-                .show(ui, |ui| spiller(ui, ("spill", "rounded")));
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id_salt("none-pad")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(28.0)
+                        .background(card())
+                        .show(ui, |ui| spiller(ui, ("spill", "none-pad")));
+
+                    Panel::zstack()
+                        .id_salt("rect-pad")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(28.0)
+                        .background(card())
+                        .clip_rect()
+                        .show(ui, |ui| spiller(ui, ("spill", "rect-pad")));
+
+                    Panel::zstack()
+                        .id_salt("rounded-pad")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(14.0)
+                        .background(card())
+                        .clip_rounded()
+                        .show(ui, |ui| spiller(ui, ("spill", "rounded-pad")));
+                });
         });
 }
 
