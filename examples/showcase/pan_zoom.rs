@@ -1,23 +1,37 @@
-use palantir::{Background, Color, Configure, Corners, Panel, Scroll, Sizing, Text, TextStyle, Ui};
+use palantir::{
+    AnimSpec, Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Scroll, Sizing,
+    Stroke, TextStyle, Ui, WidgetLook,
+};
 
-/// `Scroll::both().with_zoom()` over a dense grid. Bare wheel pans;
-/// `Ctrl/Cmd + wheel` zooms about the cursor; pinch zooms
-/// unconditionally. Pin the cursor to a cell and scroll-zoom — the
-/// cell stays under the cursor.
+/// `Scroll::both().with_zoom()` over a dense grid of buttons. Bare wheel pans;
+/// `Ctrl/Cmd + wheel` zooms about the cursor; pinch zooms unconditionally.
+/// Pin the cursor to a cell and scroll-zoom — the cell stays under the
+/// cursor. Cells are buttons so hover / press / click input still works
+/// correctly through the scroll viewport's transform; the hovered cell
+/// brightens via the standard ButtonTheme animation path.
 pub fn build(ui: &mut Ui) {
+    let last_click_id = palantir::WidgetId::from_hash("pz-last-click");
+    let mut clicked: Option<(u32, u32)> = *ui.state_mut::<Option<(u32, u32)>>(last_click_id);
     Panel::vstack()
         .auto_id()
         .gap(8.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            Text::new(
-                "Pan + zoom — wheel pans, Ctrl/Cmd + wheel zooms about the cursor, \
-                 pinch zooms on touchpad. The point under the cursor stays fixed.",
-            )
-            .auto_id()
-            .wrapping()
-            .style(TextStyle::default().with_font_size(13.0))
-            .show(ui);
+            let header = match clicked {
+                Some((r, c)) => format!(
+                    "Pan + zoom — wheel pans, Ctrl/Cmd + wheel zooms about the cursor, \
+                     pinch zooms on touchpad. Last click: r{r} c{c}."
+                ),
+                None => "Pan + zoom — wheel pans, Ctrl/Cmd + wheel zooms about the cursor, \
+                     pinch zooms on touchpad. Click a cell to confirm hit-testing through \
+                     the zoom transform."
+                    .to_string(),
+            };
+            palantir::Text::new(header)
+                .auto_id()
+                .wrapping()
+                .style(TextStyle::default().with_font_size(13.0))
+                .show(ui);
 
             Scroll::both()
                 .auto_id()
@@ -31,35 +45,83 @@ pub fn build(ui: &mut Ui) {
                                 .gap(4.0)
                                 .show(ui, |ui| {
                                     for c in 0..24u32 {
-                                        cell(ui, r, c);
+                                        if cell(ui, r, c) {
+                                            clicked = Some((r, c));
+                                        }
                                     }
                                 });
                         }
                     });
                 });
         });
+    *ui.state_mut::<Option<(u32, u32)>>(last_click_id) = clicked;
 }
 
-fn cell(ui: &mut Ui, r: u32, c: u32) {
-    Panel::hstack()
+fn cell(ui: &mut Ui, r: u32, c: u32) -> bool {
+    Button::new()
         .id_salt(("pz-cell", r, c))
+        .label(cell_label(r, c))
         .size((Sizing::Fixed(56.0), Sizing::Fixed(40.0)))
         .padding((6.0, 4.0))
-        .background(Background {
-            fill: cell_color(r, c),
+        .style(cell_theme(r, c))
+        .show(ui)
+        .clicked()
+}
+
+/// Per-cell ButtonTheme: normal = the cell's base color, hovered =
+/// brightened, pressed = brightest with a focus stroke. Anim drives a
+/// smooth fill transition on hover/press. Constructed per-frame —
+/// cheap (a few struct copies) and keeps each cell visually distinct.
+fn cell_theme(r: u32, c: u32) -> ButtonTheme {
+    let base = cell_color(r, c);
+    let bg = |fill: Color| -> Background {
+        Background {
+            fill,
             radius: Corners::all(3.0),
             ..Default::default()
-        })
-        .show(ui, |ui| {
-            Text::new(cell_label(r, c))
-                .id_salt(("pz-cell-label", r, c))
-                .style(
-                    TextStyle::default()
-                        .with_font_size(11.0)
-                        .with_color(Color::hex(0x1a1a1a)),
-                )
-                .show(ui);
-        });
+        }
+    };
+    let pressed_bg = Background {
+        fill: brighten(base, 0.3),
+        stroke: Stroke {
+            width: 1.0,
+            color: Color::hex(0xffffff),
+        },
+        radius: Corners::all(3.0),
+    };
+    let label_text = TextStyle::default()
+        .with_font_size(11.0)
+        .with_color(Color::hex(0x1a1a1a));
+    ButtonTheme {
+        normal: WidgetLook {
+            background: Some(bg(base)),
+            text: Some(label_text),
+        },
+        hovered: WidgetLook {
+            background: Some(bg(brighten(base, 0.15))),
+            text: Some(label_text),
+        },
+        pressed: WidgetLook {
+            background: Some(pressed_bg),
+            text: Some(label_text),
+        },
+        disabled: WidgetLook {
+            background: Some(bg(base)),
+            text: Some(label_text),
+        },
+        padding: palantir::Spacing::xy(6.0, 4.0),
+        margin: palantir::Spacing::ZERO,
+        anim: Some(AnimSpec::FAST),
+    }
+}
+
+fn brighten(c: Color, t: f32) -> Color {
+    Color::linear_rgba(
+        c.r + (1.0 - c.r) * t,
+        c.g + (1.0 - c.g) * t,
+        c.b + (1.0 - c.b) * t,
+        c.a,
+    )
 }
 
 fn cell_color(r: u32, c: u32) -> Color {
