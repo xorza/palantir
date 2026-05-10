@@ -215,3 +215,277 @@ Connectors break two assumptions of the simple model:
   source.
 - `Tree.shapes` (`src/forest/tree/`) is the patch target;
   `records.shapes()[i]` gives per-node `Span`.
+
+---
+
+# Concrete design (after code review)
+
+## Code-side anchor points
+
+The existing code already does most of the heavy lifting:
+
+- **`Tree.shapes: Vec<Shape>`** is a flat `Vec`, mutable by index. No
+  data-structure work needed to patch a shape post-record — just an
+  accessor.
+- **`Shape::Line { a, b, width, color }`** already exists in the enum
+  but the encoder currently logs-and-drops it
+  (`src/renderer/frontend/encoder/mod.rs:131`). Implementing a
+  Line / Bezier draw is a separate but small piece of renderer work
+  — needed for connectors regardless.
+- **`Shape::RoundedRect { local_rect, radius, fill, stroke }`** with
+  `local_rect = Some(...)` is the placeholder shape for scrollbars
+  today. Same field set works for any sub-rect shape.
+- **`shape_span: Span`** on `NodeRecord` (set in `close_node`,
+  `src/forest/tree/mod.rs:362`) covers parent + descendants, with
+  the `TreeItems` iterator interleaving "this node's direct shapes"
+  and child spans by index gap. Reserving placeholder shapes during
+  record fits the existing model with no protocol change — they're
+  just shapes pushed in their slot like any other.
+- **Frame loop** (`src/ui/mod.rs:203–215`) already has a
+  post-`layout.run` / pre-`cascades.run` slot where
+  `ScrollRegistry::refresh` sits. The deferred-shape resolution pass
+  goes here, ideally **subsuming** scroll's refresh.
+- **`SubtreeRollups::compute_node_hashes`** (`src/forest/tree/mod.rs:181`)
+  walks `bounds`, `panel`, `chrome`, `clip_radius`, every shape in
+  the node's span, and the grid def. Adding `state_salt: u64` is one
+  more sparse column hashed alongside.
+
+What's missing:
+
+- A `state_salt` sparse column on `Tree` (`SparseColumn<u64>`),
+  hashed in `compute_node_hashes`.
+- A `tree.shape_mut(node, slot) -> &mut Shape` accessor (or
+  `shapes_mut_for(node) -> &mut [Shape]` returning the in-span
+  slice).
+- A `DeferredShapeRegistry` on `Ui` (mirrors `ScrollRegistry`,
+  capacity-retained).
+- An `Encoder` implementation for `Shape::Line` (and a `Shape::Bezier`
+  variant for connector edges).
+- A `Ui::resolve_deferred_shapes` pass between `layout.run` and
+  `cascades.run`.
+
+## Data shapes
+
+```rust
+// src/forest/tree/mod.rs additions
+pub(crate) struct Tree {
+    // ... existing fields ...
+    /// Per-node opaque salt mixed into the authoring hash. Sparse:
+    /// only widgets with deferred shapes set this. Read by
+    /// `compute_node_hashes` so encode cache invalidates when
+    /// resolver inputs change without a record-time shape diff.
+    pub(crate) state_salt: SparseColumn<u64>,
+}
+
+impl Tree {
+    pub(crate) fn set_salt(&mut self, id: NodeId, salt: u64) { ... }
+    pub(crate) fn shape_mut(&mut self, owner: NodeId, slot: u8) -> &mut Shape { ... }
+}
+```
+
+```rust
+// src/ui/deferred.rs (new)
+pub(crate) struct DeferredShape {
+    pub(crate) layer: Layer,
+    pub(crate) owner: NodeId,
+    pub(crate) slot: u8,                // index inside owner's shape span
+    pub(crate) resolver: Resolver,
+}
+
+pub(crate) enum Resolver {
+    /// Outline matching `node`'s arranged rect, optionally inset by `inset`.
+    /// Owner must be `node` or an ancestor.
+    NodeOutline { node: NodeId, inset: f32 },
+    /// Scrollbar track or thumb. Geometry from outer/inner rects + ScrollState.
+    ScrollBar { spec: ScrollBarSpec },
+    /// Edge between two arbitrary nodes' arranged rects (any layer pair).
+    /// Owner must be a common ancestor of from + to.
+    Connector {
+        from: NodeId, from_port: PortAnchor,
+        to: NodeId,   to_port: PortAnchor,
+        style: ConnectorStyle,
+    },
+    /// Free-form rect in owner-local coords: caller supplies the rect
+    /// directly. Used by tab-indicator-style consumers that compute
+    /// geometry inline.
+    Inline { rect: Rect, kind: InlineKind },
+}
+
+pub(crate) enum PortAnchor {
+    Center, Top, Bottom, Left, Right,
+    /// Owner-relative offset applied to the node's rect.
+    Offset(Vec2),
+}
+
+pub(crate) enum ConnectorStyle {
+    Line { width: f32, color: Color },
+    BezierH { width: f32, color: Color }, // horizontal-tangent cubic
+    BezierV { width: f32, color: Color },
+}
+
+#[derive(Default)]
+pub(crate) struct DeferredRegistry {
+    pub(crate) shapes: Vec<DeferredShape>,
+}
+
+impl DeferredRegistry {
+    pub(crate) fn begin_frame(&mut self) { self.shapes.clear(); }
+    pub(crate) fn push(&mut self, ds: DeferredShape) { self.shapes.push(ds); }
+
+    /// Patch every reserved placeholder. Runs between layout.run and
+    /// cascades.run.
+    pub(crate) fn resolve(&self, forest: &mut Forest, results: &LayoutResult) {
+        for d in &self.shapes {
+            let layout = &results[d.layer];
+            let tree = forest.tree_mut(d.layer);
+            let shape = tree.shape_mut(d.owner, d.slot);
+            *shape = match &d.resolver {
+                Resolver::NodeOutline { node, inset } => { ... },
+                Resolver::ScrollBar { spec } => { ... },
+                Resolver::Connector { from, from_port, to, to_port, style } => {
+                    let from_rect = layout.rect[from.index()];
+                    let to_rect   = layout.rect[to.index()];
+                    let owner_rect = layout.rect[d.owner.index()];
+                    bezier_in_owner_space(from_rect, *from_port,
+                                          to_rect,   *to_port,
+                                          owner_rect, style)
+                }
+                Resolver::Inline { rect, kind } => { ... },
+            };
+        }
+    }
+}
+```
+
+## Connector geometry — first-class
+
+Connectors are the load-bearing case. Concretely:
+
+1. **Owner = common ancestor.** The connector lives on a node that
+   contains both endpoints in its subtree (in node-graph UIs,
+   that's the canvas). This is what guarantees encode-cache
+   correctness: any layout change to either endpoint propagates
+   into the canvas's `subtree_hash` via the existing rollup.
+2. **Endpoints by `NodeId`.** The user code recording connectors
+   already has `NodeId`s back from `ui.node(...)` calls (or stores
+   them in app state keyed by domain id). The resolver reads
+   `layout.rect[from.index()]` and `layout.rect[to.index()]` from
+   the *current* frame's `LayoutResult`.
+3. **Owner-relative coords.** The Bezier / line is computed in
+   screen space then translated into the owner's local space (so
+   the patched `Shape::Line { a, b, ... }` carries owner-relative
+   `Vec2`s, just like `Shape::RoundedRect` with `local_rect`).
+   This composes cleanly with the owner's transform during
+   encode.
+4. **Multi-segment paths.** A cubic Bezier compresses to one
+   `Shape::Bezier { a, c1, c2, b, width, color }` shape per edge.
+   Multi-stroke shapes (e.g. arrow head + line) use multiple
+   reserved slots, one resolver per slot, or a richer resolver
+   that emits N shapes (deferred — start with 1:1).
+5. **Hit-testing** *(separate concern)*. Rect-only hit-test
+   (`DESIGN.md` "Hit-test is rect-only today") doesn't see edges.
+   Two paths, picked when needed:
+     - **Edges as nodes.** Reserve a tiny zero-size leaf at the
+       midpoint with `Sense::Click`. Cheap, fits the existing
+       model; gives per-edge click + selection. Recommended.
+     - **Per-shape hit-test.** Cascade snapshots carry per-shape
+       hit data; bigger architectural change.
+6. **Routing.** Bezier with horizontal/vertical tangents (the
+   "graphedit S-curve") is the workhorse for node-graph UIs.
+   Orthogonal routing with obstacle avoidance is a substantial
+   second project; defer.
+7. **Shape buffer placement.** Reserve placeholders on the canvas
+   *before* recording any node children, so connectors paint
+   under nodes (record order = paint order). To reserve N
+   placeholders for N edges, push N `Shape::Bezier` with degenerate
+   geometry during the canvas's record phase, before opening any
+   node child.
+
+## Encode-cache correctness
+
+The contract for any deferred-shape consumer:
+
+- **Owner is a common ancestor of every `NodeId` the resolver
+  reads.** Authoring or layout changes on those endpoints
+  propagate into the owner's `subtree_hash` automatically (via
+  existing rollup), so cache misses correctly when geometry
+  needs to change.
+- **External cross-frame state goes through `state_salt`.** Any
+  resolver input that doesn't trace back to a node's authoring —
+  scroll offset, focused id, selection state, tab indicator's
+  active-tab id — gets quantized and hashed into a `u64` salt
+  set on the owner via `tree.set_salt(owner, salt)`. The salt
+  participates in `compute_node_hashes`.
+- **Placeholder shapes are recorded as constants.** All resolved
+  geometry is deterministic given (subtree authoring, available_q,
+  owner salt). Cache hits replay correct cmds.
+
+This contract is what makes the system safe to fold into the
+existing measure / encode caches without special-casing.
+
+## Per-frame lifecycle
+
+```
+[1] Record
+    User code:
+      // canvas widget records connectors
+      for edge in graph.edges() {
+          let slot = canvas.reserve_placeholder(ui);
+          ui.deferred.push(DeferredShape {
+              layer, owner: canvas_id, slot,
+              resolver: Resolver::Connector { from, to, ... },
+          });
+      }
+      // canvas mixes graph version into salt for encode cache
+      ui.tree_mut().set_salt(canvas_id, graph.revision());
+[*] forest.end_frame
+    compute_node_hashes (includes state_salt + placeholder shapes)
+    compute_subtree_hashes
+[2] layout.run (measure + arrange) — populates LayoutResult.rect
+[*] Ui::resolve_deferred_shapes  (NEW pass, replaces ScrollRegistry::refresh)
+    walks DeferredRegistry, reads LayoutResult, patches Tree.shapes
+    via tree.shape_mut(owner, slot)
+[3] cascades.run, [4] input.end_frame, [5] damage.compute,
+[6] frontend.build (encode reads patched shapes)
+```
+
+## Migration
+
+The deferred-shape framework subsumes scroll's `ScrollRegistry`.
+Migration:
+
+1. Land `state_salt` sparse column + `tree.shape_mut`.
+2. Land `DeferredRegistry` + `Resolver::ScrollBar` variant.
+3. Refactor `Scroll::show` to: (a) reserve 4 placeholders on
+   outer, (b) push 4 `DeferredShape { resolver: ScrollBar { ... }}`,
+   (c) set salt = quantized `(offset, viewport, content)`. Remove
+   `ScrollRegistry`; geometry math moves into the `ScrollBar`
+   resolver match arm.
+4. Implement `Shape::Line` / `Shape::Bezier` in encoder + composer.
+5. Land `Resolver::Connector` and a node-graph showcase tab.
+6. (Later) Land `Resolver::NodeOutline` for focus ring, etc.
+
+## Known constraints to call out in code
+
+- **Shape buffer post-record mutation contract.** The encode cache
+  trusts that `(subtree_hash, available_q)` determines the cmd
+  buffer. After this lands, that becomes
+  `(subtree_hash, available_q)` — full stop, with the understanding
+  that `subtree_hash` already mixes in `state_salt`. The
+  `compute_node_hashes` doc comment must be updated to call out
+  state_salt's role and the contract that resolver outputs are
+  pure functions of the keyed inputs.
+- **Owner-must-be-ancestor.** Pin in a debug assert in
+  `DeferredRegistry::resolve` (or at push time), since violations
+  silently cause stale cache hits — exactly the bug class the
+  framework is supposed to eliminate.
+- **Slot reservation must be contiguous and counted.** A widget
+  that reserves N placeholders and registers M < N resolvers
+  leaves un-patched constant placeholders in the shape buffer —
+  fine, they paint as no-ops. M > N is a panic in `shape_mut`.
+- **Layer crossing.** A connector whose endpoints are on different
+  layers (e.g. one in `Main`, one in `Popup`) is an error today;
+  resolvers index per-layer `LayerResult`. If cross-layer
+  connectors become a workload, the resolver gains a layer field
+  per endpoint. Park.
+
