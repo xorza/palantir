@@ -1,5 +1,5 @@
 use crate::forest::Forest;
-use crate::forest::element::{LayoutCore, LayoutMode, ScrollAxes};
+use crate::forest::element::{LayoutCore, LayoutMode};
 use crate::forest::tree::{Layer, NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
 use crate::layout::axis::Axis;
@@ -7,6 +7,7 @@ use crate::layout::cache::{MeasureCache, SubtreeArenas, quantize_available};
 use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::result::{LayoutResult, ShapedText};
+use crate::layout::scroll::ScrollContent;
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{AxisCtx, leaf_text_shapes, resolve_axis_size, zero_subtree};
 use crate::layout::types::sizing::Sizing;
@@ -24,6 +25,7 @@ pub(crate) mod canvas;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
 pub(crate) mod result;
+pub(crate) mod scroll;
 pub(crate) mod stack;
 pub(crate) mod support;
 pub(crate) mod types;
@@ -75,23 +77,6 @@ impl LayoutScratch {
     }
 }
 
-/// Per-frame measure-time entry for one [`LayoutMode::Scroll`] node.
-/// Pushed by the Scroll arm of `measure_dispatch` after computing the
-/// raw content extent. Drained post-`run` by `ScrollWidgets::refresh`
-/// to refresh per-widget `ScrollState` rows.
-///
-/// Sparse by construction — non-scroll nodes don't appear. On a
-/// measure-cache hit the Scroll arm doesn't fire, so no entry is
-/// pushed; the drain falls back to the previous frame's
-/// `ScrollState.content`, which is correct because a cache hit
-/// implies a byte-identical measure output.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ScrollContentMeasure {
-    pub(crate) layer: Layer,
-    pub(crate) inner: NodeId,
-    pub(crate) content: Size,
-}
-
 /// Persistent layout engine. Field groups by lifetime:
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
@@ -100,16 +85,11 @@ pub(crate) struct ScrollContentMeasure {
 ///   indexed via `result[layer]`. Internal measure/arrange code
 ///   reads/writes `self.result[self.active_layer]`; outside `run` every
 ///   slot is the finalized output for its layer. Read by the encoder,
-///   cascade, hit-index, and tests.
+///   cascade, hit-index, scroll-state refresh, and tests.
 /// - `active_layer` — which layer's slot the recursive measure/arrange
 ///   currently writes to. Set at the top of each iteration in `run`;
 ///   between/outside `run` invocations its value is whatever the last
 ///   iteration left, but no recursive code runs there to read it.
-/// - `scroll_measures` — sparse per-frame measure-time output for
-///   [`LayoutMode::Scroll`] nodes (see [`ScrollContentMeasure`]).
-///   Cleared at the top of every `run`. Distinct from `result`
-///   because it isn't paint-pipeline output — its only consumer is
-///   `ScrollWidgets::refresh` post-`run`.
 /// - `cache` — cross-frame measure cache. See [`cache`] and
 ///   `src/layout/measure-cache.md`.
 #[derive(Default)]
@@ -117,7 +97,11 @@ pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,
     pub(crate) result: LayoutResult,
     pub(crate) active_layer: Layer,
-    pub(crate) scroll_measures: Vec<ScrollContentMeasure>,
+    /// Per-layer per-Scroll-node content extents pushed by
+    /// [`scroll::measure`]. Read by `widgets::scroll::refresh` after
+    /// arrange to update each scroll widget's `ScrollState.content`.
+    /// Cleared at the top of every [`Self::run`].
+    pub(crate) scroll_content: ScrollContent,
     pub(crate) cache: MeasureCache,
 }
 
@@ -210,7 +194,7 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
-        self.scroll_measures.clear();
+        self.scroll_content.clear();
         for layer in Layer::PAINT_ORDER {
             let tree = forest.tree(layer);
             self.active_layer = layer;
@@ -477,44 +461,11 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text),
             LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text),
-            // Scroll viewports stash content extent in
-            // `scroll_measures` for `Ui::end_frame_record_phase` and
-            // return 0 on the panned axes so `resolve_desired` falls
-            // through to the user's `Sizing` and doesn't grow with
-            // content. Single-axis variants run a stack on the panned
-            // axis with that axis fed `INF`; `Both` runs a zstack with
-            // both axes unbounded.
-            LayoutMode::Scroll(axes) => {
-                let raw = match axes {
-                    ScrollAxes::Vertical => stack::measure(
-                        self,
-                        tree,
-                        node,
-                        Size::new(inner_avail.w, f32::INFINITY),
-                        Axis::Y,
-                        text,
-                    ),
-                    ScrollAxes::Horizontal => stack::measure(
-                        self,
-                        tree,
-                        node,
-                        Size::new(f32::INFINITY, inner_avail.h),
-                        Axis::X,
-                        text,
-                    ),
-                    ScrollAxes::Both => zstack::measure(self, tree, node, Size::INF, text),
-                };
-                self.scroll_measures.push(ScrollContentMeasure {
-                    layer: self.active_layer,
-                    inner: node,
-                    content: raw,
-                });
-                match axes {
-                    ScrollAxes::Vertical => Size::new(raw.w, 0.0),
-                    ScrollAxes::Horizontal => Size::new(0.0, raw.h),
-                    ScrollAxes::Both => Size::ZERO,
-                }
-            }
+            // Scroll viewport. Owns its bar-gutter reservation
+            // decision in measure (see `scroll::measure`); pushes a
+            // `ScrollContentMeasure` so encoder, arrange, and the
+            // post-arrange refresh share one source of truth.
+            LayoutMode::Scroll(axes) => scroll::measure(self, tree, node, inner_avail, axes, text),
         }
     }
 
@@ -542,11 +493,7 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::arrange(self, tree, node, inner),
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner),
             LayoutMode::Grid(idx) => grid::arrange(self, tree, node, inner, idx),
-            LayoutMode::Scroll(axes) => match axes {
-                ScrollAxes::Vertical => stack::arrange(self, tree, node, inner, Axis::Y),
-                ScrollAxes::Horizontal => stack::arrange(self, tree, node, inner, Axis::X),
-                ScrollAxes::Both => zstack::arrange(self, tree, node, inner),
-            },
+            LayoutMode::Scroll(axes) => scroll::arrange(self, tree, node, inner, axes),
         }
     }
 
