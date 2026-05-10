@@ -2,10 +2,6 @@
 
 ## Done
 
-- **Multi-rect damage.** N=8 region with LVGL-style merge + Slint
-  min-growth fallback at the cap; backend replays one render pass
-  per rect; coverage threshold 0.7. Design rationale + open
-  follow-ups in `multi-rect-damage.md`.
 - **Subtree-level damage cull at the encoder.** `encode_node` early-
   returns when no damage rect intersects the node's `screen_rect`.
   Bench shows ~4.6 % saving on sparse-damage frames over a 1k-node
@@ -20,7 +16,7 @@
 ## Next
 
 - **Incremental hit-index rebuild.** Only update `HitIndex` for dirty
-  + cascade-changed nodes.
+  - cascade-changed nodes.
 - **Debug overlay: flash dirty nodes.** Rect outline landed with
   Step 6 of multi-rect; per-node flash uses `Damage.dirty` (now
   always populated in production).
