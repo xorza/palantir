@@ -336,10 +336,11 @@ impl Ui {
     pub fn animate<T: Animatable>(
         &mut self,
         id: WidgetId,
-        slot: AnimSlot,
+        slot: impl Into<AnimSlot>,
         target: T,
         spec: Option<AnimSpec>,
     ) -> T {
+        let slot = slot.into();
         // Merge `None` and instant-degenerate specs (`Duration { secs ≈ 0 }`)
         // into one snap path. `tick` then handles only real motion.
         let Some(spec) = spec.filter(|s| !s.is_instant()) else {
