@@ -10,6 +10,12 @@
   returns when no damage rect intersects the node's `screen_rect`.
   Bench shows ~4.6 % saving on sparse-damage frames over a 1k-node
   grid — see `multi-rect-damage.md` "Bench findings" for numbers.
+- **`Cascade.visible_rect` fed to damage.** Cascade now carries
+  `screen_rect ∩ ancestor_clip` alongside the raw transformed rect;
+  damage diffs against `visible_rect` so scrolled-offscreen children
+  inside a clipped viewport don't inflate the dirty region with
+  pixels that never reach the framebuffer. Pinned by
+  `src/ui/damage/tests.rs`.
 
 ## Next
 
