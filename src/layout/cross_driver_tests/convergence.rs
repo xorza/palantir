@@ -15,10 +15,9 @@
 //! is clamped to `new_available` and rendering proceeds.
 
 use crate::forest::element::Configure;
-use crate::forest::tree::Layer;
-use crate::layout::types::display::Display;
+use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::sizing::Sizing;
-use crate::support::testing::{new_ui_text, ui_with_text};
+use crate::support::testing::{new_ui_text, run_at};
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -44,56 +43,58 @@ use glam::UVec2;
 #[test]
 fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
     for outer_w in (260u32..=600).step_by(10) {
-        let mut ui = ui_with_text(UVec2::new(outer_w, 400));
+        let mut ui = crate::support::testing::new_ui_text();
         let mut left_node = None;
         let mut right_node = None;
-        let row_node = Panel::hstack()
-            .auto_id()
-            .gap(12.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(&mut ui, |ui| {
-                // Left: FILL/FILL with a FILL/FILL child (no rigid
-                // descendant). intrinsic_min ≈ 0 — fully shrinkable.
-                left_node = Some(
-                    Panel::vstack()
-                        .id_salt("left")
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .padding(12.0)
-                        .show(ui, |ui| {
-                            Frame::new()
-                                .id_salt("left-bg")
-                                .size((Sizing::FILL, Sizing::FILL))
-                                .show(ui);
-                        })
-                        .node,
-                );
-                // Right: FILL/FILL with a Fixed(180×80) descendant.
-                // intrinsic_min = 180 + 24 padding = 204 — rigid below.
-                right_node = Some(
-                    Panel::vstack()
-                        .id_salt("right")
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .padding(12.0)
-                        .show(ui, |ui| {
-                            Panel::zstack()
-                                .id_salt("right-z")
-                                .size((Sizing::FILL, Sizing::FILL))
-                                .show(ui, |ui| {
-                                    Frame::new()
-                                        .id_salt("right-bg")
-                                        .size((Sizing::FILL, Sizing::FILL))
-                                        .show(ui);
-                                    Frame::new()
-                                        .id_salt("right-fixed")
-                                        .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
-                                        .show(ui);
-                                });
-                        })
-                        .node,
-                );
-            })
-            .node;
-        ui.end_frame();
+        let mut row_node = NodeId(0);
+        run_at(&mut ui, UVec2::new(outer_w, 400), |ui| {
+            row_node = Panel::hstack()
+                .auto_id()
+                .gap(12.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    // Left: FILL/FILL with a FILL/FILL child (no rigid
+                    // descendant). intrinsic_min ≈ 0 — fully shrinkable.
+                    left_node = Some(
+                        Panel::vstack()
+                            .id_salt("left")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .padding(12.0)
+                            .show(ui, |ui| {
+                                Frame::new()
+                                    .id_salt("left-bg")
+                                    .size((Sizing::FILL, Sizing::FILL))
+                                    .show(ui);
+                            })
+                            .node,
+                    );
+                    // Right: FILL/FILL with a Fixed(180×80) descendant.
+                    // intrinsic_min = 180 + 24 padding = 204 — rigid below.
+                    right_node = Some(
+                        Panel::vstack()
+                            .id_salt("right")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .padding(12.0)
+                            .show(ui, |ui| {
+                                Panel::zstack()
+                                    .id_salt("right-z")
+                                    .size((Sizing::FILL, Sizing::FILL))
+                                    .show(ui, |ui| {
+                                        Frame::new()
+                                            .id_salt("right-bg")
+                                            .size((Sizing::FILL, Sizing::FILL))
+                                            .show(ui);
+                                        Frame::new()
+                                            .id_salt("right-fixed")
+                                            .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
+                                            .show(ui);
+                                    });
+                            })
+                            .node,
+                    );
+                })
+                .node;
+        });
 
         let row = ui.layout.result[Layer::Main].rect[row_node.index()];
         let left = ui.layout.result[Layer::Main].rect[left_node.unwrap().index()];
@@ -160,64 +161,64 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     // and just feeds new `begin_frame(size)` per resize.
     let mut ui = new_ui_text();
     for w in (480u32..=900).step_by(1) {
-        ui.begin_frame(Display::from_physical(UVec2::new(w, 600), 1.0));
-        Panel::vstack()
-            .auto_id()
-            .padding(12.0)
-            .gap(12.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(&mut ui, |ui| {
-                // Toolbar — wrap_hstack of buttons. With theme padding
-                // each button is `label + 24` wide; total `> w` so the
-                // wrap_hstack reflows to multiple rows. Different widths
-                // produce different row counts (non-monotonic
-                // height-vs-width).
-                Panel::wrap_hstack()
-                    .auto_id()
-                    .gap(6.0)
-                    .line_gap(6.0)
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .show(ui, |ui| {
-                        for label in LABELS {
-                            Button::new().id_salt(*label).label(*label).show(ui);
-                        }
-                    });
+        run_at(&mut ui, UVec2::new(w, 600), |ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(12.0)
+                .gap(12.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    // Toolbar — wrap_hstack of buttons. With theme padding
+                    // each button is `label + 24` wide; total `> w` so the
+                    // wrap_hstack reflows to multiple rows. Different widths
+                    // produce different row counts (non-monotonic
+                    // height-vs-width).
+                    Panel::wrap_hstack()
+                        .auto_id()
+                        .gap(6.0)
+                        .line_gap(6.0)
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .show(ui, |ui| {
+                            for label in LABELS {
+                                Button::new().id_salt(*label).label(*label).show(ui);
+                            }
+                        });
 
-                // Central panel — zstack containing the panels-showcase
-                // structure (4 FILL cells, padded, with varying inner
-                // hug widths) that compounds into the second-pass
-                // overshoot when the toolbar consumed more height than
-                // expected.
-                Panel::zstack()
-                    .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .padding(16.0)
-                    .show(ui, |ui| {
-                        Panel::hstack()
-                            .auto_id()
-                            .gap(12.0)
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .show(ui, |ui| {
-                                for (id, content_w) in
-                                    [("c1", 132.0), ("c2", 60.0), ("c3", 80.0), ("c4", 100.0)]
-                                {
-                                    Panel::vstack()
-                                        .id_salt(id)
-                                        .size((Sizing::FILL, Sizing::FILL))
-                                        .padding(12.0)
-                                        .show(ui, |ui| {
-                                            Frame::new()
-                                                .id_salt((id, "swatch"))
-                                                .size((
-                                                    Sizing::Fixed(content_w),
-                                                    Sizing::Fixed(40.0),
-                                                ))
-                                                .show(ui);
-                                        });
-                                }
-                            });
-                    });
-            });
-        ui.end_frame();
+                    // Central panel — zstack containing the panels-showcase
+                    // structure (4 FILL cells, padded, with varying inner
+                    // hug widths) that compounds into the second-pass
+                    // overshoot when the toolbar consumed more height than
+                    // expected.
+                    Panel::zstack()
+                        .auto_id()
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .padding(16.0)
+                        .show(ui, |ui| {
+                            Panel::hstack()
+                                .auto_id()
+                                .gap(12.0)
+                                .size((Sizing::FILL, Sizing::FILL))
+                                .show(ui, |ui| {
+                                    for (id, content_w) in
+                                        [("c1", 132.0), ("c2", 60.0), ("c3", 80.0), ("c4", 100.0)]
+                                    {
+                                        Panel::vstack()
+                                            .id_salt(id)
+                                            .size((Sizing::FILL, Sizing::FILL))
+                                            .padding(12.0)
+                                            .show(ui, |ui| {
+                                                Frame::new()
+                                                    .id_salt((id, "swatch"))
+                                                    .size((
+                                                        Sizing::Fixed(content_w),
+                                                        Sizing::Fixed(40.0),
+                                                    ))
+                                                    .show(ui);
+                                            });
+                                    }
+                                });
+                        });
+                });
+        });
     }
 }

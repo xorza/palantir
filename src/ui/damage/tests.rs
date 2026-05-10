@@ -7,11 +7,12 @@ use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
-use crate::support::testing::{begin, end_frame_acked};
+use crate::support::testing::run_at_acked;
 use crate::widgets::popup::Popup;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
+use std::time::Duration;
 
 #[allow(dead_code)]
 const SURFACE: Rect = Rect::new(0.0, 0.0, 200.0, 200.0);
@@ -21,14 +22,12 @@ const DISPLAY: Display = Display {
     pixel_snap: true,
 };
 
-/// Drive one frame with the given builder, then simulate a
-/// successful `WgpuBackend::submit` so the next frame's
-/// auto-rewind doesn't fire. Closure receives `ui` after
-/// `begin_frame`.
-fn frame(ui: &mut Ui, f: impl FnOnce(&mut Ui)) {
-    ui.begin_frame(DISPLAY);
-    f(ui);
-    end_frame_acked(ui);
+/// Drive one frame through the real [`Ui::run_frame`] path, then
+/// simulate a successful `WgpuBackend::submit` so the next frame's
+/// auto-rewind doesn't fire.
+fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) {
+    let out = ui.run_frame(DISPLAY, Duration::ZERO, f);
+    out.frame_state.mark_submitted();
 }
 
 /// The standard "root with one 50×50 frame" tree used by most damage
@@ -133,31 +132,31 @@ fn popup_eater_does_not_force_full_repaint() {
     let mut ui = Ui::new();
     let anchor = Rect::new(40.0, 40.0, 60.0, 30.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
-    ui.begin_frame(DISPLAY);
-    Popup::anchored_to(anchor)
-        .id_salt("p")
-        .background(Background {
-            fill: BLUE,
-            ..Default::default()
-        })
-        .show(&mut ui, |ui| {
-            Frame::new()
-                .id_salt("body-leaf")
-                .size(60.0)
-                .background(Background {
-                    fill: RED,
-                    ..Default::default()
-                })
-                .show(ui);
-        });
-    end_frame_acked(&mut ui);
+    frame(&mut ui, |ui| {
+        Popup::anchored_to(anchor)
+            .id_salt("p")
+            .background(Background {
+                fill: BLUE,
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                Frame::new()
+                    .id_salt("body-leaf")
+                    .size(60.0)
+                    .background(Background {
+                        fill: RED,
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
+    });
 
     // Frame 2: popup gone. Body + eater both removed. Without the
     // paints-gate, the eater's full-surface prev rect would dominate
     // the region.
-    ui.begin_frame(DISPLAY);
-    Frame::new().id_salt("placeholder").size(10.0).show(&mut ui);
-    let out = ui.end_frame();
+    let out = ui.run_frame(DISPLAY, Duration::ZERO, |ui| {
+        Frame::new().id_salt("placeholder").size(10.0).show(ui);
+    });
     let DamagePaint::Partial(region) = out.damage else {
         panic!(
             "popup dismissal escalated to {:?}; eater contributed full-surface \
@@ -226,27 +225,21 @@ fn click_on_empty_bg_does_not_force_full() {
 #[test]
 fn skip_frame_does_not_force_next_to_full() {
     let mut ui = Ui::new();
-    ui.begin_frame(DISPLAY);
-    one_frame(&mut ui, BLUE);
-    let first = ui.end_frame();
+    let first = ui.run_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
     assert_eq!(first.damage, DamagePaint::Full);
     first.frame_state.mark_submitted();
 
     // Identical content → Skip. Drop the FrameOutput WITHOUT calling
     // mark_submitted (simulates the host taking the
     // `can_skip_rendering()` early-return path).
-    ui.begin_frame(DISPLAY);
-    one_frame(&mut ui, BLUE);
-    let skip = ui.end_frame();
+    let skip = ui.run_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
     assert_eq!(skip.damage, DamagePaint::Skip);
     drop(skip);
 
     // Next frame: still no diff. Pre-fix this returned Full because
     // the previous Skip never reached `mark_submitted`, so begin_frame
     // saw Pending and rewound prev.
-    ui.begin_frame(DISPLAY);
-    one_frame(&mut ui, BLUE);
-    let next = ui.end_frame();
+    let next = ui.run_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
     assert_eq!(
         next.damage,
         DamagePaint::Skip,
@@ -439,24 +432,24 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let mut ui = Ui::new();
     let mut child_node = None;
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
-        begin(ui, UVec2::new(400, 400));
-        Panel::hstack()
-            .id_salt("outer")
-            .transform(TranslateScale::from_translation(translate))
-            .show(ui, |ui| {
-                *child = Some(
-                    Frame::new()
-                        .id_salt("c")
-                        .size(40.0)
-                        .background(Background {
-                            fill,
-                            ..Default::default()
-                        })
-                        .show(ui)
-                        .node,
-                );
-            });
-        end_frame_acked(ui);
+        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+            Panel::hstack()
+                .id_salt("outer")
+                .transform(TranslateScale::from_translation(translate))
+                .show(ui, |ui| {
+                    *child = Some(
+                        Frame::new()
+                            .id_salt("c")
+                            .size(40.0)
+                            .background(Background {
+                                fill,
+                                ..Default::default()
+                            })
+                            .show(ui)
+                            .node,
+                    );
+                });
+        });
     };
 
     build(Color::rgb(0.2, 0.4, 0.8), &mut ui, &mut child_node);
@@ -494,24 +487,24 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     let mut ui = Ui::new();
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
-        begin(ui, UVec2::new(400, 400));
-        Panel::hstack()
-            .id_salt("outer")
-            .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
-            .show(ui, |ui| {
-                *child = Some(
-                    Frame::new()
-                        .id_salt("c")
-                        .size(40.0)
-                        .background(Background {
-                            fill: Color::rgb(0.2, 0.4, 0.8),
-                            ..Default::default()
-                        })
-                        .show(ui)
-                        .node,
-                );
-            });
-        end_frame_acked(ui);
+        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+            Panel::hstack()
+                .id_salt("outer")
+                .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+                .show(ui, |ui| {
+                    *child = Some(
+                        Frame::new()
+                            .id_salt("c")
+                            .size(40.0)
+                            .background(Background {
+                                fill: Color::rgb(0.2, 0.4, 0.8),
+                                ..Default::default()
+                            })
+                            .show(ui)
+                            .node,
+                    );
+                });
+        });
     };
 
     build(0.0, &mut ui, &mut child_node);
@@ -554,24 +547,24 @@ fn transform_animation_keeps_far_positions_split() {
     let mut ui = Ui::new();
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
-        begin(ui, UVec2::new(400, 400));
-        Panel::hstack()
-            .id_salt("outer")
-            .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
-            .show(ui, |ui| {
-                *child = Some(
-                    Frame::new()
-                        .id_salt("c")
-                        .size(40.0)
-                        .background(Background {
-                            fill: Color::rgb(0.2, 0.4, 0.8),
-                            ..Default::default()
-                        })
-                        .show(ui)
-                        .node,
-                );
-            });
-        end_frame_acked(ui);
+        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+            Panel::hstack()
+                .id_salt("outer")
+                .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+                .show(ui, |ui| {
+                    *child = Some(
+                        Frame::new()
+                            .id_salt("c")
+                            .size(40.0)
+                            .background(Background {
+                                fill: Color::rgb(0.2, 0.4, 0.8),
+                                ..Default::default()
+                            })
+                            .show(ui)
+                            .node,
+                    );
+                });
+        });
     };
 
     build(0.0, &mut ui, &mut child_node);
@@ -717,27 +710,21 @@ fn display_change_forces_full_repaint() {
     ];
     for (label, mutated) in cases {
         let mut ui = Ui::new();
-        let build = |ui: &mut Ui| {
+        let mut build = |ui: &mut Ui| {
             one_frame(ui, BLUE);
         };
 
         // Steady-state: Full first frame, then Skip on identical re-record.
-        ui.begin_frame(DISPLAY);
-        build(&mut ui);
-        let f1 = ui.end_frame();
+        let f1 = ui.run_frame(DISPLAY, Duration::ZERO, &mut build);
         assert_eq!(f1.damage, DamagePaint::Full, "case: {label} f1");
         f1.frame_state.mark_submitted();
-        ui.begin_frame(DISPLAY);
-        build(&mut ui);
-        let f2 = ui.end_frame();
+        let f2 = ui.run_frame(DISPLAY, Duration::ZERO, &mut build);
         assert_eq!(f2.damage, DamagePaint::Skip, "case: {label} f2");
         f2.frame_state.mark_submitted();
         assert!(ui.damage.dirty.is_empty(), "case: {label} steady");
 
         // Mutate Display; identical authoring; must short-circuit to Full.
-        ui.begin_frame(*mutated);
-        build(&mut ui);
-        let mutated_frame = ui.end_frame();
+        let mutated_frame = ui.run_frame(*mutated, Duration::ZERO, &mut build);
         assert_eq!(
             mutated_frame.damage,
             DamagePaint::Full,
@@ -750,9 +737,7 @@ fn display_change_forces_full_repaint() {
         );
 
         // Stable surface at the new size, identical authoring → back to Skip.
-        ui.begin_frame(*mutated);
-        build(&mut ui);
-        let settled = ui.end_frame().damage;
+        let settled = ui.run_frame(*mutated, Duration::ZERO, &mut build).damage;
         assert_eq!(
             settled,
             DamagePaint::Skip,
@@ -792,7 +777,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     // so any damage rect change must come from the descendant nudge,
     // not the root re-resolving. Frame "small" ends up at
     // (3000, 0, 50, 60).
-    let scene = |ui: &mut Ui| {
+    let mut scene = |ui: &mut Ui| {
         Panel::hstack()
             .id_salt("root")
             .size((Sizing::Fixed(3050.0), Sizing::Fixed(60.0)))
@@ -816,12 +801,10 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             });
     };
 
-    ui.begin_frame(big);
-    scene(&mut ui);
-    end_frame_acked(&mut ui);
-    ui.begin_frame(big);
-    scene(&mut ui);
-    end_frame_acked(&mut ui);
+    let out = ui.run_frame(big, Duration::ZERO, &mut scene);
+    out.frame_state.mark_submitted();
+    let out = ui.run_frame(big, Duration::ZERO, &mut scene);
+    out.frame_state.mark_submitted();
     assert!(ui.damage.dirty.is_empty());
 
     // Inject: nudge widget "a"'s prev rect so the next diff sees a
@@ -836,9 +819,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         physical: UVec2::new(1999, 2000),
         ..big
     };
-    ui.begin_frame(smaller);
-    scene(&mut ui);
-    let damage = ui.end_frame().damage;
+    let damage = ui.run_frame(smaller, Duration::ZERO, &mut scene).damage;
 
     assert_eq!(
         damage,
@@ -864,12 +845,9 @@ fn stable_surface_does_not_short_circuit() {
     };
 
     // Warm up: two identical frames bring damage to steady state.
-    ui.begin_frame(DISPLAY);
-    build(&mut ui, BLUE);
-    end_frame_acked(&mut ui);
-    ui.begin_frame(DISPLAY);
-    build(&mut ui, BLUE);
-    let warm = ui.end_frame();
+    let out = ui.run_frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE));
+    out.frame_state.mark_submitted();
+    let warm = ui.run_frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE));
     assert_eq!(
         warm.damage,
         DamagePaint::Skip,
@@ -881,9 +859,9 @@ fn stable_surface_does_not_short_circuit() {
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
-    ui.begin_frame(DISPLAY);
-    build(&mut ui, RED);
-    let partial = ui.end_frame().damage;
+    let partial = ui
+        .run_frame(DISPLAY, Duration::ZERO, |ui| build(ui, RED))
+        .damage;
     let DamagePaint::Partial(region) = partial else {
         panic!(
             "stable surface + one-leaf change should produce a partial \
@@ -912,12 +890,12 @@ fn button_hover_damage_covers_only_the_button() {
     let mut hot_node = None;
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        begin(ui, UVec2::new(400, 400));
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
-            *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
+        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
+                *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
+                *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
+            });
         });
-        end_frame_acked(ui);
     };
 
     // Pointer parked off-button. Settle for two frames so hit-test +
@@ -975,12 +953,12 @@ fn button_unhover_damage_covers_only_the_button() {
     let mut hot_node = None;
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        begin(ui, UVec2::new(400, 400));
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
-            *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
+        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
+                *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
+                *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
+            });
         });
-        end_frame_acked(ui);
     };
 
     // Settle two frames with cursor over the hot button.
@@ -1021,30 +999,30 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     let viewport_size = 100.0;
     let child_size = 200.0;
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
-        begin(ui, UVec2::new(400, 400));
-        // Root hstack so the inner zstack honors its `Fixed` size
-        // (root nodes get stretched to the surface anchor by the
-        // layout engine, which would defeat the clip).
-        Panel::hstack().id_salt("clip-host").show(ui, |ui| {
-            Panel::zstack()
-                .id_salt("clip-root")
-                .size((Sizing::Fixed(viewport_size), Sizing::Fixed(viewport_size)))
-                .clip_rect()
-                .show(ui, |ui| {
-                    *child = Some(
-                        Frame::new()
-                            .id_salt("overflow")
-                            .size(child_size)
-                            .background(Background {
-                                fill,
-                                ..Default::default()
-                            })
-                            .show(ui)
-                            .node,
-                    );
-                });
+        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+            // Root hstack so the inner zstack honors its `Fixed` size
+            // (root nodes get stretched to the surface anchor by the
+            // layout engine, which would defeat the clip).
+            Panel::hstack().id_salt("clip-host").show(ui, |ui| {
+                Panel::zstack()
+                    .id_salt("clip-root")
+                    .size((Sizing::Fixed(viewport_size), Sizing::Fixed(viewport_size)))
+                    .clip_rect()
+                    .show(ui, |ui| {
+                        *child = Some(
+                            Frame::new()
+                                .id_salt("overflow")
+                                .size(child_size)
+                                .background(Background {
+                                    fill,
+                                    ..Default::default()
+                                })
+                                .show(ui)
+                                .node,
+                        );
+                    });
+            });
         });
-        end_frame_acked(ui);
     };
 
     build(BLUE, &mut ui, &mut child_node);

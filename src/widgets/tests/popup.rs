@@ -60,8 +60,8 @@ fn record_with_popup(ui: &mut Ui, config: ClickOutside) -> (PopupResponse, bool)
 fn click_inside_popup_does_not_dismiss() {
     let mut ui = ui_at(SURFACE);
     let (_, _) = record_with_popup(&mut ui, ClickOutside::Dismiss);
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Click at the center of the popup's anchor rect — well inside
     // the body's arranged rect.
     let inside = Vec2::new(
@@ -72,7 +72,8 @@ fn click_inside_popup_does_not_dismiss() {
 
     begin(&mut ui, SURFACE);
     let (resp, main_clicked) = record_with_popup(&mut ui, ClickOutside::Dismiss);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert!(
         !resp.dismissed,
         "click inside body must not signal dismissal",
@@ -88,15 +89,16 @@ fn click_inside_popup_does_not_dismiss() {
 fn click_outside_popup_dismisses_and_blocks_main() {
     let mut ui = ui_at(SURFACE);
     record_with_popup(&mut ui, ClickOutside::Dismiss);
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // (300, 300) is on the surface but well outside the popup
     // anchor `[50..170] × [50..130]`. Falls through to the eater.
     click_at(&mut ui, Vec2::new(300.0, 300.0));
 
     begin(&mut ui, SURFACE);
     let (resp, main_clicked) = record_with_popup(&mut ui, ClickOutside::Dismiss);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert!(
         resp.dismissed,
         "outside click with `Dismiss` must signal dismissal",
@@ -140,7 +142,8 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
                     }
                 }
             });
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
     }
 
     // Pop the press outside the popup body.
@@ -187,13 +190,14 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
 fn click_outside_blocks_main_without_signaling_with_block_mode() {
     let mut ui = ui_at(SURFACE);
     record_with_popup(&mut ui, ClickOutside::Block);
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(300.0, 300.0));
 
     begin(&mut ui, SURFACE);
     let (resp, main_clicked) = record_with_popup(&mut ui, ClickOutside::Block);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     assert!(!resp.dismissed, "`Block` mode must not signal dismissal",);
     assert!(
         !main_clicked,

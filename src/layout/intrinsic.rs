@@ -195,7 +195,7 @@ mod tests {
     use crate::Ui;
     use crate::forest::element::Configure;
     use crate::forest::tree::Layer;
-    use crate::layout::types::{display::Display, sizing::Sizing};
+    use crate::layout::types::sizing::Sizing;
     use crate::widgets::{panel::Panel, text::Text};
     use glam::UVec2;
 
@@ -209,19 +209,20 @@ mod tests {
     #[test]
     fn intrinsic_cache_populated_after_run() {
         let mut ui = Ui::new();
-        ui.begin_frame(Display::from_physical(UVec2::new(400, 300), 1.0));
-        let root = Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::Hug))
-            .show(&mut ui, |ui| {
-                Text::new("lorem ipsum dolor sit amet")
-                    .id_salt("msg")
-                    .wrapping()
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .show(ui);
-            })
-            .node;
-        ui.end_frame();
+        let mut root = crate::forest::tree::NodeId(0);
+        crate::support::testing::run_at(&mut ui, UVec2::new(400, 300), |ui| {
+            root = Panel::hstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui, |ui| {
+                    Text::new("lorem ipsum dolor sit amet")
+                        .id_salt("msg")
+                        .wrapping()
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .show(ui);
+                })
+                .node;
+        });
 
         let child = ui
             .forest
@@ -244,19 +245,20 @@ mod tests {
     #[test]
     fn intrinsic_query_short_circuits_on_cache_hit() {
         let mut ui = Ui::new();
-        ui.begin_frame(Display::from_physical(UVec2::new(400, 300), 1.0));
-        let root = Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::Hug))
-            .show(&mut ui, |ui| {
-                Text::new("hello world")
-                    .id_salt("msg")
-                    .wrapping()
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .show(ui);
-            })
-            .node;
-        ui.end_frame();
+        let mut root = crate::forest::tree::NodeId(0);
+        crate::support::testing::run_at(&mut ui, UVec2::new(400, 300), |ui| {
+            root = Panel::hstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui, |ui| {
+                    Text::new("hello world")
+                        .id_salt("msg")
+                        .wrapping()
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .show(ui);
+                })
+                .node;
+        });
 
         let child = ui
             .forest
@@ -291,19 +293,20 @@ mod tests {
     #[test]
     fn parent_intrinsic_query_populates_descendant_cache() {
         let mut ui = Ui::new();
-        ui.begin_frame(Display::from_physical(UVec2::new(400, 300), 1.0));
-        let root = Panel::hstack()
-            .auto_id()
-            .size((Sizing::Hug, Sizing::Hug))
-            .show(&mut ui, |ui| {
-                Text::new("abc").id_salt("a").show(ui);
-                Text::new("defgh").id_salt("b").show(ui);
-            })
-            .node;
-        // `end_frame` populates `tree.rollups` (leaf intrinsic reads it).
+        let mut root = crate::forest::tree::NodeId(0);
+        // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
         // Then clear *just the queried slot* on every node so we can
         // observe which nodes the parent query repopulates.
-        ui.end_frame();
+        crate::support::testing::run_at(&mut ui, UVec2::new(400, 300), |ui| {
+            root = Panel::hstack()
+                .auto_id()
+                .size((Sizing::Hug, Sizing::Hug))
+                .show(ui, |ui| {
+                    Text::new("abc").id_salt("a").show(ui);
+                    Text::new("defgh").id_salt("b").show(ui);
+                })
+                .node;
+        });
         let slot = LenReq::MaxContent.slot(Axis::X);
         for entry in ui.layout.scratch.intrinsics.iter_mut() {
             entry[slot] = f32::NAN;

@@ -212,21 +212,7 @@ impl Ui {
         self.relayout_requested = false;
     }
 
-    /// Test-only convenience that drives a single record+paint pass.
-    /// Discards any `request_relayout` signal — it can't replay
-    /// `build` without a closure, so tests that want to verify
-    /// relayout-aware behavior must drive [`Self::run_frame`]
-    /// instead. Production goes through `run_frame` directly.
-    #[allow(dead_code)]
-    pub(crate) fn end_frame(&mut self) -> FrameOutput<'_> {
-        self.end_frame_record_phase();
-        // Drop any relayout request so it doesn't leak into the next
-        // `end_frame` call's record phase.
-        self.relayout_requested = false;
-        self.end_frame_paint_phase()
-    }
-
-    /// Record-derived half of `end_frame`: finalize per-node hashes,
+    /// Record-derived half of the frame lifecycle: finalize per-node hashes,
     /// diff against the last painted frame's seen-ids, sweep evicted
     /// state, run measure/arrange, refresh per-widget state rows.
     /// Returns `true` when a widget called [`Self::request_relayout`]

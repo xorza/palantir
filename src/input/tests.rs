@@ -26,8 +26,8 @@ fn input_state_press_release_emits_click() {
                 .show(ui);
         })
         .node;
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Press inside the button, release inside.
     click_at(&mut ui, Vec2::new(50.0, 20.0));
 
@@ -45,7 +45,8 @@ fn input_state_press_release_emits_click() {
     assert!(got_click, "press+release inside button rect should click");
 
     // Click does not stick: next frame without input must clear it.
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     begin(&mut ui, UVec2::new(200, 80));
     let mut still_clicking = false;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
@@ -74,8 +75,8 @@ fn stack_with_sense_none_passes_clicks_through() {
                 .show(ui);
         })
         .node;
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Press inside the HStack's padding (not over any child).
     click_at(&mut ui, Vec2::new(5.0, 5.0));
 
@@ -115,8 +116,8 @@ fn stack_with_sense_click_captures_clicks() {
                 .show(ui);
         })
         .node;
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     click_at(&mut ui, Vec2::new(5.0, 5.0));
 
     ui.begin_frame(Display::default());
@@ -152,8 +153,8 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
                 .show(ui);
         })
         .node;
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Move pointer over stack's padding area (not over the button).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(5.0, 5.0)));
 
@@ -201,8 +202,8 @@ fn input_state_release_outside_does_not_click() {
                 .show(ui);
         })
         .node;
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     press_at(&mut ui, Vec2::new(50.0, 20.0));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 20.0))); // outside
     release_left(&mut ui);
@@ -243,8 +244,8 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
                     .show(ui);
             });
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Click well outside the panel's 100x100 clip rect but inside the button's
     // raw 200x200 rect (overflow region). With clip-aware hit-test this misses.
     click_at(&mut ui, Vec2::new(150.0, 150.0));
@@ -292,8 +293,8 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
                     .show(ui);
             });
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Click at world (75, 75) — inside the zoomed 100x100 bounds.
     click_at(&mut ui, Vec2::new(75.0, 75.0));
 
@@ -335,8 +336,8 @@ fn click_outside_zoomed_bounds_does_not_hit() {
                     .show(ui);
             });
     });
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     // Button's world rect under scale=0.5 is 25x25. Click at (40, 40) is
     // inside the LOGICAL rect but outside the world-rendered rect.
     click_at(&mut ui, Vec2::new(40.0, 40.0));
@@ -387,8 +388,8 @@ mod drag {
     fn drag_delta_none_before_press() {
         let mut ui = ui_at(UVec2::new(200, 200));
         build_clickable(&mut ui);
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         assert_eq!(ui.input.drag_delta(id()), None, "no press → no drag");
     }
@@ -397,8 +398,8 @@ mod drag {
     fn drag_delta_tracks_pointer_minus_press() {
         let mut ui = ui_at(UVec2::new(200, 200));
         build_clickable(&mut ui);
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 30.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 70.0)));
@@ -418,8 +419,8 @@ mod drag {
         // staying inside the originating rect.
         let mut ui = ui_at(UVec2::new(400, 400));
         build_clickable(&mut ui);
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         // Move well outside the 100x100 widget rect.
@@ -432,8 +433,8 @@ mod drag {
     fn drag_delta_clears_on_release() {
         let mut ui = ui_at(UVec2::new(200, 200));
         build_clickable(&mut ui);
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.on_input(InputEvent::PointerMoved(Vec2::new(30.0, 30.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 70.0)));
@@ -451,8 +452,8 @@ mod drag {
     fn drag_delta_none_when_pointer_left_surface() {
         let mut ui = ui_at(UVec2::new(200, 200));
         build_clickable(&mut ui);
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerLeft);
@@ -467,8 +468,8 @@ mod drag {
     fn drag_delta_only_for_active_widget() {
         let mut ui = ui_at(UVec2::new(200, 200));
         build_clickable(&mut ui);
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)));
@@ -499,15 +500,16 @@ mod drag {
         };
         let mut ui = ui_at(surface);
         build(&mut ui);
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.begin_frame(Display::from_physical(surface, 1.0));
         build(&mut ui);
         ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerMoved(Vec2::new(250.0, 220.0)));
         assert_eq!(ui.input.drag_delta(id()), None);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
     }
 }
 
@@ -607,8 +609,8 @@ mod scroll_routing {
                     .sense(Sense::SCROLL)
                     .show(ui, |_| {});
             });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.begin_frame(crate::layout::types::display::Display::default());
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
@@ -627,7 +629,8 @@ mod scroll_routing {
         let outer_id = crate::forest::widget_id::WidgetId::from_hash("outer");
         assert_eq!(ui.input.scroll_delta_for(inner_id), Vec2::new(0.0, 5.0));
         assert_eq!(ui.input.scroll_delta_for(outer_id), Vec2::ZERO);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
     }
 
     #[test]
@@ -638,8 +641,8 @@ mod scroll_routing {
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |_| {});
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.begin_frame(crate::layout::types::display::Display::default());
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 9.0)));
@@ -650,7 +653,8 @@ mod scroll_routing {
             .show(&mut ui, |_| {});
         let unrelated = crate::forest::widget_id::WidgetId::from_hash("nope");
         assert_eq!(ui.input.scroll_delta_for(unrelated), Vec2::ZERO);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
     }
 
     #[test]
@@ -661,8 +665,8 @@ mod scroll_routing {
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(&mut ui, |_| {});
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.begin_frame(crate::layout::types::display::Display::default());
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         ui.on_input(InputEvent::PointerLeft);
@@ -678,7 +682,8 @@ mod scroll_routing {
             Vec2::ZERO,
             "PointerLeft drops scroll target so the delta is unclaimed",
         );
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
     }
 }
 
@@ -896,8 +901,8 @@ mod keyboard {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
         assert_eq!(
             ui.focused_id(),
@@ -912,8 +917,8 @@ mod keyboard {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
-        ui.end_frame();
-        // Press past the focusable rect.
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase(); // Press past the focusable rect.
         ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -946,8 +951,8 @@ mod keyboard {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
         assert!(ui.focused_id().is_some());
 
@@ -959,7 +964,8 @@ mod keyboard {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -997,8 +1003,8 @@ mod keyboard {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
         assert_eq!(
             ui.focused_id(),
@@ -1017,8 +1023,8 @@ mod keyboard {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         // Click the plain button — it captures the click but isn't
         // focusable, so focus stays on "editable".
         click_at(&mut ui, glam::Vec2::new(150.0, 20.0));
@@ -1046,15 +1052,16 @@ mod keyboard {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
         assert!(ui.focused_id().is_some());
 
         // Next frame omits the focusable widget entirely.
         begin(&mut ui, glam::UVec2::new(200, 80));
         Panel::hstack().auto_id().show(&mut ui, |_ui| {});
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         assert_eq!(
             ui.focused_id(),
             None,
@@ -1097,8 +1104,8 @@ mod keyboard {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
         assert_eq!(
             ui.focused_id(),
@@ -1128,8 +1135,8 @@ mod keyboard {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
         assert_eq!(
             ui.focused_id(),
@@ -1201,8 +1208,8 @@ mod response_state {
     fn focused_reflects_focused_id_synchronously() {
         let mut ui = ui_at(UVec2::new(200, 200));
         build_focusable_leaf(&mut ui);
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         // Initially nothing is focused.
         assert!(!ui.response_for(focusable_id()).focused);
 
@@ -1237,8 +1244,8 @@ mod response_state {
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui);
             });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         // Re-record so cascade is populated for response_for to read.
         begin(&mut ui, UVec2::new(200, 200));
         Panel::vstack()
@@ -1261,7 +1268,8 @@ mod response_state {
             child_state.disabled,
             "child inherits cascaded disabled from parent (no self flag)",
         );
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
     }
 
     /// Conversely, with no disabled in the chain, child's
@@ -1275,8 +1283,8 @@ mod response_state {
                 .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                 .show(ui);
         });
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         begin(&mut ui, UVec2::new(200, 200));
         Panel::vstack().id_salt("parent").show(&mut ui, |ui| {
             Frame::new()
@@ -1285,6 +1293,7 @@ mod response_state {
                 .show(ui);
         });
         assert!(!ui.response_for(WidgetId::from_hash("child")).disabled);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
     }
 }

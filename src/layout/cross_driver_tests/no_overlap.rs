@@ -10,7 +10,7 @@ use crate::forest::tree::Layer;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
-use crate::support::testing::{encode_cmds, ui_with_text};
+use crate::support::testing::{encode_cmds, new_ui_text, run_at};
 use crate::widgets::theme::Background;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -67,41 +67,42 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
     let long_text = "The quick brown fox jumps over the lazy dog. Pack my box \
                      with five dozen liquor jugs. How vexingly quick daft zebras jump!";
     for (label_id, grid_main, cols, gap_xy) in cases {
-        let mut ui = ui_with_text(UVec2::new(800, 600));
+        let mut ui = new_ui_text();
         let mut left = None;
         let mut right = None;
-        Panel::vstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(&mut ui, |ui| {
-                let mut g = Grid::new().auto_id();
-                if let Some(s) = *grid_main {
-                    g = g.size((s, Sizing::Hug));
-                }
-                g.cols(Rc::from(*cols))
-                    .rows(Rc::from([Track::hug()]))
-                    .gap_xy(gap_xy.0, gap_xy.1)
-                    .show(ui, |ui| {
-                        left = Some(
-                            Text::new(long_text)
-                                .auto_id()
-                                .style(TextStyle::default().with_font_size(14.0))
-                                .wrapping()
-                                .grid_cell((0, 0))
-                                .show(ui)
-                                .node,
-                        );
-                        right = Some(
-                            Text::new("right column")
-                                .auto_id()
-                                .style(TextStyle::default().with_font_size(14.0))
-                                .grid_cell((0, 1))
-                                .show(ui)
-                                .node,
-                        );
-                    });
-            });
-        ui.end_frame();
+        run_at(&mut ui, UVec2::new(800, 600), |ui| {
+            Panel::vstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    let mut g = Grid::new().auto_id();
+                    if let Some(s) = *grid_main {
+                        g = g.size((s, Sizing::Hug));
+                    }
+                    g.cols(Rc::from(*cols))
+                        .rows(Rc::from([Track::hug()]))
+                        .gap_xy(gap_xy.0, gap_xy.1)
+                        .show(ui, |ui| {
+                            left = Some(
+                                Text::new(long_text)
+                                    .auto_id()
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .wrapping()
+                                    .grid_cell((0, 0))
+                                    .show(ui)
+                                    .node,
+                            );
+                            right = Some(
+                                Text::new("right column")
+                                    .auto_id()
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .grid_cell((0, 1))
+                                    .show(ui)
+                                    .node,
+                            );
+                        });
+                });
+        });
 
         let layout = &ui.layout.result[Layer::Main];
         let lr = layout.rect[left.unwrap().index()];
@@ -116,74 +117,77 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
 
 #[test]
 fn text_layouts_two_sections_back_to_back_no_overlap() {
-    let mut ui = ui_with_text(UVec2::new(1500, 900));
+    let mut ui = new_ui_text();
 
     let mut hug_left = None;
     let mut hug_right = None;
     let mut prop_label = None;
     let mut prop_value = None;
 
-    Panel::vstack()
-        .auto_id()
-        .gap(16.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(&mut ui, |ui| {
-            section(ui, "two-hug-columns", &mut |ui| {
-                Grid::new()
-                    .id_salt("two-hug-inner")
-                    .cols(Rc::from([Track::hug(), Track::hug()]))
-                    .rows(Rc::from([Track::hug()]))
-                    .gap_xy(0.0, 16.0)
-                    .show(ui, |ui| {
-                        hug_left = Some(
-                            Text::new(PARAGRAPH)
-                                .auto_id()
-                                .style(TextStyle::default().with_font_size(14.0))
-                                .wrapping()
-                                .grid_cell((0, 0))
-                                .show(ui)
-                                .node,
-                        );
-                        hug_right = Some(
-                            Text::new("right column")
-                                .auto_id()
-                                .style(TextStyle::default().with_font_size(14.0))
-                                .grid_cell((0, 1))
-                                .show(ui)
-                                .node,
-                        );
-                    });
-            });
+    run_at(&mut ui, UVec2::new(1500, 900), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .gap(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                section(ui, "two-hug-columns", &mut |ui| {
+                    Grid::new()
+                        .id_salt("two-hug-inner")
+                        .cols(Rc::from([Track::hug(), Track::hug()]))
+                        .rows(Rc::from([Track::hug()]))
+                        .gap_xy(0.0, 16.0)
+                        .show(ui, |ui| {
+                            hug_left = Some(
+                                Text::new(PARAGRAPH)
+                                    .auto_id()
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .wrapping()
+                                    .grid_cell((0, 0))
+                                    .show(ui)
+                                    .node,
+                            );
+                            hug_right = Some(
+                                Text::new("right column")
+                                    .auto_id()
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .grid_cell((0, 1))
+                                    .show(ui)
+                                    .node,
+                            );
+                        });
+                });
 
-            section(ui, "property-grid", &mut |ui| {
-                Grid::new()
-                    .id_salt("property-grid-inner")
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .cols(Rc::from([Track::hug(), Track::fill()]))
-                    .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
-                    .gap_xy(6.0, 16.0)
-                    .show(ui, |ui| {
-                        prop_label = Some(
-                            Text::new("Title:")
-                                .auto_id()
-                                .style(TextStyle::default().with_font_size(14.0))
-                                .grid_cell((0, 0))
-                                .show(ui)
-                                .node,
-                        );
-                        prop_value = Some(
-                            Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
+                section(ui, "property-grid", &mut |ui| {
+                    Grid::new()
+                        .id_salt("property-grid-inner")
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .cols(Rc::from([Track::hug(), Track::fill()]))
+                        .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                        .gap_xy(6.0, 16.0)
+                        .show(ui, |ui| {
+                            prop_label = Some(
+                                Text::new("Title:")
+                                    .auto_id()
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .grid_cell((0, 0))
+                                    .show(ui)
+                                    .node,
+                            );
+                            prop_value = Some(
+                                Text::new(
+                                    "Lorem Ipsum is simply dummy text of the printing industry.",
+                                )
                                 .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
                                 .wrapping()
                                 .grid_cell((0, 1))
                                 .show(ui)
                                 .node,
-                        );
-                    });
+                            );
+                        });
+                });
             });
-        });
-    ui.end_frame();
+    });
 
     let layout = &ui.layout.result[Layer::Main];
     let l1 = layout.rect[hug_left.unwrap().index()];
@@ -207,38 +211,39 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 /// the emitted `DrawText` commands directly.
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
-    let mut ui = ui_with_text(UVec2::new(1500, 900));
-    Panel::vstack()
-        .auto_id()
-        .gap(16.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(&mut ui, |ui| {
-            Grid::new()
-                .id_salt("property-grid-inner")
-                .size((Sizing::FILL, Sizing::Hug))
-                .cols(Rc::from([Track::hug(), Track::fill()]))
-                .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
-                .gap_xy(6.0, 16.0)
-                .show(ui, |ui| {
-                    Text::new("Title:")
-                        .auto_id()
-                        .style(TextStyle::default().with_font_size(14.0))
-                        .grid_cell((0, 0))
-                        .show(ui);
-                    Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
-                        .auto_id()
-                        .style(TextStyle::default().with_font_size(14.0))
-                        .wrapping()
-                        .grid_cell((0, 1))
-                        .show(ui);
-                    Text::new("Description:")
-                        .auto_id()
-                        .style(TextStyle::default().with_font_size(14.0))
-                        .grid_cell((1, 0))
-                        .show(ui);
-                });
-        });
-    ui.end_frame();
+    let mut ui = new_ui_text();
+    run_at(&mut ui, UVec2::new(1500, 900), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .gap(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Grid::new()
+                    .id_salt("property-grid-inner")
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .cols(Rc::from([Track::hug(), Track::fill()]))
+                    .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
+                    .gap_xy(6.0, 16.0)
+                    .show(ui, |ui| {
+                        Text::new("Title:")
+                            .auto_id()
+                            .style(TextStyle::default().with_font_size(14.0))
+                            .grid_cell((0, 0))
+                            .show(ui);
+                        Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
+                            .auto_id()
+                            .style(TextStyle::default().with_font_size(14.0))
+                            .wrapping()
+                            .grid_cell((0, 1))
+                            .show(ui);
+                        Text::new("Description:")
+                            .auto_id()
+                            .style(TextStyle::default().with_font_size(14.0))
+                            .grid_cell((1, 0))
+                            .show(ui);
+                    });
+            });
+    });
 
     let cmds = encode_cmds(&ui);
     let mut text_xs: Vec<f32> = Vec::new();
@@ -261,12 +266,13 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 /// two distinct texts emit `DrawText` at the same (x, y).
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
-    let mut ui = ui_with_text(UVec2::new(1620, 980));
-    Panel::vstack().auto_id()
+    let mut ui = new_ui_text();
+    run_at(&mut ui, UVec2::new(1620, 980), |ui| {
+        Panel::vstack().auto_id()
         .padding(12.0)
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
-        .show(&mut ui, |ui| {
+        .show(ui, |ui| {
             Panel::hstack().auto_id()
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |_| {});
@@ -336,7 +342,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                         });
                 });
         });
-    ui.end_frame();
+    });
 
     let cmds = encode_cmds(&ui);
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();

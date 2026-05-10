@@ -44,8 +44,8 @@ fn read_state(ui: &mut crate::ui::Ui) -> ScrollState {
 fn scroll_state_records_viewport_and_content_after_arrange() {
     let mut ui = ui_at(SURFACE);
     build(&mut ui, 200.0, 800.0);
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let row = read_state(&mut ui);
     assert_eq!(row.viewport.h, 200.0);
     assert_eq!(row.content.h, 800.0);
@@ -74,14 +74,15 @@ fn wheel_delta_advances_offset_with_clamp() {
     for (label, viewport_h, content_h, pushes, expected) in cases {
         let mut ui = ui_at(SURFACE);
         build(&mut ui, *viewport_h, *content_h);
-        ui.end_frame();
-
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         for wheel_y in *pushes {
             ui.on_input(InputEvent::Scroll(Vec2::new(0.0, *wheel_y)));
             ui.begin_frame(surface_display());
             build(&mut ui, *viewport_h, *content_h);
-            ui.end_frame();
+            ui.end_frame_record_phase();
+            ui.end_frame_paint_phase();
         }
 
         assert_eq!(read_state(&mut ui).offset.y, *expected, "case: {label}");
@@ -105,8 +106,8 @@ fn horizontal_scroll_pans_only_x() {
         });
     };
     build_h(&mut ui);
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
     // Touchpad / wheel deltas come in on both axes — verify only X
     // makes it into the offset for a horizontal scroll.
@@ -114,8 +115,8 @@ fn horizontal_scroll_pans_only_x() {
 
     ui.begin_frame(surface_display());
     build_h(&mut ui);
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let id = WidgetId::from_hash("hscroll");
     let row = *ui
         .state
@@ -140,15 +141,15 @@ fn both_axis_scroll_pans_both_axes() {
         });
     };
     build_xy(&mut ui);
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(40.0, 60.0)));
 
     ui.begin_frame(surface_display());
     build_xy(&mut ui);
-    ui.end_frame();
-
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let id = WidgetId::from_hash("xy");
     let row = *ui
         .state
@@ -323,7 +324,8 @@ fn scroll_state_content_survives_measure_cache_hit() {
 
     let mut ui = ui_at(surface);
     build(&mut ui);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let scroll_id = WidgetId::from_hash("scroll");
     let after_first = *ui
         .state
@@ -332,7 +334,8 @@ fn scroll_state_content_survives_measure_cache_hit() {
 
     ui.begin_frame(display);
     build(&mut ui);
-    ui.end_frame();
+    ui.end_frame_record_phase();
+    ui.end_frame_paint_phase();
     let after_second = *ui
         .state
         .get_or_insert_with::<ScrollState, _>(scroll_id, Default::default);
@@ -485,7 +488,8 @@ mod bars {
     fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> (Ui, NodeId) {
         let mut ui = ui_at(surface);
         build(&mut ui);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         ui.begin_frame(Display::from_physical(surface, 1.0));
         build(&mut ui);
         let scroll_id = WidgetId::from_hash("scroll");
@@ -582,11 +586,12 @@ mod bars {
             });
         };
         build(&mut ui);
-        ui.end_frame();
-        // Frame 2 — caches warm; this is what panicked in the showcase.
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase(); // Frame 2 — caches warm; this is what panicked in the showcase.
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
     }
 
     /// Showcase-style nested scroll cards (Scroll inside a clipped Panel
@@ -631,13 +636,16 @@ mod bars {
                 });
         };
         build(&mut ui);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
     }
 
     /// Reservation: when content overflows on the V axis, the inner
@@ -664,10 +672,12 @@ mod bars {
             });
         };
         build(&mut ui);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         let row = *ui
             .state
             .get_or_insert_with::<ScrollState, _>(WidgetId::from_hash("scroll"), Default::default);
@@ -701,10 +711,12 @@ mod bars {
             });
         };
         build(&mut ui);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         let row = *ui
             .state
             .get_or_insert_with::<ScrollState, _>(WidgetId::from_hash("scroll"), Default::default);
@@ -799,10 +811,12 @@ mod bars {
         // Two frames with overflow → reservation kicks in.
         let mut ui = ui_at(surface);
         build(&mut ui, 800.0);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui, 800.0);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         assert_eq!(
             read_viewport(&mut ui),
             Size::new(188.0, 200.0),
@@ -814,10 +828,12 @@ mod bars {
         // and drops the reservation.
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui, 50.0);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui, 50.0);
-        ui.end_frame();
+        ui.end_frame_record_phase();
+        ui.end_frame_paint_phase();
         assert_eq!(
             read_viewport(&mut ui),
             Size::new(200.0, 200.0),

@@ -403,7 +403,6 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
 /// extending past the right edge.
 #[test]
 fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
-    use crate::support::testing::ui_with_text;
     use crate::widgets::button::Button;
 
     fn build(ui: &mut Ui) -> (NodeId, Vec<NodeId>) {
@@ -447,9 +446,12 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     }
 
     for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
-        let mut ui = ui_with_text(UVec2::new(surface_w, 600));
-        let (wrap, kids) = build(&mut ui);
-        ui.end_frame();
+        let mut ui = crate::support::testing::new_ui_text();
+        let mut wrap_kids = None;
+        crate::support::testing::run_at(&mut ui, UVec2::new(surface_w, 600), |ui| {
+            wrap_kids = Some(build(ui));
+        });
+        let (wrap, kids) = wrap_kids.unwrap();
         let wrap_rect = ui.layout.result[Layer::Main].rect[wrap.index()];
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
         for k in &kids {
