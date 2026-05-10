@@ -19,6 +19,7 @@ use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
 use crate::animation::spring::{POS_EPS_SQ, VEL_EPS_SQ, step as spring_step};
 use crate::forest::widget_id::WidgetId;
+use crate::primitives::approx::approx_zero;
 use rustc_hash::FxHashMap;
 use std::any::{Any, TypeId};
 use std::collections::hash_map::Entry;

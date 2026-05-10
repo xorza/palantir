@@ -76,13 +76,13 @@ fn add_merges_diagonal_overlap_under_ratio() {
     assert_eq!(collect(&region), vec![a.union(b)]);
 }
 
-/// Pair just over the 1.3× ceiling stays split: two 10×10 rects
-/// 7 px apart give bbox = 27×10 = 270, sum = 200, ratio 1.35 > 1.30.
+/// Pair just over the 1.6× ceiling stays split: two 10×10 rects
+/// 15 px apart give bbox = 35×10 = 350, sum = 200, ratio 1.75 > 1.6.
 #[test]
 fn add_keeps_pair_above_ratio_split() {
     let mut region = DamageRegion::default();
     let a = Rect::new(0.0, 0.0, 10.0, 10.0);
-    let b = Rect::new(17.0, 0.0, 10.0, 10.0);
+    let b = Rect::new(25.0, 0.0, 10.0, 10.0);
     region.add(a);
     region.add(b);
     assert_eq!(collect(&region).len(), 2);
