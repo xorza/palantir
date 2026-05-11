@@ -168,12 +168,10 @@ impl Ui {
             record(self);
             self.post_record();
         }
-        let damage = self.finalize_frame();
-
-        if matches!(damage, Damage::Skip) {
+        let Some(damage) = self.finalize_frame() else {
             self.frame_state.mark_submitted();
             return None;
-        }
+        };
         self.frame_state.mark_pending();
 
         Some(RecordedFrame {
@@ -226,7 +224,7 @@ impl Ui {
     /// Sweep runs here (once per `run_frame`) rather than per
     /// `post_record` so a widget that vanishes in pass A but returns
     /// in pass B keeps its state across the discard.
-    pub(crate) fn finalize_frame(&mut self) -> Damage {
+    pub(crate) fn finalize_frame(&mut self) -> Option<Damage> {
         let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);

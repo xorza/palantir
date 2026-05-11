@@ -122,17 +122,16 @@ impl Default for DamageEngine {
 /// below 0.7.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
-/// What the GPU should do with this frame. Keeps three cases that
-/// were previously squashed into `Option<Rect>` distinct so the
-/// backend can branch on them: `Full` (clear + paint everything),
-/// `Partial(region)` (load + scissor; one render pass per rect in
-/// the region), `Skip` (don't paint — backbuffer already holds the
-/// right pixels; just present it).
+/// What the GPU should do with this frame when there *is* work:
+/// `Full` (clear + paint everything) or `Partial(region)` (load +
+/// scissor; one render pass per rect in the region). The "nothing
+/// changed, just present the backbuffer" case is encoded as the
+/// absence of a `Damage` — `compute` / `filter` return
+/// `Option<Damage>` and `None` is the skip signal.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Damage {
     Full,
     Partial(DamageRegion),
-    Skip,
 }
 
 impl DamageEngine {
@@ -181,7 +180,7 @@ impl DamageEngine {
         cascades: &Cascades,
         removed: &FxHashSet<WidgetId>,
         surface: Rect,
-    ) -> Damage {
+    ) -> Option<Damage> {
         // `prev_surface == None` is the "treat as a fresh frame"
         // signal. `Ui::pre_record` clears it (and `prev`) when the
         // surface changed, the previous `FrameOutput` wasn't acked,
@@ -250,25 +249,25 @@ impl DamageEngine {
 
         self.region = acc;
         if force_full {
-            return Damage::Full;
+            return Some(Damage::Full);
         }
         self.filter(surface)
     }
 
     /// Resolve `self.region` against the area threshold. Empty
-    /// region ⇒ `Skip` (no widget changed and the surface is
+    /// region ⇒ `None` (no widget changed and the surface is
     /// stable; the GPU has nothing to do). Coverage above
-    /// [`FULL_REPAINT_THRESHOLD`] (or zero-area surface) ⇒ `Full`.
-    /// Otherwise `Partial(region)`.
-    pub(crate) fn filter(&self, surface: Rect) -> Damage {
+    /// [`FULL_REPAINT_THRESHOLD`] (or zero-area surface) ⇒
+    /// `Some(Full)`. Otherwise `Some(Partial(region))`.
+    pub(crate) fn filter(&self, surface: Rect) -> Option<Damage> {
         if self.region.is_empty() {
-            return Damage::Skip;
+            return None;
         }
         let surface_area = surface.area();
         if surface_area <= 0.0 || self.region.total_area() / surface_area > FULL_REPAINT_THRESHOLD {
-            return Damage::Full;
+            return Some(Damage::Full);
         }
-        Damage::Partial(self.region)
+        Some(Damage::Partial(self.region))
     }
 }
 

@@ -44,7 +44,9 @@ pub struct Host {
 }
 
 pub(crate) struct PendingSubmit {
-    pub(crate) damage: Damage,
+    /// `None` ⇒ skip path: render() just copies the backbuffer onto
+    /// the swapchain. `Some(d)` ⇒ paint the schedule under `d`.
+    pub(crate) damage: Option<Damage>,
     pub(crate) frame_state: FrameState,
 }
 
@@ -96,10 +98,10 @@ impl Host {
     pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameInfo {
         let Some(frame) = self.ui.frame(display, self.start.elapsed(), record) else {
             // Skip: keep the prior composer buffer untouched; the
-            // backend's Skip path short-circuits to a backbuffer →
-            // surface copy without reading it.
+            // backend's skip path just copies the backbuffer onto
+            // the swapchain.
             self.pending = Some(PendingSubmit {
-                damage: Damage::Skip,
+                damage: None,
                 frame_state: self.ui.frame_state.clone(),
             });
             return FrameInfo {
@@ -113,7 +115,7 @@ impl Host {
         };
         self.frontend.build(&frame);
         self.pending = Some(PendingSubmit {
-            damage: frame.damage,
+            damage: Some(frame.damage),
             frame_state: frame.frame_state.clone(),
         });
 
@@ -128,12 +130,16 @@ impl Host {
         let Some(p) = self.pending.take() else {
             return;
         };
+        let Some(damage) = p.damage else {
+            self.backend.present_skipped(surface_tex, &p.frame_state);
+            return;
+        };
         self.backend.submit(
             surface_tex,
             clear,
             &self.frontend.composer.buffer,
             &mut self.frontend.gradient_atlas,
-            p.damage,
+            damage,
             self.debug_overlay,
             &p.frame_state,
         );

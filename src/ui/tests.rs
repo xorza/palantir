@@ -72,14 +72,17 @@ fn empty_ui_drives_a_frame_safely() {
     {
         use crate::renderer::frontend::{Frontend, RecordedFrame};
         ui.post_record();
-        let damage = ui.finalize_frame();
+        let _damage = ui.finalize_frame();
         let mut frontend = Frontend::default();
+        // Empty UI on the first frame: `finalize_frame` returns
+        // `None` (skip) — but to exercise the encode/compose path we
+        // force `Full` here and assert the buffers come out empty.
         let frame = RecordedFrame {
             forest: &ui.forest,
             layout: &ui.layout,
             cascades: &ui.layout.cascades,
             display: ui.display,
-            damage,
+            damage: Damage::Full,
             repaint_requested: ui.repaint_requested,
             frame_state: ui.frame_state.clone(),
         };
@@ -94,10 +97,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(ui.damage_engine.prev.is_empty());
     assert!(ui.damage_engine.dirty.is_empty());
     assert!(ui.damage_engine.region.is_empty());
-    assert_eq!(
-        ui.damage_engine.filter(ui.display.logical_rect()),
-        Damage::Skip
-    );
+    assert_eq!(ui.damage_engine.filter(ui.display.logical_rect()), None);
 }
 
 /// Pin: an empty frame followed by a populated frame works (the

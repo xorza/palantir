@@ -402,7 +402,7 @@ fn damage_filter_returns_partial_when_small() {
         .expect("single-leaf change → some damage");
     assert_eq!(
         ui.damage_engine.filter(ui.display.logical_rect()),
-        Damage::Partial(r.into())
+        Some(Damage::Partial(r.into()))
     );
 }
 
@@ -419,10 +419,7 @@ fn damage_filter_returns_skip_when_nothing_dirty() {
     frame(&mut ui, build);
     frame(&mut ui, build);
     assert!(ui.damage_engine.dirty.is_empty());
-    assert_eq!(
-        ui.damage_engine.filter(ui.display.logical_rect()),
-        Damage::Skip
-    );
+    assert_eq!(ui.damage_engine.filter(ui.display.logical_rect()), None);
 }
 
 // --- transforms ---------------------------------------------------------
@@ -606,7 +603,7 @@ fn no_damage_means_skip() {
     // backbuffer already holds the right pixels). Distinct from
     // `Full` ("everything changed"), which is what coverage above
     // [`FULL_REPAINT_THRESHOLD`] produces.
-    assert_eq!(d.filter(TEST_SURFACE), Damage::Skip);
+    assert_eq!(d.filter(TEST_SURFACE), None);
 }
 
 /// Heuristic: total coverage = `sum(rect.area()) / surface_area`;
@@ -647,48 +644,48 @@ fn damage_filter_threshold_cases() {
         Rect::new(0.0, 0.0, 36.0, 100.0),
         Rect::new(36.0, 0.0, 36.0, 100.0),
     ];
-    let cases: &[(&str, &[Rect], Rect, Damage)] = &[
+    let cases: &[(&str, &[Rect], Rect, Option<Damage>)] = &[
         (
             "small_1pct",
             &[Rect::new(0.0, 0.0, 10.0, 10.0)],
             TEST_SURFACE,
-            Damage::Partial(Rect::new(0.0, 0.0, 10.0, 10.0).into()),
+            Some(Damage::Partial(Rect::new(0.0, 0.0, 10.0, 10.0).into())),
         ),
         (
             "large_81pct_above_threshold",
             &[Rect::new(0.0, 0.0, 90.0, 90.0)],
             TEST_SURFACE,
-            Damage::Full,
+            Some(Damage::Full),
         ),
         (
             "below_threshold_64pct_stays_partial",
             &[Rect::new(0.0, 0.0, 80.0, 80.0)],
             TEST_SURFACE,
-            Damage::Partial(Rect::new(0.0, 0.0, 80.0, 80.0).into()),
+            Some(Damage::Partial(Rect::new(0.0, 0.0, 80.0, 80.0).into())),
         ),
         (
             "exact_70pct_stays_partial",
             &[Rect::new(0.0, 0.0, 70.0, 100.0)],
             TEST_SURFACE,
-            Damage::Partial(Rect::new(0.0, 0.0, 70.0, 100.0).into()),
+            Some(Damage::Partial(Rect::new(0.0, 0.0, 70.0, 100.0).into())),
         ),
         (
             "two_rect_sum_at_threshold_stays_partial",
             &PAIR_BELOW,
             TEST_SURFACE,
-            Damage::Partial(region(&PAIR_BELOW)),
+            Some(Damage::Partial(region(&PAIR_BELOW))),
         ),
         (
             "two_rect_sum_above_threshold_escalates_full",
             &PAIR_ABOVE,
             TEST_SURFACE,
-            Damage::Full,
+            Some(Damage::Full),
         ),
         (
             "zero_area_surface",
             &[Rect::new(0.0, 0.0, 1.0, 1.0)],
             Rect::ZERO,
-            Damage::Full,
+            Some(Damage::Full),
         ),
     ];
     for (label, rects, surface, want) in cases {
@@ -963,7 +960,7 @@ fn button_hover_damage_covers_only_the_button() {
     assert_eq!(ui.damage_engine.region.iter_rects().next(), Some(hot_rect));
     assert_eq!(
         ui.damage_engine.filter(ui.display.logical_rect()),
-        Damage::Partial(hot_rect.into()),
+        Some(Damage::Partial(hot_rect.into())),
         "small per-button damage must not trip the full-repaint heuristic",
     );
 
@@ -1010,7 +1007,7 @@ fn button_unhover_damage_covers_only_the_button() {
     assert_eq!(ui.damage_engine.region.iter_rects().next(), Some(hot_rect));
     assert_eq!(
         ui.damage_engine.filter(ui.display.logical_rect()),
-        Damage::Partial(hot_rect.into()),
+        Some(Damage::Partial(hot_rect.into())),
     );
 }
 

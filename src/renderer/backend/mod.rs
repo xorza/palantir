@@ -237,7 +237,7 @@ impl WgpuBackend {
     /// group runs. So a child quad declared *after* a label correctly
     /// occludes that label.
     ///
-    /// Three damage paths, branching on `frame.damage`:
+    /// Two damage paths, branching on `damage`:
     ///
     /// - [`Damage::Full`]: a single `LoadOp::Clear(clear)` pass
     ///   paints every group at its native scissor. First frame,
@@ -250,9 +250,10 @@ impl WgpuBackend {
     ///   damage rect. Logical-px in; the backend scales, pads for AA
     ///   bleed, and clamps to surface; rects that clamp to zero area
     ///   are filtered out.
-    /// - [`Damage::Skip`]: no render pass at all. The persistent
-    ///   backbuffer already holds last frame's pixels, so submit just
-    ///   copies it to the swapchain texture and returns.
+    ///
+    /// The "nothing changed, just present" case is handled by
+    /// [`Self::present_skipped`] — `Host::render` dispatches there
+    /// when the damage compute returned `None`.
     ///
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.
@@ -287,8 +288,8 @@ impl WgpuBackend {
 
         // Match backbuffer to the swapchain texture. A freshly
         // (re)created backbuffer has undefined contents, so any
-        // requested Partial / Skip must escalate to a full clear+paint
-        // this frame. `effective_damage` is what we'll actually render;
+        // requested Partial must escalate to a full clear+paint this
+        // frame. `effective_damage` is what we'll actually render;
         // `damage` is what the host asked for. The two diverge only on
         // backbuffer recreate, but the debug overlay's damage-rect
         // outline shows what we *rendered*, not what was requested, so
@@ -299,15 +300,6 @@ impl WgpuBackend {
         } else {
             damage
         };
-
-        // Skip: nothing changed and the backbuffer already holds the
-        // right pixels. Bypass the render pass entirely and just copy
-        // backbuffer → swapchain so something gets presented.
-        if let Damage::Skip = effective_damage {
-            self.copy_backbuffer_to_surface(surface_tex);
-            frame_state.mark_submitted();
-            return;
-        }
 
         // Build the per-frame scissor list. `Full` → empty list →
         // single Clear+full-viewport pass. `Partial` → one entry per
@@ -694,7 +686,6 @@ impl WgpuBackend {
                     }
                     .deflated_by(Spacing::all(inset_px)),
                 ),
-                Damage::Skip => unreachable!("Skip filtered before draw_debug_overlay"),
             }
             if overlay_rects.is_empty() {
                 return;
@@ -723,10 +714,33 @@ impl WgpuBackend {
         }
     }
 
+    /// Skip-path render: the host's damage compute returned `None`
+    /// (no widget changed and the surface is stable), so we just need
+    /// to put something on the swapchain. Lazily (re)create the
+    /// backbuffer if the surface size shifted (which forces the next
+    /// painting frame to `Full` via the usual `ensure_backbuffer`
+    /// recreation signal), copy the backbuffer onto the swapchain, and
+    /// mark the frame as submitted so `Ui::pre_record`'s auto-rewind
+    /// stays quiet.
+    pub(crate) fn present_skipped(
+        &mut self,
+        surface_tex: &wgpu::Texture,
+        frame_state: &FrameState,
+    ) {
+        // If the backbuffer didn't exist or was just (re)created the
+        // contents are undefined — fall back to a transparent clear
+        // by going through copy unconditionally; the next painting
+        // frame will redraw the surface because `ensure_backbuffer`
+        // signals `recreated`.
+        self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
+        self.copy_backbuffer_to_surface(surface_tex);
+        frame_state.mark_submitted();
+    }
+
     /// Copy the persistent backbuffer onto the swapchain texture
-    /// without running a render pass. Used on `Damage::Skip`
-    /// frames: the backbuffer already holds last frame's pixels and
-    /// nothing changed, so we just need something on screen.
+    /// without running a render pass. Used on skip frames: the
+    /// backbuffer already holds last frame's pixels and nothing
+    /// changed, so we just need something on screen.
     fn copy_backbuffer_to_surface(&self, surface_tex: &wgpu::Texture) {
         let backbuffer = self
             .backbuffer
