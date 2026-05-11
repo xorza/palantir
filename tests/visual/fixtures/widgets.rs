@@ -325,3 +325,73 @@ fn polyline_bevel_join_matches_golden() {
     });
     assert_matches_golden("polyline_bevel_join", &img, Tolerance::default());
 }
+
+/// Pin: `LineCap::Round` paints a half-disc fan at each endpoint
+/// — visible as the rounded ends of a thick stroke. Golden also
+/// compares Butt + Square + Round side by side: cap-style
+/// regressions (e.g. Round collapsing to Butt) show up as missing
+/// arc pixels at the end of the bottom stroke.
+#[test]
+fn polyline_round_caps_match_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for (y, cap, color) in [
+                    (30.0_f32, LineCap::Butt, Color::rgb(1.0, 0.4, 0.4)),
+                    (70.0, LineCap::Square, Color::rgb(0.4, 1.0, 0.4)),
+                    (110.0, LineCap::Round, Color::rgb(0.4, 0.6, 1.0)),
+                ] {
+                    ui.add_shape(Shape::Line {
+                        a: Vec2::new(40.0, y),
+                        b: Vec2::new(140.0, y),
+                        width: 10.0,
+                        color,
+                        cap,
+                        join: LineJoin::Miter,
+                    });
+                }
+            });
+    });
+    assert_matches_golden("polyline_round_caps", &img, Tolerance::default());
+}
+
+/// Pin: `LineJoin::Round` paints a curved arc at interior joins.
+/// Three identical 90° corners with Miter / Bevel / Round joins
+/// — Miter shows a sharp point, Bevel a flat cut, Round a smooth
+/// arc. Visually distinct golden ensures the join-style branch
+/// reaches the tessellator and emits the right geometry.
+#[test]
+fn polyline_round_join_matches_golden() {
+    use palantir::PolylineColors;
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(180, 200), 1.0, DARK_BG, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                let cyan = Color::rgb(0.2, 0.9, 1.0);
+                for (y, join) in [
+                    (30.0_f32, LineJoin::Miter),
+                    (90.0, LineJoin::Bevel),
+                    (150.0, LineJoin::Round),
+                ] {
+                    let pts = [
+                        Vec2::new(20.0, y + 40.0),
+                        Vec2::new(90.0, y),
+                        Vec2::new(160.0, y + 40.0),
+                    ];
+                    ui.add_shape(Shape::Polyline {
+                        points: &pts,
+                        colors: PolylineColors::Single(cyan),
+                        width: 8.0,
+                        cap: LineCap::Butt,
+                        join,
+                    });
+                }
+            });
+    });
+    assert_matches_golden("polyline_round_join", &img, Tolerance::default());
+}

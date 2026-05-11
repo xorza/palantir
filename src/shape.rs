@@ -224,6 +224,7 @@ pub enum LineCap {
     #[default]
     Butt = 0,
     Square = 1,
+    Round = 2,
 }
 
 /// Pod wire form for [`LineCap`]. See [`ColorModeBits`].
@@ -250,6 +251,7 @@ impl LineCap {
         match v {
             0 => LineCap::Butt,
             1 => LineCap::Square,
+            2 => LineCap::Round,
             _ => panic!("invalid LineCap discriminant in cmd buffer"),
         }
     }
@@ -266,6 +268,7 @@ pub enum LineJoin {
     #[default]
     Miter = 0,
     Bevel = 1,
+    Round = 2,
 }
 
 /// Pod wire form for [`LineJoin`]. See [`ColorModeBits`].
@@ -289,6 +292,7 @@ impl LineJoin {
         match v {
             0 => LineJoin::Miter,
             1 => LineJoin::Bevel,
+            2 => LineJoin::Round,
             _ => panic!("invalid LineJoin discriminant in cmd buffer"),
         }
     }

@@ -90,99 +90,66 @@ fn gradient(ui: &mut Ui) {
 }
 
 fn joins(ui: &mut Ui) {
-    // Same sharp chevron painted twice with different join modes.
-    // Top: Miter (auto-falls-back to bevel at MITER_LIMIT — sharp
-    // angle here exceeds it, so this is effectively a bevel).
-    // Middle: Bevel (forced — visually same as the top one because
-    // the auto-fallback kicked in).
-    // Bottom: a shallow 90° corner with Miter — actually mitres to
-    // a sharp point. Side-by-side comparison shows when each mode
-    // wins.
+    // Same 90° corner painted three times to highlight join styles
+    // at a non-clamp angle (where Miter actually mitres rather
+    // than falling back to bevel). Row 1: Miter (sharp point).
+    // Row 2: Bevel (flat cut). Row 3: Round (curved arc).
     let cyan = Color::rgb(0.2, 0.9, 1.0);
-    let chevron_sharp_a = [
-        Vec2::new(10.0, 18.0),
-        Vec2::new(70.0, 28.0),
-        Vec2::new(15.0, 38.0),
-    ];
-    ui.add_shape(Shape::Polyline {
-        points: &chevron_sharp_a,
-        colors: PolylineColors::Single(cyan),
-        width: 4.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
-    let chevron_sharp_b = [
-        Vec2::new(10.0, 58.0),
-        Vec2::new(70.0, 68.0),
-        Vec2::new(15.0, 78.0),
-    ];
-    ui.add_shape(Shape::Polyline {
-        points: &chevron_sharp_b,
-        colors: PolylineColors::Single(cyan),
-        width: 4.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Bevel,
-    });
-    let chevron_shallow = [
-        Vec2::new(10.0, 100.0),
-        Vec2::new(60.0, 115.0),
-        Vec2::new(110.0, 100.0),
-    ];
-    ui.add_shape(Shape::Polyline {
-        points: &chevron_shallow,
-        colors: PolylineColors::Single(cyan),
-        width: 4.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
+    for (y, join) in [
+        (15.0_f32, LineJoin::Miter),
+        (50.0, LineJoin::Bevel),
+        (85.0, LineJoin::Round),
+    ] {
+        let pts = [
+            Vec2::new(15.0, y + 25.0),
+            Vec2::new(60.0, y),
+            Vec2::new(105.0, y + 25.0),
+        ];
+        ui.add_shape(Shape::Polyline {
+            points: &pts,
+            colors: PolylineColors::Single(cyan),
+            width: 5.0,
+            cap: LineCap::Butt,
+            join,
+        });
+    }
 }
 
 fn caps(ui: &mut Ui) {
-    // Two pairs of identical lines, top with Butt caps, bottom
-    // with Square. The Square pair visibly extends past its
-    // endpoints by half the width — flat-end against a backdrop
-    // marker line makes the extension obvious.
+    // Three lines, one per cap style: Butt, Square, Round. All
+    // share the same endpoints; the marker rules at the ends make
+    // the difference visible — Butt stops at the marker, Square
+    // extends by half-width past it, Round adds a half-disc.
     let red = Color::rgb(1.0, 0.4, 0.4);
     let green = Color::rgb(0.4, 1.0, 0.4);
-    // Marker rect endpoints (paint a thin vertical line behind
-    // both pairs so the cap extension is visible).
+    let blue = Color::rgb(0.4, 0.6, 1.0);
     let marker = Color::rgb(1.0, 1.0, 1.0);
-    for y in [40.0_f32, 90.0] {
+    for y in [25.0_f32, 60.0, 95.0] {
+        for x in [30.0_f32, 90.0] {
+            ui.add_shape(Shape::Line {
+                a: Vec2::new(x, y - 12.0),
+                b: Vec2::new(x, y + 12.0),
+                width: 1.0,
+                color: marker,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+            });
+        }
+    }
+    for (y, color, cap) in [
+        (25.0_f32, red, LineCap::Butt),
+        (60.0, green, LineCap::Square),
+        (95.0, blue, LineCap::Round),
+    ] {
         ui.add_shape(Shape::Line {
-            a: Vec2::new(30.0, y - 15.0),
-            b: Vec2::new(30.0, y + 15.0),
-            width: 1.0,
-            color: marker,
-            cap: LineCap::Butt,
-            join: LineJoin::Miter,
-        });
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(90.0, y - 15.0),
-            b: Vec2::new(90.0, y + 15.0),
-            width: 1.0,
-            color: marker,
-            cap: LineCap::Butt,
+            a: Vec2::new(30.0, y),
+            b: Vec2::new(90.0, y),
+            width: 8.0,
+            color,
+            cap,
             join: LineJoin::Miter,
         });
     }
-    // Butt cap row (top): stroke ends at the marker.
-    ui.add_shape(Shape::Line {
-        a: Vec2::new(30.0, 40.0),
-        b: Vec2::new(90.0, 40.0),
-        width: 8.0,
-        color: red,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
-    // Square cap row (bottom): stroke extends past the marker by half-width.
-    ui.add_shape(Shape::Line {
-        a: Vec2::new(30.0, 90.0),
-        b: Vec2::new(90.0, 90.0),
-        width: 8.0,
-        color: green,
-        cap: LineCap::Square,
-        join: LineJoin::Miter,
-    });
 }
 
 fn per_segment(ui: &mut Ui) {
