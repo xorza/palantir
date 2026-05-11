@@ -153,6 +153,7 @@ impl LayoutEngine {
             }
             self.scroll_states.remove(wid);
         }
+        self.cache.maybe_compact();
     }
 
     /// On-demand intrinsic-size query — outer (margin-inclusive) size on

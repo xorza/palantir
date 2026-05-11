@@ -133,9 +133,9 @@ impl Ui {
         record(self);
 
         let action_flag = self.input.take_action_flag();
-        let needs_relayout = self.record_phase();
+        self.record_phase();
 
-        if action_flag || needs_relayout {
+        if action_flag || self.relayout_requested {
             // Pass B paints, regardless of any further re-record
             // request — caps relayout at one retry per `run_frame`.
 
@@ -213,42 +213,44 @@ impl Ui {
         );
     }
 
-    /// Record-half of `post_record`: finalize hashes, sweep evicted
-    /// caches, run measure/arrange. Returns whether
-    /// [`Self::request_relayout`] fired. Diffs (no commit) so a
-    /// discarded pass A still sees the painted frame's `prev`.
-    pub(crate) fn record_phase(&mut self) -> bool {
-        let surface = self.display.logical_rect();
+    /// Record-half of `run_frame`: finalize hashes, run measure /
+    /// arrange. Returns whether [`Self::request_relayout`] fired.
+    /// Stale cache entries (for widgets recorded last frame but
+    /// absent this pass) are tolerated through `layout.run` — they
+    /// can't match live keys — and reaped once in `paint_phase`
+    /// against the final pass's id set.
+    pub(crate) fn record_phase(&mut self) {
         self.forest.post_record();
-        // Sweep before `layout.run` so the measure cache compaction
-        // sees a consistent live-set.
-        self.forest.ids.diff_for_sweep();
-        let removed = &self.forest.ids.removed;
+        self.layout_engine.run(
+            &self.forest,
+            self.display.logical_rect(),
+            &self.text,
+            &mut self.layout,
+        );
+    }
+
+    /// Paint-half of `run_frame`: diff seen ids against the last
+    /// painted frame, fan the `removed` set out to per-widget caches,
+    /// cascade → hit-index → damage. Reads the `Layout` from the most
+    /// recent `record_phase`; returns the computed [`DamagePaint`].
+    /// Sweep runs here (once per `run_frame`) rather than per
+    /// `record_phase` so a widget that vanishes in pass A but returns
+    /// in pass B keeps its state across the discard.
+    pub(crate) fn paint_phase(&mut self) -> DamagePaint {
+        let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
         self.anim.post_record(removed);
 
-        self.layout_engine
-            .run(&self.forest, surface, &self.text, &mut self.layout);
-
-        self.relayout_requested
-    }
-
-    /// Paint-half of `run_frame`: commit the seen-id rollover, then
-    /// cascade → hit-index → damage. Reads the `Layout` from
-    /// the most recent `record_phase`. Returns the computed
-    /// [`DamagePaint`]; `run_frame` threads it into the
-    /// [`RecordedFrame`].
-    pub(crate) fn paint_phase(&mut self) -> DamagePaint {
-        let surface = self.display.logical_rect();
-        self.forest.ids.commit_rollover();
-        let removed = &self.forest.ids.removed;
-
         let cascades = self.cascades.run(&self.forest, &self.layout);
         self.input.post_record(cascades);
-        self.damage
-            .compute(&self.forest, cascades, removed, surface)
+        self.damage.compute(
+            &self.forest,
+            cascades,
+            &self.forest.ids.removed,
+            self.display.logical_rect(),
+        )
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────

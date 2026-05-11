@@ -335,7 +335,14 @@ impl MeasureCache {
                 text_shapes: text_span,
             },
         );
+    }
 
+    /// Run compaction if any arena's `len > live × COMPACT_RATIO`
+    /// (and `live > COMPACT_FLOOR`). Called from
+    /// `LayoutEngine::sweep_removed` only — acquires grow `desired`
+    /// and `live` in lockstep so writes can't be the trigger, only
+    /// releases can.
+    pub(crate) fn maybe_compact(&mut self) {
         if self.nodes.needs_compact()
             || self.hugs.needs_compact()
             || self.text_shapes_arena.needs_compact()
