@@ -3,7 +3,8 @@
 
 use glam::{UVec2, Vec2};
 use palantir::{
-    Background, Button, Color, Configure, Corners, Frame, Panel, Rect, Shape, Sizing, Stroke,
+    Background, Button, Color, Configure, Corners, Frame, LineCap, LineJoin, Panel, Rect, Shape,
+    Sizing, Stroke,
 };
 
 use crate::diff::Tolerance;
@@ -221,6 +222,8 @@ fn line_diagonal_aa_matches_golden() {
                     b: Vec2::new(150.0, 110.0),
                     width: 4.0,
                     color: Color::rgb(0.2, 0.9, 1.0),
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
                 // Hairline at sub-pixel width — should appear dim
                 // (alpha-faded) rather than vanish or look identical
@@ -230,6 +233,8 @@ fn line_diagonal_aa_matches_golden() {
                     b: Vec2::new(150.0, 80.0),
                     width: 0.4,
                     color: Color::rgb(1.0, 1.0, 1.0),
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
             });
     });
@@ -267,8 +272,56 @@ fn polyline_gradient_matches_golden() {
                     points: &pts,
                     colors: PolylineColors::PerPoint(&cols),
                     width: 5.0,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
             });
     });
     assert_matches_golden("polyline_gradient", &img, Tolerance::default());
+}
+
+/// Pin: sharp polyline joins paint a clean bevel rather than the
+/// previous miter-clamp's hard cut-off. Two strokes side by side:
+/// the shallow 90° corner mitres (rendering path unchanged), the
+/// tight chevron triggers the bevel-bridge codepath. Golden
+/// captures both at the same width so a tessellator regression
+/// (e.g. bridge winding flipped → invisible corner fill) shows up
+/// as missing pixels in the right stroke only.
+#[test]
+fn polyline_bevel_join_matches_golden() {
+    use palantir::PolylineColors;
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                let cyan = Color::rgb(0.2, 0.9, 1.0);
+                let shallow = [
+                    Vec2::new(15.0, 30.0),
+                    Vec2::new(60.0, 60.0),
+                    Vec2::new(105.0, 30.0),
+                ];
+                ui.add_shape(Shape::Polyline {
+                    points: &shallow,
+                    colors: PolylineColors::Single(cyan),
+                    width: 5.0,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
+                });
+                let sharp = [
+                    Vec2::new(15.0, 100.0),
+                    Vec2::new(80.0, 115.0),
+                    Vec2::new(20.0, 130.0),
+                ];
+                ui.add_shape(Shape::Polyline {
+                    points: &sharp,
+                    colors: PolylineColors::Single(cyan),
+                    width: 5.0,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
+                });
+            });
+    });
+    assert_matches_golden("polyline_bevel_join", &img, Tolerance::default());
 }

@@ -25,12 +25,15 @@ pub enum Shape<'a> {
     },
     /// Two-point stroked line — ergonomic shorthand for a 2-point
     /// `Polyline { Single(color) }`. Lowers to `ShapeRecord::Polyline`
-    /// at authoring time; there's no `ShapeRecord::Line`.
+    /// at authoring time; there's no `ShapeRecord::Line`. `cap`
+    /// applies to both endpoints; `join` is unused (no interior).
     Line {
         a: Vec2,
         b: Vec2,
         width: f32,
         color: Color,
+        cap: LineCap,
+        join: LineJoin,
     },
     /// Stroked polyline with per-vertex or per-segment coloring. The
     /// framework copies `points` and `colors` into the active tree's
@@ -41,6 +44,8 @@ pub enum Shape<'a> {
         points: &'a [Vec2],
         colors: PolylineColors<'a>,
         width: f32,
+        cap: LineCap,
+        join: LineJoin,
     },
     Text {
         local_rect: Option<Rect>,
@@ -85,16 +90,16 @@ pub(crate) enum ShapeRecord {
     /// length depends on `color_mode`: 1 for `Single`,
     /// `points.len()` for `PerPoint`, `points.len() - 1` for
     /// `PerSegment`. `content_hash` summarizes points+colors+mode
-    /// bytes for cache identity — two frames with identical content
-    /// share a hash even though their span offsets differ. `bbox` is
-    /// the axis-aligned bounds of `points` in owner-relative
-    /// (record) coords — derived, not authoritative; the encoder
-    /// translates it into cmd-buffer coords by adding the owner
-    /// rect's origin. Computed at lowering time so the encoder hot
-    /// path stays a single `extend(map)` over the point slice.
+    /// +cap+join bytes for cache identity. `bbox` is the
+    /// axis-aligned bounds of `points` in owner-relative coords —
+    /// the encoder translates it into cmd-buffer coords by adding
+    /// the owner rect origin. `cap` and `join` are user-picked
+    /// stroke-style enums; tessellator branches on them.
     Polyline {
         width: f32,
         color_mode: ColorMode,
+        cap: LineCap,
+        join: LineJoin,
         points: Span,
         colors: Span,
         bbox: Rect,
@@ -203,6 +208,92 @@ impl ShapeArenas {
     }
 }
 
+/// Endpoint cap style for stroked [`Shape::Line`] / [`Shape::Polyline`].
+/// `#[repr(u8)]` with stable discriminants so cache keys don't
+/// shift across reorderings; `pub` because it's user-facing.
+///
+/// - `Butt` — no extension. The stroke ends exactly at the
+///   endpoint. Default.
+/// - `Square` — extend by `width / 2` along the segment direction.
+///   The end face is flat and perpendicular to the segment.
+///
+/// `Round` is reserved for a follow-up (requires fan-tessellation).
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum LineCap {
+    #[default]
+    Butt = 0,
+    Square = 1,
+}
+
+/// Pod wire form for [`LineCap`]. See [`ColorModeBits`].
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct LineCapBits(u8);
+
+impl LineCapBits {
+    #[inline]
+    pub(crate) const fn new(v: LineCap) -> Self {
+        Self(v as u8)
+    }
+    #[inline]
+    pub(crate) const fn get(self) -> LineCap {
+        LineCap::from_u8(self.0)
+    }
+}
+
+impl LineCap {
+    /// Decode the discriminant carried by `DrawPolylinePayload`.
+    /// Caller invariant: encoder only ever writes valid `as u8`
+    /// values; an out-of-range byte means corrupted cmd buffer.
+    pub(crate) const fn from_u8(v: u8) -> Self {
+        match v {
+            0 => LineCap::Butt,
+            1 => LineCap::Square,
+            _ => panic!("invalid LineCap discriminant in cmd buffer"),
+        }
+    }
+}
+
+/// Interior-join style for [`Shape::Polyline`]. Default is `Miter`
+/// — matches the SVG convention: try a sharp miter corner, fall
+/// back to a bevel when the miter factor would exceed
+/// `MITER_LIMIT` (4.0). `Bevel` forces a flat corner at every
+/// join regardless of angle. `Round` is reserved for a follow-up.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum LineJoin {
+    #[default]
+    Miter = 0,
+    Bevel = 1,
+}
+
+/// Pod wire form for [`LineJoin`]. See [`ColorModeBits`].
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct LineJoinBits(u8);
+
+impl LineJoinBits {
+    #[inline]
+    pub(crate) const fn new(v: LineJoin) -> Self {
+        Self(v as u8)
+    }
+    #[inline]
+    pub(crate) const fn get(self) -> LineJoin {
+        LineJoin::from_u8(self.0)
+    }
+}
+
+impl LineJoin {
+    pub(crate) const fn from_u8(v: u8) -> Self {
+        match v {
+            0 => LineJoin::Miter,
+            1 => LineJoin::Bevel,
+            _ => panic!("invalid LineJoin discriminant in cmd buffer"),
+        }
+    }
+}
+
 /// Storage tag for [`ShapeRecord::Polyline`]. `u8` for compactness
 /// on the record; promoted to `u32` in `DrawPolylinePayload` to
 /// keep that struct Pod-aligned. Discriminants are stable
@@ -214,6 +305,39 @@ pub(crate) enum ColorMode {
     Single = 0,
     PerPoint = 1,
     PerSegment = 2,
+}
+
+/// Pod-safe wire form for [`ColorMode`] inside payload structs.
+/// A `#[repr(u8)]` enum with N variants isn't `bytemuck::Pod` —
+/// only N out of 256 bit patterns are valid — so payloads can't
+/// store the enum directly. This `#[repr(transparent)]` wrapper
+/// is bit-identical to `u8`, fully Pod, and gives compile-time
+/// distinction from raw bytes so the encoder can't write a
+/// `cap` byte into a `color_mode` slot.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct ColorModeBits(u8);
+
+impl ColorModeBits {
+    #[inline]
+    pub(crate) const fn new(v: ColorMode) -> Self {
+        Self(v as u8)
+    }
+    #[inline]
+    pub(crate) const fn get(self) -> ColorMode {
+        ColorMode::from_u8(self.0)
+    }
+}
+
+impl ColorMode {
+    pub(crate) const fn from_u8(v: u8) -> Self {
+        match v {
+            0 => ColorMode::Single,
+            1 => ColorMode::PerPoint,
+            2 => ColorMode::PerSegment,
+            _ => panic!("invalid ColorMode discriminant in cmd buffer"),
+        }
+    }
 }
 
 /// Wrap mode for [`ShapeRecord::Text`].
@@ -252,17 +376,13 @@ impl Hash for ShapeRecord {
                 fill.hash(h);
                 stroke.hash(h);
             }
-            ShapeRecord::Polyline {
-                width,
-                color_mode,
-                points: _,
-                colors: _,
-                bbox: _,
-                content_hash,
-            } => {
+            ShapeRecord::Polyline { content_hash, .. } => {
+                // `content_hash` already covers width + color_mode +
+                // cap + join + points + colors (computed in
+                // `forest::lower_polyline`). bbox is derived from
+                // points; spans are frame-local — neither belongs
+                // in cache identity.
                 h.write_u8(1);
-                h.write_u32(width.to_bits());
-                h.write_u8(*color_mode as u8);
                 h.write_u64(*content_hash);
             }
             ShapeRecord::Text {
@@ -339,6 +459,7 @@ impl Shape<'_> {
                 points,
                 colors,
                 width,
+                ..
             } => {
                 if noop_f32(*width) || points.len() < 2 {
                     return true;

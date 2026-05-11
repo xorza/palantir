@@ -5,11 +5,10 @@ use super::cmd_buffer::{
 use crate::layout::types::display::Display;
 use crate::primitives::corners::Corners;
 use crate::primitives::mesh::MeshVertex;
-use crate::primitives::stroke_tessellate::tessellate_polyline_aa;
+use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, TextRun};
-use crate::shape::ColorMode;
 use glam::{UVec2, Vec2};
 
 /// Owns the four-variable invariant that drives `out.groups`
@@ -322,15 +321,9 @@ impl Composer {
                 }
                 CmdKind::DrawPolyline => {
                     let p: DrawPolylinePayload = cmds.read(start);
-                    let mode = match p.color_mode {
-                        0 => ColorMode::Single,
-                        1 => ColorMode::PerPoint,
-                        2 => ColorMode::PerSegment,
-                        _ => unreachable!(
-                            "invalid ColorMode {} in DrawPolylinePayload",
-                            p.color_mode
-                        ),
-                    };
+                    let mode = p.color_mode.get();
+                    let cap = p.cap.get();
+                    let join = p.join.get();
                     let width_phys = p.width * current_transform.scale * scale;
 
                     // Pre-transform scissor cull. Encoder shipped a
@@ -385,8 +378,12 @@ impl Composer {
                     tessellate_polyline_aa(
                         &self.polyline_scratch,
                         src_colors,
-                        mode,
-                        width_phys,
+                        StrokeStyle {
+                            mode,
+                            cap,
+                            join,
+                            width_phys,
+                        },
                         &mut out.meshes.arena.vertices,
                         &mut out.meshes.arena.indices,
                     );

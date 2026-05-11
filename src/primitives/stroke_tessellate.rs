@@ -1,6 +1,6 @@
 use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
-use crate::shape::ColorMode;
+use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::Vec2;
 
 const HALF_FRINGE: f32 = 0.5;
@@ -44,17 +44,34 @@ const MITER_LIMIT: f32 = 4.0;
 /// before calling and passes it as `MeshDraw.vertices.start`,
 /// which becomes the wgpu `base_vertex`. Multiple calls into the
 /// same vecs concatenate independent index blocks.
+/// Stroke configuration bundle. Keeps [`tessellate_polyline_aa`]'s
+/// signature at 5 args (vs 8) — the four style/mode params travel
+/// together from `DrawPolylinePayload` decode in the composer
+/// straight into the tessellator.
+#[derive(Clone, Copy)]
+pub(crate) struct StrokeStyle {
+    pub(crate) mode: ColorMode,
+    pub(crate) cap: LineCap,
+    pub(crate) join: LineJoin,
+    pub(crate) width_phys: f32,
+}
+
 pub(crate) fn tessellate_polyline_aa(
     points: &[Vec2],
     colors: &[Color],
-    mode: ColorMode,
-    width_phys: f32,
+    style: StrokeStyle,
     out_verts: &mut Vec<MeshVertex>,
     out_indices: &mut Vec<u16>,
 ) {
     if points.len() < 2 {
         return;
     }
+    let StrokeStyle {
+        mode,
+        cap,
+        join,
+        width_phys,
+    } = style;
     debug_assert!(matches_mode(points.len(), colors.len(), mode));
 
     let half_geom = (width_phys * 0.5).max(HALF_FRINGE);
@@ -63,19 +80,25 @@ pub(crate) fn tessellate_polyline_aa(
     let inner_offset = half_geom;
 
     let n = points.len();
-    let verts_per_call = match mode {
-        ColorMode::Single | ColorMode::PerPoint => n * 4,
-        ColorMode::PerSegment => 8 * n - 8,
-    };
+    // Worst-case vert count across all modes: 8 per point (Single
+    // + PerPoint with every interior beveled, or PerSegment which
+    // always doubles interior points). Front-loaded check so
+    // emit_per_segment can use straight arithmetic; emit_simple
+    // also has a per-push `checked_add` for defense in depth.
     assert!(
-        verts_per_call <= u16::MAX as usize,
-        "polyline too long for u16 indices ({n} points, {verts_per_call} verts)"
+        8 * n <= u16::MAX as usize,
+        "polyline too long for u16 indices ({n} points)"
     );
 
     let geo = Geo {
         outer_offset,
         inner_offset,
         alpha_scale,
+        cap_extension: match cap {
+            LineCap::Butt => 0.0,
+            LineCap::Square => inner_offset,
+        },
+        force_bevel: matches!(join, LineJoin::Bevel),
     };
     match mode {
         ColorMode::Single | ColorMode::PerPoint => {
@@ -87,16 +110,18 @@ pub(crate) fn tessellate_polyline_aa(
     }
 }
 
-/// Geometry parameters shared by both emit paths. Bundled into a
-/// struct so the pass-through signatures stay narrow (clippy's
-/// too-many-arguments lint is real; the bundle also documents the
-/// invariant that these three values come together from
-/// [`tessellate_polyline_aa`]'s setup block).
+/// Geometry + style parameters shared by both emit paths. Pre-
+/// computed in [`tessellate_polyline_aa`]'s setup so the inner
+/// loops just read the resolved values. Includes the `cap` /
+/// `join` enums so the emit functions don't grow argument lists
+/// (clippy's too-many-arguments lint is real).
 #[derive(Clone, Copy)]
 struct Geo {
     outer_offset: f32,
     inner_offset: f32,
     alpha_scale: f32,
+    cap_extension: f32,
+    force_bevel: bool,
 }
 
 /// Length check matching [`tessellate_polyline_aa`]'s contract.
@@ -119,8 +144,17 @@ fn pick_color(colors: &[Color], i: usize, mode: ColorMode) -> Color {
     }
 }
 
-/// Single + PerPoint share geometry: one cross-section per input
-/// point, four verts each, three quads per segment.
+/// Single + PerPoint emission: one cross-section per input point
+/// for non-sharp joins; two cross-sections (a bevel) when the miter
+/// factor would exceed [`MITER_LIMIT`]. A miter-clamp produces a
+/// visible cut-off at very sharp angles; the bevel cleanly fills
+/// the corner with a bridging quad on the convex side.
+///
+/// Vertex layout per interior point: 4 verts if mitered, 8 if
+/// beveled. Endpoints are always 4. Total = `4*N + 4*B` where `B`
+/// is the number of beveled joins. Strip indexing tracks the
+/// per-point block offset via the `point_offsets` table built in
+/// pass 1.
 fn emit_simple(
     points: &[Vec2],
     colors: &[Color],
@@ -130,16 +164,130 @@ fn emit_simple(
     out_indices: &mut Vec<u16>,
 ) {
     let n = points.len();
+    // `geo.force_bevel` forces every interior point to bevel
+    // (LineJoin::Bevel); Miter mode still falls back at sharp
+    // angles via `is_sharp_join`. `geo.cap_extension` is 0 for
+    // Butt caps, `half_geom` for Square — geometry-only, no
+    // forward fringe (accepted aliasing tradeoff at the cap edge).
+    let mut cursor: u16 = 0;
+    let mut prev_offset: u16 = 0;
+    let mut prev_was_bevel = false;
+    let mut prev_seg_normal: Option<Vec2> = None;
+
     for i in 0..n {
-        let (normal, ext) = miter_normal(points, i);
+        let next_seg_normal = if i + 1 < n {
+            Some(seg_normal(points[i], points[i + 1]))
+        } else {
+            None
+        };
+        let is_bevel = match (prev_seg_normal, next_seg_normal) {
+            (Some(np), Some(nn)) => geo.force_bevel || is_sharp_join(np, nn),
+            _ => false,
+        };
+
+        let current_offset = cursor;
         let color = scale_alpha(pick_color(colors, i, mode), geo.alpha_scale);
-        push_cross_section(points[i], normal, ext, geo, color, out_verts);
+
+        // Verts at point `i`.
+        match (prev_seg_normal, next_seg_normal) {
+            (Some(np), Some(nn)) if is_bevel => {
+                push_cross_section(points[i], np, 1.0, geo, color, out_verts);
+                push_cross_section(points[i], nn, 1.0, geo, color, out_verts);
+            }
+            (Some(np), Some(nn)) => {
+                let (normal, ext) = miter_bisector(np, nn);
+                push_cross_section(points[i], normal, ext, geo, color, out_verts);
+            }
+            (None, Some(nn)) => {
+                // Start endpoint: extend backward along segment 0.
+                let p = points[i] - forward_of(nn) * geo.cap_extension;
+                push_cross_section(p, nn, 1.0, geo, color, out_verts);
+            }
+            (Some(np), None) => {
+                // End endpoint: extend forward past the last segment.
+                let p = points[i] + forward_of(np) * geo.cap_extension;
+                push_cross_section(p, np, 1.0, geo, color, out_verts);
+            }
+            (None, None) => unreachable!("polyline length < 2 short-circuits earlier"),
+        }
+        cursor = cursor
+            .checked_add(if is_bevel { 8 } else { 4 })
+            .expect("polyline too long for u16 indices — bevel vertex count exceeded 65535");
+
+        // Bevel bridge at this point, if beveled. References the
+        // two cross-section blocks we just pushed.
+        if is_bevel {
+            let np = prev_seg_normal.unwrap();
+            let nn = next_seg_normal.unwrap();
+            push_bevel_bridge(current_offset, current_offset + 4, np, nn, out_indices);
+        }
+
+        // Strip for segment `(i-1, i)`: leading block at point i-1
+        // is `prev_offset + 4` if i-1 was beveled (use the leading
+        // duplicate), else `prev_offset`. Trailing block at point
+        // i is always `current_offset` — the first block at i.
+        if i > 0 {
+            let leading = prev_offset + if prev_was_bevel { 4 } else { 0 };
+            push_strip_indices(leading, current_offset, out_indices);
+        }
+
+        prev_offset = current_offset;
+        prev_was_bevel = is_bevel;
+        prev_seg_normal = next_seg_normal;
     }
-    for seg in 0..(n - 1) {
-        let a = (seg * 4) as u16;
-        let b = ((seg + 1) * 4) as u16;
-        push_strip_indices(a, b, out_indices);
+}
+
+/// True iff the miter factor at this join would exceed
+/// [`MITER_LIMIT`] — i.e. the inverse cosine of the half-angle
+/// breaks the limit. Antiparallel segments (`cos_half ≈ 0`) count
+/// as sharp.
+#[inline]
+fn is_sharp_join(normal_prev: Vec2, normal_next: Vec2) -> bool {
+    let sum = normal_prev + normal_next;
+    let len_sq = sum.length_squared();
+    if len_sq < 1e-6 {
+        return true;
     }
+    let bisector = sum / len_sq.sqrt();
+    let cos_half = bisector.dot(normal_prev);
+    cos_half < 1.0 / MITER_LIMIT
+}
+
+/// Bisector direction + miter extension factor (unclamped). Caller
+/// must have already determined this join is *not* sharp via
+/// [`is_sharp_join`] — otherwise the returned ext could be
+/// arbitrarily large.
+#[inline]
+fn miter_bisector(normal_prev: Vec2, normal_next: Vec2) -> (Vec2, f32) {
+    let sum = normal_prev + normal_next;
+    let bisector = sum / sum.length();
+    let cos_half = bisector.dot(normal_prev);
+    (bisector, 1.0 / cos_half)
+}
+
+/// Bridge the convex-side gap at a beveled join. `trailing_block`
+/// closes the incoming segment (normal `normal_prev`);
+/// `leading_block` opens the outgoing segment (normal
+/// `normal_next`). The cross product of the two normals picks the
+/// convex side: positive → CCW turn → convex on `-normal` side
+/// (verts 2,3 in the cross-section); negative → CW turn → convex
+/// on `+normal` side (verts 0,1). Emits one quad (2 tris) joining
+/// the inner-edge + outer-fringe verts on that side. Mesh pipeline
+/// doesn't cull, so winding is informational only.
+fn push_bevel_bridge(
+    trailing_block: u16,
+    leading_block: u16,
+    normal_prev: Vec2,
+    normal_next: Vec2,
+    out: &mut Vec<u16>,
+) {
+    let cross = normal_prev.perp_dot(normal_next);
+    let (inner_off, outer_off) = if cross > 0.0 { (2, 3) } else { (1, 0) };
+    let t_inner = trailing_block + inner_off;
+    let t_outer = trailing_block + outer_off;
+    let l_inner = leading_block + inner_off;
+    let l_outer = leading_block + outer_off;
+    out.extend_from_slice(&[t_inner, t_outer, l_outer, t_inner, l_outer, l_inner]);
 }
 
 /// Per-segment paints each segment in a solid block. Interior
@@ -167,10 +315,18 @@ fn emit_per_segment(
     let n = points.len();
     let segments = n - 1;
 
-    let (n0, _e0) = miter_normal(points, 0);
+    // Roll the segment normal forward across the loop so each
+    // segment's perpendicular is computed once, not twice. `np`
+    // is the segment ENDING at the current point; `nn` (looked up
+    // each iteration for the segment AHEAD) becomes the next
+    // iteration's `np`.
+    let mut np = seg_normal(points[0], points[1]);
+
+    // Start endpoint, cap-shifted backward along segment 0.
+    let p0 = points[0] - forward_of(np) * geo.cap_extension;
     push_cross_section(
-        points[0],
-        n0,
+        p0,
+        np,
         1.0,
         geo,
         scale_alpha(colors[0], geo.alpha_scale),
@@ -178,32 +334,45 @@ fn emit_per_segment(
     );
 
     for i in 1..n - 1 {
-        let (normal, ext) = miter_normal(points, i);
-        // Trailing cross-section: closes segment i-1 with its color.
+        // PerSegment always doubles interior points for color
+        // separation; bevel/miter choice only affects the
+        // *position* of those duplicates. Sharp joins (or
+        // `LineJoin::Bevel`) emit both with their own segment
+        // normal at ext=1; mitered joins share the bisector
+        // direction with ext factor.
+        let nn = seg_normal(points[i], points[i + 1]);
+        let beveled = geo.force_bevel || is_sharp_join(np, nn);
+        let (trailing_normal, trailing_ext, leading_normal, leading_ext) = if beveled {
+            (np, 1.0, nn, 1.0)
+        } else {
+            let (b, ext) = miter_bisector(np, nn);
+            (b, ext, b, ext)
+        };
         push_cross_section(
             points[i],
-            normal,
-            ext,
+            trailing_normal,
+            trailing_ext,
             geo,
             scale_alpha(colors[i - 1], geo.alpha_scale),
             out_verts,
         );
-        // Leading cross-section: opens segment i with its color.
-        // Same position + miter — only color differs.
         push_cross_section(
             points[i],
-            normal,
-            ext,
+            leading_normal,
+            leading_ext,
             geo,
             scale_alpha(colors[i], geo.alpha_scale),
             out_verts,
         );
+        np = nn;
     }
 
-    let (nl, _el) = miter_normal(points, n - 1);
+    // End endpoint, cap-shifted forward along the last segment
+    // (`np` is now the segment ending at `points[n-1]`).
+    let pl = points[n - 1] + forward_of(np) * geo.cap_extension;
     push_cross_section(
-        points[n - 1],
-        nl,
+        pl,
+        np,
         1.0,
         geo,
         scale_alpha(colors[segments - 1], geo.alpha_scale),
@@ -278,29 +447,11 @@ fn scale_alpha(c: Color, s: f32) -> Color {
     }
 }
 
-/// Per-point miter direction + extension. Endpoints return the
-/// adjacent segment's normal with `ext = 1`. Interior points
-/// return the bisector normal with `ext = 1/cos(theta/2)`,
-/// clamped to [`MITER_LIMIT`]. Antiparallel segments
-/// (`cos(theta/2) ≈ 0`) fall back to one side's normal.
-fn miter_normal(points: &[Vec2], i: usize) -> (Vec2, f32) {
-    let n = points.len();
-    let prev = (i > 0).then(|| seg_normal(points[i - 1], points[i]));
-    let next = (i + 1 < n).then(|| seg_normal(points[i], points[i + 1]));
-    match (prev, next) {
-        (Some(a), Some(b)) => {
-            let sum = a + b;
-            let len_sq = sum.length_squared();
-            if len_sq < 1e-6 {
-                return (a, 1.0);
-            }
-            let bisector = sum / len_sq.sqrt();
-            let cos_half = bisector.dot(a).max(1.0 / MITER_LIMIT);
-            (bisector, 1.0 / cos_half)
-        }
-        (Some(only), None) | (None, Some(only)) => (only, 1.0),
-        (None, None) => unreachable!("polyline length < 2 short-circuits earlier"),
-    }
+/// Convert a segment normal back to its forward direction.
+/// `normal = (-dy, dx)` ⇒ `forward = (dx, dy) = (normal.y, -normal.x)`.
+#[inline]
+fn forward_of(normal: Vec2) -> Vec2 {
+    Vec2::new(normal.y, -normal.x)
 }
 
 #[inline]
@@ -347,8 +498,12 @@ mod tests {
         tessellate_polyline_aa(
             &[Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0)],
             &[red()],
-            ColorMode::Single,
-            2.0,
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
             &mut v,
             &mut i,
         );
@@ -373,8 +528,12 @@ mod tests {
         tessellate_polyline_aa(
             &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
             &[red()],
-            ColorMode::Single,
-            0.3,
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 0.3,
+            },
             &mut v,
             &mut i,
         );
@@ -398,8 +557,12 @@ mod tests {
         tessellate_polyline_aa(
             &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(20.0, 0.0)],
             &[red(), green(), red()],
-            ColorMode::PerPoint,
-            2.0,
+            StrokeStyle {
+                mode: ColorMode::PerPoint,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
             &mut v,
             &mut i,
         );
@@ -419,8 +582,12 @@ mod tests {
         tessellate_polyline_aa(
             &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(20.0, 0.0)],
             &[red(), green()],
-            ColorMode::PerSegment,
-            2.0,
+            StrokeStyle {
+                mode: ColorMode::PerSegment,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
             &mut v,
             &mut i,
         );
@@ -452,8 +619,12 @@ mod tests {
         tessellate_polyline_aa(
             &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(20.0, 0.0)],
             &[red(), green()],
-            ColorMode::PerSegment,
-            2.0,
+            StrokeStyle {
+                mode: ColorMode::PerSegment,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
             &mut v,
             &mut i,
         );
@@ -466,17 +637,115 @@ mod tests {
         assert_eq!(&i[last..], &[10, 11, 15, 10, 15, 14]);
     }
 
+    /// Non-sharp join (≥ ~29° between segments) miters as before:
+    /// 4 verts per cross-section, no bevel bridge. Pin keeps the
+    /// bevel detection from triggering on routine 90° corners.
+    #[test]
+    fn shallow_join_stays_miter() {
+        let mut v = Vec::new();
+        let mut i = Vec::new();
+        // 90° corner: miter factor = sqrt(2) ≈ 1.414, far below limit 4.
+        tessellate_polyline_aa(
+            &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(10.0, 10.0)],
+            &[red()],
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
+            &mut v,
+            &mut i,
+        );
+        assert_eq!(v.len(), 12); // 4 + 4 + 4
+        assert_eq!(i.len(), 36); // 2 strips × 18
+    }
+
+    /// Sharp join (chevron, angle ≪ 29°) triggers bevel: interior
+    /// point gets two cross-sections (8 verts) + a bridge quad
+    /// (6 indices). Total verts = 4 + 8 + 4 = 16; indices = 2
+    /// strips × 18 + 1 bridge × 6 = 42.
+    #[test]
+    fn sharp_join_emits_bevel() {
+        let mut v = Vec::new();
+        let mut i = Vec::new();
+        // Near-180° fold at (10, 0). Half-angle cosine ≈ 0.02.
+        tessellate_polyline_aa(
+            &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(0.0, 0.5)],
+            &[red()],
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
+            &mut v,
+            &mut i,
+        );
+        assert_eq!(v.len(), 16);
+        assert_eq!(i.len(), 42);
+        // Bridge quad (6 indices, single-pass emits it before the
+        // strip closing back to the previous point) references
+        // only the trailing + leading blocks at the beveled
+        // interior point — never the endpoint blocks.
+        let bridge = &i[0..6];
+        for &idx in bridge {
+            assert!(
+                (4..12).contains(&idx),
+                "bevel bridge index {idx} out of trailing/leading block range"
+            );
+        }
+    }
+
+    /// Antiparallel turn (exact 180°) is also classified sharp —
+    /// the antiparallel guard inside `is_sharp_join` short-circuits
+    /// to `true` rather than dividing by zero. Geometry: bevel
+    /// with both cross-sections at the same point.
+    #[test]
+    fn antiparallel_turn_is_sharp() {
+        let mut v = Vec::new();
+        let mut i = Vec::new();
+        tessellate_polyline_aa(
+            &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(-5.0, 0.0)],
+            &[red()],
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
+            &mut v,
+            &mut i,
+        );
+        assert_eq!(v.len(), 16, "antiparallel join must bevel");
+    }
+
     /// Degenerate input (< 2 points) emits nothing.
     #[test]
     fn under_two_points_emits_nothing() {
         let mut v = Vec::new();
         let mut i = Vec::new();
-        tessellate_polyline_aa(&[], &[red()], ColorMode::Single, 2.0, &mut v, &mut i);
+        tessellate_polyline_aa(
+            &[],
+            &[red()],
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
+            &mut v,
+            &mut i,
+        );
         tessellate_polyline_aa(
             &[Vec2::ZERO],
             &[red()],
-            ColorMode::Single,
-            2.0,
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
             &mut v,
             &mut i,
         );
@@ -493,8 +762,12 @@ mod tests {
         tessellate_polyline_aa(
             &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
             &[red()],
-            ColorMode::Single,
-            2.0,
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
             &mut v,
             &mut i,
         );

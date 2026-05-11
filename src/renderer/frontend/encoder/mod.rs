@@ -6,7 +6,7 @@ use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
-use crate::shape::ShapeRecord;
+use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits, ShapeRecord};
 use crate::ui::cascade::{Cascade, CascadeResult};
 use crate::ui::damage::region::DamageRegion;
 
@@ -127,6 +127,8 @@ fn emit_one_shape(
         ShapeRecord::Polyline {
             width,
             color_mode,
+            cap,
+            join,
             points,
             colors,
             bbox,
@@ -153,11 +155,14 @@ fn emit_one_shape(
                     size: bbox.size,
                 },
                 width: *width,
-                color_mode: *color_mode as u32,
                 points_start,
                 points_len: points.len,
                 colors_start,
                 colors_len: colors.len,
+                color_mode: ColorModeBits::new(*color_mode),
+                cap: LineCapBits::new(*cap),
+                join: LineJoinBits::new(*join),
+                ..bytemuck::Zeroable::zeroed()
             });
         }
         ShapeRecord::Mesh {

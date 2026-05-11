@@ -49,7 +49,7 @@ pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
 pub use renderer::backend::WgpuBackend;
 pub use renderer::frontend::FrameOutput;
-pub use shape::{PolylineColors, Shape, TextWrap};
+pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 pub use text::TextShaper;
 pub use text::cosmic::CosmicMeasure;
 pub use ui::Ui;
