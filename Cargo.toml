@@ -30,7 +30,7 @@ soa-rs = "*"
 strum = { version = "*", features = ["derive"] }
 serde = { version = "*", features = ["derive"] }
 toml = "*"
-tinyvec = "*"
+tinyvec = { version = "*", features = ["serde"] }
 
 [dev-dependencies]
 backtrace = "*"
