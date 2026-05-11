@@ -7,7 +7,6 @@ use crate::forest::element::Element;
 use crate::forest::seen_ids::SeenIds;
 use crate::forest::tree::{Layer, NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
-use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::shape::Shape;
 use glam::Vec2;
@@ -100,32 +99,16 @@ impl Forest {
         }
     }
 
-    /// Finalize every tree. `main_anchor` patches `Main`'s root slots
-    /// to the surface rect, and patches every side-layer root's
-    /// `anchor_rect.size` to the room from its `anchor` placement to
-    /// the surface bottom-right (so layout's "available" stays
-    /// bounded by the surface). Side-layer `min`s were stamped at
-    /// `push_layer` time.
-    pub(crate) fn end_frame(&mut self, main_anchor: Rect) {
+    /// Finalize every tree. Pure structural pass — `RootSlot.anchor`
+    /// is just a placement; the surface needed to derive each root's
+    /// "available" room is passed straight to `LayoutEngine::run`.
+    pub(crate) fn end_frame(&mut self) {
         assert_eq!(
             self.recording.current_layer,
             Layer::Main,
             "end_frame called with active layer {:?} — Ui::layer body forgot to return",
             self.recording.current_layer,
         );
-        for r in &mut self.trees[Layer::Main as usize].roots {
-            r.anchor_rect = main_anchor;
-        }
-        let surface_end = main_anchor.min + Vec2::new(main_anchor.size.w, main_anchor.size.h);
-        for layer in Layer::PAINT_ORDER {
-            if layer == Layer::Main {
-                continue;
-            }
-            for r in &mut self.trees[layer as usize].roots {
-                let rem = (surface_end - r.anchor_rect.min).max(Vec2::ZERO);
-                r.anchor_rect.size = Size::new(rem.x, rem.y);
-            }
-        }
         for layer in Layer::PAINT_ORDER {
             self.trees[layer as usize].end_frame();
         }
@@ -166,14 +149,16 @@ impl Forest {
         tree.shapes.add(shape);
     }
 
-    pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2) {
+    pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {
         assert_eq!(
             self.recording.current_layer,
             Layer::Main,
             "Ui::layer must be called from the Main scope (current: {:?})",
             self.recording.current_layer,
         );
-        self.trees[layer as usize].pending_anchor = anchor;
+        let tree = &mut self.trees[layer as usize];
+        tree.pending_anchor = anchor;
+        tree.pending_size = size;
         self.recording.push_scope(layer);
     }
 

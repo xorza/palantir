@@ -196,44 +196,55 @@ impl LayoutEngine {
         v
     }
 
-    /// Run measure + arrange for every root in every layer's tree.
-    /// Iterates trees in `Layer::PAINT_ORDER`; each tree's output
-    /// lands in `self.result[layer]` directly. Recursive
-    /// measure/arrange reads the active slot via `self.active_layer`.
-    pub(crate) fn run(&mut self, forest: &Forest, text: &TextShaper) -> &LayoutResult {
+    /// Run measure + arrange for every root in every layer's tree
+    /// against `surface` (the viewport rect). Iterates trees in
+    /// `Layer::PAINT_ORDER`; each tree's output lands in
+    /// `self.result[layer]` directly. Recursive measure/arrange reads
+    /// the active slot via `self.active_layer`.
+    pub(crate) fn run(
+        &mut self,
+        forest: &Forest,
+        surface: Rect,
+        text: &TextShaper,
+    ) -> &LayoutResult {
         assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
+        let surface_end = surface.min + glam::Vec2::new(surface.size.w, surface.size.h);
         for layer in Layer::PAINT_ORDER {
             let tree = forest.tree(layer);
             self.active_layer = layer;
             self.result[layer].resize_for(tree);
-            if !tree.is_empty() {
-                self.scratch.resize_for(tree);
-                for slot in &tree.roots {
-                    let root = NodeId(slot.first_node);
-                    let anchor = slot.anchor_rect;
-                    let desired = self.measure(tree, root, anchor.size, text);
-                    // Main: anchor is the surface; root paints the full
-                    // surface even if content is smaller (Fill semantics
-                    // for the implicit root, overflow grows past it).
-                    // Side layers: anchor is a placement hint, the root's
-                    // own Sizing governs its painted size.
-                    let size = if layer == Layer::Main {
-                        anchor.size.max(desired)
-                    } else {
-                        desired
-                    };
-                    self.arrange(
-                        tree,
-                        root,
-                        Rect {
-                            min: anchor.min,
-                            size,
-                        },
-                    );
-                }
+            if tree.is_empty() {
+                continue;
+            }
+            self.scratch.resize_for(tree);
+            for slot in &tree.roots {
+                let root = NodeId(slot.first_node);
+                // Main: implicit root paints the full surface (Fill
+                // semantic; arrange uses `available.max(desired)` so
+                // overflow grows past it). Side layers: `anchor` is a
+                // placement and `slot.size` is an optional cap; both
+                // axes clamp to the surface bottom-right so an
+                // oversized cap can't bleed past the viewport. The
+                // root's own `Sizing` governs the painted size within
+                // that available.
+                let (origin, available) = if layer == Layer::Main {
+                    (surface.min, surface.size)
+                } else {
+                    let rem = (surface_end - slot.anchor).max(glam::Vec2::ZERO);
+                    let avail_w = slot.size.map_or(rem.x, |s| s.w.min(rem.x));
+                    let avail_h = slot.size.map_or(rem.y, |s| s.h.min(rem.y));
+                    (slot.anchor, Size::new(avail_w, avail_h))
+                };
+                let desired = self.measure(tree, root, available, text);
+                let size = if layer == Layer::Main {
+                    available.max(desired)
+                } else {
+                    desired
+                };
+                self.arrange(tree, root, Rect { min: origin, size });
             }
         }
         assert_eq!(

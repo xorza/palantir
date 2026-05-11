@@ -202,7 +202,7 @@ impl Ui {
     /// discarded pass A still sees the painted frame's `prev`.
     pub(crate) fn record_phase(&mut self) -> bool {
         let surface = self.display.logical_rect();
-        self.forest.end_frame(surface);
+        self.forest.end_frame();
         // Sweep before `layout.run` so the measure cache compaction
         // sees a consistent live-set.
         self.forest.ids.diff_for_sweep();
@@ -212,7 +212,7 @@ impl Ui {
         self.state.sweep_removed(removed);
         self.anim.end_frame(removed);
 
-        self.layout.run(&self.forest, &self.text);
+        self.layout.run(&self.forest, surface, &self.text);
 
         std::mem::take(&mut self.relayout_requested)
     }
@@ -279,19 +279,21 @@ impl Ui {
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left
-    /// position). The body's "available" extends from `anchor` to
-    /// the surface bottom-right, so `Sizing::FILL` on the root fills
-    /// the remaining surface and `Hug` shrinks to content without
-    /// bleeding past the surface. Must be called at top-level (no
-    /// node open) — egui-style: finish the `Main` scope first, then
-    /// layer.
+    /// position). `size = None` makes the body's "available" extend
+    /// from `anchor` to the surface bottom-right; `size = Some(s)`
+    /// caps it at `s`, still clamped to the surface so an oversized
+    /// cap can't bleed past the viewport. The root's own `Sizing`
+    /// (Hug/Fill/Fixed) then governs the painted size within that
+    /// available. Must be called at top-level (no node open) —
+    /// egui-style: finish the `Main` scope first, then layer.
     pub fn layer<R>(
         &mut self,
         layer: Layer,
         anchor: glam::Vec2,
+        size: Option<crate::primitives::size::Size>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        self.forest.push_layer(layer, anchor);
+        self.forest.push_layer(layer, anchor, size);
         let result = body(self);
         self.forest.pop_layer();
         result

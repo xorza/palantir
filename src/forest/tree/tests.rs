@@ -244,7 +244,7 @@ fn empty_tree_has_no_hashes() {
     // empty. (Layout / end_frame normally need a root, so we
     // intentionally skip them; just call compute_hashes directly to
     // verify the empty-tree case.)
-    ui.forest.end_frame(Rect::ZERO);
+    ui.forest.end_frame();
 
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 0);
     assert!(ui.forest.tree(Layer::Main).rollups.node.is_empty());
@@ -1026,7 +1026,7 @@ fn ui_layer_records_popup_into_separate_tree() {
         Frame::new().id_salt("main-leaf").size(50.0).show(ui);
         Frame::new().id_salt("main-leaf-2").size(30.0).show(ui);
     });
-    ui.layer(Layer::Popup, popup_anchor, |ui| {
+    ui.layer(Layer::Popup, popup_anchor, None, |ui| {
         Panel::vstack().id_salt("popup-root").show(ui, |ui| {
             Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
         });
@@ -1040,14 +1040,11 @@ fn ui_layer_records_popup_into_separate_tree() {
     assert_eq!(main_tree.roots[0].first_node, 0);
     assert_eq!(popup_tree.roots[0].first_node, 0);
 
-    // Popup's `min` passes through from `Ui::layer`; `size` is
-    // patched in `end_frame` to the remaining surface from `min`.
-    let r = popup_tree.roots[0].anchor_rect;
-    assert_eq!(r.min, popup_anchor);
-    assert_eq!(
-        r.size,
-        crate::primitives::size::Size::new(400.0 - popup_anchor.x, 400.0 - popup_anchor.y),
-    );
+    // Popup's anchor passes through from `Ui::layer`; no size cap
+    // was supplied so the layout pass derives "available" from the
+    // surface at run time.
+    assert_eq!(popup_tree.roots[0].anchor, popup_anchor);
+    assert_eq!(popup_tree.roots[0].size, None);
 
     // Each tree is self-contained: Main's root subtree covers only
     // Main records, popup's covers only popup records.
@@ -1063,6 +1060,56 @@ fn ui_layer_records_popup_into_separate_tree() {
     );
 }
 
+/// Pin `Ui::layer`'s optional size cap. `RootSlot.size` rides through
+/// to `LayoutEngine::run` and selects the overlay's measured
+/// "available":
+/// - `None` → fill from anchor to the surface bottom-right;
+/// - `Some(s)` smaller than `surface - anchor` → cap wins;
+/// - `Some(s)` larger than `surface - anchor` → clamped to viewport
+///   (oversized caps must never bleed past the surface).
+///
+/// Table-driven against a Fill/Fill overlay panel so the body's
+/// arranged width/height equal "available" — the cap branch and the
+/// viewport-clamp branch are both visible in `rect.size`.
+#[test]
+fn ui_layer_size_caps_overlay_available() {
+    use crate::primitives::size::Size;
+    use crate::support::testing::begin;
+    const SURFACE: UVec2 = UVec2::new(400, 300);
+    let anchor = glam::Vec2::new(50.0, 40.0);
+    // (cap, expected_size). Remaining viewport = (350, 260).
+    let cases: &[(Option<Size>, Size)] = &[
+        (None, Size::new(350.0, 260.0)),
+        // Cap smaller on both axes → cap wins.
+        (Some(Size::new(120.0, 80.0)), Size::new(120.0, 80.0)),
+        // Cap larger on both axes → clamp to remaining.
+        (Some(Size::new(9999.0, 9999.0)), Size::new(350.0, 260.0)),
+        // Mixed: width capped, height oversized.
+        (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 260.0)),
+    ];
+    let mut ui = ui_at(SURFACE);
+    for (cap, expected) in cases {
+        begin(&mut ui, SURFACE);
+        Panel::vstack()
+            .id_salt("main")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(&mut ui, |_| {});
+        ui.layer(Layer::Popup, anchor, *cap, |ui| {
+            Panel::vstack()
+                .id_salt("overlay-root")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |_| {});
+        });
+        ui.record_phase();
+        ui.paint_phase();
+        let popup_tree = ui.forest.tree(Layer::Popup);
+        let root = popup_tree.roots[0].first_node as usize;
+        let rect = ui.layout.result[Layer::Popup].rect[root];
+        assert_eq!(rect.min, anchor, "cap={cap:?}: anchor placement preserved");
+        assert_eq!(rect.size, *expected, "cap={cap:?}: available branch");
+    }
+}
+
 /// Pin: an empty `Ui::layer` body records no nodes; the popup tree
 /// stays empty while Main's tree is unaffected.
 #[test]
@@ -1071,7 +1118,7 @@ fn empty_popup_body_leaves_popup_tree_empty() {
     Panel::vstack().id_salt("only-main").show(&mut ui, |ui| {
         Frame::new().id_salt("leaf").size(20.0).show(ui);
     });
-    ui.layer(Layer::Popup, glam::Vec2::ZERO, |_| {});
+    ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |_| {});
     ui.record_phase();
     ui.paint_phase();
     assert_eq!(ui.forest.tree(Layer::Main).roots.len(), 1);
@@ -1089,7 +1136,7 @@ fn empty_popup_body_leaves_popup_tree_empty() {
 fn forest_independence_across_recording_orders() {
     let popup_anchor = glam::Vec2::new(10.0, 10.0);
     let mut ui_p_first = ui_at(UVec2::new(400, 400));
-    ui_p_first.layer(Layer::Popup, popup_anchor, |ui| {
+    ui_p_first.layer(Layer::Popup, popup_anchor, None, |ui| {
         Panel::vstack().id_salt("popup-root").show(ui, |ui| {
             Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
         });
@@ -1107,7 +1154,7 @@ fn forest_independence_across_recording_orders() {
         .show(&mut ui_m_first, |ui| {
             Frame::new().id_salt("main-leaf").size(50.0).show(ui);
         });
-    ui_m_first.layer(Layer::Popup, popup_anchor, |ui| {
+    ui_m_first.layer(Layer::Popup, popup_anchor, None, |ui| {
         Panel::vstack().id_salt("popup-root").show(ui, |ui| {
             Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
         });
@@ -1134,7 +1181,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     let popup_anchor = glam::Vec2::new(50.0, 100.0);
     Panel::vstack().id_salt("outer-main").show(&mut ui, |ui| {
         Button::new().id_salt("trigger").label("menu").show(ui);
-        ui.layer(Layer::Popup, popup_anchor, |ui| {
+        ui.layer(Layer::Popup, popup_anchor, None, |ui| {
             Panel::vstack().id_salt("popup-body").show(ui, |ui| {
                 Button::new().id_salt("popup-item").label("copy").show(ui);
             });
@@ -1217,7 +1264,7 @@ fn mid_recording_popup_keeps_trees_independent() {
             ui.add_shape(marker(1));
             Frame::new().id_salt("mc2").size(20.0).show(ui);
             ui.add_shape(marker(2));
-            ui.layer(Layer::Popup, popup_anchor, |ui| {
+            ui.layer(Layer::Popup, popup_anchor, None, |ui| {
                 Panel::vstack().id_salt("popup-root").show(ui, |ui| {
                     ui.add_shape(marker(10));
                     Frame::new().id_salt("popup-leaf").size(10.0).show(ui);

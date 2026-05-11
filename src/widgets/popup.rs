@@ -93,7 +93,7 @@ impl Popup {
         // outside the body's rect fall through to the eater.
         // Anchored at the surface origin with Fill/Fill, so it
         // covers the whole surface regardless of `Display`.
-        ui.layer(Layer::Popup, Vec2::ZERO, |ui| {
+        ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
             Frame::new()
                 .id(eater_id)
                 .size((Sizing::FILL, Sizing::FILL))
@@ -108,7 +108,7 @@ impl Popup {
             element.clip = ui.theme.panel_clip;
         }
         let mut body_resp: Option<Response> = None;
-        ui.layer(Layer::Popup, self.anchor, |ui| {
+        ui.layer(Layer::Popup, self.anchor, None, |ui| {
             let node = ui.node(element, body);
             body_resp = Some(Response {
                 node,
