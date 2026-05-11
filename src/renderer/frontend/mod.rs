@@ -157,22 +157,15 @@ impl Frontend {
     /// and are accessed via split borrows by the caller (so it can
     /// hold `&buffer` and `&mut gradient_atlas` simultaneously when
     /// constructing `FrameOutput`).
-    pub(crate) fn build(
-        &mut self,
-        forest: &Forest,
-        results: &Layout,
-        cascades: &CascadeResult,
-        damage_filter: Option<&DamageRegion>,
-        display: &Display,
-    ) {
+    pub(crate) fn build(&mut self, frame: &RecordedFrame<'_>) {
         let cmds = self.encoder.encode(
-            forest,
-            results,
-            cascades,
-            damage_filter,
-            display.logical_rect(),
+            frame.forest,
+            frame.layout,
+            frame.cascades,
+            frame.damage_filter(),
+            frame.display.logical_rect(),
         );
         self.composer
-            .compose(cmds, display, &mut self.gradient_atlas);
+            .compose(cmds, &frame.display, &mut self.gradient_atlas);
     }
 }

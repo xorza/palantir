@@ -109,13 +109,7 @@ impl Host {
             can_skip_rendering: false,
             repaint_requested: frame.repaint_requested(),
         };
-        self.frontend.build(
-            frame.forest,
-            frame.layout,
-            frame.cascades,
-            frame.damage_filter(),
-            &frame.display,
-        );
+        self.frontend.build(&frame);
         self.pending = Some(PendingSubmit {
             damage: frame.damage,
             frame_state: frame.frame_state.clone(),
