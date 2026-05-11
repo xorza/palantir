@@ -5,7 +5,10 @@
 //! per-frame `Vec::new()` in those paths can't slip in unnoticed.
 
 use crate::harness::audit_steady_state;
-use palantir::{Color, Configure, Frame, Grid, Mesh, Panel, PolylineColors, Shape, Sizing, Track};
+use palantir::{
+    Color, Configure, Frame, Grid, LineCap, LineJoin, Mesh, Panel, PolylineColors, Shape, Sizing,
+    Track,
+};
 use std::rc::Rc;
 
 /// 16×16 grid of `Frame`s — 256 quads per frame. Stresses
@@ -57,6 +60,8 @@ fn polyline_static_alloc_free() {
                     points: &points,
                     colors: PolylineColors::Single(Color::WHITE),
                     width: 2.0,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
             });
     });

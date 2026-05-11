@@ -27,7 +27,7 @@ use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
-use crate::shape::ShapeArenas;
+use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits, ShapeArenas};
 use crate::text::TextCacheKey;
 use glam::Vec2;
 
@@ -95,34 +95,37 @@ pub(crate) struct DrawTextPayload {
 /// `u32` pairs so the payload is plain Pod — no `Span: Pod` needed.
 /// `origin` is the logical-px translation applied at compose time
 /// before baking the transform/DPI into physical-px verts.
-/// Stroked polyline payload (40 B). `width` is logical px; the
-/// composer scales it through the active transform + DPI before
-/// tessellation. Points + colors live in
-/// [`RenderCmdBuffer::polyline_points`] /
+/// Stroked polyline payload. `width` is logical px. Points +
+/// colors live in [`RenderCmdBuffer::polyline_points`] /
 /// [`RenderCmdBuffer::polyline_colors`]; `colors_len` is 1
 /// (broadcast), `points_len` (per-point), or `points_len - 1`
-/// (per-segment), selected by `color_mode` (a [`ColorMode`]
-/// promoted to `u32` for Pod alignment).
+/// (per-segment), selected by `color_mode`.
 ///
-/// `bbox` is the axis-aligned bounds of `points` in **logical
-/// (cmd-buffer) coords** — no width inflation, no transform
-/// applied. Computed by the encoder in a single pass while it
-/// streams points into the arena, so adding it is a constant-time
-/// cost regardless of point count. Composer transforms the 4
-/// corners (uniform-scale `TranslateScale` preserves AABBs),
-/// inflates by the physical-px outer-fringe offset, and
-/// short-circuits the per-point transform when the result misses
-/// the active scissor.
+/// `bbox` is the axis-aligned bounds of `points` in logical
+/// (cmd-buffer) coords. Composer transforms the 4 corners
+/// (uniform-scale `TranslateScale` preserves AABBs), inflates by
+/// the physical-px outer-fringe offset, and short-circuits the
+/// per-point transform when the result misses the active scissor.
+///
+/// `color_mode` / `cap` / `join` are `u8` storage tags. Trailing
+/// padding is injected by [`padding_struct::padding_struct`] so
+/// the struct stays a multiple of its alignment without
+/// hand-named `_pad` fields rotting when fields shift. Construct
+/// with `..bytemuck::Zeroable::zeroed()` to fill whatever padding
+/// the macro generated.
+#[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawPolylinePayload {
     pub(crate) bbox: Rect,
     pub(crate) width: f32,
-    pub(crate) color_mode: u32,
     pub(crate) points_start: u32,
     pub(crate) points_len: u32,
     pub(crate) colors_start: u32,
     pub(crate) colors_len: u32,
+    pub(crate) color_mode: ColorModeBits,
+    pub(crate) cap: LineCapBits,
+    pub(crate) join: LineJoinBits,
 }
 
 #[repr(C)]

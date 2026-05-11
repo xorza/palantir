@@ -11,7 +11,7 @@ use crate::forest::widget_id::WidgetId;
 use crate::layout::types::span::Span;
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
-use crate::shape::{ColorMode, PolylineColors, Shape, ShapeRecord};
+use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors, Shape, ShapeRecord};
 use glam::Vec2;
 use std::array;
 use std::hash::Hasher as _;
@@ -160,14 +160,28 @@ impl Forest {
                 fill,
                 stroke,
             },
-            Shape::Line { a, b, width, color } => {
-                lower_polyline(tree, &[a, b], PolylineColors::Single(color), width)
-            }
+            Shape::Line {
+                a,
+                b,
+                width,
+                color,
+                cap,
+                join,
+            } => lower_polyline(
+                tree,
+                &[a, b],
+                PolylineColors::Single(color),
+                width,
+                cap,
+                join,
+            ),
             Shape::Polyline {
                 points,
                 colors,
                 width,
-            } => lower_polyline(tree, points, colors, width),
+                cap,
+                join,
+            } => lower_polyline(tree, points, colors, width, cap, join),
             Shape::Text {
                 local_rect,
                 text,
@@ -279,6 +293,8 @@ fn lower_polyline(
     points: &[Vec2],
     colors: PolylineColors<'_>,
     width: f32,
+    cap: LineCap,
+    join: LineJoin,
 ) -> ShapeRecord {
     let (mode, color_slice): (ColorMode, &[Color]) = match colors {
         PolylineColors::Single(ref c) => (ColorMode::Single, std::slice::from_ref(c)),
@@ -313,18 +329,24 @@ fn lower_polyline(
     let mut h = FxHasher::new();
     h.write(bytemuck::cast_slice(points));
     h.write(bytemuck::cast_slice(color_slice));
+    h.write_u32(width.to_bits());
     h.write_u8(mode as u8);
+    h.write_u8(cap as u8);
+    h.write_u8(join as u8);
     let content_hash = h.finish();
 
     // Compute the owner-relative AABB once here so the encoder hot
-    // path stays a straight `extend(map)` — and so a future pass
-    // (damage-tightening / owner-rect-escape soundness) has a real
-    // per-shape rect to reach for.
+    // path stays a straight `extend(map)`. Note: doesn't include
+    // cap-extension; the composer inflates by the tessellator's
+    // outer-fringe offset which already covers half-width
+    // (sufficient for Butt and a tight upper bound for Square).
     let bbox = points_aabb(points);
 
     ShapeRecord::Polyline {
         width,
         color_mode: mode,
+        cap,
+        join,
         points: Span::new(p_start, points.len() as u32),
         colors: Span::new(c_start, color_slice.len() as u32),
         bbox,

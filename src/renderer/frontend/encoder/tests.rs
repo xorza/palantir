@@ -165,7 +165,7 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
 /// `add_shape` time.
 #[test]
 fn line_shape_emits_draw_polyline() {
-    use crate::shape::Shape;
+    use crate::shape::{LineCap, LineJoin, Shape};
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         ui.add_shape(Shape::Line {
@@ -173,6 +173,8 @@ fn line_shape_emits_draw_polyline() {
             b: Vec2::new(20.0, 0.0),
             width: 2.0,
             color: Color::rgb(1.0, 0.0, 0.0),
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
         });
         // Degenerate: filtered before reaching the cmd buffer.
         ui.add_shape(Shape::Line {
@@ -180,12 +182,16 @@ fn line_shape_emits_draw_polyline() {
             b: Vec2::new(10.0, 10.0),
             width: 0.0,
             color: Color::rgb(1.0, 0.0, 0.0),
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
         });
         ui.add_shape(Shape::Line {
             a: Vec2::new(0.0, 0.0),
             b: Vec2::new(10.0, 10.0),
             width: 2.0,
             color: Color::TRANSPARENT,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
         });
         Frame::new().id_salt("host").size(50.0).show(ui);
     });
