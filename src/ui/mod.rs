@@ -11,7 +11,6 @@ use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
 use crate::input::{InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
-use crate::layout::scroll::ScrollLayoutState;
 use crate::layout::types::display::Display;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
@@ -24,13 +23,6 @@ use crate::ui::debug_overlay::DebugOverlayConfig;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use std::time::Duration;
-
-/// Hard upper bound on per-frame `dt` derived from `now` deltas in
-/// [`Ui::run_frame`]. Anything longer (debugger pause, laptop suspend,
-/// dropped vsync) is clamped so animation tickers freeze for one frame
-/// instead of teleporting through state. `Ui::time` still tracks the
-/// host's true clock; only `Ui::dt` is clamped.
-pub(crate) const MAX_DT: f32 = 0.1;
 
 /// Recorder + input/response broker. Lives across frames; rebuilds the tree each frame
 /// while persisting input state via [`InputState`].
@@ -124,6 +116,13 @@ impl Default for Ui {
 }
 
 impl Ui {
+    /// Hard upper bound on per-frame `dt` derived from `now` deltas in
+    /// [`Self::run_frame`]. Anything longer (debugger pause, laptop
+    /// suspend, dropped vsync) is clamped so animation tickers freeze
+    /// for one frame instead of teleporting through state. `Self::time`
+    /// still tracks the host's true clock; only `Self::dt` is clamped.
+    pub(crate) const MAX_DT: f32 = 0.1;
+
     pub fn new() -> Self {
         Self {
             forest: Forest::default(),
@@ -335,7 +334,7 @@ impl Ui {
         mut build: impl FnMut(&mut Ui),
     ) -> FrameOutput<'_> {
         let raw_dt = now.saturating_sub(self.time);
-        self.dt = raw_dt.as_secs_f32().min(MAX_DT);
+        self.dt = raw_dt.as_secs_f32().min(Self::MAX_DT);
         self.time = now;
         // Bump frame_id once per host frame, NOT per pass. Pass B's
         // anim ticks see the same id as pass A's and short-circuit the
@@ -369,18 +368,6 @@ impl Ui {
         self.end_frame_paint_phase()
     }
 
-    /// Advance an animation row keyed by `(id, slot)`, returning the
-    /// current interpolated value. Generic over `T: Animatable` —
-    /// implemented for `f32`, `Vec2`, `Color`. First touch snaps
-    /// `current = target` (no animation on appearance). Subsequent
-    /// calls detect retarget and ease/spring toward the new target,
-    /// requesting a repaint each frame until settled.
-    ///
-    /// `slot` lets a single widget animate multiple values
-    /// independently (hover, press, focus, custom). Define slots as
-    /// `const` next to the widget's state struct.
-    ///
-    /// See `src/animation/animations.md` for the full design.
     /// Advance an animation row keyed by `(id, slot)`, returning the
     /// current interpolated value. Generic over `T: Animatable`
     /// (`f32`, `Vec2`, `Color`).
@@ -443,22 +430,6 @@ impl Ui {
     /// — that's a `WidgetId` collision, not a runtime condition.
     pub fn state_mut<T: Default + 'static>(&mut self, id: WidgetId) -> &mut T {
         self.state.get_or_insert_with(id, T::default)
-    }
-
-    /// Mutable access to the scroll state row for the widget at
-    /// `id`. Inserts a default row on first access. The widget
-    /// reads/writes the snapshot at record time (offset clamp,
-    /// reservation guess, bar geometry); the layout's scroll driver
-    /// writes the layout-derived fields during measure + arrange.
-    /// State lives on [`LayoutEngine::scroll_states`] (not `StateMap`)
-    /// so the layout subsystem owns its own concern.
-    ///
-    /// Keyed internally by the inner viewport's id (`id.with("__viewport")`)
-    /// because that's the WidgetId the layout subsystem sees on the
-    /// `LayoutMode::Scroll` node — callers stay on the public outer
-    /// id and this hop is invisible.
-    pub(crate) fn scroll_state(&mut self, id: WidgetId) -> &mut ScrollLayoutState {
-        self.layout.scroll_states.entry(id).or_default()
     }
 
     /// Currently focused widget id, or `None`. Read by editable widgets

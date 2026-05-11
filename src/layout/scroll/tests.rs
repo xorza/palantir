@@ -9,6 +9,7 @@ use crate::forest::widget_id::WidgetId;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
+use crate::support::internals::scroll_state;
 use crate::support::testing::run_at;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -22,7 +23,7 @@ const SURFACE: UVec2 = UVec2::new(400, 300);
 /// the stable observation point — on measure-cache hits the driver
 /// doesn't run, but the persisted row keeps last frame's value.
 fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
-    *ui.scroll_state(WidgetId::from_hash(id_salt).with("__viewport"))
+    *scroll_state(ui, WidgetId::from_hash(id_salt).with("__viewport"))
 }
 
 /// Vertical scroll measures children with INF on Y; content extent is

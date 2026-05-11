@@ -578,8 +578,8 @@ fn run_frame_pass_count_matches_action_trigger() {
 /// `FrameOutput`.
 #[test]
 fn run_frame_plumbs_now_dt_and_repaint_request() {
-    use crate::ui::MAX_DT;
     use std::time::Duration;
+    const MAX_DT: f32 = crate::Ui::MAX_DT;
 
     const SURFACE: UVec2 = UVec2::new(100, 100);
     let display = Display::from_physical(SURFACE, 1.0);
