@@ -18,6 +18,7 @@ mod clip;
 mod disabled;
 mod drag;
 mod gap;
+mod gradients;
 mod grid;
 mod justify;
 mod lines;
@@ -66,6 +67,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("lines", lines::build),
     ("bezier", bezier::build),
     ("drag", drag::build),
+    ("gradients", gradients::build),
 ];
 
 fn main() {
