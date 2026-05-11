@@ -212,7 +212,7 @@ fn focus_lands_on_press_over_focusable_widget_and_preserve_holds_it() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
     assert_eq!(
         ui.focused_id(),
@@ -228,7 +228,7 @@ fn focus_lands_on_press_over_focusable_widget_and_preserve_holds_it() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint(); // Press past the focusable rect.
+    ui.finalize_frame(); // Press past the focusable rect.
     ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -262,7 +262,7 @@ fn default_policy_is_clear_on_miss() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
     assert!(ui.focused_id().is_some());
 
@@ -275,7 +275,7 @@ fn default_policy_is_clear_on_miss() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -314,7 +314,7 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
     assert_eq!(
         ui.focused_id(),
@@ -334,7 +334,7 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Click the plain button — it captures the click but isn't
     // focusable, so focus stays on "editable".
     click_at(&mut ui, glam::Vec2::new(150.0, 20.0));
@@ -363,7 +363,7 @@ fn focus_is_evicted_when_widget_disappears() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
     assert!(ui.focused_id().is_some());
 
@@ -371,7 +371,7 @@ fn focus_is_evicted_when_widget_disappears() {
     begin(&mut ui, glam::UVec2::new(200, 80));
     Panel::hstack().auto_id().show(&mut ui, |_ui| {});
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     assert_eq!(
         ui.focused_id(),
         None,
@@ -415,7 +415,7 @@ fn invisible_focusable_widget_does_not_take_focus() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
     assert_eq!(
         ui.focused_id(),
@@ -446,7 +446,7 @@ fn disabled_focusable_widget_does_not_take_focus() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
     assert_eq!(
         ui.focused_id(),

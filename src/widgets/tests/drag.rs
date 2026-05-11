@@ -73,7 +73,7 @@ fn frame_with(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
             .show(ui, body);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn drag_started_fires_only_on_latch_frame() {
         });
         started.push(ui.response_for(card_id("a")).drag_started);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
     };
 
     // Frame 1: no input.
@@ -246,7 +246,7 @@ fn canvas_rearranges_with_dragged_child_position() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 
     // Latch frame: pos was recorded at 40, layout reflects that.
     let rect = ui.layout[Layer::Main].rect[card_node.unwrap().index()];

@@ -41,7 +41,7 @@ pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
 /// so the caller can keep mutating `ui` afterwards.
 pub(crate) fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
-    ui.run_frame(display, Duration::ZERO, record);
+    ui.frame(display, Duration::ZERO, record);
 }
 
 /// Same as [`run_at`] but additionally marks the frame as
@@ -51,7 +51,7 @@ pub(crate) fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
 /// frame's damage escalates to `Full`.
 pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
-    if let Some(out) = ui.run_frame(display, Duration::ZERO, record) {
+    if let Some(out) = ui.frame(display, Duration::ZERO, record) {
         out.frame_state.mark_submitted();
     }
 }

@@ -93,7 +93,7 @@ impl Host {
         now: std::time::Duration,
         record: impl FnMut(&mut Ui),
     ) -> FrameInfo {
-        let Some(frame) = self.ui.run_frame(display, now, record) else {
+        let Some(frame) = self.ui.frame(display, now, record) else {
             // Skip: keep the prior composer buffer untouched; the
             // backend's Skip path short-circuits to a backbuffer →
             // surface copy without reading it.

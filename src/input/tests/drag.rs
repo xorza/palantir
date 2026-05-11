@@ -26,7 +26,7 @@ fn drag_delta_none_before_press() {
     let mut ui = ui_at(UVec2::new(200, 200));
     build_clickable(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert_eq!(ui.input.drag_delta(id()), None, "no press → no drag");
 }
@@ -36,7 +36,7 @@ fn drag_delta_tracks_pointer_minus_press() {
     let mut ui = ui_at(UVec2::new(200, 200));
     build_clickable(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 30.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 70.0)));
@@ -57,7 +57,7 @@ fn drag_delta_persists_when_pointer_leaves_widget_rect() {
     let mut ui = ui_at(UVec2::new(400, 400));
     build_clickable(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     // Move well outside the 100x100 widget rect.
@@ -71,7 +71,7 @@ fn drag_delta_clears_on_release() {
     let mut ui = ui_at(UVec2::new(200, 200));
     build_clickable(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(30.0, 30.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 70.0)));
@@ -90,7 +90,7 @@ fn drag_delta_none_when_pointer_left_surface() {
     let mut ui = ui_at(UVec2::new(200, 200));
     build_clickable(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerLeft);
@@ -106,7 +106,7 @@ fn drag_delta_only_for_active_widget() {
     let mut ui = ui_at(UVec2::new(200, 200));
     build_clickable(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)));
@@ -138,7 +138,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     let mut ui = ui_at(surface);
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.pre_record(Display::from_physical(surface, 1.0));
     build(&mut ui);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
@@ -146,5 +146,5 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(250.0, 220.0)));
     assert_eq!(ui.input.drag_delta(id()), None);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 }

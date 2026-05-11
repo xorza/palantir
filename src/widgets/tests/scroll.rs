@@ -46,7 +46,7 @@ fn scroll_state_records_viewport_and_content_after_arrange() {
     let mut ui = ui_at(SURFACE);
     build(&mut ui, 200.0, 800.0);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let row = read_state(&mut ui);
     assert_eq!(row.viewport.h, 200.0);
     assert_eq!(row.content.h, 800.0);
@@ -76,14 +76,14 @@ fn wheel_delta_advances_offset_with_clamp() {
         let mut ui = ui_at(SURFACE);
         build(&mut ui, *viewport_h, *content_h);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         for wheel_y in *pushes {
             ui.on_input(InputEvent::Scroll(Vec2::new(0.0, *wheel_y)));
             ui.pre_record(surface_display());
             build(&mut ui, *viewport_h, *content_h);
             ui.post_record();
-            ui.paint();
+            ui.finalize_frame();
         }
 
         assert_eq!(read_state(&mut ui).offset.y, *expected, "case: {label}");
@@ -108,7 +108,7 @@ fn horizontal_scroll_pans_only_x() {
     };
     build_h(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
     // Touchpad / wheel deltas come in on both axes — verify only X
     // makes it into the offset for a horizontal scroll.
@@ -117,7 +117,7 @@ fn horizontal_scroll_pans_only_x() {
     ui.pre_record(surface_display());
     build_h(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let id = WidgetId::from_hash("hscroll").with("__viewport");
     let row = *scroll_state(&mut ui, id);
     assert_eq!(row.offset, Vec2::new(75.0, 0.0));
@@ -141,14 +141,14 @@ fn both_axis_scroll_pans_both_axes() {
     };
     build_xy(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(40.0, 60.0)));
 
     ui.pre_record(surface_display());
     build_xy(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let id = WidgetId::from_hash("xy").with("__viewport");
     let row = *scroll_state(&mut ui, id);
     assert_eq!(row.offset, Vec2::new(40.0, 60.0));
@@ -319,7 +319,7 @@ fn scroll_state_content_survives_measure_cache_hit() {
     let mut ui = ui_at(surface);
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
     let after_first = *scroll_state(&mut ui, scroll_id);
     assert_eq!(after_first.content.h, 92.0);
@@ -327,7 +327,7 @@ fn scroll_state_content_survives_measure_cache_hit() {
     ui.pre_record(display);
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let after_second = *scroll_state(&mut ui, scroll_id);
     assert_eq!(
         after_second.content, after_first.content,
@@ -442,7 +442,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         // valid (Scroll's pivot calc reads it next frame).
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(pointer.0, pointer.1)));
         for &(px, py) in pans {
@@ -450,7 +450,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
             ui.pre_record(surface_display());
             build(&mut ui);
             ui.post_record();
-            ui.paint();
+            ui.finalize_frame();
         }
 
         let id = WidgetId::from_hash("xy").with("__viewport");
@@ -469,7 +469,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
             ui.pre_record(surface_display());
             build(&mut ui);
             ui.post_record();
-            ui.paint();
+            ui.finalize_frame();
         }
 
         let after = *scroll_state(&mut ui, id);
@@ -563,7 +563,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     };
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 
     // Park offset.y at a large negative value to simulate the state
     // pivot zoom-out leaves behind. Stamp it directly on the row to
@@ -582,7 +582,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     ui.pre_record(surface_display());
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 
     let after = *scroll_state(&mut ui, id);
     // Content (400) overflows viewport (188 with both bars reserved
@@ -602,7 +602,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     ui.pre_record(surface_display());
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let after2 = *scroll_state(&mut ui, id);
     assert!(
         (after2.offset.y - (-45.0)).abs() < 1e-3,
@@ -756,7 +756,7 @@ mod bars {
         let mut ui = ui_at(surface);
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         ui.pre_record(Display::from_physical(surface, 1.0));
         build(&mut ui);
         // Frame-2 layout pass so `Layout.rect` reflects the
@@ -890,11 +890,11 @@ mod bars {
         };
         build(&mut ui);
         ui.post_record();
-        ui.paint(); // Frame 2 — caches warm; this is what panicked in the showcase.
+        ui.finalize_frame(); // Frame 2 — caches warm; this is what panicked in the showcase.
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
     }
 
     /// Showcase-style nested scroll cards (Scroll inside a clipped Panel
@@ -940,15 +940,15 @@ mod bars {
         };
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
     }
 
     /// Reservation: when content overflows on the V axis, the inner
@@ -975,11 +975,11 @@ mod bars {
         };
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let row = *scroll_state(&mut ui, WidgetId::from_hash("scroll").with("__viewport"));
         assert_eq!(
             row.viewport,
@@ -1011,11 +1011,11 @@ mod bars {
         };
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let row = *scroll_state(&mut ui, WidgetId::from_hash("scroll").with("__viewport"));
         // Inner x = 200 - (left=16 + right=16 + reservation=8+4) = 156.
         // Inner y = 200 - (top=16 + bottom=16) = 168.
@@ -1094,11 +1094,11 @@ mod bars {
         let mut ui = ui_at(surface);
         build(&mut ui, 800.0);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui, 800.0);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         assert_eq!(
             read_viewport(&mut ui),
             Size::new(188.0, 200.0),
@@ -1111,11 +1111,11 @@ mod bars {
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui, 50.0);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui, 50.0);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         assert_eq!(
             read_viewport(&mut ui),
             Size::new(200.0, 200.0),
@@ -1148,11 +1148,11 @@ mod bars {
         // Frame 1 + 2: settle at zoom = 1.
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let z1_thumbs = thumb_rects(&ui, "scroll");
         assert_eq!(z1_thumbs.len(), 2, "z=1: V + H thumbs");
@@ -1169,11 +1169,11 @@ mod bars {
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let z2_thumbs = thumb_rects(&ui, "scroll");
         assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");
         let v2 = z2_thumbs
@@ -1300,7 +1300,7 @@ mod bars {
                     });
             });
         };
-        let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
+        let _ = ui.frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
         let row = *scroll_state(&mut ui, scroll_id);
         let expected = Size::new(200.0 - theme.width - theme.gap, 200.0);
         assert_eq!(
@@ -1356,14 +1356,14 @@ mod bars {
             rects
         };
 
-        let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
+        let _ = ui.frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
         let f1 = bar_rects(&ui);
         assert_eq!(f1.len(), 2, "cold-mount must emit both V + H thumbs");
 
         ui.pre_record(Display::from_physical(surface, 1.0));
         scene(&mut ui);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let f2 = bar_rects(&ui);
 
         assert_eq!(
@@ -1397,7 +1397,7 @@ mod bars {
                     });
             });
         };
-        let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
+        let _ = ui.frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
         let row = *scroll_state(&mut ui, scroll_id);
         assert_eq!(
             row.viewport,
@@ -1434,11 +1434,11 @@ fn drag_thumb_pans_proportionally() {
     // cascade.
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.pre_record(surface_display());
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 
     let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
     let thumb_id = scroll_id.with("__vthumb");
@@ -1454,7 +1454,7 @@ fn drag_thumb_pans_proportionally() {
     ui.pre_record(surface_display());
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 
     // viewport = 200, content = 800 ⇒ max_offset = 600.
     // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
@@ -1470,7 +1470,7 @@ fn drag_thumb_pans_proportionally() {
     ui.pre_record(surface_display());
     build(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     assert_eq!(
         scroll_state(&mut ui, scroll_id).offset.y,
         600.0,

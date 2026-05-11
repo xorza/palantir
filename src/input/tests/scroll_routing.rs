@@ -25,7 +25,7 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
                 .show(ui, |_| {});
         });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.pre_record(crate::layout::types::display::Display::default());
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
@@ -45,7 +45,7 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     assert_eq!(ui.input.scroll_delta_for(inner_id), Vec2::new(0.0, 5.0));
     assert_eq!(ui.input.scroll_delta_for(outer_id), Vec2::ZERO);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn scroll_delta_zero_for_non_target() {
         .sense(Sense::SCROLL)
         .show(&mut ui, |_| {});
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.pre_record(crate::layout::types::display::Display::default());
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 9.0)));
@@ -69,7 +69,7 @@ fn scroll_delta_zero_for_non_target() {
     let unrelated = crate::forest::widget_id::WidgetId::from_hash("nope");
     assert_eq!(ui.input.scroll_delta_for(unrelated), Vec2::ZERO);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn pointer_left_clears_scroll_target() {
         .sense(Sense::SCROLL)
         .show(&mut ui, |_| {});
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     ui.pre_record(crate::layout::types::display::Display::default());
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerLeft);
@@ -98,5 +98,5 @@ fn pointer_left_clears_scroll_target() {
         "PointerLeft drops scroll target so the delta is unclaimed",
     );
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 }

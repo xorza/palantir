@@ -27,7 +27,7 @@ fn input_state_press_release_emits_click() {
         })
         .node;
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Press inside the button, release inside.
     click_at(&mut ui, Vec2::new(50.0, 20.0));
 
@@ -46,7 +46,7 @@ fn input_state_press_release_emits_click() {
 
     // Click does not stick: next frame without input must clear it.
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     begin(&mut ui, UVec2::new(200, 80));
     let mut still_clicking = false;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
@@ -76,7 +76,7 @@ fn stack_with_sense_none_passes_clicks_through() {
         })
         .node;
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Press inside the HStack's padding (not over any child).
     click_at(&mut ui, Vec2::new(5.0, 5.0));
 
@@ -117,7 +117,7 @@ fn stack_with_sense_click_captures_clicks() {
         })
         .node;
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     click_at(&mut ui, Vec2::new(5.0, 5.0));
 
     ui.pre_record(Display::default());
@@ -154,7 +154,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
         })
         .node;
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Move pointer over stack's padding area (not over the button).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(5.0, 5.0)));
 
@@ -203,7 +203,7 @@ fn input_state_release_outside_does_not_click() {
         })
         .node;
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     press_at(&mut ui, Vec2::new(50.0, 20.0));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 20.0))); // outside
     release_left(&mut ui);
@@ -245,7 +245,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Click well outside the panel's 100x100 clip rect but inside the button's
     // raw 200x200 rect (overflow region). With clip-aware hit-test this misses.
     click_at(&mut ui, Vec2::new(150.0, 150.0));
@@ -294,7 +294,7 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Click at world (75, 75) — inside the zoomed 100x100 bounds.
     click_at(&mut ui, Vec2::new(75.0, 75.0));
 
@@ -337,7 +337,7 @@ fn click_outside_zoomed_bounds_does_not_hit() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Button's world rect under scale=0.5 is 25x25. Click at (40, 40) is
     // inside the LOGICAL rect but outside the world-rendered rect.
     click_at(&mut ui, Vec2::new(40.0, 40.0));
