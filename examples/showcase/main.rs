@@ -249,7 +249,7 @@ impl State {
         let info = self
             .host
             .run_frame(self.display, self.start.elapsed(), |ui| {
-                build_root(ui, &mut self.active)
+                build_ui(ui, &mut self.active)
             });
         self.repaint_requested = info.repaint_requested;
 
@@ -308,7 +308,7 @@ fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
     }
 }
 
-fn build_root(ui: &mut Ui, active: &mut usize) {
+fn build_ui(ui: &mut Ui, active: &mut usize) {
     let active_style = active_toolbar_button(&ui.theme.button);
     Panel::vstack()
         .auto_id()
