@@ -9,8 +9,8 @@ priority (Now / Next / Later / Speculative).
 - [TextEdit](text-edit.md) — selection, IME, clipboard, undo, multi-line
 - [Focus](focus.md) — tab cycling, focus ring, restoration
 - [Scroll](scroll.md) — scrollbar UX, virtualization, inertia
-- [Damage](damage.md) — multi-rect, debug overlay, encode replay
-- [Invalidation](invalidation.md) — property tracker, discard
+- [Damage](damage.md) — multi-rect, debug overlay
+- [Invalidation](invalidation.md) — discard
 - [Renderer / GPU](renderer.md) — staging belt, offscreen, nested clips
 - [Text](text.md) — cache eviction, atlas, allocs
 - [Input](input.md) — coalescing, drag-and-drop
@@ -19,6 +19,5 @@ priority (Now / Next / Later / Speculative).
 - [State](state.md) — cross-widget stores, event bus, external writes
 - [Tooling](tooling.md) — profiling, snapshots, HiDPI
 - [Speculative](speculative.md) — profile-gated micro-optimizations
-- [Deferred shapes](deferred-shapes.md) — post-arrange shape emission (scrollbars, focus ring, connectors)
-- [Mesh shapes](mesh-shapes.md) — user-supplied colored triangle meshes (flat per-frame arena + spans on Shape)
-- [Scratch](scratch.md) — unsorted ideas
+- [Brushes](brushes.md) — gradients, images, brush slots
+- [Spinner](spinner.md) — perpetual-repaint widget on line shapes

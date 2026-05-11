@@ -5,7 +5,6 @@ Open layout work — shipped-when-conditions-merit; no committed roadmap.
 ## Stack
 
 - **`flex-basis` + `flex-shrink`.** Preferred size separate from sizing policy + independent shrink/grow weights. Triggers on the third user request for "I want a preferred size that's neither min nor max" — at that point pick between in-tree and Taffy.
-- **`flex-wrap` (multi-line wrapping).** New `LayoutMode::Flow` (~200 LOC) for chip lists / tag clouds / responsive button bars. Land when the first widget needs it.
 - **`align-items: baseline`.** Leaves report a `baseline: f32` alongside their measured size; stack alignment grows a baseline branch. Triggers on the first form-label widget that visibly needs it.
 - **`row-reverse` / `column-reverse`.** Lands with the broader RTL story; not standalone.
 - **`order` (visual reordering).** Defer indefinitely — immediate-mode authors can just reorder calls.
