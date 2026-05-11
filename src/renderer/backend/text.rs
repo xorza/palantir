@@ -217,7 +217,11 @@ impl TextRenderer {
                         buffer,
                         left: r.origin.x,
                         top: r.origin.y,
-                        scale,
+                        // DPI scale × ancestor transform scale (composer
+                        // picks up the cumulative `TranslateScale.scale`
+                        // so a zoomed Scroll subtree paints proportionally
+                        // larger glyphs).
+                        scale: scale * r.scale,
                         bounds: text_bounds(r.bounds),
                         default_color: glyphon_color(r.color),
                         custom_glyphs: &[],

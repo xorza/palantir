@@ -120,4 +120,12 @@ pub(crate) struct TextRun {
     pub(crate) bounds: URect,
     pub(crate) color: Color,
     pub(crate) key: TextCacheKey,
+    /// Per-run scale factor on top of the global DPI scale, sourced from
+    /// the cumulative ancestor `TranslateScale.scale` at compose time.
+    /// `1.0` outside any transformed subtree. Multiplied into glyphon's
+    /// per-`TextArea.scale` so a zoomed `Scroll` subtree paints
+    /// proportionally larger glyphs without reshaping (linear upscale
+    /// from the original glyph atlas — acceptable for transient zoom UI;
+    /// a future quality bake-off could reshape at the new size).
+    pub(crate) scale: f32,
 }
