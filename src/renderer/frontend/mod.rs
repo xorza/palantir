@@ -19,30 +19,26 @@ pub(crate) mod composer;
 pub(crate) mod encoder;
 pub(crate) mod gradient_atlas;
 
-use crate::forest::Forest;
-use crate::layout::Layout;
-use crate::layout::types::display::Display;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::ui::cascade::Cascades;
+use crate::ui::Ui;
 use crate::ui::damage::Damage;
-use crate::ui::damage::region::DamageRegion;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-/// Submission status of the most recently produced [`RecordedFrame`].
-/// Held by both [`crate::Ui`] and `RecordedFrame` (via `Arc`); written
+/// Submission status of the most recently produced [`FrameReport`].
+/// Held by both [`crate::Ui`] and `FrameReport` (via `Arc`); written
 /// by `Ui::run_frame` (→ `Pending`) and the renderer on the success
 /// path (→ `Submitted`). Read by `Ui::pre_record`, which auto-rewinds
 /// `damage.prev_surface` whenever the last frame's state isn't
-/// `Submitted` (host dropped the `RecordedFrame`, surface acquire
+/// `Submitted` (host dropped the `FrameReport`, surface acquire
 /// failed, or it's the very first frame from `FrameState::default()` —
 /// which leaves the underlying byte at `Initial`). Turns "host dropped
-/// a `RecordedFrame`" into "next frame is `Full`" — wasteful but
+/// a `FrameReport`" into "next frame is `Full`" — wasteful but
 /// correct, instead of silent damage smear.
 ///
 /// `AtomicU8` is overkill for the single-threaded renderer path, but
-/// cheap and lets `Ui` / `RecordedFrame` stay `Send`/`Sync` compatible
+/// cheap and lets `Ui` / `FrameReport` stay `Send`/`Sync` compatible
 /// without further constraints.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FrameState(Arc<AtomicU8>);
@@ -65,53 +61,29 @@ impl FrameState {
     }
 }
 
-/// One frame's recorded result: a borrowed view into the [`Ui`]'s
-/// per-frame data plus the damage decision. Returned from
-/// [`Ui::run_frame`], consumed by [`Renderer::render`]. The three
-/// [`Damage`] variants — `Full`, `Partial`, `Skip` — let the
-/// no-changes case opt out of the GPU pass entirely instead of being
-/// forced through a full clear+repaint.
-///
-/// Pure CPU data; no GPU handles. Backends consume it through the
-/// owning [`Renderer`], which also holds the [`Frontend`] that turns
-/// `forest`/`results`/`cascades` into a composed `RenderBuffer`.
+/// One frame's plain-data report from [`Ui::frame`]: the post-record
+/// signals the host needs to act on. All frame-shaped state (forest,
+/// layout, cascades, display, damage) stays on [`Ui`] itself —
+/// [`Frontend::build`] reads it directly via a `&Ui` borrow, so this
+/// struct doesn't carry borrows and has no lifetime.
 ///
 /// [`Ui`]: crate::ui::Ui
-/// [`Ui::run_frame`]: crate::ui::Ui::run_frame
-/// [`Renderer`]: crate::renderer::Renderer
-/// [`Renderer::render`]: crate::renderer::Renderer::render
-pub struct RecordedFrame<'a> {
-    pub(crate) forest: &'a Forest,
-    pub(crate) layout: &'a Layout,
-    pub(crate) cascades: &'a Cascades,
-    pub(crate) display: Display,
-    /// `None` is the skip signal: the diff produced no work, so the
-    /// host can bypass `Frontend::build` + GPU submit and just
-    /// present the backbuffer. `Some(Full | Partial)` carries the
-    /// paint plan.
-    pub(crate) damage: Option<Damage>,
+pub struct FrameReport {
     pub(crate) repaint_requested: bool,
-    /// Shared with `Ui::frame_state`. Set to `Pending` by
-    /// `Ui::run_frame` and (on success) to `Submitted` by
-    /// `Renderer::render`. The next `Ui::pre_record` auto-rewinds
-    /// damage if it doesn't see `Submitted`.
+    /// Shared with `Ui::frame_state`. Set to `Pending` by `Ui::frame`
+    /// and (on success) to `Submitted` by the renderer. The next
+    /// `Ui::pre_record` auto-rewinds damage if it doesn't see
+    /// `Submitted`.
     pub(crate) frame_state: FrameState,
 }
 
-impl RecordedFrame<'_> {
+impl FrameReport {
     /// `true` when an animation tick during this frame hasn't
     /// settled (set by `Ui::animate`). Hosts honor by calling
     /// `window.request_redraw()` (or equivalent) after present, so
     /// the next frame runs even when input is idle.
     pub fn repaint_requested(&self) -> bool {
         self.repaint_requested
-    }
-
-    pub(crate) fn damage_filter(&self) -> Option<&DamageRegion> {
-        match &self.damage {
-            Some(Damage::Partial(region)) => Some(region),
-            Some(Damage::Full) | None => None,
-        }
     }
 }
 
@@ -147,15 +119,19 @@ impl Frontend {
     /// and are accessed via split borrows by the caller (so it can
     /// hold `&buffer` and `&mut gradient_atlas` simultaneously when
     /// constructing `FrameOutput`).
-    pub(crate) fn build(&mut self, frame: &RecordedFrame<'_>) {
+    pub(crate) fn build(&mut self, ui: &Ui) {
+        let damage_filter = match &ui.damage {
+            Some(Damage::Partial(region)) => Some(region),
+            Some(Damage::Full) | None => None,
+        };
         let cmds = self.encoder.encode(
-            frame.forest,
-            frame.layout,
-            frame.cascades,
-            frame.damage_filter(),
-            frame.display.logical_rect(),
+            &ui.forest,
+            &ui.layout,
+            &ui.layout.cascades,
+            damage_filter,
+            ui.display.logical_rect(),
         );
         self.composer
-            .compose(cmds, &frame.display, &mut self.gradient_atlas);
+            .compose(cmds, &ui.display, &mut self.gradient_atlas);
     }
 }

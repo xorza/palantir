@@ -98,16 +98,16 @@ impl Host {
     pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameInfo {
         let frame = self.ui.frame(display, self.start.elapsed(), record);
 
-        if frame.damage.is_some() {
-            self.frontend.build(&frame);
+        if self.ui.damage.is_some() {
+            self.frontend.build(&self.ui);
         }
         self.pending = Some(PendingSubmit {
-            damage: frame.damage,
+            damage: self.ui.damage,
             frame_state: frame.frame_state.clone(),
         });
 
         FrameInfo {
-            skip_render: frame.damage.is_none(),
+            skip_render: self.ui.damage.is_none(),
             repaint_requested: frame.repaint_requested(),
         }
     }

@@ -53,7 +53,7 @@ pub use primitives::size::Size;
 pub use primitives::spacing::Spacing;
 pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
-pub use renderer::frontend::RecordedFrame;
+pub use renderer::frontend::FrameReport;
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 pub use text::TextShaper;
 pub use text::cosmic::CosmicMeasure;
