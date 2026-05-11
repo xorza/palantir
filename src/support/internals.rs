@@ -109,7 +109,7 @@ pub fn damage_region_after_adds(rects: &[crate::primitives::rect::Rect]) -> usiz
 /// auto-rewind would fire every iteration — every bench frame would
 /// escalate to `Full` and the Skip / Partial scenarios would be
 /// unmeasurable.
-pub fn mark_frame_submitted(out: &crate::renderer::frontend::RecordedFrame<'_>) {
+pub fn mark_frame_submitted(out: &crate::renderer::frontend::FrameReport) {
     out.frame_state.mark_submitted();
 }
 

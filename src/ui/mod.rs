@@ -15,7 +15,7 @@ use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
-use crate::renderer::frontend::{FrameState, RecordedFrame};
+use crate::renderer::frontend::{FrameReport, FrameState};
 use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
@@ -127,7 +127,7 @@ impl Ui {
         display: Display,
         now: Duration,
         mut record: impl FnMut(&mut Ui),
-    ) -> RecordedFrame<'_> {
+    ) -> FrameReport {
         assert!(
             display.scale_factor >= EPS,
             "Display::scale_factor must be ≥ EPSILON; got {}",
@@ -139,6 +139,7 @@ impl Ui {
         self.time = now;
         self.frame_id = self.frame_id.wrapping_add(1);
         self.repaint_requested = false;
+        self.relayout_requested = false;
 
         let new_surface = display.logical_rect();
         let display_changed = self
@@ -179,12 +180,7 @@ impl Ui {
             self.frame_state.mark_submitted();
         }
 
-        RecordedFrame {
-            forest: &self.forest,
-            layout: &self.layout,
-            cascades: &self.layout.cascades,
-            display,
-            damage: self.damage,
+        FrameReport {
             repaint_requested: self.repaint_requested,
             frame_state: self.frame_state.clone(),
         }

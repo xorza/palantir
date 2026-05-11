@@ -70,23 +70,15 @@ fn drain_one_frame(ui: &mut Ui) {
 fn empty_ui_drives_a_frame_safely() {
     let mut ui = ui_at(UVec2::new(200, 200));
     {
-        use crate::renderer::frontend::{Frontend, RecordedFrame};
+        use crate::renderer::frontend::Frontend;
         ui.post_record();
         ui.finalize_frame();
+        // Empty UI on the first frame: `finalize_frame` leaves
+        // `ui.damage = None` (skip). To exercise the encode/compose
+        // path we force `Full` and assert the buffers come out empty.
+        ui.damage = Some(Damage::Full);
         let mut frontend = Frontend::default();
-        // Empty UI on the first frame: `finalize_frame` returns
-        // `None` (skip) — but to exercise the encode/compose path we
-        // force `Full` here and assert the buffers come out empty.
-        let frame = RecordedFrame {
-            forest: &ui.forest,
-            layout: &ui.layout,
-            cascades: &ui.layout.cascades,
-            display: ui.display,
-            damage: Some(Damage::Full),
-            repaint_requested: ui.repaint_requested,
-            frame_state: ui.frame_state.clone(),
-        };
-        frontend.build(&frame);
+        frontend.build(&ui);
         let buffer = &frontend.composer.buffer;
         assert!(buffer.quads.is_empty());
         assert!(buffer.texts.is_empty());
