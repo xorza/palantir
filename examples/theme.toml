@@ -1,18 +1,43 @@
-[button.normal.background]
-fill = "#343434"
-radius = 4.0
+window_clear = "#1a1a1a"
 
-[button.hovered.background]
+[button]
+padding = [
+    12.0,
+    6.0,
+]
+margin = 0.0
+
+[button.normal.background]
 fill = "#3e3e3e"
 radius = 4.0
+
+[button.normal.background.stroke]
+color = "#aaaaa82e"
+width = 1.0
+
+[button.hovered.background]
+fill = "#4b4b4b"
+radius = 4.0
+
+[button.hovered.background.stroke]
+color = "#aaaaa82e"
+width = 1.0
 
 [button.pressed.background]
 fill = "#4b4b4b"
 radius = 4.0
 
+[button.pressed.background.stroke]
+color = "#105577"
+width = 1.0
+
 [button.disabled.background]
 fill = "#343434"
 radius = 4.0
+
+[button.disabled.background.stroke]
+color = "#aaaaa82e"
+width = 1.0
 
 [button.disabled.text]
 font_size_px = 16.0
@@ -31,20 +56,25 @@ radius = 4.0
 
 [text_edit]
 placeholder = "#aaaaa8"
-caret = "#e2dfd3"
+caret = "#ffffff"
 caret_width = 1.5
 selection = "#9adbfb40"
+padding = [
+    8.0,
+    6.0,
+]
+margin = 0.0
 
 [text_edit.normal.background]
-fill = "#343434"
+fill = "#3e3e3e"
 radius = 4.0
 
 [text_edit.normal.background.stroke]
-color = "#363636"
+color = "#aaaaa82e"
 width = 1.0
 
 [text_edit.focused.background]
-fill = "#343434"
+fill = "#3e3e3e"
 radius = 4.0
 
 [text_edit.focused.background.stroke]
@@ -52,11 +82,11 @@ color = "#105577"
 width = 1.5
 
 [text_edit.disabled.background]
-fill = "#252525"
+fill = "#343434"
 radius = 4.0
 
 [text_edit.disabled.background.stroke]
-color = "#363636"
+color = "#aaaaa82e"
 width = 1.0
 
 [text_edit.disabled.text]
@@ -66,5 +96,5 @@ line_height_mult = 1.2
 
 [text]
 font_size_px = 16.0
-color = "#e2dfd3"
+color = "#ffffff"
 line_height_mult = 1.2
