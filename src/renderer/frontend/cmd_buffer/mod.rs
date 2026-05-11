@@ -94,17 +94,34 @@ pub(crate) struct DrawTextPayload {
 /// `u32` pairs so the payload is plain Pod — no `Span: Pod` needed.
 /// `origin` is the logical-px translation applied at compose time
 /// before baking the transform/DPI into physical-px verts.
-/// Stroked polyline payload (24 B). `width` is logical px; the
+/// Stroked polyline payload (40 B). `width` is logical px; the
 /// composer scales it through the active transform + DPI before
-/// tessellation. `color` is premultiplied linear RGBA (same as
-/// every other shape).
+/// tessellation. Points + colors live in
+/// [`RenderCmdBuffer::polyline_points`] /
+/// [`RenderCmdBuffer::polyline_colors`]; `colors_len` is 1
+/// (broadcast), `points_len` (per-point), or `points_len - 1`
+/// (per-segment), selected by `color_mode` (a [`ColorMode`]
+/// promoted to `u32` for Pod alignment).
+///
+/// `bbox` is the axis-aligned bounds of `points` in **logical
+/// (cmd-buffer) coords** — no width inflation, no transform
+/// applied. Computed by the encoder in a single pass while it
+/// streams points into the arena, so adding it is a constant-time
+/// cost regardless of point count. Composer transforms the 4
+/// corners (uniform-scale `TranslateScale` preserves AABBs),
+/// inflates by the physical-px outer-fringe offset, and
+/// short-circuits the per-point transform when the result misses
+/// the active scissor.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawPolylinePayload {
-    pub(crate) color: Color,
+    pub(crate) bbox: Rect,
     pub(crate) width: f32,
+    pub(crate) color_mode: u32,
     pub(crate) points_start: u32,
     pub(crate) points_len: u32,
+    pub(crate) colors_start: u32,
+    pub(crate) colors_len: u32,
 }
 
 #[repr(C)]
@@ -135,6 +152,9 @@ pub(crate) struct RenderCmdBuffer {
     /// encode cache must snapshot this vec alongside the cmd-stream
     /// range. Cleared in [`Self::clear`].
     pub(crate) polyline_points: Vec<Vec2>,
+    /// Polyline color arena. Parallel to `polyline_points`; the
+    /// payload picks an interpretation via `color_mode`.
+    pub(crate) polyline_colors: Vec<Color>,
 }
 
 impl RenderCmdBuffer {
@@ -144,6 +164,7 @@ impl RenderCmdBuffer {
         self.data.clear();
         self.meshes.clear();
         self.polyline_points.clear();
+        self.polyline_colors.clear();
     }
 
     #[inline]
@@ -232,22 +253,16 @@ impl RenderCmdBuffer {
         );
     }
 
-    /// Copy `points` into the cmd buffer's polyline arena and record a
-    /// `DrawPolyline` cmd. Caller must ensure `points.len() >= 2` —
-    /// degenerate lines are filtered earlier by `Shape::is_noop`.
-    pub(crate) fn draw_polyline(&mut self, points: &[Vec2], width: f32, color: Color) {
-        let points_start = self.polyline_points.len() as u32;
-        self.polyline_points.extend_from_slice(points);
+    /// Record a `DrawPolyline` cmd against already-staged points and
+    /// colors. Caller pushes onto `polyline_points` / `polyline_colors`
+    /// directly (so the encoder can apply the owner-rect offset
+    /// inline without an intermediate scratch buffer) and passes the
+    /// resulting spans here. `points_len >= 2` and the
+    /// `color_mode`-dictated `colors_len` are caller invariants —
+    /// `Shape::is_noop` and `lower_polyline` enforce them upstream.
+    pub(crate) fn draw_polyline(&mut self, payload: DrawPolylinePayload) {
         self.record_start(CmdKind::DrawPolyline);
-        write_pod(
-            &mut self.data,
-            DrawPolylinePayload {
-                color,
-                width,
-                points_start,
-                points_len: points.len() as u32,
-            },
-        );
+        write_pod(&mut self.data, payload);
     }
 
     #[inline]

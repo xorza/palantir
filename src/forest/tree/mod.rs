@@ -9,11 +9,13 @@ use crate::forest::rollups::{NodeHash, SubtreeRollups};
 use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
+use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::shape::ShapeRecord;
 use crate::widgets::grid::GridDef;
+use glam::Vec2;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 
@@ -137,6 +139,15 @@ pub(crate) struct Tree {
     /// retained.
     pub(crate) meshes: Mesh,
 
+    // -- Flat polyline storage -------------------------------------------
+    /// Per-frame point + color arenas backing `ShapeRecord::Polyline`.
+    /// Spans on the record index into these. Cleared per frame,
+    /// capacity retained. Cross-arena alignment by record:
+    /// `polyline_colors.len` is 1, `polyline_points.len`, or
+    /// `polyline_points.len - 1`, set by `ColorMode`.
+    pub(crate) polyline_points: Vec<Vec2>,
+    pub(crate) polyline_colors: Vec<Color>,
+
     // -- Frame-scoped sub-storage ----------------------------------------
     pub(crate) grid: GridArena,
 
@@ -181,6 +192,8 @@ impl Tree {
         self.parents.clear();
         self.shapes.clear();
         self.meshes.clear();
+        self.polyline_points.clear();
+        self.polyline_colors.clear();
         self.grid.clear();
         self.rollups.has_grid.clear();
         self.roots.clear();

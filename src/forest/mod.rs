@@ -3,14 +3,18 @@
 //! body recording dispatches into a different arena than `Main`
 //! and never interleaves.
 
+use crate::common::hash::Hasher as FxHasher;
 use crate::forest::element::Element;
 use crate::forest::seen_ids::SeenIds;
 use crate::forest::tree::{Layer, NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
 use crate::layout::types::span::Span;
+use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
-use crate::shape::{Shape, ShapeRecord};
+use crate::shape::{ColorMode, PolylineColors, Shape, ShapeRecord};
+use glam::Vec2;
 use std::array;
+use std::hash::Hasher as _;
 use strum::EnumCount as _;
 
 pub(crate) mod element;
@@ -156,7 +160,14 @@ impl Forest {
                 fill,
                 stroke,
             },
-            Shape::Line { a, b, width, color } => ShapeRecord::Line { a, b, width, color },
+            Shape::Line { a, b, width, color } => {
+                lower_polyline(tree, &[a, b], PolylineColors::Single(color), width)
+            }
+            Shape::Polyline {
+                points,
+                colors,
+                width,
+            } => lower_polyline(tree, points, colors, width),
             Shape::Text {
                 local_rect,
                 text,
@@ -254,5 +265,88 @@ impl Forest {
             .iter()
             .copied()
             .map(move |layer| (layer, &self.trees[layer as usize]))
+    }
+}
+
+/// Lower a (points, colors, width) authoring shape into a
+/// `ShapeRecord::Polyline`: validate `colors` length against
+/// `points.len()`, copy both into the tree arenas, compute the
+/// content hash. `Shape::Line` and `Shape::Polyline` both route
+/// through this — one record path downstream.
+fn lower_polyline(
+    tree: &mut Tree,
+    points: &[Vec2],
+    colors: PolylineColors<'_>,
+    width: f32,
+) -> ShapeRecord {
+    let (mode, color_slice): (ColorMode, &[Color]) = match colors {
+        PolylineColors::Single(ref c) => (ColorMode::Single, std::slice::from_ref(c)),
+        PolylineColors::PerPoint(cs) => {
+            assert_eq!(
+                cs.len(),
+                points.len(),
+                "Shape::Polyline PerPoint colors len {} != points len {}",
+                cs.len(),
+                points.len(),
+            );
+            (ColorMode::PerPoint, cs)
+        }
+        PolylineColors::PerSegment(cs) => {
+            assert_eq!(
+                cs.len() + 1,
+                points.len(),
+                "Shape::Polyline PerSegment colors len {} != points len - 1 ({})",
+                cs.len(),
+                points.len().saturating_sub(1),
+            );
+            (ColorMode::PerSegment, cs)
+        }
+    };
+
+    let p_start = tree.polyline_points.len() as u32;
+    tree.polyline_points.extend_from_slice(points);
+    let c_start = tree.polyline_colors.len() as u32;
+    tree.polyline_colors.extend_from_slice(color_slice);
+
+    let mut h = FxHasher::new();
+    h.write(bytemuck::cast_slice(points));
+    h.write(bytemuck::cast_slice(color_slice));
+    h.write_u8(mode as u8);
+    let content_hash = h.finish();
+
+    // Compute the owner-relative AABB once here so the encoder hot
+    // path stays a straight `extend(map)` — and so a future pass
+    // (damage-tightening / owner-rect-escape soundness) has a real
+    // per-shape rect to reach for.
+    let bbox = points_aabb(points);
+
+    ShapeRecord::Polyline {
+        width,
+        color_mode: mode,
+        points: Span::new(p_start, points.len() as u32),
+        colors: Span::new(c_start, color_slice.len() as u32),
+        bbox,
+        content_hash,
+    }
+}
+
+/// AABB of a non-empty point slice. Returns the zero rect on empty
+/// input — `Shape::is_noop` filters `points.len() < 2` upstream so
+/// the empty branch is defensive, not hot.
+fn points_aabb(points: &[Vec2]) -> Rect {
+    let Some((&first, rest)) = points.split_first() else {
+        return Rect::ZERO;
+    };
+    let (mut lo, mut hi) = (first, first);
+    for p in rest {
+        lo = lo.min(*p);
+        hi = hi.max(*p);
+    }
+    Rect {
+        min: lo,
+        size: crate::primitives::size::Size {
+            w: hi.x - lo.x,
+            h: hi.y - lo.y,
+        },
     }
 }

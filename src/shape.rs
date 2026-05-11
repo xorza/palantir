@@ -23,11 +23,24 @@ pub enum Shape<'a> {
         fill: Color,
         stroke: Stroke,
     },
+    /// Two-point stroked line — ergonomic shorthand for a 2-point
+    /// `Polyline { Single(color) }`. Lowers to `ShapeRecord::Polyline`
+    /// at authoring time; there's no `ShapeRecord::Line`.
     Line {
         a: Vec2,
         b: Vec2,
         width: f32,
         color: Color,
+    },
+    /// Stroked polyline with per-vertex or per-segment coloring. The
+    /// framework copies `points` and `colors` into the active tree's
+    /// per-frame arenas at `add_shape` time, so the borrows only have
+    /// to outlive the call. `colors` length is constrained by `mode`
+    /// (see [`PolylineColors`]); mismatches hard-assert.
+    Polyline {
+        points: &'a [Vec2],
+        colors: PolylineColors<'a>,
+        width: f32,
     },
     Text {
         local_rect: Option<Rect>,
@@ -67,11 +80,25 @@ pub(crate) enum ShapeRecord {
         fill: Color,
         stroke: Stroke,
     },
-    Line {
-        a: Vec2,
-        b: Vec2,
+    /// Stroked polyline. `points`/`colors` index into the active
+    /// tree's `polyline_points` / `polyline_colors` arenas. `colors`
+    /// length depends on `color_mode`: 1 for `Single`,
+    /// `points.len()` for `PerPoint`, `points.len() - 1` for
+    /// `PerSegment`. `content_hash` summarizes points+colors+mode
+    /// bytes for cache identity — two frames with identical content
+    /// share a hash even though their span offsets differ. `bbox` is
+    /// the axis-aligned bounds of `points` in owner-relative
+    /// (record) coords — derived, not authoritative; the encoder
+    /// translates it into cmd-buffer coords by adding the owner
+    /// rect's origin. Computed at lowering time so the encoder hot
+    /// path stays a single `extend(map)` over the point slice.
+    Polyline {
         width: f32,
-        color: Color,
+        color_mode: ColorMode,
+        points: Span,
+        colors: Span,
+        bbox: Rect,
+        content_hash: u64,
     },
     /// Shaped text run — *authoring inputs only*. Measured size and
     /// shaped-buffer key are layout outputs and live on
@@ -127,6 +154,38 @@ pub(crate) enum ShapeRecord {
     },
 }
 
+/// Color source for [`Shape::Polyline`]. Length constraints
+/// enforced by hard `assert!` at `add_shape` — a mismatch is a
+/// caller bug.
+#[derive(Clone, Copy, Debug)]
+pub enum PolylineColors<'a> {
+    /// One color for the whole stroke. Broadcast to every
+    /// cross-section.
+    Single(Color),
+    /// One color per input point. `len()` must equal `points.len()`.
+    /// GPU lerps between adjacent cross-sections, giving a smooth
+    /// gradient along the stroke.
+    PerPoint(&'a [Color]),
+    /// One color per segment. `len()` must equal
+    /// `points.len() - 1`. Tessellator duplicates interior
+    /// cross-sections so each segment paints as a solid block —
+    /// no color bleed at joins.
+    PerSegment(&'a [Color]),
+}
+
+/// Storage tag for [`ShapeRecord::Polyline`]. `u8` for compactness
+/// on the record; promoted to `u32` in `DrawPolylinePayload` to
+/// keep that struct Pod-aligned. Discriminants are stable
+/// (`Single=0`, `PerPoint=1`, `PerSegment=2`) so cache keys don't
+/// shift across reorderings.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum ColorMode {
+    Single = 0,
+    PerPoint = 1,
+    PerSegment = 2,
+}
+
 /// Wrap mode for [`ShapeRecord::Text`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TextWrap {
@@ -163,12 +222,18 @@ impl Hash for ShapeRecord {
                 fill.hash(h);
                 stroke.hash(h);
             }
-            ShapeRecord::Line { a, b, width, color } => {
+            ShapeRecord::Polyline {
+                width,
+                color_mode,
+                points: _,
+                colors: _,
+                bbox: _,
+                content_hash,
+            } => {
                 h.write_u8(1);
-                h.write(bytemuck::bytes_of(a));
-                h.write(bytemuck::bytes_of(b));
                 h.write_u32(width.to_bits());
-                color.hash(h);
+                h.write_u8(*color_mode as u8);
+                h.write_u64(*content_hash);
             }
             ShapeRecord::Text {
                 local_rect,
@@ -239,7 +304,23 @@ impl Shape<'_> {
                 stroke,
                 ..
             } => local_rect_paint_empty(local_rect) || (fill.is_noop() && stroke.is_noop()),
-            Shape::Line { width, color, .. } => approx_zero(*width) || color.is_noop(),
+            Shape::Line { width, color, .. } => {
+                *width <= 0.0 || width.is_nan() || approx_zero(*width) || color.is_noop()
+            }
+            Shape::Polyline {
+                points,
+                colors,
+                width,
+            } => {
+                if *width <= 0.0 || width.is_nan() || approx_zero(*width) || points.len() < 2 {
+                    return true;
+                }
+                match colors {
+                    PolylineColors::Single(c) => c.is_noop(),
+                    PolylineColors::PerPoint(cs) => cs.iter().all(|c| c.is_noop()),
+                    PolylineColors::PerSegment(cs) => cs.iter().all(|c| c.is_noop()),
+                }
+            }
             Shape::Text {
                 text,
                 color,

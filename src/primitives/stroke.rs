@@ -31,14 +31,14 @@ impl Stroke {
     };
 
     /// True when this stroke would paint nothing visible — width is
-    /// approximately zero (sub-UI-tolerance) or the color is fully
-    /// transparent. The animation pipeline lerps `Stroke` directly
-    /// through `Stroke::ZERO`, so a "stroked → no-stroke" transition
-    /// settles at `is_noop()` and the encoder filters it out without
-    /// any `Option` collapse step.
+    /// sub-UI-tolerance (including negative, treated as zero), or
+    /// the color is fully transparent. The animation pipeline lerps
+    /// `Stroke` directly through `Stroke::ZERO`, so a "stroked →
+    /// no-stroke" transition settles at `is_noop()` and the encoder
+    /// filters it out without any `Option` collapse step.
     #[inline]
     pub fn is_noop(&self) -> bool {
-        approx_zero(self.width) || self.color.is_noop()
+        self.width <= 0.0 || self.width.is_nan() || approx_zero(self.width) || self.color.is_noop()
     }
 }
 
