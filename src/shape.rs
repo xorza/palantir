@@ -272,7 +272,7 @@ impl QuadraticBezierColors {
 /// future-extension story (curves, etc.) in one place instead of
 /// scattered fields on every container.
 #[derive(Default)]
-pub(crate) struct ShapeArenas {
+pub(crate) struct ShapePayloads {
     /// Vertex + index storage for `ShapeRecord::Mesh`.
     pub(crate) meshes: Mesh,
     /// Point storage for `ShapeRecord::Polyline`. Indexed by the
@@ -290,7 +290,7 @@ pub(crate) struct ShapeArenas {
     pub(crate) bezier_scratch: Vec<FlatPoint>,
 }
 
-impl ShapeArenas {
+impl ShapePayloads {
     /// Drop all per-frame contents; preserve capacity.
     pub(crate) fn clear(&mut self) {
         self.meshes.clear();

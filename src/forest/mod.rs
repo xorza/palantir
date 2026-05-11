@@ -27,6 +27,7 @@ pub(crate) mod element;
 pub(crate) mod node;
 pub(crate) mod rollups;
 pub(crate) mod seen_ids;
+pub(crate) mod shapes;
 pub(crate) mod tree;
 pub(crate) mod visibility;
 pub(crate) mod widget_id;
@@ -231,7 +232,7 @@ impl Forest {
                 local_rect,
                 tint,
             } => {
-                let arena = &mut tree.shape_arenas.meshes;
+                let arena = &mut tree.shapes.payloads.meshes;
                 let v_start = arena.vertices.len() as u32;
                 arena.vertices.extend_from_slice(&mesh.vertices);
                 let i_start = arena.indices.len() as u32;
@@ -347,7 +348,7 @@ fn lower_polyline(
         }
     };
 
-    let arenas = &mut tree.shape_arenas;
+    let arenas = &mut tree.shapes.payloads;
     let p_start = arenas.polyline_points.len() as u32;
     arenas.polyline_points.extend_from_slice(points);
     let c_start = arenas.polyline_colors.len() as u32;
@@ -422,7 +423,7 @@ fn lower_cubic_bezier(
     join: LineJoin,
     tolerance: f32,
 ) -> ShapeRecord {
-    let arenas = &mut tree.shape_arenas;
+    let arenas = &mut tree.shapes.payloads;
     arenas.bezier_scratch.clear();
     flatten_cubic(p0, p1, p2, p3, tolerance, &mut arenas.bezier_scratch);
 
@@ -518,7 +519,7 @@ fn lower_quadratic_bezier(
     join: LineJoin,
     tolerance: f32,
 ) -> ShapeRecord {
-    let arenas = &mut tree.shape_arenas;
+    let arenas = &mut tree.shapes.payloads;
     arenas.bezier_scratch.clear();
     flatten_quadratic(p0, p1, p2, tolerance, &mut arenas.bezier_scratch);
 

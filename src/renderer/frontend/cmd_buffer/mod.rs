@@ -27,7 +27,7 @@ use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
-use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits, ShapeArenas};
+use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits, ShapePayloads};
 use crate::text::TextCacheKey;
 use glam::Vec2;
 
@@ -150,8 +150,8 @@ pub(crate) struct RenderCmdBuffer {
     /// this. Self-containment is load-bearing: a future encode
     /// cache snapshots a sub-range of `kinds`/`starts`/`data` plus
     /// a copy of this struct, so replay doesn't need the original
-    /// `Tree` arenas around. See [`ShapeArenas`].
-    pub(crate) shape_arenas: ShapeArenas,
+    /// `Tree` arenas around. See [`ShapePayloads`].
+    pub(crate) shape_payloads: ShapePayloads,
 }
 
 impl RenderCmdBuffer {
@@ -159,7 +159,7 @@ impl RenderCmdBuffer {
         self.kinds.clear();
         self.starts.clear();
         self.data.clear();
-        self.shape_arenas.clear();
+        self.shape_payloads.clear();
     }
 
     #[inline]
@@ -230,7 +230,7 @@ impl RenderCmdBuffer {
         verts: &[MeshVertex],
         idx: &[u16],
     ) {
-        let mesh = &mut self.shape_arenas.meshes;
+        let mesh = &mut self.shape_payloads.meshes;
         let v_start = mesh.vertices.len() as u32;
         mesh.vertices.extend_from_slice(verts);
         let i_start = mesh.indices.len() as u32;

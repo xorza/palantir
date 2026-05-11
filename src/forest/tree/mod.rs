@@ -6,12 +6,13 @@ use crate::forest::element::{
 };
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
+use crate::forest::shapes::Shapes;
 use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
-use crate::shape::{ShapeArenas, ShapeRecord};
+use crate::shape::ShapeRecord;
 use crate::widgets::grid::GridDef;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
@@ -127,18 +128,12 @@ pub(crate) struct Tree {
     /// length-asserted at the end of `open_node`.
     pub(crate) parents: Vec<NodeId>,
 
-    // -- Flat shape buffer -----------------------------------------------
-    /// Per-node-span list of [`ShapeRecord`]s. Indexed by
-    /// `NodeRecord.shapes` Spans. Distinct from `shape_arenas`,
-    /// which holds the per-variant side-table data those records
-    /// reference.
-    pub(crate) shapes: Vec<ShapeRecord>,
-
-    // -- Per-variant side-table arenas -----------------------------------
-    /// Variable-length storage backing `ShapeRecord::Mesh` /
-    /// `ShapeRecord::Polyline`. Cleared per frame, capacity
-    /// retained; see [`ShapeArenas`].
-    pub(crate) shape_arenas: ShapeArenas,
+    // -- Shapes ----------------------------------------------------------
+    /// Flat per-frame shape buffer (`shapes.records`) + per-variant
+    /// side-table payloads (`shapes.payloads`). Records are indexed
+    /// via `NodeRecord.shape_span`; payloads back the variable-length
+    /// `Mesh` / `Polyline` variants.
+    pub(crate) shapes: Shapes,
 
     // -- Frame-scoped sub-storage ----------------------------------------
     pub(crate) grid: GridArena,
@@ -183,7 +178,6 @@ impl Tree {
         self.clip_radius.clear();
         self.parents.clear();
         self.shapes.clear();
-        self.shape_arenas.clear();
         self.grid.clear();
         self.rollups.has_grid.clear();
         self.roots.clear();
@@ -220,7 +214,7 @@ impl Tree {
             chrome.hash(&mut h);
             self.clip_radius.get(i).hash(&mut h);
             let mut has_direct_shape = false;
-            for item in TreeItems::new(&self.records, &self.shapes, NodeId(i as u32)) {
+            for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
                 match item {
                     TreeItem::ShapeRecord(s) => {
                         has_direct_shape = true;
@@ -347,7 +341,7 @@ impl Tree {
 
         self.records.push(NodeRecord {
             widget_id,
-            shape_span: Span::new(self.shapes.len() as u32, 0),
+            shape_span: Span::new(self.shapes.records.len() as u32, 0),
             subtree_end: new_id.0 + 1,
             layout,
             attrs,
@@ -395,7 +389,7 @@ impl Tree {
             .node;
 
         let i = closing.index();
-        let shapes_len = self.shapes.len() as u32;
+        let shapes_len = self.shapes.records.len() as u32;
         let shapes = &mut self.records.shape_span_mut()[i];
         shapes.len = shapes_len - shapes.start;
         let end = self.records.subtree_end()[i];
@@ -422,7 +416,7 @@ impl Tree {
             !self.open_frames.is_empty(),
             "add_shape called with no open node",
         );
-        self.shapes.push(shape);
+        self.shapes.records.push(shape);
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -442,7 +436,7 @@ impl Tree {
     }
 
     pub(crate) fn tree_items(&self, node: NodeId) -> TreeItems<'_> {
-        TreeItems::new(&self.records, &self.shapes, node)
+        TreeItems::new(&self.records, &self.shapes.records, node)
     }
 
     pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
