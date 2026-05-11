@@ -2,7 +2,7 @@ use crate::layout::types::align::Align;
 use crate::layout::types::span::Span;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{
-    approx::approx_zero, color::Color, corners::Corners, rect::Rect, stroke::Stroke,
+    approx::noop_f32, color::Color, corners::Corners, rect::Rect, stroke::Stroke,
 };
 use glam::Vec2;
 use std::borrow::Cow;
@@ -304,15 +304,13 @@ impl Shape<'_> {
                 stroke,
                 ..
             } => local_rect_paint_empty(local_rect) || (fill.is_noop() && stroke.is_noop()),
-            Shape::Line { width, color, .. } => {
-                *width <= 0.0 || width.is_nan() || approx_zero(*width) || color.is_noop()
-            }
+            Shape::Line { width, color, .. } => noop_f32(*width) || color.is_noop(),
             Shape::Polyline {
                 points,
                 colors,
                 width,
             } => {
-                if *width <= 0.0 || width.is_nan() || approx_zero(*width) || points.len() < 2 {
+                if noop_f32(*width) || points.len() < 2 {
                     return true;
                 }
                 match colors {

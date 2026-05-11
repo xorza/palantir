@@ -1,4 +1,4 @@
-use crate::primitives::approx::approx_zero;
+use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
 use palantir_anim_derive::Animatable;
 
@@ -38,7 +38,7 @@ impl Stroke {
     /// filters it out without any `Option` collapse step.
     #[inline]
     pub fn is_noop(&self) -> bool {
-        self.width <= 0.0 || self.width.is_nan() || approx_zero(self.width) || self.color.is_noop()
+        noop_f32(self.width) || self.color.is_noop()
     }
 }
 
