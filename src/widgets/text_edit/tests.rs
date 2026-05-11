@@ -749,7 +749,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     // TextEdit. Per-state overrides (set on
     // `theme.text_edit.normal.text` etc.) win on top.
     use crate::TextStyle;
-    use crate::shape::ShapeRecord;
+    use crate::forest::shapes::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
@@ -813,8 +813,8 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
 
 #[test]
 fn theme_text_color_used_when_text_widget_does_not_override() {
+    use crate::forest::shapes::ShapeRecord;
     use crate::primitives::color::Color;
-    use crate::shape::ShapeRecord;
     use crate::widgets::text::Text;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
@@ -838,8 +838,8 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
 #[test]
 fn text_widget_color_override_wins_over_theme() {
     use crate::TextStyle;
+    use crate::forest::shapes::ShapeRecord;
     use crate::primitives::color::Color;
-    use crate::shape::ShapeRecord;
     use crate::widgets::text::Text;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
@@ -871,7 +871,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     // Pin: every text-rendering widget falls back to `theme.text` for
     // leading. TextEdit's `normal` slot can override on top.
     use crate::TextStyle;
-    use crate::shape::ShapeRecord;
+    use crate::forest::shapes::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
@@ -937,7 +937,7 @@ fn textedit_style_override_replaces_default_theme() {
     // onto the recorded `ShapeRecord::Text`.
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::shape::ShapeRecord;
+    use crate::forest::shapes::ShapeRecord;
     use crate::widgets::theme::WidgetLook;
 
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
@@ -978,7 +978,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     // (default 1.2 from `crate::text::LINE_HEIGHT_MULT`). The shaper
     // and the caret rect both read this value, so a wrong default
     // would put both renderers out of sync.
-    use crate::shape::ShapeRecord;
+    use crate::forest::shapes::ShapeRecord;
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hi");
     let mut leaf_node = None;
@@ -1017,7 +1017,7 @@ fn pushed_shape_uses_style_overridden_line_height() {
     // at the requested leading — not just the caret rect.
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::shape::ShapeRecord;
+    use crate::forest::shapes::ShapeRecord;
     use crate::widgets::theme::WidgetLook;
     let mut ui = ui_at_no_cosmic(UVec2::new(300, 80));
     let mut buf = String::from("hi");
@@ -1057,7 +1057,7 @@ fn line_height_override_changes_caret_rect_height() {
     // override 2.0 → 32 px tall.
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::shape::ShapeRecord;
+    use crate::forest::shapes::ShapeRecord;
     use crate::widgets::theme::WidgetLook;
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {

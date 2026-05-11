@@ -88,10 +88,11 @@ impl SubtreeRollups {
 #[cfg(test)]
 mod tests {
     use crate::common::hash::Hasher;
+    use crate::forest::shapes::ShapeRecord;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
-    use crate::shape::{ShapeRecord, TextWrap};
+    use crate::shape::TextWrap;
     use std::borrow::Cow;
     use std::hash::{Hash, Hasher as _};
 

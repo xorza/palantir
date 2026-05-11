@@ -4,6 +4,7 @@
 
 use crate::Ui;
 use crate::forest::element::Configure;
+use crate::forest::shapes::ShapeRecord;
 #[allow(unused_imports)]
 use crate::forest::tree::Layer;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
@@ -12,7 +13,6 @@ use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::shape::ShapeRecord;
 use crate::text::TextShaper;
 use crate::ui::damage::region::DamageRegion;
 use crate::widgets::panel::Panel;

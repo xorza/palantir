@@ -620,11 +620,11 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
 mod bars {
     use crate::Ui;
     use crate::forest::element::Configure;
+    use crate::forest::shapes::ShapeRecord;
     use crate::forest::tree::{Layer, NodeId};
     use crate::forest::widget_id::WidgetId;
     use crate::layout::types::display::Display;
     use crate::layout::types::sizing::Sizing;
-    use crate::shape::ShapeRecord;
     use crate::support::internals::scroll_state;
     use crate::support::testing::{shapes_of, ui_at};
     use crate::widgets::frame::Frame;

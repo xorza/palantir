@@ -5,12 +5,13 @@
 
 use super::{Axis, LayoutEngine, LenReq};
 use crate::forest::element::LayoutCore;
+use crate::forest::shapes::ShapeRecord;
 use crate::forest::tree::{Child, NodeId, Tree};
 use crate::layout::types::{
     align::Align, align::AxisAlign, justify::Justify, sizing::Sizes, sizing::Sizing,
 };
 use crate::primitives::{rect::Rect, size::Size};
-use crate::shape::{ShapeRecord, TextWrap};
+use crate::shape::TextWrap;
 use crate::text::TextShaper;
 use glam::Vec2;
 
