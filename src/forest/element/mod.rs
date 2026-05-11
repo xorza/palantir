@@ -36,6 +36,7 @@
 //! inside `Tree.extras` is filled at `open_node` time. `Configure`
 //! (the trait) provides one chained setter per row.
 
+use crate::forest::seen_ids::IdSource;
 use crate::forest::visibility::Visibility;
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
@@ -280,12 +281,13 @@ pub struct Element {
     // ---- Identity + layout-algorithm selector --------------------------------
     pub(crate) id: WidgetId,
     pub(crate) mode: LayoutMode,
-    /// `true` when `id` was synthesized by [`WidgetId::auto_stable`] (i.e. the
-    /// caller used `Foo::new()` without an explicit key). `Ui::node` silently
-    /// disambiguates colliding auto ids by mixing in a per-id occurrence
-    /// counter; explicit-key collisions still hard-assert as caller bugs.
-    /// Cleared by [`Configure::id_salt`] / [`Configure::id`].
-    pub(crate) auto_id: bool,
+    /// How `id` was produced: [`IdSource::Auto`] when synthesized by
+    /// [`WidgetId::auto_stable`] (caller used `Foo::new()` + `.auto_id()`),
+    /// [`IdSource::Explicit`] when set via [`Configure::id_salt`] /
+    /// [`Configure::id`]. `Ui::node` silently disambiguates colliding
+    /// auto ids by mixing in a per-id occurrence counter; explicit-key
+    /// collisions still hard-assert as caller bugs.
+    pub(crate) id_source: IdSource,
 
     // ---- Own size + alignment (read by every parent layout) ------------------
     pub(crate) size: Sizes,
@@ -373,7 +375,7 @@ impl Element {
         Self {
             id: WidgetId::default(),
             mode,
-            auto_id: false,
+            id_source: IdSource::Explicit,
             size: Sizes::default(),
             min_size: Size::ZERO,
             max_size: Size::INF,
@@ -455,24 +457,24 @@ pub trait Configure: Sized {
     /// Override this widget's id with a hash of `key`. Use whenever the
     /// default call-site-derived id wouldn't survive across frames or across
     /// loop iterations — e.g. a `for` loop where each iteration must keep
-    /// per-widget state separate. Clears the `auto_id` flag, so explicit-key
-    /// collisions surface as hard asserts in `Ui::node` rather than getting
-    /// silently disambiguated.
+    /// per-widget state separate. Marks the id as `Explicit`, so collisions
+    /// surface as hard asserts in `Ui::node` rather than getting silently
+    /// disambiguated.
     fn id_salt(mut self, key: impl std::hash::Hash) -> Self {
         let e = self.element_mut();
         e.id = WidgetId::from_hash(key);
-        e.auto_id = false;
+        e.id_source = IdSource::Explicit;
         self
     }
 
     /// Override this widget's id with a precomputed [`WidgetId`]. Use when
     /// the id was derived elsewhere (parent → child via [`WidgetId::with`],
     /// shared seed for sibling widgets) so [`Self::id_salt`] would re-hash
-    /// a value the caller already constructed. Clears `auto_id`.
+    /// a value the caller already constructed. Marks the id as `Explicit`.
     fn id(mut self, id: WidgetId) -> Self {
         let e = self.element_mut();
         e.id = id;
-        e.auto_id = false;
+        e.id_source = IdSource::Explicit;
         self
     }
 
@@ -484,7 +486,7 @@ pub trait Configure: Sized {
     fn auto_id(mut self) -> Self {
         let e = self.element_mut();
         e.id = WidgetId::auto_stable();
-        e.auto_id = true;
+        e.id_source = IdSource::Auto;
         self
     }
 

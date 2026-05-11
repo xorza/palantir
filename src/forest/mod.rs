@@ -5,7 +5,7 @@
 
 use crate::forest::element::Element;
 use crate::forest::seen_ids::SeenIds;
-use crate::forest::tree::{Layer, NodeId, Tree};
+use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
 use crate::forest::widget_id::WidgetId;
 use crate::primitives::size::Size;
 use crate::shape::Shape;
@@ -25,10 +25,10 @@ pub(crate) mod widget_id;
 /// Recording-only state owned by [`Forest`]. The active layer selects
 /// which `Tree` receives the next `open_node` / `add_shape`. The
 /// anchor for the active scope's next root mint lives on the
-/// destination tree's `pending_anchor` field — set by
-/// [`Forest::push_layer`], consumed by the next `Tree::open_node`
-/// that mints a `RootSlot`. Per-layer ancestor stacks live on each
-/// `Tree` itself.
+/// destination tree's `pending_anchors` stack — pushed by
+/// [`Forest::push_layer`], read by `Tree::open_node` on root mint,
+/// popped by [`Forest::pop_layer`]. Per-layer ancestor stacks live on
+/// each `Tree` itself.
 #[derive(Default)]
 struct RecordingState {
     /// Active layer for the next `open_node`. `Main` between/outside
@@ -36,9 +36,9 @@ struct RecordingState {
     current_layer: Layer,
     /// Save-stack: one entry per open `push_scope` — the outer layer
     /// is restored on `pop_scope`. Empty outside any layer scope.
-    /// Anchors don't ride the stack because each `Tree` owns its own
-    /// `pending_anchor` and same-layer nesting (which would clobber
-    /// it) is forbidden by [`Forest::push_layer`]'s assert.
+    /// Anchors save and restore on the per-`Tree` `pending_anchors`
+    /// stack, so nested same-layer pushes (currently forbidden by the
+    /// `Forest::push_layer` assert) would also be safe.
     layer_stack: Vec<Layer>,
 }
 
@@ -126,7 +126,7 @@ impl Forest {
              `.id(precomputed)`, or `.auto_id()` on the builder before `.show(ui)`. \
              `Foo::new()` no longer derives an id automatically.",
         );
-        element.id = self.ids.record(element.id, element.auto_id);
+        element.id = self.ids.record(element.id, element.id_source);
         let layer = self.recording.current_layer;
         self.trees[layer as usize].open_node(element)
     }
@@ -157,19 +157,22 @@ impl Forest {
             self.recording.current_layer,
         );
         let tree = &mut self.trees[layer as usize];
-        tree.pending_anchor = anchor;
-        tree.pending_size = size;
+        tree.pending_anchors.push(PendingAnchor { anchor, size });
         self.recording.push_scope(layer);
     }
 
     pub(crate) fn pop_layer(&mut self) {
         let layer = self.recording.current_layer;
+        let tree = &mut self.trees[layer as usize];
         assert!(
-            self.trees[layer as usize].open_frames.is_empty(),
+            tree.open_frames.is_empty(),
             "Ui::layer body left {} node(s) open in layer {:?}",
-            self.trees[layer as usize].open_frames.len(),
+            tree.open_frames.len(),
             layer,
         );
+        tree.pending_anchors
+            .pop()
+            .expect("pop_layer without matching push_layer");
         self.recording.pop_scope();
     }
 

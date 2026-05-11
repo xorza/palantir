@@ -21,6 +21,21 @@
 use crate::forest::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+/// How a `WidgetId` was produced. Threaded into [`SeenIds::record`]
+/// so collisions can be reported with the right diagnosis: `Auto`
+/// collisions get silently disambiguated, `Explicit` collisions are
+/// always caller bugs and hard-assert with a key-collision message.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum IdSource {
+    /// Caller passed an explicit key via `.id_salt(...)`. Collisions
+    /// are bugs.
+    Explicit,
+    /// Id minted by `WidgetId::auto_stable()` (track-caller). Collisions
+    /// are expected in loops / helper closures and get disambiguated
+    /// via an occurrence counter.
+    Auto,
+}
+
 #[derive(Default)]
 pub(crate) struct SeenIds {
     /// `WidgetId`s recorded this frame so far. Populated by
@@ -62,12 +77,12 @@ impl SeenIds {
     /// actually use. Auto ids that collide are silently disambiguated
     /// by mixing in an occurrence counter; explicit-id collisions are
     /// hard bugs and panic with call-site context.
-    pub(crate) fn record(&mut self, id: WidgetId, auto: bool) -> WidgetId {
+    pub(crate) fn record(&mut self, id: WidgetId, source: IdSource) -> WidgetId {
         if self.curr.insert(id) {
             return id;
         }
         assert!(
-            auto,
+            matches!(source, IdSource::Auto),
             "WidgetId collision — id {id:?} recorded twice this frame. \
              Two explicit `.id_salt(key)` calls produced the same hash; \
              pick distinct keys. Duplicate ids silently corrupt focus, \
