@@ -89,6 +89,11 @@ pub(crate) fn tessellate_polyline_aa(
         return;
     }
     assert!(matches_mode(points.len(), colors.len(), style.mode));
+    // Worst case per kept point: 2 cross-sections (8 verts) + a round
+    // fan at a cap/join (≤ MAX_ROUND_FAN_SEGS * 2 + 1 verts). Reserve
+    // once so push paths skip Vec growth.
+    out_verts.reserve(points.len() * 48);
+    out_indices.reserve(points.len() * 200);
 
     let half_geom = (style.width_phys * 0.5).max(HALF_FRINGE);
     let geo = Geo {
@@ -98,13 +103,20 @@ pub(crate) fn tessellate_polyline_aa(
         cap: style.cap,
         join: style.join,
     };
+    let call_start = out_verts.len();
     let mut e = Emitter {
-        call_start: out_verts.len(),
+        call_start,
         verts: out_verts,
         indices: out_indices,
         geo,
     };
     emit_polyline(points, ColorPlan::from_mode(style.mode, colors), &mut e);
+    // u16 index width contract: panic once after emission rather than
+    // checked-cast on every Emitter::cursor call inside the hot loop.
+    assert!(
+        e.verts.len() - call_start <= u16::MAX as usize,
+        "polyline tessellation exceeded u16 vertex limit"
+    );
 }
 
 /// Per-kept-point color picker. Pre-resolved from `(ColorMode,
@@ -337,13 +349,12 @@ struct Emitter<'a> {
 }
 
 impl<'a> Emitter<'a> {
-    /// Per-call vertex offset as `u16`. Panics if this call has
-    /// emitted more than `u16::MAX` verts — see the doc on
-    /// [`tessellate_polyline_aa`].
+    /// Per-call vertex offset as `u16`. The u16 contract is verified
+    /// once after emission in [`tessellate_polyline_aa`]; here we just
+    /// truncate, since this is on the per-point hot path.
     #[inline]
     fn cursor(&self) -> u16 {
-        u16::try_from(self.verts.len() - self.call_start)
-            .expect("polyline tessellation exceeded u16 vertex limit")
+        (self.verts.len() - self.call_start) as u16
     }
 
     #[inline]
@@ -538,27 +549,42 @@ impl<'a> Emitter<'a> {
     ) {
         let n = segments.max(1);
         let step = 2.0 * half_angle / n as f32;
-        let start_angle = -half_angle;
         let perp = Vec2::new(-center_dir.y, center_dir.x);
         let base = self.cursor();
         self.push_vert(center, inner_color);
-        for k in 0..=n {
-            let angle = start_angle + k as f32 * step;
-            let (s, c) = angle.sin_cos();
+        // Rotation-matrix recursion: start at angle = -half_angle and
+        // advance by `step` per iteration with two multiplies + a sub
+        // instead of an `sin_cos` call per sample. Drift over ≤ 16
+        // steps is well under fringe AA tolerance.
+        let (sin_step, cos_step) = step.sin_cos();
+        let (mut s, mut c) = (-half_angle).sin_cos();
+        let inner_off = self.geo.inner_offset;
+        let outer_off = self.geo.outer_offset;
+        for _ in 0..=n {
             let dir = c * center_dir + s * perp;
-            self.push_vert(center + dir * self.geo.inner_offset, inner_color);
-            self.push_vert(center + dir * self.geo.outer_offset, Color::TRANSPARENT);
+            self.verts.extend_from_slice(&[
+                MeshVertex {
+                    pos: center + dir * inner_off,
+                    color: inner_color,
+                },
+                MeshVertex {
+                    pos: center + dir * outer_off,
+                    color: Color::TRANSPARENT,
+                },
+            ]);
+            let c_next = c * cos_step - s * sin_step;
+            let s_next = s * cos_step + c * sin_step;
+            c = c_next;
+            s = s_next;
         }
         for k in 0..n {
             let inner_k = base + 1 + 2 * k;
-            let outer_k = base + 2 + 2 * k;
-            let inner_k1 = base + 1 + 2 * (k + 1);
-            let outer_k1 = base + 2 + 2 * (k + 1);
-            self.indices.extend_from_slice(&[base, inner_k, inner_k1]);
-            self.indices
-                .extend_from_slice(&[inner_k, outer_k, outer_k1]);
-            self.indices
-                .extend_from_slice(&[inner_k, outer_k1, inner_k1]);
+            let outer_k = inner_k + 1;
+            let inner_k1 = inner_k + 2;
+            let outer_k1 = inner_k + 3;
+            self.indices.extend_from_slice(&[
+                base, inner_k, inner_k1, inner_k, outer_k, outer_k1, inner_k, outer_k1, inner_k1,
+            ]);
         }
     }
 }
@@ -588,10 +614,10 @@ fn tangent_of(normal: Vec2) -> Vec2 {
 fn seg_normal(a: Vec2, b: Vec2) -> Vec2 {
     let d = b - a;
     let len_sq = d.length_squared();
-    // Internal invariant: emit_simple / emit_per_segment route
-    // through next_kept so all (a, b) pairs reaching here are
-    // non-coincident. Release-assert as defense against logic bugs.
-    assert!(
+    // Walker routes every (a, b) through next_kept so they're
+    // non-coincident by construction; debug-assert because per-segment
+    // is hot enough that the release check shows up in profiles.
+    debug_assert!(
         len_sq > COINCIDENT_EPS_SQ,
         "stroke_tessellate: seg_normal called on coincident points — emit walker bug"
     );
