@@ -27,7 +27,6 @@ use crate::renderer::frontend::encoder::Encoder;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
 use crate::ui::damage::region::DamageRegion;
-use crate::ui::debug_overlay::DebugOverlayConfig;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -87,7 +86,6 @@ pub struct RecordedFrame<'a> {
     pub(crate) cascades: &'a CascadeResult,
     pub(crate) display: Display,
     pub(crate) damage: DamagePaint,
-    pub(crate) debug_overlay: Option<DebugOverlayConfig>,
     pub(crate) repaint_requested: bool,
     /// Shared with `Ui::frame_state`. Set to `Pending` by
     /// `Ui::run_frame` and (on success) to `Submitted` by

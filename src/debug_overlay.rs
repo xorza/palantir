@@ -1,6 +1,6 @@
-//! Debug overlay configuration on `Ui`. Set fields on
+//! Debug overlay configuration on `Host`. Set fields on
 //! [`DebugOverlayConfig`] and assign via
-//! `ui.debug_overlay = Some(cfg)` to enable per-frame visualizations.
+//! `host.debug_overlay = Some(cfg)` to enable per-frame visualizations.
 //! Each flag draws on top of the regular paint without changing the
 //! main pass's `LoadOp`: [`DebugOverlayConfig::damage_rect`] strokes
 //! the damaged rects on the swapchain after the backbuffer→surface

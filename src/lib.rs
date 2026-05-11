@@ -6,6 +6,7 @@ extern crate self as palantir;
 
 pub(crate) mod animation;
 pub(crate) mod common;
+pub(crate) mod debug_overlay;
 pub(crate) mod forest;
 pub(crate) mod host;
 pub(crate) mod input;
@@ -25,6 +26,7 @@ pub use animation::{AnimSlot, AnimSpec};
 // Same-name re-export: the derive lives in the macro namespace,
 // the trait in the type namespace — `use palantir::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
+pub use debug_overlay::DebugOverlayConfig;
 pub use forest::element::{Configure, Element, LayoutMode};
 pub use forest::tree::Layer;
 pub use forest::visibility::Visibility;
@@ -56,7 +58,6 @@ pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 pub use text::TextShaper;
 pub use text::cosmic::CosmicMeasure;
 pub use ui::Ui;
-pub use ui::debug_overlay::DebugOverlayConfig;
 pub use widgets::Response;
 pub use widgets::button::Button;
 pub use widgets::frame::Frame;
