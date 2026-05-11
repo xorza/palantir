@@ -43,7 +43,7 @@ is reserved so the v1.1 selection branch doesn't need a state migration.
 
 Eviction rides on the same `removed` sweep that drives `MeasureCache` /
 `TextMeasurer`: a `WidgetId` that vanishes from this frame's tree gets
-its row dropped in `end_frame`.
+its row dropped in `post_record`.
 
 The buffer itself isn't in state — `TextEdit<'a>` borrows
 `&'a mut String` from the host (egui-style). Host-side mutations
@@ -101,7 +101,7 @@ frame_text: String,           // committed text this frame, ditto
   Modifiers are snapshotted at *push* time, not drain time, so
   interleaved chord input doesn't mis-attribute.
 - Eviction: if `focused`'s `WidgetId` isn't in the new cascade,
-  `end_frame` clears it.
+  `post_record` clears it.
 - `Ui::focused_id()` / `Ui::request_focus(Option<WidgetId>)` /
   `Ui::set_focus_policy` / `Ui::focus_policy` are public.
 

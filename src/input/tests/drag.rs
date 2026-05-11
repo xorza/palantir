@@ -139,7 +139,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     build(&mut ui);
     ui.record_phase();
     ui.paint_phase();
-    ui.begin_frame(Display::from_physical(surface, 1.0));
+    ui.pre_record(Display::from_physical(surface, 1.0));
     build(&mut ui);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));

@@ -91,26 +91,26 @@ impl Default for Forest {
 }
 
 impl Forest {
-    pub(crate) fn begin_frame(&mut self) {
+    pub(crate) fn pre_record(&mut self) {
         self.recording.reset();
-        self.ids.begin_frame();
+        self.ids.pre_record();
         for t in &mut self.trees {
-            t.begin_frame();
+            t.pre_record();
         }
     }
 
     /// Finalize every tree. Pure structural pass — `RootSlot.anchor`
     /// is just a placement; the surface needed to derive each root's
     /// "available" room is passed straight to `LayoutEngine::run`.
-    pub(crate) fn end_frame(&mut self) {
+    pub(crate) fn post_record(&mut self) {
         assert_eq!(
             self.recording.current_layer,
             Layer::Main,
-            "end_frame called with active layer {:?} — Ui::layer body forgot to return",
+            "post_record called with active layer {:?} — Ui::layer body forgot to return",
             self.recording.current_layer,
         );
         for layer in Layer::PAINT_ORDER {
-            self.trees[layer as usize].end_frame();
+            self.trees[layer as usize].post_record();
         }
     }
 

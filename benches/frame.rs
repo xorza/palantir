@@ -213,7 +213,7 @@ fn bench_frame(c: &mut Criterion) {
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
     let mut ui = Ui::new();
 
-    c.bench_function("frame/end_frame", |b| {
+    c.bench_function("frame/post_record", |b| {
         b.iter(|| {
             black_box(ui.run_frame(display, std::time::Duration::ZERO, build_ui));
         });
@@ -224,7 +224,7 @@ fn bench_frame(c: &mut Criterion) {
     // Approximates a live drag-resize.
     let mut ui = Ui::new();
     let mut frame = 0u32;
-    c.bench_function("frame/end_frame_resizing", |b| {
+    c.bench_function("frame/post_record_resizing", |b| {
         b.iter(|| {
             let w = 1024 + (frame % 512);
             let h = 640 + ((frame / 7) % 320);

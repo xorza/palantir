@@ -13,6 +13,7 @@ use crate::input::{FocusPolicy, InputEvent, InputState, ResponseState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::types::display::Display;
+use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
 use crate::renderer::frontend::{FrameState, RecordedFrame};
@@ -58,7 +59,7 @@ pub struct Ui {
     pub(crate) anim: AnimMap,
     pub debug_overlay: Option<DebugOverlayConfig>,
     /// Submission status of the last *painted* frame. NOT reset in
-    /// `begin_frame` — `click_on_empty_bg_does_not_force_full`
+    /// `pre_record` — `click_on_empty_bg_does_not_force_full`
     /// pins why.
     pub(crate) frame_state: FrameState,
     /// Set by [`Self::request_relayout`]; consumed by
@@ -116,7 +117,7 @@ impl Ui {
 
     // ── Frame lifecycle ───────────────────────────────────────────────
 
-    /// The only public entry point for driving a frame. Runs `build`
+    /// The only public entry point for driving a frame. Runs `record`
     /// once, re-records on action input or `request_relayout`, paints
     /// the last pass. `now` is monotonic host time;
     /// `Ui::{dt,time,frame_id}` derive from it. See `docs/repaint.md`.
@@ -124,7 +125,7 @@ impl Ui {
         &mut self,
         display: Display,
         now: Duration,
-        mut build: impl FnMut(&mut Ui),
+        mut record: impl FnMut(&mut Ui),
     ) -> RecordedFrame<'_> {
         let raw_dt = now.saturating_sub(self.time);
         self.dt = raw_dt.as_secs_f32().min(Self::MAX_DT);
@@ -132,8 +133,8 @@ impl Ui {
         self.frame_id = self.frame_id.wrapping_add(1);
         self.repaint_requested = false;
 
-        self.begin_frame(display);
-        build(self);
+        self.pre_record(display);
+        record(self);
         let action_flag = self.input.take_action_flag();
         let needs_relayout = self.record_phase();
         if action_flag {
@@ -142,8 +143,8 @@ impl Ui {
         if action_flag || needs_relayout {
             // Pass B paints, regardless of any further re-record
             // request — caps relayout at one retry per `run_frame`.
-            self.begin_frame(display);
-            build(self);
+            self.pre_record(display);
+            record(self);
             self.record_phase();
             self.relayout_requested = false;
         }
@@ -166,10 +167,10 @@ impl Ui {
     /// display change / first frame / dropped previous frame. See
     /// `docs/repaint.md` for the three-trigger detection and why
     /// `frame_state` is *not* reset here.
-    pub(crate) fn begin_frame(&mut self, display: Display) {
+    pub(crate) fn pre_record(&mut self, display: Display) {
         assert!(
-            display.scale_factor >= f32::EPSILON,
-            "Display::scale_factor must be ≥ f32::EPSILON; got {}",
+            display.scale_factor >= EPS,
+            "Display::scale_factor must be ≥ EPSILON; got {}",
             display.scale_factor,
         );
         let new_surface = display.logical_rect();
@@ -188,23 +189,24 @@ impl Ui {
             self.damage.invalidate_prev();
         }
         self.display = display;
-        self.forest.begin_frame();
+        self.forest.pre_record();
+
         // `record_phase` consumes the flag via `mem::take`; a survivor
         // here means a missing record/paint pair on the prior frame.
         assert!(
             !self.relayout_requested,
-            "begin_frame: relayout_requested smuggled across frames \
+            "pre_record: relayout_requested smuggled across frames \
              — every frame must consume it via `record_phase`",
         );
     }
 
-    /// Record-half of `end_frame`: finalize hashes, sweep evicted
+    /// Record-half of `post_record`: finalize hashes, sweep evicted
     /// caches, run measure/arrange. Returns whether
     /// [`Self::request_relayout`] fired. Diffs (no commit) so a
     /// discarded pass A still sees the painted frame's `prev`.
     pub(crate) fn record_phase(&mut self) -> bool {
         let surface = self.display.logical_rect();
-        self.forest.end_frame();
+        self.forest.post_record();
         // Sweep before `layout.run` so the measure cache compaction
         // sees a consistent live-set.
         self.forest.ids.diff_for_sweep();
@@ -212,7 +214,7 @@ impl Ui {
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
-        self.anim.end_frame(removed);
+        self.anim.post_record(removed);
 
         self.layout_engine
             .run(&self.forest, surface, &self.text, &mut self.layout);
@@ -231,7 +233,7 @@ impl Ui {
         let removed = &self.forest.ids.removed;
 
         let cascades = self.cascades.run(&self.forest, &self.layout);
-        self.input.end_frame(cascades);
+        self.input.post_record(cascades);
         let damage = self
             .damage
             .compute(&self.forest, cascades, removed, surface);
@@ -316,7 +318,7 @@ impl Ui {
 
     /// Cross-frame state row for `id`, `T::default()` on first
     /// access. Rows for `WidgetId`s not recorded this frame are
-    /// evicted in `end_frame`. Panics on type collision at `id`.
+    /// evicted in `post_record`. Panics on type collision at `id`.
     pub fn state_mut<T: Default + 'static>(&mut self, id: WidgetId) -> &mut T {
         self.state.get_or_insert_with(id, T::default)
     }

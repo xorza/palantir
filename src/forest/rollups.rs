@@ -21,9 +21,9 @@
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct NodeHash(pub(crate) u64);
 
-/// Subtree-wide rollup data populated by [`super::Tree::end_frame`].
+/// Subtree-wide rollup data populated by [`super::Tree::post_record`].
 /// All three slices/sets index by `NodeId.0` and are length
-/// `records.len()` after `end_frame`. Capacity retained across frames.
+/// `records.len()` after `post_record`. Capacity retained across frames.
 ///
 /// - `node[i]` — authoring hash of node `i` alone (layout / paint /
 ///   extras / shapes / grid def). Read by damage diff and the leaf
@@ -37,7 +37,7 @@ pub(crate) struct NodeHash(pub(crate) u64);
 ///   `i` contains any `LayoutMode::Grid` node. Fast-path skip for
 ///   `MeasureCache`'s grid-hug snapshot/restore walk. Conceptually a
 ///   structure summary, not a hash, but bundled here because it has
-///   the same lifecycle as the hash columns (populated by `end_frame`,
+///   the same lifecycle as the hash columns (populated by `post_record`,
 ///   indexed by `NodeId`, read by the same caches).
 /// - `paints[i]` — bit `i` is true iff node `i` directly contributes
 ///   pixels (has chrome OR records ≥1 direct `ShapeRecord`). Read by the
@@ -49,7 +49,7 @@ pub(crate) struct NodeHash(pub(crate) u64);
 ///   **Lives here, not in `NodeFlags.attrs`.** The other per-node 1-byte
 ///   flags (sense / disabled / clip / focusable) are *recording-time
 ///   authoring inputs* set by `NodeFlags::pack()` at `open_node`;
-///   `paints` is *derived at end_frame* from `chrome` + `shape_span`
+///   `paints` is *derived at post_record* from `chrome` + `shape_span`
 ///   (only known after `close_node`). Mixing the two would silently
 ///   break "attrs == what the user typed", and the hash pass already
 ///   covers chrome + shapes — packing `paints` into `attrs` would
@@ -72,7 +72,7 @@ impl SubtreeRollups {
     /// `compute_subtree_hashes`'s reverse pre-order walk). `paints` is
     /// resized to `n` and cleared (filled by indexed `set` during
     /// `compute_node_hashes`). `has_grid` is *not* touched here — its
-    /// lifecycle is owned by recording (cleared at `begin_frame`,
+    /// lifecycle is owned by recording (cleared at `pre_record`,
     /// populated by `open_node`/`close_node`, permuted by
     /// `reorder_records`).
     pub(crate) fn reset_hashes_for(&mut self, n: usize) {

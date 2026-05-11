@@ -3,7 +3,7 @@
 //! progress, text editor) read/write a typed row keyed by their
 //! `WidgetId`. Eviction follows the same `SeenIds.removed` diff that
 //! the text and layout caches consume — when a widget stops being
-//! recorded, its row is dropped at `Ui::end_frame`.
+//! recorded, its row is dropped at `Ui::post_record`.
 //!
 //! Steady-state allocation: one `Box` per widget on first insert.
 //! Subsequent frames are pure hashmap probes — no allocs after warmup,

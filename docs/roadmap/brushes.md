@@ -517,7 +517,7 @@ roughly increasing complexity:
    bench that counts allocs per frame.
 
 2. **Per-frame `BrushArena` scratch.** Add `Ui::brush_scratch:
-   BrushArena` cleared at `end_frame`, capacity-reused. `Brush::Linear`
+   BrushArena` cleared at `post_record`, capacity-reused. `Brush::Linear`
    becomes `enum LinearHandle { Shared(Arc<…>), Frame(u32) }`; lerps
    push onto the scratch and return `Frame(idx)`. Truly alloc-free
    after warmup. Cost: `Hash` / `is_noop` / `PartialEq` on `Frame`
@@ -552,7 +552,7 @@ Path 1 is cheapest to implement; path 2 is the principled answer; path
   authoring-time, not GPU-time, so it logically belongs alongside
   `StateMap`. The LUT atlas (renderer-side) is keyed by the same content
   hash, so the two halves stay in sync without a cross-side handshake.
-  Eviction needs to hook into the same `removed` slice `end_frame` uses
+  Eviction needs to hook into the same `removed` slice `post_record` uses
   for `StateMap`/`AnimMap`/`TextShaper`/`MeasureCache`, or it leaks.
 - LUT row collision overflow: linear-probe within the 256 rows or fall
   back to a small "extras" row appended on demand? Probe is fine for

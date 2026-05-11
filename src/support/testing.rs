@@ -31,7 +31,7 @@ pub(crate) fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &Shap
 }
 
 pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
-    ui.begin_frame(Display::from_physical(size, 1.0));
+    ui.pre_record(Display::from_physical(size, 1.0));
 }
 
 /// Drive one full frame through the production [`Ui::run_frame`]
@@ -39,19 +39,19 @@ pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
 /// that exercise animation pass `now` themselves via `run_frame`
 /// directly. Discards the returned [`crate::renderer::frontend::FrameOutput`]
 /// so the caller can keep mutating `ui` afterwards.
-pub(crate) fn run_at(ui: &mut Ui, size: UVec2, build: impl FnMut(&mut Ui)) {
+pub(crate) fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
-    ui.run_frame(display, Duration::ZERO, build);
+    ui.run_frame(display, Duration::ZERO, record);
 }
 
 /// Same as [`run_at`] but additionally marks the frame as
 /// submitted. Tests that drive frames without going through a real
 /// `WgpuBackend::submit` need this — otherwise
-/// [`Ui::begin_frame`]'s auto-rewind kicks in and every subsequent
+/// [`Ui::pre_record`]'s auto-rewind kicks in and every subsequent
 /// frame's damage escalates to `Full`.
-pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, build: impl FnMut(&mut Ui)) {
+pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
-    let out = ui.run_frame(display, Duration::ZERO, build);
+    let out = ui.run_frame(display, Duration::ZERO, record);
     out.frame_state.mark_submitted();
 }
 

@@ -65,10 +65,10 @@ impl SeenIds {
     /// `curr` recording set + the auto-id disambiguation counter.
     /// **Doesn't touch `prev`** — that holds the last *painted*
     /// frame's recording, established by [`Self::commit_rollover`].
-    /// A run_frame two-pass discard build calls `begin_frame` then
+    /// A run_frame two-pass discard build calls `pre_record` then
     /// never reaches `commit_rollover`, so `prev` must be preserved
     /// across the discard.
-    pub(crate) fn begin_frame(&mut self) {
+    pub(crate) fn pre_record(&mut self) {
         self.curr.clear();
         self.dup.clear();
     }

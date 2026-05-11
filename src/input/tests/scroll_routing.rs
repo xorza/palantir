@@ -26,7 +26,7 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
         });
     ui.record_phase();
     ui.paint_phase();
-    ui.begin_frame(crate::layout::types::display::Display::default());
+    ui.pre_record(crate::layout::types::display::Display::default());
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
     Panel::zstack()
@@ -58,7 +58,7 @@ fn scroll_delta_zero_for_non_target() {
         .show(&mut ui, |_| {});
     ui.record_phase();
     ui.paint_phase();
-    ui.begin_frame(crate::layout::types::display::Display::default());
+    ui.pre_record(crate::layout::types::display::Display::default());
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 9.0)));
     Panel::zstack()
@@ -82,7 +82,7 @@ fn pointer_left_clears_scroll_target() {
         .show(&mut ui, |_| {});
     ui.record_phase();
     ui.paint_phase();
-    ui.begin_frame(crate::layout::types::display::Display::default());
+    ui.pre_record(crate::layout::types::display::Display::default());
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerLeft);
     ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));

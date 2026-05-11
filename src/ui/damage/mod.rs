@@ -1,4 +1,4 @@
-//! Per-frame damage detection. Computed in [`Ui::end_frame`] after
+//! Per-frame damage detection. Computed in [`Ui::post_record`] after
 //! `compute_hashes`; rebuilds the prev-frame snapshot in the same
 //! pass via the `entry()` API — vacant slots get inserted, occupied
 //! slots get diffed and either updated or evicted.
@@ -84,7 +84,7 @@ pub(crate) struct Damage {
     /// `compute` builds the next frame's region. Defaults to
     /// [`DEFAULT_PASS_BUDGET_PX`]; override in place (e.g. from a
     /// debug-overlay slider, a TBDR backend init, or a test) before
-    /// the next `Ui::end_frame` runs.
+    /// the next `Ui::post_record` runs.
     pub(crate) budget_px: f32,
     /// Last frame's snapshot, **only for widgets that painted last
     /// frame** (see the painting-only invariant in the module doc).
@@ -140,7 +140,7 @@ impl Damage {
     /// `prev` map and `prev_surface`. `compute` treats
     /// `prev_surface == None` as "force `DamagePaint::Full`" — see
     /// the `force_full` branch — so the next frame paints the whole
-    /// surface regardless of the diff. Called by `Ui::begin_frame`
+    /// surface regardless of the diff. Called by `Ui::pre_record`
     /// when the surface changed, the previous frame wasn't acked, or
     /// it's the first frame.
     pub(crate) fn invalidate_prev(&mut self) {
@@ -183,11 +183,11 @@ impl Damage {
         surface: Rect,
     ) -> DamagePaint {
         // `prev_surface == None` is the "treat as a fresh frame"
-        // signal. `Ui::begin_frame` clears it (and `prev`) when the
+        // signal. `Ui::pre_record` clears it (and `prev`) when the
         // surface changed, the previous `FrameOutput` wasn't acked,
         // or it's the very first frame; this `compute` doesn't need
         // to repeat that detection. Always update for the next
-        // frame's begin_frame comparison.
+        // frame's pre_record comparison.
         let force_full = self.prev_surface.is_none();
         self.prev_surface = Some(surface);
         self.dirty.clear();

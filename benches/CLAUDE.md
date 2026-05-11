@@ -3,14 +3,14 @@
 Criterion benches for the layout/measure/frame/cascade/damage pipeline.
 
 Each `*.rs` file is a criterion target; cases inside are named like
-`<group>/<case>` (e.g. `frame/end_frame`, `frame/end_frame_resizing`).
+`<group>/<case>` (e.g. `frame/post_record`, `frame/post_record_resizing`).
 Filter at run-time with a criterion regex.
 
 ## Running
 
 ```sh
 cargo bench --bench frame                              # all cases in frame.rs
-cargo bench --bench frame -- 'end_frame$'              # one case (regex, anchored)
+cargo bench --bench frame -- 'post_record$'              # one case (regex, anchored)
 cargo bench --bench caches --features internals        # gated benches
 ```
 
@@ -65,7 +65,7 @@ text report — works headless, no Firefox needed.
 
 ```sh
 scripts/profile-bench.sh                                    # default: frame bench, 5s
-BENCH=frame FILTER='end_frame$' scripts/profile-bench.sh    # one case
+BENCH=frame FILTER='post_record$' scripts/profile-bench.sh    # one case
 scripts/profile-bench.sh --profile-time 10                  # longer sample
 BENCH=damage FEATURES=internals scripts/profile-bench.sh    # gated bench
 TOPN=15 MIN_PCT=1.0 scripts/profile-bench.sh                # tighter cutoffs

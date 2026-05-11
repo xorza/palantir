@@ -5,7 +5,7 @@
 //!   the cache at the highest stable subtree root every frame (in steady
 //!   state, the root itself).
 //! - `forced_miss`: warm-up primes the *other two* caches; each iteration
-//!   then clears only the cache for this axis before `end_frame`, so the
+//!   then clears only the cache for this axis before `post_record`, so the
 //!   axis under test rebuilds from scratch while the other two stay pure
 //!   cache hits.
 //!

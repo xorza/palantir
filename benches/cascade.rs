@@ -1,5 +1,5 @@
 //! Cascade-pass microbenchmark. Builds a synthetic flat tree with N
-//! nodes, runs `Ui::end_frame` once to populate `layout.results`, then
+//! nodes, runs `Ui::post_record` once to populate `layout.results`, then
 //! benches `Cascades::run` in isolation.
 //!
 //! Decision criterion (per `docs/tree-redesign.md` Phase 2):
@@ -42,7 +42,7 @@ fn bench_cascade(c: &mut Criterion) {
     let mut group = c.benchmark_group("cascade/run");
 
     for &n in &[100usize, 500, 2000, 10_000] {
-        // Build once, end_frame once to populate layout.results, then
+        // Build once, post_record once to populate layout.results, then
         // measure cascades.run in isolation.
         let mut ui = Ui::new();
         let _ = ui.run_frame(display, std::time::Duration::ZERO, |ui| build_flat(ui, n));

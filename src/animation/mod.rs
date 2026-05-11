@@ -122,8 +122,8 @@ pub(crate) struct AnimRow<T: Animatable> {
     pub(crate) velocity: T,      // springs only; zero for duration rows
     pub(crate) elapsed: f32,     // duration only; segment-local seconds
     pub(crate) segment_start: T, // duration only; `current` at last retarget
-    /// Set by every `tick`, cleared by `end_frame`. Rows still
-    /// `false` at `end_frame` are dropped — that's how a slot whose
+    /// Set by every `tick`, cleared by `post_record`. Rows still
+    /// `false` at `post_record` are dropped — that's how a slot whose
     /// caller stopped poking it (widget id stuck around but the
     /// animation site went away) gets evicted. Without this the
     /// `(WidgetId, AnimSlot)` map only shrinks on full widget removal.
@@ -304,7 +304,7 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// stopped poking it this frame; clear the `touched` flag on the
     /// rows that survive. Single retain pass — both predicates fold
     /// into one walk.
-    pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(crate) fn post_record(&mut self, removed: &FxHashSet<WidgetId>) {
         self.rows.retain(|(id, _), row| {
             if removed.contains(id) {
                 return false;
@@ -319,13 +319,13 @@ impl<T: Animatable> AnimMapTyped<T> {
 /// Type-erased operations every typed map exposes — end-of-frame
 /// sweep, plus `as_any_mut` for downcast back to the concrete map.
 trait AnyTyped: 'static {
-    fn end_frame(&mut self, removed: &FxHashSet<WidgetId>);
+    fn post_record(&mut self, removed: &FxHashSet<WidgetId>);
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
-    fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
-        AnimMapTyped::<T>::end_frame(self, removed);
+    fn post_record(&mut self, removed: &FxHashSet<WidgetId>) {
+        AnimMapTyped::<T>::post_record(self, removed);
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
@@ -365,19 +365,19 @@ impl AnimMap {
 
     /// Drop rows for removed widgets and for slots that weren't
     /// poked this frame, then clear the `touched` flags on the rows
-    /// that survive. Called from `Ui::end_frame` once per frame; the
+    /// that survive. Called from `Ui::post_record` once per frame; the
     /// `removed` set is the same one that drives `StateMap` / text /
     /// layout sweeps. A `(WidgetId, AnimSlot)` row goes away if
     /// either (a) the widget itself disappeared or (b) the call site
     /// that owns the slot stopped reaching for it — without (b),
     /// abandoned slots would accumulate forever for any widget
     /// whose id lingers across motion-toggle states.
-    pub(crate) fn end_frame(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(crate) fn post_record(&mut self, removed: &FxHashSet<WidgetId>) {
         if self.by_type.is_empty() {
             return;
         }
         for typed in self.by_type.values_mut() {
-            typed.end_frame(removed);
+            typed.post_record(removed);
         }
     }
 }

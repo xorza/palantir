@@ -80,7 +80,7 @@ fn wheel_delta_advances_offset_with_clamp() {
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         for wheel_y in *pushes {
             ui.on_input(InputEvent::Scroll(Vec2::new(0.0, *wheel_y)));
-            ui.begin_frame(surface_display());
+            ui.pre_record(surface_display());
             build(&mut ui, *viewport_h, *content_h);
             ui.record_phase();
             ui.paint_phase();
@@ -114,7 +114,7 @@ fn horizontal_scroll_pans_only_x() {
     // makes it into the offset for a horizontal scroll.
     ui.on_input(InputEvent::Scroll(Vec2::new(75.0, 200.0)));
 
-    ui.begin_frame(surface_display());
+    ui.pre_record(surface_display());
     build_h(&mut ui);
     ui.record_phase();
     ui.paint_phase();
@@ -145,7 +145,7 @@ fn both_axis_scroll_pans_both_axes() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(40.0, 60.0)));
 
-    ui.begin_frame(surface_display());
+    ui.pre_record(surface_display());
     build_xy(&mut ui);
     ui.record_phase();
     ui.paint_phase();
@@ -324,7 +324,7 @@ fn scroll_state_content_survives_measure_cache_hit() {
     let after_first = *scroll_state(&mut ui, scroll_id);
     assert_eq!(after_first.content.h, 92.0);
 
-    ui.begin_frame(display);
+    ui.pre_record(display);
     build(&mut ui);
     ui.record_phase();
     ui.paint_phase();
@@ -447,7 +447,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         ui.on_input(InputEvent::PointerMoved(Vec2::new(pointer.0, pointer.1)));
         for &(px, py) in pans {
             ui.on_input(InputEvent::Scroll(Vec2::new(px, py)));
-            ui.begin_frame(surface_display());
+            ui.pre_record(surface_display());
             build(&mut ui);
             ui.record_phase();
             ui.paint_phase();
@@ -466,7 +466,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
 
         for &pinch in pinches {
             ui.on_input(InputEvent::Zoom(pinch));
-            ui.begin_frame(surface_display());
+            ui.pre_record(surface_display());
             build(&mut ui);
             ui.record_phase();
             ui.paint_phase();
@@ -579,7 +579,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     // a small downward wheel-pan (positive y delta).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
-    ui.begin_frame(surface_display());
+    ui.pre_record(surface_display());
     build(&mut ui);
     ui.record_phase();
     ui.paint_phase();
@@ -599,7 +599,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     // Inverse direction: pan further out should be blocked at the
     // current value (rubber-band on the away-from-natural side).
     ui.on_input(InputEvent::Scroll(Vec2::new(0.0, -5.0)));
-    ui.begin_frame(surface_display());
+    ui.pre_record(surface_display());
     build(&mut ui);
     ui.record_phase();
     ui.paint_phase();
@@ -750,14 +750,14 @@ mod bars {
         }
     }
 
-    /// Build a scroll over two frames so end_frame settles `ScrollState`
+    /// Build a scroll over two frames so post_record settles `ScrollState`
     /// before the bar-emit check on frame 2.
     fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> (Ui, NodeId) {
         let mut ui = ui_at(surface);
         build(&mut ui);
         ui.record_phase();
         ui.paint_phase();
-        ui.begin_frame(Display::from_physical(surface, 1.0));
+        ui.pre_record(Display::from_physical(surface, 1.0));
         build(&mut ui);
         // Frame-2 layout pass so `Layout.rect` reflects the
         // bar-overlay subtree (thumb leaves live there, indexed by
@@ -954,7 +954,7 @@ mod bars {
     /// Reservation: when content overflows on the V axis, the inner
     /// (viewport) shrinks by exactly `theme.width` on the right.
     /// Frame 1 records with no overflow yet (state row zero), frame 2
-    /// reserves once `end_frame` settles `content > viewport`.
+    /// reserves once `post_record` settles `content > viewport`.
     #[test]
     fn vertical_overflow_reserves_bar_width_on_inner() {
         use crate::primitives::size::Size;
@@ -1360,7 +1360,7 @@ mod bars {
         let f1 = bar_rects(&ui);
         assert_eq!(f1.len(), 2, "cold-mount must emit both V + H thumbs");
 
-        ui.begin_frame(Display::from_physical(surface, 1.0));
+        ui.pre_record(Display::from_physical(surface, 1.0));
         scene(&mut ui);
         ui.record_phase();
         ui.paint_phase();
@@ -1435,7 +1435,7 @@ fn drag_thumb_pans_proportionally() {
     build(&mut ui);
     ui.record_phase();
     ui.paint_phase();
-    ui.begin_frame(surface_display());
+    ui.pre_record(surface_display());
     build(&mut ui);
     ui.record_phase();
     ui.paint_phase();
@@ -1451,7 +1451,7 @@ fn drag_thumb_pans_proportionally() {
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(press + Vec2::new(0.0, 30.0)));
 
-    ui.begin_frame(surface_display());
+    ui.pre_record(surface_display());
     build(&mut ui);
     ui.record_phase();
     ui.paint_phase();
@@ -1467,7 +1467,7 @@ fn drag_thumb_pans_proportionally() {
 
     // Drag further to the very bottom — clamped to max_offset.
     ui.on_input(InputEvent::PointerMoved(press + Vec2::new(0.0, 9_999.0)));
-    ui.begin_frame(surface_display());
+    ui.pre_record(surface_display());
     build(&mut ui);
     ui.record_phase();
     ui.paint_phase();

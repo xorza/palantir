@@ -488,7 +488,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     let mut ui = Ui::new();
 
-    // Frame 1: build, layout, end_frame so the hit index is populated.
+    // Frame 1: build, layout, post_record so the hit index is populated.
     begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::canvas()
@@ -595,7 +595,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     );
 
     // Frame 2: rebuild and read clicked() on each widget.
-    ui.begin_frame(Display::default());
+    ui.pre_record(Display::default());
     let mut got = (false, false, false);
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::canvas()

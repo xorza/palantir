@@ -231,7 +231,7 @@ impl TextShaper {
     }
 
     /// Drop reuse entries for the supplied removed-widget set. Called
-    /// from `Ui::end_frame` against the same per-frame diff fed to
+    /// from `Ui::post_record` against the same per-frame diff fed to
     /// `Damage::compute` so cleanup stays bounded under widget churn
     /// without a second `seen_ids` scan.
     pub(crate) fn sweep_removed(&self, removed: &FxHashSet<WidgetId>) {

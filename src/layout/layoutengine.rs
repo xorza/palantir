@@ -140,7 +140,7 @@ fn resolve_desired(
 
 impl LayoutEngine {
     /// Drop cross-frame measure-cache entries and scroll-state rows for
-    /// `WidgetId`s that vanished this frame. Called from `Ui::end_frame`
+    /// `WidgetId`s that vanished this frame. Called from `Ui::post_record`
     /// with the same `removed` slice that `Damage` and `TextShaper`
     /// consume. One iteration over `removed`; both stores are reached
     /// directly because they're co-located on `LayoutEngine`.

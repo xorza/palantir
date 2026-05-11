@@ -10,7 +10,7 @@
 //! grown `new_available`, which used to panic.
 //!
 //! This test sweeps a range of widths that includes the trigger and
-//! asserts `end_frame()` doesn't panic. Pre-fix this panicked at
+//! asserts `post_record()` doesn't panic. Pre-fix this panicked at
 //! several widths in the swept range; post-fix the second-pass result
 //! is clamped to `new_available` and rendering proceeds.
 
@@ -158,7 +158,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     // Reuse one `Ui` across the sweep — recreating it would re-load
     // the bundled cosmic fonts on every iter (~120 ms each, dominating
     // wall time). Models the real workload too: a host keeps one `Ui`
-    // and just feeds new `begin_frame(size)` per resize.
+    // and just feeds new `pre_record(size)` per resize.
     let mut ui = new_ui_text();
     for w in (480u32..=900).step_by(1) {
         run_at(&mut ui, UVec2::new(w, 600), |ui| {

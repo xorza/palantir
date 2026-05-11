@@ -28,7 +28,7 @@ pub fn clear_measure_cache(ui: &mut Ui) {
 /// Run only `Cascades::run` against the just-finished frame's forest +
 /// layout results. Lets the cascade bench isolate cascade cost without
 /// re-running record / measure / arrange / encode / compose. The
-/// caller must have called `Ui::end_frame` at least once after the
+/// caller must have called `Ui::post_record` at least once after the
 /// most recent recording so `ui.layout` is populated.
 pub fn run_cascades(ui: &mut Ui) {
     let _ = ui.cascades.run(&ui.forest, &ui.layout);
@@ -67,7 +67,7 @@ pub fn text_shaper_has_reuse_entry(shaper: &TextShaper, wid: WidgetId, ordinal: 
     shaper.inner.borrow().reuse.contains_key(&(wid, ordinal))
 }
 
-/// Number of damage rects produced by the most recent `end_frame`.
+/// Number of damage rects produced by the most recent `post_record`.
 /// `0` for `Skip`/`Full` paths (they don't enumerate rects);
 /// `1..=DAMAGE_RECT_CAP` for `Partial`. Read by benches to verify
 /// scenario shape (e.g. "two-corner change actually produced 2
@@ -105,7 +105,7 @@ pub fn damage_region_after_adds(rects: &[crate::primitives::rect::Rect]) -> usiz
 }
 
 /// Simulate a successful `Renderer::render` for benches that drive
-/// `Ui::run_frame` without a real GPU. Without it, `Ui::begin_frame`'s
+/// `Ui::run_frame` without a real GPU. Without it, `Ui::pre_record`'s
 /// auto-rewind would fire every iteration — every bench frame would
 /// escalate to `Full` and the Skip / Partial scenarios would be
 /// unmeasurable.

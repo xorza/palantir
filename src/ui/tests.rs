@@ -19,7 +19,7 @@ fn duplicate_widget_id_panics() {
     // scroll, click capture, hit-testing). `Ui::node` enforces uniqueness
     // with a release `assert!`.
     let mut ui = Ui::new();
-    ui.begin_frame(Display::default());
+    ui.pre_record(Display::default());
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Button::new().id_salt("dup").show(ui);
         Button::new().id_salt("dup").show(ui);
@@ -36,7 +36,7 @@ fn auto_id_collisions_disambiguate() {
         Frame::new().auto_id().show(ui);
     }
     let mut ui = Ui::new();
-    ui.begin_frame(Display::default());
+    ui.pre_record(Display::default());
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         chip(ui);
         chip(ui);
@@ -47,7 +47,7 @@ fn auto_id_collisions_disambiguate() {
 }
 
 /// Helper: drive one full frame with an empty root so we can inspect
-/// the post-`end_frame` state of the repaint gate.
+/// the post-`post_record` state of the repaint gate.
 fn drain_one_frame(ui: &mut Ui) {
     begin(ui, UVec2::new(100, 100));
     Panel::hstack().auto_id().show(ui, |_| {});
@@ -56,7 +56,7 @@ fn drain_one_frame(ui: &mut Ui) {
 }
 
 /// Pin: an empty frame (no widgets recorded) drives `begin → layout →
-/// end_frame` without panicking, leaves every per-frame table empty,
+/// post_record` without panicking, leaves every per-frame table empty,
 /// and produces an empty `Frame` with no quads/texts/groups. Empty UI
 /// is a real case (initial state, debug toggle, conditional UI all
 /// empty), and the full CPU pipeline must survive it.
@@ -92,7 +92,7 @@ fn empty_ui_drives_a_frame_safely() {
 }
 
 /// Pin: an empty frame followed by a populated frame works (the
-/// recorder retains no per-frame state across `begin_frame`).
+/// recorder retains no per-frame state across `pre_record`).
 #[test]
 fn empty_then_populated_frame() {
     let mut ui = ui_at(UVec2::new(100, 100));
@@ -105,13 +105,13 @@ fn empty_then_populated_frame() {
     assert!(ui.damage.prev.is_empty());
 }
 
-/// Pin: `begin_frame` panics if `display.scale_factor` is below
-/// `f32::EPSILON`.
+/// Pin: `pre_record` panics if `display.scale_factor` is below
+/// `EPS`.
 #[test]
-#[should_panic(expected = "Display::scale_factor must be ≥ f32::EPSILON")]
-fn begin_frame_rejects_zero_scale_factor() {
+#[should_panic(expected = "Display::scale_factor must be ≥ EPSILON")]
+fn pre_record_rejects_zero_scale_factor() {
     let mut ui = Ui::new();
-    ui.begin_frame(Display::from_physical(UVec2::new(800, 600), 0.0));
+    ui.pre_record(Display::from_physical(UVec2::new(800, 600), 0.0));
 }
 
 /// Pin: `Display::logical_rect` divides physical by scale_factor.
@@ -124,16 +124,16 @@ fn display_logical_rect_scales() {
 // --- prev_frame snapshot tests ----------------------------------------------
 // Stage 3 / Step 2 of the damage-rendering plan. `Ui::prev_frame` holds
 // the previous frame's `(rect, authoring-hash)` per `WidgetId`, rebuilt
-// at the tail of `end_frame()`.
+// at the tail of `post_record()`.
 
 #[test]
-fn prev_frame_empty_before_first_end_frame() {
+fn prev_frame_empty_before_first_post_record() {
     let ui = Ui::new();
     assert!(ui.damage.prev.is_empty());
 }
 
 #[test]
-fn prev_frame_populated_after_end_frame() {
+fn prev_frame_populated_after_post_record() {
     let mut ui = ui_at(UVec2::new(200, 200));
     Panel::hstack().id_salt("root").show(&mut ui, |ui| {
         Frame::new()
@@ -207,7 +207,7 @@ fn prev_frame_drops_disappeared_widgets() {
     ui.paint_phase();
     assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
 
-    ui.begin_frame(Display::default());
+    ui.pre_record(Display::default());
     Panel::hstack().id_salt("root").show(&mut ui, |_| {});
     ui.record_phase();
     ui.paint_phase();
@@ -232,7 +232,7 @@ fn prev_frame_updates_on_authoring_change() {
     ui.paint_phase();
     let h1 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
-    ui.begin_frame(Display::default());
+    ui.pre_record(Display::default());
     Frame::new()
         .id_salt("a")
         .size(50.0)
@@ -624,7 +624,7 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
 
     // Frame B: simulate an unsettled animation tick by setting the
     // internal flag during recording (production code does this via
-    // `Ui::animate`). The flag must survive end_frame and reach
+    // `Ui::animate`). The flag must survive post_record and reach
     // `FrameOutput`.
     {
         let frame = ui.run_frame(display, Duration::from_millis(32), |ui| {
