@@ -121,17 +121,8 @@ impl Frontend {
     /// stage reads everything it needs from the inputs without
     /// per-call theme threading.
     pub(crate) fn build(&mut self, ui: &Ui) -> &mut RenderBuffer {
-        let damage_filter = match &ui.damage {
-            Some(Damage::Partial(region)) => Some(region),
-            Some(Damage::Full) | None => None,
-        };
-        let cmds = self.encoder.encode(
-            &ui.forest,
-            &ui.layout,
-            &ui.layout.cascades,
-            damage_filter,
-            ui.display.logical_rect(),
-        );
+    
+        let cmds = self.encoder.encode(ui);
         self.composer.compose(cmds, ui.display, &mut self.buffer);
         &mut self.buffer
     }

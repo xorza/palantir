@@ -133,7 +133,7 @@ fn interleaved_shapes_record_correct_order() {
     // `pos_rect(0)` → child c0 chrome → `pos_rect(1)` → child c1 chrome
     // → `pos_rect(2)`. 3 parent sub-rects + 2 child chrome paints = 5
     // DrawRect cmds in total.
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let draw_rect_count = cmds
         .kinds
         .iter()
@@ -219,7 +219,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     // End-to-end: the encoder must walk this tree without panicking
     // (cursor overshoot was the original symptom). `encode_cmds`
     // exercises the full encode path.
-    let _cmds = encode_cmds(&ui);
+    let _cmds = encode_cmds(&mut ui);
 }
 
 // --- Authoring-hash tests ---------------------------------------------------
@@ -1231,7 +1231,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let _cmds = encode_cmds(&ui);
+    let _cmds = encode_cmds(&mut ui);
 
     let main_tree = ui.forest.tree(Layer::Main);
     let popup_tree = ui.forest.tree(Layer::Popup);

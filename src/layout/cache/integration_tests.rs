@@ -280,13 +280,13 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     record(&mut ui);
     ui.post_record();
     ui.finalize_frame();
-    let cold = encode_cmds(&ui);
+    let cold = encode_cmds(&mut ui);
 
     begin(&mut ui, UVec2::new(800, 600));
     record(&mut ui);
     ui.post_record();
     ui.finalize_frame();
-    let warm = encode_cmds(&ui);
+    let warm = encode_cmds(&mut ui);
 
     assert_eq!(cold.kinds, warm.kinds, "cmd kind sequence must match");
     assert_eq!(cold.starts, warm.starts, "cmd payload offsets must match");

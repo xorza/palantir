@@ -117,7 +117,7 @@ fn baseline_draw_rect_count_cases() {
         });
         ui.post_record();
         ui.finalize_frame();
-        let cmds = encode_cmds(&ui);
+        let cmds = encode_cmds(&mut ui);
         assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
     }
 }
@@ -147,7 +147,7 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let draws = cmds
         .kinds
         .iter()
@@ -197,7 +197,7 @@ fn line_shape_emits_draw_polyline() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let count = cmds
         .kinds
         .iter()
@@ -227,7 +227,7 @@ fn text_shape_emits_draw_text() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     assert!(
         cmds.kinds.contains(&CmdKind::DrawText),
         "Text widget must emit a DrawText command"
@@ -250,7 +250,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1, "clip-only surface must push a clip");
     assert_eq!(pops, 1, "clip-only surface must pop the clip");
@@ -284,7 +284,7 @@ fn clip_emits_balanced_push_pop() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
 
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
@@ -350,7 +350,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
 
     let rounded_idx = cmds
         .kinds
@@ -389,7 +389,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     assert_eq!(
         cmds.kinds
             .iter()
@@ -533,7 +533,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let drawn = screen_rects_by_fill(&cmds);
 
     // Visible node: encoder emits exactly one DrawRect with its fill, and the
@@ -668,7 +668,7 @@ fn nested_clips_each_emit_their_own_pair() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
     assert_eq!(pops, 2);
@@ -770,7 +770,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let text_rect = (0..cmds.kinds.len())
         .find_map(|i| match cmds.kinds[i] {
             CmdKind::DrawText => Some(cmds.read::<DrawTextPayload>(cmds.starts[i]).rect),
@@ -832,7 +832,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
     // (0,0,40,40) intersects; `b` at (40,0,40,40) intersects too
     // (its left edge is at x=40 which is < 50). Use a tighter filter.
     let filter = Rect::new(0.0, 0.0, 30.0, 200.0);
-    let cmds = encode_cmds_filtered(&ui, Some(filter));
+    let cmds = encode_cmds_filtered(&mut ui, Some(filter));
 
     // `a` (0..40) intersects (0..30) → emitted. `b` (40..80) doesn't → skipped.
     assert_eq!(
@@ -859,7 +859,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds_filtered(&ui, Some(Rect::new(0.0, 0.0, 200.0, 200.0)));
+    let cmds = encode_cmds_filtered(&mut ui, Some(Rect::new(0.0, 0.0, 200.0, 200.0)));
     assert!(count_draw_rects(&cmds) >= 1);
 }
 
@@ -895,7 +895,7 @@ fn damage_filter_culls_subtree_outside_damage() {
     ui.post_record();
     ui.finalize_frame();
     // Filter misses the clipped panel entirely.
-    let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
+    let cmds = encode_cmds_filtered(&mut ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(
@@ -937,7 +937,7 @@ fn damage_filter_culls_transformed_subtree_outside_damage() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
+    let cmds = encode_cmds_filtered(&mut ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
     let pushes = cmds
         .kinds
@@ -994,7 +994,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
         Rect::new(0.0, 0.0, 50.0, 50.0),
         Rect::new(150.0, 0.0, 50.0, 50.0),
     ];
-    let cmds = encode_cmds_with_rects(&ui, &rects);
+    let cmds = encode_cmds_with_rects(&mut ui, &rects);
     assert_eq!(
         count_draw_rects(&cmds),
         2,
@@ -1021,7 +1021,7 @@ fn viewport_cull_skips_offscreen_subtree() {
         });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     assert_eq!(
         count_draw_rects(&cmds),
         0,
@@ -1060,7 +1060,7 @@ fn viewport_cull_keeps_onscreen_sibling() {
         });
     ui.post_record();
     ui.finalize_frame();
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     assert_eq!(
         count_draw_rects(&cmds),
         1,

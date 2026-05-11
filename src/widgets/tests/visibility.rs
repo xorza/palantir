@@ -136,7 +136,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     assert_eq!(b.min.x, 40.0 + 10.0 + 40.0 + 10.0);
 
     // ...but emits no DrawRect.
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let draws = cmds
         .kinds
         .iter()
