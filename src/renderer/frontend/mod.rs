@@ -127,6 +127,11 @@ impl FrameOutput<'_> {
 pub(crate) struct Frontend {
     pub(crate) encoder: Encoder,
     pub(crate) composer: Composer,
+    /// Cross-frame gradient atlas — composer registers gradients into
+    /// it during compose, backend uploads dirty rows during submit.
+    /// Persistent: rows stay baked across frames so repeated authoring
+    /// of the same gradient is O(1) hash lookup.
+    pub(crate) gradient_atlas: gradient_atlas::GradientCpuAtlas,
 }
 
 impl Frontend {
@@ -150,6 +155,7 @@ impl Frontend {
             damage_filter,
             display.logical_rect(),
         );
-        self.composer.compose(cmds, display)
+        self.composer
+            .compose(cmds, display, &mut self.gradient_atlas)
     }
 }

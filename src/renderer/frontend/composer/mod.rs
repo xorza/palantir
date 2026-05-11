@@ -7,6 +7,7 @@ use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
+use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, RoundedClip, TextRun};
 use glam::{UVec2, Vec2};
@@ -160,7 +161,18 @@ impl Composer {
     /// `TextRun`s + draw groups (scissor ranges) into the composer's
     /// owned buffer, and return a borrow of the freshly-composed
     /// result. Pure: no device, no queue.
-    pub(crate) fn compose(&mut self, cmds: &RenderCmdBuffer, display: &Display) -> &RenderBuffer {
+    ///
+    /// `gradient_atlas` is borrowed mutably so the composer can
+    /// register each `Brush::Linear` it encounters and pack the
+    /// returned row id into the emitted `Quad`. Idempotent for repeat
+    /// content — the same gradient hashes to the same row and reuses
+    /// it across frames.
+    pub(crate) fn compose(
+        &mut self,
+        cmds: &RenderCmdBuffer,
+        display: &Display,
+        gradient_atlas: &mut GradientCpuAtlas,
+    ) -> &RenderBuffer {
         let out = &mut self.buffer;
         let scale = display.scale_factor;
         let snap = display.pixel_snap;
@@ -248,14 +260,41 @@ impl Composer {
                         .expect("PopTransform without matching PushTransform");
                 }
                 kind @ (CmdKind::DrawRect | CmdKind::DrawRectStroked) => {
-                    let (rect, radius, fill, stroke_color, stroke_width) = match kind {
+                    let (
+                        rect,
+                        radius,
+                        fill,
+                        stroke_color,
+                        stroke_width,
+                        fill_kind,
+                        fill_grad_idx,
+                        fill_axis,
+                    ) = match kind {
                         CmdKind::DrawRect => {
                             let p: DrawRectPayload = cmds.read(start);
-                            (p.rect, p.radius, p.fill, Color::TRANSPARENT, 0.0)
+                            (
+                                p.rect,
+                                p.radius,
+                                p.fill,
+                                Color::TRANSPARENT,
+                                0.0,
+                                p.fill_kind,
+                                p.fill_grad_idx,
+                                p.fill_axis,
+                            )
                         }
                         _ => {
                             let p: DrawRectStrokedPayload = cmds.read(start);
-                            (p.rect, p.radius, p.fill, p.stroke_color, p.stroke_width)
+                            (
+                                p.rect,
+                                p.radius,
+                                p.fill,
+                                p.stroke_color,
+                                p.stroke_width,
+                                p.fill_kind,
+                                p.fill_grad_idx,
+                                p.fill_axis,
+                            )
                         }
                     };
                     let world_rect = current_transform.apply_rect(rect);
@@ -275,6 +314,17 @@ impl Composer {
                     let world_radius = radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
+                    // Linear brushes register with the atlas on first
+                    // sight and reuse the row across subsequent quads
+                    // pointing at the same content (same gradient on
+                    // multiple panels → one bake). Solid passes
+                    // through with the row sentinel'd to 0.
+                    let fill_lut_row = if fill_kind.is_linear() {
+                        let g = &cmds.linear_gradients[fill_grad_idx as usize];
+                        gradient_atlas.register(g)
+                    } else {
+                        0
+                    };
                     group.push_quad(
                         out,
                         Quad {
@@ -283,7 +333,9 @@ impl Composer {
                             radius: phys_radius,
                             stroke_color,
                             stroke_width: stroke_width * current_transform.scale * scale,
-                            ..Default::default()
+                            fill_kind,
+                            fill_lut_row,
+                            fill_axis,
                         },
                     );
                 }
