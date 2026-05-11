@@ -66,14 +66,18 @@ fn empty_ui_drives_a_frame_safely() {
     {
         use crate::renderer::frontend::Frontend;
         ui.record_phase();
-        let frame = ui.paint_phase();
+        let damage = ui.paint_phase();
         let mut frontend = Frontend::default();
+        let damage_filter = match &damage {
+            crate::ui::damage::DamagePaint::Partial(region) => Some(region),
+            crate::ui::damage::DamagePaint::Full | crate::ui::damage::DamagePaint::Skip => None,
+        };
         frontend.build(
-            frame.forest,
-            frame.layout,
-            frame.cascades,
-            frame.damage_filter(),
-            &frame.display,
+            &ui.forest,
+            &ui.layout,
+            &ui.cascades.result,
+            damage_filter,
+            &ui.display,
         );
         let buffer = &frontend.composer.buffer;
         assert!(buffer.quads.is_empty());

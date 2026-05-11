@@ -131,20 +131,30 @@ impl Ui {
 
         self.pre_record(display);
         record(self);
+
         let action_flag = self.input.take_action_flag();
         let needs_relayout = self.record_phase();
-        if action_flag {
-            self.input.drain_per_frame_queues();
-        }
+
         if action_flag || needs_relayout {
             // Pass B paints, regardless of any further re-record
             // request — caps relayout at one retry per `run_frame`.
+
+            self.input.drain_per_frame_queues();
             self.pre_record(display);
             record(self);
             self.record_phase();
-            self.relayout_requested = false;
         }
-        self.paint_phase()
+        let damage = self.paint_phase();
+
+        RecordedFrame {
+            forest: &self.forest,
+            layout: &self.layout,
+            cascades: &self.cascades.result,
+            display,
+            damage,
+            repaint_requested: self.repaint_requested,
+            frame_state: self.frame_state.clone(),
+        }
     }
 
     /// Feed a palantir-native input event. Hosts own redraw scheduling.
@@ -186,6 +196,7 @@ impl Ui {
         }
         self.display = display;
         self.forest.pre_record();
+        self.relayout_requested = false;
 
         // `record_phase` consumes the flag via `mem::take`; a survivor
         // here means a missing record/paint pair on the prior frame.
@@ -215,15 +226,15 @@ impl Ui {
         self.layout_engine
             .run(&self.forest, surface, &self.text, &mut self.layout);
 
-        std::mem::take(&mut self.relayout_requested)
+        self.relayout_requested
     }
 
     /// Paint-half of `run_frame`: commit the seen-id rollover, then
     /// cascade → hit-index → damage. Reads the `Layout` from
-    /// the most recent `record_phase`. Returns a borrowed view of
-    /// the Ui state that [`Renderer::render`](crate::renderer::Renderer::render)
-    /// turns into a composed buffer + GPU submit.
-    pub(crate) fn paint_phase(&mut self) -> RecordedFrame<'_> {
+    /// the most recent `record_phase`. Returns the computed
+    /// [`DamagePaint`]; `run_frame` threads it into the
+    /// [`RecordedFrame`].
+    pub(crate) fn paint_phase(&mut self) -> DamagePaint {
         let surface = self.display.logical_rect();
         self.forest.ids.commit_rollover();
         let removed = &self.forest.ids.removed;
@@ -239,15 +250,7 @@ impl Ui {
         } else {
             self.frame_state.mark_pending();
         }
-        RecordedFrame {
-            forest: &self.forest,
-            layout: &self.layout,
-            cascades,
-            display: self.display,
-            damage,
-            repaint_requested: self.repaint_requested,
-            frame_state: self.frame_state.clone(),
-        }
+        damage
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────
