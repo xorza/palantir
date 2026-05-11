@@ -625,7 +625,9 @@ impl WgpuBackend {
             use_stencil,
             |step| match step {
                 RenderStep::PreClear => {
+                    pass.push_debug_group("preclear");
                     self.quad.draw_clear(pass, use_stencil);
+                    pass.pop_debug_group();
                 }
                 RenderStep::SetScissor(r) => {
                     pass.set_scissor_rect(r.x, r.y, r.w, r.h);
@@ -634,21 +636,28 @@ impl WgpuBackend {
                     pass.set_stencil_reference(v);
                 }
                 RenderStep::MaskQuad(mi) => {
+                    pass.push_debug_group("mask");
                     self.quad.bind_mask_write(pass);
                     self.quad.draw_mask(pass, mi);
+                    pass.pop_debug_group();
                 }
                 RenderStep::Quads { range, .. } => {
+                    pass.push_debug_group("quads");
                     if use_stencil {
                         self.quad.bind_stencil_test(pass);
                     } else {
                         self.quad.bind(pass);
                     }
                     self.quad.draw_range(pass, range);
+                    pass.pop_debug_group();
                 }
                 RenderStep::Text { group } => {
+                    pass.push_debug_group("text");
                     self.text.render_group(group, pass, text_mode);
+                    pass.pop_debug_group();
                 }
                 RenderStep::Meshes { range, .. } => {
+                    pass.push_debug_group("meshes");
                     self.mesh.bind(pass, use_stencil);
                     let start = range.start as usize;
                     let end = start + range.len as usize;
@@ -659,6 +668,7 @@ impl WgpuBackend {
                         self.mesh
                             .draw(pass, draw.indices.into(), draw.vertices.start as i32);
                     }
+                    pass.pop_debug_group();
                 }
             },
         );
