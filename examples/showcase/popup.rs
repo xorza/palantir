@@ -83,6 +83,7 @@ pub fn build(ui: &mut Ui) {
     let resp = Popup::anchored_to(anchor)
         .id_salt("popup-showcase.menu")
         .padding(6.0)
+        .size((Sizing::Hug, Sizing::Hug))
         .background(Background {
             fill: Color::hex(0x2a2a2a),
             stroke: Stroke {
