@@ -257,6 +257,14 @@ impl WgpuBackend {
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.
     pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, frame: FrameOutput<'_>) {
+        // Sync gradient LUT atlas to GPU. Idle frames (no new
+        // gradients) drain an empty dirty flag and do nothing; first
+        // frame uploads row 0's magenta fallback plus any baked rows
+        // composer queued. Has to run before the render pass starts —
+        // any quad with `fill_kind.is_linear()` samples this texture.
+        self.quad
+            .upload_gradients(&self.queue, frame.gradient_atlas);
+
         let buffer = frame.buffer;
         let use_stencil = buffer.has_rounded_clip();
         tracing::trace!(
