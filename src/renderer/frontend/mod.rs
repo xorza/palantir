@@ -22,6 +22,7 @@ use crate::layout::result::LayoutResult;
 use crate::layout::types::display::Display;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
+use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
@@ -87,6 +88,14 @@ pub struct FrameOutput<'a> {
     /// `WgpuBackend::submit`. The next `Ui::begin_frame` auto-rewinds
     /// damage if it doesn't see `Submitted`.
     pub(crate) frame_state: FrameState,
+    /// Cross-frame gradient LUT atlas, borrowed mutably for the
+    /// duration of this `FrameOutput`. The backend drains the dirty
+    /// bytes once during `submit` (no-op when nothing changed) and
+    /// uploads them to the GPU texture before the render pass. Split
+    /// borrow off `Frontend` — `&buffer` (Frontend.composer.buffer)
+    /// and `&mut gradient_atlas` are disjoint fields, so the
+    /// borrow checker accepts both lifetimes simultaneously.
+    pub(crate) gradient_atlas: &'a mut GradientCpuAtlas,
 }
 
 impl FrameOutput<'_> {
@@ -140,6 +149,11 @@ impl Frontend {
     /// pre-resolved into `cascades` (`Cascade::rgb_mul`), so this stage
     /// reads everything it needs from the inputs without per-call
     /// theme threading.
+    ///
+    /// Returns `()` — the buffer + gradient atlas live on `Frontend`
+    /// and are accessed via split borrows by the caller (so it can
+    /// hold `&buffer` and `&mut gradient_atlas` simultaneously when
+    /// constructing `FrameOutput`).
     pub(crate) fn build(
         &mut self,
         forest: &Forest,
@@ -147,7 +161,7 @@ impl Frontend {
         cascades: &CascadeResult,
         damage_filter: Option<&DamageRegion>,
         display: &Display,
-    ) -> &RenderBuffer {
+    ) {
         let cmds = self.encoder.encode(
             forest,
             results,
@@ -156,6 +170,6 @@ impl Frontend {
             display.logical_rect(),
         );
         self.composer
-            .compose(cmds, display, &mut self.gradient_atlas)
+            .compose(cmds, display, &mut self.gradient_atlas);
     }
 }

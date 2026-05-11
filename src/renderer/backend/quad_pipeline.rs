@@ -4,6 +4,7 @@
 
 use crate::layout::types::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke};
+use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::DrawGroup;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
@@ -89,16 +90,19 @@ pub(crate) struct QuadPipeline {
     color_format: wgpu::TextureFormat,
     bind_layout: wgpu::BindGroupLayout,
     /// LUT atlas texture for gradient brushes. 256 cols × 256 rows of
-    /// `Rgba8UnormSrgb`. Sampled at fragment time; sRGB-format so the
-    /// GPU sampler returns linear-RGB to match the existing
-    /// premultiplied blend convention (see `CLAUDE.md` "Colour
-    /// pipeline"). The shader currently doesn't sample from this —
-    /// hooked up in slice-2 step 3 when `Quad` grows the brush slot.
-    /// Slice-2 step 5 wires `upload_gradients` into `WgpuBackend::submit`.
-    #[allow(dead_code)]
+    /// `Rgba8UnormSrgb`. Sampled at fragment time by the brush-slot
+    /// path in `quad.wgsl`; sRGB-format so the GPU sampler returns
+    /// linear-RGB to match the existing premultiplied blend convention
+    /// (see `CLAUDE.md` "Colour pipeline"). Uploaded each frame by
+    /// `upload_gradients`, bound via the pipeline's bind group entry 1.
     gradient_texture: wgpu::Texture,
+    /// Kept alive alongside `gradient_texture`: the bind group holds a
+    /// borrow that has to stay valid as long as the pipeline can be
+    /// drawn against. Not read directly — accessed via the bind group
+    /// the GPU sees at draw time.
     #[allow(dead_code)]
     gradient_texture_view: wgpu::TextureView,
+    /// Same: held by the bind group, not read directly.
     #[allow(dead_code)]
     gradient_sampler: wgpu::Sampler,
 }
@@ -337,13 +341,9 @@ impl QuadPipeline {
     /// do nothing. Dirty frames upload the entire 256 KB atlas in a
     /// single `write_texture` call — see the dirty-tracking note in
     /// `GradientCpuAtlas` for why per-row uploads aren't worth the API
-    /// overhead. Slice-2 step 5 wires this into `WgpuBackend::submit`.
-    #[allow(dead_code)]
-    pub(crate) fn upload_gradients(
-        &self,
-        queue: &wgpu::Queue,
-        atlas: &mut crate::renderer::frontend::gradient_atlas::GradientCpuAtlas,
-    ) {
+    /// overhead. Called from `WgpuBackend::submit` before the render
+    /// pass starts.
+    pub(crate) fn upload_gradients(&self, queue: &wgpu::Queue, atlas: &mut GradientCpuAtlas) {
         let Some(bytes) = atlas.flush() else {
             return;
         };

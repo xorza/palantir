@@ -236,7 +236,7 @@ impl Ui {
             DamagePaint::Partial(region) => Some(region),
             DamagePaint::Full | DamagePaint::Skip => None,
         };
-        let buffer = self.frontend.build(
+        self.frontend.build(
             &self.forest,
             results,
             cascades,
@@ -249,12 +249,16 @@ impl Ui {
         } else {
             self.frame_state.mark_pending();
         }
+        // Split borrow off `Frontend`: `&composer.buffer` and
+        // `&mut gradient_atlas` are disjoint fields, so the borrow
+        // checker lets both lifetimes coexist inside `FrameOutput`.
         FrameOutput {
-            buffer,
+            buffer: &self.frontend.composer.buffer,
             damage,
             repaint_requested: self.repaint_requested,
             debug_overlay: self.debug_overlay,
             frame_state: self.frame_state.clone(),
+            gradient_atlas: &mut self.frontend.gradient_atlas,
         }
     }
 

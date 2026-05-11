@@ -3,8 +3,8 @@
 
 use glam::{UVec2, Vec2};
 use palantir::{
-    Background, Button, Color, Configure, Corners, Frame, LineCap, LineJoin, Panel, Rect, Shape,
-    Sizing, Stroke,
+    Background, Brush, Button, Color, Configure, Corners, Frame, LineCap, LineJoin, LinearGradient,
+    Panel, Rect, Shape, Sizing, Srgb8, Stroke,
 };
 
 use crate::diff::Tolerance;
@@ -44,6 +44,35 @@ fn frame_filled_with_stroke_matches_golden() {
         });
     });
     assert_matches_golden("frame_filled_with_stroke", &img, Tolerance::default());
+}
+
+/// Pin the linear-gradient paint path end-to-end: composer registers
+/// the gradient with the LUT atlas, backend uploads the row, shader
+/// samples the LUT in the brush-slot branch. A vertical (π/2 angle)
+/// 2-stop gradient from a dark-navy to a brighter-blue gives a clear
+/// luminance ramp that's eyeballable in the golden and catches both
+/// the wiring and the shader sample position.
+#[test]
+fn frame_linear_gradient_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
+        Panel::vstack().auto_id().padding(20.0).show(ui, |ui| {
+            Frame::new()
+                .id_salt("card")
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(Background {
+                    fill: Brush::Linear(LinearGradient::two_stop(
+                        std::f32::consts::FRAC_PI_2,
+                        Srgb8::hex(0x1a1a2e),
+                        Srgb8::hex(0x4c5cdb),
+                    )),
+                    radius: Corners::all(16.0),
+                    ..Default::default()
+                })
+                .show(ui);
+        });
+    });
+    assert_matches_golden("frame_linear_gradient", &img, Tolerance::default());
 }
 
 /// Pins the rounded-clip stencil path. Layered: full-canvas pink, then
