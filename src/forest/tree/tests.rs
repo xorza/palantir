@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::rollups::NodeHash;
+use crate::forest::shapes::ShapeRecord;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{display::Display, justify::Justify, sizing::Sizing};
 use crate::primitives::color::Color;
@@ -8,7 +9,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
-use crate::shape::{Shape, ShapeRecord};
+use crate::shape::Shape;
 use crate::support::testing::{encode_cmds, shapes_of, ui_at, ui_with_text};
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};

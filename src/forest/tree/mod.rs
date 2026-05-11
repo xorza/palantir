@@ -6,13 +6,13 @@ use crate::forest::element::{
 };
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
+use crate::forest::shapes::ShapeRecord;
 use crate::forest::shapes::Shapes;
 use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
-use crate::shape::ShapeRecord;
 use crate::widgets::grid::GridDef;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};

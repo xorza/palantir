@@ -1,12 +1,13 @@
 use super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
 use crate::forest::Forest;
+use crate::forest::shapes::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::result::{LayerResult, LayoutResult};
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
-use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits, ShapeRecord};
+use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::cascade::{Cascade, CascadeResult};
 use crate::ui::damage::region::DamageRegion;
 

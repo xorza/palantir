@@ -1,8 +1,5 @@
 use glam::Vec2;
-use palantir::{
-    Color, Configure, CubicBezierColors, LineCap, LineJoin, Panel, QuadraticBezierColors, Shape,
-    Sizing, Ui,
-};
+use palantir::{BezierColors, Color, Configure, LineCap, LineJoin, Panel, Shape, Sizing, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -58,7 +55,7 @@ fn cubic_solid(ui: &mut Ui) {
         p2: P2,
         p3: P3,
         width: 4.0,
-        colors: CubicBezierColors::Solid(Color::rgb(0.2, 0.9, 1.0)),
+        colors: BezierColors::Solid(Color::rgb(0.2, 0.9, 1.0)),
         cap: LineCap::Butt,
         join: LineJoin::Miter,
         tolerance: 0.25,
@@ -72,7 +69,7 @@ fn cubic_gradient2(ui: &mut Ui) {
         p2: P2,
         p3: P3,
         width: 4.0,
-        colors: CubicBezierColors::Gradient2(Color::rgb(1.0, 0.2, 0.2), Color::rgb(0.2, 0.6, 1.0)),
+        colors: BezierColors::Gradient2(Color::rgb(1.0, 0.2, 0.2), Color::rgb(0.2, 0.6, 1.0)),
         cap: LineCap::Butt,
         join: LineJoin::Miter,
         tolerance: 0.25,
@@ -86,7 +83,7 @@ fn cubic_gradient3(ui: &mut Ui) {
         p2: P2,
         p3: P3,
         width: 4.0,
-        colors: CubicBezierColors::Gradient3(
+        colors: BezierColors::Gradient3(
             Color::rgb(1.0, 0.2, 0.2),
             Color::rgb(1.0, 0.9, 0.2),
             Color::rgb(0.2, 0.7, 1.0),
@@ -104,7 +101,7 @@ fn cubic_gradient4(ui: &mut Ui) {
         p2: P2,
         p3: P3,
         width: 4.0,
-        colors: CubicBezierColors::Gradient4(
+        colors: BezierColors::Gradient4(
             Color::rgb(1.0, 0.2, 0.2),
             Color::rgb(1.0, 0.85, 0.2),
             Color::rgb(0.2, 1.0, 0.4),
@@ -122,7 +119,7 @@ fn quad_solid(ui: &mut Ui) {
         p1: Q1,
         p2: Q2,
         width: 4.0,
-        colors: QuadraticBezierColors::Solid(Color::rgb(0.4, 1.0, 0.5)),
+        colors: BezierColors::Solid(Color::rgb(0.4, 1.0, 0.5)),
         cap: LineCap::Butt,
         join: LineJoin::Miter,
         tolerance: 0.25,
@@ -135,10 +132,7 @@ fn quad_gradient2(ui: &mut Ui) {
         p1: Q1,
         p2: Q2,
         width: 4.0,
-        colors: QuadraticBezierColors::Gradient2(
-            Color::rgb(1.0, 0.2, 0.2),
-            Color::rgb(0.2, 0.6, 1.0),
-        ),
+        colors: BezierColors::Gradient2(Color::rgb(1.0, 0.2, 0.2), Color::rgb(0.2, 0.6, 1.0)),
         cap: LineCap::Butt,
         join: LineJoin::Miter,
         tolerance: 0.25,
@@ -151,7 +145,7 @@ fn quad_gradient3(ui: &mut Ui) {
         p1: Q1,
         p2: Q2,
         width: 4.0,
-        colors: QuadraticBezierColors::Gradient3(
+        colors: BezierColors::Gradient3(
             Color::rgb(1.0, 0.2, 0.2),
             Color::rgb(1.0, 0.9, 0.2),
             Color::rgb(0.2, 0.7, 1.0),
@@ -173,7 +167,7 @@ fn tolerance_sweep(ui: &mut Ui) {
             p2: Vec2::new(85.0, 45.0 + dy),
             p3: Vec2::new(110.0, 25.0 + dy),
             width: 3.0,
-            colors: CubicBezierColors::Solid(Color::rgb(1.0, 0.85, 0.2)),
+            colors: BezierColors::Solid(Color::rgb(1.0, 0.85, 0.2)),
             cap: LineCap::Butt,
             join: LineJoin::Miter,
             tolerance: *tol,
