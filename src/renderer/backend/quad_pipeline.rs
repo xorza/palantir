@@ -61,7 +61,7 @@ pub(crate) struct QuadPipeline {
     /// inside the damage scissor so `LoadOp::Load` doesn't leak last
     /// frame's AA-fringe pixels into this frame's blends.
     clear_buffer: wgpu::Buffer,
-    /// Set true by [`Self::upload_clear`], reset by [`Self::end_frame`].
+    /// Set true by [`Self::upload_clear`], reset by [`Self::post_record`].
     /// [`Self::draw_clear`] asserts it's true — catches a future
     /// refactor that decorrelates the upload guard in `submit` from
     /// the per-pass `PreClear` emit in the schedule.
@@ -581,7 +581,7 @@ impl QuadPipeline {
     /// Today only resets `clear_buffer_dirty` so the assert in
     /// `draw_clear` actually catches "upload_clear was never called
     /// this frame."
-    pub(crate) fn end_frame(&mut self) {
+    pub(crate) fn post_record(&mut self) {
         self.clear_buffer_dirty = false;
     }
 

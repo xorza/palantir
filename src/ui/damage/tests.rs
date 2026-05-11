@@ -175,9 +175,9 @@ fn popup_eater_does_not_force_full_repaint() {
 /// Regression: a click on empty background (no widget hit, no
 /// state change) must not force the next paint to `Full`. The
 /// discarded pre-pass in `run_frame` (triggered by any pointer /
-/// key event via `frame_had_action`) calls `begin_frame` →
-/// `reset_to_idle`, then never reaches `end_frame`. Pass 2's
-/// `begin_frame` then sees `frame_state == IDLE` and treats it as
+/// key event via `frame_had_action`) calls `pre_record` →
+/// `reset_to_idle`, then never reaches `post_record`. Pass 2's
+/// `pre_record` then sees `frame_state == IDLE` and treats it as
 /// "host dropped the previous frame", invalidating prev_surface
 /// and forcing `DamagePaint::Full`.
 #[test]
@@ -220,8 +220,8 @@ fn click_on_empty_bg_does_not_force_full() {
 
 /// Regression: a `Skip` frame that the host bypasses (no
 /// `backend.submit` → no `mark_submitted`) must not force the next
-/// frame to `Full`. `end_frame` marks `Skip` as submitted directly so
-/// the next `begin_frame`'s auto-rewind doesn't kick in.
+/// frame to `Full`. `post_record` marks `Skip` as submitted directly so
+/// the next `pre_record`'s auto-rewind doesn't kick in.
 #[test]
 fn skip_frame_does_not_force_next_to_full() {
     let mut ui = Ui::new();
@@ -237,7 +237,7 @@ fn skip_frame_does_not_force_next_to_full() {
     drop(skip);
 
     // Next frame: still no diff. Pre-fix this returned Full because
-    // the previous Skip never reached `mark_submitted`, so begin_frame
+    // the previous Skip never reached `mark_submitted`, so pre_record
     // saw Pending and rewound prev.
     let next = ui.run_frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
     assert_eq!(
@@ -918,7 +918,7 @@ fn button_hover_damage_covers_only_the_button() {
     let hot_rect = ui.layout[Layer::Main].rect[hot_node.unwrap().index()];
     let target = hot_rect.min + Vec2::new(5.0, 5.0);
 
-    // Move pointer onto the hot button. The *next* end_frame computes
+    // Move pointer onto the hot button. The *next* post_record computes
     // hover=true. The frame *after* that records the button as
     // hovered → its fill differs → it lands in the dirty set alone.
     // `on_input` recomputes hover against the existing hit_index

@@ -140,7 +140,7 @@ pub(crate) struct Tree {
     /// at `open_node` from `open_frames.last()`; lets any post-recording
     /// pass (arrange, cascade, encode, debug) ask "who's my parent?" in
     /// O(1) without a backwards `subtree_end` walk. Same lifecycle as
-    /// `records`: cleared in `begin_frame`, pushed in `open_node`,
+    /// `records`: cleared in `pre_record`, pushed in `open_node`,
     /// length-asserted at the end of `open_node`.
     pub(crate) parents: Vec<NodeId>,
 
@@ -163,7 +163,7 @@ pub(crate) struct Tree {
 
     // -- Recording-only ancestor stack -----------------------------------
     /// Ancestor stack for this tree's currently-open scope. Empty
-    /// outside the `begin_frame` ↔ root `close_node` window. Capacity
+    /// outside the `pre_record` ↔ root `close_node` window. Capacity
     /// retained.
     ///
     /// Each frame carries a precomputed `ancestor_or_self_disabled`
@@ -184,12 +184,12 @@ pub(crate) struct Tree {
     /// and restore correctly without depending on that assert.
     pub(crate) pending_anchors: Vec<PendingAnchor>,
 
-    // -- Output (populated by `end_frame`) -------------------------------
+    // -- Output (populated by `post_record`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
 }
 
 impl Tree {
-    pub(crate) fn begin_frame(&mut self) {
+    pub(crate) fn pre_record(&mut self) {
         self.records.clear();
         self.bounds.clear();
         self.panel.clear();
@@ -206,10 +206,10 @@ impl Tree {
 
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`.
     /// Capacity retained across frames.
-    pub(crate) fn end_frame(&mut self) {
+    pub(crate) fn post_record(&mut self) {
         assert!(
             self.open_frames.is_empty(),
-            "end_frame called with {} node(s) still open — a widget builder forgot close_node",
+            "post_record called with {} node(s) still open — a widget builder forgot close_node",
             self.open_frames.len(),
         );
         self.rollups.reset_hashes_for(self.records.len());

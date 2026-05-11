@@ -9,9 +9,9 @@ use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
-fn run_frame(ui: &mut Ui, build: impl FnOnce(&mut Ui)) {
+fn run_frame(ui: &mut Ui, record: impl FnOnce(&mut Ui)) {
     begin(ui, UVec2::new(200, 200));
-    Panel::hstack().id_salt("root").show(ui, build);
+    Panel::hstack().id_salt("root").show(ui, record);
     ui.record_phase();
     ui.paint_phase();
 }
@@ -567,7 +567,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
     );
 
     // Frame 2: vanished — `SeenIds` flags it removed and
-    // `Ui::end_frame` calls `MeasureCache::sweep_removed`.
+    // `Ui::post_record` calls `MeasureCache::sweep_removed`.
     run_frame(&mut ui, without_widget);
     assert!(
         !ui.layout_engine.cache.snapshots.contains_key(&blip),

@@ -194,7 +194,7 @@ pub struct InputState {
     pub(crate) active: Option<WidgetId>,
     hovered: Option<WidgetId>,
     /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
-    /// whenever the pointer moves and at `end_frame`. The scroll widget
+    /// whenever the pointer moves and at `post_record`. The scroll widget
     /// matching this id consumes [`Self::frame_scroll_delta`].
     scroll_target: Option<WidgetId>,
     /// Pointer position captured at the moment of the press that set
@@ -218,32 +218,32 @@ pub struct InputState {
     pub(crate) frame_drag_started: Option<WidgetId>,
     frame_clicks: FxHashSet<WidgetId>,
     /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
-    /// in [`Self::end_frame`]. Read by scroll widgets at record time.
+    /// in [`Self::post_record`]. Read by scroll widgets at record time.
     pub(crate) frame_scroll_delta: Vec2,
     /// Multiplicative pinch-zoom delta accumulated this frame; `1.0` =
-    /// no zoom. Cleared in [`Self::end_frame`]. Read by scroll widgets
+    /// no zoom. Cleared in [`Self::post_record`]. Read by scroll widgets
     /// configured with a `ZoomConfig`. Wheel-based zoom is computed
     /// at the widget from [`Self::frame_scroll_delta`] under the
     /// `ZoomConfig::modifier` gate, not accumulated here.
     pub(crate) frame_zoom_delta: f32,
     /// Keystrokes accumulated this frame, awaiting drain by the focused
     /// widget at record time. Capacity-retained across frames; cleared
-    /// in [`Self::end_frame`] regardless of whether anything consumed
+    /// in [`Self::post_record`] regardless of whether anything consumed
     /// them. Step-3 focus dispatch reads this; today nothing does.
     pub(crate) frame_keys: Vec<KeyPress>,
     /// Committed text accumulated this frame from `Text(chunk)` events.
     /// One `String` rather than `Vec<TextChunk>` so consumers can splice
     /// directly into their buffer without re-concatenating; chunks are
     /// already grapheme-aligned at the translation boundary so byte
-    /// concatenation is safe. Capacity-retained, cleared in `end_frame`.
+    /// concatenation is safe. Capacity-retained, cleared in `post_record`.
     pub(crate) frame_text: String,
-    /// Latest modifier-key snapshot. Persists across `end_frame` —
+    /// Latest modifier-key snapshot. Persists across `post_record` —
     /// modifier *state* is not a per-frame thing the way keystrokes
     /// are. Updated only on `ModifiersChanged` events.
     pub(crate) modifiers: Modifiers,
     /// Currently focused widget, or `None`. Set on `PointerPressed(Left)`
     /// when the press lands on a focusable widget. Evicted in
-    /// [`Self::end_frame`] when the focused widget vanishes from the
+    /// [`Self::post_record`] when the focused widget vanishes from the
     /// tree (matches the per-id state map's eviction model). Read by
     /// keyboard consumers to decide whether to drain `frame_keys` /
     /// `frame_text` (step 5 of the TextEdit plan).
@@ -253,7 +253,7 @@ pub struct InputState {
     /// Set in `on_input` when an event arrives that could plausibly
     /// drive a state mutation (clicks, keys, text, scroll). Read by
     /// `Ui::run_frame` to decide whether to re-record the frame after
-    /// pass 1's `end_frame` drains the input queues. Hover-only events
+    /// pass 1's `post_record` drains the input queues. Hover-only events
     /// (`PointerMoved`, `PointerLeft`) and modifier changes don't flip
     /// it — they fire too often and don't typically mutate user state.
     /// Reset by `Ui::run_frame` after the decision is made.
@@ -402,7 +402,7 @@ impl InputState {
     /// Recompute hover, drop transient per-frame flags, evict captured
     /// widgets that disappeared from the tree. Call after
     /// `Cascades::run` (whose result `cascades` is passed here).
-    pub(crate) fn end_frame(&mut self, cascades: &CascadeResult) {
+    pub(crate) fn post_record(&mut self, cascades: &CascadeResult) {
         self.drain_per_frame_queues();
         // `modifiers` deliberately persists: modifier state is a running
         // snapshot, not per-frame. Held shift across multiple frames must

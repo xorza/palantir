@@ -464,11 +464,11 @@ impl WgpuBackend {
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
-        self.quad.end_frame();
+        self.quad.post_record();
         frame_state.mark_submitted();
 
         if self.text.has_prepared() {
-            self.text.end_frame();
+            self.text.post_record();
         }
     }
 

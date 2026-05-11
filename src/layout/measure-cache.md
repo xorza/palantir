@@ -35,7 +35,7 @@ Code lives in `cache/` (this directory's sibling).
   `arena.len() > live × COMPACT_RATIO` (= 2) and `live > COMPACT_FLOOR`
   (= 64).
 - **Lifecycle hooks.** Eviction via `SeenIds.removed` →
-  `MeasureCache::sweep_removed`, called from `Ui::end_frame`.
+  `MeasureCache::sweep_removed`, called from `Ui::post_record`.
   `MeasureCache::clear` exposed via `internals::clear_measure_cache`
   (gated to `cfg(test)` + `internals` feature).
 

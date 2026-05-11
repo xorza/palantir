@@ -456,7 +456,7 @@ fn disabled_focusable_widget_does_not_take_focus() {
 }
 
 #[test]
-fn end_frame_clears_keys_and_text_but_preserves_modifiers() {
+fn post_record_clears_keys_and_text_but_preserves_modifiers() {
     let mut state = InputState::new();
     let cascades = CascadeResult::default();
     state.on_input(
@@ -477,7 +477,7 @@ fn end_frame_clears_keys_and_text_but_preserves_modifiers() {
     let key_cap_before = state.frame_keys.capacity();
     let text_cap_before = state.frame_text.capacity();
 
-    state.end_frame(&cascades);
+    state.post_record(&cascades);
 
     assert!(state.frame_keys.is_empty());
     assert!(state.frame_text.is_empty());

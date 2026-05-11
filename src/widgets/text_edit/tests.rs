@@ -151,7 +151,7 @@ fn typing_inserts_text_when_focused() {
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
-    // Frame 1: build, then end_frame to populate the cascade so focus
+    // Frame 1: build, then post_record to populate the cascade so focus
     // dispatch has rects to hit-test.
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         TextEdit::new(&mut buf)
@@ -166,7 +166,7 @@ fn typing_inserts_text_when_focused() {
     assert_eq!(ui.focused_id(), Some(id));
 
     // Frame 2: type 'h', 'i' via KeyDown(Char) events. End_frame
-    // clears them, so we feed before begin_frame.
+    // clears them, so we feed before pre_record.
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('h'),
         repeat: false,
@@ -737,7 +737,7 @@ fn two_textedits_only_one_focused_at_a_time() {
 fn ui_at_no_cosmic(size: UVec2) -> crate::Ui {
     use crate::layout::types::display::Display;
     let mut ui = crate::Ui::new();
-    ui.begin_frame(Display::from_physical(size, 1.0));
+    ui.pre_record(Display::from_physical(size, 1.0));
     ui
 }
 

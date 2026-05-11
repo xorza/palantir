@@ -65,21 +65,21 @@ fn pinch_gesture_accumulates_zoom_delta() {
 }
 
 #[test]
-fn end_frame_resets_zoom_delta_to_identity() {
+fn post_record_resets_zoom_delta_to_identity() {
     let mut state = InputState::new();
     let cascades = CascadeResult::default();
     state.on_input(InputEvent::Zoom(1.2), &cascades);
     assert!((state.frame_zoom_delta - 1.2).abs() < 1e-5);
-    state.end_frame(&cascades);
+    state.post_record(&cascades);
     assert_eq!(state.frame_zoom_delta, 1.0);
 }
 
 #[test]
-fn end_frame_clears_scroll_delta() {
+fn post_record_clears_scroll_delta() {
     let mut state = InputState::new();
     let cascades = CascadeResult::default();
     state.on_input(InputEvent::Scroll(Vec2::new(7.0, 7.0)), &cascades);
     assert_eq!(state.frame_scroll_delta, Vec2::new(7.0, 7.0));
-    state.end_frame(&cascades);
+    state.post_record(&cascades);
     assert_eq!(state.frame_scroll_delta, Vec2::ZERO);
 }

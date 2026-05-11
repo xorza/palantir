@@ -55,7 +55,7 @@ different shape.
   for tiny subtrees. Gone.
 - `sweep_removed` integration on `Frontend` — fanout to encode + (then
   also) compose cache. With both render-side caches gone,
-  `Frontend::sweep_removed` itself was removed; `Ui::end_frame` no
+  `Frontend::sweep_removed` itself was removed; `Ui::post_record` no
   longer forwards the `removed` slice to the frontend.
 - `clear_encode_cache` in `internals` — A/B helper for the bench.
 - A pile of cache integration tests in

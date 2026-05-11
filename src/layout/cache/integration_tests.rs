@@ -1,4 +1,4 @@
-//! Cache × full-frame integration: builds widget trees across two
+//! Cache × full-frame integration: records widget trees across two
 //! frames at the same surface and asserts the warm-cache frame
 //! reproduces the cold-frame layout (and encoded commands). Catches
 //! per-frame engine state we forgot to snapshot/restore on a cache
@@ -19,17 +19,17 @@ use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 
-/// Run `build` twice at `size` (cold then warm-from-cache) and assert
+/// Run `record` twice at `size` (cold then warm-from-cache) and assert
 /// every captured node's arranged rect matches across the two frames.
-/// `build` pushes the nodes whose rects matter into `capture`.
+/// `record` pushes the nodes whose rects matter into `capture`.
 fn assert_warm_rects_match_cold(
     ui: &mut Ui,
     size: UVec2,
     msg: &str,
-    mut build: impl FnMut(&mut Ui, &mut Vec<NodeId>),
+    mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
     let mut cold_nodes = Vec::new();
-    build(ui, &mut cold_nodes);
+    record(ui, &mut cold_nodes);
     ui.record_phase();
     ui.paint_phase();
     let cold: Vec<_> = cold_nodes
@@ -39,7 +39,7 @@ fn assert_warm_rects_match_cold(
 
     begin(ui, size);
     let mut warm_nodes = Vec::new();
-    build(ui, &mut warm_nodes);
+    record(ui, &mut warm_nodes);
     ui.record_phase();
     ui.paint_phase();
     let warm: Vec<_> = warm_nodes
@@ -195,13 +195,13 @@ fn cache_hit_preserves_grid_cell_rects() {
                 });
         }),
     ];
-    for (label, build) in cases {
+    for (label, record) in cases {
         let mut ui = ui_with_text(UVec2::new(800, 600));
         assert_warm_rects_match_cold(
             &mut ui,
             UVec2::new(800, 600),
             &format!("case: {label}"),
-            *build,
+            *record,
         );
     }
 }
@@ -212,7 +212,7 @@ fn cache_hit_preserves_grid_cell_rects() {
 /// byte-identical to one from a cold frame.
 #[test]
 fn encoded_buffer_stable_across_cache_hit_boundary() {
-    let build = |ui: &mut Ui| {
+    let record = |ui: &mut Ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -277,13 +277,13 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     };
 
     let mut ui = ui_with_text(UVec2::new(800, 600));
-    build(&mut ui);
+    record(&mut ui);
     ui.record_phase();
     ui.paint_phase();
     let cold = encode_cmds(&ui);
 
     begin(&mut ui, UVec2::new(800, 600));
-    build(&mut ui);
+    record(&mut ui);
     ui.record_phase();
     ui.paint_phase();
     let warm = encode_cmds(&ui);
@@ -299,7 +299,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
 /// via `internals::clear_measure_cache()` is the ground-truth oracle.
 #[test]
 fn cache_rects_match_cold_oracle_across_width_changes() {
-    let build = |ui: &mut Ui, capture: &mut Vec<NodeId>| {
+    let record = |ui: &mut Ui, capture: &mut Vec<NodeId>| {
         capture.clear();
         Panel::vstack()
             .auto_id()
@@ -346,7 +346,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
     for (i, &w) in widths.iter().enumerate() {
         begin(&mut ui, UVec2::new(w, 600));
         let mut warm_nodes = Vec::new();
-        build(&mut ui, &mut warm_nodes);
+        record(&mut ui, &mut warm_nodes);
         ui.record_phase();
         ui.paint_phase();
         let warm_rects: Vec<_> = warm_nodes
@@ -357,7 +357,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         crate::support::internals::clear_measure_cache(&mut ui);
         begin(&mut ui, UVec2::new(w, 600));
         let mut cold_nodes = Vec::new();
-        build(&mut ui, &mut cold_nodes);
+        record(&mut ui, &mut cold_nodes);
         ui.record_phase();
         ui.paint_phase();
         let cold_rects: Vec<_> = cold_nodes

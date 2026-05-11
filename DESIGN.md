@@ -16,7 +16,7 @@ Pure immediate-mode hits a paradox: parents need child sizes before placing them
 
 ```
 user closures ──► [1] Record    (append per-node columns + Shapes; no layout, no paint)
-                  [*] end_frame finalize (subtree_end rollup + per-node + subtree-rollup hashes)
+                  [*] post_record finalize (subtree_end rollup + per-node + subtree-rollup hashes)
                   [2] Measure   (post-order, bottom-up)  — desired size given available
                                                           short-circuited per subtree by MeasureCache
                   [3] Arrange   (pre-order, top-down)    — parent assigns final Rect to each child
@@ -51,7 +51,7 @@ Adjacent storage on the tree, not part of the SoA:
 - `chrome: SparseColumn<Background>` — panel chrome (fill + radius).
 - `clip_radius: SparseColumn<Corners>` — mask radius for `ClipMode::Rounded`. Decoupled from `chrome` so a clipped node with invisible paint still has a radius for the stencil-mask path.
 - `grid: GridArena` — frame-scoped `Vec<GridDef>` for `LayoutMode::Grid(idx)` panels.
-- `rollups: SubtreeRollups` — per-node + subtree hashes, `paints` bitset, `has_grid` fast-path bit. Populated in `end_frame` after `subtree_end` rolls up. Keys the cross-frame `MeasureCache`.
+- `rollups: SubtreeRollups` — per-node + subtree hashes, `paints` bitset, `has_grid` fast-path bit. Populated in `post_record` after `subtree_end` rolls up. Keys the cross-frame `MeasureCache`.
 
 Atomic-push across the SoA columns means `open_node` writes all five per-node fields together and they can't drift. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, **not** on the tree — the tree is input, results are derived.
 
@@ -106,7 +106,7 @@ Native panels only — no Taffy, no flex/grid backend dependency. Grid is implem
 
 ## State outside the tree
 
-Per-widget state (scroll offset, text cursor selection, animation, focus flags) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). The tree is throwaway; state persists. Access via `Ui::state_mut::<T>(id)` — creates with `T::default()` on first touch, panics on type mismatch (collision = caller bug). Rows for any `WidgetId` not recorded this frame are dropped in `end_frame` via the same `removed` slice fed to `Damage`, `TextShaper`, and `MeasureCache` — one source of truth for "this widget went away."
+Per-widget state (scroll offset, text cursor selection, animation, focus flags) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). The tree is throwaway; state persists. Access via `Ui::state_mut::<T>(id)` — creates with `T::default()` on first touch, panics on type mismatch (collision = caller bug). Rows for any `WidgetId` not recorded this frame are dropped in `post_record` via the same `removed` slice fed to `Damage`, `TextShaper`, and `MeasureCache` — one source of truth for "this widget went away."
 
 Focus is a separate field (`InputState.focused: Option<WidgetId>`) since it's global, not per-widget. `FocusPolicy` controls whether pressing on a non-focusable surface clears focus or preserves it.
 
@@ -119,11 +119,11 @@ Hit-testing happens **as events arrive**, against the cascade snapshot from the 
 ```
 handle_event(WindowEvent)   // updates pointer pos + active widget; hit-tests against last cascade.
                             // press → active = hit; release with same hit → click.
-begin_frame
+pre_record
 build_ui(&mut ui)           // widgets read response_for(id), deriving hovered/pressed/clicked
                             // from live input state + last cascade.
 measure → arrange → cascade // produces this-frame rects + flattened state.
-end_frame                   // rebuild HitIndex from this-frame cascade; clear clicked_this_frame.
+post_record                   // rebuild HitIndex from this-frame cascade; clear clicked_this_frame.
 encode + paint
 ```
 
@@ -132,7 +132,7 @@ encode + paint
 - On press: hit-test → set `Active = WidgetId`.
 - While Active is set, `pressed = (active == self.id)` — visuals pin to the captured widget regardless of where its rect is now.
 - On release: hit-test again. If `hit == Active`, emit `clicked`. Clear Active.
-- If Active's WidgetId disappears from the tree (conditional rendering), clear it silently in `end_frame`.
+- If Active's WidgetId disappears from the tree (conditional rendering), clear it silently in `post_record`.
 
 Cases handled:
 
@@ -154,7 +154,7 @@ Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The com
 
 **No encode or compose cache.** Both were implemented mirroring the measure cache (same `(WidgetId, subtree_hash, available_q)` key) and removed after profiling — encode contributed 0.06%–0.9% of frame time across four workloads, compose was in the same range. The encoder + composer are memcpy-shaped over flat SoA columns; a per-frame rebuild is already at the floor and a cache replay didn't beat it. Full investigation lives in `src/renderer/frontend/encoder/encode-cache.md`. The `MeasureCache` (~35% on the same workloads) stays.
 
-**Damage** is a tri-state (`DamagePaint`): `Full` (re-paint everything), `Partial(rect)` (encoder filters cmds whose screen rect intersects), `Skip` (no diff vs prev frame, no submit). `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `end_frame` is forced to `Full`.
+**Damage** is a tri-state (`DamagePaint`): `Full` (re-paint everything), `Partial(rect)` (encoder filters cmds whose screen rect intersects), `Skip` (no diff vs prev frame, no submit). `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `post_record` is forced to `Full`.
 
 **Debug overlay.** `Ui::debug_overlay: Option<DebugOverlayConfig>` (in `src/ui/debug_overlay.rs`) gates per-frame visualizations: `damage_rect` strokes the damaged region, `clear_damage` flips `Partial` frames' main-pass `LoadOp::Clear` so the undamaged region flashes the clear color (damage scissor still narrows draws). Drawn after the backbuffer→surface copy so they don't ghost across frames.
 

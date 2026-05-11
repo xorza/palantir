@@ -6,7 +6,7 @@
 //!
 //! **Doesn't measure GPU work.** `WgpuBackend::submit` (render-pass
 //! setup, scissor changes, queue submission) is not exercised — this
-//! is `Ui::end_frame` time only. Decisions about per-pass cost
+//! is `Ui::post_record` time only. Decisions about per-pass cost
 //! (e.g. proximity-merge thresholds) need a GPU-aware bench.
 //!
 //! `Ui::new()` leaves the cosmic shaper unset, so text measurement
@@ -61,13 +61,13 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
         });
 }
 
-/// Drive the ack-the-frame contract during benches. `Ui::begin_frame`
+/// Drive the ack-the-frame contract during benches. `Ui::pre_record`
 /// auto-rewinds damage if the previous `FrameOutput` wasn't marked
-/// `Submitted`. `Skip` frames self-ack at `end_frame`; `Partial` /
+/// `Submitted`. `Skip` frames self-ack at `post_record`; `Partial` /
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
-fn run_and_ack(ui: &mut Ui, display: Display, mut build: impl FnMut(&mut Ui)) {
-    let out = ui.run_frame(display, Duration::ZERO, &mut build);
+fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
+    let out = ui.run_frame(display, Duration::ZERO, &mut record);
     internals::mark_frame_submitted(&out);
 }
 
@@ -75,9 +75,9 @@ fn run_and_ack(ui: &mut Ui, display: Display, mut build: impl FnMut(&mut Ui)) {
 /// `DamagePaint` path the test claims. `expect_kind` asserts the
 /// path; without warmup the first iter would always be `Full` (no
 /// `prev_surface`) and skew measurements.
-fn warm_and_assert(ui: &mut Ui, display: Display, build: impl Fn(&mut Ui), expect_kind: &str) {
-    run_and_ack(ui, display, &build);
-    run_and_ack(ui, display, &build);
+fn warm_and_assert(ui: &mut Ui, display: Display, record: impl Fn(&mut Ui), expect_kind: &str) {
+    run_and_ack(ui, display, &record);
+    run_and_ack(ui, display, &record);
     let kind = internals::damage_paint_kind(ui);
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }

@@ -565,7 +565,7 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     assert_eq!(v(&mut map), 1);
     assert_eq!(c(&mut map), 1);
 
-    map.end_frame(&FxHashSet::from_iter([id]));
+    map.post_record(&FxHashSet::from_iter([id]));
     assert_eq!(
         f(&mut map),
         1,
@@ -575,18 +575,18 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     assert_eq!(c(&mut map), 0, "color slots for `id` must drop");
 }
 
-/// `end_frame` also evicts slots that were *not* poked this frame
+/// `post_record` also evicts slots that were *not* poked this frame
 /// even when the widget id itself stuck around — without this a
 /// `(WidgetId, AnimSlot)` whose owner stopped calling
 /// `Ui::animate` would linger forever, since the only other drop
 /// trigger is full widget removal.
 #[test]
-fn end_frame_evicts_untouched_slots() {
+fn post_record_evicts_untouched_slots() {
     let mut map = AnimMap::default();
     let id = wid("a");
     let empty = FxHashSet::default();
 
-    // Touch two slots, then run `end_frame` to commit a "frame":
+    // Touch two slots, then run `post_record` to commit a "frame":
     // both rows survive, both `touched` flags clear.
     let _ =
         map.typed_mut::<f32>()
@@ -594,7 +594,7 @@ fn end_frame_evicts_untouched_slots() {
     let _ =
         map.typed_mut::<f32>()
             .tick(id, AnimSlot("b"), 2.0, AnimSpec::FAST, 0.016, next_frame());
-    map.end_frame(&empty);
+    map.post_record(&empty);
     let count = |m: &mut AnimMap| m.try_typed_mut::<f32>().map_or(0, |t| t.rows.len());
     assert_eq!(
         count(&mut map),
@@ -603,11 +603,11 @@ fn end_frame_evicts_untouched_slots() {
     );
 
     // Next frame: only poke slot 0. Slot 1 was never re-touched
-    // after `end_frame` cleared its flag, so it should drop.
+    // after `post_record` cleared its flag, so it should drop.
     let _ =
         map.typed_mut::<f32>()
             .tick(id, AnimSlot("a"), 1.0, AnimSpec::FAST, 0.016, next_frame());
-    map.end_frame(&empty);
+    map.post_record(&empty);
     assert_eq!(
         count(&mut map),
         1,

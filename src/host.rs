@@ -87,9 +87,9 @@ impl Host {
         &mut self,
         display: crate::layout::types::display::Display,
         now: std::time::Duration,
-        build: impl FnMut(&mut Ui),
+        record: impl FnMut(&mut Ui),
     ) -> FrameInfo {
-        let frame = self.ui.run_frame(display, now, build);
+        let frame = self.ui.run_frame(display, now, record);
         let info = FrameInfo {
             can_skip_rendering: frame.can_skip_rendering(),
             repaint_requested: frame.repaint_requested(),

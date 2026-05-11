@@ -89,12 +89,12 @@ pub(crate) struct TextRenderer {
     /// Bit `i` says whether `renderers[i].prepare(...)` was called this
     /// frame and should be rendered. Length grows with the pool; bits
     /// past `renderers.len()` are unused. Reset to all-false in
-    /// [`Self::end_frame`].
+    /// [`Self::post_record`].
     ready: FixedBitSet,
     /// Same shape as `ready`, for `stencil_renderers`.
     stencil_ready: FixedBitSet,
     /// Highest `group_idx + 1` prepared this frame across **either**
-    /// pool. Used by [`Self::end_frame`] to shrink whichever pool grew
+    /// pool. Used by [`Self::post_record`] to shrink whichever pool grew
     /// past `2 × high_water`. Shared because a given frame is either
     /// all-`Plain` or all-`Stencil` (the surrounding render pass picks
     /// one), so `high_water` reflects the active mode's group count
@@ -276,7 +276,7 @@ impl TextRenderer {
     /// renderer pool if it's grossly over-allocated, and reset
     /// per-renderer ready flags. Call once after all `render_group`
     /// calls have been submitted in the encoder pass.
-    pub(crate) fn end_frame(&mut self) {
+    pub(crate) fn post_record(&mut self) {
         self.atlas.trim();
         // Shrink only when pool is more than 2× high_water — see
         // [`POOL_SHRINK_RATIO`]. Skips truncate work entirely in

@@ -14,7 +14,7 @@ Catches the regression where someone introduces a per-frame `Vec::new()`
 
 - Replacing `dhat` for ad-hoc profiling (this is a regression gate).
 - Measuring wgpu / OS / cosmic-text allocs (not ours; we'd never reach
-  zero). The audit covers the CPU pipeline through `Ui::end_frame` only;
+  zero). The audit covers the CPU pipeline through `Ui::post_record` only;
   GPU submit lives in `WgpuBackend` and is excluded.
 - Bytes-as-budget. We assert on alloc *count*; bytes are reported for
   diagnosis but a single capacity-doubling event would produce false

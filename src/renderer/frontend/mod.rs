@@ -34,7 +34,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 /// Submission status of the most recently produced [`RecordedFrame`].
 /// Held by both [`crate::Ui`] and `RecordedFrame` (via `Arc`); written
 /// by `Ui::run_frame` (→ `Pending`) and the renderer on the success
-/// path (→ `Submitted`). Read by `Ui::begin_frame`, which auto-rewinds
+/// path (→ `Submitted`). Read by `Ui::pre_record`, which auto-rewinds
 /// `damage.prev_surface` whenever the last frame's state isn't
 /// `Submitted` (host dropped the `RecordedFrame`, surface acquire
 /// failed, or it's the very first frame from `FrameState::default()` —
@@ -50,7 +50,7 @@ pub(crate) struct FrameState(Arc<AtomicU8>);
 
 // FrameState::default() leaves the inner byte at 0, which doesn't
 // match SUBMITTED below — so the first `was_last_submitted` returns
-// false and the first `Ui::begin_frame` rewinds, exactly as wanted.
+// false and the first `Ui::pre_record` rewinds, exactly as wanted.
 const FRAME_STATE_PENDING: u8 = 1;
 const FRAME_STATE_SUBMITTED: u8 = 2;
 
@@ -91,7 +91,7 @@ pub struct RecordedFrame<'a> {
     pub(crate) repaint_requested: bool,
     /// Shared with `Ui::frame_state`. Set to `Pending` by
     /// `Ui::run_frame` and (on success) to `Submitted` by
-    /// `Renderer::render`. The next `Ui::begin_frame` auto-rewinds
+    /// `Renderer::render`. The next `Ui::pre_record` auto-rewinds
     /// damage if it doesn't see `Submitted`.
     pub(crate) frame_state: FrameState,
 }
@@ -103,7 +103,7 @@ impl RecordedFrame<'_> {
     ///
     /// Safe by construction: if the previous frame's render didn't
     /// run (host dropped the `RecordedFrame`, surface acquire failed,
-    /// etc.), the framework's auto-rewind in `Ui::begin_frame`
+    /// etc.), the framework's auto-rewind in `Ui::pre_record`
     /// forced this frame to `Full`, so this method returns `false`
     /// and the host paints. No "invalidate" call needed in
     /// surface-error paths.
