@@ -80,7 +80,7 @@ impl Button {
                 ui.add_shape(Shape::Text {
                     local_rect: None,
                     text: label,
-                    color: look.text.color,
+                    brush: look.text.color.into(),
                     font_size_px: look.text.font_size_px,
                     line_height_px: look.line_height_px(),
                     wrap: TextWrap::Single,

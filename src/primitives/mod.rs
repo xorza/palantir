@@ -1,6 +1,7 @@
 pub(crate) mod approx;
 pub(crate) mod background;
 pub(crate) mod bezier;
+pub(crate) mod brush;
 pub(crate) mod color;
 pub(crate) mod corners;
 pub(crate) mod mesh;

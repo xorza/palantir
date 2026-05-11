@@ -255,7 +255,7 @@ fn encode_node(
     // to `None` when the paint is invisible, so reaching this branch
     // means there's something to paint.
     if paints && let Some(bg) = chrome {
-        out.draw_rect(rect, bg.radius, bg.fill, bg.stroke);
+        out.draw_rect(rect, bg.radius, bg.fill.as_solid(), bg.stroke);
     }
 
     if clip {

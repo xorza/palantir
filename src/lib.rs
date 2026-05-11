@@ -39,6 +39,7 @@ pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use palantir_anim_derive::Animatable;
+pub use primitives::brush::Brush;
 pub use primitives::color::Color;
 pub use primitives::corners::Corners;
 pub use primitives::mesh::{Mesh, MeshVertex};

@@ -419,7 +419,8 @@ impl QuadPipeline {
             },
             fill: Color { a: 1.0, ..color },
             radius: Corners::default(),
-            stroke: Stroke::ZERO,
+            stroke_color: Color::TRANSPARENT,
+            stroke_width: 0.0,
         };
         queue.write_buffer(&self.clear_buffer, 0, bytemuck::bytes_of(&q));
         self.clear_buffer_dirty = true;
@@ -477,7 +478,8 @@ impl QuadPipeline {
             },
             fill: Color::linear_rgba(0.0, 0.0, 0.0, alpha),
             radius: Corners::default(),
-            stroke: Stroke::ZERO,
+            stroke_color: Color::TRANSPARENT,
+            stroke_width: 0.0,
         };
         queue.write_buffer(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
     }
@@ -528,7 +530,8 @@ impl QuadPipeline {
                 rect: *r,
                 fill: Color::TRANSPARENT,
                 radius: Corners::default(),
-                stroke,
+                stroke_color: stroke.brush.as_solid(),
+                stroke_width: stroke.width,
             });
         }
         queue.write_buffer(
@@ -626,7 +629,8 @@ impl QuadPipeline {
             rect,
             fill: Color::default(),
             radius,
-            stroke: Stroke::ZERO,
+            stroke_color: Color::TRANSPARENT,
+            stroke_width: 0.0,
         }
     }
 }

@@ -210,7 +210,7 @@ fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'stat
                 .id_salt(("avatar", key))
                 .size((Sizing::Fixed(36.0), Sizing::Fixed(36.0)))
                 .background(Background {
-                    fill: avatar_color,
+                    fill: avatar_color.into(),
                     radius: Corners::all(18.0),
                     ..Default::default()
                 })

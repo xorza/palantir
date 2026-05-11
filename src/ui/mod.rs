@@ -277,7 +277,7 @@ impl Ui {
         self.add_shape(Shape::Mesh {
             mesh,
             local_rect: None,
-            tint: Color::WHITE,
+            tint: Color::WHITE.into(),
         });
     }
 

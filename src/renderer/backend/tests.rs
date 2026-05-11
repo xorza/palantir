@@ -9,7 +9,6 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
-use crate::primitives::stroke::Stroke;
 use crate::primitives::urect::URect;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, MeshScene, RenderBuffer, RoundedClip, TextRun};
@@ -74,7 +73,8 @@ fn dummy_quad() -> Quad {
         rect: Rect::new(0.0, 0.0, 10.0, 10.0),
         fill: Color::WHITE,
         radius: Corners::ZERO,
-        stroke: Stroke::ZERO,
+        stroke_color: Color::TRANSPARENT,
+        stroke_width: 0.0,
     }
 }
 

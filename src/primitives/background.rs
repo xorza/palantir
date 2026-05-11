@@ -1,4 +1,4 @@
-use crate::primitives::color::Color;
+use crate::primitives::brush::Brush;
 use crate::primitives::corners::Corners;
 use crate::primitives::stroke::Stroke;
 use palantir_anim_derive::Animatable;
@@ -23,7 +23,7 @@ use palantir_anim_derive::Animatable;
     Clone, Copy, Debug, Default, PartialEq, Hash, serde::Serialize, serde::Deserialize, Animatable,
 )]
 pub struct Background {
-    pub fill: Color,
+    pub fill: Brush,
     pub stroke: Stroke,
     #[animate(snap)]
     pub radius: Corners,

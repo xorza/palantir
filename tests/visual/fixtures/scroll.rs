@@ -46,7 +46,7 @@ fn scroll_vertical_overflow_matches_golden() {
                         Frame::new()
                             .id_salt(("row", i))
                             .background(Background {
-                                fill: ROW,
+                                fill: ROW.into(),
                                 radius: Corners::all(3.0),
                                 ..Default::default()
                             })
@@ -78,7 +78,7 @@ fn scroll_horizontal_overflow_matches_golden() {
                         Frame::new()
                             .id_salt(("col", i))
                             .background(Background {
-                                fill: ROW,
+                                fill: ROW.into(),
                                 radius: Corners::all(3.0),
                                 ..Default::default()
                             })
@@ -109,7 +109,7 @@ fn scroll_xy_overflow_matches_golden() {
                     Frame::new()
                         .id_salt("big")
                         .background(Background {
-                            fill: ROW,
+                            fill: ROW.into(),
                             radius: Corners::all(6.0),
                             ..Default::default()
                         })
@@ -139,7 +139,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
                     Frame::new()
                         .id_salt("short")
                         .background(Background {
-                            fill: ROW,
+                            fill: ROW.into(),
                             radius: Corners::all(3.0),
                             ..Default::default()
                         })
@@ -173,7 +173,7 @@ fn scroll_with_user_padding_matches_golden() {
                         Frame::new()
                             .id_salt(("row", i))
                             .background(Background {
-                                fill: ROW,
+                                fill: ROW.into(),
                                 radius: Corners::all(3.0),
                                 ..Default::default()
                             })
@@ -213,7 +213,7 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                         .id_salt(("card", tag))
                         .padding(6.0)
                         .background(Background {
-                            fill: CARD,
+                            fill: CARD.into(),
                             radius: Corners::all(6.0),
                             ..Default::default()
                         })
@@ -229,7 +229,7 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                                         Frame::new()
                                             .id_salt((tag, "row", i))
                                             .background(Background {
-                                                fill: ROW,
+                                                fill: ROW.into(),
                                                 radius: Corners::all(3.0),
                                                 ..Default::default()
                                             })

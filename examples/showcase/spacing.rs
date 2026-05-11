@@ -9,7 +9,7 @@ use swatch::swatch_bg;
 /// boundary reads against the surrounding card.
 fn panel_bg() -> Background {
     Background {
-        fill: Color::hex(0x252525),
+        fill: Color::hex(0x252525).into(),
         radius: Corners::all(4.0),
         ..Default::default()
     }
@@ -87,11 +87,8 @@ pub fn build(ui: &mut Ui) {
                             .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                             .margin((-30.0, 0.0, 0.0, 0.0))
                             .background(Background {
-                                fill: swatch::B,
-                                stroke: Stroke {
-                                    width: 1.0,
-                                    color: swatch::B,
-                                },
+                                fill: swatch::B.into(),
+                                stroke: Stroke::solid(swatch::B, 1.0),
                                 radius: Corners::all(4.0),
                             })
                             .show(ui);

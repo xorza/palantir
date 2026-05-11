@@ -41,11 +41,8 @@ fn dashboard_matches_golden() {
                     .padding((10.0, 14.0, 10.0, 14.0))
                     .gap(8.0)
                     .background(Background {
-                        fill: Color::rgb(0.18, 0.22, 0.32),
-                        stroke: Stroke {
-                            width: 1.0,
-                            color: Color::rgb(0.30, 0.36, 0.46),
-                        },
+                        fill: Color::rgb(0.18, 0.22, 0.32).into(),
+                        stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
                         radius: Corners::all(6.0),
                     })
                     .show(ui, |ui| {
@@ -72,7 +69,7 @@ fn dashboard_matches_golden() {
                     .padding(8.0)
                     .gap(4.0)
                     .background(Background {
-                        fill: Color::rgb(0.14, 0.17, 0.24),
+                        fill: Color::rgb(0.14, 0.17, 0.24).into(),
                         radius: Corners::all(6.0),
                         ..Default::default()
                     })
@@ -84,9 +81,9 @@ fn dashboard_matches_golden() {
                                 .padding((6.0, 8.0, 6.0, 8.0))
                                 .background(Background {
                                     fill: if i == 1 {
-                                        Color::rgb(0.22, 0.30, 0.46)
+                                        Color::rgb(0.22, 0.30, 0.46).into()
                                     } else {
-                                        Color::TRANSPARENT
+                                        Color::TRANSPARENT.into()
                                     },
                                     radius: Corners::all(4.0),
                                     ..Default::default()
@@ -118,11 +115,8 @@ fn dashboard_matches_golden() {
                                 .padding(12.0)
                                 .gap(6.0)
                                 .background(Background {
-                                    fill: *c,
-                                    stroke: Stroke {
-                                        width: 1.0,
-                                        color: Color::rgba(1.0, 1.0, 1.0, 0.18),
-                                    },
+                                    fill: (*c).into(),
+                                    stroke: Stroke::solid(Color::rgba(1.0, 1.0, 1.0, 0.18), 1.0),
                                     radius: Corners::all(8.0),
                                 })
                                 .show(ui, |ui| {
@@ -153,7 +147,7 @@ fn dashboard_matches_golden() {
                     .grid_span((1, 2))
                     .padding((4.0, 10.0, 4.0, 10.0))
                     .background(Background {
-                        fill: Color::rgb(0.10, 0.12, 0.18),
+                        fill: Color::rgb(0.10, 0.12, 0.18).into(),
                         radius: Corners::all(4.0),
                         ..Default::default()
                     })

@@ -89,11 +89,8 @@ pub fn build(ui: &mut Ui) {
         .child_align(Align::CENTER)
         .gap(10.0)
         .background(Background {
-            fill: Color::hex(0x2a2a2a),
-            stroke: Stroke {
-                width: 1.0,
-                color: Color::hex(0x4a4a4a),
-            },
+            fill: Color::hex(0x2a2a2a).into(),
+            stroke: Stroke::solid(Color::hex(0x4a4a4a), 1.0),
             radius: Corners::all(6.0),
         })
         .show(ui, |ui| {

@@ -19,7 +19,7 @@ fn frame_paints_a_single_rounded_rect() {
                 .id_salt("decoration")
                 .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
                     radius: Corners::all(6.0),
                     ..Default::default()
                 })

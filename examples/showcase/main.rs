@@ -356,11 +356,8 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
                 .size((Sizing::FILL, Sizing::FILL))
                 .padding(16.0)
                 .background(Background {
-                    fill: Color::hex(0x343434),
-                    stroke: palantir::Stroke {
-                        width: 1.0,
-                        color: Color::hex(0x363636),
-                    },
+                    fill: Color::hex(0x343434).into(),
+                    stroke: palantir::Stroke::solid(Color::hex(0x363636), 1.0),
                     radius: palantir::Corners::all(8.0),
                 })
                 .show(ui, |ui| {

@@ -36,11 +36,8 @@ fn frame_filled_with_stroke_matches_golden() {
                 .id_salt("card")
                 .size((Sizing::FILL, Sizing::FILL))
                 .background(Background {
-                    fill: Color::rgb(0.20, 0.30, 0.55),
-                    stroke: Stroke {
-                        width: 2.0,
-                        color: Color::rgb(0.65, 0.80, 1.00),
-                    },
+                    fill: Color::rgb(0.20, 0.30, 0.55).into(),
+                    stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
                     radius: Corners::all(16.0),
                 })
                 .show(ui);
@@ -66,7 +63,7 @@ fn surface_rounded_clips_full_fill_child() {
             .size((Sizing::FILL, Sizing::FILL))
             .padding(20.0)
             .background(Background {
-                fill: pink,
+                fill: pink.into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
@@ -74,11 +71,8 @@ fn surface_rounded_clips_full_fill_child() {
                     .id_salt("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
-                        fill: Color::TRANSPARENT,
-                        stroke: Stroke {
-                            width: 5.0,
-                            color: Color::rgb_u8(0, 255, 0),
-                        },
+                        fill: Color::TRANSPARENT.into(),
+                        stroke: Stroke::solid(Color::rgb_u8(0, 255, 0), 5.0),
                         radius: Corners::new(4.0, 12.0, 20.0, 28.0),
                     })
                     .clip_rounded()
@@ -87,7 +81,7 @@ fn surface_rounded_clips_full_fill_child() {
                             .id_salt("inner")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
-                                fill: black,
+                                fill: black.into(),
                                 ..Default::default()
                             })
                             .show(ui);
@@ -122,11 +116,8 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                     .position(Vec2::new(-40.0, -30.0))
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(150.0)))
                     .background(Background {
-                        fill: Color::TRANSPARENT,
-                        stroke: Stroke {
-                            width: 4.0,
-                            color: Color::rgb_u8(0, 255, 0),
-                        },
+                        fill: Color::TRANSPARENT.into(),
+                        stroke: Stroke::solid(Color::rgb_u8(0, 255, 0), 4.0),
                         radius: Corners::all(24.0),
                     })
                     .clip_rounded()
@@ -135,7 +126,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                             .id_salt("inner")
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
-                                fill: Color::rgb(0.0, 0.0, 0.0),
+                                fill: Color::rgb(0.0, 0.0, 0.0).into(),
                                 ..Default::default()
                             })
                             .show(ui);
@@ -170,7 +161,7 @@ fn rounded_clip_survives_surface_resize() {
                     .id_salt("rounded")
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.2, 0.3),
+                        fill: Color::rgb(0.2, 0.2, 0.3).into(),
                         radius: Corners::all(8.0),
                         ..Default::default()
                     })
@@ -215,13 +206,13 @@ fn interleaved_shapes_paint_in_record_order() {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 30.0, 60.0)),
                     radius: Corners::default(),
-                    fill: Color::rgb(1.0, 0.0, 0.0),
+                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
                     stroke: Stroke::ZERO,
                 });
                 Frame::new()
                     .id_salt("cyan")
                     .background(Background {
-                        fill: Color::rgb(0.0, 1.0, 1.0),
+                        fill: Color::rgb(0.0, 1.0, 1.0).into(),
                         ..Default::default()
                     })
                     .size((Sizing::Fixed(60.0), Sizing::FILL))
@@ -229,13 +220,13 @@ fn interleaved_shapes_paint_in_record_order() {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(30.0, 0.0, 60.0, 60.0)),
                     radius: Corners::default(),
-                    fill: Color::rgb(0.0, 1.0, 0.0),
+                    fill: Color::rgb(0.0, 1.0, 0.0).into(),
                     stroke: Stroke::ZERO,
                 });
                 Frame::new()
                     .id_salt("yellow")
                     .background(Background {
-                        fill: Color::rgb(1.0, 1.0, 0.0),
+                        fill: Color::rgb(1.0, 1.0, 0.0).into(),
                         ..Default::default()
                     })
                     .size((Sizing::Fixed(60.0), Sizing::FILL))
@@ -243,7 +234,7 @@ fn interleaved_shapes_paint_in_record_order() {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(90.0, 0.0, 60.0, 60.0)),
                     radius: Corners::default(),
-                    fill: Color::rgb(0.2, 0.4, 1.0),
+                    fill: Color::rgb(0.2, 0.4, 1.0).into(),
                     stroke: Stroke::ZERO,
                 });
             });
@@ -269,7 +260,7 @@ fn line_diagonal_aa_matches_golden() {
                     a: Vec2::new(10.0, 10.0),
                     b: Vec2::new(150.0, 110.0),
                     width: 4.0,
-                    color: Color::rgb(0.2, 0.9, 1.0),
+                    brush: Color::rgb(0.2, 0.9, 1.0).into(),
                     cap: LineCap::Butt,
                     join: LineJoin::Miter,
                 });
@@ -280,7 +271,7 @@ fn line_diagonal_aa_matches_golden() {
                     a: Vec2::new(10.0, 80.0),
                     b: Vec2::new(150.0, 80.0),
                     width: 0.4,
-                    color: Color::rgb(1.0, 1.0, 1.0),
+                    brush: Color::rgb(1.0, 1.0, 1.0).into(),
                     cap: LineCap::Butt,
                     join: LineJoin::Miter,
                 });
@@ -352,7 +343,7 @@ fn polyline_bevel_join_matches_golden() {
                 ];
                 ui.add_shape(Shape::Polyline {
                     points: &shallow,
-                    colors: PolylineColors::Single(cyan),
+                    colors: PolylineColors::Single(cyan.into()),
                     width: 5.0,
                     cap: LineCap::Butt,
                     join: LineJoin::Miter,
@@ -364,7 +355,7 @@ fn polyline_bevel_join_matches_golden() {
                 ];
                 ui.add_shape(Shape::Polyline {
                     points: &sharp,
-                    colors: PolylineColors::Single(cyan),
+                    colors: PolylineColors::Single(cyan.into()),
                     width: 5.0,
                     cap: LineCap::Butt,
                     join: LineJoin::Miter,
@@ -396,7 +387,7 @@ fn polyline_round_caps_match_golden() {
                         a: Vec2::new(40.0, y),
                         b: Vec2::new(140.0, y),
                         width: 10.0,
-                        color,
+                        brush: color.into(),
                         cap,
                         join: LineJoin::Miter,
                     });
@@ -433,7 +424,7 @@ fn polyline_round_join_matches_golden() {
                     ];
                     ui.add_shape(Shape::Polyline {
                         points: &pts,
-                        colors: PolylineColors::Single(cyan),
+                        colors: PolylineColors::Single(cyan.into()),
                         width: 8.0,
                         cap: LineCap::Butt,
                         join,

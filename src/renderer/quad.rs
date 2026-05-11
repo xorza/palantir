@@ -3,7 +3,7 @@
 //! Lives at the renderer root alongside `RenderBuffer`: both are the
 //! frontend↔backend contract, so neither side owns them.
 
-use crate::primitives::{color::Color, corners::Corners, rect::Rect, stroke::Stroke};
+use crate::primitives::{color::Color, corners::Corners, rect::Rect};
 use bytemuck::{Pod, Zeroable};
 
 /// Per-instance quad data (68 B). Field types are the matching
@@ -12,13 +12,19 @@ use bytemuck::{Pod, Zeroable};
 /// explicit attribute offsets, which is the only thing constraining
 /// the field order. No tail padding: vertex buffer strides only need
 /// 4-byte alignment, unlike std140 uniforms.
+///
+/// Stroke is stored as two inline fields (`stroke_color`,
+/// `stroke_width`) rather than an embedded `Stroke` so the user-facing
+/// `Stroke` is free to carry non-`Pod` paint sources (`Brush`); the
+/// composer translates the user `Stroke` into these inline GPU fields.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 pub(crate) struct Quad {
     pub(crate) rect: Rect,
     pub(crate) fill: Color,
     pub(crate) radius: Corners,
-    pub(crate) stroke: Stroke,
+    pub(crate) stroke_color: Color,
+    pub(crate) stroke_width: f32,
 }
 
 #[cfg(test)]

@@ -97,7 +97,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     .id_salt("a")
                     .size(40.0)
                     .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -105,7 +105,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     .id_salt("hid")
                     .size(40.0)
                     .background(Background {
-                        fill: Color::rgb(0.0, 1.0, 0.0),
+                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
                         ..Default::default()
                     })
                     .hidden()
@@ -114,7 +114,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     .id_salt("b")
                     .size(40.0)
                     .background(Background {
-                        fill: Color::rgb(0.0, 0.0, 1.0),
+                        fill: Color::rgb(0.0, 0.0, 1.0).into(),
                         ..Default::default()
                     })
                     .show(ui);

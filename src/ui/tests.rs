@@ -132,7 +132,7 @@ fn prev_frame_populated_after_end_frame() {
             .id_salt("a")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8),
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -155,7 +155,7 @@ fn prev_frame_captures_arranged_rect() {
         .id_salt("a")
         .size(50.0)
         .background(Background {
-            fill: Color::rgb(0.2, 0.4, 0.8),
+            fill: Color::rgb(0.2, 0.4, 0.8).into(),
             ..Default::default()
         })
         .show(&mut ui)
@@ -175,7 +175,7 @@ fn prev_frame_captures_authoring_hash() {
         .id_salt("a")
         .size(50.0)
         .background(Background {
-            fill: Color::rgb(0.2, 0.4, 0.8),
+            fill: Color::rgb(0.2, 0.4, 0.8).into(),
             ..Default::default()
         })
         .show(&mut ui)
@@ -216,7 +216,7 @@ fn prev_frame_updates_on_authoring_change() {
         .id_salt("a")
         .size(50.0)
         .background(Background {
-            fill: Color::rgb(0.2, 0.4, 0.8),
+            fill: Color::rgb(0.2, 0.4, 0.8).into(),
             ..Default::default()
         })
         .show(&mut ui);
@@ -229,7 +229,7 @@ fn prev_frame_updates_on_authoring_change() {
         .id_salt("a")
         .size(50.0)
         .background(Background {
-            fill: Color::rgb(0.9, 0.4, 0.8),
+            fill: Color::rgb(0.9, 0.4, 0.8).into(),
             ..Default::default()
         })
         .show(&mut ui);

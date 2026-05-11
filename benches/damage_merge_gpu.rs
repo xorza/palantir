@@ -114,7 +114,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
                                 .id_salt(("cell", r, c))
                                 .size((Sizing::Fixed(CELL_W), Sizing::FILL))
                                 .background(Background {
-                                    fill,
+                                    fill: fill.into(),
                                     ..Default::default()
                                 })
                                 .show(ui);

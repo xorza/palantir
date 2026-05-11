@@ -704,11 +704,8 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     } = setup_anim_ui("look-test");
 
     let bg = Background {
-        fill: Color::hex(0x336699),
-        stroke: Stroke {
-            width: 2.0,
-            color: Color::hex(0xffffff),
-        },
+        fill: Color::hex(0x336699).into(),
+        stroke: Stroke::solid(Color::hex(0xffffff), 2.0),
         radius: Corners::all(4.0),
     };
     let look = WidgetLook {
@@ -730,7 +727,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         snap.background.stroke.width, 2.0,
         "None: stroke width snaps"
     );
-    assert_eq!(snap.background.stroke.color, bg.stroke.color);
+    assert_eq!(snap.background.stroke.brush, bg.stroke.brush);
     assert_eq!(snap.background.radius, bg.radius);
     assert_eq!(
         snap.text.color, fallback.color,
@@ -755,7 +752,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // unallocated.
     let look2 = WidgetLook {
         background: Some(Background {
-            fill: Color::hex(0xff0000),
+            fill: Color::hex(0xff0000).into(),
             ..bg
         }),
         text: None,
@@ -783,7 +780,7 @@ fn spring_snap_fields_carry_target_immediately() {
     let mut map = AnimMapTyped::<Background>::default();
     let id = wid("snap-carry");
     let start = Background {
-        fill: Color::rgb(0.0, 0.0, 0.0),
+        fill: Color::rgb(0.0, 0.0, 0.0).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(2.0),
     };
@@ -793,7 +790,7 @@ fn spring_snap_fields_carry_target_immediately() {
 
     // Retarget to a new fill (animated) and a new radius (snap).
     let target = Background {
-        fill: Color::rgb(1.0, 0.0, 0.0),
+        fill: Color::rgb(1.0, 0.0, 0.0).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(12.0),
     };
@@ -807,7 +804,7 @@ fn spring_snap_fields_carry_target_immediately() {
         "snap field must carry target value on the first stepped frame, not lag until settle",
     );
     assert!(
-        r.current.fill.r < target.fill.r - 0.05,
+        r.current.fill.as_solid().r < target.fill.as_solid().r - 0.05,
         "animated fill should still be mid-flight; got {:?}",
         r.current.fill,
     );

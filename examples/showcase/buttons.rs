@@ -76,12 +76,9 @@ fn outlined_style() -> ButtonTheme {
     // variant reads as "selectable surface" matching the rest of the
     // theme.
     let accent = Color::hex(0x4cd3ff);
-    let stroke = Stroke {
-        width: 1.5,
-        color: accent,
-    };
-    let bg = |fill, stroke| Background {
-        fill,
+    let stroke = Stroke::solid(accent, 1.5);
+    let bg = |fill: Color, stroke| Background {
+        fill: fill.into(),
         stroke,
         radius: Corners::all(4.0),
     };
@@ -107,10 +104,7 @@ fn outlined_style() -> ButtonTheme {
         disabled: WidgetLook {
             background: Some(bg(
                 Color::TRANSPARENT,
-                Stroke {
-                    width: 1.5,
-                    color: Color::linear_rgba(accent.r, accent.g, accent.b, 0.35),
-                },
+                Stroke::solid(Color::linear_rgba(accent.r, accent.g, accent.b, 0.35), 1.5),
             )),
             text: Some(TextStyle::default().with_color(Color::hex(0x878a8d))),
         },
@@ -121,8 +115,8 @@ fn outlined_style() -> ButtonTheme {
 fn danger_style() -> ButtonTheme {
     // Palette `error = #ff5e44`.
     let red = Color::hex(0xff5e44);
-    let bg = |fill| Background {
-        fill,
+    let bg = |fill: Color| Background {
+        fill: fill.into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(2.0),
     };

@@ -58,7 +58,7 @@ fn button_scene(
             .gap(8.0)
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
-                fill: Color::rgb(0.15, 0.15, 0.18),
+                fill: Color::rgb(0.15, 0.15, 0.18).into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
@@ -76,7 +76,7 @@ fn corner_pair_scene(
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
-                fill: Color::rgb(0.15, 0.15, 0.18),
+                fill: Color::rgb(0.15, 0.15, 0.18).into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
@@ -85,7 +85,7 @@ fn corner_pair_scene(
                     .position(Vec2::new(0.0, 0.0))
                     .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.7, 0.4),
+                        fill: Color::rgb(0.2, 0.7, 0.4).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -94,7 +94,7 @@ fn corner_pair_scene(
                     .position(Vec2::new(180.0, 180.0))
                     .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
                     .background(Background {
-                        fill: Color::rgb(0.7, 0.3, 0.2),
+                        fill: Color::rgb(0.7, 0.3, 0.2).into(),
                         ..Default::default()
                     })
                     .show(ui);

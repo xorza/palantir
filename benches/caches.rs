@@ -100,20 +100,17 @@ fn build(ui: &mut Ui) {
 /// workload — if the cache earns < 1% here too, deletion is justified.
 fn build_heavy(ui: &mut Ui) {
     let group_bg = Background {
-        fill: Color::hex(0x1a1a1a),
-        stroke: Stroke {
-            width: 1.5,
-            color: Color::hex(0x4d5663),
-        },
+        fill: Color::hex(0x1a1a1a).into(),
+        stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
         radius: Corners::all(12.0),
     };
     let row_bg = Background {
-        fill: Color::hex(0x252525),
+        fill: Color::hex(0x252525).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(6.0),
     };
     let avatar_bg = Background {
-        fill: Color::hex(0x3a4a5c),
+        fill: Color::hex(0x3a4a5c).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(10.0),
     };
@@ -181,7 +178,7 @@ fn build_heavy(ui: &mut Ui) {
 /// signal isn't drowned by text shaping.
 fn build_dense(ui: &mut Ui) {
     let avatar_bg = Background {
-        fill: Color::hex(0x3a4a5c),
+        fill: Color::hex(0x3a4a5c).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(8.0),
     };
@@ -213,7 +210,7 @@ fn build_dense(ui: &mut Ui) {
                                         ui.add_shape(Shape::RoundedRect {
                                             local_rect: Some(Rect::new(x, 2.0, 3.0, 16.0)),
                                             radius: Corners::all(1.5),
-                                            fill: Color::hex(0x556677),
+                                            fill: Color::hex(0x556677).into(),
                                             stroke: Stroke::ZERO,
                                         });
                                     }

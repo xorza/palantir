@@ -8,11 +8,8 @@ use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stro
 /// reads clearly at the corners.
 fn card() -> Background {
     Background {
-        fill: Color::hex(0x252525),
-        stroke: Stroke {
-            width: 1.5,
-            color: Color::hex(0x4d5663),
-        },
+        fill: Color::hex(0x252525).into(),
+        stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
         radius: Corners::all(28.0),
     }
 }
@@ -104,7 +101,7 @@ fn spiller(ui: &mut Ui, id: impl std::hash::Hash) {
         .size((Sizing::Fixed(240.0), Sizing::Fixed(280.0)))
         .margin((-24.0, -24.0, -24.0, -24.0))
         .background(Background {
-            fill: swatch::B,
+            fill: swatch::B.into(),
             radius: Corners::all(0.0),
             ..Default::default()
         })

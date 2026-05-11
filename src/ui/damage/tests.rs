@@ -42,7 +42,7 @@ fn one_frame(ui: &mut Ui, color: Color) {
             .id_salt("a")
             .size(50.0)
             .background(Background {
-                fill: color,
+                fill: color.into(),
                 ..Default::default()
             })
             .show(ui);
@@ -94,7 +94,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
                 .id_salt("a")
                 .size(50.0)
                 .background(Background {
-                    fill: BLUE,
+                    fill: BLUE.into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -136,7 +136,7 @@ fn popup_eater_does_not_force_full_repaint() {
         Popup::anchored_to(anchor)
             .id_salt("p")
             .background(Background {
-                fill: BLUE,
+                fill: BLUE.into(),
                 ..Default::default()
             })
             .show(ui, |ui| {
@@ -144,7 +144,7 @@ fn popup_eater_does_not_force_full_repaint() {
                     .id_salt("body-leaf")
                     .size(60.0)
                     .background(Background {
-                        fill: RED,
+                        fill: RED.into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -191,7 +191,7 @@ fn click_on_empty_bg_does_not_force_full() {
                 .id_salt("a")
                 .size(50.0)
                 .background(Background {
-                    fill: BLUE,
+                    fill: BLUE.into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -287,7 +287,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                 .id_salt("a")
                 .size((Sizing::Fixed(a_size), Sizing::Fixed(20.0)))
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -295,7 +295,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
                 .id_salt("b")
                 .size((Sizing::Fixed(30.0), Sizing::Fixed(20.0)))
                 .background(Background {
-                    fill: Color::rgb(0.5, 0.5, 0.5),
+                    fill: Color::rgb(0.5, 0.5, 0.5).into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -354,7 +354,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
                 .id_salt("new")
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -442,7 +442,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                             .id_salt("c")
                             .size(40.0)
                             .background(Background {
-                                fill,
+                                fill: fill.into(),
                                 ..Default::default()
                             })
                             .show(ui)
@@ -497,7 +497,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                             .id_salt("c")
                             .size(40.0)
                             .background(Background {
-                                fill: Color::rgb(0.2, 0.4, 0.8),
+                                fill: Color::rgb(0.2, 0.4, 0.8).into(),
                                 ..Default::default()
                             })
                             .show(ui)
@@ -562,7 +562,7 @@ fn transform_animation_keeps_far_positions_split() {
                             .id_salt("c")
                             .size(40.0)
                             .background(Background {
-                                fill: Color::rgb(0.2, 0.4, 0.8),
+                                fill: Color::rgb(0.2, 0.4, 0.8).into(),
                                 ..Default::default()
                             })
                             .show(ui)
@@ -793,7 +793,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
                     .id_salt("big")
                     .size((3000.0, 60.0))
                     .background(Background {
-                        fill: BLUE,
+                        fill: BLUE.into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -801,7 +801,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
                     .id_salt("small")
                     .size((50.0, 60.0))
                     .background(Background {
-                        fill: BLUE,
+                        fill: BLUE.into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -1021,7 +1021,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                                 .id_salt("overflow")
                                 .size(child_size)
                                 .background(Background {
-                                    fill,
+                                    fill: fill.into(),
                                     ..Default::default()
                                 })
                                 .show(ui)

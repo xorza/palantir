@@ -53,7 +53,7 @@ fn grid_8x8_alloc_free() {
                         Frame::new()
                             .id_salt((r, c))
                             .background(Background {
-                                fill: Color::WHITE,
+                                fill: Color::WHITE.into(),
                                 ..Default::default()
                             })
                             .grid_cell((r, c))
@@ -74,7 +74,7 @@ fn damage_animated_rect_alloc_free() {
             Frame::new()
                 .auto_id()
                 .background(Background {
-                    fill: Color::WHITE,
+                    fill: Color::WHITE.into(),
                     ..Default::default()
                 })
                 .size((Sizing::Fixed(w), Sizing::Fixed(40.0)))

@@ -64,7 +64,7 @@ fn positioned(ui: &mut Ui, id: &'static str, x: f32, y: f32, c: Color) {
         .position((x, y))
         .size(40.0)
         .background(Background {
-            fill: c,
+            fill: c.into(),
             ..Default::default()
         })
         .show(ui);
