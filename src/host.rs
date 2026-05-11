@@ -13,14 +13,13 @@
 
 use std::time::Instant;
 
-use crate::Display;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::color::Color;
 use crate::renderer::backend::WgpuBackend;
-use crate::renderer::frontend::{FrameState, Frontend};
+use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::ui::damage::Damage;
+use crate::{Display, FrameReport};
 
 /// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
 /// plus the CPU [`Frontend`](crate::renderer::frontend::Frontend) and
@@ -34,34 +33,9 @@ pub struct Host {
     pub debug_overlay: DebugOverlayConfig,
     pub(crate) frontend: Frontend,
     pub(crate) backend: WgpuBackend,
-    /// Set by `run_frame`, consumed by `render`. `None` if `render`
-    /// wasn't called after the last `run_frame` (e.g. host bailed on
-    /// a `Skip` frame); the next `run_frame` overwrites it.
-    pub(crate) pending: Option<PendingSubmit>,
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
     /// each call so the host doesn't have to thread a clock through.
     pub(crate) start: Instant,
-}
-
-pub(crate) struct PendingSubmit {
-    /// `None` ⇒ skip path: render() just copies the backbuffer onto
-    /// the swapchain. `Some(d)` ⇒ paint the schedule under `d`.
-    pub(crate) damage: Option<Damage>,
-    pub(crate) frame_state: FrameState,
-}
-
-/// What [`Host::run_frame`] tells the host about the frame it just
-/// recorded. Owned, no borrows — the caller can inspect both fields,
-/// branch on them, and (when not skipping) call [`Host::render`].
-pub struct FrameInfo {
-    /// `true` when this frame's damage diff produced no work — the
-    /// backbuffer already holds the right pixels. Hosts can skip
-    /// `surface.get_current_texture()` + render + present entirely.
-    pub skip_render: bool,
-    /// `true` when an animation tick during this frame hasn't
-    /// settled. Hosts honor by re-requesting a redraw so the next
-    /// frame runs even when input is idle.
-    pub repaint_requested: bool,
 }
 
 impl Host {
@@ -87,7 +61,6 @@ impl Host {
             debug_overlay: DebugOverlayConfig::default(),
             frontend: Frontend::default(),
             backend: WgpuBackend::new(device, queue, format, shaper),
-            pending: None,
             start: Instant::now(),
         }
     }
@@ -95,21 +68,8 @@ impl Host {
     /// Drive one CPU frame: `Ui::run_frame` → encode → compose.
     /// Returns the host-facing [`FrameInfo`]; internal state needed
     /// by [`Self::render`] is stashed.
-    pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameInfo {
-        let frame = self.ui.frame(display, self.start.elapsed(), record);
-
-        if self.ui.damage.is_some() {
-            self.frontend.build(&self.ui);
-        }
-        self.pending = Some(PendingSubmit {
-            damage: self.ui.damage,
-            frame_state: frame.frame_state.clone(),
-        });
-
-        FrameInfo {
-            skip_render: self.ui.damage.is_none(),
-            repaint_requested: frame.repaint_requested(),
-        }
+    pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameReport {
+        self.ui.frame(display, self.start.elapsed(), record)
     }
 
     /// GPU submit half. Call after [`Self::run_frame`] when the host
@@ -117,13 +77,16 @@ impl Host {
     /// false). No-op if called without a preceding `run_frame` or
     /// after a frame the host elected to skip.
     pub fn render(&mut self, surface_tex: &wgpu::Texture, clear: Color) {
-        let Some(p) = self.pending.take() else {
+        let Some(damage) = self.ui.damage else {
+            // Skip path: nothing changed. Copy the persistent
+            // backbuffer onto the swapchain so callers that always
+            // present (visual harness, etc.) still see valid pixels.
+            // Hosts that pre-check `FrameReport::skip_render` bypass
+            // this entirely and never acquire a surface texture.
+            self.backend.copy_backbuffer_to_surface(surface_tex);
             return;
         };
-        let Some(damage) = p.damage else {
-            self.backend.present_skipped(surface_tex, &p.frame_state);
-            return;
-        };
+        self.frontend.build(&self.ui);
         self.backend.submit(
             surface_tex,
             clear,
@@ -131,7 +94,6 @@ impl Host {
             &mut self.frontend.gradient_atlas,
             damage,
             self.debug_overlay,
-            &p.frame_state,
         );
     }
 }

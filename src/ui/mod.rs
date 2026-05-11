@@ -183,6 +183,7 @@ impl Ui {
         FrameReport {
             repaint_requested: self.repaint_requested,
             frame_state: self.frame_state.clone(),
+            skip_render: self.damage.is_none(),
         }
     }
 
