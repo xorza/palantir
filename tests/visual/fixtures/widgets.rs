@@ -101,6 +101,54 @@ fn surface_rounded_clips_full_fill_child() {
     );
 }
 
+/// Regression: rounded clip whose rect extends off-screen on every
+/// side. The mask SDF must use the panel's true rect — not the
+/// viewport-clamped scissor — so the rounded corners stay outside
+/// the viewport instead of "sliding inward" into the visible region.
+/// Visible: a black panel with a green stroke filling the entire
+/// viewport with NO rounded corners visible (they sit off-screen);
+/// without the fix, dark curved notches appear at each viewport
+/// corner where the stencil mask cuts the rect.
+#[test]
+fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(120, 90), 1.0, DARK_BG, |ui| {
+        Panel::canvas()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id_salt("rounded")
+                    .position(Vec2::new(-40.0, -30.0))
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(150.0)))
+                    .background(Background {
+                        fill: Color::TRANSPARENT,
+                        stroke: Stroke {
+                            width: 4.0,
+                            color: Color::rgb_u8(0, 255, 0),
+                        },
+                        radius: Corners::all(24.0),
+                    })
+                    .clip_rounded()
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id_salt("inner")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .background(Background {
+                                fill: Color::rgb(0.0, 0.0, 0.0),
+                                ..Default::default()
+                            })
+                            .show(ui);
+                    });
+            });
+    });
+    assert_matches_golden(
+        "rounded_clip_partially_offscreen",
+        &img,
+        Tolerance::default(),
+    );
+}
+
 /// Pin the backbuffer-rebuild invariant: when the surface texture
 /// changes size between rounded-clip frames, `WgpuBackend` must
 /// reset its stencil attachment along with the color backbuffer. If

@@ -3,9 +3,7 @@
 //! shader at `quad.wgsl` next to this file.
 
 use crate::layout::types::span::Span;
-use crate::primitives::{
-    color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke, urect::URect,
-};
+use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke};
 use crate::renderer::quad::Quad;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use encase::{ShaderSize, ShaderType, UniformBuffer};
@@ -592,15 +590,7 @@ impl QuadPipeline {
     /// Only `rect` + `radius` reach the SDF in `fs_mask`; color/stroke
     /// are ignored (mask pipeline disables color writes), so we pass
     /// defaults.
-    pub(crate) fn mask_instance(rect: URect, radius: Corners) -> Quad {
-        Quad::new(
-            Rect {
-                min: Vec2::new(rect.x as f32, rect.y as f32),
-                size: Size::new(rect.w as f32, rect.h as f32),
-            },
-            Color::default(),
-            radius,
-            Stroke::ZERO,
-        )
+    pub(crate) fn mask_instance(rect: Rect, radius: Corners) -> Quad {
+        Quad::new(rect, Color::default(), radius, Stroke::ZERO)
     }
 }

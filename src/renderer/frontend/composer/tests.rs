@@ -247,17 +247,48 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
         .rounded_clip
         .expect("outer rounded data must ride on group");
     // DPR=2 → radius doubles 8→16, rect (10,20,100,80) → (20,40,200,160).
-    assert_eq!(outer_r.tl, 16.0);
+    assert_eq!(outer_r.radius.tl, 16.0);
+    assert_eq!(outer_r.mask_rect.min, glam::Vec2::new(20.0, 40.0));
+    assert_eq!(
+        outer_r.mask_rect.size,
+        crate::primitives::size::Size::new(200.0, 160.0)
+    );
     assert_eq!(outer.scissor, Some(URect::new(20, 40, 200, 160)));
 
-    // Inheritance: inner Rect clip carries the SAME rounded radii as
-    // the outer parent, scissor narrowed to the inner rect.
+    // Inheritance: inner Rect clip carries the SAME rounded data as
+    // the outer parent (rect AND radius — the mask geometry is the
+    // ancestor's, scissor is narrowed independently).
     let inner_r = inner
         .rounded_clip
         .expect("inner rect clip inside rounded ancestor inherits rounded data");
-    assert_eq!(inner_r, outer_r, "inner group inherits parent's mask radii");
+    assert_eq!(inner_r, outer_r, "inner group inherits parent's mask data");
     // DPR=2: rect (30,40,40,30) → (60,80,80,60), clamped to outer.
     assert_eq!(inner.scissor, Some(URect::new(60, 80, 80, 60)));
+}
+
+/// Regression: when a rounded clip partially leaves the viewport, the
+/// rasterizer scissor clamps to viewport bounds — but the mask SDF
+/// must keep seeing the rect's **true** edges. Otherwise corner
+/// curves "slide inward" into visible pixels, and rounded clipping
+/// bleeds inside the control while resizing the window.
+#[test]
+fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
+    let buf = run(
+        |b| {
+            b.push_clip_rounded(rect(-50.0, -20.0, 200.0, 100.0), Corners::all(8.0));
+            draw(b, rect(0.0, 0.0, 10.0, 10.0));
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(120, 60)),
+    );
+    let r = buf.groups[0].rounded_clip.expect("rounded data on group");
+    // Mask rect keeps the off-screen origin (-50,-20) and full size
+    // (200,100) — the SDF needs the rect's full geometry.
+    assert_eq!(r.mask_rect.min, Vec2::new(-50.0, -20.0));
+    assert_eq!(r.mask_rect.size, Size::new(200.0, 100.0));
+    // Scissor clamps to viewport so the GPU rasterizer rejects
+    // off-screen pixels.
+    assert_eq!(buf.groups[0].scissor, Some(URect::new(0, 0, 120, 60)));
 }
 
 #[test]

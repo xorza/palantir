@@ -1,7 +1,7 @@
 use super::quad::Quad;
 use crate::layout::types::span::Span;
 use crate::primitives::mesh::Mesh;
-use crate::primitives::{color::Color, corners::Corners, urect::URect};
+use crate::primitives::{color::Color, corners::Corners, rect::Rect, urect::URect};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
@@ -52,15 +52,30 @@ impl Default for RenderBuffer {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawGroup {
     pub(crate) scissor: Option<URect>,
-    /// When set, the active clip is a rounded scissor: `scissor` is the
-    /// mask's bounding rect and `rounded_clip` carries the per-corner
-    /// radii in physical px (DPR-scaled). Backend stamps the mask using
-    /// `(scissor, rounded_clip)` and switches to stencil-test pipelines
-    /// for this group's draws. `None` = plain scissor.
-    pub(crate) rounded_clip: Option<Corners>,
+    /// When set, the active clip is a rounded scissor. `scissor` is the
+    /// rasterizer scissor (already clamped to viewport / ancestor
+    /// scissors), while `rounded_clip` carries the **unclamped**
+    /// physical-px mask rect + per-corner radii used by the stencil-
+    /// mask SDF. Keeping the mask rect unclamped is what prevents
+    /// rounded corners from "sliding inward" into the visible region
+    /// when the clipped node partially leaves the viewport — the SDF
+    /// must always know the rect's true geometry; the scissor handles
+    /// off-screen pixel rejection. `None` = plain scissor.
+    pub(crate) rounded_clip: Option<RoundedClip>,
     pub(crate) quads: Span,
     pub(crate) texts: Span,
     pub(crate) meshes: Span,
+}
+
+/// Physical-px rounded-clip geometry for stencil masking. `mask_rect`
+/// is the clip's full physical-pixel rect — **not** clamped to viewport
+/// or any ancestor scissor — so the mask SDF's corner curves stay
+/// anchored at the rect's true edges even when the clip is partially
+/// off-screen.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct RoundedClip {
+    pub(crate) mask_rect: Rect,
+    pub(crate) radius: Corners,
 }
 
 /// Scene-wide mesh pool: per-draw entries plus the shared vertex/index
