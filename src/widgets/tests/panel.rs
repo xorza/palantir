@@ -266,7 +266,10 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
     ui.finalize_frame();
     click_at(&mut ui, Vec2::new(40.0, 40.0));
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut clicked = false;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()

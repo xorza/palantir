@@ -18,7 +18,10 @@ use glam::UVec2;
 #[test]
 fn shapes_attached_to_button_node() {
     let mut ui = Ui::new();
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut button_node = None;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         button_node = Some(Button::new().auto_id().label("X").show(ui).node);
@@ -239,7 +242,10 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
 #[test]
 fn empty_tree_has_no_hashes() {
     let mut ui = Ui::new();
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     // No widgets recorded — node_count is 0 → both hash arrays stay
     // empty. (Layout / post_record normally need a root, so we
     // intentionally skip them; just call compute_hashes directly to
@@ -325,7 +331,10 @@ fn changing_fill_color_changes_hash() {
     let _ = (h1, h2); // root is unaffected — pin the child instead.
 
     let mut ui1 = Ui::new();
-    ui1.pre_record(Display::from_physical(UVec2::new(200, 200), 1.0));
+    {
+        ui1.display = Display::from_physical(UVec2::new(200, 200), 1.0);
+        ui1.pre_record();
+    }
     let mut child1 = None;
     Panel::hstack().id_salt("root").show(&mut ui1, |ui| {
         child1 = Some(
@@ -343,7 +352,10 @@ fn changing_fill_color_changes_hash() {
     ui1.post_record();
     ui1.finalize_frame();
     let mut ui2 = Ui::new();
-    ui2.pre_record(Display::default());
+    {
+        ui2.display = Display::default();
+        ui2.pre_record();
+    }
     let mut child2 = None;
     Panel::hstack().id_salt("root").show(&mut ui2, |ui| {
         child2 = Some(
@@ -496,7 +508,10 @@ fn shape_order_matters_for_hash() {
     // bg-then-text and text-then-bg paint differently. Hash must
     // reflect that.
     let mut ui1 = Ui::new();
-    ui1.pre_record(Display::from_physical(UVec2::new(200, 200), 1.0));
+    {
+        ui1.display = Display::from_physical(UVec2::new(200, 200), 1.0);
+        ui1.pre_record();
+    }
     let mut n1 = None;
     Panel::hstack().auto_id().show(&mut ui1, |ui| {
         // Push a Frame then add a manual Text shape via a Button.
@@ -506,7 +521,10 @@ fn shape_order_matters_for_hash() {
     ui1.finalize_frame();
     // Two recordings of the same Button — hashes must match.
     let mut ui2 = Ui::new();
-    ui2.pre_record(Display::default());
+    {
+        ui2.display = Display::default();
+        ui2.pre_record();
+    }
     let mut n2 = None;
     Panel::hstack().auto_id().show(&mut ui2, |ui| {
         n2 = Some(Button::new().id_salt("a").label("X").show(ui).node);
@@ -526,7 +544,10 @@ fn shape_order_matters_for_hash() {
 fn changing_text_content_changes_hash() {
     use crate::widgets::text::Text;
     let mut ui1 = Ui::new();
-    ui1.pre_record(Display::from_physical(UVec2::new(200, 200), 1.0));
+    {
+        ui1.display = Display::from_physical(UVec2::new(200, 200), 1.0);
+        ui1.pre_record();
+    }
     let mut a = None;
     Panel::hstack().auto_id().show(&mut ui1, |ui| {
         a = Some(Text::new("Hello").id_salt("t").show(ui).node);
@@ -534,7 +555,10 @@ fn changing_text_content_changes_hash() {
     ui1.post_record();
     ui1.finalize_frame();
     let mut ui2 = Ui::new();
-    ui2.pre_record(Display::default());
+    {
+        ui2.display = Display::default();
+        ui2.pre_record();
+    }
     let mut b = None;
     Panel::hstack().auto_id().show(&mut ui2, |ui| {
         b = Some(Text::new("World").id_salt("t").show(ui).node);
@@ -553,7 +577,10 @@ fn changing_text_content_changes_hash() {
 #[test]
 fn child_hash_does_not_affect_parent_hash() {
     let mut ui1 = Ui::new();
-    ui1.pre_record(Display::from_physical(UVec2::new(200, 200), 1.0));
+    {
+        ui1.display = Display::from_physical(UVec2::new(200, 200), 1.0);
+        ui1.pre_record();
+    }
     let parent1 = Panel::hstack()
         .id_salt("root")
         .show(&mut ui1, |ui| {
@@ -570,7 +597,10 @@ fn child_hash_does_not_affect_parent_hash() {
     ui1.post_record();
     ui1.finalize_frame();
     let mut ui2 = Ui::new();
-    ui2.pre_record(Display::default());
+    {
+        ui2.display = Display::default();
+        ui2.pre_record();
+    }
     let parent2 = Panel::hstack()
         .id_salt("root")
         .show(&mut ui2, |ui| {
@@ -736,7 +766,10 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     // identical — the rollup runs the node hash through FxHasher
     // again. Pin: equal node hashes ⇒ equal subtree hashes.
     let mut ui1 = Ui::new();
-    ui1.pre_record(Display::default());
+    {
+        ui1.display = Display::default();
+        ui1.pre_record();
+    }
     let leaf1 = Frame::new()
         .id_salt("a")
         .size(50.0)
@@ -749,7 +782,10 @@ fn leaf_subtree_hash_depends_on_node_hash() {
     ui1.post_record();
     ui1.finalize_frame();
     let mut ui2 = Ui::new();
-    ui2.pre_record(Display::default());
+    {
+        ui2.display = Display::default();
+        ui2.pre_record();
+    }
     let leaf2 = Frame::new()
         .id_salt("a")
         .size(50.0)
@@ -880,7 +916,10 @@ fn grid_per_node_hash_independent_of_arena_slot() {
 #[test]
 fn subtree_end_rolls_up_during_recording() {
     let mut ui = Ui::new();
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let root = Panel::hstack()
         .id_salt("root")
         .show(&mut ui, |ui| {
@@ -939,7 +978,10 @@ fn subtree_end_handles_deep_nesting() {
             .show(ui, |ui| nest(ui, depth - 1));
     }
     let mut ui = Ui::new();
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     nest(&mut ui, 16);
     let n = ui.forest.tree(Layer::Main).records.len() as u32;
     assert_eq!(n, 17, "16 stacks + 1 leaf");
@@ -1347,7 +1389,10 @@ fn extras_columns_split_by_field_kind() {
     use crate::primitives::size::Size;
 
     let mut ui = Ui::new();
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     Panel::hstack()
         .id_salt("panel-with-gap")
         .gap(8.0)
@@ -1378,7 +1423,10 @@ fn extras_columns_split_by_field_kind() {
 #[test]
 fn child_iter_traverses_correctly_after_finalize() {
     let mut ui = Ui::new();
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let root = Panel::hstack()
         .id_salt("root")
         .show(&mut ui, |ui| {

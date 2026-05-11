@@ -19,7 +19,10 @@ fn duplicate_widget_id_panics() {
     // scroll, click capture, hit-testing). `Ui::node` enforces uniqueness
     // with a release `assert!`.
     let mut ui = Ui::new();
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Button::new().id_salt("dup").show(ui);
         Button::new().id_salt("dup").show(ui);
@@ -36,7 +39,10 @@ fn auto_id_collisions_disambiguate() {
         Frame::new().auto_id().show(ui);
     }
     let mut ui = Ui::new();
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         chip(ui);
         chip(ui);
@@ -108,13 +114,16 @@ fn empty_then_populated_frame() {
     assert!(ui.damage_engine.prev.is_empty());
 }
 
-/// Pin: `pre_record` panics if `display.scale_factor` is below
-/// `EPS`.
+/// Pin: `Ui::frame` panics if `display.scale_factor` is below `EPS`.
 #[test]
 #[should_panic(expected = "Display::scale_factor must be ≥ EPSILON")]
-fn pre_record_rejects_zero_scale_factor() {
+fn frame_rejects_zero_scale_factor() {
     let mut ui = Ui::new();
-    ui.pre_record(Display::from_physical(UVec2::new(800, 600), 0.0));
+    let _ = ui.frame(
+        Display::from_physical(UVec2::new(800, 600), 0.0),
+        std::time::Duration::ZERO,
+        |_| {},
+    );
 }
 
 /// Pin: `Display::logical_rect` divides physical by scale_factor.
@@ -214,7 +223,10 @@ fn prev_frame_drops_disappeared_widgets() {
             .contains_key(&WidgetId::from_hash("gone"))
     );
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     Panel::hstack().id_salt("root").show(&mut ui, |_| {});
     ui.post_record();
     ui.finalize_frame();
@@ -247,7 +259,10 @@ fn prev_frame_updates_on_authoring_change() {
     ui.finalize_frame();
     let h1 = ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     Frame::new()
         .id_salt("a")
         .size(50.0)

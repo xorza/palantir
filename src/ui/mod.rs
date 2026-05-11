@@ -123,13 +123,36 @@ impl Ui {
         now: Duration,
         mut record: impl FnMut(&mut Ui),
     ) -> Option<RecordedFrame<'_>> {
+        assert!(
+            display.scale_factor >= EPS,
+            "Display::scale_factor must be ≥ EPSILON; got {}",
+            display.scale_factor,
+        );
+
         let raw_dt = now.saturating_sub(self.time);
         self.dt = raw_dt.as_secs_f32().min(Self::MAX_DT);
         self.time = now;
         self.frame_id = self.frame_id.wrapping_add(1);
         self.repaint_requested = false;
 
-        self.pre_record(display);
+        let new_surface = display.logical_rect();
+        let display_changed = self
+            .damage_engine
+            .prev_surface
+            .is_some_and(|prev| prev != new_surface);
+        let frame_skipped = !self.frame_state.was_last_submitted();
+        if display_changed || frame_skipped {
+            tracing::debug!(
+                display_changed,
+                frame_skipped,
+                first_frame = self.damage_engine.prev_surface.is_none(),
+                "damage.invalidate_prev"
+            );
+            self.damage_engine.invalidate_prev();
+        }
+        self.display = display;
+
+        self.pre_record();
         record(self);
 
         let action_flag = self.input.take_action_flag();
@@ -140,7 +163,8 @@ impl Ui {
             // request — caps relayout at one retry per `run_frame`.
 
             self.input.drain_per_frame_queues();
-            self.pre_record(display);
+            self.pre_record();
+
             record(self);
             self.post_record();
         }
@@ -175,42 +199,8 @@ impl Ui {
         self.relayout_requested = true;
     }
 
-    /// Start recording a frame. Auto-invalidates `damage.prev` on
-    /// display change / first frame / dropped previous frame. See
-    /// `docs/repaint.md` for the three-trigger detection and why
-    /// `frame_state` is *not* reset here.
-    pub(crate) fn pre_record(&mut self, display: Display) {
-        assert!(
-            display.scale_factor >= EPS,
-            "Display::scale_factor must be ≥ EPSILON; got {}",
-            display.scale_factor,
-        );
-        let new_surface = display.logical_rect();
-        let display_changed = self
-            .damage_engine
-            .prev_surface
-            .is_some_and(|prev| prev != new_surface);
-        let frame_skipped = !self.frame_state.was_last_submitted();
-        if display_changed || frame_skipped {
-            tracing::debug!(
-                display_changed,
-                frame_skipped,
-                first_frame = self.damage_engine.prev_surface.is_none(),
-                "damage.invalidate_prev"
-            );
-            self.damage_engine.invalidate_prev();
-        }
-        self.display = display;
+    pub(crate) fn pre_record(&mut self) {
         self.forest.pre_record();
-        self.relayout_requested = false;
-
-        // `post_record` consumes the flag via `mem::take`; a survivor
-        // here means a missing record/paint pair on the prior frame.
-        assert!(
-            !self.relayout_requested,
-            "pre_record: relayout_requested smuggled across frames \
-             — every frame must consume it via `post_record`",
-        );
     }
 
     /// Record-half of `run_frame`: finalize hashes, run measure /

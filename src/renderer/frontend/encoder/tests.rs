@@ -595,7 +595,10 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     );
 
     // Frame 2: rebuild and read clicked() on each widget.
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut got = (false, false, false);
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::canvas()
