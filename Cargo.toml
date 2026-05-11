@@ -35,11 +35,16 @@ tinyvec = "*"
 [dev-dependencies]
 backtrace = "*"
 criterion = "*"
+dhat = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
 image = { version = "*", default-features = false, features = ["png"] }
 
 [[bench]]
 name = "frame"
+harness = false
+
+[[bench]]
+name = "alloc_free"
 harness = false
 
 [[bench]]
