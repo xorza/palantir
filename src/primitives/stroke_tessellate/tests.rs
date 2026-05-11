@@ -1,0 +1,419 @@
+use super::*;
+
+fn red() -> Color {
+    Color {
+        r: 1.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    }
+}
+
+fn green() -> Color {
+    Color {
+        r: 0.0,
+        g: 1.0,
+        b: 0.0,
+        a: 1.0,
+    }
+}
+
+/// Single-color: horizontal 2-point line at width=2.
+/// 8 verts (4 per cross-section), 18 indices. `seg_normal`
+/// returns `(-dy, dx) = (0, +1)` for a +x segment, so
+/// "outer-left" (+normal) sits at y = +1.5.
+#[test]
+fn single_horizontal_line_geometry() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0)],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 8);
+    assert_eq!(i.len(), 18);
+    assert_eq!(v[0].pos, Vec2::new(0.0, 1.5));
+    assert_eq!(v[0].color.a, 0.0);
+    assert_eq!(v[1].pos, Vec2::new(0.0, 1.0));
+    assert_eq!(v[1].color, red());
+    assert_eq!(v[2].pos, Vec2::new(0.0, -1.0));
+    assert_eq!(v[2].color, red());
+    assert_eq!(v[3].pos, Vec2::new(0.0, -1.5));
+    assert_eq!(v[3].color.a, 0.0);
+}
+
+/// Hairline freeze + alpha fade applies per-vertex with input
+/// color preserved (modulo the scale).
+#[test]
+fn hairline_alpha_scales_input_color() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 0.3,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 8);
+    assert_eq!(v[0].pos, Vec2::new(0.0, 1.0));
+    assert_eq!(v[1].pos, Vec2::new(0.0, 0.5));
+    let inner = v[1].color;
+    assert!((inner.r - 0.3).abs() < 1e-6);
+    assert!((inner.a - 0.3).abs() < 1e-6);
+}
+
+/// PerPoint: distinct colors on each cross-section, no
+/// duplication.
+#[test]
+fn per_point_colors_distinct_per_cross_section() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(20.0, 0.0)],
+        &[red(), green(), red()],
+        StrokeStyle {
+            mode: ColorMode::PerPoint,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 12);
+    assert_eq!(v[1].color, red());
+    assert_eq!(v[5].color, green());
+    assert_eq!(v[9].color, red());
+}
+
+/// PerSegment: interior cross-section duplicates; both copies
+/// share position but carry the abutting segments' colors.
+#[test]
+fn per_segment_duplicates_interior_cross_sections() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(20.0, 0.0)],
+        &[red(), green()],
+        StrokeStyle {
+            mode: ColorMode::PerSegment,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 16);
+    assert_eq!(v[1].color, red());
+    assert_eq!(v[5].pos.x, 10.0);
+    assert_eq!(v[5].color, red());
+    assert_eq!(v[9].pos.x, 10.0);
+    assert_eq!(v[9].color, green());
+    assert_eq!(v[13].color, green());
+    assert_eq!(i.len(), 36);
+}
+
+/// PerSegment strip-index correctness — pin that segment 0's
+/// strip references vert blocks 0 and 1 (endpoint + trailing
+/// dup), and segment 1's strip references blocks 2 and 3
+/// (leading dup + endpoint).
+#[test]
+fn per_segment_strip_indexing_skips_join_blocks() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(20.0, 0.0)],
+        &[red(), green()],
+        StrokeStyle {
+            mode: ColorMode::PerSegment,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(&i[0..6], &[0, 1, 5, 0, 5, 4]);
+    let last = i.len() - 6;
+    assert_eq!(&i[last..], &[10, 11, 15, 10, 15, 14]);
+}
+
+/// Non-sharp join (≥ ~29°) miters as before: 4 verts per
+/// cross-section, no bevel bridge.
+#[test]
+fn shallow_join_stays_miter() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(10.0, 10.0)],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 12);
+    assert_eq!(i.len(), 36);
+}
+
+/// Sharp miter join triggers bevel chrome: 16 cross-section verts
+/// + 1 bevel center + 1 concave-fill center.
+#[test]
+fn sharp_join_emits_bevel() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(0.0, 0.5)],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 18);
+    assert_eq!(i.len(), 48);
+    // Bevel fringe quad references only trailing/leading blocks (4..12).
+    let bridge_fringe = &i[21..27];
+    for &idx in bridge_fringe {
+        assert!(
+            (4..12).contains(&idx),
+            "bevel bridge index {idx} out of trailing/leading block range"
+        );
+    }
+}
+
+/// Antiparallel turn classifies as sharp via the antiparallel
+/// guard in `is_sharp_join`.
+#[test]
+fn antiparallel_turn_is_sharp() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(-5.0, 0.0)],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 18, "antiparallel join must bevel + concave fill");
+}
+
+/// Round cap: `2*N + 3` fan verts per endpoint. width=2 ⇒ N=4, so
+/// each cap contributes 11 verts and 36 indices.
+#[test]
+fn round_caps_emit_fan_verts() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Round,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 30);
+    assert_eq!(i.len(), 90);
+}
+
+/// Round join at an interior point: dual cross-section + arc fan.
+#[test]
+fn round_join_emits_fan_at_interior() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[
+            Vec2::new(0.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(10.0, 10.0),
+        ],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Round,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 28);
+    assert_eq!(i.len(), 75);
+}
+
+/// PerSegment + Round caps emits cap fans at both endpoints, with
+/// the cap painted in the adjacent segment's color.
+#[test]
+fn per_segment_round_caps() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(20.0, 0.0)],
+        &[red(), green()],
+        StrokeStyle {
+            mode: ColorMode::PerSegment,
+            cap: LineCap::Round,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    // 16 cross-section verts + 2 caps × 11 fan verts = 38.
+    assert_eq!(v.len(), 38);
+    // 2 strips × 18 + 2 caps × 36 = 108.
+    assert_eq!(i.len(), 108);
+    // First cap's center sits at verts[4] (after endpoint block) with red color.
+    assert_eq!(v[4].pos, Vec2::ZERO);
+    assert_eq!(v[4].color, red());
+}
+
+/// PerSegment + Bevel at a 90° join: dual cross-sections at the
+/// interior plus bevel bridge + concave fill, with the chrome
+/// painted in the average of the two segment colors.
+#[test]
+fn per_segment_bevel_join_emits_chrome() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[
+            Vec2::new(0.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(10.0, 10.0),
+        ],
+        &[red(), green()],
+        StrokeStyle {
+            mode: ColorMode::PerSegment,
+            cap: LineCap::Butt,
+            join: LineJoin::Bevel,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    // 4 endpoint + 4 trailing + 4 leading + 1 bevel center + 1 concave-fill center + 4 endpoint = 18.
+    assert_eq!(v.len(), 18);
+    // 2 strips × 18 + bevel (3 center + 6 fringe) + concave 3 = 48.
+    assert_eq!(i.len(), 48);
+    // Bevel/concave-fill center is the average of red and green.
+    // Layout: endpoint(0..4)+trailing(4..8)+leading(8..12)+bevel-center(12)
+    //        +concave-center(13)+endpoint(14..18).
+    let mid = v[12].color;
+    assert!((mid.r - 0.5).abs() < 1e-6);
+    assert!((mid.g - 0.5).abs() < 1e-6);
+}
+
+/// PerSegment + Round join: emits fan chrome painted in the
+/// adjacent-segments average color.
+#[test]
+fn per_segment_round_join_emits_fan() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[
+            Vec2::new(0.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(10.0, 10.0),
+        ],
+        &[red(), green()],
+        StrokeStyle {
+            mode: ColorMode::PerSegment,
+            cap: LineCap::Butt,
+            join: LineJoin::Round,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    // 4 + 4 + 4 + 11 (round fan) + 1 concave + 4 = 28.
+    assert_eq!(v.len(), 28);
+    // 2 strips × 18 + 1 fan × 36 + 1 concave × 3 = 75.
+    assert_eq!(i.len(), 75);
+}
+
+/// Degenerate input (< 2 points) emits nothing.
+#[test]
+fn under_two_points_emits_nothing() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    tessellate_polyline_aa(
+        &[Vec2::ZERO],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert!(v.is_empty());
+    assert!(i.is_empty());
+}
+
+/// Indices are 0-based to this call's vert block, even when
+/// the output vecs already contain other data.
+#[test]
+fn indices_are_zero_based_per_call() {
+    let mut v = vec![MeshVertex::default(); 5];
+    let mut i = vec![99u16; 3];
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(i[0..3], [99, 99, 99]);
+    assert!(i[3..].iter().all(|&idx| idx < 8));
+}
