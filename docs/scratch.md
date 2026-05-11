@@ -2,4 +2,4 @@
 
 scissor rounderer corner clipping
 
-line and bezier shapes
+line with two or one color
