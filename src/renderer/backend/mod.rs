@@ -371,10 +371,12 @@ impl WgpuBackend {
             self.mesh.ensure_stencil(&self.device);
             self.mask_indices.resize(buffer.groups.len(), None);
             for (i, g) in buffer.groups.iter().enumerate() {
-                if let (Some(scissor), Some(radius)) = (g.scissor, g.rounded_clip) {
+                if g.scissor.is_some()
+                    && let Some(r) = g.rounded_clip
+                {
                     self.mask_indices[i] = Some(self.masks.len() as u32);
                     self.masks
-                        .push(QuadPipeline::mask_instance(scissor, radius));
+                        .push(QuadPipeline::mask_instance(r.mask_rect, r.radius));
                 }
             }
             self.quad

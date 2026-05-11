@@ -8,10 +8,11 @@ use crate::layout::types::span::Span;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::urect::URect;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::{DrawGroup, MeshScene, RenderBuffer, TextRun};
+use crate::renderer::render_buffer::{DrawGroup, MeshScene, RenderBuffer, RoundedClip, TextRun};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
@@ -255,7 +256,13 @@ fn stencil_group_brackets_draws_with_mask_write_clear() {
     let buf = buf_with(
         vec![DrawGroup {
             scissor: Some(URect::new(0, 0, 100, 100)),
-            rounded_clip: Some(Corners::all(8.0)),
+            rounded_clip: Some(RoundedClip {
+                mask_rect: Rect {
+                    min: Vec2::ZERO,
+                    size: Size::new(100.0, 100.0),
+                },
+                radius: Corners::all(8.0),
+            }),
             quads: Span::new(0, 2),
             texts: Span::new(0, 1),
             meshes: Span::default(),
@@ -287,7 +294,13 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
             // Group 0: rounded clip
             DrawGroup {
                 scissor: Some(URect::new(0, 0, 100, 100)),
-                rounded_clip: Some(Corners::all(8.0)),
+                rounded_clip: Some(RoundedClip {
+                    mask_rect: Rect {
+                        min: Vec2::ZERO,
+                        size: Size::new(100.0, 100.0),
+                    },
+                    radius: Corners::all(8.0),
+                }),
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 0),
                 meshes: Span::default(),
@@ -326,7 +339,13 @@ fn stencil_text_only_group_still_brackets_with_mask() {
     let buf = buf_with(
         vec![DrawGroup {
             scissor: Some(URect::new(0, 0, 100, 100)),
-            rounded_clip: Some(Corners::all(8.0)),
+            rounded_clip: Some(RoundedClip {
+                mask_rect: Rect {
+                    min: Vec2::ZERO,
+                    size: Size::new(100.0, 100.0),
+                },
+                radius: Corners::all(8.0),
+            }),
             quads: Span::new(0, 0),
             texts: Span::new(0, 1),
             meshes: Span::default(),

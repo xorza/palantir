@@ -3,12 +3,11 @@ use super::cmd_buffer::{
     DrawTextPayload, PushClipRoundedPayload, RenderCmdBuffer,
 };
 use crate::layout::types::display::Display;
-use crate::primitives::corners::Corners;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, TextRun};
+use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, RoundedClip, TextRun};
 use glam::{UVec2, Vec2};
 
 /// Owns the four-variable invariant that drives `out.groups`
@@ -23,7 +22,7 @@ use glam::{UVec2, Vec2};
 #[derive(Default)]
 struct GroupBuilder {
     current: Option<URect>,
-    rounded: Option<Corners>,
+    rounded: Option<RoundedClip>,
     quads_start: u32,
     texts_start: u32,
     meshes_start: u32,
@@ -88,7 +87,7 @@ impl GroupBuilder {
     fn set_clip(
         &mut self,
         scissor: Option<URect>,
-        rounded: Option<Corners>,
+        rounded: Option<RoundedClip>,
         out: &mut RenderBuffer,
     ) {
         if scissor != self.current || rounded != self.rounded {
@@ -152,7 +151,7 @@ pub(crate) struct Composer {
 #[derive(Clone, Copy)]
 struct ClipFrame {
     scissor: URect,
-    rounded: Option<Corners>,
+    rounded: Option<RoundedClip>,
 }
 
 impl Composer {
@@ -206,7 +205,14 @@ impl Composer {
                         // Combine current transform's uniform scale with DPR
                         // so radii match the painted SDF's physical size.
                         let phys_scale = current_transform.scale * scale;
-                        Some(logical_radius.scaled_by(phys_scale))
+                        // `mask_rect` stays unclamped — the SDF needs the
+                        // rect's true edges, otherwise corner curves
+                        // would shift inward when the clip partially
+                        // leaves the viewport.
+                        Some(RoundedClip {
+                            mask_rect: world.scaled_by(scale, snap),
+                            radius: logical_radius.scaled_by(phys_scale),
+                        })
                     } else {
                         // Rect clip nested inside a rounded ancestor: inherit
                         // the ancestor's rounded data so children stay
