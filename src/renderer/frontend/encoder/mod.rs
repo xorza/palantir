@@ -138,15 +138,15 @@ fn emit_one_shape(
             // by `owner_rect.min` preserves it. Colors copy through
             // unchanged — they already have the right length for
             // `color_mode` (validated at lowering).
-            let points_start = out.polyline_points.len() as u32;
-            out.polyline_points.extend(
-                tree.polyline_points[points.range()]
-                    .iter()
-                    .map(|p| owner_rect.min + *p),
-            );
-            let colors_start = out.polyline_colors.len() as u32;
-            out.polyline_colors
-                .extend_from_slice(&tree.polyline_colors[colors.range()]);
+            let src_pts = &tree.shape_arenas.polyline_points[points.range()];
+            let src_cols = &tree.shape_arenas.polyline_colors[colors.range()];
+            let out_arenas = &mut out.shape_arenas;
+            let points_start = out_arenas.polyline_points.len() as u32;
+            out_arenas
+                .polyline_points
+                .extend(src_pts.iter().map(|p| owner_rect.min + *p));
+            let colors_start = out_arenas.polyline_colors.len() as u32;
+            out_arenas.polyline_colors.extend_from_slice(src_cols);
             out.draw_polyline(DrawPolylinePayload {
                 bbox: Rect {
                     min: bbox.min + owner_rect.min,
@@ -175,8 +175,8 @@ fn emit_one_shape(
                 None => owner_rect.min,
                 Some(lr) => owner_rect.min + lr.min,
             };
-            let verts = &tree.meshes.vertices[vertices.range()];
-            let idx = &tree.meshes.indices[indices.range()];
+            let verts = &tree.shape_arenas.meshes.vertices[vertices.range()];
+            let idx = &tree.shape_arenas.meshes.indices[indices.range()];
             out.draw_mesh(origin, *tint, verts, idx);
         }
     }

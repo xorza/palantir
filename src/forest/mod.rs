@@ -190,10 +190,11 @@ impl Forest {
                 local_rect,
                 tint,
             } => {
-                let v_start = tree.meshes.vertices.len() as u32;
-                tree.meshes.vertices.extend_from_slice(&mesh.vertices);
-                let i_start = tree.meshes.indices.len() as u32;
-                tree.meshes.indices.extend_from_slice(&mesh.indices);
+                let arena = &mut tree.shape_arenas.meshes;
+                let v_start = arena.vertices.len() as u32;
+                arena.vertices.extend_from_slice(&mesh.vertices);
+                let i_start = arena.indices.len() as u32;
+                arena.indices.extend_from_slice(&mesh.indices);
                 let content_hash = mesh.content_hash();
                 ShapeRecord::Mesh {
                     local_rect,
@@ -303,10 +304,11 @@ fn lower_polyline(
         }
     };
 
-    let p_start = tree.polyline_points.len() as u32;
-    tree.polyline_points.extend_from_slice(points);
-    let c_start = tree.polyline_colors.len() as u32;
-    tree.polyline_colors.extend_from_slice(color_slice);
+    let arenas = &mut tree.shape_arenas;
+    let p_start = arenas.polyline_points.len() as u32;
+    arenas.polyline_points.extend_from_slice(points);
+    let c_start = arenas.polyline_colors.len() as u32;
+    arenas.polyline_colors.extend_from_slice(color_slice);
 
     let mut h = FxHasher::new();
     h.write(bytemuck::cast_slice(points));

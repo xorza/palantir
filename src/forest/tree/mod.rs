@@ -9,13 +9,10 @@ use crate::forest::rollups::{NodeHash, SubtreeRollups};
 use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
-use crate::shape::ShapeRecord;
+use crate::shape::{ShapeArenas, ShapeRecord};
 use crate::widgets::grid::GridDef;
-use glam::Vec2;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 
@@ -131,22 +128,17 @@ pub(crate) struct Tree {
     pub(crate) parents: Vec<NodeId>,
 
     // -- Flat shape buffer -----------------------------------------------
+    /// Per-node-span list of [`ShapeRecord`]s. Indexed by
+    /// `NodeRecord.shapes` Spans. Distinct from `shape_arenas`,
+    /// which holds the per-variant side-table data those records
+    /// reference.
     pub(crate) shapes: Vec<ShapeRecord>,
 
-    // -- Flat mesh storage -----------------------------------------------
-    /// Vertex+index arena for `ShapeRecord::Mesh`. Spans on the mesh
-    /// shape record index into this. Cleared per frame, capacity
-    /// retained.
-    pub(crate) meshes: Mesh,
-
-    // -- Flat polyline storage -------------------------------------------
-    /// Per-frame point + color arenas backing `ShapeRecord::Polyline`.
-    /// Spans on the record index into these. Cleared per frame,
-    /// capacity retained. Cross-arena alignment by record:
-    /// `polyline_colors.len` is 1, `polyline_points.len`, or
-    /// `polyline_points.len - 1`, set by `ColorMode`.
-    pub(crate) polyline_points: Vec<Vec2>,
-    pub(crate) polyline_colors: Vec<Color>,
+    // -- Per-variant side-table arenas -----------------------------------
+    /// Variable-length storage backing `ShapeRecord::Mesh` /
+    /// `ShapeRecord::Polyline`. Cleared per frame, capacity
+    /// retained; see [`ShapeArenas`].
+    pub(crate) shape_arenas: ShapeArenas,
 
     // -- Frame-scoped sub-storage ----------------------------------------
     pub(crate) grid: GridArena,
@@ -191,9 +183,7 @@ impl Tree {
         self.clip_radius.clear();
         self.parents.clear();
         self.shapes.clear();
-        self.meshes.clear();
-        self.polyline_points.clear();
-        self.polyline_colors.clear();
+        self.shape_arenas.clear();
         self.grid.clear();
         self.rollups.has_grid.clear();
         self.roots.clear();
