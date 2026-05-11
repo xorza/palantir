@@ -4,6 +4,7 @@ use crate::forest::shapes::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::result::{LayerResult, LayoutResult};
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
+use crate::primitives::brush::Brush;
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
@@ -90,7 +91,13 @@ fn emit_one_shape(
                     size: lr.size,
                 },
             };
-            out.draw_rect(r, *radius, *fill, *stroke);
+            // `ShapeRecord` still stores `fill: Color` — slice-2 step 6
+            // widens it to `Brush`. For now, wrap as solid at the call
+            // site so `Shape::RoundedRect { fill: Brush::Linear(...) }`
+            // still panics at `Tree::add_shape` lowering time, not
+            // here. Background-chrome (line 258 below) does flow Brush
+            // through.
+            out.draw_rect(r, *radius, &Brush::Solid(*fill), *stroke);
         }
         ShapeRecord::Text {
             local_rect,
@@ -255,14 +262,7 @@ fn encode_node(
     // to `None` when the paint is invisible, so reaching this branch
     // means there's something to paint.
     if paints && let Some(bg) = chrome {
-        out.draw_rect(
-            rect,
-            bg.radius,
-            bg.fill.as_solid().expect(
-                "gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2",
-            ),
-            bg.stroke,
-        );
+        out.draw_rect(rect, bg.radius, &bg.fill, bg.stroke);
     }
 
     if clip {

@@ -1,8 +1,3 @@
-// Step 1 of the brushes slice-2 plan: bake function only. Step 2 adds
-// `GradientCpuAtlas` (which calls into here); until then the bake API
-// has no in-crate callers outside tests.
-#![allow(dead_code)]
-
 //! CPU side of the gradient LUT atlas. This file currently exports
 //! only the bake function ([`bake_linear`]); step 2 of the brushes
 //! slice-2 plan adds the [`GradientCpuAtlas`] struct on top.
@@ -187,11 +182,6 @@ fn lerp_oklab(a: Srgb8, b: Srgb8, u: f32) -> Srgb8 {
     }
     .to_srgb8()
 }
-
-/// Sentinel for "no gradient registered in this row." Row indices are
-/// `u32` because the GPU consumes them; `u32::MAX` reads as "invalid"
-/// at the call site.
-pub(crate) const INVALID_ROW: u32 = u32::MAX;
 
 /// CPU side of the gradient LUT atlas. Owns the baked row bytes and a
 /// content-hash → row-id map; the backend mirrors this into a wgpu

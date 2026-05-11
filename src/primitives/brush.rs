@@ -8,6 +8,35 @@ use tinyvec::ArrayVec;
 /// silent truncation.
 pub const MAX_STOPS: usize = 8;
 
+/// GPU-wire form of a gradient's axis: direction vector + parametric
+/// range. Mirrors WGSL's `@location(...) fill_axis: vec4<f32>`. The
+/// shader does `t = (dot(local01, dir) - t0) / (t1 - t0)`, applies
+/// `Spread`, then samples the LUT at `t`.
+///
+/// `repr(C)` so the field order maps to the four `f32` lanes the
+/// vertex attribute reads. `Pod` for the cmd-buffer / `Quad` payload.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct FillAxis {
+    pub dir_x: f32,
+    pub dir_y: f32,
+    pub t0: f32,
+    pub t1: f32,
+}
+
+impl FillAxis {
+    /// All-zero axis used for solid quads. The shader ignores it when
+    /// `FillKind::is_solid()`, so the value doesn't matter — keep it
+    /// zeroed so Pod-byte cache keys are deterministic for solid
+    /// quads.
+    pub const ZERO: Self = Self {
+        dir_x: 0.0,
+        dir_y: 0.0,
+        t0: 0.0,
+        t1: 0.0,
+    };
+}
+
 /// One colour stop in a gradient. `offset` is in 0..1 along the
 /// gradient's parametric axis; out-of-range stops clamp at LUT bake.
 /// `color` is stored as 8-bit sRGB (`Srgb8`) — gradient stops are
@@ -158,6 +187,25 @@ impl LinearGradient {
     /// Paints nothing visible when every stop is transparent.
     pub fn is_noop(&self) -> bool {
         self.stops.iter().all(|s| s.color.is_noop())
+    }
+
+    /// Gradient axis for the shader. `dir = (cos(angle), sin(angle))`;
+    /// the shader projects each fragment's 0..1 object-local position
+    /// onto `dir`, then maps the dot product through `(t0, t1)` to
+    /// the LUT row.
+    ///
+    /// Slice 2 always emits `(t0, t1) = (0, 1)` and the raw
+    /// `(cos, sin)` axis; diagonal gradients project to a sub-1.0
+    /// range and rely on `Spread::Pad` to clamp. CSS-style
+    /// corner-to-corner scaling is a slice 2.5 polish task.
+    pub fn axis(&self) -> FillAxis {
+        let (sin, cos) = self.angle.sin_cos();
+        FillAxis {
+            dir_x: cos,
+            dir_y: sin,
+            t0: 0.0,
+            t1: 1.0,
+        }
     }
 }
 

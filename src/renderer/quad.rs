@@ -3,21 +3,55 @@
 //! Lives at the renderer root alongside `RenderBuffer`: both are the
 //! frontend↔backend contract, so neither side owns them.
 
+use crate::primitives::brush::{FillAxis, Spread};
 use crate::primitives::{color::Color, corners::Corners, rect::Rect};
 use bytemuck::{Pod, Zeroable};
 
-/// Brush-kind tag values packed into `Quad::fill_kind`'s low byte.
-/// **Must stay in sync with the `BRUSH_KIND_*` constants in
-/// `quad.wgsl`** — the composer writes these, the shader reads them,
-/// no other mechanism gates the mapping. (WGSL doesn't reflect at
-/// compile time; the agreement is by-eye + the slice-2 visual goldens
-/// in step 5.) `Brush::{Solid, Linear}` discriminants are deliberately
-/// **not** the source of truth: the composer maps Rust variants → these
-/// tags explicitly so reordering the enum can't desync the GPU.
-#[allow(dead_code)] // wired in slice-2 step 4 (composer)
-pub(crate) const BRUSH_KIND_SOLID: u32 = 0;
-#[allow(dead_code)] // wired in slice-2 step 4 (composer)
-pub(crate) const BRUSH_KIND_LINEAR: u32 = 1;
+/// Packed fill-brush metadata for `Quad.fill_kind` and the matching
+/// cmd-buffer payload fields. Low byte: kind tag (0 = solid,
+/// 1 = linear). Bits 8..16: `Spread` discriminant (only meaningful
+/// when kind == linear).
+///
+/// `repr(transparent)` over `u32` so the GPU wire layout is just a
+/// `u32` vertex attribute — `vertex_attr_array![..., 6 => Uint32, ...]`
+/// in the pipeline matches the shader's `@location(6) fill_kind: u32`
+/// against this wrapper directly.
+///
+/// **Shader-side mapping** (`quad.wgsl`): the bit-layout constants
+/// `BRUSH_KIND_SOLID = 0u` / `BRUSH_KIND_LINEAR = 1u` and the spread
+/// tags `0..2` are hand-mirrored. Reordering `Brush` or `Spread`
+/// without updating WGSL silently desyncs; the slice-2 visual goldens
+/// catch it.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Pod, Zeroable)]
+pub(crate) struct FillKind(u32);
+
+impl FillKind {
+    /// Solid-fill marker; `Quad.fill: Color` carries the colour, the
+    /// LUT / axis / row fields are ignored by the shader.
+    pub(crate) const SOLID: Self = Self(0);
+
+    /// Linear-gradient marker with the spread mode packed into bits
+    /// 8..16. The atlas row id and axis vector ride along in
+    /// `Quad.fill_lut_row` / `Quad.fill_axis`.
+    pub(crate) const fn linear(spread: Spread) -> Self {
+        Self(1 | ((spread as u32) << 8))
+    }
+
+    /// `true` when the kind tag is `0`.
+    #[allow(dead_code)] // used in tests + future is_solid fast paths
+    #[inline]
+    pub(crate) const fn is_solid(self) -> bool {
+        (self.0 & 0xFF) == 0
+    }
+
+    /// `true` when the kind tag is `1`. Used by the composer to decide
+    /// whether to register the gradient with the LUT atlas.
+    #[inline]
+    pub(crate) const fn is_linear(self) -> bool {
+        (self.0 & 0xFF) == 1
+    }
+}
 
 /// Per-instance quad data (92 B). Field types are the matching
 /// `repr(C)` primitives, byte-identical to `[f32; N]`s — see the
@@ -48,18 +82,15 @@ pub(crate) struct Quad {
     pub(crate) radius: Corners,
     pub(crate) stroke_color: Color,
     pub(crate) stroke_width: f32,
-    /// Brush kind for `fill`. Low byte: 0 = solid, 1 = linear gradient.
-    /// Bits 8..16: spread mode (0 = Pad, 1 = Repeat, 2 = Reflect) when
-    /// kind == 1; ignored when kind == 0.
-    pub(crate) fill_kind: u32,
+    /// Packed brush metadata; see [`FillKind`] for layout.
+    pub(crate) fill_kind: FillKind,
     /// Row index into the gradient atlas texture when
     /// `fill_kind & 0xFF == 1`. Row 0 is the magenta debug fallback
     /// (any non-zero value here from a misuse paints brightly wrong).
     pub(crate) fill_lut_row: u32,
-    /// `(dir_x, dir_y, t0, t1)` — gradient axis direction in
-    /// object-local 0..1 space, and the parametric `t` range mapped
-    /// across that axis. Ignored when `fill_kind == 0`.
-    pub(crate) fill_axis: [f32; 4],
+    /// Gradient axis vector — see [`FillAxis`]. Ignored when
+    /// `fill_kind.is_solid()`.
+    pub(crate) fill_axis: FillAxis,
 }
 
 #[cfg(test)]

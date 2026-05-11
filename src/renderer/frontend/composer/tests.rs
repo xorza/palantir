@@ -2,7 +2,7 @@ use super::super::cmd_buffer::RenderCmdBuffer;
 use super::Composer;
 use crate::layout::types::{display::Display, span::Span};
 use crate::primitives::{
-    color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
+    brush::Brush, color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
 use crate::renderer::render_buffer::RenderBuffer;
@@ -17,7 +17,7 @@ fn draw(buf: &mut RenderCmdBuffer, r: Rect) {
     buf.draw_rect(
         r,
         Corners::default(),
-        Color::rgb(1.0, 1.0, 1.0),
+        &Brush::Solid(Color::rgb(1.0, 1.0, 1.0)),
         Stroke::ZERO,
     );
 }
@@ -38,7 +38,8 @@ fn run(build: impl FnOnce(&mut RenderCmdBuffer), display: &Display) -> RenderBuf
     let mut buffer = RenderCmdBuffer::default();
     build(&mut buffer);
     let mut composer = Composer::default();
-    composer.compose(&buffer, display);
+    let mut atlas = crate::renderer::frontend::gradient_atlas::GradientCpuAtlas::default();
+    composer.compose(&buffer, display, &mut atlas);
     std::mem::take(&mut composer.buffer)
 }
 
@@ -363,7 +364,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
             b.draw_rect(
                 rect(0.0, 0.0, 50.0, 50.0),
                 Corners::all(8.0),
-                Color::rgb(1.0, 1.0, 1.0),
+                &Brush::Solid(Color::rgb(1.0, 1.0, 1.0)),
                 Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 1.5),
             );
             b.pop_transform();
@@ -374,6 +375,100 @@ fn compose_scales_radius_and_stroke_under_transform() {
     assert_eq!(q.rect.size, Size::new(100.0, 100.0));
     assert_eq!(q.radius.tl, 16.0);
     assert_eq!(q.stroke_width, 3.0);
+}
+
+/// Solid `Brush::Solid` panel: composer emits a Quad with
+/// `fill_kind = BRUSH_KIND_SOLID = 0`, `fill_lut_row = 0` (sentinel
+/// for "no gradient"), and the fill colour pass-through. Catches a
+/// regression that accidentally sets `fill_kind = 1` on solid quads.
+#[test]
+fn compose_solid_brush_emits_kind_zero_quad() {
+    use crate::primitives::brush::LinearGradient;
+    use crate::primitives::color::Srgb8;
+    let mut buffer = RenderCmdBuffer::default();
+    buffer.draw_rect(
+        rect(0.0, 0.0, 100.0, 100.0),
+        Corners::default(),
+        &Brush::Solid(Color::rgb(0.5, 0.5, 0.5)),
+        Stroke::ZERO,
+    );
+    let mut composer = Composer::default();
+    let mut atlas = crate::renderer::frontend::gradient_atlas::GradientCpuAtlas::default();
+    composer.compose(&buffer, &params(1.0, UVec2::new(100, 100)), &mut atlas);
+    let q = &composer.buffer.quads[0];
+    assert!(q.fill_kind.is_solid(), "solid quad must carry kind=solid");
+    assert_eq!(q.fill_lut_row, 0, "solid quad has no LUT row");
+    assert_eq!(
+        q.fill_axis,
+        crate::primitives::brush::FillAxis::ZERO,
+        "solid quad axis is zeroed",
+    );
+    // Suppress unused-import warning for the gradient helper used in
+    // the linear test below.
+    let _ = LinearGradient::two_stop(0.0, Srgb8::WHITE, Srgb8::BLACK);
+}
+
+/// `Brush::Linear` panel: composer registers the gradient with the
+/// atlas (returns a non-zero row), packs the row id into Quad's
+/// `fill_lut_row`, copies the axis vector, and sets `fill_kind = 1`
+/// with the spread mode in bits 8..16.
+#[test]
+fn compose_linear_brush_emits_kind_one_with_atlas_row() {
+    use crate::primitives::brush::{LinearGradient, Spread};
+    use crate::primitives::color::Srgb8;
+    let g = LinearGradient::two_stop(0.0, Srgb8::WHITE, Srgb8::BLACK).with_spread(Spread::Reflect);
+    let expected_axis = g.axis();
+    let mut buffer = RenderCmdBuffer::default();
+    buffer.draw_rect(
+        rect(0.0, 0.0, 100.0, 100.0),
+        Corners::default(),
+        &Brush::Linear(g),
+        Stroke::ZERO,
+    );
+    let mut composer = Composer::default();
+    let mut atlas = crate::renderer::frontend::gradient_atlas::GradientCpuAtlas::default();
+    composer.compose(&buffer, &params(1.0, UVec2::new(100, 100)), &mut atlas);
+    let q = &composer.buffer.quads[0];
+    assert!(q.fill_kind.is_linear(), "linear quad carries kind=linear");
+    // Spread bits aren't exposed as a public accessor on FillKind; pin
+    // identity via the matching constructor — same bit pattern reaches
+    // the shader regardless.
+    let expected_kind = crate::renderer::quad::FillKind::linear(Spread::Reflect);
+    assert_eq!(q.fill_kind, expected_kind);
+    assert!(q.fill_lut_row >= 1, "linear quad must get a real row");
+    assert_eq!(q.fill_axis, expected_axis);
+}
+
+/// Two quads referencing the same gradient share an atlas row.
+/// Content-hash addressing keeps the bake step idempotent across
+/// frames and across multiple emitting widgets.
+#[test]
+fn compose_repeated_linear_brush_shares_atlas_row() {
+    use crate::primitives::brush::LinearGradient;
+    use crate::primitives::color::Srgb8;
+    let g = LinearGradient::two_stop(0.5, Srgb8::hex(0x336699), Srgb8::hex(0xddaa44));
+    let mut buffer = RenderCmdBuffer::default();
+    for _ in 0..3 {
+        buffer.draw_rect(
+            rect(0.0, 0.0, 10.0, 10.0),
+            Corners::default(),
+            &Brush::Linear(g),
+            Stroke::ZERO,
+        );
+    }
+    let mut composer = Composer::default();
+    let mut atlas = crate::renderer::frontend::gradient_atlas::GradientCpuAtlas::default();
+    composer.compose(&buffer, &params(1.0, UVec2::new(100, 100)), &mut atlas);
+    let rows: Vec<u32> = composer
+        .buffer
+        .quads
+        .iter()
+        .map(|q| q.fill_lut_row)
+        .collect();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0], rows[1]);
+    assert_eq!(rows[1], rows[2]);
+    assert!(rows[0] >= 1);
 }
 
 #[test]

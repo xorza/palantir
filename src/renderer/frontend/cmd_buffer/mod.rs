@@ -24,13 +24,19 @@
 //! 4-byte-only-aligned offset.
 
 use crate::forest::shapes::ShapePayloads;
+use crate::primitives::brush::{Brush, FillAxis, LinearGradient};
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
+use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
 use glam::Vec2;
+
+/// Sentinel for "this payload's fill is solid, no gradient registered."
+/// Composer skips the `linear_gradients` lookup when it sees this.
+pub(crate) const NO_GRAD_IDX: u32 = u32::MAX;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,12 +73,23 @@ pub(crate) struct PushClipRoundedPayload {
     pub(crate) radius: Corners,
 }
 
+/// Brush metadata packed into draw-rect payloads. `fill_kind` low byte
+/// is the kind tag (`BRUSH_KIND_SOLID` / `BRUSH_KIND_LINEAR`); bits
+/// 8..16 carry `Spread` when linear. `fill_grad_idx` indexes into
+/// [`RenderCmdBuffer::linear_gradients`] when linear, [`NO_GRAD_IDX`]
+/// otherwise. `fill_axis` carries the `(dir.x, dir.y, t0, t1)` axis
+/// vector computed at encode time from `LinearGradient::axis()`.
+/// `fill: Color` is the solid colour when `kind == SOLID`; for linear
+/// it's zeroed and the composer's atlas lookup supplies the LUT row.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawRectPayload {
     pub(crate) rect: Rect,
     pub(crate) radius: Corners,
     pub(crate) fill: Color,
+    pub(crate) fill_kind: FillKind,
+    pub(crate) fill_grad_idx: u32,
+    pub(crate) fill_axis: FillAxis,
 }
 
 #[repr(C)]
@@ -83,6 +100,9 @@ pub(crate) struct DrawRectStrokedPayload {
     pub(crate) fill: Color,
     pub(crate) stroke_color: Color,
     pub(crate) stroke_width: f32,
+    pub(crate) fill_kind: FillKind,
+    pub(crate) fill_grad_idx: u32,
+    pub(crate) fill_axis: FillAxis,
 }
 
 #[repr(C)]
@@ -154,6 +174,12 @@ pub(crate) struct RenderCmdBuffer {
     /// a copy of this struct, so replay doesn't need the original
     /// `Tree` arenas around. See [`ShapePayloads`].
     pub(crate) shape_payloads: ShapePayloads,
+    /// Per-frame arena of `LinearGradient` values referenced by
+    /// `DrawRect*Payload::fill_grad_idx`. Composer reads through this
+    /// to register the gradient with the LUT atlas and pack the
+    /// resulting row id into `Quad`. Cleared every frame; capacity
+    /// retained — steady-state alloc-free.
+    pub(crate) linear_gradients: Vec<LinearGradient>,
 }
 
 impl RenderCmdBuffer {
@@ -162,6 +188,7 @@ impl RenderCmdBuffer {
         self.starts.clear();
         self.data.clear();
         self.shape_payloads.clear();
+        self.linear_gradients.clear();
     }
 
     #[inline]
@@ -193,14 +220,43 @@ impl RenderCmdBuffer {
     }
 
     #[inline]
-    pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: Color, stroke: Stroke) {
+    pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: &Brush, stroke: Stroke) {
+        // Decompose the brush into Pod fields. Solid: write `fill` and
+        // sentinel-out the gradient slot. Linear: zero `fill`, push the
+        // gradient into the per-frame arena, encode kind + spread +
+        // axis into the metadata fields. Stroke stays solid-only —
+        // gradient strokes are a slice-2 non-goal.
+        let (fill_color, fill_kind, fill_grad_idx, fill_axis) = match fill {
+            Brush::Solid(c) => (*c, FillKind::SOLID, NO_GRAD_IDX, FillAxis::ZERO),
+            Brush::Linear(g) => {
+                let idx = self.linear_gradients.len() as u32;
+                self.linear_gradients.push(*g);
+                (
+                    Color::TRANSPARENT,
+                    FillKind::linear(g.spread),
+                    idx,
+                    g.axis(),
+                )
+            }
+        };
+
         // Two cmd kinds keep the wire format compact: a stroke-less
         // rect skips the trailing 24 B of stroke payload. The branch
         // is on the value, not on `Option`-presence — semantically
         // identical, no Option machinery upstream.
         if stroke.is_noop() {
             self.record_start(CmdKind::DrawRect);
-            write_pod(&mut self.data, DrawRectPayload { rect, radius, fill });
+            write_pod(
+                &mut self.data,
+                DrawRectPayload {
+                    rect,
+                    radius,
+                    fill: fill_color,
+                    fill_kind,
+                    fill_grad_idx,
+                    fill_axis,
+                },
+            );
         } else {
             self.record_start(CmdKind::DrawRectStroked);
             write_pod(
@@ -208,9 +264,12 @@ impl RenderCmdBuffer {
                 DrawRectStrokedPayload {
                     rect,
                     radius,
-                    fill,
+                    fill: fill_color,
                     stroke_color: stroke.brush.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
                     stroke_width: stroke.width,
+                    fill_kind,
+                    fill_grad_idx,
+                    fill_axis,
                 },
             );
         }
