@@ -1,14 +1,15 @@
 use super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
-use crate::forest::Forest;
 use crate::forest::shapes::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
+use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
-use crate::layout::{LayerLayout, Layout};
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
-use crate::ui::cascade::{Cascade, Cascades};
+use crate::ui::Ui;
+use crate::ui::cascade::Cascade;
+use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU
@@ -31,21 +32,25 @@ pub(crate) struct Encoder {
 }
 
 impl Encoder {
-    /// Encode every tree in `forest` into the encoder's owned command
-    /// buffer in paint order. Per-tree result and cascade rows are
-    /// looked up by layer.
-    pub(crate) fn encode(
-        &mut self,
-        forest: &Forest,
-        results: &Layout,
-        cascades: &Cascades,
-        damage_filter: Option<&DamageRegion>,
-        viewport: Rect,
-    ) -> &RenderCmdBuffer {
+    /// Encode every tree in `ui.forest` into the encoder's owned
+    /// command buffer in paint order. Per-tree layout and cascade rows
+    /// are looked up by layer off `ui.layout`. `damage_filter`
+    /// overrides what `ui.damage` would imply — pass `None` for full
+    /// paint (the production caller derives this from `ui.damage`'s
+    /// `Partial(region)` arm; tests pass arbitrary regions).
+    pub(crate) fn encode(&mut self, ui: &Ui) -> &RenderCmdBuffer {
         self.cmds.clear();
-        for (layer, tree) in forest.iter_paint_order() {
-            let layout = &results[layer];
-            let rows = cascades.rows_for(layer);
+
+        let damage_filter = match &ui.damage {
+            Some(Damage::Partial(region)) => Some(region),
+            Some(Damage::Full) => None,
+            None => unreachable!(),
+        };
+
+        let viewport = ui.display.logical_rect();
+        for (layer, tree) in ui.forest.iter_paint_order() {
+            let layout = &ui.layout[layer];
+            let rows = ui.layout.cascades.rows_for(layer);
             for root in &tree.roots {
                 encode_node(
                     tree,

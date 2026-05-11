@@ -242,7 +242,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
             });
     });
 
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let mut text_xs: Vec<f32> = Vec::new();
     for i in 0..cmds.kinds.len() {
         if cmds.kinds[i] == CmdKind::DrawText {
@@ -341,7 +341,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
         });
     });
 
-    let cmds = encode_cmds(&ui);
+    let cmds = encode_cmds(&mut ui);
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
     for i in 0..cmds.kinds.len() {
         if cmds.kinds[i] == CmdKind::DrawText {
