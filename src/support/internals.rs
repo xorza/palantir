@@ -140,3 +140,52 @@ pub fn force_frame_damage_to_rects(
     }
     out.damage = DamagePaint::Partial(region);
 }
+
+/// Bench-public mirror of internal `ColorMode`. The user-facing
+/// `PolylineColors` is the public surface for stroke color
+/// storage, but the bench needs to A/B all three internal variants
+/// directly to characterize each emission path.
+pub enum TessColorMode {
+    Single,
+    PerPoint,
+    PerSegment,
+}
+
+/// Bench-public mirror of internal `StrokeStyle`. Same fields,
+/// different visibility — the internal one is `pub(crate)`.
+pub struct TessStyle {
+    pub mode: TessColorMode,
+    pub cap: crate::shape::LineCap,
+    pub join: crate::shape::LineJoin,
+    pub width_phys: f32,
+}
+
+/// Bench entry point: run the stroke tessellator with externally-
+/// owned scratch (so allocation doesn't dominate the measurement).
+pub fn tessellate_polyline_for_bench(
+    points: &[glam::Vec2],
+    colors: &[crate::primitives::color::Color],
+    style: TessStyle,
+    out_verts: &mut Vec<crate::primitives::mesh::MeshVertex>,
+    out_indices: &mut Vec<u16>,
+) {
+    use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
+    use crate::shape::ColorMode;
+    let mode = match style.mode {
+        TessColorMode::Single => ColorMode::Single,
+        TessColorMode::PerPoint => ColorMode::PerPoint,
+        TessColorMode::PerSegment => ColorMode::PerSegment,
+    };
+    tessellate_polyline_aa(
+        points,
+        colors,
+        StrokeStyle {
+            mode,
+            cap: style.cap,
+            join: style.join,
+            width_phys: style.width_phys,
+        },
+        out_verts,
+        out_indices,
+    );
+}

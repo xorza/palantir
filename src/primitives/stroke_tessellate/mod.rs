@@ -8,9 +8,6 @@ const HALF_FRINGE: f32 = 0.5;
 /// SVG default. Beyond this the miter would project a long spike,
 /// so we fall back to bevel geometry at the join instead.
 const MITER_LIMIT: f32 = 4.0;
-/// Cross-section block size: 4 verts per cross-section (outer
-/// fringe, inner edge, inner edge, outer fringe).
-const BLOCK: u16 = 4;
 const MIN_ROUND_FAN_SEGS: u16 = 4;
 const MAX_ROUND_FAN_SEGS: u16 = 16;
 /// Threshold on `(normal_prev + normal_next).length_squared()`
@@ -107,20 +104,50 @@ pub(crate) fn tessellate_polyline_aa(
         indices: out_indices,
         geo,
     };
-    match style.mode {
-        ColorMode::Single => emit_simple(points, colors, SimpleMode::Single, &mut e),
-        ColorMode::PerPoint => emit_simple(points, colors, SimpleMode::PerPoint, &mut e),
-        ColorMode::PerSegment => emit_per_segment(points, colors, &mut e),
-    }
+    emit_polyline(points, ColorPlan::from_mode(style.mode, colors), &mut e);
 }
 
-/// Subset of [`ColorMode`] handled by [`emit_simple`]. Splitting
-/// the enum here removes the `unreachable!()` arm that a unified
-/// `ColorMode` match would carry.
+/// Per-kept-point color picker. Pre-resolved from `(ColorMode,
+/// colors)` so the emit walker doesn't carry the slice + mode
+/// around separately.
+///
+/// At every kept point the walker asks for the `(trailing,
+/// leading)` pair: the colors for the segments incoming to and
+/// outgoing from that point. At endpoints one side doesn't exist,
+/// so both sides return the same color (which the walker uses for
+/// the cap). For PerPoint/Single, trailing and leading are always
+/// equal; for PerSegment they differ at color boundaries.
 #[derive(Clone, Copy)]
-enum SimpleMode {
-    Single,
-    PerPoint,
+enum ColorPlan<'a> {
+    Single(Color),
+    PerPoint(&'a [Color]),
+    PerSegment(&'a [Color]),
+}
+
+impl<'a> ColorPlan<'a> {
+    fn from_mode(mode: ColorMode, colors: &'a [Color]) -> Self {
+        match mode {
+            ColorMode::Single => ColorPlan::Single(colors[0]),
+            ColorMode::PerPoint => ColorPlan::PerPoint(colors),
+            ColorMode::PerSegment => ColorPlan::PerSegment(colors),
+        }
+    }
+
+    /// `(trailing, leading)` at kept point with original index `i`.
+    /// `is_first` / `is_last` signal endpoints — there the missing
+    /// side mirrors the present side so the walker has a single
+    /// cap color to use.
+    fn at(self, i: usize, is_first: bool, is_last: bool) -> (Color, Color) {
+        match self {
+            ColorPlan::Single(c) => (c, c),
+            ColorPlan::PerPoint(cs) => (cs[i], cs[i]),
+            ColorPlan::PerSegment(cs) => {
+                let trailing = if is_first { cs[0] } else { cs[i - 1] };
+                let leading = if is_last { trailing } else { cs[i] };
+                (trailing, leading)
+            }
+        }
+    }
 }
 
 /// Geometry + style parameters shared by both emit paths. Pre-
@@ -192,14 +219,27 @@ fn resolve_interior_join(normal_prev: Vec2, normal_next: Vec2, join: LineJoin) -
     }
 }
 
-/// Single + PerPoint emission: one cross-section per kept point
-/// for smooth-miter joins; two cross-sections when the resolved
-/// join is `Dual`. Consecutive coincident points are skipped via
-/// [`next_kept`].
-fn emit_simple(points: &[Vec2], colors: &[Color], mode: SimpleMode, e: &mut Emitter) {
+/// Unified emit walker for all three color modes. Iterates kept
+/// points, dispatches on `(prev_seg_normal, next_seg_normal)` to
+/// pick start cap / interior join / end cap, and at every interior
+/// join asks [`resolve_interior_join`] for the geometry. The
+/// per-mode behavior is isolated to [`ColorPlan`].
+///
+/// `prev_block_offset` is the leading cross-section offset of the
+/// previous kept point — i.e. the block to use as the start of
+/// the next strip. Single emit point per kept index keeps the
+/// strip math the same regardless of how many cross-sections were
+/// pushed at the previous point (1 for merged smooth-miter, 2 for
+/// dual joins or color boundaries).
+fn emit_polyline(points: &[Vec2], plan: ColorPlan, e: &mut Emitter) {
     let n = points.len();
-    let mut prev_offset: u16 = 0;
-    let mut prev_was_dual = false;
+    let second = next_kept(points, 0);
+    // Fewer than two distinct points — nothing to draw.
+    if second >= n {
+        return;
+    }
+
+    let mut prev_block_offset: u16 = 0;
     let mut prev_seg_normal: Option<Vec2> = None;
     let mut i = 0;
 
@@ -211,178 +251,76 @@ fn emit_simple(points: &[Vec2], colors: &[Color], mode: SimpleMode, e: &mut Emit
             None
         };
 
-        // Isolated kept point with no neighbors on either side:
-        // no segment to draw, no cap to anchor.
-        if prev_seg_normal.is_none() && next_seg_normal.is_none() {
-            return;
-        }
-
-        let interior = match (prev_seg_normal, next_seg_normal) {
-            (Some(np), Some(nn)) => Some(resolve_interior_join(np, nn, e.geo.join)),
-            _ => None,
-        };
-        let is_dual = matches!(interior, Some(InteriorJoin::Dual { .. }));
+        let is_first = prev_seg_normal.is_none();
+        let is_last = next_seg_normal.is_none();
+        let (trailing_color, leading_color) = plan.at(i, is_first, is_last);
+        let trailing_color = trailing_color.scale_premultiplied(e.geo.alpha_scale);
+        let leading_color = leading_color.scale_premultiplied(e.geo.alpha_scale);
         let current_offset = e.cursor();
-        let color = match mode {
-            SimpleMode::Single => colors[0],
-            SimpleMode::PerPoint => colors[i],
-        }
-        .scale_premultiplied(e.geo.alpha_scale);
 
-        // 1. Cross-section verts.
-        match (prev_seg_normal, next_seg_normal, &interior) {
-            (
-                _,
-                _,
-                Some(InteriorJoin::Dual {
+        match (prev_seg_normal, next_seg_normal) {
+            (None, Some(nn)) => {
+                // Start cap. `leading_color` carries the cap color
+                // (trailing == leading at endpoints per ColorPlan).
+                let p = points[i] - tangent_of(nn) * e.geo.cap_extension();
+                e.push_cross_section(p, nn, 1.0, leading_color);
+                if matches!(e.geo.cap, LineCap::Round) {
+                    e.push_round_cap(points[i], -tangent_of(nn), leading_color);
+                }
+                prev_block_offset = current_offset;
+            }
+            (Some(np), None) => {
+                // End cap.
+                let p = points[i] + tangent_of(np) * e.geo.cap_extension();
+                e.push_cross_section(p, np, 1.0, trailing_color);
+                e.push_strip_indices(prev_block_offset, current_offset);
+                if matches!(e.geo.cap, LineCap::Round) {
+                    e.push_round_cap(points[i], tangent_of(np), trailing_color);
+                }
+            }
+            (Some(np), Some(nn)) => match resolve_interior_join(np, nn, e.geo.join) {
+                InteriorJoin::Dual {
                     normal_prev,
                     normal_next,
-                }),
-            ) => {
-                e.push_cross_section(points[i], *normal_prev, 1.0, color);
-                e.push_cross_section(points[i], *normal_next, 1.0, color);
-            }
-            (_, _, Some(InteriorJoin::Single { bisector, ext })) => {
-                e.push_cross_section(points[i], *bisector, *ext, color);
-            }
-            (None, Some(nn), None) => {
-                let p = points[i] - tangent_of(nn) * e.geo.cap_extension();
-                e.push_cross_section(p, nn, 1.0, color);
-            }
-            (Some(np), None, None) => {
-                let p = points[i] + tangent_of(np) * e.geo.cap_extension();
-                e.push_cross_section(p, np, 1.0, color);
-            }
-            (None, None, _) => unreachable!("guarded above"),
-            (Some(_), Some(_), None) => unreachable!("interior is Some when both normals are"),
+                } => {
+                    e.push_cross_section(points[i], normal_prev, 1.0, trailing_color);
+                    e.push_strip_indices(prev_block_offset, current_offset);
+                    let leading_offset = e.cursor();
+                    e.push_cross_section(points[i], normal_next, 1.0, leading_color);
+                    e.push_join_chrome(
+                        points[i],
+                        current_offset,
+                        leading_offset,
+                        normal_prev,
+                        normal_next,
+                        trailing_color.midpoint(leading_color),
+                    );
+                    prev_block_offset = leading_offset;
+                }
+                InteriorJoin::Single { bisector, ext } if trailing_color == leading_color => {
+                    // Same color + smooth miter ⇒ one cross-section
+                    // serves both segments. For Single/PerPoint this
+                    // branch always fires (trailing == leading).
+                    e.push_cross_section(points[i], bisector, ext, trailing_color);
+                    e.push_strip_indices(prev_block_offset, current_offset);
+                    prev_block_offset = current_offset;
+                }
+                InteriorJoin::Single { bisector, ext } => {
+                    // Smooth miter with a color boundary (PerSegment
+                    // at a color change). Two cross-sections at the
+                    // same direction with different colors.
+                    e.push_cross_section(points[i], bisector, ext, trailing_color);
+                    e.push_strip_indices(prev_block_offset, current_offset);
+                    let leading_offset = e.cursor();
+                    e.push_cross_section(points[i], bisector, ext, leading_color);
+                    prev_block_offset = leading_offset;
+                }
+            },
+            (None, None) => unreachable!("guarded by early return"),
         }
 
-        // 2. Strip indices for segment (prev_kept, i).
-        if prev_seg_normal.is_some() {
-            let leading = prev_offset + if prev_was_dual { BLOCK } else { 0 };
-            e.push_strip_indices(leading, current_offset);
-        }
-
-        // 3. Join chrome at this point.
-        if let Some(InteriorJoin::Dual {
-            normal_prev,
-            normal_next,
-        }) = interior
-        {
-            e.push_join_chrome(
-                points[i],
-                current_offset,
-                current_offset + BLOCK,
-                normal_prev,
-                normal_next,
-                color,
-            );
-        }
-
-        // 4. Round cap fans at endpoints.
-        if matches!(e.geo.cap, LineCap::Round) {
-            if prev_seg_normal.is_none()
-                && let Some(nn) = next_seg_normal
-            {
-                e.push_round_cap(points[i], -tangent_of(nn), color);
-            }
-            if next_seg_normal.is_none()
-                && let Some(np) = prev_seg_normal
-            {
-                e.push_round_cap(points[i], tangent_of(np), color);
-            }
-        }
-
-        prev_offset = current_offset;
-        prev_was_dual = is_dual;
         prev_seg_normal = next_seg_normal;
         i = next_idx;
-    }
-}
-
-/// Per-segment paints each segment in a solid block. Interior
-/// cross-sections duplicate (one belonging to segment `i-1`, one
-/// to segment `i`) so the strip between two cross-sections
-/// belongs to a single segment and carries that segment's color
-/// uniformly. Join chrome and round caps paint with the average
-/// of the two adjacent segments' colors.
-fn emit_per_segment(points: &[Vec2], colors: &[Color], e: &mut Emitter) {
-    let n = points.len();
-    let second = next_kept(points, 0);
-    if second >= n {
-        return;
-    }
-    let mut np = seg_normal(points[0], points[second]);
-
-    // Start endpoint.
-    let start_color = colors[0].scale_premultiplied(e.geo.alpha_scale);
-    let p0 = points[0] - tangent_of(np) * e.geo.cap_extension();
-    e.push_cross_section(p0, np, 1.0, start_color);
-    if matches!(e.geo.cap, LineCap::Round) {
-        e.push_round_cap(points[0], -tangent_of(np), start_color);
-    }
-    let mut prev_block_offset: u16 = 0;
-    let mut i = second;
-
-    loop {
-        let next = next_kept(points, i);
-        if next >= n {
-            // i is the last kept point — end cap.
-            let end_color = colors[i - 1].scale_premultiplied(e.geo.alpha_scale);
-            let end_offset = e.cursor();
-            let pl = points[i] + tangent_of(np) * e.geo.cap_extension();
-            e.push_cross_section(pl, np, 1.0, end_color);
-            e.push_strip_indices(prev_block_offset, end_offset);
-            if matches!(e.geo.cap, LineCap::Round) {
-                e.push_round_cap(points[i], tangent_of(np), end_color);
-            }
-            return;
-        }
-
-        let nn = seg_normal(points[i], points[next]);
-        let trailing_color = colors[i - 1].scale_premultiplied(e.geo.alpha_scale);
-        let leading_color = colors[i].scale_premultiplied(e.geo.alpha_scale);
-        let trailing_offset = e.cursor();
-
-        match resolve_interior_join(np, nn, e.geo.join) {
-            InteriorJoin::Dual {
-                normal_prev,
-                normal_next,
-            } => {
-                // Different directions — cross-sections stay separate.
-                e.push_cross_section(points[i], normal_prev, 1.0, trailing_color);
-                e.push_strip_indices(prev_block_offset, trailing_offset);
-                let leading_offset = e.cursor();
-                e.push_cross_section(points[i], normal_next, 1.0, leading_color);
-                e.push_join_chrome(
-                    points[i],
-                    trailing_offset,
-                    leading_offset,
-                    normal_prev,
-                    normal_next,
-                    trailing_color.midpoint(leading_color),
-                );
-                prev_block_offset = leading_offset;
-            }
-            InteriorJoin::Single { bisector, ext } if trailing_color == leading_color => {
-                // Same color + smooth miter ⇒ one cross-section
-                // serves both segments; halves the vert count at
-                // this join.
-                e.push_cross_section(points[i], bisector, ext, trailing_color);
-                e.push_strip_indices(prev_block_offset, trailing_offset);
-                prev_block_offset = trailing_offset;
-            }
-            InteriorJoin::Single { bisector, ext } => {
-                e.push_cross_section(points[i], bisector, ext, trailing_color);
-                e.push_strip_indices(prev_block_offset, trailing_offset);
-                let leading_offset = e.cursor();
-                e.push_cross_section(points[i], bisector, ext, leading_color);
-                prev_block_offset = leading_offset;
-            }
-        }
-
-        np = nn;
-        i = next;
     }
 }
 

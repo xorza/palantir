@@ -43,6 +43,11 @@ name = "frame"
 harness = false
 
 [[bench]]
+name = "stroke_tessellate"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "caches"
 harness = false
 required-features = ["internals", "bench-deep"]
