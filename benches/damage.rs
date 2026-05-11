@@ -1,5 +1,5 @@
-//! Damage CPU-side regression bench. Drives `Ui::run_frame` over a
-//! ~1056-node grid through the four `DamagePaint` paths and times
+//! DamageEngine CPU-side regression bench. Drives `Ui::run_frame` over a
+//! ~1056-node grid through the four `Damage` paths and times
 //! the result. Microbenches at the bottom characterise the three
 //! `DamageRegion::add` policy branches (append, cascade-absorb,
 //! min-growth).
@@ -72,7 +72,7 @@ fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
 }
 
 /// Warm two frames so subsequent iterations land on the steady-state
-/// `DamagePaint` path the test claims. `expect_kind` asserts the
+/// `Damage` path the test claims. `expect_kind` asserts the
 /// path; without warmup the first iter would always be `Full` (no
 /// `prev_surface`) and skew measurements.
 fn warm_and_assert(ui: &mut Ui, display: Display, record: impl Fn(&mut Ui), expect_kind: &str) {

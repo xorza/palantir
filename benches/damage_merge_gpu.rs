@@ -10,7 +10,7 @@
 //! two flipping cells in a 32×32 grid) and reports `separate` vs
 //! `merged` strategies side-by-side at each gap.
 //!
-//! Damage region is forced via
+//! DamageEngine region is forced via
 //! `support::internals::force_frame_damage_to_rects`, bypassing the
 //! production merge policy so the same scene is submitted with
 //! either strategy. Cell-rect computation hard-codes the grid

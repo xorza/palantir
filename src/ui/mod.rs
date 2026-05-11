@@ -19,7 +19,7 @@ use crate::renderer::frontend::{FrameState, RecordedFrame};
 use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::Cascades;
-use crate::ui::damage::{Damage, DamagePaint};
+use crate::ui::damage::{Damage, DamageEngine};
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use std::time::Duration;
@@ -44,7 +44,7 @@ pub struct Ui {
     pub(crate) input: InputState,
     pub(crate) cascades: Cascades,
     pub(crate) display: Display,
-    pub(crate) damage: Damage,
+    pub(crate) damage: DamageEngine,
     /// `now - prev_now` clamped to [`Self::MAX_DT`].
     pub(crate) dt: f32,
     /// Bumped once per [`Self::run_frame`], before either pass —
@@ -100,7 +100,7 @@ impl Ui {
             input: InputState::new(),
             cascades: Cascades::default(),
             display: Display::default(),
-            damage: Damage::default(),
+            damage: DamageEngine::default(),
             dt: 0.0,
             frame_id: 0,
             time: Duration::ZERO,
@@ -146,7 +146,7 @@ impl Ui {
         }
         let damage = self.paint();
 
-        if matches!(damage, DamagePaint::Skip) {
+        if matches!(damage, Damage::Skip) {
             self.frame_state.mark_submitted();
             return None;
         }
@@ -232,11 +232,11 @@ impl Ui {
     /// Paint-half of `run_frame`: diff seen ids against the last
     /// painted frame, fan the `removed` set out to per-widget caches,
     /// cascade → hit-index → damage. Reads the `Layout` from the most
-    /// recent `post_record`; returns the computed [`DamagePaint`].
+    /// recent `post_record`; returns the computed [`Damage`].
     /// Sweep runs here (once per `run_frame`) rather than per
     /// `post_record` so a widget that vanishes in pass A but returns
     /// in pass B keeps its state across the discard.
-    pub(crate) fn paint(&mut self) -> DamagePaint {
+    pub(crate) fn paint(&mut self) -> Damage {
         let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);

@@ -25,7 +25,7 @@ use crate::layout::types::display::Display;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::ui::cascade::CascadeResult;
-use crate::ui::damage::DamagePaint;
+use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -68,7 +68,7 @@ impl FrameState {
 /// One frame's recorded result: a borrowed view into the [`Ui`]'s
 /// per-frame data plus the damage decision. Returned from
 /// [`Ui::run_frame`], consumed by [`Renderer::render`]. The three
-/// [`DamagePaint`] variants — `Full`, `Partial`, `Skip` — let the
+/// [`Damage`] variants — `Full`, `Partial`, `Skip` — let the
 /// no-changes case opt out of the GPU pass entirely instead of being
 /// forced through a full clear+repaint.
 ///
@@ -85,7 +85,7 @@ pub struct RecordedFrame<'a> {
     pub(crate) layout: &'a Layout,
     pub(crate) cascades: &'a CascadeResult,
     pub(crate) display: Display,
-    pub(crate) damage: DamagePaint,
+    pub(crate) damage: Damage,
     pub(crate) repaint_requested: bool,
     /// Shared with `Ui::frame_state`. Set to `Pending` by
     /// `Ui::run_frame` and (on success) to `Submitted` by
@@ -106,7 +106,7 @@ impl RecordedFrame<'_> {
     /// and the host paints. No "invalidate" call needed in
     /// surface-error paths.
     pub fn can_skip_rendering(&self) -> bool {
-        self.damage == DamagePaint::Skip
+        self.damage == Damage::Skip
     }
 
     /// `true` when an animation tick during this frame hasn't
@@ -119,8 +119,8 @@ impl RecordedFrame<'_> {
 
     pub(crate) fn damage_filter(&self) -> Option<&DamageRegion> {
         match &self.damage {
-            DamagePaint::Partial(region) => Some(region),
-            DamagePaint::Full | DamagePaint::Skip => None,
+            Damage::Partial(region) => Some(region),
+            Damage::Full | Damage::Skip => None,
         }
     }
 }

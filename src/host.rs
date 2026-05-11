@@ -8,7 +8,7 @@
 //! no `surface.get_current_texture()`, no submit, no present — and
 //! also on host-side errors (surface acquire failure, occluded
 //! window). State that needs to flow between the two stages
-//! (`DamagePaint`, debug overlay, frame-state Arc) is stashed in
+//! (`Damage`, debug overlay, frame-state Arc) is stashed in
 //! [`Host`] itself; the user-facing [`FrameInfo`] is plain owned data.
 
 use crate::debug_overlay::DebugOverlayConfig;
@@ -17,7 +17,7 @@ use crate::renderer::backend::WgpuBackend;
 use crate::renderer::frontend::{FrameState, Frontend};
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::ui::damage::DamagePaint;
+use crate::ui::damage::Damage;
 
 /// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
 /// plus the CPU [`Frontend`](crate::renderer::frontend::Frontend) and
@@ -38,7 +38,7 @@ pub struct Host {
 }
 
 pub(crate) struct PendingSubmit {
-    pub(crate) damage: DamagePaint,
+    pub(crate) damage: Damage,
     pub(crate) debug_overlay: DebugOverlayConfig,
     pub(crate) frame_state: FrameState,
 }
@@ -98,7 +98,7 @@ impl Host {
             // backend's Skip path short-circuits to a backbuffer →
             // surface copy without reading it.
             self.pending = Some(PendingSubmit {
-                damage: DamagePaint::Skip,
+                damage: Damage::Skip,
                 debug_overlay: self.debug_overlay,
                 frame_state: self.ui.frame_state.clone(),
             });

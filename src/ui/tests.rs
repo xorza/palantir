@@ -6,7 +6,7 @@ use crate::forest::widget_id::WidgetId;
 use crate::layout::types::display::Display;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::support::testing::{begin, new_ui_text, ui_at};
-use crate::ui::damage::DamagePaint;
+use crate::ui::damage::Damage;
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -69,8 +69,8 @@ fn empty_ui_drives_a_frame_safely() {
         let damage = ui.paint();
         let mut frontend = Frontend::default();
         let damage_filter = match &damage {
-            crate::ui::damage::DamagePaint::Partial(region) => Some(region),
-            crate::ui::damage::DamagePaint::Full | crate::ui::damage::DamagePaint::Skip => None,
+            crate::ui::damage::Damage::Partial(region) => Some(region),
+            crate::ui::damage::Damage::Full | crate::ui::damage::Damage::Skip => None,
         };
         frontend.build(
             &ui.forest,
@@ -89,10 +89,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(ui.damage.prev.is_empty());
     assert!(ui.damage.dirty.is_empty());
     assert!(ui.damage.region.is_empty());
-    assert_eq!(
-        ui.damage.filter(ui.display.logical_rect()),
-        DamagePaint::Skip
-    );
+    assert_eq!(ui.damage.filter(ui.display.logical_rect()), Damage::Skip);
 }
 
 /// Pin: an empty frame followed by a populated frame works (the

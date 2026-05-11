@@ -626,7 +626,7 @@ impl QuadPipeline {
 
     /// Upload one or more debug damage-overlay quads (stroked rects
     /// in physical px, transparent fill). Each entry corresponds to a
-    /// rect in `DamagePaint::Partial(region)`. Drawn after the
+    /// rect in `Damage::Partial(region)`. Drawn after the
     /// backbuffer→surface copy so they never land on the backbuffer.
     /// Buffer grows to the next power of two when needed, mirroring
     /// the mask buffer's dynamic-resize pattern; the GPU upload uses

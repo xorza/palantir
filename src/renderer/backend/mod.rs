@@ -15,7 +15,7 @@ use crate::renderer::frontend::FrameState;
 use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
-use crate::ui::damage::DamagePaint;
+use crate::ui::damage::Damage;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 
 /// Stroke color for the debug damage overlay (see
@@ -120,7 +120,7 @@ pub(crate) struct WgpuBackend {
     /// so future frames can `LoadOp::Load` last frame's pixels.
     backbuffer: Option<Backbuffer>,
     /// Per-frame damage scissors. One entry per rect in
-    /// `DamagePaint::Partial(region)` after physical-px scaling plus
+    /// `Damage::Partial(region)` after physical-px scaling plus
     /// AA padding plus viewport clamping; rects that clamp to zero
     /// area are filtered out. `Full` and `Skip` leave it empty.
     /// Bounded by [`DAMAGE_RECT_CAP`] (the merge policy guarantees
@@ -239,18 +239,18 @@ impl WgpuBackend {
     ///
     /// Three damage paths, branching on `frame.damage`:
     ///
-    /// - [`DamagePaint::Full`]: a single `LoadOp::Clear(clear)` pass
+    /// - [`Damage::Full`]: a single `LoadOp::Clear(clear)` pass
     ///   paints every group at its native scissor. First frame,
     ///   post-resize, post-format-change, and coverage-above-threshold
     ///   all land here.
-    /// - [`DamagePaint::Partial(region)`][DamagePaint::Partial]: one
+    /// - [`Damage::Partial(region)`][Damage::Partial]: one
     ///   render pass per rect in the region. Each pass `LoadOp::Load`s
     ///   the backbuffer (preserving last frame outside the rect) and
     ///   the schedule narrows every group's scissor to that pass's
     ///   damage rect. Logical-px in; the backend scales, pads for AA
     ///   bleed, and clamps to surface; rects that clamp to zero area
     ///   are filtered out.
-    /// - [`DamagePaint::Skip`]: no render pass at all. The persistent
+    /// - [`Damage::Skip`]: no render pass at all. The persistent
     ///   backbuffer already holds last frame's pixels, so submit just
     ///   copies it to the swapchain texture and returns.
     ///
@@ -263,7 +263,7 @@ impl WgpuBackend {
         clear: Color,
         buffer: &RenderBuffer,
         gradient_atlas: &mut GradientCpuAtlas,
-        damage: DamagePaint,
+        damage: Damage,
         debug_overlay: DebugOverlayConfig,
         frame_state: &FrameState,
     ) {
@@ -295,7 +295,7 @@ impl WgpuBackend {
         // threading the renamed value through is the right semantic.
         let backbuffer_recreated = self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
         let effective_damage = if backbuffer_recreated {
-            DamagePaint::Full
+            Damage::Full
         } else {
             damage
         };
@@ -303,7 +303,7 @@ impl WgpuBackend {
         // Skip: nothing changed and the backbuffer already holds the
         // right pixels. Bypass the render pass entirely and just copy
         // backbuffer → swapchain so something gets presented.
-        if let DamagePaint::Skip = effective_damage {
+        if let Damage::Skip = effective_damage {
             self.copy_backbuffer_to_surface(surface_tex);
             frame_state.mark_submitted();
             return;
@@ -655,13 +655,13 @@ impl WgpuBackend {
     /// backbuffer, so next frame's `LoadOp::Load` reads clean pixels
     /// and there's no ghost stroke. Each `bool` on `config` toggles a
     /// distinct visualization; the function is a no-op when all flags
-    /// are off. Caller already filtered `DamagePaint::Skip`.
+    /// are off. Caller already filtered `Damage::Skip`.
     fn draw_debug_overlay(
         &mut self,
         surface_tex: &wgpu::Texture,
         encoder: &mut wgpu::CommandEncoder,
         buffer: &RenderBuffer,
-        damage: DamagePaint,
+        damage: Damage,
         config: DebugOverlayConfig,
     ) {
         if config.damage_rect {
@@ -679,7 +679,7 @@ impl WgpuBackend {
             );
             let mut overlay_rects: tinyvec::ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
             match damage {
-                DamagePaint::Partial(region) => {
+                Damage::Partial(region) => {
                     for r in region.iter_rects() {
                         overlay_rects.push(
                             r.scaled_by(buffer.scale, true)
@@ -687,14 +687,14 @@ impl WgpuBackend {
                         );
                     }
                 }
-                DamagePaint::Full => overlay_rects.push(
+                Damage::Full => overlay_rects.push(
                     Rect {
                         min: glam::Vec2::ZERO,
                         size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
                     }
                     .deflated_by(Spacing::all(inset_px)),
                 ),
-                DamagePaint::Skip => unreachable!("Skip filtered before draw_debug_overlay"),
+                Damage::Skip => unreachable!("Skip filtered before draw_debug_overlay"),
             }
             if overlay_rects.is_empty() {
                 return;
@@ -724,7 +724,7 @@ impl WgpuBackend {
     }
 
     /// Copy the persistent backbuffer onto the swapchain texture
-    /// without running a render pass. Used on `DamagePaint::Skip`
+    /// without running a render pass. Used on `Damage::Skip`
     /// frames: the backbuffer already holds last frame's pixels and
     /// nothing changed, so we just need something on screen.
     fn copy_backbuffer_to_surface(&self, surface_tex: &wgpu::Texture) {

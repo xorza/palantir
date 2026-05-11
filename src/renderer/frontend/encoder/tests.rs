@@ -795,7 +795,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     );
 }
 
-// --- Damage filter (Step 5) -------------------------------------------------
+// --- DamageEngine filter (Step 5) -------------------------------------------------
 // `damage_filter: Some(rect)` skips DrawRect/DrawText for nodes that don't
 // intersect the dirty region. PushClip/PopClip and PushTransform/PopTransform
 // are *always* emitted so scissor groups and child transforms stay coherent.
@@ -825,7 +825,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
     });
     ui.post_record();
     ui.paint();
-    // Damage filter covers only the left half (x: 0..50). `a` at
+    // DamageEngine filter covers only the left half (x: 0..50). `a` at
     // (0,0,40,40) intersects; `b` at (40,0,40,40) intersects too
     // (its left edge is at x=40 which is < 50). Use a tighter filter.
     let filter = Rect::new(0.0, 0.0, 30.0, 200.0);

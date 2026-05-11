@@ -112,7 +112,7 @@ impl Harness {
     /// Render `settle_frames` discards then capture the next frame.
     /// Used by fixtures whose state populates over multiple frames
     /// (scrollbars reading their populated `ScrollState`, damage
-    /// seeding `Damage.prev`).
+    /// seeding `DamageEngine.prev`).
     pub fn render_after_settle<F: FnMut(&mut Ui) + Copy>(
         &mut self,
         settle_frames: u32,

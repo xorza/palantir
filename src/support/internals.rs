@@ -81,17 +81,17 @@ pub fn damage_rect_count(ui: &Ui) -> usize {
 /// Partial(N) / Full path without the caller reaching into private
 /// types.
 pub fn damage_paint_kind(ui: &Ui) -> &'static str {
-    use crate::ui::damage::DamagePaint;
+    use crate::ui::damage::Damage;
     let surface = ui.display.logical_rect();
     match ui.damage.filter(surface) {
-        DamagePaint::Skip => "skip",
-        DamagePaint::Full => "full",
-        DamagePaint::Partial(_) => "partial",
+        Damage::Skip => "skip",
+        Damage::Full => "full",
+        Damage::Partial(_) => "partial",
     }
 }
 
 /// Build a `DamageRegion` from a slice of rects, for microbenches.
-/// Mirrors what `Damage::compute` does internally without needing a
+/// Mirrors what `DamageEngine::compute` does internally without needing a
 /// full `Ui` setup. Returns the rect count after the merge policy
 /// runs — benches use that to verify "8 disjoint inputs produced 8
 /// retained rects" (no min-growth fired) vs "9 inputs produced 8
@@ -114,34 +114,34 @@ pub fn mark_frame_submitted(out: &crate::renderer::frontend::RecordedFrame<'_>) 
 }
 
 /// Force a `Host`'s pending-frame damage decision, bypassing
-/// `Damage::compute`'s merge policy and coverage threshold. Used by
+/// `DamageEngine::compute`'s merge policy and coverage threshold. Used by
 /// the GPU merge bench (`benches/damage_merge_gpu.rs`) to A/B "submit
 /// the same scene with N separate damage rects vs one merged bbox"
 /// without touching production damage policy. Call between
 /// `Host::run_frame` and `Host::render`.
 ///
-/// `rects.is_empty()` ⇒ `DamagePaint::Full` (single full-viewport
-/// pass). Otherwise builds `DamagePaint::Partial(region)` by
+/// `rects.is_empty()` ⇒ `Damage::Full` (single full-viewport
+/// pass). Otherwise builds `Damage::Partial(region)` by
 /// `add`ing each rect in order — note that `add` still runs the
 /// merge cascade, so passing two overlapping rects collapses to
 /// one. Pass disjoint rects to actually exercise the multi-pass
 /// path.
 pub fn force_host_damage_to_rects(host: &mut crate::Host, rects: &[crate::primitives::rect::Rect]) {
-    use crate::ui::damage::DamagePaint;
+    use crate::ui::damage::Damage;
     use crate::ui::damage::region::DamageRegion;
     let p = host
         .pending
         .as_mut()
         .expect("force_host_damage_to_rects: call after Host::run_frame, before Host::render");
     if rects.is_empty() {
-        p.damage = DamagePaint::Full;
+        p.damage = Damage::Full;
         return;
     }
     let mut region = DamageRegion::default();
     for r in rects {
         region.add(*r);
     }
-    p.damage = DamagePaint::Partial(region);
+    p.damage = Damage::Partial(region);
 }
 
 /// Bench-public mirror of internal `ColorMode`. The user-facing
