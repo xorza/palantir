@@ -240,6 +240,9 @@ impl QuadPipeline {
                 3 => Float32x4,   // radius
                 4 => Float32x4,   // stroke.color
                 5 => Float32,     // stroke.width
+                6 => Uint32,      // fill_kind (low byte: kind, bits 8..16: spread)
+                7 => Uint32,      // fill_lut_row
+                8 => Float32x4,   // fill_axis (dir_x, dir_y, t0, t1)
             ],
         };
 
@@ -329,47 +332,40 @@ impl QuadPipeline {
         }
     }
 
-    /// Sync freshly-baked gradient LUT rows from the CPU atlas to the
-    /// GPU texture. Called once per frame before the render pass. Idle
-    /// frames (no new gradients) drain an empty dirty queue and do
-    /// nothing. Slice-2 step 5 wires this into `WgpuBackend::submit`.
+    /// Sync the gradient LUT atlas from CPU to GPU if anything changed.
+    /// Idle frames (no new gradients) hit the early `None` return and
+    /// do nothing. Dirty frames upload the entire 256 KB atlas in a
+    /// single `write_texture` call — see the dirty-tracking note in
+    /// `GradientCpuAtlas` for why per-row uploads aren't worth the API
+    /// overhead. Slice-2 step 5 wires this into `WgpuBackend::submit`.
     #[allow(dead_code)]
     pub(crate) fn upload_gradients(
         &self,
         queue: &wgpu::Queue,
         atlas: &mut crate::renderer::frontend::gradient_atlas::GradientCpuAtlas,
     ) {
-        // Snapshot dirty list — `take_dirty` returns a borrow into
-        // `atlas`, but we need mutable access to clear after; iterate
-        // first, then clear.
-        let dirty: tinyvec::ArrayVec<[u8; 256]> = atlas.take_dirty().iter().copied().collect();
-        for row in dirty.iter().copied() {
-            let bytes = atlas.row_bytes(row);
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &self.gradient_texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: 0,
-                        y: row as u32,
-                        z: 0,
-                    },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                bytes,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(GRADIENT_ATLAS_SIDE * 4),
-                    rows_per_image: Some(1),
-                },
-                wgpu::Extent3d {
-                    width: GRADIENT_ATLAS_SIDE,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-            );
-        }
-        atlas.clear_dirty();
+        let Some(bytes) = atlas.flush() else {
+            return;
+        };
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.gradient_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(GRADIENT_ATLAS_SIDE * 4),
+                rows_per_image: Some(GRADIENT_ATLAS_SIDE),
+            },
+            wgpu::Extent3d {
+                width: GRADIENT_ATLAS_SIDE,
+                height: GRADIENT_ATLAS_SIDE,
+                depth_or_array_layers: 1,
+            },
+        );
     }
 
     /// Lazy-build the stencil-aware variants. Idempotent; called from
@@ -396,6 +392,9 @@ impl QuadPipeline {
                 3 => Float32x4,
                 4 => Float32x4,
                 5 => Float32,
+                6 => Uint32,
+                7 => Uint32,
+                8 => Float32x4,
             ],
         };
 
@@ -547,6 +546,7 @@ impl QuadPipeline {
             radius: Corners::default(),
             stroke_color: Color::TRANSPARENT,
             stroke_width: 0.0,
+            ..Default::default()
         };
         queue.write_buffer(&self.clear_buffer, 0, bytemuck::bytes_of(&q));
         self.clear_buffer_dirty = true;
@@ -606,6 +606,7 @@ impl QuadPipeline {
             radius: Corners::default(),
             stroke_color: Color::TRANSPARENT,
             stroke_width: 0.0,
+            ..Default::default()
         };
         queue.write_buffer(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
     }
@@ -658,6 +659,7 @@ impl QuadPipeline {
                 radius: Corners::default(),
                 stroke_color: stroke.brush.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
                 stroke_width: stroke.width,
+            ..Default::default()
             });
         }
         queue.write_buffer(
@@ -757,6 +759,7 @@ impl QuadPipeline {
             radius,
             stroke_color: Color::TRANSPARENT,
             stroke_width: 0.0,
+            ..Default::default()
         }
     }
 }
