@@ -9,9 +9,10 @@ use crate::forest::Forest;
 use crate::forest::element::Element;
 use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
-use crate::input::{InputEvent, InputState, ResponseState};
+use crate::input::{FocusPolicy, InputEvent, InputState, ResponseState};
 use crate::layout::LayoutEngine;
 use crate::layout::types::display::Display;
+use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::{FrameOutput, FrameState, Frontend};
@@ -204,12 +205,14 @@ impl Ui {
         }
         self.display = display;
         self.forest.begin_frame();
-        // Drop any leftover relayout request from a previous frame's
-        // pass A that didn't get consumed. Belt-and-suspenders —
-        // current `run_frame` always consumes via `mem::replace`, but
-        // a future restructure that adds new entry points shouldn't
-        // smuggle a stale flag across frames.
-        self.relayout_requested = false;
+        // `end_frame_record_phase` consumes the flag via `mem::take`;
+        // any survivor here would be a state leak from a missing
+        // `end_frame_*` call.
+        assert!(
+            !self.relayout_requested,
+            "begin_frame: relayout_requested smuggled across frames \
+             — every frame must consume it via `end_frame_record_phase`",
+        );
     }
 
     /// Record-derived half of the frame lifecycle: finalize per-node hashes,
@@ -240,7 +243,7 @@ impl Ui {
 
         self.layout.run(&self.forest, &self.text);
 
-        std::mem::replace(&mut self.relayout_requested, false)
+        std::mem::take(&mut self.relayout_requested)
     }
 
     /// Paint-derived half of `end_frame`: commit the seen-id rollover
@@ -446,12 +449,12 @@ impl Ui {
         self.input.focused = id;
     }
 
-    /// Set the press-on-non-focusable behavior. See [`crate::FocusPolicy`].
-    pub fn set_focus_policy(&mut self, p: crate::FocusPolicy) {
+    /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
+    pub fn set_focus_policy(&mut self, p: FocusPolicy) {
         self.input.focus_policy = p;
     }
 
-    pub fn focus_policy(&self) -> crate::FocusPolicy {
+    pub fn focus_policy(&self) -> FocusPolicy {
         self.input.focus_policy
     }
 
@@ -490,12 +493,7 @@ impl Ui {
         self.add_shape(Shape::Mesh {
             mesh,
             local_rect: None,
-            tint: crate::primitives::color::Color {
-                r: 1.0,
-                g: 1.0,
-                b: 1.0,
-                a: 1.0,
-            },
+            tint: Color::WHITE,
         });
     }
 
