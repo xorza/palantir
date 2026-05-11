@@ -80,13 +80,14 @@ pub(crate) fn tessellate_polyline_aa(
     let inner_offset = half_geom;
 
     let n = points.len();
-    // Worst-case vert count across all modes: 8 per point (Single
-    // + PerPoint with every interior beveled, or PerSegment which
-    // always doubles interior points). Front-loaded check so
-    // emit_per_segment can use straight arithmetic; emit_simple
-    // also has a per-push `checked_add` for defense in depth.
+    // Worst-case vert count is bounded but mode-dependent (Round
+    // adds ~`2 * round_segments + 3` per cap/join). Front-loaded
+    // upper bound here is conservative; emit_simple's per-iteration
+    // `u16::try_from(out_verts.len() - call_start_verts)` produces
+    // the real failure point with a clear message if the actual
+    // count exceeds u16.
     assert!(
-        8 * n <= u16::MAX as usize,
+        n <= u16::MAX as usize / 64,
         "polyline too long for u16 indices ({n} points)"
     );
 
@@ -94,11 +95,8 @@ pub(crate) fn tessellate_polyline_aa(
         outer_offset,
         inner_offset,
         alpha_scale,
-        cap_extension: match cap {
-            LineCap::Butt => 0.0,
-            LineCap::Square => inner_offset,
-        },
-        force_bevel: matches!(join, LineJoin::Bevel),
+        cap,
+        join,
     };
     match mode {
         ColorMode::Single | ColorMode::PerPoint => {
@@ -112,16 +110,43 @@ pub(crate) fn tessellate_polyline_aa(
 
 /// Geometry + style parameters shared by both emit paths. Pre-
 /// computed in [`tessellate_polyline_aa`]'s setup so the inner
-/// loops just read the resolved values. Includes the `cap` /
-/// `join` enums so the emit functions don't grow argument lists
-/// (clippy's too-many-arguments lint is real).
+/// loops just read the resolved values. Carries the [`LineCap`] /
+/// [`LineJoin`] enums directly — Square's cap extension and the
+/// bevel/round branch decisions stay at the per-cross-section
+/// site where they belong, instead of being smeared into
+/// pre-computed flags that obscure what's happening.
 #[derive(Clone, Copy)]
 struct Geo {
     outer_offset: f32,
     inner_offset: f32,
     alpha_scale: f32,
-    cap_extension: f32,
-    force_bevel: bool,
+    cap: LineCap,
+    join: LineJoin,
+}
+
+impl Geo {
+    /// Cap-extension distance along the segment direction at
+    /// endpoints. Only `LineCap::Square` extends; Butt and Round
+    /// leave the cross-section at the endpoint and use their
+    /// fan-emission paths for visible chrome.
+    #[inline]
+    fn cap_extension(&self) -> f32 {
+        match self.cap {
+            LineCap::Square => self.inner_offset,
+            LineCap::Butt | LineCap::Round => 0.0,
+        }
+    }
+
+    /// `true` when this interior point must emit dual cross-sections
+    /// (bevel or round join) instead of the single miter
+    /// cross-section.
+    #[inline]
+    fn dual_at(&self, normal_prev: Vec2, normal_next: Vec2) -> bool {
+        match self.join {
+            LineJoin::Miter => is_sharp_join(normal_prev, normal_next),
+            LineJoin::Bevel | LineJoin::Round => true,
+        }
+    }
 }
 
 /// Length check matching [`tessellate_polyline_aa`]'s contract.
@@ -164,14 +189,14 @@ fn emit_simple(
     out_indices: &mut Vec<u16>,
 ) {
     let n = points.len();
-    // `geo.force_bevel` forces every interior point to bevel
-    // (LineJoin::Bevel); Miter mode still falls back at sharp
-    // angles via `is_sharp_join`. `geo.cap_extension` is 0 for
-    // Butt caps, `half_geom` for Square — geometry-only, no
-    // forward fringe (accepted aliasing tradeoff at the cap edge).
-    let mut cursor: u16 = 0;
+    // Indices are 0-based per call; track per-call vert base so
+    // round-fan emissions can grow `out_verts` arbitrarily without
+    // breaking strip-index math. `current_offset` derives from
+    // `out_verts.len() - call_start_verts` at each iteration's
+    // cross-section push site.
+    let call_start_verts = out_verts.len();
     let mut prev_offset: u16 = 0;
-    let mut prev_was_bevel = false;
+    let mut prev_was_dual = false;
     let mut prev_seg_normal: Option<Vec2> = None;
 
     for i in 0..n {
@@ -180,17 +205,17 @@ fn emit_simple(
         } else {
             None
         };
-        let is_bevel = match (prev_seg_normal, next_seg_normal) {
-            (Some(np), Some(nn)) => geo.force_bevel || is_sharp_join(np, nn),
+        let is_dual = match (prev_seg_normal, next_seg_normal) {
+            (Some(np), Some(nn)) => geo.dual_at(np, nn),
             _ => false,
         };
-
-        let current_offset = cursor;
+        let current_offset = u16::try_from(out_verts.len() - call_start_verts)
+            .expect("polyline tessellation exceeded u16 vertex limit");
         let color = scale_alpha(pick_color(colors, i, mode), geo.alpha_scale);
 
-        // Verts at point `i`.
+        // 1. Cross-section verts — the strip-anchored block(s).
         match (prev_seg_normal, next_seg_normal) {
-            (Some(np), Some(nn)) if is_bevel => {
+            (Some(np), Some(nn)) if is_dual => {
                 push_cross_section(points[i], np, 1.0, geo, color, out_verts);
                 push_cross_section(points[i], nn, 1.0, geo, color, out_verts);
             }
@@ -199,40 +224,106 @@ fn emit_simple(
                 push_cross_section(points[i], normal, ext, geo, color, out_verts);
             }
             (None, Some(nn)) => {
-                // Start endpoint: extend backward along segment 0.
-                let p = points[i] - forward_of(nn) * geo.cap_extension;
+                let p = points[i] - forward_of(nn) * geo.cap_extension();
                 push_cross_section(p, nn, 1.0, geo, color, out_verts);
             }
             (Some(np), None) => {
-                // End endpoint: extend forward past the last segment.
-                let p = points[i] + forward_of(np) * geo.cap_extension;
+                let p = points[i] + forward_of(np) * geo.cap_extension();
                 push_cross_section(p, np, 1.0, geo, color, out_verts);
             }
             (None, None) => unreachable!("polyline length < 2 short-circuits earlier"),
         }
-        cursor = cursor
-            .checked_add(if is_bevel { 8 } else { 4 })
-            .expect("polyline too long for u16 indices — bevel vertex count exceeded 65535");
 
-        // Bevel bridge at this point, if beveled. References the
-        // two cross-section blocks we just pushed.
-        if is_bevel {
-            let np = prev_seg_normal.unwrap();
-            let nn = next_seg_normal.unwrap();
-            push_bevel_bridge(current_offset, current_offset + 4, np, nn, out_indices);
-        }
-
-        // Strip for segment `(i-1, i)`: leading block at point i-1
-        // is `prev_offset + 4` if i-1 was beveled (use the leading
-        // duplicate), else `prev_offset`. Trailing block at point
-        // i is always `current_offset` — the first block at i.
+        // 2. Strip indices for segment (i-1, i). Emit BEFORE any
+        // fan / cap push so the strip references the freshly-pushed
+        // cross-section blocks before more verts pile on.
         if i > 0 {
-            let leading = prev_offset + if prev_was_bevel { 4 } else { 0 };
+            let leading = prev_offset + if prev_was_dual { 4 } else { 0 };
             push_strip_indices(leading, current_offset, out_indices);
         }
 
+        // 3. Join bridge at this point: flat bevel quad, or round
+        // arc fan. Miter that falls back to bevel uses the bevel
+        // quad (cheaper, still correct at the cut-off limit). Both
+        // also need a concave-side fill so the inside of the corner
+        // doesn't have a notch between the two adjacent strips.
+        if is_dual {
+            let np = prev_seg_normal.unwrap();
+            let nn = next_seg_normal.unwrap();
+            match geo.join {
+                LineJoin::Round => {
+                    push_round_join(
+                        points[i],
+                        np,
+                        nn,
+                        geo,
+                        color,
+                        call_start_verts,
+                        out_verts,
+                        out_indices,
+                    );
+                }
+                LineJoin::Bevel | LineJoin::Miter => {
+                    push_bevel_bridge(
+                        points[i],
+                        current_offset,
+                        current_offset + 4,
+                        np,
+                        nn,
+                        color,
+                        call_start_verts,
+                        out_verts,
+                        out_indices,
+                    );
+                }
+            }
+            push_concave_fill(
+                points[i],
+                current_offset,
+                current_offset + 4,
+                np,
+                nn,
+                color,
+                call_start_verts,
+                out_verts,
+                out_indices,
+            );
+        }
+
+        // 4. Round cap fans at endpoints. Butt and Square emit no
+        // cap geometry (Square's effect is the cross-section
+        // position shift handled in step 1).
+        if matches!(geo.cap, LineCap::Round) {
+            if i == 0
+                && let Some(nn) = next_seg_normal
+            {
+                push_round_cap(
+                    points[i],
+                    -forward_of(nn),
+                    geo,
+                    color,
+                    call_start_verts,
+                    out_verts,
+                    out_indices,
+                );
+            }
+            if i == n - 1
+                && let Some(np) = prev_seg_normal
+            {
+                push_round_cap(
+                    points[i],
+                    forward_of(np),
+                    geo,
+                    color,
+                    call_start_verts,
+                    out_verts,
+                    out_indices,
+                );
+            }
+        }
+
         prev_offset = current_offset;
-        prev_was_bevel = is_bevel;
+        prev_was_dual = is_dual;
         prev_seg_normal = next_seg_normal;
     }
 }
@@ -274,12 +365,17 @@ fn miter_bisector(normal_prev: Vec2, normal_next: Vec2) -> (Vec2, f32) {
 /// on `+normal` side (verts 0,1). Emits one quad (2 tris) joining
 /// the inner-edge + outer-fringe verts on that side. Mesh pipeline
 /// doesn't cull, so winding is informational only.
+#[allow(clippy::too_many_arguments)]
 fn push_bevel_bridge(
+    center: Vec2,
     trailing_block: u16,
     leading_block: u16,
     normal_prev: Vec2,
     normal_next: Vec2,
-    out: &mut Vec<u16>,
+    inner_color: Color,
+    call_start_verts: usize,
+    out_verts: &mut Vec<MeshVertex>,
+    out_indices: &mut Vec<u16>,
 ) {
     let cross = normal_prev.perp_dot(normal_next);
     let (inner_off, outer_off) = if cross > 0.0 { (2, 3) } else { (1, 0) };
@@ -287,7 +383,212 @@ fn push_bevel_bridge(
     let t_outer = trailing_block + outer_off;
     let l_inner = leading_block + inner_off;
     let l_outer = leading_block + outer_off;
-    out.extend_from_slice(&[t_inner, t_outer, l_outer, t_inner, l_outer, l_inner]);
+    // Center vert at P plus a P-anchored triangle: closes the
+    // wedge between the corner point and the bridge's inner edge.
+    // Without it, the strip end-edges (perpendicular to each
+    // adjacent segment) intersect at P with a triangular gap
+    // between them and the flat bridge above — visible as the
+    // tiny "pinhole" the user reported. Round join doesn't need
+    // this because its fan center is already at P.
+    let center_idx = (out_verts.len() - call_start_verts) as u16;
+    out_verts.push(MeshVertex {
+        pos: center,
+        color: inner_color,
+    });
+    out_indices.extend_from_slice(&[center_idx, t_inner, l_inner]);
+    out_indices.extend_from_slice(&[t_inner, t_outer, l_outer, t_inner, l_outer, l_inner]);
+}
+
+/// Concave-side fill at a dual join (bevel + round both need this).
+/// The strip from segment_prev terminates its concave-inner edge at
+/// `trailing.inner_concave` (perpendicular to segment_prev), while the
+/// strip from segment_next starts at `leading.inner_concave`
+/// (perpendicular to segment_next). Those two verts are at different
+/// positions, so without an explicit fill there's a visible notch on
+/// the inside of the corner — the gap the user sees on bevel/round
+/// joins. We close it with a triangle anchored at `P` plus the two
+/// concave inner verts (already in the buffer). One extra triangle, one
+/// extra vert per dual join; the outer-fringe concave gap stays
+/// uncovered (AA gradient → invisible at typical zoom).
+#[allow(clippy::too_many_arguments)]
+fn push_concave_fill(
+    center: Vec2,
+    trailing_block: u16,
+    leading_block: u16,
+    normal_prev: Vec2,
+    normal_next: Vec2,
+    inner_color: Color,
+    // Per-call vertex base — indices into `out_verts` are written
+    // 0-based to the current call's region so the composer's
+    // `base_vertex` offset (the `MeshDraw.vertices.start`) lines them
+    // up. Without this, a second polyline in the same frame would
+    // reference into the first polyline's verts → wild stray
+    // triangles.
+    call_start_verts: usize,
+    out_verts: &mut Vec<MeshVertex>,
+    out_indices: &mut Vec<u16>,
+) {
+    let cross = normal_prev.perp_dot(normal_next);
+    let inner_off: u16 = if cross > 0.0 { 1 } else { 2 };
+    let t_concave = trailing_block + inner_off;
+    let l_concave = leading_block + inner_off;
+    let center_idx = (out_verts.len() - call_start_verts) as u16;
+    out_verts.push(MeshVertex {
+        pos: center,
+        color: inner_color,
+    });
+    out_indices.extend_from_slice(&[center_idx, t_concave, l_concave]);
+}
+
+/// Number of fan slices for a round cap or join. Scales with the
+/// stroke's geometry-half (inner_offset) so a 1 px hairline cap is
+/// the cheap minimum and a fat stroke gets a smooth arc. Chord
+/// tolerance works out to roughly ≤ 0.5 phys px across the range.
+#[inline]
+fn round_segments(inner_offset: f32) -> u16 {
+    (inner_offset.ceil() as u16 * 2).clamp(4, 16)
+}
+
+/// Round-cap fan: half-disc centered at `center`, opening toward
+/// `outward`. The arc sweeps `±π/2` from `outward`, so the two
+/// endpoint-arc verts coincide visually with the cross-section's
+/// inner-edge corners (separate verts, identical positions —
+/// premultiplied-α addition is well-behaved).
+#[allow(clippy::too_many_arguments)]
+fn push_round_cap(
+    center: Vec2,
+    outward: Vec2,
+    geo: Geo,
+    inner_color: Color,
+    call_start_verts: usize,
+    out_verts: &mut Vec<MeshVertex>,
+    out_indices: &mut Vec<u16>,
+) {
+    let n = round_segments(geo.inner_offset);
+    push_round_fan(
+        center,
+        outward,
+        std::f32::consts::FRAC_PI_2,
+        n,
+        geo,
+        inner_color,
+        call_start_verts,
+        out_verts,
+        out_indices,
+    );
+}
+
+/// Round join: arc fan filling the convex-side wedge between the
+/// two segments. Half-angle = half the exterior turn (small for
+/// shallow turns, near `π/2` for near-180° folds). The dual
+/// cross-sections at the join provide the strip anchor points;
+/// this fan fills the gap visually equivalent to a round-stroke
+/// join.
+#[allow(clippy::too_many_arguments)]
+fn push_round_join(
+    center: Vec2,
+    normal_prev: Vec2,
+    normal_next: Vec2,
+    geo: Geo,
+    inner_color: Color,
+    call_start_verts: usize,
+    out_verts: &mut Vec<MeshVertex>,
+    out_indices: &mut Vec<u16>,
+) {
+    let cross = normal_prev.perp_dot(normal_next);
+    // Convex-side outward normals: opposite the "into the corner"
+    // side picked by the cross-product sign.
+    let (convex_prev, convex_next) = if cross > 0.0 {
+        (-normal_prev, -normal_next)
+    } else {
+        (normal_prev, normal_next)
+    };
+    let sum = convex_prev + convex_next;
+    let sum_len_sq = sum.length_squared();
+    // Antiparallel (180° fold) → bisector degenerate; pick a
+    // perpendicular to convex_prev as the fan direction and use a
+    // full half-disc.
+    let (bisector, half_angle) = if sum_len_sq < 1e-6 {
+        (
+            Vec2::new(-convex_prev.y, convex_prev.x),
+            std::f32::consts::FRAC_PI_2,
+        )
+    } else {
+        let bisector = sum / sum_len_sq.sqrt();
+        let cos_full = convex_prev.dot(convex_next).clamp(-1.0, 1.0);
+        (bisector, cos_full.acos() * 0.5)
+    };
+    let n = round_segments(geo.inner_offset);
+    push_round_fan(
+        center,
+        bisector,
+        half_angle,
+        n,
+        geo,
+        inner_color,
+        call_start_verts,
+        out_verts,
+        out_indices,
+    );
+}
+
+/// Emit an arc fan centered at `center`, opening toward
+/// `center_dir`, sweeping `±half_angle`. Pushes 1 center vert +
+/// 2·(`segments`+1) arc verts (alternating inner / outer fringe)
+/// and triangulates as a fan: inner triangle per slice, plus a
+/// fringe quad to the zero-α outer ring. Self-contained — no
+/// shared verts with strip geometry, so callers don't have to
+/// thread vert offsets.
+#[allow(clippy::too_many_arguments)]
+fn push_round_fan(
+    center: Vec2,
+    center_dir: Vec2,
+    half_angle: f32,
+    segments: u16,
+    geo: Geo,
+    inner_color: Color,
+    // Per-call vertex base; see `push_concave_fill`.
+    call_start_verts: usize,
+    out_verts: &mut Vec<MeshVertex>,
+    out_indices: &mut Vec<u16>,
+) {
+    let n = segments.max(1);
+    let step = 2.0 * half_angle / n as f32;
+    let start_angle = -half_angle;
+    let perp = Vec2::new(-center_dir.y, center_dir.x);
+    let outer_color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.0,
+    };
+    let base = (out_verts.len() - call_start_verts) as u16;
+    out_verts.push(MeshVertex {
+        pos: center,
+        color: inner_color,
+    });
+    for k in 0..=n {
+        let angle = start_angle + k as f32 * step;
+        let (s, c) = angle.sin_cos();
+        let dir = c * center_dir + s * perp;
+        out_verts.push(MeshVertex {
+            pos: center + dir * geo.inner_offset,
+            color: inner_color,
+        });
+        out_verts.push(MeshVertex {
+            pos: center + dir * geo.outer_offset,
+            color: outer_color,
+        });
+    }
+    for k in 0..n {
+        let inner_k = base + 1 + 2 * k;
+        let outer_k = base + 2 + 2 * k;
+        let inner_k1 = base + 1 + 2 * (k + 1);
+        let outer_k1 = base + 2 + 2 * (k + 1);
+        out_indices.extend_from_slice(&[base, inner_k, inner_k1]);
+        out_indices.extend_from_slice(&[inner_k, outer_k, outer_k1]);
+        out_indices.extend_from_slice(&[inner_k, outer_k1, inner_k1]);
+    }
 }
 
 /// Per-segment paints each segment in a solid block. Interior
@@ -323,7 +624,7 @@ fn emit_per_segment(
     let mut np = seg_normal(points[0], points[1]);
 
     // Start endpoint, cap-shifted backward along segment 0.
-    let p0 = points[0] - forward_of(np) * geo.cap_extension;
+    let p0 = points[0] - forward_of(np) * geo.cap_extension();
     push_cross_section(
         p0,
         np,
@@ -341,7 +642,7 @@ fn emit_per_segment(
         // normal at ext=1; mitered joins share the bisector
         // direction with ext factor.
         let nn = seg_normal(points[i], points[i + 1]);
-        let beveled = geo.force_bevel || is_sharp_join(np, nn);
+        let beveled = geo.dual_at(np, nn);
         let (trailing_normal, trailing_ext, leading_normal, leading_ext) = if beveled {
             (np, 1.0, nn, 1.0)
         } else {
@@ -369,7 +670,7 @@ fn emit_per_segment(
 
     // End endpoint, cap-shifted forward along the last segment
     // (`np` is now the segment ending at `points[n-1]`).
-    let pl = points[n - 1] + forward_of(np) * geo.cap_extension;
+    let pl = points[n - 1] + forward_of(np) * geo.cap_extension();
     push_cross_section(
         pl,
         np,
@@ -682,14 +983,20 @@ mod tests {
             &mut v,
             &mut i,
         );
-        assert_eq!(v.len(), 16);
-        assert_eq!(i.len(), 42);
-        // Bridge quad (6 indices, single-pass emits it before the
-        // strip closing back to the previous point) references
-        // only the trailing + leading blocks at the beveled
-        // interior point — never the endpoint blocks.
-        let bridge = &i[0..6];
-        for &idx in bridge {
+        // 16 cross-section verts + 1 bevel center + 1 concave-fill center = 18.
+        assert_eq!(v.len(), 18);
+        // 2 strips × 18 + bevel (3 center + 6 fringe) + concave 3 = 48.
+        assert_eq!(i.len(), 48);
+        // The 6-index outer-fringe portion of the bridge (after
+        // the center triangle) references only the trailing /
+        // leading blocks — never the endpoint blocks. Index layout:
+        //   0..18  = strip(0,1)
+        //   18..21 = bevel center triangle
+        //   21..27 = bevel outer-fringe quad (refs blocks 4..12)
+        //   27..30 = concave fill
+        //   30..48 = strip(1,2)
+        let bridge_fringe = &i[21..27];
+        for &idx in bridge_fringe {
             assert!(
                 (4..12).contains(&idx),
                 "bevel bridge index {idx} out of trailing/leading block range"
@@ -717,7 +1024,64 @@ mod tests {
             &mut v,
             &mut i,
         );
-        assert_eq!(v.len(), 16, "antiparallel join must bevel");
+        // 16 cross-section + 1 bevel center + 1 concave-fill center.
+        assert_eq!(v.len(), 18, "antiparallel join must bevel + concave fill");
+    }
+
+    /// Round cap emits a half-disc fan of `2*N + 3` verts per
+    /// endpoint (center + N+1 inner + N+1 outer fringe). For
+    /// `width = 2` ⇒ `inner_offset = 1` ⇒ `round_segments = 4`,
+    /// so each cap contributes 11 verts and 36 indices.
+    #[test]
+    fn round_caps_emit_fan_verts() {
+        let mut v = Vec::new();
+        let mut i = Vec::new();
+        tessellate_polyline_aa(
+            &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
+            &[red()],
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Round,
+                join: LineJoin::Miter,
+                width_phys: 2.0,
+            },
+            &mut v,
+            &mut i,
+        );
+        // 8 cross-section verts + 2 caps × 11 fan verts = 30.
+        assert_eq!(v.len(), 30);
+        // 1 strip × 18 indices + 2 caps × 36 indices = 90.
+        assert_eq!(i.len(), 90);
+    }
+
+    /// Round join emits an arc fan at each interior point with a
+    /// dual cross-section. Vert count: 2 cross-sections (8) + fan
+    /// (`2*N + 3`). For width=2 (N=4): 8 + 11 = 19 verts at the
+    /// join, plus 4 + 4 verts at endpoints = 27 total.
+    #[test]
+    fn round_join_emits_fan_at_interior() {
+        let mut v = Vec::new();
+        let mut i = Vec::new();
+        tessellate_polyline_aa(
+            &[
+                Vec2::new(0.0, 0.0),
+                Vec2::new(10.0, 0.0),
+                Vec2::new(10.0, 10.0),
+            ],
+            &[red()],
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Round,
+                width_phys: 2.0,
+            },
+            &mut v,
+            &mut i,
+        );
+        // 4 endpoint + 8 dual + 11 round-fan + 1 concave-fill + 4 endpoint = 28.
+        assert_eq!(v.len(), 28);
+        // 2 strips × 18 + 1 round-fan × 36 + 1 concave-fill × 3 = 75.
+        assert_eq!(i.len(), 75);
     }
 
     /// Degenerate input (< 2 points) emits nothing.
