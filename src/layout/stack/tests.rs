@@ -2,7 +2,7 @@ use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, sizing::Sizing};
 use crate::primitives::rect::Rect;
-use crate::support::testing::ui_at;
+use crate::support::testing::{ui_at, under_outer};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -450,5 +450,50 @@ fn hstack_fill_max_size_caps_measured_share() {
     assert_eq!(
         desired.w, 50.0,
         "Fill measure must clamp to max_size when leftover share > cap"
+    );
+}
+
+/// Pin: a parent's `max_size` clamps what its children see as
+/// `available` during measure. Regression: `measure_dispatch` used to
+/// derive `inner_avail` from the raw `available` without consulting
+/// `bounds.max_size`, so a Fill-width parent with a cap propagated
+/// the *uncapped* width down. Fill children then arranged past the
+/// parent's painted edge (visible bleed in the popup showcase).
+#[test]
+fn parent_max_size_clamps_children_available() {
+    use crate::primitives::size::Size;
+
+    let mut ui = ui_at(UVec2::new(1000, 200));
+
+    // `under_outer` wraps the unit under test in a Fill outer so the
+    // measured parent isn't the implicit Main root (which is force-
+    // sized to the surface and would mask `max_size`).
+    let mut child_node = None;
+    let parent_node = under_outer(&mut ui, UVec2::new(1000, 200), |ui| {
+        Panel::vstack()
+            .id_salt("capped-parent")
+            .size((Sizing::FILL, Sizing::Fixed(40.0)))
+            .max_size(Size::new(200.0, f32::INFINITY))
+            .show(ui, |ui| {
+                child_node = Some(
+                    Panel::hstack()
+                        .id_salt("inner")
+                        .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                        .show(ui, |_| {})
+                        .node,
+                );
+            })
+            .node
+    });
+    let parent_rect = ui.layout.result[crate::forest::tree::Layer::Main].rect[parent_node.index()];
+    assert_eq!(
+        parent_rect.size.w, 200.0,
+        "parent must arrange at its own max_size cap",
+    );
+    let inner_rect =
+        ui.layout.result[crate::forest::tree::Layer::Main].rect[child_node.unwrap().index()];
+    assert_eq!(
+        inner_rect.size.w, 200.0,
+        "Fill child must not bleed past parent's max_size cap",
     );
 }
