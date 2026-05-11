@@ -93,11 +93,12 @@ impl Color {
         a: 1.0,
     };
 
-    /// Alpha within `EPS` of zero — paints nothing. Mirrors the
-    /// `is_noop` predicate on `Stroke` / `Background` / `Surface` /
-    /// `ShapeRecord`; consistent name across primitives.
+    /// Alpha is non-positive, NaN, or within `EPS` of zero —
+    /// paints nothing. Mirrors the `is_noop` predicate on `Stroke`
+    /// / `Background` / `Surface` / `ShapeRecord`; consistent name
+    /// across primitives.
     pub const fn is_noop(self) -> bool {
-        super::approx::approx_zero(self.a)
+        super::approx::noop_f32(self.a)
     }
 
     /// `(r, g, b)` in 0..1 sRGB space (the default — matches CSS, Figma, Photoshop).

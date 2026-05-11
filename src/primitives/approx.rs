@@ -16,3 +16,15 @@ pub(crate) const EPS: f32 = 1.0e-4;
 pub const fn approx_zero(c: f32) -> bool {
     c >= -EPS && c <= EPS
 }
+
+/// True if `v` would produce no visible paint when used as a
+/// magnitude (stroke width, alpha, etc.). Captures three cases in
+/// one comparison: `v <= EPS` is true for near-zero positives,
+/// exact zero, and any negative; the `is_nan` branch handles the
+/// NaN case (NaN compares false against everything). Useful as the
+/// shared predicate behind `Stroke::is_noop`, `Color::is_noop`,
+/// and per-variant `Shape::is_noop` checks — keeps the
+/// "non-paintable scalar" contract in one place.
+pub const fn noop_f32(v: f32) -> bool {
+    v.is_nan() || v <= EPS
+}
