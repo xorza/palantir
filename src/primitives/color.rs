@@ -135,6 +135,29 @@ impl Color {
         }
     }
 
+    /// Scale all four channels by `mul`. Premultiplied-correct fade:
+    /// scaling RGB and A by the same factor moves a premultiplied
+    /// color along the line toward transparent. Stroke tessellation
+    /// uses this for the hairline (<1 phys px) alpha fade.
+    pub const fn scale_premultiplied(self, mul: f32) -> Self {
+        Self {
+            r: self.r * mul,
+            g: self.g * mul,
+            b: self.b * mul,
+            a: self.a * mul,
+        }
+    }
+
+    /// Per-channel midpoint of two colors.
+    pub const fn midpoint(self, other: Self) -> Self {
+        Self {
+            r: (self.r + other.r) * 0.5,
+            g: (self.g + other.g) * 0.5,
+            b: (self.b + other.b) * 0.5,
+            a: (self.a + other.a) * 0.5,
+        }
+    }
+
     /// 8-bit sRGB channels (Figma/CSS/Photoshop convention). Linearized
     /// internally, same as `Color::rgb`. `#3366CC` → `Color::rgb_u8(0x33, 0x66, 0xCC)`.
     pub const fn rgb_u8(r: u8, g: u8, b: u8) -> Self {

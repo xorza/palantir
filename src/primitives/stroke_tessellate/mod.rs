@@ -1,3 +1,4 @@
+use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::shape::{ColorMode, LineCap, LineJoin};
@@ -83,6 +84,13 @@ pub(crate) fn tessellate_polyline_aa(
     if points.len() < 2 {
         return;
     }
+    // Reject NaN, zero, near-zero, and negative widths up front —
+    // they'd produce invisible verts at best and NaN positions at
+    // worst. `noop_f32` is the shared "non-paintable scalar"
+    // predicate used elsewhere for Stroke/Color/Shape.
+    if noop_f32(style.width_phys) {
+        return;
+    }
     assert!(matches_mode(points.len(), colors.len(), style.mode));
 
     let half_geom = (style.width_phys * 0.5).max(HALF_FRINGE);
@@ -100,9 +108,19 @@ pub(crate) fn tessellate_polyline_aa(
         geo,
     };
     match style.mode {
-        ColorMode::Single | ColorMode::PerPoint => emit_simple(points, colors, style.mode, &mut e),
+        ColorMode::Single => emit_simple(points, colors, SimpleMode::Single, &mut e),
+        ColorMode::PerPoint => emit_simple(points, colors, SimpleMode::PerPoint, &mut e),
         ColorMode::PerSegment => emit_per_segment(points, colors, &mut e),
     }
+}
+
+/// Subset of [`ColorMode`] handled by [`emit_simple`]. Splitting
+/// the enum here removes the `unreachable!()` arm that a unified
+/// `ColorMode` match would carry.
+#[derive(Clone, Copy)]
+enum SimpleMode {
+    Single,
+    PerPoint,
 }
 
 /// Geometry + style parameters shared by both emit paths. Pre-
@@ -131,39 +149,43 @@ impl Geo {
     }
 }
 
-/// Classification of an interior join, combining the sharp-join
-/// test with the miter bisector so both queries share one
-/// normalization. `Sharp` covers antiparallel folds and miters
-/// past [`MITER_LIMIT`]; `Smooth` carries the bisector direction
-/// and miter extension factor.
-enum JoinClass {
-    Sharp,
-    Smooth { bisector: Vec2, ext: f32 },
-}
-
-impl JoinClass {
-    fn needs_dual_section(&self, join: LineJoin) -> bool {
-        match (self, join) {
-            (JoinClass::Sharp, _) => true,
-            (JoinClass::Smooth { .. }, LineJoin::Bevel | LineJoin::Round) => true,
-            (JoinClass::Smooth { .. }, LineJoin::Miter) => false,
-        }
-    }
+/// Resolved geometry for an interior join, combining the
+/// sharp-vs-smooth classification with the line-join policy.
+/// `Dual` carries the two segment normals (sharp joins, or smooth
+/// joins under Bevel/Round); `Single` carries the miter bisector
+/// and extension factor (smooth join under Miter).
+enum InteriorJoin {
+    Dual {
+        normal_prev: Vec2,
+        normal_next: Vec2,
+    },
+    Single {
+        bisector: Vec2,
+        ext: f32,
+    },
 }
 
 #[inline]
-fn classify_join(normal_prev: Vec2, normal_next: Vec2) -> JoinClass {
+fn resolve_interior_join(normal_prev: Vec2, normal_next: Vec2, join: LineJoin) -> InteriorJoin {
     let sum = normal_prev + normal_next;
     let len_sq = sum.length_squared();
     if len_sq < ANTIPARALLEL_EPS_SQ {
-        return JoinClass::Sharp;
+        return InteriorJoin::Dual {
+            normal_prev,
+            normal_next,
+        };
     }
     let bisector = sum / len_sq.sqrt();
     let cos_half = bisector.dot(normal_prev);
-    if cos_half < 1.0 / MITER_LIMIT {
-        JoinClass::Sharp
+    let sharp = cos_half < 1.0 / MITER_LIMIT;
+    let dual = sharp || !matches!(join, LineJoin::Miter);
+    if dual {
+        InteriorJoin::Dual {
+            normal_prev,
+            normal_next,
+        }
     } else {
-        JoinClass::Smooth {
+        InteriorJoin::Single {
             bisector,
             ext: 1.0 / cos_half,
         }
@@ -171,15 +193,14 @@ fn classify_join(normal_prev: Vec2, normal_next: Vec2) -> JoinClass {
 }
 
 /// Single + PerPoint emission: one cross-section per kept point
-/// for non-sharp joins; two cross-sections (a bevel) when the
-/// miter factor would exceed [`MITER_LIMIT`]. Consecutive
-/// coincident points are skipped via [`next_kept`].
-fn emit_simple(points: &[Vec2], colors: &[Color], mode: ColorMode, e: &mut Emitter) {
+/// for smooth-miter joins; two cross-sections when the resolved
+/// join is `Dual`. Consecutive coincident points are skipped via
+/// [`next_kept`].
+fn emit_simple(points: &[Vec2], colors: &[Color], mode: SimpleMode, e: &mut Emitter) {
     let n = points.len();
     let mut prev_offset: u16 = 0;
     let mut prev_was_dual = false;
     let mut prev_seg_normal: Option<Vec2> = None;
-    let mut has_prev_kept = false;
     let mut i = 0;
 
     while i < n {
@@ -196,69 +217,73 @@ fn emit_simple(points: &[Vec2], colors: &[Color], mode: ColorMode, e: &mut Emitt
             return;
         }
 
-        let join_class = match (prev_seg_normal, next_seg_normal) {
-            (Some(np), Some(nn)) => Some(classify_join(np, nn)),
+        let interior = match (prev_seg_normal, next_seg_normal) {
+            (Some(np), Some(nn)) => Some(resolve_interior_join(np, nn, e.geo.join)),
             _ => None,
         };
-        let is_dual = join_class
-            .as_ref()
-            .is_some_and(|c| c.needs_dual_section(e.geo.join));
+        let is_dual = matches!(interior, Some(InteriorJoin::Dual { .. }));
         let current_offset = e.cursor();
-        let color = scale_alpha(
-            match mode {
-                ColorMode::Single => colors[0],
-                ColorMode::PerPoint => colors[i],
-                ColorMode::PerSegment => unreachable!(),
-            },
-            e.geo.alpha_scale,
-        );
+        let color = match mode {
+            SimpleMode::Single => colors[0],
+            SimpleMode::PerPoint => colors[i],
+        }
+        .scale_premultiplied(e.geo.alpha_scale);
 
         // 1. Cross-section verts.
-        match (prev_seg_normal, next_seg_normal) {
-            (Some(np), Some(nn)) if is_dual => {
-                e.push_cross_section(points[i], np, 1.0, color);
-                e.push_cross_section(points[i], nn, 1.0, color);
+        match (prev_seg_normal, next_seg_normal, &interior) {
+            (
+                _,
+                _,
+                Some(InteriorJoin::Dual {
+                    normal_prev,
+                    normal_next,
+                }),
+            ) => {
+                e.push_cross_section(points[i], *normal_prev, 1.0, color);
+                e.push_cross_section(points[i], *normal_next, 1.0, color);
             }
-            (Some(_), Some(_)) => {
-                let JoinClass::Smooth { bisector, ext } = join_class.as_ref().unwrap() else {
-                    unreachable!("non-dual interior join is always Smooth");
-                };
+            (_, _, Some(InteriorJoin::Single { bisector, ext })) => {
                 e.push_cross_section(points[i], *bisector, *ext, color);
             }
-            (None, Some(nn)) => {
+            (None, Some(nn), None) => {
                 let p = points[i] - tangent_of(nn) * e.geo.cap_extension();
                 e.push_cross_section(p, nn, 1.0, color);
             }
-            (Some(np), None) => {
+            (Some(np), None, None) => {
                 let p = points[i] + tangent_of(np) * e.geo.cap_extension();
                 e.push_cross_section(p, np, 1.0, color);
             }
-            (None, None) => unreachable!("guarded above"),
+            (None, None, _) => unreachable!("guarded above"),
+            (Some(_), Some(_), None) => unreachable!("interior is Some when both normals are"),
         }
 
         // 2. Strip indices for segment (prev_kept, i).
-        if has_prev_kept {
+        if prev_seg_normal.is_some() {
             let leading = prev_offset + if prev_was_dual { BLOCK } else { 0 };
             e.push_strip_indices(leading, current_offset);
         }
 
         // 3. Join chrome at this point.
-        if is_dual {
-            let np = prev_seg_normal.unwrap();
-            let nn = next_seg_normal.unwrap();
+        if let Some(InteriorJoin::Dual {
+            normal_prev,
+            normal_next,
+        }) = interior
+        {
             e.push_join_chrome(
                 points[i],
                 current_offset,
                 current_offset + BLOCK,
-                np,
-                nn,
+                normal_prev,
+                normal_next,
                 color,
             );
         }
 
         // 4. Round cap fans at endpoints.
         if matches!(e.geo.cap, LineCap::Round) {
-            if !has_prev_kept && let Some(nn) = next_seg_normal {
+            if prev_seg_normal.is_none()
+                && let Some(nn) = next_seg_normal
+            {
                 e.push_round_cap(points[i], -tangent_of(nn), color);
             }
             if next_seg_normal.is_none()
@@ -271,7 +296,6 @@ fn emit_simple(points: &[Vec2], colors: &[Color], mode: ColorMode, e: &mut Emitt
         prev_offset = current_offset;
         prev_was_dual = is_dual;
         prev_seg_normal = next_seg_normal;
-        has_prev_kept = true;
         i = next_idx;
     }
 }
@@ -291,7 +315,7 @@ fn emit_per_segment(points: &[Vec2], colors: &[Color], e: &mut Emitter) {
     let mut np = seg_normal(points[0], points[second]);
 
     // Start endpoint.
-    let start_color = scale_alpha(colors[0], e.geo.alpha_scale);
+    let start_color = colors[0].scale_premultiplied(e.geo.alpha_scale);
     let p0 = points[0] - tangent_of(np) * e.geo.cap_extension();
     e.push_cross_section(p0, np, 1.0, start_color);
     if matches!(e.geo.cap, LineCap::Round) {
@@ -304,7 +328,7 @@ fn emit_per_segment(points: &[Vec2], colors: &[Color], e: &mut Emitter) {
         let next = next_kept(points, i);
         if next >= n {
             // i is the last kept point — end cap.
-            let end_color = scale_alpha(colors[i - 1], e.geo.alpha_scale);
+            let end_color = colors[i - 1].scale_premultiplied(e.geo.alpha_scale);
             let end_offset = e.cursor();
             let pl = points[i] + tangent_of(np) * e.geo.cap_extension();
             e.push_cross_section(pl, np, 1.0, end_color);
@@ -316,40 +340,39 @@ fn emit_per_segment(points: &[Vec2], colors: &[Color], e: &mut Emitter) {
         }
 
         let nn = seg_normal(points[i], points[next]);
-        let class = classify_join(np, nn);
-        let dual = class.needs_dual_section(e.geo.join);
-        let trailing_color = scale_alpha(colors[i - 1], e.geo.alpha_scale);
-        let leading_color = scale_alpha(colors[i], e.geo.alpha_scale);
-
+        let trailing_color = colors[i - 1].scale_premultiplied(e.geo.alpha_scale);
+        let leading_color = colors[i].scale_premultiplied(e.geo.alpha_scale);
         let trailing_offset = e.cursor();
-        if dual {
-            // Trailing + leading land on the same point but with
-            // different segment directions — must stay separate.
-            e.push_cross_section(points[i], np, 1.0, trailing_color);
-            e.push_strip_indices(prev_block_offset, trailing_offset);
-            let leading_offset = e.cursor();
-            e.push_cross_section(points[i], nn, 1.0, leading_color);
-            e.push_join_chrome(
-                points[i],
-                trailing_offset,
-                leading_offset,
-                np,
-                nn,
-                avg_color(trailing_color, leading_color),
-            );
-            prev_block_offset = leading_offset;
-        } else {
-            let JoinClass::Smooth { bisector, ext } = class else {
-                unreachable!("non-dual implies Smooth");
-            };
-            if trailing_color == leading_color {
+
+        match resolve_interior_join(np, nn, e.geo.join) {
+            InteriorJoin::Dual {
+                normal_prev,
+                normal_next,
+            } => {
+                // Different directions — cross-sections stay separate.
+                e.push_cross_section(points[i], normal_prev, 1.0, trailing_color);
+                e.push_strip_indices(prev_block_offset, trailing_offset);
+                let leading_offset = e.cursor();
+                e.push_cross_section(points[i], normal_next, 1.0, leading_color);
+                e.push_join_chrome(
+                    points[i],
+                    trailing_offset,
+                    leading_offset,
+                    normal_prev,
+                    normal_next,
+                    trailing_color.midpoint(leading_color),
+                );
+                prev_block_offset = leading_offset;
+            }
+            InteriorJoin::Single { bisector, ext } if trailing_color == leading_color => {
                 // Same color + smooth miter ⇒ one cross-section
-                // can serve both segments; halves vert + index
-                // count at this join.
+                // serves both segments; halves the vert count at
+                // this join.
                 e.push_cross_section(points[i], bisector, ext, trailing_color);
                 e.push_strip_indices(prev_block_offset, trailing_offset);
                 prev_block_offset = trailing_offset;
-            } else {
+            }
+            InteriorJoin::Single { bisector, ext } => {
                 e.push_cross_section(points[i], bisector, ext, trailing_color);
                 e.push_strip_indices(prev_block_offset, trailing_offset);
                 let leading_offset = e.cursor();
@@ -601,28 +624,6 @@ fn round_segments(inner_offset: f32) -> u16 {
     (inner_offset.ceil() as u16 * 2).clamp(MIN_ROUND_FAN_SEGS, MAX_ROUND_FAN_SEGS)
 }
 
-#[inline]
-fn scale_alpha(c: Color, s: f32) -> Color {
-    Color {
-        r: c.r * s,
-        g: c.g * s,
-        b: c.b * s,
-        a: c.a * s,
-    }
-}
-
-#[inline]
-fn avg_color(x: Color, y: Color) -> Color {
-    Color {
-        r: (x.r + y.r) * 0.5,
-        g: (x.g + y.g) * 0.5,
-        b: (x.b + y.b) * 0.5,
-        a: (x.a + y.a) * 0.5,
-    }
-}
-
-/// Segment tangent given its normal. `normal = (-dy, dx)` ⇒
-/// `tangent = (dx, dy) = (normal.y, -normal.x)`.
 #[inline]
 fn tangent_of(normal: Vec2) -> Vec2 {
     Vec2::new(normal.y, -normal.x)
