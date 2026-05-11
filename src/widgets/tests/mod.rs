@@ -1,4 +1,5 @@
 mod canvas;
+mod drag;
 mod frame;
 mod panel;
 mod popup;

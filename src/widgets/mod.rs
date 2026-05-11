@@ -11,6 +11,7 @@ pub(crate) mod theme;
 use crate::forest::tree::NodeId;
 use crate::input::ResponseState;
 use crate::primitives::rect::Rect;
+use glam::Vec2;
 
 #[cfg(test)]
 mod tests;
@@ -33,5 +34,18 @@ impl Response {
     }
     pub fn clicked(&self) -> bool {
         self.state.clicked
+    }
+    /// Cumulative pointer travel since press while this widget holds
+    /// the active, threshold-crossed drag. Compose against an anchor
+    /// captured on `drag_started()`: `pos = anchor + delta`. `None`
+    /// outside drag and for sub-threshold wiggle.
+    pub fn drag_delta(&self) -> Option<Vec2> {
+        self.state.drag_delta
+    }
+    /// One-frame edge: fires on exactly the frame the drag latches.
+    /// Snapshot the position here to anchor subsequent `drag_delta`
+    /// reads.
+    pub fn drag_started(&self) -> bool {
+        self.state.drag_started
     }
 }
