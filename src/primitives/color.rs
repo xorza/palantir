@@ -317,6 +317,10 @@ const fn srgb_to_linear(c: f32) -> f32 {
     c * (c * (c * 0.305_306_01 + 0.682_171_1) + 0.012_522_878)
 }
 
+// Used by the gradient LUT bake; no other in-crate caller until slice 2
+// wires the atlas through the encoder/composer. `dead_code` would
+// otherwise trip `clippy -D warnings` on a clean step-1-only branch.
+#[allow(dead_code)]
 /// Linear-RGB → Oklab. Matrix constants from Björn Ottosson's reference
 /// (https://bottosson.github.io/posts/oklab/). Used by the gradient LUT
 /// bake when `Interp::Oklab` is selected — interpolation in Oklab gives
@@ -338,6 +342,7 @@ pub(crate) fn linear_to_oklab(r: f32, g: f32, b: f32) -> [f32; 3] {
     ]
 }
 
+#[allow(dead_code)]
 /// Inverse of `linear_to_oklab`. Cube of the intermediate trichromatic
 /// values can be negative for out-of-gamut Oklab values — gradient
 /// lerps stay in-gamut by construction (both endpoints are valid
