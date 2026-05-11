@@ -116,7 +116,7 @@ fn baseline_draw_rect_count_cases() {
             }
         });
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let cmds = encode_cmds(&ui);
         assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
     }
@@ -146,7 +146,7 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
         Frame::new().id_salt("host").size(50.0).show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     let draws = cmds
         .kinds
@@ -196,7 +196,7 @@ fn line_shape_emits_draw_polyline() {
         Frame::new().id_salt("host").size(50.0).show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     let count = cmds
         .kinds
@@ -226,7 +226,7 @@ fn text_shape_emits_draw_text() {
         Text::new("hi").auto_id().show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     assert!(
         cmds.kinds.contains(&CmdKind::DrawText),
@@ -249,7 +249,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
             .show(ui, |_| {});
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1, "clip-only surface must push a clip");
@@ -283,7 +283,7 @@ fn clip_emits_balanced_push_pop() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
 
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
@@ -349,7 +349,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
         );
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
 
     let rounded_idx = cmds
@@ -388,7 +388,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     assert_eq!(
         cmds.kinds
@@ -532,7 +532,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     let drawn = screen_rects_by_fill(&cmds);
 
@@ -664,7 +664,7 @@ fn nested_clips_each_emit_their_own_pair() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
@@ -695,7 +695,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             );
         });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cascades = &ui.cascades.result;
     let child = child_node.unwrap();
     assert_eq!(cascades.entries[child.index()].sense, Sense::NONE);
@@ -766,7 +766,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     let text_rect = (0..cmds.kinds.len())
         .find_map(|i| match cmds.kinds[i] {
@@ -824,7 +824,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // DamageEngine filter covers only the left half (x: 0..50). `a` at
     // (0,0,40,40) intersects; `b` at (40,0,40,40) intersects too
     // (its left edge is at x=40 which is < 50). Use a tighter filter.
@@ -855,7 +855,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
             .show(ui);
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds_filtered(&ui, Some(Rect::new(0.0, 0.0, 200.0, 200.0)));
     assert!(count_draw_rects(&cmds) >= 1);
 }
@@ -890,7 +890,7 @@ fn damage_filter_culls_subtree_outside_damage() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Filter misses the clipped panel entirely.
     let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
@@ -933,7 +933,7 @@ fn damage_filter_culls_transformed_subtree_outside_damage() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
 
     let pushes = cmds
@@ -983,7 +983,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
             }
         });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Two damage rects that each cover one corner; the bottom-left
     // corner falls outside both. The rects are far apart, so the
     // merge policy keeps them separate.
@@ -1017,7 +1017,7 @@ fn viewport_cull_skips_offscreen_subtree() {
                 .show(ui);
         });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     assert_eq!(
         count_draw_rects(&cmds),
@@ -1056,7 +1056,7 @@ fn viewport_cull_keeps_onscreen_sibling() {
                 .show(ui);
         });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cmds = encode_cmds(&ui);
     assert_eq!(
         count_draw_rects(&cmds),

@@ -117,7 +117,7 @@ impl Ui {
     /// once, re-records on action input or `request_relayout`, paints
     /// the last pass. `now` is monotonic host time;
     /// `Ui::{dt,time,frame_id}` derive from it. See `docs/repaint.md`.
-    pub fn run_frame(
+    pub fn frame(
         &mut self,
         display: Display,
         now: Duration,
@@ -144,7 +144,7 @@ impl Ui {
             record(self);
             self.post_record();
         }
-        let damage = self.paint();
+        let damage = self.finalize_frame();
 
         if matches!(damage, Damage::Skip) {
             self.frame_state.mark_submitted();
@@ -236,7 +236,7 @@ impl Ui {
     /// Sweep runs here (once per `run_frame`) rather than per
     /// `post_record` so a widget that vanishes in pass A but returns
     /// in pass B keeps its state across the discard.
-    pub(crate) fn paint(&mut self) -> Damage {
+    pub(crate) fn finalize_frame(&mut self) -> Damage {
         let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);

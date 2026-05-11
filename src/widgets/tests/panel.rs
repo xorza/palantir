@@ -93,7 +93,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
         cases.push(("rounded-zero", n, ClipMode::Rect, true));
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     for (name, id, expected_clip, expects_chrome) in &cases {
         let clip = ui.forest.tree(Layer::Main).records.attrs()[id.index()].clip_mode();
         assert_eq!(clip, *expected_clip, "[{name}] clip mode");
@@ -142,7 +142,7 @@ fn panel_hugs_largest_child_and_layers_them() {
         );
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
     let panel = ui.layout[Layer::Main].rect[panel_node.unwrap().index()];
     assert_eq!(panel.size.w, 100.0);
@@ -200,7 +200,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let child = ui.layout[Layer::Main].rect[child_node.unwrap().index()];
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
     assert_eq!(child.min.x, 10.0);
@@ -232,7 +232,7 @@ fn child_inside_disabled_panel_sees_disabled_at_record_time() {
             Frame::new().id(child_id).size(10.0).show(ui);
         });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     assert!(
         observed.expect("query ran").disabled,
         "child inside disabled panel must see disabled at record time",
@@ -263,7 +263,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
             });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     click_at(&mut ui, Vec2::new(40.0, 40.0));
 
     ui.pre_record(Display::default());

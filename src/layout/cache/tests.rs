@@ -13,7 +13,7 @@ fn run_frame(ui: &mut Ui, record: impl FnOnce(&mut Ui)) {
     begin(ui, UVec2::new(200, 200));
     Panel::hstack().id_salt("root").show(ui, record);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
 }
 
 /// Read the snapshot's live arena range for `wid`.
@@ -185,7 +185,7 @@ fn changing_available_forces_miss_and_remeasure() {
     begin(&mut ui, UVec2::new(200, 200));
     Panel::hstack().id_salt("root").show(&mut ui, build);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let wid = WidgetId::from_hash("fill");
     let avail1 = snap_for(&ui, wid).unwrap().avail;
     let d1 = snap_for(&ui, wid).unwrap().desired[0];
@@ -193,7 +193,7 @@ fn changing_available_forces_miss_and_remeasure() {
     begin(&mut ui, UVec2::new(80, 80));
     Panel::hstack().id_salt("root").show(&mut ui, build);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let avail2 = snap_for(&ui, wid).unwrap().avail;
     let desired2 = snap_for(&ui, wid).unwrap().desired[0];
     assert_ne!(
@@ -301,7 +301,7 @@ fn in_place_rewrite_preserves_arena_position() {
         .id_salt("root")
         .show(&mut ui, |ui| build(ui, 0.2));
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let start1 = snap_for(&ui, WidgetId::from_hash("a"))
         .unwrap()
         .snap
@@ -315,7 +315,7 @@ fn in_place_rewrite_preserves_arena_position() {
         .id_salt("root")
         .show(&mut ui, |ui| build(ui, 0.9));
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let start2 = snap_for(&ui, WidgetId::from_hash("a"))
         .unwrap()
         .snap
@@ -348,7 +348,7 @@ fn arena_invariant_holds_under_fragmentation() {
         }
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Drop all but one and add a fresh subtree to force append-path
     // writes; expect compaction to trigger somewhere along the way.
     begin(&mut ui, UVec2::new(800, 800));
@@ -361,7 +361,7 @@ fn arena_invariant_holds_under_fragmentation() {
         });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cache = &ui.layout_engine.cache;
     if cache.nodes.live > COMPACT_FLOOR {
         assert!(
@@ -394,7 +394,7 @@ fn cache_hits_remain_valid_after_compaction() {
         }
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let kept_wid = WidgetId::from_hash(("a", 0usize));
     let kept_desired_pre = snap_for(&ui, kept_wid).unwrap().desired[0];
 
@@ -409,7 +409,7 @@ fn cache_hits_remain_valid_after_compaction() {
         });
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Whether or not compaction fired, the kept widget's snapshot
     // must still describe the right desired and arena range.
     let cache = &ui.layout_engine.cache;
@@ -468,7 +468,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
     let mut ui = ui_at(UVec2::new(400, 400));
     build(&mut ui, Color::rgb(1.0, 0.0, 0.0));
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let snap = |ui: &Ui, key: &str| {
         ui.layout_engine
             .cache
@@ -490,7 +490,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
     begin(&mut ui, UVec2::new(400, 400));
     build(&mut ui, Color::rgb(0.0, 1.0, 0.0));
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let root_2 = snap(&ui, "root");
     let branch_2 = snap(&ui, "changing-branch");
     let leaf_2 = snap(&ui, "changing-leaf");

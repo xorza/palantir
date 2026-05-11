@@ -45,7 +45,7 @@ fn bench_cascade(c: &mut Criterion) {
         // Build once, post_record once to populate layout.results, then
         // measure cascades.run in isolation.
         let mut ui = Ui::new();
-        let _ = ui.run_frame(display, std::time::Duration::ZERO, |ui| build_flat(ui, n));
+        let _ = ui.frame(display, std::time::Duration::ZERO, |ui| build_flat(ui, n));
 
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| {

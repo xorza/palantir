@@ -62,7 +62,7 @@ fn click_inside_popup_does_not_dismiss() {
     let mut ui = ui_at(SURFACE);
     let (_, _) = record_with_popup(&mut ui, ClickOutside::Dismiss);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // Click at the center of the popup body's arranged rect — well
     // inside (body is Fixed `BODY_W × BODY_H` from `ANCHOR`).
     let inside = Vec2::new(ANCHOR.x + BODY_W * 0.5, ANCHOR.y + BODY_H * 0.5);
@@ -71,7 +71,7 @@ fn click_inside_popup_does_not_dismiss() {
     begin(&mut ui, SURFACE);
     let (resp, main_clicked) = record_with_popup(&mut ui, ClickOutside::Dismiss);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     assert!(
         !resp.dismissed,
         "click inside body must not signal dismissal",
@@ -88,7 +88,7 @@ fn click_outside_popup_dismisses_and_blocks_main() {
     let mut ui = ui_at(SURFACE);
     record_with_popup(&mut ui, ClickOutside::Dismiss);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     // (300, 300) is on the surface but well outside the popup body
     // `[50..150] × [50..110]`. Falls through to the eater.
     click_at(&mut ui, Vec2::new(300.0, 300.0));
@@ -96,7 +96,7 @@ fn click_outside_popup_dismisses_and_blocks_main() {
     begin(&mut ui, SURFACE);
     let (resp, main_clicked) = record_with_popup(&mut ui, ClickOutside::Dismiss);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     assert!(
         resp.dismissed,
         "outside click with `Dismiss` must signal dismissal",
@@ -141,7 +141,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
                 }
             });
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
     }
 
     // Pop the press outside the popup body.
@@ -150,7 +150,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     // Frame 1: run_frame should re-record once dismissal fires, so
     // pass 2's painted tree has zero `Layer::Popup` nodes.
     let display = Display::from_physical(SURFACE, 1.0);
-    let _frame_out = ui.run_frame(display, std::time::Duration::ZERO, |ui| {
+    let _frame_out = ui.frame(display, std::time::Duration::ZERO, |ui| {
         Panel::vstack()
             .id_salt("main-bg")
             .size((Sizing::FILL, Sizing::FILL))
@@ -231,7 +231,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                     });
             });
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let popup_tree = ui.forest.tree(Layer::Popup);
         // roots = [eater, body]. Body is the second root.
         let body_root = popup_tree.roots[1].first_node as usize;
@@ -252,13 +252,13 @@ fn click_outside_blocks_main_without_signaling_with_block_mode() {
     let mut ui = ui_at(SURFACE);
     record_with_popup(&mut ui, ClickOutside::Block);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     click_at(&mut ui, Vec2::new(300.0, 300.0));
 
     begin(&mut ui, SURFACE);
     let (resp, main_clicked) = record_with_popup(&mut ui, ClickOutside::Block);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     assert!(!resp.dismissed, "`Block` mode must not signal dismissal",);
     assert!(
         !main_clicked,

@@ -31,7 +31,7 @@ fn assert_warm_rects_match_cold(
     let mut cold_nodes = Vec::new();
     record(ui, &mut cold_nodes);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cold: Vec<_> = cold_nodes
         .iter()
         .map(|n| ui.layout[Layer::Main].rect[n.index()])
@@ -41,7 +41,7 @@ fn assert_warm_rects_match_cold(
     let mut warm_nodes = Vec::new();
     record(ui, &mut warm_nodes);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let warm: Vec<_> = warm_nodes
         .iter()
         .map(|n| ui.layout[Layer::Main].rect[n.index()])
@@ -279,13 +279,13 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     let mut ui = ui_with_text(UVec2::new(800, 600));
     record(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let cold = encode_cmds(&ui);
 
     begin(&mut ui, UVec2::new(800, 600));
     record(&mut ui);
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let warm = encode_cmds(&ui);
 
     assert_eq!(cold.kinds, warm.kinds, "cmd kind sequence must match");
@@ -348,7 +348,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         let mut warm_nodes = Vec::new();
         record(&mut ui, &mut warm_nodes);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let warm_rects: Vec<_> = warm_nodes
             .iter()
             .map(|n| ui.layout[Layer::Main].rect[n.index()])
@@ -359,7 +359,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         let mut cold_nodes = Vec::new();
         record(&mut ui, &mut cold_nodes);
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let cold_rects: Vec<_> = cold_nodes
             .iter()
             .map(|n| ui.layout[Layer::Main].rect[n.index()])

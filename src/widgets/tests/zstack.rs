@@ -44,7 +44,7 @@ fn zstack_layers_children_without_painting_background() {
         );
     });
     ui.post_record();
-    ui.paint();
+    ui.finalize_frame();
     let z = zstack_node.unwrap();
     // ZStack itself paints nothing.
     assert!(shapes_of(ui.forest.tree(Layer::Main), z).next().is_none());
@@ -99,7 +99,7 @@ fn zstack_aligns_child_per_axis() {
                 });
         });
         ui.post_record();
-        ui.paint();
+        ui.finalize_frame();
         let r = ui.layout[Layer::Main].rect[child_node.unwrap().index()];
         assert_eq!((r.min.x, r.min.y), *expected, "case: {label}");
         assert_eq!(
