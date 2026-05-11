@@ -23,7 +23,6 @@ use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::Ui;
-use crate::ui::damage::Damage;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -121,7 +120,6 @@ impl Frontend {
     /// stage reads everything it needs from the inputs without
     /// per-call theme threading.
     pub(crate) fn build(&mut self, ui: &Ui) -> &mut RenderBuffer {
-    
         let cmds = self.encoder.encode(ui);
         self.composer.compose(cmds, ui.display, &mut self.buffer);
         &mut self.buffer
