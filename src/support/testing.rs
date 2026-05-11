@@ -79,7 +79,7 @@ pub(crate) fn new_ui_text() -> Ui {
         static SHARED: TextShaper = TextShaper::with_bundled_fonts();
     }
     let mut ui = Ui::new();
-    SHARED.with(|c| ui.set_text_shaper(c.clone()));
+    SHARED.with(|c| ui.text = c.clone());
     ui
 }
 

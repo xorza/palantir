@@ -34,7 +34,10 @@ pub struct Ui {
     pub theme: Theme,
     /// Cross-frame `WidgetId → Any` widget state.
     pub(crate) state: StateMap,
-    pub(crate) text: TextShaper,
+    /// Shared font/glyph shaper. Set this to the same handle the wgpu
+    /// backend was constructed with so both see one buffer cache;
+    /// leave at default for headless / mono-fallback contexts.
+    pub text: TextShaper,
     pub(crate) layout: LayoutEngine,
     pub(crate) frontend: Frontend,
     pub(crate) input: InputState,
@@ -57,7 +60,7 @@ pub struct Ui {
     /// pins why.
     pub(crate) frame_state: FrameState,
     /// Set by [`Self::request_relayout`]; consumed by
-    /// `end_frame_record_phase` to trigger one re-record per
+    /// `record_phase` to trigger one re-record per
     /// `run_frame`.
     pub(crate) relayout_requested: bool,
 }
@@ -97,10 +100,52 @@ impl Ui {
         }
     }
 
-    /// Install a shared shaper handle (cloned into `Ui` and the wgpu
-    /// backend so both see the same buffer cache).
-    pub fn set_text_shaper(&mut self, shaper: TextShaper) {
-        self.text = shaper;
+    // ── Frame lifecycle ───────────────────────────────────────────────
+
+    /// The only public entry point for driving a frame. Runs `build`
+    /// once, re-records on action input or `request_relayout`, paints
+    /// the last pass. `now` is monotonic host time;
+    /// `Ui::{dt,time,frame_id}` derive from it. See `docs/repaint.md`.
+    pub fn run_frame(
+        &mut self,
+        display: Display,
+        now: Duration,
+        mut build: impl FnMut(&mut Ui),
+    ) -> FrameOutput<'_> {
+        let raw_dt = now.saturating_sub(self.time);
+        self.dt = raw_dt.as_secs_f32().min(Self::MAX_DT);
+        self.time = now;
+        self.frame_id = self.frame_id.wrapping_add(1);
+        self.repaint_requested = false;
+
+        self.begin_frame(display);
+        build(self);
+        let action_flag = self.input.take_action_flag();
+        let needs_relayout = self.record_phase();
+        if action_flag {
+            self.input.drain_per_frame_queues();
+        }
+        if action_flag || needs_relayout {
+            // Pass B paints, regardless of any further re-record
+            // request — caps relayout at one retry per `run_frame`.
+            self.begin_frame(display);
+            build(self);
+            self.record_phase();
+            self.relayout_requested = false;
+        }
+        self.paint_phase()
+    }
+
+    /// Feed a palantir-native input event. Hosts own redraw scheduling.
+    pub fn on_input(&mut self, event: InputEvent) {
+        self.input.on_input(event, &self.cascades.result);
+    }
+
+    /// Re-record this frame after measure runs (for widgets that
+    /// realize their record-time inputs were stale). Capped at one
+    /// re-record per `run_frame`.
+    pub fn request_relayout(&mut self) {
+        self.relayout_requested = true;
     }
 
     /// Start recording a frame. Auto-invalidates `damage.prev` on
@@ -130,13 +175,12 @@ impl Ui {
         }
         self.display = display;
         self.forest.begin_frame();
-        // `end_frame_record_phase` consumes the flag via `mem::take`;
-        // any survivor here would be a state leak from a missing
-        // `end_frame_*` call.
+        // `record_phase` consumes the flag via `mem::take`; a survivor
+        // here means a missing record/paint pair on the prior frame.
         assert!(
             !self.relayout_requested,
             "begin_frame: relayout_requested smuggled across frames \
-             — every frame must consume it via `end_frame_record_phase`",
+             — every frame must consume it via `record_phase`",
         );
     }
 
@@ -144,7 +188,7 @@ impl Ui {
     /// caches, run measure/arrange. Returns whether
     /// [`Self::request_relayout`] fired. Diffs (no commit) so a
     /// discarded pass A still sees the painted frame's `prev`.
-    pub(crate) fn end_frame_record_phase(&mut self) -> bool {
+    pub(crate) fn record_phase(&mut self) -> bool {
         let surface = self.display.logical_rect();
         self.forest.end_frame(surface);
         // Sweep before `layout.run` so the measure cache compaction
@@ -164,7 +208,7 @@ impl Ui {
     /// Paint-half of `end_frame`: commit the seen-id rollover, then
     /// cascade → hit-index → damage → encode → compose. Reads the
     /// `LayoutResult` from the most recent `record_phase`.
-    pub(crate) fn end_frame_paint_phase(&mut self) -> FrameOutput<'_> {
+    pub(crate) fn paint_phase(&mut self) -> FrameOutput<'_> {
         let surface = self.display.logical_rect();
         self.forest.ids.commit_rollover();
         let removed = &self.forest.ids.removed;
@@ -202,45 +246,59 @@ impl Ui {
         }
     }
 
-    /// Re-record this frame after measure runs (for widgets that
-    /// realize their record-time inputs were stale). Capped at one
-    /// re-record per `run_frame`.
-    pub fn request_relayout(&mut self) {
-        self.relayout_requested = true;
+    // ── Recording (widget-facing) ─────────────────────────────────────
+
+    pub fn add_shape(&mut self, shape: Shape<'_>) {
+        if shape.is_noop() {
+            return;
+        }
+        self.forest.add_shape(shape);
     }
 
-    /// The only public entry point for driving a frame. Runs `build`
-    /// once, re-records on action input or `request_relayout`, paints
-    /// the last pass. `now` is monotonic host time;
-    /// `Ui::{dt,time,frame_id}` derive from it. See `docs/repaint.md`.
-    pub fn run_frame(
-        &mut self,
-        display: Display,
-        now: Duration,
-        mut build: impl FnMut(&mut Ui),
-    ) -> FrameOutput<'_> {
-        let raw_dt = now.saturating_sub(self.time);
-        self.dt = raw_dt.as_secs_f32().min(Self::MAX_DT);
-        self.time = now;
-        self.frame_id = self.frame_id.wrapping_add(1);
-        self.repaint_requested = false;
+    /// Convenience wrapper for the common "draw this mesh at the
+    /// owner's full rect, tint white" case.
+    #[inline]
+    pub fn add_mesh(&mut self, mesh: &Mesh) {
+        self.add_shape(Shape::Mesh {
+            mesh,
+            local_rect: None,
+            tint: Color::WHITE,
+        });
+    }
 
-        self.begin_frame(display);
-        build(self);
-        let action_flag = self.input.take_action_flag();
-        let needs_relayout = self.end_frame_record_phase();
-        if action_flag {
-            self.input.drain_per_frame_queues();
-        }
-        if action_flag || needs_relayout {
-            // Pass B paints, regardless of any further re-record
-            // request — caps relayout at one retry per `run_frame`.
-            self.begin_frame(display);
-            build(self);
-            self.end_frame_record_phase();
-            self.relayout_requested = false;
-        }
-        self.end_frame_paint_phase()
+    /// Record `body` as a side layer anchored at `anchor`. Must be
+    /// called at top-level (no node open) — egui-style: finish the
+    /// `Main` scope first, then layer. Interleaving mid-`Panel::show`
+    /// would break the tree's pre-order contiguity.
+    pub fn layer<R>(&mut self, layer: Layer, anchor: Rect, body: impl FnOnce(&mut Ui) -> R) -> R {
+        self.forest.push_layer(layer, anchor);
+        let result = body(self);
+        self.forest.pop_layer();
+        result
+    }
+
+    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
+        let node = self.forest.open_node(element);
+        f(self);
+        self.forest.close_node();
+        node
+    }
+
+    pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
+        let mut state = self.input.response_for(id, &self.cascades.result);
+        // Cascade lags one frame; OR this frame's ancestor-disabled so
+        // a freshly-disabled subtree paints disabled on its first frame.
+        state.disabled |= self.forest.ancestor_disabled();
+        state
+    }
+
+    // ── Cross-frame state & animation ─────────────────────────────────
+
+    /// Cross-frame state row for `id`, `T::default()` on first
+    /// access. Rows for `WidgetId`s not recorded this frame are
+    /// evicted in `end_frame`. Panics on type collision at `id`.
+    pub fn state_mut<T: Default + 'static>(&mut self, id: WidgetId) -> &mut T {
+        self.state.get_or_insert_with(id, T::default)
     }
 
     /// Advance an animation row keyed by `(id, slot)` and return the
@@ -276,17 +334,7 @@ impl Ui {
         r.current
     }
 
-    /// Feed a palantir-native input event. Hosts own redraw scheduling.
-    pub fn on_input(&mut self, event: InputEvent) {
-        self.input.on_input(event, &self.cascades.result);
-    }
-
-    /// Cross-frame state row for `id`, `T::default()` on first
-    /// access. Rows for `WidgetId`s not recorded this frame are
-    /// evicted in `end_frame`. Panics on type collision at `id`.
-    pub fn state_mut<T: Default + 'static>(&mut self, id: WidgetId) -> &mut T {
-        self.state.get_or_insert_with(id, T::default)
-    }
+    // ── Focus ─────────────────────────────────────────────────────────
 
     /// Currently focused widget id, or `None`.
     pub fn focused_id(&self) -> Option<WidgetId> {
@@ -298,57 +346,13 @@ impl Ui {
         self.input.focused = id;
     }
 
-    /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
-    pub fn set_focus_policy(&mut self, p: FocusPolicy) {
-        self.input.focus_policy = p;
-    }
-
     pub fn focus_policy(&self) -> FocusPolicy {
         self.input.focus_policy
     }
 
-    pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
-        let mut state = self.input.response_for(id, &self.cascades.result);
-        // Cascade lags one frame; OR this frame's ancestor-disabled so
-        // a freshly-disabled subtree paints disabled on its first frame.
-        state.disabled |= self.forest.ancestor_disabled();
-        state
-    }
-
-    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
-        let node = self.forest.open_node(element);
-        f(self);
-        self.forest.close_node();
-        node
-    }
-
-    pub fn add_shape(&mut self, shape: Shape<'_>) {
-        if shape.is_noop() {
-            return;
-        }
-        self.forest.add_shape(shape);
-    }
-
-    /// Convenience wrapper for the common "draw this mesh at the
-    /// owner's full rect, tint white" case.
-    #[inline]
-    pub fn add_mesh(&mut self, mesh: &Mesh) {
-        self.add_shape(Shape::Mesh {
-            mesh,
-            local_rect: None,
-            tint: Color::WHITE,
-        });
-    }
-
-    /// Record `body` as a side layer anchored at `anchor`. Must be
-    /// called at top-level (no node open) — egui-style: finish the
-    /// `Main` scope first, then layer. Interleaving mid-`Panel::show`
-    /// would break the tree's pre-order contiguity.
-    pub fn layer<R>(&mut self, layer: Layer, anchor: Rect, body: impl FnOnce(&mut Ui) -> R) -> R {
-        self.forest.push_layer(layer, anchor);
-        let result = body(self);
-        self.forest.pop_layer();
-        result
+    /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
+    pub fn set_focus_policy(&mut self, p: FocusPolicy) {
+        self.input.focus_policy = p;
     }
 }
 

@@ -51,8 +51,8 @@ fn auto_id_collisions_disambiguate() {
 fn drain_one_frame(ui: &mut Ui) {
     begin(ui, UVec2::new(100, 100));
     Panel::hstack().auto_id().show(ui, |_| {});
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
 }
 
 /// Pin: an empty frame (no widgets recorded) drives `begin → layout →
@@ -66,8 +66,8 @@ fn empty_ui_drives_a_frame_safely() {
     {
         // FrameOutput borrows ui.buffer; check pipeline output first,
         // then drop the borrow so we can read other ui state.
-        ui.end_frame_record_phase();
-        let frame = ui.end_frame_paint_phase();
+        ui.record_phase();
+        let frame = ui.paint_phase();
         assert!(frame.buffer.quads.is_empty());
         assert!(frame.buffer.texts.is_empty());
         assert!(frame.buffer.groups.is_empty());
@@ -88,8 +88,8 @@ fn empty_ui_drives_a_frame_safely() {
 #[test]
 fn empty_then_populated_frame() {
     let mut ui = ui_at(UVec2::new(100, 100));
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     drain_one_frame(&mut ui);
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
     // Root Panel is non-painting (no chrome, no shapes) so prev stays
@@ -137,8 +137,8 @@ fn prev_frame_populated_after_end_frame() {
             })
             .show(ui);
     });
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     let prev = &ui.damage.prev;
     let root_id = WidgetId::from_hash("root");
     let frame_id = WidgetId::from_hash("a");
@@ -160,8 +160,8 @@ fn prev_frame_captures_arranged_rect() {
         })
         .show(&mut ui)
         .node;
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     let arranged = ui.layout.result[Layer::Main].rect[frame_node.index()];
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
@@ -180,8 +180,8 @@ fn prev_frame_captures_authoring_hash() {
         })
         .show(&mut ui)
         .node;
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(
         snap.hash,
@@ -195,14 +195,14 @@ fn prev_frame_drops_disappeared_widgets() {
     Panel::hstack().id_salt("root").show(&mut ui, |ui| {
         Button::new().id_salt("gone").label("X").show(ui);
     });
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
 
     ui.begin_frame(Display::default());
     Panel::hstack().id_salt("root").show(&mut ui, |_| {});
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     assert!(!ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
     // Root Panel is non-painting so it never enters prev — the
     // remaining-after-eviction check is just that "gone" is gone.
@@ -220,8 +220,8 @@ fn prev_frame_updates_on_authoring_change() {
             ..Default::default()
         })
         .show(&mut ui);
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     let h1 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
     ui.begin_frame(Display::default());
@@ -233,8 +233,8 @@ fn prev_frame_updates_on_authoring_change() {
             ..Default::default()
         })
         .show(&mut ui);
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     let h2 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
 
     assert_ne!(h1, h2);
@@ -254,8 +254,8 @@ fn text_reshape_skipped_when_unchanged_across_frames() {
         Panel::vstack().auto_id().show(ui, |ui| {
             Text::new("the quick brown fox").id_salt("hello").show(ui);
         });
-        ui.end_frame_record_phase();
-        ui.end_frame_paint_phase();
+        ui.record_phase();
+        ui.paint_phase();
     };
 
     render(&mut ui);
@@ -288,16 +288,16 @@ fn text_reshape_runs_when_content_changes() {
     Panel::vstack().auto_id().show(&mut ui, |ui| {
         Text::new("first").id_salt("changing").show(ui);
     });
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     let before = crate::support::internals::text_shaper_measure_calls(&ui.text);
 
     begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().auto_id().show(&mut ui, |ui| {
         Text::new("second").id_salt("changing").show(ui);
     });
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     let after = crate::support::internals::text_shaper_measure_calls(&ui.text);
 
     assert!(
@@ -328,8 +328,8 @@ fn wrapping_text_reshape_skipped_when_unchanged() {
                     .wrapping()
                     .show(ui);
             });
-        ui.end_frame_record_phase();
-        ui.end_frame_paint_phase();
+        ui.record_phase();
+        ui.paint_phase();
     };
 
     render(&mut ui);
@@ -369,8 +369,8 @@ fn intrinsic_query_reuses_cached_text_measure() {
                     .grid_cell((0, 1))
                     .show(ui);
             });
-        ui.end_frame_record_phase();
-        ui.end_frame_paint_phase();
+        ui.record_phase();
+        ui.paint_phase();
     };
 
     render(&mut ui);
@@ -397,8 +397,8 @@ fn text_reuse_evicts_disappeared_widgets() {
     Panel::vstack().auto_id().show(&mut ui, |ui| {
         Text::new("hello").id_salt("transient").show(ui);
     });
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     let wid = WidgetId::from_hash("transient");
     assert!(
         crate::support::internals::text_shaper_has_reuse_entry(&ui.text, wid, 0),
@@ -407,8 +407,8 @@ fn text_reuse_evicts_disappeared_widgets() {
 
     begin(&mut ui, UVec2::new(400, 200));
     Panel::vstack().auto_id().show(&mut ui, |_ui| {});
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     assert!(
         !crate::support::internals::text_shaper_has_reuse_entry(&ui.text, wid, 0),
         "removed widget's reuse entry must be swept",
@@ -438,8 +438,8 @@ fn wrap_target_change_preserves_unbounded_cache() {
                     .wrapping()
                     .show(ui);
             });
-        ui.end_frame_record_phase();
-        ui.end_frame_paint_phase();
+        ui.record_phase();
+        ui.paint_phase();
     };
 
     render(&mut ui, 60.0);
@@ -470,13 +470,13 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     Frame::new().id_salt("b").show(&mut ui);
     *ui.state_mut::<u32>(id_a) = 11;
     *ui.state_mut::<u32>(id_b) = 22;
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     begin(&mut ui, UVec2::new(100, 100));
     Frame::new().id_salt("a").show(&mut ui);
     assert_eq!(*ui.state_mut::<u32>(id_a), 11);
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     begin(&mut ui, UVec2::new(100, 100));
     Frame::new().id_salt("b").show(&mut ui);
     assert_eq!(
@@ -484,8 +484,8 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
         0,
         "B was unrecorded in frame 2; its row should have been swept",
     );
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
 }
 
 /// `Ui::run_frame` re-records when the frame contained input that
@@ -553,8 +553,8 @@ fn run_frame_pass_count_matches_action_trigger() {
         // diffs against a real prior recording, not the
         // never-painted initial state.
         Panel::vstack().id_salt("root").show(&mut ui, |_| {});
-        ui.end_frame_record_phase();
-        ui.end_frame_paint_phase();
+        ui.record_phase();
+        ui.paint_phase();
         prime(&mut ui);
 
         let count = Cell::new(0u32);
@@ -595,8 +595,8 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
 
     let mut ui = ui_at(SURFACE);
     Panel::vstack().id_salt("root").show(&mut ui, |_| {});
-    ui.end_frame_record_phase();
-    ui.end_frame_paint_phase();
+    ui.record_phase();
+    ui.paint_phase();
     // Frame A: idle, no repaint request, now = 16ms.
     {
         let frame = ui.run_frame(display, Duration::from_millis(16), |ui| {

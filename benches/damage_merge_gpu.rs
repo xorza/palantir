@@ -176,7 +176,7 @@ fn bench_two_cells(c: &mut Criterion) {
 
     let shaper = TextShaper::with_bundled_fonts();
     let mut ui = Ui::new();
-    ui.set_text_shaper(shaper.clone());
+    ui.text = shaper.clone();
     gpu.backend.set_text_shaper(shaper);
 
     let mut group = c.benchmark_group("damage/merge_gpu/two_cells");
@@ -223,7 +223,7 @@ fn bench_single_pass_scaling(c: &mut Criterion) {
 
     let shaper = TextShaper::with_bundled_fonts();
     let mut ui = Ui::new();
-    ui.set_text_shaper(shaper.clone());
+    ui.text = shaper.clone();
     gpu.backend.set_text_shaper(shaper);
 
     let mut group = c.benchmark_group("damage/merge_gpu/single_pass_scaling");

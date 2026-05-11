@@ -69,7 +69,7 @@ impl Harness {
         let mut backend = WgpuBackend::new(g.device.clone(), g.queue.clone(), FORMAT);
         let mut ui = Ui::new();
         let shaper = COSMIC.with(|c| c.clone());
-        ui.set_text_shaper(shaper.clone());
+        ui.text = shaper.clone();
         backend.set_text_shaper(shaper);
 
         Self {

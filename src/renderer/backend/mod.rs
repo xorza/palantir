@@ -162,7 +162,7 @@ impl WgpuBackend {
     }
 
     /// Install the shared shaper handle. Pass the same [`TextShaper`]
-    /// to [`crate::Ui::set_text_shaper`] so layout-time measurement
+    /// to `Ui::text` so layout-time measurement
     /// and rasterization see one buffer cache. Without it, text
     /// rendering is silently skipped at submit time.
     pub fn set_text_shaper(&mut self, shaper: TextShaper) {
