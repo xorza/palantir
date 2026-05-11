@@ -561,12 +561,10 @@ mod tests {
     fn button_theme_pick_precedence() {
         let theme = ButtonTheme::default();
         let s = |hovered, pressed, disabled| ResponseState {
-            rect: None,
             hovered,
             pressed,
-            clicked: false,
             disabled,
-            focused: false,
+            ..ResponseState::default()
         };
         let cases: &[(ResponseState, &WidgetLook, &str)] = &[
             (s(false, false, false), &theme.normal, "normal"),
@@ -590,12 +588,9 @@ mod tests {
     fn text_edit_theme_pick_precedence() {
         let theme = TextEditTheme::default();
         let s = |focused, disabled| ResponseState {
-            rect: None,
-            hovered: false,
-            pressed: false,
-            clicked: false,
             disabled,
             focused,
+            ..ResponseState::default()
         };
         let cases: &[(ResponseState, &WidgetLook, &str)] = &[
             (s(false, false), &theme.normal, "normal"),
