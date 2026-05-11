@@ -235,3 +235,40 @@ fn line_diagonal_aa_matches_golden() {
     });
     assert_matches_golden("line_diagonal_aa", &img, Tolerance::default());
 }
+
+/// Pin: `Shape::Polyline` with `PolylineColors::PerPoint` paints
+/// a multi-stop gradient via GPU vertex interpolation. A 4-point
+/// zig-zag with four corner colors exercises the per-point
+/// coloring + miter joins + composer arena copy in one frame. A
+/// stride-1 inner cross-section would collapse to single-color
+/// strips, which would fail the gradient sample tolerance.
+#[test]
+fn polyline_gradient_matches_golden() {
+    use palantir::PolylineColors;
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(160, 140), 1.0, DARK_BG, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                let pts = [
+                    Vec2::new(10.0, 10.0),
+                    Vec2::new(50.0, 130.0),
+                    Vec2::new(90.0, 20.0),
+                    Vec2::new(150.0, 130.0),
+                ];
+                let cols = [
+                    Color::rgb(1.0, 0.2, 0.2),
+                    Color::rgb(1.0, 0.85, 0.2),
+                    Color::rgb(0.2, 1.0, 0.4),
+                    Color::rgb(0.2, 0.6, 1.0),
+                ];
+                ui.add_shape(Shape::Polyline {
+                    points: &pts,
+                    colors: PolylineColors::PerPoint(&cols),
+                    width: 5.0,
+                });
+            });
+    });
+    assert_matches_golden("polyline_gradient", &img, Tolerance::default());
+}

@@ -1,4 +1,4 @@
-use super::cmd_buffer::RenderCmdBuffer;
+use super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
 use crate::forest::Forest;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::result::{LayerResult, LayoutResult};
@@ -124,11 +124,41 @@ fn emit_one_shape(
                 shaped.key,
             );
         }
-        ShapeRecord::Line { a, b, width, color } => {
-            // Endpoints are owner-relative logical px; shift by
-            // `owner_rect.min` so the composer can apply the
-            // active transform + DPI scale uniformly.
-            out.draw_polyline(&[owner_rect.min + *a, owner_rect.min + *b], *width, *color);
+        ShapeRecord::Polyline {
+            width,
+            color_mode,
+            points,
+            colors,
+            bbox,
+            content_hash: _,
+        } => {
+            // Points are owner-relative logical px; shift inline
+            // into the cmd-buffer arena. Bbox came pre-computed
+            // from `lower_polyline` in record coords; translating
+            // by `owner_rect.min` preserves it. Colors copy through
+            // unchanged — they already have the right length for
+            // `color_mode` (validated at lowering).
+            let points_start = out.polyline_points.len() as u32;
+            out.polyline_points.extend(
+                tree.polyline_points[points.range()]
+                    .iter()
+                    .map(|p| owner_rect.min + *p),
+            );
+            let colors_start = out.polyline_colors.len() as u32;
+            out.polyline_colors
+                .extend_from_slice(&tree.polyline_colors[colors.range()]);
+            out.draw_polyline(DrawPolylinePayload {
+                bbox: Rect {
+                    min: bbox.min + owner_rect.min,
+                    size: bbox.size,
+                },
+                width: *width,
+                color_mode: *color_mode as u32,
+                points_start,
+                points_len: points.len,
+                colors_start,
+                colors_len: colors.len,
+            });
         }
         ShapeRecord::Mesh {
             local_rect,

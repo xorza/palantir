@@ -1,5 +1,5 @@
 use glam::Vec2;
-use palantir::{Color, Configure, Panel, Shape, Sizing, Ui};
+use palantir::{Color, Configure, Panel, PolylineColors, Shape, Sizing, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
@@ -10,8 +10,8 @@ pub fn build(ui: &mut Ui) {
         .show(ui, |ui| {
             cell(ui, "widths", widths);
             cell(ui, "hairlines", hairlines);
-            cell(ui, "angles", angles);
-            cell(ui, "fan", fan);
+            cell(ui, "gradient", gradient);
+            cell(ui, "per_segment", per_segment);
         });
 }
 
@@ -55,36 +55,53 @@ fn hairlines(ui: &mut Ui) {
     }
 }
 
-fn angles(ui: &mut Ui) {
-    // Spoke pattern from a center point — exposes AA quality at
-    // every orientation. Axis-aligned spokes should look identical
-    // to diagonal ones (modulo a +0.5-px shift in either direction).
-    let cx = 60.0_f32;
-    let cy = 60.0_f32;
-    let r = 50.0_f32;
-    let yellow = Color::rgb(1.0, 0.85, 0.2);
-    for i in 0..12 {
-        let theta = i as f32 * std::f32::consts::TAU / 12.0;
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(cx, cy),
-            b: Vec2::new(cx + r * theta.cos(), cy + r * theta.sin()),
-            width: 2.0,
-            color: yellow,
-        });
-    }
+fn gradient(ui: &mut Ui) {
+    // PerPoint coloring on a zig-zag polyline. GPU lerps between
+    // adjacent cross-sections, giving a smooth multi-stop gradient
+    // along the stroke — single shape, no per-segment recording.
+    let pts = [
+        Vec2::new(10.0, 10.0),
+        Vec2::new(40.0, 110.0),
+        Vec2::new(70.0, 30.0),
+        Vec2::new(110.0, 110.0),
+    ];
+    let cols = [
+        Color::rgb(1.0, 0.2, 0.2),
+        Color::rgb(1.0, 0.85, 0.2),
+        Color::rgb(0.2, 1.0, 0.4),
+        Color::rgb(0.2, 0.6, 1.0),
+    ];
+    ui.add_shape(Shape::Polyline {
+        points: &pts,
+        colors: PolylineColors::PerPoint(&cols),
+        width: 4.0,
+    });
 }
 
-fn fan(ui: &mut Ui) {
-    // A fan from one corner. Many short lines at varied angles —
-    // stress-tests per-segment normal computation and the bbox cull.
-    let pink = Color::rgb(1.0, 0.42, 0.72);
-    for i in 0..20 {
-        let t = i as f32 / 19.0;
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(10.0, 10.0),
-            b: Vec2::new(10.0 + 100.0 * t, 110.0),
-            width: 1.5,
-            color: pink,
-        });
-    }
+fn per_segment(ui: &mut Ui) {
+    // PerSegment paints each segment in a solid block — interior
+    // cross-sections duplicate so colors don't bleed at joins.
+    // Six-segment polyline cycles through three colors twice.
+    let pts = [
+        Vec2::new(10.0, 60.0),
+        Vec2::new(30.0, 30.0),
+        Vec2::new(50.0, 90.0),
+        Vec2::new(70.0, 30.0),
+        Vec2::new(90.0, 90.0),
+        Vec2::new(110.0, 30.0),
+        Vec2::new(110.0, 90.0),
+    ];
+    let cols = [
+        Color::rgb(1.0, 0.2, 0.2),
+        Color::rgb(1.0, 0.85, 0.2),
+        Color::rgb(0.2, 1.0, 0.4),
+        Color::rgb(0.2, 0.6, 1.0),
+        Color::rgb(0.7, 0.3, 1.0),
+        Color::rgb(1.0, 0.5, 0.8),
+    ];
+    ui.add_shape(Shape::Polyline {
+        points: &pts,
+        colors: PolylineColors::PerSegment(&cols),
+        width: 4.0,
+    });
 }
