@@ -75,6 +75,7 @@ fn dummy_quad() -> Quad {
         radius: Corners::ZERO,
         stroke_color: Color::TRANSPARENT,
         stroke_width: 0.0,
+        ..Default::default()
     }
 }
 

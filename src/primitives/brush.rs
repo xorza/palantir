@@ -14,41 +14,22 @@ pub const MAX_STOPS: usize = 8;
 /// storage-only, never animated (snap on morph), and feed into a
 /// u8 LUT bake, so 8-bit precision is sufficient and the 4× footprint
 /// win matters when 8 stops × N gradients live in `Background.fill`.
-#[repr(C)]
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    Hash,
-    bytemuck::Pod,
-    bytemuck::Zeroable,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stop {
-    pub offset_q: u32,
+    pub offset: f32,
     pub color: Srgb8,
 }
 
 impl Stop {
-    /// Construct a stop. `offset` is clamped to 0..=1 and quantized to
-    /// `u32` bits so the struct stays `Pod` (no `f32` field — those
-    /// don't compare bytewise after lerps with NaN/±0). The bake-time
-    /// reader re-expands via `offset()`.
+    /// Construct a stop. `offset` is clamped to 0..=1; out-of-range
+    /// values clamp at construction rather than at bake time so the
+    /// stored value matches what authors expect to round-trip.
     #[inline]
     pub fn new(offset: f32, color: impl Into<Srgb8>) -> Self {
         Self {
-            offset_q: offset.clamp(0.0, 1.0).to_bits(),
+            offset: offset.clamp(0.0, 1.0),
             color: color.into(),
         }
-    }
-
-    #[inline]
-    pub fn offset(self) -> f32 {
-        f32::from_bits(self.offset_q)
     }
 }
 
@@ -60,11 +41,11 @@ impl Stop {
 pub enum Spread {
     /// Clamp to nearest edge stop. CSS default.
     #[default]
-    Pad,
+    Pad = 0,
     /// Tile 0..1 across the surface.
-    Repeat,
+    Repeat = 1,
     /// Tile mirrored.
-    Reflect,
+    Reflect = 2,
 }
 
 /// Colour space the interpolation runs in. Affects the perceived
@@ -95,12 +76,29 @@ pub enum Interp {
 /// Stops live inline via `ArrayVec<[Stop; MAX_STOPS]>` so a
 /// `LinearGradient` value is heap-free and `Copy`. Total size is ~80 B
 /// (4 B angle + 64 B stops + 1 B spread + 1 B interp + pad).
-#[derive(Clone, Copy, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LinearGradient {
-    pub angle_q: u32,
+    pub angle: f32,
     pub stops: ArrayVec<[Stop; MAX_STOPS]>,
     pub spread: Spread,
     pub interp: Interp,
+}
+
+impl std::hash::Hash for LinearGradient {
+    /// Hand-written: f32 fields (`angle`, per-stop `offset`) need
+    /// canonical bit encoding so `-0.0` / `+0.0` and NaN bit patterns
+    /// don't fragment cache keys. Drives `GradientCpuAtlas::register`
+    /// row addressing.
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u32(canon_bits(self.angle));
+        state.write_u8(self.spread as u8);
+        state.write_u8(self.interp as u8);
+        state.write_u8(self.stops.len() as u8);
+        for s in self.stops.iter() {
+            state.write_u32(canon_bits(s.offset));
+            s.color.hash(state);
+        }
+    }
 }
 
 impl LinearGradient {
@@ -120,7 +118,7 @@ impl LinearGradient {
             sv.len(),
         );
         Self {
-            angle_q: angle.to_bits(),
+            angle,
             stops: sv,
             spread: Spread::default(),
             interp: Interp::default(),
@@ -155,11 +153,6 @@ impl LinearGradient {
     pub fn with_interp(mut self, interp: Interp) -> Self {
         self.interp = interp;
         self
-    }
-
-    #[inline]
-    pub fn angle(&self) -> f32 {
-        f32::from_bits(self.angle_q)
     }
 
     /// Paints nothing visible when every stop is transparent.
@@ -248,14 +241,7 @@ impl std::hash::Hash for Brush {
             }
             Brush::Linear(g) => {
                 state.write_u8(1);
-                state.write_u32(canon_bits(g.angle()));
-                state.write_u8(g.spread as u8);
-                state.write_u8(g.interp as u8);
-                state.write_u8(g.stops.len() as u8);
-                for s in g.stops.iter() {
-                    state.write_u32(canon_bits(s.offset()));
-                    s.color.hash(state);
-                }
+                g.hash(state);
             }
         }
     }
@@ -383,12 +369,28 @@ mod tests {
         assert!(!Brush::Solid(Color::BLACK).is_noop());
     }
 
+    /// `LinearGradient` is inline-stored on every `Brush::Linear`, so
+    /// its size sets the floor for `Brush`, `Background.fill`,
+    /// `Stroke.brush`, and every `Shape::*` variant carrying a brush.
+    /// Pin the size so any silent footprint regression (added field,
+    /// stop-cap bump) trips a test rather than diffusing through the
+    /// codebase. The exact number below is a function of `MAX_STOPS = 8`
+    /// + `repr(C)` field layout; recompute when those change.
+    #[test]
+    fn linear_gradient_size_is_76_bytes() {
+        // 4 (angle) + 68 (ArrayVec<[Stop; 8]>: 8 × Stop + len) +
+        // 1 (spread) + 1 (interp) + 2 (tail-pad to 4-byte alignment).
+        // Each Stop is 8 B (4 offset + 4 Srgb8). Recompute if MAX_STOPS
+        // or Stop layout changes.
+        assert_eq!(std::mem::size_of::<LinearGradient>(), 76);
+    }
+
     #[test]
     fn linear_two_stop_authoring() {
         let g = LinearGradient::two_stop(0.0, Color::hex(0x1a1a2e), Color::hex(0x16213e));
         assert_eq!(g.stops.len(), 2);
-        assert_eq!(g.stops[0].offset(), 0.0);
-        assert_eq!(g.stops[1].offset(), 1.0);
+        assert_eq!(g.stops[0].offset, 0.0);
+        assert_eq!(g.stops[1].offset, 1.0);
         assert_eq!(g.spread, Spread::Pad);
         assert_eq!(g.interp, Interp::Oklab);
         assert!(!g.is_noop());
@@ -403,7 +405,7 @@ mod tests {
             Color::hex(0xffffff),
         );
         assert_eq!(g.stops.len(), 3);
-        assert_eq!(g.stops[1].offset(), 0.5);
+        assert_eq!(g.stops[1].offset, 0.5);
     }
 
     #[test]

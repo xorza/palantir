@@ -283,6 +283,7 @@ impl Composer {
                             radius: phys_radius,
                             stroke_color,
                             stroke_width: stroke_width * current_transform.scale * scale,
+                            ..Default::default()
                         },
                     );
                 }
