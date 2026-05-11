@@ -48,6 +48,10 @@ name = "alloc_free"
 harness = false
 
 [[bench]]
+name = "alloc_free_gpu"
+harness = false
+
+[[bench]]
 name = "stroke_tessellate"
 harness = false
 required-features = ["internals"]

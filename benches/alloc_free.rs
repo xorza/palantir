@@ -1,19 +1,24 @@
-//! Steady-state allocation-free invariant test.
+//! Strict per-frame allocation invariant for palantir's record/measure/
+//! arrange/cascade/encode pipeline (no GPU). Pinning test for the
+//! `CLAUDE.md` claim: "Per-frame allocation is a real metric.
+//! Steady-state must be heap-alloc-free after warmup."
 //!
 //! Runs a small but realistic UI through `Ui::run_frame`, warms up so
 //! retained scratch / caches stabilize, then measures heap-block delta
-//! over the following frame. Asserts zero net allocation, per
-//! `CLAUDE.md`: "Per-frame allocation is a real metric. Steady-state
-//! must be heap-alloc-free after warmup."
+//! over a batch of steady-state frames. **Fails on any non-zero
+//! delta** — palantir-side regressions show up here.
+//!
+//! For the GPU submission path (wgpu backend allocations under
+//! `WgpuBackend::submit`), see `alloc_free_gpu.rs` — driver overhead
+//! has a different floor and different semantics.
 //!
 //! Uses `dhat` as the global allocator (10-30x overhead — never use
-//! this binary for timing). Failure path prints block/byte deltas and
-//! suggests `DHAT_DUMP=1` for a full per-callsite JSON, viewable in
-//! `dh_view` (https://nnethercote.github.io/dh_view/dh_view.html).
+//! this binary for timing).
 //!
 //! Run with: `cargo bench --bench alloc_free`
 //! Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free`
 
+use glam::UVec2;
 use palantir::{
     Align, Button, Configure, Display, Frame, Justify, Panel, Sizing, Text, TextStyle, Ui,
 };
@@ -26,6 +31,9 @@ const WARMUP_FRAMES: usize = 16;
 // 256 measure frames so an intermittent grow-on-Nth-frame allocation
 // (Vec doubling, HashMap rehash) isn't lost between two snapshots.
 const MEASURE_FRAMES: usize = 256;
+
+const PHYSICAL: UVec2 = UVec2::new(1280, 800);
+const SCALE: f32 = 2.0;
 
 fn build_ui(ui: &mut Ui) {
     Panel::vstack()
@@ -109,55 +117,56 @@ fn build_ui(ui: &mut Ui) {
 
 fn main() {
     let want_dump = std::env::var("DHAT_DUMP").ok().as_deref() == Some("1");
-    // Profiler must outlive all measurements; it dumps the JSON on
-    // Drop when `--save-dhat-heap` (default with new_heap()) is set.
     let _profiler = if want_dump {
         Some(dhat::Profiler::new_heap())
     } else {
-        // Without the profiler, dhat::HeapStats still tracks blocks via
-        // the global allocator (the type is itself the counter), so we
-        // can diff without paying the JSON-emission cost on drop.
         Some(dhat::Profiler::builder().testing().build())
     };
 
-    let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
+    let display = Display::from_physical(PHYSICAL, SCALE);
     let mut ui = Ui::new();
 
-    // Warm up: cache fills, scratch buffers settle, text shaper
-    // populates reuse entries.
     for _ in 0..WARMUP_FRAMES {
         black_box(ui.run_frame(display, std::time::Duration::ZERO, build_ui));
     }
-
     let before = dhat::HeapStats::get();
-
     for _ in 0..MEASURE_FRAMES {
         black_box(ui.run_frame(display, std::time::Duration::ZERO, build_ui));
     }
-
     let after = dhat::HeapStats::get();
 
     let block_delta = after.total_blocks - before.total_blocks;
     let byte_delta = after.total_bytes - before.total_bytes;
-    let max_blocks_live = after.max_blocks;
-    let max_bytes_live = after.max_bytes;
 
-    println!("alloc_free: warmup={WARMUP_FRAMES} measure={MEASURE_FRAMES}");
     println!(
-        "  steady-state delta: {block_delta} new blocks, {byte_delta} bytes \
-         ({:.2} blocks/frame avg)",
-        block_delta as f64 / MEASURE_FRAMES as f64
+        "alloc_free: warmup={WARMUP_FRAMES} measure={MEASURE_FRAMES} \
+         ({PHYSICAL:?} @ {SCALE}x)"
     );
-    println!("  process peak:       {max_blocks_live} live blocks, {max_bytes_live} bytes");
+    println!(
+        "  record-only           {block_delta:6} blocks  {byte_delta:10} bytes  \
+         ({:5.2}/frame, limit strict zero)",
+        block_delta as f64 / MEASURE_FRAMES as f64,
+    );
 
-    if block_delta != 0 || byte_delta != 0 {
+    let ok = block_delta == 0 && byte_delta == 0;
+
+    // Drop the profiler explicitly so DHAT_DUMP=1 writes dhat-heap.json
+    // before we exit (process::exit skips Drop).
+    drop(_profiler);
+
+    if !ok {
         eprintln!();
-        eprintln!("FAIL: steady-state is not allocation-free.");
-        eprintln!("  Re-run with `DHAT_DUMP=1 cargo bench --bench alloc_free` to emit");
-        eprintln!("  dhat-heap.json; load it at https://nnethercote.github.io/dh_view/");
-        eprintln!("  to see per-call-site bytes and blocks.");
+        eprintln!(
+            "FAIL: record-only must be strictly allocation-free; got {:.2} blocks/frame.",
+            block_delta as f64 / MEASURE_FRAMES as f64
+        );
+        eprintln!();
+        eprintln!("Inspect call sites with:");
+        eprintln!("  DHAT_DUMP=1 cargo bench --bench alloc_free");
+        eprintln!("  open dhat-heap.json at https://nnethercote.github.io/dh_view/");
         std::process::exit(1);
     }
 
-    println!("PASS: zero net allocations across {MEASURE_FRAMES} steady-state frame(s).");
+    println!();
+    println!("PASS: palantir CPU pipeline is allocation-free in steady state.");
 }
