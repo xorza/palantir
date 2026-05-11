@@ -613,3 +613,59 @@ fn per_segment_same_color_merges_cross_section() {
     // saves 4 verts at the shared join.
     assert_eq!(v_two.len() - v_same.len(), 4);
 }
+
+/// PerPoint + Round caps: each end cap paints in the abutting
+/// endpoint's color, not an averaged or neighbor color.
+#[test]
+fn per_point_round_caps_use_endpoint_color() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(20.0, 0.0)],
+        &[red(), green(), red()],
+        StrokeStyle {
+            mode: ColorMode::PerPoint,
+            cap: LineCap::Round,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    // Layout: endpoint(0..4) + cap_fan(...) + interior(4+fan..) + ... + endpoint(...) + cap_fan(...)
+    // Start cap center sits right after the first endpoint cross-section.
+    let first_cap_center = v[4];
+    assert_eq!(first_cap_center.pos, Vec2::ZERO);
+    assert_eq!(first_cap_center.color, red());
+    // End cap center sits after the last endpoint block. Width=2 ⇒
+    // round_segments=4 ⇒ each fan = 1 + 2·(4+1) = 11 verts. Layout:
+    // 4 (start endpoint) + 11 (start cap) + 4 (interior) + 4 (end endpoint) + 11 (end cap) = 34.
+    assert_eq!(v.len(), 34);
+    let last_cap_center = v[4 + 11 + 4 + 4];
+    assert_eq!(last_cap_center.pos, Vec2::new(20.0, 0.0));
+    assert_eq!(last_cap_center.color, red());
+}
+
+/// Zero / negative / NaN widths short-circuit cleanly — no verts,
+/// no indices, no NaN poisoning the output.
+#[test]
+fn non_positive_width_emits_nothing() {
+    for width in [0.0_f32, -1.0, f32::NAN, 1e-6] {
+        let mut v = Vec::new();
+        let mut i = Vec::new();
+        tessellate_polyline_aa(
+            &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
+            &[red()],
+            StrokeStyle {
+                mode: ColorMode::Single,
+                cap: LineCap::Butt,
+                join: LineJoin::Miter,
+                width_phys: width,
+            },
+            &mut v,
+            &mut i,
+        );
+        assert!(v.is_empty(), "width {width} should emit no verts");
+        assert!(i.is_empty(), "width {width} should emit no indices");
+    }
+}
