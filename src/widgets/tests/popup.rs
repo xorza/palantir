@@ -12,7 +12,6 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::support::testing::{begin, click_at, ui_at};
 use crate::widgets::panel::Panel;
@@ -20,10 +19,12 @@ use crate::widgets::popup::{ClickOutside, Popup, PopupResponse};
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 400);
-const ANCHOR: Rect = Rect {
-    min: Vec2::new(50.0, 50.0),
-    size: Size::new(120.0, 80.0),
-};
+const ANCHOR: Vec2 = Vec2::new(50.0, 50.0);
+/// Body content sits inside a `100×60` Fixed rect, so the body's
+/// arranged rect is roughly `[ANCHOR.x..ANCHOR.x+100] ×
+/// [ANCHOR.y..ANCHOR.y+60]` (plus padding where set).
+const BODY_W: f32 = 100.0;
+const BODY_H: f32 = 60.0;
 
 /// Records `Popup` with the given config and returns its
 /// `PopupResponse` plus the Main panel's last-frame `clicked` state
@@ -62,12 +63,9 @@ fn click_inside_popup_does_not_dismiss() {
     let (_, _) = record_with_popup(&mut ui, ClickOutside::Dismiss);
     ui.record_phase();
     ui.paint_phase();
-    // Click at the center of the popup's anchor rect — well inside
-    // the body's arranged rect.
-    let inside = Vec2::new(
-        ANCHOR.min.x + ANCHOR.size.w * 0.5,
-        ANCHOR.min.y + ANCHOR.size.h * 0.5,
-    );
+    // Click at the center of the popup body's arranged rect — well
+    // inside (body is Fixed `BODY_W × BODY_H` from `ANCHOR`).
+    let inside = Vec2::new(ANCHOR.x + BODY_W * 0.5, ANCHOR.y + BODY_H * 0.5);
     click_at(&mut ui, inside);
 
     begin(&mut ui, SURFACE);
@@ -91,8 +89,8 @@ fn click_outside_popup_dismisses_and_blocks_main() {
     record_with_popup(&mut ui, ClickOutside::Dismiss);
     ui.record_phase();
     ui.paint_phase();
-    // (300, 300) is on the surface but well outside the popup
-    // anchor `[50..170] × [50..130]`. Falls through to the eater.
+    // (300, 300) is on the surface but well outside the popup body
+    // `[50..150] × [50..110]`. Falls through to the eater.
     click_at(&mut ui, Vec2::new(300.0, 300.0));
 
     begin(&mut ui, SURFACE);
@@ -182,6 +180,69 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
         0,
         "painted tree (pass 2) must contain no Popup-layer widgets",
     );
+}
+
+/// Pin popup-body sizing under each `Sizing` mode against a fixed
+/// surface and `anchor`. Anchor is a placement-only `Vec2`; the
+/// body's "available" extends from `anchor` to the surface
+/// bottom-right.
+/// - `Hug` shrinks to content,
+/// - `Fill` fills the remaining surface (`surface - anchor`),
+/// - `Fixed` is exact (and may bleed past the surface — caller
+///   responsibility).
+///
+/// Regressions: (a) layout used to inflate every root to
+/// `anchor.size.max(desired)`, stretching Hug popups; (b) anchor used
+/// to be a `Rect` whose `size` clamped Fill, so the popup couldn't
+/// fill the surface.
+#[test]
+fn popup_body_sizing_matches_sizing_mode() {
+    use crate::forest::tree::Layer;
+    let mut ui = ui_at(SURFACE);
+    let anchor = Vec2::new(20.0, 30.0);
+    let cases: &[(Sizing, Sizing, Size)] = &[
+        (Sizing::Hug, Sizing::Hug, Size::new(100.0, 60.0)),
+        (
+            Sizing::FILL,
+            Sizing::FILL,
+            Size::new(SURFACE.x as f32 - anchor.x, SURFACE.y as f32 - anchor.y),
+        ),
+        (
+            Sizing::Fixed(80.0),
+            Sizing::Fixed(40.0),
+            Size::new(80.0, 40.0),
+        ),
+    ];
+    for &(sw, sh, expected) in cases {
+        begin(&mut ui, SURFACE);
+        Panel::vstack()
+            .id_salt("main-bg")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(&mut ui, |ui| {
+                Popup::anchored_to(anchor)
+                    .id_salt("sized-popup")
+                    .padding(0.0)
+                    .size((sw, sh))
+                    .show(ui, |ui| {
+                        Panel::vstack()
+                            .id_salt("popup-content")
+                            .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
+                            .show(ui, |_| {});
+                    });
+            });
+        ui.record_phase();
+        ui.paint_phase();
+        let popup_tree = ui.forest.tree(Layer::Popup);
+        // roots = [eater, body]. Body is the second root.
+        let body_root = popup_tree.roots[1].first_node as usize;
+        let body_rect = ui.layout.result[Layer::Popup].rect[body_root];
+        assert_eq!(
+            body_rect.size, expected,
+            "size=({:?},{:?}) → expected {:?}, got {:?}",
+            sw, sh, expected, body_rect.size,
+        );
+        assert_eq!(body_rect.min, anchor, "anchor placement preserved");
+    }
 }
 
 /// `Block` mode swallows outside clicks silently — no dismissal

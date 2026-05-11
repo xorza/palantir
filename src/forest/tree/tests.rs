@@ -1021,10 +1021,7 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
 #[test]
 fn ui_layer_records_popup_into_separate_tree() {
     let mut ui = ui_at(UVec2::new(400, 400));
-    let popup_anchor = Rect {
-        min: glam::Vec2::new(50.0, 60.0),
-        size: crate::primitives::size::Size::new(100.0, 80.0),
-    };
+    let popup_anchor = glam::Vec2::new(50.0, 60.0);
     Panel::vstack().id_salt("main-root").show(&mut ui, |ui| {
         Frame::new().id_salt("main-leaf").size(50.0).show(ui);
         Frame::new().id_salt("main-leaf-2").size(30.0).show(ui);
@@ -1043,10 +1040,14 @@ fn ui_layer_records_popup_into_separate_tree() {
     assert_eq!(main_tree.roots[0].first_node, 0);
     assert_eq!(popup_tree.roots[0].first_node, 0);
 
-    // Popup's anchor passes through unchanged from `Ui::layer`.
+    // Popup's `min` passes through from `Ui::layer`; `size` is
+    // patched in `end_frame` to the remaining surface from `min`.
     let r = popup_tree.roots[0].anchor_rect;
-    assert_eq!(r.min, popup_anchor.min);
-    assert_eq!(r.size, popup_anchor.size);
+    assert_eq!(r.min, popup_anchor);
+    assert_eq!(
+        r.size,
+        crate::primitives::size::Size::new(400.0 - popup_anchor.x, 400.0 - popup_anchor.y),
+    );
 
     // Each tree is self-contained: Main's root subtree covers only
     // Main records, popup's covers only popup records.
@@ -1070,7 +1071,7 @@ fn empty_popup_body_leaves_popup_tree_empty() {
     Panel::vstack().id_salt("only-main").show(&mut ui, |ui| {
         Frame::new().id_salt("leaf").size(20.0).show(ui);
     });
-    ui.layer(Layer::Popup, Rect::ZERO, |_| {});
+    ui.layer(Layer::Popup, glam::Vec2::ZERO, |_| {});
     ui.record_phase();
     ui.paint_phase();
     assert_eq!(ui.forest.tree(Layer::Main).roots.len(), 1);
@@ -1086,10 +1087,7 @@ fn empty_popup_body_leaves_popup_tree_empty() {
 /// produces the same per-tree contents.
 #[test]
 fn forest_independence_across_recording_orders() {
-    let popup_anchor = Rect {
-        min: glam::Vec2::new(10.0, 10.0),
-        size: crate::primitives::size::Size::new(60.0, 60.0),
-    };
+    let popup_anchor = glam::Vec2::new(10.0, 10.0);
     let mut ui_p_first = ui_at(UVec2::new(400, 400));
     ui_p_first.layer(Layer::Popup, popup_anchor, |ui| {
         Panel::vstack().id_salt("popup-root").show(ui, |ui| {
@@ -1133,10 +1131,7 @@ fn forest_independence_across_recording_orders() {
 #[test]
 fn mid_recording_popup_with_text_renders_through_encoder() {
     let mut ui = ui_with_text(UVec2::new(400, 400));
-    let popup_anchor = Rect {
-        min: glam::Vec2::new(50.0, 100.0),
-        size: crate::primitives::size::Size::new(200.0, 200.0),
-    };
+    let popup_anchor = glam::Vec2::new(50.0, 100.0);
     Panel::vstack().id_salt("outer-main").show(&mut ui, |ui| {
         Button::new().id_salt("trigger").label("menu").show(ui);
         ui.layer(Layer::Popup, popup_anchor, |ui| {
@@ -1213,10 +1208,7 @@ fn mid_recording_popup_keeps_trees_independent() {
     }
 
     let mut ui = ui_at(UVec2::new(400, 400));
-    let popup_anchor = Rect {
-        min: glam::Vec2::new(50.0, 60.0),
-        size: crate::primitives::size::Size::new(100.0, 80.0),
-    };
+    let popup_anchor = glam::Vec2::new(50.0, 60.0);
     let parent = Panel::vstack()
         .id_salt("main-parent")
         .show(&mut ui, |ui| {

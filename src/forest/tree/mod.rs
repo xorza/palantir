@@ -13,7 +13,9 @@ use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::widgets::grid::GridDef;
+use glam::Vec2;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 
@@ -81,8 +83,11 @@ pub(crate) struct OpenFrame {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RootSlot {
     pub(crate) first_node: u32,
-    /// Surface rect for `Main`/`Modal`, anchor screen-rect for
-    /// `Popup`/`Tooltip`. Read by `LayoutEngine::run` per root.
+    /// `min` = caller-supplied top-left placement (surface origin for
+    /// `Main`). `size` = the room from that placement to the surface
+    /// bottom-right, so layout's "available" is bounded by the
+    /// surface even for side-layer roots. Patched in
+    /// `Forest::end_frame`; consumed by `LayoutEngine::run` per root.
     pub(crate) anchor_rect: Rect,
 }
 
@@ -156,14 +161,15 @@ pub(crate) struct Tree {
     /// load (read from `last()`) instead of an O(depth) walk.
     pub(crate) open_frames: Vec<OpenFrame>,
 
-    /// Anchor that the next `open_node` will stamp on a freshly-minted
-    /// `RootSlot`. Set by `Forest::push_layer` for non-`Main` layers;
-    /// `Main`'s value stays at `Rect::ZERO` until `Forest::end_frame`
-    /// patches every `Main` root's anchor to the surface. Single
-    /// "mailbox" slot — overwritten by each `push_layer` to this tree;
-    /// stale value between mints is harmless because nothing reads it
-    /// until the next root open.
-    pub(crate) pending_anchor: Rect,
+    /// Top-left placement that the next `open_node` will stamp on a
+    /// freshly-minted `RootSlot` (as `anchor_rect.min`). Set by
+    /// `Forest::push_layer` for non-`Main` layers; `Main`'s value
+    /// stays at `Vec2::ZERO` until `Forest::end_frame` patches every
+    /// `Main` root's anchor to the surface. The root's
+    /// `anchor_rect.size` is patched in `end_frame` to the remaining
+    /// surface extent (`surface - anchor`), so layout sees the
+    /// available room from the placement onwards.
+    pub(crate) pending_anchor: Vec2,
 
     // -- Output (populated by `end_frame`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
@@ -182,7 +188,7 @@ impl Tree {
         self.rollups.has_grid.clear();
         self.roots.clear();
         self.open_frames.clear();
-        self.pending_anchor = Rect::ZERO;
+        self.pending_anchor = Vec2::ZERO;
     }
 
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`.
@@ -266,7 +272,12 @@ impl Tree {
         if parent.is_none() {
             self.roots.push(RootSlot {
                 first_node: new_id.0,
-                anchor_rect: self.pending_anchor,
+                // `size` is patched in `Forest::end_frame` to the
+                // remaining surface extent from `pending_anchor`.
+                anchor_rect: Rect {
+                    min: self.pending_anchor,
+                    size: Size::ZERO,
+                },
             });
         }
         if let LayoutMode::Grid(idx) = element.mode {
