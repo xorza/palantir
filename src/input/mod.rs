@@ -36,8 +36,8 @@ pub enum FocusPolicy {
 }
 
 /// Palantir-native input event. Independent of any windowing toolkit.
-/// Convert from winit via [`InputEvent::from_winit`] (typical apps use
-/// `Ui::handle_event` which does the conversion + dispatch in one call).
+/// Convert from winit via [`InputEvent::from_winit`], then dispatch
+/// through [`crate::Ui::on_input`].
 ///
 /// All coordinates are in **logical pixels** (DIPs). Backends are responsible
 /// for any physical→logical conversion before dispatching.
