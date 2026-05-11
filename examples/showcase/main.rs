@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Instant;
 
 use palantir::{
     Background, Button, Color, Configure, Display, Host, InputEvent, Panel, Sizing, Ui,
@@ -99,8 +98,6 @@ struct State {
     /// Host-side repaint gate. Cleared at top of `draw`; re-armed by
     /// input, resize, surface loss, occlusion, and animation tickers.
     repaint_requested: bool,
-    /// Monotonic timestamp source for `Ui::run_frame`.
-    start: std::time::Instant,
 }
 
 impl ApplicationHandler for App {
@@ -177,7 +174,6 @@ impl ApplicationHandler for App {
             display,
             active: 0,
             repaint_requested: true,
-            start: Instant::now(),
         });
     }
 
@@ -248,9 +244,7 @@ impl State {
         // acquire.
         let info = self
             .host
-            .run_frame(self.display, self.start.elapsed(), |ui| {
-                build_ui(ui, &mut self.active)
-            });
+            .run_frame(self.display, |ui| build_ui(ui, &mut self.active));
         self.repaint_requested = info.repaint_requested;
 
         if info.can_skip_rendering {

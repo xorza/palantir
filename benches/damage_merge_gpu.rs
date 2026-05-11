@@ -145,7 +145,7 @@ fn render_frame(
     color: Color,
     forced_damage: Option<&[Rect]>,
 ) {
-    host.run_frame(display, Duration::ZERO, |ui| build_grid(ui, cells, color));
+    host.run_frame(display, |ui| build_grid(ui, cells, color));
     if let Some(rects) = forced_damage {
         internals::force_host_damage_to_rects(host, rects);
     }

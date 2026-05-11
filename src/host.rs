@@ -11,6 +11,9 @@
 //! (`Damage`, debug overlay, frame-state Arc) is stashed in
 //! [`Host`] itself; the user-facing [`FrameInfo`] is plain owned data.
 
+use std::time::Instant;
+
+use crate::Display;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::color::Color;
 use crate::renderer::backend::WgpuBackend;
@@ -35,6 +38,9 @@ pub struct Host {
     /// wasn't called after the last `run_frame` (e.g. host bailed on
     /// a `Skip` frame); the next `run_frame` overwrites it.
     pub(crate) pending: Option<PendingSubmit>,
+    /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
+    /// each call so the host doesn't have to thread a clock through.
+    pub(crate) start: Instant,
 }
 
 pub(crate) struct PendingSubmit {
@@ -80,19 +86,15 @@ impl Host {
             frontend: Frontend::default(),
             backend: WgpuBackend::new(device, queue, format, shaper),
             pending: None,
+            start: Instant::now(),
         }
     }
 
     /// Drive one CPU frame: `Ui::run_frame` → encode → compose.
     /// Returns the host-facing [`FrameInfo`]; internal state needed
     /// by [`Self::render`] is stashed.
-    pub fn run_frame(
-        &mut self,
-        display: crate::layout::types::display::Display,
-        now: std::time::Duration,
-        record: impl FnMut(&mut Ui),
-    ) -> FrameInfo {
-        let Some(frame) = self.ui.frame(display, now, record) else {
+    pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameInfo {
+        let Some(frame) = self.ui.frame(display, self.start.elapsed(), record) else {
             // Skip: keep the prior composer buffer untouched; the
             // backend's Skip path short-circuits to a backbuffer →
             // surface copy without reading it.

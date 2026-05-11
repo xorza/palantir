@@ -191,7 +191,7 @@ fn main() {
     let display = Display::from_physical(PHYSICAL, SCALE);
 
     let run = |host: &mut Host| {
-        host.run_frame(display, std::time::Duration::ZERO, build_ui);
+        host.run_frame(display, build_ui);
         host.render(&target, Color::TRANSPARENT);
         g.device
             .poll(wgpu::PollType::Wait {

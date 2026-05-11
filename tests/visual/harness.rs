@@ -99,11 +99,8 @@ impl Harness {
             view_formats: &[],
         });
 
-        self.host.run_frame(
-            Display::from_physical(physical, scale),
-            std::time::Duration::ZERO,
-            scene,
-        );
+        self.host
+            .run_frame(Display::from_physical(physical, scale), scene);
         self.host.render(&target, clear);
 
         readback(&self.device, &self.queue, &target, physical)
