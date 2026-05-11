@@ -170,7 +170,7 @@ impl ApplicationHandler for App {
             window.scale_factor() as f32,
         );
         let shaper = palantir::TextShaper::with_bundled_fonts();
-        ui.set_text_shaper(shaper.clone());
+        ui.text = shaper.clone();
         backend.set_text_shaper(shaper);
 
         window.request_redraw();

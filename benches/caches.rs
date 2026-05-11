@@ -356,7 +356,7 @@ fn build_scrolling(ui: &mut Ui) {
 /// `b.iter` invocations amortizes font-database parsing.
 fn fresh_heavy_ui() -> Ui {
     let mut ui = Ui::new();
-    ui.set_text_shaper(TextShaper::with_bundled_fonts());
+    ui.text = TextShaper::with_bundled_fonts();
     ui
 }
 

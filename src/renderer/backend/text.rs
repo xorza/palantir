@@ -129,7 +129,7 @@ impl TextRenderer {
     }
 
     /// Install the shared shaper handle. Pass the same [`TextShaper`]
-    /// to [`crate::Ui::set_text_shaper`] so layout and rendering see
+    /// to `Ui::text` so layout and rendering see
     /// one buffer cache.
     pub(crate) fn set_shaper(&mut self, shaper: TextShaper) {
         self.shaper = shaper;

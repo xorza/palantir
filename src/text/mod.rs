@@ -46,7 +46,7 @@ use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 /// measurement during layout, prepare/render during the wgpu frame —
 /// so the `RefCell` is just runtime insurance against accidental
 /// re-entry. Cloning is cheap (refcount bump). The same handle goes
-/// on `Ui` (via [`crate::Ui::set_text_shaper`]) and on
+/// on `Ui` (via the public `Ui::text` field) and on
 /// [`crate::WgpuBackend`] (via [`crate::WgpuBackend::set_text_shaper`])
 /// so both sides see one buffer cache.
 ///
@@ -55,7 +55,7 @@ use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 /// - [`Self::mono`] / [`Self::default`] — primitive shaping (every
 ///   glyph is `font_size_px * 0.5` wide). Renderer drops these runs
 ///   (their [`TextCacheKey`] is [`TextCacheKey::INVALID`]). Useful
-///   for tests, headless drivers, and the `Ui::default()` state.
+///   for tests, headless drivers, and the `Ui::new()` state.
 /// - [`Self::with_bundled_fonts`] / [`Self::with_cosmic`] — real
 ///   shaping via cosmic-text.
 #[derive(Clone, Default)]
