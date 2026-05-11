@@ -12,6 +12,7 @@
 use crate::Ui;
 use crate::animation::animatable::Animatable;
 use crate::forest::widget_id::WidgetId;
+use crate::layout::scroll::ScrollLayoutState;
 use crate::text::TextShaper;
 
 /// Drop every cross-frame measure-cache entry, forcing the next frame
@@ -40,6 +41,15 @@ pub fn run_cascades(ui: &mut Ui) {
 /// goes through `as_any_mut`.
 pub fn anim_row_count<T: Animatable>(ui: &mut Ui) -> usize {
     ui.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
+}
+
+/// Borrow (or insert default) the scroll-state row for the layout
+/// node at `id`. Tests pass `outer_id.with("__viewport")` — the
+/// `LayoutMode::Scroll` node's actual `WidgetId`. Production widgets
+/// reach `ui.layout.scroll_states` directly; this helper exists
+/// purely to keep test inspection sites short.
+pub(crate) fn scroll_state(ui: &mut Ui, id: WidgetId) -> &mut ScrollLayoutState {
+    ui.layout.scroll_states.entry(id).or_default()
 }
 
 /// Total `measure` calls dispatched through `shaper` (cache misses

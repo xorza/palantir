@@ -7,6 +7,7 @@ use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
+use crate::support::internals::scroll_state;
 use crate::support::testing::{ui_at, under_outer};
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -37,7 +38,7 @@ fn build(ui: &mut crate::ui::Ui, viewport_h: f32, content_h: f32) {
 }
 
 fn read_state(ui: &mut crate::ui::Ui) -> ScrollState {
-    *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"))
+    *scroll_state(ui, WidgetId::from_hash("scroll").with("__viewport"))
 }
 
 #[test]
@@ -118,7 +119,7 @@ fn horizontal_scroll_pans_only_x() {
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
     let id = WidgetId::from_hash("hscroll").with("__viewport");
-    let row = *ui.scroll_state(id);
+    let row = *scroll_state(&mut ui, id);
     assert_eq!(row.offset, Vec2::new(75.0, 0.0));
 }
 
@@ -149,7 +150,7 @@ fn both_axis_scroll_pans_both_axes() {
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
     let id = WidgetId::from_hash("xy").with("__viewport");
-    let row = *ui.scroll_state(id);
+    let row = *scroll_state(&mut ui, id);
     assert_eq!(row.offset, Vec2::new(40.0, 60.0));
     assert_eq!(
         row.content,
@@ -272,7 +273,7 @@ fn scroll_records_content_extent() {
             }
         });
         let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");
-        let state = *ui.scroll_state(scroll_id);
+        let state = *scroll_state(&mut ui, scroll_id);
         assert_eq!(state.content, *expected, "case: {label} content");
         let rect = ui.layout.result[Layer::Main].rect[scroll_node.index()];
         // Viewport honors the Scroll's Fixed size, ignoring overflow content.
@@ -320,14 +321,14 @@ fn scroll_state_content_survives_measure_cache_hit() {
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
     let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
-    let after_first = *ui.scroll_state(scroll_id);
+    let after_first = *scroll_state(&mut ui, scroll_id);
     assert_eq!(after_first.content.h, 92.0);
 
     ui.begin_frame(display);
     build(&mut ui);
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
-    let after_second = *ui.scroll_state(scroll_id);
+    let after_second = *scroll_state(&mut ui, scroll_id);
     assert_eq!(
         after_second.content, after_first.content,
         "ScrollState.content survives a measure-cache hit",
@@ -453,7 +454,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         }
 
         let id = WidgetId::from_hash("xy").with("__viewport");
-        let before = *ui.scroll_state(id);
+        let before = *scroll_state(&mut ui, id);
         // Pivot is in widget-local coords. Outer scroll widget sits at
         // (OUTER_PAD, OUTER_PAD + TEXT_GAP) — pointer minus that origin
         // is what the widget will see internally.
@@ -471,7 +472,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
             ui.end_frame_paint_phase();
         }
 
-        let after = *ui.scroll_state(id);
+        let after = *scroll_state(&mut ui, id);
         let world_after = Vec2::new(
             (pivot_local.x + after.offset.x) / after.zoom,
             (pivot_local.y + after.offset.y) / after.zoom,
@@ -570,7 +571,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     // pan clamp, not how we got there.
     let id = WidgetId::from_hash("xy").with("__viewport");
     {
-        let row = ui.scroll_state(id);
+        let row = scroll_state(&mut ui, id);
         row.offset = Vec2::new(0.0, -50.0);
     }
 
@@ -583,7 +584,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
 
-    let after = *ui.scroll_state(id);
+    let after = *scroll_state(&mut ui, id);
     // Content (400) overflows viewport (188 with both bars reserved
     // → see `both_axis_scroll_pans_both_axes` for the same calc), so
     // natural range is `[0, 212]`. With offset.y starting at -50,
@@ -602,7 +603,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     build(&mut ui);
     ui.end_frame_record_phase();
     ui.end_frame_paint_phase();
-    let after2 = *ui.scroll_state(id);
+    let after2 = *scroll_state(&mut ui, id);
     assert!(
         (after2.offset.y - (-45.0)).abs() < 1e-3,
         "pan further out-of-range should be blocked at current ({}), got {}",
@@ -624,6 +625,7 @@ mod bars {
     use crate::layout::types::display::Display;
     use crate::layout::types::sizing::Sizing;
     use crate::shape::ShapeRecord;
+    use crate::support::internals::scroll_state;
     use crate::support::testing::{shapes_of, ui_at};
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
@@ -942,7 +944,7 @@ mod bars {
         build(&mut ui);
         ui.end_frame_record_phase();
         ui.end_frame_paint_phase();
-        let row = *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"));
+        let row = *scroll_state(&mut ui, WidgetId::from_hash("scroll").with("__viewport"));
         assert_eq!(
             row.viewport,
             Size::new(188.0, 200.0),
@@ -978,7 +980,7 @@ mod bars {
         build(&mut ui);
         ui.end_frame_record_phase();
         ui.end_frame_paint_phase();
-        let row = *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"));
+        let row = *scroll_state(&mut ui, WidgetId::from_hash("scroll").with("__viewport"));
         // Inner x = 200 - (left=16 + right=16 + reservation=8+4) = 156.
         // Inner y = 200 - (top=16 + bottom=16) = 168.
         assert_eq!(row.viewport, Size::new(156.0, 168.0));
@@ -1046,7 +1048,7 @@ mod bars {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
-        let read_viewport = |ui: &mut Ui| ui.scroll_state(scroll_id).viewport;
+        let read_viewport = |ui: &mut Ui| scroll_state(ui, scroll_id).viewport;
 
         let build = |ui: &mut Ui, content_h: f32| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
@@ -1151,7 +1153,7 @@ mod bars {
 
         // Bump zoom to 2.0 and re-run two frames so arrange + record
         // both observe the scaled content.
-        ui.scroll_state(scroll_id).zoom = 2.0;
+        scroll_state(&mut ui, scroll_id).zoom = 2.0;
         crate::support::testing::begin(&mut ui, surface);
         build(&mut ui);
         ui.end_frame_record_phase();
@@ -1305,7 +1307,7 @@ mod bars {
             });
         };
         let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
-        let row = *ui.scroll_state(scroll_id);
+        let row = *scroll_state(&mut ui, scroll_id);
         let expected = Size::new(200.0 - theme.width - theme.gap, 200.0);
         assert_eq!(
             row.viewport, expected,
@@ -1418,7 +1420,7 @@ mod bars {
             });
         };
         let _ = ui.run_frame(Display::from_physical(surface, 1.0), Duration::ZERO, scene);
-        let row = *ui.scroll_state(scroll_id);
+        let row = *scroll_state(&mut ui, scroll_id);
         assert_eq!(
             row.viewport,
             Size::new(200.0, 200.0),
