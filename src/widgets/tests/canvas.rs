@@ -36,8 +36,8 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                 .node,
         );
     });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let c = ui.layout[Layer::Main].rect[canvas_node.unwrap().index()];
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
     assert_eq!(c.size.w, 110.0);

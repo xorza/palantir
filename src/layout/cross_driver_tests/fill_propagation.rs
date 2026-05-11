@@ -48,8 +48,8 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
         .show(&mut ui, |ui| {
             node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
         });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     assert_wrapped_within_surface(&ui, node.unwrap(), 200.0);
 }
 
@@ -65,8 +65,8 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
         .show(&mut ui, |ui| {
             node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
         });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     assert_wrapped_within_surface(&ui, node.unwrap(), 200.0);
 }
 
@@ -98,8 +98,8 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                 .node,
         );
     });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let r = ui.layout[Layer::Main].rect[zstack_node.unwrap().index()];
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
@@ -136,8 +136,8 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                         .node,
                 );
             });
-        ui.record_phase();
-        ui.paint_phase();
+        ui.post_record();
+        ui.paint();
         support::shaped_text(&ui.layout[Layer::Main], value_node.unwrap())
             .measured
             .h
@@ -191,8 +191,8 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
                 );
             });
     });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let shaped = support::shaped_text(&ui.layout[Layer::Main], value_node.unwrap());
     assert!(
         shaped.measured.h > 32.0,
@@ -254,8 +254,8 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                     .node,
             );
         });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let h = ui.layout[Layer::Main].rect[grid_node.unwrap().index()]
         .size
         .h;
@@ -306,8 +306,8 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     );
                 });
         });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let h = ui.layout[Layer::Main].rect[grid_node.unwrap().index()]
         .size
         .h;

@@ -304,7 +304,7 @@ impl<T: Animatable> AnimMapTyped<T> {
     /// stopped poking it this frame; clear the `touched` flag on the
     /// rows that survive. Single retain pass — both predicates fold
     /// into one walk.
-    pub(crate) fn post_record(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         self.rows.retain(|(id, _), row| {
             if removed.contains(id) {
                 return false;
@@ -319,13 +319,13 @@ impl<T: Animatable> AnimMapTyped<T> {
 /// Type-erased operations every typed map exposes — end-of-frame
 /// sweep, plus `as_any_mut` for downcast back to the concrete map.
 trait AnyTyped: 'static {
-    fn post_record(&mut self, removed: &FxHashSet<WidgetId>);
+    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
-    fn post_record(&mut self, removed: &FxHashSet<WidgetId>) {
-        AnimMapTyped::<T>::post_record(self, removed);
+    fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
+        AnimMapTyped::<T>::sweep_removed(self, removed);
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
@@ -372,12 +372,12 @@ impl AnimMap {
     /// that owns the slot stopped reaching for it — without (b),
     /// abandoned slots would accumulate forever for any widget
     /// whose id lingers across motion-toggle states.
-    pub(crate) fn post_record(&mut self, removed: &FxHashSet<WidgetId>) {
+    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         if self.by_type.is_empty() {
             return;
         }
         for typed in self.by_type.values_mut() {
-            typed.post_record(removed);
+            typed.sweep_removed(removed);
         }
     }
 }

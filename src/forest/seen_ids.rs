@@ -11,7 +11,7 @@
 //!    [`crate::text::TextShaper`] / measure cache / state /
 //!    animation), then swaps `curr → prev` so the next frame diffs
 //!    against this one. Called once per `run_frame` from
-//!    [`crate::Ui::paint_phase`]; discarded record passes don't touch
+//!    [`crate::Ui::paint`]; discarded record passes don't touch
 //!    seen-id state, so `prev` stays anchored at the last *painted*
 //!    frame regardless of how many discard passes ran.
 
