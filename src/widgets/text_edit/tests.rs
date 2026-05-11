@@ -737,7 +737,10 @@ fn two_textedits_only_one_focused_at_a_time() {
 fn ui_at_no_cosmic(size: UVec2) -> crate::Ui {
     use crate::layout::types::display::Display;
     let mut ui = crate::Ui::new();
-    ui.pre_record(Display::from_physical(size, 1.0));
+    {
+        ui.display = Display::from_physical(size, 1.0);
+        ui.pre_record();
+    }
     ui
 }
 

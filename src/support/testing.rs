@@ -31,7 +31,10 @@ pub(crate) fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &Shap
 }
 
 pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
-    ui.pre_record(Display::from_physical(size, 1.0));
+    {
+        ui.display = Display::from_physical(size, 1.0);
+        ui.pre_record();
+    }
 }
 
 /// Drive one full frame through the production [`Ui::run_frame`]

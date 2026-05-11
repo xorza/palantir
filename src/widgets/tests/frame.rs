@@ -67,7 +67,10 @@ fn frame_with_sense_click_is_clickable() {
     ui.finalize_frame();
     click_at(&mut ui, Vec2::new(50.0, 25.0));
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut clicked = false;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         clicked = Frame::new()

@@ -80,7 +80,10 @@ fn stack_with_sense_none_passes_clicks_through() {
     // Press inside the HStack's padding (not over any child).
     click_at(&mut ui, Vec2::new(5.0, 5.0));
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut child_clicked = false;
     let stack_resp = Panel::hstack().auto_id().padding(20.0).show(&mut ui, |ui| {
         child_clicked = Button::new()
@@ -120,7 +123,10 @@ fn stack_with_sense_click_captures_clicks() {
     ui.finalize_frame();
     click_at(&mut ui, Vec2::new(5.0, 5.0));
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let stack_resp = Panel::hstack()
         .id_salt("clickable_card")
         .padding(20.0)
@@ -162,7 +168,10 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     release_left(&mut ui);
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut child_clicked = false;
     let stack_resp = Panel::hstack()
         .id_salt("hover_only")
@@ -208,7 +217,10 @@ fn input_state_release_outside_does_not_click() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 20.0))); // outside
     release_left(&mut ui);
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut got_click = false;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         got_click = Button::new()
@@ -251,7 +263,10 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     click_at(&mut ui, Vec2::new(150.0, 150.0));
 
     // Frame 2: read .clicked() from the button's response.
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut clicked = false;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
@@ -298,7 +313,10 @@ fn zoom_panel_routes_clicks_to_world_rendered_button() {
     // Click at world (75, 75) — inside the zoomed 100x100 bounds.
     click_at(&mut ui, Vec2::new(75.0, 75.0));
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut clicked = false;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
@@ -342,7 +360,10 @@ fn click_outside_zoomed_bounds_does_not_hit() {
     // inside the LOGICAL rect but outside the world-rendered rect.
     click_at(&mut ui, Vec2::new(40.0, 40.0));
 
-    ui.pre_record(Display::default());
+    {
+        ui.display = Display::default();
+        ui.pre_record();
+    }
     let mut clicked = false;
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Panel::zstack()
