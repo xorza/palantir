@@ -355,10 +355,24 @@ impl<'a> Emitter<'a> {
     fn push_cross_section(&mut self, p: Vec2, normal: Vec2, ext: f32, inner_color: Color) {
         let outer = normal * (self.geo.outer_offset * ext);
         let inner = normal * (self.geo.inner_offset * ext);
-        self.push_vert(p + outer, Color::TRANSPARENT);
-        self.push_vert(p + inner, inner_color);
-        self.push_vert(p - inner, inner_color);
-        self.push_vert(p - outer, Color::TRANSPARENT);
+        self.verts.extend_from_slice(&[
+            MeshVertex {
+                pos: p + outer,
+                color: Color::TRANSPARENT,
+            },
+            MeshVertex {
+                pos: p + inner,
+                color: inner_color,
+            },
+            MeshVertex {
+                pos: p - inner,
+                color: inner_color,
+            },
+            MeshVertex {
+                pos: p - outer,
+                color: Color::TRANSPARENT,
+            },
+        ]);
     }
 
     /// Three quads per segment: outer-left fringe, full-α core,
@@ -366,12 +380,15 @@ impl<'a> Emitter<'a> {
     /// the two cross-section blocks bracketing the segment.
     #[inline]
     fn push_strip_indices(&mut self, a: u16, b: u16) {
-        self.indices
-            .extend_from_slice(&[a, a + 1, b + 1, a, b + 1, b]);
-        self.indices
-            .extend_from_slice(&[a + 1, a + 2, b + 2, a + 1, b + 2, b + 1]);
-        self.indices
-            .extend_from_slice(&[a + 2, a + 3, b + 3, a + 2, b + 3, b + 2]);
+        let a1 = a + 1;
+        let a2 = a + 2;
+        let a3 = a + 3;
+        let b1 = b + 1;
+        let b2 = b + 2;
+        let b3 = b + 3;
+        self.indices.extend_from_slice(&[
+            a, a1, b1, a, b1, b, a1, a2, b2, a1, b2, b1, a2, a3, b3, a2, b3, b2,
+        ]);
     }
 
     /// Dispatch to bevel / round chrome plus the concave-side
