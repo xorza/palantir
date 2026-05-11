@@ -5,12 +5,14 @@
 //! 2. [`Composer`] — `&RenderCmdBuffer` → `RenderBuffer` (physical-px
 //!    quads + scissor groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
-//!    persistent per-frame allocation. `Ui::end_frame` calls
-//!    [`Frontend::build`] once and pulls the painted output via
-//!    [`FrameOutput`].
+//!    persistent per-frame allocation. The owning [`Renderer`] calls
+//!    [`Frontend::build`] once per frame and feeds the composed buffer
+//!    plus gradient atlas into the backend.
 //!
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
+//!
+//! [`Renderer`]: crate::renderer::Renderer
 
 pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
@@ -22,8 +24,6 @@ use crate::layout::result::LayoutResult;
 use crate::layout::types::display::Display;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
-use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::cascade::CascadeResult;
 use crate::ui::damage::DamagePaint;
 use crate::ui::damage::region::DamageRegion;
@@ -31,19 +31,19 @@ use crate::ui::debug_overlay::DebugOverlayConfig;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-/// Submission status of the most recently produced [`FrameOutput`].
-/// Held by both [`crate::Ui`] and `FrameOutput` (via `Arc`); written
-/// by `Ui::end_frame` (→ `Pending`) and `WgpuBackend::submit` on the
-/// success path (→ `Submitted`). Read by `Ui::begin_frame`, which
-/// auto-rewinds `damage.prev_surface` whenever the last frame's
-/// state isn't `Submitted` (host dropped the `FrameOutput`, surface
-/// acquire failed, or it's the very first frame from
-/// `FrameState::default()` — which leaves the underlying byte at
-/// `Initial`). Turns "host dropped a `FrameOutput`" into "next frame
-/// is `Full`" — wasteful but correct, instead of silent damage smear.
+/// Submission status of the most recently produced [`RecordedFrame`].
+/// Held by both [`crate::Ui`] and `RecordedFrame` (via `Arc`); written
+/// by `Ui::run_frame` (→ `Pending`) and the renderer on the success
+/// path (→ `Submitted`). Read by `Ui::begin_frame`, which auto-rewinds
+/// `damage.prev_surface` whenever the last frame's state isn't
+/// `Submitted` (host dropped the `RecordedFrame`, surface acquire
+/// failed, or it's the very first frame from `FrameState::default()` —
+/// which leaves the underlying byte at `Initial`). Turns "host dropped
+/// a `RecordedFrame`" into "next frame is `Full`" — wasteful but
+/// correct, instead of silent damage smear.
 ///
 /// `AtomicU8` is overkill for the single-threaded renderer path, but
-/// cheap and lets `Ui` / `FrameOutput` stay `Send`/`Sync` compatible
+/// cheap and lets `Ui` / `RecordedFrame` stay `Send`/`Sync` compatible
 /// without further constraints.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FrameState(Arc<AtomicU8>);
@@ -66,45 +66,43 @@ impl FrameState {
     }
 }
 
-/// One frame's CPU output: the composed render buffer and what the
-/// GPU should do with it. Returned from [`Ui::end_frame`], consumed
-/// by [`WgpuBackend::submit`]. The three [`DamagePaint`] variants —
-/// `Full`, `Partial`, `Skip` — replace the old `Option<Rect>` so the
-/// no-changes case can opt out of the GPU pass entirely instead of
-/// being forced through a full clear+repaint.
+/// One frame's recorded result: a borrowed view into the [`Ui`]'s
+/// per-frame data plus the damage decision. Returned from
+/// [`Ui::run_frame`], consumed by [`Renderer::render`]. The three
+/// [`DamagePaint`] variants — `Full`, `Partial`, `Skip` — let the
+/// no-changes case opt out of the GPU pass entirely instead of being
+/// forced through a full clear+repaint.
 ///
-/// [`Ui::end_frame`]: crate::ui::Ui::end_frame
-/// [`WgpuBackend::submit`]: crate::renderer::WgpuBackend::submit
-pub struct FrameOutput<'a> {
-    pub(crate) buffer: &'a RenderBuffer,
+/// Pure CPU data; no GPU handles. Backends consume it through the
+/// owning [`Renderer`], which also holds the [`Frontend`] that turns
+/// `forest`/`results`/`cascades` into a composed `RenderBuffer`.
+///
+/// [`Ui`]: crate::ui::Ui
+/// [`Ui::run_frame`]: crate::ui::Ui::run_frame
+/// [`Renderer`]: crate::renderer::Renderer
+/// [`Renderer::render`]: crate::renderer::Renderer::render
+pub struct RecordedFrame<'a> {
+    pub(crate) forest: &'a Forest,
+    pub(crate) results: &'a LayoutResult,
+    pub(crate) cascades: &'a CascadeResult,
+    pub(crate) display: Display,
     pub(crate) damage: DamagePaint,
-    pub(crate) repaint_requested: bool,
-    /// Snapshot of [`crate::Ui::debug_overlay`] at end-of-frame. Read
-    /// by the wgpu backend to draw the requested visualizations onto
-    /// the swapchain texture after the backbuffer→surface copy.
     pub(crate) debug_overlay: Option<DebugOverlayConfig>,
+    pub(crate) repaint_requested: bool,
     /// Shared with `Ui::frame_state`. Set to `Pending` by
-    /// `Ui::end_frame` and (on success) to `Submitted` by
-    /// `WgpuBackend::submit`. The next `Ui::begin_frame` auto-rewinds
+    /// `Ui::run_frame` and (on success) to `Submitted` by
+    /// `Renderer::render`. The next `Ui::begin_frame` auto-rewinds
     /// damage if it doesn't see `Submitted`.
     pub(crate) frame_state: FrameState,
-    /// Cross-frame gradient LUT atlas, borrowed mutably for the
-    /// duration of this `FrameOutput`. The backend drains the dirty
-    /// bytes once during `submit` (no-op when nothing changed) and
-    /// uploads them to the GPU texture before the render pass. Split
-    /// borrow off `Frontend` — `&buffer` (Frontend.composer.buffer)
-    /// and `&mut gradient_atlas` are disjoint fields, so the
-    /// borrow checker accepts both lifetimes simultaneously.
-    pub(crate) gradient_atlas: &'a mut GradientCpuAtlas,
 }
 
-impl FrameOutput<'_> {
+impl RecordedFrame<'_> {
     /// `true` when this frame's damage diff produced no work — the
     /// backbuffer already holds the right pixels. Hosts can skip
-    /// `surface.get_current_texture()` + `submit` + `present` entirely.
+    /// `surface.get_current_texture()` + render + `present` entirely.
     ///
-    /// Safe by construction: if the previous frame's `submit` didn't
-    /// run (host dropped the `FrameOutput`, surface acquire failed,
+    /// Safe by construction: if the previous frame's render didn't
+    /// run (host dropped the `RecordedFrame`, surface acquire failed,
     /// etc.), the framework's auto-rewind in `Ui::begin_frame`
     /// forced this frame to `Full`, so this method returns `false`
     /// and the host paints. No "invalidate" call needed in
@@ -120,18 +118,25 @@ impl FrameOutput<'_> {
     pub fn repaint_requested(&self) -> bool {
         self.repaint_requested
     }
+
+    pub(crate) fn damage_filter(&self) -> Option<&DamageRegion> {
+        match &self.damage {
+            DamagePaint::Partial(region) => Some(region),
+            DamagePaint::Full | DamagePaint::Skip => None,
+        }
+    }
 }
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
 /// every persistent allocation (the encoder's
 /// [`RenderCmdBuffer`](cmd_buffer::RenderCmdBuffer), the output
 /// `RenderBuffer`, the [`Composer`] with its scratch). No GPU
-/// handles — `buffer()` is fed into any backend (`WgpuBackend`, future
-/// software/Vello/etc.).
+/// handles — the composed buffer is fed into any backend
+/// (`WgpuBackend`, future software/Vello/etc.).
 ///
-/// Lives inside [`Ui`](crate::ui::Ui) so a host gets the entire CPU
-/// frame state (UI logic + paint output) from one
-/// [`Ui::end_frame`](crate::ui::Ui::end_frame) call.
+/// Owned by [`Renderer`](crate::renderer::Renderer) alongside the
+/// backend; the renderer drives `Frontend::build` then hands the
+/// composed buffer + gradient atlas to the backend.
 #[derive(Default)]
 pub(crate) struct Frontend {
     pub(crate) encoder: Encoder,

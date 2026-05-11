@@ -14,7 +14,7 @@ use crate::layout::LayoutEngine;
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
-use crate::renderer::frontend::{FrameOutput, FrameState, Frontend};
+use crate::renderer::frontend::{FrameState, RecordedFrame};
 use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::Cascades;
@@ -40,7 +40,6 @@ pub struct Ui {
     /// buffer cache.
     pub(crate) text: TextShaper,
     pub(crate) layout: LayoutEngine,
-    pub(crate) frontend: Frontend,
     pub(crate) input: InputState,
     pub(crate) cascades: Cascades,
     pub(crate) display: Display,
@@ -96,7 +95,6 @@ impl Ui {
             state: StateMap::default(),
             text,
             layout: LayoutEngine::default(),
-            frontend: Frontend::default(),
             input: InputState::new(),
             cascades: Cascades::default(),
             display: Display::default(),
@@ -123,7 +121,7 @@ impl Ui {
         display: Display,
         now: Duration,
         mut build: impl FnMut(&mut Ui),
-    ) -> FrameOutput<'_> {
+    ) -> RecordedFrame<'_> {
         let raw_dt = now.saturating_sub(self.time);
         self.dt = raw_dt.as_secs_f32().min(Self::MAX_DT);
         self.time = now;
@@ -217,10 +215,12 @@ impl Ui {
         std::mem::take(&mut self.relayout_requested)
     }
 
-    /// Paint-half of `end_frame`: commit the seen-id rollover, then
-    /// cascade → hit-index → damage → encode → compose. Reads the
-    /// `LayoutResult` from the most recent `record_phase`.
-    pub(crate) fn paint_phase(&mut self) -> FrameOutput<'_> {
+    /// Paint-half of `run_frame`: commit the seen-id rollover, then
+    /// cascade → hit-index → damage. Reads the `LayoutResult` from
+    /// the most recent `record_phase`. Returns a borrowed view of
+    /// the Ui state that [`Renderer::render`](crate::renderer::Renderer::render)
+    /// turns into a composed buffer + GPU submit.
+    pub(crate) fn paint_phase(&mut self) -> RecordedFrame<'_> {
         let surface = self.display.logical_rect();
         self.forest.ids.commit_rollover();
         let removed = &self.forest.ids.removed;
@@ -232,33 +232,20 @@ impl Ui {
             .damage
             .compute(&self.forest, cascades, removed, surface);
 
-        let damage_filter = match &damage {
-            DamagePaint::Partial(region) => Some(region),
-            DamagePaint::Full | DamagePaint::Skip => None,
-        };
-        self.frontend.build(
-            &self.forest,
-            results,
-            cascades,
-            damage_filter,
-            &self.display,
-        );
-
         if matches!(damage, DamagePaint::Skip) {
             self.frame_state.mark_submitted();
         } else {
             self.frame_state.mark_pending();
         }
-        // Split borrow off `Frontend`: `&composer.buffer` and
-        // `&mut gradient_atlas` are disjoint fields, so the borrow
-        // checker lets both lifetimes coexist inside `FrameOutput`.
-        FrameOutput {
-            buffer: &self.frontend.composer.buffer,
+        RecordedFrame {
+            forest: &self.forest,
+            results,
+            cascades,
+            display: self.display,
             damage,
-            repaint_requested: self.repaint_requested,
             debug_overlay: self.debug_overlay,
+            repaint_requested: self.repaint_requested,
             frame_state: self.frame_state.clone(),
-            gradient_atlas: &mut self.frontend.gradient_atlas,
         }
     }
 

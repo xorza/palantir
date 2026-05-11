@@ -64,13 +64,21 @@ fn drain_one_frame(ui: &mut Ui) {
 fn empty_ui_drives_a_frame_safely() {
     let mut ui = ui_at(UVec2::new(200, 200));
     {
-        // FrameOutput borrows ui.buffer; check pipeline output first,
-        // then drop the borrow so we can read other ui state.
+        use crate::renderer::frontend::Frontend;
         ui.record_phase();
         let frame = ui.paint_phase();
-        assert!(frame.buffer.quads.is_empty());
-        assert!(frame.buffer.texts.is_empty());
-        assert!(frame.buffer.groups.is_empty());
+        let mut frontend = Frontend::default();
+        frontend.build(
+            frame.forest,
+            frame.results,
+            frame.cascades,
+            frame.damage_filter(),
+            &frame.display,
+        );
+        let buffer = &frontend.composer.buffer;
+        assert!(buffer.quads.is_empty());
+        assert!(buffer.texts.is_empty());
+        assert!(buffer.groups.is_empty());
     }
 
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 0);

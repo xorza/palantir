@@ -104,12 +104,12 @@ pub fn damage_region_after_adds(rects: &[crate::primitives::rect::Rect]) -> usiz
     region.iter_rects().count()
 }
 
-/// Simulate a successful `WgpuBackend::submit` for benches that
-/// drive `Ui::run_frame` without a real GPU. Without it,
-/// `Ui::begin_frame`'s auto-rewind would fire every iteration —
-/// every bench frame would escalate to `Full` and the Skip /
-/// Partial scenarios would be unmeasurable.
-pub fn mark_frame_submitted(out: &crate::renderer::frontend::FrameOutput<'_>) {
+/// Simulate a successful `Renderer::render` for benches that drive
+/// `Ui::run_frame` without a real GPU. Without it, `Ui::begin_frame`'s
+/// auto-rewind would fire every iteration — every bench frame would
+/// escalate to `Full` and the Skip / Partial scenarios would be
+/// unmeasurable.
+pub fn mark_frame_submitted(out: &crate::renderer::frontend::RecordedFrame<'_>) {
     out.frame_state.mark_submitted();
 }
 
@@ -126,7 +126,7 @@ pub fn mark_frame_submitted(out: &crate::renderer::frontend::FrameOutput<'_>) {
 /// one. Pass disjoint rects to actually exercise the multi-pass
 /// path.
 pub fn force_frame_damage_to_rects(
-    out: &mut crate::renderer::frontend::FrameOutput<'_>,
+    out: &mut crate::renderer::frontend::RecordedFrame<'_>,
     rects: &[crate::primitives::rect::Rect],
 ) {
     use crate::ui::damage::DamagePaint;

@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, DebugOverlayConfig, Display, TextShaper, Ui, WgpuBackend};
+use palantir::{Color, DebugOverlayConfig, Display, Renderer, TextShaper, Ui};
 use pollster::FutureExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -59,22 +59,22 @@ thread_local! {
 pub struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    backend: WgpuBackend,
+    renderer: Renderer,
     pub ui: Ui,
 }
 
 impl Harness {
     pub fn new() -> Self {
         let g = gpu();
-        let mut backend = WgpuBackend::new(g.device.clone(), g.queue.clone(), FORMAT);
+        let mut renderer = Renderer::new(g.device.clone(), g.queue.clone(), FORMAT);
         let shaper = COSMIC.with(|c| c.clone());
         let ui = Ui::with_text(shaper.clone());
-        backend.set_text_shaper(shaper);
+        renderer.set_text_shaper(shaper);
 
         Self {
             device: g.device.clone(),
             queue: g.queue.clone(),
-            backend,
+            renderer,
             ui,
         }
     }
@@ -108,7 +108,7 @@ impl Harness {
             std::time::Duration::ZERO,
             scene,
         );
-        self.backend.submit(&target, clear, frame_out);
+        self.renderer.render(&target, clear, frame_out);
 
         readback(&self.device, &self.queue, &target, physical)
     }

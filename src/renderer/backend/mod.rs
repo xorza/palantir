@@ -7,10 +7,11 @@ use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
 use self::viewport::build_damage_scissors;
-use super::frontend::FrameOutput;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, spacing::Spacing, stroke::Stroke, urect::URect,
 };
+use crate::renderer::frontend::FrameState;
+use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
 use crate::ui::damage::DamagePaint;
@@ -96,7 +97,7 @@ pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
 /// [`Self::set_text_shaper`]) — without it, text rendering is silently skipped.
 /// No layout, no encode, no compose — those happen elsewhere and arrive
 /// here as a `RenderBuffer`.
-pub struct WgpuBackend {
+pub(crate) struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
     quad: QuadPipeline,
@@ -128,7 +129,11 @@ pub struct WgpuBackend {
 }
 
 impl WgpuBackend {
-    pub fn new(device: wgpu::Device, queue: wgpu::Queue, format: wgpu::TextureFormat) -> Self {
+    pub(crate) fn new(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        format: wgpu::TextureFormat,
+    ) -> Self {
         let quad = QuadPipeline::new(&device, format);
         let mesh = MeshPipeline::new(&device, format);
         let text = TextRenderer::new(&device, &queue, format);
@@ -148,7 +153,7 @@ impl WgpuBackend {
     /// to `Ui::text` so layout-time measurement
     /// and rasterization see one buffer cache. Without it, text
     /// rendering is silently skipped at submit time.
-    pub fn set_text_shaper(&mut self, shaper: TextShaper) {
+    pub(crate) fn set_text_shaper(&mut self, shaper: TextShaper) {
         self.text.set_shaper(shaper);
     }
 
@@ -256,23 +261,31 @@ impl WgpuBackend {
     ///
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.
-    pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, frame: FrameOutput<'_>) {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn submit(
+        &mut self,
+        surface_tex: &wgpu::Texture,
+        clear: Color,
+        buffer: &RenderBuffer,
+        gradient_atlas: &mut GradientCpuAtlas,
+        damage: DamagePaint,
+        debug_overlay: Option<DebugOverlayConfig>,
+        frame_state: &FrameState,
+    ) {
         // Sync gradient LUT atlas to GPU. Idle frames (no new
         // gradients) drain an empty dirty flag and do nothing; first
         // frame uploads row 0's magenta fallback plus any baked rows
         // composer queued. Has to run before the render pass starts —
         // any quad with `fill_kind.is_linear()` samples this texture.
-        self.quad
-            .upload_gradients(&self.queue, frame.gradient_atlas);
+        self.quad.upload_gradients(&self.queue, gradient_atlas);
 
-        let buffer = frame.buffer;
         let use_stencil = buffer.has_rounded_clip();
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
             groups = buffer.groups.len(),
             viewport = ?buffer.viewport_phys,
-            requested_damage = ?frame.damage,
+            requested_damage = ?damage,
             rounded_clip = use_stencil,
             "wgpu_backend.submit"
         );
@@ -281,16 +294,15 @@ impl WgpuBackend {
         // (re)created backbuffer has undefined contents, so any
         // requested Partial / Skip must escalate to a full clear+paint
         // this frame. `effective_damage` is what we'll actually render;
-        // `frame.damage` is what the host asked for. The two diverge
-        // only on backbuffer recreate, but the debug overlay's
-        // damage-rect outline shows what we *rendered*, not what was
-        // requested, so threading the renamed value through is the
-        // right semantic.
+        // `damage` is what the host asked for. The two diverge only on
+        // backbuffer recreate, but the debug overlay's damage-rect
+        // outline shows what we *rendered*, not what was requested, so
+        // threading the renamed value through is the right semantic.
         let backbuffer_recreated = self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
         let effective_damage = if backbuffer_recreated {
             DamagePaint::Full
         } else {
-            frame.damage
+            damage
         };
 
         // Skip: nothing changed and the backbuffer already holds the
@@ -298,7 +310,7 @@ impl WgpuBackend {
         // backbuffer → swapchain so something gets presented.
         if let DamagePaint::Skip = effective_damage {
             self.copy_backbuffer_to_surface(surface_tex);
-            frame.frame_state.mark_submitted();
+            frame_state.mark_submitted();
             return;
         }
 
@@ -321,8 +333,8 @@ impl WgpuBackend {
         // toward black while moving content stays current — far less
         // jarring than the prior `LoadOp::Clear` flash and visually
         // pins which regions are actually repainting.
-        let dim_undamaged = frame.debug_overlay.is_some_and(|c| c.dim_undamaged)
-            && !self.damage_scissors.is_empty();
+        let dim_undamaged =
+            debug_overlay.is_some_and(|c| c.dim_undamaged) && !self.damage_scissors.is_empty();
         if dim_undamaged {
             self.quad
                 .upload_dim(&self.queue, buffer.viewport_phys_f, 0.4);
@@ -452,13 +464,13 @@ impl WgpuBackend {
             backbuffer_tex.size(),
         );
 
-        if let Some(config) = frame.debug_overlay {
+        if let Some(config) = debug_overlay {
             self.draw_debug_overlay(surface_tex, &mut encoder, buffer, effective_damage, config);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.quad.end_frame();
-        frame.frame_state.mark_submitted();
+        frame_state.mark_submitted();
 
         if self.text.has_prepared() {
             self.text.end_frame();

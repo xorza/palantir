@@ -3,6 +3,10 @@
 hash all f32 as canon bits
 trait for hashing
 
-pub(crate) gradient_atlas: &'a mut GradientCpuAtlas, - remove
+textshaped in wgpurender ctor
 
-move frontend from ui
+        gradient_atlas: &mut GradientCpuAtlas, why mut
+
+RecordedFrame move to ui mod.rs
+
+do we need textformat in renderer ctor
