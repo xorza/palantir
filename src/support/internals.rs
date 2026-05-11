@@ -48,6 +48,7 @@ pub fn anim_row_count<T: Animatable>(ui: &mut Ui) -> usize {
 /// `LayoutMode::Scroll` node's actual `WidgetId`. Production widgets
 /// reach `ui.layout.scroll_states` directly; this helper exists
 /// purely to keep test inspection sites short.
+#[allow(dead_code)]
 pub(crate) fn scroll_state(ui: &mut Ui, id: WidgetId) -> &mut ScrollLayoutState {
     ui.layout.scroll_states.entry(id).or_default()
 }
