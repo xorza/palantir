@@ -1,9 +1,12 @@
+use super::axis::Axis;
+use super::intrinsic::LenReq;
+use super::layoutengine::LayoutEngine;
 use super::support::{
     AxisAlignPair, children_max_intrinsic, measure_per_axis_hug, place_axis, resolved_axis_align,
     zero_subtree,
 };
-use super::{Axis, LayoutEngine, LenReq};
 use crate::forest::tree::{NodeId, Tree};
+use crate::layout::Layout;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
 use glam::Vec2;
@@ -42,8 +45,9 @@ pub(crate) fn measure(
     node: NodeId,
     inner_avail: Size,
     text: &TextShaper,
+    out: &mut Layout,
 ) -> Size {
-    measure_per_axis_hug(layout, tree, node, inner_avail, text, |_, _, d| d)
+    measure_per_axis_hug(layout, tree, node, inner_avail, text, out, |_, _, d| d)
 }
 
 /// Each child gets a slot inside `inner`, sized per its own `Sizing` and
@@ -51,12 +55,18 @@ pub(crate) fn measure(
 /// `child_align` as fallback when child's own axis is `Auto`).
 /// Defaults pin to top-left unless the child has `Sizing::Fill` — then `Auto`
 /// falls back to stretch on that axis.
-pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
+pub(crate) fn arrange(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    inner: Rect,
+    out: &mut Layout,
+) {
     let parent_child_align = tree.panel(node).child_align;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(layout, tree, c, inner.min);
+            zero_subtree(layout, tree, c, inner.min, out);
             continue;
         }
         let d = layout.scratch.desired[c.index()];
@@ -69,6 +79,6 @@ pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
             min: inner.min + Vec2::new(x.offset, y.offset),
             size: Size::new(x.size, y.size),
         };
-        layout.arrange(tree, c, child_rect);
+        layout.arrange(tree, c, child_rect, out);
     }
 }

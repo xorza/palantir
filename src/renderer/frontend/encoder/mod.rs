@@ -2,8 +2,8 @@ use super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
 use crate::forest::Forest;
 use crate::forest::shapes::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
-use crate::layout::result::{LayerResult, LayoutResult};
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
+use crate::layout::{LayerLayout, Layout};
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
@@ -13,7 +13,7 @@ use crate::ui::damage::region::DamageRegion;
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU
 /// work, no scale/snap math — that lives in the backend's process
-/// step. Pure function over `(&Tree, &LayerResult, &Cascades)`, so
+/// step. Pure function over `(&Tree, &LayerLayout, &Cascades)`, so
 /// the same call works in unit tests with no device. Reads
 /// invisibility cascade from `Cascades` so encoder and hit-index
 /// can't drift.
@@ -37,7 +37,7 @@ impl Encoder {
     pub(crate) fn encode(
         &mut self,
         forest: &Forest,
-        results: &LayoutResult,
+        results: &Layout,
         cascades: &CascadeResult,
         damage_filter: Option<&DamageRegion>,
         viewport: Rect,
@@ -69,7 +69,7 @@ impl Encoder {
 /// increments it after this function emits a text run.
 fn emit_one_shape(
     tree: &Tree,
-    layout: &LayerResult,
+    layout: &LayerLayout,
     id: NodeId,
     owner_rect: Rect,
     shape: &ShapeRecord,
@@ -190,7 +190,7 @@ fn emit_one_shape(
 
 fn encode_node(
     tree: &Tree,
-    layout: &LayerResult,
+    layout: &LayerLayout,
     rows: &[Cascade],
     damage_filter: Option<&DamageRegion>,
     viewport: Rect,

@@ -60,7 +60,7 @@ pub(crate) enum ShapeRecord {
     } = 1,
     /// Shaped text run — *authoring inputs only*. Measured size and
     /// shaped-buffer key are layout outputs and live on
-    /// `LayoutResult.text_shapes`, not here. `wrap` selects between "shape
+    /// `Layout.text_shapes`, not here. `wrap` selects between "shape
     /// once and freeze" (`Single`) and "reshape if the parent commits a
     /// narrower width than the natural unbroken line" (`Wrap`). `align`
     /// positions the glyph bbox inside the owner leaf's arranged rect (or

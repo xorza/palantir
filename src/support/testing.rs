@@ -148,7 +148,7 @@ fn encode_cmds_with_region(ui: &Ui, region: Option<&DamageRegion>) -> RenderCmdB
     let mut encoder = Encoder::default();
     encoder.encode(
         &ui.forest,
-        &ui.layout.result,
+        &ui.layout,
         &ui.cascades.result,
         region,
         ui.display.logical_rect(),

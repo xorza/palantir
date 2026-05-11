@@ -24,7 +24,7 @@ struct SnapView<'a> {
 }
 
 fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
-    let cache = &ui.layout.cache;
+    let cache = &ui.layout_engine.cache;
     let snap = *cache.snapshots.get(&wid)?;
     let nodes = snap.nodes.range();
     Some(SnapView {
@@ -41,7 +41,7 @@ fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
 /// the cache.
 #[track_caller]
 fn assert_node_columns_aligned(ui: &Ui) {
-    let n = &ui.layout.cache.nodes;
+    let n = &ui.layout_engine.cache.nodes;
     let len = n.desired.len();
     assert_eq!(n.text_spans.len(), len, "text_spans length drift");
     assert!(n.live <= len, "live {} > total {}", n.live, len);
@@ -130,17 +130,17 @@ fn removed_widget_is_evicted() {
     });
     let gone = WidgetId::from_hash("gone");
     let kept = WidgetId::from_hash("kept");
-    assert!(ui.layout.cache.snapshots.contains_key(&gone));
-    assert!(ui.layout.cache.snapshots.contains_key(&kept));
+    assert!(ui.layout_engine.cache.snapshots.contains_key(&gone));
+    assert!(ui.layout_engine.cache.snapshots.contains_key(&kept));
 
     run_frame(&mut ui, |ui| {
         Frame::new().id_salt("kept").size(40.0).show(ui);
     });
     assert!(
-        !ui.layout.cache.snapshots.contains_key(&gone),
+        !ui.layout_engine.cache.snapshots.contains_key(&gone),
         "vanished widget must be evicted via SeenIds.removed",
     );
-    assert!(ui.layout.cache.snapshots.contains_key(&kept));
+    assert!(ui.layout_engine.cache.snapshots.contains_key(&kept));
 }
 
 #[test]
@@ -244,11 +244,11 @@ fn subtree_skip_preserves_descendant_rects() {
     };
     run_frame(&mut ui, build);
     let n = ui.forest.tree(Layer::Main).records.len();
-    let layout1 = &ui.layout.result[Layer::Main];
+    let layout1 = &ui.layout[Layer::Main];
     let rects1: Vec<_> = (0..n).map(|i| layout1.rect[i]).collect();
 
     run_frame(&mut ui, build);
-    let layout2 = &ui.layout.result[Layer::Main];
+    let layout2 = &ui.layout[Layer::Main];
     let rects2: Vec<_> = (0..n).map(|i| layout2.rect[i]).collect();
     assert_eq!(
         rects1, rects2,
@@ -362,7 +362,7 @@ fn arena_invariant_holds_under_fragmentation() {
     });
     ui.record_phase();
     ui.paint_phase();
-    let cache = &ui.layout.cache;
+    let cache = &ui.layout_engine.cache;
     if cache.nodes.live > COMPACT_FLOOR {
         assert!(
             cache.nodes.desired.len() <= cache.nodes.live.saturating_mul(COMPACT_RATIO),
@@ -412,7 +412,7 @@ fn cache_hits_remain_valid_after_compaction() {
     ui.paint_phase();
     // Whether or not compaction fired, the kept widget's snapshot
     // must still describe the right desired and arena range.
-    let cache = &ui.layout.cache;
+    let cache = &ui.layout_engine.cache;
     let snap = cache
         .snapshots
         .get(&kept_wid)
@@ -470,7 +470,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
     ui.record_phase();
     ui.paint_phase();
     let snap = |ui: &Ui, key: &str| {
-        ui.layout
+        ui.layout_engine
             .cache
             .snapshots
             .get(&WidgetId::from_hash(key))
@@ -560,9 +560,9 @@ fn cache_handles_widget_reappearance_after_eviction() {
 
     // Frame 1: present.
     run_frame(&mut ui, with_widget);
-    let live_before = ui.layout.cache.nodes.live;
+    let live_before = ui.layout_engine.cache.nodes.live;
     assert!(
-        ui.layout.cache.snapshots.contains_key(&blip),
+        ui.layout_engine.cache.snapshots.contains_key(&blip),
         "widget must be cached after first frame",
     );
 
@@ -570,10 +570,10 @@ fn cache_handles_widget_reappearance_after_eviction() {
     // `Ui::end_frame` calls `MeasureCache::sweep_removed`.
     run_frame(&mut ui, without_widget);
     assert!(
-        !ui.layout.cache.snapshots.contains_key(&blip),
+        !ui.layout_engine.cache.snapshots.contains_key(&blip),
         "vanished widget must be evicted via sweep_removed",
     );
-    let live_after_evict = ui.layout.cache.nodes.live;
+    let live_after_evict = ui.layout_engine.cache.nodes.live;
     assert!(
         live_after_evict < live_before,
         "live count must decrease after eviction",
@@ -585,22 +585,22 @@ fn cache_handles_widget_reappearance_after_eviction() {
     // on a cold cache for the same build.
     run_frame(&mut ui, with_widget);
     assert!(
-        ui.layout.cache.snapshots.contains_key(&blip),
+        ui.layout_engine.cache.snapshots.contains_key(&blip),
         "reappeared widget must be re-cached",
     );
 
     // Cold oracle: clear and run again. live_entries and the
     // snapshot's payload must match the warm reappearance.
-    let warm_snap = *ui.layout.cache.snapshots.get(&blip).unwrap();
-    let warm_desired = ui.layout.cache.nodes.desired[warm_snap.nodes.range()].to_vec();
-    let warm_live = ui.layout.cache.nodes.live;
+    let warm_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();
+    let warm_desired = ui.layout_engine.cache.nodes.desired[warm_snap.nodes.range()].to_vec();
+    let warm_live = ui.layout_engine.cache.nodes.live;
 
     crate::support::internals::clear_measure_cache(&mut ui);
     run_frame(&mut ui, with_widget);
 
-    let cold_snap = *ui.layout.cache.snapshots.get(&blip).unwrap();
-    let cold_desired = ui.layout.cache.nodes.desired[cold_snap.nodes.range()].to_vec();
-    let cold_live = ui.layout.cache.nodes.live;
+    let cold_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();
+    let cold_desired = ui.layout_engine.cache.nodes.desired[cold_snap.nodes.range()].to_vec();
+    let cold_live = ui.layout_engine.cache.nodes.live;
 
     assert_eq!(
         warm_snap.subtree_hash, cold_snap.subtree_hash,

@@ -170,7 +170,7 @@ fn prev_frame_captures_arranged_rect() {
         .node;
     ui.record_phase();
     ui.paint_phase();
-    let arranged = ui.layout.result[Layer::Main].rect[frame_node.index()];
+    let arranged = ui.layout[Layer::Main].rect[frame_node.index()];
 
     let snap = ui.damage.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.rect, arranged);

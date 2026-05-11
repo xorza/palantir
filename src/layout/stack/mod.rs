@@ -1,8 +1,11 @@
+use super::axis::Axis;
+use super::intrinsic::LenReq;
+use super::layoutengine::LayoutEngine;
 use super::support::{
     JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
 };
-use super::{Axis, LayoutEngine, LenReq};
 use crate::forest::tree::{Child, NodeId, Tree};
+use crate::layout::Layout;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
@@ -36,6 +39,7 @@ pub(crate) fn measure(
     inner: Size,
     axis: Axis,
     text: &TextShaper,
+    out: &mut Layout,
 ) -> Size {
     let gap = tree.panel(node).gap;
     let cross_avail = axis.cross(inner);
@@ -58,7 +62,13 @@ pub(crate) fn measure(
             total_weight += w;
             continue;
         }
-        let d = layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
+        let d = layout.measure(
+            tree,
+            c,
+            axis.compose_size(f32::INFINITY, cross_avail),
+            text,
+            out,
+        );
         sum_non_fill_main += axis.main(d);
         max_cross = max_cross.max(axis.cross(d));
     }
@@ -161,6 +171,7 @@ pub(crate) fn measure(
                     e.node,
                     axis.compose_size(main_avail, cross_avail),
                     text,
+                    out,
                 );
                 fill_main += axis.main(d);
                 max_cross = max_cross.max(axis.cross(d));
@@ -174,8 +185,13 @@ pub(crate) fn measure(
                 else {
                     continue;
                 };
-                let d =
-                    layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
+                let d = layout.measure(
+                    tree,
+                    c,
+                    axis.compose_size(f32::INFINITY, cross_avail),
+                    text,
+                    out,
+                );
                 fill_main += axis.main(d);
                 max_cross = max_cross.max(axis.cross(d));
             }
@@ -191,6 +207,7 @@ pub(crate) fn arrange(
     node: NodeId,
     inner: Rect,
     axis: Axis,
+    out: &mut Layout,
 ) {
     let panel = tree.panel(node);
     let (gap, justify, parent_child_align) = (panel.gap, panel.justify, panel.child_align);
@@ -238,7 +255,7 @@ pub(crate) fn arrange(
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min));
+            zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min), out);
             continue;
         }
         let s = tree.records.layout()[c.index()];
@@ -254,7 +271,7 @@ pub(crate) fn arrange(
 
         let child_rect =
             axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
-        layout.arrange(tree, c, child_rect);
+        layout.arrange(tree, c, child_rect, out);
         cursor += main_size;
     }
 }

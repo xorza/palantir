@@ -249,7 +249,7 @@ fn canvas_rearranges_with_dragged_child_position() {
     ui.paint_phase();
 
     // Latch frame: pos was recorded at 40, layout reflects that.
-    let rect = ui.layout.result[Layer::Main].rect[card_node.unwrap().index()];
+    let rect = ui.layout[Layer::Main].rect[card_node.unwrap().index()];
     assert!((rect.min.x - 40.0).abs() < 0.5, "latch frame still at 40");
 
     // Next frame consumes the updated pos.

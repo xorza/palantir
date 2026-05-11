@@ -249,7 +249,7 @@ shape.
 ## Deferred
 
 - **Baseline alignment.** Not part of intrinsics; would attach to
-  `LayoutResult` if needed.
+  `Layout` if needed.
 - **Aspect-ratio constraints.** Separate concern.
 - **Cross-frame caching.** Cosmic's text-shape cache covers the
   expensive part. Re-add if a profile shows container intrinsic

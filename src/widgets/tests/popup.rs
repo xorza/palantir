@@ -235,7 +235,7 @@ fn popup_body_sizing_matches_sizing_mode() {
         let popup_tree = ui.forest.tree(Layer::Popup);
         // roots = [eater, body]. Body is the second root.
         let body_root = popup_tree.roots[1].first_node as usize;
-        let body_rect = ui.layout.result[Layer::Popup].rect[body_root];
+        let body_rect = ui.layout[Layer::Popup].rect[body_root];
         assert_eq!(
             body_rect.size, expected,
             "size=({:?},{:?}) → expected {:?}, got {:?}",

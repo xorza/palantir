@@ -39,7 +39,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     ui.record_phase();
     ui.paint_phase();
     let node = text_node.unwrap();
-    let r = ui.layout.result[Layer::Main].rect[node.index()];
+    let r = ui.layout[Layer::Main].rect[node.index()];
     assert!(
         r.size.h > 32.0,
         "wrapped paragraph should span multiple lines, got h={}",
@@ -54,7 +54,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         _ => panic!("expected ShapeRecord::Text"),
     };
     assert_eq!(wrap, TextWrap::Wrap);
-    let shaped = support::shaped_text(&ui.layout.result[Layer::Main], node);
+    let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
     assert!(shaped.measured.h > 32.0);
 }
 
@@ -70,7 +70,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
     let node = two_hug_cols_with_wrap(&mut ui, PARAGRAPH);
     ui.record_phase();
     ui.paint_phase();
-    let shaped = support::shaped_text(&ui.layout.result[Layer::Main], node);
+    let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
     // Multi-line height (a 16 px font wraps to 3 lines at the resolved
     // column width — h ≈ 58 px in practice; assert > 32 to allow for
     // line-height variation).
@@ -95,21 +95,21 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     let node = two_hug_cols_with_wrap(&mut ui, PARAGRAPH);
     ui.record_phase();
     ui.paint_phase();
-    let max_w = ui.layout.intrinsic(
+    let max_w = ui.layout_engine.intrinsic(
         ui.forest.tree(Layer::Main),
         node,
         Axis::X,
         LenReq::MaxContent,
         &ui.text,
     );
-    let min_w = ui.layout.intrinsic(
+    let min_w = ui.layout_engine.intrinsic(
         ui.forest.tree(Layer::Main),
         node,
         Axis::X,
         LenReq::MinContent,
         &ui.text,
     );
-    let max_h = ui.layout.intrinsic(
+    let max_h = ui.layout_engine.intrinsic(
         ui.forest.tree(Layer::Main),
         node,
         Axis::Y,
@@ -145,7 +145,7 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
     let msg = chat_message(&mut ui, 40.0, PARAGRAPH, 14.0);
     ui.record_phase();
     ui.paint_phase();
-    let shaped = support::shaped_text(&ui.layout.result[Layer::Main], msg);
+    let shaped = support::shaped_text(&ui.layout[Layer::Main], msg);
     assert!(
         shaped.measured.h > 32.0,
         "Fill message should wrap inside its resolved share; got h={}",
@@ -168,7 +168,7 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.record_phase();
     ui.paint_phase();
-    let shaped = support::shaped_text(&ui.layout.result[Layer::Main], msg);
+    let shaped = support::shaped_text(&ui.layout[Layer::Main], msg);
     assert!(
         shaped.measured.w > 20.0,
         "min-content floor should keep message wider than the cramped slot; got w={}",
@@ -188,10 +188,10 @@ fn hstack_fill_clamped_below_min_content_keeps_rect_at_slot() {
     let msg = chat_message(&mut ui, 180.0, "supercalifragilistic", 14.0);
     ui.record_phase();
     ui.paint_phase();
-    let shaped_w = support::shaped_text(&ui.layout.result[Layer::Main], msg)
+    let shaped_w = support::shaped_text(&ui.layout[Layer::Main], msg)
         .measured
         .w;
-    let rect_w = ui.layout.result[Layer::Main].rect[msg.index()].size.w;
+    let rect_w = ui.layout[Layer::Main].rect[msg.index()].size.w;
 
     assert!(
         shaped_w > 50.0,
@@ -273,8 +273,8 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
         let (grid, section) = build(&mut ui);
         ui.record_phase();
         ui.paint_phase();
-        let grid_w = ui.layout.result[Layer::Main].rect[grid.index()].size.w;
-        let section_w = ui.layout.result[Layer::Main].rect[section.index()].size.w;
+        let grid_w = ui.layout[Layer::Main].rect[grid.index()].size.w;
+        let section_w = ui.layout[Layer::Main].rect[section.index()].size.w;
         (grid_w, section_w)
     }
 
@@ -336,14 +336,14 @@ fn nonwrapping_text_minconent_equals_full_width() {
         .node;
     ui.record_phase();
     ui.paint_phase();
-    let max_w = ui.layout.intrinsic(
+    let max_w = ui.layout_engine.intrinsic(
         ui.forest.tree(Layer::Main),
         label_node,
         Axis::X,
         LenReq::MaxContent,
         &ui.text,
     );
-    let min_w = ui.layout.intrinsic(
+    let min_w = ui.layout_engine.intrinsic(
         ui.forest.tree(Layer::Main),
         label_node,
         Axis::X,
@@ -400,7 +400,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     let (_, probe_label) = build(&mut probe);
     probe.record_phase();
     probe.paint_phase();
-    let label_full = probe.layout.intrinsic(
+    let label_full = probe.layout_engine.intrinsic(
         probe.forest.tree(Layer::Main),
         probe_label,
         Axis::X,
@@ -417,7 +417,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         let (_, label) = build(&mut ui);
         ui.record_phase();
         ui.paint_phase();
-        let label_rect_w = ui.layout.result[Layer::Main].rect[label.index()].size.w;
+        let label_rect_w = ui.layout[Layer::Main].rect[label.index()].size.w;
         assert!(
             label_rect_w >= label_full - 0.5,
             "label cell shrank below the label's natural width — \
@@ -471,13 +471,13 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
     let leaf = build_multi_text_leaf(&mut ui);
     ui.record_phase();
     ui.paint_phase();
-    let span = ui.layout.result[Layer::Main].text_spans[leaf.index()];
+    let span = ui.layout[Layer::Main].text_spans[leaf.index()];
     assert_eq!(
         span.len, 2,
         "leaf with two ShapeRecord::Text should record two text-shape entries"
     );
-    let first = ui.layout.result[Layer::Main].text_shapes[span.start as usize];
-    let second = ui.layout.result[Layer::Main].text_shapes[(span.start + 1) as usize];
+    let first = ui.layout[Layer::Main].text_shapes[span.start as usize];
+    let second = ui.layout[Layer::Main].text_shapes[(span.start + 1) as usize];
     assert!(
         first.measured.w > 0.0 && second.measured.w > 0.0,
         "both runs must have measured nonzero width: first={:?} second={:?}",
@@ -508,7 +508,7 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
     let leaf = build_multi_text_leaf(&mut ui);
     ui.record_phase();
     ui.paint_phase();
-    let owner_min = ui.layout.result[Layer::Main].rect[leaf.index()].min;
+    let owner_min = ui.layout[Layer::Main].rect[leaf.index()].min;
     let cmds = encode_cmds(&ui);
     let mut drawn: Vec<glam::Vec2> = (0..cmds.kinds.len())
         .filter(|&i| cmds.kinds[i] == CmdKind::DrawText)
@@ -553,18 +553,18 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
     let f1_leaf = build_multi_text_leaf(&mut ui);
     ui.record_phase();
     ui.paint_phase();
-    let f1_span = ui.layout.result[Layer::Main].text_spans[f1_leaf.index()];
-    let f1_first = ui.layout.result[Layer::Main].text_shapes[f1_span.start as usize];
-    let f1_second = ui.layout.result[Layer::Main].text_shapes[(f1_span.start + 1) as usize];
+    let f1_span = ui.layout[Layer::Main].text_spans[f1_leaf.index()];
+    let f1_first = ui.layout[Layer::Main].text_shapes[f1_span.start as usize];
+    let f1_second = ui.layout[Layer::Main].text_shapes[(f1_span.start + 1) as usize];
 
     begin(&mut ui, UVec2::new(400, 400));
     let f2_leaf = build_multi_text_leaf(&mut ui);
     ui.record_phase();
     ui.paint_phase();
-    let f2_span = ui.layout.result[Layer::Main].text_spans[f2_leaf.index()];
+    let f2_span = ui.layout[Layer::Main].text_spans[f2_leaf.index()];
     assert_eq!(f2_span.len, 2, "frame 2 must restore both text-shape slots");
-    let f2_first = ui.layout.result[Layer::Main].text_shapes[f2_span.start as usize];
-    let f2_second = ui.layout.result[Layer::Main].text_shapes[(f2_span.start + 1) as usize];
+    let f2_first = ui.layout[Layer::Main].text_shapes[f2_span.start as usize];
+    let f2_second = ui.layout[Layer::Main].text_shapes[(f2_span.start + 1) as usize];
 
     assert_eq!(
         (f1_first.key, f1_second.key),

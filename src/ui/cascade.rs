@@ -1,7 +1,7 @@
 //! Per-frame post-arrange state.
 //!
 //! `Cascades` (the engine) owns the walk scratch + the result. Each
-//! `run()` reads `(&Forest, &LayoutResult)` and produces
+//! `run()` reads `(&Forest, &Layout)` and produces
 //! a fresh `CascadeResult` — per-tree per-node cascade rows plus a
 //! global hit index, all populated in a single per-tree pre-order walk.
 //! Downstream phases (damage diff, input hit-test, renderer encoder)
@@ -11,7 +11,7 @@ use crate::forest::Forest;
 use crate::forest::tree::{Layer, NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
-use crate::layout::result::{LayerResult, LayoutResult};
+use crate::layout::{LayerLayout, Layout};
 use crate::primitives::{rect::Rect, transform::TranslateScale};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
@@ -123,7 +123,7 @@ impl Cascades {
     /// node. Anchor offset for each layer is read from the layer's
     /// own `RootSlot.anchor` — no parent transform plumbing is
     /// needed because trees never share NodeId space.
-    pub(crate) fn run(&mut self, forest: &Forest, layout: &LayoutResult) -> &CascadeResult {
+    pub(crate) fn run(&mut self, forest: &Forest, layout: &Layout) -> &CascadeResult {
         let r = &mut self.result;
         let total: usize = forest.trees.iter().map(|t| t.records.len()).sum();
         r.entries.clear();
@@ -152,7 +152,7 @@ impl Cascades {
 
 fn run_tree(
     tree: &Tree,
-    layout: &LayerResult,
+    layout: &LayerLayout,
     rows: &mut Vec<Cascade>,
     entries: &mut Vec<HitEntry>,
     by_id: &mut FxHashMap<WidgetId, u32>,
