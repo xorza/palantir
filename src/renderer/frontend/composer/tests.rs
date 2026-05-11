@@ -380,6 +380,25 @@ fn compose_scales_radius_and_stroke_under_transform() {
 }
 
 #[test]
+fn compose_propagates_transform_scale_to_text_runs() {
+    // A `TranslateScale(_, 2.0)` ancestor must surface on the emitted
+    // TextRun.scale so glyphon paints proportionally larger glyphs.
+    // Without this the rect stretches but the glyph rasters stay at
+    // the originally-shaped size — visible as text "not zooming" inside
+    // a zoomed Scroll viewport.
+    let buf = run(
+        |b| {
+            b.push_transform(TranslateScale::from_scale(2.0));
+            text(b, rect(0.0, 0.0, 50.0, 20.0));
+            b.pop_transform();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.texts.len(), 1);
+    assert_eq!(buf.texts[0].scale, 2.0);
+}
+
+#[test]
 fn compose_composes_nested_transforms() {
     let buf = run(
         |b| {

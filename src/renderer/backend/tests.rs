@@ -89,6 +89,7 @@ fn dummy_text() -> TextRun {
         },
         color: Color::WHITE,
         key: TextCacheKey::INVALID,
+        scale: 1.0,
     }
 }
 

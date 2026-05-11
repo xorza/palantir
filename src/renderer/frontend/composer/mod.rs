@@ -438,6 +438,7 @@ impl Composer {
                             bounds,
                             color: t.color,
                             key: t.key,
+                            scale: current_transform.scale,
                         },
                     );
                 }
