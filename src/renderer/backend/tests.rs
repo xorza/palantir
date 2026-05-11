@@ -94,7 +94,7 @@ fn dummy_text() -> TextRun {
 
 /// Builds a 100×100 buffer with the given groups. Quads/texts pools
 /// have one slot each so any non-empty span is valid.
-fn buf_with(groups: Vec<DrawGroup>, has_rounded_clip: bool) -> RenderBuffer {
+fn buf_with(groups: Vec<DrawGroup>) -> RenderBuffer {
     RenderBuffer {
         quads: vec![dummy_quad(); 4],
         texts: vec![dummy_text(); 4],
@@ -103,7 +103,6 @@ fn buf_with(groups: Vec<DrawGroup>, has_rounded_clip: bool) -> RenderBuffer {
         viewport_phys: UVec2::new(100, 100),
         viewport_phys_f: Vec2::new(100.0, 100.0),
         scale: 1.0,
-        has_rounded_clip,
     }
 }
 
@@ -115,27 +114,24 @@ fn buf_with(groups: Vec<DrawGroup>, has_rounded_clip: bool) -> RenderBuffer {
 /// demonstrates the visual outcome.
 #[test]
 fn text_interleaves_per_group() {
-    let buf = buf_with(
-        vec![
-            // Group 0: 2 quads + 1 text
-            DrawGroup {
-                scissor: None,
-                rounded_clip: None,
-                quads: Span::new(0, 2),
-                texts: Span::new(0, 1),
-                meshes: Span::default(),
-            },
-            // Group 1: 1 quad, no text
-            DrawGroup {
-                scissor: None,
-                rounded_clip: None,
-                quads: Span::new(2, 1),
-                texts: Span::new(1, 0),
-                meshes: Span::default(),
-            },
-        ],
-        false,
-    );
+    let buf = buf_with(vec![
+        // Group 0: 2 quads + 1 text
+        DrawGroup {
+            scissor: None,
+            rounded_clip: None,
+            quads: Span::new(0, 2),
+            texts: Span::new(0, 1),
+            meshes: Span::default(),
+        },
+        // Group 1: 1 quad, no text
+        DrawGroup {
+            scissor: None,
+            rounded_clip: None,
+            quads: Span::new(2, 1),
+            texts: Span::new(1, 0),
+            meshes: Span::default(),
+        },
+    ]);
     assert_eq!(
         simplify(&collect(&buf, None, &[], false)),
         vec![DrawOp::Quads(0), DrawOp::Text(0), DrawOp::Quads(1)],
@@ -146,25 +142,22 @@ fn text_interleaves_per_group() {
 /// only paint is its label). Schedule must still emit `Text(i)`.
 #[test]
 fn text_emits_for_quadless_group() {
-    let buf = buf_with(
-        vec![
-            DrawGroup {
-                scissor: None,
-                rounded_clip: None,
-                quads: Span::new(0, 1),
-                texts: Span::new(0, 0),
-                meshes: Span::default(),
-            },
-            DrawGroup {
-                scissor: None,
-                rounded_clip: None,
-                quads: Span::new(1, 0),
-                texts: Span::new(0, 2),
-                meshes: Span::default(),
-            },
-        ],
-        false,
-    );
+    let buf = buf_with(vec![
+        DrawGroup {
+            scissor: None,
+            rounded_clip: None,
+            quads: Span::new(0, 1),
+            texts: Span::new(0, 0),
+            meshes: Span::default(),
+        },
+        DrawGroup {
+            scissor: None,
+            rounded_clip: None,
+            quads: Span::new(1, 0),
+            texts: Span::new(0, 2),
+            meshes: Span::default(),
+        },
+    ]);
     assert_eq!(
         simplify(&collect(&buf, None, &[], false)),
         vec![DrawOp::Quads(0), DrawOp::Text(1)],
@@ -178,16 +171,13 @@ fn text_emits_for_quadless_group() {
 /// away"). Counter-pin: `None` damage skips `PreClear` entirely.
 #[test]
 fn preclear_emits_under_partial_damage() {
-    let buf = buf_with(
-        vec![DrawGroup {
-            scissor: None,
-            rounded_clip: None,
-            quads: Span::new(0, 1),
-            texts: Span::new(0, 1),
-            meshes: Span::default(),
-        }],
-        false,
-    );
+    let buf = buf_with(vec![DrawGroup {
+        scissor: None,
+        rounded_clip: None,
+        quads: Span::new(0, 1),
+        texts: Span::new(0, 1),
+        meshes: Span::default(),
+    }]);
     let damage = Some(URect::new(0, 0, 50, 50));
     assert_eq!(
         simplify(&collect(&buf, damage, &[], false)),
@@ -207,25 +197,22 @@ fn preclear_emits_under_partial_damage() {
 #[test]
 fn schedule_replays_per_damage_rect() {
     // Two groups whose own scissors carve the surface into two halves.
-    let buf = buf_with(
-        vec![
-            DrawGroup {
-                scissor: Some(URect::new(0, 0, 50, 100)),
-                rounded_clip: None,
-                quads: Span::new(0, 1),
-                texts: Span::new(0, 0),
-                meshes: Span::default(),
-            },
-            DrawGroup {
-                scissor: Some(URect::new(50, 0, 50, 100)),
-                rounded_clip: None,
-                quads: Span::new(1, 1),
-                texts: Span::new(0, 0),
-                meshes: Span::default(),
-            },
-        ],
-        false,
-    );
+    let buf = buf_with(vec![
+        DrawGroup {
+            scissor: Some(URect::new(0, 0, 50, 100)),
+            rounded_clip: None,
+            quads: Span::new(0, 1),
+            texts: Span::new(0, 0),
+            meshes: Span::default(),
+        },
+        DrawGroup {
+            scissor: Some(URect::new(50, 0, 50, 100)),
+            rounded_clip: None,
+            quads: Span::new(1, 1),
+            texts: Span::new(0, 0),
+            meshes: Span::default(),
+        },
+    ]);
     // Damage rect A covers only group 0; rect B covers only group 1.
     let pass_a = collect(&buf, Some(URect::new(0, 0, 50, 100)), &[], false);
     let pass_b = collect(&buf, Some(URect::new(50, 0, 50, 100)), &[], false);
@@ -253,22 +240,19 @@ fn schedule_replays_per_damage_rect() {
 /// stencil ordering bug class was visible only via visual fixtures.
 #[test]
 fn stencil_group_brackets_draws_with_mask_write_clear() {
-    let buf = buf_with(
-        vec![DrawGroup {
-            scissor: Some(URect::new(0, 0, 100, 100)),
-            rounded_clip: Some(RoundedClip {
-                mask_rect: Rect {
-                    min: Vec2::ZERO,
-                    size: Size::new(100.0, 100.0),
-                },
-                radius: Corners::all(8.0),
-            }),
-            quads: Span::new(0, 2),
-            texts: Span::new(0, 1),
-            meshes: Span::default(),
-        }],
-        true,
-    );
+    let buf = buf_with(vec![DrawGroup {
+        scissor: Some(URect::new(0, 0, 100, 100)),
+        rounded_clip: Some(RoundedClip {
+            mask_rect: Rect {
+                min: Vec2::ZERO,
+                size: Size::new(100.0, 100.0),
+            },
+            radius: Corners::all(8.0),
+        }),
+        quads: Span::new(0, 2),
+        texts: Span::new(0, 1),
+        meshes: Span::default(),
+    }]);
     let mask_indices = &[Some(0u32)];
     assert_eq!(
         simplify(&collect(&buf, None, mask_indices, true)),
@@ -289,33 +273,30 @@ fn stencil_group_brackets_draws_with_mask_write_clear() {
 /// neighbor.
 #[test]
 fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
-    let buf = buf_with(
-        vec![
-            // Group 0: rounded clip
-            DrawGroup {
-                scissor: Some(URect::new(0, 0, 100, 100)),
-                rounded_clip: Some(RoundedClip {
-                    mask_rect: Rect {
-                        min: Vec2::ZERO,
-                        size: Size::new(100.0, 100.0),
-                    },
-                    radius: Corners::all(8.0),
-                }),
-                quads: Span::new(0, 1),
-                texts: Span::new(0, 0),
-                meshes: Span::default(),
-            },
-            // Group 1: plain (no rounded clip)
-            DrawGroup {
-                scissor: Some(URect::new(0, 0, 100, 100)),
-                rounded_clip: None,
-                quads: Span::new(1, 1),
-                texts: Span::new(0, 1),
-                meshes: Span::default(),
-            },
-        ],
-        true,
-    );
+    let buf = buf_with(vec![
+        // Group 0: rounded clip
+        DrawGroup {
+            scissor: Some(URect::new(0, 0, 100, 100)),
+            rounded_clip: Some(RoundedClip {
+                mask_rect: Rect {
+                    min: Vec2::ZERO,
+                    size: Size::new(100.0, 100.0),
+                },
+                radius: Corners::all(8.0),
+            }),
+            quads: Span::new(0, 1),
+            texts: Span::new(0, 0),
+            meshes: Span::default(),
+        },
+        // Group 1: plain (no rounded clip)
+        DrawGroup {
+            scissor: Some(URect::new(0, 0, 100, 100)),
+            rounded_clip: None,
+            quads: Span::new(1, 1),
+            texts: Span::new(0, 1),
+            meshes: Span::default(),
+        },
+    ]);
     let mask_indices = &[Some(0u32), None];
     assert_eq!(
         simplify(&collect(&buf, None, mask_indices, true)),
@@ -336,22 +317,19 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
 /// rounded clip would silently leak past the mask boundary.
 #[test]
 fn stencil_text_only_group_still_brackets_with_mask() {
-    let buf = buf_with(
-        vec![DrawGroup {
-            scissor: Some(URect::new(0, 0, 100, 100)),
-            rounded_clip: Some(RoundedClip {
-                mask_rect: Rect {
-                    min: Vec2::ZERO,
-                    size: Size::new(100.0, 100.0),
-                },
-                radius: Corners::all(8.0),
-            }),
-            quads: Span::new(0, 0),
-            texts: Span::new(0, 1),
-            meshes: Span::default(),
-        }],
-        true,
-    );
+    let buf = buf_with(vec![DrawGroup {
+        scissor: Some(URect::new(0, 0, 100, 100)),
+        rounded_clip: Some(RoundedClip {
+            mask_rect: Rect {
+                min: Vec2::ZERO,
+                size: Size::new(100.0, 100.0),
+            },
+            radius: Corners::all(8.0),
+        }),
+        quads: Span::new(0, 0),
+        texts: Span::new(0, 1),
+        meshes: Span::default(),
+    }]);
     let mask_indices = &[Some(0u32)];
     assert_eq!(
         simplify(&collect(&buf, None, mask_indices, true)),
@@ -367,16 +345,13 @@ fn stencil_text_only_group_still_brackets_with_mask() {
 /// transitions production code relies on.
 #[test]
 fn setscissor_steps_present_under_partial_damage() {
-    let buf = buf_with(
-        vec![DrawGroup {
-            scissor: Some(URect::new(10, 10, 50, 50)),
-            rounded_clip: None,
-            quads: Span::new(0, 1),
-            texts: Span::new(0, 0),
-            meshes: Span::default(),
-        }],
-        false,
-    );
+    let buf = buf_with(vec![DrawGroup {
+        scissor: Some(URect::new(10, 10, 50, 50)),
+        rounded_clip: None,
+        quads: Span::new(0, 1),
+        texts: Span::new(0, 0),
+        meshes: Span::default(),
+    }]);
     let damage = URect::new(0, 0, 80, 80);
     let steps = collect(&buf, Some(damage), &[], false);
     // First two: scissor to damage, then PreClear.
@@ -393,27 +368,24 @@ fn setscissor_steps_present_under_partial_damage() {
 /// at schedule time, not delegated to the GPU scissor.
 #[test]
 fn group_outside_damage_emits_no_steps() {
-    let buf = buf_with(
-        vec![
-            // Group 0: in damage
-            DrawGroup {
-                scissor: Some(URect::new(0, 0, 30, 30)),
-                rounded_clip: None,
-                quads: Span::new(0, 1),
-                texts: Span::new(0, 0),
-                meshes: Span::default(),
-            },
-            // Group 1: outside damage
-            DrawGroup {
-                scissor: Some(URect::new(60, 60, 30, 30)),
-                rounded_clip: None,
-                quads: Span::new(1, 1),
-                texts: Span::new(0, 0),
-                meshes: Span::default(),
-            },
-        ],
-        false,
-    );
+    let buf = buf_with(vec![
+        // Group 0: in damage
+        DrawGroup {
+            scissor: Some(URect::new(0, 0, 30, 30)),
+            rounded_clip: None,
+            quads: Span::new(0, 1),
+            texts: Span::new(0, 0),
+            meshes: Span::default(),
+        },
+        // Group 1: outside damage
+        DrawGroup {
+            scissor: Some(URect::new(60, 60, 30, 30)),
+            rounded_clip: None,
+            quads: Span::new(1, 1),
+            texts: Span::new(0, 0),
+            meshes: Span::default(),
+        },
+    ]);
     let damage = URect::new(0, 0, 40, 40);
     assert_eq!(
         simplify(&collect(&buf, Some(damage), &[], false)),

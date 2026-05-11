@@ -5,6 +5,7 @@
 use crate::layout::types::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke};
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::DrawGroup;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
@@ -38,10 +39,22 @@ pub(crate) struct QuadPipeline {
     /// indefinitely.
     stencil: Option<StencilPipelines>,
     /// Lazy buffer holding one `Quad` per rounded clip in the current
-    /// frame; uploaded by `upload_masks`, drawn by `draw_mask`. Reused
+    /// frame; uploaded by `stage_masks`, drawn by `draw_mask`. Reused
     /// across frames; capacity grows monotonically.
     mask_buffer: Option<wgpu::Buffer>,
     mask_capacity: usize,
+    /// Retained scratch for the stencil-mask sweep. `Some(j)` at index
+    /// `i` says "group `i`'s mask is mask quad `j` in the upload
+    /// buffer." Sized to `buffer.groups.len()` each frame; capacity
+    /// retained across frames so steady-state runs alloc-free.
+    /// Populated by [`Self::stage_masks`], read by the render schedule.
+    /// Empty slice on non-stencil frames; the schedule only reads it
+    /// when `use_stencil` is true.
+    pub(crate) mask_indices: Vec<Option<u32>>,
+    /// Retained scratch for stencil-mask quads. One entry per rounded
+    /// clip group; uploaded to `mask_buffer`. Cleared at the start of
+    /// each stencil frame; capacity retained.
+    masks: Vec<Quad>,
     /// Single-instance buffer holding the partial-repaint pre-clear quad
     /// (full-viewport, opaque, clear color). Drawn before regular groups
     /// inside the damage scissor so `LoadOp::Load` doesn't leak last
@@ -220,6 +233,8 @@ impl QuadPipeline {
             stencil: None,
             mask_buffer: None,
             mask_capacity: 0,
+            mask_indices: Vec::new(),
+            masks: Vec::new(),
             clear_buffer,
             clear_buffer_dirty: false,
             dim_buffer,
@@ -534,20 +549,37 @@ impl QuadPipeline {
         pass.draw(0..4, 0..count);
     }
 
-    /// Upload `masks` (one `Quad` per rounded clip in the frame) to the
-    /// stencil-mask vertex buffer. Grows the buffer to the next power
-    /// of two when needed.
-    pub(crate) fn upload_masks(
+    /// Build the per-group mask-index map for the schedule and upload
+    /// one mask quad per rounded-clip group in `groups`. Caller must
+    /// have run [`Self::ensure_stencil`] earlier this frame. After
+    /// this call, `self.mask_indices` parallels `groups`: `Some(j)`
+    /// at index `i` says "group `i`'s mask is mask quad `j`."
+    pub(crate) fn stage_masks(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        masks: &[Quad],
+        groups: &[DrawGroup],
     ) {
-        if masks.is_empty() {
+        debug_assert!(
+            self.stencil.is_some(),
+            "stage_masks requires ensure_stencil to have run this frame"
+        );
+        self.mask_indices.clear();
+        self.mask_indices.resize(groups.len(), None);
+        self.masks.clear();
+        for (i, g) in groups.iter().enumerate() {
+            if g.scissor.is_some()
+                && let Some(r) = g.rounded_clip
+            {
+                self.mask_indices[i] = Some(self.masks.len() as u32);
+                self.masks.push(Self::mask_instance(r.mask_rect, r.radius));
+            }
+        }
+        if self.masks.is_empty() {
             return;
         }
-        if masks.len() > self.mask_capacity {
-            self.mask_capacity = masks.len().next_power_of_two().max(8);
+        if self.masks.len() > self.mask_capacity {
+            self.mask_capacity = self.masks.len().next_power_of_two().max(8);
             self.mask_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir.quad.masks"),
                 size: (self.mask_capacity * std::mem::size_of::<Quad>()) as u64,
@@ -559,7 +591,7 @@ impl QuadPipeline {
             .mask_buffer
             .as_ref()
             .expect("mask_buffer just allocated");
-        queue.write_buffer(buf, 0, bytemuck::cast_slice(masks));
+        queue.write_buffer(buf, 0, bytemuck::cast_slice(&self.masks));
     }
 
     /// Bind the stencil-test (color) pipeline + main instance buffer.
@@ -590,7 +622,7 @@ impl QuadPipeline {
     /// Only `rect` + `radius` reach the SDF in `fs_mask`; color/stroke
     /// are ignored (mask pipeline disables color writes), so we pass
     /// defaults.
-    pub(crate) fn mask_instance(rect: Rect, radius: Corners) -> Quad {
+    fn mask_instance(rect: Rect, radius: Corners) -> Quad {
         Quad::new(rect, Color::default(), radius, Stroke::ZERO)
     }
 }

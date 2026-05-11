@@ -27,11 +27,15 @@ pub(crate) struct RenderBuffer {
     /// Glyph rasterization needs it: shaped buffers are sized in logical px,
     /// so glyphon scales by this when emitting glyph quads.
     pub(crate) scale: f32,
-    /// `true` iff the composer emitted at least one rounded-clip group
-    /// this frame. Set in the `PushClipRounded` branch; backend reads
-    /// once to lazy-init / select the stencil-mask render path. Apps
-    /// that never round-clip never touch the stencil path.
-    pub(crate) has_rounded_clip: bool,
+}
+
+impl RenderBuffer {
+    /// `true` iff at least one group carries a rounded clip. Backends
+    /// use this to decide whether to walk the stencil-mask path. Cheap
+    /// linear scan over groups (typically a handful).
+    pub(crate) fn has_rounded_clip(&self) -> bool {
+        self.groups.iter().any(|g| g.rounded_clip.is_some())
+    }
 }
 
 impl Default for RenderBuffer {
@@ -44,7 +48,6 @@ impl Default for RenderBuffer {
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
             scale: 1.0,
-            has_rounded_clip: false,
         }
     }
 }

@@ -173,7 +173,6 @@ impl Composer {
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
         out.scale = scale;
-        out.has_rounded_clip = false;
 
         self.clip_stack.clear();
         self.transform_stack.clear();
@@ -191,7 +190,6 @@ impl Composer {
                         CmdKind::PushClip => (cmds.read::<Rect>(start), None),
                         _ => {
                             let p: PushClipRoundedPayload = cmds.read(start);
-                            out.has_rounded_clip = true;
                             (p.rect, Some(p.radius))
                         }
                     };
