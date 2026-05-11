@@ -171,7 +171,7 @@ pub(crate) struct PanelExtras {
 /// `transform` is intentionally omitted: it doesn't affect this node's own
 /// paint (the encoder draws the node at its layout rect *before*
 /// `PushTransform`; the transform composes into descendants' screen rects via
-/// `Cascades`). A parent transform change shows up as descendant screen-rect
+/// `CascadesEngine`). A parent transform change shows up as descendant screen-rect
 /// diffs in `DamageEngine::compute`, the right granularity. Transform IS folded
 /// into `subtree_hash` separately (in the tree's rollup loop) so the encode
 /// cache invalidates on transform-only changes.
@@ -380,7 +380,7 @@ pub struct Element {
     // ---- Paint + cascade -----------------------------------------------------
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
     /// layout but suppresses paint + input; `Collapsed` zeros the slot and
-    /// skips the subtree everywhere. Cascades implicitly (paint and input
+    /// skips the subtree everywhere. CascadesEngine implicitly (paint and input
     /// early-return at non-`Visible` nodes).
     pub(crate) visibility: Visibility,
     /// Storage for the clip flag — written by `Configure::clip*`

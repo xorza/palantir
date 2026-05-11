@@ -7,7 +7,7 @@ use crate::input::keyboard::{
 };
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::primitives::rect::Rect;
-use crate::ui::cascade::CascadeResult;
+use crate::ui::cascade::Cascades;
 use glam::Vec2;
 use rustc_hash::FxHashSet;
 
@@ -289,8 +289,8 @@ impl InputState {
     }
 
     /// Feed a palantir-native input event. Hit-tests against the
-    /// frozen `CascadeResult` from this frame's most recent run.
-    pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &CascadeResult) {
+    /// frozen `Cascades` from this frame's most recent run.
+    pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &Cascades) {
         if matches!(
             event,
             InputEvent::PointerPressed(_)
@@ -401,8 +401,8 @@ impl InputState {
 
     /// Recompute hover, drop transient per-frame flags, evict captured
     /// widgets that disappeared from the tree. Call after
-    /// `Cascades::run` (whose result `cascades` is passed here).
-    pub(crate) fn post_record(&mut self, cascades: &CascadeResult) {
+    /// `CascadesEngine::run` (whose result `cascades` is passed here).
+    pub(crate) fn post_record(&mut self, cascades: &Cascades) {
         self.drain_per_frame_queues();
         // `modifiers` deliberately persists: modifier state is a running
         // snapshot, not per-frame. Held shift across multiple frames must
@@ -463,7 +463,7 @@ impl InputState {
         Some(now - press)
     }
 
-    pub(crate) fn response_for(&self, id: WidgetId, cascades: &CascadeResult) -> ResponseState {
+    pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
         let entry = cascades
             .by_id
             .get(&id)
@@ -510,13 +510,13 @@ impl InputState {
         self.frame_drag_started = None;
     }
 
-    fn recompute_hover(&mut self, cascades: &CascadeResult) {
+    fn recompute_hover(&mut self, cascades: &Cascades) {
         self.hovered = self
             .pointer_pos
             .and_then(|p| cascades.hit_test(p, Sense::hovers));
     }
 
-    fn recompute_scroll_target(&mut self, cascades: &CascadeResult) {
+    fn recompute_scroll_target(&mut self, cascades: &Cascades) {
         self.scroll_target = self
             .pointer_pos
             .and_then(|p| cascades.hit_test(p, Sense::scrolls));

@@ -61,8 +61,8 @@ fn first_frame_marks_every_painting_node_dirty() {
         one_frame(ui, BLUE);
     });
     let painting = ui.forest.tree(Layer::Main).rollups.paints.count_ones(..);
-    assert_eq!(ui.damage.dirty.len(), painting);
-    assert!(!ui.damage.region.is_empty());
+    assert_eq!(ui.damage_engine.dirty.len(), painting);
+    assert!(!ui.damage_engine.region.is_empty());
 }
 
 /// Pin: re-recording identical authoring → zero dirty nodes,
@@ -77,8 +77,8 @@ fn unchanged_authoring_produces_no_damage() {
     frame(&mut ui, build);
     frame(&mut ui, build);
 
-    assert!(ui.damage.dirty.is_empty());
-    assert!(ui.damage.region.is_empty());
+    assert!(ui.damage_engine.dirty.is_empty());
+    assert!(ui.damage_engine.region.is_empty());
 }
 
 /// Pin: a widget that loses its background between frames flips from
@@ -108,14 +108,14 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
     };
     frame(&mut ui, with_bg);
     let id = WidgetId::from_hash("a");
-    assert!(ui.damage.prev.contains_key(&id));
+    assert!(ui.damage_engine.prev.contains_key(&id));
 
     frame(&mut ui, no_bg);
     assert!(
-        !ui.damage.prev.contains_key(&id),
+        !ui.damage_engine.prev.contains_key(&id),
         "paints→non-paints transition must evict the prev entry"
     );
-    let rects: Vec<_> = ui.damage.region.iter_rects().collect();
+    let rects: Vec<_> = ui.damage_engine.region.iter_rects().collect();
     assert_eq!(
         rects,
         vec![Rect::new(0.0, 0.0, 50.0, 50.0)],
@@ -269,8 +269,8 @@ fn fill_change_marks_only_the_changed_leaf() {
         one_frame(ui, RED);
     });
 
-    assert_eq!(ui.damage.dirty.len(), 1);
-    let dirty_id = ui.damage.dirty[0];
+    assert_eq!(ui.damage_engine.dirty.len(), 1);
+    let dirty_id = ui.damage_engine.dirty[0];
     assert_eq!(
         ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.index()],
         WidgetId::from_hash("a")
@@ -279,7 +279,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     // doesn't move the rect, so prev == curr; the union is the
     // single rect.
     assert_eq!(
-        ui.damage.region.iter_rects().next(),
+        ui.damage_engine.region.iter_rects().next(),
         Some(ui.layout[Layer::Main].rect[dirty_id.index()])
     );
 }
@@ -316,7 +316,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
     // `a` changed authoring (size). `b`'s authoring is unchanged
     // but its arranged x shifts from 50 → 80. Both are dirty.
     let dirty_ids: Vec<WidgetId> = ui
-        .damage
+        .damage_engine
         .dirty
         .iter()
         .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
@@ -336,7 +336,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
             Button::new().id_salt("gone").label("X").show(ui);
         });
     });
-    let prev_button_rect = ui.damage.prev[&WidgetId::from_hash("gone")].rect;
+    let prev_button_rect = ui.damage_engine.prev[&WidgetId::from_hash("gone")].rect;
 
     frame(&mut ui, |ui| {
         Panel::hstack().id_salt("root").show(ui, |_| {});
@@ -345,7 +345,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
     // Button is gone; root Panel is non-painting (no chrome) so it
     // never entered prev. Only contribution is the Button's prev
     // rect, surfaced via the `removed` list.
-    let rects: Vec<Rect> = ui.damage.region.iter_rects().collect();
+    let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
     assert_eq!(rects, vec![prev_button_rect]);
 }
 
@@ -371,13 +371,13 @@ fn added_widget_contributes_curr_rect_to_damage() {
     });
 
     let dirty_ids: Vec<WidgetId> = ui
-        .damage
+        .damage_engine
         .dirty
         .iter()
         .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
-    assert!(!ui.damage.region.is_empty());
+    assert!(!ui.damage_engine.region.is_empty());
 }
 
 // --- Ui::damage_filter ---------------------------------------------------
@@ -395,13 +395,13 @@ fn damage_filter_returns_partial_when_small() {
         one_frame(ui, RED);
     });
     let r = ui
-        .damage
+        .damage_engine
         .region
         .iter_rects()
         .next()
         .expect("single-leaf change → some damage");
     assert_eq!(
-        ui.damage.filter(ui.display.logical_rect()),
+        ui.damage_engine.filter(ui.display.logical_rect()),
         Damage::Partial(r.into())
     );
 }
@@ -418,8 +418,11 @@ fn damage_filter_returns_skip_when_nothing_dirty() {
     };
     frame(&mut ui, build);
     frame(&mut ui, build);
-    assert!(ui.damage.dirty.is_empty());
-    assert_eq!(ui.damage.filter(ui.display.logical_rect()), Damage::Skip);
+    assert!(ui.damage_engine.dirty.is_empty());
+    assert_eq!(
+        ui.damage_engine.filter(ui.display.logical_rect()),
+        Damage::Skip
+    );
 }
 
 // --- transforms ---------------------------------------------------------
@@ -471,7 +474,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
         size: child_layout_rect.size,
     };
     let damage_rect = ui
-        .damage
+        .damage_engine
         .region
         .iter_rects()
         .next()
@@ -523,7 +526,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // into one bbox. (A *much* larger distance would push cost over
     // the budget; pinned by
     // `transform_animation_keeps_far_positions_split`.)
-    let rects: Vec<Rect> = ui.damage.region.iter_rects().collect();
+    let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
     assert_eq!(
@@ -537,7 +540,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // transform only composes into descendants — so the parent's
     // hash and screen rect are both stable, leaving it clean.
     let dirty_widget_ids: Vec<WidgetId> = ui
-        .damage
+        .damage_engine
         .dirty
         .iter()
         .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
@@ -555,7 +558,7 @@ fn transform_animation_keeps_far_positions_split() {
     // Drop the merge budget to strict-overlap-only so the prev/curr
     // pair (cost 6 400 < default budget) stays split. Pins both
     // ends of the merge rule against future budget tweaks.
-    ui.damage.budget_px = 0.0;
+    ui.damage_engine.budget_px = 0.0;
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
         run_at_acked(ui, UVec2::new(400, 400), |ui| {
@@ -585,7 +588,7 @@ fn transform_animation_keeps_far_positions_split() {
     // bbox 240×40 = 9600. SAH cost = 6400 — under the default
     // 20 000 budget, this would merge; the guard above drops the
     // budget to 0 to pin the strict-overlap-only branch.
-    let rects: Vec<Rect> = ui.damage.region.iter_rects().collect();
+    let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(200.0, 0.0, 40.0, 40.0);
     assert_eq!(rects.len(), 2, "far transform animation → two rects");
@@ -737,7 +740,7 @@ fn display_change_forces_full_repaint() {
             ui.frame(DISPLAY, Duration::ZERO, &mut build).is_none(),
             "case: {label} f2 must Skip",
         );
-        assert!(ui.damage.dirty.is_empty(), "case: {label} steady");
+        assert!(ui.damage_engine.dirty.is_empty(), "case: {label} steady");
 
         // Mutate Display; identical authoring; must short-circuit to Full.
         let mutated_frame = ui
@@ -750,7 +753,7 @@ fn display_change_forces_full_repaint() {
         );
         mutated_frame.frame_state.mark_submitted();
         assert!(
-            !ui.damage.dirty.is_empty(),
+            !ui.damage_engine.dirty.is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
         );
 
@@ -760,7 +763,7 @@ fn display_change_forces_full_repaint() {
             "case: {label} post-mutation steady must Skip",
         );
         assert!(
-            ui.damage.dirty.is_empty(),
+            ui.damage_engine.dirty.is_empty(),
             "case: {label} post-mutation dirty empty"
         );
     }
@@ -824,14 +827,18 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     if let Some(out) = ui.frame(big, Duration::ZERO, &mut scene) {
         out.frame_state.mark_submitted();
     }
-    assert!(ui.damage.dirty.is_empty());
+    assert!(ui.damage_engine.dirty.is_empty());
 
     // Inject: nudge widget "a"'s prev rect so the next diff sees a
     // small change. Tiny rect (3×50 = 150 area) inside a 2000×2000
     // surface (4M area) — ratio ≈ 0.004%, well below the 50%
     // threshold.
     let target_wid = WidgetId::from_hash("small");
-    let snap = ui.damage.prev.get_mut(&target_wid).expect("small in prev");
+    let snap = ui
+        .damage_engine
+        .prev
+        .get_mut(&target_wid)
+        .expect("small in prev");
     snap.rect.min.x += 3.0;
 
     let smaller = Display {
@@ -876,7 +883,7 @@ fn stable_surface_does_not_short_circuit() {
             .is_none(),
         "warm steady-state must Skip",
     );
-    assert!(ui.damage.dirty.is_empty());
+    assert!(ui.damage_engine.dirty.is_empty());
 
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
@@ -927,7 +934,7 @@ fn button_hover_damage_covers_only_the_button() {
     build(&mut ui, &mut hot_node, &mut cold_node);
     build(&mut ui, &mut hot_node, &mut cold_node);
     assert!(
-        ui.damage.dirty.is_empty(),
+        ui.damage_engine.dirty.is_empty(),
         "off-button pointer should reach a no-diff steady state"
     );
 
@@ -944,18 +951,18 @@ fn button_hover_damage_covers_only_the_button() {
     build(&mut ui, &mut hot_node, &mut cold_node);
 
     assert_eq!(
-        ui.damage.dirty.len(),
+        ui.damage_engine.dirty.len(),
         1,
         "only the hovered button should be dirty"
     );
-    let dirty_id = ui.damage.dirty[0];
+    let dirty_id = ui.damage_engine.dirty[0];
     assert_eq!(
         ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.index()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage.region.iter_rects().next(), Some(hot_rect));
+    assert_eq!(ui.damage_engine.region.iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        ui.damage.filter(ui.display.logical_rect()),
+        ui.damage_engine.filter(ui.display.logical_rect()),
         Damage::Partial(hot_rect.into()),
         "small per-button damage must not trip the full-repaint heuristic",
     );
@@ -963,7 +970,7 @@ fn button_hover_damage_covers_only_the_button() {
     // Next frame at same cursor → no diff (settled).
     build(&mut ui, &mut hot_node, &mut cold_node);
     assert!(
-        ui.damage.dirty.is_empty(),
+        ui.damage_engine.dirty.is_empty(),
         "settled hover should produce no further damage"
     );
 }
@@ -990,19 +997,19 @@ fn button_unhover_damage_covers_only_the_button() {
     ui.on_input(InputEvent::PointerMoved(hot_rect.min + Vec2::new(5.0, 5.0)));
     build(&mut ui, &mut hot_node, &mut cold_node);
     build(&mut ui, &mut hot_node, &mut cold_node);
-    assert!(ui.damage.dirty.is_empty(), "settled hover");
+    assert!(ui.damage_engine.dirty.is_empty(), "settled hover");
 
     // Pointer leaves the button.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(380.0, 380.0)));
     build(&mut ui, &mut hot_node, &mut cold_node);
-    assert_eq!(ui.damage.dirty.len(), 1);
+    assert_eq!(ui.damage_engine.dirty.len(), 1);
     assert_eq!(
-        ui.forest.tree(Layer::Main).records.widget_id()[ui.damage.dirty[0].index()],
+        ui.forest.tree(Layer::Main).records.widget_id()[ui.damage_engine.dirty[0].index()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage.region.iter_rects().next(), Some(hot_rect));
+    assert_eq!(ui.damage_engine.region.iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        ui.damage.filter(ui.display.logical_rect()),
+        ui.damage_engine.filter(ui.display.logical_rect()),
         Damage::Partial(hot_rect.into()),
     );
 }
@@ -1055,7 +1062,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     build(RED, &mut ui, &mut child_node);
 
     let damage_rect = ui
-        .damage
+        .damage_engine
         .region
         .iter_rects()
         .next()

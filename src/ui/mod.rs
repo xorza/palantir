@@ -18,7 +18,7 @@ use crate::primitives::mesh::Mesh;
 use crate::renderer::frontend::{FrameState, RecordedFrame};
 use crate::shape::Shape;
 use crate::text::TextShaper;
-use crate::ui::cascade::Cascades;
+use crate::ui::cascade::CascadesEngine;
 use crate::ui::damage::{Damage, DamageEngine};
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
@@ -42,9 +42,9 @@ pub struct Ui {
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) layout: Layout,
     pub(crate) input: InputState,
-    pub(crate) cascades: Cascades,
+    pub(crate) cascades_engine: CascadesEngine,
     pub(crate) display: Display,
-    pub(crate) damage: DamageEngine,
+    pub(crate) damage_engine: DamageEngine,
     /// `now - prev_now` clamped to [`Self::MAX_DT`].
     pub(crate) dt: f32,
     /// Bumped once per [`Self::run_frame`], before either pass —
@@ -98,16 +98,16 @@ impl Ui {
             layout_engine: LayoutEngine::default(),
             layout: Layout::default(),
             input: InputState::new(),
-            cascades: Cascades::default(),
+            cascades_engine: CascadesEngine::default(),
             display: Display::default(),
-            damage: DamageEngine::default(),
+            damage_engine: DamageEngine::default(),
             dt: 0.0,
             frame_id: 0,
             time: Duration::ZERO,
-            repaint_requested: false,
             anim: AnimMap::default(),
             frame_state: FrameState::default(),
             relayout_requested: false,
+            repaint_requested: false,
         }
     }
 
@@ -155,7 +155,7 @@ impl Ui {
         Some(RecordedFrame {
             forest: &self.forest,
             layout: &self.layout,
-            cascades: &self.cascades.result,
+            cascades: &self.layout.cascades,
             display,
             damage,
             repaint_requested: self.repaint_requested,
@@ -165,7 +165,7 @@ impl Ui {
 
     /// Feed a palantir-native input event. Hosts own redraw scheduling.
     pub fn on_input(&mut self, event: InputEvent) {
-        self.input.on_input(event, &self.cascades.result);
+        self.input.on_input(event, &self.layout.cascades);
     }
 
     /// Re-record this frame after measure runs (for widgets that
@@ -187,7 +187,7 @@ impl Ui {
         );
         let new_surface = display.logical_rect();
         let display_changed = self
-            .damage
+            .damage_engine
             .prev_surface
             .is_some_and(|prev| prev != new_surface);
         let frame_skipped = !self.frame_state.was_last_submitted();
@@ -195,10 +195,10 @@ impl Ui {
             tracing::debug!(
                 display_changed,
                 frame_skipped,
-                first_frame = self.damage.prev_surface.is_none(),
+                first_frame = self.damage_engine.prev_surface.is_none(),
                 "damage.invalidate_prev"
             );
-            self.damage.invalidate_prev();
+            self.damage_engine.invalidate_prev();
         }
         self.display = display;
         self.forest.pre_record();
@@ -243,11 +243,11 @@ impl Ui {
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
 
-        let cascades = self.cascades.run(&self.forest, &self.layout);
-        self.input.post_record(cascades);
-        self.damage.compute(
+        self.cascades_engine.run(&self.forest, &mut self.layout);
+        self.input.post_record(&self.layout.cascades);
+        self.damage_engine.compute(
             &self.forest,
-            cascades,
+            &self.layout.cascades,
             &self.forest.ids.removed,
             self.display.logical_rect(),
         )
@@ -305,7 +305,7 @@ impl Ui {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
-        let mut state = self.input.response_for(id, &self.cascades.result);
+        let mut state = self.input.response_for(id, &self.layout.cascades);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
         state.disabled |= self.forest.ancestor_disabled();

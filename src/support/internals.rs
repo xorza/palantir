@@ -25,13 +25,13 @@ pub fn clear_measure_cache(ui: &mut Ui) {
     cache.snapshots.clear();
 }
 
-/// Run only `Cascades::run` against the just-finished frame's forest +
+/// Run only `CascadesEngine::run` against the just-finished frame's forest +
 /// layout results. Lets the cascade bench isolate cascade cost without
 /// re-running record / measure / arrange / encode / compose. The
 /// caller must have called `Ui::post_record` at least once after the
 /// most recent recording so `ui.layout` is populated.
 pub fn run_cascades(ui: &mut Ui) {
-    let _ = ui.cascades.run(&ui.forest, &ui.layout);
+    ui.cascades_engine.run(&ui.forest, &mut ui.layout);
 }
 
 /// Number of animation rows currently allocated for type `T`, or `0`
@@ -73,7 +73,7 @@ pub fn text_shaper_has_reuse_entry(shaper: &TextShaper, wid: WidgetId, ordinal: 
 /// scenario shape (e.g. "two-corner change actually produced 2
 /// rects").
 pub fn damage_rect_count(ui: &Ui) -> usize {
-    ui.damage.region.iter_rects().count()
+    ui.damage_engine.region.iter_rects().count()
 }
 
 /// Variant of `damage_rect_count` that classifies the frame's
@@ -83,7 +83,7 @@ pub fn damage_rect_count(ui: &Ui) -> usize {
 pub fn damage_paint_kind(ui: &Ui) -> &'static str {
     use crate::ui::damage::Damage;
     let surface = ui.display.logical_rect();
-    match ui.damage.filter(surface) {
+    match ui.damage_engine.filter(surface) {
         Damage::Skip => "skip",
         Damage::Full => "full",
         Damage::Partial(_) => "partial",

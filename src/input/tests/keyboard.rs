@@ -1,6 +1,6 @@
 use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit};
 use crate::input::{InputEvent, InputState};
-use crate::ui::cascade::CascadeResult;
+use crate::ui::cascade::Cascades;
 use winit::event::WindowEvent;
 use winit::keyboard::{Key as WK, NamedKey};
 
@@ -125,7 +125,7 @@ fn keyboard_events_do_not_perturb_scroll_state() {
     // delta accumulator must stay untouched even as keys, text, and
     // modifier changes flow in.
     let mut state = InputState::new();
-    let cascades = CascadeResult::default();
+    let cascades = Cascades::default();
     let before_scroll = state.frame_scroll_delta;
     state.on_input(
         InputEvent::KeyDown {
@@ -145,7 +145,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
     // ModifiersChanged event that lands between two KeyDowns
     // attributes correctly.
     let mut state = InputState::new();
-    let cascades = CascadeResult::default();
+    let cascades = Cascades::default();
 
     state.on_input(
         InputEvent::ModifiersChanged(Modifiers {
@@ -182,7 +182,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
 #[test]
 fn text_events_concatenate_into_frame_text() {
     let mut state = InputState::new();
-    let cascades = CascadeResult::default();
+    let cascades = Cascades::default();
     state.on_input(InputEvent::Text(TextChunk::new("hé").unwrap()), &cascades);
     state.on_input(InputEvent::Text(TextChunk::new("llo").unwrap()), &cascades);
     assert_eq!(state.frame_text, "héllo");
@@ -458,7 +458,7 @@ fn disabled_focusable_widget_does_not_take_focus() {
 #[test]
 fn post_record_clears_keys_and_text_but_preserves_modifiers() {
     let mut state = InputState::new();
-    let cascades = CascadeResult::default();
+    let cascades = Cascades::default();
     state.on_input(
         InputEvent::ModifiersChanged(Modifiers {
             shift: true,

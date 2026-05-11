@@ -8,14 +8,14 @@ use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
-use crate::ui::cascade::{Cascade, CascadeResult};
+use crate::ui::cascade::{Cascade, Cascades};
 use crate::ui::damage::region::DamageRegion;
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU
 /// work, no scale/snap math — that lives in the backend's process
-/// step. Pure function over `(&Tree, &LayerLayout, &Cascades)`, so
+/// step. Pure function over `(&Tree, &LayerLayout, &CascadesEngine)`, so
 /// the same call works in unit tests with no device. Reads
-/// invisibility cascade from `Cascades` so encoder and hit-index
+/// invisibility cascade from `CascadesEngine` so encoder and hit-index
 /// can't drift.
 ///
 /// `damage_filter` enables damage-aware partial paint: when
@@ -38,7 +38,7 @@ impl Encoder {
         &mut self,
         forest: &Forest,
         results: &Layout,
-        cascades: &CascadeResult,
+        cascades: &Cascades,
         damage_filter: Option<&DamageRegion>,
         viewport: Rect,
     ) -> &RenderCmdBuffer {

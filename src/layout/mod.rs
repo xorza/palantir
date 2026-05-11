@@ -18,6 +18,7 @@ use crate::forest::tree::{Layer, Tree};
 use crate::layout::types::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
+use crate::ui::cascade::Cascades;
 use std::ops::{Index, IndexMut};
 use strum::EnumCount as _;
 
@@ -47,6 +48,10 @@ pub(crate) struct LayerLayout {
 #[derive(Default)]
 pub(crate) struct Layout {
     pub(crate) layers: [LayerLayout; Layer::COUNT],
+    /// Cascaded clip/disabled/invisible/transform per node + global
+    /// hit index. Written by `CascadesEngine::run` in the paint phase
+    /// and read by the encoder, input dispatch, and damage compute.
+    pub(crate) cascades: Cascades,
 }
 
 impl Index<Layer> for Layout {

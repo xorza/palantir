@@ -30,7 +30,7 @@ use crate::forest::rollups::NodeHash;
 use crate::forest::tree::NodeId;
 use crate::forest::widget_id::WidgetId;
 use crate::primitives::rect::Rect;
-use crate::ui::cascade::CascadeResult;
+use crate::ui::cascade::Cascades;
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
@@ -178,7 +178,7 @@ impl DamageEngine {
     pub(crate) fn compute(
         &mut self,
         forest: &Forest,
-        cascades: &CascadeResult,
+        cascades: &Cascades,
         removed: &FxHashSet<WidgetId>,
         surface: Rect,
     ) -> Damage {
