@@ -9,28 +9,47 @@ the steady-state alloc-free contract.
 
 - `Background { fill: Color, stroke: Stroke, radius: Corners }`
   in `src/primitives/background.rs:25`. Stored as `Tree.chrome:
-  SparseColumn<Background>` (`src/forest/tree/mod.rs:108`), filtered out when
+  SparseColumn<Background>` (`src/forest/tree/mod.rs:131`), filtered out when
   `is_noop()` so transparent panels stay zero-cost.
 - `Stroke { color: Color, width: f32 }` (`src/primitives/stroke.rs:18`),
-  `#[repr(C)] Pod` — flows straight onto the quad instance.
-- `Shape::RoundedRect { fill, stroke, radius, local_rect }`
-  (`src/shape.rs:10`). `Shape::Line { color, width }` exists but the encoder
-  drops it (`src/renderer/frontend/encoder/mod.rs:127`).
-- Encoder emits `DrawRect` / `DrawRectStroked`
-  (`src/renderer/frontend/cmd_buffer/mod.rs:43`), composer lowers to a 68 B
-  `Quad { rect, fill, radius, stroke }` (`src/renderer/quad.rs:15`), shader
-  `src/renderer/backend/quad.wgsl` does the SDF rounded-rect with one or two
-  AA bands.
+  `#[repr(C)] Pod` with hand-`Hash` over `bytes_of(self)`
+  (`stroke.rs:45-50`). Widening to `Brush` makes `Stroke` non-`Pod`; the
+  hand-`Hash` impl has to be rewritten in terms of the brush fields, not a
+  byte-slice.
+- Six shape variants carry colour today: `Shape::RoundedRect.fill`,
+  `Shape::Line.color`, `Shape::CubicBezier.color`,
+  `Shape::QuadraticBezier.color`, `Shape::Text.color`, `Shape::Mesh.tint`
+  (`src/shape.rs:25,36,66,77,85,99`), plus `Shape::Polyline` with
+  `PolylineColors::{Single,PerPoint,PerSegment}` (`src/shape.rs:107`).
+  `Shape::Line` lowers to `ShapeRecord::Polyline` at authoring time
+  (`src/forest/shapes.rs:280`); there is no `ShapeRecord::Line` and the
+  encoder paints lines via the polyline path (`encoder/mod.rs:128`).
+- Encoder emits `DrawRect` / `DrawRectStroked` / `DrawText` / `DrawPolyline`
+  / `DrawMesh` (`src/renderer/frontend/cmd_buffer/mod.rs:47-60`); composer
+  lowers to a 68 B `Quad { rect, fill, radius, stroke }`
+  (`src/renderer/quad.rs:17`, pinned by `size_of::<Quad>() == 68` at
+  `quad.rs:36`); shader `src/renderer/backend/quad.wgsl` does the SDF
+  rounded-rect with one or two AA bands.
 - The only texture in flight is glyphon's text atlas
-  (`src/renderer/backend/text.rs:76`). No user-image path.
+  (`src/renderer/backend/text.rs`). No user-image path.
 - `Background` participates in the per-node hash
-  (`src/forest/tree/mod.rs:194`), so cache eviction + damage are already
+  (`src/forest/tree/mod.rs:233`), so cache eviction + damage are already
   wired.
+- **No encode cache, no compose cache.** Both were implemented and removed
+  after profiling; see `src/renderer/frontend/encoder/encode-cache.md`. The
+  encoder rebuilds the cmd buffer from scratch every frame. Anywhere this
+  doc talks about "encode-cache coherence" below is conditional on the
+  cache returning — keep the LUT row-addressing scheme either way because
+  it costs nothing and makes a future cache trivial.
 
 ## Goals
 
 - One `Brush` enum that fills and strokes both consume — no separate
   `FillBrush` / `StrokeBrush` types.
+- `impl From<Color> for Brush` so widget/theme/showcase call sites
+  (`fill: palette::ELEM`, `stroke: Stroke { color: ..., width }`) keep
+  compiling unchanged after the rename. Without it slice 1 churns ~30
+  files for no semantic gain.
 - Linear, radial, conic gradients with arbitrary stop counts (cap at 16) and
   pad / repeat / reflect spread modes.
 - Image fills referencing user-uploaded textures with object-space UV mapping
@@ -117,8 +136,20 @@ parameters. Image params (uv, fit) live on the registration, not in the
 `Brush` value.
 
 `Background` and `Shape::RoundedRect` carry `Brush` instead of `Color`.
-`Stroke` becomes `Stroke { brush: Brush, width: f32 }` for symmetry.
-`Shape::Line` swaps `color: Color` → `brush: Brush` in the same slice.
+`Stroke` becomes `Stroke { brush: Brush, width: f32 }` for symmetry — this
+drops `Stroke`'s `bytemuck::Pod` derive (a `Brush` enum can't be `Pod`),
+so the hand-`Hash` impl at `src/primitives/stroke.rs:45-50` swaps from
+`state.write(bytes_of(self))` to hashing `brush` + `width` directly.
+
+`Shape::Line`, `Shape::CubicBezier`, `Shape::QuadraticBezier`, `Shape::Text`,
+and `Shape::Mesh` all swap their `color`/`tint` field to `Brush` in the
+same slice — leaving stragglers is exactly the half-finished state the
+codebase forbids. `Shape::Polyline`'s `PolylineColors` is the one
+exception: `Single(Color)` becomes `Single(Brush)`, but
+`PerPoint(&[Color])` / `PerSegment(&[Color])` stay `Color`-typed. Per-vertex
+gradient/image fills aren't meaningful (each vertex would need its own
+brush evaluation context) and v1 explicitly defers parametric-t along-path
+brushing.
 
 ### `Animatable` for `Brush`
 
@@ -332,9 +363,10 @@ pub(crate) enum DrawCmd {
 ```
 
 Solid panels keep emitting today's `DrawRect` / `DrawRectStroked` — the
-encode cache slice for a solid subtree is byte-identical to pre-brush
-builds, so cached subtrees blit at the same rate. `DrawRectBrush` only
-appears when the encoder resolves a non-solid `Brush`.
+solid-subtree bytes are identical to pre-brush builds. `DrawRectBrush`
+only appears when the encoder resolves a non-solid `Brush`. (No encode
+cache to amortize against today; this matters for the slice-1 byte-equality
+test and for a future cache.)
 
 ## Cache, hashing, damage
 
@@ -347,18 +379,23 @@ appears when the encoder resolves a non-solid `Brush`.
      misses correctly. Frame-local `Vec<LinearGradient>` would have given
      the wrong answer in both directions.
 - `Background::hash` already runs inside the per-node hash
-  (`src/forest/tree/mod.rs:194`); replacing `Color` with `Brush` means
-  changing a stop or swapping an image invalidates the encode/compose/measure
-  caches automatically. No new wiring.
-- **LUT atlas and encode cache stay coherent** because rows are
-  content-addressed (see "Gradient LUT atlas"): a cached `BrushSlot` with
-  `lut_row = R` is still valid because the only way `lut_row = R` exists
-  is for the same content the cache baked from. Eviction means
-  "row free for a different hash to claim" — no in-place overwrite of
-  live content.
+  (`src/forest/tree/mod.rs:233`); replacing `Color` with `Brush` means
+  changing a stop or swapping an image invalidates the measure cache
+  automatically. `Hash for Brush` must be hand-written (the variants
+  carry `f32` payloads — pick a canonical encoding for the gradient/image
+  axes and reuse `Color`'s existing `f32`-bit hash strategy). Note
+  `Brush::Solid(c).hash() != c.hash()` because of the discriminant byte:
+  every subtree key changes once on rollout, then is stable.
+- **LUT atlas rows are content-addressed** (see "Gradient LUT atlas") so
+  that *if* an encode/compose cache ever returns, cached `BrushSlot`s with
+  `lut_row = R` stay valid: the only way `lut_row = R` exists is for the
+  same content the row was baked from. Eviction means "row free for a
+  different hash to claim" — no in-place overwrite of live content. With
+  no caches today this is belt-and-braces; cheap to keep, painful to
+  retrofit.
 - Image atlas: pages aren't evicted within a frame; `release_image` is the
-  only path that frees an atlas slot, and the renderer drops dependent
-  encode-cache entries at the same time.
+  only path that frees an atlas slot. If a cache returns, the renderer
+  drops dependent cache entries on `release_image`.
 - `Damage::Partial` paths still work because the brush eval is per-fragment;
   any rect the damage region covers re-runs the same shader against the
   current LUT/atlas state.
@@ -410,14 +447,23 @@ appears when the encoder resolves a non-solid `Brush`.
 Five slices, each shippable on its own.
 
 1. **Brush type + Solid migration.** Introduce `Brush` enum with only the
-   `Solid(Color)` variant. Replace `Color` on `Background`, `Stroke`,
-   `Shape::RoundedRect`, `Shape::Line` (all in this slice — no later
-   straggler renames). Hand-write `Animatable for Brush` with the
-   solid-solid lerp rule. `Quad`/`BrushSlot` don't exist yet — composer
-   stays on today's 68 B `Quad`, calling `brush.as_solid().unwrap()` (debug
-   `expect`) to extract the color. Pin with the byte-equality test and the
-   button-hover-lerp test. **Risk: rename churn touches every widget.**
-   Acceptable per the project's "break things freely" posture.
+   `Solid(Color)` variant, plus `impl From<Color> for Brush`. Replace
+   `Color` on `Background`, `Stroke`, and **all six** coloured `Shape`
+   variants (`RoundedRect.fill`, `Line.color`, `CubicBezier.color`,
+   `QuadraticBezier.color`, `Text.color`, `Mesh.tint`), plus
+   `PolylineColors::Single`. `PerPoint`/`PerSegment` stay `Color`-typed
+   (per-vertex brush eval is out of scope). Hand-write `Hash for Brush`
+   and `Animatable for Brush` (solid-solid lerp, snap otherwise) — write
+   both **before** flipping the field types so the existing derives on
+   `Background`/`Stroke` recompile cleanly. `Stroke` drops `bytemuck::Pod`
+   and rewrites its hand-`Hash` impl off `bytes_of`. `Quad`/`BrushSlot`
+   don't exist yet — composer stays on today's 68 B `Quad`, calling
+   `brush.as_solid().unwrap()` (debug `expect`) to extract the color. Pin
+   with the byte-equality test (the existing `size_of::<Quad>() == 68` at
+   `quad.rs:36` covers half of it) and a new button-hover-lerp test.
+   **Risk: rename churn touches every widget.** Acceptable per the
+   project's "break things freely" posture; `From<Color>` keeps theme /
+   widget / showcase call sites unchanged.
 
 2. **Linear gradient.** Add `LinearGradient` variant, `BrushArena`
    (FxHashMap, content-keyed), `GradientLutAtlas` (256×256
@@ -462,6 +508,8 @@ the showcase tab updated.
   authoring-time, not GPU-time, so it logically belongs alongside
   `StateMap`. The LUT atlas (renderer-side) is keyed by the same content
   hash, so the two halves stay in sync without a cross-side handshake.
+  Eviction needs to hook into the same `removed` slice `end_frame` uses
+  for `StateMap`/`AnimMap`/`TextShaper`/`MeasureCache`, or it leaks.
 - LUT row collision overflow: linear-probe within the 256 rows or fall
   back to a small "extras" row appended on demand? Probe is fine for
   expected workloads (few dozen distinct gradients/frame); revisit if
