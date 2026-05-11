@@ -1,4 +1,4 @@
-use crate::harness::{AllocBudget, audit_steady_state};
+use crate::harness::audit_steady_state;
 use palantir::{
     Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Text, Track, Ui,
     WidgetId,
@@ -7,12 +7,12 @@ use std::rc::Rc;
 
 #[test]
 fn empty_frame_alloc_free() {
-    audit_steady_state("empty_frame", AllocBudget::ZERO, |_ui| {});
+    audit_steady_state("empty_frame", 0, |_ui| {});
 }
 
 #[test]
 fn button_only_alloc_free() {
-    audit_steady_state("button_only", AllocBudget::ZERO, |ui| {
+    audit_steady_state("button_only", 0, |ui| {
         Button::new()
             .auto_id()
             .label("hello")
@@ -23,7 +23,7 @@ fn button_only_alloc_free() {
 
 #[test]
 fn nested_vstack_64_alloc_free() {
-    audit_steady_state("nested_vstack_64", AllocBudget::ZERO, |ui| {
+    audit_steady_state("nested_vstack_64", 0, |ui| {
         fn rec(ui: &mut Ui, depth: u32) {
             if depth == 0 {
                 return;
@@ -41,7 +41,7 @@ fn nested_vstack_64_alloc_free() {
 fn grid_8x8_alloc_free() {
     let cols: Rc<[Track]> = Rc::from([Track::fill(); 8]);
     let rows: Rc<[Track]> = Rc::from([Track::fill(); 8]);
-    audit_steady_state("grid_8x8", AllocBudget::ZERO, move |ui| {
+    audit_steady_state("grid_8x8", 0, move |ui| {
         Grid::new()
             .auto_id()
             .cols(Rc::clone(&cols))
@@ -67,7 +67,7 @@ fn grid_8x8_alloc_free() {
 #[test]
 fn damage_animated_rect_alloc_free() {
     let mut tick: u32 = 0;
-    audit_steady_state("damage_animated_rect", AllocBudget::ZERO, move |ui| {
+    audit_steady_state("damage_animated_rect", 0, move |ui| {
         tick = tick.wrapping_add(1);
         let w = 100.0 + (tick % 200) as f32;
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -85,7 +85,7 @@ fn damage_animated_rect_alloc_free() {
 
 #[test]
 fn static_text_label_alloc_free() {
-    audit_steady_state("static_text_label", AllocBudget::ZERO, |ui| {
+    audit_steady_state("static_text_label", 0, |ui| {
         Text::new("hello world").auto_id().show(ui);
     });
 }
@@ -93,27 +93,17 @@ fn static_text_label_alloc_free() {
 #[test]
 fn state_map_counter_alloc_free() {
     let id = WidgetId::from_hash("counter");
-    audit_steady_state("state_map_counter", AllocBudget::ZERO, move |ui| {
+    audit_steady_state("state_map_counter", 0, move |ui| {
         Frame::new().id_salt("counter").show(ui);
         let n = ui.state_mut::<u32>(id);
         *n = n.wrapping_add(1);
     });
 }
 
-/// Scrollbar with overflowing content. Pins both halves of the
-/// scroll-shaped post-arrange path:
-///
-/// - `PostArrangeRegistry`'s typed-bucket reuse (one `Box::new` for
-///   `ScrollHook` ever, none after warmup).
-/// - `ScrollHook::run` reading `LayoutResult` + mutating `ScrollState`
-///   in place, no per-frame heap touches.
-///
-/// Cold-mount triggers a relayout (pass A + pass B both run record
-/// phase). Two warmup frames absorb that; steady state is back to one
-/// pass per frame and zero allocations.
+/// Scroll w/ overflow: pins `PostArrangeRegistry` typed-bucket reuse + `ScrollHook::run` in-place.
 #[test]
 fn scroll_overflow_alloc_free() {
-    audit_steady_state("scroll_overflow", AllocBudget::ZERO, |ui| {
+    audit_steady_state("scroll_overflow", 0, |ui| {
         Scroll::vertical()
             .id_salt("scroll")
             .size((Sizing::FILL, Sizing::FILL))
@@ -126,13 +116,10 @@ fn scroll_overflow_alloc_free() {
     });
 }
 
-/// Scrollbar with content that fits inside the viewport: no relayout
-/// flip after the first measure, no gutter reservation. Pairs with
-/// `scroll_overflow_alloc_free` as the negative case — exercises the
-/// hook's `overflow == new_overflow` early-exit path.
+/// Scroll w/ content fitting viewport: pins the hook's `overflow == new_overflow` early-exit.
 #[test]
 fn scroll_fits_alloc_free() {
-    audit_steady_state("scroll_fits", AllocBudget::ZERO, |ui| {
+    audit_steady_state("scroll_fits", 0, |ui| {
         Scroll::vertical()
             .id_salt("scroll")
             .size((Sizing::FILL, Sizing::FILL))

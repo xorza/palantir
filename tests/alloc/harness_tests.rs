@@ -7,7 +7,7 @@
 //! panic + trace-dump failure path, and the `user_frames` filter.
 
 use crate::allocator::with_audit;
-use crate::harness::{AllocBudget, run_audit, user_frames};
+use crate::harness::{run_audit, user_frames};
 use palantir::{Button, Configure, Display, Sizing, Ui};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -142,15 +142,9 @@ fn stale_traces_drained_between_audits() {
 #[test]
 fn run_audit_panics_with_diagnostic_message_on_budget_violation() {
     let result = catch_unwind(AssertUnwindSafe(|| {
-        run_audit(
-            "synthetic_overshoot",
-            0,
-            4,
-            AllocBudget::ZERO,
-            |_ui: &mut Ui| {
-                one_alloc();
-            },
-        );
+        run_audit("synthetic_overshoot", 0, 4, 0, |_ui: &mut Ui| {
+            one_alloc();
+        });
     }));
     let msg = result
         .expect_err("run_audit should panic when budget exceeded")
@@ -210,7 +204,8 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     );
     for plumbing in [
         "tests/alloc/allocator.rs",
-        "tests/alloc/harness.rs",
+        "tests/alloc/harness/mod.rs",
+        "tests/alloc/harness/format.rs",
         "tests/alloc/harness_tests.rs",
         "tests/alloc/main.rs",
     ] {
