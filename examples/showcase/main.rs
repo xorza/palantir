@@ -12,6 +12,7 @@ use winit::window::{Window, WindowId};
 
 mod alignment;
 mod animations;
+mod bezier;
 mod buttons;
 mod clip;
 mod disabled;
@@ -63,6 +64,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("animations", animations::build),
     ("mesh", mesh::build),
     ("lines", lines::build),
+    ("bezier", bezier::build),
     ("drag", drag::build),
 ];
 
