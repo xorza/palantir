@@ -27,8 +27,17 @@
 //!   linear → sRGB8`. Perceptually uniform; CSS Color 4 default.
 //!   Avoids the muddy midpoint without needing a tweaked palette.
 
+use crate::common::hash::Hasher as FxHasher;
 use crate::primitives::brush::{Interp, LinearGradient, Stop};
 use crate::primitives::color::{Color, Srgb8, linear_to_oklab, oklab_to_linear};
+use std::hash::{Hash, Hasher};
+use tinyvec::ArrayVec;
+
+/// Number of rows in the LUT atlas texture. One row per distinct
+/// gradient currently in use. Row 0 is reserved as a debug-magenta
+/// fallback (so a `fill_lut_row = 0` from a bug paints obviously
+/// wrong); real registrations occupy rows 1..ATLAS_ROWS.
+pub(crate) const ATLAS_ROWS: u32 = 256;
 
 /// Width of one baked row in texels. Picked to match the LUT texture's
 /// 256-texel width; 256 gives 1 LSB per stride on the parametric axis,
@@ -178,6 +187,129 @@ fn lerp_oklab(a: Srgb8, b: Srgb8, u: f32) -> Srgb8 {
         a: ca.a + (cb.a - ca.a) * u,
     }
     .to_srgb8()
+}
+
+/// Sentinel for "no gradient registered in this row." Row indices are
+/// `u32` because the GPU consumes them; `u32::MAX` reads as "invalid"
+/// at the call site.
+pub(crate) const INVALID_ROW: u32 = u32::MAX;
+
+/// CPU side of the gradient LUT atlas. Owns the baked row bytes and a
+/// content-hash → row-id map; the backend mirrors this into a wgpu
+/// texture each frame by draining `take_dirty()`.
+///
+/// Row 0 is reserved as a magenta-fill fallback. Slots 1..ATLAS_ROWS
+/// are content-hashed. Linear-probed; on probe-failure (atlas full),
+/// asserts. Slice-2 baseline: assert; real LRU eviction lives in 2.5.
+pub(crate) struct GradientCpuAtlas {
+    /// `Some(content_hash)` per row occupied by a gradient; `None` for
+    /// free rows. Row 0 holds the magenta-fallback marker (`Some(0)`).
+    rows: [Option<u64>; ATLAS_ROWS as usize],
+    /// Baked LUT row bytes, indexed by row id. Row 0's contents are
+    /// the magenta-fallback fill.
+    baked: Vec<[u8; LUT_ROW_BYTES]>,
+    /// Rows that need GPU upload next frame. Backend reads via
+    /// [`Self::take_dirty`]. Capped at `ATLAS_ROWS` — at most every
+    /// row could be re-baked in a single frame.
+    dirty: ArrayVec<[u8; ATLAS_ROWS as usize]>,
+}
+
+impl Default for GradientCpuAtlas {
+    fn default() -> Self {
+        let mut atlas = Self {
+            rows: [None; ATLAS_ROWS as usize],
+            baked: vec![[0u8; LUT_ROW_BYTES]; ATLAS_ROWS as usize],
+            dirty: ArrayVec::new(),
+        };
+        atlas.init_row_zero_magenta();
+        atlas
+    }
+}
+
+impl GradientCpuAtlas {
+    /// Fill row 0 with bright magenta (sRGB `#ff00ff`, full alpha). Any
+    /// quad whose `fill_lut_row = 0` paints this — visible at a glance,
+    /// catches "registered with the atlas but the resulting row id
+    /// didn't flow through to the quad."
+    fn init_row_zero_magenta(&mut self) {
+        let row = &mut self.baked[0];
+        for i in 0..LUT_ROW_TEXELS {
+            let off = i * 4;
+            row[off] = 0xff;
+            row[off + 1] = 0x00;
+            row[off + 2] = 0xff;
+            row[off + 3] = 0xff;
+        }
+        // Reserve the slot with a sentinel hash so it never gets
+        // re-claimed by a real gradient that happens to hash to 0.
+        self.rows[0] = Some(0);
+        // Magenta row must reach the GPU on first frame.
+        self.dirty.push(0);
+    }
+
+    /// Find-or-bake the row for `g`. Returns the row id (in
+    /// `1..ATLAS_ROWS`). The same gradient registered repeatedly across
+    /// frames returns the same row without re-baking; a fresh gradient
+    /// gets the next slot via content-hash + linear probing.
+    pub(crate) fn register(&mut self, g: &LinearGradient) -> u32 {
+        let content_hash = hash_gradient(g);
+        // Probe starting at `1 + (hash mod 255)` so row 0 is never
+        // claimed by a real gradient.
+        let start = 1 + (content_hash % (ATLAS_ROWS as u64 - 1)) as u32;
+        for offset in 0..(ATLAS_ROWS - 1) {
+            let row = 1 + ((start - 1 + offset) % (ATLAS_ROWS - 1));
+            match self.rows[row as usize] {
+                Some(h) if h == content_hash => return row,
+                None => {
+                    // Free slot — bake into it.
+                    bake_linear(g, &mut self.baked[row as usize]);
+                    self.rows[row as usize] = Some(content_hash);
+                    self.dirty.push(row as u8);
+                    return row;
+                }
+                _ => continue,
+            }
+        }
+        // Slice-2 baseline: atlas full → assert. LRU eviction is a
+        // slice-2.5 follow-up (see brushes-slice-2-plan.md open
+        // question #4).
+        panic!(
+            "GradientCpuAtlas full ({} live gradients); LRU eviction not yet implemented",
+            ATLAS_ROWS - 1,
+        );
+    }
+
+    /// Drain the freshly-baked row indices since the previous call.
+    /// Backend uses this to `queue.write_texture` exactly the new rows.
+    /// Returns a borrowed slice; the caller must consume it before the
+    /// next mutation.
+    pub(crate) fn take_dirty(&mut self) -> &[u8] {
+        self.dirty.as_slice()
+    }
+
+    /// Clear the dirty queue after the backend has processed it. Split
+    /// from [`Self::take_dirty`] so the caller can hold the slice while
+    /// uploading row by row, then clear once at the end.
+    pub(crate) fn clear_dirty(&mut self) {
+        self.dirty.clear();
+    }
+
+    /// Borrow a baked row's bytes by id. Backend reads these into the
+    /// GPU texture. Panics on out-of-range id.
+    pub(crate) fn row_bytes(&self, row: u8) -> &[u8; LUT_ROW_BYTES] {
+        &self.baked[row as usize]
+    }
+}
+
+/// Content hash of a `LinearGradient`. Stable across frames given
+/// identical content. Drives row-id derivation in `register`; identical
+/// content always picks the same probe start, so the same gradient
+/// reuses the same row.
+#[inline]
+fn hash_gradient(g: &LinearGradient) -> u64 {
+    let mut h = FxHasher::new();
+    g.hash(&mut h);
+    h.finish()
 }
 
 #[cfg(test)]
@@ -376,5 +508,128 @@ mod tests {
         assert_eq!(texel(&out, 0).g, 255);
         // Texel 255 (t=1): clamped to last stop colour.
         assert_eq!(texel(&out, LUT_ROW_TEXELS - 1).b, 255);
+    }
+
+    // ----- GradientCpuAtlas tests ------------------------------------
+
+    fn distinct_grad(seed: f32) -> LinearGradient {
+        LinearGradient::two_stop(seed, Srgb8::rgb(0xff, 0, 0), Srgb8::rgb(0, 0xff, 0))
+    }
+
+    /// Row 0 is reserved magenta. Created at construction; dirty list
+    /// flags it so the first frame's GPU upload paints the fallback row.
+    /// First real registration goes to row 1 (or wherever its hash lands
+    /// in 1..ATLAS_ROWS).
+    #[test]
+    fn row_zero_reserved_as_magenta_fallback() {
+        let atlas = GradientCpuAtlas::default();
+        // Row 0 is magenta sRGB across all texels.
+        let row0 = atlas.row_bytes(0);
+        for i in 0..LUT_ROW_TEXELS {
+            let off = i * 4;
+            assert_eq!(&row0[off..off + 4], &[0xff, 0x00, 0xff, 0xff]);
+        }
+    }
+
+    /// First real `register` goes through the probe path. Magenta row
+    /// is already dirty from init; the new gradient adds a second
+    /// dirty entry.
+    #[test]
+    fn register_returns_nonzero_row_and_dirties_once() {
+        let mut atlas = GradientCpuAtlas::default();
+        let g = distinct_grad(0.1);
+        let row = atlas.register(&g);
+        assert!(
+            (1..ATLAS_ROWS).contains(&row),
+            "row {row} must be in 1..ATLAS_ROWS"
+        );
+        let dirty = atlas.take_dirty();
+        // Magenta-init dirtied row 0; this register added one more.
+        assert_eq!(dirty.len(), 2);
+        assert!(dirty.contains(&0));
+        assert!(dirty.contains(&(row as u8)));
+    }
+
+    /// Same gradient registered twice returns the same row and does
+    /// not re-dirty.
+    #[test]
+    fn register_same_gradient_twice_reuses_row() {
+        let mut atlas = GradientCpuAtlas::default();
+        let g = distinct_grad(0.5);
+        let r1 = atlas.register(&g);
+        // Clear initial dirty queue so the second registration's
+        // dirty count is isolated.
+        atlas.clear_dirty();
+        let r2 = atlas.register(&g);
+        assert_eq!(r1, r2);
+        assert_eq!(
+            atlas.take_dirty().len(),
+            0,
+            "second register must not dirty"
+        );
+    }
+
+    /// Distinct gradients get distinct rows; both end up dirty for
+    /// upload.
+    #[test]
+    fn register_distinct_gradients_get_distinct_rows() {
+        let mut atlas = GradientCpuAtlas::default();
+        let a = distinct_grad(0.1);
+        let b = distinct_grad(0.2);
+        atlas.clear_dirty();
+        let ra = atlas.register(&a);
+        let rb = atlas.register(&b);
+        assert_ne!(ra, rb);
+        let dirty = atlas.take_dirty();
+        assert_eq!(dirty.len(), 2);
+        assert!(dirty.contains(&(ra as u8)));
+        assert!(dirty.contains(&(rb as u8)));
+    }
+
+    /// Linear-probe collision handling: if two gradients hash to the
+    /// same row id, the second one probes to the next free slot. We
+    /// can't easily construct a guaranteed-collision pair without
+    /// knowing the FxHash output, so we register many distinct
+    /// gradients and verify each gets a unique row (which exercises
+    /// the probe path naturally when collisions occur).
+    #[test]
+    fn register_many_distinct_gradients_all_unique_rows() {
+        let mut atlas = GradientCpuAtlas::default();
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..(ATLAS_ROWS - 1) {
+            let g = distinct_grad(i as f32 * 0.01);
+            let row = atlas.register(&g);
+            assert!(
+                seen.insert(row),
+                "row {row} reused across distinct gradients"
+            );
+            assert!((1..ATLAS_ROWS).contains(&row));
+        }
+        assert_eq!(seen.len(), ATLAS_ROWS as usize - 1);
+    }
+
+    /// Filling all 255 real slots, then asking for one more, panics
+    /// with the slice-2 "atlas full" message. Real LRU eviction is a
+    /// slice-2.5 follow-up.
+    #[test]
+    #[should_panic(expected = "GradientCpuAtlas full")]
+    fn register_panics_when_atlas_full() {
+        let mut atlas = GradientCpuAtlas::default();
+        for i in 0..(ATLAS_ROWS - 1) {
+            atlas.register(&distinct_grad(i as f32 * 0.01));
+        }
+        // 256th distinct gradient (255 real slots already occupied).
+        atlas.register(&distinct_grad(9999.0));
+    }
+
+    /// `take_dirty` returns a borrow; `clear_dirty` resets the queue.
+    /// Sanity: dirty list is per-call, not cumulative across frames.
+    #[test]
+    fn clear_dirty_resets_queue() {
+        let mut atlas = GradientCpuAtlas::default();
+        atlas.register(&distinct_grad(0.3));
+        assert!(!atlas.take_dirty().is_empty());
+        atlas.clear_dirty();
+        assert!(atlas.take_dirty().is_empty());
     }
 }

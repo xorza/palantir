@@ -88,7 +88,23 @@ pub(crate) struct QuadPipeline {
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
     bind_layout: wgpu::BindGroupLayout,
+    /// LUT atlas texture for gradient brushes. 256 cols × 256 rows of
+    /// `Rgba8UnormSrgb`. Sampled at fragment time; sRGB-format so the
+    /// GPU sampler returns linear-RGB to match the existing
+    /// premultiplied blend convention (see `CLAUDE.md` "Colour
+    /// pipeline"). The shader currently doesn't sample from this —
+    /// hooked up in slice-2 step 3 when `Quad` grows the brush slot.
+    /// Slice-2 step 5 wires `upload_gradients` into `WgpuBackend::submit`.
+    #[allow(dead_code)]
+    gradient_texture: wgpu::Texture,
+    #[allow(dead_code)]
+    gradient_texture_view: wgpu::TextureView,
+    #[allow(dead_code)]
+    gradient_sampler: wgpu::Sampler,
 }
+
+/// Side of the gradient LUT atlas texture (square: 256 × 256).
+const GRADIENT_ATLAS_SIDE: u32 = 256;
 
 /// Two pipelines built atop the same shader + viewport bind group as
 /// the no-stencil `pipeline`, used in the stencil-attached render pass.
@@ -117,16 +133,36 @@ impl QuadPipeline {
 
         let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir.quad.bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                // Gradient LUT atlas: sampled at fragment time once the
+                // brush slot is wired into the shader (slice-2 step 3).
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
         });
 
         let viewport_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -135,13 +171,57 @@ impl QuadPipeline {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let gradient_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("palantir.quad.gradient_atlas"),
+            size: wgpu::Extent3d {
+                width: GRADIENT_ATLAS_SIDE,
+                height: GRADIENT_ATLAS_SIDE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            // sRGB format: sampler decodes to linear-RGB on read, matching
+            // the rest of the pipeline. The LUT bake produces straight
+            // sRGB bytes (`Srgb8`), so the format encodes the bytes back
+            // to linear automatically.
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let gradient_texture_view = gradient_texture.create_view(&Default::default());
+        // Linear filter inside a row (smooth gradient interpolation).
+        // Clamp addressing — spread modes (Pad/Repeat/Reflect) are
+        // applied shader-side on `t` before the sample, so the GPU
+        // sampler never sees t outside 0..1.
+        let gradient_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("palantir.quad.gradient_sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("palantir.quad.bg"),
             layout: &bind_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: viewport_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: viewport_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&gradient_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&gradient_sampler),
+                },
+            ],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -243,7 +323,53 @@ impl QuadPipeline {
             shader,
             color_format: format,
             bind_layout,
+            gradient_texture,
+            gradient_texture_view,
+            gradient_sampler,
         }
+    }
+
+    /// Sync freshly-baked gradient LUT rows from the CPU atlas to the
+    /// GPU texture. Called once per frame before the render pass. Idle
+    /// frames (no new gradients) drain an empty dirty queue and do
+    /// nothing. Slice-2 step 5 wires this into `WgpuBackend::submit`.
+    #[allow(dead_code)]
+    pub(crate) fn upload_gradients(
+        &self,
+        queue: &wgpu::Queue,
+        atlas: &mut crate::renderer::frontend::gradient_atlas::GradientCpuAtlas,
+    ) {
+        // Snapshot dirty list — `take_dirty` returns a borrow into
+        // `atlas`, but we need mutable access to clear after; iterate
+        // first, then clear.
+        let dirty: tinyvec::ArrayVec<[u8; 256]> = atlas.take_dirty().iter().copied().collect();
+        for row in dirty.iter().copied() {
+            let bytes = atlas.row_bytes(row);
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.gradient_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: row as u32,
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(GRADIENT_ATLAS_SIDE * 4),
+                    rows_per_image: Some(1),
+                },
+                wgpu::Extent3d {
+                    width: GRADIENT_ATLAS_SIDE,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        atlas.clear_dirty();
     }
 
     /// Lazy-build the stencil-aware variants. Idempotent; called from
