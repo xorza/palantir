@@ -355,9 +355,7 @@ fn build_scrolling(ui: &mut Ui) {
 /// `CosmicMeasure`; calling once per bench arm and reusing across
 /// `b.iter` invocations amortizes font-database parsing.
 fn fresh_heavy_ui() -> Ui {
-    let mut ui = Ui::new();
-    ui.text = TextShaper::with_bundled_fonts();
-    ui
+    Ui::with_text(TextShaper::with_bundled_fonts())
 }
 
 criterion_group!(benches, bench);

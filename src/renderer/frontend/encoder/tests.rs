@@ -704,10 +704,9 @@ fn encoder_text_alignment_respects_leaf_padding() {
     use crate::text::TextShaper;
     use crate::widgets::button::Button;
 
-    let mut ui = Ui::new();
     // Real shaper required so the encoder doesn't drop the text run as
     // having an invalid key (mono fallback uses `TextCacheKey::INVALID`).
-    ui.text = TextShaper::with_bundled_fonts();
+    let mut ui = Ui::with_text(TextShaper::with_bundled_fonts());
     begin(&mut ui, UVec2::new(400, 400));
     Panel::hstack().auto_id().show(&mut ui, |ui| {
         Button::new()

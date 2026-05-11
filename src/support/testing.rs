@@ -78,9 +78,7 @@ pub(crate) fn new_ui_text() -> Ui {
     thread_local! {
         static SHARED: TextShaper = TextShaper::with_bundled_fonts();
     }
-    let mut ui = Ui::new();
-    SHARED.with(|c| ui.text = c.clone());
-    ui
+    Ui::with_text(SHARED.with(|c| c.clone()))
 }
 
 /// Wrap the unit-under-test inside an outer `Fill` HStack so the panel
