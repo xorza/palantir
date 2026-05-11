@@ -419,10 +419,6 @@ impl Tree {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.records.is_empty()
-    }
-
     /// Iterate children of `parent` in declaration order, each tagged
     /// with its collapse state (`Child::Active` / `Child::Collapsed`).
     /// Use `.filter_map(Child::active)` for active-only iteration.

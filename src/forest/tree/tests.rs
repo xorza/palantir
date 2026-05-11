@@ -1126,7 +1126,7 @@ fn empty_popup_body_leaves_popup_tree_empty() {
         ui.forest.tree(Layer::Popup).roots.is_empty(),
         "empty popup body pushes no root",
     );
-    assert!(ui.forest.tree(Layer::Popup).is_empty());
+    assert!(ui.forest.tree(Layer::Popup).records.is_empty());
 }
 
 /// Pin: recording order between layers is irrelevant because trees

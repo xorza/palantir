@@ -120,7 +120,7 @@ pub(crate) type ScrollStates = FxHashMap<WidgetId, ScrollLayoutState>;
 /// and the row's `content` keeps last frame's value (cache hit ⟹
 /// identical measure ⟹ identical content extent).
 pub(crate) fn measure(
-    engine: &mut LayoutEngine,
+    layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
@@ -129,7 +129,7 @@ pub(crate) fn measure(
 ) -> Size {
     let raw = match axes {
         ScrollAxes::Vertical => stack::measure(
-            engine,
+            layout,
             tree,
             node,
             Size::new(inner_avail.w, f32::INFINITY),
@@ -137,18 +137,18 @@ pub(crate) fn measure(
             text,
         ),
         ScrollAxes::Horizontal => stack::measure(
-            engine,
+            layout,
             tree,
             node,
             Size::new(f32::INFINITY, inner_avail.h),
             Axis::X,
             text,
         ),
-        ScrollAxes::Both => zstack::measure(engine, tree, node, Size::INF, text),
+        ScrollAxes::Both => zstack::measure(layout, tree, node, Size::INF, text),
     };
 
     let wid = tree.records.widget_id()[node.index()];
-    engine.scroll_states.entry(wid).or_default().content = raw;
+    layout.scroll_states.entry(wid).or_default().content = raw;
 
     match axes {
         ScrollAxes::Vertical => Size::new(raw.w, 0.0),
@@ -164,16 +164,16 @@ pub(crate) fn measure(
 /// `content > viewport` per axis, `seen` flips to true after the
 /// first arrange, and `offset` is re-clamped to the new bounds.
 pub(crate) fn arrange(
-    engine: &mut LayoutEngine,
+    layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     inner: Rect,
     axes: ScrollAxes,
 ) {
     match axes {
-        ScrollAxes::Vertical => stack::arrange(engine, tree, node, inner, Axis::Y),
-        ScrollAxes::Horizontal => stack::arrange(engine, tree, node, inner, Axis::X),
-        ScrollAxes::Both => zstack::arrange(engine, tree, node, inner),
+        ScrollAxes::Vertical => stack::arrange(layout, tree, node, inner, Axis::Y),
+        ScrollAxes::Horizontal => stack::arrange(layout, tree, node, inner, Axis::X),
+        ScrollAxes::Both => zstack::arrange(layout, tree, node, inner),
     }
 
     let wid = tree.records.widget_id()[node.index()];
@@ -186,11 +186,11 @@ pub(crate) fn arrange(
     // scroll (no wrapper).
     let parent = tree.parents[node.index()];
     let outer = if parent != NodeId::ROOT {
-        engine.result[engine.active_layer].rect[parent.index()].size
+        layout.result[layout.active_layer].rect[parent.index()].size
     } else {
         inner.size
     };
-    let entry = engine.scroll_states.entry(wid).or_default();
+    let entry = layout.scroll_states.entry(wid).or_default();
     let viewport = inner.size;
     let zoom = entry.zoom;
     entry.viewport = viewport;

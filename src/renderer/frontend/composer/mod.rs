@@ -278,7 +278,15 @@ impl Composer {
                         width: stroke.width * current_transform.scale * scale,
                         color: stroke.color,
                     };
-                    group.push_quad(out, Quad::new(phys_rect, fill, phys_radius, phys_stroke));
+                    group.push_quad(
+                        out,
+                        Quad {
+                            rect: phys_rect,
+                            fill,
+                            radius: phys_radius,
+                            stroke: phys_stroke,
+                        },
+                    );
                 }
                 CmdKind::DrawMesh => {
                     let p: DrawMeshPayload = cmds.read(start);

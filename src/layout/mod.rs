@@ -216,7 +216,7 @@ impl LayoutEngine {
             let tree = forest.tree(layer);
             self.active_layer = layer;
             self.result[layer].resize_for(tree);
-            if tree.is_empty() {
+            if tree.records.is_empty() {
                 continue;
             }
             self.scratch.resize_for(tree);

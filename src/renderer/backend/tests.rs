@@ -70,12 +70,12 @@ fn simplify(steps: &[RenderStep]) -> Vec<DrawOp> {
 }
 
 fn dummy_quad() -> Quad {
-    Quad::new(
-        Rect::new(0.0, 0.0, 10.0, 10.0),
-        Color::WHITE,
-        Corners::ZERO,
-        Stroke::ZERO,
-    )
+    Quad {
+        rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+        fill: Color::WHITE,
+        radius: Corners::ZERO,
+        stroke: Stroke::ZERO,
+    }
 }
 
 fn dummy_text() -> TextRun {

@@ -409,19 +409,18 @@ impl QuadPipeline {
     /// pre-clear would blend against last frame's pixels and defeat
     /// the fringe-fix.
     pub(crate) fn upload_clear(&mut self, queue: &wgpu::Queue, viewport: Vec2, color: Color) {
-        let opaque = Color { a: 1.0, ..color };
-        let q = Quad::new(
-            Rect {
+        let q = Quad {
+            rect: Rect {
                 min: glam::Vec2::ZERO,
                 size: Size {
                     w: viewport.x,
                     h: viewport.y,
                 },
             },
-            opaque,
-            Corners::default(),
-            Stroke::ZERO,
-        );
+            fill: Color { a: 1.0, ..color },
+            radius: Corners::default(),
+            stroke: Stroke::ZERO,
+        };
         queue.write_buffer(&self.clear_buffer, 0, bytemuck::bytes_of(&q));
         self.clear_buffer_dirty = true;
     }
@@ -468,18 +467,18 @@ impl QuadPipeline {
     /// rgb channel doubles as the "remaining brightness" multiplier:
     /// 40% alpha → 60% of the underlying pixel survives.
     pub(crate) fn upload_dim(&self, queue: &wgpu::Queue, viewport: Vec2, alpha: f32) {
-        let q = Quad::new(
-            Rect {
+        let q = Quad {
+            rect: Rect {
                 min: glam::Vec2::ZERO,
                 size: Size {
                     w: viewport.x,
                     h: viewport.y,
                 },
             },
-            Color::linear_rgba(0.0, 0.0, 0.0, alpha),
-            Corners::default(),
-            Stroke::ZERO,
-        );
+            fill: Color::linear_rgba(0.0, 0.0, 0.0, alpha),
+            radius: Corners::default(),
+            stroke: Stroke::ZERO,
+        };
         queue.write_buffer(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
     }
 
@@ -525,12 +524,12 @@ impl QuadPipeline {
         }
         let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
         for r in rects {
-            quads.push(Quad::new(
-                *r,
-                Color::TRANSPARENT,
-                Corners::default(),
+            quads.push(Quad {
+                rect: *r,
+                fill: Color::TRANSPARENT,
+                radius: Corners::default(),
                 stroke,
-            ));
+            });
         }
         queue.write_buffer(
             &self.overlay_buffer,
@@ -623,6 +622,11 @@ impl QuadPipeline {
     /// are ignored (mask pipeline disables color writes), so we pass
     /// defaults.
     fn mask_instance(rect: Rect, radius: Corners) -> Quad {
-        Quad::new(rect, Color::default(), radius, Stroke::ZERO)
+        Quad {
+            rect,
+            fill: Color::default(),
+            radius,
+            stroke: Stroke::ZERO,
+        }
     }
 }
