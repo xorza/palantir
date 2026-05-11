@@ -386,7 +386,7 @@ impl Element {
             child_align: Align::default(),
             position: Vec2::ZERO,
             grid: GridCell::default(),
-            sense: Sense::NONE,
+            sense: Sense::None,
             disabled: false,
             focusable: false,
             visibility: Visibility::Visible,

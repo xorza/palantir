@@ -30,17 +30,6 @@ pub enum Sense {
 }
 
 impl Sense {
-    pub const NONE: Self = Self::None;
-    pub const HOVER: Self = Self::Hover;
-    pub const CLICK: Self = Self::Click;
-    pub const DRAG: Self = Self::Drag;
-    pub const CLICK_AND_DRAG: Self = Self::ClickAndDrag;
-    pub const SCROLL: Self = Self::Scroll;
-
-    pub const fn drag(self) -> bool {
-        matches!(self, Self::Drag | Self::ClickAndDrag)
-    }
-
     /// Visible to hit-test for hover/cursor purposes. `Scroll`-only widgets
     /// stay invisible to hover so the cursor / tooltip layer keeps targeting
     /// content underneath.

@@ -48,7 +48,7 @@ impl Card {
             .id_salt(self.label)
             .size((Sizing::Fixed(CARD_SIZE), Sizing::Fixed(CARD_SIZE)))
             .position(self.pos)
-            .sense(Sense::DRAG)
+            .sense(Sense::Drag)
             .show(ui);
         self.fold(&r);
     }
@@ -239,7 +239,7 @@ fn canvas_rearranges_with_dragged_child_position() {
                     .id_salt("a")
                     .size((Sizing::Fixed(CARD_SIZE), Sizing::Fixed(CARD_SIZE)))
                     .position(a.pos)
-                    .sense(Sense::DRAG)
+                    .sense(Sense::Drag)
                     .show(ui);
                 card_node = Some(r.node);
                 a.fold(&r);

@@ -12,7 +12,7 @@ use crate::widgets::frame::Frame;
 ///
 /// Both modes install a full-surface "click-eater" leaf in the
 /// `Popup` layer behind the popup body — outside clicks hit the
-/// eater (`Sense::CLICK`) and don't propagate to the `Main` tree
+/// eater (`Sense::Click`) and don't propagate to the `Main` tree
 /// underneath. They differ only in whether the popup widget signals
 /// dismissal:
 ///
@@ -66,7 +66,7 @@ impl Popup {
         let mut element = Element::new(LayoutMode::VStack);
         // Inside-body clicks land here so they don't fall through to the
         // eater leaf underneath. User can override with `.sense(...)`.
-        element.sense = Sense::CLICK;
+        element.sense = Sense::Click;
         // Caller must chain `.id_salt(...)` / `.id(...)` / `.auto_id()`
         // before `show()` — the `Ui::node` write-path asserts on default id.
         // Multiple popups sharing one show-site need distinct keys to
@@ -87,7 +87,7 @@ impl Popup {
         let surface_rect = ui.display.logical_rect();
         let body_id = self.element.id;
         let eater_id = body_id.with("eater");
-        // Eater root: full-surface invisible `Sense::CLICK` leaf.
+        // Eater root: full-surface invisible `Sense::Click` leaf.
         // Records first in the `Popup` layer scope so it paints
         // *under* the body and (via reverse-iter hit-test) the
         // body's deeper leaves get visited first — only clicks
@@ -96,7 +96,7 @@ impl Popup {
             Frame::new()
                 .id(eater_id)
                 .size((Sizing::FILL, Sizing::FILL))
-                .sense(Sense::CLICK)
+                .sense(Sense::Click)
                 .show(ui);
         });
         let mut element = self.element;
