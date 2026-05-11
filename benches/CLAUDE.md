@@ -18,24 +18,43 @@ cargo bench --bench caches --features internals        # gated benches
 `internals` / `bench-deep`. `cargo bench --no-run` without features only
 builds `frame`.
 
-## Allocation-free invariant
+## Allocation-free invariants (two benches)
 
-`alloc_free.rs` pins `CLAUDE.md`'s "steady-state must be heap-alloc-free
-after warmup" claim. Uses `dhat` as the global allocator, runs 16
-warmup frames + 256 measure frames, asserts zero block/byte delta.
+Two pinning benches, different floors:
+
+- **`alloc_free`** — palantir CPU pipeline only (record → measure →
+  arrange → cascade → encode), no GPU. **Strict zero** — any non-zero
+  block delta over 256 steady-state frames fails. This pins the
+  load-bearing CLAUDE.md invariant.
+- **`alloc_free_gpu`** — same fixture, plus `WgpuBackend::submit`
+  against an offscreen target with a GPU poll between frames.
+  Baselined: every wgpu submission fundamentally allocates
+  (`CommandEncoder` Arc, `CommandBuffer` Arc, queue Vec push, hal
+  scratch). Current floor ~22 blocks/frame, all attributed to
+  `wgpu_core` / `wgpu_hal` (verified via `DHAT_DUMP=1` + dh_view).
+  Gate trips above `RENDER_BLOCKS_PER_FRAME_MAX` (35) — a regression
+  is either a palantir bug or a wgpu/glyphon version drift.
 
 ```sh
-cargo bench --bench alloc_free                          # PASS or FAIL
+cargo bench --bench alloc_free                          # strict CPU invariant
+cargo bench --bench alloc_free_gpu                      # GPU baseline gate
 DHAT_DUMP=1 cargo bench --bench alloc_free              # emits dhat-heap.json on drop
+DHAT_DUMP=1 cargo bench --bench alloc_free_gpu          # same, for the GPU path
 ```
 
-If it fails, load the JSON at <https://nnethercote.github.io/dh_view/>
-for per-call-site bytes and blocks. Don't use this bench for timing —
-dhat adds 10-30× allocator overhead.
+If either fails, load `dhat-heap.json` at
+<https://nnethercote.github.io/dh_view/> for per-call-site bytes and
+blocks. Don't use these benches for timing — dhat adds 10-30×
+allocator overhead.
+
+When the GPU baseline legitimately moves (wgpu/glyphon upgrade,
+intentional palantir change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
+`benches/alloc_free_gpu.rs` and note the new floor in the PR.
 
 The fixture is a small mirror of `frame.rs`'s build_ui (a few buttons,
 wrapping text, nested stacks). If `frame.rs` grows new allocation
-surface area, mirror it here too.
+surface area, mirror it in both `alloc_free.rs` and `alloc_free_gpu.rs`
+so the invariants track the same workload.
 
 ## Profiling on macOS
 
