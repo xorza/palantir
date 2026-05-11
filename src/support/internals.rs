@@ -113,11 +113,12 @@ pub fn mark_frame_submitted(out: &crate::renderer::frontend::RecordedFrame<'_>) 
     out.frame_state.mark_submitted();
 }
 
-/// Force a frame's damage decision, bypassing `Damage::compute`'s
-/// merge policy and coverage threshold. Used by the GPU merge bench
-/// (`benches/damage_merge_gpu.rs`) to A/B "submit the same scene
-/// with N separate damage rects vs one merged bbox" without
-/// touching production damage policy.
+/// Force a `Host`'s pending-frame damage decision, bypassing
+/// `Damage::compute`'s merge policy and coverage threshold. Used by
+/// the GPU merge bench (`benches/damage_merge_gpu.rs`) to A/B "submit
+/// the same scene with N separate damage rects vs one merged bbox"
+/// without touching production damage policy. Call between
+/// `Host::run_frame` and `Host::render`.
 ///
 /// `rects.is_empty()` ⇒ `DamagePaint::Full` (single full-viewport
 /// pass). Otherwise builds `DamagePaint::Partial(region)` by
@@ -125,21 +126,22 @@ pub fn mark_frame_submitted(out: &crate::renderer::frontend::RecordedFrame<'_>) 
 /// merge cascade, so passing two overlapping rects collapses to
 /// one. Pass disjoint rects to actually exercise the multi-pass
 /// path.
-pub fn force_frame_damage_to_rects(
-    out: &mut crate::renderer::frontend::RecordedFrame<'_>,
-    rects: &[crate::primitives::rect::Rect],
-) {
+pub fn force_host_damage_to_rects(host: &mut crate::Host, rects: &[crate::primitives::rect::Rect]) {
     use crate::ui::damage::DamagePaint;
     use crate::ui::damage::region::DamageRegion;
+    let p = host
+        .pending
+        .as_mut()
+        .expect("force_host_damage_to_rects: call after Host::run_frame, before Host::render");
     if rects.is_empty() {
-        out.damage = DamagePaint::Full;
+        p.damage = DamagePaint::Full;
         return;
     }
     let mut region = DamageRegion::default();
     for r in rects {
         region.add(*r);
     }
-    out.damage = DamagePaint::Partial(region);
+    p.damage = DamagePaint::Partial(region);
 }
 
 /// Bench-public mirror of internal `ColorMode`. The user-facing

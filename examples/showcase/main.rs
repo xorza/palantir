@@ -1,8 +1,9 @@
 use std::sync::Arc;
+use std::time::Instant;
 
-use palantir::Renderer;
 use palantir::{
-    Background, Button, Color, Configure, DebugOverlayConfig, InputEvent, Panel, Sizing, Ui,
+    Background, Button, Color, Configure, DebugOverlayConfig, Display, Host, InputEvent, Panel,
+    Sizing, Ui,
 };
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -93,8 +94,7 @@ struct State {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     config: wgpu::SurfaceConfiguration,
-    renderer: Renderer,
-    ui: Ui,
+    host: Host,
     display: palantir::Display,
     active: usize,
     /// Host-side repaint gate. Cleared at top of `draw`; re-armed by
@@ -158,16 +158,12 @@ impl ApplicationHandler for App {
         };
         surface.configure(&device, &config);
 
-        let mut renderer = Renderer::new(device.clone(), queue.clone(), format);
-
-        let shaper = palantir::TextShaper::with_bundled_fonts();
-        let mut ui = Ui::with_text(shaper.clone());
-        renderer.set_text_shaper(shaper);
+        let mut host = Host::new(device.clone(), queue.clone(), format);
         // Library default is no button animation (`anim = None`).
         // Showcase exists to demo the animation primitive — opt in.
-        ui.theme.button.anim = None;
-        // ui.theme.button.anim = Some(palantir::AnimSpec::SPRING);
-        let display = palantir::Display::from_physical(
+        host.ui.theme.button.anim = None;
+        // host.ui.theme.button.anim = Some(palantir::AnimSpec::SPRING);
+        let display = Display::from_physical(
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
         );
@@ -178,12 +174,11 @@ impl ApplicationHandler for App {
             surface,
             device,
             config,
-            renderer,
-            ui,
+            host,
             display,
             active: 0,
             repaint_requested: true,
-            start: std::time::Instant::now(),
+            start: Instant::now(),
         });
     }
 
@@ -218,7 +213,7 @@ impl ApplicationHandler for App {
         }
 
         if let Some(ev) = InputEvent::from_winit(&event, state.display.scale_factor) {
-            state.ui.on_input(ev);
+            state.host.ui.on_input(ev);
             state.repaint_requested = true;
         }
 
@@ -245,22 +240,21 @@ impl ApplicationHandler for App {
 
 impl State {
     fn draw(&mut self) {
-        // `frame_out` borrows `self.ui` (it carries the encoded
-        // `RenderBuffer`), so any reads of `self.ui.*` have to happen
-        // up front.
-        let clear = self.ui.theme.window_clear;
+        let clear = self.host.ui.theme.window_clear;
 
         // Run the frame first so we can early-out on `Skip` without
         // touching the swapchain at all. Acquired `SurfaceTexture`s
         // *must* be presented; dropping one without `present()` leaves
         // the swapchain in an undefined state and stutters the next
         // acquire.
-        let frame_out = self.ui.run_frame(self.display, self.start.elapsed(), |ui| {
-            build_root(ui, &mut self.active)
-        });
-        self.repaint_requested = frame_out.repaint_requested();
+        let info = self
+            .host
+            .run_frame(self.display, self.start.elapsed(), |ui| {
+                build_root(ui, &mut self.active)
+            });
+        self.repaint_requested = info.repaint_requested;
 
-        if frame_out.can_skip_rendering() {
+        if info.can_skip_rendering {
             return;
         }
 
@@ -281,7 +275,7 @@ impl State {
             Occluded => return,
         };
 
-        self.renderer.render(&frame.texture, clear, frame_out);
+        self.host.render(&frame.texture, clear);
         frame.present();
     }
 }
@@ -292,7 +286,7 @@ impl State {
 fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
     match key {
         KeyCode::F12 => {
-            state.ui.debug_overlay = match state.ui.debug_overlay {
+            state.host.ui.debug_overlay = match state.host.ui.debug_overlay {
                 None => Some(DebugOverlayConfig {
                     damage_rect: true,
                     ..Default::default()
@@ -301,7 +295,7 @@ fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
             };
             eprintln!(
                 "[F12] debug overlay: {}",
-                if state.ui.debug_overlay.is_some() {
+                if state.host.ui.debug_overlay.is_some() {
                     "on"
                 } else {
                     "off"
@@ -310,9 +304,9 @@ fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
             true
         }
         KeyCode::F10 => {
-            let mut cfg = state.ui.debug_overlay.unwrap_or_default();
+            let mut cfg = state.host.ui.debug_overlay.unwrap_or_default();
             cfg.dim_undamaged = !cfg.dim_undamaged;
-            state.ui.debug_overlay = (cfg != DebugOverlayConfig::default()).then_some(cfg);
+            state.host.ui.debug_overlay = (cfg != DebugOverlayConfig::default()).then_some(cfg);
             eprintln!("[F10] darken undamaged: {}", cfg.dim_undamaged);
             true
         }

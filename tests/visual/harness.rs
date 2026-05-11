@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, DebugOverlayConfig, Display, Renderer, TextShaper, Ui};
+use palantir::{Color, DebugOverlayConfig, Display, Host, TextShaper, Ui};
 use pollster::FutureExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -59,23 +59,19 @@ thread_local! {
 pub struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    renderer: Renderer,
-    pub ui: Ui,
+    pub host: Host,
 }
 
 impl Harness {
     pub fn new() -> Self {
         let g = gpu();
-        let mut renderer = Renderer::new(g.device.clone(), g.queue.clone(), FORMAT);
         let shaper = COSMIC.with(|c| c.clone());
-        let ui = Ui::with_text(shaper.clone());
-        renderer.set_text_shaper(shaper);
+        let host = Host::with_text(g.device.clone(), g.queue.clone(), FORMAT, shaper);
 
         Self {
             device: g.device.clone(),
             queue: g.queue.clone(),
-            renderer,
-            ui,
+            host,
         }
     }
 
@@ -103,12 +99,12 @@ impl Harness {
             view_formats: &[],
         });
 
-        let frame_out = self.ui.run_frame(
+        self.host.run_frame(
             Display::from_physical(physical, scale),
             std::time::Duration::ZERO,
             scene,
         );
-        self.renderer.render(&target, clear, frame_out);
+        self.host.render(&target, clear);
 
         readback(&self.device, &self.queue, &target, physical)
     }
@@ -142,9 +138,9 @@ impl Harness {
         clear: Color,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
-        self.ui.debug_overlay = Some(overlay);
+        self.host.ui.debug_overlay = Some(overlay);
         let img = self.render(physical, scale, clear, scene);
-        self.ui.debug_overlay = None;
+        self.host.ui.debug_overlay = None;
         img
     }
 }

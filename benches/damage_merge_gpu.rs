@@ -1,5 +1,5 @@
 //! GPU-side damage merge bench. Drives `Ui::run_frame` ➔
-//! `Renderer::submit` ➔ `device.poll(Wait)` so the criterion
+//! `Host::render` ➔ `device.poll(Wait)` so the criterion
 //! timing window includes the actual GPU pass cost (pipeline state
 //! setup, scissor changes, pixel shading, copy-to-surface).
 //!
@@ -24,9 +24,7 @@
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::support::internals;
-use palantir::{
-    Background, Color, Configure, Display, Frame, Panel, Rect, Renderer, Sizing, TextShaper, Ui,
-};
+use palantir::{Background, Color, Configure, Display, Frame, Host, Panel, Rect, Sizing, Ui};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -41,13 +39,14 @@ const PADDING: f32 = 4.0;
 const CLEAR: Color = Color::rgb(0.05, 0.05, 0.07);
 
 /// Headless wgpu setup. Surface texture stands in for the swapchain;
-/// `Renderer` renders into its own backbuffer then copies to this
+/// `Host` renders into its own backbuffer then copies to this
 /// texture (same path the windowed examples take). No present, no
 /// winit.
 struct Gpu {
     device: wgpu::Device,
+    queue: wgpu::Queue,
+    format: wgpu::TextureFormat,
     surface_tex: wgpu::Texture,
-    renderer: Renderer,
 }
 
 fn init_gpu() -> Gpu {
@@ -82,11 +81,11 @@ fn init_gpu() -> Gpu {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     });
-    let renderer = Renderer::new(device.clone(), queue, format);
     Gpu {
         device,
+        queue,
+        format,
         surface_tex,
-        renderer,
     }
 }
 
@@ -139,29 +138,29 @@ fn cell_logical_rect(row: usize, col: usize) -> Rect {
 /// the queued submit, so criterion's wall-clock window includes the
 /// pass cost. Returns nothing; the bench just times this call.
 fn render_frame(
-    ui: &mut Ui,
-    gpu: &mut Gpu,
+    host: &mut Host,
+    gpu: &Gpu,
     display: Display,
     cells: &[usize],
     color: Color,
     forced_damage: Option<&[Rect]>,
 ) {
-    let mut out = ui.run_frame(display, Duration::ZERO, |ui| build_grid(ui, cells, color));
+    host.run_frame(display, Duration::ZERO, |ui| build_grid(ui, cells, color));
     if let Some(rects) = forced_damage {
-        internals::force_frame_damage_to_rects(&mut out, rects);
+        internals::force_host_damage_to_rects(host, rects);
     }
-    gpu.renderer.render(&gpu.surface_tex, CLEAR, out);
+    host.render(&gpu.surface_tex, CLEAR);
     gpu.device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("device poll wait");
 }
 
-fn warm(ui: &mut Ui, gpu: &mut Gpu, display: Display, cells: &[usize], cold: Color, hot: Color) {
+fn warm(host: &mut Host, gpu: &Gpu, display: Display, cells: &[usize], cold: Color, hot: Color) {
     let mut toggle = false;
     for _ in 0..3 {
         toggle = !toggle;
         let color = if toggle { hot } else { cold };
-        render_frame(ui, gpu, display, cells, color, None);
+        render_frame(host, gpu, display, cells, color, None);
     }
 }
 
@@ -169,20 +168,18 @@ fn warm(ui: &mut Ui, gpu: &mut Gpu, display: Display, cells: &[usize], cold: Col
 /// and compare `separate` (two-pass) vs `merged` (one-pass-with-bbox)
 /// strategies. The crossover gap is the metric we want.
 fn bench_two_cells(c: &mut Criterion) {
-    let mut gpu = init_gpu();
+    let gpu = init_gpu();
     let display = Display::from_physical(SURFACE, SCALE);
     let cold = Color::rgb(0.2, 0.4, 0.8);
     let hot = Color::rgb(0.9, 0.4, 0.2);
 
-    let shaper = TextShaper::with_bundled_fonts();
-    let mut ui = Ui::with_text(shaper.clone());
-    gpu.renderer.set_text_shaper(shaper);
+    let mut host = Host::new(gpu.device.clone(), gpu.queue.clone(), gpu.format);
 
     let mut group = c.benchmark_group("damage/merge_gpu/two_cells");
 
     for &gap in &[1usize, 2, 4, 8, 16, 24, 31] {
         let cells = [0usize, gap];
-        warm(&mut ui, &mut gpu, display, &cells, cold, hot);
+        warm(&mut host, &gpu, display, &cells, cold, hot);
 
         let cell_a = cell_logical_rect(0, 0);
         let cell_b = cell_logical_rect(0, gap);
@@ -196,7 +193,7 @@ fn bench_two_cells(c: &mut Criterion) {
                 b.iter(|| {
                     toggle = !toggle;
                     let color = if toggle { hot } else { cold };
-                    render_frame(&mut ui, &mut gpu, display, &cells, color, Some(region));
+                    render_frame(&mut host, &gpu, display, &cells, color, Some(region));
                     black_box(&gpu.surface_tex);
                 });
             });
@@ -204,8 +201,6 @@ fn bench_two_cells(c: &mut Criterion) {
     }
 
     group.finish();
-    drop(ui);
-    drop(gpu);
 }
 
 /// Single-pass scaling baseline: how does total time scale with
@@ -215,14 +210,12 @@ fn bench_two_cells(c: &mut Criterion) {
 /// vs covered area) so the `pass_cost` term in the cost model has
 /// a numeric foundation.
 fn bench_single_pass_scaling(c: &mut Criterion) {
-    let mut gpu = init_gpu();
+    let gpu = init_gpu();
     let display = Display::from_physical(SURFACE, SCALE);
     let cold = Color::rgb(0.2, 0.4, 0.8);
     let hot = Color::rgb(0.9, 0.4, 0.2);
 
-    let shaper = TextShaper::with_bundled_fonts();
-    let mut ui = Ui::with_text(shaper.clone());
-    gpu.renderer.set_text_shaper(shaper);
+    let mut host = Host::new(gpu.device.clone(), gpu.queue.clone(), gpu.format);
 
     let mut group = c.benchmark_group("damage/merge_gpu/single_pass_scaling");
 
@@ -231,7 +224,7 @@ fn bench_single_pass_scaling(c: &mut Criterion) {
     // Pixel cost scales (roughly) linearly with damage area; the
     // intercept of the regression is the pass-setup cost.
     let cells = [0usize];
-    warm(&mut ui, &mut gpu, display, &cells, cold, hot);
+    warm(&mut host, &gpu, display, &cells, cold, hot);
     let cell = cell_logical_rect(0, 0);
 
     for &area_cells in &[1usize, 2, 4, 8, 16, 31] {
@@ -250,7 +243,7 @@ fn bench_single_pass_scaling(c: &mut Criterion) {
                 b.iter(|| {
                     toggle = !toggle;
                     let color = if toggle { hot } else { cold };
-                    render_frame(&mut ui, &mut gpu, display, &cells, color, Some(&region));
+                    render_frame(&mut host, &gpu, display, &cells, color, Some(&region));
                     black_box(&gpu.surface_tex);
                 });
             },
