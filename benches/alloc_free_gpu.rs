@@ -3,7 +3,7 @@
 //! Sister to `alloc_free.rs`. Where that bench asserts a *strict zero*
 //! on palantir's CPU pipeline (record → measure → arrange → cascade →
 //! encode), this bench measures the additional allocations introduced
-//! by `Renderer::submit` against an offscreen target texture, with
+//! by `Host::render` against an offscreen target texture, with
 //! a GPU poll between frames so submitted work drains before the next
 //! iteration.
 //!
@@ -12,7 +12,7 @@
 //! Arc, the queue's in-flight `Vec` push, plus per-pass scratch from
 //! `wgpu_hal::metal`. Current measured floor on this fixture is
 //! ~22 blocks/frame, all attributed to wgpu_core/wgpu_hal driver code
-//! beneath `Renderer::submit` (verified via `DHAT_DUMP=1` +
+//! beneath `Host::render` (verified via `DHAT_DUMP=1` +
 //! dh_view). The bench treats this as a baseline: the gate trips when
 //! the per-frame block count exceeds `RENDER_BLOCKS_PER_FRAME_MAX`,
 //! indicating either a palantir regression or a wgpu/glyphon version
@@ -28,8 +28,8 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use palantir::{
-    Align, Button, Color, Configure, Display, Frame, Justify, Panel, Renderer, Sizing, Text,
-    TextShaper, TextStyle, Ui,
+    Align, Button, Color, Configure, Display, Frame, Host, Justify, Panel, Sizing, Text, TextStyle,
+    Ui,
 };
 use pollster::FutureExt;
 
@@ -170,10 +170,7 @@ fn main() {
     };
 
     let g = gpu();
-    let mut backend = Renderer::new(g.device.clone(), g.queue.clone(), FORMAT);
-    let shaper = TextShaper::with_bundled_fonts();
-    let mut ui = Ui::with_text(shaper.clone());
-    backend.set_text_shaper(shaper);
+    let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
 
     let target = g.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("palantir.alloc_free_gpu.target"),
@@ -193,9 +190,9 @@ fn main() {
     });
     let display = Display::from_physical(PHYSICAL, SCALE);
 
-    let run = |ui: &mut Ui, renderer: &mut Renderer| {
-        let frame = ui.run_frame(display, std::time::Duration::ZERO, build_ui);
-        renderer.render(&target, Color::TRANSPARENT, frame);
+    let run = |host: &mut Host| {
+        host.run_frame(display, std::time::Duration::ZERO, build_ui);
+        host.render(&target, Color::TRANSPARENT);
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
@@ -205,11 +202,11 @@ fn main() {
     };
 
     for _ in 0..WARMUP_FRAMES {
-        run(&mut ui, &mut backend);
+        run(&mut host);
     }
     let before = dhat::HeapStats::get();
     for _ in 0..MEASURE_FRAMES {
-        run(&mut ui, &mut backend);
+        run(&mut host);
     }
     let after = dhat::HeapStats::get();
 

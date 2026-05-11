@@ -65,13 +65,12 @@ const POOL_SHRINK_RATIO: usize = 2;
 /// scratch. Capacity retains across frames; pool grows to historical
 /// high water.
 pub(crate) struct TextRenderer {
-    /// Shared shaper handle, installed via
-    /// [`super::WgpuBackend::set_text_shaper`]. Must be the *same*
-    /// [`TextShaper`] the host installed on `Ui`, otherwise lookups
-    /// in [`Self::prepare_group`] miss against keys minted on a
-    /// different cache. Default = [`TextShaper::default`] (mono);
-    /// [`Self::prepare_group`] silently skips when the shaper has no
-    /// cosmic ([`TextShaper::with_render_split`] returns `None`).
+    /// Shared shaper handle, installed by
+    /// [`super::WgpuBackend::new`]. Must be the *same* [`TextShaper`]
+    /// the host installed on `Ui`, otherwise lookups in
+    /// [`Self::prepare_group`] miss against keys minted on a different
+    /// cache. [`Self::prepare_group`] silently skips when the shaper
+    /// has no cosmic ([`TextShaper::with_render_split`] returns `None`).
     shaper: TextShaper,
     atlas: TextAtlas,
     viewport: Viewport,

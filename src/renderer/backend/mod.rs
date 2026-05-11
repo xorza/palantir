@@ -92,11 +92,12 @@ pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
 }
 
 /// wgpu backend: owns the quad pipeline + text renderer and cloned
-/// device/queue handles (cheap, Arc-backed). The text side holds a shared
-/// handle to the same `CosmicMeasure` the Ui side measures against (set via
-/// [`Self::set_text_shaper`]) — without it, text rendering is silently skipped.
-/// No layout, no encode, no compose — those happen elsewhere and arrive
-/// here as a `RenderBuffer`.
+/// device/queue handles (cheap, Arc-backed). The text side holds a
+/// shared handle to the same `CosmicMeasure` the Ui side measures
+/// against (passed in at [`Self::new`]) so layout-time measurement
+/// and rasterization hit one buffer cache. No layout, no encode, no
+/// compose — those happen elsewhere and arrive here as a
+/// `RenderBuffer`.
 pub(crate) struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -133,10 +134,12 @@ impl WgpuBackend {
         device: wgpu::Device,
         queue: wgpu::Queue,
         format: wgpu::TextureFormat,
+        shaper: TextShaper,
     ) -> Self {
         let quad = QuadPipeline::new(&device, format);
         let mesh = MeshPipeline::new(&device, format);
-        let text = TextRenderer::new(&device, &queue, format);
+        let mut text = TextRenderer::new(&device, &queue, format);
+        text.set_shaper(shaper);
         Self {
             device,
             queue,
@@ -147,14 +150,6 @@ impl WgpuBackend {
             backbuffer: None,
             damage_scissors: Default::default(),
         }
-    }
-
-    /// Install the shared shaper handle. Pass the same [`TextShaper`]
-    /// to `Ui::text` so layout-time measurement
-    /// and rasterization see one buffer cache. Without it, text
-    /// rendering is silently skipped at submit time.
-    pub(crate) fn set_text_shaper(&mut self, shaper: TextShaper) {
-        self.text.set_shaper(shaper);
     }
 
     /// Lazily (re)create the backbuffer to match the surface texture's
@@ -383,9 +378,9 @@ impl WgpuBackend {
         // glyphon can upload to the atlas + per-renderer vertex buffer
         // freely. Viewport uniform updated once for all renderers in the
         // pool — they share the atlas-bound pipeline + viewport state.
-        // `prepare_group` returns `false` (no-op) when no shaper has
-        // been installed via [`Self::set_text_shaper`], so the loop is
-        // safe to run unconditionally.
+        // `prepare_group` returns `false` (no-op) when the shaper
+        // passed at [`Self::new`] has no installed fonts, so the loop
+        // is safe to run unconditionally.
         self.text.update_viewport(&self.queue, buffer.viewport_phys);
         for (i, g) in buffer.groups.iter().enumerate() {
             if g.texts.len == 0 {

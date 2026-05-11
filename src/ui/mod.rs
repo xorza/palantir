@@ -79,15 +79,16 @@ impl Ui {
 
     /// Construct with the mono-fallback shaper. Use for headless /
     /// test / preview contexts where glyph cache identity doesn't
-    /// matter; production apps should call [`Self::with_text`] with
-    /// the shaper they're sharing with `WgpuBackend`.
+    /// matter; production apps use [`crate::Host`], which builds a
+    /// `Ui` via [`Self::with_text`] under the hood and shares the
+    /// shaper with the backend.
     pub fn new() -> Self {
         Self::with_text(TextShaper::default())
     }
 
-    /// Construct with an explicit shaper. Share the same handle with
-    /// `WgpuBackend::set_text_shaper` so layout-time measurement and
-    /// render-time shaping hit one buffer cache.
+    /// Construct with an explicit shaper. The same handle must reach
+    /// the wgpu backend (via [`crate::Host::new`]) so layout-time
+    /// measurement and render-time shaping hit one buffer cache.
     pub fn with_text(text: TextShaper) -> Self {
         Self {
             forest: Forest::default(),

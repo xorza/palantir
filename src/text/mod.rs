@@ -45,10 +45,10 @@ use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 /// Single-threaded by design (`Rc` inside); access is sequential —
 /// measurement during layout, prepare/render during the wgpu frame —
 /// so the `RefCell` is just runtime insurance against accidental
-/// re-entry. Cloning is cheap (refcount bump). The same handle goes
-/// on `Ui` (via the public `Ui::text` field) and on
-/// [`crate::WgpuBackend`] (via [`crate::WgpuBackend::set_text_shaper`])
-/// so both sides see one buffer cache.
+/// re-entry. Cloning is cheap (refcount bump). [`crate::Host::new`]
+/// holds the canonical handle and passes a clone to both `Ui` (via
+/// `Ui::with_text`) and the backend (constructor arg) so both sides
+/// see one buffer cache.
 ///
 /// Two paths, picked at construction:
 ///
