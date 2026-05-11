@@ -12,7 +12,6 @@ use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::widgets::grid::GridDef;
 use glam::Vec2;
@@ -83,12 +82,15 @@ pub(crate) struct OpenFrame {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RootSlot {
     pub(crate) first_node: u32,
-    /// `min` = caller-supplied top-left placement (surface origin for
-    /// `Main`). `size` = the room from that placement to the surface
-    /// bottom-right, so layout's "available" is bounded by the
-    /// surface even for side-layer roots. Patched in
-    /// `Forest::end_frame`; consumed by `LayoutEngine::run` per root.
-    pub(crate) anchor_rect: Rect,
+    /// Top-left placement in screen space. `Vec2::ZERO` for `Main`;
+    /// set by `Forest::push_layer` for side layers.
+    pub(crate) anchor: Vec2,
+    /// Caller-supplied size cap (side layers only). `None` means
+    /// "fill from `anchor` to the surface bottom-right". `Some(s)`
+    /// is clamped to the surface at layout time (`available =
+    /// min(s, surface - anchor)`), so a too-large cap never bleeds
+    /// past the viewport. Always `None` for `Main`.
+    pub(crate) size: Option<Size>,
 }
 
 /// **Per-NodeId columns** — `Soa<NodeRecord>` indexed by `NodeId.0`, in
@@ -161,15 +163,13 @@ pub(crate) struct Tree {
     /// load (read from `last()`) instead of an O(depth) walk.
     pub(crate) open_frames: Vec<OpenFrame>,
 
-    /// Top-left placement that the next `open_node` will stamp on a
-    /// freshly-minted `RootSlot` (as `anchor_rect.min`). Set by
-    /// `Forest::push_layer` for non-`Main` layers; `Main`'s value
-    /// stays at `Vec2::ZERO` until `Forest::end_frame` patches every
-    /// `Main` root's anchor to the surface. The root's
-    /// `anchor_rect.size` is patched in `end_frame` to the remaining
-    /// surface extent (`surface - anchor`), so layout sees the
-    /// available room from the placement onwards.
+    /// Anchor + optional size cap that the next `open_node` will
+    /// stamp on a freshly-minted `RootSlot`. Set by
+    /// `Forest::push_layer` for non-`Main` layers; `Main`'s values
+    /// stay at `(Vec2::ZERO, None)` — its implicit root always
+    /// paints the full surface.
     pub(crate) pending_anchor: Vec2,
+    pub(crate) pending_size: Option<Size>,
 
     // -- Output (populated by `end_frame`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
@@ -189,6 +189,7 @@ impl Tree {
         self.roots.clear();
         self.open_frames.clear();
         self.pending_anchor = Vec2::ZERO;
+        self.pending_size = None;
     }
 
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`.
@@ -272,12 +273,8 @@ impl Tree {
         if parent.is_none() {
             self.roots.push(RootSlot {
                 first_node: new_id.0,
-                // `size` is patched in `Forest::end_frame` to the
-                // remaining surface extent from `pending_anchor`.
-                anchor_rect: Rect {
-                    min: self.pending_anchor,
-                    size: Size::ZERO,
-                },
+                anchor: self.pending_anchor,
+                size: self.pending_size,
             });
         }
         if let LayoutMode::Grid(idx) = element.mode {

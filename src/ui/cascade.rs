@@ -121,7 +121,7 @@ impl Cascades {
     /// Walk every tree in paint order; produce one `Cascade` row per
     /// node in each tree's slot, and append a global hit entry per
     /// node. Anchor offset for each layer is read from the layer's
-    /// own `RootSlot.anchor_rect` — no parent transform plumbing is
+    /// own `RootSlot.anchor` — no parent transform plumbing is
     /// needed because trees never share NodeId space.
     pub(crate) fn run(&mut self, forest: &Forest, results: &LayoutResult) -> &CascadeResult {
         let r = &mut self.result;
