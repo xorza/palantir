@@ -804,7 +804,7 @@ fn spring_snap_fields_carry_target_immediately() {
         "snap field must carry target value on the first stepped frame, not lag until settle",
     );
     assert!(
-        r.current.fill.as_solid().r < target.fill.as_solid().r - 0.05,
+        r.current.fill.as_solid().unwrap().r < target.fill.as_solid().unwrap().r - 0.05,
         "animated fill should still be mid-flight; got {:?}",
         r.current.fill,
     );

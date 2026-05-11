@@ -274,7 +274,7 @@ impl Shapes {
             } => ShapeRecord::RoundedRect {
                 local_rect,
                 radius,
-                fill: fill.as_solid(),
+                fill: fill.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
                 stroke,
             },
             Shape::Line {
@@ -316,7 +316,7 @@ impl Shapes {
                     &mut self.payloads,
                     BezierInputs::Cubic([p0, p1, p2, p3]),
                     width,
-                    brush.as_solid(),
+                    brush.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
                     cap,
                     join,
                     tolerance,
@@ -338,7 +338,7 @@ impl Shapes {
                     &mut self.payloads,
                     BezierInputs::Quadratic([p0, p1, p2]),
                     width,
-                    brush.as_solid(),
+                    brush.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
                     cap,
                     join,
                     tolerance,
@@ -355,7 +355,7 @@ impl Shapes {
             } => ShapeRecord::Text {
                 local_rect,
                 text,
-                color: brush.as_solid(),
+                color: brush.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
                 font_size_px,
                 line_height_px,
                 wrap,
@@ -374,7 +374,7 @@ impl Shapes {
                 let content_hash = mesh.content_hash();
                 ShapeRecord::Mesh {
                     local_rect,
-                    tint: tint.as_solid(),
+                    tint: tint.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
                     vertices: Span::new(v_start, mesh.vertices.len() as u32),
                     indices: Span::new(i_start, mesh.indices.len() as u32),
                     content_hash,
@@ -408,7 +408,9 @@ fn lower_polyline(
     let single_color: Color;
     let (mode, color_slice): (ColorMode, &[Color]) = match colors {
         PolylineColors::Single(b) => {
-            single_color = b.as_solid();
+            single_color = b.as_solid().expect(
+                "gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2",
+            );
             (ColorMode::Single, std::slice::from_ref(&single_color))
         }
         PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
