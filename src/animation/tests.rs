@@ -149,12 +149,14 @@ fn instant_duration_is_noop_and_drops_row() {
     } = setup_anim_ui("anim-instant");
 
     // Instant on a fresh slot: snaps, no row, no repaint.
-    let frame = ui.run_frame(display, Duration::from_millis(0), |ui| {
-        let v = ui.animate(id, SLOT, 1.0_f32, instant);
-        assert_eq!(v, 1.0);
-        Frame::new().id_salt("anim-instant").show(ui);
-    });
-    assert!(!frame.repaint_requested());
+    let repaint = ui
+        .run_frame(display, Duration::from_millis(0), |ui| {
+            let v = ui.animate(id, SLOT, 1.0_f32, instant);
+            assert_eq!(v, 1.0);
+            Frame::new().id_salt("anim-instant").show(ui);
+        })
+        .is_some_and(|f| f.repaint_requested());
+    assert!(!repaint);
     assert_eq!(crate::support::internals::anim_row_count::<f32>(&mut ui), 0);
 
     // Mid-flight on FAST: row gets allocated.
@@ -483,33 +485,36 @@ fn animate_drives_repaint_until_settle() {
         display,
     } = setup_anim_ui("anim-test");
 
-    let frame = ui.run_frame(display, Duration::ZERO, |ui| {
-        let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
-        Frame::new().id_salt("anim-test").show(ui);
-    });
+    let repaint = ui
+        .run_frame(display, Duration::ZERO, |ui| {
+            let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
+            Frame::new().id_salt("anim-test").show(ui);
+        })
+        .is_some_and(|f| f.repaint_requested());
     assert!(
-        !frame.repaint_requested(),
+        !repaint,
         "first-touch settled animation must not request repaint",
     );
 
-    let frame = ui.run_frame(display, Duration::from_millis(16), |ui| {
-        let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-        Frame::new().id_salt("anim-test").show(ui);
-    });
-    assert!(
-        frame.repaint_requested(),
-        "in-flight animation must request repaint",
-    );
+    let repaint = ui
+        .run_frame(display, Duration::from_millis(16), |ui| {
+            let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
+            Frame::new().id_salt("anim-test").show(ui);
+        })
+        .is_some_and(|f| f.repaint_requested());
+    assert!(repaint, "in-flight animation must request repaint");
 
     let mut now = Duration::from_millis(16);
     let mut settled_at = None;
     for i in 0..100 {
         now += Duration::from_millis(16);
-        let frame = ui.run_frame(display, now, |ui| {
-            let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-            Frame::new().id_salt("anim-test").show(ui);
-        });
-        if !frame.repaint_requested() {
+        let repaint = ui
+            .run_frame(display, now, |ui| {
+                let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
+                Frame::new().id_salt("anim-test").show(ui);
+            })
+            .is_some_and(|f| f.repaint_requested());
+        if !repaint {
             settled_at = Some(i);
             break;
         }
@@ -633,17 +638,16 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
         id,
         display,
     } = setup_anim_ui("anim-none");
-    let frame = ui.run_frame(display, Duration::from_millis(16), |ui| {
-        let v1 = ui.animate(id, SLOT, 7.0_f32, None);
-        let v2 = ui.animate(id, SLOT, 9.0_f32, None);
-        assert_eq!(v1, 7.0);
-        assert_eq!(v2, 9.0);
-        Frame::new().id_salt("anim-none").show(ui);
-    });
-    assert!(
-        !frame.repaint_requested(),
-        "None spec must never request a repaint",
-    );
+    let repaint = ui
+        .run_frame(display, Duration::from_millis(16), |ui| {
+            let v1 = ui.animate(id, SLOT, 7.0_f32, None);
+            let v2 = ui.animate(id, SLOT, 9.0_f32, None);
+            assert_eq!(v1, 7.0);
+            assert_eq!(v2, 9.0);
+            Frame::new().id_salt("anim-none").show(ui);
+        })
+        .is_some_and(|f| f.repaint_requested());
+    assert!(!repaint, "None spec must never request a repaint");
     assert!(
         crate::support::internals::anim_row_count::<f32>(&mut ui) == 0,
         "None spec must not allocate a row",

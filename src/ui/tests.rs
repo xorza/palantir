@@ -611,11 +611,13 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
     ui.paint_phase();
     // Frame A: idle, no repaint request, now = 16ms.
     {
-        let frame = ui.run_frame(display, Duration::from_millis(16), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
-        });
+        let repaint = ui
+            .run_frame(display, Duration::from_millis(16), |ui| {
+                Panel::vstack().id_salt("root").show(ui, |_| {});
+            })
+            .is_some_and(|f| f.repaint_requested());
         assert!(
-            !frame.repaint_requested(),
+            !repaint,
             "no animate-not-settled flag set — must stay false",
         );
     }
@@ -631,12 +633,14 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
     // `Ui::animate`). The flag must survive post_record and reach
     // `FrameOutput`.
     {
-        let frame = ui.run_frame(display, Duration::from_millis(32), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
-            ui.repaint_requested = true;
-        });
+        let repaint = ui
+            .run_frame(display, Duration::from_millis(32), |ui| {
+                Panel::vstack().id_salt("root").show(ui, |_| {});
+                ui.repaint_requested = true;
+            })
+            .is_some_and(|f| f.repaint_requested());
         assert!(
-            frame.repaint_requested(),
+            repaint,
             "repaint_requested set during recording must surface on FrameOutput",
         );
     }
@@ -665,11 +669,13 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
     // Frame D: prior frame's repaint_requested must NOT leak — the flag
     // resets at the top of every run_frame regardless of pass count.
     {
-        let frame = ui.run_frame(display, Duration::from_millis(5_048), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
-        });
+        let repaint = ui
+            .run_frame(display, Duration::from_millis(5_048), |ui| {
+                Panel::vstack().id_salt("root").show(ui, |_| {});
+            })
+            .is_some_and(|f| f.repaint_requested());
         assert!(
-            !frame.repaint_requested(),
+            !repaint,
             "repaint_requested must reset at the top of run_frame",
         );
     }
