@@ -1,17 +1,14 @@
-//! Bezier flattening + color-bezier evaluation. Pure math, no
-//! framework deps. Flattening uses adaptive recursive subdivision
-//! with a control-polygon-to-chord deviation test — the standard
-//! approach (e.g. Sederberg, Computer Aided Geometric Design).
+//! Bezier flattening. Pure math, no framework deps. Adaptive
+//! recursive subdivision with a control-polygon-to-chord deviation
+//! test — the standard approach (e.g. Sederberg, Computer Aided
+//! Geometric Design).
 //!
-//! Output points carry their parametric `t` so callers can evaluate
-//! color-beziers at the same t and emit `ColorMode::PerPoint`
-//! polylines that match the underlying curve's color, not the
-//! flattened-segment arc length. Color travels in parametric t —
-//! denser around curvature peaks, sparser in flat regions — same
-//! convention as every other 2D graphics framework.
+//! Output points carry their parametric `t` so a future
+//! color-bezier evaluator can match the curve's t-parametrization
+//! (denser around curvature peaks, sparser in flat regions). Solid
+//! color only for now; t is unused by the current consumer.
 
 use crate::primitives::approx::EPS;
-use crate::primitives::color::Color;
 use glam::Vec2;
 
 /// Hard cap on recursive subdivision depth. `2^20 ≈ 1M` segments
@@ -147,43 +144,9 @@ fn dist_sq_to_line(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     cross * cross / len_sq
 }
 
-/// Linear interpolation of two colors. `t` is not clamped — callers
-/// pass `t ∈ [0, 1]` from flattening output, which is always in range.
-#[inline]
-pub(crate) fn lerp_color(a: Color, b: Color, t: f32) -> Color {
-    let u = 1.0 - t;
-    Color {
-        r: a.r * u + b.r * t,
-        g: a.g * u + b.g * t,
-        b: a.b * u + b.b * t,
-        a: a.a * u + b.a * t,
-    }
-}
-
-/// Quadratic-bezier interpolation of three colors. De Casteljau
-/// over `Color` — `B(t) = (1-t)² c0 + 2(1-t)t c1 + t² c2`.
-#[inline]
-pub(crate) fn eval_color_quadratic(c0: Color, c1: Color, c2: Color, t: f32) -> Color {
-    let a = lerp_color(c0, c1, t);
-    let b = lerp_color(c1, c2, t);
-    lerp_color(a, b, t)
-}
-
-/// Cubic-bezier interpolation of four colors.
-#[inline]
-pub(crate) fn eval_color_cubic(c0: Color, c1: Color, c2: Color, c3: Color, t: f32) -> Color {
-    let a = eval_color_quadratic(c0, c1, c2, t);
-    let b = eval_color_quadratic(c1, c2, c3, t);
-    lerp_color(a, b, t)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn col(r: f32, g: f32, b: f32) -> Color {
-        Color { r, g, b, a: 1.0 }
-    }
 
     #[test]
     fn cubic_straight_line_flattens_to_two_points() {
@@ -302,46 +265,5 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].p, p);
         assert_eq!(out[1].p, p);
-    }
-
-    #[test]
-    fn lerp_color_endpoints_exact() {
-        let a = col(1.0, 0.0, 0.0);
-        let b = col(0.0, 0.0, 1.0);
-        assert_eq!(lerp_color(a, b, 0.0), a);
-        assert_eq!(lerp_color(a, b, 1.0), b);
-        let mid = lerp_color(a, b, 0.5);
-        assert!((mid.r - 0.5).abs() < 1.0e-6);
-        assert!((mid.b - 0.5).abs() < 1.0e-6);
-    }
-
-    #[test]
-    fn eval_color_quadratic_endpoints_exact() {
-        let c0 = col(1.0, 0.0, 0.0);
-        let c1 = col(0.0, 1.0, 0.0);
-        let c2 = col(0.0, 0.0, 1.0);
-        assert_eq!(eval_color_quadratic(c0, c1, c2, 0.0), c0);
-        assert_eq!(eval_color_quadratic(c0, c1, c2, 1.0), c2);
-    }
-
-    #[test]
-    fn eval_color_cubic_endpoints_exact() {
-        let c0 = col(1.0, 0.0, 0.0);
-        let c1 = col(0.0, 1.0, 0.0);
-        let c2 = col(0.0, 0.0, 1.0);
-        let c3 = col(1.0, 1.0, 1.0);
-        assert_eq!(eval_color_cubic(c0, c1, c2, c3, 0.0), c0);
-        assert_eq!(eval_color_cubic(c0, c1, c2, c3, 1.0), c3);
-    }
-
-    #[test]
-    fn eval_color_cubic_matches_quadratic_when_c1_eq_c2_eq_c3() {
-        // If c1 == c2 == c3 the cubic reduces to a linear interp c0→c3
-        // weighted by `1-(1-t)^3` — not equal to linear lerp, but
-        // sanity-check that interior values stay in unit range.
-        let c0 = col(0.0, 0.0, 0.0);
-        let c1 = col(1.0, 1.0, 1.0);
-        let v = eval_color_cubic(c0, c1, c1, c1, 0.5);
-        assert!(v.r > 0.0 && v.r < 1.0);
     }
 }
