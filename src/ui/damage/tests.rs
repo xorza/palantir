@@ -175,7 +175,7 @@ fn popup_eater_does_not_force_full_repaint() {
 /// Regression: a click on empty background (no widget hit, no
 /// state change) must not force the next paint to `Full`. The
 /// discarded pre-pass in `run_frame` (triggered by any pointer /
-/// key event via `had_action_this_frame`) calls `begin_frame` →
+/// key event via `frame_had_action`) calls `begin_frame` →
 /// `reset_to_idle`, then never reaches `end_frame`. Pass 2's
 /// `begin_frame` then sees `frame_state == IDLE` and treats it as
 /// "host dropped the previous frame", invalidating prev_surface

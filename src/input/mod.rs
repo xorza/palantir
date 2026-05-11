@@ -215,8 +215,8 @@ pub struct InputState {
     /// Read by `Ui::drag_started` to expose a single-frame "drag began"
     /// signal to widgets without forcing them to compare last/this-frame
     /// state.
-    pub(crate) drag_started_this_frame: Option<WidgetId>,
-    clicked_this_frame: FxHashSet<WidgetId>,
+    pub(crate) frame_drag_started: Option<WidgetId>,
+    frame_clicks: FxHashSet<WidgetId>,
     /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
     /// in [`Self::end_frame`]. Read by scroll widgets at record time.
     pub(crate) frame_scroll_delta: Vec2,
@@ -257,7 +257,7 @@ pub struct InputState {
     /// (`PointerMoved`, `PointerLeft`) and modifier changes don't flip
     /// it — they fire too often and don't typically mutate user state.
     /// Reset by `Ui::run_frame` after the decision is made.
-    pub(crate) had_action_this_frame: bool,
+    pub(crate) frame_had_action: bool,
 }
 
 impl Default for InputState {
@@ -275,8 +275,8 @@ impl InputState {
             scroll_target: None,
             press_pos: None,
             drag_latched: false,
-            drag_started_this_frame: None,
-            clicked_this_frame: FxHashSet::default(),
+            frame_drag_started: None,
+            frame_clicks: FxHashSet::default(),
             frame_scroll_delta: Vec2::ZERO,
             frame_zoom_delta: 1.0,
             frame_keys: Vec::new(),
@@ -284,7 +284,7 @@ impl InputState {
             modifiers: Modifiers::NONE,
             focused: None,
             focus_policy: FocusPolicy::default(),
-            had_action_this_frame: false,
+            frame_had_action: false,
         }
     }
 
@@ -300,7 +300,7 @@ impl InputState {
                 | InputEvent::Scroll(_)
                 | InputEvent::Zoom(_)
         ) {
-            self.had_action_this_frame = true;
+            self.frame_had_action = true;
         }
         match event {
             InputEvent::PointerMoved(p) => {
@@ -311,8 +311,8 @@ impl InputState {
                     && (p - press).length() >= DRAG_THRESHOLD
                 {
                     self.drag_latched = true;
-                    self.drag_started_this_frame = self.active;
-                    self.had_action_this_frame = true;
+                    self.frame_drag_started = self.active;
+                    self.frame_had_action = true;
                 }
                 self.recompute_hover(cascades);
                 self.recompute_scroll_target(cascades);
@@ -348,7 +348,7 @@ impl InputState {
                         .pointer_pos
                         .and_then(|p| cascades.hit_test(p, Sense::clicks));
                     if hit == Some(a) && !self.drag_latched {
-                        self.clicked_this_frame.insert(a);
+                        self.frame_clicks.insert(a);
                     }
                 }
                 self.clear_capture();
@@ -377,11 +377,11 @@ impl InputState {
         }
     }
 
-    /// Read and reset [`Self::had_action_this_frame`]. Called by
+    /// Read and reset [`Self::frame_had_action`]. Called by
     /// [`crate::Ui::run_frame`] to decide whether to run a discarded
     /// pre-pass for state-mutation settling.
     pub(crate) fn take_action_flag(&mut self) -> bool {
-        std::mem::take(&mut self.had_action_this_frame)
+        std::mem::take(&mut self.frame_had_action)
     }
 
     /// Drain the per-frame input queues without touching cascade-
@@ -391,8 +391,8 @@ impl InputState {
     /// returns `false` everywhere and clicks aren't double-fired.
     /// Capacity-retained on the backing buffers.
     pub(crate) fn drain_per_frame_queues(&mut self) {
-        self.clicked_this_frame.clear();
-        self.drag_started_this_frame = None;
+        self.frame_clicks.clear();
+        self.frame_drag_started = None;
         self.frame_scroll_delta = Vec2::ZERO;
         self.frame_zoom_delta = 1.0;
         self.frame_keys.clear();
@@ -480,14 +480,14 @@ impl InputState {
 
         let pressed = me_captured && me_under_pointer;
         let hovered = me_under_pointer && (nothing_captured || me_captured);
-        let clicked = self.clicked_this_frame.contains(&id);
+        let clicked = self.frame_clicks.contains(&id);
         let focused = self.focused == Some(id);
         let drag_delta = if me_captured && self.drag_latched {
             self.drag_delta(id)
         } else {
             None
         };
-        let drag_started = self.drag_started_this_frame == Some(id);
+        let drag_started = self.frame_drag_started == Some(id);
 
         ResponseState {
             rect,
@@ -507,7 +507,7 @@ impl InputState {
     fn clear_capture(&mut self) {
         self.press_pos = None;
         self.drag_latched = false;
-        self.drag_started_this_frame = None;
+        self.frame_drag_started = None;
     }
 
     fn recompute_hover(&mut self, cascades: &CascadeResult) {
