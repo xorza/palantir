@@ -658,10 +658,6 @@ impl NodeFlags {
     const FOCUSABLE: u8 = 1 << 7;
 
     pub(crate) fn pack(sense: Sense, disabled: bool, clip: ClipMode, focusable: bool) -> Self {
-        // Width assert: `ClipMode` rides in 2 bits (0..=3); a future variant
-        // past that bound would silently bleed into FOCUSABLE without this.
-        // `Sense` is a 4-bit bitflag so it can't exceed `SENSE_MASK`.
-        assert!((clip as u8) <= (Self::CLIP_MASK >> Self::CLIP_SHIFT));
         let mut bits = sense.bits() & Self::SENSE_MASK;
         if disabled {
             bits |= Self::DISABLED;
@@ -691,6 +687,19 @@ impl NodeFlags {
         self.bits & Self::FOCUSABLE != 0
     }
 }
+
+// Compile-time width checks for the fields packed into `NodeFlags.bits`.
+// Adding a `ClipMode` variant past 3 or a `Sense` flag past bit 3 would
+// silently bleed into adjacent fields; these asserts fail the build
+// instead.
+const _: () = assert!(
+    (ClipMode::Rounded as u8) <= (NodeFlags::CLIP_MASK >> NodeFlags::CLIP_SHIFT),
+    "ClipMode discriminant exceeds 2 bits — would bleed into FOCUSABLE",
+);
+const _: () = assert!(
+    Sense::all().bits() <= NodeFlags::SENSE_MASK,
+    "Sense uses more than 4 bits — would bleed into DISABLED",
+);
 
 #[cfg(test)]
 mod tests;

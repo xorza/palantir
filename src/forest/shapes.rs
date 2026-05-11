@@ -13,6 +13,13 @@ use glam::Vec2;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 
+/// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache
+/// keys (which write the discriminant into the hash) stay stable
+/// across variant reordering. Reorder freely — the on-disk tag
+/// follows the `= N`, not the source order. Adding a variant forces
+/// the [`Self::tag`] match and the [`Hash`] match to grow; pick the
+/// next free number.
+#[repr(u8)]
 #[derive(Clone, Debug)]
 pub(crate) enum ShapeRecord {
     /// Filled/stroked rounded rectangle. With `local_rect = None` it covers
@@ -29,7 +36,7 @@ pub(crate) enum ShapeRecord {
         radius: Corners,
         fill: Color,
         stroke: Stroke,
-    },
+    } = 0,
     /// Stroked polyline. `points`/`colors` index into the active
     /// tree's `polyline_points` / `polyline_colors` arenas. `colors`
     /// length depends on `color_mode`: 1 for `Single`,
@@ -49,7 +56,7 @@ pub(crate) enum ShapeRecord {
         colors: Span,
         bbox: Rect,
         content_hash: u64,
-    },
+    } = 1,
     /// Shaped text run — *authoring inputs only*. Measured size and
     /// shaped-buffer key are layout outputs and live on
     /// `LayoutResult.text_shapes`, not here. `wrap` selects between "shape
@@ -88,7 +95,7 @@ pub(crate) enum ShapeRecord {
         line_height_px: f32,
         wrap: TextWrap,
         align: Align,
-    },
+    } = 2,
     /// User-supplied colored triangle mesh. Vertex/index data lives in
     /// the active `Tree`'s `mesh_vertices` / `mesh_indices` arenas;
     /// these spans index into them. `content_hash` summarizes
@@ -101,14 +108,30 @@ pub(crate) enum ShapeRecord {
         vertices: Span,
         indices: Span,
         content_hash: u64,
-    },
+    } = 3,
+}
+
+impl ShapeRecord {
+    /// Stable on-disk tag. Used as the discriminant byte in the
+    /// `Hash` impl, which feeds subtree hashes / cache keys. The
+    /// values match the `= N` annotations on the variants — never
+    /// edit one without the other.
+    const fn tag(&self) -> u8 {
+        match self {
+            ShapeRecord::RoundedRect { .. } => 0,
+            ShapeRecord::Polyline { .. } => 1,
+            ShapeRecord::Text { .. } => 2,
+            ShapeRecord::Mesh { .. } => 3,
+        }
+    }
 }
 
 impl Hash for ShapeRecord {
-    /// Discriminant tags are stable (`RoundedRect=0`, `Polyline=1`,
-    /// `Text=2`, `Mesh=3`) so cache keys don't shift if variants are
-    /// reordered.
+    /// Discriminant tags come from [`ShapeRecord::tag`] and are pinned
+    /// via `#[repr(u8)]` + explicit `= N` on each variant, so cache
+    /// keys don't shift if variants are reordered.
     fn hash<H: Hasher>(&self, h: &mut H) {
+        h.write_u8(self.tag());
         match self {
             ShapeRecord::RoundedRect {
                 local_rect,
@@ -116,7 +139,6 @@ impl Hash for ShapeRecord {
                 fill,
                 stroke,
             } => {
-                h.write_u8(0);
                 match local_rect {
                     None => h.write_u8(0),
                     Some(r) => {
@@ -134,7 +156,6 @@ impl Hash for ShapeRecord {
                 // `lower_polyline` / `lower_bezier`). bbox is derived
                 // from points; spans are frame-local — neither belongs
                 // in cache identity.
-                h.write_u8(1);
                 h.write_u64(*content_hash);
             }
             ShapeRecord::Text {
@@ -146,7 +167,6 @@ impl Hash for ShapeRecord {
                 wrap,
                 align,
             } => {
-                h.write_u8(2);
                 match local_rect {
                     None => h.write_u8(0),
                     Some(r) => {
@@ -167,7 +187,6 @@ impl Hash for ShapeRecord {
                 indices: _,
                 content_hash,
             } => {
-                h.write_u8(3);
                 match local_rect {
                     None => h.write_u8(0),
                     Some(r) => {

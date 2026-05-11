@@ -21,17 +21,6 @@ pub(crate) struct Quad {
     pub(crate) stroke: Stroke,
 }
 
-impl Quad {
-    pub(crate) fn new(rect: Rect, fill: Color, radius: Corners, stroke: Stroke) -> Self {
-        Self {
-            rect,
-            fill,
-            radius,
-            stroke,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::Quad;
