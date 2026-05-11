@@ -122,7 +122,7 @@ impl Ui {
         display: Display,
         now: Duration,
         mut record: impl FnMut(&mut Ui),
-    ) -> RecordedFrame<'_> {
+    ) -> Option<RecordedFrame<'_>> {
         let raw_dt = now.saturating_sub(self.time);
         self.dt = raw_dt.as_secs_f32().min(Self::MAX_DT);
         self.time = now;
@@ -148,11 +148,11 @@ impl Ui {
 
         if matches!(damage, DamagePaint::Skip) {
             self.frame_state.mark_submitted();
-        } else {
-            self.frame_state.mark_pending();
+            return None;
         }
+        self.frame_state.mark_pending();
 
-        RecordedFrame {
+        Some(RecordedFrame {
             forest: &self.forest,
             layout: &self.layout,
             cascades: &self.cascades.result,
@@ -160,7 +160,7 @@ impl Ui {
             damage,
             repaint_requested: self.repaint_requested,
             frame_state: self.frame_state.clone(),
-        }
+        })
     }
 
     /// Feed a palantir-native input event. Hosts own redraw scheduling.
@@ -247,11 +247,8 @@ impl Ui {
 
         let cascades = self.cascades.run(&self.forest, &self.layout);
         self.input.post_record(cascades);
-        let damage = self
-            .damage
-            .compute(&self.forest, cascades, removed, surface);
-
-        damage
+        self.damage
+            .compute(&self.forest, cascades, removed, surface)
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────

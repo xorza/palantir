@@ -93,9 +93,22 @@ impl Host {
         now: std::time::Duration,
         record: impl FnMut(&mut Ui),
     ) -> FrameInfo {
-        let frame = self.ui.run_frame(display, now, record);
+        let Some(frame) = self.ui.run_frame(display, now, record) else {
+            // Skip: keep the prior composer buffer untouched; the
+            // backend's Skip path short-circuits to a backbuffer →
+            // surface copy without reading it.
+            self.pending = Some(PendingSubmit {
+                damage: DamagePaint::Skip,
+                debug_overlay: self.debug_overlay,
+                frame_state: self.ui.frame_state.clone(),
+            });
+            return FrameInfo {
+                can_skip_rendering: true,
+                repaint_requested: self.ui.repaint_requested,
+            };
+        };
         let info = FrameInfo {
-            can_skip_rendering: frame.can_skip_rendering(),
+            can_skip_rendering: false,
             repaint_requested: frame.repaint_requested(),
         };
         self.frontend.build(
