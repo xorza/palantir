@@ -138,13 +138,17 @@ impl Forest {
         self.trees[layer as usize].close_node();
     }
 
-    /// Lower a user-facing [`Shape`] via `Shapes::lower` (curve
-    /// flattening, span stamping, hashing) and push the resulting
-    /// `ShapeRecord` onto the active tree.
+    /// Lower a user-facing [`Shape`] (curve flattening, span
+    /// stamping, hashing) and append it to the active tree's shape
+    /// buffer. Asserts a node is currently open so widgets can't leak
+    /// shapes outside an `open_node` / `close_node` scope.
     pub(crate) fn add_shape(&mut self, shape: Shape<'_>) {
         let tree = &mut self.trees[self.recording.current_layer as usize];
-        let record = tree.shapes.lower(shape);
-        tree.add_shape(record);
+        assert!(
+            !tree.open_frames.is_empty(),
+            "add_shape called with no open node",
+        );
+        tree.shapes.add(shape);
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Rect) {

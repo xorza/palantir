@@ -36,12 +36,12 @@ impl Shapes {
         self.payloads.clear();
     }
 
-    /// Lower a user-facing [`Shape`] into a [`ShapeRecord`]: passthrough
-    /// for rect/text, curve flattening for beziers, span-stamping for
-    /// the variable-length variants (polyline / mesh) whose payloads
-    /// land in `self.payloads`.
-    pub(crate) fn lower(&mut self, shape: Shape<'_>) -> ShapeRecord {
-        match shape {
+    /// Lower a user-facing [`Shape`] and append it to `records`:
+    /// passthrough for rect/text, curve flattening for beziers,
+    /// span-stamping for the variable-length variants (polyline /
+    /// mesh) whose payloads land in `self.payloads`.
+    pub(crate) fn add(&mut self, shape: Shape<'_>) {
+        let record = match shape {
             Shape::RoundedRect {
                 local_rect,
                 radius,
@@ -153,7 +153,8 @@ impl Shapes {
                     content_hash,
                 }
             }
-        }
+        };
+        self.records.push(record);
     }
 }
 
