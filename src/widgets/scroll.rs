@@ -1,8 +1,12 @@
 use crate::forest::element::{Configure, Element, LayoutMode, ScrollAxes};
+use crate::forest::widget_id::WidgetId;
+use crate::input::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
+use crate::layout::scroll::ScrollLayoutState;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -124,18 +128,52 @@ pub(crate) fn bar_geometry(
     })
 }
 
-/// Emit one bar (track + thumb) along `axis` if `panned` and content
-/// overflows. Track + thumb sit at the cross-axis far edge of the
-/// **outer** rect (so they land in the reserved gutter even when the
-/// viewport panel has user padding) and run `outer.main -
-/// other_reservation` (so the V/H bars don't overlap at the corner
-/// when both are present, and the length stays stable across the
-/// cold-mount two-pass record — `viewport` from cached state lags
-/// reservation by one pass and would shrink by `theme.width +
-/// theme.gap` on the second frame).
-#[allow(clippy::too_many_arguments)]
-fn push_bar(
-    ui: &mut Ui,
+/// Offset-independent bar layout derived from a scroll state row:
+/// the cross-axis gutter reservations, the post-zoom content extent,
+/// and the bar's main-axis length (= `outer − reservation − user
+/// padding`). Both drag math and the renderer derive their bar
+/// geometry from this — the only difference is which `offset` they
+/// feed in to position the thumb.
+#[derive(Copy, Clone, Debug)]
+struct BarLayout {
+    scaled_content: Size,
+    bar_viewport: Size,
+    reserve_y: f32,
+    reserve_x: f32,
+}
+
+fn bar_layout(
+    row: &ScrollLayoutState,
+    pan: glam::BVec2,
+    user_padding: Spacing,
+    theme: &ScrollbarTheme,
+) -> BarLayout {
+    let scaled_content = Size::new(row.content.w * row.zoom, row.content.h * row.zoom);
+    let reserve_y = bar_reservation(pan.y && row.overflow.1, theme);
+    let reserve_x = bar_reservation(pan.x && row.overflow.0, theme);
+    let bar_viewport = Size::new(
+        (row.outer.w - reserve_y - user_padding.horiz()).max(0.0),
+        (row.outer.h - reserve_x - user_padding.vert()).max(0.0),
+    );
+    BarLayout {
+        scaled_content,
+        bar_viewport,
+        reserve_y,
+        reserve_x,
+    }
+}
+
+/// Per-axis bar plan: rendered rects for the track + thumb (both in
+/// OUTER-local coords, so they land in the reserved gutter even when
+/// the viewport has user padding). Built from the *post-drag* offset
+/// so the visible thumb tracks the cursor 1:1.
+#[derive(Copy, Clone, Debug)]
+struct BarPlan {
+    track_rect: crate::primitives::rect::Rect,
+    thumb_rect: crate::primitives::rect::Rect,
+}
+
+fn bar_plan(
     bar_viewport: Size,
     outer: Size,
     content: Size,
@@ -143,35 +181,67 @@ fn push_bar(
     axis: Axis,
     panned: bool,
     theme: &ScrollbarTheme,
-) {
+) -> Option<BarPlan> {
     if !panned {
-        return;
+        return None;
     }
     let main = axis.main(bar_viewport);
     let cross_outer = axis.cross(outer);
     let main_content = axis.main(content);
     let main_offset = axis.main_v(offset);
-    let Some(geom) = bar_geometry(main, main_content, main_offset, main, theme) else {
-        return;
-    };
-    let radius = Corners::all(theme.radius);
+    let geom = bar_geometry(main, main_content, main_offset, main, theme)?;
     let cross_pos = cross_outer - theme.width;
-    let track = axis.compose_rect(0.0, cross_pos, main, theme.width);
+    let track_rect = axis.compose_rect(0.0, cross_pos, main, theme.width);
+    let thumb_rect = axis.compose_rect(geom.thumb_offset, cross_pos, geom.thumb_size, theme.width);
+    Some(BarPlan {
+        track_rect,
+        thumb_rect,
+    })
+}
+
+/// Emit one bar's worth of nodes onto the overlay Canvas: a track
+/// rounded-rect shape (skipped when `theme.track` is transparent) and
+/// a thumb leaf with `Sense::DRAG`. Both expressed in OUTER-local
+/// coords; the overlay covers outer's full rect so position +
+/// local_rect line up.
+fn push_bar_nodes(
+    ui: &mut Ui,
+    plan: BarPlan,
+    thumb_id: WidgetId,
+    resp: ResponseState,
+    theme: &ScrollbarTheme,
+) {
+    let radius = Corners::all(theme.radius);
     if theme.track.a > 0.0 {
         ui.add_shape(Shape::RoundedRect {
-            local_rect: Some(track),
+            local_rect: Some(plan.track_rect),
             radius,
             fill: theme.track,
             stroke: Stroke::ZERO,
         });
     }
-    let thumb = axis.compose_rect(geom.thumb_offset, cross_pos, geom.thumb_size, theme.width);
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: Some(thumb),
-        radius,
-        fill: theme.thumb,
+    let fill = if resp.drag_delta.is_some() || resp.pressed {
+        theme.thumb_active
+    } else if resp.hovered {
+        theme.thumb_hover
+    } else {
+        theme.thumb
+    };
+    let mut thumb = Element::new(LayoutMode::Leaf);
+    thumb.id = thumb_id;
+    thumb.size = (
+        Sizing::Fixed(plan.thumb_rect.size.w),
+        Sizing::Fixed(plan.thumb_rect.size.h),
+    )
+        .into();
+    thumb.position = plan.thumb_rect.min;
+    thumb.sense = Sense::DRAG;
+    thumb.chrome = Some(Background {
+        fill,
         stroke: Stroke::ZERO,
+        radius,
     });
+    ui.node(thumb, |_| {});
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +395,19 @@ impl Scroll {
         } else {
             None
         };
+        // Thumb-drag input. Read drag state of each thumb leaf
+        // *before* taking the `&mut` borrow on `scroll_states` —
+        // `response_for` walks `cascades`, which lives next to the
+        // scroll-state map on `Ui`. On the first frame the thumbs
+        // were recorded, the cascade doesn't see them yet → all
+        // fields default. Same one-frame settle as other scroll
+        // bookkeeping.
+        let theme = ui.theme.scrollbar.clone();
+        let thumb_id_v = scroll_id.with("__vthumb");
+        let thumb_id_h = scroll_id.with("__hthumb");
+        let resp_v = ui.response_for(thumb_id_v);
+        let resp_h = ui.response_for(thumb_id_h);
+
         let scroll = {
             let row = ui.layout.scroll_states.entry(scroll_id).or_default();
             // 1) Zoom step (pivot-anchored). Clamp `new_zoom` to
@@ -375,6 +458,64 @@ impl Scroll {
                 let hi = row.offset.y.max(slack_y.max(0.0));
                 row.offset.y = (row.offset.y + pan_delta.y).clamp(lo, hi);
             }
+
+            // 3) Thumb-drag pan. Snapshot `offset` on the
+            //    `drag_started` edge; subsequent frames compose
+            //    `offset.main = anchor.main + drag_delta.main *
+            //    factor` where `factor = max_off / (track - thumb)`.
+            //    Cumulative `drag_delta` against a stable anchor
+            //    keeps the math idempotent across re-records; the
+            //    alternative ("offset += this-frame-delta") would
+            //    double-apply because `drag_delta` is the total
+            //    travel since press, not the per-frame increment.
+            //    Bars use the *scaled* content extent so dragging
+            //    inside a zoomed-in viewport tracks the cursor at
+            //    1:1 with the visible thumb.
+            let bl = bar_layout(row, pan, self.element.padding, &theme);
+            for (axis, resp) in [(Axis::Y, resp_v), (Axis::X, resp_h)] {
+                let panned = match axis {
+                    Axis::Y => pan.y,
+                    Axis::X => pan.x,
+                };
+                if !panned {
+                    continue;
+                }
+                if resp.drag_started {
+                    row.drag_anchor = Some((axis, row.offset));
+                }
+                let Some((anchor_axis, anchor)) = row.drag_anchor else {
+                    continue;
+                };
+                if anchor_axis != axis {
+                    continue;
+                }
+                let Some(delta) = resp.drag_delta else {
+                    // Drag ended on this thumb — drop the anchor so
+                    // the next press starts a fresh snapshot.
+                    row.drag_anchor = None;
+                    continue;
+                };
+                let track_main = axis.main(bl.bar_viewport);
+                let main_content = axis.main(bl.scaled_content);
+                let Some(geom) = bar_geometry(
+                    track_main,
+                    main_content,
+                    axis.main_v(row.offset),
+                    track_main,
+                    &theme,
+                ) else {
+                    continue;
+                };
+                let travel = (track_main - geom.thumb_size).max(f32::EPSILON);
+                let max_off = (main_content - track_main).max(0.0);
+                let factor = max_off / travel;
+                let target = axis.main_v(anchor) + axis.main_v(delta) * factor;
+                let clamped = target.clamp(0.0, max_off);
+                match axis {
+                    Axis::X => row.offset.x = clamped,
+                    Axis::Y => row.offset.y = clamped,
+                }
+            }
             *row
         };
         //todo
@@ -382,49 +523,25 @@ impl Scroll {
             ui.request_relayout();
         }
         let outer_size = scroll.outer;
-        let content = scroll.content;
         let zoom = scroll.zoom;
-        // Bars + reservation reason in *post-zoom* (user-perceived)
-        // content extent. `content` is the unscaled measure; multiply
-        // here so a zoomed-in subtree forces a bar even when its
-        // unscaled extent fit the viewport.
-        let scaled_content = Size::new(content.w * zoom, content.h * zoom);
-        let overflow = scroll.overflow;
         let offset = scroll.offset;
-        let theme = ui.theme.scrollbar.clone();
+        // Reservation + post-zoom content + bar-main length, all
+        // derived from `outer - reservation - user_padding` rather
+        // than the cached `viewport`. The cached viewport lags by
+        // one arrange pass during cold-mount; this derivation is
+        // stable at record time. Same helper feeds drag math inside
+        // the state-mutation block above.
+        let bl = bar_layout(&scroll, pan, self.element.padding, &theme);
+        let scaled_content = bl.scaled_content;
+        let bar_viewport = bl.bar_viewport;
+        let reserve_y = bl.reserve_y;
+        let reserve_x = bl.reserve_x;
 
-        // Reservation: a panned axis with current-state overflow
-        // donates `theme.width + theme.gap` of cross-axis space for
-        // the bar to land in. The Y bar steals X (`right` padding);
-        // the X bar steals Y (`bottom` padding). When `overflow`
-        // flips after measure, `refresh` returns `true` so this same
-        // frame re-records with the corrected reservation — no
-        // cold-mount overlap, no empty strip when content fits.
-        let reserve_y = bar_reservation(pan.y && overflow.1, &theme);
-        let reserve_x = bar_reservation(pan.x && overflow.0, &theme);
-
-        // Bar geometry is derived from outer - reservation - user
-        // padding rather than the cached `viewport`. The cached
-        // viewport lags by one arrange pass during cold-mount: pass A
-        // arranges without reservation (overflow not yet seen) and
-        // writes `viewport = outer - user_padding`; pass B records bars
-        // off that stale value, and frame 2's pass A finally writes
-        // `viewport = outer - reserve - user_padding`, shrinking the
-        // bar by ~12px visibly. `outer_size`, the reservations, and
-        // the inner padding are all known at record time and stable,
-        // so this expression matches the steady-state viewport every
-        // frame.
-        let user_pad = self.element.padding;
-        let bar_viewport = Size::new(
-            (outer_size.w - reserve_y - user_pad.horiz()).max(0.0),
-            (outer_size.h - reserve_x - user_pad.vert()).max(0.0),
-        );
-
-        // Outer: bare ZStack that holds the inner viewport + bar
-        // shapes. Its padding is the reservation gutter — encoder's
-        // standard clip-mask deflation picks it up. No clip on outer
-        // so bars (its direct shapes) paint unclipped; the inner
-        // panel clips its own children.
+        // Outer: bare ZStack that holds the inner viewport + a bar
+        // overlay. The reservation gutter lives on `inner.margin` —
+        // not on outer's padding — so the bar overlay (sibling of
+        // inner under the same ZStack) can reach into the gutter
+        // strip with absolute positions.
         let mut outer = Element::new(LayoutMode::ZStack);
         outer.id = id;
         outer.id_source = self.element.id_source;
@@ -439,20 +556,23 @@ impl Scroll {
         outer.disabled = self.element.disabled;
         outer.focusable = self.element.focusable;
         outer.visibility = self.element.visibility;
-        outer.padding = Spacing {
-            right: reserve_y,
-            bottom: reserve_x,
-            ..Spacing::ZERO
-        };
 
         // Inner viewport: owns the clip, the pan transform, the
         // user-set padding (which the encoder uses to deflate the
         // clip mask), and the actual `Scroll` layout mode that runs
-        // children with INF on panned axes.
+        // children with INF on panned axes. The reservation gutter
+        // is its margin — ZStack arrange deflates `Sizing::Fill` by
+        // margin, so inner's rendered rect = outer.rect minus the
+        // reserved strip on the cross axes.
         let mut inner = Element::new(self.element.mode);
         inner.id = scroll_id;
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;
+        inner.margin = Spacing {
+            right: reserve_y,
+            bottom: reserve_x,
+            ..Spacing::ZERO
+        };
         inner.gap = self.element.gap;
         inner.line_gap = self.element.line_gap;
         inner.justify = self.element.justify;
@@ -485,33 +605,45 @@ impl Scroll {
             inner.transform = Some(TranslateScale::new(origin * (1.0 - zoom) - offset, zoom));
         }
 
+        let plan_v = bar_plan(
+            bar_viewport,
+            outer_size,
+            scaled_content,
+            offset,
+            Axis::Y,
+            pan.y,
+            &theme,
+        );
+        let plan_h = bar_plan(
+            bar_viewport,
+            outer_size,
+            scaled_content,
+            offset,
+            Axis::X,
+            pan.x,
+            &theme,
+        );
+
         let outer_node = ui.node(outer, |ui| {
             ui.node(inner, |ui| body(ui));
-            // Bars push *after* the viewport panel → siblings under
-            // the outer ZStack, painted on top (record order = paint
-            // order). Local rects in OUTER frame so they land in the
-            // reserved gutter even when the viewport panel has user
-            // padding.
-            push_bar(
-                ui,
-                bar_viewport,
-                outer_size,
-                scaled_content,
-                offset,
-                Axis::Y,
-                pan.y,
-                &theme,
-            );
-            push_bar(
-                ui,
-                bar_viewport,
-                outer_size,
-                scaled_content,
-                offset,
-                Axis::X,
-                pan.x,
-                &theme,
-            );
+            // Bar overlay: Canvas sibling of inner, Fill on both axes
+            // → covers outer's full rect. Tracks attach as shapes on
+            // the overlay (paint first); thumbs are Sense::DRAG leaves
+            // positioned absolutely on top. Painted after inner via
+            // record order, hit-tested above inner via cascade order.
+            if plan_v.is_some() || plan_h.is_some() {
+                let mut overlay = Element::new(LayoutMode::Canvas);
+                overlay.id = scroll_id.with("__bars");
+                overlay.size = (Sizing::FILL, Sizing::FILL).into();
+                ui.node(overlay, |ui| {
+                    if let Some(p) = plan_v {
+                        push_bar_nodes(ui, p, thumb_id_v, resp_v, &theme);
+                    }
+                    if let Some(p) = plan_h {
+                        push_bar_nodes(ui, p, thumb_id_h, resp_h, &theme);
+                    }
+                });
+            }
         });
 
         let resp_state = ui.response_for(id);

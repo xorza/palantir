@@ -2,13 +2,16 @@
 
 ## Now
 
-- **Drag-to-pan scrollbar thumb.** Replace overlay shapes with per-axis
-  bar leaf nodes (`Sense::Drag`, derived ids `("scroll-vbar", parent_id)`).
-  `state.offset.main += drag_delta * (content - viewport) / (track - thumb)`,
-  clamp. Click-to-page + hover-grow fall out once leaves exist.
 - **`Scroll::scroll_to(WidgetId)`.** Compute target rect from
   `LayoutResult.rect`, set `ScrollState.offset`, clamp. One-frame-stale
   for just-recorded targets — defer the fallback.
+
+## Next — drag-to-pan follow-ups
+
+- **Click-on-track to page.** Track is still a shape, not a leaf — add
+  a `Sense::CLICK` track leaf under the overlay, page on press.
+- **Hover-grow thumb.** `thumb_hover` already lights up; add a width
+  bump on hover via the theme.
 
 ## Next
 

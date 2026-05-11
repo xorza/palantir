@@ -759,6 +759,10 @@ mod bars {
         ui.paint_phase();
         ui.begin_frame(Display::from_physical(surface, 1.0));
         build(&mut ui);
+        // Frame-2 layout pass so `LayoutResult.rect` reflects the
+        // bar-overlay subtree (thumb leaves live there, indexed by
+        // `NodeId` against layout.result).
+        ui.record_phase();
         let scroll_id = WidgetId::from_hash("scroll");
         let idx = ui
             .forest
@@ -785,9 +789,41 @@ mod bars {
             .count()
     }
 
+    /// Thumb rects (in *outer-local* coords) for `scroll_key`. Thumbs
+    /// are real `Sense::DRAG` leaf nodes under an overlay Canvas, so
+    /// we resolve them by widget-id and subtract the outer rect's
+    /// origin to match the local-rect view the legacy shape-emitter
+    /// tests assumed. Returns 0–2 rects (V and/or H) in
+    /// vertical-then-horizontal order. Excludes track shapes — the
+    /// default theme paints transparent tracks.
+    fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<crate::primitives::rect::Rect> {
+        let tree = ui.forest.tree(Layer::Main);
+        let layout = &ui.layout.result[Layer::Main];
+        let outer_id = WidgetId::from_hash(scroll_key);
+        let scroll_id = outer_id.with("__viewport");
+        let widget_ids = tree.records.widget_id();
+        let outer_idx = widget_ids
+            .iter()
+            .position(|w| *w == outer_id)
+            .expect("scroll outer recorded");
+        let outer_origin = layout.rect[outer_idx].min;
+        let mut out = Vec::new();
+        for tag in ["__vthumb", "__hthumb"] {
+            let id = scroll_id.with(tag);
+            if let Some(idx) = widget_ids.iter().position(|w| *w == id) {
+                let r = layout.rect[idx];
+                out.push(crate::primitives::rect::Rect {
+                    min: r.min - outer_origin,
+                    size: r.size,
+                });
+            }
+        }
+        out
+    }
+
     #[test]
     fn vertical_overflow_emits_thumb_shape_after_settle() {
-        let (ui, node) = record_two_frames(UVec2::new(400, 600), |ui| {
+        let (ui, _node) = record_two_frames(UVec2::new(400, 600), |ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
                     .id_salt("scroll")
@@ -801,8 +837,8 @@ mod bars {
             });
         });
         assert!(
-            count_positioned(&ui, node) >= 1,
-            "vertical overflow should emit at least one bar shape"
+            !thumb_rects(&ui, "scroll").is_empty(),
+            "vertical overflow should emit at least one bar thumb"
         );
     }
 
@@ -1012,21 +1048,11 @@ mod bars {
                     });
             });
         });
+        let _ = node;
         let theme = theme();
         let expected_x = 200.0 - theme.width;
-        let overlays: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), node)
-            .filter_map(|s| match s {
-                ShapeRecord::RoundedRect {
-                    local_rect: Some(rect),
-                    ..
-                } => Some(*rect),
-                _ => None,
-            })
-            .collect();
-        assert!(
-            !overlays.is_empty(),
-            "expected at least one overlay shape (thumb)"
-        );
+        let overlays = thumb_rects(&ui, "scroll");
+        assert!(!overlays.is_empty(), "expected at least one thumb");
         for r in &overlays {
             assert_eq!(
                 r.min.x, expected_x,
@@ -1128,21 +1154,7 @@ mod bars {
         ui.record_phase();
         ui.paint_phase();
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
-        let outer_node = {
-            let node_ids = ui.forest.tree(Layer::Main).records.widget_id();
-            let outer_id = WidgetId::from_hash("scroll");
-            let idx = node_ids.iter().position(|w| *w == outer_id).unwrap();
-            NodeId(idx as u32)
-        };
-        let z1_thumbs: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), outer_node)
-            .filter_map(|s| match s {
-                ShapeRecord::RoundedRect {
-                    local_rect: Some(r),
-                    ..
-                } => Some(*r),
-                _ => None,
-            })
-            .collect();
+        let z1_thumbs = thumb_rects(&ui, "scroll");
         assert_eq!(z1_thumbs.len(), 2, "z=1: V + H thumbs");
         let v1 = z1_thumbs
             .iter()
@@ -1162,15 +1174,7 @@ mod bars {
         build(&mut ui);
         ui.record_phase();
         ui.paint_phase();
-        let z2_thumbs: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), outer_node)
-            .filter_map(|s| match s {
-                ShapeRecord::RoundedRect {
-                    local_rect: Some(r),
-                    ..
-                } => Some(*r),
-                _ => None,
-            })
-            .collect();
+        let z2_thumbs = thumb_rects(&ui, "scroll");
         assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");
         let v2 = z2_thumbs
             .iter()
@@ -1191,7 +1195,7 @@ mod bars {
 
     #[test]
     fn both_axes_overflow_emits_two_thumbs() {
-        let (ui, node) = record_two_frames(UVec2::new(400, 400), |ui| {
+        let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::both()
                     .id_salt("scroll")
@@ -1204,10 +1208,8 @@ mod bars {
                     });
             });
         });
-        // Default theme has transparent track → only thumbs land as
-        // Overlay, one per axis.
         assert_eq!(
-            count_positioned(&ui, node),
+            thumb_rects(&ui, "scroll").len(),
             2,
             "ScrollXY with overflow on both axes should emit two thumbs"
         );
@@ -1220,7 +1222,7 @@ mod bars {
     /// `viewport.w`. Pin both via the emitted Overlay rects.
     #[test]
     fn both_axes_bars_dont_overlap_at_corner() {
-        let (ui, node) = record_two_frames(UVec2::new(400, 400), |ui| {
+        let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::both()
                     .id_salt("scroll")
@@ -1240,15 +1242,7 @@ mod bars {
         // gap is the empty strip between content and bar.
         let inner = 200.0 - theme.width - theme.gap;
         let outer_far = 200.0 - theme.width; // bar.cross_pos
-        let overlays: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), node)
-            .filter_map(|s| match s {
-                ShapeRecord::RoundedRect {
-                    local_rect: Some(rect),
-                    ..
-                } => Some(*rect),
-                _ => None,
-            })
-            .collect();
+        let overlays = thumb_rects(&ui, "scroll");
         assert_eq!(overlays.len(), 2, "expected V + H thumbs");
         // V thumb: x at outer_far, max.y ≤ inner (doesn't enter H strip).
         // H thumb: y at outer_far, max.x ≤ inner (doesn't enter V strip).
@@ -1351,24 +1345,8 @@ mod bars {
                     });
             });
         };
-        let scroll_id = WidgetId::from_hash("scroll");
         let bar_rects = |ui: &Ui| -> Vec<Rect> {
-            let tree = ui.forest.tree(Layer::Main);
-            let idx = tree
-                .records
-                .widget_id()
-                .iter()
-                .position(|w| *w == scroll_id)
-                .expect("scroll widget recorded");
-            let mut rects: Vec<_> = shapes_of(tree, NodeId(idx as u32))
-                .filter_map(|s| match s {
-                    ShapeRecord::RoundedRect {
-                        local_rect: Some(r),
-                        ..
-                    } => Some(*r),
-                    _ => None,
-                })
-                .collect();
+            let mut rects = thumb_rects(ui, "scroll");
             rects.sort_by(|a, b| {
                 a.min
                     .x
@@ -1428,4 +1406,74 @@ mod bars {
         );
         assert_eq!(row.overflow, (false, false));
     }
+}
+
+/// Press on the V thumb, drag down; `ScrollState.offset.y` moves
+/// `delta * (content - viewport) / (track - thumb)` clamped to
+/// `[0, content - viewport]`. Anchor snapshot at `drag_started`
+/// keeps the composition idempotent across re-records (otherwise
+/// the cumulative `drag_delta` would compound and overshoot).
+#[test]
+fn drag_thumb_pans_proportionally() {
+    use crate::input::PointerButton;
+    let mut ui = ui_at(SURFACE);
+    let build = |ui: &mut crate::ui::Ui| {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
+            Scroll::vertical()
+                .id_salt("scroll")
+                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt("tall")
+                        .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                        .show(ui);
+                });
+        });
+    };
+    // Two frames so layout settles and the thumb leaf lands in the
+    // cascade.
+    build(&mut ui);
+    ui.record_phase();
+    ui.paint_phase();
+    ui.begin_frame(surface_display());
+    build(&mut ui);
+    ui.record_phase();
+    ui.paint_phase();
+
+    let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+    let thumb_id = scroll_id.with("__vthumb");
+    let thumb_rect = ui.response_for(thumb_id).rect.expect("thumb visible");
+    let press = thumb_rect.min + Vec2::new(thumb_rect.size.w * 0.5, thumb_rect.size.h * 0.5);
+
+    // Press on the thumb, then drag 30 px down (well past
+    // `DRAG_THRESHOLD = 4`).
+    ui.on_input(InputEvent::PointerMoved(press));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerMoved(press + Vec2::new(0.0, 30.0)));
+
+    ui.begin_frame(surface_display());
+    build(&mut ui);
+    ui.record_phase();
+    ui.paint_phase();
+
+    // viewport = 200, content = 800 ⇒ max_offset = 600.
+    // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
+    // factor = 600 / 150 = 4.0 ⇒ offset.y = 30 * 4.0 = 120.
+    let offset_y = scroll_state(&mut ui, scroll_id).offset.y;
+    assert!(
+        (offset_y - 120.0).abs() < 0.5,
+        "expected offset.y ≈ 120 after 30 px drag (factor=4), got {offset_y}",
+    );
+
+    // Drag further to the very bottom — clamped to max_offset.
+    ui.on_input(InputEvent::PointerMoved(press + Vec2::new(0.0, 9_999.0)));
+    ui.begin_frame(surface_display());
+    build(&mut ui);
+    ui.record_phase();
+    ui.paint_phase();
+    assert_eq!(
+        scroll_state(&mut ui, scroll_id).offset.y,
+        600.0,
+        "drag past end clamps to max_offset (content - viewport)",
+    );
 }
