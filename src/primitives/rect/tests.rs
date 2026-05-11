@@ -2,7 +2,7 @@ use super::Rect;
 
 #[test]
 fn intersects_cases() {
-    // Touching edges are NOT an intersection — Damage filter leans on this so
+    // Touching edges are NOT an intersection — DamageEngine filter leans on this so
     // a node whose left edge sits exactly on the damage rect's right edge gets
     // skipped.
     let cases: &[(&str, Rect, Rect, bool)] = &[

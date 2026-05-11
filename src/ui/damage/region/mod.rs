@@ -1,5 +1,5 @@
 //! Bounded set of screen-space damage rects produced by
-//! [`super::Damage::compute`] and consumed by the encoder filter +
+//! [`super::DamageEngine::compute`] and consumed by the encoder filter +
 //! backend scissor.
 //!
 //! Merge policy: agglomerative bottom-up clustering driven by the
@@ -12,7 +12,7 @@
 //! `cost < self.budget_px` — the per-pass setup cost expressed in
 //! "extra-overdraw pixels equivalent". Each `DamageRegion` carries
 //! its own budget; the default ([`DEFAULT_PASS_BUDGET_PX`]) ships
-//! with `Damage`'s region and is the right knob for most callers.
+//! with `DamageEngine`'s region and is the right knob for most callers.
 //!
 //! `add(r)` cluster-grows a candidate by repeatedly absorbing the
 //! cheapest existing slot until no slot meets the budget, then
@@ -60,7 +60,7 @@ pub(crate) const DAMAGE_RECT_CAP: usize = 8;
 pub(crate) const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
 
 /// Set of damage rects, kept in screen space. `Copy` so
-/// [`super::DamagePaint`] threads through `FrameOutput` and the
+/// [`super::Damage`] threads through `FrameOutput` and the
 /// encoder by value without lifetimes. The `budget_px` field drives
 /// the merge predicate — see the module docs.
 #[derive(Clone, Copy, Debug, PartialEq)]

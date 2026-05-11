@@ -4,7 +4,7 @@
 use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::ui::damage::DamagePaint;
+use crate::ui::damage::Damage;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 
 /// Pad the damage scissor by this many physical pixels on every
@@ -41,11 +41,11 @@ pub(super) fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Op
 /// in practice unless damage lies entirely outside the surface).
 pub(super) fn build_damage_scissors(
     out: &mut tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]>,
-    damage: DamagePaint,
+    damage: Damage,
     buffer: &RenderBuffer,
 ) {
     out.clear();
-    if let DamagePaint::Partial(region) = damage {
+    if let Damage::Partial(region) = damage {
         for r in region.iter_rects() {
             if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
                 out.push(s);

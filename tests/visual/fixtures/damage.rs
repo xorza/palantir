@@ -1,5 +1,5 @@
-//! Damage visualization. Renders a static scene twice into the same
-//! Harness (so `Damage.prev` carries between frames). The second
+//! DamageEngine visualization. Renders a static scene twice into the same
+//! Harness (so `DamageEngine.prev` carries between frames). The second
 //! render flips `DebugOverlayConfig::dim_undamaged` on and uses a
 //! striking magenta clear: pixels outside the damage scissor stay
 //! magenta, pixels inside flash the freshly-painted content. With
@@ -103,8 +103,8 @@ fn corner_pair_scene(
 }
 
 /// Two identical frames of a tiny static scene. After frame 1 seeds
-/// `Damage.prev`, frame 2's diff is empty and the renderer takes the
-/// `DamagePaint::Skip` path — no clear, no draw, the swapchain still
+/// `DamageEngine.prev`, frame 2's diff is empty and the renderer takes the
+/// `Damage::Skip` path — no clear, no draw, the swapchain still
 /// holds frame 1's pixels. Magenta is the *clear* color that never
 /// ran, so a clean Skip means **zero magenta pixels** in the readback.
 /// Any magenta ⇒ Skip didn't fire and we re-cleared.
@@ -212,7 +212,7 @@ fn damage_rect_overlay_strokes_dirty_region() {
 /// Under the old single-rect-union accumulator the union of the two
 /// dirty corners would span the whole canvas (top-left + bottom-right
 /// → bbox = entire surface) and trip the 50 %-coverage heuristic to
-/// escalate `DamagePaint::Full`. Under the multi-rect region the
+/// escalate `Damage::Full`. Under the multi-rect region the
 /// corners stay disjoint (the LVGL merge rule rejects merging
 /// far-apart rects), each scissored to its own pass.
 ///

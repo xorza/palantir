@@ -7,7 +7,7 @@
 //!    per-id store (focus, scroll, click capture, hit-test).
 //! 2. **Removed-widget diff + rollover.** [`Self::rollover`] computes
 //!    which ids were present last painted frame but absent this pass
-//!    (populating `removed` for [`crate::ui::damage::Damage`] /
+//!    (populating `removed` for [`crate::ui::damage::DamageEngine`] /
 //!    [`crate::text::TextShaper`] / measure cache / state /
 //!    animation), then swaps `curr → prev` so the next frame diffs
 //!    against this one. Called once per `run_frame` from

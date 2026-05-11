@@ -4,14 +4,14 @@
 //! slots get diffed and either updated or evicted.
 //!
 //! A node is **dirty** if its `(rect, authoring-hash)` differs from
-//! the entry keyed by the same `WidgetId` in `Damage.prev`, OR it
-//! had no entry (added). A `WidgetId` present in `Damage.prev` with
+//! the entry keyed by the same `WidgetId` in `DamageEngine.prev`, OR it
+//! had no entry (added). A `WidgetId` present in `DamageEngine.prev` with
 //! no matching node this frame contributes its prev rect (removed).
 //! Each contribution is folded into a [`region::DamageRegion`] via
 //! its merge policy; the result drives the encoder filter and the
 //! per-pass scissor list in the backend.
 //!
-//! **Painting-only invariant.** `Damage.prev` only holds entries for
+//! **Painting-only invariant.** `DamageEngine.prev` only holds entries for
 //! widgets that painted on their last recorded frame (have chrome OR
 //! direct shapes — see `Tree.rollups.paints`). Non-painting nodes
 //! contribute zero pixels, so they're skipped on insert. A
@@ -19,7 +19,7 @@
 //! diff loop; the prev rect contributes (clear those pixels), the
 //! curr rect doesn't.
 //!
-//! `Damage.dirty` is the per-node dirty list (added /
+//! `DamageEngine.dirty` is the per-node dirty list (added /
 //! hash-changed / rect-changed) in pre-order paint order. Always
 //! populated; tests assert on it directly, and the "flash dirty
 //! nodes" debug overlay (see `docs/roadmap/damage.md`) is the
@@ -37,12 +37,12 @@ use std::collections::hash_map::Entry;
 
 pub(crate) mod region;
 
-/// Per-painting-widget snapshot held in [`Damage::prev`], keyed by
+/// Per-painting-widget snapshot held in [`DamageEngine::prev`], keyed by
 /// stable [`WidgetId`]. Only widgets that painted last frame have an
 /// entry — non-painting nodes (e.g. a popup's invisible click-eater)
 /// are skipped on insert, so their full-surface rect can't trip the
 /// full-repaint coverage threshold on add or remove. The diff in
-/// [`Damage::compute`] reads the prev value and either updates or
+/// [`DamageEngine::compute`] reads the prev value and either updates or
 /// evicts it in place.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
@@ -63,7 +63,7 @@ pub(crate) struct NodeSnapshot {
 /// prev + curr, removed widget's prev rect) through
 /// [`region::DamageRegion::add`]'s merge policy — empty region ⇒
 /// nothing changed, so the host-requested redraw maps to
-/// [`DamagePaint::Skip`].
+/// [`Damage::Skip`].
 ///
 /// `prev` is the per-`WidgetId` snapshot map carried over from last
 /// frame; it's mutated in place during `compute` (read old, write
@@ -77,7 +77,7 @@ pub(crate) struct NodeSnapshot {
 ///
 /// Capacities on `dirty` and `prev` are retained across frames;
 /// `region` is inline (`DamageRegion` is `Copy`).
-pub(crate) struct Damage {
+pub(crate) struct DamageEngine {
     pub(crate) dirty: Vec<NodeId>,
     pub(crate) region: DamageRegion,
     /// Per-pass merge budget (extra-overdraw px) used when
@@ -97,7 +97,7 @@ pub(crate) struct Damage {
     pub(crate) prev_surface: Option<Rect>,
 }
 
-impl Default for Damage {
+impl Default for DamageEngine {
     fn default() -> Self {
         Self {
             dirty: Vec::new(),
@@ -129,16 +129,16 @@ pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 /// the region), `Skip` (don't paint — backbuffer already holds the
 /// right pixels; just present it).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum DamagePaint {
+pub(crate) enum Damage {
     Full,
     Partial(DamageRegion),
     Skip,
 }
 
-impl Damage {
+impl DamageEngine {
     /// Invalidate the previous-frame snapshot: clears the per-widget
     /// `prev` map and `prev_surface`. `compute` treats
-    /// `prev_surface == None` as "force `DamagePaint::Full`" — see
+    /// `prev_surface == None` as "force `Damage::Full`" — see
     /// the `force_full` branch — so the next frame paints the whole
     /// surface regardless of the diff. Called by `Ui::pre_record`
     /// when the surface changed, the previous frame wasn't acked, or
@@ -149,12 +149,12 @@ impl Damage {
     }
 
     /// Diff against the just-finished frame and return a
-    /// [`DamagePaint`] ready for the renderer:
+    /// [`Damage`] ready for the renderer:
     ///
-    /// - [`DamagePaint::Skip`] — empty region, nothing changed.
-    /// - [`DamagePaint::Partial`] — coverage below
+    /// - [`Damage::Skip`] — empty region, nothing changed.
+    /// - [`Damage::Partial`] — coverage below
     ///   [`FULL_REPAINT_THRESHOLD`].
-    /// - [`DamagePaint::Full`] — first frame / surface change /
+    /// - [`Damage::Full`] — first frame / surface change /
     ///   degenerate surface / coverage above the threshold.
     ///
     /// `self.prev` is rolled forward in the same pass via the
@@ -181,7 +181,7 @@ impl Damage {
         cascades: &CascadeResult,
         removed: &FxHashSet<WidgetId>,
         surface: Rect,
-    ) -> DamagePaint {
+    ) -> Damage {
         // `prev_surface == None` is the "treat as a fresh frame"
         // signal. `Ui::pre_record` clears it (and `prev`) when the
         // surface changed, the previous `FrameOutput` wasn't acked,
@@ -250,7 +250,7 @@ impl Damage {
 
         self.region = acc;
         if force_full {
-            return DamagePaint::Full;
+            return Damage::Full;
         }
         self.filter(surface)
     }
@@ -260,15 +260,15 @@ impl Damage {
     /// stable; the GPU has nothing to do). Coverage above
     /// [`FULL_REPAINT_THRESHOLD`] (or zero-area surface) ⇒ `Full`.
     /// Otherwise `Partial(region)`.
-    pub(crate) fn filter(&self, surface: Rect) -> DamagePaint {
+    pub(crate) fn filter(&self, surface: Rect) -> Damage {
         if self.region.is_empty() {
-            return DamagePaint::Skip;
+            return Damage::Skip;
         }
         let surface_area = surface.area();
         if surface_area <= 0.0 || self.region.total_area() / surface_area > FULL_REPAINT_THRESHOLD {
-            return DamagePaint::Full;
+            return Damage::Full;
         }
-        DamagePaint::Partial(self.region)
+        Damage::Partial(self.region)
     }
 }
 

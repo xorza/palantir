@@ -207,7 +207,7 @@ fn encode_node(
         return;
     }
 
-    // Damage-aware subtree cull. Same shape as the viewport cull
+    // DamageEngine-aware subtree cull. Same shape as the viewport cull
     // above: if no damage rect intersects this subtree's screen
     // bounds, the whole subtree contributes nothing this frame —
     // skip recursion + Push/Pop emission entirely. **Soundness
@@ -302,10 +302,10 @@ fn encode_node(
         }
     }
 
-    // Damage filter: skip leaf shape emission when this node's
+    // DamageEngine filter: skip leaf shape emission when this node's
     // *screen* rect (layout rect projected through ancestor
     // transforms via `cascades`) doesn't intersect the dirty region.
-    // Damage rects in `damage_filter` are also screen-space, so the
+    // DamageEngine rects in `damage_filter` are also screen-space, so the
     // comparison is consistent under arbitrary transform stacks.
     // Push/PopClip and Push/PopTransform are still emitted (above
     // and below) so scissor groups and child transforms stay

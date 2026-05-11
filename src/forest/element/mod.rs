@@ -172,7 +172,7 @@ pub(crate) struct PanelExtras {
 /// paint (the encoder draws the node at its layout rect *before*
 /// `PushTransform`; the transform composes into descendants' screen rects via
 /// `Cascades`). A parent transform change shows up as descendant screen-rect
-/// diffs in `Damage::compute`, the right granularity. Transform IS folded
+/// diffs in `DamageEngine::compute`, the right granularity. Transform IS folded
 /// into `subtree_hash` separately (in the tree's rollup loop) so the encode
 /// cache invalidates on transform-only changes.
 impl std::hash::Hash for BoundsExtras {

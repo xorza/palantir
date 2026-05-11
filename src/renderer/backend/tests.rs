@@ -215,7 +215,7 @@ fn schedule_replays_per_damage_rect() {
             meshes: Span::default(),
         },
     ]);
-    // Damage rect A covers only group 0; rect B covers only group 1.
+    // DamageEngine rect A covers only group 0; rect B covers only group 1.
     let pass_a = collect(&buf, Some(URect::new(0, 0, 50, 100)), &[], false);
     let pass_b = collect(&buf, Some(URect::new(50, 0, 50, 100)), &[], false);
     let mut combined = pass_a;
