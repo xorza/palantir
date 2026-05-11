@@ -209,7 +209,7 @@ impl RenderCmdBuffer {
                     rect,
                     radius,
                     fill,
-                    stroke_color: stroke.brush.as_solid(),
+                    stroke_color: stroke.brush.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
                     stroke_width: stroke.width,
                 },
             );

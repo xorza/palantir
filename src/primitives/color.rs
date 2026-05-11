@@ -191,6 +191,120 @@ impl Color {
             (rgba & 0xff) as u8,
         )
     }
+
+    /// Quantize this linear-RGB colour to 8-bit sRGB packed bytes via
+    /// the cubic-Newton inverse (`linear_to_srgb`). Lossy roundtrip is
+    /// bounded by 1 LSB per channel, matching the byte serializer's
+    /// roundtrip pin.
+    pub fn to_srgb8(self) -> Srgb8 {
+        let q = |x: f32| -> u8 { (linear_to_srgb(x).clamp(0.0, 1.0) * 255.0).round() as u8 };
+        Srgb8 {
+            r: q(self.r),
+            g: q(self.g),
+            b: q(self.b),
+            a: (self.a.clamp(0.0, 1.0) * 255.0).round() as u8,
+        }
+    }
+}
+
+/// 4-byte sRGB-packed colour (`r, g, b, a` each 0..=255). Storage form
+/// for places where 8-bit display precision is sufficient and cache
+/// footprint matters — currently `Stop.color` (gradient stops). Not
+/// used for fill / stroke / shape colour where animation lerps demand
+/// `f32` linear-space precision.
+///
+/// Convert to/from `Color` via `From` impls (cubic Hejl-Burgess-Dawson
+/// pair from this module). Roundtrip is bounded by 1 LSB per channel
+/// (pinned by `color.rs` byte-roundtrip tests).
+#[repr(C)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    bytemuck::Pod,
+    bytemuck::Zeroable,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub struct Srgb8 {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+impl std::hash::Hash for Srgb8 {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
+    }
+}
+
+impl Srgb8 {
+    pub const TRANSPARENT: Self = Self {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0,
+    };
+    pub const WHITE: Self = Self {
+        r: 0xff,
+        g: 0xff,
+        b: 0xff,
+        a: 0xff,
+    };
+    pub const BLACK: Self = Self {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0xff,
+    };
+
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b, a: 0xff }
+    }
+    pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self { r, g, b, a }
+    }
+    /// `0xRRGGBB` opaque.
+    pub const fn hex(rgb: u32) -> Self {
+        Self::rgb(
+            ((rgb >> 16) & 0xff) as u8,
+            ((rgb >> 8) & 0xff) as u8,
+            (rgb & 0xff) as u8,
+        )
+    }
+    /// `0xRRGGBBAA` with alpha.
+    pub const fn hexa(rgba: u32) -> Self {
+        Self::rgba(
+            ((rgba >> 24) & 0xff) as u8,
+            ((rgba >> 16) & 0xff) as u8,
+            ((rgba >> 8) & 0xff) as u8,
+            (rgba & 0xff) as u8,
+        )
+    }
+
+    /// True when alpha is zero — paints nothing visible.
+    pub const fn is_noop(self) -> bool {
+        self.a == 0
+    }
+}
+
+impl From<Color> for Srgb8 {
+    #[inline]
+    fn from(c: Color) -> Self {
+        c.to_srgb8()
+    }
+}
+
+impl From<Srgb8> for Color {
+    #[inline]
+    fn from(s: Srgb8) -> Self {
+        Color::rgba_u8(s.r, s.g, s.b, s.a)
+    }
 }
 
 /// sRGB→linear via cubic polynomial. Const-friendly (`f32::powf` is not

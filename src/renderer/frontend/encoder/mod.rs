@@ -255,7 +255,14 @@ fn encode_node(
     // to `None` when the paint is invisible, so reaching this branch
     // means there's something to paint.
     if paints && let Some(bg) = chrome {
-        out.draw_rect(rect, bg.radius, bg.fill.as_solid(), bg.stroke);
+        out.draw_rect(
+            rect,
+            bg.radius,
+            bg.fill.as_solid().expect(
+                "gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2",
+            ),
+            bg.stroke,
+        );
     }
 
     if clip {
