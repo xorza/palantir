@@ -86,14 +86,8 @@ impl Host {
             self.backend.copy_backbuffer_to_surface(surface_tex);
             return;
         };
-        self.frontend.build(&self.ui);
-        self.backend.submit(
-            surface_tex,
-            clear,
-            &self.frontend.composer.buffer,
-            &mut self.frontend.gradient_atlas,
-            damage,
-            self.debug_overlay,
-        );
+        let buffer = self.frontend.build(&self.ui);
+        self.backend
+            .submit(surface_tex, clear, buffer, damage, self.debug_overlay);
     }
 }

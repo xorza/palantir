@@ -105,6 +105,7 @@ fn buf_with(groups: Vec<DrawGroup>) -> RenderBuffer {
         viewport_phys: UVec2::new(100, 100),
         viewport_phys_f: Vec2::new(100.0, 100.0),
         scale: 1.0,
+        ..RenderBuffer::default()
     }
 }
 
