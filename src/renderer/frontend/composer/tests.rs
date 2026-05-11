@@ -38,8 +38,9 @@ fn run(build: impl FnOnce(&mut RenderCmdBuffer), display: &Display) -> RenderBuf
     let mut buffer = RenderCmdBuffer::default();
     build(&mut buffer);
     let mut composer = Composer::default();
-    composer.compose(&buffer, display);
-    std::mem::take(&mut composer.buffer)
+    let mut out = RenderBuffer::default();
+    composer.compose(&buffer, *display, &mut out);
+    out
 }
 
 #[test]
@@ -392,8 +393,9 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         Stroke::ZERO,
     );
     let mut composer = Composer::default();
-    composer.compose(&buffer, &params(1.0, UVec2::new(100, 100)));
-    let q = &composer.buffer.quads[0];
+    let mut out = RenderBuffer::default();
+    composer.compose(&buffer, params(1.0, UVec2::new(100, 100)), &mut out);
+    let q = &out.quads[0];
     assert!(q.fill_kind.is_solid(), "solid quad must carry kind=solid");
     assert_eq!(q.fill_lut_row, 0, "solid quad has no LUT row");
     assert_eq!(
@@ -424,8 +426,9 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         Stroke::ZERO,
     );
     let mut composer = Composer::default();
-    composer.compose(&buffer, &params(1.0, UVec2::new(100, 100)));
-    let q = &composer.buffer.quads[0];
+    let mut out = RenderBuffer::default();
+    composer.compose(&buffer, params(1.0, UVec2::new(100, 100)), &mut out);
+    let q = &out.quads[0];
     assert!(q.fill_kind.is_linear(), "linear quad carries kind=linear");
     // Spread bits aren't exposed as a public accessor on FillKind; pin
     // identity via the matching constructor — same bit pattern reaches
@@ -454,13 +457,9 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
         );
     }
     let mut composer = Composer::default();
-    composer.compose(&buffer, &params(1.0, UVec2::new(100, 100)));
-    let rows: Vec<u32> = composer
-        .buffer
-        .quads
-        .iter()
-        .map(|q| q.fill_lut_row)
-        .collect();
+    let mut out = RenderBuffer::default();
+    composer.compose(&buffer, params(1.0, UVec2::new(100, 100)), &mut out);
+    let rows: Vec<u32> = out.quads.iter().map(|q| q.fill_lut_row).collect();
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0], rows[1]);
     assert_eq!(rows[1], rows[2]);

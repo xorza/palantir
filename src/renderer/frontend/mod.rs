@@ -110,14 +110,16 @@ impl FrameReport {
 pub(crate) struct Frontend {
     pub(crate) encoder: Encoder,
     pub(crate) composer: Composer,
+    pub(crate) buffer: RenderBuffer,
 }
 
 impl Frontend {
-    /// Encode the tree into commands, compose them into the buffer,
-    /// and return a borrow of the composed result. Disabled-dim and
-    /// other paint-time theme constants are pre-resolved into
-    /// `cascades` (`Cascade::rgb_mul`), so this stage reads everything
-    /// it needs from the inputs without per-call theme threading.
+    /// Encode the tree into commands, compose them into the owned
+    /// buffer, and return a borrow of the composed result.
+    /// Disabled-dim and other paint-time theme constants are
+    /// pre-resolved into `cascades` (`Cascade::rgb_mul`), so this
+    /// stage reads everything it needs from the inputs without
+    /// per-call theme threading.
     pub(crate) fn build(&mut self, ui: &Ui) -> &mut RenderBuffer {
         let damage_filter = match &ui.damage {
             Some(Damage::Partial(region)) => Some(region),
@@ -130,6 +132,7 @@ impl Frontend {
             damage_filter,
             ui.display.logical_rect(),
         );
-        self.composer.compose(cmds, &ui.display)
+        self.composer.compose(cmds, ui.display, &mut self.buffer);
+        &mut self.buffer
     }
 }
