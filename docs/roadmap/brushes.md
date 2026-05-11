@@ -155,17 +155,23 @@ brushing.
 
 `Background` and `Stroke` currently derive `Animatable` and lerp colors
 componentwise — Button hover/press depends on it. Generic `Brush` can't
-lerp (no meaning to "halfway between a solid red and a radial gradient"),
-so we hand-write `Animatable for Brush` with one rule:
+lerp across variants (no meaning to "halfway between a solid red and a
+radial gradient"), and `Arc<LinearGradient>` etc. can't lerp *within* a
+variant without allocating a new `Arc` per frame (violates the
+steady-state alloc-free contract). So we hand-write `Animatable for
+Brush` with one rule:
 
 - `(Brush::Solid(a), Brush::Solid(b))` → componentwise color lerp.
 - Any other pair → **snap at `t = 1.0`** (the discrete-state convention
   already used for `Corners` via `#[animate(snap)]`).
 
+That includes gradient ↔ gradient pairs **even when both sides are the
+same variant with matching stop counts.** See "Future work: gradient
+morph animation" below for the path to lifting this restriction.
+
 A test (`button_hover_color_lerp_unchanged`) lands in slice 1 and pins
 the solid-solid path; widget color animations are untouched by the
-migration. Cross-brush morphs (gradient ↔ solid, gradient ↔ gradient)
-are out of scope for v1 and snap.
+migration.
 
 ## User types vs GPU types
 
@@ -491,6 +497,44 @@ Five slices, each shippable on its own.
 Each slice lands with `cargo fmt && cargo clippy && cargo test` clean and
 the showcase tab updated.
 
+## Future work: gradient morph animation
+
+Gradient ↔ gradient lerping (e.g. a card whose linear gradient brightens
+on hover by interpolating stop colors) is **deliberately snapped in v1**
+because `Brush::Linear(Arc<LinearGradient>)` is immutable once
+allocated; lerping would have to `Arc::new` per frame and violate the
+steady-state alloc-free contract. Same for radial / conic.
+
+If a workload demands smooth gradient morphs, three paths are open in
+roughly increasing complexity:
+
+1. **Accept per-frame `Arc::new` during animation only.** N allocs per
+   frame where N = currently-animating gradients. Idle UI stays
+   alloc-free; an in-flight hover transition burns ~200 B/frame of
+   churn through a single allocator bucket. Defensible reading of the
+   alloc-free rule (it targets idle redraw, not user-requested motion)
+   but a strict reading rejects it. Gated by a `gradient_animation`
+   bench that counts allocs per frame.
+
+2. **Per-frame `BrushArena` scratch.** Add `Ui::brush_scratch:
+   BrushArena` cleared at `end_frame`, capacity-reused. `Brush::Linear`
+   becomes `enum LinearHandle { Shared(Arc<…>), Frame(u32) }`; lerps
+   push onto the scratch and return `Frame(idx)`. Truly alloc-free
+   after warmup. Cost: `Hash` / `is_noop` / `PartialEq` on `Frame`
+   variants need access to the arena, which means either pervasive
+   `&Ui` plumbing on `Brush` methods, a thread-local arena (brittle),
+   or an unsafe `*const LinearGradient` (lifetime via Ui invariant).
+   Each option has real complexity.
+
+3. **Inline gradient data.** Drop the `Arc`; carry `ArrayVec<Stop, N>`
+   inline in the `Brush` enum. `sizeof(Brush)` jumps to ~170 B for
+   N=8, ~330 B for N=16. Lerp becomes free and zero-alloc. Cost: every
+   `Background` / `Stroke` / `Shape` grows correspondingly, hitting
+   the `chrome` sparse column and the per-frame shape buffer.
+
+Path 1 is cheapest to implement; path 2 is the principled answer; path
+3 is the maximalist answer. Pick the cheapest that the workload needs.
+
 ## Open questions
 
 - Do we want a `Brush::Pattern` (small repeating image with tint) ahead of
@@ -514,7 +558,6 @@ the showcase tab updated.
   back to a small "extras" row appended on demand? Probe is fine for
   expected workloads (few dozen distinct gradients/frame); revisit if
   collisions become a measurable miss rate.
-- Cross-brush `Animatable` morph (gradient ↔ solid) — currently snaps. If
-  designers ask for it, the path is "compose solid as a 2-stop same-color
-  gradient on the fly and lerp stops"; cheap once the LUT bake is
-  amortized but adds complexity. Defer.
+- Gradient ↔ gradient and gradient ↔ solid morph animations are snapped
+  in v1; see "Future work: gradient morph animation" above for the three
+  upgrade paths when a workload demands lerping.
