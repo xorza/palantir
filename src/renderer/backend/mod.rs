@@ -1,27 +1,21 @@
 mod mesh_pipeline;
 mod quad_pipeline;
 mod schedule;
+mod viewport;
 
 use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
+use self::viewport::build_damage_scissors;
 use super::frontend::FrameOutput;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, spacing::Spacing, stroke::Stroke, urect::URect,
 };
-use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
 use crate::ui::damage::DamagePaint;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::debug_overlay::DebugOverlayConfig;
-
-/// Pad the damage scissor by this many physical pixels on every
-/// side. Quads and glyphs may anti-alias slightly outside their
-/// nominal rect (SDF rounded-rect AA, italic descenders); without
-/// padding the scissor would clip the AA fringe and leave a
-/// 1-px-hard edge along the damage boundary.
-const DAMAGE_AA_PADDING: u32 = 2;
 
 /// Stroke color for the debug damage overlay (see
 /// [`crate::DebugOverlayConfig::damage_rect`]). Bright opaque red —
@@ -123,15 +117,6 @@ pub struct WgpuBackend {
     /// Stage 3 / Step 6 of the damage-rendering plan: we render here
     /// so future frames can `LoadOp::Load` last frame's pixels.
     backbuffer: Option<Backbuffer>,
-    /// Retained scratch for the per-frame stencil-mask sweep. `Some(j)`
-    /// at index `i` says "group `i`'s mask is mask quad `j` in the
-    /// upload buffer". Sized to `buffer.groups.len()` each frame; capacity
-    /// retained across frames so steady-state runs alloc-free.
-    mask_indices: Vec<Option<u32>>,
-    /// Retained scratch for stencil-mask quads. One entry per rounded-clip
-    /// group, uploaded via [`QuadPipeline::upload_masks`]. Cleared at the
-    /// start of each stencil frame; capacity retained.
-    masks: Vec<Quad>,
     /// Per-frame damage scissors. One entry per rect in
     /// `DamagePaint::Partial(region)` after physical-px scaling plus
     /// AA padding plus viewport clamping; rects that clamp to zero
@@ -155,8 +140,6 @@ impl WgpuBackend {
             text,
             color_format: format,
             backbuffer: None,
-            mask_indices: Vec::new(),
-            masks: Vec::new(),
             damage_scissors: Default::default(),
         }
     }
@@ -275,7 +258,7 @@ impl WgpuBackend {
     /// degrades to a single `Full` pass — correct, just wasteful.
     pub fn submit(&mut self, surface_tex: &wgpu::Texture, clear: Color, frame: FrameOutput<'_>) {
         let buffer = frame.buffer;
-        let use_stencil = buffer.has_rounded_clip;
+        let use_stencil = buffer.has_rounded_clip();
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
@@ -313,20 +296,8 @@ impl WgpuBackend {
 
         // Build the per-frame scissor list. `Full` → empty list →
         // single Clear+full-viewport pass. `Partial` → one entry per
-        // rect in the region after physical-px scaling, AA padding,
-        // and viewport clamping; rects that clamp to zero area are
-        // filtered out. If the filter empties the list the frame
-        // degrades to a Full repaint (correct, just wasteful — won't
-        // happen in practice unless damage lies entirely outside the
-        // surface).
-        self.damage_scissors.clear();
-        if let DamagePaint::Partial(region) = effective_damage {
-            for r in region.iter_rects() {
-                if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
-                    self.damage_scissors.push(s);
-                }
-            }
-        }
+        // rect in the region (see `build_damage_scissors`).
+        build_damage_scissors(&mut self.damage_scissors, effective_damage, buffer);
         let clear_op = wgpu::LoadOp::Clear(wgpu::Color {
             r: clear.r as f64,
             g: clear.g as f64,
@@ -353,34 +324,19 @@ impl WgpuBackend {
         // `PushClipRounded`. Lazy-init the stencil texture + pipeline
         // variants the first time we land here; thereafter both stay
         // warm. Apps that never round-clip never enter this branch.
+        // After staging, `self.quad.mask_indices` parallels
+        // `buffer.groups` and `render_groups` reads it directly.
         let text_mode = if use_stencil {
             text::StencilMode::Stencil
         } else {
             text::StencilMode::Plain
         };
-        // One mask quad per group whose `rounded_clip.is_some()`. The
-        // map `mask_indices[i] = Some(j)` says "group i's mask is mask
-        // quad j in the upload buffer". `None` = no mask (plain
-        // scissor or non-stencil path). Both vecs are retained scratch
-        // — cleared+filled each frame, capacity reused.
-        self.mask_indices.clear();
-        self.masks.clear();
         if use_stencil {
             self.ensure_stencil();
             self.quad.ensure_stencil(&self.device);
             self.mesh.ensure_stencil(&self.device);
-            self.mask_indices.resize(buffer.groups.len(), None);
-            for (i, g) in buffer.groups.iter().enumerate() {
-                if g.scissor.is_some()
-                    && let Some(r) = g.rounded_clip
-                {
-                    self.mask_indices[i] = Some(self.masks.len() as u32);
-                    self.masks
-                        .push(QuadPipeline::mask_instance(r.mask_rect, r.radius));
-                }
-            }
             self.quad
-                .upload_masks(&self.device, &self.queue, &self.masks);
+                .stage_masks(&self.device, &self.queue, &buffer.groups);
         }
 
         self.quad.upload(
@@ -623,7 +579,7 @@ impl WgpuBackend {
         for_each_step(
             buffer,
             damage_scissor,
-            &self.mask_indices,
+            &self.quad.mask_indices,
             use_stencil,
             |step| match step {
                 RenderStep::PreClear => {
@@ -779,25 +735,6 @@ impl WgpuBackend {
             backbuffer.tex.size(),
         );
         self.queue.submit(std::iter::once(encoder.finish()));
-    }
-}
-
-/// Convert a logical-px damage rect to a physical-px scissor, padded
-/// by [`DAMAGE_AA_PADDING`] on every side and clamped to the
-/// viewport. Returns `None` if the result clamps to zero area —
-/// callers degrade that case to "loaded but not drawn" inside the
-/// pass.
-fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
-    let phys = r.scaled_by(buffer.scale, true);
-    let pad = DAMAGE_AA_PADDING as f32;
-    let mins_x = (phys.min.x - pad).max(0.0) as u32;
-    let mins_y = (phys.min.y - pad).max(0.0) as u32;
-    let maxs_x = ((phys.min.x + phys.size.w + pad).max(0.0) as u32).min(buffer.viewport_phys.x);
-    let maxs_y = ((phys.min.y + phys.size.h + pad).max(0.0) as u32).min(buffer.viewport_phys.y);
-    if maxs_x > mins_x && maxs_y > mins_y {
-        Some(URect::new(mins_x, mins_y, maxs_x - mins_x, maxs_y - mins_y))
-    } else {
-        None
     }
 }
 
