@@ -49,6 +49,13 @@ pub(crate) enum CmdKind {
     /// bytes live in [`RenderCmdBuffer::mesh_vertices`] /
     /// `mesh_indices`, sliced by the payload's spans.
     DrawMesh,
+    /// Stroked polyline paint cmd. Payload:
+    /// [`DrawPolylinePayload`]. Point arena lives in
+    /// [`RenderCmdBuffer::polyline_points`], sliced by the payload's
+    /// span. Composer transforms + DPI-scales the points, then
+    /// tessellates a fringe-AA stroke into `out.meshes.arena` —
+    /// final paint reuses the mesh pipeline.
+    DrawPolyline,
 }
 
 #[repr(C)]
@@ -87,6 +94,19 @@ pub(crate) struct DrawTextPayload {
 /// `u32` pairs so the payload is plain Pod — no `Span: Pod` needed.
 /// `origin` is the logical-px translation applied at compose time
 /// before baking the transform/DPI into physical-px verts.
+/// Stroked polyline payload (24 B). `width` is logical px; the
+/// composer scales it through the active transform + DPI before
+/// tessellation. `color` is premultiplied linear RGBA (same as
+/// every other shape).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct DrawPolylinePayload {
+    pub(crate) color: Color,
+    pub(crate) width: f32,
+    pub(crate) points_start: u32,
+    pub(crate) points_len: u32,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawMeshPayload {
@@ -110,6 +130,11 @@ pub(crate) struct RenderCmdBuffer {
     /// `kinds`/`starts`/`data` plus a copy of these mesh arrays, so
     /// replay doesn't need the original `Tree` mesh arenas around.
     pub(crate) meshes: Mesh,
+    /// Polyline point arena. `DrawPolyline` payload spans slice into
+    /// this. Same self-containment story as `meshes`: a future
+    /// encode cache must snapshot this vec alongside the cmd-stream
+    /// range. Cleared in [`Self::clear`].
+    pub(crate) polyline_points: Vec<Vec2>,
 }
 
 impl RenderCmdBuffer {
@@ -118,6 +143,7 @@ impl RenderCmdBuffer {
         self.starts.clear();
         self.data.clear();
         self.meshes.clear();
+        self.polyline_points.clear();
     }
 
     #[inline]
@@ -202,6 +228,24 @@ impl RenderCmdBuffer {
                 v_len: verts.len() as u32,
                 i_start,
                 i_len: idx.len() as u32,
+            },
+        );
+    }
+
+    /// Copy `points` into the cmd buffer's polyline arena and record a
+    /// `DrawPolyline` cmd. Caller must ensure `points.len() >= 2` —
+    /// degenerate lines are filtered earlier by `Shape::is_noop`.
+    pub(crate) fn draw_polyline(&mut self, points: &[Vec2], width: f32, color: Color) {
+        let points_start = self.polyline_points.len() as u32;
+        self.polyline_points.extend_from_slice(points);
+        self.record_start(CmdKind::DrawPolyline);
+        write_pod(
+            &mut self.data,
+            DrawPolylinePayload {
+                color,
+                width,
+                points_start,
+                points_len: points.len() as u32,
             },
         );
     }

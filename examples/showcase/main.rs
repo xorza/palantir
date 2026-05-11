@@ -19,6 +19,7 @@ mod drag;
 mod gap;
 mod grid;
 mod justify;
+mod lines;
 mod mesh;
 mod pan_zoom;
 mod panels;
@@ -61,6 +62,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("popup", popup::build),
     ("animations", animations::build),
     ("mesh", mesh::build),
+    ("lines", lines::build),
     ("drag", drag::build),
 ];
 

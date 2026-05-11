@@ -8,5 +8,6 @@ pub(crate) mod rect;
 pub(crate) mod size;
 pub(crate) mod spacing;
 pub(crate) mod stroke;
+pub(crate) mod stroke_tessellate;
 pub(crate) mod transform;
 pub(crate) mod urect;

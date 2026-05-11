@@ -159,6 +159,52 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
     );
 }
 
+/// Pin: `Shape::Line` pushed via `ui.add_shape` emits exactly one
+/// `DrawPolyline` cmd; degenerate variants (zero width, transparent
+/// color) emit none — `Shape::is_noop` filters them at
+/// `add_shape` time.
+#[test]
+fn line_shape_emits_draw_polyline() {
+    use crate::shape::Shape;
+    let mut ui = ui_at(UVec2::new(200, 200));
+    Panel::hstack().auto_id().show(&mut ui, |ui| {
+        ui.add_shape(Shape::Line {
+            a: Vec2::new(0.0, 0.0),
+            b: Vec2::new(20.0, 0.0),
+            width: 2.0,
+            color: Color::rgb(1.0, 0.0, 0.0),
+        });
+        // Degenerate: filtered before reaching the cmd buffer.
+        ui.add_shape(Shape::Line {
+            a: Vec2::new(0.0, 0.0),
+            b: Vec2::new(10.0, 10.0),
+            width: 0.0,
+            color: Color::rgb(1.0, 0.0, 0.0),
+        });
+        ui.add_shape(Shape::Line {
+            a: Vec2::new(0.0, 0.0),
+            b: Vec2::new(10.0, 10.0),
+            width: 2.0,
+            color: Color::TRANSPARENT,
+        });
+        Frame::new().id_salt("host").size(50.0).show(ui);
+    });
+    ui.record_phase();
+    ui.paint_phase();
+    let cmds = encode_cmds(&ui);
+    let count = cmds
+        .kinds
+        .iter()
+        .filter(|k| matches!(k, CmdKind::DrawPolyline))
+        .count();
+    assert_eq!(count, 1, "expected exactly one DrawPolyline cmd");
+    assert_eq!(
+        cmds.polyline_points.len(),
+        2,
+        "one 2-point line populates the points arena"
+    );
+}
+
 /// Pin: `ShapeRecord::Text` runs through the same background-phase
 /// iteration. If the loop ever narrowed to a single shape variant
 /// (RoundedRect, say), text labels would silently disappear. The
@@ -409,8 +455,8 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
                 };
                 out.push((p.fill, visible));
             }
-            CmdKind::DrawText | CmdKind::DrawMesh => {
-                // Test rasterizer ignores text/mesh — encoder tests only assert on rect output.
+            CmdKind::DrawText | CmdKind::DrawMesh | CmdKind::DrawPolyline => {
+                // Test rasterizer ignores text/mesh/polyline — encoder tests only assert on rect output.
             }
         }
     }

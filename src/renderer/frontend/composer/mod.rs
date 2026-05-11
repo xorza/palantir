@@ -1,14 +1,15 @@
 use super::cmd_buffer::{
-    CmdKind, DrawMeshPayload, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload,
-    PushClipRoundedPayload, RenderCmdBuffer,
+    CmdKind, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawRectStrokedPayload,
+    DrawTextPayload, PushClipRoundedPayload, RenderCmdBuffer,
 };
 use crate::layout::types::display::Display;
 use crate::primitives::corners::Corners;
 use crate::primitives::mesh::MeshVertex;
+use crate::primitives::stroke_tessellate::tessellate_polyline_aa;
 use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, TextRun};
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 /// Owns the four-variable invariant that drives `out.groups`
 /// emission: `current` scissor, the open group's `quads_start` /
@@ -141,6 +142,10 @@ pub(crate) struct Composer {
     /// restores them as a unit.
     clip_stack: Vec<ClipFrame>,
     transform_stack: Vec<TranslateScale>,
+    /// Scratch for `DrawPolyline`: transformed physical-px points
+    /// fed to the stroke tessellator. Cleared per cmd, capacity
+    /// reused — keeps steady-state alloc-free.
+    polyline_scratch: Vec<Vec2>,
     pub(crate) buffer: RenderBuffer,
 }
 
@@ -314,6 +319,66 @@ impl Composer {
                         },
                     );
                 }
+                CmdKind::DrawPolyline => {
+                    let p: DrawPolylinePayload = cmds.read(start);
+                    let pts_start = p.points_start as usize;
+                    let pts_end = pts_start + p.points_len as usize;
+                    let src = &cmds.polyline_points[pts_start..pts_end];
+
+                    // Transform endpoints into physical-px. No
+                    // pixel-snap — snapping stroke verts shifts
+                    // thin lines off-axis. Width scales with the
+                    // active transform + DPI; the <1 phys px
+                    // hairline regime is handled inside the
+                    // tessellator.
+                    self.polyline_scratch.clear();
+                    self.polyline_scratch.extend(
+                        src.iter()
+                            .map(|&q| current_transform.apply_point(q) * scale),
+                    );
+                    let width_phys = p.width * current_transform.scale * scale;
+
+                    // Cheap scissor-cull via stroke AABB: skip the
+                    // tessellation when the line can't reach
+                    // pixels under the active clip. Same rationale
+                    // as the rect cull; encode-cache stays
+                    // shape-stable (cull lives only here).
+                    // `scissor_from_logical` with scale=1 / snap=false
+                    // is just "clamp this Rect to the physical
+                    // viewport" — bbox is already in physical px.
+                    if let Some(active) = self.clip_stack.last()
+                        && let Some(bbox) = polyline_bbox(&self.polyline_scratch, width_phys)
+                    {
+                        let bbox_scissor = scissor_from_logical(bbox, 1.0, false, viewport_phys);
+                        if bbox_scissor.intersect(active.scissor).is_none() {
+                            i += 1;
+                            continue;
+                        }
+                    }
+
+                    let phys_v_start = out.meshes.arena.vertices.len() as u32;
+                    let phys_i_start = out.meshes.arena.indices.len() as u32;
+                    tessellate_polyline_aa(
+                        &self.polyline_scratch,
+                        width_phys,
+                        p.color,
+                        &mut out.meshes.arena.vertices,
+                        &mut out.meshes.arena.indices,
+                    );
+                    let v_len = out.meshes.arena.vertices.len() as u32 - phys_v_start;
+                    let i_len = out.meshes.arena.indices.len() as u32 - phys_i_start;
+                    if v_len == 0 {
+                        i += 1;
+                        continue;
+                    }
+                    group.push_mesh(
+                        out,
+                        MeshDraw {
+                            vertices: (phys_v_start..phys_v_start + v_len).into(),
+                            indices: (phys_i_start..phys_i_start + i_len).into(),
+                        },
+                    );
+                }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(t.rect);
@@ -349,6 +414,29 @@ impl Composer {
 
         &self.buffer
     }
+}
+
+/// Conservative AABB of a stroked polyline in physical px.
+/// Inflation matches the tessellator's outer-fringe offset
+/// (`max(w/2, 0.5) + 0.5`); under-inflating would false-cull
+/// hairlines straddling a scissor edge.
+fn polyline_bbox(points: &[Vec2], width_phys: f32) -> Option<Rect> {
+    let (min, max) =
+        points
+            .iter()
+            .copied()
+            .fold(None, |acc: Option<(Vec2, Vec2)>, p| match acc {
+                None => Some((p, p)),
+                Some((lo, hi)) => Some((lo.min(p), hi.max(p))),
+            })?;
+    let inflate = Vec2::splat((width_phys * 0.5).max(0.5) + 0.5);
+    Some(Rect {
+        min: min - inflate,
+        size: crate::primitives::size::Size {
+            w: max.x - min.x + 2.0 * inflate.x,
+            h: max.y - min.y + 2.0 * inflate.y,
+        },
+    })
 }
 
 fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {
