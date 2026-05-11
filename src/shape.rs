@@ -1,8 +1,13 @@
 use crate::layout::types::align::Align;
 use crate::layout::types::span::Span;
+use crate::primitives::bezier::FlatPoint;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{
-    approx::noop_f32, color::Color, corners::Corners, rect::Rect, stroke::Stroke,
+    approx::{EPS, noop_f32, vec2_approx_eq},
+    color::Color,
+    corners::Corners,
+    rect::Rect,
+    stroke::Stroke,
 };
 use glam::Vec2;
 use std::borrow::Cow;
@@ -46,6 +51,36 @@ pub enum Shape<'a> {
         width: f32,
         cap: LineCap,
         join: LineJoin,
+    },
+    /// Cubic Bezier curve, stroked. Flattened to a polyline at
+    /// authoring time (adaptive subdivision in
+    /// [`crate::primitives::bezier`]) and lowered to
+    /// `ShapeRecord::Polyline` — no dedicated record/cmd path.
+    /// `tolerance` is the chord-deviation budget in logical px
+    /// (tighter = more segments); values `<= EPS` clamp to `EPS`.
+    /// `colors` is parametric in `t`, not arc-length — denser around
+    /// curvature peaks, sparser in flat regions.
+    CubicBezier {
+        p0: Vec2,
+        p1: Vec2,
+        p2: Vec2,
+        p3: Vec2,
+        width: f32,
+        colors: CubicBezierColors,
+        cap: LineCap,
+        join: LineJoin,
+        tolerance: f32,
+    },
+    /// Quadratic Bezier curve, stroked. See [`Shape::CubicBezier`].
+    QuadraticBezier {
+        p0: Vec2,
+        p1: Vec2,
+        p2: Vec2,
+        width: f32,
+        colors: QuadraticBezierColors,
+        cap: LineCap,
+        join: LineJoin,
+        tolerance: f32,
     },
     Text {
         local_rect: Option<Rect>,
@@ -178,6 +213,56 @@ pub enum PolylineColors<'a> {
     PerSegment(&'a [Color]),
 }
 
+/// Color source for [`Shape::CubicBezier`]. Gradients are
+/// parametric-bezier-interpolated in `t` (same `t` the curve uses),
+/// not arc-length — color travels denser through curvature peaks
+/// and sparser through flat regions. The 4-color mode treats colors
+/// as a 4th-order color-Bezier evaluated at the curve's t; the
+/// 3-color mode is a quadratic; the 2-color is linear. Lowers to
+/// `ColorMode::PerPoint` (or `Single` for `Solid`) at authoring
+/// time — same downstream representation as `Shape::Polyline`.
+#[derive(Clone, Copy, Debug)]
+pub enum CubicBezierColors {
+    Solid(Color),
+    Gradient2(Color, Color),
+    Gradient3(Color, Color, Color),
+    Gradient4(Color, Color, Color, Color),
+}
+
+/// Color source for [`Shape::QuadraticBezier`]. See
+/// [`CubicBezierColors`].
+#[derive(Clone, Copy, Debug)]
+pub enum QuadraticBezierColors {
+    Solid(Color),
+    Gradient2(Color, Color),
+    Gradient3(Color, Color, Color),
+}
+
+impl CubicBezierColors {
+    /// True iff every color in the mode is no-op (zero alpha). Used
+    /// by `Shape::is_noop` to filter invisible curves at authoring.
+    pub(crate) fn is_noop(&self) -> bool {
+        match self {
+            CubicBezierColors::Solid(c) => c.is_noop(),
+            CubicBezierColors::Gradient2(a, b) => a.is_noop() && b.is_noop(),
+            CubicBezierColors::Gradient3(a, b, c) => a.is_noop() && b.is_noop() && c.is_noop(),
+            CubicBezierColors::Gradient4(a, b, c, d) => {
+                a.is_noop() && b.is_noop() && c.is_noop() && d.is_noop()
+            }
+        }
+    }
+}
+
+impl QuadraticBezierColors {
+    pub(crate) fn is_noop(&self) -> bool {
+        match self {
+            QuadraticBezierColors::Solid(c) => c.is_noop(),
+            QuadraticBezierColors::Gradient2(a, b) => a.is_noop() && b.is_noop(),
+            QuadraticBezierColors::Gradient3(a, b, c) => a.is_noop() && b.is_noop() && c.is_noop(),
+        }
+    }
+}
+
 /// Per-frame side-table arenas for shape variants that need
 /// variable-length backing storage. Lives on both
 /// [`crate::forest::tree::Tree`] (records reference these via
@@ -197,6 +282,12 @@ pub(crate) struct ShapeArenas {
     /// record is 1, `points.len()`, or `points.len() - 1` per
     /// `ColorMode`.
     pub(crate) polyline_colors: Vec<Color>,
+    /// Scratch for bezier flattening. Lives here so capacity
+    /// persists across frames — steady-state alloc-free. Cleared
+    /// (length only) every `add_shape` call that uses it; the
+    /// flattened points it produces get copied into
+    /// `polyline_points` immediately after.
+    pub(crate) bezier_scratch: Vec<FlatPoint>,
 }
 
 impl ShapeArenas {
@@ -205,6 +296,7 @@ impl ShapeArenas {
         self.meshes.clear();
         self.polyline_points.clear();
         self.polyline_colors.clear();
+        self.bezier_scratch.clear();
     }
 }
 
@@ -442,7 +534,6 @@ impl Hash for ShapeRecord {
 /// is never paint-empty.
 #[inline]
 fn local_rect_paint_empty(local_rect: &Option<Rect>) -> bool {
-    use crate::primitives::approx::EPS;
     local_rect.is_some_and(|r| r.size.w <= EPS || r.size.h <= EPS)
 }
 
@@ -473,6 +564,33 @@ impl Shape<'_> {
                     PolylineColors::PerPoint(cs) => cs.iter().all(|c| c.is_noop()),
                     PolylineColors::PerSegment(cs) => cs.iter().all(|c| c.is_noop()),
                 }
+            }
+            Shape::CubicBezier {
+                width,
+                colors,
+                p0,
+                p1,
+                p2,
+                p3,
+                ..
+            } => {
+                noop_f32(*width)
+                    || colors.is_noop()
+                    || (vec2_approx_eq(*p0, *p1)
+                        && vec2_approx_eq(*p0, *p2)
+                        && vec2_approx_eq(*p0, *p3))
+            }
+            Shape::QuadraticBezier {
+                width,
+                colors,
+                p0,
+                p1,
+                p2,
+                ..
+            } => {
+                noop_f32(*width)
+                    || colors.is_noop()
+                    || (vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2))
             }
             Shape::Text {
                 text,

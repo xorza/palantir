@@ -28,3 +28,14 @@ pub const fn approx_zero(c: f32) -> bool {
 pub const fn noop_f32(v: f32) -> bool {
     v.is_nan() || v <= EPS
 }
+
+/// True if two 2D points are within `EPS` of each other (Euclidean
+/// distance). Compares squared distance against `EPS²` to avoid a
+/// `sqrt`. Use when two points should be treated as coincident
+/// (degenerate stroke endpoints, zero-length segments).
+#[inline]
+pub(crate) const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
+    let dx = a.x - b.x;
+    let dy = a.y - b.y;
+    dx * dx + dy * dy <= EPS * EPS
+}

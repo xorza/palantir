@@ -9,9 +9,15 @@ use crate::forest::seen_ids::SeenIds;
 use crate::forest::tree::{Layer, NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
 use crate::layout::types::span::Span;
+use crate::primitives::bezier::{
+    eval_color_cubic, eval_color_quadratic, flatten_cubic, flatten_quadratic, lerp_color,
+};
 use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
-use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors, Shape, ShapeRecord};
+use crate::shape::{
+    ColorMode, CubicBezierColors, LineCap, LineJoin, PolylineColors, QuadraticBezierColors, Shape,
+    ShapeRecord,
+};
 use glam::Vec2;
 use std::array;
 use std::hash::Hasher as _;
@@ -182,6 +188,27 @@ impl Forest {
                 cap,
                 join,
             } => lower_polyline(tree, points, colors, width, cap, join),
+            Shape::CubicBezier {
+                p0,
+                p1,
+                p2,
+                p3,
+                width,
+                colors,
+                cap,
+                join,
+                tolerance,
+            } => lower_cubic_bezier(tree, p0, p1, p2, p3, width, colors, cap, join, tolerance),
+            Shape::QuadraticBezier {
+                p0,
+                p1,
+                p2,
+                width,
+                colors,
+                cap,
+                join,
+                tolerance,
+            } => lower_quadratic_bezier(tree, p0, p1, p2, width, colors, cap, join, tolerance),
             Shape::Text {
                 local_rect,
                 text,
@@ -372,5 +399,241 @@ fn points_aabb(points: &[Vec2]) -> Rect {
             w: hi.x - lo.x,
             h: hi.y - lo.y,
         },
+    }
+}
+
+/// Lower [`Shape::CubicBezier`] into `ShapeRecord::Polyline` by
+/// flattening into the tree's bezier scratch, copying points into
+/// `polyline_points`, evaluating the color mode per-point into
+/// `polyline_colors`, and stamping spans. `content_hash` covers the
+/// *control points + colors + tolerance + width + cap + join* — the
+/// flattened output is derived from these and shouldn't shift cache
+/// identity by itself.
+#[allow(clippy::too_many_arguments)]
+fn lower_cubic_bezier(
+    tree: &mut Tree,
+    p0: Vec2,
+    p1: Vec2,
+    p2: Vec2,
+    p3: Vec2,
+    width: f32,
+    colors: CubicBezierColors,
+    cap: LineCap,
+    join: LineJoin,
+    tolerance: f32,
+) -> ShapeRecord {
+    let arenas = &mut tree.shape_arenas;
+    arenas.bezier_scratch.clear();
+    flatten_cubic(p0, p1, p2, p3, tolerance, &mut arenas.bezier_scratch);
+
+    let p_start = arenas.polyline_points.len() as u32;
+    let n = arenas.bezier_scratch.len();
+    let mut lo = arenas.bezier_scratch[0].p;
+    let mut hi = lo;
+    arenas.polyline_points.reserve(n);
+    for fp in &arenas.bezier_scratch {
+        arenas.polyline_points.push(fp.p);
+        lo = lo.min(fp.p);
+        hi = hi.max(fp.p);
+    }
+
+    let c_start = arenas.polyline_colors.len() as u32;
+    let mode = match colors {
+        CubicBezierColors::Solid(c) => {
+            arenas.polyline_colors.push(c);
+            ColorMode::Single
+        }
+        CubicBezierColors::Gradient2(a, b) => {
+            arenas.polyline_colors.reserve(n);
+            for fp in &arenas.bezier_scratch {
+                arenas.polyline_colors.push(lerp_color(a, b, fp.t));
+            }
+            ColorMode::PerPoint
+        }
+        CubicBezierColors::Gradient3(a, b, c) => {
+            arenas.polyline_colors.reserve(n);
+            for fp in &arenas.bezier_scratch {
+                arenas
+                    .polyline_colors
+                    .push(eval_color_quadratic(a, b, c, fp.t));
+            }
+            ColorMode::PerPoint
+        }
+        CubicBezierColors::Gradient4(a, b, c, d) => {
+            arenas.polyline_colors.reserve(n);
+            for fp in &arenas.bezier_scratch {
+                arenas
+                    .polyline_colors
+                    .push(eval_color_cubic(a, b, c, d, fp.t));
+            }
+            ColorMode::PerPoint
+        }
+    };
+    let c_len = arenas.polyline_colors.len() as u32 - c_start;
+
+    let mut h = FxHasher::new();
+    // Tag the variant so a polyline with the same numeric bytes
+    // can't hash-collide with a bezier-derived record.
+    h.write_u8(0xCB);
+    h.write(bytemuck::bytes_of(&p0));
+    h.write(bytemuck::bytes_of(&p1));
+    h.write(bytemuck::bytes_of(&p2));
+    h.write(bytemuck::bytes_of(&p3));
+    h.write_u32(width.to_bits());
+    h.write_u32(tolerance.to_bits());
+    h.write_u8(cap as u8);
+    h.write_u8(join as u8);
+    hash_cubic_colors(&mut h, &colors);
+    let content_hash = h.finish();
+
+    let bbox = Rect {
+        min: lo,
+        size: crate::primitives::size::Size {
+            w: hi.x - lo.x,
+            h: hi.y - lo.y,
+        },
+    };
+
+    ShapeRecord::Polyline {
+        width,
+        color_mode: mode,
+        cap,
+        join,
+        points: Span::new(p_start, n as u32),
+        colors: Span::new(c_start, c_len),
+        bbox,
+        content_hash,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_quadratic_bezier(
+    tree: &mut Tree,
+    p0: Vec2,
+    p1: Vec2,
+    p2: Vec2,
+    width: f32,
+    colors: QuadraticBezierColors,
+    cap: LineCap,
+    join: LineJoin,
+    tolerance: f32,
+) -> ShapeRecord {
+    let arenas = &mut tree.shape_arenas;
+    arenas.bezier_scratch.clear();
+    flatten_quadratic(p0, p1, p2, tolerance, &mut arenas.bezier_scratch);
+
+    let p_start = arenas.polyline_points.len() as u32;
+    let n = arenas.bezier_scratch.len();
+    let mut lo = arenas.bezier_scratch[0].p;
+    let mut hi = lo;
+    arenas.polyline_points.reserve(n);
+    for fp in &arenas.bezier_scratch {
+        arenas.polyline_points.push(fp.p);
+        lo = lo.min(fp.p);
+        hi = hi.max(fp.p);
+    }
+
+    let c_start = arenas.polyline_colors.len() as u32;
+    let mode = match colors {
+        QuadraticBezierColors::Solid(c) => {
+            arenas.polyline_colors.push(c);
+            ColorMode::Single
+        }
+        QuadraticBezierColors::Gradient2(a, b) => {
+            arenas.polyline_colors.reserve(n);
+            for fp in &arenas.bezier_scratch {
+                arenas.polyline_colors.push(lerp_color(a, b, fp.t));
+            }
+            ColorMode::PerPoint
+        }
+        QuadraticBezierColors::Gradient3(a, b, c) => {
+            arenas.polyline_colors.reserve(n);
+            for fp in &arenas.bezier_scratch {
+                arenas
+                    .polyline_colors
+                    .push(eval_color_quadratic(a, b, c, fp.t));
+            }
+            ColorMode::PerPoint
+        }
+    };
+    let c_len = arenas.polyline_colors.len() as u32 - c_start;
+
+    let mut h = FxHasher::new();
+    h.write_u8(0xCB);
+    h.write_u8(0x02); // quadratic discriminant
+    h.write(bytemuck::bytes_of(&p0));
+    h.write(bytemuck::bytes_of(&p1));
+    h.write(bytemuck::bytes_of(&p2));
+    h.write_u32(width.to_bits());
+    h.write_u32(tolerance.to_bits());
+    h.write_u8(cap as u8);
+    h.write_u8(join as u8);
+    hash_quadratic_colors(&mut h, &colors);
+    let content_hash = h.finish();
+
+    let bbox = Rect {
+        min: lo,
+        size: crate::primitives::size::Size {
+            w: hi.x - lo.x,
+            h: hi.y - lo.y,
+        },
+    };
+
+    ShapeRecord::Polyline {
+        width,
+        color_mode: mode,
+        cap,
+        join,
+        points: Span::new(p_start, n as u32),
+        colors: Span::new(c_start, c_len),
+        bbox,
+        content_hash,
+    }
+}
+
+fn hash_cubic_colors(h: &mut FxHasher, colors: &CubicBezierColors) {
+    match colors {
+        CubicBezierColors::Solid(c) => {
+            h.write_u8(0);
+            h.write(bytemuck::bytes_of(c));
+        }
+        CubicBezierColors::Gradient2(a, b) => {
+            h.write_u8(1);
+            h.write(bytemuck::bytes_of(a));
+            h.write(bytemuck::bytes_of(b));
+        }
+        CubicBezierColors::Gradient3(a, b, c) => {
+            h.write_u8(2);
+            h.write(bytemuck::bytes_of(a));
+            h.write(bytemuck::bytes_of(b));
+            h.write(bytemuck::bytes_of(c));
+        }
+        CubicBezierColors::Gradient4(a, b, c, d) => {
+            h.write_u8(3);
+            h.write(bytemuck::bytes_of(a));
+            h.write(bytemuck::bytes_of(b));
+            h.write(bytemuck::bytes_of(c));
+            h.write(bytemuck::bytes_of(d));
+        }
+    }
+}
+
+fn hash_quadratic_colors(h: &mut FxHasher, colors: &QuadraticBezierColors) {
+    match colors {
+        QuadraticBezierColors::Solid(c) => {
+            h.write_u8(0);
+            h.write(bytemuck::bytes_of(c));
+        }
+        QuadraticBezierColors::Gradient2(a, b) => {
+            h.write_u8(1);
+            h.write(bytemuck::bytes_of(a));
+            h.write(bytemuck::bytes_of(b));
+        }
+        QuadraticBezierColors::Gradient3(a, b, c) => {
+            h.write_u8(2);
+            h.write(bytemuck::bytes_of(a));
+            h.write(bytemuck::bytes_of(b));
+            h.write(bytemuck::bytes_of(c));
+        }
     }
 }
