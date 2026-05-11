@@ -39,7 +39,6 @@ pub struct Host {
 
 pub(crate) struct PendingSubmit {
     pub(crate) damage: Damage,
-    pub(crate) debug_overlay: DebugOverlayConfig,
     pub(crate) frame_state: FrameState,
 }
 
@@ -99,7 +98,6 @@ impl Host {
             // surface copy without reading it.
             self.pending = Some(PendingSubmit {
                 damage: Damage::Skip,
-                debug_overlay: self.debug_overlay,
                 frame_state: self.ui.frame_state.clone(),
             });
             return FrameInfo {
@@ -120,9 +118,9 @@ impl Host {
         );
         self.pending = Some(PendingSubmit {
             damage: frame.damage,
-            debug_overlay: self.debug_overlay,
             frame_state: frame.frame_state.clone(),
         });
+
         info
     }
 
@@ -140,7 +138,7 @@ impl Host {
             &self.frontend.composer.buffer,
             &mut self.frontend.gradient_atlas,
             p.damage,
-            p.debug_overlay,
+            self.debug_overlay,
             &p.frame_state,
         );
     }
