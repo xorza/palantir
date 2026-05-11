@@ -88,11 +88,6 @@ pub struct TextChunk {
 }
 
 impl TextChunk {
-    pub const EMPTY: Self = Self {
-        bytes: [0; TEXT_CHUNK_CAP],
-        len: 0,
-    };
-
     /// Build a chunk from `s`. Returns `None` if `s` exceeds the inline
     /// capacity. Callers translating from winit should split at
     /// grapheme boundaries before calling — never split mid-codepoint.
@@ -218,13 +213,6 @@ mod tests {
         let c = TextChunk::new("").unwrap();
         assert!(c.is_empty());
         assert_eq!(c.as_str(), "");
-    }
-
-    #[test]
-    fn text_chunk_empty_constant_matches_constructed_empty() {
-        assert!(TextChunk::EMPTY.is_empty());
-        assert_eq!(TextChunk::EMPTY.as_str(), "");
-        assert_eq!(TextChunk::EMPTY, TextChunk::new("").unwrap());
     }
 
     #[test]
