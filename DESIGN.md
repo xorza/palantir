@@ -34,26 +34,28 @@ The tree is rebuilt every frame but laid out fresh — no stale cached sizes, no
 
 ## Tree shape
 
-Arena `Tree`, **SoA** — `records: Soa<NodeRecord>` (via `soa-rs`) indexed by `NodeId.0`. `NodeRecord` packs six logically-disjoint columns into one push site; `soa-rs` lays each field out as its own contiguous slice, so each pass reads only the bytes it needs:
+Arena `Tree`, **SoA** — `records: Soa<NodeRecord>` (via `soa-rs`) indexed by `NodeId.0`. `NodeRecord` packs five logically-disjoint columns into one push site; `soa-rs` lays each field out as its own contiguous slice, so each pass reads only the bytes it needs:
 
 - `layout: LayoutCore` — mode/size/padding/margin/align/visibility (read by measure + arrange as a bundle; all six fields touched together so they stay packed in one column).
-- `attrs: PaintAttrs` — 1-byte packed sense/disabled/clip/focusable. Read by cascade / encoder.
+- `attrs: NodeFlags` — 1-byte packed sense/disabled/clip/focusable. Read by cascade / encoder.
 - `widget_id: WidgetId` — hit-test, state map, damage diff.
-- `end: u32` — pre-order topology, `i + 1 == end` for a leaf. Drives every walk; densest column at 4 B/node.
-- `kinds: Span`, `shapes: Span` — encoder span lookups into the kinds stream and shape buffer.
+- `subtree_end: u32` — pre-order topology, `i + 1 == subtree_end` for a leaf. Drives every walk; densest column at 4 B/node.
+- `shape_span: Span` — slice into the flat shape buffer covering this node's subtree (parent + descendants); the gap between children's sub-ranges holds the parent's direct shapes.
 
 Adjacent storage on the tree, not part of the SoA:
 
-- `kinds: Vec<TreeOp>` — tagged event stream interleaving `NodeEnter` / `Shape` / `NodeExit` in record order; encoder walks it linearly.
-- `shapes: Vec<Shape>` — flat shape buffer; per-node ranges live in `records.shapes()[i]`.
-- `extras: SparseColumn<ElementExtras>` — out-of-line side table for rare fields (`transform`, `position`, `grid` cell). Sparse: nodes with default extras don't allocate a row.
-- `chrome: SparseColumn<Background>` — panel chrome, sparse for the same reason.
+- `shapes: Shapes` — flat per-frame `ShapeRecord` buffer (`shapes.records`) + per-variant payload arenas (`shapes.payloads`) backing the variable-length `Polyline` / `Mesh` variants. Per-node ranges live in `records.shape_span()[i]`.
+- `parents: Vec<NodeId>` — `NodeId::ROOT` for roots; gives any post-recording pass O(1) "who's my parent?" without a backwards `subtree_end` walk.
+- `bounds: SparseColumn<BoundsExtras>` — rare positioning fields (`transform`, absolute `position`).
+- `panel: SparseColumn<PanelExtras>` — panel-only fields (grid cell + span, scroll axes).
+- `chrome: SparseColumn<Background>` — panel chrome (fill + radius).
+- `clip_radius: SparseColumn<Corners>` — mask radius for `ClipMode::Rounded`. Decoupled from `chrome` so a clipped node with invisible paint still has a radius for the stencil-mask path.
 - `grid: GridArena` — frame-scoped `Vec<GridDef>` for `LayoutMode::Grid(idx)` panels.
-- `hashes: NodeHashes` — `node` (per-node authoring hash), `subtree` (rollup of node + children's subtree hashes), `subtree_has_grid` (fast-path bit). Populated in `end_frame` after `end` rolls up. Keys the cross-frame `MeasureCache`.
+- `rollups: SubtreeRollups` — per-node + subtree hashes, `paints` bitset, `has_grid` fast-path bit. Populated in `end_frame` after `subtree_end` rolls up. Keys the cross-frame `MeasureCache`.
 
-Atomic-push across the SoA columns means `open_node` writes all six per-node fields together and they can't drift; the `assert_recording_invariants` length check collapses to a single comparison against the kinds stream. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, **not** on the tree — the tree is input, results are derived.
+Atomic-push across the SoA columns means `open_node` writes all five per-node fields together and they can't drift. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, **not** on the tree — the tree is input, results are derived.
 
-`Shape` (paint primitive: `RoundedRect`, `Text`, `Line`) is stored flat in `Tree.shapes`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. **Layout passes ignore Shapes and `attrs`; paint pass ignores hierarchy beyond `end`.** This decoupling is load-bearing.
+`Shape` (paint primitive: `RoundedRect`, `Line`, `Polyline`, `CubicBezier`, `QuadraticBezier`, `Text`, `Mesh`) is lowered at authoring time into `ShapeRecord`s in `Tree.shapes.records`; variable-length `Polyline`/`Mesh` data sits in `Tree.shapes.payloads`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. **Layout passes ignore Shapes and `attrs`; paint pass ignores hierarchy beyond `subtree_end`.** This decoupling is load-bearing.
 
 ## Sizing model (flex-shrink with min-content floor)
 
@@ -77,7 +79,7 @@ Canonical impl: `resolve_axis_size` in `src/layout/support.rs` (the per-axis mat
 
 ## Layout dispatch
 
-No `trait Layout`. A `LayoutEngine` dispatches on a `LayoutMode` enum (`Leaf`/`HStack`/`VStack`/`WrapHStack`/`WrapVStack`/`ZStack`/`Canvas`/`Grid(u16)`/`Scroll(ScrollAxes)`) into per-driver modules under `src/layout/`. Each driver exports three free `pub(crate) fn`s — `measure`, `arrange`, `intrinsic` — matched into `LayoutEngine::measure_dispatch`, `arrange`, and `intrinsic::compute`. Adding a driver = new variant + new module + match arms; exhaustive matches catch the missing arms at compile time.
+No `trait Layout`. A `LayoutEngine` dispatches on a `LayoutMode` enum (`Leaf`/`HStack`/`VStack`/`WrapHStack`/`WrapVStack`/`ZStack`/`Canvas`/`Grid(u16)`/`Scroll(ScrollAxes)`) into per-driver modules under `src/layout/` (`stack`, `wrapstack`, `zstack`, `canvas`, `grid`, `scroll`). Each driver exports three free `pub(crate) fn`s — `measure`, `arrange`, `intrinsic` — matched into `LayoutEngine::measure_dispatch`, `arrange`, and `intrinsic::compute`. Adding a driver = new variant + new module + match arms; exhaustive matches catch the missing arms at compile time.
 
 **Single dispatch.** `measure` runs the driver once. The old WPF-style "grow loop" (re-dispatch when content exceeds available) is gone — under flex-shrink semantics, `intrinsic_min` is computed up front, `available` is floored at `intrinsic_min` before dispatch, and `resolve_axis_size` clamps the result. Every driver's content size is monotone in `available`, so a re-dispatch would converge to the same value. Pinned by `cross_driver_tests::convergence`.
 
