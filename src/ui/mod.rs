@@ -122,7 +122,7 @@ impl Ui {
         display: Display,
         now: Duration,
         mut record: impl FnMut(&mut Ui),
-    ) -> Option<RecordedFrame<'_>> {
+    ) -> RecordedFrame<'_> {
         assert!(
             display.scale_factor >= EPS,
             "Display::scale_factor must be ≥ EPSILON; got {}",
@@ -168,13 +168,14 @@ impl Ui {
             record(self);
             self.post_record();
         }
-        let Some(damage) = self.finalize_frame() else {
+        let damage = self.finalize_frame();
+        if damage.is_some() {
+            self.frame_state.mark_pending();
+        } else {
             self.frame_state.mark_submitted();
-            return None;
-        };
-        self.frame_state.mark_pending();
+        }
 
-        Some(RecordedFrame {
+        RecordedFrame {
             forest: &self.forest,
             layout: &self.layout,
             cascades: &self.layout.cascades,
@@ -182,7 +183,7 @@ impl Ui {
             damage,
             repaint_requested: self.repaint_requested,
             frame_state: self.frame_state.clone(),
-        })
+        }
     }
 
     /// Feed a palantir-native input event. Hosts own redraw scheduling.

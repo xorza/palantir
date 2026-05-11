@@ -96,26 +96,16 @@ impl Host {
     /// Returns the host-facing [`FrameInfo`]; internal state needed
     /// by [`Self::render`] is stashed.
     pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameInfo {
-        let Some(frame) = self.ui.frame(display, self.start.elapsed(), record) else {
-            // Skip: keep the prior composer buffer untouched; the
-            // backend's skip path just copies the backbuffer onto
-            // the swapchain.
-            self.pending = Some(PendingSubmit {
-                damage: None,
-                frame_state: self.ui.frame_state.clone(),
-            });
-            return FrameInfo {
-                can_skip_rendering: true,
-                repaint_requested: self.ui.repaint_requested,
-            };
-        };
+        let frame = self.ui.frame(display, self.start.elapsed(), record);
         let info = FrameInfo {
-            can_skip_rendering: false,
+            can_skip_rendering: frame.damage.is_none(),
             repaint_requested: frame.repaint_requested(),
         };
-        self.frontend.build(&frame);
+        if frame.damage.is_some() {
+            self.frontend.build(&frame);
+        }
         self.pending = Some(PendingSubmit {
-            damage: Some(frame.damage),
+            damage: frame.damage,
             frame_state: frame.frame_state.clone(),
         });
 

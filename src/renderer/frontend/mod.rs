@@ -85,7 +85,11 @@ pub struct RecordedFrame<'a> {
     pub(crate) layout: &'a Layout,
     pub(crate) cascades: &'a Cascades,
     pub(crate) display: Display,
-    pub(crate) damage: Damage,
+    /// `None` is the skip signal: the diff produced no work, so the
+    /// host can bypass `Frontend::build` + GPU submit and just
+    /// present the backbuffer. `Some(Full | Partial)` carries the
+    /// paint plan.
+    pub(crate) damage: Option<Damage>,
     pub(crate) repaint_requested: bool,
     /// Shared with `Ui::frame_state`. Set to `Pending` by
     /// `Ui::run_frame` and (on success) to `Submitted` by
@@ -105,8 +109,8 @@ impl RecordedFrame<'_> {
 
     pub(crate) fn damage_filter(&self) -> Option<&DamageRegion> {
         match &self.damage {
-            Damage::Partial(region) => Some(region),
-            Damage::Full => None,
+            Some(Damage::Partial(region)) => Some(region),
+            Some(Damage::Full) | None => None,
         }
     }
 }

@@ -155,7 +155,7 @@ fn instant_duration_is_noop_and_drops_row() {
             assert_eq!(v, 1.0);
             Frame::new().id_salt("anim-instant").show(ui);
         })
-        .is_some_and(|f| f.repaint_requested());
+        .repaint_requested();
     assert!(!repaint);
     assert_eq!(crate::support::internals::anim_row_count::<f32>(&mut ui), 0);
 
@@ -490,7 +490,7 @@ fn animate_drives_repaint_until_settle() {
             let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
             Frame::new().id_salt("anim-test").show(ui);
         })
-        .is_some_and(|f| f.repaint_requested());
+        .repaint_requested();
     assert!(
         !repaint,
         "first-touch settled animation must not request repaint",
@@ -501,7 +501,7 @@ fn animate_drives_repaint_until_settle() {
             let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
             Frame::new().id_salt("anim-test").show(ui);
         })
-        .is_some_and(|f| f.repaint_requested());
+        .repaint_requested();
     assert!(repaint, "in-flight animation must request repaint");
 
     let mut now = Duration::from_millis(16);
@@ -513,7 +513,7 @@ fn animate_drives_repaint_until_settle() {
                 let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
                 Frame::new().id_salt("anim-test").show(ui);
             })
-            .is_some_and(|f| f.repaint_requested());
+            .repaint_requested();
         if !repaint {
             settled_at = Some(i);
             break;
@@ -646,7 +646,7 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
             assert_eq!(v2, 9.0);
             Frame::new().id_salt("anim-none").show(ui);
         })
-        .is_some_and(|f| f.repaint_requested());
+        .repaint_requested();
     assert!(!repaint, "None spec must never request a repaint");
     assert!(
         crate::support::internals::anim_row_count::<f32>(&mut ui) == 0,
