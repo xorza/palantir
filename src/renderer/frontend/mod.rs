@@ -83,7 +83,7 @@ impl FrameState {
 /// [`Renderer::render`]: crate::renderer::Renderer::render
 pub struct RecordedFrame<'a> {
     pub(crate) forest: &'a Forest,
-    pub(crate) results: &'a LayoutResult,
+    pub(crate) layout: &'a LayoutResult,
     pub(crate) cascades: &'a CascadeResult,
     pub(crate) display: Display,
     pub(crate) damage: DamagePaint,

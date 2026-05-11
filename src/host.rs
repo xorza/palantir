@@ -96,7 +96,7 @@ impl Host {
         };
         self.frontend.build(
             frame.forest,
-            frame.results,
+            frame.layout,
             frame.cascades,
             frame.damage_filter(),
             &frame.display,
