@@ -72,7 +72,7 @@ fn empty_ui_drives_a_frame_safely() {
     {
         use crate::renderer::frontend::{Frontend, RecordedFrame};
         ui.post_record();
-        let _damage = ui.finalize_frame();
+        ui.finalize_frame();
         let mut frontend = Frontend::default();
         // Empty UI on the first frame: `finalize_frame` returns
         // `None` (skip) — but to exercise the encode/compose path we

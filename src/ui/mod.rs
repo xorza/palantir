@@ -45,6 +45,10 @@ pub struct Ui {
     pub(crate) cascades_engine: CascadesEngine,
     pub(crate) display: Display,
     pub(crate) damage_engine: DamageEngine,
+    /// Paint plan for this frame as produced by `finalize_frame`.
+    /// `None` ⇒ skip path (nothing changed; backbuffer is correct).
+    /// `Some(Full | Partial)` ⇒ work for the renderer.
+    pub(crate) damage: Option<Damage>,
     /// `now - prev_now` clamped to [`Self::MAX_DT`].
     pub(crate) dt: f32,
     /// Bumped once per [`Self::run_frame`], before either pass —
@@ -101,6 +105,7 @@ impl Ui {
             cascades_engine: CascadesEngine::default(),
             display: Display::default(),
             damage_engine: DamageEngine::default(),
+            damage: None,
             dt: 0.0,
             frame_id: 0,
             time: Duration::ZERO,
@@ -161,15 +166,14 @@ impl Ui {
         if action_flag || self.relayout_requested {
             // Pass B paints, regardless of any further re-record
             // request — caps relayout at one retry per `run_frame`.
-
             self.input.drain_per_frame_queues();
             self.pre_record();
 
             record(self);
             self.post_record();
         }
-        let damage = self.finalize_frame();
-        if damage.is_some() {
+        self.finalize_frame();
+        if self.damage.is_some() {
             self.frame_state.mark_pending();
         } else {
             self.frame_state.mark_submitted();
@@ -180,7 +184,7 @@ impl Ui {
             layout: &self.layout,
             cascades: &self.layout.cascades,
             display,
-            damage,
+            damage: self.damage,
             repaint_requested: self.repaint_requested,
             frame_state: self.frame_state.clone(),
         }
@@ -225,7 +229,7 @@ impl Ui {
     /// Sweep runs here (once per `run_frame`) rather than per
     /// `post_record` so a widget that vanishes in pass A but returns
     /// in pass B keeps its state across the discard.
-    pub(crate) fn finalize_frame(&mut self) -> Option<Damage> {
+    pub(crate) fn finalize_frame(&mut self) {
         let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);
@@ -234,12 +238,12 @@ impl Ui {
 
         self.cascades_engine.run(&self.forest, &mut self.layout);
         self.input.post_record(&self.layout.cascades);
-        self.damage_engine.compute(
+        self.damage = self.damage_engine.compute(
             &self.forest,
             &self.layout.cascades,
             &self.forest.ids.removed,
             self.display.logical_rect(),
-        )
+        );
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────
