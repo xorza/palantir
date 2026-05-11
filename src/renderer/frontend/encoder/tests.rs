@@ -199,7 +199,7 @@ fn line_shape_emits_draw_polyline() {
         .count();
     assert_eq!(count, 1, "expected exactly one DrawPolyline cmd");
     assert_eq!(
-        cmds.polyline_points.len(),
+        cmds.shape_arenas.polyline_points.len(),
         2,
         "one 2-point line populates the points arena"
     );

@@ -23,10 +23,11 @@
 //! (`DrawTextPayload`) work even when the arena slot starts at a
 //! 4-byte-only-aligned offset.
 
-use crate::primitives::mesh::{Mesh, MeshVertex};
+use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
+use crate::shape::ShapeArenas;
 use crate::text::TextCacheKey;
 use glam::Vec2;
 
@@ -141,20 +142,13 @@ pub(crate) struct RenderCmdBuffer {
     pub(crate) kinds: Vec<CmdKind>,
     pub(crate) starts: Vec<u32>,
     pub(crate) data: Vec<u32>,
-    /// Self-contained mesh storage. `DrawMesh` payload spans slice
-    /// into `meshes.vertices` / `meshes.indices`. Self-containment is
-    /// load-bearing: the encode cache snapshots a sub-range of
-    /// `kinds`/`starts`/`data` plus a copy of these mesh arrays, so
-    /// replay doesn't need the original `Tree` mesh arenas around.
-    pub(crate) meshes: Mesh,
-    /// Polyline point arena. `DrawPolyline` payload spans slice into
-    /// this. Same self-containment story as `meshes`: a future
-    /// encode cache must snapshot this vec alongside the cmd-stream
-    /// range. Cleared in [`Self::clear`].
-    pub(crate) polyline_points: Vec<Vec2>,
-    /// Polyline color arena. Parallel to `polyline_points`; the
-    /// payload picks an interpretation via `color_mode`.
-    pub(crate) polyline_colors: Vec<Color>,
+    /// Self-contained per-variant geometry. `DrawMesh` /
+    /// `DrawPolyline` payload spans slice into the arenas inside
+    /// this. Self-containment is load-bearing: a future encode
+    /// cache snapshots a sub-range of `kinds`/`starts`/`data` plus
+    /// a copy of this struct, so replay doesn't need the original
+    /// `Tree` arenas around. See [`ShapeArenas`].
+    pub(crate) shape_arenas: ShapeArenas,
 }
 
 impl RenderCmdBuffer {
@@ -162,9 +156,7 @@ impl RenderCmdBuffer {
         self.kinds.clear();
         self.starts.clear();
         self.data.clear();
-        self.meshes.clear();
-        self.polyline_points.clear();
-        self.polyline_colors.clear();
+        self.shape_arenas.clear();
     }
 
     #[inline]
@@ -235,10 +227,11 @@ impl RenderCmdBuffer {
         verts: &[MeshVertex],
         idx: &[u16],
     ) {
-        let v_start = self.meshes.vertices.len() as u32;
-        self.meshes.vertices.extend_from_slice(verts);
-        let i_start = self.meshes.indices.len() as u32;
-        self.meshes.indices.extend_from_slice(idx);
+        let mesh = &mut self.shape_arenas.meshes;
+        let v_start = mesh.vertices.len() as u32;
+        mesh.vertices.extend_from_slice(verts);
+        let i_start = mesh.indices.len() as u32;
+        mesh.indices.extend_from_slice(idx);
         self.record_start(CmdKind::DrawMesh);
         write_pod(
             &mut self.data,

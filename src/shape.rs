@@ -173,6 +173,36 @@ pub enum PolylineColors<'a> {
     PerSegment(&'a [Color]),
 }
 
+/// Per-frame side-table arenas for shape variants that need
+/// variable-length backing storage. Lives on both
+/// [`crate::forest::tree::Tree`] (records reference these via
+/// `Span`s) and [`crate::renderer::frontend::cmd_buffer::RenderCmdBuffer`]
+/// (cmd payloads do the same). Cleared together per frame,
+/// capacity retained — single struct keeps the lifecycle and
+/// future-extension story (curves, etc.) in one place instead of
+/// scattered fields on every container.
+#[derive(Default)]
+pub(crate) struct ShapeArenas {
+    /// Vertex + index storage for `ShapeRecord::Mesh`.
+    pub(crate) meshes: Mesh,
+    /// Point storage for `ShapeRecord::Polyline`. Indexed by the
+    /// record's `points` `Span`.
+    pub(crate) polyline_points: Vec<Vec2>,
+    /// Color storage for `ShapeRecord::Polyline`. Length per
+    /// record is 1, `points.len()`, or `points.len() - 1` per
+    /// `ColorMode`.
+    pub(crate) polyline_colors: Vec<Color>,
+}
+
+impl ShapeArenas {
+    /// Drop all per-frame contents; preserve capacity.
+    pub(crate) fn clear(&mut self) {
+        self.meshes.clear();
+        self.polyline_points.clear();
+        self.polyline_colors.clear();
+    }
+}
+
 /// Storage tag for [`ShapeRecord::Polyline`]. `u8` for compactness
 /// on the record; promoted to `u32` in `DrawPolylinePayload` to
 /// keep that struct Pod-aligned. Discriminants are stable

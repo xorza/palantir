@@ -290,7 +290,7 @@ impl Composer {
                     let i_end = i_start + p.i_len as usize;
                     let phys_v_start = out.meshes.arena.vertices.len() as u32;
                     let tint = p.tint;
-                    for v in &cmds.meshes.vertices[v_start..v_end] {
+                    for v in &cmds.shape_arenas.meshes.vertices[v_start..v_end] {
                         let world = current_transform.apply_point(v.pos + p.origin);
                         // Premultiplied-alpha tinting: component-wise
                         // multiply works for both rgb and alpha. The
@@ -311,7 +311,7 @@ impl Composer {
                     out.meshes
                         .arena
                         .indices
-                        .extend_from_slice(&cmds.meshes.indices[i_start..i_end]);
+                        .extend_from_slice(&cmds.shape_arenas.meshes.indices[i_start..i_end]);
                     group.push_mesh(
                         out,
                         MeshDraw {
@@ -366,8 +366,8 @@ impl Composer {
                     let pts_end = pts_start + p.points_len as usize;
                     let cs_start = p.colors_start as usize;
                     let cs_end = cs_start + p.colors_len as usize;
-                    let src_points = &cmds.polyline_points[pts_start..pts_end];
-                    let src_colors = &cmds.polyline_colors[cs_start..cs_end];
+                    let src_points = &cmds.shape_arenas.polyline_points[pts_start..pts_end];
+                    let src_colors = &cmds.shape_arenas.polyline_colors[cs_start..cs_end];
 
                     // Transform points into physical-px. No
                     // pixel-snap — snapping stroke verts shifts
