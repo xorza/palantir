@@ -38,13 +38,13 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     });
     ui.record_phase();
     ui.paint_phase();
-    let c = ui.layout.result[Layer::Main].rect[canvas_node.unwrap().index()];
+    let c = ui.layout[Layer::Main].rect[canvas_node.unwrap().index()];
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
     assert_eq!(c.size.w, 110.0);
     assert_eq!(c.size.h, 100.0);
 
-    let a = ui.layout.result[Layer::Main].rect[a_node.unwrap().index()];
-    let b = ui.layout.result[Layer::Main].rect[b_node.unwrap().index()];
+    let a = ui.layout[Layer::Main].rect[a_node.unwrap().index()];
+    let b = ui.layout[Layer::Main].rect[b_node.unwrap().index()];
     assert_eq!((a.min.x, a.min.y), (10.0, 5.0));
     assert_eq!((a.size.w, a.size.h), (40.0, 20.0));
     assert_eq!((b.min.x, b.min.y), (80.0, 40.0));

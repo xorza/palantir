@@ -13,9 +13,12 @@
 //! `place_axis` with the `Auto-stretches-Fill` rule makes Fill children
 //! grow to that height (CSS `align-items: stretch` default).
 
+use super::axis::Axis;
+use super::intrinsic::LenReq;
+use super::layoutengine::LayoutEngine;
 use super::support::{JustifyOffsets, cross_place, justify_offsets, zero_subtree};
-use super::{Axis, LayoutEngine, LenReq};
 use crate::forest::tree::{Child, NodeId, Tree};
+use crate::layout::Layout;
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
@@ -106,6 +109,7 @@ pub(crate) fn measure(
     inner: Size,
     axis: Axis,
     text: &TextShaper,
+    out: &mut Layout,
 ) -> Size {
     let panel = tree.panel(node);
     let gap = panel.gap;
@@ -123,7 +127,13 @@ pub(crate) fn measure(
     let mut line_count = 0usize;
 
     for c in tree.children(node).filter_map(Child::active) {
-        let d = layout.measure(tree, c, axis.compose_size(f32::INFINITY, cross_avail), text);
+        let d = layout.measure(
+            tree,
+            c,
+            axis.compose_size(f32::INFINITY, cross_avail),
+            text,
+            out,
+        );
         let ChildPack { m, x } = child_pack(axis, tree.records.layout()[c.index()].size, d);
         if would_wrap(line_main, gap, m, main_avail) {
             max_line_main = max_line_main.max(line_main);
@@ -160,6 +170,7 @@ pub(crate) fn arrange(
     node: NodeId,
     inner: Rect,
     axis: Axis,
+    out: &mut Layout,
 ) {
     let panel = tree.panel(node);
     let gap = panel.gap;
@@ -183,6 +194,7 @@ pub(crate) fn arrange(
     let mut first_line = true;
 
     let place_line = |layout: &mut LayoutEngine,
+                      out: &mut Layout,
                       line_main: f32,
                       line_cross: f32,
                       cross_cursor: &mut f32,
@@ -225,7 +237,7 @@ pub(crate) fn arrange(
                 main_size,
                 cross_p.size,
             );
-            layout.arrange(tree, c, child_rect);
+            layout.arrange(tree, c, child_rect, out);
             main_cursor += main_size;
         }
         *cross_cursor += line_cross;
@@ -249,6 +261,7 @@ pub(crate) fn arrange(
                 tree,
                 c,
                 axis.compose_point(axis.main_v(inner.min), cross_cursor),
+                out,
             );
             continue;
         }
@@ -258,6 +271,7 @@ pub(crate) fn arrange(
         if would_wrap(line_main, gap, m, main_avail) {
             place_line(
                 layout,
+                out,
                 line_main,
                 line_cross,
                 &mut cross_cursor,
@@ -278,6 +292,7 @@ pub(crate) fn arrange(
     }
     place_line(
         layout,
+        out,
         line_main,
         line_cross,
         &mut cross_cursor,

@@ -20,6 +20,7 @@
 use crate::forest::element::ScrollAxes;
 use crate::forest::tree::{NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
+use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -27,7 +28,7 @@ use crate::text::TextShaper;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 
-use super::LayoutEngine;
+use super::layoutengine::LayoutEngine;
 use super::stack;
 use super::zstack;
 
@@ -134,6 +135,7 @@ pub(crate) fn measure(
     inner_avail: Size,
     axes: ScrollAxes,
     text: &TextShaper,
+    out: &mut Layout,
 ) -> Size {
     let raw = match axes {
         ScrollAxes::Vertical => stack::measure(
@@ -143,6 +145,7 @@ pub(crate) fn measure(
             Size::new(inner_avail.w, f32::INFINITY),
             Axis::Y,
             text,
+            out,
         ),
         ScrollAxes::Horizontal => stack::measure(
             layout,
@@ -151,8 +154,9 @@ pub(crate) fn measure(
             Size::new(f32::INFINITY, inner_avail.h),
             Axis::X,
             text,
+            out,
         ),
-        ScrollAxes::Both => zstack::measure(layout, tree, node, Size::INF, text),
+        ScrollAxes::Both => zstack::measure(layout, tree, node, Size::INF, text, out),
     };
 
     let wid = tree.records.widget_id()[node.index()];
@@ -177,11 +181,12 @@ pub(crate) fn arrange(
     node: NodeId,
     inner: Rect,
     axes: ScrollAxes,
+    out: &mut Layout,
 ) {
     match axes {
-        ScrollAxes::Vertical => stack::arrange(layout, tree, node, inner, Axis::Y),
-        ScrollAxes::Horizontal => stack::arrange(layout, tree, node, inner, Axis::X),
-        ScrollAxes::Both => zstack::arrange(layout, tree, node, inner),
+        ScrollAxes::Vertical => stack::arrange(layout, tree, node, inner, Axis::Y, out),
+        ScrollAxes::Horizontal => stack::arrange(layout, tree, node, inner, Axis::X, out),
+        ScrollAxes::Both => zstack::arrange(layout, tree, node, inner, out),
     }
 
     let wid = tree.records.widget_id()[node.index()];
@@ -194,7 +199,7 @@ pub(crate) fn arrange(
     // scroll (no wrapper).
     let parent = tree.parents[node.index()];
     let outer = if parent != NodeId::ROOT {
-        layout.result[layout.active_layer].rect[parent.index()].size
+        out[layout.active_layer].rect[parent.index()].size
     } else {
         inner.size
     };

@@ -275,7 +275,7 @@ fn scroll_records_content_extent() {
         let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");
         let state = *scroll_state(&mut ui, scroll_id);
         assert_eq!(state.content, *expected, "case: {label} content");
-        let rect = ui.layout.result[Layer::Main].rect[scroll_node.index()];
+        let rect = ui.layout[Layer::Main].rect[scroll_node.index()];
         // Viewport honors the Scroll's Fixed size, ignoring overflow content.
         let want_view = match axis {
             Axis::V => (200.0, 200.0),
@@ -759,7 +759,7 @@ mod bars {
         ui.paint_phase();
         ui.begin_frame(Display::from_physical(surface, 1.0));
         build(&mut ui);
-        // Frame-2 layout pass so `LayoutResult.rect` reflects the
+        // Frame-2 layout pass so `Layout.rect` reflects the
         // bar-overlay subtree (thumb leaves live there, indexed by
         // `NodeId` against layout.result).
         ui.record_phase();
@@ -798,7 +798,7 @@ mod bars {
     /// default theme paints transparent tracks.
     fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<crate::primitives::rect::Rect> {
         let tree = ui.forest.tree(Layer::Main);
-        let layout = &ui.layout.result[Layer::Main];
+        let layout = &ui.layout[Layer::Main];
         let outer_id = WidgetId::from_hash(scroll_key);
         let scroll_id = outer_id.with("__viewport");
         let widget_ids = tree.records.widget_id();

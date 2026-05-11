@@ -21,7 +21,7 @@ use std::rc::Rc;
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
 fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
-    let shaped = support::shaped_text(&ui.layout.result[Layer::Main], node);
+    let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
     assert!(
         shaped.measured.h > 32.0,
         "expected multi-line wrapped height, got h={}",
@@ -100,7 +100,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
     });
     ui.record_phase();
     ui.paint_phase();
-    let r = ui.layout.result[Layer::Main].rect[zstack_node.unwrap().index()];
+    let r = ui.layout[Layer::Main].rect[zstack_node.unwrap().index()];
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -138,7 +138,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
             });
         ui.record_phase();
         ui.paint_phase();
-        support::shaped_text(&ui.layout.result[Layer::Main], value_node.unwrap())
+        support::shaped_text(&ui.layout[Layer::Main], value_node.unwrap())
             .measured
             .h
     }
@@ -193,7 +193,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
     });
     ui.record_phase();
     ui.paint_phase();
-    let shaped = support::shaped_text(&ui.layout.result[Layer::Main], value_node.unwrap());
+    let shaped = support::shaped_text(&ui.layout[Layer::Main], value_node.unwrap());
     assert!(
         shaped.measured.h > 32.0,
         "Fill grid + Fill col should wrap text under constrained width; got h={}",
@@ -256,7 +256,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
         });
     ui.record_phase();
     ui.paint_phase();
-    let h = ui.layout.result[Layer::Main].rect[grid_node.unwrap().index()]
+    let h = ui.layout[Layer::Main].rect[grid_node.unwrap().index()]
         .size
         .h;
     assert!(
@@ -308,7 +308,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
         });
     ui.record_phase();
     ui.paint_phase();
-    let h = ui.layout.result[Layer::Main].rect[grid_node.unwrap().index()]
+    let h = ui.layout[Layer::Main].rect[grid_node.unwrap().index()]
         .size
         .h;
     assert!(

@@ -25,7 +25,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
     ui.record_phase();
     ui.paint_phase();
     assert_eq!(
-        ui.layout.result[Layer::Main].rect[root.index()],
+        ui.layout[Layer::Main].rect[root.index()],
         Rect::new(0.0, 0.0, 800.0, 600.0)
     );
 
@@ -41,13 +41,13 @@ fn hstack_arranges_two_buttons_side_by_side() {
     // LINE_HEIGHT_MULT = 16 * 1.2 = 19.2. Default `ButtonTheme.padding`
     // is `Spacing::xy(12.0, 6.0)`, so the button hugs label + padding:
     // 16 + 12 + 12 = 40 wide, 19.2 + 6 + 6 = 31.2 tall.
-    let a = ui.layout.result[Layer::Main].rect[kids[0].index()];
+    let a = ui.layout[Layer::Main].rect[kids[0].index()];
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.min.y, 0.0);
     assert_eq!(a.size.w, 40.0);
     assert_eq!(a.size.h, 31.2);
 
-    let b = ui.layout.result[Layer::Main].rect[kids[1].index()];
+    let b = ui.layout[Layer::Main].rect[kids[1].index()];
     assert_eq!(b.min.x, 40.0);
     assert_eq!(b.size.w, 100.0);
     assert_eq!(b.size.h, 31.2);
@@ -76,8 +76,8 @@ fn vstack_with_fill_distributes_remainder() {
         .children(root)
         .map(|c| c.id)
         .collect();
-    let fixed = ui.layout.result[Layer::Main].rect[kids[0].index()];
-    let filler = ui.layout.result[Layer::Main].rect[kids[1].index()];
+    let fixed = ui.layout[Layer::Main].rect[kids[0].index()];
+    let filler = ui.layout[Layer::Main].rect[kids[1].index()];
 
     assert_eq!(fixed.size.h, 50.0);
     assert_eq!(filler.min.y, 50.0);
@@ -108,8 +108,8 @@ fn hstack_fill_weights_split_remainder_proportionally() {
         .children(root)
         .map(|c| c.id)
         .collect();
-    let a = ui.layout.result[Layer::Main].rect[kids[0].index()];
-    let b = ui.layout.result[Layer::Main].rect[kids[1].index()];
+    let a = ui.layout[Layer::Main].rect[kids[0].index()];
+    let b = ui.layout[Layer::Main].rect[kids[1].index()];
     // 400 leftover / 4 weight = 100 per weight unit → a=100, b=300.
     assert_eq!(a.size.w, 100.0);
     assert_eq!(b.size.w, 300.0);
@@ -142,8 +142,8 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
         .children(root)
         .map(|c| c.id)
         .collect();
-    let a = ui.layout.result[Layer::Main].rect[kids[0].index()];
-    let b = ui.layout.result[Layer::Main].rect[kids[1].index()];
+    let a = ui.layout[Layer::Main].rect[kids[0].index()];
+    let b = ui.layout[Layer::Main].rect[kids[1].index()];
     assert_eq!(a.size.w, 200.0);
     assert_eq!(b.size.w, 200.0);
     assert_eq!(a.min.x, 0.0);
@@ -185,7 +185,7 @@ fn hstack_justify_distributes_leftover() {
             .collect();
         for (i, want_x) in expected_xs.iter().enumerate() {
             assert_eq!(
-                ui.layout.result[Layer::Main].rect[kids[i].index()].min.x,
+                ui.layout[Layer::Main].rect[kids[i].index()].min.x,
                 *want_x,
                 "case: {label} child[{i}].min.x",
             );
@@ -218,22 +218,10 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
         .map(|c| c.id)
         .collect();
     // Fill consumes leftover → first child still pinned to start.
-    assert_eq!(
-        ui.layout.result[Layer::Main].rect[kids[0].index()].min.x,
-        0.0
-    );
-    assert_eq!(
-        ui.layout.result[Layer::Main].rect[kids[1].index()].min.x,
-        40.0
-    );
-    assert_eq!(
-        ui.layout.result[Layer::Main].rect[kids[1].index()].size.w,
-        120.0
-    );
-    assert_eq!(
-        ui.layout.result[Layer::Main].rect[kids[2].index()].min.x,
-        160.0
-    );
+    assert_eq!(ui.layout[Layer::Main].rect[kids[0].index()].min.x, 0.0);
+    assert_eq!(ui.layout[Layer::Main].rect[kids[1].index()].min.x, 40.0);
+    assert_eq!(ui.layout[Layer::Main].rect[kids[1].index()].size.w, 120.0);
+    assert_eq!(ui.layout[Layer::Main].rect[kids[2].index()].min.x, 160.0);
 }
 
 #[test]
@@ -256,18 +244,9 @@ fn hstack_gap_inserts_space_between_children() {
         .children(root)
         .map(|c| c.id)
         .collect();
-    assert_eq!(
-        ui.layout.result[Layer::Main].rect[kids[0].index()].min.x,
-        0.0
-    );
-    assert_eq!(
-        ui.layout.result[Layer::Main].rect[kids[1].index()].min.x,
-        50.0
-    );
-    assert_eq!(
-        ui.layout.result[Layer::Main].rect[kids[2].index()].min.x,
-        100.0
-    );
+    assert_eq!(ui.layout[Layer::Main].rect[kids[0].index()].min.x, 0.0);
+    assert_eq!(ui.layout[Layer::Main].rect[kids[1].index()].min.x, 50.0);
+    assert_eq!(ui.layout[Layer::Main].rect[kids[2].index()].min.x, 100.0);
 }
 
 #[test]
@@ -292,7 +271,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
         .children(root)
         .map(|c| c.id)
         .collect();
-    let r = ui.layout.result[Layer::Main].rect[kids[0].index()];
+    let r = ui.layout[Layer::Main].rect[kids[0].index()];
     // Cross axis is height (100); child is 20 tall → centered at (100-20)/2 = 40.
     assert_eq!(r.min.y, 40.0);
     assert_eq!(r.size.h, 20.0);
@@ -330,7 +309,7 @@ fn negative_left_margin_spills_outside_slot() {
 
     // Rendered rect (what the renderer paints, what hit-test uses) is shifted
     // 10px left of the slot and full Fixed-50 wide — i.e. spilled.
-    let r = ui.layout.result[Layer::Main].rect[button_node.unwrap().index()];
+    let r = ui.layout[Layer::Main].rect[button_node.unwrap().index()];
     assert_eq!(r.min.x, -10.0, "rendered rect spills 10px left of slot");
     assert_eq!(r.min.y, 0.0);
     assert_eq!(
@@ -365,7 +344,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     ui.paint_phase();
     // Correct: 16 (button) + 184 (Fill share) = 200.
     // Buggy: 16 + 16 (double-counted) + 184 = 216.
-    assert_eq!(ui.layout.scratch.desired[root.index()].w, 200.0);
+    assert_eq!(ui.layout_engine.scratch.desired[root.index()].w, 200.0);
 }
 
 /// Pin: a collapsed child between two active children does not advance
@@ -401,9 +380,9 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
         .children(root)
         .map(|c| c.id)
         .collect();
-    let a = ui.layout.result[Layer::Main].rect[kids[0].index()];
-    let hidden = ui.layout.result[Layer::Main].rect[kids[1].index()];
-    let b = ui.layout.result[Layer::Main].rect[kids[2].index()];
+    let a = ui.layout[Layer::Main].rect[kids[0].index()];
+    let hidden = ui.layout[Layer::Main].rect[kids[1].index()];
+    let b = ui.layout[Layer::Main].rect[kids[2].index()];
 
     assert_eq!((a.min.x, a.size.w), (0.0, 20.0));
     // collapsed: zero-size rect at cursor (= a.right). Cursor stays here.
@@ -446,7 +425,7 @@ fn hstack_fill_max_size_caps_measured_share() {
     ui.paint_phase();
     // Leftover for Fill share = 200 - 20 = 180. Cap = 50. Measure clamps
     // target to 50 → desired.w = 50.
-    let desired = ui.layout.scratch.desired[fill_node.unwrap().index()];
+    let desired = ui.layout_engine.scratch.desired[fill_node.unwrap().index()];
     assert_eq!(
         desired.w, 50.0,
         "Fill measure must clamp to max_size when leftover share > cap"
@@ -485,13 +464,12 @@ fn parent_max_size_clamps_children_available() {
             })
             .node
     });
-    let parent_rect = ui.layout.result[crate::forest::tree::Layer::Main].rect[parent_node.index()];
+    let parent_rect = ui.layout[crate::forest::tree::Layer::Main].rect[parent_node.index()];
     assert_eq!(
         parent_rect.size.w, 200.0,
         "parent must arrange at its own max_size cap",
     );
-    let inner_rect =
-        ui.layout.result[crate::forest::tree::Layer::Main].rect[child_node.unwrap().index()];
+    let inner_rect = ui.layout[crate::forest::tree::Layer::Main].rect[child_node.unwrap().index()];
     assert_eq!(
         inner_rect.size.w, 200.0,
         "Fill child must not bleed past parent's max_size cap",

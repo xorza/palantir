@@ -1,7 +1,10 @@
+use super::axis::Axis;
+use super::intrinsic::LenReq;
+use super::layoutengine::LayoutEngine;
 use super::support::{AxisAlignPair, place_axis, resolved_axis_align, zero_subtree};
-use super::{Axis, LayoutEngine, LenReq};
 use crate::forest::element::LayoutMode;
 use crate::forest::tree::{Child, NodeId, Tree};
+use crate::layout::Layout;
 use crate::layout::types::{align::AxisAlign, sizing::Sizing, span::Span, track::Track};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
@@ -332,13 +335,15 @@ pub(crate) fn measure(
     idx: u16,
     inner_avail: Size,
     text: &TextShaper,
+    out: &mut Layout,
 ) -> Size {
     let depth = layout.scratch.grid.depth_stack.enter();
-    let result = measure_inner(layout, tree, node, idx, depth, inner_avail, text);
+    let result = measure_inner(layout, tree, node, idx, depth, inner_avail, text, out);
     layout.scratch.grid.depth_stack.exit();
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 fn measure_inner(
     layout: &mut LayoutEngine,
     tree: &Tree,
@@ -347,6 +352,7 @@ fn measure_inner(
     depth: usize,
     inner_avail: Size,
     text: &TextShaper,
+    out: &mut Layout,
 ) -> Size {
     let GridShape {
         n_rows,
@@ -359,7 +365,7 @@ fn measure_inner(
     if n_rows == 0 || n_cols == 0 {
         // Still measure children so their `desired` is set.
         for c in tree.children(node).map(|c| c.id) {
-            layout.measure(tree, c, Size::ZERO, text);
+            layout.measure(tree, c, Size::ZERO, text, out);
         }
         return Size::ZERO;
     }
@@ -431,7 +437,7 @@ fn measure_inner(
         if child.visibility.is_collapsed() {
             // Still measure so the subtree's `desired` is zeroed
             // (LayoutEngine::measure short-circuits on collapsed).
-            layout.measure(tree, c, Size::ZERO, text);
+            layout.measure(tree, c, Size::ZERO, text, out);
             continue;
         }
         let cell = tree.bounds(c).grid;
@@ -453,7 +459,7 @@ fn measure_inner(
             Size::new(avail_w, avail_h)
         };
 
-        let d = layout.measure(tree, c, avail, text);
+        let d = layout.measure(tree, c, avail, text, out);
 
         // Row Hug accumulates from cell's measured height. Row min-content
         // could come from a Y intrinsic query, but it'd be the single-line
@@ -527,9 +533,16 @@ fn resolve_fixed(a: &mut AxisScratch) {
     }
 }
 
-pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect, idx: u16) {
+pub(crate) fn arrange(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    inner: Rect,
+    idx: u16,
+    out: &mut Layout,
+) {
     let depth = layout.scratch.grid.depth_stack.enter();
-    arrange_inner(layout, tree, node, inner, idx, depth);
+    arrange_inner(layout, tree, node, inner, idx, depth, out);
     layout.scratch.grid.depth_stack.exit();
 }
 
@@ -540,6 +553,7 @@ fn arrange_inner(
     inner: Rect,
     idx: u16,
     depth: usize,
+    out: &mut Layout,
 ) {
     // Re-snapshot at this depth: scratch gets clobbered by sibling grids
     // between measure and arrange, so we re-read tracks/gaps from the
@@ -554,7 +568,7 @@ fn arrange_inner(
 
     if n_rows == 0 || n_cols == 0 {
         for c in tree.children(node).map(|c| c.id) {
-            zero_subtree(layout, tree, c, inner.min);
+            zero_subtree(layout, tree, c, inner.min, out);
         }
         return;
     }
@@ -594,7 +608,7 @@ fn arrange_inner(
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(layout, tree, c, inner.min);
+            zero_subtree(layout, tree, c, inner.min, out);
             continue;
         }
         let s_node = tree.records.layout()[c.index()];
@@ -631,7 +645,7 @@ fn arrange_inner(
             min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
             size: Size::new(x.size, y.size),
         };
-        layout.arrange(tree, c, child_rect);
+        layout.arrange(tree, c, child_rect, out);
     }
 }
 

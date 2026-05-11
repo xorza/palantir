@@ -409,7 +409,7 @@ impl Scroll {
         let resp_h = ui.response_for(thumb_id_h);
 
         let scroll = {
-            let row = ui.layout.scroll_states.entry(scroll_id).or_default();
+            let row = ui.layout_engine.scroll_states.entry(scroll_id).or_default();
             // 1) Zoom step (pivot-anchored). Clamp `new_zoom` to
             //    `cfg.range`, derive the effective `dz_eff`, then
             //    update `offset` so the pivot point in widget-local

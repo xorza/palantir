@@ -56,7 +56,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
                 .node
         });
         for (i, (want_x, want_y)) in expected.iter().enumerate() {
-            let r = ui.layout.result[Layer::Main].rect[kids[i].index()];
+            let r = ui.layout[Layer::Main].rect[kids[i].index()];
             assert_eq!(
                 (r.min.x, r.min.y),
                 (*want_x, *want_y),
@@ -85,9 +85,9 @@ fn wrap_hstack_oversize_child_owns_its_line() {
             })
             .node
     });
-    let small = ui.layout.result[Layer::Main].rect[kids[0].index()];
-    let wide = ui.layout.result[Layer::Main].rect[kids[1].index()];
-    let tail = ui.layout.result[Layer::Main].rect[kids[2].index()];
+    let small = ui.layout[Layer::Main].rect[kids[0].index()];
+    let wide = ui.layout[Layer::Main].rect[kids[1].index()];
+    let tail = ui.layout[Layer::Main].rect[kids[2].index()];
     // line 0: small alone (50+10+200 > 100, wide overflows → wraps)
     assert_eq!((small.min.x, small.min.y), (0.0, 0.0));
     // line 1: wide alone (overflowed)
@@ -116,9 +116,9 @@ fn wrap_hstack_line_height_is_max_child_cross() {
             })
             .node
     });
-    let tall = ui.layout.result[Layer::Main].rect[kids[0].index()];
-    let short = ui.layout.result[Layer::Main].rect[kids[1].index()];
-    let next = ui.layout.result[Layer::Main].rect[kids[2].index()];
+    let tall = ui.layout[Layer::Main].rect[kids[0].index()];
+    let short = ui.layout[Layer::Main].rect[kids[1].index()];
+    let next = ui.layout[Layer::Main].rect[kids[2].index()];
     assert_eq!(tall.min.y, 0.0);
     assert_eq!(short.min.y, 0.0);
     // Line 0 height = 60; line_gap = 0 → next at y=60.
@@ -154,8 +154,8 @@ fn wrap_hstack_justify_per_line() {
                 })
                 .node
         });
-        let a = ui.layout.result[Layer::Main].rect[kids[0].index()];
-        let b = ui.layout.result[Layer::Main].rect[kids[1].index()];
+        let a = ui.layout[Layer::Main].rect[kids[0].index()];
+        let b = ui.layout[Layer::Main].rect[kids[1].index()];
         assert!(
             (a.min.x - expected[0]).abs() < 0.5,
             "case: {label} a.x={}",
@@ -189,9 +189,9 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
             })
             .node
     });
-    let a = ui.layout.result[Layer::Main].rect[kids[0].index()];
-    let b = ui.layout.result[Layer::Main].rect[kids[1].index()];
-    let c = ui.layout.result[Layer::Main].rect[kids[2].index()];
+    let a = ui.layout[Layer::Main].rect[kids[0].index()];
+    let b = ui.layout[Layer::Main].rect[kids[1].index()];
+    let c = ui.layout[Layer::Main].rect[kids[2].index()];
     // Column 0: a, b at x=0.
     assert_eq!((a.min.x, a.min.y), (0.0, 0.0));
     assert_eq!((b.min.x, b.min.y), (0.0, 50.0));
@@ -228,7 +228,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
         );
         wrap_node.unwrap()
     });
-    let r = ui.layout.result[Layer::Main].rect[wrap_node.unwrap().index()];
+    let r = ui.layout[Layer::Main].rect[wrap_node.unwrap().index()];
     assert_eq!(r.size.w, 200.0, "Fixed main width is honored");
     // Two lines of 20 + 8 line_gap = 48.
     assert_eq!(r.size.h, 48.0);
@@ -264,8 +264,8 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
             })
             .node
     });
-    let tall = ui.layout.result[Layer::Main].rect[kids[0].index()];
-    let filler = ui.layout.result[Layer::Main].rect[kids[1].index()];
+    let tall = ui.layout[Layer::Main].rect[kids[0].index()];
+    let filler = ui.layout[Layer::Main].rect[kids[1].index()];
     assert_eq!(tall.size.h, 60.0);
     assert_eq!(
         filler.size.h, 60.0,
@@ -301,9 +301,9 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
             })
             .node
     });
-    let a = ui.layout.result[Layer::Main].rect[kids[0].index()];
-    let hidden = ui.layout.result[Layer::Main].rect[kids[1].index()];
-    let b = ui.layout.result[Layer::Main].rect[kids[2].index()];
+    let a = ui.layout[Layer::Main].rect[kids[0].index()];
+    let hidden = ui.layout[Layer::Main].rect[kids[1].index()];
+    let b = ui.layout[Layer::Main].rect[kids[2].index()];
     // a at 0, b at 70 — collapsed didn't insert a gap.
     assert_eq!(a.min.x, 0.0);
     assert_eq!(b.min.x, 70.0);
@@ -340,7 +340,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
             })
             .node
     });
-    let r = ui.layout.result[Layer::Main].rect[filler_node.unwrap().index()];
+    let r = ui.layout[Layer::Main].rect[filler_node.unwrap().index()];
     // Fill child got its min_size width (40), NOT the row leftover
     // (300 - 60 - 10 - 10 = 220). If a future change distributes
     // leftover, this assertion flips and the test becomes the spec.
@@ -381,9 +381,9 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
             })
             .node
     });
-    let ia = ui.layout.result[Layer::Main].rect[inner_a.unwrap().index()];
-    let ib = ui.layout.result[Layer::Main].rect[inner_b.unwrap().index()];
-    let ob = ui.layout.result[Layer::Main].rect[outer_b.unwrap().index()];
+    let ia = ui.layout[Layer::Main].rect[inner_a.unwrap().index()];
+    let ib = ui.layout[Layer::Main].rect[inner_b.unwrap().index()];
+    let ob = ui.layout[Layer::Main].rect[outer_b.unwrap().index()];
     // Inner card lays out two cells side by side: ia at 0, ib at 55.
     assert_eq!(ia.min.x, 0.0);
     assert_eq!(ib.min.x, 55.0);
@@ -452,10 +452,10 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
             wrap_kids = Some(build(ui));
         });
         let (wrap, kids) = wrap_kids.unwrap();
-        let wrap_rect = ui.layout.result[Layer::Main].rect[wrap.index()];
+        let wrap_rect = ui.layout[Layer::Main].rect[wrap.index()];
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
         for k in &kids {
-            let r = ui.layout.result[Layer::Main].rect[k.index()];
+            let r = ui.layout[Layer::Main].rect[k.index()];
             let right = r.min.x + r.size.w;
             assert!(
                 right <= wrap_right + 0.5,

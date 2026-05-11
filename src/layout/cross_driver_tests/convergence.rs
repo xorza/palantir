@@ -96,9 +96,9 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                 .node;
         });
 
-        let row = ui.layout.result[Layer::Main].rect[row_node.index()];
-        let left = ui.layout.result[Layer::Main].rect[left_node.unwrap().index()];
-        let right = ui.layout.result[Layer::Main].rect[right_node.unwrap().index()];
+        let row = ui.layout[Layer::Main].rect[row_node.index()];
+        let left = ui.layout[Layer::Main].rect[left_node.unwrap().index()];
+        let right = ui.layout[Layer::Main].rect[right_node.unwrap().index()];
 
         // The right cell's intrinsic_min along X is the Fixed
         // descendant's 180 + the cell's 24 padding = 204. When the

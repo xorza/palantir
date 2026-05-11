@@ -20,7 +20,7 @@ pub(crate) mod encoder;
 pub(crate) mod gradient_atlas;
 
 use crate::forest::Forest;
-use crate::layout::result::LayoutResult;
+use crate::layout::Layout;
 use crate::layout::types::display::Display;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
@@ -83,7 +83,7 @@ impl FrameState {
 /// [`Renderer::render`]: crate::renderer::Renderer::render
 pub struct RecordedFrame<'a> {
     pub(crate) forest: &'a Forest,
-    pub(crate) layout: &'a LayoutResult,
+    pub(crate) layout: &'a Layout,
     pub(crate) cascades: &'a CascadeResult,
     pub(crate) display: Display,
     pub(crate) damage: DamagePaint,
@@ -162,7 +162,7 @@ impl Frontend {
     pub(crate) fn build(
         &mut self,
         forest: &Forest,
-        results: &LayoutResult,
+        results: &Layout,
         cascades: &CascadeResult,
         damage_filter: Option<&DamageRegion>,
         display: &Display,

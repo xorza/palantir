@@ -144,13 +144,13 @@ fn panel_hugs_largest_child_and_layers_them() {
     ui.record_phase();
     ui.paint_phase();
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
-    let panel = ui.layout.result[Layer::Main].rect[panel_node.unwrap().index()];
+    let panel = ui.layout[Layer::Main].rect[panel_node.unwrap().index()];
     assert_eq!(panel.size.w, 100.0);
     assert_eq!(panel.size.h, 70.0);
 
     // Both children laid out at panel's inner top-left (10, 10), at their own size.
-    let a = ui.layout.result[Layer::Main].rect[a_node.unwrap().index()];
-    let b = ui.layout.result[Layer::Main].rect[b_node.unwrap().index()];
+    let a = ui.layout[Layer::Main].rect[a_node.unwrap().index()];
+    let b = ui.layout[Layer::Main].rect[b_node.unwrap().index()];
     assert_eq!((a.min.x, a.min.y), (10.0, 10.0));
     assert_eq!((b.min.x, b.min.y), (10.0, 10.0));
     assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
@@ -201,7 +201,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
     });
     ui.record_phase();
     ui.paint_phase();
-    let child = ui.layout.result[Layer::Main].rect[child_node.unwrap().index()];
+    let child = ui.layout[Layer::Main].rect[child_node.unwrap().index()];
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
     assert_eq!(child.min.x, 10.0);
     assert_eq!(child.min.y, 10.0);

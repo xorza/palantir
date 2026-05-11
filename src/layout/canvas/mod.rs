@@ -1,6 +1,9 @@
+use super::axis::Axis;
+use super::intrinsic::LenReq;
+use super::layoutengine::LayoutEngine;
 use super::support::{measure_per_axis_hug, zero_subtree};
-use super::{Axis, LayoutEngine, LenReq};
 use crate::forest::tree::{Child, NodeId, Tree};
+use crate::layout::Layout;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
 
@@ -22,12 +25,13 @@ pub(crate) fn measure(
     node: NodeId,
     inner_avail: Size,
     text: &TextShaper,
+    out: &mut Layout,
 ) -> Size {
     // Active children only: a collapsed child at (100,100) must not
     // inflate the canvas's content size. `desired` is already ZERO for
     // collapsed children (reset at the top of `run`); arrange zeros
     // their subtrees regardless.
-    measure_per_axis_hug(layout, tree, node, inner_avail, text, |tree, c, d| {
+    measure_per_axis_hug(layout, tree, node, inner_avail, text, out, |tree, c, d| {
         let pos = tree.bounds(c).position;
         Size::new(pos.x + d.w, pos.y + d.h)
     })
@@ -36,11 +40,17 @@ pub(crate) fn measure(
 /// Each child gets a slot at `inner.min + style.position`, sized per its
 /// desired (intrinsic) size. `Fill` falls back to intrinsic — same reason as
 /// `measure`.
-pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inner: Rect) {
+pub(crate) fn arrange(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    inner: Rect,
+    out: &mut Layout,
+) {
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
-            zero_subtree(layout, tree, c, inner.min);
+            zero_subtree(layout, tree, c, inner.min, out);
             continue;
         }
         let d = layout.scratch.desired[c.index()];
@@ -49,7 +59,7 @@ pub(crate) fn arrange(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, inne
             min: inner.min + pos,
             size: d,
         };
-        layout.arrange(tree, c, child_rect);
+        layout.arrange(tree, c, child_rect, out);
     }
 }
 

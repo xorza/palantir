@@ -12,9 +12,11 @@
 //! alongside that driver's `measure`/`arrange` in its own module — same
 //! per-driver-file convention as the rest of layout.
 
+use super::axis::Axis;
+use super::layoutengine::LayoutEngine;
 use super::support::{AxisCtx, leaf_text_shapes, resolve_axis_size};
-use super::{Axis, LayoutEngine, LayoutMode, canvas, grid, stack, wrapstack, zstack};
-use crate::forest::element::ScrollAxes;
+use super::{canvas, grid, stack, wrapstack, zstack};
+use crate::forest::element::{LayoutMode, ScrollAxes};
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::types::sizing::Sizing;
 use crate::shape::TextWrap;
@@ -232,7 +234,7 @@ mod tests {
             .next()
             .expect("hstack has child");
         let slot = LenReq::MinContent.slot(Axis::X);
-        let cached = ui.layout.scratch.intrinsics[child.index()][slot];
+        let cached = ui.layout_engine.scratch.intrinsics[child.index()][slot];
         assert!(
             !cached.is_nan(),
             "MinContent X for the Fill+wrap child must be cached after run"
@@ -270,9 +272,9 @@ mod tests {
         let slot = LenReq::MinContent.slot(Axis::X);
 
         const SENTINEL: f32 = 1234.5;
-        ui.layout.scratch.intrinsics[child.index()][slot] = SENTINEL;
+        ui.layout_engine.scratch.intrinsics[child.index()][slot] = SENTINEL;
 
-        let v = ui.layout.intrinsic(
+        let v = ui.layout_engine.intrinsic(
             ui.forest.tree(Layer::Main),
             child,
             Axis::X,
@@ -308,11 +310,11 @@ mod tests {
                 .node;
         });
         let slot = LenReq::MaxContent.slot(Axis::X);
-        for entry in ui.layout.scratch.intrinsics.iter_mut() {
+        for entry in ui.layout_engine.scratch.intrinsics.iter_mut() {
             entry[slot] = f32::NAN;
         }
 
-        let _ = ui.layout.intrinsic(
+        let _ = ui.layout_engine.intrinsic(
             ui.forest.tree(Layer::Main),
             root,
             Axis::X,
@@ -321,12 +323,12 @@ mod tests {
         );
 
         assert!(
-            !ui.layout.scratch.intrinsics[root.index()][slot].is_nan(),
+            !ui.layout_engine.scratch.intrinsics[root.index()][slot].is_nan(),
             "root slot must be cached"
         );
         for c in ui.forest.tree(Layer::Main).children(root).map(|c| c.id) {
             assert!(
-                !ui.layout.scratch.intrinsics[c.index()][slot].is_nan(),
+                !ui.layout_engine.scratch.intrinsics[c.index()][slot].is_nan(),
                 "child {} slot must be cached after parent query",
                 c.index()
             );

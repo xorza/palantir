@@ -10,7 +10,8 @@ use crate::forest::element::Element;
 use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
 use crate::input::{FocusPolicy, InputEvent, InputState, ResponseState};
-use crate::layout::LayoutEngine;
+use crate::layout::Layout;
+use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
@@ -39,7 +40,8 @@ pub struct Ui {
     /// share the same handle with the wgpu backend so both see one
     /// buffer cache.
     pub(crate) text: TextShaper,
-    pub(crate) layout: LayoutEngine,
+    pub(crate) layout_engine: LayoutEngine,
+    pub(crate) layout: Layout,
     pub(crate) input: InputState,
     pub(crate) cascades: Cascades,
     pub(crate) display: Display,
@@ -95,7 +97,8 @@ impl Ui {
             theme: Theme::default(),
             state: StateMap::default(),
             text,
-            layout: LayoutEngine::default(),
+            layout_engine: LayoutEngine::default(),
+            layout: Layout::default(),
             input: InputState::new(),
             cascades: Cascades::default(),
             display: Display::default(),
@@ -207,17 +210,18 @@ impl Ui {
         self.forest.ids.diff_for_sweep();
         let removed = &self.forest.ids.removed;
         self.text.sweep_removed(removed);
-        self.layout.sweep_removed(removed);
+        self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
         self.anim.end_frame(removed);
 
-        self.layout.run(&self.forest, surface, &self.text);
+        self.layout_engine
+            .run(&self.forest, surface, &self.text, &mut self.layout);
 
         std::mem::take(&mut self.relayout_requested)
     }
 
     /// Paint-half of `run_frame`: commit the seen-id rollover, then
-    /// cascade → hit-index → damage. Reads the `LayoutResult` from
+    /// cascade → hit-index → damage. Reads the `Layout` from
     /// the most recent `record_phase`. Returns a borrowed view of
     /// the Ui state that [`Renderer::render`](crate::renderer::Renderer::render)
     /// turns into a composed buffer + GPU submit.
@@ -226,7 +230,7 @@ impl Ui {
         self.forest.ids.commit_rollover();
         let removed = &self.forest.ids.removed;
 
-        let cascades = self.cascades.run(&self.forest, &self.layout.result);
+        let cascades = self.cascades.run(&self.forest, &self.layout);
         self.input.end_frame(cascades);
         let damage = self
             .damage
@@ -239,7 +243,7 @@ impl Ui {
         }
         RecordedFrame {
             forest: &self.forest,
-            layout: &self.layout.result,
+            layout: &self.layout,
             cascades,
             display: self.display,
             damage,

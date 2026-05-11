@@ -1104,7 +1104,7 @@ fn ui_layer_size_caps_overlay_available() {
         ui.paint_phase();
         let popup_tree = ui.forest.tree(Layer::Popup);
         let root = popup_tree.roots[0].first_node as usize;
-        let rect = ui.layout.result[Layer::Popup].rect[root];
+        let rect = ui.layout[Layer::Popup].rect[root];
         assert_eq!(rect.min, anchor, "cap={cap:?}: anchor placement preserved");
         assert_eq!(rect.size, *expected, "cap={cap:?}: available branch");
     }

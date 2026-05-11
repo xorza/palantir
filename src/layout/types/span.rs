@@ -26,7 +26,7 @@ impl Span {
     }
 
     /// Rebase to subtree-local form by subtracting `base` from `start`.
-    /// Empty spans collapse to `Span::default()` (LayerResult emits
+    /// Empty spans collapse to `Span::default()` (LayerLayout emits
     /// `(0, 0)` for text-free nodes; no meaningful start to preserve).
     /// Non-empty spans must satisfy `start >= base` — writers capture
     /// `base` before recursing, so every span the subtree emits points

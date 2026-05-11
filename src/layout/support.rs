@@ -3,10 +3,13 @@
 //! `LayoutEngine` references threaded through where needed for intrinsic
 //! caching and result writing.
 
-use super::{Axis, LayoutEngine, LenReq};
+use super::axis::Axis;
+use super::intrinsic::LenReq;
+use super::layoutengine::LayoutEngine;
 use crate::forest::element::LayoutCore;
 use crate::forest::shapes::ShapeRecord;
 use crate::forest::tree::{Child, NodeId, Tree};
+use crate::layout::Layout;
 use crate::layout::types::{
     align::Align, align::AxisAlign, justify::Justify, sizing::Sizes, sizing::Sizing,
 };
@@ -135,14 +138,20 @@ pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
 /// Set this node and every descendant to a zero-size rect anchored at
 /// `anchor`. Walks the contiguous pre-order span `[node, subtree_end[node])`
 /// directly — no recursion, no child cursors.
-pub(crate) fn zero_subtree(layout: &mut LayoutEngine, tree: &Tree, node: NodeId, anchor: Vec2) {
+pub(crate) fn zero_subtree(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    anchor: Vec2,
+    out: &mut Layout,
+) {
     let zero = Rect {
         min: anchor,
         size: Size::ZERO,
     };
     let start = node.index();
     let end = (tree.records.subtree_end()[start]) as usize;
-    layout.result[layout.active_layer].rect[start..end].fill(zero);
+    out[layout.active_layer].rect[start..end].fill(zero);
 }
 
 /// Max over non-collapsed children's outer intrinsic on `axis`. Used by
@@ -242,6 +251,7 @@ pub(crate) fn measure_per_axis_hug(
     node: NodeId,
     inner_avail: Size,
     text: &TextShaper,
+    out: &mut Layout,
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
 ) -> Size {
     let style = tree.records.layout()[node.index()];
@@ -249,7 +259,7 @@ pub(crate) fn measure_per_axis_hug(
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in tree.children(node).filter_map(Child::active) {
-        let d = layout.measure(tree, c, child_avail, text);
+        let d = layout.measure(tree, c, child_avail, text, out);
         let cont = contrib(tree, c, d);
         max_w = max_w.max(cont.w);
         max_h = max_h.max(cont.h);

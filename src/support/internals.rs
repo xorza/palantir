@@ -18,7 +18,7 @@ use crate::text::TextShaper;
 /// Drop every cross-frame measure-cache entry, forcing the next frame
 /// to re-measure every leaf from scratch. See `benches/measure_cache.rs`.
 pub fn clear_measure_cache(ui: &mut Ui) {
-    let cache = &mut ui.layout.cache;
+    let cache = &mut ui.layout_engine.cache;
     cache.nodes.clear();
     cache.hugs.clear();
     cache.text_shapes_arena.clear();
@@ -29,9 +29,9 @@ pub fn clear_measure_cache(ui: &mut Ui) {
 /// layout results. Lets the cascade bench isolate cascade cost without
 /// re-running record / measure / arrange / encode / compose. The
 /// caller must have called `Ui::end_frame` at least once after the
-/// most recent recording so `ui.layout.result` is populated.
+/// most recent recording so `ui.layout` is populated.
 pub fn run_cascades(ui: &mut Ui) {
-    let _ = ui.cascades.run(&ui.forest, &ui.layout.result);
+    let _ = ui.cascades.run(&ui.forest, &ui.layout);
 }
 
 /// Number of animation rows currently allocated for type `T`, or `0`
@@ -46,11 +46,11 @@ pub fn anim_row_count<T: Animatable>(ui: &mut Ui) -> usize {
 /// Borrow (or insert default) the scroll-state row for the layout
 /// node at `id`. Tests pass `outer_id.with("__viewport")` — the
 /// `LayoutMode::Scroll` node's actual `WidgetId`. Production widgets
-/// reach `ui.layout.scroll_states` directly; this helper exists
+/// reach `ui.layout_engine.scroll_states` directly; this helper exists
 /// purely to keep test inspection sites short.
 #[allow(dead_code)]
 pub(crate) fn scroll_state(ui: &mut Ui, id: WidgetId) -> &mut ScrollLayoutState {
-    ui.layout.scroll_states.entry(id).or_default()
+    ui.layout_engine.scroll_states.entry(id).or_default()
 }
 
 /// Total `measure` calls dispatched through `shaper` (cache misses

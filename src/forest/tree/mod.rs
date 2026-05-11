@@ -558,7 +558,7 @@ impl<'a> Iterator for TreeItems<'a> {
 
 /// Frame-scoped grid storage: track defs (one per `Grid` panel),
 /// addressed by `LayoutMode::Grid(u16)`. Per-track hug arrays live on
-/// `LayoutResult` since the tree is read-only after recording.
+/// `Layout` since the tree is read-only after recording.
 /// Capacity is retained across frames; data is cleared per frame.
 #[derive(Default)]
 pub(crate) struct GridArena {
