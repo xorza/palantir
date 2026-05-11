@@ -160,7 +160,9 @@ impl ApplicationHandler for App {
 
         let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
 
-        let mut ui = Ui::new();
+        let shaper = palantir::TextShaper::with_bundled_fonts();
+        let mut ui = Ui::with_text(shaper.clone());
+        backend.set_text_shaper(shaper);
         // Library default is no button animation (`anim = None`).
         // Showcase exists to demo the animation primitive — opt in.
         ui.theme.button.anim = None;
@@ -169,9 +171,6 @@ impl ApplicationHandler for App {
             glam::UVec2::new(config.width, config.height),
             window.scale_factor() as f32,
         );
-        let shaper = palantir::TextShaper::with_bundled_fonts();
-        ui.text = shaper.clone();
-        backend.set_text_shaper(shaper);
 
         window.request_redraw();
         self.state = Some(State {

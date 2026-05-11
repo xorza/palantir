@@ -34,10 +34,12 @@ pub struct Ui {
     pub theme: Theme,
     /// Cross-frame `WidgetId → Any` widget state.
     pub(crate) state: StateMap,
-    /// Shared font/glyph shaper. Set this to the same handle the wgpu
-    /// backend was constructed with so both see one buffer cache;
-    /// leave at default for headless / mono-fallback contexts.
-    pub text: TextShaper,
+    /// Shared font/glyph shaper. Set at construction via
+    /// [`Self::with_text`] (or left at the mono-fallback default by
+    /// [`Self::new`]). Read-only after construction — apps should
+    /// share the same handle with the wgpu backend so both see one
+    /// buffer cache.
+    pub(crate) text: TextShaper,
     pub(crate) layout: LayoutEngine,
     pub(crate) frontend: Frontend,
     pub(crate) input: InputState,
@@ -77,12 +79,23 @@ impl Ui {
     /// still tracks the host's true clock.
     pub(crate) const MAX_DT: f32 = 0.1;
 
+    /// Construct with the mono-fallback shaper. Use for headless /
+    /// test / preview contexts where glyph cache identity doesn't
+    /// matter; production apps should call [`Self::with_text`] with
+    /// the shaper they're sharing with `WgpuBackend`.
     pub fn new() -> Self {
+        Self::with_text(TextShaper::default())
+    }
+
+    /// Construct with an explicit shaper. Share the same handle with
+    /// `WgpuBackend::set_text_shaper` so layout-time measurement and
+    /// render-time shaping hit one buffer cache.
+    pub fn with_text(text: TextShaper) -> Self {
         Self {
             forest: Forest::default(),
             theme: Theme::default(),
             state: StateMap::default(),
-            text: TextShaper::default(),
+            text,
             layout: LayoutEngine::default(),
             frontend: Frontend::default(),
             input: InputState::new(),
