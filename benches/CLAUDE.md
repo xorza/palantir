@@ -18,6 +18,25 @@ cargo bench --bench caches --features internals        # gated benches
 `internals` / `bench-deep`. `cargo bench --no-run` without features only
 builds `frame`.
 
+## Allocation-free invariant
+
+`alloc_free.rs` pins `CLAUDE.md`'s "steady-state must be heap-alloc-free
+after warmup" claim. Uses `dhat` as the global allocator, runs 16
+warmup frames + 256 measure frames, asserts zero block/byte delta.
+
+```sh
+cargo bench --bench alloc_free                          # PASS or FAIL
+DHAT_DUMP=1 cargo bench --bench alloc_free              # emits dhat-heap.json on drop
+```
+
+If it fails, load the JSON at <https://nnethercote.github.io/dh_view/>
+for per-call-site bytes and blocks. Don't use this bench for timing —
+dhat adds 10-30× allocator overhead.
+
+The fixture is a small mirror of `frame.rs`'s build_ui (a few buttons,
+wrapping text, nested stacks). If `frame.rs` grows new allocation
+surface area, mirror it here too.
+
 ## Profiling on macOS
 
 `scripts/profile-bench.sh` records a samply CPU profile and emits a
@@ -138,6 +157,47 @@ RVAs; symbolication normally happens at `samply load` time):
   with `samply record --rate 4000` if you need finer resolution on
   short hot loops.
 
+## GPU profiling on macOS (Metal)
+
+`scripts/profile-metal.sh` captures a **Metal System Trace** of an
+example via `xctrace`. Shows the encode→submit→GPU-execute timeline,
+named per-pass (`palantir.renderer.main.pass`, `…overlay.damage_rect`)
+and per-batch debug groups (`preclear` / `mask` / `quads` / `text` /
+`meshes`).
+
+```sh
+scripts/profile-metal.sh                                # showcase, 10s
+scripts/profile-metal.sh helloworld                     # different example
+DURATION=5 scripts/profile-metal.sh                     # shorter capture
+HUD=0 scripts/profile-metal.sh                          # skip live HUD overlay
+```
+
+Outputs `tmp/metal-<example>.trace` — open with `open
+tmp/metal-<example>.trace` (Instruments.app). The script also sets
+`MTL_HUD_ENABLED=1` so the running example shows a live frame-time /
+GPU-time overlay during capture.
+
+Refuses to run if `MTL_DEBUG_LAYER` or `MTL_SHADER_VALIDATION` are
+non-zero in the environment — those add 2-5× draw cost and silently
+distort timings.
+
+**What to look for in the trace:**
+
+- GPU-timeline gaps with full CPU encode → frame is GPU-bound.
+- CPU encode time eating into the frame budget → CPU-bound; profile
+  with `samply` instead.
+- Per-pass duration: should be dominated by
+  `palantir.renderer.main.pass`. If `overlay.damage_rect` is heavy,
+  the debug overlay is on — disable it for production timing.
+- Sub-pass debug groups (`quads` / `text` / `meshes`) let you see
+  which workload dominates each pass.
+
+**One-shot GPU frame capture** via Xcode's Metal debugger: insert
+`device.start_capture(&desc)` / `device.stop_capture()` around one
+frame in an example, run it, and Xcode opens the `.gputrace` for
+per-draw shader profiling. Not scripted here — usually a manual
+investigation tool.
+
 ## Profiling on Linux
 
 `scripts/bench-perf.sh` is the Linux companion: `perf record` +
@@ -147,15 +207,31 @@ RVAs; symbolication normally happens at `samply load` time):
 ## When to use what
 
 - **CPU hotspots**: samply (macOS) / perf (Linux). Always first pass.
-- **Allocations** (steady-state allocs that violate alloc-free-per-frame):
-  `dhat-heap` integrated into the bench, or `heaptrack` on Linux.
-  Samply/perf only show CPU time inside the allocator, not allocation
-  counts. `perf stat`'s `page-faults` is a cheap proxy.
-- **GPU work** (wgpu encoder/queue timings): Instruments' Metal System
-  Trace on macOS, RenderDoc or Tracy on Linux. Out of scope for the
-  criterion benches in this folder.
+  → `scripts/profile-bench.sh` (macOS) or `scripts/bench-perf.sh` (Linux).
+- **Allocations** (catch steady-state allocs that violate
+  alloc-free-per-frame): `alloc_free.rs` bench (assertion mode) or
+  `DHAT_DUMP=1` for per-call-site attribution. Samply/perf only show
+  CPU time inside the allocator, not allocation counts.
+- **GPU work** (wgpu encoder/queue timings): `scripts/profile-metal.sh`
+  (macOS Metal System Trace). On Linux, RenderDoc or Tracy.
+- **HW counters** (IPC, L1/L2/TLB miss rates, branch mispredicts) on
+  Apple Silicon: Instruments "CPU Counters" template. From CLI:
+  `xcrun xctrace record --template 'CPU Counters' --launch -- ./bench`.
+  Limited to 10 events per run, no multiplexing. Useful for
+  validating SoA/cache hypotheses; not wired into a script yet.
 - **Instruction counts** (stable micro-bench deltas when wall-clock
-  variance hides small wins): `iai-callgrind` on Linux. Not wired up.
+  variance hides small wins): `iai-callgrind` on Linux. No native
+  arm64-darwin port — run in a Linux arm64 CI runner.
+
+**Bench hygiene on Apple Silicon:** P/E core scheduling + thermal
+throttling are real sources of variance. For long runs:
+
+```sh
+sudo powermetrics --samplers thermal -i 100 -n 200 > tmp/thermal.log &
+```
+
+If `thermal_pressure` shifts off `Nominal` mid-run, your variance is
+thermal — re-run on power, lid open, with other apps closed.
 
 ## Adding a new bench
 
