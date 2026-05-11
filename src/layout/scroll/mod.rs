@@ -83,6 +83,13 @@ pub(crate) struct ScrollLayoutState {
     pub(crate) content: Size,
     pub(crate) overflow: (bool, bool),
     pub(crate) seen: bool,
+    /// Snapshot of `offset` at the frame a thumb-drag latched, paired
+    /// with the axis whose thumb is being dragged. `Some` while a drag
+    /// is in flight; cleared when the dragged thumb is no longer the
+    /// active capture. Reused each frame so cumulative `drag_delta`
+    /// composes against a stable anchor (otherwise per-frame deltas
+    /// would compound).
+    pub(crate) drag_anchor: Option<(Axis, Vec2)>,
 }
 
 impl Default for ScrollLayoutState {
@@ -95,6 +102,7 @@ impl Default for ScrollLayoutState {
             content: Size::ZERO,
             overflow: (false, false),
             seen: false,
+            drag_anchor: None,
         }
     }
 }
