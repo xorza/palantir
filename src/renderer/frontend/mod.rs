@@ -21,6 +21,7 @@ pub(crate) mod gradient_atlas;
 
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::Ui;
 use crate::ui::damage::Damage;
 use std::sync::Arc;
@@ -99,36 +100,25 @@ impl FrameReport {
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
 /// every persistent allocation (the encoder's
 /// [`RenderCmdBuffer`](cmd_buffer::RenderCmdBuffer), the output
-/// `RenderBuffer`, the [`Composer`] with its scratch). No GPU
-/// handles — the composed buffer is fed into any backend
-/// (`WgpuBackend`, future software/Vello/etc.).
+/// `RenderBuffer` — which carries the gradient atlas as a field —
+/// and the [`Composer`] with its scratch). No GPU handles.
 ///
 /// Owned by [`Renderer`](crate::renderer::Renderer) alongside the
-/// backend; the renderer drives `Frontend::build` then hands the
-/// composed buffer + gradient atlas to the backend.
+/// backend; the renderer drives `Frontend::build` and hands the
+/// returned `&mut RenderBuffer` straight to the backend.
 #[derive(Default)]
 pub(crate) struct Frontend {
     pub(crate) encoder: Encoder,
     pub(crate) composer: Composer,
-    /// Cross-frame gradient atlas — composer registers gradients into
-    /// it during compose, backend uploads dirty rows during submit.
-    /// Persistent: rows stay baked across frames so repeated authoring
-    /// of the same gradient is O(1) hash lookup.
-    pub(crate) gradient_atlas: gradient_atlas::GradientCpuAtlas,
 }
 
 impl Frontend {
-    /// Encode the tree into commands, compose them into the buffer.
-    /// Disabled-dim and other paint-time theme constants are
-    /// pre-resolved into `cascades` (`Cascade::rgb_mul`), so this stage
-    /// reads everything it needs from the inputs without per-call
-    /// theme threading.
-    ///
-    /// Returns `()` — the buffer + gradient atlas live on `Frontend`
-    /// and are accessed via split borrows by the caller (so it can
-    /// hold `&buffer` and `&mut gradient_atlas` simultaneously when
-    /// constructing `FrameOutput`).
-    pub(crate) fn build(&mut self, ui: &Ui) {
+    /// Encode the tree into commands, compose them into the buffer,
+    /// and return a borrow of the composed result. Disabled-dim and
+    /// other paint-time theme constants are pre-resolved into
+    /// `cascades` (`Cascade::rgb_mul`), so this stage reads everything
+    /// it needs from the inputs without per-call theme threading.
+    pub(crate) fn build(&mut self, ui: &Ui) -> &mut RenderBuffer {
         let damage_filter = match &ui.damage {
             Some(Damage::Partial(region)) => Some(region),
             Some(Damage::Full) | None => None,
@@ -140,7 +130,6 @@ impl Frontend {
             damage_filter,
             ui.display.logical_rect(),
         );
-        self.composer
-            .compose(cmds, &ui.display, &mut self.gradient_atlas);
+        self.composer.compose(cmds, &ui.display)
     }
 }

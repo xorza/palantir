@@ -11,7 +11,6 @@ use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, spacing::Spacing, stroke::Stroke, urect::URect,
 };
-use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
 use crate::ui::damage::Damage;
@@ -261,8 +260,7 @@ impl WgpuBackend {
         &mut self,
         surface_tex: &wgpu::Texture,
         clear: Color,
-        buffer: &RenderBuffer,
-        gradient_atlas: &mut GradientCpuAtlas,
+        buffer: &mut RenderBuffer,
         damage: Damage,
         debug_overlay: DebugOverlayConfig,
     ) {
@@ -271,7 +269,8 @@ impl WgpuBackend {
         // frame uploads row 0's magenta fallback plus any baked rows
         // composer queued. Has to run before the render pass starts —
         // any quad with `fill_kind.is_linear()` samples this texture.
-        self.quad.upload_gradients(&self.queue, gradient_atlas);
+        self.quad
+            .upload_gradients(&self.queue, &mut buffer.gradient_atlas);
 
         let use_stencil = buffer.has_rounded_clip();
         tracing::trace!(

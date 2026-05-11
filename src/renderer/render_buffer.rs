@@ -2,6 +2,7 @@ use super::quad::Quad;
 use crate::layout::types::span::Span;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, urect::URect};
+use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
@@ -12,7 +13,6 @@ use glam::{UVec2, Vec2};
 /// its allocations across frames so steady-state composing is alloc-free for
 /// the output; reuse a single `RenderBuffer` and call
 /// `compose(.., &mut buffer)` each frame.
-#[derive(Clone)]
 pub(crate) struct RenderBuffer {
     pub(crate) quads: Vec<Quad>,
     pub(crate) texts: Vec<TextRun>,
@@ -27,6 +27,12 @@ pub(crate) struct RenderBuffer {
     /// Glyph rasterization needs it: shaped buffers are sized in logical px,
     /// so glyphon scales by this when emitting glyph quads.
     pub(crate) scale: f32,
+    /// Cross-frame gradient LUT atlas. Composer registers each
+    /// `Brush::Linear` it encounters during compose; backend drains
+    /// the dirty marker via `flush()` and uploads when populated.
+    /// Persistent: rows stay baked across frames so repeated authoring
+    /// of the same gradient is O(1) hash lookup.
+    pub(crate) gradient_atlas: GradientCpuAtlas,
 }
 
 impl RenderBuffer {
@@ -48,6 +54,7 @@ impl Default for RenderBuffer {
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
             scale: 1.0,
+            gradient_atlas: GradientCpuAtlas::default(),
         }
     }
 }

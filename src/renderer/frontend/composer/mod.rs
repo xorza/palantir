@@ -7,7 +7,6 @@ use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
-use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, RoundedClip, TextRun};
 use glam::{UVec2, Vec2};
@@ -171,8 +170,7 @@ impl Composer {
         &mut self,
         cmds: &RenderCmdBuffer,
         display: &Display,
-        gradient_atlas: &mut GradientCpuAtlas,
-    ) -> &RenderBuffer {
+    ) -> &mut RenderBuffer {
         let out = &mut self.buffer;
         let scale = display.scale_factor;
         let snap = display.pixel_snap;
@@ -321,7 +319,7 @@ impl Composer {
                     // through with the row sentinel'd to 0.
                     let fill_lut_row = if fill_kind.is_linear() {
                         let g = &cmds.linear_gradients[fill_grad_idx as usize];
-                        gradient_atlas.register(g)
+                        out.gradient_atlas.register(g)
                     } else {
                         0
                     };
@@ -498,7 +496,7 @@ impl Composer {
         }
         group.flush(out);
 
-        &self.buffer
+        &mut self.buffer
     }
 }
 
