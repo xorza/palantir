@@ -146,6 +146,12 @@ impl Ui {
         }
         let damage = self.paint_phase();
 
+        if matches!(damage, DamagePaint::Skip) {
+            self.frame_state.mark_submitted();
+        } else {
+            self.frame_state.mark_pending();
+        }
+
         RecordedFrame {
             forest: &self.forest,
             layout: &self.layout,
@@ -245,11 +251,6 @@ impl Ui {
             .damage
             .compute(&self.forest, cascades, removed, surface);
 
-        if matches!(damage, DamagePaint::Skip) {
-            self.frame_state.mark_submitted();
-        } else {
-            self.frame_state.mark_pending();
-        }
         damage
     }
 
