@@ -75,6 +75,147 @@ fn frame_linear_gradient_matches_golden() {
     assert_matches_golden("frame_linear_gradient", &img, Tolerance::default());
 }
 
+/// Pin: `Shape::RoundedRect { fill: Brush::Linear(...) }` lowered
+/// through `Tree::add_shape` → `ShapeRecord::RoundedRect { fill:
+/// Brush, .. }` paints correctly. Slice-2 step 6 unblocks this — prior
+/// to the widening, the lowering called `as_solid().expect(...)` and
+/// panicked on any non-solid brush.
+#[test]
+fn add_shape_rounded_rect_linear_gradient_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
+        Panel::vstack().auto_id().padding(20.0).show(ui, |ui| {
+            ui.add_shape(Shape::RoundedRect {
+                local_rect: Some(Rect::new(0.0, 0.0, 180.0, 100.0)),
+                radius: Corners::all(12.0),
+                fill: Brush::Linear(LinearGradient::two_stop(
+                    0.0,
+                    Srgb8::hex(0xff5e44),
+                    Srgb8::hex(0xfacc15),
+                )),
+                stroke: Stroke::ZERO,
+            });
+        });
+    });
+    assert_matches_golden(
+        "add_shape_rounded_rect_linear_gradient",
+        &img,
+        Tolerance::default(),
+    );
+}
+
+/// Render the showcase's gradients tab as a single golden so the
+/// six demo cells are pinned end-to-end: two-stop horizontal /
+/// vertical / 45°, three-stop, three spread modes stacked, three
+/// interp spaces stacked. Acts as an eyeball-replacement for the
+/// "open the showcase" check the slice-2 plan asked for, and locks
+/// the visual against shader / atlas drift.
+#[test]
+fn showcase_gradients_tab_matches_golden() {
+    use palantir::{Interp, Spread, Stop};
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(560, 360), 1.0, DARK_BG, |ui| {
+        let navy = Srgb8::hex(0x1a1a2e);
+        let blue = Srgb8::hex(0x4c5cdb);
+        let orange = Srgb8::hex(0xff7e44);
+        let yellow = Srgb8::hex(0xfacc15);
+        let red = Srgb8::hex(0xff5e44);
+        let green = Srgb8::hex(0x46c46c);
+        let cell = |g: LinearGradient| Background {
+            fill: Brush::Linear(g),
+            radius: Corners::all(8.0),
+            ..Default::default()
+        };
+        Panel::vstack()
+            .auto_id()
+            .gap(16.0)
+            .padding(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::hstack()
+                    .id_salt("row1")
+                    .gap(16.0)
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id_salt("horizontal")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .background(cell(LinearGradient::two_stop(0.0, navy, blue)))
+                            .show(ui);
+                        Frame::new()
+                            .id_salt("vertical")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .background(cell(LinearGradient::two_stop(
+                                std::f32::consts::FRAC_PI_2,
+                                navy,
+                                blue,
+                            )))
+                            .show(ui);
+                        Frame::new()
+                            .id_salt("diag")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .background(cell(LinearGradient::two_stop(
+                                std::f32::consts::FRAC_PI_4,
+                                orange,
+                                yellow,
+                            )))
+                            .show(ui);
+                    });
+                Panel::hstack()
+                    .id_salt("row2")
+                    .gap(16.0)
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id_salt("threestop")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .background(cell(LinearGradient::three_stop(0.0, red, yellow, green)))
+                            .show(ui);
+                        Panel::vstack()
+                            .id_salt("spread")
+                            .gap(4.0)
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                for (i, sp) in [Spread::Pad, Spread::Repeat, Spread::Reflect]
+                                    .iter()
+                                    .enumerate()
+                                {
+                                    let g = LinearGradient::new(
+                                        0.0,
+                                        [Stop::new(0.0, navy), Stop::new(0.5, blue)],
+                                    )
+                                    .with_spread(*sp);
+                                    Frame::new()
+                                        .id_salt(("sp", i))
+                                        .size((Sizing::FILL, Sizing::FILL))
+                                        .background(cell(g))
+                                        .show(ui);
+                                }
+                            });
+                        Panel::vstack()
+                            .id_salt("interp")
+                            .gap(4.0)
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                for (i, ip) in [Interp::Linear, Interp::Srgb, Interp::Oklab]
+                                    .iter()
+                                    .enumerate()
+                                {
+                                    let g =
+                                        LinearGradient::two_stop(0.0, red, green).with_interp(*ip);
+                                    Frame::new()
+                                        .id_salt(("ip", i))
+                                        .size((Sizing::FILL, Sizing::FILL))
+                                        .background(cell(g))
+                                        .show(ui);
+                                }
+                            });
+                    });
+            });
+    });
+    assert_matches_golden("showcase_gradients_tab", &img, Tolerance::default());
+}
+
 /// Pins the rounded-clip stencil path. Layered: full-canvas pink, then
 /// a smaller rounded panel (per-corner distinct radii, 1px black
 /// stroke, rounded clip), then a full-fill black child whose square

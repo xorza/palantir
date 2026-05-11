@@ -2,6 +2,7 @@ use crate::common::hash::Hasher as FxHasher;
 use crate::layout::types::align::Align;
 use crate::layout::types::span::Span;
 use crate::primitives::bezier::{FlatPoint, flatten_cubic, flatten_quadratic};
+use crate::primitives::brush::Brush;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::mesh::Mesh;
@@ -34,7 +35,7 @@ pub(crate) enum ShapeRecord {
     RoundedRect {
         local_rect: Option<Rect>,
         radius: Corners,
-        fill: Color,
+        fill: Brush,
         stroke: Stroke,
     } = 0,
     /// Stroked polyline. `points`/`colors` index into the active
@@ -274,7 +275,7 @@ impl Shapes {
             } => ShapeRecord::RoundedRect {
                 local_rect,
                 radius,
-                fill: fill.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
+                fill,
                 stroke,
             },
             Shape::Line {
