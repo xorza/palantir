@@ -86,7 +86,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                         .id_salt("fill-child")
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background {
-                            fill: Color::rgb(0.5, 0.5, 0.5),
+                            fill: Color::rgb(0.5, 0.5, 0.5).into(),
                             ..Default::default()
                         })
                         .show(ui);

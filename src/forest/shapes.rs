@@ -274,20 +274,20 @@ impl Shapes {
             } => ShapeRecord::RoundedRect {
                 local_rect,
                 radius,
-                fill,
+                fill: fill.as_solid(),
                 stroke,
             },
             Shape::Line {
                 a,
                 b,
                 width,
-                color,
+                brush,
                 cap,
                 join,
             } => lower_polyline(
                 &mut self.payloads,
                 &[a, b],
-                PolylineColors::Single(color),
+                PolylineColors::Single(brush),
                 width,
                 cap,
                 join,
@@ -305,7 +305,7 @@ impl Shapes {
                 p2,
                 p3,
                 width,
-                color,
+                brush,
                 cap,
                 join,
                 tolerance,
@@ -316,7 +316,7 @@ impl Shapes {
                     &mut self.payloads,
                     BezierInputs::Cubic([p0, p1, p2, p3]),
                     width,
-                    color,
+                    brush.as_solid(),
                     cap,
                     join,
                     tolerance,
@@ -327,7 +327,7 @@ impl Shapes {
                 p1,
                 p2,
                 width,
-                color,
+                brush,
                 cap,
                 join,
                 tolerance,
@@ -338,7 +338,7 @@ impl Shapes {
                     &mut self.payloads,
                     BezierInputs::Quadratic([p0, p1, p2]),
                     width,
-                    color,
+                    brush.as_solid(),
                     cap,
                     join,
                     tolerance,
@@ -347,7 +347,7 @@ impl Shapes {
             Shape::Text {
                 local_rect,
                 text,
-                color,
+                brush,
                 font_size_px,
                 line_height_px,
                 wrap,
@@ -355,7 +355,7 @@ impl Shapes {
             } => ShapeRecord::Text {
                 local_rect,
                 text,
-                color,
+                color: brush.as_solid(),
                 font_size_px,
                 line_height_px,
                 wrap,
@@ -374,7 +374,7 @@ impl Shapes {
                 let content_hash = mesh.content_hash();
                 ShapeRecord::Mesh {
                     local_rect,
-                    tint,
+                    tint: tint.as_solid(),
                     vertices: Span::new(v_start, mesh.vertices.len() as u32),
                     indices: Span::new(i_start, mesh.indices.len() as u32),
                     content_hash,
@@ -402,8 +402,15 @@ fn lower_polyline(
     // `PolylineColors::assert_matches` in `Ui::add_shape`; the
     // `Shape::Line` path constructs `Single(color)` internally and is
     // unconstrained.
+    // `Single(Brush)` extracts to a `Color` slot since slice-1 records
+    // are still `Color`-typed; the local outlives the slice via the
+    // outer binding.
+    let single_color: Color;
     let (mode, color_slice): (ColorMode, &[Color]) = match colors {
-        PolylineColors::Single(ref c) => (ColorMode::Single, std::slice::from_ref(c)),
+        PolylineColors::Single(b) => {
+            single_color = b.as_solid();
+            (ColorMode::Single, std::slice::from_ref(&single_color))
+        }
         PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
         PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
     };

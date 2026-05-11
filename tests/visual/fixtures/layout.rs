@@ -27,7 +27,7 @@ fn vstack_fill_weights_matches_golden() {
                     .id_salt("a")
                     .size((Sizing::FILL, Sizing::Fill(1.0)))
                     .background(Background {
-                        fill: Color::rgb(0.85, 0.30, 0.30),
+                        fill: Color::rgb(0.85, 0.30, 0.30).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -35,7 +35,7 @@ fn vstack_fill_weights_matches_golden() {
                     .id_salt("b")
                     .size((Sizing::FILL, Sizing::Fill(2.0)))
                     .background(Background {
-                        fill: Color::rgb(0.30, 0.85, 0.40),
+                        fill: Color::rgb(0.30, 0.85, 0.40).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -43,7 +43,7 @@ fn vstack_fill_weights_matches_golden() {
                     .id_salt("c")
                     .size((Sizing::FILL, Sizing::Fill(1.0)))
                     .background(Background {
-                        fill: Color::rgb(0.30, 0.50, 0.95),
+                        fill: Color::rgb(0.30, 0.50, 0.95).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -71,7 +71,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .grid_cell((0, 0))
                     .grid_span((1, 3))
                     .background(Background {
-                        fill: Color::rgb(0.25, 0.30, 0.45),
+                        fill: Color::rgb(0.25, 0.30, 0.45).into(),
                         radius: Corners::all(4.0),
                         ..Default::default()
                     })
@@ -80,7 +80,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .id_salt("side")
                     .grid_cell((1, 0))
                     .background(Background {
-                        fill: Color::rgb(0.35, 0.45, 0.30),
+                        fill: Color::rgb(0.35, 0.45, 0.30).into(),
                         radius: Corners::all(4.0),
                         ..Default::default()
                     })
@@ -89,7 +89,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .id_salt("body")
                     .grid_cell((1, 1))
                     .background(Background {
-                        fill: Color::rgb(0.20, 0.20, 0.28),
+                        fill: Color::rgb(0.20, 0.20, 0.28).into(),
                         radius: Corners::all(4.0),
                         ..Default::default()
                     })
@@ -98,7 +98,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .id_salt("aside")
                     .grid_cell((1, 2))
                     .background(Background {
-                        fill: Color::rgb(0.50, 0.30, 0.45),
+                        fill: Color::rgb(0.50, 0.30, 0.45).into(),
                         radius: Corners::all(4.0),
                         ..Default::default()
                     })
@@ -120,11 +120,8 @@ fn zstack_centered_button_matches_golden() {
             .padding(12.0)
             .size((Sizing::FILL, Sizing::FILL))
             .background(Background {
-                fill: Color::rgb(0.16, 0.20, 0.28),
-                stroke: Stroke {
-                    width: 1.0,
-                    color: Color::rgb(0.30, 0.36, 0.46),
-                },
+                fill: Color::rgb(0.16, 0.20, 0.28).into(),
+                stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
                 radius: Corners::all(10.0),
             })
             .show(ui, |ui| {

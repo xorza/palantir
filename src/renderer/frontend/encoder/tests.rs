@@ -88,7 +88,7 @@ fn baseline_draw_rect_count_cases() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -101,7 +101,7 @@ fn baseline_draw_rect_count_cases() {
                     .id_salt("degenerate")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::TRANSPARENT,
+                        fill: Color::TRANSPARENT.into(),
                         stroke: Stroke::ZERO,
                         ..Default::default()
                     })
@@ -140,7 +140,7 @@ fn manually_pushed_rounded_rect_shape_emits_draw_rect() {
         ui.add_shape(Shape::RoundedRect {
             local_rect: None,
             radius: Corners::all(4.0),
-            fill: Color::rgb(1.0, 0.0, 0.0),
+            fill: Color::rgb(1.0, 0.0, 0.0).into(),
             stroke: Stroke::ZERO,
         });
         Frame::new().id_salt("host").size(50.0).show(ui);
@@ -172,7 +172,7 @@ fn line_shape_emits_draw_polyline() {
             a: Vec2::new(0.0, 0.0),
             b: Vec2::new(20.0, 0.0),
             width: 2.0,
-            color: Color::rgb(1.0, 0.0, 0.0),
+            brush: Color::rgb(1.0, 0.0, 0.0).into(),
             cap: LineCap::Butt,
             join: LineJoin::Miter,
         });
@@ -181,7 +181,7 @@ fn line_shape_emits_draw_polyline() {
             a: Vec2::new(0.0, 0.0),
             b: Vec2::new(10.0, 10.0),
             width: 0.0,
-            color: Color::rgb(1.0, 0.0, 0.0),
+            brush: Color::rgb(1.0, 0.0, 0.0).into(),
             cap: LineCap::Butt,
             join: LineJoin::Miter,
         });
@@ -189,7 +189,7 @@ fn line_shape_emits_draw_polyline() {
             a: Vec2::new(0.0, 0.0),
             b: Vec2::new(10.0, 10.0),
             width: 2.0,
-            color: Color::TRANSPARENT,
+            brush: Color::TRANSPARENT.into(),
             cap: LineCap::Butt,
             join: LineJoin::Miter,
         });
@@ -276,7 +276,7 @@ fn clip_emits_balanced_push_pop() {
                     .id_salt("inner")
                     .size(40.0)
                     .background(Background {
-                        fill: Color::rgb(0.5, 0.5, 0.5),
+                        fill: Color::rgb(0.5, 0.5, 0.5).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -337,11 +337,8 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                 .id_salt("rounded")
                 .size(80.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.2, 0.2),
-                    stroke: Stroke {
-                        width: 2.0,
-                        color: Color::rgb(1.0, 1.0, 1.0),
-                    },
+                    fill: Color::rgb(0.2, 0.2, 0.2).into(),
+                    stroke: Stroke::solid(Color::rgb(1.0, 1.0, 1.0), 2.0),
                     radius: Corners::all(8.0),
                 })
                 .clip_rounded()
@@ -505,7 +502,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .position((0.0, 0.0))
                     .size(30.0)
                     .background(Background {
-                        fill: v_color,
+                        fill: v_color.into(),
                         ..Default::default()
                     })
                     .sense(Sense::CLICK)
@@ -515,7 +512,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .position((40.0, 0.0))
                     .size(30.0)
                     .background(Background {
-                        fill: d_color,
+                        fill: d_color.into(),
                         ..Default::default()
                     })
                     .sense(Sense::CLICK)
@@ -526,7 +523,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .position((80.0, 0.0))
                     .size(30.0)
                     .background(Background {
-                        fill: h_color,
+                        fill: h_color.into(),
                         ..Default::default()
                     })
                     .sense(Sense::CLICK)
@@ -612,7 +609,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .position((0.0, 0.0))
                     .size(30.0)
                     .background(Background {
-                        fill: v_color,
+                        fill: v_color.into(),
                         ..Default::default()
                     })
                     .sense(Sense::CLICK)
@@ -623,7 +620,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .position((40.0, 0.0))
                     .size(30.0)
                     .background(Background {
-                        fill: d_color,
+                        fill: d_color.into(),
                         ..Default::default()
                     })
                     .sense(Sense::CLICK)
@@ -635,7 +632,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .position((80.0, 0.0))
                     .size(30.0)
                     .background(Background {
-                        fill: h_color,
+                        fill: h_color.into(),
                         ..Default::default()
                     })
                     .sense(Sense::CLICK)
@@ -690,7 +687,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
                     .auto_id()
                     .size(Sizing::Fixed(40.0))
                     .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui)
@@ -813,7 +810,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
             .id_salt("a")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .background(Background {
-                fill: Color::rgb(1.0, 0.0, 0.0),
+                fill: Color::rgb(1.0, 0.0, 0.0).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -821,7 +818,7 @@ fn damage_filter_skips_drawrect_outside_dirty_region() {
             .id_salt("b")
             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
             .background(Background {
-                fill: Color::rgb(0.0, 1.0, 0.0),
+                fill: Color::rgb(0.0, 1.0, 0.0).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -852,7 +849,7 @@ fn damage_filter_keeps_drawrect_inside_dirty_region() {
             .id_salt("a")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(1.0, 0.0, 0.0),
+                fill: Color::rgb(1.0, 0.0, 0.0).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -886,7 +883,7 @@ fn damage_filter_culls_subtree_outside_damage() {
                     .id_salt("inner")
                     .size(20.0)
                     .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -929,7 +926,7 @@ fn damage_filter_culls_transformed_subtree_outside_damage() {
                     .id_salt("inner")
                     .size(20.0)
                     .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -979,7 +976,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                     .position(Vec2::new(*x, *y))
                     .background(Background {
-                        fill: Color::rgb(1.0, 0.0, 0.0),
+                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -1014,7 +1011,7 @@ fn viewport_cull_skips_offscreen_subtree() {
                 .position((500.0, 500.0))
                 .size(20.0)
                 .background(Background {
-                    fill: Color::rgb(1.0, 0.0, 0.0),
+                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -1044,7 +1041,7 @@ fn viewport_cull_keeps_onscreen_sibling() {
                 .position((10.0, 10.0))
                 .size(20.0)
                 .background(Background {
-                    fill: Color::rgb(0.0, 1.0, 0.0),
+                    fill: Color::rgb(0.0, 1.0, 0.0).into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -1053,7 +1050,7 @@ fn viewport_cull_keeps_onscreen_sibling() {
                 .position((500.0, 500.0))
                 .size(20.0)
                 .background(Background {
-                    fill: Color::rgb(1.0, 0.0, 0.0),
+                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
                     ..Default::default()
                 })
                 .show(ui);

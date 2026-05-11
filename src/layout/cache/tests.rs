@@ -55,7 +55,7 @@ fn leaf_snapshot_populated_after_first_frame() {
             .id_salt("a")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8),
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -76,7 +76,7 @@ fn unchanged_leaf_keeps_subtree_hash_across_frames() {
             .id_salt("a")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8),
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -97,7 +97,7 @@ fn changing_leaf_authoring_replaces_snapshot() {
             .id_salt("a")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8),
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -109,7 +109,7 @@ fn changing_leaf_authoring_replaces_snapshot() {
             .id_salt("a")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.9, 0.4, 0.8),
+                fill: Color::rgb(0.9, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -154,7 +154,7 @@ fn cache_hit_replays_same_desired_size() {
             .id_salt("a")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8),
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -290,7 +290,7 @@ fn in_place_rewrite_preserves_arena_position() {
             .id_salt("a")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(c, 0.4, 0.8),
+                fill: Color::rgb(c, 0.4, 0.8).into(),
                 ..Default::default()
             })
             .show(ui);
@@ -447,7 +447,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
                     .id_salt("changing-leaf")
                     .size(50.0)
                     .background(Background {
-                        fill: leaf_color,
+                        fill: leaf_color.into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -457,7 +457,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
                     .id_salt("stable-leaf")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -545,7 +545,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
                 .id_salt("blip")
                 .size(40.0)
                 .background(Background {
-                    fill: Color::rgb(0.5, 0.2, 0.7),
+                    fill: Color::rgb(0.5, 0.2, 0.7).into(),
                     ..Default::default()
                 })
                 .show(ui);

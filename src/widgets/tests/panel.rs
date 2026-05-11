@@ -34,7 +34,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             .id_salt("paint-only")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.5, 0.5, 0.5),
+                fill: Color::rgb(0.5, 0.5, 0.5).into(),
                 ..Default::default()
             })
             .show(ui, |_| {})
@@ -57,7 +57,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             .id_salt("clipped")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.2, 0.2),
+                fill: Color::rgb(0.2, 0.2, 0.2).into(),
                 ..Default::default()
             })
             .clip_rect()
@@ -70,7 +70,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             .id_salt("rounded")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.2, 0.2),
+                fill: Color::rgb(0.2, 0.2, 0.2).into(),
                 radius: Corners::all(4.0),
                 ..Default::default()
             })
@@ -84,7 +84,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
             .id_salt("rounded-zero")
             .size(50.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.2, 0.2),
+                fill: Color::rgb(0.2, 0.2, 0.2).into(),
                 ..Default::default()
             })
             .clip_rounded()
@@ -118,7 +118,7 @@ fn panel_hugs_largest_child_and_layers_them() {
                 .id_salt("card")
                 .padding(10.0)
                 .background(Background {
-                    fill: Color::rgb(0.1, 0.1, 0.15),
+                    fill: Color::rgb(0.1, 0.1, 0.15).into(),
                     radius: Corners::all(8.0),
                     ..Default::default()
                 })
@@ -191,7 +191,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                         .id_salt("filler")
                         .size((Sizing::FILL, Sizing::FILL))
                         .background(Background {
-                            fill: Color::rgb(0.5, 0.5, 0.5),
+                            fill: Color::rgb(0.5, 0.5, 0.5).into(),
                             ..Default::default()
                         })
                         .show(ui)
@@ -251,7 +251,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.2, 0.2),
+                fill: Color::rgb(0.2, 0.2, 0.2).into(),
                 ..Default::default()
             })
             .disabled(true)
@@ -274,7 +274,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
             .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
             .padding(20.0)
             .background(Background {
-                fill: Color::rgb(0.2, 0.2, 0.2),
+                fill: Color::rgb(0.2, 0.2, 0.2).into(),
                 ..Default::default()
             })
             .disabled(true)

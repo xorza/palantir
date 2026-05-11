@@ -94,7 +94,7 @@ fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, targ
                 .id(id)
                 .size((Sizing::Fixed(width), Sizing::Fixed(20.0)))
                 .background(Background {
-                    fill: Color::hex(0x4488ff),
+                    fill: Color::hex(0x4488ff).into(),
                     ..Default::default()
                 })
                 .show(ui);

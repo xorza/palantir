@@ -916,7 +916,7 @@ mod bars {
                             .padding(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
-                                fill: crate::primitives::color::Color::rgb(0.16, 0.20, 0.28),
+                                fill: crate::primitives::color::Color::rgb(0.16, 0.20, 0.28).into(),
                                 ..Default::default()
                             })
                             .clip_rect()

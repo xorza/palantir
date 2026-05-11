@@ -26,7 +26,7 @@ fn zstack_layers_children_without_painting_background() {
                             .id_salt("bg")
                             .size((Sizing::Fixed(120.0), Sizing::Fixed(80.0)))
                             .background(Background {
-                                fill: Color::rgb(0.1, 0.1, 0.2),
+                                fill: Color::rgb(0.1, 0.1, 0.2).into(),
                                 ..Default::default()
                             })
                             .show(ui)
@@ -90,7 +90,7 @@ fn zstack_aligns_child_per_axis() {
                             .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                             .align(*align)
                             .background(Background {
-                                fill: Color::rgb(0.5, 0.5, 0.5),
+                                fill: Color::rgb(0.5, 0.5, 0.5).into(),
                                 ..Default::default()
                             })
                             .show(ui)

@@ -27,11 +27,8 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
         .gap(6.0)
         .padding(8.0)
         .background(Background {
-            fill: Color::rgb(0.16, 0.18, 0.22),
-            stroke: Stroke {
-                width: 1.0,
-                color: Color::rgb(0.30, 0.34, 0.42),
-            },
+            fill: Color::rgb(0.16, 0.18, 0.22).into(),
+            stroke: Stroke::solid(Color::rgb(0.30, 0.34, 0.42), 1.0),
             radius: Corners::all(4.0),
         })
         .show(ui, |ui| {

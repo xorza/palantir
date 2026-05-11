@@ -14,7 +14,7 @@ fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
         .id_salt(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(h)))
         .background(Background {
-            fill: Color::WHITE,
+            fill: Color::WHITE.into(),
             ..Default::default()
         })
         .show(ui)
@@ -255,7 +255,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                         .id_salt("filler")
                         .size((Sizing::Fixed(100.0), Sizing::FILL))
                         .background(Background {
-                            fill: Color::rgb(0.5, 0.5, 0.5),
+                            fill: Color::rgb(0.5, 0.5, 0.5).into(),
                             ..Default::default()
                         })
                         .show(ui)

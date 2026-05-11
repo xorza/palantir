@@ -123,11 +123,11 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
         .id_salt(("chip-row", &key))
         .padding((10.0, 4.0))
         .background(Background {
-            fill: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.20),
-            stroke: Stroke {
-                width: 1.0,
-                color: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.45),
-            },
+            fill: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.20).into(),
+            stroke: Stroke::solid(
+                palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.45),
+                1.0,
+            ),
             radius: Corners::all(10.0),
         })
         .show(ui, |ui| {

@@ -226,11 +226,8 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .size((Sizing::FILL, Sizing::Hug))
                     .padding(6.0)
                     .background(Background {
-                        fill: Color::rgb(0.16, 0.18, 0.22),
-                        stroke: Stroke {
-                            width: 1.0,
-                            color: Color::rgb(0.3, 0.34, 0.42),
-                        },
+                        fill: Color::rgb(0.16, 0.18, 0.22).into(),
+                        stroke: Stroke::solid(Color::rgb(0.3, 0.34, 0.42), 1.0),
                         radius: Corners::all(4.0),
                     })
                     .show(ui, |ui| {
@@ -272,7 +269,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .id_salt("under")
                     .size((Sizing::FILL, Sizing::Fixed(20.0)))
                     .background(Background {
-                        fill: Color::rgb(0.4, 0.4, 0.5),
+                        fill: Color::rgb(0.4, 0.4, 0.5).into(),
                         ..Default::default()
                     })
                     .show(ui);

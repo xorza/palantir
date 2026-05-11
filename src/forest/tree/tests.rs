@@ -52,7 +52,7 @@ fn interleaved_shapes_record_correct_order() {
         Shape::RoundedRect {
             local_rect: Some(Rect::new(0.0, 0.0, s, s)),
             radius: Corners::default(),
-            fill: Color::rgb(1.0, 0.0, 0.0),
+            fill: Color::rgb(1.0, 0.0, 0.0).into(),
             stroke: Stroke::ZERO,
         }
     }
@@ -65,7 +65,7 @@ fn interleaved_shapes_record_correct_order() {
             Frame::new()
                 .id_salt("c0")
                 .background(Background {
-                    fill: Color::rgb(0.0, 1.0, 0.0),
+                    fill: Color::rgb(0.0, 1.0, 0.0).into(),
                     ..Default::default()
                 })
                 .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
@@ -74,7 +74,7 @@ fn interleaved_shapes_record_correct_order() {
             Frame::new()
                 .id_salt("c1")
                 .background(Background {
-                    fill: Color::rgb(0.0, 0.0, 1.0),
+                    fill: Color::rgb(0.0, 0.0, 1.0).into(),
                     ..Default::default()
                 })
                 .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
@@ -159,7 +159,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
         Shape::RoundedRect {
             local_rect: Some(Rect::new(0.0, 0.0, 10.0, 10.0)),
             radius: Corners::default(),
-            fill: Color::rgb(1.0, 0.0, 0.0),
+            fill: Color::rgb(1.0, 0.0, 0.0).into(),
             stroke: Stroke::ZERO,
         }
     }
@@ -174,7 +174,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                 Frame::new()
                     .id_salt("only-child")
                     .background(Background {
-                        fill: Color::rgb(0.0, 1.0, 0.0),
+                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
                         ..Default::default()
                     })
                     .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
@@ -261,7 +261,7 @@ fn same_authoring_produces_same_hash() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -276,7 +276,7 @@ fn same_authoring_produces_same_hash() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -296,7 +296,7 @@ fn changing_fill_color_changes_hash() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -311,7 +311,7 @@ fn changing_fill_color_changes_hash() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.9, 0.4, 0.8),
+                        fill: Color::rgb(0.9, 0.4, 0.8).into(),
                         ..Default::default()
                     }) // different red
                     .show(ui);
@@ -333,7 +333,7 @@ fn changing_fill_color_changes_hash() {
                 .id_salt("a")
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
                     ..Default::default()
                 })
                 .show(ui)
@@ -351,7 +351,7 @@ fn changing_fill_color_changes_hash() {
                 .id_salt("a")
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.9, 0.4, 0.8),
+                    fill: Color::rgb(0.9, 0.4, 0.8).into(),
                     ..Default::default()
                 })
                 .show(ui)
@@ -561,7 +561,7 @@ fn child_hash_does_not_affect_parent_hash() {
                 .id_salt("c")
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8),
+                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -578,7 +578,7 @@ fn child_hash_does_not_affect_parent_hash() {
                 .id_salt("c")
                 .size(50.0)
                 .background(Background {
-                    fill: Color::rgb(0.9, 0.4, 0.8),
+                    fill: Color::rgb(0.9, 0.4, 0.8).into(),
                     ..Default::default()
                 }) // different child fill
                 .show(ui);
@@ -617,7 +617,7 @@ fn subtree_hash_stable_across_frames() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -625,7 +625,7 @@ fn subtree_hash_stable_across_frames() {
                     .id_salt("b")
                     .size(30.0)
                     .background(Background {
-                        fill: Color::rgb(0.9, 0.1, 0.1),
+                        fill: Color::rgb(0.9, 0.1, 0.1).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -647,7 +647,7 @@ fn subtree_hash_changes_when_descendant_changes() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -662,7 +662,7 @@ fn subtree_hash_changes_when_descendant_changes() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.9, 0.4, 0.8),
+                        fill: Color::rgb(0.9, 0.4, 0.8).into(),
                         ..Default::default()
                     }) // changed leaf fill
                     .show(ui);
@@ -685,7 +685,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -693,7 +693,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                     .id_salt("b")
                     .size(30.0)
                     .background(Background {
-                        fill: Color::rgb(0.9, 0.1, 0.1),
+                        fill: Color::rgb(0.9, 0.1, 0.1).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -708,7 +708,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                     .id_salt("b")
                     .size(30.0)
                     .background(Background {
-                        fill: Color::rgb(0.9, 0.1, 0.1),
+                        fill: Color::rgb(0.9, 0.1, 0.1).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -716,7 +716,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8),
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
                         ..Default::default()
                     })
                     .show(ui);
@@ -741,7 +741,7 @@ fn leaf_subtree_hash_depends_on_node_hash() {
         .id_salt("a")
         .size(50.0)
         .background(Background {
-            fill: Color::rgb(0.2, 0.4, 0.8),
+            fill: Color::rgb(0.2, 0.4, 0.8).into(),
             ..Default::default()
         })
         .show(&mut ui1)
@@ -754,7 +754,7 @@ fn leaf_subtree_hash_depends_on_node_hash() {
         .id_salt("a")
         .size(50.0)
         .background(Background {
-            fill: Color::rgb(0.2, 0.4, 0.8),
+            fill: Color::rgb(0.2, 0.4, 0.8).into(),
             ..Default::default()
         })
         .show(&mut ui2)
@@ -972,7 +972,7 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
                 .id_salt("a-leaf")
                 .size(50.0)
                 .background(Background {
-                    fill: root_a_color,
+                    fill: root_a_color.into(),
                     ..Default::default()
                 })
                 .show(ui);
@@ -1240,7 +1240,7 @@ fn mid_recording_popup_keeps_trees_independent() {
         Shape::RoundedRect {
             local_rect: Some(Rect::new(0.0, 0.0, w, w)),
             radius: Corners::default(),
-            fill: Color::rgb(1.0, 0.0, 0.0),
+            fill: Color::rgb(1.0, 0.0, 0.0).into(),
             stroke: Stroke::ZERO,
         }
     }

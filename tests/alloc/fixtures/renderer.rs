@@ -31,7 +31,7 @@ fn many_rects_compose_alloc_free() {
                         Frame::new()
                             .id_salt((r, c))
                             .background(palantir::Background {
-                                fill: Color::WHITE,
+                                fill: Color::WHITE.into(),
                                 ..Default::default()
                             })
                             .grid_cell((r, c))
@@ -58,7 +58,7 @@ fn polyline_static_alloc_free() {
             .show(ui, |ui| {
                 ui.add_shape(Shape::Polyline {
                     points: &points,
-                    colors: PolylineColors::Single(Color::WHITE),
+                    colors: PolylineColors::Single(Color::WHITE.into()),
                     width: 2.0,
                     cap: LineCap::Butt,
                     join: LineJoin::Miter,

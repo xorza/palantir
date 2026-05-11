@@ -357,27 +357,18 @@ impl Default for TextEditTheme {
         let m = palette::TEXT_MUTED;
         let edge = Color::linear_rgba(m.r, m.g, m.b, 0.18);
         let normal_bg = Background {
-            fill: palette::ELEM_HOVER,
-            stroke: Stroke {
-                width: 1.0,
-                color: edge,
-            },
+            fill: palette::ELEM_HOVER.into(),
+            stroke: Stroke::solid(edge, 1.0),
             radius,
         };
         let focused_bg = Background {
-            fill: palette::ELEM_HOVER,
-            stroke: Stroke {
-                width: 1.5,
-                color: palette::BORDER_FOCUSED,
-            },
+            fill: palette::ELEM_HOVER.into(),
+            stroke: Stroke::solid(palette::BORDER_FOCUSED, 1.5),
             radius,
         };
         let disabled_bg = Background {
-            fill: palette::ELEM,
-            stroke: Stroke {
-                width: 1.0,
-                color: edge,
-            },
+            fill: palette::ELEM.into(),
+            stroke: Stroke::solid(edge, 1.0),
             radius,
         };
         // Selection = accent at ~25% alpha — readable wash that doesn't
@@ -450,21 +441,15 @@ impl Default for ButtonTheme {
         let edge = Color::linear_rgba(m.r, m.g, m.b, 0.18);
         let bg = |fill: Color| -> Option<Background> {
             Some(Background {
-                fill,
-                stroke: Stroke {
-                    width: 1.0,
-                    color: edge,
-                },
+                fill: fill.into(),
+                stroke: Stroke::solid(edge, 1.0),
                 radius: Corners::all(4.0),
             })
         };
         // Pressed = hovered fill + focused stroke (palette has no further fill tier).
         let pressed_bg = Background {
-            fill: palette::ELEM_ACTIVE,
-            stroke: Stroke {
-                width: 1.0,
-                color: palette::BORDER_FOCUSED,
-            },
+            fill: palette::ELEM_ACTIVE.into(),
+            stroke: Stroke::solid(palette::BORDER_FOCUSED, 1.0),
             radius: Corners::all(4.0),
         };
         Self {
@@ -536,11 +521,8 @@ mod tests {
             WidgetLook::default(),
             WidgetLook {
                 background: Some(Background {
-                    fill: Color::hex(0x336699),
-                    stroke: Stroke {
-                        width: 1.5,
-                        color: Color::hex(0xffffff),
-                    },
+                    fill: Color::hex(0x336699).into(),
+                    stroke: Stroke::solid(Color::hex(0xffffff), 1.5),
                     radius: Corners::all(6.0),
                 }),
                 text: Some(TextStyle::default().with_font_size(20.0)),

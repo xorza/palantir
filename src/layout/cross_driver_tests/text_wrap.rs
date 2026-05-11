@@ -441,7 +441,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
             ui.add_shape(Shape::Text {
                 local_rect: Some(Rect::new(0.0, 0.0, 100.0, 20.0)),
                 text: Cow::Borrowed("first"),
-                color: Color::WHITE,
+                brush: Color::WHITE.into(),
                 font_size_px: 14.0,
                 line_height_px: 16.0,
                 wrap: TextWrap::Single,
@@ -450,7 +450,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
             ui.add_shape(Shape::Text {
                 local_rect: Some(Rect::new(0.0, 22.0, 100.0, 20.0)),
                 text: Cow::Borrowed("second-with-different-text"),
-                color: Color::WHITE,
+                brush: Color::WHITE.into(),
                 font_size_px: 14.0,
                 line_height_px: 16.0,
                 wrap: TextWrap::Single,

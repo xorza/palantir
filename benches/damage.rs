@@ -51,7 +51,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
                                 .id_salt(("cell", r, c))
                                 .size((Sizing::Fixed(30.0), Sizing::FILL))
                                 .background(Background {
-                                    fill,
+                                    fill: fill.into(),
                                     ..Default::default()
                                 })
                                 .show(ui);
@@ -174,7 +174,8 @@ fn bench_workloads(c: &mut Criterion) {
                                                     0.4 + (phase.sin() * 0.4),
                                                     0.4 + (phase.cos() * 0.4),
                                                     0.6,
-                                                ),
+                                                )
+                                                .into(),
                                                 ..Default::default()
                                             })
                                             .show(ui);

@@ -364,10 +364,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
                 rect(0.0, 0.0, 50.0, 50.0),
                 Corners::all(8.0),
                 Color::rgb(1.0, 1.0, 1.0),
-                Stroke {
-                    width: 1.5,
-                    color: Color::rgb(0.0, 0.0, 0.0),
-                },
+                Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 1.5),
             );
             b.pop_transform();
         },
@@ -376,7 +373,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
     let q = &buf.quads[0];
     assert_eq!(q.rect.size, Size::new(100.0, 100.0));
     assert_eq!(q.radius.tl, 16.0);
-    assert_eq!(q.stroke.width, 3.0);
+    assert_eq!(q.stroke_width, 3.0);
 }
 
 #[test]

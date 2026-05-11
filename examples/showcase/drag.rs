@@ -65,11 +65,8 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
         .position(pos)
         .sense(Sense::DRAG)
         .background(Background {
-            fill: accent,
-            stroke: Stroke {
-                width: 1.0,
-                color: Color::hex(0x202020),
-            },
+            fill: accent.into(),
+            stroke: Stroke::solid(Color::hex(0x202020), 1.0),
             radius: Corners::all(6.0),
         })
         .show(ui);

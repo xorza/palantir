@@ -2,6 +2,7 @@ use crate::layout::types::align::Align;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{
     approx::{EPS, noop_f32, vec2_approx_eq},
+    brush::Brush,
     color::Color,
     corners::Corners,
     rect::Rect,
@@ -22,7 +23,7 @@ pub enum Shape<'a> {
     RoundedRect {
         local_rect: Option<Rect>,
         radius: Corners,
-        fill: Color,
+        fill: Brush,
         stroke: Stroke,
     },
     /// Two-point stroked line — ergonomic shorthand for a 2-point
@@ -33,7 +34,7 @@ pub enum Shape<'a> {
         a: Vec2,
         b: Vec2,
         width: f32,
-        color: Color,
+        brush: Brush,
         cap: LineCap,
         join: LineJoin,
     },
@@ -63,7 +64,7 @@ pub enum Shape<'a> {
         p2: Vec2,
         p3: Vec2,
         width: f32,
-        color: Color,
+        brush: Brush,
         cap: LineCap,
         join: LineJoin,
         tolerance: f32,
@@ -74,7 +75,7 @@ pub enum Shape<'a> {
         p1: Vec2,
         p2: Vec2,
         width: f32,
-        color: Color,
+        brush: Brush,
         cap: LineCap,
         join: LineJoin,
         tolerance: f32,
@@ -82,7 +83,7 @@ pub enum Shape<'a> {
     Text {
         local_rect: Option<Rect>,
         text: Cow<'static, str>,
-        color: Color,
+        brush: Brush,
         font_size_px: f32,
         line_height_px: f32,
         wrap: TextWrap,
@@ -96,7 +97,7 @@ pub enum Shape<'a> {
     Mesh {
         mesh: &'a Mesh,
         local_rect: Option<Rect>,
-        tint: Color,
+        tint: Brush,
     },
 }
 
@@ -105,9 +106,12 @@ pub enum Shape<'a> {
 /// caller bug.
 #[derive(Clone, Copy, Debug)]
 pub enum PolylineColors<'a> {
-    /// One color for the whole stroke. Broadcast to every
-    /// cross-section.
-    Single(Color),
+    /// One brush for the whole stroke. Broadcast to every
+    /// cross-section. Widened to `Brush` so single-colour polylines
+    /// integrate with the same paint surface as fills; per-vertex
+    /// brush evaluation has no clean meaning so `PerPoint`/`PerSegment`
+    /// stay `Color`-typed.
+    Single(Brush),
     /// One color per input point. `len()` must equal `points.len()`.
     /// GPU lerps between adjacent cross-sections, giving a smooth
     /// gradient along the stroke.
@@ -318,7 +322,7 @@ impl Shape<'_> {
                 stroke,
                 ..
             } => local_rect_paint_empty(local_rect) || (fill.is_noop() && stroke.is_noop()),
-            Shape::Line { width, color, .. } => noop_f32(*width) || color.is_noop(),
+            Shape::Line { width, brush, .. } => noop_f32(*width) || brush.is_noop(),
             Shape::Polyline {
                 points,
                 colors,
@@ -329,14 +333,14 @@ impl Shape<'_> {
                     return true;
                 }
                 match colors {
-                    PolylineColors::Single(c) => c.is_noop(),
+                    PolylineColors::Single(b) => b.is_noop(),
                     PolylineColors::PerPoint(cs) => cs.iter().all(|c| c.is_noop()),
                     PolylineColors::PerSegment(cs) => cs.iter().all(|c| c.is_noop()),
                 }
             }
             Shape::CubicBezier {
                 width,
-                color,
+                brush,
                 p0,
                 p1,
                 p2,
@@ -344,29 +348,29 @@ impl Shape<'_> {
                 ..
             } => {
                 noop_f32(*width)
-                    || color.is_noop()
+                    || brush.is_noop()
                     || (vec2_approx_eq(*p0, *p1)
                         && vec2_approx_eq(*p0, *p2)
                         && vec2_approx_eq(*p0, *p3))
             }
             Shape::QuadraticBezier {
                 width,
-                color,
+                brush,
                 p0,
                 p1,
                 p2,
                 ..
             } => {
                 noop_f32(*width)
-                    || color.is_noop()
+                    || brush.is_noop()
                     || (vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2))
             }
             Shape::Text {
                 text,
-                color,
+                brush,
                 local_rect,
                 ..
-            } => local_rect_paint_empty(local_rect) || text.is_empty() || color.is_noop(),
+            } => local_rect_paint_empty(local_rect) || text.is_empty() || brush.is_noop(),
             Shape::Mesh {
                 mesh,
                 local_rect,

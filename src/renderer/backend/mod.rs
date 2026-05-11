@@ -655,10 +655,10 @@ impl WgpuBackend {
             // to the same buffer would all collapse to the last
             // value at submit time).
             let inset_px = (DAMAGE_OVERLAY_INSET * buffer.scale).max(1.0);
-            let stroke = Stroke {
-                width: DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale,
-                color: DAMAGE_OVERLAY_COLOR,
-            };
+            let stroke = Stroke::solid(
+                DAMAGE_OVERLAY_COLOR,
+                DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale,
+            );
             let mut overlay_rects: tinyvec::ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
             match damage {
                 DamagePaint::Partial(region) => {

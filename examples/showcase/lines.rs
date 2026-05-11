@@ -45,7 +45,7 @@ fn widths(ui: &mut Ui) {
             a: Vec2::new(10.0, y),
             b: Vec2::new(110.0, y),
             width: *w,
-            color: cyan,
+            brush: cyan.into(),
             cap: LineCap::Butt,
             join: LineJoin::Miter,
         });
@@ -60,7 +60,7 @@ fn hairlines(ui: &mut Ui) {
             a: Vec2::new(10.0, y),
             b: Vec2::new(110.0, y),
             width: *w,
-            color: white,
+            brush: white.into(),
             cap: LineCap::Butt,
             join: LineJoin::Miter,
         });
@@ -107,7 +107,7 @@ fn joins(ui: &mut Ui) {
         ];
         ui.add_shape(Shape::Polyline {
             points: &pts,
-            colors: PolylineColors::Single(cyan),
+            colors: PolylineColors::Single(cyan.into()),
             width: 5.0,
             cap: LineCap::Butt,
             join,
@@ -130,7 +130,7 @@ fn caps(ui: &mut Ui) {
                 a: Vec2::new(x, y - 12.0),
                 b: Vec2::new(x, y + 12.0),
                 width: 1.0,
-                color: marker,
+                brush: marker.into(),
                 cap: LineCap::Butt,
                 join: LineJoin::Miter,
             });
@@ -145,7 +145,7 @@ fn caps(ui: &mut Ui) {
             a: Vec2::new(30.0, y),
             b: Vec2::new(90.0, y),
             width: 8.0,
-            color,
+            brush: color.into(),
             cap,
             join: LineJoin::Miter,
         });

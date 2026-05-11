@@ -156,7 +156,7 @@ impl<'a> TextEdit<'a> {
                 ui.add_shape(Shape::Text {
                     local_rect: None,
                     text: display,
-                    color,
+                    brush: color.into(),
                     font_size_px: font_size,
                     line_height_px: font_size * line_height_mult,
                     wrap: TextWrap::Single,
@@ -190,7 +190,7 @@ impl<'a> TextEdit<'a> {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(caret_rect),
                     radius: Default::default(),
-                    fill: theme.caret,
+                    fill: theme.caret.into(),
                     stroke: Stroke::ZERO,
                 });
             }

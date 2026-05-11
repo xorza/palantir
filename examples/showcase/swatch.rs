@@ -21,7 +21,7 @@ pub const D: Color = Color::hex(0xd897ff);
 /// Standard swatch fill — colored rect with a 4 px corner radius.
 pub fn swatch_bg(c: Color) -> Background {
     Background {
-        fill: c,
+        fill: c.into(),
         radius: Corners::all(4.0),
         ..Default::default()
     }

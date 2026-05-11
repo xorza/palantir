@@ -73,7 +73,7 @@ fn gradient_quad(ui: &mut Ui) {
         mesh: &m,
         local_rect: None,
         // White tint — pass-through, exercises the tint multiply path.
-        tint: Color::rgb(1.0, 1.0, 1.0),
+        tint: Color::rgb(1.0, 1.0, 1.0).into(),
     });
 }
 

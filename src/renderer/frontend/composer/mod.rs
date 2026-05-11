@@ -3,9 +3,10 @@ use super::cmd_buffer::{
     DrawTextPayload, PushClipRoundedPayload, RenderCmdBuffer,
 };
 use crate::layout::types::display::Display;
+use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
-use crate::primitives::{rect::Rect, stroke::Stroke, transform::TranslateScale, urect::URect};
+use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, RoundedClip, TextRun};
 use glam::{UVec2, Vec2};
@@ -247,14 +248,14 @@ impl Composer {
                         .expect("PopTransform without matching PushTransform");
                 }
                 kind @ (CmdKind::DrawRect | CmdKind::DrawRectStroked) => {
-                    let (rect, radius, fill, stroke) = match kind {
+                    let (rect, radius, fill, stroke_color, stroke_width) = match kind {
                         CmdKind::DrawRect => {
                             let p: DrawRectPayload = cmds.read(start);
-                            (p.rect, p.radius, p.fill, Stroke::ZERO)
+                            (p.rect, p.radius, p.fill, Color::TRANSPARENT, 0.0)
                         }
                         _ => {
                             let p: DrawRectStrokedPayload = cmds.read(start);
-                            (p.rect, p.radius, p.fill, p.stroke)
+                            (p.rect, p.radius, p.fill, p.stroke_color, p.stroke_width)
                         }
                     };
                     let world_rect = current_transform.apply_rect(rect);
@@ -274,17 +275,14 @@ impl Composer {
                     let world_radius = radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
-                    let phys_stroke = Stroke {
-                        width: stroke.width * current_transform.scale * scale,
-                        color: stroke.color,
-                    };
                     group.push_quad(
                         out,
                         Quad {
                             rect: phys_rect,
                             fill,
                             radius: phys_radius,
-                            stroke: phys_stroke,
+                            stroke_color,
+                            stroke_width: stroke_width * current_transform.scale * scale,
                         },
                     );
                 }

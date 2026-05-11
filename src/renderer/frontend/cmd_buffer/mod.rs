@@ -81,7 +81,8 @@ pub(crate) struct DrawRectStrokedPayload {
     pub(crate) rect: Rect,
     pub(crate) radius: Corners,
     pub(crate) fill: Color,
-    pub(crate) stroke: Stroke,
+    pub(crate) stroke_color: Color,
+    pub(crate) stroke_width: f32,
 }
 
 #[repr(C)]
@@ -208,7 +209,8 @@ impl RenderCmdBuffer {
                     rect,
                     radius,
                     fill,
-                    stroke,
+                    stroke_color: stroke.brush.as_solid(),
+                    stroke_width: stroke.width,
                 },
             );
         }

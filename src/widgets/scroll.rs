@@ -216,7 +216,7 @@ fn push_bar_nodes(
         ui.add_shape(Shape::RoundedRect {
             local_rect: Some(plan.track_rect),
             radius,
-            fill: theme.track,
+            fill: theme.track.into(),
             stroke: Stroke::ZERO,
         });
     }
@@ -237,7 +237,7 @@ fn push_bar_nodes(
     thumb.position = plan.thumb_rect.min;
     thumb.sense = Sense::DRAG;
     thumb.chrome = Some(Background {
-        fill,
+        fill: fill.into(),
         stroke: Stroke::ZERO,
         radius,
     });
