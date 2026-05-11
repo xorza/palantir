@@ -91,16 +91,10 @@ struct State {
     ui: Ui,
     display: palantir::Display,
     active: usize,
-    fps_window_start: std::time::Instant,
-    fps_window_frames: u32,
-    /// Host-side repaint gate. Set on input / resize / scale change /
-    /// surface failure / `Occluded(false)` / and via
-    /// `FrameOutput::repaint_requested()` for animation tickers.
-    /// Cleared at the top of `draw()`. Read in `about_to_wait` to
-    /// decide whether to ask winit for a redraw.
+    /// Host-side repaint gate. Cleared at top of `draw`; re-armed by
+    /// input, resize, surface loss, occlusion, and animation tickers.
     repaint_requested: bool,
-    /// Captured at `Ui::new()`; `start.elapsed()` per frame is the
-    /// monotonic timestamp passed to [`Ui::run_frame`].
+    /// Monotonic timestamp source for `Ui::run_frame`.
     start: std::time::Instant,
 }
 
@@ -182,8 +176,6 @@ impl ApplicationHandler for App {
             ui,
             display,
             active: 0,
-            fps_window_start: std::time::Instant::now(),
-            fps_window_frames: 0,
             repaint_requested: true,
             start: std::time::Instant::now(),
         });
@@ -207,51 +199,15 @@ impl ApplicationHandler for App {
         if let WindowEvent::KeyboardInput {
             event:
                 KeyEvent {
-                    physical_key: PhysicalKey::Code(KeyCode::F12),
+                    physical_key: PhysicalKey::Code(key),
                     state: ElementState::Pressed,
                     repeat: false,
                     ..
                 },
             ..
         } = event
+            && handle_debug_key(state, key)
         {
-            state.ui.debug_overlay = match state.ui.debug_overlay {
-                None => Some(DebugOverlayConfig {
-                    damage_rect: true,
-                    ..Default::default()
-                }),
-                Some(_) => None,
-            };
-            eprintln!(
-                "[F12] debug overlay: {}",
-                if state.ui.debug_overlay.is_some() {
-                    "on"
-                } else {
-                    "off"
-                }
-            );
-            state.repaint_requested = true;
-        }
-
-        if let WindowEvent::KeyboardInput {
-            event:
-                KeyEvent {
-                    physical_key: PhysicalKey::Code(KeyCode::F10),
-                    state: ElementState::Pressed,
-                    repeat: false,
-                    ..
-                },
-            ..
-        } = event
-        {
-            let mut cfg = state.ui.debug_overlay.unwrap_or_default();
-            cfg.dim_undamaged = !cfg.dim_undamaged;
-            state.ui.debug_overlay = if cfg == DebugOverlayConfig::default() {
-                None
-            } else {
-                Some(cfg)
-            };
-            eprintln!("[F10] darken undamaged: {}", cfg.dim_undamaged);
             state.repaint_requested = true;
         }
 
@@ -283,15 +239,6 @@ impl ApplicationHandler for App {
 
 impl State {
     fn draw(&mut self) {
-        self.fps_window_frames += 1;
-        let elapsed = self.fps_window_start.elapsed();
-        if elapsed.as_secs() >= 1 {
-            let _fps = self.fps_window_frames as f64 / elapsed.as_secs_f64();
-            // println!("fps: {_fps:.1}");
-            self.fps_window_start = std::time::Instant::now();
-            self.fps_window_frames = 0;
-        }
-
         // `frame_out` borrows `self.ui` (it carries the encoded
         // `RenderBuffer`), so any reads of `self.ui.*` have to happen
         // up front.
@@ -333,7 +280,42 @@ impl State {
     }
 }
 
+/// F12 toggles the debug overlay on/off; F10 toggles "darken undamaged"
+/// (turning the overlay on if it was off). Returns `true` if the key
+/// was handled.
+fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
+    match key {
+        KeyCode::F12 => {
+            state.ui.debug_overlay = match state.ui.debug_overlay {
+                None => Some(DebugOverlayConfig {
+                    damage_rect: true,
+                    ..Default::default()
+                }),
+                Some(_) => None,
+            };
+            eprintln!(
+                "[F12] debug overlay: {}",
+                if state.ui.debug_overlay.is_some() {
+                    "on"
+                } else {
+                    "off"
+                }
+            );
+            true
+        }
+        KeyCode::F10 => {
+            let mut cfg = state.ui.debug_overlay.unwrap_or_default();
+            cfg.dim_undamaged = !cfg.dim_undamaged;
+            state.ui.debug_overlay = (cfg != DebugOverlayConfig::default()).then_some(cfg);
+            eprintln!("[F10] darken undamaged: {}", cfg.dim_undamaged);
+            true
+        }
+        _ => false,
+    }
+}
+
 fn build_root(ui: &mut Ui, active: &mut usize) {
+    let active_style = active_toolbar_button(&ui.theme.button);
     Panel::vstack()
         .auto_id()
         .padding(12.0)
@@ -351,7 +333,6 @@ fn build_root(ui: &mut Ui, active: &mut usize) {
                 .line_gap(6.0)
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
-                    let active_style = active_toolbar_button(&ui.theme.button);
                     for (i, (label, _)) in SHOWCASES.iter().enumerate() {
                         let mut btn = Button::new().id_salt(*label).label(*label);
                         if i == *active {

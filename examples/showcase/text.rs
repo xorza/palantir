@@ -4,6 +4,7 @@ use palantir::{
     Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, Ui,
 };
 use std::rc::Rc;
+use swatch::section;
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
@@ -195,22 +196,6 @@ pub fn build_layouts(ui: &mut Ui) {
                         });
                 },
             );
-        });
-}
-
-/// Plain section: title + body. No card decoration; the surrounding
-/// showcase panel already contains the demo.
-fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack()
-        .id_salt(id)
-        .size((Sizing::FILL, Sizing::Hug))
-        .gap(6.0)
-        .show(ui, |ui| {
-            Text::new(title)
-                .id_salt(("section-title", id))
-                .style(TextStyle::default().with_font_size(12.0))
-                .show(ui);
-            body(ui);
         });
 }
 

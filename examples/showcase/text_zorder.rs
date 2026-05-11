@@ -6,7 +6,8 @@
 //! `src/renderer/backend/text.rs` (per-group prepare/render pool).
 
 use crate::swatch;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Text, TextStyle, Ui};
+use palantir::{Color, Configure, Frame, Panel, Sizing, Text, TextStyle, Ui};
+use swatch::{caption_style, swatch_bg};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -27,7 +28,7 @@ pub fn build(ui: &mut Ui) {
                 "in the encoder pass."
             ))
             .id_salt(("hdr", "sub"))
-            .style(TextStyle::default().with_font_size(12.0))
+            .style(caption_style())
             .wrapping()
             .show(ui);
 
@@ -83,11 +84,7 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
                     Frame::new()
                         .id_salt(("bg", id))
                         .size((Sizing::FILL, Sizing::FILL))
-                        .background(Background {
-                            fill: accent,
-                            radius: Corners::all(4.0),
-                            ..Default::default()
-                        })
+                        .background(swatch_bg(accent))
                         .show(ui);
 
                     // Label — visible on top of the background. When
@@ -108,11 +105,7 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
                         Frame::new()
                             .id_salt(("occluder", id))
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
-                            .background(Background {
-                                fill: Color::hex(0x1a1a1a),
-                                radius: Corners::all(4.0),
-                                ..Default::default()
-                            })
+                            .background(swatch_bg(Color::hex(0x1a1a1a)))
                             .show(ui);
                     }
                 });

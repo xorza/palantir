@@ -60,7 +60,7 @@ pub fn build(ui: &mut Ui) {
 fn cell(ui: &mut Ui, r: u32, c: u32) -> bool {
     Button::new()
         .id_salt(("pz-cell", r, c))
-        .label(cell_label(r, c))
+        .label(format!("{r},{c}"))
         .size((Sizing::Fixed(56.0), Sizing::Fixed(40.0)))
         .padding((6.0, 4.0))
         .style(cell_theme(r, c))
@@ -132,17 +132,4 @@ fn cell_color(r: u32, c: u32) -> Color {
         0.55 - 0.25 * (tr - 0.5).abs(),
         0.85 - 0.55 * tr,
     )
-}
-
-fn cell_label(r: u32, c: u32) -> &'static str {
-    const LABELS: [&str; 24 * 24] = build_labels();
-    LABELS[(r * 24 + c) as usize]
-}
-
-const fn build_labels() -> [&'static str; 24 * 24] {
-    // The label set was generated to keep the showcase readable; rather
-    // than ship a 600-line literal, we settle for a compact "grid"
-    // marker per cell. The visual interest is the colored cells, not
-    // the text.
-    [".."; 24 * 24]
 }

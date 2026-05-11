@@ -1,6 +1,6 @@
 use crate::swatch;
 use glam::Vec2;
-use palantir::{Background, Configure, Corners, Frame, Panel, Sizing, TranslateScale, Ui};
+use palantir::{Configure, Frame, Panel, Sizing, TranslateScale, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
@@ -57,10 +57,6 @@ fn tile(ui: &mut Ui, id: &'static str) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fixed(60.0), Sizing::Fixed(60.0)))
-        .background(Background {
-            fill: swatch::A,
-            radius: Corners::all(4.0),
-            ..Default::default()
-        })
+        .background(swatch::swatch_bg(swatch::A))
         .show(ui);
 }

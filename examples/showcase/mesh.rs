@@ -14,12 +14,12 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn cell(ui: &mut Ui, _label: &str, paint: impl Fn(&mut Ui)) {
+fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
     Panel::zstack()
-        .id_salt(_label)
+        .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
         .padding(8.0)
-        .show(ui, |ui| paint(ui));
+        .show(ui, paint);
 }
 
 fn triangle(ui: &mut Ui) {

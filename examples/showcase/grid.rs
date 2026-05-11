@@ -1,5 +1,5 @@
 use crate::swatch;
-use palantir::{Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Track, Ui};
+use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Track, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -74,11 +74,7 @@ fn grid_tile(
     let mut f = Frame::new()
         .id_salt(id)
         .grid_cell(cell)
-        .background(Background {
-            fill: color,
-            radius: Corners::all(4.0),
-            ..Default::default()
-        });
+        .background(swatch::swatch_bg(color));
     if let Some(s) = span {
         f = f.grid_span(s);
     }

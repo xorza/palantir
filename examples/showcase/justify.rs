@@ -1,5 +1,5 @@
 use crate::swatch;
-use palantir::{Background, Configure, Corners, Frame, Justify, Panel, Sizing, Ui};
+use palantir::{Configure, Frame, Justify, Panel, Sizing, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -26,11 +26,7 @@ fn row(ui: &mut Ui, id: &'static str, j: Justify) {
                 Frame::new()
                     .id_salt((id, i))
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(28.0)))
-                    .background(Background {
-                        fill: swatch::A,
-                        radius: Corners::all(4.0),
-                        ..Default::default()
-                    })
+                    .background(swatch::swatch_bg(swatch::A))
                     .show(ui);
             }
         });
