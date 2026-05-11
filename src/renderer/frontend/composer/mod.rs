@@ -146,7 +146,6 @@ pub(crate) struct Composer {
     /// fed to the stroke tessellator. Cleared per cmd, capacity
     /// reused — keeps steady-state alloc-free.
     polyline_scratch: Vec<Vec2>,
-    pub(crate) buffer: RenderBuffer,
 }
 
 #[derive(Clone, Copy)]
@@ -157,21 +156,19 @@ struct ClipFrame {
 
 impl Composer {
     /// Consume a logical-px command stream → physical-px `Quad`s +
-    /// `TextRun`s + draw groups (scissor ranges) into the composer's
-    /// owned buffer, and return a borrow of the freshly-composed
-    /// result. Pure: no device, no queue.
+    /// `TextRun`s + draw groups (scissor ranges) into the caller-
+    /// provided `out` buffer. Pure: no device, no queue.
     ///
-    /// `gradient_atlas` is borrowed mutably so the composer can
-    /// register each `Brush::Linear` it encounters and pack the
-    /// returned row id into the emitted `Quad`. Idempotent for repeat
-    /// content — the same gradient hashes to the same row and reuses
-    /// it across frames.
+    /// `out.gradient_atlas` is mutated in place: each `Brush::Linear`
+    /// encountered registers a row and the returned row id is packed
+    /// into the emitted `Quad`. Idempotent across frames — the same
+    /// gradient hashes to the same row and reuses it.
     pub(crate) fn compose(
         &mut self,
         cmds: &RenderCmdBuffer,
-        display: &Display,
-    ) -> &mut RenderBuffer {
-        let out = &mut self.buffer;
+        display: Display,
+        out: &mut RenderBuffer,
+    ) {
         let scale = display.scale_factor;
         let snap = display.pixel_snap;
         let viewport_phys = display.physical;
@@ -495,8 +492,6 @@ impl Composer {
             i += 1;
         }
         group.flush(out);
-
-        &mut self.buffer
     }
 }
 

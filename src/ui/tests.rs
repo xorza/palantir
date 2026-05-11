@@ -78,8 +78,7 @@ fn empty_ui_drives_a_frame_safely() {
         // path we force `Full` and assert the buffers come out empty.
         ui.damage = Some(Damage::Full);
         let mut frontend = Frontend::default();
-        frontend.build(&ui);
-        let buffer = &frontend.composer.buffer;
+        let buffer = frontend.build(&ui);
         assert!(buffer.quads.is_empty());
         assert!(buffer.texts.is_empty());
         assert!(buffer.groups.is_empty());
