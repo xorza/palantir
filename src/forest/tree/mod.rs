@@ -411,14 +411,6 @@ impl Tree {
         }
     }
 
-    pub(crate) fn add_shape(&mut self, shape: ShapeRecord) {
-        assert!(
-            !self.open_frames.is_empty(),
-            "add_shape called with no open node",
-        );
-        self.shapes.records.push(shape);
-    }
-
     pub(crate) fn is_empty(&self) -> bool {
         self.records.is_empty()
     }
