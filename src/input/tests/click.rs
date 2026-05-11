@@ -62,7 +62,7 @@ fn input_state_press_release_emits_click() {
 
 #[test]
 fn stack_with_sense_none_passes_clicks_through() {
-    // HStack default Sense::None — clicking on its background (between children)
+    // HStack default Sense::NONE — clicking on its background (between children)
     // doesn't fire `clicked` on the stack. Clicking on a child still fires on the child.
     let mut ui = ui_at(UVec2::new(200, 100));
     let _stack_node = Panel::hstack()
@@ -101,14 +101,14 @@ fn stack_with_sense_none_passes_clicks_through() {
 
 #[test]
 fn stack_with_sense_click_captures_clicks() {
-    // Opt-in: HStack::sense(Sense::Click) makes the container clickable.
+    // Opt-in: HStack::sense(Sense::CLICK) makes the container clickable.
     // Use `with_id` so the stack has the same WidgetId on both frames; otherwise
     // `auto_stable` would give different ids (different call sites in the test).
     let mut ui = ui_at(UVec2::new(200, 100));
     let _stack_node = Panel::hstack()
         .id_salt("clickable_card")
         .padding(20.0)
-        .sense(Sense::Click)
+        .sense(Sense::CLICK)
         .show(&mut ui, |ui| {
             Button::new()
                 .id_salt("inside")
@@ -124,7 +124,7 @@ fn stack_with_sense_click_captures_clicks() {
     let stack_resp = Panel::hstack()
         .id_salt("clickable_card")
         .padding(20.0)
-        .sense(Sense::Click)
+        .sense(Sense::CLICK)
         .show(&mut ui, |ui| {
             Button::new()
                 .id_salt("inside")
@@ -133,19 +133,19 @@ fn stack_with_sense_click_captures_clicks() {
         });
     assert!(
         stack_resp.clicked(),
-        "stack with Sense::Click fires on background click"
+        "stack with Sense::CLICK fires on background click"
     );
 }
 
 #[test]
 fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
-    // Sense::Hover: visible to hover state but transparent to click capture.
+    // Sense::HOVER: visible to hover state but transparent to click capture.
     // Useful for tooltips, cursor changes, row highlights.
     let mut ui = ui_at(UVec2::new(200, 100));
     let _stack_node = Panel::hstack()
         .id_salt("hover_only")
         .padding(20.0)
-        .sense(Sense::Hover)
+        .sense(Sense::HOVER)
         .show(&mut ui, |ui| {
             Button::new()
                 .id_salt("inside")
@@ -167,7 +167,7 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
     let stack_resp = Panel::hstack()
         .id_salt("hover_only")
         .padding(20.0)
-        .sense(Sense::Hover)
+        .sense(Sense::HOVER)
         .show(&mut ui, |ui| {
             child_clicked = Button::new()
                 .id_salt("inside")
@@ -178,11 +178,11 @@ fn stack_with_sense_hover_reports_hover_but_passes_clicks_through() {
 
     assert!(
         stack_resp.hovered(),
-        "Sense::Hover stack reports hovered=true"
+        "Sense::HOVER stack reports hovered=true"
     );
     assert!(
         !stack_resp.clicked(),
-        "Sense::Hover does not capture clicks"
+        "Sense::HOVER does not capture clicks"
     );
     assert!(
         !child_clicked,

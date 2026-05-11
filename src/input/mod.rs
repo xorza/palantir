@@ -193,7 +193,7 @@ pub struct InputState {
     pub(crate) pointer_pos: Option<Vec2>,
     pub(crate) active: Option<WidgetId>,
     hovered: Option<WidgetId>,
-    /// Topmost `Sense::Scroll` widget under the pointer, recomputed
+    /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
     /// whenever the pointer moves and at `end_frame`. The scroll widget
     /// matching this id consumes [`Self::frame_scroll_delta`].
     scroll_target: Option<WidgetId>,
@@ -327,7 +327,7 @@ impl InputState {
                 // are transparent to presses even though they show as hovered.
                 self.active = self
                     .pointer_pos
-                    .and_then(|p| cascades.hit_test(p, Sense::click));
+                    .and_then(|p| cascades.hit_test(p, Sense::clicks));
                 self.press_pos = self.active.and(self.pointer_pos);
                 // Focus updates on a separate hit-test: focusability is
                 // orthogonal to clickability (clicking a Button shouldn't
@@ -346,7 +346,7 @@ impl InputState {
                 if let Some(a) = self.active.take() {
                     let hit = self
                         .pointer_pos
-                        .and_then(|p| cascades.hit_test(p, Sense::click));
+                        .and_then(|p| cascades.hit_test(p, Sense::clicks));
                     if hit == Some(a) && !self.drag_latched {
                         self.clicked_this_frame.insert(a);
                     }
@@ -513,13 +513,13 @@ impl InputState {
     fn recompute_hover(&mut self, cascades: &CascadeResult) {
         self.hovered = self
             .pointer_pos
-            .and_then(|p| cascades.hit_test(p, Sense::hover));
+            .and_then(|p| cascades.hit_test(p, Sense::hovers));
     }
 
     fn recompute_scroll_target(&mut self, cascades: &CascadeResult) {
         self.scroll_target = self
             .pointer_pos
-            .and_then(|p| cascades.hit_test(p, Sense::scroll));
+            .and_then(|p| cascades.hit_test(p, Sense::scrolls));
     }
 }
 

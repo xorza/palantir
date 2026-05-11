@@ -210,7 +210,7 @@ fn run_tree(
         };
         let cascaded_off = disabled || invisible;
         let sense = if cascaded_off {
-            Sense::None
+            Sense::NONE
         } else {
             attrs.sense()
         };

@@ -1678,6 +1678,7 @@ name = "palantir"
 version = "0.1.0"
 dependencies = [
  "backtrace",
+ "bitflags 2.11.1",
  "bytemuck",
  "criterion",
  "encase",

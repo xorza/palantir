@@ -220,7 +220,7 @@ impl Scroll {
 
     fn with_axes(axes: ScrollAxes) -> Self {
         let mut element = Element::new(LayoutMode::Scroll(axes));
-        element.sense = Sense::Scroll;
+        element.sense = Sense::SCROLL;
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
         // call `Configure::clip_rounded` to upgrade to a stencil mask.
@@ -274,7 +274,7 @@ impl Scroll {
         // measured reservation in place. Subsequent overflow flips
         // mid-life produce a one-frame visual blip — accepted on
         // the same tier as the wheel-pan clamp's staleness.
-        // Input routes by `Sense::Scroll`, which sits on the outer
+        // Input routes by `Sense::SCROLL`, which sits on the outer
         // ZStack (so wheel events over the bar gutter still pan the
         // viewport). Layout state, however, is keyed by the inner
         // viewport node's id — that's the `LayoutMode::Scroll` node

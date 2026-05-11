@@ -331,7 +331,7 @@ pub struct Element {
     /// Eligible to capture keyboard focus on press. Disabled / invisible
     /// nodes don't take focus regardless of this flag — the cascade pass
     /// applies the same exclusion `Sense` gets. Default `false`; only
-    /// editable widgets (TextEdit) flip it on. Distinct from `Sense::Click`
+    /// editable widgets (TextEdit) flip it on. Distinct from `Sense::CLICK`
     /// because clicking a Button shouldn't steal focus from a TextEdit.
     pub(crate) focusable: bool,
 
@@ -386,7 +386,7 @@ impl Element {
             child_align: Align::default(),
             position: Vec2::ZERO,
             grid: GridCell::default(),
-            sense: Sense::None,
+            sense: Sense::NONE,
             disabled: false,
             focusable: false,
             visibility: Visibility::Visible,
@@ -643,26 +643,26 @@ pub trait Configure: Sized {
 
 /// Packed paint/input flags. One byte.
 ///
-/// `bits`: 0-2=sense tag, 3=disabled, 4-5=clip mode, 6=focusable, 7=reserved.
+/// `bits`: 0-3=sense bitflags (HOVER|CLICK|DRAG|SCROLL), 4=disabled,
+/// 5-6=clip mode, 7=focusable.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct NodeFlags {
     pub(crate) bits: u8,
 }
 
 impl NodeFlags {
-    const SENSE_MASK: u8 = 0b111;
-    const DISABLED: u8 = 1 << 3;
-    const CLIP_SHIFT: u8 = 4;
+    const SENSE_MASK: u8 = 0b1111;
+    const DISABLED: u8 = 1 << 4;
+    const CLIP_SHIFT: u8 = 5;
     const CLIP_MASK: u8 = 0b11 << Self::CLIP_SHIFT;
-    const FOCUSABLE: u8 = 1 << 6;
+    const FOCUSABLE: u8 = 1 << 7;
 
     pub(crate) fn pack(sense: Sense, disabled: bool, clip: ClipMode, focusable: bool) -> Self {
-        // Width asserts: `Sense` rides in 3 bits (0..=7), `ClipMode` in 2
-        // bits (0..=3). A future variant past those bounds would silently
-        // bleed into adjacent fields without these.
-        assert!((sense as u8) <= Self::SENSE_MASK);
+        // Width assert: `ClipMode` rides in 2 bits (0..=3); a future variant
+        // past that bound would silently bleed into FOCUSABLE without this.
+        // `Sense` is a 4-bit bitflag so it can't exceed `SENSE_MASK`.
         assert!((clip as u8) <= (Self::CLIP_MASK >> Self::CLIP_SHIFT));
-        let mut bits = sense as u8;
+        let mut bits = sense.bits() & Self::SENSE_MASK;
         if disabled {
             bits |= Self::DISABLED;
         }
@@ -674,15 +674,7 @@ impl NodeFlags {
     }
 
     pub(crate) fn sense(self) -> Sense {
-        match self.bits & Self::SENSE_MASK {
-            0 => Sense::None,
-            1 => Sense::Hover,
-            2 => Sense::Click,
-            3 => Sense::Drag,
-            4 => Sense::ClickAndDrag,
-            5 => Sense::Scroll,
-            _ => unreachable!(),
-        }
+        Sense::from_bits_truncate(self.bits & Self::SENSE_MASK)
     }
     pub(crate) fn is_disabled(self) -> bool {
         self.bits & Self::DISABLED != 0
