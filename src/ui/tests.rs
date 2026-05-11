@@ -64,21 +64,20 @@ fn drain_one_frame(ui: &mut Ui) {
 fn empty_ui_drives_a_frame_safely() {
     let mut ui = ui_at(UVec2::new(200, 200));
     {
-        use crate::renderer::frontend::Frontend;
+        use crate::renderer::frontend::{Frontend, RecordedFrame};
         ui.post_record();
         let damage = ui.finalize_frame();
         let mut frontend = Frontend::default();
-        let damage_filter = match &damage {
-            crate::ui::damage::Damage::Partial(region) => Some(region),
-            crate::ui::damage::Damage::Full | crate::ui::damage::Damage::Skip => None,
+        let frame = RecordedFrame {
+            forest: &ui.forest,
+            layout: &ui.layout,
+            cascades: &ui.cascades.result,
+            display: ui.display,
+            damage,
+            repaint_requested: ui.repaint_requested,
+            frame_state: ui.frame_state.clone(),
         };
-        frontend.build(
-            &ui.forest,
-            &ui.layout,
-            &ui.cascades.result,
-            damage_filter,
-            &ui.display,
-        );
+        frontend.build(&frame);
         let buffer = &frontend.composer.buffer;
         assert!(buffer.quads.is_empty());
         assert!(buffer.texts.is_empty());
