@@ -11,13 +11,13 @@
 //! (`DamagePaint`, debug overlay, frame-state Arc) is stashed in
 //! [`Host`] itself; the user-facing [`FrameInfo`] is plain owned data.
 
+use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::color::Color;
 use crate::renderer::backend::WgpuBackend;
 use crate::renderer::frontend::{FrameState, Frontend};
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::ui::damage::DamagePaint;
-use crate::ui::debug_overlay::DebugOverlayConfig;
 
 /// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
 /// plus the CPU [`Frontend`](crate::renderer::frontend::Frontend) and
@@ -26,6 +26,9 @@ use crate::ui::debug_overlay::DebugOverlayConfig;
 /// [`Host::ui`] field.
 pub struct Host {
     pub ui: Ui,
+    /// Per-frame debug visualizations. Default = all-off. Read by
+    /// `render` after `run_frame`; flip flags between frames.
+    pub debug_overlay: DebugOverlayConfig,
     pub(crate) frontend: Frontend,
     pub(crate) backend: WgpuBackend,
     /// Set by `run_frame`, consumed by `render`. `None` if `render`
@@ -36,7 +39,7 @@ pub struct Host {
 
 pub(crate) struct PendingSubmit {
     pub(crate) damage: DamagePaint,
-    pub(crate) debug_overlay: Option<DebugOverlayConfig>,
+    pub(crate) debug_overlay: DebugOverlayConfig,
     pub(crate) frame_state: FrameState,
 }
 
@@ -74,6 +77,7 @@ impl Host {
     ) -> Self {
         Self {
             ui: Ui::with_text(shaper.clone()),
+            debug_overlay: DebugOverlayConfig::default(),
             frontend: Frontend::default(),
             backend: WgpuBackend::new(device, queue, format, shaper),
             pending: None,
@@ -103,7 +107,7 @@ impl Host {
         );
         self.pending = Some(PendingSubmit {
             damage: frame.damage,
-            debug_overlay: frame.debug_overlay,
+            debug_overlay: self.debug_overlay,
             frame_state: frame.frame_state.clone(),
         });
         info

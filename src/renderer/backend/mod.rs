@@ -7,6 +7,7 @@ use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
 use self::viewport::build_damage_scissors;
+use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, spacing::Spacing, stroke::Stroke, urect::URect,
 };
@@ -16,7 +17,6 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
 use crate::ui::damage::DamagePaint;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
-use crate::ui::debug_overlay::DebugOverlayConfig;
 
 /// Stroke color for the debug damage overlay (see
 /// [`crate::DebugOverlayConfig::damage_rect`]). Bright opaque red —
@@ -264,7 +264,7 @@ impl WgpuBackend {
         buffer: &RenderBuffer,
         gradient_atlas: &mut GradientCpuAtlas,
         damage: DamagePaint,
-        debug_overlay: Option<DebugOverlayConfig>,
+        debug_overlay: DebugOverlayConfig,
         frame_state: &FrameState,
     ) {
         // Sync gradient LUT atlas to GPU. Idle frames (no new
@@ -328,8 +328,7 @@ impl WgpuBackend {
         // toward black while moving content stays current — far less
         // jarring than the prior `LoadOp::Clear` flash and visually
         // pins which regions are actually repainting.
-        let dim_undamaged =
-            debug_overlay.is_some_and(|c| c.dim_undamaged) && !self.damage_scissors.is_empty();
+        let dim_undamaged = debug_overlay.dim_undamaged && !self.damage_scissors.is_empty();
         if dim_undamaged {
             self.quad
                 .upload_dim(&self.queue, buffer.viewport_phys_f, 0.4);
@@ -459,9 +458,13 @@ impl WgpuBackend {
             backbuffer_tex.size(),
         );
 
-        if let Some(config) = debug_overlay {
-            self.draw_debug_overlay(surface_tex, &mut encoder, buffer, effective_damage, config);
-        }
+        self.draw_debug_overlay(
+            surface_tex,
+            &mut encoder,
+            buffer,
+            effective_damage,
+            debug_overlay,
+        );
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.quad.post_record();

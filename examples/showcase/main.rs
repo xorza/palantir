@@ -2,8 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use palantir::{
-    Background, Button, Color, Configure, DebugOverlayConfig, Display, Host, InputEvent, Panel,
-    Sizing, Ui,
+    Background, Button, Color, Configure, Display, Host, InputEvent, Panel, Sizing, Ui,
 };
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -286,16 +285,10 @@ impl State {
 fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
     match key {
         KeyCode::F12 => {
-            state.host.ui.debug_overlay = match state.host.ui.debug_overlay {
-                None => Some(DebugOverlayConfig {
-                    damage_rect: true,
-                    ..Default::default()
-                }),
-                Some(_) => None,
-            };
+            state.host.debug_overlay.damage_rect = !state.host.debug_overlay.damage_rect;
             eprintln!(
-                "[F12] debug overlay: {}",
-                if state.host.ui.debug_overlay.is_some() {
+                "[F12] damage rect overlay: {}",
+                if state.host.debug_overlay.damage_rect {
                     "on"
                 } else {
                     "off"
@@ -304,10 +297,11 @@ fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
             true
         }
         KeyCode::F10 => {
-            let mut cfg = state.host.ui.debug_overlay.unwrap_or_default();
-            cfg.dim_undamaged = !cfg.dim_undamaged;
-            state.host.ui.debug_overlay = (cfg != DebugOverlayConfig::default()).then_some(cfg);
-            eprintln!("[F10] darken undamaged: {}", cfg.dim_undamaged);
+            state.host.debug_overlay.dim_undamaged = !state.host.debug_overlay.dim_undamaged;
+            eprintln!(
+                "[F10] darken undamaged: {}",
+                state.host.debug_overlay.dim_undamaged
+            );
             true
         }
         _ => false,

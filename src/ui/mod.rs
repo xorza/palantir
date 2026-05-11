@@ -1,6 +1,5 @@
 pub(crate) mod cascade;
 pub(crate) mod damage;
-pub(crate) mod debug_overlay;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
@@ -21,7 +20,6 @@ use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::{Damage, DamagePaint};
-use crate::ui::debug_overlay::DebugOverlayConfig;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use std::time::Duration;
@@ -57,7 +55,6 @@ pub struct Ui {
     /// Set by [`Self::animate`] when an animation hasn't settled.
     pub(crate) repaint_requested: bool,
     pub(crate) anim: AnimMap,
-    pub debug_overlay: Option<DebugOverlayConfig>,
     /// Submission status of the last *painted* frame. NOT reset in
     /// `pre_record` — `click_on_empty_bg_does_not_force_full`
     /// pins why.
@@ -109,7 +106,6 @@ impl Ui {
             time: Duration::ZERO,
             repaint_requested: false,
             anim: AnimMap::default(),
-            debug_overlay: None,
             frame_state: FrameState::default(),
             relayout_requested: false,
         }
@@ -249,7 +245,6 @@ impl Ui {
             cascades,
             display: self.display,
             damage,
-            debug_overlay: self.debug_overlay,
             repaint_requested: self.repaint_requested,
             frame_state: self.frame_state.clone(),
         }
