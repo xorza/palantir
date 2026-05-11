@@ -15,6 +15,7 @@ mod animations;
 mod buttons;
 mod clip;
 mod disabled;
+mod drag;
 mod gap;
 mod grid;
 mod justify;
@@ -60,6 +61,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("popup", popup::build),
     ("animations", animations::build),
     ("mesh", mesh::build),
+    ("drag", drag::build),
 ];
 
 fn main() {

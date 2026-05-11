@@ -5,7 +5,7 @@ use crate::forest::widget_id::WidgetId;
 use crate::input::keyboard::{
     Key, KeyPress, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
 };
-use crate::input::sense::Sense;
+use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::primitives::rect::Rect;
 use crate::ui::cascade::CascadeResult;
 use glam::Vec2;
@@ -177,6 +177,17 @@ pub struct ResponseState {
     pub clicked: bool,
     pub disabled: bool,
     pub focused: bool,
+    /// Cumulative pointer travel since press while `id` holds the
+    /// active, threshold-crossed drag. `None` outside drag and for
+    /// sub-threshold wiggle — never `Some(Vec2::ZERO)`. Callers
+    /// compose `pos = anchor + delta`, capturing `anchor` on the
+    /// `drag_started` frame.
+    pub drag_delta: Option<Vec2>,
+    /// One-frame edge: `true` on the frame the drag latches (the
+    /// threshold-crossing pointer move). `false` everywhere else.
+    /// Snapshot the position here so subsequent `drag_delta` reads
+    /// compose against a stable anchor.
+    pub drag_started: bool,
 }
 
 /// Live input state machine: the things that survive across input events
@@ -184,7 +195,7 @@ pub struct ResponseState {
 /// (last-frame rects, cascade scratch) lives in [`HitIndex`].
 pub struct InputState {
     pointer: PointerState,
-    active: Option<WidgetId>,
+    pub(crate) active: Option<WidgetId>,
     hovered: Option<WidgetId>,
     /// Topmost `Sense::Scroll` widget under the pointer, recomputed
     /// whenever the pointer moves and at `end_frame`. The scroll widget
@@ -196,6 +207,19 @@ pub struct InputState {
     /// the originating widget mid-drag and the delta keeps tracking.
     /// Cleared on release / capture eviction.
     press_pos: Option<Vec2>,
+    /// Set once the pointer has travelled at least [`DRAG_THRESHOLD`]
+    /// from `press_pos` while `active.is_some()`. Held for the press
+    /// lifetime — sticky even if the pointer drifts back inside the
+    /// threshold. Cleared on release / active-eviction. Doubles as the
+    /// "suppress click on release" bit (PointerReleased reads it).
+    pub(crate) drag_latched: bool,
+    /// One-frame edge: set to the active widget on the move event that
+    /// flips `drag_latched` from `false` to `true`; cleared by
+    /// `drain_per_frame_queues`, by release, and by active-eviction.
+    /// Read by `Ui::drag_started` to expose a single-frame "drag began"
+    /// signal to widgets without forcing them to compare last/this-frame
+    /// state.
+    pub(crate) drag_started_this_frame: Option<WidgetId>,
     clicked_this_frame: FxHashSet<WidgetId>,
     /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
     /// in [`Self::end_frame`]. Read by scroll widgets at record time.
@@ -254,6 +278,8 @@ impl InputState {
             hovered: None,
             scroll_target: None,
             press_pos: None,
+            drag_latched: false,
+            drag_started_this_frame: None,
             clicked_this_frame: FxHashSet::default(),
             frame_scroll_delta: Vec2::ZERO,
             frame_zoom_delta: 1.0,
@@ -283,6 +309,15 @@ impl InputState {
         match event {
             InputEvent::PointerMoved(p) => {
                 self.pointer.pos = Some(p);
+                if !self.drag_latched
+                    && self.active.is_some()
+                    && let Some(press) = self.press_pos
+                    && (p - press).length() >= DRAG_THRESHOLD
+                {
+                    self.drag_latched = true;
+                    self.drag_started_this_frame = self.active;
+                    self.had_action_this_frame = true;
+                }
                 self.recompute_hover(cascades);
                 self.recompute_scroll_target(cascades);
             }
@@ -319,11 +354,13 @@ impl InputState {
                         .pointer
                         .pos
                         .and_then(|p| cascades.hit_test(p, Sense::click));
-                    if hit == Some(a) {
+                    if hit == Some(a) && !self.drag_latched {
                         self.clicked_this_frame.insert(a);
                     }
                 }
                 self.press_pos = None;
+                self.drag_latched = false;
+                self.drag_started_this_frame = None;
             }
             InputEvent::Scroll(d) => {
                 self.frame_scroll_delta += d;
@@ -364,6 +401,7 @@ impl InputState {
     /// Capacity-retained on the backing buffers.
     pub(crate) fn drain_per_frame_queues(&mut self) {
         self.clicked_this_frame.clear();
+        self.drag_started_this_frame = None;
         self.frame_scroll_delta = Vec2::ZERO;
         self.frame_zoom_delta = 1.0;
         self.frame_keys.clear();
@@ -383,6 +421,8 @@ impl InputState {
         {
             self.active = None;
             self.press_pos = None;
+            self.drag_latched = false;
+            self.drag_started_this_frame = None;
         }
         // Focus eviction: same model as the active-capture eviction
         // above. A focused widget that vanished from the tree (was not
@@ -462,6 +502,12 @@ impl InputState {
         let hovered = me_under_pointer && (nothing_captured || me_captured);
         let clicked = self.clicked_this_frame.contains(&id);
         let focused = self.focused == Some(id);
+        let drag_delta = if me_captured && self.drag_latched {
+            self.drag_delta(id)
+        } else {
+            None
+        };
+        let drag_started = self.drag_started_this_frame == Some(id);
 
         ResponseState {
             rect,
@@ -470,6 +516,8 @@ impl InputState {
             clicked,
             disabled,
             focused,
+            drag_delta,
+            drag_started,
         }
     }
 

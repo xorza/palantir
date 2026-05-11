@@ -62,3 +62,9 @@ impl Sense {
         matches!(self, Self::Scroll)
     }
 }
+
+/// Pointer travel from press origin (logical px) before a gesture
+/// latches as a drag. Under this, the gesture is still a click. Once
+/// crossed, the latch holds for the press lifetime and the release
+/// no longer emits a click. Mouse-sized — touch will want larger.
+pub const DRAG_THRESHOLD: f32 = 4.0;
