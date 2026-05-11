@@ -54,9 +54,8 @@ pub(crate) fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
 /// frame's damage escalates to `Full`.
 pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
-    if let Some(out) = ui.frame(display, Duration::ZERO, record) {
-        out.frame_state.mark_submitted();
-    }
+    let out = ui.frame(display, Duration::ZERO, record);
+    out.frame_state.mark_submitted();
 }
 
 pub(crate) fn ui_at(size: UVec2) -> Ui {

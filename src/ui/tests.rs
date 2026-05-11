@@ -82,7 +82,7 @@ fn empty_ui_drives_a_frame_safely() {
             layout: &ui.layout,
             cascades: &ui.layout.cascades,
             display: ui.display,
-            damage: Damage::Full,
+            damage: Some(Damage::Full),
             repaint_requested: ui.repaint_requested,
             frame_state: ui.frame_state.clone(),
         };
@@ -641,7 +641,7 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
             .frame(display, Duration::from_millis(16), |ui| {
                 Panel::vstack().id_salt("root").show(ui, |_| {});
             })
-            .is_some_and(|f| f.repaint_requested());
+            .repaint_requested();
         assert!(
             !repaint,
             "no animate-not-settled flag set — must stay false",
@@ -664,7 +664,7 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
                 Panel::vstack().id_salt("root").show(ui, |_| {});
                 ui.repaint_requested = true;
             })
-            .is_some_and(|f| f.repaint_requested());
+            .repaint_requested();
         assert!(
             repaint,
             "repaint_requested set during recording must surface on FrameOutput",
@@ -699,7 +699,7 @@ fn run_frame_plumbs_now_dt_and_repaint_request() {
             .frame(display, Duration::from_millis(5_048), |ui| {
                 Panel::vstack().id_salt("root").show(ui, |_| {});
             })
-            .is_some_and(|f| f.repaint_requested());
+            .repaint_requested();
         assert!(
             !repaint,
             "repaint_requested must reset at the top of run_frame",
