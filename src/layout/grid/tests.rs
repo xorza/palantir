@@ -20,8 +20,8 @@ fn grid_fixed_and_fill_columns_split_remainder() {
             Frame::new().id_salt("right").grid_cell((0, 1)).show(ui);
         })
         .node;
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let kids: Vec<_> = ui
         .forest
         .tree(Layer::Main)
@@ -67,8 +67,8 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                 .show(ui);
         })
         .node;
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let kids: Vec<_> = ui
         .forest
         .tree(Layer::Main)
@@ -98,8 +98,8 @@ fn grid_fill_weights_split_remainder_proportionally() {
             Frame::new().id_salt("b").grid_cell((0, 1)).show(ui);
         })
         .node;
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let kids: Vec<_> = ui
         .forest
         .tree(Layer::Main)
@@ -125,8 +125,8 @@ fn grid_fill_min_clamp_steals_from_other_stars() {
             Frame::new().id_salt("b").grid_cell((0, 1)).show(ui);
         })
         .node;
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let kids: Vec<_> = ui
         .forest
         .tree(Layer::Main)
@@ -151,8 +151,8 @@ fn grid_fill_max_clamp_donates_to_other_stars() {
             Frame::new().id_salt("b").grid_cell((0, 1)).show(ui);
         })
         .node;
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let kids: Vec<_> = ui
         .forest
         .tree(Layer::Main)
@@ -200,8 +200,8 @@ fn grid_span_covers_multiple_tracks_with_gap() {
                 Frame::new().id_salt("body").grid_cell((1, 1)).show(ui);
             })
             .node;
-        ui.record_phase();
-        ui.paint_phase();
+        ui.post_record();
+        ui.paint();
         let kids: Vec<_> = ui
             .forest
             .tree(Layer::Main)
@@ -255,8 +255,8 @@ fn grid_hug_grid_collapses_fill_tracks() {
             );
         })
         .node;
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let r = ui.layout[Layer::Main].rect[grid_node.unwrap().index()];
     assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
     assert_eq!(r.size.h, 40.0);
@@ -283,8 +283,8 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
                 .show(ui);
         })
         .node;
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let kids: Vec<_> = ui
         .forest
         .tree(Layer::Main)
@@ -347,8 +347,8 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
             Frame::new().id_salt("corner").grid_cell((2, 2)).show(ui);
         })
         .node;
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let kids: Vec<_> = ui
         .forest
         .tree(Layer::Main)
@@ -403,8 +403,8 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                     .node,
             );
         });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     let r = ui.layout[Layer::Main].rect[grid_node.unwrap().index()];
     assert_eq!(r.size.w, 0.0);
     assert_eq!(r.size.h, 0.0);
@@ -464,8 +464,8 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                     .node,
             );
         });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     assert_eq!(ui.layout[Layer::Main].rect[kids[0].index()].size.h, 10.0);
     assert_eq!(ui.layout[Layer::Main].rect[kids[1].index()].size.h, 80.0);
     assert_eq!(ui.layout[Layer::Main].rect[kids[2].index()].size.h, 30.0);

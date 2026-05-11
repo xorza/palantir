@@ -27,8 +27,8 @@ fn frame_paints_a_single_rounded_rect() {
                 .node,
         );
     });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     // Chrome lives in `Tree::chrome_table`, not in the shape stream.
     assert!(
         shapes_of(ui.forest.tree(Layer::Main), frame_node.unwrap())
@@ -63,8 +63,8 @@ fn frame_with_sense_click_is_clickable() {
             .sense(Sense::CLICK)
             .show(ui);
     });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     click_at(&mut ui, Vec2::new(50.0, 25.0));
 
     ui.pre_record(Display::default());

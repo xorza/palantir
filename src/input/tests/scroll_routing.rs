@@ -24,8 +24,8 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
                 .sense(Sense::SCROLL)
                 .show(ui, |_| {});
         });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     ui.pre_record(crate::layout::types::display::Display::default());
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
@@ -44,8 +44,8 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     let outer_id = crate::forest::widget_id::WidgetId::from_hash("outer");
     assert_eq!(ui.input.scroll_delta_for(inner_id), Vec2::new(0.0, 5.0));
     assert_eq!(ui.input.scroll_delta_for(outer_id), Vec2::ZERO);
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
 }
 
 #[test]
@@ -56,8 +56,8 @@ fn scroll_delta_zero_for_non_target() {
         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
         .sense(Sense::SCROLL)
         .show(&mut ui, |_| {});
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     ui.pre_record(crate::layout::types::display::Display::default());
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 9.0)));
@@ -68,8 +68,8 @@ fn scroll_delta_zero_for_non_target() {
         .show(&mut ui, |_| {});
     let unrelated = crate::forest::widget_id::WidgetId::from_hash("nope");
     assert_eq!(ui.input.scroll_delta_for(unrelated), Vec2::ZERO);
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
 }
 
 #[test]
@@ -80,8 +80,8 @@ fn pointer_left_clears_scroll_target() {
         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
         .sense(Sense::SCROLL)
         .show(&mut ui, |_| {});
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     ui.pre_record(crate::layout::types::display::Display::default());
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerLeft);
@@ -97,6 +97,6 @@ fn pointer_left_clears_scroll_target() {
         Vec2::ZERO,
         "PointerLeft drops scroll target so the delta is unclaimed",
     );
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
 }

@@ -26,8 +26,8 @@ fn build_focusable_leaf(ui: &mut Ui) {
 fn focused_reflects_focused_id_synchronously() {
     let mut ui = ui_at(UVec2::new(200, 200));
     build_focusable_leaf(&mut ui);
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     // Initially nothing is focused.
     assert!(!ui.response_for(focusable_id()).focused);
 
@@ -62,8 +62,8 @@ fn disabled_reflects_cascaded_ancestor_flag() {
                 .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                 .show(ui);
         });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     // Re-record so cascade is populated for response_for to read.
     begin(&mut ui, UVec2::new(200, 200));
     Panel::vstack()
@@ -86,8 +86,8 @@ fn disabled_reflects_cascaded_ancestor_flag() {
         child_state.disabled,
         "child inherits cascaded disabled from parent (no self flag)",
     );
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
 }
 
 /// Conversely, with no disabled in the chain, child's
@@ -101,8 +101,8 @@ fn disabled_false_when_chain_clean() {
             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
             .show(ui);
     });
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
     begin(&mut ui, UVec2::new(200, 200));
     Panel::vstack().id_salt("parent").show(&mut ui, |ui| {
         Frame::new()
@@ -111,6 +111,6 @@ fn disabled_false_when_chain_clean() {
             .show(ui);
     });
     assert!(!ui.response_for(WidgetId::from_hash("child")).disabled);
-    ui.record_phase();
-    ui.paint_phase();
+    ui.post_record();
+    ui.paint();
 }

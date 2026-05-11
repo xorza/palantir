@@ -570,7 +570,7 @@ fn removed_widget_evicts_all_slots_across_typed_maps() {
     assert_eq!(v(&mut map), 1);
     assert_eq!(c(&mut map), 1);
 
-    map.post_record(&FxHashSet::from_iter([id]));
+    map.sweep_removed(&FxHashSet::from_iter([id]));
     assert_eq!(
         f(&mut map),
         1,
@@ -599,7 +599,7 @@ fn post_record_evicts_untouched_slots() {
     let _ =
         map.typed_mut::<f32>()
             .tick(id, AnimSlot("b"), 2.0, AnimSpec::FAST, 0.016, next_frame());
-    map.post_record(&empty);
+    map.sweep_removed(&empty);
     let count = |m: &mut AnimMap| m.try_typed_mut::<f32>().map_or(0, |t| t.rows.len());
     assert_eq!(
         count(&mut map),
@@ -612,7 +612,7 @@ fn post_record_evicts_untouched_slots() {
     let _ =
         map.typed_mut::<f32>()
             .tick(id, AnimSlot("a"), 1.0, AnimSpec::FAST, 0.016, next_frame());
-    map.post_record(&empty);
+    map.sweep_removed(&empty);
     assert_eq!(
         count(&mut map),
         1,
