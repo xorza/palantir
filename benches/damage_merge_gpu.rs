@@ -1,5 +1,5 @@
 //! GPU-side damage merge bench. Drives `Ui::run_frame` ➔
-//! `WgpuBackend::submit` ➔ `device.poll(Wait)` so the criterion
+//! `Renderer::submit` ➔ `device.poll(Wait)` so the criterion
 //! timing window includes the actual GPU pass cost (pipeline state
 //! setup, scissor changes, pixel shading, copy-to-surface).
 //!
@@ -25,7 +25,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::support::internals;
 use palantir::{
-    Background, Color, Configure, Display, Frame, Panel, Rect, Sizing, TextShaper, Ui, WgpuBackend,
+    Background, Color, Configure, Display, Frame, Panel, Rect, Renderer, Sizing, TextShaper, Ui,
 };
 use std::hint::black_box;
 use std::time::Duration;
@@ -41,13 +41,13 @@ const PADDING: f32 = 4.0;
 const CLEAR: Color = Color::rgb(0.05, 0.05, 0.07);
 
 /// Headless wgpu setup. Surface texture stands in for the swapchain;
-/// `WgpuBackend` renders into its own backbuffer then copies to this
+/// `Renderer` renders into its own backbuffer then copies to this
 /// texture (same path the windowed examples take). No present, no
 /// winit.
 struct Gpu {
     device: wgpu::Device,
     surface_tex: wgpu::Texture,
-    backend: WgpuBackend,
+    renderer: Renderer,
 }
 
 fn init_gpu() -> Gpu {
@@ -82,11 +82,11 @@ fn init_gpu() -> Gpu {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     });
-    let backend = WgpuBackend::new(device.clone(), queue, format);
+    let renderer = Renderer::new(device.clone(), queue, format);
     Gpu {
         device,
         surface_tex,
-        backend,
+        renderer,
     }
 }
 
@@ -150,7 +150,7 @@ fn render_frame(
     if let Some(rects) = forced_damage {
         internals::force_frame_damage_to_rects(&mut out, rects);
     }
-    gpu.backend.submit(&gpu.surface_tex, CLEAR, out);
+    gpu.renderer.render(&gpu.surface_tex, CLEAR, out);
     gpu.device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("device poll wait");
@@ -176,7 +176,7 @@ fn bench_two_cells(c: &mut Criterion) {
 
     let shaper = TextShaper::with_bundled_fonts();
     let mut ui = Ui::with_text(shaper.clone());
-    gpu.backend.set_text_shaper(shaper);
+    gpu.renderer.set_text_shaper(shaper);
 
     let mut group = c.benchmark_group("damage/merge_gpu/two_cells");
 
@@ -222,7 +222,7 @@ fn bench_single_pass_scaling(c: &mut Criterion) {
 
     let shaper = TextShaper::with_bundled_fonts();
     let mut ui = Ui::with_text(shaper.clone());
-    gpu.backend.set_text_shaper(shaper);
+    gpu.renderer.set_text_shaper(shaper);
 
     let mut group = c.benchmark_group("damage/merge_gpu/single_pass_scaling");
 

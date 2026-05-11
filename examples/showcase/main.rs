@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use palantir::WgpuBackend;
+use palantir::Renderer;
 use palantir::{
     Background, Button, Color, Configure, DebugOverlayConfig, InputEvent, Panel, Sizing, Ui,
 };
@@ -93,7 +93,7 @@ struct State {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     config: wgpu::SurfaceConfiguration,
-    backend: WgpuBackend,
+    renderer: Renderer,
     ui: Ui,
     display: palantir::Display,
     active: usize,
@@ -158,11 +158,11 @@ impl ApplicationHandler for App {
         };
         surface.configure(&device, &config);
 
-        let mut backend = WgpuBackend::new(device.clone(), queue.clone(), format);
+        let mut renderer = Renderer::new(device.clone(), queue.clone(), format);
 
         let shaper = palantir::TextShaper::with_bundled_fonts();
         let mut ui = Ui::with_text(shaper.clone());
-        backend.set_text_shaper(shaper);
+        renderer.set_text_shaper(shaper);
         // Library default is no button animation (`anim = None`).
         // Showcase exists to demo the animation primitive — opt in.
         ui.theme.button.anim = None;
@@ -178,7 +178,7 @@ impl ApplicationHandler for App {
             surface,
             device,
             config,
-            backend,
+            renderer,
             ui,
             display,
             active: 0,
@@ -281,7 +281,7 @@ impl State {
             Occluded => return,
         };
 
-        self.backend.submit(&frame.texture, clear, frame_out);
+        self.renderer.render(&frame.texture, clear, frame_out);
         frame.present();
     }
 }
