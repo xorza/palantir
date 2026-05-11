@@ -558,6 +558,7 @@ fn run_frame_pass_count_matches_action_trigger() {
         prime(&mut ui);
 
         let count = Cell::new(0u32);
+        let frame_id_before = ui.frame_id;
         let _ = ui.run_frame(display, std::time::Duration::ZERO, |ui| {
             count.set(count.get() + 1);
             Panel::vstack().id_salt("root").show(ui, |_| {});
@@ -567,6 +568,14 @@ fn run_frame_pass_count_matches_action_trigger() {
             *expected,
             "{label}: expected {expected} build invocation(s), got {}",
             count.get(),
+        );
+        // frame_id must bump exactly once per run_frame regardless of
+        // pass count — pass B's anim ticks must see the same id as
+        // pass A's so the integrator doesn't double-advance.
+        assert_eq!(
+            ui.frame_id,
+            frame_id_before + 1,
+            "{label}: frame_id must bump exactly once per run_frame (passes: {expected})",
         );
     }
 }
