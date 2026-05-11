@@ -15,6 +15,7 @@
 pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
+pub(crate) mod gradient_atlas;
 
 use crate::forest::Forest;
 use crate::layout::result::LayoutResult;
