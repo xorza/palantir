@@ -1,7 +1,5 @@
 use crate::swatch;
-use palantir::{
-    Align, Background, Color, Configure, Corners, Frame, HAlign, Panel, Sizing, Ui, VAlign,
-};
+use palantir::{Align, Color, Configure, Frame, HAlign, Panel, Sizing, Ui, VAlign};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -45,10 +43,6 @@ fn chip(ui: &mut Ui, id: &'static str, c: Color, align: Align) {
         .id_salt(id)
         .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
         .align(align)
-        .background(Background {
-            fill: c,
-            radius: Corners::all(4.0),
-            ..Default::default()
-        })
+        .background(swatch::swatch_bg(c))
         .show(ui);
 }

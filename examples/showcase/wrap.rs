@@ -8,6 +8,7 @@ use crate::swatch;
 use palantir::{
     Background, Configure, Corners, Frame, Justify, Panel, Sizing, Stroke, Text, TextStyle, Ui,
 };
+use swatch::{caption_style, section, swatch_bg};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -27,7 +28,7 @@ pub fn build(ui: &mut Ui) {
                 "`.line_gap` spaces lines. `.justify(...).auto_id()` applies per-line.",
             ))
             .id_salt(("hdr", "sub"))
-            .style(TextStyle::default().with_font_size(12.0))
+            .style(caption_style())
             .wrapping()
             .show(ui);
 
@@ -141,25 +142,6 @@ fn badge<H: std::hash::Hash>(ui: &mut Ui, key: H) {
     Frame::new()
         .id_salt(("badge", &key))
         .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))
-        .background(Background {
-            fill: swatch::A,
-            radius: Corners::all(4.0),
-            ..Default::default()
-        })
+        .background(swatch_bg(swatch::A))
         .show(ui);
-}
-
-/// Plain section: title + body, no card decoration.
-fn section(ui: &mut Ui, id: &'static str, title: &'static str, body: impl FnOnce(&mut Ui)) {
-    Panel::vstack()
-        .id_salt(id)
-        .size((Sizing::FILL, Sizing::Hug))
-        .gap(6.0)
-        .show(ui, |ui| {
-            Text::new(title)
-                .id_salt(("section-title", id))
-                .style(TextStyle::default().with_font_size(12.0))
-                .show(ui);
-            body(ui);
-        });
 }

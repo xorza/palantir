@@ -1,5 +1,5 @@
 use crate::swatch;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Ui, Visibility};
+use palantir::{Color, Configure, Frame, Panel, Sizing, Ui, Visibility};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -33,10 +33,6 @@ fn tile<I: std::hash::Hash>(ui: &mut Ui, id: I, c: Color, vis: Visibility) {
         .id_salt(id)
         .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
         .visibility(vis)
-        .background(Background {
-            fill: c,
-            radius: Corners::all(4.0),
-            ..Default::default()
-        })
+        .background(swatch::swatch_bg(c))
         .show(ui);
 }

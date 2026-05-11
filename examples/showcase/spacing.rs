@@ -1,5 +1,6 @@
 use crate::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
+use swatch::swatch_bg;
 
 /// Inner-panel background used for padding/margin demos. The whole
 /// point of these demos is to *see* where the parent's bounds are
@@ -15,11 +16,7 @@ fn panel_bg() -> Background {
 }
 
 fn tile() -> Background {
-    Background {
-        fill: swatch::A,
-        radius: Corners::all(4.0),
-        ..Default::default()
-    }
+    swatch_bg(swatch::A)
 }
 
 pub fn build(ui: &mut Ui) {

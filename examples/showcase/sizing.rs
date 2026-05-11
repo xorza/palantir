@@ -1,5 +1,6 @@
 use crate::swatch;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Ui};
+use palantir::{Color, Configure, Frame, Panel, Sizing, Ui};
+use swatch::swatch_bg;
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -36,14 +37,6 @@ fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .gap(8.0)
         .size((Sizing::FILL, Sizing::Hug))
         .show(ui, body);
-}
-
-fn swatch_bg(c: Color) -> Background {
-    Background {
-        fill: c,
-        radius: Corners::all(4.0),
-        ..Default::default()
-    }
 }
 
 fn fixed_box(ui: &mut Ui, id: &'static str, w: f32, c: Color) {
