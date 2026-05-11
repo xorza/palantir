@@ -84,9 +84,9 @@ pub fn damage_paint_kind(ui: &Ui) -> &'static str {
     use crate::ui::damage::Damage;
     let surface = ui.display.logical_rect();
     match ui.damage_engine.filter(surface) {
-        Damage::Skip => "skip",
-        Damage::Full => "full",
-        Damage::Partial(_) => "partial",
+        None => "skip",
+        Some(Damage::Full) => "full",
+        Some(Damage::Partial(_)) => "partial",
     }
 }
 
@@ -134,14 +134,14 @@ pub fn force_host_damage_to_rects(host: &mut crate::Host, rects: &[crate::primit
         .as_mut()
         .expect("force_host_damage_to_rects: call after Host::run_frame, before Host::render");
     if rects.is_empty() {
-        p.damage = Damage::Full;
+        p.damage = Some(Damage::Full);
         return;
     }
     let mut region = DamageRegion::default();
     for r in rects {
         region.add(*r);
     }
-    p.damage = Damage::Partial(region);
+    p.damage = Some(Damage::Partial(region));
 }
 
 /// Bench-public mirror of internal `ColorMode`. The user-facing

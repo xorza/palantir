@@ -95,20 +95,6 @@ pub struct RecordedFrame<'a> {
 }
 
 impl RecordedFrame<'_> {
-    /// `true` when this frame's damage diff produced no work — the
-    /// backbuffer already holds the right pixels. Hosts can skip
-    /// `surface.get_current_texture()` + render + `present` entirely.
-    ///
-    /// Safe by construction: if the previous frame's render didn't
-    /// run (host dropped the `RecordedFrame`, surface acquire failed,
-    /// etc.), the framework's auto-rewind in `Ui::pre_record`
-    /// forced this frame to `Full`, so this method returns `false`
-    /// and the host paints. No "invalidate" call needed in
-    /// surface-error paths.
-    pub fn can_skip_rendering(&self) -> bool {
-        self.damage == Damage::Skip
-    }
-
     /// `true` when an animation tick during this frame hasn't
     /// settled (set by `Ui::animate`). Hosts honor by calling
     /// `window.request_redraw()` (or equivalent) after present, so
@@ -120,7 +106,7 @@ impl RecordedFrame<'_> {
     pub(crate) fn damage_filter(&self) -> Option<&DamageRegion> {
         match &self.damage {
             Damage::Partial(region) => Some(region),
-            Damage::Full | Damage::Skip => None,
+            Damage::Full => None,
         }
     }
 }
