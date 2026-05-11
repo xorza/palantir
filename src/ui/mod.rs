@@ -264,6 +264,9 @@ impl Ui {
         if shape.is_noop() {
             return;
         }
+        if let Shape::Polyline { points, colors, .. } = &shape {
+            colors.assert_matches(points.len());
+        }
         self.forest.add_shape(shape);
     }
 

@@ -119,6 +119,33 @@ pub enum PolylineColors<'a> {
     PerSegment(&'a [Color]),
 }
 
+impl PolylineColors<'_> {
+    /// Hard-assert the per-variant length contract against `points_len`.
+    /// `Single` has none; `PerPoint` must equal; `PerSegment` must be
+    /// one less. Called at the `Ui::add_shape` boundary so violations
+    /// blow up at the authoring call site rather than deep in the
+    /// per-frame lowering pass.
+    pub fn assert_matches(&self, points_len: usize) {
+        match self {
+            PolylineColors::Single(_) => {}
+            PolylineColors::PerPoint(cs) => assert_eq!(
+                cs.len(),
+                points_len,
+                "Shape::Polyline PerPoint colors len {} != points len {}",
+                cs.len(),
+                points_len,
+            ),
+            PolylineColors::PerSegment(cs) => assert_eq!(
+                cs.len() + 1,
+                points_len,
+                "Shape::Polyline PerSegment colors len {} != points len - 1 ({})",
+                cs.len(),
+                points_len.saturating_sub(1),
+            ),
+        }
+    }
+}
+
 /// Endpoint cap style for stroked [`Shape::Line`] / [`Shape::Polyline`].
 /// `#[repr(u8)]` with stable discriminants so cache keys don't
 /// shift across reorderings; `pub` because it's user-facing.

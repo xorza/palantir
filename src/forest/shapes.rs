@@ -398,28 +398,14 @@ fn lower_polyline(
     cap: LineCap,
     join: LineJoin,
 ) -> ShapeRecord {
+    // Length contract is enforced at the authoring boundary by
+    // `PolylineColors::assert_matches` in `Ui::add_shape`; the
+    // `Shape::Line` path constructs `Single(color)` internally and is
+    // unconstrained.
     let (mode, color_slice): (ColorMode, &[Color]) = match colors {
         PolylineColors::Single(ref c) => (ColorMode::Single, std::slice::from_ref(c)),
-        PolylineColors::PerPoint(cs) => {
-            assert_eq!(
-                cs.len(),
-                points.len(),
-                "Shape::Polyline PerPoint colors len {} != points len {}",
-                cs.len(),
-                points.len(),
-            );
-            (ColorMode::PerPoint, cs)
-        }
-        PolylineColors::PerSegment(cs) => {
-            assert_eq!(
-                cs.len() + 1,
-                points.len(),
-                "Shape::Polyline PerSegment colors len {} != points len - 1 ({})",
-                cs.len(),
-                points.len().saturating_sub(1),
-            );
-            (ColorMode::PerSegment, cs)
-        }
+        PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
+        PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
     };
 
     let p_start = payloads.polyline_points.len() as u32;

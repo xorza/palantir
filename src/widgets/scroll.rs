@@ -427,7 +427,7 @@ impl Scroll {
         // panel clips its own children.
         let mut outer = Element::new(LayoutMode::ZStack);
         outer.id = id;
-        outer.auto_id = self.element.auto_id;
+        outer.id_source = self.element.id_source;
         outer.size = self.element.size;
         outer.min_size = self.element.min_size;
         outer.max_size = self.element.max_size;

@@ -93,6 +93,15 @@ pub(crate) struct RootSlot {
     pub(crate) size: Option<Size>,
 }
 
+/// Pending anchor entry for the `pending_anchors` stack. One per live
+/// `Forest::push_layer` scope; consumed by root mints inside the scope
+/// and popped at `pop_layer`.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct PendingAnchor {
+    pub(crate) anchor: Vec2,
+    pub(crate) size: Option<Size>,
+}
+
 /// **Per-NodeId columns** — `Soa<NodeRecord>` indexed by `NodeId.0`, in
 /// pre-order paint order (parent before children, siblings in declaration
 /// order). Reverse iteration gives topmost-first (used by hit-testing).
@@ -163,13 +172,17 @@ pub(crate) struct Tree {
     /// load (read from `last()`) instead of an O(depth) walk.
     pub(crate) open_frames: Vec<OpenFrame>,
 
-    /// Anchor + optional size cap that the next `open_node` will
-    /// stamp on a freshly-minted `RootSlot`. Set by
-    /// `Forest::push_layer` for non-`Main` layers; `Main`'s values
-    /// stay at `(Vec2::ZERO, None)` — its implicit root always
-    /// paints the full surface.
-    pub(crate) pending_anchor: Vec2,
-    pub(crate) pending_size: Option<Size>,
+    /// Anchor + optional size cap stack. Each `Forest::push_layer`
+    /// scope pushes one entry; root mints inside the scope read the
+    /// top, and `Forest::pop_layer` pops on the way out. Empty on
+    /// `Main` (its implicit root always paints the full surface) and
+    /// outside any `push_layer` scope; in that case root mints fall
+    /// through to `PendingAnchor::default()` = `(Vec2::ZERO, None)`.
+    /// Stack form keeps the no-clobber invariant local: nested
+    /// `push_layer` calls (which the assert in `Forest::push_layer`
+    /// currently forbids, but a future relaxation might enable) save
+    /// and restore correctly without depending on that assert.
+    pub(crate) pending_anchors: Vec<PendingAnchor>,
 
     // -- Output (populated by `end_frame`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
@@ -188,8 +201,7 @@ impl Tree {
         self.rollups.has_grid.clear();
         self.roots.clear();
         self.open_frames.clear();
-        self.pending_anchor = Vec2::ZERO;
-        self.pending_size = None;
+        self.pending_anchors.clear();
     }
 
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`.
@@ -264,17 +276,18 @@ impl Tree {
 
     /// Push a node as a child of the currently-open node (or as a new
     /// root if `open_frames` is empty) and make it the new tip. Root
-    /// mints stamp `self.pending_anchor` onto the new `RootSlot`;
-    /// child opens don't read the anchor.
+    /// mints stamp the top of `pending_anchors` onto the new
+    /// `RootSlot`; child opens don't read the stack.
     pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
         let parent_frame = self.open_frames.last().copied();
         let parent = parent_frame.map(|f| f.node);
         let new_id = NodeId(self.records.len() as u32);
         if parent.is_none() {
+            let pending = self.pending_anchors.last().copied().unwrap_or_default();
             self.roots.push(RootSlot {
                 first_node: new_id.0,
-                anchor: self.pending_anchor,
-                size: self.pending_size,
+                anchor: pending.anchor,
+                size: pending.size,
             });
         }
         if let LayoutMode::Grid(idx) = element.mode {
