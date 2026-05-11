@@ -247,7 +247,7 @@ impl State {
             .run_frame(self.display, |ui| build_ui(ui, &mut self.active));
         self.repaint_requested = info.repaint_requested;
 
-        if info.can_skip_rendering {
+        if info.skip_render {
             return;
         }
 

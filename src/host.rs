@@ -57,7 +57,7 @@ pub struct FrameInfo {
     /// `true` when this frame's damage diff produced no work — the
     /// backbuffer already holds the right pixels. Hosts can skip
     /// `surface.get_current_texture()` + render + present entirely.
-    pub can_skip_rendering: bool,
+    pub skip_render: bool,
     /// `true` when an animation tick during this frame hasn't
     /// settled. Hosts honor by re-requesting a redraw so the next
     /// frame runs even when input is idle.
@@ -97,10 +97,7 @@ impl Host {
     /// by [`Self::render`] is stashed.
     pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameInfo {
         let frame = self.ui.frame(display, self.start.elapsed(), record);
-        let info = FrameInfo {
-            can_skip_rendering: frame.damage.is_none(),
-            repaint_requested: frame.repaint_requested(),
-        };
+
         if frame.damage.is_some() {
             self.frontend.build(&frame);
         }
@@ -109,7 +106,10 @@ impl Host {
             frame_state: frame.frame_state.clone(),
         });
 
-        info
+        FrameInfo {
+            skip_render: frame.damage.is_none(),
+            repaint_requested: frame.repaint_requested(),
+        }
     }
 
     /// GPU submit half. Call after [`Self::run_frame`] when the host
