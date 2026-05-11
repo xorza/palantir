@@ -7,9 +7,9 @@ use crate::forest::element::Element;
 use crate::forest::seen_ids::SeenIds;
 use crate::forest::tree::{Layer, NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
-use crate::primitives::rect::Rect;
 use crate::layout::types::span::Span;
-use crate::shape::{Shape, ShapeRecord, mesh_content_hash};
+use crate::primitives::rect::Rect;
+use crate::shape::{Shape, ShapeRecord};
 use std::array;
 use strum::EnumCount as _;
 
@@ -183,7 +183,7 @@ impl Forest {
                 tree.meshes.vertices.extend_from_slice(&mesh.vertices);
                 let i_start = tree.meshes.indices.len() as u32;
                 tree.meshes.indices.extend_from_slice(&mesh.indices);
-                let content_hash = mesh_content_hash(&mesh.vertices, &mesh.indices);
+                let content_hash = mesh.content_hash();
                 ShapeRecord::Mesh {
                     local_rect,
                     tint,

@@ -1,6 +1,9 @@
 use crate::primitives::color::Color;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
+use rustc_hash::FxHasher;
+use std::cell::Cell;
+use std::hash::Hasher;
 
 /// One vertex of a user-supplied mesh. 24 B (pos 8 + color 16), no
 /// padding — directly castable into a wgpu vertex buffer.
@@ -34,10 +37,16 @@ impl MeshVertex {
 ///
 /// Winding is conventionally CCW but the pipeline doesn't cull —
 /// either order paints.
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Default, Clone, Debug)]
 pub struct Mesh {
-    pub vertices: Vec<MeshVertex>,
-    pub indices: Vec<u16>,
+    pub(crate) vertices: Vec<MeshVertex>,
+    pub(crate) indices: Vec<u16>,
+    /// Lazy cache of `content_hash`. `None` = not computed or
+    /// invalidated. Set by `content_hash`; cleared by every public
+    /// mutator. Internal arena pushes bypass the cache by going
+    /// straight at `pub(crate)` fields — fine, since arena meshes
+    /// never call `content_hash`.
+    cached_hash: Cell<Option<u64>>,
 }
 
 impl Mesh {
@@ -51,6 +60,7 @@ impl Mesh {
         Self {
             vertices: Vec::with_capacity(vertices),
             indices: Vec::with_capacity(indices),
+            cached_hash: Cell::new(None),
         }
     }
 
@@ -58,11 +68,27 @@ impl Mesh {
     pub fn clear(&mut self) {
         self.vertices.clear();
         self.indices.clear();
+        self.cached_hash.set(None);
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.vertices.is_empty() || self.indices.is_empty()
+    }
+
+    /// Stable hash of vertex + index bytes. Memoized — repeat calls on
+    /// an unmutated mesh return the cached value. Mutating through any
+    /// public method invalidates the cache.
+    pub fn content_hash(&self) -> u64 {
+        if let Some(h) = self.cached_hash.get() {
+            return h;
+        }
+        let mut h = FxHasher::default();
+        h.write(bytemuck::cast_slice(self.vertices.as_slice()));
+        h.write(bytemuck::cast_slice(self.indices.as_slice()));
+        let v = h.finish();
+        self.cached_hash.set(Some(v));
+        v
     }
 
     /// Push a vertex; returns its `u16` index for use in [`Self::triangle`].
@@ -72,6 +98,7 @@ impl Mesh {
         let idx = self.vertices.len();
         assert!(idx < u16::MAX as usize, "Mesh exceeds u16 vertex limit");
         self.vertices.push(MeshVertex { pos, color });
+        self.cached_hash.set(None);
         idx as u16
     }
 
@@ -81,6 +108,7 @@ impl Mesh {
         self.indices.push(a);
         self.indices.push(b);
         self.indices.push(c);
+        self.cached_hash.set(None);
     }
 
     /// Append another mesh, offsetting its indices into this mesh's
@@ -97,6 +125,7 @@ impl Mesh {
         for &i in &other.indices {
             self.indices.push(base + i);
         }
+        self.cached_hash.set(None);
     }
 
     /// Convenience: filled triangle in a single color.
@@ -173,5 +202,56 @@ mod tests {
         let m = Mesh::filled_polygon(&pts, Color::default());
         assert_eq!(m.vertices.len(), 4);
         assert_eq!(m.indices, vec![0, 1, 2, 0, 2, 3]);
+    }
+
+    fn red_tri() -> Mesh {
+        let red = Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        };
+        Mesh::filled_triangle(Vec2::ZERO, Vec2::X, Vec2::Y, red)
+    }
+
+    #[test]
+    fn content_hash_stable_for_identical_input() {
+        let a = red_tri();
+        let b = red_tri();
+        assert_eq!(a.content_hash(), b.content_hash());
+    }
+
+    #[test]
+    fn content_hash_changes_on_reordered_indices() {
+        let mut a = red_tri();
+        let mut b = red_tri();
+        a.indices = vec![0, 1, 2];
+        a.cached_hash.set(None);
+        b.indices = vec![0, 2, 1];
+        b.cached_hash.set(None);
+        assert_ne!(a.content_hash(), b.content_hash());
+    }
+
+    #[test]
+    fn content_hash_memoizes_until_mutation() {
+        let mut m = red_tri();
+        let h0 = m.content_hash();
+        assert_eq!(m.cached_hash.get(), Some(h0));
+        // No mutation → same value, cache still populated.
+        assert_eq!(m.content_hash(), h0);
+        assert_eq!(m.cached_hash.get(), Some(h0));
+        // Any builder mutation invalidates.
+        m.vertex(Vec2::new(2.0, 2.0), Color::default());
+        assert_eq!(m.cached_hash.get(), None);
+        let h1 = m.content_hash();
+        assert_ne!(h0, h1);
+    }
+
+    #[test]
+    fn clone_preserves_cache() {
+        let m = red_tri();
+        let h = m.content_hash();
+        let c = m.clone();
+        assert_eq!(c.cached_hash.get(), Some(h));
     }
 }

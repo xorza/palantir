@@ -1,7 +1,6 @@
-use crate::common::hash::Hasher as FxHasher;
 use crate::layout::types::align::Align;
 use crate::layout::types::span::Span;
-use crate::primitives::mesh::{Mesh, MeshVertex};
+use crate::primitives::mesh::Mesh;
 use crate::primitives::{
     approx::approx_zero, color::Color, corners::Corners, rect::Rect, stroke::Stroke,
 };
@@ -216,17 +215,6 @@ impl Hash for ShapeRecord {
     }
 }
 
-/// Hash a mesh's vertex + index bytes into a stable content id. Two
-/// meshes with identical bytes hash identically; different bytes
-/// (added vertex, reordered index, recolored vertex) hash differently.
-pub(crate) fn mesh_content_hash(vertices: &[MeshVertex], indices: &[u16]) -> u64 {
-    use std::hash::Hasher as _;
-    let mut h = FxHasher::new();
-    h.write(bytemuck::cast_slice(vertices));
-    h.write(bytemuck::cast_slice(indices));
-    h.finish()
-}
-
 /// True iff `local_rect` is set with a degenerate or negative extent
 /// — paints no pixels regardless of fill/stroke/text. Broader than
 /// `Size::approx_zero` (which is strict both-axes-near-zero); this
@@ -276,41 +264,8 @@ impl Shape<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::hash::Hasher as FxHasher;
     use crate::primitives::color::Color;
-    use glam::Vec2;
-
-    fn tri(color: Color) -> Vec<MeshVertex> {
-        vec![
-            MeshVertex::new(Vec2::new(0.0, 0.0), color),
-            MeshVertex::new(Vec2::new(1.0, 0.0), color),
-            MeshVertex::new(Vec2::new(0.5, 1.0), color),
-        ]
-    }
-
-    #[test]
-    fn mesh_content_hash_stable_for_identical_input() {
-        let v = tri(Color {
-            r: 1.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
-        let i = vec![0u16, 1, 2];
-        assert_eq!(mesh_content_hash(&v, &i), mesh_content_hash(&v, &i));
-    }
-
-    #[test]
-    fn mesh_content_hash_changes_on_reordered_indices() {
-        let v = tri(Color {
-            r: 1.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
-        let h0 = mesh_content_hash(&v, &[0, 1, 2]);
-        let h1 = mesh_content_hash(&v, &[0, 2, 1]);
-        assert_ne!(h0, h1);
-    }
 
     #[test]
     fn shape_mesh_hash_excludes_span_offsets() {
