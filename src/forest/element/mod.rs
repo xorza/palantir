@@ -30,11 +30,13 @@
 //! | grid       |    ✓    |            |            |          |       ✓       |
 //! | transform  |    ✓    |            |            |          |       ✓       |
 //!
-//! `Element::split` routes the fields at `Tree::open_node` time. The
-//! extras side table is allocated only when at least one extras field
-//! differs from `ElementExtras::DEFAULT`; the per-NodeId index column
-//! inside `Tree.extras` is filled at `open_node` time. `Configure`
-//! (the trait) provides one chained setter per row.
+//! Each column type owns its own `from_element(&Element)` constructor,
+//! so adding a field is a single edit in the column it belongs to.
+//! `Tree::open_node` calls those constructors and pushes the results
+//! into the matching per-NodeId columns; the sparse side tables
+//! (`BoundsExtras`, `PanelExtras`) are only allocated when the
+//! constructed value differs from `DEFAULT`. `Configure` (the trait)
+//! provides one chained setter per row.
 
 use crate::forest::seen_ids::IdSource;
 use crate::forest::visibility::Visibility;
@@ -214,6 +216,18 @@ impl BoundsExtras {
     pub(crate) fn is_default(&self) -> bool {
         self == &Self::DEFAULT
     }
+
+    /// Pull the bounds-column fields out of an `Element`. Lives next to
+    /// the column so a field migration is one local edit.
+    pub(crate) fn from_element(e: &Element) -> Self {
+        Self {
+            transform: e.transform,
+            position: e.position,
+            grid: e.grid,
+            min_size: e.min_size,
+            max_size: e.max_size,
+        }
+    }
 }
 
 impl PanelExtras {
@@ -226,6 +240,17 @@ impl PanelExtras {
 
     pub(crate) fn is_default(&self) -> bool {
         self == &Self::DEFAULT
+    }
+
+    /// Pull the panel-column fields out of an `Element`. Lives next to
+    /// the column so a field migration is one local edit.
+    pub(crate) fn from_element(e: &Element) -> Self {
+        Self {
+            gap: e.gap,
+            line_gap: e.line_gap,
+            justify: e.justify,
+            child_align: e.child_align,
+        }
     }
 }
 
@@ -256,6 +281,21 @@ pub(crate) struct LayoutCore {
     pub(crate) margin: Spacing,
     pub(crate) align: Align,
     pub(crate) visibility: Visibility,
+}
+
+impl LayoutCore {
+    /// Pull the layout-column fields out of an `Element`. Lives next to
+    /// the column so a field migration is one local edit.
+    pub(crate) fn from_element(e: &Element) -> Self {
+        Self {
+            mode: e.mode,
+            size: e.size,
+            padding: e.padding,
+            margin: e.margin,
+            align: e.align,
+            visibility: e.visibility,
+        }
+    }
 }
 
 impl std::hash::Hash for LayoutCore {
@@ -397,55 +437,6 @@ impl Element {
             transform: None,
         }
     }
-
-    /// Split into the storage columns plus the rarely-set bits.
-    /// `Tree::open_node` writes `layout` + `attrs` into their per-node
-    /// columns and stamps the extras side-table slot if any extras
-    /// differ from default (sentinel `SparseColumn::ABSENT` otherwise).
-    pub(crate) fn split(self) -> ElementSplit {
-        let layout = LayoutCore {
-            mode: self.mode,
-            size: self.size,
-            padding: self.padding,
-            margin: self.margin,
-            align: self.align,
-            visibility: self.visibility,
-        };
-        let attrs = NodeFlags::pack(self.sense, self.disabled, self.clip, self.focusable);
-        let bounds = BoundsExtras {
-            transform: self.transform,
-            position: self.position,
-            grid: self.grid,
-            min_size: self.min_size,
-            max_size: self.max_size,
-        };
-        let panel = PanelExtras {
-            gap: self.gap,
-            line_gap: self.line_gap,
-            justify: self.justify,
-            child_align: self.child_align,
-        };
-        ElementSplit {
-            layout,
-            attrs,
-            id: self.id,
-            bounds,
-            panel,
-        }
-    }
-}
-
-/// Output of [`Element::split`] — the storage columns of an `Element`.
-/// `bounds`/`panel` land in `Tree::bounds`/`Tree::panel` (sparse side tables)
-/// iff non-default; the per-NodeId index columns inside each are filled at
-/// `open_node` time. `attrs` and `layout` push into their dense per-NodeId
-/// columns.
-pub(crate) struct ElementSplit {
-    pub(crate) layout: LayoutCore,
-    pub(crate) attrs: NodeFlags,
-    pub(crate) id: WidgetId,
-    pub(crate) bounds: BoundsExtras,
-    pub(crate) panel: PanelExtras,
 }
 
 /// Mixin: any widget builder that holds an `Element` gets the chained
@@ -659,7 +650,16 @@ impl NodeFlags {
     const CLIP_MASK: u8 = 0b11 << Self::CLIP_SHIFT;
     const FOCUSABLE: u8 = 1 << 7;
 
-    pub(crate) fn pack(sense: Sense, disabled: bool, clip: ClipMode, focusable: bool) -> Self {
+    /// Pack the paint/input bits out of an `Element`. Lives next to
+    /// the column so a field migration is one local edit. Reads
+    /// `clip` (mutated upstream in `Tree::open_node` when rounded-clip
+    /// downgrades to rect) so callers either pass a fresh `Element`
+    /// or accept the post-downgrade value.
+    pub(crate) fn from_element(e: &Element) -> Self {
+        Self::pack(e.sense, e.disabled, e.clip, e.focusable)
+    }
+
+    fn pack(sense: Sense, disabled: bool, clip: ClipMode, focusable: bool) -> Self {
         let mut bits = sense.bits() & Self::SENSE_MASK;
         if disabled {
             bits |= Self::DISABLED;

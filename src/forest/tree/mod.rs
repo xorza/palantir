@@ -2,7 +2,7 @@ use crate::ClipMode;
 use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
 use crate::forest::element::{
-    BoundsExtras, Element, ElementSplit, LayoutCore, LayoutMode, PanelExtras,
+    BoundsExtras, Element, LayoutCore, LayoutMode, NodeFlags, PanelExtras,
 };
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
@@ -308,13 +308,11 @@ impl Tree {
         {
             element.clip = ClipMode::Rect;
         }
-        let ElementSplit {
-            layout,
-            attrs,
-            id: widget_id,
-            bounds,
-            panel,
-        } = element.split();
+        let layout = LayoutCore::from_element(&element);
+        let attrs = NodeFlags::from_element(&element);
+        let bounds = BoundsExtras::from_element(&element);
+        let panel = PanelExtras::from_element(&element);
+        let widget_id = element.id;
 
         if let Some(parent_id) = parent
             && let LayoutMode::Grid(grid_idx) = self.records.layout()[parent_id.0 as usize].mode
