@@ -34,7 +34,7 @@ fn record_with_popup(ui: &mut Ui, config: ClickOutside) -> (PopupResponse, bool)
     Panel::vstack()
         .id_salt("main-bg")
         .size((Sizing::FILL, Sizing::FILL))
-        .sense(crate::Sense::CLICK)
+        .sense(crate::Sense::Click)
         .show(ui, |ui| {
             let r = Popup::anchored_to(ANCHOR)
                 .id_salt("test-popup")

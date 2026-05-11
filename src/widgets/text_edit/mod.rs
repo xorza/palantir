@@ -52,7 +52,7 @@ pub struct TextEdit<'a> {
 impl<'a> TextEdit<'a> {
     pub fn new(text: &'a mut String) -> Self {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.sense = Sense::CLICK;
+        element.sense = Sense::Click;
         element.focusable = true;
         // `Element::padding` left at zero — `show()` substitutes
         // `theme.text_edit.padding` when the user didn't call
@@ -258,7 +258,7 @@ fn handle_input(
     // pan clamp); first frame after layout the widget may set caret
     // against a stale rect, the next settles.
     if resp_state.pressed
-        && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos())
+        && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos)
     {
         let local_x = ptr.x - rect.min.x - pad_left;
         state.caret = caret_from_x(text, local_x, font_size, line_height_px, &ui.text);

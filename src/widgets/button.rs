@@ -19,7 +19,7 @@ impl Button {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.sense = Sense::CLICK;
+        element.sense = Sense::Click;
         Self {
             element,
             style: None,

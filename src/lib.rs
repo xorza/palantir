@@ -30,7 +30,7 @@ pub use forest::visibility::Visibility;
 pub use forest::widget_id::WidgetId;
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
 pub use input::sense::Sense;
-pub use input::{FocusPolicy, InputEvent, InputState, PointerButton, PointerState, ResponseState};
+pub use input::{FocusPolicy, InputEvent, PointerButton, ResponseState};
 pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::clip_mode::ClipMode;
 pub use layout::types::display::Display;

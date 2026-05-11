@@ -311,11 +311,7 @@ impl Scroll {
         let widget_origin = resp_rect.map(|r| r.min);
         let widget_size = resp_rect.map(|r| r.size);
         let pivot_local = if (zoom_delta - 1.0).abs() > f32::EPSILON {
-            let pointer_local = ui
-                .input
-                .pointer_pos()
-                .zip(widget_origin)
-                .map(|(p, o)| p - o);
+            let pointer_local = ui.input.pointer_pos.zip(widget_origin).map(|(p, o)| p - o);
             let cfg_pivot = self
                 .zoom
                 .as_ref()

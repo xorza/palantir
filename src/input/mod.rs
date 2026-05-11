@@ -150,11 +150,6 @@ impl InputEvent {
     }
 }
 
-#[derive(Default, Clone, Copy, Debug)]
-pub struct PointerState {
-    pub pos: Option<Vec2>,
-}
-
 /// Snapshot of one widget's interaction state for the current frame.
 /// `rect` is the widget's last-frame logical-pixel rect (`None` on first frame).
 ///
@@ -194,7 +189,8 @@ pub struct ResponseState {
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
 /// (last-frame rects, cascade scratch) lives in [`HitIndex`].
 pub struct InputState {
-    pointer: PointerState,
+    /// Pointer position in logical pixels, `None` when off-surface.
+    pub(crate) pointer_pos: Option<Vec2>,
     pub(crate) active: Option<WidgetId>,
     hovered: Option<WidgetId>,
     /// Topmost `Sense::Scroll` widget under the pointer, recomputed
@@ -273,7 +269,7 @@ impl Default for InputState {
 impl InputState {
     pub fn new() -> Self {
         Self {
-            pointer: PointerState::default(),
+            pointer_pos: None,
             active: None,
             hovered: None,
             scroll_target: None,
@@ -308,7 +304,7 @@ impl InputState {
         }
         match event {
             InputEvent::PointerMoved(p) => {
-                self.pointer.pos = Some(p);
+                self.pointer_pos = Some(p);
                 if !self.drag_latched
                     && self.active.is_some()
                     && let Some(press) = self.press_pos
@@ -322,7 +318,7 @@ impl InputState {
                 self.recompute_scroll_target(cascades);
             }
             InputEvent::PointerLeft => {
-                self.pointer.pos = None;
+                self.pointer_pos = None;
                 self.hovered = None;
                 self.scroll_target = None;
             }
@@ -330,17 +326,15 @@ impl InputState {
                 // Press hits the topmost *clickable* widget — hover-only widgets
                 // are transparent to presses even though they show as hovered.
                 self.active = self
-                    .pointer
-                    .pos
+                    .pointer_pos
                     .and_then(|p| cascades.hit_test(p, Sense::click));
-                self.press_pos = self.active.and(self.pointer.pos);
+                self.press_pos = self.active.and(self.pointer_pos);
                 // Focus updates on a separate hit-test: focusability is
                 // orthogonal to clickability (clicking a Button shouldn't
                 // steal focus from a TextEdit). Press on empty surface or
                 // on a non-focusable widget defers to `focus_policy`.
                 let focus_hit = self
-                    .pointer
-                    .pos
+                    .pointer_pos
                     .and_then(|p| cascades.hit_test_focusable(p));
                 match (focus_hit, self.focus_policy) {
                     (Some(id), _) => self.focused = Some(id),
@@ -351,16 +345,13 @@ impl InputState {
             InputEvent::PointerReleased(PointerButton::Left) => {
                 if let Some(a) = self.active.take() {
                     let hit = self
-                        .pointer
-                        .pos
+                        .pointer_pos
                         .and_then(|p| cascades.hit_test(p, Sense::click));
                     if hit == Some(a) && !self.drag_latched {
                         self.clicked_this_frame.insert(a);
                     }
                 }
-                self.press_pos = None;
-                self.drag_latched = false;
-                self.drag_started_this_frame = None;
+                self.clear_capture();
             }
             InputEvent::Scroll(d) => {
                 self.frame_scroll_delta += d;
@@ -420,9 +411,7 @@ impl InputState {
             && !cascades.by_id.contains_key(&active)
         {
             self.active = None;
-            self.press_pos = None;
-            self.drag_latched = false;
-            self.drag_started_this_frame = None;
+            self.clear_capture();
         }
         // Focus eviction: same model as the active-capture eviction
         // above. A focused widget that vanished from the tree (was not
@@ -435,14 +424,6 @@ impl InputState {
         }
         self.recompute_hover(cascades);
         self.recompute_scroll_target(cascades);
-    }
-
-    /// Current pointer position in logical pixels, or `None` when the
-    /// pointer is off-surface. Used by widgets that need pointer
-    /// coordinates relative to their own rect (e.g. TextEdit's
-    /// click-to-place-caret).
-    pub(crate) fn pointer_pos(&self) -> Option<Vec2> {
-        self.pointer.pos
     }
 
     /// Returns this frame's scroll delta if `id` is the current scroll
@@ -473,13 +454,12 @@ impl InputState {
     /// known. Rect-independent — the pointer can leave the widget's
     /// rect mid-drag and the delta keeps tracking. `None` when `id`
     /// isn't active or the pointer has left the surface.
-    #[allow(dead_code)] // first consumer is the scrollbar widget (step 6)
     pub(crate) fn drag_delta(&self, id: WidgetId) -> Option<Vec2> {
         if self.active != Some(id) {
             return None;
         }
         let press = self.press_pos?;
-        let now = self.pointer.pos?;
+        let now = self.pointer_pos?;
         Some(now - press)
     }
 
@@ -521,17 +501,24 @@ impl InputState {
         }
     }
 
+    /// Clear all drag/press-related state. `active` is the caller's
+    /// responsibility (Released takes it; eviction clears it). Called
+    /// both on left-release and on cascade-evict of the active widget.
+    fn clear_capture(&mut self) {
+        self.press_pos = None;
+        self.drag_latched = false;
+        self.drag_started_this_frame = None;
+    }
+
     fn recompute_hover(&mut self, cascades: &CascadeResult) {
         self.hovered = self
-            .pointer
-            .pos
+            .pointer_pos
             .and_then(|p| cascades.hit_test(p, Sense::hover));
     }
 
     fn recompute_scroll_target(&mut self, cascades: &CascadeResult) {
         self.scroll_target = self
-            .pointer
-            .pos
+            .pointer_pos
             .and_then(|p| cascades.hit_test(p, Sense::scroll));
     }
 }
