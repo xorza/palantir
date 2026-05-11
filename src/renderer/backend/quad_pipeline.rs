@@ -343,7 +343,7 @@ impl QuadPipeline {
     /// `GradientCpuAtlas` for why per-row uploads aren't worth the API
     /// overhead. Called from `WgpuBackend::submit` before the render
     /// pass starts.
-    pub(crate) fn upload_gradients(&self, queue: &wgpu::Queue, atlas: &mut GradientCpuAtlas) {
+    pub(crate) fn upload_gradients(&self, queue: &wgpu::Queue, atlas: &GradientCpuAtlas) {
         let Some(bytes) = atlas.flush() else {
             return;
         };

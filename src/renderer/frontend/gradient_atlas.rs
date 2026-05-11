@@ -25,6 +25,7 @@
 use crate::common::hash::Hasher as FxHasher;
 use crate::primitives::brush::{Interp, LinearGradient, Stop};
 use crate::primitives::color::{Color, Srgb8, linear_to_oklab, oklab_to_linear};
+use std::cell::Cell;
 use std::hash::{Hash, Hasher};
 
 /// Number of rows in the LUT atlas texture. One row per distinct
@@ -204,7 +205,11 @@ pub(crate) struct GradientCpuAtlas {
     /// 256 KB beats N calls of 1 KB each on the common warmup path
     /// (N ≥ 2 distinct gradients) thanks to fixed-cost API overhead
     /// per call; for the N = 1 edge case the two are roughly tied.
-    dirty: bool,
+    ///
+    /// `Cell` because `flush` clears it on upload but is called
+    /// through `&self` — lets the backend take `&RenderBuffer`
+    /// instead of `&mut RenderBuffer` for the entire submit path.
+    dirty: Cell<bool>,
 }
 
 impl Default for GradientCpuAtlas {
@@ -212,7 +217,7 @@ impl Default for GradientCpuAtlas {
         let mut atlas = Self {
             rows: [None; ATLAS_ROWS as usize],
             baked: vec![[0u8; LUT_ROW_BYTES]; ATLAS_ROWS as usize],
-            dirty: false,
+            dirty: Cell::new(false),
         };
         atlas.init_row_zero_magenta();
         atlas
@@ -237,7 +242,7 @@ impl GradientCpuAtlas {
         // re-claimed by a real gradient that happens to hash to 0.
         self.rows[0] = Some(0);
         // First-frame upload paints the magenta fallback.
-        self.dirty = true;
+        self.dirty.set(true);
     }
 
     /// Find-or-bake the row for `g`. Returns the row id (in
@@ -257,7 +262,7 @@ impl GradientCpuAtlas {
                     // Free slot — bake into it.
                     bake_linear(g, &mut self.baked[row as usize]);
                     self.rows[row as usize] = Some(content_hash);
-                    self.dirty = true;
+                    self.dirty.set(true);
                     return row;
                 }
                 _ => continue,
@@ -277,27 +282,11 @@ impl GradientCpuAtlas {
     /// one-shot upload, and clear the dirty flag. Returns `None` when
     /// nothing has changed — the steady-state idle frame uploads
     /// zero bytes.
-    pub(crate) fn flush(&mut self) -> Option<&[u8]> {
-        if !self.dirty {
+    pub(crate) fn flush(&self) -> Option<&[u8]> {
+        if !self.dirty.replace(false) {
             return None;
         }
-        self.dirty = false;
         Some(bytemuck::cast_slice(&self.baked))
-    }
-
-    /// Test-only: borrow a baked row's bytes. Production code uses
-    /// [`Self::flush`]; this exists so tests can spot-check
-    /// magenta-fallback initialisation and bake output for specific
-    /// rows.
-    #[cfg(test)]
-    fn row_bytes(&self, row: u8) -> &[u8; LUT_ROW_BYTES] {
-        &self.baked[row as usize]
-    }
-
-    /// Test-only: peek the dirty flag without clearing.
-    #[cfg(test)]
-    fn is_dirty(&self) -> bool {
-        self.dirty
     }
 }
 
@@ -524,7 +513,7 @@ mod tests {
     fn row_zero_reserved_as_magenta_fallback() {
         let atlas = GradientCpuAtlas::default();
         // Row 0 is magenta sRGB across all texels.
-        let row0 = atlas.row_bytes(0);
+        let row0 = &atlas.baked[0];
         for i in 0..LUT_ROW_TEXELS {
             let off = i * 4;
             assert_eq!(&row0[off..off + 4], &[0xff, 0x00, 0xff, 0xff]);
@@ -543,7 +532,7 @@ mod tests {
             (1..ATLAS_ROWS).contains(&row),
             "row {row} must be in 1..ATLAS_ROWS"
         );
-        assert!(atlas.is_dirty(), "register must mark atlas dirty");
+        assert!(atlas.dirty.get(), "register must mark atlas dirty");
     }
 
     /// Same gradient registered twice returns the same row and does
@@ -559,7 +548,7 @@ mod tests {
         let r2 = atlas.register(&g);
         assert_eq!(r1, r2);
         assert!(
-            !atlas.is_dirty(),
+            !atlas.dirty.get(),
             "re-registering existing content must not dirty",
         );
     }
@@ -573,7 +562,7 @@ mod tests {
         let ra = atlas.register(&distinct_grad(0.1));
         let rb = atlas.register(&distinct_grad(0.2));
         assert_ne!(ra, rb);
-        assert!(atlas.is_dirty());
+        assert!(atlas.dirty.get());
     }
 
     /// Linear-probe collision handling: if two gradients hash to the
@@ -629,7 +618,7 @@ mod tests {
     /// `Some` branch once for the magenta upload, then stays clean.
     #[test]
     fn freshly_constructed_atlas_flushes_magenta_once() {
-        let mut atlas = GradientCpuAtlas::default();
+        let atlas = GradientCpuAtlas::default();
         let first = atlas.flush().expect("first flush carries magenta init");
         assert_eq!(first.len(), ATLAS_ROWS as usize * LUT_ROW_BYTES);
         assert!(atlas.flush().is_none());

@@ -260,7 +260,7 @@ impl WgpuBackend {
         &mut self,
         surface_tex: &wgpu::Texture,
         clear: Color,
-        buffer: &mut RenderBuffer,
+        buffer: &RenderBuffer,
         damage: Damage,
         debug_overlay: DebugOverlayConfig,
     ) {
@@ -270,7 +270,7 @@ impl WgpuBackend {
         // composer queued. Has to run before the render pass starts —
         // any quad with `fill_kind.is_linear()` samples this texture.
         self.quad
-            .upload_gradients(&self.queue, &mut buffer.gradient_atlas);
+            .upload_gradients(&self.queue, &buffer.gradient_atlas);
 
         let use_stencil = buffer.has_rounded_clip();
         tracing::trace!(
