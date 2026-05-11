@@ -124,8 +124,11 @@ fn emit_one_shape(
                 shaped.key,
             );
         }
-        ShapeRecord::Line { .. } => {
-            tracing::trace!(?shape, "encoder: dropping unsupported shape");
+        ShapeRecord::Line { a, b, width, color } => {
+            // Endpoints are owner-relative logical px; shift by
+            // `owner_rect.min` so the composer can apply the
+            // active transform + DPI scale uniformly.
+            out.draw_polyline(&[owner_rect.min + *a, owner_rect.min + *b], *width, *color);
         }
         ShapeRecord::Mesh {
             local_rect,

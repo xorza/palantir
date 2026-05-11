@@ -1,7 +1,7 @@
 //! Per-widget fixtures: smallest possible scene that exercises one
 //! widget's render path.
 
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 use palantir::{
     Background, Button, Color, Configure, Corners, Frame, Panel, Rect, Shape, Sizing, Stroke,
 };
@@ -200,4 +200,38 @@ fn interleaved_shapes_paint_in_record_order() {
             });
     });
     assert_matches_golden("interleaved_shapes_paint_order", &img, Tolerance::default());
+}
+
+/// Pin: `Shape::Line` paints a fringe-AA stroke. A diagonal 4-px
+/// cyan line across a dark frame exercises the polyline cmd →
+/// composer → mesh-pipeline path end-to-end. The fringe-AA fade is
+/// the load-bearing visual signal — a non-AA tessellator would
+/// produce a stair-stepped diagonal that fails the per-pixel
+/// channel tolerance immediately.
+#[test]
+fn line_diagonal_aa_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(160, 120), 1.0, DARK_BG, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ui.add_shape(Shape::Line {
+                    a: Vec2::new(10.0, 10.0),
+                    b: Vec2::new(150.0, 110.0),
+                    width: 4.0,
+                    color: Color::rgb(0.2, 0.9, 1.0),
+                });
+                // Hairline at sub-pixel width — should appear dim
+                // (alpha-faded) rather than vanish or look identical
+                // to the 4 px stroke. Pins the hairline branch.
+                ui.add_shape(Shape::Line {
+                    a: Vec2::new(10.0, 80.0),
+                    b: Vec2::new(150.0, 80.0),
+                    width: 0.4,
+                    color: Color::rgb(1.0, 1.0, 1.0),
+                });
+            });
+    });
+    assert_matches_golden("line_diagonal_aa", &img, Tolerance::default());
 }
