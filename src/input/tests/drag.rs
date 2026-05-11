@@ -13,7 +13,7 @@ fn build_clickable(ui: &mut Ui) {
     Panel::hstack()
         .id_salt("target")
         .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-        .sense(Sense::Click)
+        .sense(Sense::CLICK)
         .show(ui, |_| {});
 }
 
@@ -131,7 +131,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
             Panel::hstack()
                 .id_salt("target")
                 .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
-                .sense(Sense::Click)
+                .sense(Sense::CLICK)
                 .show(ui, |_| {});
         });
     };

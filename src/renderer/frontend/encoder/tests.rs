@@ -456,7 +456,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         fill: v_color,
                         ..Default::default()
                     })
-                    .sense(Sense::Click)
+                    .sense(Sense::CLICK)
                     .show(ui);
                 Frame::new()
                     .id_salt("D")
@@ -466,7 +466,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         fill: d_color,
                         ..Default::default()
                     })
-                    .sense(Sense::Click)
+                    .sense(Sense::CLICK)
                     .disabled(true)
                     .show(ui);
                 Frame::new()
@@ -477,7 +477,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         fill: h_color,
                         ..Default::default()
                     })
-                    .sense(Sense::Click)
+                    .sense(Sense::CLICK)
                     .hidden()
                     .show(ui);
             });
@@ -563,7 +563,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         fill: v_color,
                         ..Default::default()
                     })
-                    .sense(Sense::Click)
+                    .sense(Sense::CLICK)
                     .show(ui)
                     .clicked();
                 got.1 = Frame::new()
@@ -574,7 +574,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         fill: d_color,
                         ..Default::default()
                     })
-                    .sense(Sense::Click)
+                    .sense(Sense::CLICK)
                     .disabled(true)
                     .show(ui)
                     .clicked();
@@ -586,7 +586,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         fill: h_color,
                         ..Default::default()
                     })
-                    .sense(Sense::Click)
+                    .sense(Sense::CLICK)
                     .hidden()
                     .show(ui)
                     .clicked();
@@ -649,7 +649,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     ui.paint_phase();
     let cascades = &ui.cascades.result;
     let child = child_node.unwrap();
-    assert_eq!(cascades.entries[child.index()].sense, Sense::None);
+    assert_eq!(cascades.entries[child.index()].sense, Sense::NONE);
 }
 
 /// `align_text_in` math: glyph bbox positioned inside the leaf's

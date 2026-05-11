@@ -16,12 +16,12 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     Panel::zstack()
         .id_salt("outer")
         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-        .sense(Sense::Scroll)
+        .sense(Sense::SCROLL)
         .show(&mut ui, |ui| {
             Panel::zstack()
                 .id_salt("inner")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-                .sense(Sense::Scroll)
+                .sense(Sense::SCROLL)
                 .show(ui, |_| {});
         });
     ui.record_phase();
@@ -32,12 +32,12 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     Panel::zstack()
         .id_salt("outer")
         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-        .sense(Sense::Scroll)
+        .sense(Sense::SCROLL)
         .show(&mut ui, |ui| {
             Panel::zstack()
                 .id_salt("inner")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-                .sense(Sense::Scroll)
+                .sense(Sense::SCROLL)
                 .show(ui, |_| {});
         });
     let inner_id = crate::forest::widget_id::WidgetId::from_hash("inner");
@@ -54,7 +54,7 @@ fn scroll_delta_zero_for_non_target() {
     Panel::zstack()
         .id_salt("scroller")
         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-        .sense(Sense::Scroll)
+        .sense(Sense::SCROLL)
         .show(&mut ui, |_| {});
     ui.record_phase();
     ui.paint_phase();
@@ -64,7 +64,7 @@ fn scroll_delta_zero_for_non_target() {
     Panel::zstack()
         .id_salt("scroller")
         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-        .sense(Sense::Scroll)
+        .sense(Sense::SCROLL)
         .show(&mut ui, |_| {});
     let unrelated = crate::forest::widget_id::WidgetId::from_hash("nope");
     assert_eq!(ui.input.scroll_delta_for(unrelated), Vec2::ZERO);
@@ -78,7 +78,7 @@ fn pointer_left_clears_scroll_target() {
     Panel::zstack()
         .id_salt("scroller")
         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-        .sense(Sense::Scroll)
+        .sense(Sense::SCROLL)
         .show(&mut ui, |_| {});
     ui.record_phase();
     ui.paint_phase();
@@ -89,7 +89,7 @@ fn pointer_left_clears_scroll_target() {
     Panel::zstack()
         .id_salt("scroller")
         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-        .sense(Sense::Scroll)
+        .sense(Sense::SCROLL)
         .show(&mut ui, |_| {});
     let id = crate::forest::widget_id::WidgetId::from_hash("scroller");
     assert_eq!(

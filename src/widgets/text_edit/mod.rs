@@ -52,7 +52,7 @@ pub struct TextEdit<'a> {
 impl<'a> TextEdit<'a> {
     pub fn new(text: &'a mut String) -> Self {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.sense = Sense::Click;
+        element.sense = Sense::CLICK;
         element.focusable = true;
         // `Element::padding` left at zero — `show()` substitutes
         // `theme.text_edit.padding` when the user didn't call

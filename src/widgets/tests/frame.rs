@@ -60,7 +60,7 @@ fn frame_with_sense_click_is_clickable() {
         Frame::new()
             .id_salt("hitbox")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
-            .sense(Sense::Click)
+            .sense(Sense::CLICK)
             .show(ui);
     });
     ui.record_phase();
@@ -73,7 +73,7 @@ fn frame_with_sense_click_is_clickable() {
         clicked = Frame::new()
             .id_salt("hitbox")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
-            .sense(Sense::Click)
+            .sense(Sense::CLICK)
             .show(ui)
             .clicked();
     });

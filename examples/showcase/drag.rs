@@ -63,7 +63,7 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
         .id(id)
         .size((Sizing::Fixed(CARD_W), Sizing::Fixed(CARD_H)))
         .position(pos)
-        .sense(Sense::Drag)
+        .sense(Sense::DRAG)
         .background(Background {
             fill: accent,
             stroke: Stroke {
