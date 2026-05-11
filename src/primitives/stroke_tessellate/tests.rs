@@ -417,3 +417,199 @@ fn indices_are_zero_based_per_call() {
     assert_eq!(i[0..3], [99, 99, 99]);
     assert!(i[3..].iter().all(|&idx| idx < 8));
 }
+
+/// `LineCap::Square` extends both endpoints along the segment
+/// direction by `inner_offset` (= width/2). Width=2 ⇒ each end
+/// shifts outward by 1 phys px.
+#[test]
+fn square_cap_extends_endpoints_by_half_width() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0)],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Square,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    // Start cross-section was shifted to x = -1 (= 0 - inner_offset).
+    assert_eq!(v[1].pos, Vec2::new(-1.0, 1.0));
+    assert_eq!(v[2].pos, Vec2::new(-1.0, -1.0));
+    // End cross-section was shifted to x = 11 (= 10 + inner_offset).
+    assert_eq!(v[5].pos, Vec2::new(11.0, 1.0));
+    assert_eq!(v[6].pos, Vec2::new(11.0, -1.0));
+}
+
+/// Explicit `LineJoin::Bevel` on a shallow turn (one that would
+/// miter fine) still emits dual cross-sections + bevel chrome.
+/// The `sharp_join_emits_bevel` test only exercises Miter-classified-
+/// as-sharp → bevel chrome; this pins the explicit-Bevel path.
+#[test]
+fn bevel_join_on_shallow_turn_emits_dual_chrome() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    // 90° turn — non-sharp under Miter, but Bevel forces dual.
+    tessellate_polyline_aa(
+        &[
+            Vec2::new(0.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(10.0, 10.0),
+        ],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Bevel,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    // 4 endpoint + 4 trailing + 4 leading + 1 bevel center + 1 concave-fill center + 4 endpoint = 18.
+    assert_eq!(v.len(), 18);
+    // 2 strips × 18 + bevel (3 center + 6 fringe) + concave 3 = 48.
+    assert_eq!(i.len(), 48);
+}
+
+/// Consecutive coincident points are filtered: 3 input points
+/// where 2 coincide should produce the same mesh as the deduped
+/// 2-point input.
+#[test]
+fn coincident_points_filtered_per_point() {
+    let style = StrokeStyle {
+        mode: ColorMode::PerPoint,
+        cap: LineCap::Butt,
+        join: LineJoin::Miter,
+        width_phys: 2.0,
+    };
+    let mut v_a = Vec::new();
+    let mut i_a = Vec::new();
+    tessellate_polyline_aa(
+        // Middle point coincides with first.
+        &[Vec2::ZERO, Vec2::ZERO, Vec2::new(10.0, 0.0)],
+        &[red(), green(), red()],
+        style,
+        &mut v_a,
+        &mut i_a,
+    );
+    let mut v_b = Vec::new();
+    let mut i_b = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
+        &[red(), red()],
+        style,
+        &mut v_b,
+        &mut i_b,
+    );
+    assert_eq!(v_a.len(), v_b.len());
+    assert_eq!(i_a, i_b);
+}
+
+/// PerSegment dedup: when a point coincides with the previous,
+/// the segment ending at it is degenerate; its color is dropped
+/// and the surviving segment uses the next color.
+#[test]
+fn coincident_points_filtered_per_segment() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    // Original: p0, p1=p1, p2. Segments: (p0,p1) red, (p1,p2) green.
+    // After dedup: kept [p0, p1, p2] effectively — but the middle
+    // dup is dropped, leaving [p0, p2] and the surviving color green.
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::ZERO, Vec2::new(10.0, 0.0)],
+        &[red(), green()],
+        StrokeStyle {
+            mode: ColorMode::PerSegment,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    // 4 start + 4 end = 8 verts, 18 indices (one strip).
+    assert_eq!(v.len(), 8);
+    assert_eq!(i.len(), 18);
+    // Surviving segment's color is the second (green).
+    assert_eq!(v[5].color, green());
+}
+
+/// All-coincident input emits nothing.
+#[test]
+fn all_coincident_input_emits_nothing() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[Vec2::ZERO, Vec2::ZERO, Vec2::ZERO],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert!(v.is_empty());
+    assert!(i.is_empty());
+}
+
+/// PerSegment with all-same colors collapses the per-point dual
+/// cross-section into a single shared block at smooth-miter joins
+/// — half the verts and indices vs. two-color PerSegment.
+#[test]
+fn per_segment_same_color_merges_cross_section() {
+    let style = |mode| StrokeStyle {
+        mode,
+        cap: LineCap::Butt,
+        join: LineJoin::Miter,
+        width_phys: 2.0,
+    };
+    let pts = [
+        Vec2::new(0.0, 0.0),
+        Vec2::new(10.0, 0.0),
+        Vec2::new(20.0, 0.0),
+    ];
+    let mut v_same = Vec::new();
+    let mut i_same = Vec::new();
+    tessellate_polyline_aa(
+        &pts,
+        &[red(), red()],
+        style(ColorMode::PerSegment),
+        &mut v_same,
+        &mut i_same,
+    );
+    let mut v_single = Vec::new();
+    let mut i_single = Vec::new();
+    tessellate_polyline_aa(
+        &pts,
+        &[red()],
+        style(ColorMode::Single),
+        &mut v_single,
+        &mut i_single,
+    );
+    // Same-color PerSegment matches Single mode's geometry exactly.
+    assert_eq!(v_same.len(), v_single.len());
+    assert_eq!(i_same, i_single);
+
+    // And distinctly less than two-color PerSegment (16 verts, 36 indices).
+    let mut v_two = Vec::new();
+    let mut i_two = Vec::new();
+    tessellate_polyline_aa(
+        &pts,
+        &[red(), green()],
+        style(ColorMode::PerSegment),
+        &mut v_two,
+        &mut i_two,
+    );
+    assert!(v_same.len() < v_two.len());
+    // Index count is the same (still 2 strips), but the merge
+    // saves 4 verts at the shared join.
+    assert_eq!(v_two.len() - v_same.len(), 4);
+}

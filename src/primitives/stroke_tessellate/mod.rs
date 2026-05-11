@@ -16,8 +16,8 @@ const MAX_ROUND_FAN_SEGS: u16 = 16;
 /// below which the two normals count as antiparallel (180° fold).
 const ANTIPARALLEL_EPS_SQ: f32 = 1e-6;
 /// Threshold on segment length squared below which two consecutive
-/// points are treated as coincident — a programmer error since
-/// the join math has no valid normal to use.
+/// points count as coincident — the emit walker skips them so the
+/// degenerate segment contributes no geometry.
 const COINCIDENT_EPS_SQ: f32 = 1e-12;
 
 #[derive(Clone, Copy)]
@@ -62,11 +62,17 @@ pub(crate) struct StrokeStyle {
 /// which becomes the wgpu `base_vertex`. Multiple calls into the
 /// same vecs concatenate independent index blocks.
 ///
-/// **Contract.** Consecutive `points` must not coincide
-/// (`(p[i+1] - p[i]).length_squared() > 1e-12`); a coincident pair
-/// has no valid join normal and asserts. Indices are `u16` and
-/// scoped per-call: emitting more than 65 535 verts in a single
-/// call panics. Composer is expected to split when needed.
+/// **Degenerate input.** Consecutive coincident points
+/// (`(p[i+1] - p[i]).length_squared() <= 1e-12`) are skipped on
+/// the fly — the corresponding zero-length segment contributes no
+/// geometry and its color (PerPoint / PerSegment) is dropped. The
+/// rest of the polyline tessellates as if those points weren't
+/// there. A polyline that collapses to fewer than two distinct
+/// points emits nothing.
+///
+/// **Index width.** Indices are `u16` and scoped per-call:
+/// emitting more than 65 535 verts in a single call panics.
+/// Composer is expected to split when needed.
 pub(crate) fn tessellate_polyline_aa(
     points: &[Vec2],
     colors: &[Color],
@@ -164,21 +170,32 @@ fn classify_join(normal_prev: Vec2, normal_next: Vec2) -> JoinClass {
     }
 }
 
-/// Single + PerPoint emission: one cross-section per input point
+/// Single + PerPoint emission: one cross-section per kept point
 /// for non-sharp joins; two cross-sections (a bevel) when the
-/// miter factor would exceed [`MITER_LIMIT`].
+/// miter factor would exceed [`MITER_LIMIT`]. Consecutive
+/// coincident points are skipped via [`next_kept`].
 fn emit_simple(points: &[Vec2], colors: &[Color], mode: ColorMode, e: &mut Emitter) {
     let n = points.len();
     let mut prev_offset: u16 = 0;
     let mut prev_was_dual = false;
     let mut prev_seg_normal: Option<Vec2> = None;
+    let mut has_prev_kept = false;
+    let mut i = 0;
 
-    for i in 0..n {
-        let next_seg_normal = if i + 1 < n {
-            Some(seg_normal(points[i], points[i + 1]))
+    while i < n {
+        let next_idx = next_kept(points, i);
+        let next_seg_normal = if next_idx < n {
+            Some(seg_normal(points[i], points[next_idx]))
         } else {
             None
         };
+
+        // Isolated kept point with no neighbors on either side:
+        // no segment to draw, no cap to anchor.
+        if prev_seg_normal.is_none() && next_seg_normal.is_none() {
+            return;
+        }
+
         let join_class = match (prev_seg_normal, next_seg_normal) {
             (Some(np), Some(nn)) => Some(classify_join(np, nn)),
             _ => None,
@@ -216,11 +233,11 @@ fn emit_simple(points: &[Vec2], colors: &[Color], mode: ColorMode, e: &mut Emitt
                 let p = points[i] + tangent_of(np) * e.geo.cap_extension();
                 e.push_cross_section(p, np, 1.0, color);
             }
-            (None, None) => unreachable!("polyline length < 2 short-circuits earlier"),
+            (None, None) => unreachable!("guarded above"),
         }
 
-        // 2. Strip indices for segment (i-1, i).
-        if i > 0 {
+        // 2. Strip indices for segment (prev_kept, i).
+        if has_prev_kept {
             let leading = prev_offset + if prev_was_dual { BLOCK } else { 0 };
             e.push_strip_indices(leading, current_offset);
         }
@@ -241,12 +258,10 @@ fn emit_simple(points: &[Vec2], colors: &[Color], mode: ColorMode, e: &mut Emitt
 
         // 4. Round cap fans at endpoints.
         if matches!(e.geo.cap, LineCap::Round) {
-            if i == 0
-                && let Some(nn) = next_seg_normal
-            {
+            if !has_prev_kept && let Some(nn) = next_seg_normal {
                 e.push_round_cap(points[i], -tangent_of(nn), color);
             }
-            if i == n - 1
+            if next_seg_normal.is_none()
                 && let Some(np) = prev_seg_normal
             {
                 e.push_round_cap(points[i], tangent_of(np), color);
@@ -256,6 +271,8 @@ fn emit_simple(points: &[Vec2], colors: &[Color], mode: ColorMode, e: &mut Emitt
         prev_offset = current_offset;
         prev_was_dual = is_dual;
         prev_seg_normal = next_seg_normal;
+        has_prev_kept = true;
+        i = next_idx;
     }
 }
 
@@ -267,7 +284,11 @@ fn emit_simple(points: &[Vec2], colors: &[Color], mode: ColorMode, e: &mut Emitt
 /// of the two adjacent segments' colors.
 fn emit_per_segment(points: &[Vec2], colors: &[Color], e: &mut Emitter) {
     let n = points.len();
-    let mut np = seg_normal(points[0], points[1]);
+    let second = next_kept(points, 0);
+    if second >= n {
+        return;
+    }
+    let mut np = seg_normal(points[0], points[second]);
 
     // Start endpoint.
     let start_color = scale_alpha(colors[0], e.geo.alpha_scale);
@@ -277,31 +298,37 @@ fn emit_per_segment(points: &[Vec2], colors: &[Color], e: &mut Emitter) {
         e.push_round_cap(points[0], -tangent_of(np), start_color);
     }
     let mut prev_block_offset: u16 = 0;
+    let mut i = second;
 
-    for i in 1..n - 1 {
-        let nn = seg_normal(points[i], points[i + 1]);
+    loop {
+        let next = next_kept(points, i);
+        if next >= n {
+            // i is the last kept point — end cap.
+            let end_color = scale_alpha(colors[i - 1], e.geo.alpha_scale);
+            let end_offset = e.cursor();
+            let pl = points[i] + tangent_of(np) * e.geo.cap_extension();
+            e.push_cross_section(pl, np, 1.0, end_color);
+            e.push_strip_indices(prev_block_offset, end_offset);
+            if matches!(e.geo.cap, LineCap::Round) {
+                e.push_round_cap(points[i], tangent_of(np), end_color);
+            }
+            return;
+        }
+
+        let nn = seg_normal(points[i], points[next]);
         let class = classify_join(np, nn);
         let dual = class.needs_dual_section(e.geo.join);
-        let (trailing_normal, trailing_ext, leading_normal, leading_ext) = if dual {
-            (np, 1.0, nn, 1.0)
-        } else if let JoinClass::Smooth { bisector, ext } = class {
-            (bisector, ext, bisector, ext)
-        } else {
-            unreachable!("non-dual implies Smooth");
-        };
-
         let trailing_color = scale_alpha(colors[i - 1], e.geo.alpha_scale);
         let leading_color = scale_alpha(colors[i], e.geo.alpha_scale);
 
         let trailing_offset = e.cursor();
-        e.push_cross_section(points[i], trailing_normal, trailing_ext, trailing_color);
-        // Close segment (i-1, i): strip from prev_block_offset to trailing_offset.
-        e.push_strip_indices(prev_block_offset, trailing_offset);
-
-        let leading_offset = e.cursor();
-        e.push_cross_section(points[i], leading_normal, leading_ext, leading_color);
-
         if dual {
+            // Trailing + leading land on the same point but with
+            // different segment directions — must stay separate.
+            e.push_cross_section(points[i], np, 1.0, trailing_color);
+            e.push_strip_indices(prev_block_offset, trailing_offset);
+            let leading_offset = e.cursor();
+            e.push_cross_section(points[i], nn, 1.0, leading_color);
             e.push_join_chrome(
                 points[i],
                 trailing_offset,
@@ -310,20 +337,29 @@ fn emit_per_segment(points: &[Vec2], colors: &[Color], e: &mut Emitter) {
                 nn,
                 avg_color(trailing_color, leading_color),
             );
+            prev_block_offset = leading_offset;
+        } else {
+            let JoinClass::Smooth { bisector, ext } = class else {
+                unreachable!("non-dual implies Smooth");
+            };
+            if trailing_color == leading_color {
+                // Same color + smooth miter ⇒ one cross-section
+                // can serve both segments; halves vert + index
+                // count at this join.
+                e.push_cross_section(points[i], bisector, ext, trailing_color);
+                e.push_strip_indices(prev_block_offset, trailing_offset);
+                prev_block_offset = trailing_offset;
+            } else {
+                e.push_cross_section(points[i], bisector, ext, trailing_color);
+                e.push_strip_indices(prev_block_offset, trailing_offset);
+                let leading_offset = e.cursor();
+                e.push_cross_section(points[i], bisector, ext, leading_color);
+                prev_block_offset = leading_offset;
+            }
         }
 
-        prev_block_offset = leading_offset;
         np = nn;
-    }
-
-    // End endpoint.
-    let end_color = scale_alpha(colors[n - 2], e.geo.alpha_scale);
-    let end_offset = e.cursor();
-    let pl = points[n - 1] + tangent_of(np) * e.geo.cap_extension();
-    e.push_cross_section(pl, np, 1.0, end_color);
-    e.push_strip_indices(prev_block_offset, end_offset);
-    if matches!(e.geo.cap, LineCap::Round) {
-        e.push_round_cap(points[n - 1], tangent_of(np), end_color);
+        i = next;
     }
 }
 
@@ -596,12 +632,28 @@ fn tangent_of(normal: Vec2) -> Vec2 {
 fn seg_normal(a: Vec2, b: Vec2) -> Vec2 {
     let d = b - a;
     let len_sq = d.length_squared();
+    // Internal invariant: emit_simple / emit_per_segment route
+    // through next_kept so all (a, b) pairs reaching here are
+    // non-coincident. Release-assert as defense against logic bugs.
     assert!(
         len_sq > COINCIDENT_EPS_SQ,
-        "stroke_tessellate: consecutive coincident points have no valid join normal"
+        "stroke_tessellate: seg_normal called on coincident points — emit walker bug"
     );
     let d = d / len_sq.sqrt();
     Vec2::new(-d.y, d.x)
+}
+
+/// Index of the next point in `points` whose distance from
+/// `points[i]` exceeds the coincidence threshold, or
+/// `points.len()` if no such point exists. Coincident points
+/// in between are skipped — they contribute no geometry.
+#[inline]
+fn next_kept(points: &[Vec2], i: usize) -> usize {
+    let mut j = i + 1;
+    while j < points.len() && (points[j] - points[i]).length_squared() <= COINCIDENT_EPS_SQ {
+        j += 1;
+    }
+    j
 }
 
 #[cfg(test)]
