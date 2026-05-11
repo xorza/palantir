@@ -5,12 +5,12 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, Display, TextShaper, Ui, WgpuBackend};
+use palantir::{Color, DebugOverlayConfig, Display, TextShaper, Ui, WgpuBackend};
 use pollster::FutureExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-const BPP: u32 = 4;
+const BYTES_PER_PIXEL: u32 = 4;
 
 /// One wgpu device + queue per test process. Both are `Send + Sync` and
 /// internally `Arc`-backed, so cloning is cheap. `request_adapter` /
@@ -59,7 +59,7 @@ thread_local! {
 pub struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pub backend: WgpuBackend,
+    backend: WgpuBackend,
     pub ui: Ui,
 }
 
@@ -112,6 +112,41 @@ impl Harness {
 
         readback(&self.device, &self.queue, &target, physical)
     }
+
+    /// Render `settle_frames` discards then capture the next frame.
+    /// Used by fixtures whose state populates over multiple frames
+    /// (scrollbars reading their populated `ScrollState`, damage
+    /// seeding `Damage.prev`).
+    pub fn render_after_settle<F: FnMut(&mut Ui) + Copy>(
+        &mut self,
+        settle_frames: u32,
+        physical: UVec2,
+        scale: f32,
+        clear: Color,
+        scene: F,
+    ) -> RgbaImage {
+        for _ in 0..settle_frames {
+            let _ = self.render(physical, scale, clear, scene);
+        }
+        self.render(physical, scale, clear, scene)
+    }
+
+    /// Render one frame with `debug_overlay` set to `overlay`, then
+    /// clear it again. Used by damage fixtures that flip the overlay
+    /// only for the captured frame.
+    pub fn render_with_overlay(
+        &mut self,
+        overlay: DebugOverlayConfig,
+        physical: UVec2,
+        scale: f32,
+        clear: Color,
+        scene: impl FnMut(&mut Ui),
+    ) -> RgbaImage {
+        self.ui.debug_overlay = Some(overlay);
+        let img = self.render(physical, scale, clear, scene);
+        self.ui.debug_overlay = None;
+        img
+    }
 }
 
 fn readback(
@@ -120,8 +155,8 @@ fn readback(
     tex: &wgpu::Texture,
     size: UVec2,
 ) -> RgbaImage {
-    let row_bytes = (size.x * BPP) as usize;
-    let padded = (size.x * BPP).div_ceil(COPY_ALIGN) * COPY_ALIGN;
+    let row_bytes = (size.x * BYTES_PER_PIXEL) as usize;
+    let padded = (size.x * BYTES_PER_PIXEL).div_ceil(COPY_ALIGN) * COPY_ALIGN;
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("palantir.visual_test.readback"),
         size: (padded * size.y) as u64,

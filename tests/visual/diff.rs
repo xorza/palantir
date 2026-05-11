@@ -6,9 +6,8 @@ use image::RgbaImage;
 use rayon::prelude::*;
 
 /// Per-channel + ratio thresholds for [`diff`]. A pixel "differs" when
-/// any of its R/G/B/A channels deviates by more than `per_channel`;
-/// the overall image fails when the fraction of differing pixels
-/// exceeds `max_ratio`.
+/// any R/G/B/A channel deviates by more than `per_channel`; the image
+/// passes when the fraction of differing pixels is ≤ `max_ratio`.
 #[derive(Clone, Copy, Debug)]
 pub struct Tolerance {
     pub per_channel: u8,
@@ -34,7 +33,7 @@ pub struct DiffReport {
 
 impl DiffReport {
     pub fn passes(&self, tol: Tolerance) -> bool {
-        self.max_channel_delta <= tol.per_channel || self.differing_ratio <= tol.max_ratio
+        self.differing_ratio <= tol.max_ratio
     }
 }
 
@@ -173,6 +172,30 @@ mod tests {
         assert_eq!(report.max_channel_delta, 1);
         assert_eq!(report.differing_pixels, 4);
         assert!(!report.passes(strict));
+    }
+
+    #[test]
+    fn ratio_gates_pass_regardless_of_outlier_magnitude() {
+        // One saturated outlier in 100 pixels = 0.01 ratio.
+        // Pin that `passes` is ratio-only — a giant per-pixel delta
+        // doesn't fail the report so long as the count stays below
+        // `max_ratio`.
+        let mut a = RgbaImage::from_pixel(10, 10, Rgba([0, 0, 0, 255]));
+        let e = RgbaImage::from_pixel(10, 10, Rgba([0, 0, 0, 255]));
+        a.put_pixel(0, 0, Rgba([255, 255, 255, 255]));
+        let report = diff(&a, &e, Tolerance::default());
+        assert_eq!(report.max_channel_delta, 255);
+        assert_eq!(report.differing_pixels, 1);
+        let tol_loose = Tolerance {
+            per_channel: 2,
+            max_ratio: 0.02,
+        };
+        assert!(report.passes(tol_loose));
+        let tol_tight = Tolerance {
+            per_channel: 2,
+            max_ratio: 0.005,
+        };
+        assert!(!report.passes(tol_tight));
     }
 
     #[test]

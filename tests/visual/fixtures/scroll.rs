@@ -57,8 +57,7 @@ fn scroll_vertical_overflow_matches_golden() {
         });
     }
     let size = UVec2::new(180, 200);
-    let _ = h.render(size, 1.0, DARK_BG, scene);
-    let img = h.render(size, 1.0, DARK_BG, scene);
+    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
     assert_matches_golden("scroll_vertical_overflow", &img, Tolerance::default());
 }
 
@@ -90,8 +89,7 @@ fn scroll_horizontal_overflow_matches_golden() {
         });
     }
     let size = UVec2::new(220, 80);
-    let _ = h.render(size, 1.0, DARK_BG, scene);
-    let img = h.render(size, 1.0, DARK_BG, scene);
+    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
     assert_matches_golden("scroll_horizontal_overflow", &img, Tolerance::default());
 }
 
@@ -121,8 +119,7 @@ fn scroll_xy_overflow_matches_golden() {
         });
     }
     let size = UVec2::new(160, 160);
-    let _ = h.render(size, 1.0, DARK_BG, scene);
-    let img = h.render(size, 1.0, DARK_BG, scene);
+    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
     assert_matches_golden("scroll_xy_overflow", &img, Tolerance::default());
 }
 
@@ -152,8 +149,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
         });
     }
     let size = UVec2::new(160, 160);
-    let _ = h.render(size, 1.0, DARK_BG, scene);
-    let img = h.render(size, 1.0, DARK_BG, scene);
+    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
     assert_matches_golden("scroll_no_bar_when_fits", &img, Tolerance::default());
 }
 
@@ -188,8 +184,7 @@ fn scroll_with_user_padding_matches_golden() {
         });
     }
     let size = UVec2::new(180, 180);
-    let _ = h.render(size, 1.0, DARK_BG, scene);
-    let img = h.render(size, 1.0, DARK_BG, scene);
+    let img = h.render_after_settle(1, size, 1.0, DARK_BG, scene);
     assert_matches_golden("scroll_with_user_padding", &img, Tolerance::default());
 }
 
