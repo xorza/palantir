@@ -1,16 +1,14 @@
 use crate::common::hash::Hasher as FxHasher;
 use crate::layout::types::align::Align;
 use crate::layout::types::span::Span;
-use crate::primitives::bezier::{
-    FlatPoint, eval_color_cubic, eval_color_quadratic, flatten_cubic, flatten_quadratic, lerp_color,
-};
+use crate::primitives::bezier::{FlatPoint, flatten_cubic, flatten_quadratic};
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::stroke::Stroke;
-use crate::shape::{BezierColors, ColorMode, LineCap, LineJoin, PolylineColors, Shape, TextWrap};
+use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 use glam::Vec2;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
@@ -288,7 +286,7 @@ impl Shapes {
                 p2,
                 p3,
                 width,
-                colors,
+                color,
                 cap,
                 join,
                 tolerance,
@@ -299,7 +297,7 @@ impl Shapes {
                     &mut self.payloads,
                     BezierInputs::Cubic([p0, p1, p2, p3]),
                     width,
-                    colors,
+                    color,
                     cap,
                     join,
                     tolerance,
@@ -310,7 +308,7 @@ impl Shapes {
                 p1,
                 p2,
                 width,
-                colors,
+                color,
                 cap,
                 join,
                 tolerance,
@@ -321,7 +319,7 @@ impl Shapes {
                     &mut self.payloads,
                     BezierInputs::Quadratic([p0, p1, p2]),
                     width,
-                    colors,
+                    color,
                     cap,
                     join,
                     tolerance,
@@ -476,17 +474,18 @@ enum BezierInputs {
 }
 
 /// Lower a flattened bezier (already in `payloads.bezier_scratch`)
-/// into `ShapeRecord::Polyline`: copy points + evaluate colors + track
-/// bbox in one fused pass, then hash variant tag + control points +
-/// style. `content_hash` covers control points + colors + tolerance +
+/// into `ShapeRecord::Polyline`: copy points and track bbox in one
+/// pass, push the single color, hash variant tag + control points +
+/// style. `content_hash` covers control points + color + tolerance +
 /// width + cap + join — the flattened output is derived from these
-/// and shouldn't shift cache identity by itself.
+/// and shouldn't shift cache identity by itself. Solid color only
+/// for now; t-parametric gradients (using `FlatPoint.t`) come later.
 #[allow(clippy::too_many_arguments)]
 fn lower_bezier(
     payloads: &mut ShapePayloads,
     ctrl: BezierInputs,
     width: f32,
-    colors: BezierColors,
+    color: Color,
     cap: LineCap,
     join: LineJoin,
     tolerance: f32,
@@ -501,32 +500,16 @@ fn lower_bezier(
     let c_start = payloads.polyline_colors.len() as u32;
     let n = 1 + rest.len();
 
-    // Single fused pass: push point, extend bbox, push color. For
-    // `Solid` we push the color once before the loop and leave the
-    // per-point branch unset (`ColorMode::Single`).
-    let mode = match colors {
-        BezierColors::Solid(c) => {
-            payloads.polyline_colors.push(c);
-            ColorMode::Single
-        }
-        _ => ColorMode::PerPoint,
-    };
-
+    payloads.polyline_colors.push(color);
     let mut lo = first.p;
     let mut hi = first.p;
     payloads.polyline_points.reserve(n);
-    if matches!(mode, ColorMode::PerPoint) {
-        payloads.polyline_colors.reserve(n);
-    }
     payloads.polyline_points.push(first.p);
-    push_color(&mut payloads.polyline_colors, colors, first.t, mode);
     for fp in rest {
         payloads.polyline_points.push(fp.p);
         lo = lo.min(fp.p);
         hi = hi.max(fp.p);
-        push_color(&mut payloads.polyline_colors, colors, fp.t, mode);
     }
-    let c_len = payloads.polyline_colors.len() as u32 - c_start;
 
     // Hash contract: bezier-derived records tag with `0xCB` + degree
     // byte (0x01 cubic, 0x02 quadratic), so they can never collide
@@ -548,7 +531,7 @@ fn lower_bezier(
     h.write_u32(tolerance.to_bits());
     h.write_u8(cap as u8);
     h.write_u8(join as u8);
-    colors.hash(&mut h);
+    h.write(bytemuck::bytes_of(&color));
     let content_hash = h.finish();
 
     let bbox = Rect {
@@ -561,30 +544,15 @@ fn lower_bezier(
 
     ShapeRecord::Polyline {
         width,
-        color_mode: mode,
+        color_mode: ColorMode::Single,
         cap,
         join,
         points: Span::new(p_start, n as u32),
-        colors: Span::new(c_start, c_len),
+        colors: Span::new(c_start, 1),
         bbox,
         content_hash,
     }
 }
-
-#[inline]
-fn push_color(out: &mut Vec<Color>, colors: BezierColors, t: f32, mode: ColorMode) {
-    if matches!(mode, ColorMode::Single) {
-        return;
-    }
-    let c = match colors {
-        BezierColors::Solid(_) => return,
-        BezierColors::Gradient2(a, b) => lerp_color(a, b, t),
-        BezierColors::Gradient3(a, b, c) => eval_color_quadratic(a, b, c, t),
-        BezierColors::Gradient4(a, b, c, d) => eval_color_cubic(a, b, c, d, t),
-    };
-    out.push(c);
-}
-
 
 #[cfg(test)]
 mod tests {

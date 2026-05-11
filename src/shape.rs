@@ -55,15 +55,15 @@ pub enum Shape<'a> {
     /// `ShapeRecord::Polyline` — no dedicated record/cmd path.
     /// `tolerance` is the chord-deviation budget in logical px
     /// (tighter = more segments); values `<= EPS` clamp to `EPS`.
-    /// `colors` is parametric in `t`, not arc-length — denser around
-    /// curvature peaks, sparser in flat regions.
+    /// Color is solid for now — parametric-t gradient evaluation
+    /// (see `FlatPoint.t`) is reserved for a follow-up.
     CubicBezier {
         p0: Vec2,
         p1: Vec2,
         p2: Vec2,
         p3: Vec2,
         width: f32,
-        colors: BezierColors,
+        color: Color,
         cap: LineCap,
         join: LineJoin,
         tolerance: f32,
@@ -74,7 +74,7 @@ pub enum Shape<'a> {
         p1: Vec2,
         p2: Vec2,
         width: f32,
-        colors: BezierColors,
+        color: Color,
         cap: LineCap,
         join: LineJoin,
         tolerance: f32,
@@ -117,70 +117,6 @@ pub enum PolylineColors<'a> {
     /// cross-sections so each segment paints as a solid block —
     /// no color bleed at joins.
     PerSegment(&'a [Color]),
-}
-
-/// Color source for [`Shape::CubicBezier`] / [`Shape::QuadraticBezier`].
-/// Gradients are parametric-bezier-interpolated in the curve's `t`
-/// (not arc-length) — color travels denser through curvature peaks
-/// and sparser through flat regions. `Gradient4` evaluates as a
-/// cubic color-Bezier, `Gradient3` as a quadratic, `Gradient2` as a
-/// linear lerp. Lowers to `ColorMode::PerPoint` (or `Single` for
-/// `Solid`) at authoring time — same downstream representation as
-/// `Shape::Polyline`.
-#[derive(Clone, Copy, Debug)]
-pub enum BezierColors {
-    Solid(Color),
-    Gradient2(Color, Color),
-    Gradient3(Color, Color, Color),
-    Gradient4(Color, Color, Color, Color),
-}
-
-impl BezierColors {
-    /// True iff every color in the mode is no-op (zero alpha). Used
-    /// by `Shape::is_noop` to filter invisible curves at authoring.
-    pub(crate) fn is_noop(&self) -> bool {
-        match self {
-            BezierColors::Solid(c) => c.is_noop(),
-            BezierColors::Gradient2(a, b) => a.is_noop() && b.is_noop(),
-            BezierColors::Gradient3(a, b, c) => a.is_noop() && b.is_noop() && c.is_noop(),
-            BezierColors::Gradient4(a, b, c, d) => {
-                a.is_noop() && b.is_noop() && c.is_noop() && d.is_noop()
-            }
-        }
-    }
-}
-
-impl std::hash::Hash for BezierColors {
-    /// Variant tag (`Solid=0`, `Gradient2=1`, `Gradient3=2`,
-    /// `Gradient4=3`) then the raw color bytes. `Color` isn't `Hash`
-    /// (holds `f32`) so byte-hash via `bytemuck` — same identity as
-    /// the rest of the shape content-hash machinery.
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        match self {
-            BezierColors::Solid(c) => {
-                h.write_u8(0);
-                h.write(bytemuck::bytes_of(c));
-            }
-            BezierColors::Gradient2(a, b) => {
-                h.write_u8(1);
-                h.write(bytemuck::bytes_of(a));
-                h.write(bytemuck::bytes_of(b));
-            }
-            BezierColors::Gradient3(a, b, c) => {
-                h.write_u8(2);
-                h.write(bytemuck::bytes_of(a));
-                h.write(bytemuck::bytes_of(b));
-                h.write(bytemuck::bytes_of(c));
-            }
-            BezierColors::Gradient4(a, b, c, d) => {
-                h.write_u8(3);
-                h.write(bytemuck::bytes_of(a));
-                h.write(bytemuck::bytes_of(b));
-                h.write(bytemuck::bytes_of(c));
-                h.write(bytemuck::bytes_of(d));
-            }
-        }
-    }
 }
 
 /// Endpoint cap style for stroked [`Shape::Line`] / [`Shape::Polyline`].
@@ -373,7 +309,7 @@ impl Shape<'_> {
             }
             Shape::CubicBezier {
                 width,
-                colors,
+                color,
                 p0,
                 p1,
                 p2,
@@ -381,21 +317,21 @@ impl Shape<'_> {
                 ..
             } => {
                 noop_f32(*width)
-                    || colors.is_noop()
+                    || color.is_noop()
                     || (vec2_approx_eq(*p0, *p1)
                         && vec2_approx_eq(*p0, *p2)
                         && vec2_approx_eq(*p0, *p3))
             }
             Shape::QuadraticBezier {
                 width,
-                colors,
+                color,
                 p0,
                 p1,
                 p2,
                 ..
             } => {
                 noop_f32(*width)
-                    || colors.is_noop()
+                    || color.is_noop()
                     || (vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2))
             }
             Shape::Text {
