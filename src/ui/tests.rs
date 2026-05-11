@@ -71,7 +71,7 @@ fn empty_ui_drives_a_frame_safely() {
         let frame = RecordedFrame {
             forest: &ui.forest,
             layout: &ui.layout,
-            cascades: &ui.cascades.result,
+            cascades: &ui.layout.cascades,
             display: ui.display,
             damage,
             repaint_requested: ui.repaint_requested,
@@ -85,10 +85,13 @@ fn empty_ui_drives_a_frame_safely() {
     }
 
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 0);
-    assert!(ui.damage.prev.is_empty());
-    assert!(ui.damage.dirty.is_empty());
-    assert!(ui.damage.region.is_empty());
-    assert_eq!(ui.damage.filter(ui.display.logical_rect()), Damage::Skip);
+    assert!(ui.damage_engine.prev.is_empty());
+    assert!(ui.damage_engine.dirty.is_empty());
+    assert!(ui.damage_engine.region.is_empty());
+    assert_eq!(
+        ui.damage_engine.filter(ui.display.logical_rect()),
+        Damage::Skip
+    );
 }
 
 /// Pin: an empty frame followed by a populated frame works (the
@@ -102,7 +105,7 @@ fn empty_then_populated_frame() {
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
     // Root Panel is non-painting (no chrome, no shapes) so prev stays
     // empty — only painting widgets are tracked.
-    assert!(ui.damage.prev.is_empty());
+    assert!(ui.damage_engine.prev.is_empty());
 }
 
 /// Pin: `pre_record` panics if `display.scale_factor` is below
@@ -129,7 +132,7 @@ fn display_logical_rect_scales() {
 #[test]
 fn prev_frame_empty_before_first_post_record() {
     let ui = Ui::new();
-    assert!(ui.damage.prev.is_empty());
+    assert!(ui.damage_engine.prev.is_empty());
 }
 
 #[test]
@@ -147,7 +150,7 @@ fn prev_frame_populated_after_post_record() {
     });
     ui.post_record();
     ui.finalize_frame();
-    let prev = &ui.damage.prev;
+    let prev = &ui.damage_engine.prev;
     let root_id = WidgetId::from_hash("root");
     let frame_id = WidgetId::from_hash("a");
     // Root Panel has no chrome and no direct shapes — non-painting,
@@ -172,7 +175,7 @@ fn prev_frame_captures_arranged_rect() {
     ui.finalize_frame();
     let arranged = ui.layout[Layer::Main].rect[frame_node.index()];
 
-    let snap = ui.damage.prev[&WidgetId::from_hash("a")];
+    let snap = ui.damage_engine.prev[&WidgetId::from_hash("a")];
     assert_eq!(snap.rect, arranged);
 }
 
@@ -190,7 +193,7 @@ fn prev_frame_captures_authoring_hash() {
         .node;
     ui.post_record();
     ui.finalize_frame();
-    let snap = ui.damage.prev[&WidgetId::from_hash("a")];
+    let snap = ui.damage_engine.prev[&WidgetId::from_hash("a")];
     assert_eq!(
         snap.hash,
         ui.forest.tree(Layer::Main).rollups.node[frame_node.index()]
@@ -205,16 +208,28 @@ fn prev_frame_drops_disappeared_widgets() {
     });
     ui.post_record();
     ui.finalize_frame();
-    assert!(ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
+    assert!(
+        ui.damage_engine
+            .prev
+            .contains_key(&WidgetId::from_hash("gone"))
+    );
 
     ui.pre_record(Display::default());
     Panel::hstack().id_salt("root").show(&mut ui, |_| {});
     ui.post_record();
     ui.finalize_frame();
-    assert!(!ui.damage.prev.contains_key(&WidgetId::from_hash("gone")));
+    assert!(
+        !ui.damage_engine
+            .prev
+            .contains_key(&WidgetId::from_hash("gone"))
+    );
     // Root Panel is non-painting so it never enters prev — the
     // remaining-after-eviction check is just that "gone" is gone.
-    assert!(!ui.damage.prev.contains_key(&WidgetId::from_hash("root")));
+    assert!(
+        !ui.damage_engine
+            .prev
+            .contains_key(&WidgetId::from_hash("root"))
+    );
 }
 
 #[test]
@@ -230,7 +245,7 @@ fn prev_frame_updates_on_authoring_change() {
         .show(&mut ui);
     ui.post_record();
     ui.finalize_frame();
-    let h1 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
+    let h1 = ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
 
     ui.pre_record(Display::default());
     Frame::new()
@@ -243,7 +258,7 @@ fn prev_frame_updates_on_authoring_change() {
         .show(&mut ui);
     ui.post_record();
     ui.finalize_frame();
-    let h2 = ui.damage.prev[&WidgetId::from_hash("a")].hash;
+    let h2 = ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
 
     assert_ne!(h1, h2);
 }

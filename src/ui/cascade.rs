@@ -1,11 +1,11 @@
 //! Per-frame post-arrange state.
 //!
-//! `Cascades` (the engine) owns the walk scratch + the result. Each
+//! `CascadesEngine` (the engine) owns the walk scratch + the result. Each
 //! `run()` reads `(&Forest, &Layout)` and produces
-//! a fresh `CascadeResult` — per-tree per-node cascade rows plus a
+//! a fresh `Cascades` — per-tree per-node cascade rows plus a
 //! global hit index, all populated in a single per-tree pre-order walk.
 //! Downstream phases (damage diff, input hit-test, renderer encoder)
-//! take `&CascadeResult` as their single frozen-state handle.
+//! take `&Cascades` as their single frozen-state handle.
 
 use crate::forest::Forest;
 use crate::forest::tree::{Layer, NodeId, Tree};
@@ -58,10 +58,10 @@ struct Frame {
     subtree_end: u32,
 }
 
-/// Read-only artifact of `Cascades::run`. Holds the per-tree cascade
+/// Read-only artifact of `CascadesEngine::run`. Holds the per-tree cascade
 /// rows (indexed by `NodeId.0` within the matching tree) and a global
 /// `WidgetId`-keyed hit index.
-pub(crate) struct CascadeResult {
+pub(crate) struct Cascades {
     /// Per-layer per-node cascade rows. Same indexing as
     /// `Tree::records`: `rows[layer as usize][node.index()]`.
     pub(crate) rows: [Vec<Cascade>; Layer::COUNT],
@@ -72,7 +72,7 @@ pub(crate) struct CascadeResult {
     pub(crate) by_id: FxHashMap<WidgetId, u32>,
 }
 
-impl Default for CascadeResult {
+impl Default for Cascades {
     fn default() -> Self {
         Self {
             rows: array::from_fn(|_| Vec::new()),
@@ -82,7 +82,7 @@ impl Default for CascadeResult {
     }
 }
 
-impl CascadeResult {
+impl Cascades {
     /// Reverse-iter entries → topmost-first under pre-order paint walk.
     /// `filter` decides which `Sense` values participate (hoverable for
     /// hover, clickable for press/release).
@@ -112,41 +112,44 @@ impl CascadeResult {
 }
 
 #[derive(Default)]
-pub(crate) struct Cascades {
+pub(crate) struct CascadesEngine {
     stack: Vec<Frame>,
-    pub(crate) result: CascadeResult,
 }
 
-impl Cascades {
+impl CascadesEngine {
     /// Walk every tree in paint order; produce one `Cascade` row per
     /// node in each tree's slot, and append a global hit entry per
-    /// node. Anchor offset for each layer is read from the layer's
-    /// own `RootSlot.anchor` — no parent transform plumbing is
-    /// needed because trees never share NodeId space.
-    pub(crate) fn run(&mut self, forest: &Forest, layout: &Layout) -> &CascadeResult {
-        let r = &mut self.result;
+    /// node. Writes into `layout.cascades`. Anchor offset for each
+    /// layer is read from the layer's own `RootSlot.anchor` — no
+    /// parent transform plumbing is needed because trees never share
+    /// NodeId space.
+    pub(crate) fn run(&mut self, forest: &Forest, layout: &mut Layout) {
         let total: usize = forest.trees.iter().map(|t| t.records.len()).sum();
-        r.entries.clear();
-        r.entries.reserve(total);
-        r.by_id.clear();
-        r.by_id.reserve(total);
+        {
+            let r = &mut layout.cascades;
+            r.entries.clear();
+            r.entries.reserve(total);
+            r.by_id.clear();
+            r.by_id.reserve(total);
+        }
 
         for (layer, tree) in forest.iter_paint_order() {
-            let layout = &layout[layer];
-            let rows = &mut r.rows[layer as usize];
+            let i = layer as usize;
+            let layer_layout = &layout.layers[i];
+            let r = &mut layout.cascades;
+            let rows = &mut r.rows[i];
             rows.clear();
             rows.reserve(tree.records.len());
             self.stack.clear();
             run_tree(
                 tree,
-                layout,
+                layer_layout,
                 rows,
                 &mut r.entries,
                 &mut r.by_id,
                 &mut self.stack,
             );
         }
-        &self.result
     }
 }
 

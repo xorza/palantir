@@ -1,6 +1,6 @@
 //! Cascade-pass microbenchmark. Builds a synthetic flat tree with N
 //! nodes, runs `Ui::post_record` once to populate `layout.results`, then
-//! benches `Cascades::run` in isolation.
+//! benches `CascadesEngine::run` in isolation.
 //!
 //! Decision criterion (per `docs/tree-redesign.md` Phase 2):
 //!

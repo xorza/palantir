@@ -150,7 +150,7 @@ fn encode_cmds_with_region(ui: &Ui, region: Option<&DamageRegion>) -> RenderCmdB
     encoder.encode(
         &ui.forest,
         &ui.layout,
-        &ui.cascades.result,
+        &ui.layout.cascades,
         region,
         ui.display.logical_rect(),
     );

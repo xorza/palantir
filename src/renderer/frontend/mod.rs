@@ -24,7 +24,7 @@ use crate::layout::Layout;
 use crate::layout::types::display::Display;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::ui::cascade::CascadeResult;
+use crate::ui::cascade::Cascades;
 use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
 use std::sync::Arc;
@@ -83,7 +83,7 @@ impl FrameState {
 pub struct RecordedFrame<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) layout: &'a Layout,
-    pub(crate) cascades: &'a CascadeResult,
+    pub(crate) cascades: &'a Cascades,
     pub(crate) display: Display,
     pub(crate) damage: Damage,
     pub(crate) repaint_requested: bool,

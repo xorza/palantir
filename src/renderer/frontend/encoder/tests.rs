@@ -550,7 +550,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         .expect("visible node should have a hit-index rect");
     assert_eq!(v_screen, v_hit, "encoder vs hit-index rect for V");
 
-    // Disabled node still paints; the hit index keeps its rect too. Cascades
+    // Disabled node still paints; the hit index keeps its rect too. CascadesEngine
     // (clip + transform) must produce the same screen rect on both sides.
     let d_id = WidgetId::from_hash("D");
     let d_screen = drawn
@@ -696,7 +696,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
         });
     ui.post_record();
     ui.finalize_frame();
-    let cascades = &ui.cascades.result;
+    let cascades = &ui.layout.cascades;
     let child = child_node.unwrap();
     assert_eq!(cascades.entries[child.index()].sense, Sense::NONE);
 }
