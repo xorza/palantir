@@ -201,12 +201,7 @@ impl LayoutEngine {
     /// `Layer::PAINT_ORDER`; each tree's output lands in
     /// `self.result[layer]` directly. Recursive measure/arrange reads
     /// the active slot via `self.active_layer`.
-    pub(crate) fn run(
-        &mut self,
-        forest: &Forest,
-        surface: Rect,
-        text: &TextShaper,
-    ) -> &LayoutResult {
+    pub(crate) fn run(&mut self, forest: &Forest, surface: Rect, text: &TextShaper) {
         assert_eq!(
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
@@ -251,8 +246,6 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run exited with non-zero grid depth"
         );
-
-        &self.result
     }
 
     /// Bottom-up measure dispatcher. Children call back via this method to

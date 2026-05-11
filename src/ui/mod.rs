@@ -226,8 +226,7 @@ impl Ui {
         self.forest.ids.commit_rollover();
         let removed = &self.forest.ids.removed;
 
-        let results = &self.layout.result;
-        let cascades = self.cascades.run(&self.forest, results);
+        let cascades = self.cascades.run(&self.forest, &self.layout.result);
         self.input.end_frame(cascades);
         let damage = self
             .damage
@@ -240,7 +239,7 @@ impl Ui {
         }
         RecordedFrame {
             forest: &self.forest,
-            results,
+            layout: &self.layout.result,
             cascades,
             display: self.display,
             damage,

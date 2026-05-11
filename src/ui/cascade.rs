@@ -123,7 +123,7 @@ impl Cascades {
     /// node. Anchor offset for each layer is read from the layer's
     /// own `RootSlot.anchor` — no parent transform plumbing is
     /// needed because trees never share NodeId space.
-    pub(crate) fn run(&mut self, forest: &Forest, results: &LayoutResult) -> &CascadeResult {
+    pub(crate) fn run(&mut self, forest: &Forest, layout: &LayoutResult) -> &CascadeResult {
         let r = &mut self.result;
         let total: usize = forest.trees.iter().map(|t| t.records.len()).sum();
         r.entries.clear();
@@ -132,7 +132,7 @@ impl Cascades {
         r.by_id.reserve(total);
 
         for (layer, tree) in forest.iter_paint_order() {
-            let layout = &results[layer];
+            let layout = &layout[layer];
             let rows = &mut r.rows[layer as usize];
             rows.clear();
             rows.reserve(tree.records.len());

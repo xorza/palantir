@@ -70,7 +70,7 @@ fn empty_ui_drives_a_frame_safely() {
         let mut frontend = Frontend::default();
         frontend.build(
             frame.forest,
-            frame.results,
+            frame.layout,
             frame.cascades,
             frame.damage_filter(),
             &frame.display,
