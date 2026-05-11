@@ -8,7 +8,9 @@ use crate::forest::seen_ids::SeenIds;
 use crate::forest::tree::{Layer, NodeId, Tree};
 use crate::forest::widget_id::WidgetId;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::shape::Shape;
+use glam::Vec2;
 use std::array;
 use strum::EnumCount as _;
 
@@ -99,8 +101,11 @@ impl Forest {
     }
 
     /// Finalize every tree. `main_anchor` patches `Main`'s root slots
-    /// (their anchor is the surface, only known after recording);
-    /// other layers' anchors were stamped at `push_layer` time.
+    /// to the surface rect, and patches every side-layer root's
+    /// `anchor_rect.size` to the room from its `anchor` placement to
+    /// the surface bottom-right (so layout's "available" stays
+    /// bounded by the surface). Side-layer `min`s were stamped at
+    /// `push_layer` time.
     pub(crate) fn end_frame(&mut self, main_anchor: Rect) {
         assert_eq!(
             self.recording.current_layer,
@@ -110,6 +115,16 @@ impl Forest {
         );
         for r in &mut self.trees[Layer::Main as usize].roots {
             r.anchor_rect = main_anchor;
+        }
+        let surface_end = main_anchor.min + Vec2::new(main_anchor.size.w, main_anchor.size.h);
+        for layer in Layer::PAINT_ORDER {
+            if layer == Layer::Main {
+                continue;
+            }
+            for r in &mut self.trees[layer as usize].roots {
+                let rem = (surface_end - r.anchor_rect.min).max(Vec2::ZERO);
+                r.anchor_rect.size = Size::new(rem.x, rem.y);
+            }
         }
         for layer in Layer::PAINT_ORDER {
             self.trees[layer as usize].end_frame();
@@ -151,7 +166,7 @@ impl Forest {
         tree.shapes.add(shape);
     }
 
-    pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Rect) {
+    pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2) {
         assert_eq!(
             self.recording.current_layer,
             Layer::Main,

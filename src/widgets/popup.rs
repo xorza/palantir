@@ -3,10 +3,10 @@ use crate::forest::tree::Layer;
 use crate::input::sense::Sense;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::rect::Rect;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::frame::Frame;
+use glam::Vec2;
 
 /// What happens when the user presses outside the popup's body.
 ///
@@ -37,15 +37,15 @@ pub struct PopupResponse {
     pub dismissed: bool,
 }
 
-/// A side-layer container anchored to a screen rect. Records into
-/// [`Layer::Popup`] so it draws above all `Main` siblings, escapes
-/// ancestor clip, and hit-tests on top.
+/// A side-layer container placed at a screen-space point. Records
+/// into [`Layer::Popup`] so it draws above all `Main` siblings,
+/// escapes ancestor clip, and hit-tests on top.
 ///
-/// `anchor` is a caller-supplied screen rect — typically a trigger
-/// widget's last-frame `Response.state.rect`. Mid-recording is
-/// supported (the popup may be invoked from inside an open
-/// `Panel::show` body); the reorder pass in `Tree::end_frame`
-/// compacts records into layer-sorted contiguous storage.
+/// `anchor` is the body's top-left, typically derived from a trigger
+/// widget's last-frame `Response.state.rect` (e.g. its bottom-left
+/// for a dropdown). Sizing is governed by the body's own `Sizing`
+/// chain — `Hug` shrinks to content, `Fill` fills the remaining
+/// surface, `Fixed` is exact. Mid-recording is supported.
 ///
 /// Outside clicks are handled per [`ClickOutside`]: a full-surface
 /// "click-eater" leaf is recorded in the `Popup` layer underneath
@@ -56,13 +56,13 @@ pub struct PopupResponse {
 /// Implements [`Configure`] — use `.id(...)`, `.id_salt(...)`,
 /// `.padding(...)`, `.size(...)`, etc. on the popup body.
 pub struct Popup {
-    anchor: Rect,
+    anchor: Vec2,
     click_outside: ClickOutside,
     element: Element,
 }
 
 impl Popup {
-    pub fn anchored_to(anchor: Rect) -> Self {
+    pub fn anchored_to(anchor: Vec2) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
         // Inside-body clicks land here so they don't fall through to the
         // eater leaf underneath. User can override with `.sense(...)`.
@@ -84,7 +84,6 @@ impl Popup {
     }
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> PopupResponse {
-        let surface_rect = ui.display.logical_rect();
         let body_id = self.element.id;
         let eater_id = body_id.with("eater");
         // Eater root: full-surface invisible `Sense::CLICK` leaf.
@@ -92,7 +91,9 @@ impl Popup {
         // *under* the body and (via reverse-iter hit-test) the
         // body's deeper leaves get visited first — only clicks
         // outside the body's rect fall through to the eater.
-        ui.layer(Layer::Popup, surface_rect, |ui| {
+        // Anchored at the surface origin with Fill/Fill, so it
+        // covers the whole surface regardless of `Display`.
+        ui.layer(Layer::Popup, Vec2::ZERO, |ui| {
             Frame::new()
                 .id(eater_id)
                 .size((Sizing::FILL, Sizing::FILL))

@@ -215,11 +215,24 @@ impl LayoutEngine {
                     let root = NodeId(slot.first_node);
                     let anchor = slot.anchor_rect;
                     let desired = self.measure(tree, root, anchor.size, text);
-                    let arranged = Rect {
-                        min: anchor.min,
-                        size: anchor.size.max(desired),
+                    // Main: anchor is the surface; root paints the full
+                    // surface even if content is smaller (Fill semantics
+                    // for the implicit root, overflow grows past it).
+                    // Side layers: anchor is a placement hint, the root's
+                    // own Sizing governs its painted size.
+                    let size = if layer == Layer::Main {
+                        anchor.size.max(desired)
+                    } else {
+                        desired
                     };
-                    self.arrange(tree, root, arranged);
+                    self.arrange(
+                        tree,
+                        root,
+                        Rect {
+                            min: anchor.min,
+                            size,
+                        },
+                    );
                 }
             }
         }

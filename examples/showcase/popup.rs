@@ -11,7 +11,7 @@
 //! work.
 
 use palantir::{
-    Background, Button, Color, Configure, Corners, Panel, Popup, Rect, Size, Sizing, Stroke, Text,
+    Align, Background, Button, Color, Configure, Corners, Panel, Popup, Rect, Sizing, Stroke, Text,
     Ui, WidgetId,
 };
 
@@ -74,16 +74,20 @@ pub fn build(ui: &mut Ui) {
         return;
     };
 
-    let anchor = Rect {
-        min: glam::Vec2::new(trigger.min.x, trigger.min.y + trigger.size.h + 4.0),
-        size: Size::new(220.0, 400.0),
-    };
+    let anchor = glam::Vec2::new(trigger.min.x, trigger.min.y + trigger.size.h + 4.0);
 
     let mut chosen: Option<&'static str> = None;
     let resp = Popup::anchored_to(anchor)
         .id_salt("popup-showcase.menu")
         .padding(6.0)
-        .size((Sizing::Hug, Sizing::Hug))
+        .size((Sizing::FILL, Sizing::Hug))
+        // Buttons set `Sizing::FILL` width — give them a min so the
+        // Hug popup doesn't collapse to label width.
+        .min_size((220.0, 110.0))
+        .max_size((280, 200))
+        .justify(palantir::Justify::Center)
+        .child_align(Align::CENTER)
+        .gap(10.0)
         .background(Background {
             fill: Color::hex(0x2a2a2a),
             stroke: Stroke {

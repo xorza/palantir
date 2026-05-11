@@ -14,7 +14,6 @@ use crate::layout::LayoutEngine;
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
-use crate::primitives::rect::Rect;
 use crate::renderer::frontend::{FrameOutput, FrameState, Frontend};
 use crate::shape::Shape;
 use crate::text::TextShaper;
@@ -279,11 +278,19 @@ impl Ui {
         });
     }
 
-    /// Record `body` as a side layer anchored at `anchor`. Must be
-    /// called at top-level (no node open) — egui-style: finish the
-    /// `Main` scope first, then layer. Interleaving mid-`Panel::show`
-    /// would break the tree's pre-order contiguity.
-    pub fn layer<R>(&mut self, layer: Layer, anchor: Rect, body: impl FnOnce(&mut Ui) -> R) -> R {
+    /// Record `body` as a side layer placed at `anchor` (top-left
+    /// position). The body's "available" extends from `anchor` to
+    /// the surface bottom-right, so `Sizing::FILL` on the root fills
+    /// the remaining surface and `Hug` shrinks to content without
+    /// bleeding past the surface. Must be called at top-level (no
+    /// node open) — egui-style: finish the `Main` scope first, then
+    /// layer.
+    pub fn layer<R>(
+        &mut self,
+        layer: Layer,
+        anchor: glam::Vec2,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
         self.forest.push_layer(layer, anchor);
         let result = body(self);
         self.forest.pop_layer();
