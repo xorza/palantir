@@ -1152,7 +1152,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     let popup_tree = ui.forest.tree(Layer::Popup);
 
     let outer_span = main_tree.records.shape_span()[0];
-    let main_texts: Vec<&str> = main_tree.shapes
+    let main_texts: Vec<&str> = main_tree.shapes.records
         [outer_span.start as usize..(outer_span.start + outer_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
@@ -1167,7 +1167,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     );
 
     let popup_root_span = popup_tree.records.shape_span()[0];
-    let popup_texts: Vec<&str> = popup_tree.shapes
+    let popup_texts: Vec<&str> = popup_tree.shapes.records
         [popup_root_span.start as usize..(popup_root_span.start + popup_root_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
@@ -1256,7 +1256,7 @@ fn mid_recording_popup_keeps_trees_independent() {
     let kids: Vec<u32> = main_tree.children(parent).map(|c| c.id.0).collect();
     assert_eq!(kids, vec![1, 2, 3, 4], "no popup leak in Main children");
 
-    let widths: Vec<u32> = main_tree.shapes.iter().map(marker_w).collect();
+    let widths: Vec<u32> = main_tree.shapes.records.iter().map(marker_w).collect();
     assert_eq!(
         widths,
         vec![1, 2, 3, 4, 5],
@@ -1283,7 +1283,7 @@ fn mid_recording_popup_keeps_trees_independent() {
         "popup root spans every Popup record",
     );
 
-    let popup_widths: Vec<u32> = popup_tree.shapes.iter().map(marker_w).collect();
+    let popup_widths: Vec<u32> = popup_tree.shapes.records.iter().map(marker_w).collect();
     assert_eq!(popup_widths, vec![11, 12], "Popup shapes in record order");
     let popup_root_span = popup_tree.records.shape_span()[0];
     assert_eq!(popup_root_span.start, 0);

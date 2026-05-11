@@ -140,9 +140,9 @@ fn emit_one_shape(
             // by `owner_rect.min` preserves it. Colors copy through
             // unchanged — they already have the right length for
             // `color_mode` (validated at lowering).
-            let src_pts = &tree.shape_arenas.polyline_points[points.range()];
-            let src_cols = &tree.shape_arenas.polyline_colors[colors.range()];
-            let out_arenas = &mut out.shape_arenas;
+            let src_pts = &tree.shapes.payloads.polyline_points[points.range()];
+            let src_cols = &tree.shapes.payloads.polyline_colors[colors.range()];
+            let out_arenas = &mut out.shape_payloads;
             let points_start = out_arenas.polyline_points.len() as u32;
             out_arenas
                 .polyline_points
@@ -180,8 +180,8 @@ fn emit_one_shape(
                 None => owner_rect.min,
                 Some(lr) => owner_rect.min + lr.min,
             };
-            let verts = &tree.shape_arenas.meshes.vertices[vertices.range()];
-            let idx = &tree.shape_arenas.meshes.indices[indices.range()];
+            let verts = &tree.shapes.payloads.meshes.vertices[vertices.range()];
+            let idx = &tree.shapes.payloads.meshes.indices[indices.range()];
             out.draw_mesh(origin, *tint, verts, idx);
         }
     }

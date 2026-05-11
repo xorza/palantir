@@ -43,7 +43,7 @@ pub(crate) fn leaf_text_shapes(
     let span = tree.records.shape_span()[node.index()];
     let lo = span.start as usize;
     let hi = lo + span.len as usize;
-    tree.shapes[lo..hi].iter().filter_map(|s| match s {
+    tree.shapes.records[lo..hi].iter().filter_map(|s| match s {
         ShapeRecord::Text {
             text,
             font_size_px,
