@@ -11,7 +11,6 @@ use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, spacing::Spacing, stroke::Stroke, urect::URect,
 };
-use crate::renderer::frontend::FrameState;
 use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
@@ -251,9 +250,9 @@ impl WgpuBackend {
     ///   bleed, and clamps to surface; rects that clamp to zero area
     ///   are filtered out.
     ///
-    /// The "nothing changed, just present" case is handled by
-    /// [`Self::present_skipped`] — `Host::render` dispatches there
-    /// when the damage compute returned `None`.
+    /// Skip frames (`Ui::damage == None`) are handled at the caller —
+    /// `FrameReport::skip_render` short-circuits before `Host::render`,
+    /// so this method is only entered with `Some(Full | Partial)`.
     ///
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.
@@ -266,7 +265,6 @@ impl WgpuBackend {
         gradient_atlas: &mut GradientCpuAtlas,
         damage: Damage,
         debug_overlay: DebugOverlayConfig,
-        frame_state: &FrameState,
     ) {
         // Sync gradient LUT atlas to GPU. Idle frames (no new
         // gradients) drain an empty dirty flag and do nothing; first
@@ -460,7 +458,6 @@ impl WgpuBackend {
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.quad.post_record();
-        frame_state.mark_submitted();
 
         if self.text.has_prepared() {
             self.text.post_record();
@@ -714,34 +711,16 @@ impl WgpuBackend {
         }
     }
 
-    /// Skip-path render: the host's damage compute returned `None`
-    /// (no widget changed and the surface is stable), so we just need
-    /// to put something on the swapchain. Lazily (re)create the
-    /// backbuffer if the surface size shifted (which forces the next
-    /// painting frame to `Full` via the usual `ensure_backbuffer`
-    /// recreation signal), copy the backbuffer onto the swapchain, and
-    /// mark the frame as submitted so `Ui::pre_record`'s auto-rewind
-    /// stays quiet.
-    pub(crate) fn present_skipped(
-        &mut self,
-        surface_tex: &wgpu::Texture,
-        frame_state: &FrameState,
-    ) {
-        // If the backbuffer didn't exist or was just (re)created the
-        // contents are undefined — fall back to a transparent clear
-        // by going through copy unconditionally; the next painting
-        // frame will redraw the surface because `ensure_backbuffer`
-        // signals `recreated`.
+    /// Skip path: the host's damage compute returned `None`, but the
+    /// swapchain target still needs valid pixels (visual tests capture
+    /// it unconditionally; the showcase short-circuits earlier, but
+    /// other hosts may not). Ensure the backbuffer matches the
+    /// swapchain size, then copy it through. A freshly (re)created
+    /// backbuffer has undefined contents — `ensure_backbuffer` forces
+    /// the next painting frame to `Full` via the same signal, so the
+    /// one-frame glitch self-heals.
+    pub(crate) fn copy_backbuffer_to_surface(&mut self, surface_tex: &wgpu::Texture) {
         self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
-        self.copy_backbuffer_to_surface(surface_tex);
-        frame_state.mark_submitted();
-    }
-
-    /// Copy the persistent backbuffer onto the swapchain texture
-    /// without running a render pass. Used on skip frames: the
-    /// backbuffer already holds last frame's pixels and nothing
-    /// changed, so we just need something on screen.
-    fn copy_backbuffer_to_surface(&self, surface_tex: &wgpu::Texture) {
         let backbuffer = self
             .backbuffer
             .as_ref()

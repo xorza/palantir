@@ -242,12 +242,12 @@ impl State {
         // *must* be presented; dropping one without `present()` leaves
         // the swapchain in an undefined state and stutters the next
         // acquire.
-        let info = self
+        let frame_report = self
             .host
             .run_frame(self.display, |ui| build_ui(ui, &mut self.active));
-        self.repaint_requested = info.repaint_requested;
+        self.repaint_requested = frame_report.repaint_requested();
 
-        if info.skip_render {
+        if frame_report.skip_render() {
             return;
         }
 
@@ -270,6 +270,7 @@ impl State {
 
         self.host.render(&frame.texture, clear);
         frame.present();
+        frame_report.confirm_submitted();
     }
 }
 

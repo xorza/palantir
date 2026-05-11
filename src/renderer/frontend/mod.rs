@@ -75,6 +75,7 @@ pub struct FrameReport {
     /// `Ui::pre_record` auto-rewinds damage if it doesn't see
     /// `Submitted`.
     pub(crate) frame_state: FrameState,
+    pub(crate) skip_render: bool,
 }
 
 impl FrameReport {
@@ -84,6 +85,14 @@ impl FrameReport {
     /// the next frame runs even when input is idle.
     pub fn repaint_requested(&self) -> bool {
         self.repaint_requested
+    }
+
+    pub fn skip_render(&self) -> bool {
+        self.skip_render
+    }
+
+    pub fn confirm_submitted(&self) {
+        self.frame_state.mark_submitted();
     }
 }
 
