@@ -234,7 +234,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
         },
         &params(2.0, UVec2::new(400, 400)),
     );
-    assert!(buf.has_rounded_clip());
+    assert!(buf.has_rounded_clip);
     assert_eq!(
         buf.groups.len(),
         2,
@@ -303,7 +303,7 @@ fn push_clip_rect_emits_no_rounded_data() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.groups.len(), 1);
-    assert!(!buf.has_rounded_clip());
+    assert!(!buf.has_rounded_clip);
     assert!(buf.groups[0].rounded_clip.is_none());
 }
 

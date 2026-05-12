@@ -23,6 +23,11 @@ impl ViewportUniformData {
 
 pub(crate) struct ViewportUniform {
     buffer: wgpu::Buffer,
+    /// Last size uploaded. The uniform is initialized to `Vec2::ZERO`
+    /// at construction; the first non-zero `write` will mismatch and
+    /// upload. Tracking this avoids a per-frame `queue.write_buffer`
+    /// when the viewport hasn't actually changed (steady state).
+    last: Vec2,
 }
 
 impl ViewportUniform {
@@ -32,14 +37,21 @@ impl ViewportUniform {
             contents: &ViewportUniformData { size: Vec2::ZERO }.encode(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        Self { buffer }
+        Self {
+            buffer,
+            last: Vec2::ZERO,
+        }
     }
 
     pub(crate) fn buffer(&self) -> &wgpu::Buffer {
         &self.buffer
     }
 
-    pub(crate) fn write(&self, queue: &wgpu::Queue, size: Vec2) {
+    pub(crate) fn write(&mut self, queue: &wgpu::Queue, size: Vec2) {
+        if self.last == size {
+            return;
+        }
         queue.write_buffer(&self.buffer, 0, &ViewportUniformData { size }.encode());
+        self.last = size;
     }
 }

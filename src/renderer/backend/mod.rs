@@ -266,7 +266,7 @@ impl WgpuBackend {
         self.quad
             .upload_gradients(&self.queue, &buffer.gradient_atlas);
 
-        let use_stencil = buffer.has_rounded_clip();
+        let use_stencil = buffer.has_rounded_clip;
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
@@ -542,6 +542,22 @@ impl WgpuBackend {
         use_stencil: bool,
         text_mode: text::StencilMode,
     ) {
+        // Track what pipeline + vertex buffer is currently bound so we
+        // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
+        // across consecutive same-kind steps. wgpu records every
+        // `set_pipeline` as a real command — drivers don't dedupe.
+        // `PreClear` and glyphon's `render_group` set their own state,
+        // so we reset to `None` after them and re-bind on the next
+        // non-text step.
+        #[derive(PartialEq, Eq)]
+        enum Bound {
+            None,
+            QuadInstance,
+            Mesh,
+            MaskWrite,
+        }
+        let mut bound = Bound::None;
+
         for_each_step(
             buffer,
             damage_scissor,
@@ -551,6 +567,10 @@ impl WgpuBackend {
                 RenderStep::PreClear => {
                     pass.push_debug_group("preclear");
                     self.quad.draw_clear(pass, use_stencil);
+                    // draw_clear binds its own pipeline + vertex buffer
+                    // (clear_buffer, not instance_buffer); next non-clear
+                    // step has to re-bind.
+                    bound = Bound::None;
                     pass.pop_debug_group();
                 }
                 RenderStep::SetScissor(r) => {
@@ -561,16 +581,22 @@ impl WgpuBackend {
                 }
                 RenderStep::MaskQuad(mi) => {
                     pass.push_debug_group("mask");
-                    self.quad.bind_mask_write(pass);
+                    if bound != Bound::MaskWrite {
+                        self.quad.bind_mask_write(pass);
+                        bound = Bound::MaskWrite;
+                    }
                     self.quad.draw_mask(pass, mi);
                     pass.pop_debug_group();
                 }
                 RenderStep::Quads { range, .. } => {
                     pass.push_debug_group("quads");
-                    if use_stencil {
-                        self.quad.bind_stencil_test(pass);
-                    } else {
-                        self.quad.bind(pass);
+                    if bound != Bound::QuadInstance {
+                        if use_stencil {
+                            self.quad.bind_stencil_test(pass);
+                        } else {
+                            self.quad.bind(pass);
+                        }
+                        bound = Bound::QuadInstance;
                     }
                     self.quad.draw_range(pass, range);
                     pass.pop_debug_group();
@@ -578,11 +604,16 @@ impl WgpuBackend {
                 RenderStep::Text { group } => {
                     pass.push_debug_group("text");
                     self.text.render_group(group, pass, text_mode);
+                    // glyphon sets its own pipeline + bindings.
+                    bound = Bound::None;
                     pass.pop_debug_group();
                 }
                 RenderStep::Meshes { range, .. } => {
                     pass.push_debug_group("meshes");
-                    self.mesh.bind(pass, use_stencil);
+                    if bound != Bound::Mesh {
+                        self.mesh.bind(pass, use_stencil);
+                        bound = Bound::Mesh;
+                    }
                     let start = range.start as usize;
                     let end = start + range.len as usize;
                     for draw in &buffer.meshes.draws[start..end] {

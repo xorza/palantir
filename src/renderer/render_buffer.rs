@@ -18,6 +18,11 @@ pub(crate) struct RenderBuffer {
     pub(crate) texts: Vec<TextRun>,
     pub(crate) meshes: MeshScene,
     pub(crate) groups: Vec<DrawGroup>,
+    /// `true` iff at least one group carries a rounded clip — set by the
+    /// composer when a `PushClipRounded` is processed. Backend reads this
+    /// to decide whether to walk the stencil-mask path; saves a linear
+    /// scan over `groups` at submit time.
+    pub(crate) has_rounded_clip: bool,
     /// Physical-px viewport, ceil'd. Backends use this as the default scissor
     /// when a group has no clip.
     pub(crate) viewport_phys: UVec2,
@@ -35,15 +40,6 @@ pub(crate) struct RenderBuffer {
     pub(crate) gradient_atlas: GradientCpuAtlas,
 }
 
-impl RenderBuffer {
-    /// `true` iff at least one group carries a rounded clip. Backends
-    /// use this to decide whether to walk the stencil-mask path. Cheap
-    /// linear scan over groups (typically a handful).
-    pub(crate) fn has_rounded_clip(&self) -> bool {
-        self.groups.iter().any(|g| g.rounded_clip.is_some())
-    }
-}
-
 impl Default for RenderBuffer {
     fn default() -> Self {
         Self {
@@ -51,6 +47,7 @@ impl Default for RenderBuffer {
             texts: Vec::new(),
             meshes: MeshScene::default(),
             groups: Vec::new(),
+            has_rounded_clip: false,
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
             scale: 1.0,

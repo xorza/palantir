@@ -179,6 +179,7 @@ impl Composer {
         out.texts.clear();
         out.meshes.clear();
         out.groups.clear();
+        out.has_rounded_clip = false;
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
         out.scale = scale;
@@ -216,6 +217,7 @@ impl Composer {
                         // rect's true edges, otherwise corner curves
                         // would shift inward when the clip partially
                         // leaves the viewport.
+                        out.has_rounded_clip = true;
                         Some(RoundedClip {
                             mask_rect: world.scaled_by(scale, snap),
                             radius: logical_radius.scaled_by(phys_scale),
