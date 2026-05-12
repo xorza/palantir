@@ -138,9 +138,11 @@ impl Host {
         #[cfg(feature = "profile-with-tracy")]
         let _tracy_frame = tracy_client::non_continuous_frame!("frame");
         profiling::scope!("Host::frame_and_render");
+
         let display =
             Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
         let report = self.run_frame(display, record);
+
         let repaint = if report.skip_render() {
             report.repaint_requested()
         } else {
@@ -163,7 +165,9 @@ impl Host {
                 Occluded => false,
             }
         };
+
         profiling::finish_frame!();
+
         repaint
     }
 }
