@@ -23,7 +23,7 @@
 //! (`DrawTextPayload`) work even when the arena slot starts at a
 //! 4-byte-only-aligned offset.
 
-use crate::forest::shapes::ShapePayloads;
+use crate::forest::shapes::payloads::ShapePayloads;
 use crate::primitives::brush::{Brush, FillAxis, Interp, MAX_STOPS, Stop};
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,

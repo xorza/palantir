@@ -7,7 +7,7 @@ use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
 use crate::forest::element::LayoutCore;
-use crate::forest::shapes::ShapeRecord;
+use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::{

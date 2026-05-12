@@ -1,5 +1,5 @@
 use super::cmd_buffer::{DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
-use crate::forest::shapes::ShapeRecord;
+use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};

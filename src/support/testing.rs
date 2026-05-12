@@ -4,7 +4,7 @@
 
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::shapes::ShapeRecord;
+use crate::forest::shapes::record::ShapeRecord;
 #[allow(unused_imports)]
 use crate::forest::tree::Layer;
 use crate::forest::tree::{NodeId, Tree, TreeItem};

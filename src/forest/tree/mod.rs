@@ -6,8 +6,8 @@ use crate::forest::element::{
 };
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
-use crate::forest::shapes::ShapeRecord;
 use crate::forest::shapes::Shapes;
+use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::visibility::Visibility;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;

@@ -78,7 +78,7 @@ impl SubtreeRollups {
 #[cfg(test)]
 mod tests {
     use crate::common::hash::Hasher;
-    use crate::forest::shapes::ShapeRecord;
+    use crate::forest::shapes::record::ShapeRecord;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
     use crate::primitives::rect::Rect;
