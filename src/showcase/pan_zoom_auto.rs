@@ -1,10 +1,12 @@
 //! Same widget tree as `pan_zoom`, but the tab self-drives synthetic
-//! pointer + scroll + zoom input every frame — the exact oscillator
+//! scroll + zoom input every frame — the exact oscillator
 //! `benches/scrollzoom.rs` uses. Lets you watch the bench's workload
-//! animate. Frame counter lives in `Ui::state` (rebuilt-arena safe);
-//! continuous repaint comes from an animation whose target moves
-//! every frame, so `repaint_requested` stays armed without any host
-//! cooperation.
+//! animate. Pointer is seeded over the viewport on the first frame
+//! only so `scroll_target` latches without clobbering the real cursor
+//! on subsequent frames (otherwise tab-bar clicks miss). Frame counter
+//! lives in `Ui::state` (rebuilt-arena safe); continuous repaint comes
+//! from an animation whose target moves every frame, so
+//! `repaint_requested` stays armed without any host cooperation.
 
 use glam::Vec2;
 use palantir::{AnimSpec, InputEvent, Ui, WidgetId};
@@ -17,12 +19,14 @@ pub fn build(ui: &mut Ui) {
     let i = *frame;
     *frame = frame.wrapping_add(1);
 
-    let size = ui.display().logical_size();
-    // Centre horizontally; bias vertically to land below the toolbar
-    // + page header text and well inside the scroll viewport so the
-    // Scroll widget latches as the scroll-target hit.
-    let centre = Vec2::new(size.w * 0.5, size.h * 0.6);
-    ui.on_input(InputEvent::PointerMoved(centre));
+    // Seed the pointer over the scroll viewport on the first frame
+    // only — enough to latch scroll_target. Re-injecting every frame
+    // would clobber the real cursor and break clicks on the tab bar.
+    if i == 0 {
+        let size = ui.display().logical_size();
+        let centre = Vec2::new(size.w * 0.5, size.h * 0.6);
+        ui.on_input(InputEvent::PointerMoved(centre));
+    }
 
     let t = i as f32 * 0.05;
     ui.on_input(InputEvent::Scroll(Vec2::new(
