@@ -61,7 +61,12 @@ pub(crate) enum RenderStep {
 ///    issuing its own draws.
 /// 3. Stencil-path groups bracket their draws with mask write at
 ///    `stencil_ref = 1` and mask clear at `stencil_ref = 0`, so each
-///    group sees a clean stencil regardless of clip ordering.
+///    group sees a clean stencil regardless of clip ordering — except
+///    when consecutive groups share the same mask, where the prior
+///    group's tail clear and the new group's prologue write cancel
+///    out and both are elided. The pass-final stencil is dropped
+///    (`StoreOp::Discard`), so leaving a mask stamped at end of run
+///    is correctness-neutral.
 /// 4. Text always renders *after* its group's quads so a child quad
 ///    declared after a label correctly occludes that label.
 /// 5. Groups whose effective scissor is empty (or doesn't intersect
@@ -83,6 +88,13 @@ pub(crate) fn for_each_step(
         emit(RenderStep::PreClear);
     }
 
+    // `Some(mi)` means the stencil currently has mask `mi` stamped
+    // (ref=1 inside the SDF, 0 outside). `None` means stencil is
+    // clean and ref=0. Updated only when a group actually emits;
+    // groups skipped for zero area / no damage intersect leave it
+    // alone, so dedup spans across them.
+    let mut active_mask: Option<u32> = None;
+
     for (i, g) in buffer.groups.iter().enumerate() {
         let group_scissor = g.scissor.unwrap_or(full_viewport);
         let effective = match damage_scissor {
@@ -99,15 +111,28 @@ pub(crate) fn for_each_step(
 
         if use_stencil {
             let mask_idx = mask_indices[i];
-            let stencil_ref: u32 = if mask_idx.is_some() { 1 } else { 0 };
-            emit(RenderStep::SetStencilRef(stencil_ref));
-            // Per-group invariant: each rounded group writes its
-            // mask, draws, then clears the mask back to 0 so the next
-            // group sees a clean stencil regardless of clip ordering.
-            // Wasteful when consecutive groups share the same mask,
-            // but correct; dedup is a follow-up.
-            if let Some(mi) = mask_idx {
-                emit(RenderStep::MaskQuad(mi));
+            match (active_mask, mask_idx) {
+                // Same mask still stamped from a prior group: skip
+                // both its tail clear and this prologue write. Ref
+                // is still 1 from that write.
+                (Some(prev), Some(curr)) if prev == curr => {}
+                // Stencil dirty from a prior mask: clear it. If this
+                // group has its own mask, stamp that next.
+                (Some(prev), _) => {
+                    emit(RenderStep::SetStencilRef(0));
+                    emit(RenderStep::MaskQuad(prev));
+                    if let Some(curr) = mask_idx {
+                        emit(RenderStep::SetStencilRef(1));
+                        emit(RenderStep::MaskQuad(curr));
+                    }
+                }
+                (None, Some(curr)) => {
+                    emit(RenderStep::SetStencilRef(1));
+                    emit(RenderStep::MaskQuad(curr));
+                }
+                (None, None) => {
+                    emit(RenderStep::SetStencilRef(0));
+                }
             }
             if g.quads.len != 0 {
                 emit(RenderStep::Quads {
@@ -129,16 +154,7 @@ pub(crate) fn for_each_step(
                     range: g.meshes,
                 });
             }
-            if let Some(mi) = mask_idx {
-                // Replace(0) re-stencils the rounded region back to
-                // 0; subsequent groups that don't re-write their own
-                // mask see clean stencil. The mask-clear's `fs_mask`
-                // discards outside the SDF, so a wider scissor
-                // (carried over from text) still produces the same
-                // stencil writes.
-                emit(RenderStep::SetStencilRef(0));
-                emit(RenderStep::MaskQuad(mi));
-            }
+            active_mask = mask_idx;
         } else if g.quads.len != 0 || g.texts.len != 0 || g.meshes.len != 0 {
             if g.quads.len != 0 {
                 emit(RenderStep::Quads {
