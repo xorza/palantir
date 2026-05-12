@@ -189,30 +189,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_chunk_roundtrip() {
-        let c = TextChunk::new("héllo").unwrap();
-        assert_eq!(c.as_str(), "héllo");
-        assert!(!c.is_empty());
-    }
-
-    #[test]
-    fn text_chunk_too_long_returns_none() {
-        // 16 bytes of ASCII = one over capacity.
-        assert!(TextChunk::new("0123456789abcdef").is_none());
-    }
-
-    #[test]
-    fn text_chunk_at_capacity() {
-        let s = "0123456789abcde"; // exactly 15 bytes
-        let c = TextChunk::new(s).unwrap();
-        assert_eq!(c.as_str(), s);
-    }
-
-    #[test]
-    fn text_chunk_empty() {
-        let c = TextChunk::new("").unwrap();
-        assert!(c.is_empty());
-        assert_eq!(c.as_str(), "");
+    fn text_chunk_new_handles_cap_boundary() {
+        // (label, input, expect_some, expect_empty).
+        let cases: &[(&str, &str, bool, bool)] = &[
+            ("multibyte_roundtrip", "héllo", true, false),
+            ("at_capacity_15_bytes", "0123456789abcde", true, false),
+            ("empty", "", true, true),
+            ("over_capacity_16_bytes", "0123456789abcdef", false, false),
+        ];
+        for (label, s, expect_some, expect_empty) in cases {
+            let c = TextChunk::new(s);
+            assert_eq!(c.is_some(), *expect_some, "case {label}: some-ness");
+            if let Some(c) = c {
+                assert_eq!(c.as_str(), *s, "case {label}: roundtrip");
+                assert_eq!(c.is_empty(), *expect_empty, "case {label}: empty");
+            }
+        }
     }
 
     #[test]

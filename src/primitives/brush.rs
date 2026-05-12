@@ -358,40 +358,43 @@ mod tests {
     }
 
     #[test]
-    fn negative_zero_hashes_same_as_positive_zero() {
-        let pos = Brush::Solid(Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.0,
-        });
-        let neg = Brush::Solid(Color {
-            r: -0.0,
-            g: -0.0,
-            b: -0.0,
-            a: -0.0,
-        });
-        assert_eq!(h(pos), h(neg));
-    }
-
-    #[test]
-    fn nan_bit_patterns_collapse_to_one_hash() {
-        let a = f32::from_bits(0x7fc0_0001);
-        let b = f32::from_bits(0x7fc0_0002);
-        assert!(a.is_nan() && b.is_nan());
-        let ba = Brush::Solid(Color {
-            r: a,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
-        let bb = Brush::Solid(Color {
-            r: b,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
-        assert_eq!(h(ba), h(bb));
+    fn canon_bits_collapses_equivalent_f32_patterns() {
+        let nan_a = f32::from_bits(0x7fc0_0001);
+        let nan_b = f32::from_bits(0x7fc0_0002);
+        assert!(nan_a.is_nan() && nan_b.is_nan());
+        let solid = |r, a| {
+            Brush::Solid(Color {
+                r,
+                g: 0.0,
+                b: 0.0,
+                a,
+            })
+        };
+        let cases: &[(&str, Brush, Brush)] = &[
+            (
+                "neg_zero_eq_pos_zero",
+                Brush::Solid(Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 0.0,
+                }),
+                Brush::Solid(Color {
+                    r: -0.0,
+                    g: -0.0,
+                    b: -0.0,
+                    a: -0.0,
+                }),
+            ),
+            (
+                "nan_bit_patterns_collapse",
+                solid(nan_a, 1.0),
+                solid(nan_b, 1.0),
+            ),
+        ];
+        for (label, x, y) in cases {
+            assert_eq!(h(*x), h(*y), "case: {label}");
+        }
     }
 
     #[test]

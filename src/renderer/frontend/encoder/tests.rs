@@ -645,54 +645,40 @@ fn encoder_text_alignment_respects_leaf_padding() {
 // --- DamageEngine filter ---------------------------------------------
 
 #[test]
-fn damage_filter_skips_drawrect_outside_dirty_region() {
-    let mut ui = Ui::new();
-    run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Frame::new()
-                .id_salt("a")
-                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
-                .background(Background {
-                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                    ..Default::default()
-                })
-                .show(ui);
-            Frame::new()
-                .id_salt("b")
-                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
-                .background(Background {
-                    fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                    ..Default::default()
-                })
-                .show(ui);
+fn damage_filter_partitions_drawrects_by_dirty_region() {
+    let cases: &[(&str, Rect, usize)] = &[
+        (
+            "outside_filter_skipped",
+            Rect::new(0.0, 0.0, 30.0, 200.0),
+            1,
+        ),
+        ("inside_filter_kept", Rect::new(0.0, 0.0, 200.0, 200.0), 2),
+    ];
+    for (label, filter, expected) in cases {
+        let mut ui = Ui::new();
+        run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Frame::new()
+                    .id_salt("a")
+                    .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                    .background(Background {
+                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+                Frame::new()
+                    .id_salt("b")
+                    .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                    .background(Background {
+                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
         });
-    });
-    let filter = Rect::new(0.0, 0.0, 30.0, 200.0);
-    let cmds = encode_cmds_filtered(&mut ui, Some(filter));
-    assert_eq!(
-        count_draw_rects(&cmds),
-        1,
-        "only the rect inside the damage filter should be drawn"
-    );
-}
-
-#[test]
-fn damage_filter_keeps_drawrect_inside_dirty_region() {
-    let mut ui = Ui::new();
-    run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Frame::new()
-                .id_salt("a")
-                .size(50.0)
-                .background(Background {
-                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
-                    ..Default::default()
-                })
-                .show(ui);
-        });
-    });
-    let cmds = encode_cmds_filtered(&mut ui, Some(Rect::new(0.0, 0.0, 200.0, 200.0)));
-    assert!(count_draw_rects(&cmds) >= 1);
+        let cmds = encode_cmds_filtered(&mut ui, Some(*filter));
+        assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
+    }
 }
 
 /// Cull subtree when filter misses it: clipped or transformed parent's

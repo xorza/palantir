@@ -57,32 +57,41 @@ mod tests {
     fn pod_matches_write_of_bytes_of() {
         // The performance shortcut is only safe if `pod(&v)` produces
         // the exact same hash as feeding `bytemuck::bytes_of(&v)`
-        // through `write`. Pin the equivalence.
-        let v: u32 = 0xdead_beef;
-        let mut a = Hasher::new();
-        a.pod(&v);
-        let mut b = Hasher::new();
-        b.write(bytemuck::bytes_of(&v));
-        assert_eq!(a.finish(), b.finish());
-    }
-
-    #[test]
-    fn pod_matches_write_for_repr_c_pod() {
+        // through `write`. Pin the equivalence for a scalar and a
+        // multi-field repr(C) Pod struct.
         #[repr(C)]
         #[derive(Clone, Copy, bytemuck::NoUninit)]
         struct Pair {
             a: u32,
             b: u32,
         }
-        let p = Pair {
+        let scalar: u32 = 0xdead_beef;
+        let pair = Pair {
             a: 0x1234_5678,
             b: 0x9abc_def0,
         };
+
+        let check = |label: &str, bytes: &[u8]| {
+            let mut a = Hasher::new();
+            a.write(bytes);
+            let mut b = Hasher::new();
+            b.write(bytes);
+            assert_eq!(a.finish(), b.finish(), "case: {label} (sanity)");
+        };
+
         let mut h1 = Hasher::new();
-        h1.pod(&p);
+        h1.pod(&scalar);
         let mut h2 = Hasher::new();
-        h2.write(bytemuck::bytes_of(&p));
-        assert_eq!(h1.finish(), h2.finish());
+        h2.write(bytemuck::bytes_of(&scalar));
+        assert_eq!(h1.finish(), h2.finish(), "case: scalar u32");
+        check("scalar u32", bytemuck::bytes_of(&scalar));
+
+        let mut h1 = Hasher::new();
+        h1.pod(&pair);
+        let mut h2 = Hasher::new();
+        h2.write(bytemuck::bytes_of(&pair));
+        assert_eq!(h1.finish(), h2.finish(), "case: repr(C) Pair");
+        check("repr(C) Pair", bytemuck::bytes_of(&pair));
     }
 
     #[test]

@@ -34,45 +34,47 @@ fn add_swallows_contained_existing() {
     assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 100.0, 100.0)]);
 }
 
-/// Axis-aligned overlap: bbox 15×10 = 150, sum 200, cost = −50 →
-/// merge.
+/// Pairs that the SAH cost predicate accepts under the default
+/// budget all collapse to one merged rect.
 #[test]
-fn add_merges_axis_aligned_overlap() {
-    let mut region = DamageRegion::default();
-    region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
-    region.add(Rect::new(5.0, 0.0, 10.0, 10.0));
-    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 15.0, 10.0)]);
-}
-
-/// Edge-touching pair: bbox 200, sum 200, cost 0 → merge.
-#[test]
-fn add_merges_edge_touching() {
-    let mut region = DamageRegion::default();
-    region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
-    region.add(Rect::new(10.0, 0.0, 10.0, 10.0));
-    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 20.0, 10.0)]);
-}
-
-/// Near-disjoint pair (gap 2): bbox 220, sum 200, cost 20 — well
-/// under default budget → merge.
-#[test]
-fn add_merges_near_disjoint() {
-    let mut region = DamageRegion::default();
-    region.add(Rect::new(0.0, 0.0, 10.0, 10.0));
-    region.add(Rect::new(12.0, 0.0, 10.0, 10.0));
-    assert_eq!(collect(&region), vec![Rect::new(0.0, 0.0, 22.0, 10.0)]);
-}
-
-/// Diagonal-overlap pair: bbox 225, union 175 (overlap 25), cost
-/// −25 → merge.
-#[test]
-fn add_merges_diagonal_overlap() {
-    let mut region = DamageRegion::default();
+fn add_merges_pair_under_budget() {
     let a = Rect::new(0.0, 0.0, 10.0, 10.0);
-    let b = Rect::new(5.0, 5.0, 10.0, 10.0);
-    region.add(a);
-    region.add(b);
-    assert_eq!(collect(&region), vec![a.union(b)]);
+    let cases: &[(&str, Rect, Rect, Rect)] = &[
+        // axis-aligned overlap: bbox 150, sum 200, cost −50.
+        (
+            "axis_aligned_overlap",
+            a,
+            Rect::new(5.0, 0.0, 10.0, 10.0),
+            Rect::new(0.0, 0.0, 15.0, 10.0),
+        ),
+        // edge-touching: bbox 200, sum 200, cost 0.
+        (
+            "edge_touching",
+            a,
+            Rect::new(10.0, 0.0, 10.0, 10.0),
+            Rect::new(0.0, 0.0, 20.0, 10.0),
+        ),
+        // near-disjoint (gap 2): bbox 220, sum 200, cost 20 < default.
+        (
+            "near_disjoint_gap2",
+            a,
+            Rect::new(12.0, 0.0, 10.0, 10.0),
+            Rect::new(0.0, 0.0, 22.0, 10.0),
+        ),
+        // diagonal overlap: bbox 225, union 175, cost −25.
+        (
+            "diagonal_overlap",
+            a,
+            Rect::new(5.0, 5.0, 10.0, 10.0),
+            a.union(Rect::new(5.0, 5.0, 10.0, 10.0)),
+        ),
+    ];
+    for (label, p, q, want) in cases {
+        let mut region = DamageRegion::default();
+        region.add(*p);
+        region.add(*q);
+        assert_eq!(collect(&region), vec![*want], "case: {label}");
+    }
 }
 
 /// Pair whose merge cost exceeds a tight budget stays split.
@@ -191,64 +193,47 @@ fn compact_cluster_of_four_collapses_at_default_budget() {
     );
 }
 
-/// Screenshot regression: four rects approximating the "popup tab"
-/// damage overlay (`docs/screens/Screenshot 2026-05-10 at
-/// 21.27.14.png`). At the default budget every pairwise cost
-/// (≥ ~45 K px²) sits above DEFAULT_PASS_BUDGET_PX, so the
-/// algorithm has nothing to merge — pinned to document the
-/// limitation. The matching `*_under_high_budget` test pins the
-/// other knob position.
+/// Screenshot regression fixture (four rects approximating the
+/// "popup tab" damage overlay, `docs/screens/Screenshot 2026-05-10
+/// at 21.27.14.png`) swept across the per-region budget knob. At
+/// the default and a 7 000 px² tight budget every pairwise cost
+/// (≥ ~45 K px²) sits above the budget so all four rects stay
+/// split; cranking the budget to 60 000 collapses the cluster to
+/// the bbox. Pins both knob positions and the documented
+/// default-budget limitation.
 #[test]
-fn screenshot_cluster_at_default_budget_stays_split() {
+fn screenshot_cluster_budget_sweep() {
     let rs = [
         Rect::new(80.0, 300.0, 80.0, 230.0),
         Rect::new(260.0, 360.0, 140.0, 70.0),
         Rect::new(260.0, 510.0, 230.0, 20.0),
         Rect::new(80.0, 580.0, 170.0, 20.0),
     ];
-    let mut region = DamageRegion::default();
-    for r in rs {
-        region.add(r);
-    }
-    assert_eq!(collect(&region).len(), rs.len());
-}
-
-/// Same fixture, budget cranked up high. Confirms the per-region
-/// budget knob actually drives full collapse for callers that want
-/// aggressive merging (e.g. a TBDR mobile target where every extra
-/// pass is expensive).
-#[test]
-fn cluster_of_four_collapses_under_high_budget() {
-    let rs = [
-        Rect::new(80.0, 300.0, 80.0, 230.0),
-        Rect::new(260.0, 360.0, 140.0, 70.0),
-        Rect::new(260.0, 510.0, 230.0, 20.0),
-        Rect::new(80.0, 580.0, 170.0, 20.0),
-    ];
-    let mut region = DamageRegion::with_budget(60_000.0);
-    for r in rs {
-        region.add(r);
-    }
     let bbox = rs.iter().copied().reduce(|a, b| a.union(b)).unwrap();
-    assert_eq!(collect(&region), vec![bbox]);
-}
-
-/// Same fixture, budget cranked down to the 2-cell GPU-bench
-/// crossover (~7 000 px²): every pairwise cost is above this, so
-/// the rects stay split. Pins the lower end of the tweakable knob.
-#[test]
-fn screenshot_cluster_stays_split_at_tight_budget() {
-    let rs = [
-        Rect::new(80.0, 300.0, 80.0, 230.0),
-        Rect::new(260.0, 360.0, 140.0, 70.0),
-        Rect::new(260.0, 510.0, 230.0, 20.0),
-        Rect::new(80.0, 580.0, 170.0, 20.0),
+    let cases: &[(&str, DamageRegion, Vec<Rect>)] = &[
+        (
+            "default_budget_stays_split",
+            DamageRegion::default(),
+            rs.to_vec(),
+        ),
+        (
+            "tight_budget_stays_split",
+            DamageRegion::with_budget(7_000.0),
+            rs.to_vec(),
+        ),
+        (
+            "high_budget_collapses",
+            DamageRegion::with_budget(60_000.0),
+            vec![bbox],
+        ),
     ];
-    let mut region = DamageRegion::with_budget(7_000.0);
-    for r in rs {
-        region.add(r);
+    for (label, base, want) in cases {
+        let mut region = *base;
+        for r in rs {
+            region.add(r);
+        }
+        assert_eq!(collect(&region), *want, "case: {label}");
     }
-    assert_eq!(collect(&region).len(), 4);
 }
 
 /// `total_area` sums per-rect areas without subtracting overlap.

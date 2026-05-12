@@ -216,90 +216,78 @@ mod tests {
     }
 
     #[test]
-    fn uniform_corners_emit_scalar() {
-        let s = ser(Corners::all(4.0));
-        assert_eq!(s.trim(), "v = 4.0");
+    fn serialize_picks_compact_form_per_symmetry() {
+        // "Matched pair" is exact-equality `tl==tr && br==bl`; near-matched
+        // (`tl==br && tr==bl`) must NOT collapse — would lose data.
+        let cases: &[(&str, Corners, &str)] = &[
+            ("uniform_scalar", Corners::all(4.0), "v = 4.0"),
+            (
+                "matched_pairs_two_array",
+                Corners {
+                    tl: 4.0,
+                    tr: 4.0,
+                    br: 8.0,
+                    bl: 8.0,
+                },
+                "v = [4.0, 8.0]",
+            ),
+            (
+                "asymmetric_four_array",
+                Corners {
+                    tl: 1.0,
+                    tr: 2.0,
+                    br: 3.0,
+                    bl: 4.0,
+                },
+                "v = [1.0, 2.0, 3.0, 4.0]",
+            ),
+            (
+                "near_matched_does_not_collapse",
+                Corners {
+                    tl: 1.0,
+                    tr: 2.0,
+                    br: 1.0,
+                    bl: 2.0,
+                },
+                "v = [1.0, 2.0, 1.0, 2.0]",
+            ),
+        ];
+        for (label, c, want) in cases {
+            assert_eq!(ser(*c).trim(), *want, "case: {label}");
+        }
     }
 
     #[test]
-    fn matched_pairs_emit_two_element_array() {
-        // tl=tr=top, br=bl=bottom, top != bottom.
-        let s = ser(Corners {
-            tl: 4.0,
-            tr: 4.0,
-            br: 8.0,
-            bl: 8.0,
-        });
-        assert_eq!(s.trim(), "v = [4.0, 8.0]");
-    }
-
-    #[test]
-    fn asymmetric_emit_four_element_array() {
-        let s = ser(Corners {
-            tl: 1.0,
-            tr: 2.0,
-            br: 3.0,
-            bl: 4.0,
-        });
-        assert_eq!(s.trim(), "v = [1.0, 2.0, 3.0, 4.0]");
-    }
-
-    /// "Matched pair" check is exact equality, not "looks symmetric": a
-    /// corners value with `tl == br` but `tr != bl` must NOT collapse
-    /// to the 2-array form.
-    #[test]
-    fn near_matched_does_not_collapse() {
-        let s = ser(Corners {
-            tl: 1.0,
-            tr: 2.0,
-            br: 1.0,
-            bl: 2.0,
-        });
-        assert_eq!(s.trim(), "v = [1.0, 2.0, 1.0, 2.0]");
-    }
-
-    #[test]
-    fn deserialize_scalar_form() {
-        assert_eq!(de("v = 4.0"), Corners::all(4.0));
-    }
-
-    #[test]
-    fn deserialize_integer_scalar_via_visit_i64() {
-        // Hand-written configs may use `radius = 4` rather than `4.0`.
-        // visit_i64 / visit_u64 must accept it.
-        assert_eq!(de("v = 4"), Corners::all(4.0));
-    }
-
-    #[test]
-    fn deserialize_two_element_array() {
-        assert_eq!(
-            de("v = [4.0, 8.0]"),
-            Corners {
-                tl: 4.0,
-                tr: 4.0,
-                br: 8.0,
-                bl: 8.0,
-            }
-        );
-    }
-
-    #[test]
-    fn deserialize_four_element_array() {
-        assert_eq!(
-            de("v = [1.0, 2.0, 3.0, 4.0]"),
-            Corners {
-                tl: 1.0,
-                tr: 2.0,
-                br: 3.0,
-                bl: 4.0,
-            }
-        );
-    }
-
-    #[test]
-    fn deserialize_one_element_array_treated_as_uniform() {
-        // Edge case: visit_seq's first-element-only path.
-        assert_eq!(de("v = [4.0]"), Corners::all(4.0));
+    fn deserialize_accepts_scalar_array_and_integer_forms() {
+        let cases: &[(&str, &str, Corners)] = &[
+            ("scalar", "v = 4.0", Corners::all(4.0)),
+            // Hand-written configs may use `radius = 4` rather than `4.0`.
+            ("integer_scalar", "v = 4", Corners::all(4.0)),
+            (
+                "two_element_array",
+                "v = [4.0, 8.0]",
+                Corners {
+                    tl: 4.0,
+                    tr: 4.0,
+                    br: 8.0,
+                    bl: 8.0,
+                },
+            ),
+            (
+                "four_element_array",
+                "v = [1.0, 2.0, 3.0, 4.0]",
+                Corners {
+                    tl: 1.0,
+                    tr: 2.0,
+                    br: 3.0,
+                    bl: 4.0,
+                },
+            ),
+            ("one_element_array_uniform", "v = [4.0]", Corners::all(4.0)),
+        ];
+        for (label, input, want) in cases {
+            assert_eq!(de(input), *want, "case: {label}");
+        }
     }
 
     #[test]

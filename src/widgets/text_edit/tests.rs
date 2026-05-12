@@ -355,11 +355,6 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     assert_eq!(buf, "ab!");
 }
 
-#[test]
-fn pressed_button_event_left_click_release_one_frame() {
-    let _ = PointerButton::Left;
-}
-
 fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) + '_ {
     move |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -656,35 +651,40 @@ fn textedit_style_override_replaces_default_theme() {
     use crate::forest::shapes::ShapeRecord;
     use crate::widgets::theme::WidgetLook;
 
-    let mut ui = ui_at_no_cosmic(NARROW);
-    let mut buf = String::from("hi");
-    let style = TextEditTheme {
-        normal: WidgetLook {
-            text: Some(TextStyle::default().with_line_height_mult(3.0)),
-            ..TextEditTheme::default().normal
-        },
-        ..TextEditTheme::default()
-    };
-    let mut leaf = None;
-    run_at_acked(&mut ui, NARROW, |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            leaf = Some(
-                TextEdit::new(&mut buf)
-                    .id_salt("ed")
-                    .style(style.clone())
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
-                    .show(ui)
-                    .node,
-            );
+    for (label, mult, expected_lh) in [
+        ("mult_3x_override", 3.0_f32, 48.0_f32),
+        ("mult_2x_override", 2.0_f32, 32.0_f32),
+    ] {
+        let mut ui = ui_at_no_cosmic(NARROW);
+        let mut buf = String::from("hi");
+        let style = TextEditTheme {
+            normal: WidgetLook {
+                text: Some(TextStyle::default().with_line_height_mult(mult)),
+                ..TextEditTheme::default().normal
+            },
+            ..TextEditTheme::default()
+        };
+        let mut leaf = None;
+        run_at_acked(&mut ui, NARROW, |ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                leaf = Some(
+                    TextEdit::new(&mut buf)
+                        .id_salt("ed")
+                        .style(style.clone())
+                        .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                        .show(ui)
+                        .node,
+                );
+            });
         });
-    });
-    let lh = shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
-        .find_map(|s| match s {
-            ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
-            _ => None,
-        })
-        .unwrap();
-    assert_eq!(lh, 48.0, "16 px font × 3.0 leading override = 48");
+        let lh = shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
+            .find_map(|s| match s {
+                ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(lh, expected_lh, "case: {label}");
+    }
 }
 
 #[test]
@@ -719,43 +719,6 @@ fn pushed_shape_carries_default_line_height_from_theme() {
         (lh - 16.0 * crate::text::LINE_HEIGHT_MULT).abs() < 1e-5,
         "default line_height_px should be font_size * LINE_HEIGHT_MULT, got {lh}",
     );
-}
-
-#[test]
-fn pushed_shape_uses_style_overridden_line_height() {
-    use crate::TextEditTheme;
-    use crate::TextStyle;
-    use crate::forest::shapes::ShapeRecord;
-    use crate::widgets::theme::WidgetLook;
-    let mut ui = ui_at_no_cosmic(NARROW);
-    let mut buf = String::from("hi");
-    let style = TextEditTheme {
-        normal: WidgetLook {
-            text: Some(TextStyle::default().with_line_height_mult(2.0)),
-            ..TextEditTheme::default().normal
-        },
-        ..TextEditTheme::default()
-    };
-    let mut leaf_node = None;
-    run_at_acked(&mut ui, NARROW, |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            leaf_node = Some(
-                TextEdit::new(&mut buf)
-                    .id_salt("ed")
-                    .style(style.clone())
-                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
-                    .show(ui)
-                    .node,
-            );
-        });
-    });
-    let lh = shapes_of(ui.forest.tree(Layer::Main), leaf_node.unwrap())
-        .find_map(|s| match s {
-            ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
-            _ => None,
-        })
-        .unwrap();
-    assert_eq!(lh, 32.0, "16 * 2.0 should land directly on the shape");
 }
 
 #[test]

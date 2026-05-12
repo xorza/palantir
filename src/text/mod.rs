@@ -438,42 +438,57 @@ mod tests {
     }
 
     #[test]
-    fn empty_is_zero_invalid() {
-        let r = mono_measure("", 16.0, lh(16.0), None);
-        assert_eq!(r.size, Size::ZERO);
-        assert!(r.key.is_invalid());
-    }
-
-    #[test]
-    fn unbroken_matches_legacy_placeholder() {
-        // Pre-trait code used `chars * 8.0` × `16.0` at the implicit 16 px size.
-        assert_eq!(
-            mono_measure("Hi", 16.0, lh(16.0), None).size,
-            Size::new(16.0, 16.0)
-        );
-        assert_eq!(
-            mono_measure("hello!!", 16.0, lh(16.0), None).size,
-            Size::new(56.0, 16.0)
-        );
-    }
-
-    #[test]
-    fn wraps_when_max_width_below_unbroken() {
-        // 8 chars × 8 px = 64 unbroken; max 32 → 4 chars/line, 2 lines.
-        let s = mono_measure("12345678", 16.0, lh(16.0), Some(32.0)).size;
-        assert_eq!(s, Size::new(32.0, 32.0));
-    }
-
-    #[test]
-    fn mono_height_follows_line_height_param() {
-        // Pin: mono's line height comes from the new `line_height_px`
-        // parameter, not from `font_size_px`. 16 px font with 24 px
-        // leading → result height = 24, not 16.
-        let s = mono_measure("Hi", 16.0, 24.0, None).size;
-        assert_eq!(s, Size::new(16.0, 24.0));
-        // Wrapping uses the same per-line height.
-        let wrapped = mono_measure("12345678", 16.0, 24.0, Some(32.0)).size;
-        assert_eq!(wrapped, Size::new(32.0, 48.0));
+    fn mono_measure_cases() {
+        type Case = (&'static str, &'static str, f32, f32, Option<f32>, Size);
+        let cases: &[Case] = &[
+            ("empty", "", 16.0, lh(16.0), None, Size::ZERO),
+            (
+                "unbroken_legacy_short",
+                "Hi",
+                16.0,
+                lh(16.0),
+                None,
+                Size::new(16.0, 16.0),
+            ),
+            (
+                "unbroken_legacy_long",
+                "hello!!",
+                16.0,
+                lh(16.0),
+                None,
+                Size::new(56.0, 16.0),
+            ),
+            (
+                "wraps_below_unbroken",
+                "12345678",
+                16.0,
+                lh(16.0),
+                Some(32.0),
+                Size::new(32.0, 32.0),
+            ),
+            (
+                "line_height_param_short",
+                "Hi",
+                16.0,
+                24.0,
+                None,
+                Size::new(16.0, 24.0),
+            ),
+            (
+                "line_height_param_wrapped",
+                "12345678",
+                16.0,
+                24.0,
+                Some(32.0),
+                Size::new(32.0, 48.0),
+            ),
+        ];
+        for (label, text, fs, lh_v, max_w, expected) in cases {
+            let r = mono_measure(text, *fs, *lh_v, *max_w);
+            assert_eq!(r.size, *expected, "case: {label}");
+        }
+        // Empty also produces the INVALID sentinel.
+        assert!(mono_measure("", 16.0, lh(16.0), None).key.is_invalid());
     }
 
     /// `caret_x(text, byte_offset, font_size, line_height)`. Mono

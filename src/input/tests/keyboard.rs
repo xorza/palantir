@@ -59,29 +59,25 @@ fn modifiers_from_winit_translates_each_bit() {
 }
 
 #[test]
-fn from_winit_ime_commit_emits_text_event() {
-    let ev = InputEvent::from_winit(
-        &WindowEvent::Ime(winit::event::Ime::Commit("é".into())),
-        1.0,
-    )
-    .expect("Ime::Commit produces a Text event");
-    match ev {
-        InputEvent::Text(chunk) => assert_eq!(chunk.as_str(), "é"),
-        _ => panic!("expected Text, got {ev:?}"),
+fn from_winit_ime_commit_routing() {
+    // (label, payload, expect_text). None expect = dropped cleanly.
+    let cases: &[(&str, &str, Option<&str>)] = &[
+        ("short_grapheme_emits_text", "é", Some("é")),
+        ("over_inline_cap_drops", "0123456789abcdef", None),
+    ];
+    for (label, s, expect) in cases {
+        let ev = InputEvent::from_winit(
+            &WindowEvent::Ime(winit::event::Ime::Commit((*s).into())),
+            1.0,
+        );
+        match (ev, expect) {
+            (Some(InputEvent::Text(chunk)), Some(want)) => {
+                assert_eq!(chunk.as_str(), *want, "case {label}")
+            }
+            (None, None) => {}
+            (other, _) => panic!("case {label}: unexpected {other:?}"),
+        }
     }
-}
-
-#[test]
-fn from_winit_ime_commit_too_long_drops_event() {
-    let long = "0123456789abcdef"; // 16 bytes — over inline cap
-    let ev = InputEvent::from_winit(
-        &WindowEvent::Ime(winit::event::Ime::Commit(long.into())),
-        1.0,
-    );
-    assert!(
-        ev.is_none(),
-        "oversized IME commit drops cleanly rather than truncating"
-    );
 }
 
 #[test]
