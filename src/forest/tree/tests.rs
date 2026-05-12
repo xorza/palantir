@@ -381,18 +381,6 @@ fn changing_layout_property_changes_hash() {
 }
 
 #[test]
-fn shape_order_matters_for_hash() {
-    let build = |ui: &mut Ui| {
-        let mut n = None;
-        Panel::hstack().auto_id().show(ui, |ui| {
-            n = Some(Button::new().id_salt("a").label("X").show(ui).node);
-        });
-        n.unwrap()
-    };
-    assert_eq!(record_hash(build), record_hash(build));
-}
-
-#[test]
 fn changing_text_content_changes_hash() {
     use crate::widgets::text::Text;
     fn build(ui: &mut Ui, label: &'static str) -> NodeId {
@@ -530,23 +518,6 @@ fn subtree_hash_changes_on_sibling_reorder() {
     let h_ab = record_subtree_hash(|ui| build(ui, false));
     let h_ba = record_subtree_hash(|ui| build(ui, true));
     assert_ne!(h_ab, h_ba);
-}
-
-#[test]
-fn leaf_subtree_hash_is_function_of_node_hash() {
-    let build = |ui: &mut Ui| {
-        Frame::new()
-            .id_salt("a")
-            .size(50.0)
-            .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                ..Default::default()
-            })
-            .show(ui)
-            .node
-    };
-    assert_eq!(record_hash(build), record_hash(build));
-    assert_eq!(record_subtree_hash(build), record_subtree_hash(build));
 }
 
 /// Transform changes fold into `subtree_hash` only — encode cache

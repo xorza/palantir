@@ -197,32 +197,25 @@ fn instant_duration_is_noop_and_drops_row() {
 /// changes the user can't see.
 #[test]
 fn target_within_settle_eps_snaps_without_animating() {
-    let mut map = AnimMapTyped::<f32>::default();
-    let id = wid("a");
-    let spec = AnimSpec::Duration {
+    let duration = AnimSpec::Duration {
         secs: 1.0,
         ease: Easing::Linear,
     };
-    // Settle the row at 0.0.
-    let _ = map.tick(id, SLOT, 0.0, spec, 0.016, next_frame());
-
-    // Retarget to a value within settle epsilon (POS_EPS = 0.001).
-    let r = map.tick(id, SLOT, 0.0005, spec, 0.016, next_frame());
-    assert_eq!(
-        r.current, 0.0005,
-        "snap-if-close must reach the new target exactly",
-    );
-    assert!(
-        r.settled,
-        "sub-eps drift must report settled (no repaint requested)",
-    );
-
-    // Springs follow the same rule.
-    let mut map = AnimMapTyped::<f32>::default();
-    let _ = map.tick(id, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
-    let r = map.tick(id, SLOT, 0.0005, AnimSpec::SPRING, 0.016, next_frame());
-    assert_eq!(r.current, 0.0005);
-    assert!(r.settled, "spring with sub-eps target diff must snap");
+    let cases: &[(&str, AnimSpec)] = &[("duration", duration), ("spring", AnimSpec::SPRING)];
+    for (label, spec) in cases {
+        let mut map = AnimMapTyped::<f32>::default();
+        let id = wid("a");
+        let _ = map.tick(id, SLOT, 0.0, *spec, 0.016, next_frame());
+        let r = map.tick(id, SLOT, 0.0005, *spec, 0.016, next_frame());
+        assert_eq!(
+            r.current, 0.0005,
+            "case {label}: snap-if-close must reach new target exactly",
+        );
+        assert!(
+            r.settled,
+            "case {label}: sub-eps drift must report settled (no repaint)",
+        );
+    }
 }
 
 #[test]

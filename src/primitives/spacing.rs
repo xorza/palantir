@@ -210,71 +210,63 @@ mod tests {
     }
 
     #[test]
-    fn uniform_spacing_emits_scalar() {
-        assert_eq!(ser(Spacing::all(4.0)).trim(), "v = 4.0");
+    fn serialize_picks_compact_form_per_symmetry() {
+        // "Matched pair" is exact-equality `left==right && top==bottom`;
+        // diagonal-only match must NOT collapse (would lose data).
+        let cases: &[(&str, Spacing, &str)] = &[
+            ("uniform_scalar", Spacing::all(4.0), "v = 4.0"),
+            (
+                "axis_pair_two_array",
+                Spacing::xy(4.0, 8.0),
+                "v = [4.0, 8.0]",
+            ),
+            (
+                "asymmetric_four_array",
+                Spacing {
+                    left: 1.0,
+                    top: 2.0,
+                    right: 3.0,
+                    bottom: 4.0,
+                },
+                "v = [1.0, 2.0, 3.0, 4.0]",
+            ),
+            (
+                "diagonal_match_does_not_collapse",
+                Spacing {
+                    left: 1.0,
+                    top: 1.0,
+                    right: 2.0,
+                    bottom: 2.0,
+                },
+                "v = [1.0, 1.0, 2.0, 2.0]",
+            ),
+        ];
+        for (label, s, want) in cases {
+            assert_eq!(ser(*s).trim(), *want, "case: {label}");
+        }
     }
 
     #[test]
-    fn axis_pair_emits_two_element_array() {
-        // left=right=horizontal, top=bottom=vertical, h != v.
-        assert_eq!(ser(Spacing::xy(4.0, 8.0)).trim(), "v = [4.0, 8.0]");
-    }
-
-    #[test]
-    fn asymmetric_emits_four_element_array() {
-        let s = Spacing {
-            left: 1.0,
-            top: 2.0,
-            right: 3.0,
-            bottom: 4.0,
-        };
-        assert_eq!(ser(s).trim(), "v = [1.0, 2.0, 3.0, 4.0]");
-    }
-
-    /// "Matched pair" check is exact equality. left==top and right==bottom but
-    /// left!=right must NOT collapse to the 2-array form (would lose data).
-    #[test]
-    fn diagonal_match_does_not_collapse() {
-        let s = Spacing {
-            left: 1.0,
-            top: 1.0,
-            right: 2.0,
-            bottom: 2.0,
-        };
-        assert_eq!(ser(s).trim(), "v = [1.0, 1.0, 2.0, 2.0]");
-    }
-
-    #[test]
-    fn deserialize_scalar_form() {
-        assert_eq!(de("v = 4.0"), Spacing::all(4.0));
-    }
-
-    #[test]
-    fn deserialize_integer_scalar_via_visit_i64() {
-        assert_eq!(de("v = 4"), Spacing::all(4.0));
-    }
-
-    #[test]
-    fn deserialize_two_element_array() {
-        assert_eq!(de("v = [4.0, 8.0]"), Spacing::xy(4.0, 8.0));
-    }
-
-    #[test]
-    fn deserialize_four_element_array() {
-        assert_eq!(
-            de("v = [1.0, 2.0, 3.0, 4.0]"),
-            Spacing {
-                left: 1.0,
-                top: 2.0,
-                right: 3.0,
-                bottom: 4.0,
-            }
-        );
-    }
-
-    #[test]
-    fn deserialize_one_element_array_treated_as_uniform() {
-        assert_eq!(de("v = [4.0]"), Spacing::all(4.0));
+    fn deserialize_accepts_scalar_array_and_integer_forms() {
+        let cases: &[(&str, &str, Spacing)] = &[
+            ("scalar", "v = 4.0", Spacing::all(4.0)),
+            ("integer_scalar", "v = 4", Spacing::all(4.0)),
+            ("two_element_array", "v = [4.0, 8.0]", Spacing::xy(4.0, 8.0)),
+            (
+                "four_element_array",
+                "v = [1.0, 2.0, 3.0, 4.0]",
+                Spacing {
+                    left: 1.0,
+                    top: 2.0,
+                    right: 3.0,
+                    bottom: 4.0,
+                },
+            ),
+            ("one_element_array_uniform", "v = [4.0]", Spacing::all(4.0)),
+        ];
+        for (label, input, want) in cases {
+            assert_eq!(de(input), *want, "case: {label}");
+        }
     }
 
     #[test]

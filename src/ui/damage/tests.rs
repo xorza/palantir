@@ -78,6 +78,7 @@ fn unchanged_authoring_produces_no_damage() {
 
     assert!(ui.damage_engine.dirty.is_empty());
     assert!(ui.damage_engine.region.is_empty());
+    assert_eq!(ui.damage_engine.filter(ui.display.logical_rect()), None);
 }
 
 /// Pin: a widget that loses its background between frames flips from
@@ -392,22 +393,6 @@ fn damage_filter_returns_partial_when_small() {
         ui.damage_engine.filter(ui.display.logical_rect()),
         Some(Damage::Partial(r.into()))
     );
-}
-
-/// Pin: `filter()` returns `Skip` when nothing changed at all (no
-/// damage rect). The steady-state idle case must opt out of the GPU
-/// pass entirely so the backbuffer's existing pixels carry forward
-/// untouched.
-#[test]
-fn damage_filter_returns_skip_when_nothing_dirty() {
-    let mut ui = Ui::new();
-    let build = |ui: &mut Ui| {
-        one_frame(ui, BLUE);
-    };
-    frame(&mut ui, build);
-    frame(&mut ui, build);
-    assert!(ui.damage_engine.dirty.is_empty());
-    assert_eq!(ui.damage_engine.filter(ui.display.logical_rect()), None);
 }
 
 // --- transforms ---------------------------------------------------------

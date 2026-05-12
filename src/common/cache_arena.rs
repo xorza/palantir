@@ -77,18 +77,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn acquire_advances_live() {
-        let mut a: LiveArena<u32> = LiveArena::default();
-        a.items.extend_from_slice(&[1, 2, 3]);
-        a.acquire(3);
-        assert_eq!(a.live, 3);
-    }
-
-    #[test]
     fn release_decrements_live_without_touching_items() {
         let mut a: LiveArena<u32> = LiveArena::default();
         a.items.extend_from_slice(&[1, 2, 3]);
         a.acquire(3);
+        assert_eq!(a.live, 3, "acquire bumped live");
         a.release(2);
         assert_eq!(a.live, 1);
         assert_eq!(a.items.len(), 3, "release leaves items as garbage");
@@ -114,33 +107,30 @@ mod tests {
     }
 
     #[test]
-    fn needs_compact_false_below_floor() {
-        let mut a: LiveArena<u32> = LiveArena::default();
-        // Heavy garbage but tiny live: floor gates the trigger.
-        a.items.resize(10_000, 0);
-        a.live = COMPACT_FLOOR;
-        assert!(!a.needs_compact());
-    }
-
-    #[test]
-    fn needs_compact_false_when_ratio_not_crossed() {
-        let mut a: LiveArena<u32> = LiveArena::default();
-        let live = COMPACT_FLOOR + 10;
-        a.items.resize(live * COMPACT_RATIO, 0);
-        a.live = live;
-        assert!(
-            !a.needs_compact(),
-            "items.len() == live*ratio is the boundary; only `>` should trip"
-        );
-    }
-
-    #[test]
-    fn needs_compact_true_when_both_arms_cross() {
-        let mut a: LiveArena<u32> = LiveArena::default();
-        let live = COMPACT_FLOOR + 10;
-        a.items.resize(live * COMPACT_RATIO + 1, 0);
-        a.live = live;
-        assert!(a.needs_compact());
+    fn needs_compact_predicate_cases() {
+        let live_above = COMPACT_FLOOR + 10;
+        // (label, items_len, live, expected)
+        let cases: &[(&str, usize, usize, bool)] = &[
+            ("below_floor_heavy_garbage", 10_000, COMPACT_FLOOR, false),
+            (
+                "ratio_boundary_not_crossed",
+                live_above * COMPACT_RATIO,
+                live_above,
+                false,
+            ),
+            (
+                "both_arms_cross",
+                live_above * COMPACT_RATIO + 1,
+                live_above,
+                true,
+            ),
+        ];
+        for (label, items_len, live, expected) in cases {
+            let mut a: LiveArena<u32> = LiveArena::default();
+            a.items.resize(*items_len, 0);
+            a.live = *live;
+            assert_eq!(a.needs_compact(), *expected, "case: {label}");
+        }
     }
 
     #[test]
