@@ -9,7 +9,7 @@
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
 //! [`TextRun`]: crate::renderer::render_buffer::TextRun
 
-use crate::primitives::color::Color;
+use crate::primitives::color::Srgb8;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
@@ -46,6 +46,14 @@ pub(crate) enum StencilMode {
 /// rendering 1000 text groups, then settling at 50). Steady-state UIs
 /// never trigger the shrink branch — pool just hovers at peak usage.
 const POOL_SHRINK_RATIO: usize = 2;
+
+/// Upper bound on consecutive frames that may hash-skip
+/// `glyphon::prepare`. When this many "skip-something" frames pass
+/// without a clean trim opportunity, the next frame ignores hash hits
+/// and re-prepares every group so `atlas.trim` can run safely.
+/// Bounds atlas memory growth in zoom/scroll-dominated workloads
+/// where adjacent frames mint similar-but-different glyph cache keys.
+const FORCE_PREPARE_INTERVAL: u32 = 30;
 
 /// Renderer-side encapsulation of the cosmic-text → glyphon path. Holds
 /// glyphon device-bound state (atlas + viewport + swash cache) plus a
@@ -93,6 +101,30 @@ pub(crate) struct TextRenderer {
     ready: FixedBitSet,
     /// Same shape as `ready`, for `stencil_renderers`.
     stencil_ready: FixedBitSet,
+    /// Per-slot fingerprint of the runs handed to the most recent
+    /// successful `prepare_group` call against `renderers[i]`. On a
+    /// fresh call where `hash_runs(runs) == last_hashes[i]`, we skip
+    /// the inner `glyphon::prepare` entirely — the renderer's vertex
+    /// buffer + the atlas glyphs from the prior frame are still
+    /// valid as long as [`Self::post_record`] suppresses
+    /// `atlas.trim` on skip frames. `None` = no prior prepare, or
+    /// the prior prepare's glyphs were invalidated by a trim.
+    last_hashes: Vec<Option<u64>>,
+    /// Mirror of `last_hashes` for `stencil_renderers`.
+    last_hashes_stencil: Vec<Option<u64>>,
+    /// Set if any `prepare_group` call this frame hash-skipped the
+    /// inner `glyphon::prepare`. When set, [`Self::post_record`]
+    /// must *not* call `atlas.trim` — trimming would evict glyphs
+    /// the skipped renderers still depend on. Cleared at end of
+    /// `post_record`.
+    skipped_any_this_frame: bool,
+    /// Counts consecutive frames where `skipped_any_this_frame` was
+    /// true. When it reaches [`FORCE_PREPARE_INTERVAL`], the next
+    /// `prepare_group` calls ignore hash hits and re-run
+    /// `glyphon::prepare` so a subsequent `atlas.trim` can clean up
+    /// long-tail accumulated cache_keys (e.g. unique scales minted
+    /// during a long zoom gesture).
+    frames_since_full_prepare: u32,
     /// Highest `group_idx + 1` prepared this frame across **either**
     /// pool. Used by [`Self::post_record`] to shrink whichever pool grew
     /// past `2 × high_water`. Shared because a given frame is either
@@ -127,6 +159,10 @@ impl TextRenderer {
             stencil_renderers: Vec::new(),
             ready: FixedBitSet::new(),
             stencil_ready: FixedBitSet::new(),
+            last_hashes: Vec::new(),
+            last_hashes_stencil: Vec::new(),
+            skipped_any_this_frame: false,
+            frames_since_full_prepare: 0,
             high_water: 0,
             last_viewport: UVec2::ZERO,
         }
@@ -169,6 +205,16 @@ impl TextRenderer {
     /// pool — both share `atlas`. Returns `false` and skips work if no
     /// shaper is installed or no runs resolve to a buffer. The pool
     /// grows on demand if `group_idx` exceeds its current length.
+    ///
+    /// **Hash-skip fast path.** Each successful prepare stashes a
+    /// fingerprint of `runs` in [`Self::last_hashes`]. A later call
+    /// with the same `(group_idx, runs)` skips the inner
+    /// `glyphon::prepare` — the renderer's vertex buffer + atlas
+    /// glyphs from the prior frame remain valid because
+    /// [`Self::post_record`] suppresses `atlas.trim` on any frame
+    /// where a skip occurred. After [`FORCE_PREPARE_INTERVAL`]
+    /// consecutive skip frames, the next frame ignores hash hits to
+    /// give `atlas.trim` a clean opportunity.
     #[profiling::function]
     pub(crate) fn prepare_group(
         &mut self,
@@ -179,6 +225,35 @@ impl TextRenderer {
         runs: &[TextRun],
         mode: StencilMode,
     ) -> bool {
+        let want_force = self.frames_since_full_prepare >= FORCE_PREPARE_INTERVAL;
+        let hash = hash_runs(runs);
+
+        // Hash-skip check kept in a tight scope so we don't hold a
+        // &mut on the per-mode pool/hash vec across the prepare path.
+        if !want_force {
+            let (pool_len, prior) = match mode {
+                StencilMode::Plain => (
+                    self.renderers.len(),
+                    self.last_hashes.get(group_idx).copied().flatten(),
+                ),
+                StencilMode::Stencil => (
+                    self.stencil_renderers.len(),
+                    self.last_hashes_stencil.get(group_idx).copied().flatten(),
+                ),
+            };
+            if group_idx < pool_len && prior == Some(hash) {
+                match mode {
+                    StencilMode::Plain => self.ready.insert(group_idx),
+                    StencilMode::Stencil => self.stencil_ready.insert(group_idx),
+                }
+                if group_idx + 1 > self.high_water {
+                    self.high_water = group_idx + 1;
+                }
+                self.skipped_any_this_frame = true;
+                return true;
+            }
+        }
+
         // Clone to release the `&self.shaper` borrow for the closure
         // body — refcount bump, ~free. `with_render_split` returns
         // `None` when the shaper is mono (no cosmic to split), which
@@ -209,9 +284,15 @@ impl TextRenderer {
                     StencilMode::Plain => None,
                     StencilMode::Stencil => Some(super::stencil_test_state()),
                 };
-                let (pool, ready) = match mode {
-                    StencilMode::Plain => (&mut self.renderers, &mut self.ready),
-                    StencilMode::Stencil => (&mut self.stencil_renderers, &mut self.stencil_ready),
+                let (pool, ready, last_hashes) = match mode {
+                    StencilMode::Plain => {
+                        (&mut self.renderers, &mut self.ready, &mut self.last_hashes)
+                    }
+                    StencilMode::Stencil => (
+                        &mut self.stencil_renderers,
+                        &mut self.stencil_ready,
+                        &mut self.last_hashes_stencil,
+                    ),
                 };
                 while pool.len() <= group_idx {
                     let renderer = GlyphonRenderer::new(
@@ -223,6 +304,9 @@ impl TextRenderer {
                     pool.push(renderer);
                 }
                 ready.grow(pool.len());
+                if last_hashes.len() < pool.len() {
+                    last_hashes.resize(pool.len(), None);
+                }
 
                 let text_areas = runs.iter().filter_map(|r| {
                     lookup.get(r.key).map(|buffer| TextArea {
@@ -253,9 +337,11 @@ impl TextRenderer {
                 if let Err(e) = result {
                     tracing::error!(?e, group_idx, ?mode, "glyphon prepare failed");
                     ready.remove(group_idx);
+                    last_hashes[group_idx] = None;
                     return false;
                 }
                 ready.insert(group_idx);
+                last_hashes[group_idx] = Some(hash);
                 if group_idx + 1 > self.high_water {
                     self.high_water = group_idx + 1;
                 }
@@ -289,24 +375,70 @@ impl TextRenderer {
     /// renderer pool if it's grossly over-allocated, and reset
     /// per-renderer ready flags. Call once after all `render_group`
     /// calls have been submitted in the encoder pass.
+    ///
+    /// `atlas.trim` runs only on frames where every active group
+    /// passed through the full `glyphon::prepare` path — those frames
+    /// have `glyphs_in_use` fully populated, so trim is safe. On
+    /// any frame where one or more groups hash-skipped, trim is
+    /// suppressed (it would evict glyphs the skipped renderers still
+    /// reference). The [`FORCE_PREPARE_INTERVAL`] threshold in
+    /// `prepare_group` bounds how long this suppression can run
+    /// before a forced full-prepare frame restores the trim
+    /// opportunity.
     pub(crate) fn post_record(&mut self) {
-        self.atlas.trim();
+        if self.skipped_any_this_frame {
+            self.frames_since_full_prepare += 1;
+        } else {
+            self.atlas.trim();
+            self.frames_since_full_prepare = 0;
+            // After a real trim, atlas slots for groups that *weren't*
+            // touched this frame may have been evicted. Their cached
+            // hash would otherwise enable a future spurious skip
+            // against an empty atlas — invalidate now.
+            for i in 0..self.last_hashes.len() {
+                if !self.ready.contains(i) {
+                    self.last_hashes[i] = None;
+                }
+            }
+            for i in 0..self.last_hashes_stencil.len() {
+                if !self.stencil_ready.contains(i) {
+                    self.last_hashes_stencil[i] = None;
+                }
+            }
+        }
+        self.skipped_any_this_frame = false;
         // Shrink only when pool is more than 2× high_water — see
         // [`POOL_SHRINK_RATIO`]. Skips truncate work entirely in
         // steady state. Both pools follow the same rule.
         // Pools can shrink; `ready`/`stencil_ready` only grow (one bit
         // per renderer). Bits past `pool.len()` are never read after a
-        // shrink, and `clear()` below zeros them anyway.
+        // shrink, and `clear()` below zeros them anyway. `last_hashes`
+        // is truncated in lockstep so a future regrow doesn't reuse
+        // a stale fingerprint from a different content era.
         if self.renderers.len() > self.high_water.saturating_mul(POOL_SHRINK_RATIO) {
             self.renderers.truncate(self.high_water);
+            self.last_hashes.truncate(self.high_water);
         }
         if self.stencil_renderers.len() > self.high_water.saturating_mul(POOL_SHRINK_RATIO) {
             self.stencil_renderers.truncate(self.high_water);
+            self.last_hashes_stencil.truncate(self.high_water);
         }
         self.ready.clear();
         self.stencil_ready.clear();
         self.high_water = 0;
     }
+}
+
+/// Fingerprint a slice of [`TextRun`]s for the `prepare_group`
+/// hash-skip fast path. `TextRun` is `#[repr(C)]` with no internal
+/// padding, so a single byte-slice write covers every byte glyphon
+/// would consume — origin, bounds, color, key, scale.
+fn hash_runs(runs: &[TextRun]) -> u64 {
+    use std::hash::Hasher as _;
+    let mut h = crate::common::hash::Hasher::new();
+    h.write_usize(runs.len());
+    h.write(bytemuck::cast_slice(runs));
+    h.finish()
 }
 
 fn text_bounds(b: URect) -> TextBounds {
@@ -318,10 +450,9 @@ fn text_bounds(b: URect) -> TextBounds {
     }
 }
 
-fn glyphon_color(c: Color) -> glyphon::Color {
+fn glyphon_color(c: Srgb8) -> glyphon::Color {
     // Glyphon's default `ColorMode::Accurate` decodes the byte channels
-    // sRGB→linear inside its shader before writing to the sRGB target,
-    // so we must hand it sRGB-encoded bytes, not linear.
-    let c = c.to_srgb8();
+    // sRGB→linear inside its shader before writing to the sRGB target —
+    // `TextRun.color` is already sRGB-encoded at compose time.
     glyphon::Color::rgba(c.r, c.g, c.b, c.a)
 }

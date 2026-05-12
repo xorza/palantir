@@ -417,7 +417,11 @@ impl Composer {
                     out.texts.push(TextRun {
                         origin: phys_rect.min,
                         bounds,
-                        color: t.color,
+                        // Glyphon's `ColorMode::Accurate` decodes sRGB→linear
+                        // in its shader, so encode once here rather than per
+                        // frame in the backend. Also makes `TextRun` Pod for
+                        // byte-slice hashing in the hash-skip fast path.
+                        color: t.color.to_srgb8(),
                         key: t.key,
                         // Snap the ancestor-transform component of the
                         // text scale to discrete 2.5% steps. Continuous
