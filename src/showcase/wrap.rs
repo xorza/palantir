@@ -4,11 +4,11 @@
 //! gap dimensions are independent: `.gap(g)` is within-line spacing,
 //! `.line_gap(g)` is between-line spacing.
 
-use crate::swatch;
+use super::swatch::{caption_style, section, swatch_bg};
+use crate::showcase::swatch;
 use palantir::{
     Background, Configure, Corners, Frame, Justify, Panel, Sizing, Stroke, Text, TextStyle, Ui,
 };
-use swatch::{caption_style, section, swatch_bg};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()

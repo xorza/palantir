@@ -1,4 +1,4 @@
-use crate::swatch;
+use crate::showcase::swatch;
 use glam::Vec2;
 use palantir::{Configure, Frame, Panel, Sizing, TranslateScale, Ui};
 

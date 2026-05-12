@@ -1,4 +1,4 @@
-use crate::swatch;
+use crate::showcase::swatch;
 use palantir::{Align, Color, Configure, Frame, HAlign, Panel, Sizing, Ui, VAlign};
 
 pub fn build(ui: &mut Ui) {

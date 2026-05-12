@@ -7,34 +7,12 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-mod alignment;
-mod animations;
-mod bezier;
-mod buttons;
-mod clip;
-mod complex_pan_zoom;
-mod disabled;
-mod drag;
-mod gap;
-mod gradients;
-mod grid;
-mod justify;
-mod lines;
-mod mesh;
-mod pan_zoom;
-mod pan_zoom_auto;
-mod panels;
-mod popup;
-mod scroll;
-mod sizing;
-mod spacing;
-mod swatch;
-mod text;
-mod text_edit;
-mod text_zorder;
-mod transform;
-mod visibility;
-mod wrap;
+mod showcase;
+use showcase::{
+    alignment, animations, bezier, buttons, clip, disabled, drag, gap, gradients, grid, justify,
+    lines, mesh, pan_zoom, pan_zoom_auto, panels, popup, scroll, sizing, spacing, text, text_edit,
+    text_zorder, transform, visibility, wrap,
+};
 
 /// Each showcase: a label for the toolbar button, and a builder that fills the
 /// central panel. Adding a new showcase = one line here + one new module.
