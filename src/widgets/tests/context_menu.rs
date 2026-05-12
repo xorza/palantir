@@ -8,7 +8,7 @@ use crate::input::keyboard::Key;
 use crate::layout::types::sizing::Sizing;
 use crate::support::testing::{click_at, run_at, run_at_acked, secondary_click_at};
 use crate::widgets::button::Button;
-use crate::widgets::context_menu::{ContextMenu, ContextMenuState, MenuItem};
+use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 

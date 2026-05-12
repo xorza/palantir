@@ -1,5 +1,6 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::tree::Layer;
+use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
@@ -58,6 +59,13 @@ pub struct PopupResponse {
 pub struct Popup {
     anchor: Vec2,
     click_outside: ClickOutside,
+    /// When `Some`, the body runs inside [`Ui::with_popup_id`] so
+    /// content widgets can read [`Ui::current_popup_id`] and dismiss
+    /// their host without threading the id through their builder.
+    /// The id is whatever the caller treats as the close target —
+    /// e.g. `ContextMenu` passes the trigger's `WidgetId` because
+    /// that's where `ContextMenuState.anchor` lives.
+    owner: Option<WidgetId>,
     element: Element,
 }
 
@@ -74,12 +82,23 @@ impl Popup {
         Self {
             anchor,
             click_outside: ClickOutside::Dismiss,
+            owner: None,
             element,
         }
     }
 
     pub fn click_outside(mut self, m: ClickOutside) -> Self {
         self.click_outside = m;
+        self
+    }
+
+    /// Mark `owner_id` as the popup's close target. The body then
+    /// records inside [`Ui::with_popup_id`], so content widgets can
+    /// look up the owner via [`Ui::current_popup_id`] and dismiss it
+    /// without an extra parameter. `ContextMenu::show` uses this to
+    /// let `MenuItem::show` self-close the menu on click.
+    pub fn owned_by(mut self, owner_id: WidgetId) -> Self {
+        self.owner = Some(owner_id);
         self
     }
 
@@ -108,8 +127,12 @@ impl Popup {
             element.clip = ui.theme.panel_clip;
         }
         let mut body_resp: Option<Response> = None;
+        let owner = self.owner;
         ui.layer(Layer::Popup, self.anchor, None, |ui| {
-            let node = ui.node(element, body);
+            let node = ui.node(element, |ui| match owner {
+                Some(o) => ui.with_popup_id(o, body),
+                None => body(ui),
+            });
             body_resp = Some(Response {
                 node,
                 id: body_id,
