@@ -65,7 +65,7 @@ pub struct Ui {
     /// Set by [`Self::request_relayout`]; consumed by
     /// `post_record` to trigger one re-record per
     /// `run_frame`.
-    pub(crate) relayout_requested: bool,
+    relayout_requested: bool,
 }
 
 impl Default for Ui {
@@ -150,8 +150,19 @@ impl Ui {
         // frame's `should_invalidate_prev` will force a `Full`.
         self.frame_state.mark_pending();
 
-        let action_flag = self.record_pass(&mut record);
+        let action_flag = {
+            profiling::scope!("Ui::record_pass.A");
+            self.record_pass(&mut record)
+        };
         if action_flag || self.relayout_requested {
+            profiling::scope!(
+                "Ui::record_pass.B",
+                if self.relayout_requested {
+                    "relayout"
+                } else {
+                    "action"
+                }
+            );
             // Pass B paints, regardless of any further re-record
             // request — caps relayout at one retry per `run_frame`.
             self.input.drain_per_frame_queues();
@@ -200,7 +211,6 @@ impl Ui {
     /// cycle. Returns whether the cycle saw action input (which triggers
     /// a second pass in `Ui::frame`).
     fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
-        profiling::scope!("Ui::record_pass");
         self.pre_record();
         {
             profiling::scope!("Ui::record_user");

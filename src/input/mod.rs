@@ -296,9 +296,8 @@ impl InputState {
             InputEvent::PointerPressed(_)
                 | InputEvent::PointerReleased(_)
                 | InputEvent::KeyDown { .. }
-                | InputEvent::Text(_)
-                | InputEvent::Scroll(_)
-                | InputEvent::Zoom(_)
+                | InputEvent::Text(_) // | InputEvent::Scroll(_)
+                                      // | InputEvent::Zoom(_)
         ) {
             self.frame_had_action = true;
         }
