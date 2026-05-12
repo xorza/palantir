@@ -154,6 +154,7 @@ impl Composer {
     /// encountered registers a row and the returned row id is packed
     /// into the emitted `Quad`. Idempotent across frames — the same
     /// gradient hashes to the same row and reuses it.
+    #[profiling::function]
     pub(crate) fn compose(
         &mut self,
         cmds: &RenderCmdBuffer,

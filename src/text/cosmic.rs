@@ -160,6 +160,7 @@ impl Default for CosmicMeasure {
 }
 
 impl CosmicMeasure {
+    #[profiling::function]
     pub fn measure(
         &mut self,
         text: &str,

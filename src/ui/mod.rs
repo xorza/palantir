@@ -126,6 +126,7 @@ impl Ui {
         now: Duration,
         mut record: impl FnMut(&mut Ui),
     ) -> FrameReport {
+        profiling::scope!("Ui::frame");
         assert!(
             display.scale_factor >= EPS,
             "Display::scale_factor must be ≥ EPSILON; got {}",
@@ -165,12 +166,14 @@ impl Ui {
             self.frame_state.mark_submitted();
         }
 
-        FrameReport {
+        let report = FrameReport {
             repaint_requested: self.repaint_requested,
             skip_render: damage.is_none(),
             damage,
             clear_color: self.theme.window_clear,
-        }
+        };
+        profiling::finish_frame!();
+        report
     }
 
     /// Should we discard the last painted frame's damage snapshot? True
@@ -228,6 +231,7 @@ impl Ui {
     /// can't match live keys — and reaped once in `finalize_frame`
     /// against the final pass's id set.
     fn post_record(&mut self) {
+        profiling::scope!("Ui::post_record");
         self.forest.post_record();
         self.layout_engine.run(
             &self.forest,
@@ -244,6 +248,7 @@ impl Ui {
     /// per `post_record` so a widget that vanishes in pass A but
     /// returns in pass B keeps its state across the discard.
     fn finalize_frame(&mut self) -> Option<Damage> {
+        profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);
