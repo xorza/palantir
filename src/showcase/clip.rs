@@ -1,4 +1,4 @@
-use crate::swatch;
+use crate::showcase::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
 
 /// Card with a rounded background. Used in three configurations below

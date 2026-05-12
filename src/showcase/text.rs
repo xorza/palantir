@@ -1,10 +1,10 @@
-use crate::swatch;
+use super::swatch::section;
+use crate::showcase::swatch;
 use palantir::Track;
 use palantir::{
     Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, Ui,
 };
 use std::rc::Rc;
-use swatch::section;
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \

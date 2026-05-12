@@ -1,4 +1,4 @@
-use crate::swatch::{on_swatch_text, swatch_bg};
+use crate::showcase::swatch::{on_swatch_text, swatch_bg};
 use palantir::{Color, Configure, Panel, Scroll, Sizing, Text, TextStyle, Ui};
 
 pub fn build(ui: &mut Ui) {

@@ -36,12 +36,12 @@ profiling = { version = "1.0.18", default-features = false, features = ["procmac
 # dedupes to one tracy-client instance (one FFI connection). Bump in
 # lockstep with `profiling`.
 tracy-client = { version = "0.18", default-features = false, optional = true }
+tracing-subscriber = { version = "*", features = ["env-filter"] }
 
 [dev-dependencies]
 backtrace = "*"
 criterion = "*"
 dhat = "*"
-tracing-subscriber = { version = "*", features = ["env-filter"] }
 image = { version = "*", default-features = false, features = ["png"] }
 
 [[bench]]

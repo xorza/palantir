@@ -1,6 +1,6 @@
-use crate::swatch;
+use super::swatch::swatch_bg;
+use crate::showcase::swatch;
 use palantir::{Color, Configure, Frame, Panel, Sizing, Ui};
-use swatch::swatch_bg;
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()

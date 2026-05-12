@@ -5,9 +5,9 @@
 //! (group split on text→quad transition) and
 //! `src/renderer/backend/text.rs` (per-group prepare/render pool).
 
-use crate::swatch;
+use super::swatch::{caption_style, swatch_bg};
+use crate::showcase::swatch;
 use palantir::{Color, Configure, Frame, Panel, Sizing, Text, TextStyle, Ui};
-use swatch::{caption_style, swatch_bg};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
