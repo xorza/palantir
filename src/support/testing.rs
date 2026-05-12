@@ -113,18 +113,18 @@ pub(crate) fn release_left(ui: &mut Ui) {
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 }
 
-pub(crate) fn encode_cmds(ui: &mut Ui) -> RenderCmdBuffer {
+pub(crate) fn encode_cmds(ui: &Ui) -> RenderCmdBuffer {
     encode_cmds_filtered(ui, None)
 }
 
-pub(crate) fn encode_cmds_filtered(ui: &mut Ui, filter: Option<Rect>) -> RenderCmdBuffer {
+pub(crate) fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBuffer {
     encode_cmds_with_region(ui, filter.map(DamageRegion::from))
 }
 
 /// Multi-rect variant of [`encode_cmds_filtered`]. Builds a region
 /// from `rects` (each fed through [`DamageRegion::add`] so the merge
 /// policy applies) and encodes against it. Empty slice ⇒ no filter.
-pub(crate) fn encode_cmds_with_rects(ui: &mut Ui, rects: &[Rect]) -> RenderCmdBuffer {
+pub(crate) fn encode_cmds_with_rects(ui: &Ui, rects: &[Rect]) -> RenderCmdBuffer {
     let region = if rects.is_empty() {
         None
     } else {
@@ -137,21 +137,17 @@ pub(crate) fn encode_cmds_with_rects(ui: &mut Ui, rects: &[Rect]) -> RenderCmdBu
     encode_cmds_with_region(ui, region)
 }
 
-fn encode_cmds_with_region(ui: &mut Ui, region: Option<DamageRegion>) -> RenderCmdBuffer {
+fn encode_cmds_with_region(ui: &Ui, region: Option<DamageRegion>) -> RenderCmdBuffer {
     // Fresh `Encoder` per call → empty cache, every encode is a cold
     // build. Tests that want to verify cache-replay output use
-    // `ui.frontend.encoder.cmds()` instead. We temporarily swap
-    // `ui.damage` to drive the filter — `None` ⇒ `Damage::Full` (no
-    // filter), `Some(region)` ⇒ `Damage::Partial`.
+    // `ui.frontend.encoder.cmds()` instead. `None` ⇒ `Damage::Full`
+    // (no filter), `Some(region)` ⇒ `Damage::Partial`.
     use crate::ui::damage::Damage;
-    let saved = ui.damage;
-    ui.damage = Some(match region {
+    let damage = match region {
         Some(r) => Damage::Partial(r),
         None => Damage::Full,
-    });
+    };
     let mut encoder = Encoder::default();
-    encoder.encode(ui);
-    let cmds = std::mem::take(&mut encoder.cmds);
-    ui.damage = saved;
-    cmds
+    encoder.encode(ui, damage);
+    std::mem::take(&mut encoder.cmds)
 }

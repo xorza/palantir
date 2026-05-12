@@ -23,59 +23,28 @@ use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::Ui;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
-
-/// Submission status of the most recently produced [`FrameReport`].
-/// Held by both [`crate::Ui`] and `FrameReport` (via `Arc`); written
-/// by `Ui::run_frame` (→ `Pending`) and the renderer on the success
-/// path (→ `Submitted`). Read by `Ui::pre_record`, which auto-rewinds
-/// `damage.prev_surface` whenever the last frame's state isn't
-/// `Submitted` (host dropped the `FrameReport`, surface acquire
-/// failed, or it's the very first frame from `FrameState::default()` —
-/// which leaves the underlying byte at `Initial`). Turns "host dropped
-/// a `FrameReport`" into "next frame is `Full`" — wasteful but
-/// correct, instead of silent damage smear.
-///
-/// `AtomicU8` is overkill for the single-threaded renderer path, but
-/// cheap and lets `Ui` / `FrameReport` stay `Send`/`Sync` compatible
-/// without further constraints.
-#[derive(Clone, Debug, Default)]
-pub(crate) struct FrameState(Arc<AtomicU8>);
-
-// FrameState::default() leaves the inner byte at 0, which doesn't
-// match SUBMITTED below — so the first `was_last_submitted` returns
-// false and the first `Ui::pre_record` rewinds, exactly as wanted.
-const FRAME_STATE_PENDING: u8 = 1;
-const FRAME_STATE_SUBMITTED: u8 = 2;
-
-impl FrameState {
-    pub(crate) fn mark_pending(&self) {
-        self.0.store(FRAME_STATE_PENDING, Ordering::Relaxed);
-    }
-    pub(crate) fn mark_submitted(&self) {
-        self.0.store(FRAME_STATE_SUBMITTED, Ordering::Relaxed);
-    }
-    pub(crate) fn was_last_submitted(&self) -> bool {
-        self.0.load(Ordering::Relaxed) == FRAME_STATE_SUBMITTED
-    }
-}
+use crate::ui::damage::Damage;
+use crate::ui::frame_state::FrameState;
 
 /// One frame's plain-data report from [`Ui::frame`]: the post-record
 /// signals the host needs to act on. All frame-shaped state (forest,
-/// layout, cascades, display, damage) stays on [`Ui`] itself —
-/// [`Frontend::build`] reads it directly via a `&Ui` borrow, so this
-/// struct doesn't carry borrows and has no lifetime.
+/// layout, cascades, display) stays on [`Ui`] itself —
+/// [`Frontend::build`] reads it directly via a `&Ui` borrow, plus the
+/// per-frame [`Damage`] this report carries.
 ///
 /// [`Ui`]: crate::ui::Ui
 pub struct FrameReport {
     pub(crate) repaint_requested: bool,
-    /// Shared with `Ui::frame_state`. Set to `Pending` by `Ui::frame`
-    /// and (on success) to `Submitted` by the renderer. The next
-    /// `Ui::pre_record` auto-rewinds damage if it doesn't see
-    /// `Submitted`.
+    /// Shared with `Ui::frame_state`. Set to `Pending` at the top of
+    /// `Ui::frame` and (on success) to `Submitted` by the renderer.
+    /// The next `Ui::pre_record` auto-rewinds damage if it doesn't
+    /// see `Submitted`.
     pub(crate) frame_state: FrameState,
     pub(crate) skip_render: bool,
+    /// Per-frame paint plan produced by `Ui::finalize_frame`. `None`
+    /// ⇒ skip path (nothing changed; backbuffer is correct).
+    /// `Some(Full | Partial)` ⇒ work for the renderer.
+    pub(crate) damage: Option<Damage>,
 }
 
 impl FrameReport {
@@ -119,8 +88,8 @@ impl Frontend {
     /// pre-resolved into `cascades` (`Cascade::rgb_mul`), so this
     /// stage reads everything it needs from the inputs without
     /// per-call theme threading.
-    pub(crate) fn build(&mut self, ui: &Ui) -> &RenderBuffer {
-        let cmds = self.encoder.encode(ui);
+    pub(crate) fn build(&mut self, ui: &Ui, damage: Damage) -> &RenderBuffer {
+        let cmds = self.encoder.encode(ui, damage);
         self.composer.compose(cmds, ui.display, &mut self.buffer);
         &self.buffer
     }

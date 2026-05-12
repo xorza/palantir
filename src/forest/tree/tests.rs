@@ -118,7 +118,7 @@ fn interleaved_shapes_record_correct_order() {
         .collect();
     assert_eq!(sizes, vec![10.0, 20.0, 30.0]);
 
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     let draw_rect_count = cmds
         .kinds
         .iter()
@@ -190,7 +190,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     );
 
     // Encoder walks without panicking (the original symptom).
-    let _cmds = encode_cmds(&mut ui);
+    let _cmds = encode_cmds(&ui);
 }
 
 // --- Authoring-hash tests ---------------------------------------------
@@ -836,7 +836,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
             });
         });
     });
-    let _cmds = encode_cmds(&mut ui);
+    let _cmds = encode_cmds(&ui);
 
     let main_tree = ui.forest.tree(Layer::Main);
     let popup_tree = ui.forest.tree(Layer::Popup);

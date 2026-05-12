@@ -529,7 +529,7 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
     });
     let leaf = leaf.unwrap();
     let owner_min = ui.layout[Layer::Main].rect[leaf.index()].min;
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     let mut drawn: Vec<glam::Vec2> = (0..cmds.kinds.len())
         .filter(|&i| cmds.kinds[i] == CmdKind::DrawText)
         .map(|i| cmds.read::<DrawTextPayload>(cmds.starts[i]).rect.min)

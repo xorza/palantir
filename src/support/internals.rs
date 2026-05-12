@@ -130,14 +130,14 @@ pub fn force_host_damage_to_rects(host: &mut crate::Host, rects: &[crate::primit
     use crate::ui::damage::Damage;
     use crate::ui::damage::region::DamageRegion;
     if rects.is_empty() {
-        host.ui.damage = Some(Damage::Full);
+        host.pending_damage = Some(Damage::Full);
         return;
     }
     let mut region = DamageRegion::default();
     for r in rects {
         region.add(*r);
     }
-    host.ui.damage = Some(Damage::Partial(region));
+    host.pending_damage = Some(Damage::Partial(region));
 }
 
 /// Bench-public mirror of internal `ColorMode`. The user-facing
