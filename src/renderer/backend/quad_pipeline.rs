@@ -7,13 +7,17 @@ use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
 use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::DrawGroup;
-use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use glam::Vec2;
-use tinyvec::ArrayVec;
 
 pub(crate) struct QuadPipeline {
-    pipeline: wgpu::RenderPipeline,
-    bind_group: wgpu::BindGroup,
+    /// The no-stencil base pipeline. `pub(crate)` so `DebugOverlay`
+    /// can bind it (dim + damage-rect overlays both ride it). Internal
+    /// callers also reach for it directly — invariants on the pipeline
+    /// live in `new`, not in an accessor.
+    pub(crate) pipeline: wgpu::RenderPipeline,
+    /// Bind group shared with `DebugOverlay`; same rationale as
+    /// `pipeline`.
+    pub(crate) bind_group: wgpu::BindGroup,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
     /// Lazy stencil-aware pipeline variants — built on first need
@@ -48,25 +52,6 @@ pub(crate) struct QuadPipeline {
     /// refactor that decorrelates the upload guard in `submit` from
     /// the per-pass `PreClear` emit in the schedule.
     clear_buffer_dirty: bool,
-    /// Single-instance buffer holding a translucent-black full-viewport
-    /// quad. Drawn into the backbuffer with `LoadOp::Load` before any
-    /// partial-damage passes when `DebugOverlayConfig::dim_undamaged` is
-    /// on, so each Partial frame darkens prior pixels by 40% and the
-    /// undamaged region fades to black across frames while the damage
-    /// region — repainted at full brightness — stays bright. Holds a
-    /// separate quad from `clear_buffer` because the dim pass and the
-    /// per-partial-pass `PreClear` run in the same encoder; sharing
-    /// one buffer would let the later upload clobber the earlier one.
-    dim_buffer: wgpu::Buffer,
-    /// Multi-instance buffer holding debug damage-overlay quads
-    /// (transparent fill, red stroke per damaged rect). Drawn onto
-    /// the swapchain texture *after* the backbuffer→surface copy, so
-    /// it never touches the backbuffer and produces no ghosts. Only
-    /// written when `DebugOverlayConfig::damage_rect` is on; sized
-    /// dynamically by [`Self::upload_overlays`] to fit the region's
-    /// rect count.
-    overlay_buffer: wgpu::Buffer,
-    overlay_capacity: usize,
     /// Cached creation inputs needed to lazy-build `stencil` later.
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
@@ -274,23 +259,6 @@ impl QuadPipeline {
             mapped_at_creation: false,
         });
 
-        let dim_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.quad.dim"),
-            size: std::mem::size_of::<Quad>() as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Sized for one quad up front; `upload_overlays` grows it on
-        // demand when the damage region carries more rects.
-        let overlay_capacity = 1;
-        let overlay_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.quad.overlay"),
-            size: (overlay_capacity * std::mem::size_of::<Quad>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
         Self {
             pipeline,
             bind_group,
@@ -303,9 +271,6 @@ impl QuadPipeline {
             masks: Vec::new(),
             clear_buffer,
             clear_buffer_dirty: false,
-            dim_buffer,
-            overlay_buffer,
-            overlay_capacity,
             shader,
             color_format: format,
             bind_layout,
@@ -550,101 +515,6 @@ impl QuadPipeline {
     /// this frame."
     pub(crate) fn post_record(&mut self) {
         self.clear_buffer_dirty = false;
-    }
-
-    /// Upload one full-viewport translucent-black quad to `dim_buffer`.
-    /// Drawn into the backbuffer before partial-damage passes when
-    /// the debug "darken undamaged" mode is on; see
-    /// [`DebugOverlayConfig::dim_undamaged`](crate::DebugOverlayConfig).
-    /// `alpha` is the linear-space alpha of the dim fill — `0.4` is
-    /// the showcase default. Premultiplied-alpha blending means the
-    /// rgb channel doubles as the "remaining brightness" multiplier:
-    /// 40% alpha → 60% of the underlying pixel survives.
-    pub(crate) fn upload_dim(&self, queue: &wgpu::Queue, viewport: Vec2, alpha: f32) {
-        let q = Quad {
-            rect: Rect {
-                min: glam::Vec2::ZERO,
-                size: Size {
-                    w: viewport.x,
-                    h: viewport.y,
-                },
-            },
-            fill: Color::linear_rgba(0.0, 0.0, 0.0, alpha),
-            radius: Corners::default(),
-            stroke_color: Color::TRANSPARENT,
-            stroke_width: 0.0,
-            ..Default::default()
-        };
-        queue.write_buffer(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
-    }
-
-    /// Bind the no-stencil base pipeline + dim buffer and draw one
-    /// instance. The dim pass runs without a stencil attachment (we
-    /// dim the whole backbuffer with no mask), so the no-stencil
-    /// pipeline is always correct here — unlike `draw_clear`, which
-    /// has to fall back to `stencil_test` when its caller passes a
-    /// stencil-attached pass.
-    pub(crate) fn draw_dim<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.dim_buffer.slice(..));
-        pass.draw(0..4, 0..1);
-    }
-
-    /// Upload one or more debug damage-overlay quads (stroked rects
-    /// in physical px, transparent fill). Each entry corresponds to a
-    /// rect in `Damage::Partial(region)`. Drawn after the
-    /// backbuffer→surface copy so they never land on the backbuffer.
-    /// Buffer grows to the next power of two when needed, mirroring
-    /// the mask buffer's dynamic-resize pattern; the GPU upload uses
-    /// stack-bounded scratch (≤ `DAMAGE_RECT_CAP`) so steady-state
-    /// frames are alloc-free.
-    pub(crate) fn upload_overlays(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        rects: &[Rect],
-        stroke_color: Color,
-        stroke_width: f32,
-    ) {
-        if rects.is_empty() {
-            return;
-        }
-        if rects.len() > self.overlay_capacity {
-            self.overlay_capacity = rects.len().next_power_of_two().max(8);
-            self.overlay_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.quad.overlay"),
-                size: (self.overlay_capacity * std::mem::size_of::<Quad>()) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-        }
-        let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
-        for r in rects {
-            quads.push(Quad {
-                rect: *r,
-                fill: Color::TRANSPARENT,
-                radius: Corners::default(),
-                stroke_color,
-                stroke_width,
-                ..Default::default()
-            });
-        }
-        queue.write_buffer(
-            &self.overlay_buffer,
-            0,
-            bytemuck::cast_slice(quads.as_slice()),
-        );
-    }
-
-    /// Bind the no-stencil base pipeline + overlay buffer and draw
-    /// `count` instances. Used in the post-copy overlay pass on the
-    /// swapchain texture (no stencil attachment, no scissor).
-    pub(crate) fn draw_overlays<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, count: u32) {
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.overlay_buffer.slice(..));
-        pass.draw(0..4, 0..count);
     }
 
     /// Build the per-group mask-index map for the schedule and upload

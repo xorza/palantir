@@ -1,9 +1,13 @@
+mod debug_overlay;
 mod mesh_pipeline;
 mod quad_pipeline;
 mod schedule;
 mod viewport;
 mod viewport_uniform;
 
+use self::debug_overlay::{
+    DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
+};
 use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
@@ -15,19 +19,6 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
 use crate::ui::damage::Damage;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
-
-/// Stroke color for the debug damage overlay (see
-/// [`crate::DebugOverlayConfig::damage_rect`]). Bright opaque red —
-/// picked for contrast against any UI palette, not theme-driven.
-const DAMAGE_OVERLAY_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
-
-/// Stroke width for the debug damage overlay, in logical pixels.
-/// Multiplied by `scale_factor` at submit time.
-const DAMAGE_OVERLAY_STROKE_WIDTH: f32 = 2.0;
-
-/// How far the overlay rect is inset from the damage rect, in logical
-/// pixels. Centers the stroke fully inside the highlighted region.
-const DAMAGE_OVERLAY_INSET: f32 = 1.0;
 
 mod text;
 use text::TextRenderer;
@@ -103,6 +94,7 @@ pub(crate) struct WgpuBackend {
     quad: QuadPipeline,
     mesh: MeshPipeline,
     text: TextRenderer,
+    debug: DebugOverlay,
     /// Color format the quad pipeline + text atlas were built for.
     /// Fixed at [`Self::new`]; [`Self::ensure_backbuffer`] hard-asserts
     /// that the swapchain texture handed to `submit` keeps this format
@@ -132,6 +124,7 @@ impl WgpuBackend {
         let mesh = MeshPipeline::new(&device, format, viewport_uniform.buffer());
         let mut text = TextRenderer::new(&device, &queue, format);
         text.set_shaper(shaper);
+        let debug = DebugOverlay::new(&device);
         Self {
             device,
             queue,
@@ -139,6 +132,7 @@ impl WgpuBackend {
             quad,
             mesh,
             text,
+            debug,
             color_format: format,
             backbuffer: None,
         }
@@ -308,7 +302,7 @@ impl WgpuBackend {
         // pins which regions are actually repainting.
         let dim_undamaged = debug_overlay.dim_undamaged && !damage_scissors.is_empty();
         if dim_undamaged {
-            self.quad
+            self.debug
                 .upload_dim(&self.queue, buffer.viewport_phys_f, 0.4);
         }
 
@@ -462,7 +456,8 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        self.quad.draw_dim(&mut pass);
+        self.debug
+            .draw_dim(&mut pass, &self.quad.pipeline, &self.quad.bind_group);
     }
 
     /// Open the main render pass against the backbuffer and walk the
@@ -704,7 +699,7 @@ impl WgpuBackend {
             if overlay_rects.is_empty() {
                 return;
             }
-            self.quad.upload_overlays(
+            self.debug.upload_overlays(
                 &self.device,
                 &self.queue,
                 &overlay_rects,
@@ -728,8 +723,12 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            self.quad
-                .draw_overlays(&mut pass, overlay_rects.len() as u32);
+            self.debug.draw_overlays(
+                &mut pass,
+                &self.quad.pipeline,
+                &self.quad.bind_group,
+                overlay_rects.len() as u32,
+            );
         }
     }
 
