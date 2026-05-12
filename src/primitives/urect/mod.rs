@@ -7,12 +7,20 @@ mod tests;
 ///
 /// Stored as origin + size so it round-trips with wgpu's
 /// `set_scissor_rect(x, y, w, h)` without arithmetic.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct URect {
     pub x: u32,
     pub y: u32,
     pub w: u32,
     pub h: u32,
+}
+
+impl std::hash::Hash for URect {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
+    }
 }
 
 impl URect {

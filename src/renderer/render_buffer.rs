@@ -1,7 +1,7 @@
 use super::quad::Quad;
 use crate::layout::types::span::Span;
 use crate::primitives::mesh::Mesh;
-use crate::primitives::{color::Color, corners::Corners, rect::Rect, urect::URect};
+use crate::primitives::{color::Srgb8, corners::Corners, rect::Rect, urect::URect};
 use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
@@ -114,16 +114,24 @@ pub(crate) struct MeshDraw {
 /// One shaped text run placed in physical-px space. The buffer it references
 /// is resolved by the backend at submit time using [`TextCacheKey`] against
 /// the active `TextMeasure`.
-#[derive(Clone, Copy, Debug)]
+///
+/// **Layout**: fields ordered so the struct is `Pod` with no internal
+/// padding. `TextCacheKey` (24 B, align 8) leads so its alignment
+/// requirement is satisfied without filler. Color stores already-encoded
+/// sRGB bytes (glyphon's `ColorMode::Accurate` consumes sRGB; doing the
+/// conversion at compose time keeps the per-frame hot path Pod-shaped
+/// and lets the backend hash whole `TextRun` slices via `bytemuck`).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TextRun {
+    pub(crate) key: TextCacheKey,
     /// Top-left of the run's bounding box, physical px.
     pub(crate) origin: Vec2,
     /// Bounds for clipping (physical px) — the parent rect after transform &
     /// snap. Glyphs outside are clipped by the backend even if the scissor
     /// rect is wider.
     pub(crate) bounds: URect,
-    pub(crate) color: Color,
-    pub(crate) key: TextCacheKey,
+    pub(crate) color: Srgb8,
     /// Per-run scale factor on top of the global DPI scale, sourced from
     /// the cumulative ancestor `TranslateScale.scale` at compose time.
     /// `1.0` outside any transformed subtree. Multiplied into glyphon's
@@ -132,4 +140,11 @@ pub(crate) struct TextRun {
     /// from the original glyph atlas — acceptable for transient zoom UI;
     /// a future quality bake-off could reshape at the new size).
     pub(crate) scale: f32,
+}
+
+impl std::hash::Hash for TextRun {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
+    }
 }
