@@ -473,6 +473,47 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     assert!(rows[0].0 >= 1);
 }
 
+/// Pin: text-run scale snaps to the 2.5% ladder so continuous zoom
+/// produces stable glyphon cache keys across adjacent frames. Quads
+/// (next test) intentionally do not snap — only text quantizes.
+#[test]
+fn compose_snaps_text_scale_to_discrete_steps() {
+    // 1.013 is between 1.000 and 1.025; rounds to 1.025.
+    let buf = run(
+        |b| {
+            b.push_transform(TranslateScale::from_scale(1.013));
+            text(b, rect(0.0, 0.0, 50.0, 20.0));
+            b.pop_transform();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.texts.len(), 1);
+    let s = buf.texts[0].scale;
+    assert!(
+        (s - 1.025).abs() < 1e-5,
+        "1.013 must snap to 1.025, got {s}",
+    );
+}
+
+/// Pin: a quad pushed under the same fractional transform keeps its
+/// continuous scale — only text snaps. Otherwise a zoomed layout
+/// would visibly jitter as quad sizes step alongside font cache keys.
+#[test]
+fn compose_keeps_quad_scale_continuous_under_zoom() {
+    let buf = run(
+        |b| {
+            b.push_transform(TranslateScale::from_scale(1.013));
+            draw(b, rect(0.0, 0.0, 100.0, 50.0));
+            b.pop_transform();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.quads.len(), 1);
+    // 100*1.013 = 101.3; 50*1.013 = 50.65 — preserved, not snapped.
+    assert!((buf.quads[0].rect.size.w - 101.3).abs() < 1e-4);
+    assert!((buf.quads[0].rect.size.h - 50.65).abs() < 1e-3);
+}
+
 #[test]
 fn compose_propagates_transform_scale_to_text_runs() {
     // A `TranslateScale(_, 2.0)` ancestor must surface on the emitted

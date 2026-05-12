@@ -3,6 +3,7 @@ use super::cmd_buffer::{
     PushClipPayload, RenderCmdBuffer,
 };
 use crate::layout::types::display::Display;
+use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
@@ -418,7 +419,16 @@ impl Composer {
                         bounds,
                         color: t.color,
                         key: t.key,
-                        scale: current_transform.scale,
+                        // Snap the ancestor-transform component of the
+                        // text scale to discrete 2.5% steps. Continuous
+                        // zoom would otherwise mint a fresh glyphon
+                        // cache key every frame (subpixel font size +
+                        // bin shift), forcing swash to re-rasterize
+                        // every glyph. Snapping stabilizes the key
+                        // across small zoom deltas so the atlas hits.
+                        // Quads/meshes keep continuous scale — only
+                        // text glyph crispness "steps."
+                        scale: snap_text_scale(current_transform.scale),
                     });
                     self.text_rects.push(bounds);
                 }
@@ -426,6 +436,22 @@ impl Composer {
         }
         self.flush(out);
     }
+}
+
+/// Step size of the text-scale ladder. 2.5% additive — empirically
+/// fine-grained enough that crispness "stepping" isn't visible during
+/// typical zoom gestures, coarse enough that consecutive zoom frames
+/// hash to the same glyph cache key and reuse rasterized atlas slots.
+const TEXT_SCALE_STEP: f32 = 0.025;
+
+/// Snap the ancestor-transform component of a text run's scale to the
+/// 2.5% ladder. Identity is preserved exactly so non-zoom UIs stay on
+/// the trivial path. See call-site comment in `DrawText` for rationale.
+fn snap_text_scale(s: f32) -> f32 {
+    if (s - 1.0).abs() < EPS {
+        return 1.0;
+    }
+    (s / TEXT_SCALE_STEP).round() * TEXT_SCALE_STEP
 }
 
 /// Conservative overlap test: any non-empty intersection counts.
