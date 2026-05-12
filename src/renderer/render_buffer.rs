@@ -2,7 +2,7 @@ use super::quad::Quad;
 use crate::layout::types::span::Span;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, urect::URect};
-use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
+use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 

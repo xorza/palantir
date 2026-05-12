@@ -5,19 +5,18 @@
 //! 2. [`Composer`] — `&RenderCmdBuffer` → `RenderBuffer` (physical-px
 //!    quads + scissor groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
-//!    persistent per-frame allocation. The owning [`Renderer`] calls
-//!    [`Frontend::build`] once per frame and feeds the composed buffer
-//!    plus gradient atlas into the backend.
+//!    persistent per-frame allocation. [`Host`] calls [`Frontend::build`]
+//!    once per frame and feeds the composed buffer plus gradient atlas
+//!    into the backend.
 //!
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
 //!
-//! [`Renderer`]: crate::renderer::Renderer
+//! [`Host`]: crate::host::Host
 
 pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
-pub(crate) mod gradient_atlas;
 
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
@@ -31,9 +30,9 @@ use crate::ui::damage::Damage;
 /// `RenderBuffer` — which carries the gradient atlas as a field —
 /// and the [`Composer`] with its scratch). No GPU handles.
 ///
-/// Owned by [`Renderer`](crate::renderer::Renderer) alongside the
-/// backend; the renderer drives `Frontend::build` and hands the
-/// returned `&mut RenderBuffer` straight to the backend.
+/// Owned by [`Host`](crate::host::Host) alongside the backend; the
+/// host drives `Frontend::build` and hands the returned
+/// `&RenderBuffer` straight to the backend.
 #[derive(Default)]
 pub(crate) struct Frontend {
     pub(crate) encoder: Encoder,

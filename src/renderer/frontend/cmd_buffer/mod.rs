@@ -167,12 +167,13 @@ pub(crate) struct RenderCmdBuffer {
     pub(crate) kinds: Vec<CmdKind>,
     pub(crate) starts: Vec<u32>,
     pub(crate) data: Vec<u32>,
-    /// Self-contained per-variant geometry. `DrawMesh` /
-    /// `DrawPolyline` payload spans slice into the arenas inside
-    /// this. Self-containment is load-bearing: a future encode
-    /// cache snapshots a sub-range of `kinds`/`starts`/`data` plus
-    /// a copy of this struct, so replay doesn't need the original
-    /// `Tree` arenas around. See [`ShapePayloads`].
+    /// Per-variant geometry referenced by `DrawMesh` / `DrawPolyline`
+    /// payloads (spans slice into the arenas inside this). The encoder
+    /// pre-translates polyline points by their owner's top-left and
+    /// stores meshes verbatim, so the data is owner-relative input
+    /// the composer can read without needing `&Tree`. Self-containment
+    /// pins the composer's contract — `&RenderCmdBuffer → RenderBuffer`
+    /// with no recording-state reach-back. See [`ShapePayloads`].
     pub(crate) shape_payloads: ShapePayloads,
     /// Per-frame arena of `LinearGradient` values referenced by
     /// `DrawRect*Payload::fill_grad_idx`. Composer reads through this

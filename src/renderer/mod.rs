@@ -18,5 +18,6 @@
 //! the public top-level handle.
 pub(crate) mod backend;
 pub(crate) mod frontend;
+pub(crate) mod gradient_atlas;
 pub(crate) mod quad;
 pub(crate) mod render_buffer;

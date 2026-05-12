@@ -1,36 +1,32 @@
-//! Submission status of the most recently produced `FrameReport`.
-//! Shared between `Ui` (writes `Pending` at the top of `Ui::frame`,
-//! reads `was_last_submitted` to decide whether to invalidate the
-//! prev-frame damage snapshot) and the renderer (`Host::render`
-//! writes `Submitted` after a successful submit / backbuffer copy).
-//! `FrameReport` carries a clone so tests driving `Ui::frame`
-//! directly can ack the frame themselves.
-//!
-//! `AtomicU8` is overkill for the single-threaded renderer path, but
-//! cheap and lets `Ui` / `FrameReport` stay `Send`/`Sync` compatible
-//! without further constraints.
+//! Submission status of the most recently produced frame. Written by
+//! `Ui::frame` (→ `Pending` at frame top) and `Host::render` (→
+//! `Submitted` after a successful submit / backbuffer copy). Read by
+//! `Ui::should_invalidate_prev` to decide whether to rewind the
+//! damage snapshot. Single-threaded; `Cell` suffices.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::cell::Cell;
 
-#[derive(Clone, Debug, Default)]
-pub(crate) struct FrameState(Arc<AtomicU8>);
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum State {
+    /// Default. Treated like `Pending` by `was_last_submitted` so the
+    /// very first frame rewinds prev (no prior frame to trust).
+    #[default]
+    Initial,
+    Pending,
+    Submitted,
+}
 
-// FrameState::default() leaves the inner byte at 0, which doesn't
-// match SUBMITTED below — so the first `was_last_submitted` returns
-// false and the first `Ui::should_invalidate_prev` rewinds, exactly
-// as wanted.
-const FRAME_STATE_PENDING: u8 = 1;
-const FRAME_STATE_SUBMITTED: u8 = 2;
+#[derive(Debug, Default)]
+pub(crate) struct FrameState(Cell<State>);
 
 impl FrameState {
     pub(crate) fn mark_pending(&self) {
-        self.0.store(FRAME_STATE_PENDING, Ordering::Relaxed);
+        self.0.set(State::Pending);
     }
     pub(crate) fn mark_submitted(&self) {
-        self.0.store(FRAME_STATE_SUBMITTED, Ordering::Relaxed);
+        self.0.set(State::Submitted);
     }
     pub(crate) fn was_last_submitted(&self) -> bool {
-        self.0.load(Ordering::Relaxed) == FRAME_STATE_SUBMITTED
+        self.0.get() == State::Submitted
     }
 }
