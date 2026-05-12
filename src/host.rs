@@ -131,6 +131,12 @@ impl Host {
         scale_factor: f32,
         record: impl FnMut(&mut Ui),
     ) -> bool {
+        // Bracket the body with a Tracy *discontinuous* frame so the
+        // frame strip shows actual work duration, not the gap between
+        // back-to-back `finish_frame!()` ticks (which counts idle time
+        // between user input as one giant "lagging" frame).
+        #[cfg(feature = "profile-with-tracy")]
+        let _tracy_frame = tracy_client::non_continuous_frame!("frame");
         profiling::scope!("Host::frame_and_render");
         let display =
             Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
