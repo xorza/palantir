@@ -166,8 +166,6 @@ impl Host {
             }
         };
 
-        // conflicts with tracy's `non_continuous_frame!`
-        #[cfg(not(feature = "profile-with-tracy"))]
         profiling::finish_frame!();
 
         repaint
