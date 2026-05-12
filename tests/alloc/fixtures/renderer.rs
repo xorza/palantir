@@ -67,7 +67,7 @@ fn polyline_static_alloc_free() {
     });
 }
 
-/// Static `Mesh` pushed every frame via `Ui::add_mesh`. Vertex / index
+/// Static `Mesh` pushed every frame via `Ui::add_shape`. Vertex / index
 /// bytes are copied into the tree's mesh arena at `add_shape` time,
 /// so the mesh built once outside the closure is reused as-is. Pins
 /// that the mesh-encoding command path doesn't allocate at steady
@@ -87,7 +87,11 @@ fn mesh_static_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_mesh(&mesh);
+                ui.add_shape(Shape::Mesh {
+                    mesh: &mesh,
+                    local_rect: None,
+                    tint: Color::WHITE.into(),
+                });
             });
     });
 }
