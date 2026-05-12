@@ -21,6 +21,7 @@ mod justify;
 mod lines;
 mod mesh;
 mod pan_zoom;
+mod pan_zoom_auto;
 mod panels;
 mod popup;
 mod scroll;
@@ -46,6 +47,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("panels", panels::build),
     ("scroll", scroll::build),
     ("pan+zoom", pan_zoom::build),
+    (pan_zoom_auto::NAME, pan_zoom_auto::build),
     ("wrap", wrap::build),
     ("grid", grid::build),
     ("sizing", sizing::build),
