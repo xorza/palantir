@@ -88,7 +88,7 @@ pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
 /// compose — those happen elsewhere and arrive here as a
 /// `RenderBuffer`.
 pub(crate) struct WgpuBackend {
-    device: wgpu::Device,
+    pub(crate) device: wgpu::Device,
     queue: wgpu::Queue,
     viewport_uniform: ViewportUniform,
     quad: QuadPipeline,

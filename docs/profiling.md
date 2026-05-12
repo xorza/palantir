@@ -37,5 +37,8 @@ One scope per pass — `Ui::frame`, `Ui::post_record`, `Ui::finalize_frame`,
 a flame graph asks for one — blanket `#[profiling::function]` clutter
 drowns out signal.
 
-`Ui::frame` calls `profiling::finish_frame!()` on exit so the viewer's
-frame markers align with `frame_id`.
+`Host::render` calls `profiling::finish_frame!()` on exit (after GPU
+submit) so the viewer's frame markers bracket the whole record → submit
+cycle, not just the recorder. If you drive `Ui::frame` directly without
+a `Host` (tests, headless harnesses), call `profiling::finish_frame!()`
+yourself at the equivalent boundary.

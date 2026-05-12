@@ -67,8 +67,8 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
 fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
-    let out = ui.frame(display, Duration::ZERO, &mut record);
-    internals::mark_frame_submitted(&out);
+    let _ = ui.frame(display, Duration::ZERO, &mut record);
+    internals::mark_frame_submitted(ui);
 }
 
 /// Warm two frames so subsequent iterations land on the steady-state
