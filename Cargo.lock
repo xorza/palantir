@@ -1773,6 +1773,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "tracy-client",
  "wgpu",
  "winit",
 ]

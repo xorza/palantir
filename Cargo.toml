@@ -31,7 +31,11 @@ strum = { version = "*", features = ["derive"] }
 serde = { version = "*", features = ["derive"] }
 toml = "*"
 tinyvec = { version = "*", features = ["serde"] }
-profiling = { version = "1", default-features = false, features = ["procmacros"] }
+profiling = { version = "1.0.18", default-features = false, features = ["procmacros"] }
+# Pinned to whatever `profiling/profile-with-tracy` resolves to so cargo
+# dedupes to one tracy-client instance (one FFI connection). Bump in
+# lockstep with `profiling`.
+tracy-client = { version = "0.18", default-features = false, optional = true }
 
 [dev-dependencies]
 backtrace = "*"
@@ -88,7 +92,7 @@ bench-deep = []
 # Profiler backends — pick one. Off by default (zero overhead).
 # Tracy needs an external viewer; wgpu's own GPU zones light up
 # automatically because `profiling` is a singleton in the dep graph.
-profile-with-tracy = ["profiling/profile-with-tracy"]
+profile-with-tracy = ["profiling/profile-with-tracy", "dep:tracy-client"]
 profile-with-puffin = ["profiling/profile-with-puffin"]
 
 [profile.release]
