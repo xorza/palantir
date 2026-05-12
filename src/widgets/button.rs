@@ -48,29 +48,39 @@ impl Button {
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
-        let style = self
-            .style
-            .clone()
-            .unwrap_or_else(|| ui.theme.button.clone());
+        let mut element = self.element;
+        // One `response_for` call covers both theme-picking (with
+        // self-disabled merged in) and the returned `Response.state`
+        // (without the merge). The button's `ui.node` body doesn't
+        // mutate input state, so a re-read after `node` would return
+        // the same `ResponseState` minus the merge.
+        let raw_state = ui.response_for(element.id);
+        let mut picked_state = raw_state;
+        // Cascade lags by a frame; OR self-disabled in so a freshly
+        // toggled `.disabled(true)` lands disabled visuals immediately.
+        picked_state.disabled |= element.disabled;
+        let fallback_text = ui.theme.text;
+        // Borrow either the user override or the default theme without
+        // cloning the ~540-byte `ButtonTheme`. Copy out the four
+        // scalars we need (padding/margin/anim + picked `WidgetLook`)
+        // so the borrow on `ui.theme` ends before `animate(ui, ..)`
+        // reborrows `ui` mutably.
+        let style: &ButtonTheme = self.style.as_ref().unwrap_or(&ui.theme.button);
+        let style_padding = style.padding;
+        let style_margin = style.margin;
+        let style_anim = style.anim;
+        let look_target = *style.pick(picked_state);
         // Apply theme padding/margin when the builder hasn't set
         // anything (sentinel: `Spacing::ZERO` == "use theme"). User
         // overrides — anything non-zero set via `.padding(...)` /
         // `.margin(...)` — pass through unchanged.
-        let mut element = self.element;
         if element.padding == Spacing::ZERO {
-            element.padding = style.padding;
+            element.padding = style_padding;
         }
         if element.margin == Spacing::ZERO {
-            element.margin = style.margin;
+            element.margin = style_margin;
         }
-        let mut state = ui.response_for(element.id);
-        // Cascade lags by a frame; OR self-disabled in so a freshly
-        // toggled `.disabled(true)` lands disabled visuals immediately.
-        state.disabled |= element.disabled;
-        let fallback_text = ui.theme.text;
-        let look = style
-            .pick(state)
-            .animate(ui, element.id, fallback_text, style.anim);
+        let look = look_target.animate(ui, element.id, fallback_text, style_anim);
         element.chrome = Some(look.background);
         let label = self.label.clone();
         let label_align = self.label_align;
@@ -88,8 +98,10 @@ impl Button {
                 });
             }
         });
-        let state = ui.response_for(element.id);
-        Response { node, state }
+        Response {
+            node,
+            state: raw_state,
+        }
     }
 }
 
