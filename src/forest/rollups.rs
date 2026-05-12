@@ -33,12 +33,6 @@ pub(crate) struct NodeHash(pub(crate) u64);
 ///   across frames means nothing in the subtree changed; the
 ///   cross-frame measure cache keys on this. See
 ///   `src/layout/measure-cache.md`.
-/// - `has_grid[i]` — bit `i` is true iff the subtree rooted at node
-///   `i` contains any `LayoutMode::Grid` node. Fast-path skip for
-///   `MeasureCache`'s grid-hug snapshot/restore walk. Conceptually a
-///   structure summary, not a hash, but bundled here because it has
-///   the same lifecycle as the hash columns (populated by `post_record`,
-///   indexed by `NodeId`, read by the same caches).
 /// - `paints[i]` — bit `i` is true iff node `i` directly contributes
 ///   pixels (has chrome OR records ≥1 direct `ShapeRecord`). Read by the
 ///   damage diff: nodes that paint nothing (e.g. invisible click-eaters)
@@ -60,22 +54,18 @@ pub(crate) struct NodeHash(pub(crate) u64);
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<NodeHash>,
     pub(crate) subtree: Vec<NodeHash>,
-    pub(crate) has_grid: fixedbitset::FixedBitSet,
     pub(crate) paints: fixedbitset::FixedBitSet,
 }
 
 impl SubtreeRollups {
-    /// Reset the *hash* columns and size them for `n` records. `node`
-    /// is cleared with reserved capacity (filled by appending during
+    /// Reset and size every column for `n` records. `node` is cleared
+    /// with reserved capacity (filled by appending during
     /// `compute_node_hashes`); `subtree` is cleared and resized with
     /// default values (written by indexed assignment in
     /// `compute_subtree_hashes`'s reverse pre-order walk). `paints` is
     /// resized to `n` and cleared (filled by indexed `set` during
-    /// `compute_node_hashes`). `has_grid` is *not* touched here — its
-    /// lifecycle is owned by recording (cleared at `pre_record`,
-    /// populated by `open_node`/`close_node`, permuted by
-    /// `reorder_records`).
-    pub(crate) fn reset_hashes_for(&mut self, n: usize) {
+    /// `compute_node_hashes`).
+    pub(crate) fn reset_for(&mut self, n: usize) {
         self.node.clear();
         self.node.reserve(n);
         self.subtree.clear();

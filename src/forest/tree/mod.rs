@@ -2,7 +2,7 @@ use crate::ClipMode;
 use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
 use crate::forest::element::{
-    BoundsExtras, Element, LayoutCore, LayoutMode, NodeFlags, PanelExtras,
+    BoundsExtras, Element, ElementColumns, LayoutCore, LayoutMode, PanelExtras,
 };
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
@@ -186,6 +186,13 @@ pub(crate) struct Tree {
 
     // -- Output (populated by `post_record`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
+
+    /// Per-NodeId bit: `1` iff the subtree rooted at node `i` contains
+    /// any `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
+    /// grid-hug snapshot/restore walk. Recording-time lifecycle —
+    /// cleared by `pre_record`, grown by `open_node`, and propagated
+    /// up by `close_node` (so finished by the time `post_record` runs).
+    pub(crate) has_grid: fixedbitset::FixedBitSet,
 }
 
 impl Tree {
@@ -198,7 +205,7 @@ impl Tree {
         self.parents.clear();
         self.shapes.clear();
         self.grid.clear();
-        self.rollups.has_grid.clear();
+        self.has_grid.clear();
         self.roots.clear();
         self.open_frames.clear();
         self.pending_anchors.clear();
@@ -212,7 +219,7 @@ impl Tree {
             "post_record called with {} node(s) still open — a widget builder forgot close_node",
             self.open_frames.len(),
         );
-        self.rollups.reset_hashes_for(self.records.len());
+        self.rollups.reset_for(self.records.len());
         self.compute_node_hashes();
         self.compute_subtree_hashes();
     }
@@ -302,17 +309,19 @@ impl Tree {
         // stencil pass would mask exactly the rect bbox anyway, and
         // skipping it saves a render pass. Mirrors what users wrote
         // by hand before the API split.
-        let chrome = element.chrome;
         if matches!(element.clip, ClipMode::Rounded)
-            && chrome.is_none_or(|bg| bg.radius.approx_zero())
+            && element.chrome.is_none_or(|bg| bg.radius.approx_zero())
         {
             element.clip = ClipMode::Rect;
         }
-        let layout = LayoutCore::from_element(&element);
-        let attrs = NodeFlags::from_element(&element);
-        let bounds = BoundsExtras::from_element(&element);
-        let panel = PanelExtras::from_element(&element);
-        let widget_id = element.id;
+        let ElementColumns {
+            widget_id,
+            layout,
+            attrs,
+            bounds,
+            panel,
+            chrome,
+        } = element.into_columns();
 
         if let Some(parent_id) = parent
             && let LayoutMode::Grid(grid_idx) = self.records.layout()[parent_id.0 as usize].mode
@@ -366,7 +375,7 @@ impl Tree {
             attrs,
         });
         self.parents.push(parent.unwrap_or(NodeId::ROOT));
-        self.rollups.has_grid.grow(self.records.len());
+        self.has_grid.grow(self.records.len());
         // Column length-equality. `records` + four sparse + `parents`
         // must agree on `len`; a missed push silently shifts every
         // later node's index. soa-rs guards the records' six fields;
@@ -414,9 +423,9 @@ impl Tree {
         let end = self.records.subtree_end()[i];
 
         if matches!(self.records.layout()[i].mode, LayoutMode::Grid(_)) {
-            self.rollups.has_grid.insert(i);
+            self.has_grid.insert(i);
         }
-        let i_has_grid = self.rollups.has_grid.contains(i);
+        let i_has_grid = self.has_grid.contains(i);
 
         if let Some(parent) = self.open_frames.last().map(|f| f.node) {
             let pi = parent.index();
@@ -425,21 +434,30 @@ impl Tree {
                 ends[pi] = end;
             }
             if i_has_grid {
-                self.rollups.has_grid.insert(pi);
+                self.has_grid.insert(pi);
             }
         }
     }
 
     /// Iterate children of `parent` in declaration order, each tagged
-    /// with its collapse state (`Child::Active` / `Child::Collapsed`).
-    /// Use `.filter_map(Child::active)` for active-only iteration.
+    /// with its collapse state. Use [`Tree::active_children`] when you
+    /// only need non-collapsed children — that's the dominant access
+    /// pattern.
     pub(crate) fn children(&self, parent: NodeId) -> ChildIter<'_> {
         let pi = parent.0 as usize;
         ChildIter {
-            tree: self,
+            layouts: self.records.layout(),
+            ends: self.records.subtree_end(),
             next: parent.0 + 1,
             end: self.records.subtree_end()[pi],
         }
+    }
+
+    /// Iterate non-collapsed children of `parent`, yielding `NodeId`s
+    /// directly. Equivalent to `children(parent).filter_map(Child::active)`
+    /// but shorter at call sites — most layout drivers want this form.
+    pub(crate) fn active_children(&self, parent: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        self.children(parent).filter_map(Child::active)
     }
 
     pub(crate) fn tree_items(&self, node: NodeId) -> TreeItems<'_> {
@@ -458,7 +476,8 @@ impl Tree {
 }
 
 pub(crate) struct ChildIter<'a> {
-    tree: &'a Tree,
+    layouts: &'a [LayoutCore],
+    ends: &'a [u32],
     next: u32,
     end: u32,
 }
@@ -488,10 +507,13 @@ impl<'a> Iterator for ChildIter<'a> {
         if self.next >= self.end {
             return None;
         }
-        let id = NodeId(self.next);
-        let visibility = self.tree.records.layout()[id.index()].visibility;
-        self.next = self.tree.records.subtree_end()[self.next as usize];
-        Some(Child { id, visibility })
+        let i = self.next as usize;
+        let visibility = self.layouts[i].visibility;
+        self.next = self.ends[i];
+        Some(Child {
+            id: NodeId(i as u32),
+            visibility,
+        })
     }
 }
 

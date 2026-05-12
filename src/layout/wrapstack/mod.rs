@@ -17,7 +17,7 @@ use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
 use super::support::{JustifyOffsets, cross_place, justify_offsets, zero_subtree};
-use crate::forest::tree::{Child, NodeId, Tree};
+use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::{rect::Rect, size::Size};
@@ -126,7 +126,7 @@ pub(crate) fn measure(
     let mut line_cross = 0.0f32;
     let mut line_count = 0usize;
 
-    for c in tree.children(node).filter_map(Child::active) {
+    for c in tree.active_children(node) {
         let d = layout.measure(
             tree,
             c,
@@ -325,7 +325,7 @@ pub(crate) fn intrinsic(
         match req {
             LenReq::MinContent => {
                 let mut floor = 0.0f32;
-                for c in tree.children(node).filter_map(Child::active) {
+                for c in tree.active_children(node) {
                     floor = floor.max(layout.intrinsic(tree, c, query_axis, req, text));
                 }
                 floor
@@ -333,7 +333,7 @@ pub(crate) fn intrinsic(
             LenReq::MaxContent => {
                 let mut total = 0.0f32;
                 let mut count = 0usize;
-                for c in tree.children(node).filter_map(Child::active) {
+                for c in tree.active_children(node) {
                     total += layout.intrinsic(tree, c, query_axis, req, text);
                     count += 1;
                 }
@@ -346,7 +346,7 @@ pub(crate) fn intrinsic(
         // width — which we don't compute here. Conservative for typical
         // toolbar/badge use cases.
         let mut max = 0.0f32;
-        for c in tree.children(node).filter_map(Child::active) {
+        for c in tree.active_children(node) {
             max = max.max(layout.intrinsic(tree, c, query_axis, req, text));
         }
         max

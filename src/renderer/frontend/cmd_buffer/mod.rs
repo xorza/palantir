@@ -244,12 +244,7 @@ impl RenderCmdBuffer {
         let (stroke_color, stroke_width) = if stroke.is_noop() {
             (Color::TRANSPARENT, 0.0)
         } else {
-            (
-                stroke.brush.as_solid().expect(
-                    "gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2",
-                ),
-                stroke.width,
-            )
+            (stroke.brush.expect_solid(), stroke.width)
         };
         self.record_start(CmdKind::DrawRect);
         write_pod(

@@ -1,42 +1,23 @@
-//! Per-node element data: `Element` (wide builder form), the columns
-//! `Tree` stores it in (`LayoutCore`, `NodeFlags`, `NodeMeta`), and
-//! `ElementExtras` (rarely-set side table).
+//! Per-node element data: `Element` (the wide builder form) and the
+//! columns `Tree` stores it in:
 //!
-//! Adding a field to `Element` requires routing it to one of the
-//! columns. Column choice is by *reader*: layout passes touch only
-//! `LayoutCore`; cascade / encoder / hit-test read the 1-byte
-//! `NodeFlags` column densely; identity (`widget_id`) lives on
-//! `NodeMeta`.
+//! - `widget_id` — identity. Hit-test, state map, damage diff.
+//! - `LayoutCore` — mode, size, padding, margin, align, visibility.
+//!   Read by every measure / arrange / alignment pass.
+//! - `NodeFlags` — 1-byte packed sense / disabled / clip / focusable.
+//!   Read densely by cascade / encoder / hit-test.
+//! - `BoundsExtras` — sparse side table for transform / position /
+//!   grid / min_size / max_size. Allocated only when one differs
+//!   from `BoundsExtras::DEFAULT`.
+//! - `PanelExtras` — sparse side table for gap / line_gap / justify /
+//!   child_align. Allocated only when one differs from `DEFAULT`.
+//! - `chrome` — sparse `Background` paint. Routed straight from
+//!   `Element.chrome` (with `is_noop` filtered out in `Tree::open_node`).
 //!
-//! | field      | Element | LayoutCore | NodeFlags | NodeMeta | ElementExtras |
-//! |------------|:-------:|:----------:|:----------:|:--------:|:-------------:|
-//! | id         |    ✓    |            |            |    ✓     |               |
-//! | mode       |    ✓    |     ✓      |            |          |               |
-//! | size       |    ✓    |     ✓      |            |          |               |
-//! | padding    |    ✓    |     ✓      |            |          |               |
-//! | margin     |    ✓    |     ✓      |            |          |               |
-//! | align      |    ✓    |     ✓      |            |          |               |
-//! | visibility |    ✓    |     ✓      |            |          |               |
-//! | sense      |    ✓    |            |     ✓      |          |               |
-//! | disabled   |    ✓    |            |     ✓      |          |               |
-//! | clip       |    ✓    |            |     ✓      |          |               |
-//! | focusable  |    ✓    |            |     ✓      |          |               |
-//! | min_size   |    ✓    |            |            |          |       ✓       |
-//! | max_size   |    ✓    |            |            |          |       ✓       |
-//! | gap        |    ✓    |            |            |          |       ✓       |
-//! | justify    |    ✓    |            |            |          |       ✓       |
-//! | child_align|    ✓    |            |            |          |       ✓       |
-//! | position   |    ✓    |            |            |          |       ✓       |
-//! | grid       |    ✓    |            |            |          |       ✓       |
-//! | transform  |    ✓    |            |            |          |       ✓       |
-//!
-//! Each column type owns its own `from_element(&Element)` constructor,
-//! so adding a field is a single edit in the column it belongs to.
-//! `Tree::open_node` calls those constructors and pushes the results
-//! into the matching per-NodeId columns; the sparse side tables
-//! (`BoundsExtras`, `PanelExtras`) are only allocated when the
-//! constructed value differs from `DEFAULT`. `Configure` (the trait)
-//! provides one chained setter per row.
+//! Fan-out happens once in `Element::into_columns`. Adding a field
+//! is two local edits: append to the column type and route it in
+//! `into_columns`. `Configure` (trait below) provides one chained
+//! setter per field on `Element`.
 
 use crate::forest::seen_ids::IdSource;
 use crate::forest::visibility::Visibility;
@@ -216,18 +197,6 @@ impl BoundsExtras {
     pub(crate) fn is_default(&self) -> bool {
         self == &Self::DEFAULT
     }
-
-    /// Pull the bounds-column fields out of an `Element`. Lives next to
-    /// the column so a field migration is one local edit.
-    pub(crate) fn from_element(e: &Element) -> Self {
-        Self {
-            transform: e.transform,
-            position: e.position,
-            grid: e.grid,
-            min_size: e.min_size,
-            max_size: e.max_size,
-        }
-    }
 }
 
 impl PanelExtras {
@@ -240,17 +209,6 @@ impl PanelExtras {
 
     pub(crate) fn is_default(&self) -> bool {
         self == &Self::DEFAULT
-    }
-
-    /// Pull the panel-column fields out of an `Element`. Lives next to
-    /// the column so a field migration is one local edit.
-    pub(crate) fn from_element(e: &Element) -> Self {
-        Self {
-            gap: e.gap,
-            line_gap: e.line_gap,
-            justify: e.justify,
-            child_align: e.child_align,
-        }
     }
 }
 
@@ -281,21 +239,6 @@ pub(crate) struct LayoutCore {
     pub(crate) margin: Spacing,
     pub(crate) align: Align,
     pub(crate) visibility: Visibility,
-}
-
-impl LayoutCore {
-    /// Pull the layout-column fields out of an `Element`. Lives next to
-    /// the column so a field migration is one local edit.
-    pub(crate) fn from_element(e: &Element) -> Self {
-        Self {
-            mode: e.mode,
-            size: e.size,
-            padding: e.padding,
-            margin: e.margin,
-            align: e.align,
-            visibility: e.visibility,
-        }
-    }
 }
 
 impl std::hash::Hash for LayoutCore {
@@ -404,6 +347,19 @@ pub struct Element {
     pub(crate) transform: Option<TranslateScale>,
 }
 
+/// Per-node columns derived from one `Element`. Single fan-out point —
+/// `Tree::open_node` calls `Element::into_columns` once and moves each
+/// field into its column. Adding an `Element` field is a one-line edit
+/// here (one in the new column type, one routing line in `into_columns`).
+pub(crate) struct ElementColumns {
+    pub(crate) widget_id: WidgetId,
+    pub(crate) layout: LayoutCore,
+    pub(crate) attrs: NodeFlags,
+    pub(crate) bounds: BoundsExtras,
+    pub(crate) panel: PanelExtras,
+    pub(crate) chrome: Option<Background>,
+}
+
 impl Element {
     /// Build an `Element` with an *unset* id. Widget constructors call
     /// this; the caller must then chain one of [`Configure::id_salt`],
@@ -435,6 +391,38 @@ impl Element {
             clip: ClipMode::None,
             chrome: None,
             transform: None,
+        }
+    }
+
+    /// Fan this `Element` out into the per-NodeId columns `Tree` stores.
+    /// Single routing point — adding a field is one edit in the column
+    /// type plus one line here.
+    pub(crate) fn into_columns(self) -> ElementColumns {
+        ElementColumns {
+            widget_id: self.id,
+            layout: LayoutCore {
+                mode: self.mode,
+                size: self.size,
+                padding: self.padding,
+                margin: self.margin,
+                align: self.align,
+                visibility: self.visibility,
+            },
+            attrs: NodeFlags::pack(self.sense, self.disabled, self.clip, self.focusable),
+            bounds: BoundsExtras {
+                transform: self.transform,
+                position: self.position,
+                grid: self.grid,
+                min_size: self.min_size,
+                max_size: self.max_size,
+            },
+            panel: PanelExtras {
+                gap: self.gap,
+                line_gap: self.line_gap,
+                justify: self.justify,
+                child_align: self.child_align,
+            },
+            chrome: self.chrome,
         }
     }
 }
@@ -650,16 +638,10 @@ impl NodeFlags {
     const CLIP_MASK: u8 = 0b11 << Self::CLIP_SHIFT;
     const FOCUSABLE: u8 = 1 << 7;
 
-    /// Pack the paint/input bits out of an `Element`. Lives next to
-    /// the column so a field migration is one local edit. Reads
-    /// `clip` (mutated upstream in `Tree::open_node` when rounded-clip
-    /// downgrades to rect) so callers either pass a fresh `Element`
-    /// or accept the post-downgrade value.
-    pub(crate) fn from_element(e: &Element) -> Self {
-        Self::pack(e.sense, e.disabled, e.clip, e.focusable)
-    }
-
-    fn pack(sense: Sense, disabled: bool, clip: ClipMode, focusable: bool) -> Self {
+    /// Pack the paint/input bits. Reads `clip` post-downgrade (rounded
+    /// → rect when the chrome lacks a radius — that fix-up happens in
+    /// `Tree::open_node` before this is called).
+    pub(crate) fn pack(sense: Sense, disabled: bool, clip: ClipMode, focusable: bool) -> Self {
         let mut bits = sense.bits() & Self::SENSE_MASK;
         if disabled {
             bits |= Self::DISABLED;

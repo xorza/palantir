@@ -3,7 +3,7 @@ use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
 use super::support::{AxisAlignPair, place_axis, resolved_axis_align, zero_subtree};
 use crate::forest::element::LayoutMode;
-use crate::forest::tree::{Child, NodeId, Tree};
+use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::{align::AxisAlign, sizing::Sizing, span::Span, track::Track};
 use crate::primitives::{rect::Rect, size::Size};
@@ -378,7 +378,7 @@ fn measure_inner(
     // `&mut depth_stack[depth]` borrow is released before the
     // `layout.intrinsic` calls below (which need `&mut layout`).
     let col_tracks = layout.scratch.grid.depth_stack.at(depth).col.tracks.clone();
-    for c in tree.children(node).filter_map(Child::active) {
+    for c in tree.active_children(node) {
         let cell = tree.bounds(c).grid;
         if cell.col_span != 1 {
             continue;
@@ -893,7 +893,7 @@ pub(crate) fn intrinsic(
         };
     }
 
-    for c in tree.children(node).filter_map(Child::active) {
+    for c in tree.active_children(node) {
         let cell = tree.bounds(c).grid;
         let span = match axis {
             Axis::X => cell.col_span,
