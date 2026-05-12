@@ -26,8 +26,26 @@
 use crate::common::hash::Hasher as FxHasher;
 use crate::primitives::brush::{Interp, MAX_STOPS, Stop};
 use crate::primitives::color::{Color, Srgb8, linear_to_oklab, oklab_to_linear};
+use crate::primitives::num::canon_bits;
 use std::cell::Cell;
 use std::hash::Hasher;
+
+/// Index into the gradient LUT atlas texture. `LutRow(0)` is the
+/// magenta debug fallback (so a stray default value paints obviously
+/// wrong); real registrations occupy `1..ATLAS_ROWS`. Newtype keeps
+/// the atlas-row identifier from being silently swapped with another
+/// `u32` field on `Quad`.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct LutRow(pub(crate) u32);
+
+impl LutRow {
+    /// Sentinel for solid (non-gradient) quads. The shader only samples
+    /// the LUT when `fill_kind` is a gradient, so the value is unused
+    /// in that path; a stray `FALLBACK` reaching the sampler paints
+    /// magenta.
+    pub(crate) const FALLBACK: LutRow = LutRow(0);
+}
 
 /// Number of rows in the LUT atlas texture. One row per distinct
 /// gradient currently in use. Row 0 is reserved as a debug-magenta
@@ -55,6 +73,14 @@ pub(crate) const LUT_ROW_BYTES: usize = LUT_ROW_TEXELS * 4;
 /// sampling `t` coordinate, not at bake time — one row serves all
 /// spread modes for the same gradient.
 pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut [u8; LUT_ROW_BYTES]) {
+    // Caller invariant: 2..=MAX_STOPS. Asserted so accidental callers
+    // from elsewhere in the crate trip immediately instead of UB-ing
+    // through `lerp_at`'s `stops[len-1]` / bracket reads.
+    assert!(
+        (2..=MAX_STOPS).contains(&stops.len()),
+        "bake_stops requires 2..={MAX_STOPS} stops, got {}",
+        stops.len(),
+    );
     // Sort stops by offset into a stack scratch. 8 elements max, simple
     // insertion sort beats any allocation. Equal offsets stay in input
     // order (stable) so a hard-transition pair (`(0.5, A), (0.5, B)`)
@@ -195,7 +221,9 @@ fn lerp_oklab(a: Srgb8, b: Srgb8, u: f32) -> Srgb8 {
 /// LRU row (smallest `last_used`) is evicted and re-baked in place.
 pub(crate) struct GradientCpuAtlas {
     /// `Some(content_hash)` per row occupied by a gradient; `None` for
-    /// free rows. Row 0 holds the magenta-fallback marker (`Some(0)`).
+    /// free rows. Row 0 is unreachable from the probe (which scans
+    /// `1..ATLAS_ROWS`) so its slot stays `None` — the magenta-fill
+    /// payload in `baked[0]` is the real fallback contract.
     rows: [Option<u64>; ATLAS_ROWS as usize],
     /// Baked LUT row bytes, indexed by row id. Row 0's contents are
     /// the magenta-fallback fill. Storage is a single 256 KB heap
@@ -204,14 +232,15 @@ pub(crate) struct GradientCpuAtlas {
     baked: Vec<[u8; LUT_ROW_BYTES]>,
     /// Per-row "last touched" timestamp. Bumped on every `register_stops`
     /// hit and on bake. The LRU victim is the row with the smallest
-    /// stamp; row 0 is excluded. `u32` rolls over after ~136 years at
-    /// 1000 registers/sec — not a real concern.
-    last_used: [u32; ATLAS_ROWS as usize],
+    /// stamp; row 0 is excluded. `u64` so wrap is unreachable in any
+    /// realistic workload (a `u32` at 60 fps × 200 registers/frame
+    /// rolls over in ~10 years and silently mis-evicts on wrap).
+    last_used: [u64; ATLAS_ROWS as usize],
     /// Monotonic register counter. Each `register_stops` call bumps
     /// it and stamps the touched row, so within a single frame later
     /// registers are "newer" than earlier ones (fine — eviction needs
     /// a strict-order comparator, not wall-clock semantics).
-    clock: u32,
+    clock: u64,
     /// Any row changed since the last `flush`. Per-row tracking is
     /// overkill at 256 KB total: one `queue.write_texture` call of
     /// 256 KB beats N calls of 1 KB each on the common warmup path
@@ -252,9 +281,10 @@ impl GradientCpuAtlas {
             row[off + 2] = 0xff;
             row[off + 3] = 0xff;
         }
-        // Reserve the slot with a sentinel hash so it never gets
-        // re-claimed by a real gradient that happens to hash to 0.
-        self.rows[0] = Some(0);
+        // No `rows[0]` sentinel: the probe range is `1..ATLAS_ROWS`,
+        // so row 0 is unreachable regardless of what hash a real
+        // gradient produces.
+        //
         // First-frame upload paints the magenta fallback.
         self.dirty.set(true);
     }
@@ -267,7 +297,7 @@ impl GradientCpuAtlas {
     ///
     /// Bumps the per-row LRU stamp on every call so eviction picks the
     /// least-recently-touched row when the table is full.
-    pub(crate) fn register_stops(&mut self, stops: &[Stop], interp: Interp) -> u32 {
+    pub(crate) fn register_stops(&mut self, stops: &[Stop], interp: Interp) -> LutRow {
         self.clock = self.clock.wrapping_add(1);
         let stamp = self.clock;
         let content_hash = hash_stops(stops, interp);
@@ -275,20 +305,20 @@ impl GradientCpuAtlas {
         // claimed by a real gradient. Two passes: first look for a
         // match or an empty slot; if neither exists, evict the LRU
         // row (single linear scan over rows 1..ATLAS_ROWS).
-        let start = 1 + (content_hash % (ATLAS_ROWS as u64 - 1)) as u32;
+        let base = (content_hash % (ATLAS_ROWS as u64 - 1)) as u32;
         for offset in 0..(ATLAS_ROWS - 1) {
-            let row = 1 + ((start - 1 + offset) % (ATLAS_ROWS - 1));
+            let row = 1 + (base + offset) % (ATLAS_ROWS - 1);
             match self.rows[row as usize] {
                 Some(h) if h == content_hash => {
                     self.last_used[row as usize] = stamp;
-                    return row;
+                    return LutRow(row);
                 }
                 None => {
                     bake_stops(stops, interp, &mut self.baked[row as usize]);
                     self.rows[row as usize] = Some(content_hash);
                     self.last_used[row as usize] = stamp;
                     self.dirty.set(true);
-                    return row;
+                    return LutRow(row);
                 }
                 _ => continue,
             }
@@ -300,7 +330,7 @@ impl GradientCpuAtlas {
         self.rows[victim as usize] = Some(content_hash);
         self.last_used[victim as usize] = stamp;
         self.dirty.set(true);
-        victim
+        LutRow(victim)
     }
 
     /// Scan rows 1..ATLAS_ROWS for the smallest `last_used` stamp.
@@ -343,14 +373,7 @@ fn hash_stops(stops: &[Stop], interp: Interp) -> u64 {
     h.write_u8(interp as u8);
     h.write_u8(stops.len() as u8);
     for s in stops {
-        let bits = if s.offset.is_nan() {
-            f32::NAN.to_bits()
-        } else if s.offset == 0.0 {
-            0
-        } else {
-            s.offset.to_bits()
-        };
-        h.write_u32(bits);
+        h.write_u32(canon_bits(s.offset));
         h.write_u8(s.color.r);
         h.write_u8(s.color.g);
         h.write_u8(s.color.b);
@@ -578,8 +601,16 @@ mod tests {
         LinearGradient::two_stop(0.0, Srgb8::rgb(r, g, b), Srgb8::rgb(0, 0xff, 0))
     }
 
-    fn register_for(atlas: &mut GradientCpuAtlas, g: LinearGradient) -> u32 {
+    fn register_for(atlas: &mut GradientCpuAtlas, g: LinearGradient) -> LutRow {
         atlas.register_stops(&g.stops, g.interp)
+    }
+
+    fn assert_real_row(row: LutRow) {
+        assert!(
+            (1..ATLAS_ROWS).contains(&row.0),
+            "row {} must be in 1..ATLAS_ROWS",
+            row.0,
+        );
     }
 
     /// Row 0 is reserved magenta. Created at construction; dirty list
@@ -605,10 +636,7 @@ mod tests {
         let mut atlas = GradientCpuAtlas::default();
         let g = distinct_grad(0.1);
         let row = atlas.register_stops(&g.stops, g.interp);
-        assert!(
-            (1..ATLAS_ROWS).contains(&row),
-            "row {row} must be in 1..ATLAS_ROWS"
-        );
+        assert_real_row(row);
         assert!(atlas.dirty.get(), "register must mark atlas dirty");
     }
 
@@ -657,9 +685,10 @@ mod tests {
             let row = atlas.register_stops(&g.stops, g.interp);
             assert!(
                 seen.insert(row),
-                "row {row} reused across distinct gradients"
+                "row {} reused across distinct gradients",
+                row.0,
             );
-            assert!((1..ATLAS_ROWS).contains(&row));
+            assert_real_row(row);
         }
         assert_eq!(seen.len(), ATLAS_ROWS as usize - 1);
     }
@@ -671,7 +700,7 @@ mod tests {
     #[test]
     fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
         let mut atlas = GradientCpuAtlas::default();
-        let mut filled_rows = Vec::with_capacity((ATLAS_ROWS - 1) as usize);
+        let mut filled_rows: Vec<LutRow> = Vec::with_capacity((ATLAS_ROWS - 1) as usize);
         for i in 0..(ATLAS_ROWS - 1) {
             filled_rows.push(register_for(&mut atlas, distinct_grad(i as f32 * 0.01)));
         }
@@ -683,7 +712,7 @@ mod tests {
         let lru = filled_rows[0];
         // Push one more distinct gradient → forces eviction.
         let new_row = register_for(&mut atlas, distinct_grad(9999.0));
-        assert_ne!(new_row, 0, "row 0 (magenta) must never be evicted");
+        assert_ne!(new_row.0, 0, "row 0 (magenta) must never be evicted");
         assert_eq!(
             new_row, lru,
             "newest registration must land in the LRU slot",
@@ -736,10 +765,7 @@ mod tests {
         register_for(&mut atlas, distinct_grad(9999.0));
         // Re-register `first` — must succeed and return a valid row.
         let reborn = register_for(&mut atlas, first);
-        assert!(
-            (1..ATLAS_ROWS).contains(&reborn),
-            "re-registered row {reborn} must be valid",
-        );
+        assert_real_row(reborn);
     }
 
     /// `flush` returns `Some(...)` once after a register, then `None`

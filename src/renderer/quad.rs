@@ -5,6 +5,7 @@
 
 use crate::primitives::brush::{FillAxis, Spread};
 use crate::primitives::{color::Color, corners::Corners, rect::Rect};
+use crate::renderer::gradient_atlas::LutRow;
 use bytemuck::{Pod, Zeroable};
 
 /// Packed fill-brush metadata for `Quad.fill_kind` and the matching
@@ -100,9 +101,11 @@ pub(crate) struct Quad {
     /// Packed brush metadata; see [`FillKind`] for layout.
     pub(crate) fill_kind: FillKind,
     /// Row index into the gradient atlas texture when
-    /// `fill_kind & 0xFF == 1`. Row 0 is the magenta debug fallback
-    /// (any non-zero value here from a misuse paints brightly wrong).
-    pub(crate) fill_lut_row: u32,
+    /// `fill_kind & 0xFF == 1`. `LutRow(0)` (`LutRow::FALLBACK`) is the
+    /// magenta debug fallback — any quad reaching the sampler with that
+    /// value paints magenta. Solid quads write `LutRow::FALLBACK` and
+    /// the shader ignores the field for `fill_kind.is_solid()`.
+    pub(crate) fill_lut_row: LutRow,
     /// Gradient axis vector — see [`FillAxis`]. Ignored when
     /// `fill_kind.is_solid()`.
     pub(crate) fill_axis: FillAxis,
