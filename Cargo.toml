@@ -31,7 +31,7 @@ strum = { version = "*", features = ["derive"] }
 serde = { version = "*", features = ["derive"] }
 toml = "*"
 tinyvec = { version = "*", features = ["serde"] }
-profiling = { version = "1", default-features = false }
+profiling = { version = "1", default-features = false, features = ["procmacros"] }
 
 [dev-dependencies]
 backtrace = "*"
