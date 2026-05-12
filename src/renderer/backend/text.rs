@@ -306,9 +306,9 @@ fn text_bounds(b: URect) -> TextBounds {
 }
 
 fn glyphon_color(c: Color) -> glyphon::Color {
-    let r = (c.r.clamp(0.0, 1.0) * 255.0).round() as u8;
-    let g = (c.g.clamp(0.0, 1.0) * 255.0).round() as u8;
-    let b = (c.b.clamp(0.0, 1.0) * 255.0).round() as u8;
-    let a = (c.a.clamp(0.0, 1.0) * 255.0).round() as u8;
-    glyphon::Color::rgba(r, g, b, a)
+    // Glyphon's default `ColorMode::Accurate` decodes the byte channels
+    // sRGB→linear inside its shader before writing to the sRGB target,
+    // so we must hand it sRGB-encoded bytes, not linear.
+    let c = c.to_srgb8();
+    glyphon::Color::rgba(c.r, c.g, c.b, c.a)
 }

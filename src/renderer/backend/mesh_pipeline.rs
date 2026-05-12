@@ -5,28 +5,10 @@
 //! pipeline carries no per-draw uniform beyond the shared viewport.
 
 use crate::primitives::mesh::MeshVertex;
-use encase::{ShaderSize, ShaderType, UniformBuffer};
-use glam::Vec2;
-
-#[derive(Copy, Clone, Debug, ShaderType)]
-struct ViewportUniform {
-    size: Vec2,
-}
-
-impl ViewportUniform {
-    const BYTES: usize = Self::SHADER_SIZE.get() as usize;
-
-    fn encode(&self) -> [u8; Self::BYTES] {
-        let mut out = [0u8; Self::BYTES];
-        UniformBuffer::new(&mut out[..]).write(self).unwrap();
-        out
-    }
-}
 
 pub(crate) struct MeshPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    viewport_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
     vertex_capacity: usize,
     index_buffer: wgpu::Buffer,
@@ -38,7 +20,11 @@ pub(crate) struct MeshPipeline {
 }
 
 impl MeshPipeline {
-    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        viewport_buffer: &wgpu::Buffer,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.mesh.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
@@ -56,13 +42,6 @@ impl MeshPipeline {
                 },
                 count: None,
             }],
-        });
-
-        use wgpu::util::DeviceExt;
-        let viewport_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("palantir.mesh.viewport"),
-            contents: &ViewportUniform { size: Vec2::ZERO }.encode(),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -129,7 +108,6 @@ impl MeshPipeline {
         Self {
             pipeline,
             bind_group,
-            viewport_buffer,
             vertex_buffer,
             vertex_capacity,
             index_buffer,
@@ -186,16 +164,9 @@ impl MeshPipeline {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        viewport: Vec2,
         vertices: &[MeshVertex],
         indices: &[u16],
     ) {
-        queue.write_buffer(
-            &self.viewport_buffer,
-            0,
-            &ViewportUniform { size: viewport }.encode(),
-        );
-
         if vertices.is_empty() || indices.is_empty() {
             return;
         }
