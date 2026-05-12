@@ -38,7 +38,6 @@
 //! constructed value differs from `DEFAULT`. `Configure` (the trait)
 //! provides one chained setter per row.
 
-use crate::forest::seen_ids::IdSource;
 use crate::forest::visibility::Visibility;
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
@@ -49,6 +48,7 @@ use crate::layout::types::{
 use crate::primitives::{
     background::Background, size::Size, spacing::Spacing, transform::TranslateScale,
 };
+use crate::ui::seen_ids::IdSource;
 use glam::Vec2;
 
 /// How a node arranges its children. Stored on `Element::mode` and read by

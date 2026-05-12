@@ -15,6 +15,7 @@
 //!    seen-id state, so `prev` stays anchored at the last *painted*
 //!    frame regardless of how many discard passes ran.
 
+use crate::forest::element::Element;
 use crate::forest::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -69,16 +70,17 @@ impl SeenIds {
         self.dup.clear();
     }
 
-    /// Record a widget for this frame and return the id it should
-    /// actually use. Auto ids that collide are silently disambiguated
-    /// by mixing in an occurrence counter; explicit-id collisions are
-    /// hard bugs and panic with call-site context.
-    pub(crate) fn record(&mut self, id: WidgetId, source: IdSource) -> WidgetId {
+    /// Record `element` for this frame, rewriting `element.id` if its
+    /// id had to be disambiguated. Auto ids that collide are silently
+    /// disambiguated by mixing in an occurrence counter; explicit-id
+    /// collisions are hard bugs and panic with call-site context.
+    pub(crate) fn record(&mut self, element: &mut Element) {
+        let id = element.id;
         if self.curr.insert(id) {
-            return id;
+            return;
         }
         assert!(
-            matches!(source, IdSource::Auto),
+            matches!(element.id_source, IdSource::Auto),
             "WidgetId collision — id {id:?} recorded twice this frame. \
              Two explicit `.id_salt(key)` calls produced the same hash; \
              pick distinct keys. Duplicate ids silently corrupt focus, \
@@ -93,7 +95,7 @@ impl SeenIds {
              — an explicit `.id_salt(key)` produced the same hash as an auto-generated \
              id at occurrence {counter}. Pick a different explicit key.",
         );
-        disambiguated
+        element.id = disambiguated;
     }
 
     /// Populate `self.removed` with widgets present in `prev` but

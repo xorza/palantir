@@ -1,5 +1,6 @@
 pub(crate) mod cascade;
 pub(crate) mod damage;
+pub(crate) mod seen_ids;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
@@ -20,6 +21,7 @@ use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
 use crate::ui::damage::{Damage, DamageEngine};
+use crate::ui::seen_ids::SeenIds;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use std::time::Duration;
@@ -30,6 +32,12 @@ use std::time::Duration;
 /// frame-lifecycle rationale.
 pub struct Ui {
     pub(crate) forest: Forest,
+    /// Per-frame `WidgetId` tracker — collision detection across all
+    /// layers, removed-widget diff, and frame rollover. Lives on `Ui`
+    /// (not `Forest`) so the same `removed` set that drives the
+    /// recording-arena rollover also fans out to the per-widget caches
+    /// (`state`, `anim`, `text`, `layout_engine`, `damage_engine`).
+    pub(crate) ids: SeenIds,
     pub theme: Theme,
     /// Cross-frame `WidgetId → Any` widget state.
     pub(crate) state: StateMap,
@@ -96,6 +104,7 @@ impl Ui {
     pub fn with_text(text: TextShaper) -> Self {
         Self {
             forest: Forest::default(),
+            ids: SeenIds::default(),
             theme: Theme::default(),
             state: StateMap::default(),
             text,
@@ -200,6 +209,7 @@ impl Ui {
     }
 
     pub(crate) fn pre_record(&mut self) {
+        self.ids.pre_record();
         self.forest.pre_record();
     }
 
@@ -227,7 +237,7 @@ impl Ui {
     /// `post_record` so a widget that vanishes in pass A but returns
     /// in pass B keeps its state across the discard.
     pub(crate) fn finalize_frame(&mut self) {
-        let removed = self.forest.ids.rollover();
+        let removed = self.ids.rollover();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
@@ -238,7 +248,7 @@ impl Ui {
         self.damage = self.damage_engine.compute(
             &self.forest,
             &self.layout.cascades,
-            &self.forest.ids.removed,
+            &self.ids.removed,
             self.display.logical_rect(),
         );
     }
@@ -287,7 +297,13 @@ impl Ui {
         result
     }
 
-    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
+    pub(crate) fn node(&mut self, mut element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
+        // Resolve the widget id at the recording boundary: builders
+        // produce an unset id by default and chain `id_salt` /
+        // `auto_id` to set it; explicit-id collisions hard-assert in
+        // `SeenIds::record`, auto-id collisions get silently
+        // disambiguated.
+        self.ids.record(&mut element);
         let node = self.forest.open_node(element);
         f(self);
         self.forest.close_node();
