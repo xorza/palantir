@@ -253,6 +253,40 @@ fn skip_frame_does_not_force_next_to_full() {
     );
 }
 
+/// Regression: a host that early-returns on `skip_render` (the natural
+/// pattern — no swapchain acquire when there's nothing to paint, see
+/// `examples/showcase/main.rs`) never calls `mark_submitted`. Without
+/// `Ui::frame` self-acking skip frames, the next paint frame's
+/// `should_invalidate_prev` saw `frame_skipped = true` and escalated
+/// to `Full` — visible as a full-window red flash in the damage debug
+/// overlay on every idle→input transition (e.g. mouse move).
+#[test]
+fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
+    let mut ui = Ui::new();
+    let first = ui
+        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .damage;
+    assert_eq!(first, Some(Damage::Full));
+    ui.frame_state.mark_submitted();
+
+    // Identical content → Skip. Host bypasses `render()` entirely and
+    // never acks; `Ui::frame` must self-ack the skip.
+    let skip = ui
+        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .damage;
+    assert!(skip.is_none(), "identical content must Skip");
+    // NOTE: deliberately no `mark_submitted` here.
+
+    // Authoring change → expect `Partial`, not `Full`.
+    let next = ui
+        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
+        .damage;
+    assert!(
+        matches!(next, Some(Damage::Partial(_))),
+        "unacked skip poisoned next frame into Full: {next:?}",
+    );
+}
+
 /// Pin: an authoring change on one leaf marks just that leaf
 /// dirty; the parent (whose own fields didn't change and whose
 /// rect is identical) stays clean.
