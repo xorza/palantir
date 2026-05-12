@@ -136,6 +136,13 @@ pub(crate) struct AnimRow<T: Animatable> {
     /// logic still runs in the short-circuited call so pass B's
     /// post-action target replaces pass A's stale one.
     pub(crate) advanced_at: u64,
+    /// Cached settle state, set true on insert / when the integrator
+    /// or `within_settle_eps` confirms settlement, false on retarget.
+    /// Lets `tick` fast-return on a steady-state row without the
+    /// `sub` + `magnitude_squared` settle math; the `PartialEq`
+    /// retarget compare still runs so a target change unfreezes the
+    /// row immediately.
+    pub(crate) settled: bool,
 }
 
 /// Per-`T` animation table. Lives inside [`AnimMap`] behind a boxed
@@ -196,6 +203,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                     segment_start: target,
                     touched: true,
                     advanced_at: frame_id,
+                    settled: true,
                 });
                 return TickResult {
                     current: target,
@@ -207,6 +215,19 @@ impl<T: Animatable> AnimMapTyped<T> {
         row.touched = true;
         let already_advanced = row.advanced_at == frame_id;
         row.advanced_at = frame_id;
+
+        // Steady-state fast path. Once a row settles, every subsequent
+        // tick with the same target should be a no-op — skip the
+        // `sub` + `magnitude_squared` settle math entirely. Retarget
+        // detection still runs (the `target != row.target` compare
+        // below) so a caller changing the target unfreezes the row
+        // immediately.
+        if row.settled && row.target == target {
+            return TickResult {
+                current: row.current,
+                settled: true,
+            };
+        }
 
         // Retarget: duration restarts the segment from `current`;
         // spring keeps velocity *only when it aids motion toward the
@@ -237,6 +258,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                 }
             }
             row.target = target;
+            row.settled = false;
         }
 
         // Snap-if-close fast path. If `current` is already within
@@ -249,6 +271,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         if within_settle_eps(row.current.sub(row.target), row.velocity) {
             row.current = row.target;
             row.velocity = T::zero();
+            row.settled = true;
             return TickResult {
                 current: row.target,
                 settled: true,
@@ -276,6 +299,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                 if settled {
                     row.current = row.target;
                 }
+                row.settled = settled;
                 TickResult {
                     current: row.current,
                     settled,
@@ -292,6 +316,7 @@ impl<T: Animatable> AnimMapTyped<T> {
                 );
                 row.current = step.current;
                 row.velocity = step.velocity;
+                row.settled = step.settled;
                 TickResult {
                     current: row.current,
                     settled: step.settled,
