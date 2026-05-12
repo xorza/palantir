@@ -16,8 +16,9 @@
 #   BENCH=frame FILTER=frame/end_frame_resizing scripts/bench-perf.sh
 #
 # Env:
-#   BENCH   bench target name from Cargo.toml (default: layout)
-#   FILTER  criterion filter, prepended to bench args (default: empty = all)
+#   BENCH     bench target name from Cargo.toml (default: layout)
+#   FILTER    criterion filter, prepended to bench args (default: empty = all)
+#   FEATURES  cargo features, comma-separated (default: empty)
 #
 # For allocations (the project's "alloc-free per frame after warmup" claim),
 # use dhat instead — perf isn't well-suited:
@@ -33,6 +34,7 @@ PERF_REPORT=/tmp/palantir-perf-report.txt
 PERF_STAT=/tmp/palantir-perf-stat.txt
 BENCH_NAME="${BENCH:-layout}"
 FILTER_ARG="${FILTER:-}"
+FEATURES_ARG="${FEATURES:-}"
 EXTRA_ARGS=("$@")
 if [ ${#EXTRA_ARGS[@]} -eq 0 ]; then
     EXTRA_ARGS=(--profile-time 5)
@@ -46,7 +48,7 @@ BENCH_ARGS+=("${EXTRA_ARGS[@]}")
 # Sampling frequency. Cap is /proc/sys/kernel/perf_event_max_sample_rate
 # (50000 on this box). 4999 gives ~2.5x the previous data density without
 # tripping the throttle. Raise via sysctl if you need more.
-PERF_FREQ=4999
+PERF_FREQ=5000
 
 # Pin to P-core 0. cpu_core covers 0-15; cpu_atom covers 16-31.
 PIN_CPU=0
@@ -62,8 +64,13 @@ if ! command -v taskset >/dev/null 2>&1; then
 fi
 
 echo "==> Building bench '$BENCH_NAME' with debug symbols"
+CARGO_BUILD_ARGS=(--bench "$BENCH_NAME")
+if [ -n "$FEATURES_ARG" ]; then
+    CARGO_BUILD_ARGS+=(--features "$FEATURES_ARG")
+    echo "    features: $FEATURES_ARG"
+fi
 CARGO_PROFILE_BENCH_DEBUG=line-tables-only \
-    cargo bench --bench "$BENCH_NAME" --no-run 2>&1 \
+    cargo bench "${CARGO_BUILD_ARGS[@]}" --no-run 2>&1 \
     | tail -3
 
 BENCH_BIN=$(ls -t "target/release/deps/${BENCH_NAME}"-* 2>/dev/null | grep -v '\.d$' | head -1)
