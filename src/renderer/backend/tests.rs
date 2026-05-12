@@ -236,13 +236,14 @@ fn schedule_replays_per_damage_rect() {
 
 // ---------- Stencil-path coverage --------------------------------
 
-/// Pin: a stencil-clipped group with quads and text emits the full
-/// bracket — mask write at `ref=1`, quads, text, mask clear at
-/// `ref=0` — so the next group sees a clean stencil regardless of
-/// clip ordering. Pre-`render_schedule` tests didn't cover this; the
-/// stencil ordering bug class was visible only via visual fixtures.
+/// Pin: a stencil-clipped group emits `MaskWrite` before its draws so
+/// fragments inside the rounded SDF pass `Equal(1)`. The trailing
+/// clear is elided here — the pass's `StoreOp::Discard` drops the
+/// stencil contents, so leaving a mask stamped at end-of-pass is
+/// correctness-neutral. The clear only appears when a *following*
+/// group needs a clean stencil (different mask, or `None`).
 #[test]
-fn stencil_group_brackets_draws_with_mask_write_clear() {
+fn stencil_group_brackets_draws_with_mask_write() {
     let buf = buf_with(vec![DrawGroup {
         scissor: Some(URect::new(0, 0, 100, 100)),
         rounded_clip: Some(RoundedClip {
@@ -259,12 +260,7 @@ fn stencil_group_brackets_draws_with_mask_write_clear() {
     let mask_indices = &[Some(0u32)];
     assert_eq!(
         simplify(&collect(&buf, None, mask_indices, true)),
-        vec![
-            DrawOp::MaskWrite(0),
-            DrawOp::Quads(0),
-            DrawOp::Text(0),
-            DrawOp::MaskClear(0),
-        ],
+        vec![DrawOp::MaskWrite(0), DrawOp::Quads(0), DrawOp::Text(0)],
     );
 }
 
@@ -315,11 +311,80 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
     );
 }
 
+/// Pin: consecutive groups sharing a `rounded_clip` (same `mask_idx`)
+/// elide the prior group's tail clear and the next group's prologue
+/// write — the mask stays stamped, both groups draw under ref=1.
+/// Saves two mask-quad draws and two stencil-ref sets per shared run.
+/// A third group with a different mask still triggers the full
+/// clear-then-write transition.
+#[test]
+fn stencil_consecutive_same_mask_groups_dedup_writes() {
+    let buf = buf_with(vec![
+        // Groups 0 and 1: share mask 0 (e.g. a panel with multiple
+        // children all bound to the same rounded-clip ancestor).
+        DrawGroup {
+            scissor: Some(URect::new(0, 0, 100, 100)),
+            rounded_clip: Some(RoundedClip {
+                mask_rect: Rect {
+                    min: Vec2::ZERO,
+                    size: Size::new(100.0, 100.0),
+                },
+                radius: Corners::all(8.0),
+            }),
+            quads: Span::new(0, 1),
+            texts: Span::new(0, 0),
+            meshes: Span::default(),
+        },
+        DrawGroup {
+            scissor: Some(URect::new(0, 0, 100, 100)),
+            rounded_clip: Some(RoundedClip {
+                mask_rect: Rect {
+                    min: Vec2::ZERO,
+                    size: Size::new(100.0, 100.0),
+                },
+                radius: Corners::all(8.0),
+            }),
+            quads: Span::new(1, 1),
+            texts: Span::new(0, 0),
+            meshes: Span::default(),
+        },
+        // Group 2: different mask — full transition required.
+        DrawGroup {
+            scissor: Some(URect::new(0, 0, 100, 100)),
+            rounded_clip: Some(RoundedClip {
+                mask_rect: Rect {
+                    min: Vec2::ZERO,
+                    size: Size::new(50.0, 50.0),
+                },
+                radius: Corners::all(4.0),
+            }),
+            quads: Span::new(2, 1),
+            texts: Span::new(0, 0),
+            meshes: Span::default(),
+        },
+    ]);
+    let mask_indices = &[Some(0u32), Some(0u32), Some(1u32)];
+    assert_eq!(
+        simplify(&collect(&buf, None, mask_indices, true)),
+        vec![
+            // Group 0: stamp mask 0.
+            DrawOp::MaskWrite(0),
+            DrawOp::Quads(0),
+            // Group 1: same mask — no bracket, just draw.
+            DrawOp::Quads(1),
+            // Group 2: clear 0, stamp 1.
+            DrawOp::MaskClear(0),
+            DrawOp::MaskWrite(1),
+            DrawOp::Quads(2),
+        ],
+    );
+}
+
 /// Pin: a stencil-pass group with text but no quads still emits the
-/// mask bracket. Without it, the text would render unstenciled —
+/// mask write. Without it, the text would render unstenciled —
 /// rounded clip would silently leak past the mask boundary.
 #[test]
-fn stencil_text_only_group_still_brackets_with_mask() {
+fn stencil_text_only_group_still_writes_mask() {
     let buf = buf_with(vec![DrawGroup {
         scissor: Some(URect::new(0, 0, 100, 100)),
         rounded_clip: Some(RoundedClip {
@@ -336,7 +401,7 @@ fn stencil_text_only_group_still_brackets_with_mask() {
     let mask_indices = &[Some(0u32)];
     assert_eq!(
         simplify(&collect(&buf, None, mask_indices, true)),
-        vec![DrawOp::MaskWrite(0), DrawOp::Text(0), DrawOp::MaskClear(0),],
+        vec![DrawOp::MaskWrite(0), DrawOp::Text(0)],
     );
 }
 
