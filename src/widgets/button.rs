@@ -100,6 +100,7 @@ impl Button {
         });
         Response {
             node,
+            id: element.id,
             state: raw_state,
         }
     }

@@ -113,6 +113,12 @@ pub(crate) fn release_left(ui: &mut Ui) {
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 }
 
+pub(crate) fn secondary_click_at(ui: &mut Ui, pos: Vec2) {
+    ui.on_input(InputEvent::PointerMoved(pos));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Right));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Right));
+}
+
 pub(crate) fn encode_cmds(ui: &Ui) -> RenderCmdBuffer {
     encode_cmds_filtered(ui, None)
 }

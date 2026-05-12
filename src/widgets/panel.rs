@@ -52,7 +52,7 @@ impl Panel {
         }
         let node = ui.node(element, body);
         let state = ui.response_for(id);
-        Response { node, state }
+        Response { node, id, state }
     }
 
     pub fn hstack() -> Self {

@@ -24,7 +24,7 @@ impl Frame {
         let id = self.element.id;
         let node = ui.node(self.element, |_| {});
         let state = ui.response_for(id);
-        Response { node, state }
+        Response { node, id, state }
     }
 }
 

@@ -238,3 +238,69 @@ fn zoom_panel_routes_clicks_by_world_rect() {
         assert_eq!(clicked, *expect, "case {label}");
     }
 }
+
+#[test]
+fn secondary_click_press_release_emits_secondary_clicked() {
+    use crate::support::testing::secondary_click_at;
+    let mut ui = Ui::new();
+    let surface = UVec2::new(200, 80);
+    let build = |ui: &mut Ui, sink: &mut bool| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            let r = Button::new()
+                .id_salt("rc_target")
+                .label("rc")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+            *sink |= r.secondary_clicked();
+            // Left-click must NOT flip secondary_clicked.
+            assert!(!(r.clicked() && r.secondary_clicked()));
+        });
+    };
+    let mut sink = false;
+    run_at_acked(&mut ui, surface, |ui| build(ui, &mut sink));
+    secondary_click_at(&mut ui, Vec2::new(50.0, 20.0));
+
+    let mut got = false;
+    run_at_acked(&mut ui, surface, |ui| build(ui, &mut got));
+    assert!(got, "right press+release should set secondary_clicked");
+
+    // One-shot.
+    let mut still = false;
+    run_at_acked(&mut ui, surface, |ui| build(ui, &mut still));
+    assert!(!still, "secondary_clicked is one-shot");
+}
+
+#[test]
+fn left_and_right_click_are_independent() {
+    use crate::input::PointerButton;
+    use crate::support::testing::press_at;
+    let mut ui = Ui::new();
+    let surface = UVec2::new(200, 80);
+    let build = |ui: &mut Ui, lc: &mut bool, rc: &mut bool| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            let r = Button::new()
+                .id_salt("indep")
+                .label("x")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+            *lc |= r.clicked();
+            *rc |= r.secondary_clicked();
+        });
+    };
+    let mut a = false;
+    let mut b = false;
+    run_at_acked(&mut ui, surface, |ui| build(ui, &mut a, &mut b));
+
+    // Left-press, then a right press+release while left is still held —
+    // both should latch separately.
+    press_at(&mut ui, Vec2::new(50.0, 20.0));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Right));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Right));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    let mut lc = false;
+    let mut rc = false;
+    run_at_acked(&mut ui, surface, |ui| build(ui, &mut lc, &mut rc));
+    assert!(lc, "left click should still fire");
+    assert!(rc, "right click should still fire alongside left");
+}
