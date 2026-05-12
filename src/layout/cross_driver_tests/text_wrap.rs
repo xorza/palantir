@@ -2,7 +2,7 @@ use super::support;
 use super::support::{chat_message, two_hug_cols_with_wrap};
 use crate::TextStyle;
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::forest::shapes::ShapeRecord;
+use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::Layer;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;

@@ -472,7 +472,7 @@ fn ui_at_no_cosmic(size: UVec2) -> Ui {
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     use crate::TextStyle;
-    use crate::forest::shapes::ShapeRecord;
+    use crate::forest::shapes::record::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
@@ -531,7 +531,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
 
 #[test]
 fn theme_text_color_used_when_text_widget_does_not_override() {
-    use crate::forest::shapes::ShapeRecord;
+    use crate::forest::shapes::record::ShapeRecord;
     use crate::primitives::color::Color;
     use crate::widgets::text::Text;
 
@@ -556,7 +556,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
 #[test]
 fn text_widget_color_override_wins_over_theme() {
     use crate::TextStyle;
-    use crate::forest::shapes::ShapeRecord;
+    use crate::forest::shapes::record::ShapeRecord;
     use crate::primitives::color::Color;
     use crate::widgets::text::Text;
 
@@ -587,7 +587,7 @@ fn text_widget_color_override_wins_over_theme() {
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_line_height() {
     use crate::TextStyle;
-    use crate::forest::shapes::ShapeRecord;
+    use crate::forest::shapes::record::ShapeRecord;
     use crate::widgets::button::Button;
     use crate::widgets::text::Text;
 
@@ -648,7 +648,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 fn textedit_style_override_replaces_default_theme() {
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::forest::shapes::ShapeRecord;
+    use crate::forest::shapes::record::ShapeRecord;
     use crate::widgets::theme::WidgetLook;
 
     for (label, mult, expected_lh) in [
@@ -689,7 +689,7 @@ fn textedit_style_override_replaces_default_theme() {
 
 #[test]
 fn pushed_shape_carries_default_line_height_from_theme() {
-    use crate::forest::shapes::ShapeRecord;
+    use crate::forest::shapes::record::ShapeRecord;
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hi");
     let mut leaf_node = None;
@@ -727,7 +727,7 @@ fn line_height_override_changes_caret_rect_height() {
     // theme's `text` style.
     use crate::TextEditTheme;
     use crate::TextStyle;
-    use crate::forest::shapes::ShapeRecord;
+    use crate::forest::shapes::record::ShapeRecord;
     use crate::widgets::theme::WidgetLook;
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {
