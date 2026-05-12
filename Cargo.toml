@@ -31,6 +31,7 @@ strum = { version = "*", features = ["derive"] }
 serde = { version = "*", features = ["derive"] }
 toml = "*"
 tinyvec = { version = "*", features = ["serde"] }
+profiling = { version = "1", default-features = false }
 
 [dev-dependencies]
 backtrace = "*"
@@ -84,6 +85,11 @@ internals = []
 # Opt-in cache A/B benches. Default `cargo bench` runs only `frame.rs`;
 # `cargo bench --features "internals bench-deep"` adds `caches.rs`.
 bench-deep = []
+# Profiler backends — pick one. Off by default (zero overhead).
+# Tracy needs an external viewer; wgpu's own GPU zones light up
+# automatically because `profiling` is a singleton in the dep graph.
+profile-with-tracy = ["profiling/profile-with-tracy"]
+profile-with-puffin = ["profiling/profile-with-puffin"]
 
 [profile.release]
 debug = "line-tables-only"
