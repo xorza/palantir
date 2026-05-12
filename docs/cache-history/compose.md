@@ -67,7 +67,7 @@ Two options were on the table:
 
 The `EnterSubtree` / `ExitSubtree` markers in `RenderCmdBuffer` were
 also removed when the encode cache was subsequently deleted (see
-`encode-cache.md`). They had no other consumer.
+`docs/cache-history/encode.md`). They had no other consumer.
 
 ## Bring it back if
 

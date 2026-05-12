@@ -148,6 +148,7 @@ impl TextRenderer {
     /// per-group prepares so all renderers see the same viewport.
     /// Skips the GPU upload when the viewport matches last frame's —
     /// glyphon's uniform contents are pure functions of the resolution.
+    #[profiling::function]
     pub(crate) fn update_viewport(&mut self, queue: &wgpu::Queue, viewport_phys: UVec2) {
         if self.last_viewport == viewport_phys {
             return;
@@ -168,6 +169,7 @@ impl TextRenderer {
     /// pool — both share `atlas`. Returns `false` and skips work if no
     /// shaper is installed or no runs resolve to a buffer. The pool
     /// grows on demand if `group_idx` exceeds its current length.
+    #[profiling::function]
     pub(crate) fn prepare_group(
         &mut self,
         device: &wgpu::Device,

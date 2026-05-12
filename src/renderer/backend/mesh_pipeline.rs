@@ -120,6 +120,7 @@ impl MeshPipeline {
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
+    #[profiling::function]
     pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
         if self.stencil_test.is_some() {
             return;
@@ -160,6 +161,7 @@ impl MeshPipeline {
         self.stencil_test = Some(pipe);
     }
 
+    #[profiling::function]
     pub(crate) fn upload(
         &mut self,
         device: &wgpu::Device,

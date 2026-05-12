@@ -144,6 +144,7 @@ impl WgpuBackend {
     /// contents are undefined until the first pass writes to it).
     /// Hard-asserts that the swapchain format hasn't changed since
     /// construction; see [`Self::color_format`].
+    #[profiling::function]
     fn ensure_backbuffer(&mut self, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> bool {
         assert_eq!(
             self.color_format, format,
@@ -188,6 +189,7 @@ impl WgpuBackend {
     /// `ensure_backbuffer` resets `stencil` to `None` whenever it
     /// rebuilds the color texture, so a `Some` here is always
     /// size-matched to the current backbuffer.
+    #[profiling::function]
     fn ensure_stencil(&mut self) {
         let bb = self
             .backbuffer
@@ -329,6 +331,7 @@ impl WgpuBackend {
         self.viewport_uniform
             .write(&self.queue, buffer.viewport_phys_f);
         self.quad.upload(&self.device, &self.queue, &buffer.quads);
+
         self.mesh.upload(
             &self.device,
             &self.queue,
@@ -480,6 +483,7 @@ impl WgpuBackend {
     /// no damage scissor, `LoadOp::Clear(color)` covers the whole
     /// backbuffer. `Some(rects)` ⇒ Partial: `LoadOp::Load`, one walk
     /// per rect inside the same pass.
+    #[profiling::function]
     fn run_main_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -560,6 +564,7 @@ impl WgpuBackend {
     /// this method is purely the wgpu translation layer for each
     /// `RenderStep`. Tests reuse the same schedule emitter to assert
     /// on the sequence without GPU.
+    #[profiling::function]
     fn render_groups<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -752,6 +757,7 @@ impl WgpuBackend {
         self.queue.submit(std::iter::once(encoder.finish()));
     }
 
+    #[profiling::function]
     fn copy_backbuffer_into(
         &self,
         encoder: &mut wgpu::CommandEncoder,

@@ -12,112 +12,6 @@ use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, RoundedClip, TextRun};
 use glam::{UVec2, Vec2};
 
-/// Owns the four-variable invariant that drives `out.groups`
-/// emission: `current` scissor, the open group's `quads_start` /
-/// `texts_start` markers, and the `last_was_text` flag for the
-/// text-then-quad split rule. Every group transition routes through
-/// this struct so the rule is enforced in one place.
-///
-/// Reset rule: every flush / scissor switch clears `last_was_text`.
-/// The flag is set only by `push_text`, the sole text-emission entry
-/// point.
-#[derive(Default)]
-struct GroupBuilder {
-    current: Option<URect>,
-    rounded: Option<RoundedClip>,
-    quads_start: u32,
-    texts_start: u32,
-    meshes_start: u32,
-    /// Tracks the most recent draw kind in the in-flight group. A
-    /// draw-kind transition (quad↔text↔mesh) flushes so paint order
-    /// within a group matches record order — simplest correct
-    /// behavior; profile later if it shows up as a hotspot.
-    last_kind: Option<DrawKind>,
-}
-
-/// Render order within a group: quads paint first, then text, then
-/// meshes — derived from the variant order below. A kind transition
-/// that would emit something *before* what's already in the group
-/// (smaller variant than `last_kind`) forces a flush. Equal or larger
-/// is fine — natural per-group draw sequence preserves record order.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum DrawKind {
-    Quad,
-    Text,
-    Mesh,
-}
-
-impl GroupBuilder {
-    /// Push the in-flight group into `out.groups` (if non-empty),
-    /// rebase `quads_start` / `texts_start` onto the current `out`
-    /// lengths, and clear `last_was_text`. Scissor + rounded clip are
-    /// preserved.
-    fn flush(&mut self, out: &mut RenderBuffer) {
-        let q_end = out.quads.len() as u32;
-        let t_end = out.texts.len() as u32;
-        let m_end = out.meshes.draws.len() as u32;
-        if q_end > self.quads_start || t_end > self.texts_start || m_end > self.meshes_start {
-            out.groups.push(DrawGroup {
-                scissor: self.current,
-                rounded_clip: self.rounded,
-                quads: (self.quads_start..q_end).into(),
-                texts: (self.texts_start..t_end).into(),
-                meshes: (self.meshes_start..m_end).into(),
-            });
-        }
-        self.quads_start = q_end;
-        self.texts_start = t_end;
-        self.meshes_start = m_end;
-        self.last_kind = None;
-    }
-
-    /// Switch to a new clip (scissor + optional rounded), flushing the
-    /// in-flight group only if anything differs. Always clears
-    /// `last_was_text` — a clip transition is a draw boundary even
-    /// when the resolved state happens to equal the current one
-    /// (matches the pre-builder behavior).
-    fn set_clip(
-        &mut self,
-        scissor: Option<URect>,
-        rounded: Option<RoundedClip>,
-        out: &mut RenderBuffer,
-    ) {
-        if scissor != self.current || rounded != self.rounded {
-            self.flush(out);
-            self.current = scissor;
-            self.rounded = rounded;
-        }
-        self.last_kind = None;
-    }
-
-    /// Apply the kind-transition split rule: if the prior draw in the
-    /// in-flight group was a different kind, flush so paint order
-    /// matches record order. Same scissor continues into the new group.
-    fn before_draw(&mut self, kind: DrawKind, out: &mut RenderBuffer) {
-        if let Some(prev) = self.last_kind
-            && kind < prev
-        {
-            self.flush(out);
-        }
-        self.last_kind = Some(kind);
-    }
-
-    fn push_quad(&mut self, out: &mut RenderBuffer, quad: Quad) {
-        self.before_draw(DrawKind::Quad, out);
-        out.quads.push(quad);
-    }
-
-    fn push_text(&mut self, out: &mut RenderBuffer, run: TextRun) {
-        self.before_draw(DrawKind::Text, out);
-        out.texts.push(run);
-    }
-
-    fn push_mesh(&mut self, out: &mut RenderBuffer, draw: MeshDraw) {
-        self.before_draw(DrawKind::Mesh, out);
-        out.meshes.draws.push(draw);
-    }
-}
-
 /// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups). Owns its output buffer
 /// + compose-time scratch stacks so steady-state rendering is alloc-free.
@@ -125,6 +19,13 @@ impl GroupBuilder {
 /// Composer doesn't know about `Tree` or `encode` — it's pure algorithm +
 /// scratch + output. [`Frontend`](crate::renderer::frontend::Frontend) orchestrates
 /// encode + compose.
+///
+/// Render order *within* a group is fixed by the backend:
+/// **quads → text → meshes**. That's safe iff for every prior draw of
+/// a higher kind, no later draw of a lower kind overlaps it — a draw
+/// that violates the rule forces a [`Self::flush`] so record order is
+/// honored. The check uses [`text_rects`](Self::text_rects) /
+/// [`mesh_rects`](Self::mesh_rects) accumulated for the in-flight group.
 #[derive(Default)]
 pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
@@ -137,6 +38,22 @@ pub(crate) struct Composer {
     /// fed to the stroke tessellator. Cleared per cmd, capacity
     /// reused — keeps steady-state alloc-free.
     polyline_scratch: Vec<Vec2>,
+    /// Per-group physical-px AABBs of the text runs and mesh draws
+    /// already pushed into the in-flight group. Used to decide whether
+    /// a later lower-kind draw (quad after text/mesh, text after mesh)
+    /// can be reordered into the group's quad/text batch without
+    /// changing the painted result. Cleared on every flush /
+    /// clip transition. Capacity reused across frames.
+    text_rects: Vec<URect>,
+    mesh_rects: Vec<URect>,
+    /// In-flight group state. `*_start` cursors mark where the open
+    /// group's `quads`/`texts`/`meshes` slice begins in `out`;
+    /// [`Self::flush`] closes the slice and advances them.
+    current_scissor: Option<URect>,
+    current_rounded: Option<RoundedClip>,
+    quads_start: u32,
+    texts_start: u32,
+    meshes_start: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -146,6 +63,47 @@ struct ClipFrame {
 }
 
 impl Composer {
+    /// Close the in-flight group: if anything was emitted into it,
+    /// push a `DrawGroup` covering the open slice; either way advance
+    /// the per-kind cursors and clear the overlap scratches. Scissor
+    /// + rounded clip are preserved for the next group.
+    fn flush(&mut self, out: &mut RenderBuffer) {
+        let q_end = out.quads.len() as u32;
+        let t_end = out.texts.len() as u32;
+        let m_end = out.meshes.draws.len() as u32;
+        if q_end > self.quads_start || t_end > self.texts_start || m_end > self.meshes_start {
+            out.groups.push(DrawGroup {
+                scissor: self.current_scissor,
+                rounded_clip: self.current_rounded,
+                quads: (self.quads_start..q_end).into(),
+                texts: (self.texts_start..t_end).into(),
+                meshes: (self.meshes_start..m_end).into(),
+            });
+        }
+        self.quads_start = q_end;
+        self.texts_start = t_end;
+        self.meshes_start = m_end;
+        self.text_rects.clear();
+        self.mesh_rects.clear();
+    }
+
+    /// Switch to a new clip (scissor + optional rounded), flushing
+    /// the in-flight group only if anything actually differs. A
+    /// same-clip Push/Pop is a no-op so accumulated overlap state
+    /// persists through redundant clip transitions.
+    fn set_clip(
+        &mut self,
+        scissor: Option<URect>,
+        rounded: Option<RoundedClip>,
+        out: &mut RenderBuffer,
+    ) {
+        if scissor != self.current_scissor || rounded != self.current_rounded {
+            self.flush(out);
+            self.current_scissor = scissor;
+            self.current_rounded = rounded;
+        }
+    }
+
     /// Consume a logical-px command stream → physical-px `Quad`s +
     /// `TextRun`s + draw groups (scissor ranges) into the caller-
     /// provided `out` buffer. Pure: no device, no queue.
@@ -177,8 +135,14 @@ impl Composer {
 
         self.clip_stack.clear();
         self.transform_stack.clear();
+        self.text_rects.clear();
+        self.mesh_rects.clear();
+        self.current_scissor = None;
+        self.current_rounded = None;
+        self.quads_start = 0;
+        self.texts_start = 0;
+        self.meshes_start = 0;
         let mut current_transform = TranslateScale::IDENTITY;
-        let mut group = GroupBuilder::default();
 
         for i in 0..cmds.kinds.len() {
             let kind = cmds.kinds[i];
@@ -217,14 +181,14 @@ impl Composer {
                         self.clip_stack.last().and_then(|f| f.rounded)
                     };
                     self.clip_stack.push(ClipFrame { scissor, rounded });
-                    group.set_clip(Some(scissor), rounded, out);
+                    self.set_clip(Some(scissor), rounded, out);
                 }
                 CmdKind::PopClip => {
                     self.clip_stack
                         .pop()
                         .expect("PopClip without matching PushClip");
                     let parent = self.clip_stack.last().copied();
-                    group.set_clip(
+                    self.set_clip(
                         parent.map(|f| f.scissor),
                         parent.and_then(|f| f.rounded),
                         out,
@@ -244,17 +208,25 @@ impl Composer {
                 CmdKind::DrawRect => {
                     let p: DrawRectPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(p.rect);
+                    let quad_urect = scissor_from_logical(world_rect, scale, snap, viewport_phys);
                     // Clip-cull: skip emitting the quad when it sits
                     // entirely outside the active scissor. The GPU
                     // would scissor it away anyway; this saves the
-                    // `quads.push` + per-quad math. Keeps the encode
-                    // cache shape-stable (cull lives only here, not in
-                    // the encoder).
-                    if let Some(active) = self.clip_stack.last() {
-                        let me = scissor_from_logical(world_rect, scale, snap, viewport_phys);
-                        if me.intersect(active.scissor).is_none() {
-                            continue;
-                        }
+                    // `quads.push` + per-quad math.
+                    if let Some(active) = self.clip_stack.last()
+                        && quad_urect.intersect(active.scissor).is_none()
+                    {
+                        continue;
+                    }
+                    // Overlap-aware kind transition: quad is the lowest
+                    // kind, so anything higher already in the group
+                    // (text, mesh) that this quad overlaps would paint
+                    // *under* it after kind-reorder — flush to keep
+                    // record order.
+                    if any_overlap(&self.text_rects, quad_urect)
+                        || any_overlap(&self.mesh_rects, quad_urect)
+                    {
+                        self.flush(out);
                     }
                     let world_radius = p.radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
@@ -265,19 +237,16 @@ impl Composer {
                     } else {
                         LutRow::FALLBACK
                     };
-                    group.push_quad(
-                        out,
-                        Quad {
-                            rect: phys_rect,
-                            fill: p.fill,
-                            radius: phys_radius,
-                            stroke_color: p.stroke_color,
-                            stroke_width: p.stroke_width * current_transform.scale * scale,
-                            fill_kind: p.fill_kind,
-                            fill_lut_row,
-                            fill_axis: p.fill_axis,
-                        },
-                    );
+                    out.quads.push(Quad {
+                        rect: phys_rect,
+                        fill: p.fill,
+                        radius: phys_radius,
+                        stroke_color: p.stroke_color,
+                        stroke_width: p.stroke_width * current_transform.scale * scale,
+                        fill_kind: p.fill_kind,
+                        fill_lut_row,
+                        fill_axis: p.fill_axis,
+                    });
                 }
                 CmdKind::DrawMesh => {
                     let p: DrawMeshPayload = cmds.read(start);
@@ -292,15 +261,20 @@ impl Composer {
                     let i_end = i_start + p.i_len as usize;
                     let phys_v_start = out.meshes.arena.vertices.len() as u32;
                     let tint = p.tint;
+                    let mut min = Vec2::splat(f32::INFINITY);
+                    let mut max = Vec2::splat(f32::NEG_INFINITY);
                     for v in &cmds.shape_payloads.meshes.vertices[v_start..v_end] {
                         let world = current_transform.apply_point(v.pos);
+                        let pos = world * scale;
+                        min = min.min(pos);
+                        max = max.max(pos);
                         // Premultiplied-alpha tinting: component-wise
                         // multiply works for both rgb and alpha. The
                         // backend pipeline doesn't take a tint uniform
                         // — it's baked in here.
                         let c = v.color;
                         out.meshes.arena.vertices.push(MeshVertex {
-                            pos: world * scale,
+                            pos,
                             color: Color {
                                 r: c.r * tint.r,
                                 g: c.g * tint.g,
@@ -314,13 +288,28 @@ impl Composer {
                         .arena
                         .indices
                         .extend_from_slice(&cmds.shape_payloads.meshes.indices[i_start..i_end]);
-                    group.push_mesh(
-                        out,
-                        MeshDraw {
-                            vertices: (phys_v_start..phys_v_start + p.v_len).into(),
-                            indices: (phys_i_start..phys_i_start + p.i_len).into(),
-                        },
-                    );
+                    // Mesh is the highest kind: never flushes for
+                    // overlap. Just append to the open group and
+                    // record the AABB for any later quad / text that
+                    // might need to flush against it.
+                    out.meshes.draws.push(MeshDraw {
+                        vertices: (phys_v_start..phys_v_start + p.v_len).into(),
+                        indices: (phys_i_start..phys_i_start + p.i_len).into(),
+                    });
+                    if p.v_len > 0 {
+                        // Inflate by 0.5 phys-px to match polyline's
+                        // AA-fringe policy. Mesh today paints inside
+                        // its vertex hull, but a future AA edge or
+                        // displacement shader would silently produce
+                        // false negatives — and false negatives in
+                        // the overlap test reorder paint.
+                        let fringe = Vec2::splat(0.5);
+                        self.mesh_rects.push(urect_from_phys(
+                            min - fringe,
+                            max + fringe,
+                            viewport_phys,
+                        ));
+                    }
                 }
                 CmdKind::DrawPolyline => {
                     let p: DrawPolylinePayload = cmds.read(start);
@@ -329,9 +318,10 @@ impl Composer {
                     let join = p.join.get();
                     let width_phys = p.width * current_transform.scale * scale;
 
-                    // Pre-transform scissor cull. Encoder shipped a
-                    // logical-px AABB over the cmd-buffer points;
-                    // `TranslateScale` is uniform-scale so the
+                    // Compute the inflated physical-px AABB once and
+                    // reuse it for cull and overlap tracking. Encoder
+                    // shipped a logical-px AABB over the cmd-buffer
+                    // points; `TranslateScale` is uniform-scale so the
                     // transformed rect stays axis-aligned. Inflate
                     // by the tessellator's outer-fringe offset
                     // (`max(w/2, 0.5) + 0.5` in *phys* px) so the
@@ -339,22 +329,21 @@ impl Composer {
                     // reach. Short-circuits before transforming the
                     // full point list — the win for long flattened
                     // curves.
-                    if let Some(active) = self.clip_stack.last() {
-                        let world = current_transform.apply_rect(p.bbox);
-                        let inflate_phys = (width_phys * 0.5).max(0.5) + 0.5;
-                        let inflate_logical = inflate_phys / scale;
-                        let inflated = Rect {
-                            min: world.min - Vec2::splat(inflate_logical),
-                            size: crate::primitives::size::Size {
-                                w: world.size.w + 2.0 * inflate_logical,
-                                h: world.size.h + 2.0 * inflate_logical,
-                            },
-                        };
-                        let bbox_scissor =
-                            scissor_from_logical(inflated, scale, false, viewport_phys);
-                        if bbox_scissor.intersect(active.scissor).is_none() {
-                            continue;
-                        }
+                    let world = current_transform.apply_rect(p.bbox);
+                    let inflate_phys = (width_phys * 0.5).max(0.5) + 0.5;
+                    let inflate_logical = inflate_phys / scale;
+                    let inflated = Rect {
+                        min: world.min - Vec2::splat(inflate_logical),
+                        size: crate::primitives::size::Size {
+                            w: world.size.w + 2.0 * inflate_logical,
+                            h: world.size.h + 2.0 * inflate_logical,
+                        },
+                    };
+                    let bbox_scissor = scissor_from_logical(inflated, scale, false, viewport_phys);
+                    if let Some(active) = self.clip_stack.last()
+                        && bbox_scissor.intersect(active.scissor).is_none()
+                    {
+                        continue;
                     }
 
                     let pts_start = p.points_start as usize;
@@ -394,13 +383,11 @@ impl Composer {
                     if v_len == 0 {
                         continue;
                     }
-                    group.push_mesh(
-                        out,
-                        MeshDraw {
-                            vertices: (phys_v_start..phys_v_start + v_len).into(),
-                            indices: (phys_i_start..phys_i_start + i_len).into(),
-                        },
-                    );
+                    out.meshes.draws.push(MeshDraw {
+                        vertices: (phys_v_start..phys_v_start + v_len).into(),
+                        indices: (phys_i_start..phys_i_start + i_len).into(),
+                    });
+                    self.mesh_rects.push(bbox_scissor);
                 }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
@@ -418,36 +405,59 @@ impl Composer {
                     if bounds.w == 0 || bounds.h == 0 {
                         continue;
                     }
+                    // Text sits below mesh in the kind order — flush
+                    // if any prior mesh in the group overlaps so this
+                    // text doesn't get reordered above it. (No need
+                    // to check quads: text paints over quads anyway.)
+                    if any_overlap(&self.mesh_rects, bounds) {
+                        self.flush(out);
+                    }
                     let phys_rect = world_rect.scaled_by(scale, snap);
-                    group.push_text(
-                        out,
-                        TextRun {
-                            origin: phys_rect.min,
-                            bounds,
-                            color: t.color,
-                            key: t.key,
-                            scale: current_transform.scale,
-                        },
-                    );
+                    out.texts.push(TextRun {
+                        origin: phys_rect.min,
+                        bounds,
+                        color: t.color,
+                        key: t.key,
+                        scale: current_transform.scale,
+                    });
+                    self.text_rects.push(bounds);
                 }
             }
         }
-        group.flush(out);
+        self.flush(out);
     }
 }
 
-fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {
-    let phys = r.scaled_by(scale, snap);
-    let x = (phys.min.x.max(0.0) as u32).min(viewport.x);
-    let y = (phys.min.y.max(0.0) as u32).min(viewport.y);
-    let right = ((phys.min.x + phys.size.w).max(0.0) as u32).min(viewport.x);
-    let bottom = ((phys.min.y + phys.size.h).max(0.0) as u32).min(viewport.y);
+/// Conservative overlap test: any non-empty intersection counts.
+/// False positives are correctness-safe (extra flush, costs a
+/// drawcall); false negatives would reorder paint and corrupt the
+/// frame.
+fn any_overlap(slots: &[URect], r: URect) -> bool {
+    slots.iter().any(|s| s.intersect(r).is_some())
+}
+
+/// Clamp a physical-px AABB to the viewport, returning the
+/// non-negative `URect` the GPU can consume. NaN/non-finite inputs
+/// collapse to `URect::default()` (zero-sized).
+fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
+    if !(min.x.is_finite() && min.y.is_finite() && max.x.is_finite() && max.y.is_finite()) {
+        return URect::default();
+    }
+    let x = (min.x.max(0.0) as u32).min(viewport.x);
+    let y = (min.y.max(0.0) as u32).min(viewport.y);
+    let right = (max.x.max(0.0) as u32).min(viewport.x);
+    let bottom = (max.y.max(0.0) as u32).min(viewport.y);
     URect {
         x,
         y,
         w: right.saturating_sub(x),
         h: bottom.saturating_sub(y),
     }
+}
+
+fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {
+    let phys = r.scaled_by(scale, snap);
+    urect_from_phys(phys.min, phys.max(), viewport)
 }
 
 #[cfg(test)]

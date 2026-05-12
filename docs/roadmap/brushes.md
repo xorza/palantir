@@ -70,7 +70,7 @@ intent but not the literal types:
   (`src/forest/tree/mod.rs:233`), so cache eviction + damage are already
   wired.
 - **No encode cache, no compose cache.** Both were implemented and removed
-  after profiling; see `src/renderer/frontend/encoder/encode-cache.md`. The
+  after profiling; see `docs/cache-history/encode.md`. The
   encoder rebuilds the cmd buffer from scratch every frame. Anywhere this
   doc talks about "encode-cache coherence" below is conditional on the
   cache returning — keep the LUT row-addressing scheme either way because
