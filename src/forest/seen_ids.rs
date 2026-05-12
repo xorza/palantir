@@ -2,8 +2,8 @@
 //! "which widgets were recorded this frame":
 //!
 //! 1. **Collision detection.** `record(id)` returns `false` and
-//!    triggers an assert in `Ui::node` if the same `WidgetId` appears
-//!    twice in one frame — duplicate ids silently corrupt every
+//!    triggers an assert in `Forest::open_node` if the same `WidgetId`
+//!    appears twice in one frame — duplicate ids silently corrupt every
 //!    per-id store (focus, scroll, click capture, hit-test).
 //! 2. **Removed-widget diff + rollover.** [`Self::rollover`] computes
 //!    which ids were present last painted frame but absent this pass
@@ -11,9 +11,9 @@
 //!    [`crate::text::TextShaper`] / measure cache / state /
 //!    animation), then swaps `curr → prev` so the next frame diffs
 //!    against this one. Called once per `run_frame` from
-//!    [`crate::Ui::paint`]; discarded record passes don't touch
-//!    seen-id state, so `prev` stays anchored at the last *painted*
-//!    frame regardless of how many discard passes ran.
+//!    [`crate::Ui::finalize_frame`]; discarded record passes don't
+//!    touch seen-id state, so `prev` stays anchored at the last
+//!    *painted* frame regardless of how many discard passes ran.
 
 use crate::forest::element::Element;
 use crate::forest::widget_id::WidgetId;

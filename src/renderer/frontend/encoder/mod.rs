@@ -34,17 +34,16 @@ pub(crate) struct Encoder {
 impl Encoder {
     /// Encode every tree in `ui.forest` into the encoder's owned
     /// command buffer in paint order. Per-tree layout and cascade rows
-    /// are looked up by layer off `ui.layout`. `damage_filter`
-    /// overrides what `ui.damage` would imply — pass `None` for full
-    /// paint (the production caller derives this from `ui.damage`'s
-    /// `Partial(region)` arm; tests pass arbitrary regions).
-    pub(crate) fn encode(&mut self, ui: &Ui) -> &RenderCmdBuffer {
+    /// are looked up by layer off `ui.layout`. `damage` is the paint
+    /// plan for this frame — `Full` paints everything, `Partial(region)`
+    /// filters leaves against the region. The skip path is the caller's
+    /// responsibility (`None` damage ⇒ never call `encode`).
+    pub(crate) fn encode(&mut self, ui: &Ui, damage: Damage) -> &RenderCmdBuffer {
         self.cmds.clear();
 
-        let damage_filter = match &ui.damage {
-            Some(Damage::Partial(region)) => Some(region),
-            Some(Damage::Full) => None,
-            None => unreachable!(),
+        let damage_filter = match &damage {
+            Damage::Partial(region) => Some(region),
+            Damage::Full => None,
         };
 
         let viewport = ui.display.logical_rect();

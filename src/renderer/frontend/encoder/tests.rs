@@ -115,7 +115,7 @@ fn baseline_draw_rect_count_cases() {
                 }
             });
         });
-        let cmds = encode_cmds(&mut ui);
+        let cmds = encode_cmds(&ui);
         assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
     }
 }
@@ -166,7 +166,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
             Frame::new().id_salt("host").size(50.0).show(ui);
         });
     });
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     let draws = cmds
         .kinds
         .iter()
@@ -196,7 +196,7 @@ fn text_shape_emits_draw_text() {
             Text::new("hi").auto_id().show(ui);
         });
     });
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     assert!(
         cmds.kinds.contains(&CmdKind::DrawText),
         "Text widget must emit a DrawText command"
@@ -218,7 +218,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
                 .show(ui, |_| {});
         });
     });
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
     assert_eq!(pops, 1);
@@ -246,7 +246,7 @@ fn clip_emits_balanced_push_pop() {
                 });
         });
     });
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
 
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 1);
@@ -305,7 +305,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
             );
         });
     });
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
 
     let rounded_idx = cmds
         .kinds
@@ -342,7 +342,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
                 });
         });
     });
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     assert_eq!(
         cmds.kinds
             .iter()
@@ -478,7 +478,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let mut sink = (false, false, false);
     run_at_acked(&mut ui, surface, |ui| build(ui, &mut sink));
 
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     let drawn = screen_rects_by_fill(&cmds);
 
     let v_id = WidgetId::from_hash("V");
@@ -550,7 +550,7 @@ fn nested_clips_each_emit_their_own_pair() {
                 });
         });
     });
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     let ClipPairs { pushes, pops } = count_clip_pairs(&cmds);
     assert_eq!(pushes, 2);
     assert_eq!(pops, 2);
@@ -621,7 +621,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
                 .show(ui);
         });
     });
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     let text_rect = (0..cmds.kinds.len())
         .find_map(|i| match cmds.kinds[i] {
             CmdKind::DrawText => Some(cmds.read::<DrawTextPayload>(cmds.starts[i]).rect),
@@ -676,7 +676,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                     .show(ui);
             });
         });
-        let cmds = encode_cmds_filtered(&mut ui, Some(*filter));
+        let cmds = encode_cmds_filtered(&ui, Some(*filter));
         assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
     }
 }
@@ -732,7 +732,7 @@ fn damage_filter_culls_subtree_outside_damage() {
                 };
             });
         });
-        let cmds = encode_cmds_filtered(&mut ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
+        let cmds = encode_cmds_filtered(&ui, Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
         let pushes = cmds.kinds.iter().filter(|k| *k == push_kind).count();
         let pops = cmds.kinds.iter().filter(|k| *k == pop_kind).count();
         assert_eq!(pushes, 0, "case {label}: no push (cull)");
@@ -766,7 +766,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
         Rect::new(0.0, 0.0, 50.0, 50.0),
         Rect::new(150.0, 0.0, 50.0, 50.0),
     ];
-    let cmds = encode_cmds_with_rects(&mut ui, &rects);
+    let cmds = encode_cmds_with_rects(&ui, &rects);
     assert_eq!(
         count_draw_rects(&cmds),
         2,
@@ -804,7 +804,7 @@ fn viewport_cull_skips_offscreen_subtree() {
                     .show(ui);
             });
     });
-    let cmds = encode_cmds(&mut ui);
+    let cmds = encode_cmds(&ui);
     assert_eq!(
         count_draw_rects(&cmds),
         1,

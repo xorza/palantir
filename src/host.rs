@@ -19,6 +19,7 @@ use crate::renderer::backend::WgpuBackend;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
+use crate::ui::damage::Damage;
 use crate::{Display, FrameReport};
 
 /// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
@@ -36,6 +37,11 @@ pub struct Host {
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
     /// each call so the host doesn't have to thread a clock through.
     pub(crate) start: Instant,
+    /// Paint plan stashed between [`Self::run_frame`] and
+    /// [`Self::render`]. `None` ⇒ skip path (nothing changed; backbuffer
+    /// is correct). Cleared once `render` consumes it so a second
+    /// `render` without an intervening `run_frame` becomes a no-op.
+    pub(crate) pending_damage: Option<Damage>,
 }
 
 impl Host {
@@ -62,32 +68,39 @@ impl Host {
             frontend: Frontend::default(),
             backend: WgpuBackend::new(device, queue, format, shaper),
             start: Instant::now(),
+            pending_damage: None,
         }
     }
 
     /// Drive one CPU frame: `Ui::run_frame` → encode → compose.
-    /// Returns the host-facing [`FrameInfo`]; internal state needed
+    /// Returns the host-facing [`FrameReport`]; internal state needed
     /// by [`Self::render`] is stashed.
     pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameReport {
-        self.ui.frame(display, self.start.elapsed(), record)
+        let report = self.ui.frame(display, self.start.elapsed(), record);
+        self.pending_damage = report.damage;
+        report
     }
 
     /// GPU submit half. Call after [`Self::run_frame`] when the host
-    /// wants to paint (i.e. `FrameInfo::can_skip_rendering` was
-    /// false). No-op if called without a preceding `run_frame` or
-    /// after a frame the host elected to skip.
+    /// wants to paint (i.e. `FrameReport::skip_render` was false).
+    /// On both the paint and skip paths, marks the frame as
+    /// submitted so the next frame's damage diff doesn't escalate to
+    /// `Full` — `Ui::frame` leaves `frame_state` in `Pending`, and
+    /// this is the single place that confirms.
     pub fn render(&mut self, surface_tex: &wgpu::Texture, clear: Color) {
-        let Some(damage) = self.ui.damage else {
+        let Some(damage) = self.pending_damage.take() else {
             // Skip path: nothing changed. Copy the persistent
             // backbuffer onto the swapchain so callers that always
             // present (visual harness, etc.) still see valid pixels.
             // Hosts that pre-check `FrameReport::skip_render` bypass
             // this entirely and never acquire a surface texture.
             self.backend.copy_backbuffer_to_surface(surface_tex);
+            self.ui.frame_state.mark_submitted();
             return;
         };
-        let buffer = self.frontend.build(&self.ui);
+        let buffer = self.frontend.build(&self.ui, damage);
         self.backend
             .submit(surface_tex, clear, buffer, damage, self.debug_overlay);
+        self.ui.frame_state.mark_submitted();
     }
 }

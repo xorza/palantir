@@ -75,9 +75,8 @@ fn empty_ui_drives_a_frame_safely() {
 
     // Empty UI on the first frame: damage is `None` (skip). Force `Full`
     // to exercise encode/compose and assert the buffers come out empty.
-    ui.damage = Some(Damage::Full);
     let mut frontend = Frontend::default();
-    let buffer = frontend.build(&ui);
+    let buffer = frontend.build(&ui, Damage::Full);
     assert!(buffer.quads.is_empty());
     assert!(buffer.texts.is_empty());
     assert!(buffer.groups.is_empty());

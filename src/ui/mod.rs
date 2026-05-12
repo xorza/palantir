@@ -1,6 +1,6 @@
 pub(crate) mod cascade;
 pub(crate) mod damage;
-pub(crate) mod seen_ids;
+pub(crate) mod frame_state;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
@@ -16,12 +16,12 @@ use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
-use crate::renderer::frontend::{FrameReport, FrameState};
+use crate::renderer::frontend::FrameReport;
 use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
 use crate::ui::damage::{Damage, DamageEngine};
-use crate::ui::seen_ids::SeenIds;
+use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use std::time::Duration;
@@ -32,12 +32,6 @@ use std::time::Duration;
 /// frame-lifecycle rationale.
 pub struct Ui {
     pub(crate) forest: Forest,
-    /// Per-frame `WidgetId` tracker — collision detection across all
-    /// layers, removed-widget diff, and frame rollover. Lives on `Ui`
-    /// (not `Forest`) so the same `removed` set that drives the
-    /// recording-arena rollover also fans out to the per-widget caches
-    /// (`state`, `anim`, `text`, `layout_engine`, `damage_engine`).
-    pub(crate) ids: SeenIds,
     pub theme: Theme,
     /// Cross-frame `WidgetId → Any` widget state.
     pub(crate) state: StateMap,
@@ -53,10 +47,6 @@ pub struct Ui {
     pub(crate) cascades_engine: CascadesEngine,
     pub(crate) display: Display,
     pub(crate) damage_engine: DamageEngine,
-    /// Paint plan for this frame as produced by `finalize_frame`.
-    /// `None` ⇒ skip path (nothing changed; backbuffer is correct).
-    /// `Some(Full | Partial)` ⇒ work for the renderer.
-    pub(crate) damage: Option<Damage>,
     /// `now - prev_now` clamped to [`Self::MAX_DT`].
     pub(crate) dt: f32,
     /// Bumped once per [`Self::run_frame`], before either pass —
@@ -104,7 +94,6 @@ impl Ui {
     pub fn with_text(text: TextShaper) -> Self {
         Self {
             forest: Forest::default(),
-            ids: SeenIds::default(),
             theme: Theme::default(),
             state: StateMap::default(),
             text,
@@ -114,7 +103,6 @@ impl Ui {
             cascades_engine: CascadesEngine::default(),
             display: Display::default(),
             damage_engine: DamageEngine::default(),
-            damage: None,
             dt: 0.0,
             frame_id: 0,
             time: Duration::ZERO,
@@ -146,54 +134,68 @@ impl Ui {
         let raw_dt = now.saturating_sub(self.time);
         self.dt = raw_dt.as_secs_f32().min(Self::MAX_DT);
         self.time = now;
-        self.frame_id = self.frame_id.wrapping_add(1);
+        self.frame_id += 1;
         self.repaint_requested = false;
         self.relayout_requested = false;
 
-        let new_surface = display.logical_rect();
+        if self.should_invalidate_prev(display) {
+            self.damage_engine.invalidate_prev();
+        }
+        self.display = display;
+        // Pending until the renderer (`Host::render`) confirms a
+        // successful submit. Tests driving `Ui::frame` directly must
+        // ack via `FrameReport::frame_state.mark_submitted()` or the
+        // next frame's `should_invalidate_prev` will force a `Full`.
+        self.frame_state.mark_pending();
+
+        let action_flag = self.record_pass(&mut record);
+        if action_flag || self.relayout_requested {
+            // Pass B paints, regardless of any further re-record
+            // request — caps relayout at one retry per `run_frame`.
+            self.input.drain_per_frame_queues();
+            let _ = self.record_pass(&mut record);
+        }
+        let damage = self.finalize_frame();
+
+        FrameReport {
+            repaint_requested: self.repaint_requested,
+            frame_state: self.frame_state.clone(),
+            skip_render: damage.is_none(),
+            damage,
+        }
+    }
+
+    /// Should we discard the last painted frame's damage snapshot? True
+    /// on first frame, on a surface-rect change, or when the host
+    /// failed to confirm submission of the last frame.
+    fn should_invalidate_prev(&self, new_display: Display) -> bool {
+        let new_surface = new_display.logical_rect();
         let display_changed = self
             .damage_engine
             .prev_surface
             .is_some_and(|prev| prev != new_surface);
         let frame_skipped = !self.frame_state.was_last_submitted();
-        if display_changed || frame_skipped {
+        let invalidate = display_changed || frame_skipped;
+        if invalidate {
             tracing::debug!(
                 display_changed,
                 frame_skipped,
                 first_frame = self.damage_engine.prev_surface.is_none(),
                 "damage.invalidate_prev"
             );
-            self.damage_engine.invalidate_prev();
         }
-        self.display = display;
+        invalidate
+    }
 
+    /// One `pre_record` → user record → drain action flag → `post_record`
+    /// cycle. Returns whether the cycle saw action input (which triggers
+    /// a second pass in `Ui::frame`).
+    fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
         self.pre_record();
         record(self);
-
         let action_flag = self.input.take_action_flag();
         self.post_record();
-
-        if action_flag || self.relayout_requested {
-            // Pass B paints, regardless of any further re-record
-            // request — caps relayout at one retry per `run_frame`.
-            self.input.drain_per_frame_queues();
-            self.pre_record();
-
-            record(self);
-            self.post_record();
-        }
-        self.finalize_frame();
-        if self.damage.is_some() {
-            self.frame_state.mark_pending();
-        } else {
-            self.frame_state.mark_submitted();
-        }
-
-        FrameReport {
-            repaint_requested: self.repaint_requested,
-            frame_state: self.frame_state.clone(),
-            skip_render: self.damage.is_none(),
-        }
+        action_flag
     }
 
     /// Feed a palantir-native input event. Hosts own redraw scheduling.
@@ -209,7 +211,6 @@ impl Ui {
     }
 
     fn pre_record(&mut self) {
-        self.ids.pre_record();
         self.forest.pre_record();
     }
 
@@ -234,8 +235,8 @@ impl Ui {
     /// `post_record`. Sweep runs here (once per `frame`) rather than
     /// per `post_record` so a widget that vanishes in pass A but
     /// returns in pass B keeps its state across the discard.
-    fn finalize_frame(&mut self) {
-        let removed = self.ids.rollover();
+    fn finalize_frame(&mut self) -> Option<Damage> {
+        let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
@@ -243,12 +244,12 @@ impl Ui {
 
         self.cascades_engine.run(&self.forest, &mut self.layout);
         self.input.post_record(&self.layout.cascades);
-        self.damage = self.damage_engine.compute(
+        self.damage_engine.compute(
             &self.forest,
             &self.layout.cascades,
-            &self.ids.removed,
+            &self.forest.ids.removed,
             self.display.logical_rect(),
-        );
+        )
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────
@@ -295,13 +296,12 @@ impl Ui {
         result
     }
 
-    pub(crate) fn node(&mut self, mut element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
-        // Resolve the widget id at the recording boundary: builders
-        // produce an unset id by default and chain `id_salt` /
-        // `auto_id` to set it; explicit-id collisions hard-assert in
-        // `SeenIds::record`, auto-id collisions get silently
-        // disambiguated.
-        self.ids.record(&mut element);
+    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
+        // Id collision detection + auto-id disambiguation happen
+        // inside `Forest::open_node`, so any path that opens a node
+        // (including direct `self.forest.open_node` callers) gets the
+        // same check. Explicit-id collisions hard-assert, auto-id
+        // collisions get silently disambiguated.
         let node = self.forest.open_node(element);
         f(self);
         self.forest.close_node();
@@ -312,7 +312,7 @@ impl Ui {
         let mut state = self.input.response_for(id, &self.layout.cascades);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
-        state.disabled |= self.forest.ancestor_disabled();
+        state.disabled |= self.forest.trees[self.forest.current_layer as usize].ancestor_disabled();
         state
     }
 
