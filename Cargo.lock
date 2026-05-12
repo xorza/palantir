@@ -860,6 +860,7 @@ checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
 dependencies = [
  "bytemuck",
  "encase",
+ "serde_core",
 ]
 
 [[package]]
