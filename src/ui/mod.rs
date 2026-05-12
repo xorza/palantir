@@ -233,6 +233,14 @@ impl Ui {
         self.relayout_requested = true;
     }
 
+    /// Ask the host to schedule another frame after this one. Cleared
+    /// at the top of every `frame`; widgets/showcases that need
+    /// continuous animation call this each frame to keep the host
+    /// awake.
+    pub fn request_repaint(&mut self) {
+        self.repaint_requested = true;
+    }
+
     fn pre_record(&mut self) {
         profiling::scope!("Ui::pre_record");
         self.forest.pre_record();

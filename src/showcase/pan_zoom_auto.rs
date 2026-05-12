@@ -5,11 +5,11 @@
 //! only so `scroll_target` latches without clobbering the real cursor
 //! on subsequent frames (otherwise tab-bar clicks miss). Frame counter
 //! lives in `Ui::state` (rebuilt-arena safe); continuous repaint comes
-//! from an animation whose target moves every frame, so
-//! `repaint_requested` stays armed without any host cooperation.
+//! from `ui.request_repaint()` each frame so the host keeps scheduling
+//! the next one.
 
 use glam::Vec2;
-use palantir::{AnimSpec, InputEvent, Ui, WidgetId};
+use palantir::{InputEvent, Ui, WidgetId};
 
 pub const NAME: &str = "pan+zoom auto";
 
@@ -35,9 +35,7 @@ pub fn build(ui: &mut Ui) {
     )));
     ui.on_input(InputEvent::Zoom(1.0 + t.cos() * 0.02));
 
-    // Moving target → spring never settles → `repaint_requested` stays
-    // true → host runs the next frame. Discarded value.
-    let _ = ui.animate(id, "tick", t.sin(), Some(AnimSpec::FAST));
+    ui.request_repaint();
 
     crate::showcase::complex_pan_zoom::build(ui);
 }
