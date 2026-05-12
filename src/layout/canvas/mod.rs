@@ -19,6 +19,7 @@ mod tests;
 /// trigger recursive sizing of Fill children. Same per-axis pattern Stack
 /// uses on its cross axis. Content size =
 /// `max(child_pos + child_desired)` per axis.
+#[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,

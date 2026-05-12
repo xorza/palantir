@@ -39,6 +39,7 @@ pub(crate) fn intrinsic(
 ///
 /// Content size = `max(child desired)` per axis, so the panel hugs the
 /// largest child (cross-axis fall-back when ZStack is Hug).
+#[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,

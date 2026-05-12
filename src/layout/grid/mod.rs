@@ -328,6 +328,7 @@ impl GridHugStore {
 /// (`GridHugStore`), keyed by `GridDef` index, durable for the whole
 /// layout pass. Both are heap-resident and capacity-retained across
 /// frames; no fixed track-count limit.
+#[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,

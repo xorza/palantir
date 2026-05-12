@@ -128,6 +128,7 @@ pub(crate) type ScrollStates = FxHashMap<WidgetId, ScrollLayoutState>;
 /// On a measure-cache hit at any ancestor, this function doesn't run
 /// and the row's `content` keeps last frame's value (cache hit ⟹
 /// identical measure ⟹ identical content extent).
+#[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
