@@ -2,15 +2,15 @@ mod mesh_pipeline;
 mod quad_pipeline;
 mod schedule;
 mod viewport;
+mod viewport_uniform;
 
 use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
 use self::viewport::build_damage_scissors;
+use self::viewport_uniform::ViewportUniform;
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::primitives::{
-    color::Color, rect::Rect, size::Size, spacing::Spacing, stroke::Stroke, urect::URect,
-};
+use crate::primitives::{color::Color, rect::Rect, size::Size, spacing::Spacing, urect::URect};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
 use crate::ui::damage::Damage;
@@ -99,6 +99,7 @@ pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
 pub(crate) struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
+    viewport_uniform: ViewportUniform,
     quad: QuadPipeline,
     mesh: MeshPipeline,
     text: TextRenderer,
@@ -117,14 +118,6 @@ pub(crate) struct WgpuBackend {
     /// Stage 3 / Step 6 of the damage-rendering plan: we render here
     /// so future frames can `LoadOp::Load` last frame's pixels.
     backbuffer: Option<Backbuffer>,
-    /// Per-frame damage scissors. One entry per rect in
-    /// `Damage::Partial(region)` after physical-px scaling plus
-    /// AA padding plus viewport clamping; rects that clamp to zero
-    /// area are filtered out. `Full` and `Skip` leave it empty.
-    /// Bounded by [`DAMAGE_RECT_CAP`] (the merge policy guarantees
-    /// the region never holds more), so inline storage suffices and
-    /// no heap allocation ever runs.
-    damage_scissors: tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]>,
 }
 
 impl WgpuBackend {
@@ -134,19 +127,20 @@ impl WgpuBackend {
         format: wgpu::TextureFormat,
         shaper: TextShaper,
     ) -> Self {
-        let quad = QuadPipeline::new(&device, format);
-        let mesh = MeshPipeline::new(&device, format);
+        let viewport_uniform = ViewportUniform::new(&device);
+        let quad = QuadPipeline::new(&device, format, viewport_uniform.buffer());
+        let mesh = MeshPipeline::new(&device, format, viewport_uniform.buffer());
         let mut text = TextRenderer::new(&device, &queue, format);
         text.set_shaper(shaper);
         Self {
             device,
             queue,
+            viewport_uniform,
             quad,
             mesh,
             text,
             color_format: format,
             backbuffer: None,
-            damage_scissors: Default::default(),
         }
     }
 
@@ -301,7 +295,8 @@ impl WgpuBackend {
         // Build the per-frame scissor list. `Full` → empty list →
         // single Clear+full-viewport pass. `Partial` → one entry per
         // rect in the region (see `build_damage_scissors`).
-        build_damage_scissors(&mut self.damage_scissors, effective_damage, buffer);
+        let mut damage_scissors: tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]> = Default::default();
+        build_damage_scissors(&mut damage_scissors, effective_damage, buffer);
         let clear_op = wgpu::LoadOp::Clear(wgpu::Color {
             r: clear.r as f64,
             g: clear.g as f64,
@@ -317,7 +312,7 @@ impl WgpuBackend {
         // toward black while moving content stays current — far less
         // jarring than the prior `LoadOp::Clear` flash and visually
         // pins which regions are actually repainting.
-        let dim_undamaged = debug_overlay.dim_undamaged && !self.damage_scissors.is_empty();
+        let dim_undamaged = debug_overlay.dim_undamaged && !damage_scissors.is_empty();
         if dim_undamaged {
             self.quad
                 .upload_dim(&self.queue, buffer.viewport_phys_f, 0.4);
@@ -342,22 +337,17 @@ impl WgpuBackend {
                 .stage_masks(&self.device, &self.queue, &buffer.groups);
         }
 
-        self.quad.upload(
-            &self.device,
-            &self.queue,
-            buffer.viewport_phys_f,
-            &buffer.quads,
-        );
-
+        self.viewport_uniform
+            .write(&self.queue, buffer.viewport_phys_f);
+        self.quad.upload(&self.device, &self.queue, &buffer.quads);
         self.mesh.upload(
             &self.device,
             &self.queue,
-            buffer.viewport_phys_f,
             &buffer.meshes.arena.vertices,
             &buffer.meshes.arena.indices,
         );
 
-        if !self.damage_scissors.is_empty() {
+        if !damage_scissors.is_empty() {
             self.quad
                 .upload_clear(&self.queue, buffer.viewport_phys_f, clear);
         }
@@ -396,16 +386,16 @@ impl WgpuBackend {
         //   `LoadOp::Load` so prior pixels (and the dim, where it
         //   landed) survive outside the scissor. Subsequent passes
         //   load the prior pass's output the same way.
-        if self.damage_scissors.is_empty() {
+        if damage_scissors.is_empty() {
             tracing::trace!(of = 1, "wgpu_backend.submit.pass.full");
             self.run_one_pass(&mut encoder, buffer, None, clear_op, use_stencil, text_mode);
         } else {
             if dim_undamaged {
                 tracing::trace!("wgpu_backend.submit.pass.dim");
-                self.run_dim_pass(&mut encoder, use_stencil);
+                self.run_dim_pass(&mut encoder);
             }
-            let n = self.damage_scissors.len();
-            for (i, scissor) in self.damage_scissors.iter().copied().enumerate() {
+            let n = damage_scissors.len();
+            for (i, scissor) in damage_scissors.iter().copied().enumerate() {
                 tracing::trace!(
                     pass = i,
                     of = n,
@@ -423,29 +413,7 @@ impl WgpuBackend {
             }
         }
 
-        // Copy the just-painted backbuffer onto the swapchain texture.
-        // Both share format + size (`ensure_backbuffer` enforces it),
-        // so this is a single direct copy — no blit pipeline required.
-        let backbuffer_tex = &self
-            .backbuffer
-            .as_ref()
-            .expect("ensure_backbuffer just succeeded")
-            .tex;
-        encoder.copy_texture_to_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: backbuffer_tex,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyTextureInfo {
-                texture: surface_tex,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            backbuffer_tex.size(),
-        );
+        self.copy_backbuffer_into(&mut encoder, surface_tex);
 
         self.draw_debug_overlay(
             surface_tex,
@@ -467,10 +435,9 @@ impl WgpuBackend {
     /// over the backbuffer with `LoadOp::Load`. Runs before partial
     /// damage passes when the debug `dim_undamaged` flag is on (see
     /// `dim_undamaged` in [`Self::submit`]). No stencil attachment
-    /// is added even when the frame uses rounded clipping — the dim
-    /// quad paints uniformly across the whole viewport and the
-    /// subsequent partial passes provide their own stencil setup.
-    fn run_dim_pass(&self, encoder: &mut wgpu::CommandEncoder, use_stencil: bool) {
+    /// even when the frame uses rounded clipping — the dim quad
+    /// paints uniformly and subsequent partial passes set their own.
+    fn run_dim_pass(&self, encoder: &mut wgpu::CommandEncoder) {
         let backbuffer = self
             .backbuffer
             .as_ref()
@@ -491,13 +458,6 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        // Caller passes `use_stencil` for the frame, but this pass
-        // intentionally omits the stencil attachment. The dim quad
-        // is rendered through the no-stencil base pipeline, which
-        // doesn't reference the stencil state. The parameter is
-        // here for symmetry with `run_one_pass` and to let us pin
-        // an assert if a future refactor accidentally requires it.
-        let _ = use_stencil;
         self.quad.draw_dim(&mut pass);
     }
 
@@ -661,10 +621,7 @@ impl WgpuBackend {
             // to the same buffer would all collapse to the last
             // value at submit time).
             let inset_px = (DAMAGE_OVERLAY_INSET * buffer.scale).max(1.0);
-            let stroke = Stroke::solid(
-                DAMAGE_OVERLAY_COLOR,
-                DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale,
-            );
+            let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale;
             let mut overlay_rects: tinyvec::ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
             match damage {
                 Damage::Partial(region) => {
@@ -686,8 +643,13 @@ impl WgpuBackend {
             if overlay_rects.is_empty() {
                 return;
             }
-            self.quad
-                .upload_overlays(&self.device, &self.queue, &overlay_rects, stroke);
+            self.quad.upload_overlays(
+                &self.device,
+                &self.queue,
+                &overlay_rects,
+                DAMAGE_OVERLAY_COLOR,
+                stroke_width,
+            );
             let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("palantir.renderer.overlay.damage_rect"),
@@ -720,18 +682,28 @@ impl WgpuBackend {
     /// one-frame glitch self-heals.
     pub(crate) fn copy_backbuffer_to_surface(&mut self, surface_tex: &wgpu::Texture) {
         self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
-        let backbuffer = self
-            .backbuffer
-            .as_ref()
-            .expect("ensure_backbuffer just succeeded");
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.skip"),
             });
+        self.copy_backbuffer_into(&mut encoder, surface_tex);
+        self.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    fn copy_backbuffer_into(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        surface_tex: &wgpu::Texture,
+    ) {
+        let bb = &self
+            .backbuffer
+            .as_ref()
+            .expect("ensure_backbuffer just succeeded")
+            .tex;
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &backbuffer.tex,
+                texture: bb,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
@@ -742,9 +714,8 @@ impl WgpuBackend {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            backbuffer.tex.size(),
+            bb.size(),
         );
-        self.queue.submit(std::iter::once(encoder.finish()));
     }
 }
 

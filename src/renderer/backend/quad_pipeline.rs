@@ -3,35 +3,17 @@
 //! shader at `quad.wgsl` next to this file.
 
 use crate::layout::types::span::Span;
-use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke};
+use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
 use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::DrawGroup;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
-use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
 use tinyvec::ArrayVec;
-use wgpu::util::DeviceExt;
-
-#[derive(Copy, Clone, Debug, ShaderType)]
-struct ViewportUniform {
-    size: Vec2,
-}
-
-impl ViewportUniform {
-    const BYTES: usize = Self::SHADER_SIZE.get() as usize;
-
-    fn encode(&self) -> [u8; Self::BYTES] {
-        let mut out = [0u8; Self::BYTES];
-        UniformBuffer::new(&mut out[..]).write(self).unwrap();
-        out
-    }
-}
 
 pub(crate) struct QuadPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    viewport_buffer: wgpu::Buffer,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
     /// Lazy stencil-aware pipeline variants — built on first need
@@ -129,7 +111,11 @@ struct StencilPipelines {
 }
 
 impl QuadPipeline {
-    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        viewport_buffer: &wgpu::Buffer,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.quad.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
@@ -167,12 +153,6 @@ impl QuadPipeline {
                     count: None,
                 },
             ],
-        });
-
-        let viewport_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("palantir.quad.viewport"),
-            contents: &ViewportUniform { size: Vec2::ZERO }.encode(),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
         let gradient_texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -314,7 +294,6 @@ impl QuadPipeline {
         Self {
             pipeline,
             bind_group,
-            viewport_buffer,
             instance_buffer,
             instance_capacity,
             stencil: None,
@@ -477,19 +456,7 @@ impl QuadPipeline {
         }
     }
 
-    pub(crate) fn upload(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        viewport: Vec2,
-        quads: &[Quad],
-    ) {
-        queue.write_buffer(
-            &self.viewport_buffer,
-            0,
-            &ViewportUniform { size: viewport }.encode(),
-        );
-
+    pub(crate) fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, quads: &[Quad]) {
         if quads.is_empty() {
             return;
         }
@@ -637,7 +604,8 @@ impl QuadPipeline {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         rects: &[Rect],
-        stroke: Stroke,
+        stroke_color: Color,
+        stroke_width: f32,
     ) {
         if rects.is_empty() {
             return;
@@ -657,9 +625,9 @@ impl QuadPipeline {
                 rect: *r,
                 fill: Color::TRANSPARENT,
                 radius: Corners::default(),
-                stroke_color: stroke.brush.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
-                stroke_width: stroke.width,
-            ..Default::default()
+                stroke_color,
+                stroke_width,
+                ..Default::default()
             });
         }
         queue.write_buffer(
