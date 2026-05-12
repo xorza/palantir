@@ -133,12 +133,14 @@ impl Composer {
         };
         let texts_end = out.texts.len() as u32;
         // Invariants the schedule cursor relies on: batches are pushed
-        // in walk order so `last_group` is strictly increasing, and
-        // their `texts` spans concatenate without gaps in `out.texts`.
+        // in walk order so `last_group` is monotonically non-decreasing
+        // (multiple batches can anchor to the same group when a mesh
+        // splits mid-group), and their `texts` spans concatenate
+        // without gaps in `out.texts`.
         debug_assert!(
             out.text_batches
                 .last()
-                .is_none_or(|prev| prev.last_group < b.last_group),
+                .is_none_or(|prev| prev.last_group <= b.last_group),
         );
         debug_assert!(
             out.text_batches

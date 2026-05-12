@@ -567,6 +567,87 @@ fn text_batch_emits_at_last_group_even_with_trailing_quad_group() {
     );
 }
 
+/// Pin: a batch whose `last_group` falls in a damage-skipped group
+/// must still render — earlier groups in the same batch may sit
+/// inside the damage rect, and dropping the whole batch silently
+/// removes their text. Glyphon clips per-`TextArea.bounds` + the
+/// active scissor, so emitting late is paint-safe.
+#[test]
+fn text_batch_anchored_in_damage_skipped_group_still_emits() {
+    // Two groups in distinct scissors. Both contribute text to one
+    // batch (last_group = 1). Damage rect covers group 0's scissor
+    // only, so group 1 is filtered out by the damage intersect.
+    let buf = buf_with_batches(
+        vec![
+            DrawGroup {
+                scissor: Some(URect::new(0, 0, 50, 50)),
+                rounded_clip: None,
+                quads: Span::new(0, 1),
+                texts: Span::new(0, 1),
+                meshes: Span::default(),
+            },
+            DrawGroup {
+                scissor: Some(URect::new(60, 0, 40, 50)),
+                rounded_clip: None,
+                quads: Span::new(1, 1),
+                texts: Span::new(1, 1),
+                meshes: Span::default(),
+            },
+        ],
+        vec![TextBatch {
+            texts: Span::new(0, 2),
+            last_group: 1,
+        }],
+    );
+    // Damage rect: covers only group 0.
+    let damage = URect::new(0, 0, 50, 50);
+    let steps = simplify(&collect(&buf, Some(damage), &[], false));
+    // Must include Text(0) — group 0's text lives in batch 0, and
+    // batch 0 anchored at the skipped group 1 must still emit.
+    assert!(
+        steps.contains(&DrawOp::Text(0)),
+        "batch anchored at damage-skipped group must still render; got {steps:?}",
+    );
+}
+
+/// Pin: when the batch's `last_group` is the **final** group AND that
+/// group is damage-skipped, the trailing drain after the per-group
+/// loop must still emit the batch. Without it the in-group drain
+/// (which only triggers when reaching a later non-skipped group)
+/// never fires, and the text vanishes.
+#[test]
+fn text_batch_anchored_in_trailing_skipped_group_drains_after_loop() {
+    let buf = buf_with_batches(
+        vec![
+            DrawGroup {
+                scissor: Some(URect::new(0, 0, 50, 50)),
+                rounded_clip: None,
+                quads: Span::new(0, 1),
+                texts: Span::new(0, 1),
+                meshes: Span::default(),
+            },
+            DrawGroup {
+                // Final group, outside damage.
+                scissor: Some(URect::new(60, 0, 40, 50)),
+                rounded_clip: None,
+                quads: Span::new(1, 1),
+                texts: Span::new(1, 1),
+                meshes: Span::default(),
+            },
+        ],
+        vec![TextBatch {
+            texts: Span::new(0, 2),
+            last_group: 1,
+        }],
+    );
+    let damage = URect::new(0, 0, 50, 50);
+    let steps = simplify(&collect(&buf, Some(damage), &[], false));
+    assert!(
+        steps.contains(&DrawOp::Text(0)),
+        "trailing drain must emit batch when last_group is tail-skipped; got {steps:?}",
+    );
+}
+
 /// Pin: two distinct batches → two `Text` steps, each at its own
 /// `last_group`. The schedule cursor advances correctly through the
 /// batch list without skipping or doubling up.
