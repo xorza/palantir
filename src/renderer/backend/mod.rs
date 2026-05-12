@@ -122,8 +122,7 @@ impl WgpuBackend {
         let viewport_uniform = ViewportUniform::new(&device);
         let quad = QuadPipeline::new(&device, format, viewport_uniform.buffer());
         let mesh = MeshPipeline::new(&device, format, viewport_uniform.buffer());
-        let mut text = TextRenderer::new(&device, &queue, format);
-        text.set_shaper(shaper);
+        let text = TextRenderer::new(&device, &queue, format, shaper);
         let debug = DebugOverlay::new(&device);
         Self {
             device,
