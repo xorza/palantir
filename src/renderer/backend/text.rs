@@ -1,10 +1,13 @@
-//! Glyphon-backed text renderer with **per-group prepare/render** so text
+//! Glyphon-backed text renderer with **per-batch prepare/render** so text
 //! interleaves correctly with quads in paint order. The wgpu backend calls
-//! [`TextRenderer::prepare_group`] for each `DrawGroup` whose `texts` range
-//! is non-empty, then inside the render pass calls
-//! [`TextRenderer::render_group`] right after that group's quads draw.
-//! Glyph data is shared via a single [`TextAtlas`] across all renderers in
-//! the pool, so the cache is hit for free across groups.
+//! [`TextRenderer::prepare_batch`] for each [`TextBatch`] (a coalesced run
+//! of text spans that share one `glyphon::prepare`), then inside the
+//! render pass calls [`TextRenderer::render_batch`] right after the
+//! batch's last group's quads draw. Glyph data is shared via a single
+//! [`TextAtlas`] across all renderers in the pool, so the cache is hit
+//! for free across batches.
+//!
+//! [`TextBatch`]: crate::renderer::render_buffer::TextBatch
 //!
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
 //! [`TextRun`]: crate::renderer::render_buffer::TextRun
@@ -21,7 +24,7 @@ use glyphon::{
     TextRenderer as GlyphonRenderer, Viewport,
 };
 
-/// Selects which renderer pool a `prepare_group` / `render_group` call
+/// Selects which renderer pool a `prepare_batch` / `render_batch` call
 /// targets. Plain frames stay on the no-stencil pool (existing
 /// behavior). When the surrounding pass has a stencil attachment
 /// (rounded-clip path), text must use a depth-stencil-aware glyphon
@@ -73,7 +76,7 @@ struct PoolState {
     /// [`TextRenderer::post_record`].
     ready: FixedBitSet,
     /// Per-slot fingerprint of the runs handed to the most recent
-    /// successful `prepare_group` call. On a fresh call where
+    /// successful `prepare_batch` call. On a fresh call where
     /// `hash_runs(...) == last_hashes[i]`, the inner `glyphon::prepare`
     /// is skipped — the renderer's vertex buffer + the atlas glyphs
     /// from the prior frame are still valid as long as
@@ -125,7 +128,7 @@ impl PoolState {
 pub(crate) struct TextRenderer {
     /// Shared shaper handle, installed at construction. Must be the
     /// *same* [`TextShaper`] the host installed on `Ui`, otherwise
-    /// lookups in [`Self::prepare_group`] miss against keys minted
+    /// lookups in [`Self::prepare_batch`] miss against keys minted
     /// on a different cache. The handle is immutable for the
     /// renderer's lifetime — no `set_shaper`. Hosts that need a
     /// different shaper rebuild the renderer (and thus the atlas)
@@ -138,12 +141,12 @@ pub(crate) struct TextRenderer {
     /// No-stencil pool. Used on frames without rounded clip.
     plain: PoolState,
     /// Stencil-aware pool. Lazy-built on the first
-    /// `prepare_group(.., StencilMode::Stencil)` call. Apps that
+    /// `prepare_batch(.., StencilMode::Stencil)` call. Apps that
     /// never use rounded clip never push into this pool. Shares the
     /// `atlas` (glyphon caches pipelines by
     /// `(format, multisample, depth_stencil)` — no fork needed).
     stencil: PoolState,
-    /// Set if any `prepare_group` call this frame hash-skipped the
+    /// Set if any `prepare_batch` call this frame hash-skipped the
     /// inner `glyphon::prepare`. When set, [`Self::post_record`]
     /// must *not* call `atlas.trim` — trimming would evict glyphs
     /// the skipped renderers still depend on. Cleared at end of
@@ -151,17 +154,17 @@ pub(crate) struct TextRenderer {
     skipped_any_this_frame: bool,
     /// Counts consecutive frames where `skipped_any_this_frame` was
     /// true. When it reaches [`FORCE_PREPARE_INTERVAL`], the next
-    /// `prepare_group` calls ignore hash hits and re-run
+    /// `prepare_batch` calls ignore hash hits and re-run
     /// `glyphon::prepare` so a subsequent `atlas.trim` can clean up
     /// long-tail accumulated cache_keys (e.g. unique scales minted
     /// during a long zoom gesture).
     frames_since_full_prepare: u32,
-    /// Highest `group_idx + 1` prepared this frame across **either**
+    /// Highest `batch_idx + 1` prepared this frame across **either**
     /// pool. Used by [`Self::post_record`] to shrink whichever pool
     /// grew past `2 × high_water`. Shared because a given frame is
     /// either all-`Plain` or all-`Stencil` (the surrounding render
     /// pass picks one — pinned by `debug_assert!` in
-    /// [`Self::prepare_group`]), so `high_water` reflects the active
+    /// [`Self::prepare_batch`]), so `high_water` reflects the active
     /// mode's group count; the inactive pool — if it overshot in a
     /// prior frame — trims down without losing live state.
     high_water: usize,
@@ -236,10 +239,10 @@ impl TextRenderer {
 
     /// Build glyphon `TextArea`s from `runs` (looked up in the shared
     /// shaper's buffer cache) and call `prepare` on the pool slot at
-    /// `group_idx`. `mode` selects the no-stencil or stencil-aware
+    /// `batch_idx`. `mode` selects the no-stencil or stencil-aware
     /// pool — both share `atlas`. Returns `false` and skips work if no
     /// runs resolve to a buffer. The pool grows on demand if
-    /// `group_idx` exceeds its current length.
+    /// `batch_idx` exceeds its current length.
     ///
     /// **Hash-skip fast path.** Each successful prepare stashes a
     /// fingerprint of `(scale, runs)` in [`PoolState::last_hashes`].
@@ -251,12 +254,12 @@ impl TextRenderer {
     /// consecutive skip frames, the next frame ignores hash hits to
     /// give `atlas.trim` a clean opportunity.
     #[profiling::function]
-    pub(crate) fn prepare_group(
+    pub(crate) fn prepare_batch(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         scale: f32,
-        group_idx: usize,
+        batch_idx: usize,
         runs: &[TextRun],
         mode: StencilMode,
     ) -> bool {
@@ -280,11 +283,11 @@ impl TextRenderer {
         // fine without inline disjoint borrow.
         if !want_force {
             let p = self.pool_mut(mode);
-            let prior = p.last_hashes.get(group_idx).copied().flatten();
-            if group_idx < p.renderers.len() && prior == Some(hash) {
-                p.ready.insert(group_idx);
-                if group_idx + 1 > self.high_water {
-                    self.high_water = group_idx + 1;
+            let prior = p.last_hashes.get(batch_idx).copied().flatten();
+            if batch_idx < p.renderers.len() && prior == Some(hash) {
+                p.ready.insert(batch_idx);
+                if batch_idx + 1 > self.high_water {
+                    self.high_water = batch_idx + 1;
                 }
                 self.skipped_any_this_frame = true;
                 return true;
@@ -326,7 +329,7 @@ impl TextRenderer {
                     StencilMode::Plain => &mut self.plain,
                     StencilMode::Stencil => &mut self.stencil,
                 };
-                while pool.renderers.len() <= group_idx {
+                while pool.renderers.len() <= batch_idx {
                     let renderer = GlyphonRenderer::new(
                         &mut self.atlas,
                         device,
@@ -356,7 +359,7 @@ impl TextRenderer {
                     })
                 });
 
-                let result = pool.renderers[group_idx].prepare(
+                let result = pool.renderers[batch_idx].prepare(
                     device,
                     queue,
                     font_system,
@@ -367,42 +370,42 @@ impl TextRenderer {
                 );
 
                 if let Err(e) = result {
-                    tracing::error!(?e, group_idx, ?mode, "glyphon prepare failed");
-                    pool.ready.remove(group_idx);
-                    pool.last_hashes[group_idx] = None;
+                    tracing::error!(?e, batch_idx, ?mode, "glyphon prepare failed");
+                    pool.ready.remove(batch_idx);
+                    pool.last_hashes[batch_idx] = None;
                     return false;
                 }
-                pool.ready.insert(group_idx);
-                pool.last_hashes[group_idx] = Some(hash);
-                if group_idx + 1 > self.high_water {
-                    self.high_water = group_idx + 1;
+                pool.ready.insert(batch_idx);
+                pool.last_hashes[batch_idx] = Some(hash);
+                if batch_idx + 1 > self.high_water {
+                    self.high_water = batch_idx + 1;
                 }
                 true
             })
             .unwrap_or(false)
     }
 
-    /// Render the prepared text for `group_idx` from the `mode` pool.
+    /// Render the prepared text for `batch_idx` from the `mode` pool.
     /// Silently no-ops if the group wasn't prepared this frame in that
     /// mode (no text, no shaper, prepare failed, or wrong pool).
-    pub(crate) fn render_group(
+    pub(crate) fn render_batch(
         &self,
-        group_idx: usize,
+        batch_idx: usize,
         pass: &mut wgpu::RenderPass<'_>,
         mode: StencilMode,
     ) {
         let p = self.pool(mode);
-        if !p.ready.contains(group_idx) {
+        if !p.ready.contains(batch_idx) {
             return;
         }
-        if let Err(e) = p.renderers[group_idx].render(&self.atlas, &self.viewport, pass) {
-            tracing::warn!(?e, group_idx, "glyphon render failed");
+        if let Err(e) = p.renderers[batch_idx].render(&self.atlas, &self.viewport, pass) {
+            tracing::warn!(?e, batch_idx, "glyphon render failed");
         }
     }
 
     /// Reclaim atlas slots for glyphs unused this frame, shrink the
     /// renderer pool if it's grossly over-allocated, and reset
-    /// per-renderer ready flags. Call once after all `render_group`
+    /// per-renderer ready flags. Call once after all `render_batch`
     /// calls have been submitted in the encoder pass.
     ///
     /// `atlas.trim` runs only on frames where every active group
@@ -411,7 +414,7 @@ impl TextRenderer {
     /// any frame where one or more groups hash-skipped, trim is
     /// suppressed (it would evict glyphs the skipped renderers still
     /// reference). The [`FORCE_PREPARE_INTERVAL`] threshold in
-    /// `prepare_group` bounds how long this suppression can run
+    /// `prepare_batch` bounds how long this suppression can run
     /// before a forced full-prepare frame restores the trim
     /// opportunity.
     pub(crate) fn post_record(&mut self) {
@@ -439,7 +442,7 @@ impl TextRenderer {
     }
 }
 
-/// Fingerprint `(scale, runs)` for the `prepare_group` hash-skip fast
+/// Fingerprint `(scale, runs)` for the `prepare_batch` hash-skip fast
 /// path. `TextRun` is `#[repr(C)]` with no internal padding, so one
 /// byte-slice write covers every byte glyphon would consume from the
 /// run set; the leading `scale.to_bits()` write captures the DPI

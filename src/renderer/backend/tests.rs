@@ -11,7 +11,9 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::urect::URect;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::{DrawGroup, MeshScene, RenderBuffer, RoundedClip, TextRun};
+use crate::renderer::render_buffer::{
+    DrawGroup, MeshScene, RenderBuffer, RoundedClip, TextBatch, TextRun,
+};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
@@ -61,7 +63,7 @@ fn simplify(steps: &[RenderStep]) -> Vec<DrawOp> {
                 }
             }
             RenderStep::Quads { group, .. } => out.push(DrawOp::Quads(*group)),
-            RenderStep::Text { group } => out.push(DrawOp::Text(*group)),
+            RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
             RenderStep::Meshes { group, .. } => out.push(DrawOp::Meshes(*group)),
         }
     }
@@ -95,13 +97,26 @@ fn dummy_text() -> TextRun {
 }
 
 /// Builds a 100×100 buffer with the given groups. Quads/texts pools
-/// have one slot each so any non-empty span is valid.
+/// have one slot each so any non-empty span is valid. Each group
+/// with text gets its own one-group text batch (mimicking the
+/// pre-coalesce behavior); the batch's `last_group` is the group's
+/// index in the input.
 fn buf_with(groups: Vec<DrawGroup>) -> RenderBuffer {
+    let mut text_batches = Vec::new();
+    for (i, g) in groups.iter().enumerate() {
+        if g.texts.len != 0 {
+            text_batches.push(TextBatch {
+                texts: g.texts,
+                last_group: i as u32,
+            });
+        }
+    }
     RenderBuffer {
         quads: vec![dummy_quad(); 4],
         texts: vec![dummy_text(); 4],
         meshes: MeshScene::default(),
         groups,
+        text_batches,
         viewport_phys: UVec2::new(100, 100),
         viewport_phys_f: Vec2::new(100.0, 100.0),
         scale: 1.0,
@@ -163,7 +178,10 @@ fn text_emits_for_quadless_group() {
     ]);
     assert_eq!(
         simplify(&collect(&buf, None, &[], false)),
-        vec![DrawOp::Quads(0), DrawOp::Text(1)],
+        // Group 0 has no text → not part of a batch. Group 1's text
+        // is the only batch (idx 0), emitted after group 1's quads
+        // (it has none) → immediately.
+        vec![DrawOp::Quads(0), DrawOp::Text(0)],
     );
 }
 
@@ -306,7 +324,8 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
             DrawOp::MaskClear(0),
             // Plain group: no mask write/clear, just draw
             DrawOp::Quads(1),
-            DrawOp::Text(1),
+            // Only group 1 has text → single batch idx 0.
+            DrawOp::Text(0),
         ],
     );
 }
@@ -458,5 +477,136 @@ fn group_outside_damage_emits_no_steps() {
     assert_eq!(
         simplify(&collect(&buf, Some(damage), &[], false)),
         vec![DrawOp::PreClear, DrawOp::Quads(0)],
+    );
+}
+
+// ---------- Text-batch coalescing schedule emit positions ---------
+
+/// Constructs a buffer with explicit `text_batches`, bypassing
+/// `buf_with`'s one-batch-per-group default. Used by the batch-emit
+/// tests to assert on coalesced batches the composer would have
+/// produced.
+fn buf_with_batches(groups: Vec<DrawGroup>, text_batches: Vec<TextBatch>) -> RenderBuffer {
+    RenderBuffer {
+        quads: vec![dummy_quad(); 4],
+        texts: vec![dummy_text(); 4],
+        meshes: MeshScene::default(),
+        groups,
+        text_batches,
+        viewport_phys: UVec2::new(100, 100),
+        viewport_phys_f: Vec2::new(100.0, 100.0),
+        scale: 1.0,
+        ..RenderBuffer::default()
+    }
+}
+
+/// Pin: two groups sharing one text batch emit `Text` ONCE, after the
+/// last group's quads. Without coalescing the schedule would emit two
+/// text steps (and the backend two glyphon prepares/renders).
+#[test]
+fn text_batch_spanning_two_groups_emits_once_at_last_group() {
+    let buf = buf_with_batches(
+        vec![
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::new(0, 1),
+                texts: Span::new(0, 1),
+                meshes: Span::default(),
+            },
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::new(1, 1),
+                texts: Span::new(1, 1),
+                meshes: Span::default(),
+            },
+        ],
+        vec![TextBatch {
+            texts: Span::new(0, 2),
+            last_group: 1,
+        }],
+    );
+    assert_eq!(
+        simplify(&collect(&buf, None, &[], false)),
+        vec![DrawOp::Quads(0), DrawOp::Quads(1), DrawOp::Text(0)],
+    );
+}
+
+/// Pin: a batch whose `last_group` is followed by a text-less group
+/// still emits Text at `last_group`, not pushed forward. Counter-pin
+/// against an off-by-one in the cursor advance.
+#[test]
+fn text_batch_emits_at_last_group_even_with_trailing_quad_group() {
+    let buf = buf_with_batches(
+        vec![
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::new(0, 1),
+                texts: Span::new(0, 1),
+                meshes: Span::default(),
+            },
+            // Group 1: trailing quad-only group (different batch state).
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::new(1, 1),
+                texts: Span::new(0, 0),
+                meshes: Span::default(),
+            },
+        ],
+        vec![TextBatch {
+            texts: Span::new(0, 1),
+            last_group: 0,
+        }],
+    );
+    assert_eq!(
+        simplify(&collect(&buf, None, &[], false)),
+        vec![DrawOp::Quads(0), DrawOp::Text(0), DrawOp::Quads(1)],
+    );
+}
+
+/// Pin: two distinct batches → two `Text` steps, each at its own
+/// `last_group`. The schedule cursor advances correctly through the
+/// batch list without skipping or doubling up.
+#[test]
+fn two_text_batches_emit_at_their_own_last_groups() {
+    let buf = buf_with_batches(
+        vec![
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::new(0, 1),
+                texts: Span::new(0, 1),
+                meshes: Span::default(),
+            },
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::new(1, 1),
+                texts: Span::new(1, 1),
+                meshes: Span::default(),
+            },
+        ],
+        vec![
+            TextBatch {
+                texts: Span::new(0, 1),
+                last_group: 0,
+            },
+            TextBatch {
+                texts: Span::new(1, 1),
+                last_group: 1,
+            },
+        ],
+    );
+    assert_eq!(
+        simplify(&collect(&buf, None, &[], false)),
+        vec![
+            DrawOp::Quads(0),
+            DrawOp::Text(0),
+            DrawOp::Quads(1),
+            DrawOp::Text(1),
+        ],
     );
 }

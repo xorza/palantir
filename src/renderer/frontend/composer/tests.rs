@@ -724,3 +724,76 @@ fn compose_keeps_quads_then_text_in_one_group() {
     assert_eq!(buf.groups[0].quads, Span::new(0, 2));
     assert_eq!(buf.groups[0].texts, Span::new(0, 1));
 }
+
+// ---------- Text batch coalescing across groups -------------------
+
+/// Pin: two adjacent rows where each row sits in its own scissor
+/// (a clipped panel per row) coalesce their text into ONE batch even
+/// though they're in different groups. Saves a glyphon prepare +
+/// render per extra row — the bulk of the savings from text batching.
+#[test]
+fn compose_coalesces_text_across_distinct_scissor_groups() {
+    let buf = run(
+        |b| {
+            b.push_clip(rect(0.0, 0.0, 100.0, 30.0));
+            draw(b, rect(0.0, 0.0, 100.0, 28.0));
+            text(b, rect(4.0, 4.0, 90.0, 20.0));
+            b.pop_clip();
+            b.push_clip(rect(0.0, 40.0, 100.0, 30.0));
+            draw(b, rect(0.0, 40.0, 100.0, 28.0));
+            text(b, rect(4.0, 44.0, 90.0, 20.0));
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert!(buf.groups.len() >= 2, "distinct scissors → distinct groups");
+    assert_eq!(
+        buf.text_batches.len(),
+        1,
+        "non-overlapping rows must share one text batch",
+    );
+    assert_eq!(buf.text_batches[0].texts.len, 2);
+}
+
+/// Pin: a rounded-clip change splits the text batch even when text
+/// across the change wouldn't otherwise overlap. Different rounded
+/// clips → different stencil refs at render time; one merged prepare
+/// would mis-clip text under one of them.
+#[test]
+fn compose_rounded_clip_change_splits_text_batch() {
+    let buf = run(
+        |b| {
+            b.push_clip_rounded(rect(0.0, 0.0, 100.0, 30.0), Corners::all(4.0));
+            text(b, rect(4.0, 4.0, 90.0, 20.0));
+            b.pop_clip();
+            b.push_clip_rounded(rect(0.0, 40.0, 100.0, 30.0), Corners::all(8.0));
+            text(b, rect(4.0, 44.0, 90.0, 20.0));
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.text_batches.len(), 2, "rounded change must split batch");
+}
+
+/// Pin: a quad that overlaps prior batch text closes the batch — the
+/// merged batch would otherwise paint that text over the occluding
+/// quad. Two groups, two text batches; quad in the middle.
+#[test]
+fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
+    let buf = run(
+        |b| {
+            text(b, rect(0.0, 0.0, 100.0, 30.0)); // text A
+            // Push a clip to force a fresh group; quad inside overlaps text A.
+            b.push_clip(rect(0.0, 0.0, 200.0, 200.0));
+            draw(b, rect(10.0, 10.0, 50.0, 20.0)); // overlaps A → must close batch
+            b.pop_clip();
+            text(b, rect(0.0, 40.0, 100.0, 30.0)); // text B
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(
+        buf.text_batches.len(),
+        2,
+        "quad overlapping prior batch text must split the batch",
+    );
+}
