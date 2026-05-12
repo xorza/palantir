@@ -4,7 +4,6 @@
 //! and never interleaves.
 
 use crate::forest::element::Element;
-use crate::forest::seen_ids::SeenIds;
 use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
 use crate::forest::widget_id::WidgetId;
 use crate::primitives::size::Size;
@@ -16,7 +15,6 @@ use strum::EnumCount as _;
 pub(crate) mod element;
 pub(crate) mod node;
 pub(crate) mod rollups;
-pub(crate) mod seen_ids;
 pub(crate) mod shapes;
 pub(crate) mod tree;
 pub(crate) mod visibility;
@@ -73,11 +71,6 @@ impl RecordingState {
 pub(crate) struct Forest {
     pub(crate) trees: [Tree; Layer::COUNT],
     recording: RecordingState,
-    /// Forest-wide `WidgetId` tracker — collision detection across
-    /// all layers, removed-widget diff, and frame rollover. Lives here
-    /// (not on `Ui`) so the uniqueness invariant is enforced at the
-    /// recording-arena layer instead of by orchestrator convention.
-    pub(crate) ids: SeenIds,
 }
 
 impl Default for Forest {
@@ -85,7 +78,6 @@ impl Default for Forest {
         Self {
             trees: array::from_fn(|_| Tree::default()),
             recording: RecordingState::default(),
-            ids: SeenIds::default(),
         }
     }
 }
@@ -93,7 +85,6 @@ impl Default for Forest {
 impl Forest {
     pub(crate) fn pre_record(&mut self) {
         self.recording.reset();
-        self.ids.pre_record();
         for t in &mut self.trees {
             t.pre_record();
         }
@@ -114,19 +105,13 @@ impl Forest {
         }
     }
 
-    pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
-        // Resolve the widget id at the recording boundary: builders
-        // produce an unset id by default and chain `id_salt` /
-        // `auto_id` to set it; explicit-id collisions hard-assert in
-        // `SeenIds::record`, auto-id collisions get silently
-        // disambiguated.
+    pub(crate) fn open_node(&mut self, element: Element) -> NodeId {
         assert!(
             element.id != WidgetId::default(),
             "widget recorded without a `WidgetId` — chain `.id_salt(key)`, \
              `.id(precomputed)`, or `.auto_id()` on the builder before `.show(ui)`. \
              `Foo::new()` no longer derives an id automatically.",
         );
-        element.id = self.ids.record(element.id, element.id_source);
         let layer = self.recording.current_layer;
         self.trees[layer as usize].open_node(element)
     }

@@ -162,7 +162,7 @@ impl DamageEngine {
     /// occupied slot whose node still paints but changed updates;
     /// an occupied slot whose node stopped painting is evicted.
     /// Last-frame entries listed in `removed` (precomputed by
-    /// [`crate::forest::seen_ids::SeenIds`] so damage and `text` reuse
+    /// [`crate::ui::seen_ids::SeenIds`] so damage and `text` reuse
     /// the diff) are dropped afterwards.
     ///
     /// Rects are tracked in **screen space** (read straight off
