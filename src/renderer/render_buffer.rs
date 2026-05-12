@@ -19,9 +19,9 @@ pub(crate) struct RenderBuffer {
     pub(crate) meshes: MeshScene,
     pub(crate) groups: Vec<DrawGroup>,
     /// `true` iff at least one group carries a rounded clip — set by the
-    /// composer when a `PushClipRounded` is processed. Backend reads this
-    /// to decide whether to walk the stencil-mask path; saves a linear
-    /// scan over `groups` at submit time.
+    /// composer when a `PushClip` carries a non-zero radius. Backend
+    /// reads this to decide whether to walk the stencil-mask path;
+    /// saves a linear scan over `groups` at submit time.
     pub(crate) has_rounded_clip: bool,
     /// Physical-px viewport, ceil'd. Backends use this as the default scissor
     /// when a group has no clip.

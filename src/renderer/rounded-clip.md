@@ -69,7 +69,7 @@ methods that mutate `Element`).
      with the painted stroke's inner edge — both have center at
      `(rect.min + paint.radius)`. Inflating instead would offset the
      curve center inward and produce a visible notch.
-   - Emit `PushClip { rect }` or `PushClipRounded { rect, radius }`.
+   - Emit `PushClip { rect, radius }` (radius all-zero for plain scissor).
 3. **Shapes** — iterate `tree.shapes.slice_of(id)`. `Shape::Text` emits
    `DrawText`. `Shape::RoundedRect { local_rect: None, .. }` emits a
    `DrawRect` covering the owner's full rect. `Shape::RoundedRect {

@@ -307,7 +307,7 @@ impl WgpuBackend {
         }
 
         // Stencil path activates whenever the encoded frame contains a
-        // `PushClipRounded`. Lazy-init the stencil texture + pipeline
+        // `PushClip` with a non-zero radius. Lazy-init the stencil texture + pipeline
         // variants the first time we land here; thereafter both stay
         // warm. Apps that never round-clip never enter this branch.
         // After staging, `self.quad.mask_indices` parallels
