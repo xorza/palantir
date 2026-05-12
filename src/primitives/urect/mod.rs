@@ -53,6 +53,33 @@ impl URect {
         }
     }
 
+    /// Axis-aligned union (smallest enclosing rect). A zero-sized rect
+    /// (the [`Default`]) acts as identity — `default.union(x) == x` —
+    /// so callers can fold an empty accumulator without a special
+    /// "first element" branch.
+    pub const fn union(self, other: Self) -> Self {
+        if self.w == 0 || self.h == 0 {
+            return other;
+        }
+        if other.w == 0 || other.h == 0 {
+            return self;
+        }
+        let x0 = if self.x < other.x { self.x } else { other.x };
+        let y0 = if self.y < other.y { self.y } else { other.y };
+        let a_max_x = self.x + self.w;
+        let b_max_x = other.x + other.w;
+        let x1 = if a_max_x > b_max_x { a_max_x } else { b_max_x };
+        let a_max_y = self.y + self.h;
+        let b_max_y = other.y + other.h;
+        let y1 = if a_max_y > b_max_y { a_max_y } else { b_max_y };
+        Self {
+            x: x0,
+            y: y0,
+            w: x1 - x0,
+            h: y1 - y0,
+        }
+    }
+
     /// Saturating intersection: clamps `me` to fit inside `parent`,
     /// returning a (possibly zero-sized) rect. Used by the composer's
     /// clip stack where parent-child overlap is the common case and a

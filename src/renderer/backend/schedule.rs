@@ -37,8 +37,12 @@ pub(crate) enum RenderStep {
     /// Bind the quad pipeline (stencil-test variant when stencil is
     /// active, plain otherwise) + draw the group's quad range.
     Quads { group: usize, range: Span },
-    /// Render the group's text via the glyphon pool slot.
-    Text { group: usize },
+    /// Render a coalesced text batch via the glyphon pool slot.
+    /// Emitted once per batch, immediately after the last group in
+    /// the batch has drawn its quads (any meshes in that group still
+    /// follow). One `Text { batch }` step → one `glyphon::render` →
+    /// one wgpu draw call covering every run in the batch.
+    Text { batch: usize },
     /// Bind the mesh pipeline + issue one `draw_indexed` per
     /// `MeshDraw` in `range`. Consumer pulls per-draw spans from
     /// `RenderBuffer.meshes`.
@@ -87,6 +91,14 @@ pub(crate) fn for_each_step(
         emit(RenderStep::SetScissor(scissor));
         emit(RenderStep::PreClear);
     }
+
+    // Text batches map 1:1 to a group via their `last_group` field;
+    // the schedule emits `RenderStep::Text` once when the walk reaches
+    // that group (after its quads, before its meshes). `last_group`
+    // values are monotonically increasing across batches (composer
+    // pushes batches in order), so one cursor suffices instead of a
+    // per-group scan.
+    let mut next_batch: usize = 0;
 
     // `Some(mi)` means the stencil currently has mask `mi` stamped
     // (ref=1 inside the SDF, 0 outside). `None` means stencil is
@@ -140,9 +152,12 @@ pub(crate) fn for_each_step(
                     range: g.quads,
                 });
             }
-            if g.texts.len != 0 {
+            while next_batch < buffer.text_batches.len()
+                && buffer.text_batches[next_batch].last_group as usize == i
+            {
                 emit(RenderStep::SetScissor(text_scissor));
-                emit(RenderStep::Text { group: i });
+                emit(RenderStep::Text { batch: next_batch });
+                next_batch += 1;
             }
             if g.meshes.len != 0 {
                 // Restore the group's own scissor in case the text
@@ -155,19 +170,26 @@ pub(crate) fn for_each_step(
                 });
             }
             active_mask = mask_idx;
-        } else if g.quads.len != 0 || g.texts.len != 0 || g.meshes.len != 0 {
+        } else if g.quads.len != 0
+            || g.meshes.len != 0
+            || (next_batch < buffer.text_batches.len()
+                && buffer.text_batches[next_batch].last_group as usize == i)
+        {
             if g.quads.len != 0 {
                 emit(RenderStep::Quads {
                     group: i,
                     range: g.quads,
                 });
             }
-            if g.texts.len != 0 {
+            while next_batch < buffer.text_batches.len()
+                && buffer.text_batches[next_batch].last_group as usize == i
+            {
                 // Text uses a full-viewport scissor + per-area
                 // `bounds` for clipping (set in compose). Under
                 // partial repaint we narrow to the damage rect.
                 emit(RenderStep::SetScissor(text_scissor));
-                emit(RenderStep::Text { group: i });
+                emit(RenderStep::Text { batch: next_batch });
+                next_batch += 1;
             }
             if g.meshes.len != 0 {
                 emit(RenderStep::SetScissor(effective));

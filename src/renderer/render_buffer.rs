@@ -18,6 +18,14 @@ pub(crate) struct RenderBuffer {
     pub(crate) texts: Vec<TextRun>,
     pub(crate) meshes: MeshScene,
     pub(crate) groups: Vec<DrawGroup>,
+    /// One entry per *batch* of text runs that share a single glyphon
+    /// `prepare`/`render` call. The composer coalesces text across
+    /// adjacent groups when paint-order is preserved (no occluding
+    /// quad/mesh, no rounded-clip change) — collapsing many small
+    /// draw calls into one. Each batch's `texts` span is contiguous
+    /// in `RenderBuffer.texts` by composer construction. `DrawGroup`
+    /// carries a `text_batch` index pointing here.
+    pub(crate) text_batches: Vec<TextBatch>,
     /// `true` iff at least one group carries a rounded clip — set by the
     /// composer when a `PushClip` carries a non-zero radius. Backend
     /// reads this to decide whether to walk the stencil-mask path;
@@ -47,6 +55,7 @@ impl Default for RenderBuffer {
             texts: Vec::new(),
             meshes: MeshScene::default(),
             groups: Vec::new(),
+            text_batches: Vec::new(),
             has_rounded_clip: false,
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
@@ -72,6 +81,24 @@ pub(crate) struct DrawGroup {
     pub(crate) quads: Span,
     pub(crate) texts: Span,
     pub(crate) meshes: Span,
+}
+
+/// A coalesced batch of text runs sharing one `glyphon::prepare` /
+/// `render` call. `texts` is a contiguous range into
+/// `RenderBuffer.texts`. The schedule emits the render step at the
+/// end of the batch's last group (after that group's quads), so any
+/// quad in any group of the batch can underpaint the merged text.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TextBatch {
+    pub(crate) texts: Span,
+    /// Index into `RenderBuffer.groups` of the last group whose text
+    /// contributed to this batch. The schedule emits the batch's
+    /// `Text` step immediately after this group's quads draw, so any
+    /// quad in any group of the batch underpaints the merged text.
+    /// Intermediate groups with no text (e.g. a quad-only group
+    /// between two text groups sharing one batch) can fall between
+    /// the batch's `first_group` and `last_group`.
+    pub(crate) last_group: u32,
 }
 
 /// Physical-px rounded-clip geometry for stencil masking. `mask_rect`

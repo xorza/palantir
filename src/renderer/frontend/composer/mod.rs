@@ -10,7 +10,9 @@ use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, RoundedClip, TextRun};
+use crate::renderer::render_buffer::{
+    DrawGroup, MeshDraw, RenderBuffer, RoundedClip, TextBatch, TextRun,
+};
 use glam::{UVec2, Vec2};
 
 /// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
@@ -39,13 +41,18 @@ pub(crate) struct Composer {
     /// fed to the stroke tessellator. Cleared per cmd, capacity
     /// reused — keeps steady-state alloc-free.
     polyline_scratch: Vec<Vec2>,
-    /// Per-group physical-px AABBs of the text runs and mesh draws
-    /// already pushed into the in-flight group. Used to decide whether
-    /// a later lower-kind draw (quad after text/mesh, text after mesh)
-    /// can be reordered into the group's quad/text batch without
-    /// changing the painted result. Cleared on every flush /
-    /// clip transition. Capacity reused across frames.
-    text_rects: Vec<URect>,
+    /// Physical-px AABBs of the text runs accumulated in the current
+    /// text-batch (potentially across multiple groups). A new quad
+    /// overlapping any of these would paint *under* the merged
+    /// batch text — closes the batch (and flushes the group) so
+    /// paint order is preserved. Cleared in [`Self::close_batch`].
+    /// Subsumes the old per-group `text_rects` since intra-group
+    /// overlap is a special case of intra-batch overlap.
+    batch_text_rects: Vec<URect>,
+    /// Per-group mesh AABBs. Used by the intra-group text-after-mesh
+    /// check (text recorded after a same-group mesh paints under it
+    /// under the kind reorder, so flush). Cleared per flush —
+    /// independent of batch state since mesh forces batch close.
     mesh_rects: Vec<URect>,
     /// In-flight group state. `*_start` cursors mark where the open
     /// group's `quads`/`texts`/`meshes` slice begins in `out`;
@@ -55,12 +62,38 @@ pub(crate) struct Composer {
     quads_start: u32,
     texts_start: u32,
     meshes_start: u32,
+    /// Bundled state for the currently-open text batch — `Some` while
+    /// the composer is accumulating runs into a batch, `None`
+    /// between batches. The rect scratch lives outside in
+    /// `batch_text_rects` so its `Vec` capacity is retained across
+    /// open/close cycles (steady-state alloc-free).
+    open_batch: Option<OpenBatch>,
 }
 
 #[derive(Clone, Copy)]
 struct ClipFrame {
     scissor: URect,
     rounded: Option<RoundedClip>,
+}
+
+/// State carried while a text batch is mid-accumulation. Pushed onto
+/// `out.text_batches` as a [`TextBatch`] when [`Composer::close_batch`]
+/// finalizes it.
+#[derive(Clone, Copy)]
+struct OpenBatch {
+    /// Cursor into `out.texts` where this batch's run span begins.
+    /// Combined with `out.texts.len()` at close-time to compute the
+    /// finalized [`Span`].
+    texts_start: u32,
+    /// Index (into `out.groups`) of the last group whose text
+    /// contributed to this batch. Refreshed on every text push (the
+    /// in-flight group's eventual index is `out.groups.len()`).
+    /// Tells the schedule where to emit the merged render step.
+    last_group: u32,
+    /// Union AABB of every rect in `Composer.batch_text_rects` for
+    /// this batch. The first reject for a new quad's overlap test —
+    /// O(1) instead of the linear scan.
+    text_union: URect,
 }
 
 impl Composer {
@@ -84,8 +117,53 @@ impl Composer {
         self.quads_start = q_end;
         self.texts_start = t_end;
         self.meshes_start = m_end;
-        self.text_rects.clear();
         self.mesh_rects.clear();
+    }
+
+    /// Finalize the open text batch (if any): push a [`TextBatch`]
+    /// entry covering `batch_texts_start..out.texts.len()` and clear
+    /// batch-scoped scratch. No-op when no batch is active. Called
+    /// at batch-split events — rounded-clip change, mesh/polyline
+    /// append, or a quad that would paint under accumulated batch
+    /// text. The id used by the just-pushed batch matches what
+    /// [`Self::open_batch`] stamped on contributing groups.
+    fn close_batch(&mut self, out: &mut RenderBuffer) {
+        let Some(b) = self.open_batch.take() else {
+            return;
+        };
+        let texts_end = out.texts.len() as u32;
+        // Invariants the schedule cursor relies on: batches are pushed
+        // in walk order so `last_group` is strictly increasing, and
+        // their `texts` spans concatenate without gaps in `out.texts`.
+        debug_assert!(
+            out.text_batches
+                .last()
+                .is_none_or(|prev| prev.last_group < b.last_group),
+        );
+        debug_assert!(
+            out.text_batches
+                .last()
+                .is_none_or(|prev| prev.texts.start + prev.texts.len == b.texts_start),
+        );
+        out.text_batches.push(TextBatch {
+            texts: (b.texts_start..texts_end).into(),
+            last_group: b.last_group,
+        });
+        self.batch_text_rects.clear();
+    }
+
+    /// Return a mutable handle to the open batch, opening a fresh one
+    /// when none exists. Idempotent within a batch — repeated calls
+    /// reuse the same `OpenBatch` and only refresh `last_group` to
+    /// the in-flight group's eventual index.
+    fn open_batch(&mut self, out: &RenderBuffer) -> &mut OpenBatch {
+        let b = self.open_batch.get_or_insert(OpenBatch {
+            texts_start: out.texts.len() as u32,
+            last_group: 0,
+            text_union: URect::default(),
+        });
+        b.last_group = out.groups.len() as u32;
+        b
     }
 
     /// Switch to a new clip (scissor + optional rounded), flushing
@@ -98,6 +176,12 @@ impl Composer {
         rounded: Option<RoundedClip>,
         out: &mut RenderBuffer,
     ) {
+        if rounded != self.current_rounded {
+            // Stencil ref is tied to the active rounded clip; batched
+            // text under the wrong mask would either over- or
+            // under-clip. Close before the group transition.
+            self.close_batch(out);
+        }
         if scissor != self.current_scissor || rounded != self.current_rounded {
             self.flush(out);
             self.current_scissor = scissor;
@@ -129,6 +213,7 @@ impl Composer {
         out.texts.clear();
         out.meshes.clear();
         out.groups.clear();
+        out.text_batches.clear();
         out.has_rounded_clip = false;
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
@@ -136,13 +221,14 @@ impl Composer {
 
         self.clip_stack.clear();
         self.transform_stack.clear();
-        self.text_rects.clear();
+        self.batch_text_rects.clear();
         self.mesh_rects.clear();
         self.current_scissor = None;
         self.current_rounded = None;
         self.quads_start = 0;
         self.texts_start = 0;
         self.meshes_start = 0;
+        self.open_batch = None;
         let mut current_transform = TranslateScale::IDENTITY;
 
         for i in 0..cmds.kinds.len() {
@@ -223,10 +309,23 @@ impl Composer {
                     // kind, so anything higher already in the group
                     // (text, mesh) that this quad overlaps would paint
                     // *under* it after kind-reorder — flush to keep
-                    // record order.
-                    if any_overlap(&self.text_rects, quad_urect)
-                        || any_overlap(&self.mesh_rects, quad_urect)
-                    {
+                    // record order. Text overlap is checked against the
+                    // whole open batch (which may span multiple groups);
+                    // a hit also closes the batch so the merged text
+                    // doesn't paint over this quad at end-of-batch.
+                    // Coarse reject first against the batch's union AABB
+                    // before scanning per-rect — the common case in a
+                    // large batch is "quad far from any text," so the
+                    // O(n) scan is wasted work without this.
+                    let batch_text_hit = self
+                        .open_batch
+                        .as_ref()
+                        .is_some_and(|b| b.text_union.intersect(quad_urect).is_some())
+                        && any_overlap(&self.batch_text_rects, quad_urect);
+                    if batch_text_hit {
+                        self.close_batch(out);
+                        self.flush(out);
+                    } else if any_overlap(&self.mesh_rects, quad_urect) {
                         self.flush(out);
                     }
                     let world_radius = p.radius.scaled_by(current_transform.scale);
@@ -250,6 +349,13 @@ impl Composer {
                     });
                 }
                 CmdKind::DrawMesh => {
+                    // Mesh paints above text in the kind order. With
+                    // text batching, the batch render emits at the END
+                    // of its last group — past this mesh in schedule
+                    // walk if the batch were left open. Close so the
+                    // batch's text emits before this group's mesh and
+                    // mesh-over-text is preserved.
+                    self.close_batch(out);
                     let p: DrawMeshPayload = cmds.read(start);
                     // Per-vertex transform: apply the active transform,
                     // then DPI-scale. Verts are already in logical-px
@@ -313,6 +419,10 @@ impl Composer {
                     }
                 }
                 CmdKind::DrawPolyline => {
+                    // Polyline tessellates to a mesh — same paint-order
+                    // rule as DrawMesh. Close any open text batch
+                    // before appending so batched text emits earlier.
+                    self.close_batch(out);
                     let p: DrawPolylinePayload = cmds.read(start);
                     let mode = p.color_mode.get();
                     let cap = p.cap.get();
@@ -413,6 +523,10 @@ impl Composer {
                     if any_overlap(&self.mesh_rects, bounds) {
                         self.flush(out);
                     }
+                    // open_batch must run BEFORE the text push so the
+                    // batch's `texts_start` captures this run's index.
+                    let b = self.open_batch(out);
+                    b.text_union = b.text_union.union(bounds);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     out.texts.push(TextRun {
                         origin: phys_rect.min,
@@ -434,10 +548,11 @@ impl Composer {
                         // text glyph crispness "steps."
                         scale: snap_text_scale(current_transform.scale),
                     });
-                    self.text_rects.push(bounds);
+                    self.batch_text_rects.push(bounds);
                 }
             }
         }
+        self.close_batch(out);
         self.flush(out);
     }
 }

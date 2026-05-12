@@ -343,21 +343,20 @@ impl WgpuBackend {
                 .upload_clear(&self.queue, buffer.viewport_phys_f, clear);
         }
 
-        // Prepare text per-group outside the encoder/pass borrow scope so
+        // Prepare text per-batch outside the encoder/pass borrow scope so
         // glyphon can upload to the atlas + per-renderer vertex buffer
         // freely. Viewport uniform updated once for all renderers in the
         // pool — they share the atlas-bound pipeline + viewport state.
-        // `prepare_group` returns `false` (no-op) when the shaper
+        // `prepare_batch` returns `false` (no-op) when the shaper
         // passed at [`Self::new`] has no installed fonts, so the loop
-        // is safe to run unconditionally.
+        // is safe to run unconditionally. One pool slot per batch
+        // (not per group) — coalescing N text groups into one batch
+        // means N→1 prepare/render calls.
         self.text.update_viewport(&self.queue, buffer.viewport_phys);
-        for (i, g) in buffer.groups.iter().enumerate() {
-            if g.texts.len == 0 {
-                continue;
-            }
-            let runs = &buffer.texts[g.texts.range()];
+        for (i, b) in buffer.text_batches.iter().enumerate() {
+            let runs = &buffer.texts[b.texts.range()];
             self.text
-                .prepare_group(&self.device, &self.queue, buffer.scale, i, runs, text_mode);
+                .prepare_batch(&self.device, &self.queue, buffer.scale, i, runs, text_mode);
         }
 
         let mut encoder = self
@@ -631,9 +630,9 @@ impl WgpuBackend {
                     self.quad.draw_range(pass, range);
                     pass.pop_debug_group();
                 }
-                RenderStep::Text { group } => {
+                RenderStep::Text { batch } => {
                     pass.push_debug_group("text");
-                    self.text.render_group(group, pass, text_mode);
+                    self.text.render_batch(batch, pass, text_mode);
                     // glyphon sets its own pipeline + bindings.
                     bound = Bound::None;
                     pass.pop_debug_group();
