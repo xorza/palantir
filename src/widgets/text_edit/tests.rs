@@ -1,4 +1,4 @@
-use super::{apply_key, next_char_boundary, prev_char_boundary};
+use super::{TextEditState, apply_key, next_char_boundary, prev_char_boundary};
 use crate::Spacing;
 use crate::Ui;
 use crate::forest::element::Configure;
@@ -37,14 +37,6 @@ fn editor_only(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
 
 #[test]
 fn apply_key_cases() {
-    let ctrl = KeyPress {
-        key: Key::Char('a'),
-        mods: Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        },
-        repeat: false,
-    };
     let cases: &[(&str, &str, usize, KeyPress, &str, usize)] = &[
         ("printable_a", "", 0, press(Key::Char('a')), "a", 1),
         (
@@ -55,7 +47,6 @@ fn apply_key_cases() {
             "ab",
             2,
         ),
-        ("ctrl_modifier_skipped", "hi", 2, ctrl, "hi", 2),
         ("space_inserts", "ab", 2, press(Key::Char(' ')), "ab ", 3),
         (
             "backspace_mid_removes_codepoint",
@@ -134,11 +125,230 @@ fn apply_key_cases() {
     ];
     for (label, input, caret_in, key, want_str, want_caret) in cases {
         let mut s = String::from(*input);
-        let mut caret = *caret_in;
-        apply_key(&mut s, &mut caret, *key);
+        let mut state = TextEditState {
+            caret: *caret_in,
+            ..Default::default()
+        };
+        apply_key(&mut s, &mut state, *key);
         assert_eq!(s, *want_str, "case: {label} string");
-        assert_eq!(caret, *want_caret, "case: {label} caret");
+        assert_eq!(state.caret, *want_caret, "case: {label} caret");
+        assert!(
+            state.selection.is_none(),
+            "case: {label} must not synthesize a selection",
+        );
     }
+}
+
+fn shift(key: Key) -> KeyPress {
+    KeyPress {
+        key,
+        mods: Modifiers {
+            shift: true,
+            ..Modifiers::NONE
+        },
+        repeat: false,
+    }
+}
+
+fn ctrl(key: Key) -> KeyPress {
+    KeyPress {
+        key,
+        mods: Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        },
+        repeat: false,
+    }
+}
+
+struct SelCase {
+    label: &'static str,
+    buf: &'static str,
+    caret: usize,
+    sel: Option<usize>,
+    key: KeyPress,
+    want_buf: &'static str,
+    want_caret: usize,
+    want_sel: Option<usize>,
+}
+
+#[test]
+fn selection_state_transitions() {
+    let cases: &[SelCase] = &[
+        // shift+arrow latches anchor + extends
+        SelCase {
+            label: "shift_right_latches",
+            buf: "hello",
+            caret: 0,
+            sel: None,
+            key: shift(Key::ArrowRight),
+            want_buf: "hello",
+            want_caret: 1,
+            want_sel: Some(0),
+        },
+        SelCase {
+            label: "shift_right_extends",
+            buf: "hello",
+            caret: 1,
+            sel: Some(0),
+            key: shift(Key::ArrowRight),
+            want_buf: "hello",
+            want_caret: 2,
+            want_sel: Some(0),
+        },
+        SelCase {
+            label: "shift_left_collapses_back_to_anchor",
+            buf: "hello",
+            caret: 1,
+            sel: Some(0),
+            key: shift(Key::ArrowLeft),
+            want_buf: "hello",
+            want_caret: 0,
+            want_sel: None,
+        },
+        // plain arrows collapse selection to its bounds
+        SelCase {
+            label: "right_collapses_to_end",
+            buf: "hello",
+            caret: 1,
+            sel: Some(4),
+            key: press(Key::ArrowRight),
+            want_buf: "hello",
+            want_caret: 4,
+            want_sel: None,
+        },
+        SelCase {
+            label: "left_collapses_to_start",
+            buf: "hello",
+            caret: 4,
+            sel: Some(1),
+            key: press(Key::ArrowLeft),
+            want_buf: "hello",
+            want_caret: 1,
+            want_sel: None,
+        },
+        // home/end
+        SelCase {
+            label: "shift_home_extends_to_zero",
+            buf: "hello",
+            caret: 3,
+            sel: None,
+            key: shift(Key::Home),
+            want_buf: "hello",
+            want_caret: 0,
+            want_sel: Some(3),
+        },
+        SelCase {
+            label: "shift_end_extends_to_len",
+            buf: "hello",
+            caret: 2,
+            sel: None,
+            key: shift(Key::End),
+            want_buf: "hello",
+            want_caret: 5,
+            want_sel: Some(2),
+        },
+        SelCase {
+            label: "home_collapses",
+            buf: "hello",
+            caret: 4,
+            sel: Some(1),
+            key: press(Key::Home),
+            want_buf: "hello",
+            want_caret: 0,
+            want_sel: None,
+        },
+        // edits replace selection
+        SelCase {
+            label: "char_replaces_selection",
+            buf: "hello",
+            caret: 1,
+            sel: Some(4),
+            key: press(Key::Char('X')),
+            want_buf: "hXo",
+            want_caret: 2,
+            want_sel: None,
+        },
+        SelCase {
+            label: "backspace_deletes_selection",
+            buf: "hello",
+            caret: 4,
+            sel: Some(1),
+            key: press(Key::Backspace),
+            want_buf: "ho",
+            want_caret: 1,
+            want_sel: None,
+        },
+        SelCase {
+            label: "delete_deletes_selection",
+            buf: "hello",
+            caret: 1,
+            sel: Some(4),
+            key: press(Key::Delete),
+            want_buf: "ho",
+            want_caret: 1,
+            want_sel: None,
+        },
+        // ctrl+a select-all
+        SelCase {
+            label: "ctrl_a_selects_all",
+            buf: "hello",
+            caret: 2,
+            sel: None,
+            key: ctrl(Key::Char('a')),
+            want_buf: "hello",
+            want_caret: 5,
+            want_sel: Some(0),
+        },
+        SelCase {
+            label: "ctrl_a_on_empty_noop",
+            buf: "",
+            caret: 0,
+            sel: None,
+            key: ctrl(Key::Char('a')),
+            want_buf: "",
+            want_caret: 0,
+            want_sel: None,
+        },
+        // two-stage escape: first press collapses, leaves caret put
+        SelCase {
+            label: "escape_collapses_first",
+            buf: "hello",
+            caret: 4,
+            sel: Some(1),
+            key: press(Key::Escape),
+            want_buf: "hello",
+            want_caret: 4,
+            want_sel: None,
+        },
+    ];
+    for c in cases {
+        let mut s = String::from(c.buf);
+        let mut state = TextEditState {
+            caret: c.caret,
+            selection: c.sel,
+            ..Default::default()
+        };
+        apply_key(&mut s, &mut state, c.key);
+        assert_eq!(s, c.want_buf, "case: {} buffer", c.label);
+        assert_eq!(state.caret, c.want_caret, "case: {} caret", c.label);
+        assert_eq!(state.selection, c.want_sel, "case: {} selection", c.label);
+    }
+}
+
+#[test]
+fn escape_with_selection_does_not_blur() {
+    let mut s = String::from("hello");
+    let mut state = TextEditState {
+        caret: 4,
+        selection: Some(1),
+        ..Default::default()
+    };
+    let blur = apply_key(&mut s, &mut state, press(Key::Escape));
+    assert!(!blur, "first escape must collapse, not blur");
+    assert_eq!(state.selection, None);
+    let blur2 = apply_key(&mut s, &mut state, press(Key::Escape));
+    assert!(blur2, "second escape (no selection) must blur");
 }
 
 #[test]
@@ -718,6 +928,162 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     assert!(
         (lh - 16.0 * crate::text::LINE_HEIGHT_MULT).abs() < 1e-5,
         "default line_height_px should be font_size * LINE_HEIGHT_MULT, got {lh}",
+    );
+}
+
+// -- Selection: painted highlight + drag-select ---------------------
+
+#[test]
+fn no_selection_paints_no_highlight_rect() {
+    // Focused TextEdit with no selection paints exactly one
+    // RoundedRect (the caret). No selection wash.
+    use crate::forest::shapes::record::ShapeRecord;
+
+    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut buf = String::from("hello");
+    let mut leaf = None;
+    let body = |ui: &mut Ui, leaf: &mut Option<crate::forest::tree::NodeId>, buf: &mut String| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            *leaf = Some(
+                TextEdit::new(buf)
+                    .id_salt("ed")
+                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .show(ui)
+                    .node,
+            );
+        });
+    };
+    run_at_acked(&mut ui, NARROW, |ui| body(ui, &mut leaf, &mut buf));
+    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    run_at_acked(&mut ui, NARROW, |ui| body(ui, &mut leaf, &mut buf));
+
+    let rects: usize = shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
+        .filter(|s| matches!(s, ShapeRecord::RoundedRect { .. }))
+        .count();
+    assert_eq!(rects, 1, "only caret should paint without selection");
+}
+
+#[test]
+fn shift_end_paints_selection_highlight() {
+    // Programmatic Shift+End extends to len; expect a RoundedRect for
+    // the selection wash, painted *before* the caret rect.
+    use crate::forest::shapes::record::ShapeRecord;
+
+    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut buf = String::from("hello");
+    let mut leaf = None;
+    let body = |ui: &mut Ui, leaf: &mut Option<crate::forest::tree::NodeId>, buf: &mut String| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            *leaf = Some(
+                TextEdit::new(buf)
+                    .id_salt("ed")
+                    .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                    .show(ui)
+                    .node,
+            );
+        });
+    };
+    run_at_acked(&mut ui, NARROW, |ui| body(ui, &mut leaf, &mut buf));
+    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Home,
+        repeat: false,
+    });
+    run_at_acked(&mut ui, NARROW, |ui| body(ui, &mut leaf, &mut buf));
+    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+        shift: true,
+        ..Modifiers::NONE
+    }));
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::End,
+        repeat: false,
+    });
+    run_at_acked(&mut ui, NARROW, |ui| body(ui, &mut leaf, &mut buf));
+
+    let rects: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
+        .filter_map(|s| match s {
+            ShapeRecord::RoundedRect {
+                local_rect: Some(r),
+                ..
+            } => Some(*r),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(rects.len(), 2, "expect selection wash + caret rect");
+    // Selection rect is wider than the caret. Mono 8 px/char × 5 chars = 40 px.
+    let widths: Vec<f32> = rects.iter().map(|r| r.size.w).collect();
+    let max_w = widths.iter().copied().fold(0.0_f32, f32::max);
+    assert!(
+        max_w >= 40.0 - 1e-3,
+        "selection wash spans buffer, got {max_w}"
+    );
+}
+
+#[test]
+fn drag_select_extends_selection() {
+    // Press at offset 1, drag to offset 4 → selection covers [1..4].
+    // Mono fallback: 8 px/char, theme pad-left = 8 px → byte offset N
+    // sits at x = 8 + 8N.
+    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut buf = String::from("hello");
+
+    run_at_acked(&mut ui, NARROW, editor_at(&mut buf, None));
+    // Mouse-down at offset 1 (x = 16).
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(16.0, 20.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    run_at_acked(&mut ui, NARROW, editor_at(&mut buf, None));
+    // Drag to offset 4 (x = 40) — still pressed.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 20.0)));
+    run_at_acked(&mut ui, NARROW, editor_at(&mut buf, None));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    // Type 'X' — replaces the selected range.
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('X'),
+        repeat: false,
+    });
+    run_at_acked(&mut ui, NARROW, editor_at(&mut buf, None));
+    assert_eq!(
+        buf, "hXo",
+        "drag-selected [1..4] then 'X' typed: 'h' + 'X' + 'o'"
+    );
+}
+
+#[test]
+fn click_without_drag_clears_prior_selection() {
+    // Programmatic Ctrl+A select-all, then a press elsewhere should
+    // collapse the selection (anchor latched on the press, no drag).
+    // Uses press+frame+release so the rising edge actually fires.
+    use crate::support::testing::{press_at, release_left};
+    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut buf = String::from("hello");
+
+    run_at_acked(&mut ui, NARROW, editor_at(&mut buf, None));
+    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    }));
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('a'),
+        repeat: false,
+    });
+    ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
+    run_at_acked(&mut ui, NARROW, editor_at(&mut buf, None));
+
+    // Now press at offset 2 (x = 8 + 16 = 24), let a frame run, release.
+    press_at(&mut ui, Vec2::new(24.0, 20.0));
+    run_at_acked(&mut ui, NARROW, editor_at(&mut buf, None));
+    release_left(&mut ui);
+
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('Z'),
+        repeat: false,
+    });
+    run_at_acked(&mut ui, NARROW, editor_at(&mut buf, None));
+    assert_eq!(
+        buf, "heZllo",
+        "click clears selection; 'Z' inserts at caret 2"
     );
 }
 

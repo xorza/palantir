@@ -2,9 +2,12 @@
 
 Single-line, focusable, click/drag-to-place-caret editable text leaf.
 Typing via `KeyDown` printable chars or IME `Text` commits;
-backspace/delete, left/right arrows, home/end, escape-to-blur. Selection
-(visible + edits), shift+arrow / drag-to-select, multi-line, IME
-preedit, undo, copy/paste are deferred — see "Out of scope" at the end.
+backspace/delete, left/right arrows, home/end, escape-to-blur.
+Selection: shift+arrow / shift+home/end extend, plain arrows collapse,
+ctrl/cmd+A select-all, click+drag selects, edits replace the range,
+two-stage Escape (first collapse, second blur), painted highlight wash
+behind the glyphs. Multi-line, IME preedit, undo, copy/paste are
+deferred — see "Out of scope" at the end.
 
 Code lives in `src/widgets/text_edit/{mod.rs,tests.rs}`.
 
@@ -32,14 +35,20 @@ Per-widget cross-frame row in `Ui::state` keyed by `WidgetId`:
 
 ```rust
 pub(crate) struct TextEditState {
-    pub(crate) caret: usize,             // byte offset into the buffer
-    pub(crate) selection: Option<usize>, // anchor byte; unused in v1
+    pub(crate) caret: usize,                // byte offset (active end)
+    pub(crate) selection: Option<usize>,    // anchor byte; None == no sel
+    pub(crate) drag_anchor: Option<usize>,  // latched on press rising edge
+    pub(crate) prev_pressed: bool,          // edge detection for `pressed`
 }
 ```
 
 Byte offsets, not chars: cosmic-text's hit-testing returns byte cursors
-and `&buffer[..caret]` is the natural prefix-measure path. `selection`
-is reserved so the v1.1 selection branch doesn't need a state migration.
+and `&buffer[..caret]` is the natural prefix-measure path.
+`selection`/`caret` form a two-cursor anchor/active model. Invariant:
+empty selection always collapses to `None` (every mutation site clears
+`Some(caret)` immediately) so "is there a selection" is one
+`is_some()` check, not `anchor != caret`. Sorted range comes from
+`TextEditState::sel_range()` (no tuple return — style rule).
 
 Eviction rides on the same `removed` sweep that drives `MeasureCache` /
 `TextMeasurer`: a `WidgetId` that vanishes from this frame's tree gets
@@ -165,19 +174,26 @@ borrow choreography):
 
 ### Edit set (`apply_key`)
 
-| Key                 | Effect                                          |
-| ------------------- | ----------------------------------------------- |
-| `Char(c)` w/o cmd   | insert UTF-8 of `c` at caret, advance           |
-| `Backspace`         | remove the codepoint before caret               |
-| `Delete`            | remove the codepoint after caret                |
-| `ArrowLeft/Right`   | walk caret one codepoint                        |
-| `Home`/`End`        | caret to 0 / `text.len()`                       |
-| `Escape`            | request blur (clear focus)                      |
-| anything else       | ignored                                         |
+| Key                       | Effect (no selection)               | Effect (selection live)                  |
+| ------------------------- | ----------------------------------- | ---------------------------------------- |
+| `Char(c)` w/o cmd         | insert UTF-8 at caret               | replace range with `c`, collapse         |
+| `Backspace`               | remove prev codepoint               | delete range, collapse                   |
+| `Delete`                  | remove next codepoint               | delete range, collapse                   |
+| `ArrowLeft` / `ArrowRight`| walk caret one codepoint            | collapse to range start / end            |
+| `Shift+ArrowLeft/Right`   | extend by one codepoint             | extend by one codepoint                  |
+| `Home` / `End`            | caret to 0 / `text.len()`           | collapse + jump                          |
+| `Shift+Home` / `Shift+End`| extend to 0 / `text.len()`          | extend to 0 / `text.len()`               |
+| `Ctrl+A` / `Cmd+A`        | select all (anchor=0, caret=len)    | select all                               |
+| `Escape`                  | request blur                        | collapse selection, *don't* blur         |
+| anything else             | ignored                             | ignored                                  |
 
 `Modifiers::any_command()` (any of ctrl/alt/meta) suppresses the
-`Char` insert path so future shortcut routing (ctrl+a / cmd+c) doesn't
-double-fire as text. `Char` also handles space — there is no `Space`
+`Char` insert path so shortcut routing doesn't double-fire as text;
+`Ctrl/Cmd+A` is matched ahead of that suppression so select-all still
+fires. Selection mutations go through one `move_caret(state, n, extend)`
+helper that latches the anchor on the first extending move and
+collapses on plain navigation — the "never store empty selection"
+invariant lives there. `Char` also handles space — there is no `Space`
 variant; winit's `NamedKey::Space` is translated to `Char(' ')`.
 
 Codepoint-granular boundary walks (`prev_char_boundary` /
@@ -186,13 +202,21 @@ graphemes (emoji + ZWJ, accent combiners) split apart on backspace.
 Acceptable v1; grapheme awareness lands with `unicode-segmentation` on
 the v1.1 selection branch where it already pays its way.
 
-### Click-to-place-caret
+### Click-to-place-caret + drag-select
 
 `caret_from_x` linearly scans char boundaries, calling `caret_x` at
 each one and picking the closest to `target_x`. O(n) measure calls
 per pressed-frame — acceptable for short single-line strings, swappable
 for a `byte_to_x` API on `MeasureResult` once cosmic-text's
 `Buffer::layout_runs` is wired through `TextMeasurer`.
+
+Drag-select rides on the same pressed-frame loop: on the *rising edge*
+of `ResponseState::pressed` (detected via `state.prev_pressed`) the
+hit caret is latched into `state.drag_anchor` and any prior selection
+clears. On subsequent pressed frames `state.caret` follows the pointer
+and `state.selection` flips to `Some(drag_anchor)` once the active end
+diverges from the anchor (collapses back to `None` if they coincide,
+matching the invariant). The release edge clears `drag_anchor`.
 
 ## Theme
 
@@ -232,7 +256,7 @@ State-style fields are `Option`s with theme-level fallback:
 ("user didn't override"). To get a TextEdit with truly zero padding
 under a padded theme, build a custom theme rather than passing zero.
 
-## Caret rendering
+## Caret + selection rendering
 
 Caret is a thin `Shape::RoundedRect { local_rect: Some(..), .. }` at owner-local coords, painted
 last so it sits *over* the text inside the widget's clip. Position
@@ -240,22 +264,32 @@ comes from `TextMeasurer::caret_x` (re-measures the prefix; cache miss
 amortizes once cosmic exposes per-glyph x). Blink is stubbed to
 "always on" — a `request_repaint`-on-timer pass is future work.
 
+Selection highlight is a `Shape::RoundedRect` pushed *before* the
+text shape (record order is paint order within a node) so glyphs sit
+on top of the wash. Width = `caret_x(end) - caret_x(start)`, height =
+the caret rect's height. Painted only when focused and `sel_range()`
+is `Some` — collapsed selections never store as `Some` so a `None`
+check suffices. Fill is `theme.selection` (linear-RGB premultiplied,
+already authored at ~25% alpha so it doesn't obscure the glyphs).
+
 ## Tests
 
 - `widgets::text_edit::tests` — state mutations: insert / backspace at
   end / mid / start, delete, left/right past boundaries, home/end on
   empty buffer, escape-to-blur, click-to-place, drag-to-place, typing
   while unfocused is a no-op, focus eviction on tree removal,
-  `FocusPolicy` variants, IME `Text` commit path.
+  `FocusPolicy` variants, IME `Text` commit path. Selection axes:
+  table-driven `selection_state_transitions` (shift+nav, plain-nav
+  collapse, edit-replaces-range, ctrl+A, two-stage Escape);
+  `drag_select_extends_selection` (press+drag → range, then typed key
+  replaces); `shift_end_paints_selection_highlight` (wash precedes
+  caret in the shape buffer); `no_selection_paints_no_highlight_rect`;
+  `click_without_drag_clears_prior_selection`.
 - Showcase tab — `examples/showcase/text_edit.rs` echoes the live
   buffer and exercises focus, placeholder, and disabled visuals.
 
 ## Out of scope (future slices)
 
-- **Selection (visible + edits)** — render the `Overlay` highlight
-  behind the text shape; shift+arrow extension; drag-select via the
-  existing `pressed` + pointer-pos plumbing. `selection: Option<usize>`
-  is already on the state row; `theme.selection` already exists.
 - **Multi-line** — re-uses caret-x via a future
   `MeasureResult::byte_to_x` plus per-line vertical offset; Enter
   inserts `\n`; PageUp/PageDown become live.
