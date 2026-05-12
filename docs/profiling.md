@@ -31,11 +31,24 @@ Then `cargo install puffin_viewer && puffin_viewer --url 127.0.0.1:8585`
 
 ## Instrumented passes
 
-One scope per pass — `Ui::frame`, `Ui::post_record`, `Ui::finalize_frame`,
-`LayoutEngine::run`, `Cascades::run`, `encoder::encode`, `Composer::compose`,
-`WgpuBackend::submit`, `CosmicMeasure::measure`. Add finer scopes only when
-a flame graph asks for one — blanket `#[profiling::function]` clutter
-drowns out signal.
+Top-level frame: `Host::frame_and_render`, `Ui::frame`, `Ui::post_record`,
+`Ui::finalize_frame`, `Host::render_to_texture`.
+
+UI: `Forest::post_record`, `LayoutEngine::run`, layout drivers
+(`stack`, `wrapstack`, `grid`, `scroll`, `zstack`, `canvas` — `measure`
+only; arrange is shallow), `Cascades::run`, `DamageEngine::compute`.
+
+Frontend: `encoder::encode`, `Composer::compose`.
+
+Backend: `WgpuBackend::submit`.
+
+Text: `CosmicMeasure::measure`.
+
+Add finer scopes only when a flame graph asks for one — blanket
+`#[profiling::function]` clutter drowns out signal. In particular,
+per-node measure/arrange spans (thousands per frame) are intentionally
+omitted; the driver-level spans already let you see "which driver took
+how long."
 
 `Host::render` calls `profiling::finish_frame!()` on exit (after GPU
 submit) so the viewer's frame markers bracket the whole record → submit

@@ -74,6 +74,7 @@ impl Forest {
     /// Finalize every tree. Pure structural pass — `RootSlot.anchor`
     /// is just a placement; the surface needed to derive each root's
     /// "available" room is passed straight to `LayoutEngine::run`.
+    #[profiling::function]
     pub(crate) fn post_record(&mut self) {
         assert_eq!(
             self.current_layer,

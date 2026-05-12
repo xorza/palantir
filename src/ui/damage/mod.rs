@@ -174,6 +174,7 @@ impl DamageEngine {
     /// frame. A degenerate zero-area surface short-circuits to full
     /// repaint; it shouldn't happen in practice (host filters
     /// resize-to-zero), but cheap to handle.
+    #[profiling::function]
     pub(crate) fn compute(
         &mut self,
         forest: &Forest,

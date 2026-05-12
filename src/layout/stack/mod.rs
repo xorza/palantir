@@ -32,6 +32,7 @@ pub(crate) struct StackScratch {
     pub(crate) pool: Vec<FillEntry>,
 }
 
+#[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
