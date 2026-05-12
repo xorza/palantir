@@ -50,8 +50,13 @@ per-node measure/arrange spans (thousands per frame) are intentionally
 omitted; the driver-level spans already let you see "which driver took
 how long."
 
-`Host::render` calls `profiling::finish_frame!()` on exit (after GPU
-submit) so the viewer's frame markers bracket the whole record → submit
-cycle, not just the recorder. If you drive `Ui::frame` directly without
-a `Host` (tests, headless harnesses), call `profiling::finish_frame!()`
-yourself at the equivalent boundary.
+`Host::frame_and_render` calls `profiling::finish_frame!()` on exit
+(the standard cross-backend frame tick) and, under
+`profile-with-tracy`, also opens a Tracy *discontinuous* frame
+(`non_continuous_frame!("frame")`) around the body. The discontinuous
+frame shows actual work duration in Tracy's frame strip rather than
+counting idle time between back-to-back ticks — without it, a long
+pause between user-input frames appears as one giant "lagging" frame.
+If you drive `Ui::frame` directly without a `Host` (tests, headless
+harnesses), call `profiling::finish_frame!()` yourself at the
+equivalent boundary.

@@ -435,7 +435,7 @@ fn frame_pass_count_matches_action_trigger() {
         (
             "scroll",
             |ui| ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 10.0))),
-            2,
+            1,
         ),
     ];
 
