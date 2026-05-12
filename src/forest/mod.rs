@@ -106,7 +106,7 @@ impl Forest {
     /// stamping, hashing) and append it to the active tree's shape
     /// buffer. Asserts a node is currently open so widgets can't leak
     /// shapes outside an `open_node` / `close_node` scope.
-    #[profiling::function]
+
     pub(crate) fn add_shape(&mut self, shape: Shape<'_>) {
         let tree = &mut self.trees[self.current_layer as usize];
         assert!(
