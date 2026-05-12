@@ -282,10 +282,7 @@ impl std::hash::Hash for Brush {
         match self {
             Brush::Solid(c) => {
                 state.write_u8(0);
-                state.write_u32(canon_bits(c.r));
-                state.write_u32(canon_bits(c.g));
-                state.write_u32(canon_bits(c.b));
-                state.write_u32(canon_bits(c.a));
+                c.hash(state);
             }
             Brush::Linear(g) => {
                 state.write_u8(1);
@@ -357,39 +354,35 @@ mod tests {
         s.finish()
     }
 
+    /// `LinearGradient::Hash` feeds `GradientCpuAtlas::register`'s
+    /// content-hashed row addressing — `±0.0` and NaN bit-pattern variants
+    /// must collapse so visually-identical gradients reuse one atlas row.
     #[test]
-    fn canon_bits_collapses_equivalent_f32_patterns() {
+    fn linear_gradient_canon_bits_collapses_equivalent_f32_patterns() {
         let nan_a = f32::from_bits(0x7fc0_0001);
         let nan_b = f32::from_bits(0x7fc0_0002);
         assert!(nan_a.is_nan() && nan_b.is_nan());
-        let solid = |r, a| {
-            Brush::Solid(Color {
-                r,
-                g: 0.0,
-                b: 0.0,
-                a,
-            })
-        };
         let cases: &[(&str, Brush, Brush)] = &[
             (
-                "neg_zero_eq_pos_zero",
-                Brush::Solid(Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 0.0,
-                }),
-                Brush::Solid(Color {
-                    r: -0.0,
-                    g: -0.0,
-                    b: -0.0,
-                    a: -0.0,
-                }),
+                "angle_neg_zero_eq_pos_zero",
+                Brush::Linear(LinearGradient::two_stop(0.0, Color::BLACK, Color::WHITE)),
+                Brush::Linear(LinearGradient::two_stop(-0.0, Color::BLACK, Color::WHITE)),
             ),
             (
-                "nan_bit_patterns_collapse",
-                solid(nan_a, 1.0),
-                solid(nan_b, 1.0),
+                "angle_nan_bit_patterns_collapse",
+                Brush::Linear(LinearGradient::two_stop(nan_a, Color::BLACK, Color::WHITE)),
+                Brush::Linear(LinearGradient::two_stop(nan_b, Color::BLACK, Color::WHITE)),
+            ),
+            (
+                "stop_offset_neg_zero_eq_pos_zero",
+                Brush::Linear(LinearGradient::new(
+                    0.0,
+                    [Stop::new(0.0, Color::BLACK), Stop::new(1.0, Color::WHITE)],
+                )),
+                Brush::Linear(LinearGradient::new(
+                    0.0,
+                    [Stop::new(-0.0, Color::BLACK), Stop::new(1.0, Color::WHITE)],
+                )),
             ),
         ];
         for (label, x, y) in cases {
