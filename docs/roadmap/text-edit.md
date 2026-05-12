@@ -2,19 +2,21 @@
 
 v1 ships single-line typing, caret, codepoint backspace/delete +
 arrows + home/end, click/drag-to-place, focus + `FocusPolicy`,
-escape-to-blur, IME `Commit`. See `src/widgets/text_edit/design.md`.
+escape-to-blur, IME `Commit`, and selection — visible wash + shift/arrow
+extension + drag-select + ctrl/cmd+A + two-stage Escape, edits replace
+the range. See `src/widgets/text_edit/design.md`.
 
 ## Next
 
-- **Selection (visible + edits).** Selection-fill `Overlay` under text;
-  shift+arrow / home/end / drag extends, plain arrow collapses,
-  ctrl+a all-select; edits replace selected range. State + theme
-  slots already there.
 - **Glyph hit-test via `Buffer::hit`.** Replace O(n) `caret_from_x`
   scan with one shaped lookup. Same upgrade gives multi-line
-  `byte_to_xy`.
-- **Grapheme-aware boundary walks.** `unicode-segmentation` once
-  selection lands.
+  `byte_to_xy` and a cheaper selection-rect width computation
+  (two `caret_x` calls become one shaped lookup pair).
+- **Grapheme-aware boundary walks.** `unicode-segmentation` so
+  shift+arrow / backspace step whole graphemes (emoji + ZWJ, accent
+  combiners) instead of bare codepoints.
+- **Word navigation.** Ctrl+ArrowLeft/Right, Ctrl+Shift+ArrowLeft/Right,
+  double-click selects word, triple-click selects all.
 - **Multi-line.** Enter inserts `\n`, PageUp/Down live, caret y from
   `Buffer::hit`, `TextWrap::Wrap` when builder sets `multiline`.
 - **Clipboard.** `arboard` behind `Clipboard` trait on `Ui`; route

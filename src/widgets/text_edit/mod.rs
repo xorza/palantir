@@ -26,11 +26,52 @@ use std::borrow::Cow;
 #[derive(Clone, Default, Debug)]
 pub(crate) struct TextEditState {
     pub(crate) caret: usize,
-    /// Selection anchor. `None` = no selection. Unused in v1 — the
-    /// slot exists so adding shift+arrow / drag selection later doesn't
-    /// require a state migration.
-    #[allow(dead_code)] // first reader is the v1.1 selection branch
+    /// Selection anchor. `None` = no selection. Invariant: never
+    /// `Some(caret)` — every mutation site collapses an empty selection
+    /// to `None` so "selection live" is a single `is_some()` check.
     pub(crate) selection: Option<usize>,
+    /// Caret byte at the rising edge of the pointer press, used as the
+    /// drag anchor for click+drag selection. Reset on release.
+    pub(crate) drag_anchor: Option<usize>,
+    /// Was the widget pressed last frame? Used to detect the press
+    /// rising edge for anchor latching.
+    pub(crate) prev_pressed: bool,
+}
+
+impl TextEditState {
+    fn sel_range(&self) -> Option<std::ops::Range<usize>> {
+        let a = self.selection?;
+        Some(a.min(self.caret)..a.max(self.caret))
+    }
+}
+
+/// Move the caret to `new_caret`, extending the selection if `extend`
+/// is set (latches anchor on the first extending move) or collapsing it
+/// otherwise. Maintains the "never Some(caret)" invariant.
+fn move_caret(state: &mut TextEditState, new_caret: usize, extend: bool) {
+    if extend {
+        state.selection.get_or_insert(state.caret);
+    } else {
+        state.selection = None;
+    }
+    state.caret = new_caret;
+    if state.selection == Some(state.caret) {
+        state.selection = None;
+    }
+}
+
+/// Delete the live selection range (if any), update caret to the range
+/// start, and return the deleted range — callers use it to know whether
+/// to skip a subsequent codepoint-delete (Backspace/Delete) or not.
+fn delete_selection(text: &mut String, state: &mut TextEditState) -> bool {
+    let Some(range) = state.sel_range() else {
+        return false;
+    };
+    let start = range.start;
+    text.replace_range(range, "");
+    state.caret = start;
+    state.selection = None;
+    true
 }
 
 /// Single-line editable text leaf. v1 supports: typing (via `KeyDown`
@@ -121,7 +162,7 @@ impl<'a> TextEdit<'a> {
         // happens here too, before keystroke processing, so a click +
         // type in the same frame inserts at the click point.
         let mut blur_after = false;
-        let caret_byte = handle_input(
+        let input = handle_input(
             ui,
             id,
             is_focused,
@@ -131,6 +172,8 @@ impl<'a> TextEdit<'a> {
             padding.left,
             &mut blur_after,
         );
+        let caret_byte = input.caret;
+        let selection = input.selection;
 
         // Phase 2: open the node and push shapes. `caret_x` for the
         // caret position lives inside the closure since it touches
@@ -144,6 +187,34 @@ impl<'a> TextEdit<'a> {
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
         let resp_node = ui.node(element, |ui| {
+            // Selection highlight, painted *before* the text so glyphs
+            // sit on top of the wash. Only when focused and a range is
+            // actually live (anchor != caret — collapsed selections are
+            // stored as `None`, so any `Some` here has positive width).
+            if is_focused && let Some(range) = selection {
+                let x0 = ui.text.caret_x(
+                    text_ptr,
+                    range.start,
+                    font_size,
+                    font_size * line_height_mult,
+                );
+                let x1 =
+                    ui.text
+                        .caret_x(text_ptr, range.end, font_size, font_size * line_height_mult);
+                let sel_rect = Rect::new(
+                    padding.left + x0,
+                    padding.top,
+                    x1 - x0,
+                    font_size * line_height_mult,
+                );
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(sel_rect),
+                    radius: Default::default(),
+                    fill: theme.selection.into(),
+                    stroke: Stroke::ZERO,
+                });
+            }
+
             // Text or placeholder. Empty buffer + unfocused shows the
             // placeholder; focused shows the buffer (even if empty)
             // because we still want the caret to render flush-left.
@@ -217,8 +288,15 @@ impl Configure for TextEdit<'_> {
     }
 }
 
+/// Result of one frame's input pass over a TextEdit: the caret byte
+/// and the (sorted) selection range, if any. Painter consumes both.
+struct InputResult {
+    caret: usize,
+    selection: Option<std::ops::Range<usize>>,
+}
+
 /// Process this frame's pointer + keyboard input for one TextEdit
-/// widget and return the caret byte offset to render. Splitting this
+/// widget and return the caret + selection to render. Splitting this
 /// out of `show()` keeps the borrow choreography contained: we touch
 /// `ui.state`, `ui.input`, and `ui.text` here, but never the
 /// shape/tree storage.
@@ -237,7 +315,7 @@ fn handle_input(
     // `show()` doesn't desync from the click target.
     pad_left: f32,
     blur_after: &mut bool,
-) -> usize {
+) -> InputResult {
     let resp_state = ui.response_for(id);
 
     // Hold the state row once for the whole function. `ui.state`,
@@ -247,73 +325,143 @@ fn handle_input(
     let state = ui
         .state
         .get_or_insert_with::<TextEditState, _>(id, Default::default);
-    // Clamp caret. Host code may have shrunk `*text` between frames.
+    // Clamp caret + anchor. Host code may have shrunk `*text` between
+    // frames; an OOB anchor would corrupt the selection range derivation.
     if state.caret > text.len() {
         state.caret = text.len();
     }
+    if let Some(a) = state.selection
+        && a > text.len()
+    {
+        state.selection = Some(text.len());
+    }
+    if state.selection == Some(state.caret) {
+        state.selection = None;
+    }
 
-    // Click-to-place-caret. While the widget is being pressed, the
-    // caret tracks the pointer x → drag-to-place falls out for free.
-    // Uses last-frame's rect (one-frame stale, same model as the wheel
-    // pan clamp); first frame after layout the widget may set caret
-    // against a stale rect, the next settles.
+    // Click + drag-to-select. On the rising edge of `pressed`, latch the
+    // hit caret as the drag anchor and clear any prior selection. On
+    // subsequent pressed frames, the active end follows the pointer and
+    // the anchor flips into `selection` once it diverges. On release
+    // (falling edge), drop the anchor so the next press starts fresh.
     if resp_state.pressed
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos)
     {
         let local_x = ptr.x - rect.min.x - pad_left;
-        state.caret = caret_from_x(text, local_x, font_size, line_height_px, &ui.text);
+        let hit = caret_from_x(text, local_x, font_size, line_height_px, &ui.text);
+        if !state.prev_pressed {
+            state.drag_anchor = Some(hit);
+            state.selection = None;
+            state.caret = hit;
+        } else {
+            let anchor = state.drag_anchor.unwrap_or(hit);
+            state.caret = hit;
+            state.selection = if hit == anchor { None } else { Some(anchor) };
+        }
+    } else if !resp_state.pressed {
+        state.drag_anchor = None;
     }
+    state.prev_pressed = resp_state.pressed;
 
     if !is_focused {
-        return state.caret;
+        return InputResult {
+            caret: state.caret,
+            selection: state.sel_range(),
+        };
     }
 
     // Drain per-frame keyboard queues. `frame_text` first (so a
     // ModifiersChanged + keystrokes-for-shortcut sequence still leaves
     // typed text intact), then `frame_keys` for navigation/edits.
     if !ui.input.frame_text.is_empty() {
+        delete_selection(text, state);
         text.insert_str(state.caret, &ui.input.frame_text);
         state.caret += ui.input.frame_text.len();
     }
 
     for kp in &ui.input.frame_keys {
-        if apply_key(text, &mut state.caret, *kp) {
+        if apply_key(text, state, *kp) {
             *blur_after = true;
         }
     }
 
-    state.caret
+    InputResult {
+        caret: state.caret,
+        selection: state.sel_range(),
+    }
 }
 
-/// Apply one keypress to the buffer + caret. Returns `true` if the
-/// caller should blur (Escape); every other recognized key is consumed
-/// silently. Single-line v1 ignores Enter / Tab / PageUp / PageDown
-/// and anything held with a command modifier (ctrl+a, cmd+c, …).
-fn apply_key(text: &mut String, caret: &mut usize, kp: KeyPress) -> bool {
+/// Apply one keypress to the buffer + state. Returns `true` if the
+/// caller should blur (Escape with no live selection); every other
+/// recognized key is consumed silently. Single-line v1 ignores Enter /
+/// Tab / PageUp / PageDown.
+fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
+    // Select-all: ctrl+A on Win/Linux, cmd+A on macOS. Routed before
+    // the `Char` insert branch so it doesn't get swallowed by the
+    // any_command suppression below.
+    if let Key::Char(c) = kp.key
+        && (c == 'a' || c == 'A')
+        && (kp.mods.ctrl || kp.mods.meta)
+        && !kp.mods.alt
+    {
+        if !text.is_empty() {
+            state.selection = Some(0);
+            state.caret = text.len();
+            if state.selection == Some(state.caret) {
+                state.selection = None;
+            }
+        }
+        return false;
+    }
+    let shift = kp.mods.shift;
     match kp.key {
-        // Printable character without a command modifier counts as text
-        // input. Shift alone doesn't disqualify (shift+'a' = 'A' is the
-        // capitalized letter winit already gave us).
         Key::Char(c) if !kp.mods.any_command() => {
+            delete_selection(text, state);
             let mut buf = [0u8; 4];
             let s = c.encode_utf8(&mut buf);
-            text.insert_str(*caret, s);
-            *caret += s.len();
+            text.insert_str(state.caret, s);
+            state.caret += s.len();
         }
-        Key::Backspace if *caret > 0 => {
-            let prev = prev_char_boundary(text, *caret);
-            text.replace_range(prev..*caret, "");
-            *caret = prev;
+        Key::Backspace if !delete_selection(text, state) && state.caret > 0 => {
+            let prev = prev_char_boundary(text, state.caret);
+            text.replace_range(prev..state.caret, "");
+            state.caret = prev;
         }
-        Key::Delete if *caret < text.len() => {
-            let next = next_char_boundary(text, *caret);
-            text.replace_range(*caret..next, "");
+        Key::Delete if !delete_selection(text, state) && state.caret < text.len() => {
+            let next = next_char_boundary(text, state.caret);
+            text.replace_range(state.caret..next, "");
         }
-        Key::ArrowLeft => *caret = prev_char_boundary(text, *caret),
-        Key::ArrowRight => *caret = next_char_boundary(text, *caret),
-        Key::Home => *caret = 0,
-        Key::End => *caret = text.len(),
-        Key::Escape => return true,
+        // Backspace/Delete after the guard's `delete_selection` ran:
+        // the guard already consumed a live selection or established
+        // we're at the buffer edge; nothing left to do.
+        Key::Backspace | Key::Delete => {}
+        Key::ArrowLeft => {
+            let target = if !shift && let Some(r) = state.sel_range() {
+                r.start
+            } else {
+                prev_char_boundary(text, state.caret)
+            };
+            move_caret(state, target, shift);
+        }
+        Key::ArrowRight => {
+            let target = if !shift && let Some(r) = state.sel_range() {
+                r.end
+            } else {
+                next_char_boundary(text, state.caret)
+            };
+            move_caret(state, target, shift);
+        }
+        Key::Home => move_caret(state, 0, shift),
+        Key::End => move_caret(state, text.len(), shift),
+        Key::Escape => {
+            // Two-stage: collapse selection first, blur only when
+            // there's no selection to drop.
+            if state.selection.is_some() {
+                state.selection = None;
+            } else {
+                return true;
+            }
+        }
         _ => {}
     }
     false
