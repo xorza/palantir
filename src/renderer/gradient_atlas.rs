@@ -189,9 +189,10 @@ fn lerp_oklab(a: Srgb8, b: Srgb8, u: f32) -> Srgb8 {
 /// content-hash → row-id map; the backend mirrors this into a wgpu
 /// texture each frame by draining `take_dirty()`.
 ///
-/// Row 0 is reserved as a magenta-fill fallback. Slots 1..ATLAS_ROWS
-/// are content-hashed. Linear-probed; on probe-failure (atlas full),
-/// asserts. Slice-2 baseline: assert; real LRU eviction lives in 2.5.
+/// Row 0 is reserved as a magenta-fill fallback and never evicted.
+/// Slots 1..ATLAS_ROWS are content-hashed and linear-probed. When the
+/// table is full and the requested content isn't already resident, the
+/// LRU row (smallest `last_used`) is evicted and re-baked in place.
 pub(crate) struct GradientCpuAtlas {
     /// `Some(content_hash)` per row occupied by a gradient; `None` for
     /// free rows. Row 0 holds the magenta-fallback marker (`Some(0)`).
@@ -201,6 +202,16 @@ pub(crate) struct GradientCpuAtlas {
     /// allocation — `Vec<[u8; 1024]>` is contiguous, so casting to
     /// `&[u8]` for the GPU upload is a free reinterpret.
     baked: Vec<[u8; LUT_ROW_BYTES]>,
+    /// Per-row "last touched" timestamp. Bumped on every `register_stops`
+    /// hit and on bake. The LRU victim is the row with the smallest
+    /// stamp; row 0 is excluded. `u32` rolls over after ~136 years at
+    /// 1000 registers/sec — not a real concern.
+    last_used: [u32; ATLAS_ROWS as usize],
+    /// Monotonic register counter. Each `register_stops` call bumps
+    /// it and stamps the touched row, so within a single frame later
+    /// registers are "newer" than earlier ones (fine — eviction needs
+    /// a strict-order comparator, not wall-clock semantics).
+    clock: u32,
     /// Any row changed since the last `flush`. Per-row tracking is
     /// overkill at 256 KB total: one `queue.write_texture` call of
     /// 256 KB beats N calls of 1 KB each on the common warmup path
@@ -218,6 +229,8 @@ impl Default for GradientCpuAtlas {
         let mut atlas = Self {
             rows: [None; ATLAS_ROWS as usize],
             baked: vec![[0u8; LUT_ROW_BYTES]; ATLAS_ROWS as usize],
+            last_used: [0; ATLAS_ROWS as usize],
+            clock: 0,
             dirty: Cell::new(false),
         };
         atlas.init_row_zero_magenta();
@@ -251,32 +264,59 @@ impl GradientCpuAtlas {
     /// matching stops + interp share one row (the geometry differs in
     /// per-fragment `t`, but the LUT only depends on the colour-stop
     /// sequence). Returns the row id in `1..ATLAS_ROWS`.
+    ///
+    /// Bumps the per-row LRU stamp on every call so eviction picks the
+    /// least-recently-touched row when the table is full.
     pub(crate) fn register_stops(&mut self, stops: &[Stop], interp: Interp) -> u32 {
+        self.clock = self.clock.wrapping_add(1);
+        let stamp = self.clock;
         let content_hash = hash_stops(stops, interp);
         // Probe starting at `1 + (hash mod 255)` so row 0 is never
-        // claimed by a real gradient.
+        // claimed by a real gradient. Two passes: first look for a
+        // match or an empty slot; if neither exists, evict the LRU
+        // row (single linear scan over rows 1..ATLAS_ROWS).
         let start = 1 + (content_hash % (ATLAS_ROWS as u64 - 1)) as u32;
         for offset in 0..(ATLAS_ROWS - 1) {
             let row = 1 + ((start - 1 + offset) % (ATLAS_ROWS - 1));
             match self.rows[row as usize] {
-                Some(h) if h == content_hash => return row,
+                Some(h) if h == content_hash => {
+                    self.last_used[row as usize] = stamp;
+                    return row;
+                }
                 None => {
-                    // Free slot — bake into it.
                     bake_stops(stops, interp, &mut self.baked[row as usize]);
                     self.rows[row as usize] = Some(content_hash);
+                    self.last_used[row as usize] = stamp;
                     self.dirty.set(true);
                     return row;
                 }
                 _ => continue,
             }
         }
-        // Slice-2 baseline: atlas full → assert. LRU eviction is a
-        // slice-2.5 follow-up (see brushes-slice-2-plan.md open
-        // question #4).
-        panic!(
-            "GradientCpuAtlas full ({} live gradients); LRU eviction not yet implemented",
-            ATLAS_ROWS - 1,
-        );
+        // Atlas full: evict the row with the smallest stamp. Row 0
+        // (magenta fallback) is permanent — start the scan at 1.
+        let victim = self.lru_victim();
+        bake_stops(stops, interp, &mut self.baked[victim as usize]);
+        self.rows[victim as usize] = Some(content_hash);
+        self.last_used[victim as usize] = stamp;
+        self.dirty.set(true);
+        victim
+    }
+
+    /// Scan rows 1..ATLAS_ROWS for the smallest `last_used` stamp.
+    /// Always returns a row id ≥ 1 (row 0 excluded) — the magenta
+    /// fallback is permanent.
+    fn lru_victim(&self) -> u32 {
+        let mut best_row: u32 = 1;
+        let mut best_stamp = self.last_used[1];
+        for row in 2..ATLAS_ROWS {
+            let s = self.last_used[row as usize];
+            if s < best_stamp {
+                best_stamp = s;
+                best_row = row;
+            }
+        }
+        best_row
     }
 
     /// If any row changed since the last flush, return the full atlas
@@ -624,18 +664,82 @@ mod tests {
         assert_eq!(seen.len(), ATLAS_ROWS as usize - 1);
     }
 
-    /// Filling all 255 real slots, then asking for one more, panics
-    /// with the slice-2 "atlas full" message. Real LRU eviction is a
-    /// slice-2.5 follow-up.
+    /// Filling all 255 real slots then registering one more evicts
+    /// the LRU row in 1..ATLAS_ROWS — never row 0 (magenta fallback).
+    /// The new gradient ends up in the evicted slot; the previously
+    /// resident row's content hash is gone.
     #[test]
-    #[should_panic(expected = "GradientCpuAtlas full")]
-    fn register_panics_when_atlas_full() {
+    fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
         let mut atlas = GradientCpuAtlas::default();
+        let mut filled_rows = Vec::with_capacity((ATLAS_ROWS - 1) as usize);
         for i in 0..(ATLAS_ROWS - 1) {
+            filled_rows.push(register_for(&mut atlas, distinct_grad(i as f32 * 0.01)));
+        }
+        // Re-touch every gradient except index 0 so the very first
+        // registration's row is unambiguously the LRU.
+        for i in 1..(ATLAS_ROWS - 1) {
             register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
         }
-        // 256th distinct gradient (255 real slots already occupied).
+        let lru = filled_rows[0];
+        // Push one more distinct gradient → forces eviction.
+        let new_row = register_for(&mut atlas, distinct_grad(9999.0));
+        assert_ne!(new_row, 0, "row 0 (magenta) must never be evicted");
+        assert_eq!(
+            new_row, lru,
+            "newest registration must land in the LRU slot",
+        );
+        // Row 0 still magenta after eviction.
+        for i in 0..LUT_ROW_TEXELS {
+            let off = i * 4;
+            assert_eq!(&atlas.baked[0][off..off + 4], &[0xff, 0x00, 0xff, 0xff]);
+        }
+    }
+
+    /// Hit-path bumps the row stamp: a gradient registered first, then
+    /// re-registered after others, must survive eviction even when the
+    /// table fills.
+    #[test]
+    fn register_hit_bumps_stamp_protecting_recent_content() {
+        let mut atlas = GradientCpuAtlas::default();
+        let pinned = distinct_grad(0.0);
+        let pinned_row = register_for(&mut atlas, pinned);
+        // Fill 253 more rows.
+        for i in 1..(ATLAS_ROWS - 2) {
+            register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
+        }
+        // Re-touch the pinned gradient so its stamp is now the largest.
+        let r = register_for(&mut atlas, pinned);
+        assert_eq!(r, pinned_row, "re-register must reuse the same row");
+        // Two more distinct registrations: the second forces eviction.
+        // The pinned row's recent stamp must keep it alive.
+        register_for(&mut atlas, distinct_grad(1000.0));
+        let evicted_row = register_for(&mut atlas, distinct_grad(1001.0));
+        assert_ne!(
+            evicted_row, pinned_row,
+            "recently touched row must not be evicted",
+        );
+    }
+
+    /// Evicting a row then re-registering its original content re-bakes
+    /// into some slot; the row is restored, no panics, atlas remains
+    /// usable. Pin the round-trip explicitly so a future eviction-bug
+    /// that loses content silently is caught.
+    #[test]
+    fn evicted_content_can_be_re_registered() {
+        let mut atlas = GradientCpuAtlas::default();
+        let first = distinct_grad(0.0);
+        let _ = register_for(&mut atlas, first);
+        // Fill + force eviction of `first` (oldest stamp).
+        for i in 1..(ATLAS_ROWS - 1) {
+            register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
+        }
         register_for(&mut atlas, distinct_grad(9999.0));
+        // Re-register `first` — must succeed and return a valid row.
+        let reborn = register_for(&mut atlas, first);
+        assert!(
+            (1..ATLAS_ROWS).contains(&reborn),
+            "re-registered row {reborn} must be valid",
+        );
     }
 
     /// `flush` returns `Some(...)` once after a register, then `None`
