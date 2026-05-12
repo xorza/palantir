@@ -235,8 +235,6 @@ impl ApplicationHandler for App {
 
 impl State {
     fn draw(&mut self) {
-        let clear = self.host.ui.theme.window_clear;
-
         // Run the frame first so we can early-out on `Skip` without
         // touching the swapchain at all. Acquired `SurfaceTexture`s
         // *must* be presented; dropping one without `present()` leaves
@@ -268,7 +266,7 @@ impl State {
             Occluded => return,
         };
 
-        self.host.render(&frame.texture, clear);
+        self.host.render(&frame.texture, &frame_report);
 
         frame.present();
     }

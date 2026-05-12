@@ -7,20 +7,17 @@
 //! submit) lets the host bail out between the two on `Skip` frames —
 //! no `surface.get_current_texture()`, no submit, no present — and
 //! also on host-side errors (surface acquire failure, occluded
-//! window). The per-frame paint plan ([`Damage`]) is stashed on
-//! [`Host`] as `pending_damage` between the two calls; the
-//! user-facing [`FrameReport`] returned from `run_frame` is plain
-//! owned data.
+//! window). The per-frame paint plan flows through the
+//! [`FrameReport`] returned from `run_frame`; callers thread it into
+//! `render` as `&report`.
 
 use std::time::Instant;
 
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::primitives::color::Color;
 use crate::renderer::backend::WgpuBackend;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::ui::damage::Damage;
 use crate::{Display, FrameReport};
 
 /// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
@@ -38,11 +35,6 @@ pub struct Host {
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
     /// each call so the host doesn't have to thread a clock through.
     pub(crate) start: Instant,
-    /// Paint plan stashed between [`Self::run_frame`] and
-    /// [`Self::render`]. `None` ⇒ skip path (nothing changed; backbuffer
-    /// is correct). Cleared once `render` consumes it so a second
-    /// `render` without an intervening `run_frame` becomes a no-op.
-    pub(crate) pending_damage: Option<Damage>,
 }
 
 impl Host {
@@ -69,27 +61,26 @@ impl Host {
             frontend: Frontend::default(),
             backend: WgpuBackend::new(device, queue, format, shaper),
             start: Instant::now(),
-            pending_damage: None,
         }
     }
 
-    /// Drive one CPU frame: `Ui::run_frame` → encode → compose.
-    /// Returns the host-facing [`FrameReport`]; internal state needed
-    /// by [`Self::render`] is stashed.
+    /// Drive one CPU frame: `Ui::frame` → record → measure / arrange
+    /// / cascade / damage. Returns the host-facing [`FrameReport`];
+    /// thread it back into [`Self::render`] as `&report`.
     pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameReport {
-        let report = self.ui.frame(display, self.start.elapsed(), record);
-        self.pending_damage = report.damage;
-        report
+        self.ui.frame(display, self.start.elapsed(), record)
     }
 
     /// GPU submit half. Call after [`Self::run_frame`] when the host
-    /// wants to paint (i.e. `FrameReport::skip_render` was false).
-    /// On both the paint and skip paths, marks the frame as
-    /// submitted so the next frame's damage diff doesn't escalate to
-    /// `Full` — `Ui::frame` leaves `frame_state` in `Pending`, and
-    /// this is the single place that confirms.
-    pub fn render(&mut self, surface_tex: &wgpu::Texture, clear: Color) {
-        let Some(damage) = self.pending_damage.take() else {
+    /// wants to paint (i.e. `report.skip_render()` was false). The
+    /// clear color is sourced from `report.clear_color` (snapshot of
+    /// `Ui.theme.window_clear` at frame time). On both the paint and
+    /// skip paths, marks the frame as submitted so the next frame's
+    /// damage diff doesn't escalate to `Full` — `Ui::frame` leaves
+    /// `frame_state` in `Pending`, and this is the single place that
+    /// confirms.
+    pub fn render(&mut self, surface_tex: &wgpu::Texture, report: &FrameReport) {
+        let Some(damage) = report.damage else {
             // Skip path: nothing changed. Copy the persistent
             // backbuffer onto the swapchain so callers that always
             // present (visual harness, etc.) still see valid pixels.
@@ -100,8 +91,13 @@ impl Host {
             return;
         };
         let buffer = self.frontend.build(&self.ui, damage);
-        self.backend
-            .submit(surface_tex, clear, buffer, damage, self.debug_overlay);
+        self.backend.submit(
+            surface_tex,
+            report.clear_color,
+            buffer,
+            damage,
+            self.debug_overlay,
+        );
         self.ui.frame_state.mark_submitted();
     }
 }

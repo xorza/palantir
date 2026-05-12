@@ -191,8 +191,9 @@ fn main() {
     let display = Display::from_physical(PHYSICAL, SCALE);
 
     let run = |host: &mut Host| {
-        host.run_frame(display, build_ui);
-        host.render(&target, Color::TRANSPARENT);
+        host.ui.theme.window_clear = Color::TRANSPARENT;
+        let report = host.run_frame(display, build_ui);
+        host.render(&target, &report);
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
