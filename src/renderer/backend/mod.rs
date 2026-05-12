@@ -249,9 +249,9 @@ impl WgpuBackend {
     ///   bleed, and clamps to surface; rects that clamp to zero area
     ///   are filtered out.
     ///
-    /// Skip frames (`Ui::damage == None`) are handled at the caller —
-    /// `FrameReport::skip_render` short-circuits before `Host::render`,
-    /// so this method is only entered with `Some(Full | Partial)`.
+    /// Skip frames are handled in `Host::render`'s early-return branch
+    /// (`pending_damage` is `None`); this method is only entered with
+    /// `Some(Full | Partial)`.
     ///
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.

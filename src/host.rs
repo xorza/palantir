@@ -7,9 +7,10 @@
 //! submit) lets the host bail out between the two on `Skip` frames —
 //! no `surface.get_current_texture()`, no submit, no present — and
 //! also on host-side errors (surface acquire failure, occluded
-//! window). State that needs to flow between the two stages
-//! (`Damage`, debug overlay, frame-state Arc) is stashed in
-//! [`Host`] itself; the user-facing [`FrameInfo`] is plain owned data.
+//! window). The per-frame paint plan ([`Damage`]) is stashed on
+//! [`Host`] as `pending_damage` between the two calls; the
+//! user-facing [`FrameReport`] returned from `run_frame` is plain
+//! owned data.
 
 use std::time::Instant;
 

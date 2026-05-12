@@ -4,7 +4,7 @@
 
 use crate::layout::types::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke};
-use crate::renderer::frontend::gradient_atlas::GradientCpuAtlas;
+use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::DrawGroup;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;

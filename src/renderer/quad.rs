@@ -96,6 +96,7 @@ pub(crate) struct Quad {
 #[cfg(test)]
 mod tests {
     use super::Quad;
+    use std::mem::offset_of;
 
     /// Pin: `Quad` is exactly 92 bytes — pos(8) + size(8) + fill(16) +
     /// radius(16) + stroke_color(16) + stroke_width(4) + fill_kind(4) +
@@ -107,5 +108,21 @@ mod tests {
     #[test]
     fn quad_struct_is_92_bytes_no_padding() {
         assert_eq!(std::mem::size_of::<Quad>(), 92);
+    }
+
+    /// Pin every field offset against the `vertex_attr_array!` in
+    /// `quad_pipeline.rs` (attribute locations 0..=8). A reorder of
+    /// same-sized fields wouldn't change the struct size but would
+    /// silently mis-bind the shader; size alone can't catch it.
+    #[test]
+    fn quad_field_offsets_match_vertex_attr_array() {
+        assert_eq!(offset_of!(Quad, rect), 0, "loc 0 (pos) + loc 1 (size)");
+        assert_eq!(offset_of!(Quad, fill), 16, "loc 2 (fill)");
+        assert_eq!(offset_of!(Quad, radius), 32, "loc 3 (radius)");
+        assert_eq!(offset_of!(Quad, stroke_color), 48, "loc 4 (stroke.color)");
+        assert_eq!(offset_of!(Quad, stroke_width), 64, "loc 5 (stroke.width)");
+        assert_eq!(offset_of!(Quad, fill_kind), 68, "loc 6 (fill_kind)");
+        assert_eq!(offset_of!(Quad, fill_lut_row), 72, "loc 7 (fill_lut_row)");
+        assert_eq!(offset_of!(Quad, fill_axis), 76, "loc 8 (fill_axis)");
     }
 }
