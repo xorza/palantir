@@ -109,6 +109,7 @@ impl ContextMenu {
         let popup = Popup::anchored_to(clamped)
             .id(body_id)
             .click_outside(ClickOutside::Dismiss)
+            .owned_by(self.for_id)
             .background(theme.panel)
             .padding(theme.padding)
             .min_size(Size::new(theme.min_width, 0.0));
@@ -328,11 +329,10 @@ impl MenuItem {
 
         let state = ui.response_for(id);
         let resp = Response { node, id, state };
-        if resp.clicked() {
-            // Close the specific menu we're inside — surrounding
-            // `ContextMenu::show` detects the anchor-cleared transition
-            // and surfaces it as `ContextMenuResponse.item_clicked`.
-            // ContextMenu::close(ui, menu_id);
+        if resp.clicked()
+            && let Some(menu_id) = ui.current_popup_id()
+        {
+            ContextMenu::close(ui, menu_id);
         }
         resp
     }
