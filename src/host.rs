@@ -80,6 +80,19 @@ impl Host {
     /// always present still see valid pixels.
     pub fn render_to_texture(&mut self, target: &wgpu::Texture, report: &FrameReport) {
         profiling::scope!("Host::render_to_texture");
+        let size = target.size();
+        let display_phys = self.ui.display.physical;
+        assert!(
+            size.width == display_phys.x && size.height == display_phys.y,
+            "render_to_texture: target size {}x{} doesn't match the display physical \
+             size ({}x{}) that `run_frame` ran against — scissor / viewport math \
+             would be off. Update `Display.physical` on resize before the next \
+             `run_frame`.",
+            size.width,
+            size.height,
+            display_phys.x,
+            display_phys.y,
+        );
         let Some(damage) = report.damage else {
             self.backend.copy_backbuffer_to_surface(target);
             self.ui.frame_state.mark_submitted();
