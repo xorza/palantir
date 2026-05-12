@@ -26,7 +26,7 @@ use palantir::{Display, InputEvent, Ui};
 use std::hint::black_box;
 use std::time::Duration;
 
-#[path = "../examples/showcase/pan_zoom.rs"]
+#[path = "../examples/showcase/complex_pan_zoom.rs"]
 mod pan_zoom;
 
 const SIZE: UVec2 = UVec2::new(1280, 800);

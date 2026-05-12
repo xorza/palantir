@@ -35,5 +35,5 @@ pub fn build(ui: &mut Ui) {
     // true → host runs the next frame. Discarded value.
     let _ = ui.animate(id, "tick", t.sin(), Some(AnimSpec::FAST));
 
-    crate::pan_zoom::build(ui);
+    crate::complex_pan_zoom::build(ui);
 }
