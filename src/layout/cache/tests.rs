@@ -4,16 +4,22 @@ use crate::forest::tree::Layer;
 use crate::forest::widget_id::WidgetId;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey};
 use crate::primitives::{color::Color, size::Size};
-use crate::support::testing::{begin, ui_at};
+use crate::support::testing::run_at_acked;
 use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
 fn run_frame(ui: &mut Ui, record: impl FnOnce(&mut Ui)) {
-    begin(ui, UVec2::new(200, 200));
-    Panel::hstack().id_salt("root").show(ui, record);
-    ui.post_record();
-    ui.finalize_frame();
+    run_frame_at(ui, UVec2::new(200, 200), record);
+}
+
+fn run_frame_at(ui: &mut Ui, size: UVec2, record: impl FnOnce(&mut Ui)) {
+    let mut record = Some(record);
+    run_at_acked(ui, size, |ui| {
+        Panel::hstack()
+            .id_salt("root")
+            .show(ui, record.take().unwrap());
+    });
 }
 
 /// Read the snapshot's live arena range for `wid`.
@@ -182,18 +188,12 @@ fn changing_available_forces_miss_and_remeasure() {
                 .show(ui);
         });
     };
-    begin(&mut ui, UVec2::new(200, 200));
-    Panel::hstack().id_salt("root").show(&mut ui, build);
-    ui.post_record();
-    ui.finalize_frame();
+    run_frame_at(&mut ui, UVec2::new(200, 200), build);
     let wid = WidgetId::from_hash("fill");
     let avail1 = snap_for(&ui, wid).unwrap().avail;
     let d1 = snap_for(&ui, wid).unwrap().desired[0];
 
-    begin(&mut ui, UVec2::new(80, 80));
-    Panel::hstack().id_salt("root").show(&mut ui, build);
-    ui.post_record();
-    ui.finalize_frame();
+    run_frame_at(&mut ui, UVec2::new(80, 80), build);
     let avail2 = snap_for(&ui, wid).unwrap().avail;
     let desired2 = snap_for(&ui, wid).unwrap().desired[0];
     assert_ne!(
@@ -296,12 +296,7 @@ fn in_place_rewrite_preserves_arena_position() {
             .show(ui);
     };
 
-    begin(&mut ui, UVec2::new(200, 200));
-    Panel::hstack()
-        .id_salt("root")
-        .show(&mut ui, |ui| build(ui, 0.2));
-    ui.post_record();
-    ui.finalize_frame();
+    run_frame_at(&mut ui, UVec2::new(200, 200), |ui| build(ui, 0.2));
     let start1 = snap_for(&ui, WidgetId::from_hash("a"))
         .unwrap()
         .snap
@@ -310,12 +305,7 @@ fn in_place_rewrite_preserves_arena_position() {
 
     // Different fill → different hash, but same subtree size (still 1
     // leaf). In-place path should reuse the slot.
-    begin(&mut ui, UVec2::new(200, 200));
-    Panel::hstack()
-        .id_salt("root")
-        .show(&mut ui, |ui| build(ui, 0.9));
-    ui.post_record();
-    ui.finalize_frame();
+    run_frame_at(&mut ui, UVec2::new(200, 200), |ui| build(ui, 0.9));
     let start2 = snap_for(&ui, WidgetId::from_hash("a"))
         .unwrap()
         .snap
@@ -341,18 +331,14 @@ fn arena_invariant_holds_under_fragmentation() {
     let mut ui = Ui::new();
 
     let n_first = (COMPACT_FLOOR) * 4;
-    begin(&mut ui, UVec2::new(800, 800));
-    Panel::hstack().id_salt("root").show(&mut ui, |ui| {
+    run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
         for i in 0..n_first {
             Frame::new().id_salt(("a", i)).size(10.0).show(ui);
         }
     });
-    ui.post_record();
-    ui.finalize_frame();
     // Drop all but one and add a fresh subtree to force append-path
     // writes; expect compaction to trigger somewhere along the way.
-    begin(&mut ui, UVec2::new(800, 800));
-    Panel::hstack().id_salt("root").show(&mut ui, |ui| {
+    run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
         Frame::new().id_salt(("a", 0usize)).size(10.0).show(ui);
         Panel::vstack().id_salt("new-group").show(ui, |ui| {
             for j in 0..(COMPACT_FLOOR + 4) {
@@ -360,8 +346,6 @@ fn arena_invariant_holds_under_fragmentation() {
             }
         });
     });
-    ui.post_record();
-    ui.finalize_frame();
     let cache = &ui.layout_engine.cache;
     if cache.nodes.live > COMPACT_FLOOR {
         assert!(
@@ -387,20 +371,16 @@ fn cache_hits_remain_valid_after_compaction() {
     // Frame 1: enough widgets to clear the floor; remember one that
     // we'll keep across frames.
     let n_first = (COMPACT_FLOOR) * 4;
-    begin(&mut ui, UVec2::new(800, 800));
-    Panel::hstack().id_salt("root").show(&mut ui, |ui| {
+    run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
         for i in 0..n_first {
             Frame::new().id_salt(("a", i)).size(11.0).show(ui);
         }
     });
-    ui.post_record();
-    ui.finalize_frame();
     let kept_wid = WidgetId::from_hash(("a", 0usize));
     let kept_desired_pre = snap_for(&ui, kept_wid).unwrap().desired[0];
 
     // Frame 2: drop most, add fresh subtree to drive compaction.
-    begin(&mut ui, UVec2::new(800, 800));
-    Panel::hstack().id_salt("root").show(&mut ui, |ui| {
+    run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
         Frame::new().id_salt(("a", 0usize)).size(11.0).show(ui);
         Panel::vstack().id_salt("new-group").show(ui, |ui| {
             for j in 0..(COMPACT_FLOOR + 4) {
@@ -408,8 +388,6 @@ fn cache_hits_remain_valid_after_compaction() {
             }
         });
     });
-    ui.post_record();
-    ui.finalize_frame();
     // Whether or not compaction fired, the kept widget's snapshot
     // must still describe the right desired and arena range.
     let cache = &ui.layout_engine.cache;
@@ -465,10 +443,10 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
         });
     };
 
-    let mut ui = ui_at(UVec2::new(400, 400));
-    build(&mut ui, Color::rgb(1.0, 0.0, 0.0));
-    ui.post_record();
-    ui.finalize_frame();
+    let mut ui = Ui::new();
+    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+        build(ui, Color::rgb(1.0, 0.0, 0.0));
+    });
     let snap = |ui: &Ui, key: &str| {
         ui.layout_engine
             .cache
@@ -487,10 +465,9 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
     // Frame 2: only the changing leaf's color flips. Hash rollup
     // must propagate the change all the way to `root`; the stable
     // sibling subtree must be untouched.
-    begin(&mut ui, UVec2::new(400, 400));
-    build(&mut ui, Color::rgb(0.0, 1.0, 0.0));
-    ui.post_record();
-    ui.finalize_frame();
+    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+        build(ui, Color::rgb(0.0, 1.0, 0.0));
+    });
     let root_2 = snap(&ui, "root");
     let branch_2 = snap(&ui, "changing-branch");
     let leaf_2 = snap(&ui, "changing-leaf");
@@ -566,8 +543,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
         "widget must be cached after first frame",
     );
 
-    // Frame 2: vanished — `SeenIds` flags it removed and
-    // `Ui::post_record` calls `MeasureCache::sweep_removed`.
+    // Frame 2: vanished — sweep_removed evicts via SeenIds.removed.
     run_frame(&mut ui, without_widget);
     assert!(
         !ui.layout_engine.cache.snapshots.contains_key(&blip),

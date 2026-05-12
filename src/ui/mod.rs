@@ -208,18 +208,17 @@ impl Ui {
         self.relayout_requested = true;
     }
 
-    pub(crate) fn pre_record(&mut self) {
+    fn pre_record(&mut self) {
         self.ids.pre_record();
         self.forest.pre_record();
     }
 
-    /// Record-half of `run_frame`: finalize hashes, run measure /
-    /// arrange. Returns whether [`Self::request_relayout`] fired.
+    /// Record-half of `frame`: finalize hashes, run measure / arrange.
     /// Stale cache entries (for widgets recorded last frame but
     /// absent this pass) are tolerated through `layout.run` — they
-    /// can't match live keys — and reaped once in `paint`
+    /// can't match live keys — and reaped once in `finalize_frame`
     /// against the final pass's id set.
-    pub(crate) fn post_record(&mut self) {
+    fn post_record(&mut self) {
         self.forest.post_record();
         self.layout_engine.run(
             &self.forest,
@@ -229,14 +228,13 @@ impl Ui {
         );
     }
 
-    /// Paint-half of `run_frame`: diff seen ids against the last
-    /// painted frame, fan the `removed` set out to per-widget caches,
-    /// cascade → hit-index → damage. Reads the `Layout` from the most
-    /// recent `post_record`; returns the computed [`Damage`].
-    /// Sweep runs here (once per `run_frame`) rather than per
-    /// `post_record` so a widget that vanishes in pass A but returns
-    /// in pass B keeps its state across the discard.
-    pub(crate) fn finalize_frame(&mut self) {
+    /// Paint-half of `frame`: diff seen ids against the last painted
+    /// frame, fan the `removed` set out to per-widget caches, cascade
+    /// → hit-index → damage. Reads the `Layout` from the most recent
+    /// `post_record`. Sweep runs here (once per `frame`) rather than
+    /// per `post_record` so a widget that vanishes in pass A but
+    /// returns in pass B keeps its state across the discard.
+    fn finalize_frame(&mut self) {
         let removed = self.ids.rollover();
         self.text.sweep_removed(removed);
         self.layout_engine.sweep_removed(removed);

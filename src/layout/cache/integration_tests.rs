@@ -13,7 +13,7 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
-use crate::support::testing::{begin, encode_cmds, new_ui_text, ui_with_text};
+use crate::support::testing::{encode_cmds, new_ui_text, run_at_acked, ui_with_text};
 use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -29,19 +29,14 @@ fn assert_warm_rects_match_cold(
     mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
     let mut cold_nodes = Vec::new();
-    record(ui, &mut cold_nodes);
-    ui.post_record();
-    ui.finalize_frame();
+    run_at_acked(ui, size, |ui| record(ui, &mut cold_nodes));
     let cold: Vec<_> = cold_nodes
         .iter()
         .map(|n| ui.layout[Layer::Main].rect[n.index()])
         .collect();
 
-    begin(ui, size);
     let mut warm_nodes = Vec::new();
-    record(ui, &mut warm_nodes);
-    ui.post_record();
-    ui.finalize_frame();
+    run_at_acked(ui, size, |ui| record(ui, &mut warm_nodes));
     let warm: Vec<_> = warm_nodes
         .iter()
         .map(|n| ui.layout[Layer::Main].rect[n.index()])
@@ -277,15 +272,10 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     };
 
     let mut ui = ui_with_text(UVec2::new(800, 600));
-    record(&mut ui);
-    ui.post_record();
-    ui.finalize_frame();
+    run_at_acked(&mut ui, UVec2::new(800, 600), |ui| record(ui));
     let cold = encode_cmds(&mut ui);
 
-    begin(&mut ui, UVec2::new(800, 600));
-    record(&mut ui);
-    ui.post_record();
-    ui.finalize_frame();
+    run_at_acked(&mut ui, UVec2::new(800, 600), |ui| record(ui));
     let warm = encode_cmds(&mut ui);
 
     assert_eq!(cold.kinds, warm.kinds, "cmd kind sequence must match");
@@ -344,22 +334,20 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
     let mut ui = new_ui_text();
     let widths = [800u32, 800, 600, 800, 600, 600, 800, 1000, 600];
     for (i, &w) in widths.iter().enumerate() {
-        begin(&mut ui, UVec2::new(w, 600));
         let mut warm_nodes = Vec::new();
-        record(&mut ui, &mut warm_nodes);
-        ui.post_record();
-        ui.finalize_frame();
+        run_at_acked(&mut ui, UVec2::new(w, 600), |ui| {
+            record(ui, &mut warm_nodes);
+        });
         let warm_rects: Vec<_> = warm_nodes
             .iter()
             .map(|n| ui.layout[Layer::Main].rect[n.index()])
             .collect();
 
         crate::support::internals::clear_measure_cache(&mut ui);
-        begin(&mut ui, UVec2::new(w, 600));
         let mut cold_nodes = Vec::new();
-        record(&mut ui, &mut cold_nodes);
-        ui.post_record();
-        ui.finalize_frame();
+        run_at_acked(&mut ui, UVec2::new(w, 600), |ui| {
+            record(ui, &mut cold_nodes);
+        });
         let cold_rects: Vec<_> = cold_nodes
             .iter()
             .map(|n| ui.layout[Layer::Main].rect[n.index()])

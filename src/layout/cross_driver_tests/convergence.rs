@@ -9,10 +9,7 @@
 //! the second-pass measure produces a desired ~10 px wider than the
 //! grown `new_available`, which used to panic.
 //!
-//! This test sweeps a range of widths that includes the trigger and
-//! asserts `post_record()` doesn't panic. Pre-fix this panicked at
-//! several widths in the swept range; post-fix the second-pass result
-//! is clamped to `new_available` and rendering proceeds.
+//! Sweeps a width range and asserts the frame doesn't panic.
 
 use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
@@ -155,10 +152,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     // direction shows up. Step 1 px to guarantee we hit whatever
     // discrete width tips the toolbar's wrap count past a threshold.
     //
-    // Reuse one `Ui` across the sweep — recreating it would re-load
-    // the bundled cosmic fonts on every iter (~120 ms each, dominating
-    // wall time). Models the real workload too: a host keeps one `Ui`
-    // and just feeds new `pre_record(size)` per resize.
+    // Reuse one `Ui` across sweep — recreating it would re-load fonts (~120 ms each).
     let mut ui = new_ui_text();
     for w in (480u32..=900).step_by(1) {
         run_at(&mut ui, UVec2::new(w, 600), |ui| {
