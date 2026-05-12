@@ -29,7 +29,11 @@ fn triangle(ui: &mut Ui) {
     let b = m.vertex(glam::Vec2::new(110.0, 100.0), red);
     let c = m.vertex(glam::Vec2::new(10.0, 100.0), red);
     m.triangle(a, b, c);
-    ui.add_mesh(&m);
+    ui.add_shape(Shape::Mesh {
+        mesh: &m,
+        local_rect: None,
+        tint: Color::WHITE.into(),
+    });
 }
 
 fn polygon_star(ui: &mut Ui) {
@@ -57,7 +61,11 @@ fn polygon_star(ui: &mut Ui) {
         prev = next;
     }
     m.triangle(centroid, prev, first);
-    ui.add_mesh(&m);
+    ui.add_shape(Shape::Mesh {
+        mesh: &m,
+        local_rect: None,
+        tint: Color::WHITE.into(),
+    });
 }
 
 fn gradient_quad(ui: &mut Ui) {
@@ -100,5 +108,9 @@ fn stress(ui: &mut Ui) {
             m.triangle(a, d, c);
         }
     }
-    ui.add_mesh(&m);
+    ui.add_shape(Shape::Mesh {
+        mesh: &m,
+        local_rect: None,
+        tint: Color::WHITE.into(),
+    });
 }

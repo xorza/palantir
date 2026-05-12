@@ -15,8 +15,6 @@ use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
-use crate::primitives::color::Color;
-use crate::primitives::mesh::Mesh;
 use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
@@ -303,17 +301,6 @@ impl Ui {
             colors.assert_matches(points.len());
         }
         self.forest.add_shape(shape);
-    }
-
-    /// Convenience wrapper for the common "draw this mesh at the
-    /// owner's full rect, tint white" case.
-    #[inline]
-    pub fn add_mesh(&mut self, mesh: &Mesh) {
-        self.add_shape(Shape::Mesh {
-            mesh,
-            local_rect: None,
-            tint: Color::WHITE.into(),
-        });
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left
