@@ -297,12 +297,6 @@ impl WgpuBackend {
         // rect in the region (see `build_damage_scissors`).
         let mut damage_scissors: tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]> = Default::default();
         build_damage_scissors(&mut damage_scissors, effective_damage, buffer);
-        let clear_op = wgpu::LoadOp::Clear(wgpu::Color {
-            r: clear.r as f64,
-            g: clear.g as f64,
-            b: clear.b as f64,
-            a: clear.a as f64,
-        });
         // `dim_undamaged` debug mode: every Partial frame, before any
         // damage passes, draw one full-viewport 40%-translucent black
         // quad onto the backbuffer with `LoadOp::Load`. Each frame
@@ -376,41 +370,51 @@ impl WgpuBackend {
             });
 
         // Two paths, branching on whether the frame is a Full or
-        // Partial repaint:
-        // - `damage_scissors` empty ⇒ Full: single pass, Clear,
-        //   no scissor.
+        // Partial repaint. Both go through one `begin_render_pass`:
+        // - `damage_scissors` empty ⇒ Full: one schedule walk with no
+        //   scissor, `LoadOp::Clear(color)` covers the backbuffer.
         // - `damage_scissors` non-empty ⇒ Partial: an optional dim
-        //   pre-pass (`dim_undamaged`, see above) that paints a
-        //   40% black quad over the full backbuffer with
-        //   `LoadOp::Load`, then one pass per damage rect using
-        //   `LoadOp::Load` so prior pixels (and the dim, where it
-        //   landed) survive outside the scissor. Subsequent passes
-        //   load the prior pass's output the same way.
+        //   pre-pass (`dim_undamaged`) that paints a 40% black quad
+        //   over the full backbuffer with `LoadOp::Load` in its own
+        //   render pass (no-stencil pipeline incompatible with the
+        //   main pass's stencil attachment on rounded-clip frames),
+        //   followed by one main pass with `LoadOp::Load` and one
+        //   schedule walk per damage rect inside it. Rects are
+        //   pairwise disjoint, so the per-pass stencil clear is
+        //   sufficient — no per-rect stencil reset needed.
+        let clear_color = wgpu::Color {
+            r: clear.r as f64,
+            g: clear.g as f64,
+            b: clear.b as f64,
+            a: clear.a as f64,
+        };
         if damage_scissors.is_empty() {
-            tracing::trace!(of = 1, "wgpu_backend.submit.pass.full");
-            self.run_one_pass(&mut encoder, buffer, None, clear_op, use_stencil, text_mode);
+            tracing::trace!("wgpu_backend.submit.pass.full");
+            self.run_main_pass(
+                &mut encoder,
+                buffer,
+                None,
+                clear_color,
+                use_stencil,
+                text_mode,
+            );
         } else {
             if dim_undamaged {
                 tracing::trace!("wgpu_backend.submit.pass.dim");
                 self.run_dim_pass(&mut encoder);
             }
-            let n = damage_scissors.len();
-            for (i, scissor) in damage_scissors.iter().copied().enumerate() {
-                tracing::trace!(
-                    pass = i,
-                    of = n,
-                    ?scissor,
-                    "wgpu_backend.submit.pass.partial"
-                );
-                self.run_one_pass(
-                    &mut encoder,
-                    buffer,
-                    Some(scissor),
-                    wgpu::LoadOp::Load,
-                    use_stencil,
-                    text_mode,
-                );
-            }
+            tracing::trace!(
+                rects = damage_scissors.len(),
+                "wgpu_backend.submit.pass.partial"
+            );
+            self.run_main_pass(
+                &mut encoder,
+                buffer,
+                Some(damage_scissors.as_slice()),
+                clear_color,
+                use_stencil,
+                text_mode,
+            );
         }
 
         self.copy_backbuffer_into(&mut encoder, surface_tex);
@@ -461,23 +465,31 @@ impl WgpuBackend {
         self.quad.draw_dim(&mut pass);
     }
 
-    /// Open one render pass against the backbuffer with the given
-    /// load op + scissor, then dispatch the schedule into it via
-    /// [`Self::render_groups`]. Stencil attachment is added when the
-    /// frame has rounded clips; cleared every pass since the
-    /// schedule re-stamps masks per group.
+    /// Open the main render pass against the backbuffer and walk the
+    /// schedule once per damage rect (or once with no scissor on Full).
+    /// All rects share one pass: one `begin_render_pass`, one stencil
+    /// `LoadOp::Clear(0)`, one color load. Per-rect work is just a
+    /// `SetScissor` + the schedule's group walk (plus the schedule's
+    /// own per-rect `PreClear` quad on Partial).
     ///
-    /// The schedule's leading `PreClear` quad always fires when a
-    /// damage scissor is set (Partial frames). Full-path frames pass
-    /// `scissor = None`, so the schedule's PreClear emit is gated
-    /// out at the source and the `LoadOp::Clear` covers the entire
-    /// backbuffer instead.
-    fn run_one_pass(
+    /// Rects are pairwise disjoint (the damage merger always merges
+    /// intersecting pairs — see `ui/damage/region/mod.rs`), so per-rect
+    /// stencil writes from one rect's groups can't bleed into another
+    /// rect's reads. Each `render_groups` call starts with a fresh
+    /// `active_mask = None`; that matches the stencil contents inside
+    /// the rect's scissor (always 0 there at pass open, never written
+    /// outside another rect's scissor).
+    ///
+    /// `partial_scissors == None` ⇒ Full frame: one schedule walk with
+    /// no damage scissor, `LoadOp::Clear(color)` covers the whole
+    /// backbuffer. `Some(rects)` ⇒ Partial: `LoadOp::Load`, one walk
+    /// per rect inside the same pass.
+    fn run_main_pass(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         buffer: &RenderBuffer,
-        scissor: Option<URect>,
-        load_op: wgpu::LoadOp<wgpu::Color>,
+        partial_scissors: Option<&[URect]>,
+        clear: wgpu::Color,
         use_stencil: bool,
         text_mode: text::StencilMode,
     ) {
@@ -501,14 +513,19 @@ impl WgpuBackend {
                 view,
                 depth_ops: None,
                 stencil_ops: Some(wgpu::Operations {
-                    // Cleared every pass — stencil contents never need
-                    // to survive across passes (the cmd-buffer replays
-                    // mask writes on every frame regardless of cache
-                    // hits).
+                    // One stencil clear per *pass*, not per rect — the
+                    // rect-disjointness invariant means rect B's
+                    // scissor reads a region that rect A's masks never
+                    // touched, so the cleared-once-per-pass stencil is
+                    // sufficient.
                     load: wgpu::LoadOp::Clear(0),
                     store: wgpu::StoreOp::Discard,
                 }),
             });
+        let load_op = match partial_scissors {
+            None => wgpu::LoadOp::Clear(clear),
+            Some(_) => wgpu::LoadOp::Load,
+        };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.main.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -525,7 +542,20 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        self.render_groups(&mut pass, buffer, scissor, use_stencil, text_mode);
+        match partial_scissors {
+            None => self.render_groups(&mut pass, buffer, None, use_stencil, text_mode),
+            Some(rects) => {
+                for (i, &r) in rects.iter().enumerate() {
+                    tracing::trace!(
+                        rect = i,
+                        of = rects.len(),
+                        scissor = ?r,
+                        "wgpu_backend.submit.pass.partial_rect"
+                    );
+                    self.render_groups(&mut pass, buffer, Some(r), use_stencil, text_mode);
+                }
+            }
+        }
     }
 
     /// Dispatch every step in the per-frame schedule
