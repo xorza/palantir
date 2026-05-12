@@ -1,9 +1,43 @@
 # Brushes: gradients & image fills
 
-Today every fill and stroke is a single `Color`. This doc proposes a `Brush`
-surface that adds linear / radial / conic gradients and image fills, the GPU
-encoding to support them, and an incremental rollout that does not regress
-the steady-state alloc-free contract.
+This doc proposes a `Brush` surface that adds linear / radial / conic
+gradients and image fills, the GPU encoding to support them, and an
+incremental rollout that does not regress the steady-state alloc-free
+contract.
+
+## Status (2026-05)
+
+- **Slice 1 (Brush enum + Solid migration):** shipped.
+- **Slice 2 (Linear gradient):** shipped.
+- **Slice 3 (Radial + Conic):** shipped.
+- **Slice 4 (Image fills):** **not started.**
+- **Slice 5 (OKLab interp default, polish):** **not started** — current
+  per-variant defaults are `Linear` for Conic and as-supplied for
+  Linear / Radial; CSS Color 4 alignment (OKLab default) is open.
+
+Divergence from the plan as designed below — current code matches the
+intent but not the literal types:
+
+- **No `SolidQuad` / `Quad` split.** Single 92 B `Quad` (`src/renderer/quad.rs`),
+  hot-path solid quads fill in zeroed brush fields. Throughput delta vs the
+  planned 68 B `SolidQuad` was deemed not worth the second pipeline.
+- **Gradient structs are inline, not behind `GradientId(u64)` + arena.**
+  `Brush::Linear(LinearGradient)` etc. carry `ArrayVec<Stop, MAX_STOPS>`
+  inline (~80 B per variant), `Brush` is `Copy`. The "gradient morph
+  animation" Future-work section's **path 3 (inline data) is therefore
+  already structurally available** — only the `Animatable for Brush`
+  impl still snaps gradient-↔-gradient lerps (`src/primitives/brush.rs:474`).
+  Lifting that to a stop-wise lerp on matching variant + matching stop
+  count is now a localised change.
+- **LUT atlas uses content-hash + linear probe + LRU eviction** (256 rows,
+  `src/renderer/gradient_atlas.rs`). Functionally equivalent to the planned
+  "content-addressed rows"; LRU triggers only when the table is full and
+  the new content is absent.
+- **Cmd buffer is not split into `DrawRect` / `DrawRectBrush`.** Brush
+  metadata rides inline on the existing draw-rect path.
+- **`docs/roadmap/brushes-slice-2-plan.md`** is referenced from
+  `src/renderer/quad.rs:92` but does not exist — either restore as a
+  historical artifact or drop the reference.
 
 ## Today
 
@@ -450,9 +484,10 @@ test and for a future cache.)
 
 ## Rollout
 
-Five slices, each shippable on its own.
+Five slices, each shippable on its own. See "Status" at top for what's
+landed; slices 1–3 are done, 4–5 remain.
 
-1. **Brush type + Solid migration.** Introduce `Brush` enum with only the
+1. **Brush type + Solid migration.** ✅ Introduce `Brush` enum with only the
    `Solid(Color)` variant, plus `impl From<Color> for Brush`. Replace
    `Color` on `Background`, `Stroke`, and **all six** coloured `Shape`
    variants (`RoundedRect.fill`, `Line.color`, `CubicBezier.color`,
@@ -471,7 +506,9 @@ Five slices, each shippable on its own.
    project's "break things freely" posture; `From<Color>` keeps theme /
    widget / showcase call sites unchanged.
 
-2. **Linear gradient.** Add `LinearGradient` variant, `BrushArena`
+2. **Linear gradient.** ✅ — landed without the `SolidQuad`/`Quad` split
+   (single 92 B `Quad`) and with inline gradient structs (no arena indirection).
+   Add `LinearGradient` variant, `BrushArena`
    (FxHashMap, content-keyed), `GradientLutAtlas` (256×256
    content-addressed rows), `SolidQuad` (renamed today's `Quad`) and the
    new 84 B `Quad`, `BrushSlot`, `DrawRectBrush` cmd, branched shader,
@@ -480,10 +517,10 @@ Five slices, each shippable on its own.
    linear-gradient row. Spread modes from the start — they're three lines
    of WGSL each.
 
-3. **Radial + conic.** Same atlas, new `kind` arms in the shader, conic AA
+3. **Radial + conic.** ✅ Same atlas, new `kind` arms in the shader, conic AA
    via analytic angular derivative. Pin a conic seam test.
 
-4. **Image fills.** `ImageAtlas`, `PalantirRenderer::upload_image`
+4. **Image fills.** ⏳ next slice candidate. `ImageAtlas`, `PalantirRenderer::upload_image`
    (renderer-owned, not on `Ui`), `Brush::Image(ImageId)`,
    `ImageRegistration` in `BrushArena`. Composer sorts draws by atlas page;
    one bind group per page. Magenta debug fill for unresolved ids. Start
