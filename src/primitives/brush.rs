@@ -1,5 +1,6 @@
 use crate::animation::animatable::Animatable;
 use crate::primitives::color::{Color, Srgb8};
+use glam::Vec2;
 use tinyvec::ArrayVec;
 
 /// Hard cap on stops in a single gradient. 8 covers >99% of UI use
@@ -133,22 +134,9 @@ impl std::hash::Hash for LinearGradient {
 impl LinearGradient {
     /// General constructor. Asserts 2..=MAX_STOPS stops.
     pub fn new(angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
-        let mut sv: ArrayVec<[Stop; MAX_STOPS]> = ArrayVec::new();
-        for s in stops {
-            assert!(
-                sv.len() < MAX_STOPS,
-                "LinearGradient: stop count exceeds MAX_STOPS = {MAX_STOPS}",
-            );
-            sv.push(s);
-        }
-        assert!(
-            sv.len() >= 2,
-            "LinearGradient requires at least 2 stops, got {}",
-            sv.len(),
-        );
         Self {
             angle,
-            stops: sv,
+            stops: collect_stops::<{ MAX_STOPS }>(stops, "LinearGradient"),
             spread: Spread::default(),
             interp: Interp::default(),
         }
@@ -209,19 +197,211 @@ impl LinearGradient {
     }
 }
 
+/// Radial gradient — paints colour outward from `center` along the
+/// elliptical radius `radius`. Object-space: both `center` and `radius`
+/// are in 0..1 coordinates (origin top-left, (1,1) bottom-right of the
+/// brush owner). The shader projects each fragment to
+/// `t = length((local01 - center) / radius)`, applies `Spread`, and
+/// samples the LUT.
+///
+/// Per-variant `Interp` default: `Oklab` — radial fills are usually
+/// soft glows where perceptual smoothness matters most.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RadialGradient {
+    pub center: Vec2,
+    pub radius: Vec2,
+    pub stops: ArrayVec<[Stop; MAX_STOPS]>,
+    pub spread: Spread,
+    pub interp: Interp,
+}
+
+impl std::hash::Hash for RadialGradient {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u32(canon_bits(self.center.x));
+        state.write_u32(canon_bits(self.center.y));
+        state.write_u32(canon_bits(self.radius.x));
+        state.write_u32(canon_bits(self.radius.y));
+        state.write_u8(self.spread as u8);
+        state.write_u8(self.interp as u8);
+        state.write_u8(self.stops.len() as u8);
+        for s in self.stops.iter() {
+            state.write_u32(canon_bits(s.offset));
+            s.color.hash(state);
+        }
+    }
+}
+
+impl RadialGradient {
+    pub fn new(center: Vec2, radius: Vec2, stops: impl IntoIterator<Item = Stop>) -> Self {
+        let stops = collect_stops::<{ MAX_STOPS }>(stops, "RadialGradient");
+        Self {
+            center,
+            radius,
+            stops,
+            spread: Spread::default(),
+            interp: Interp::Oklab,
+        }
+    }
+
+    /// 2-stop centred shorthand — `center = (0.5, 0.5)`,
+    /// `radius = (0.5, 0.5)` (covers the bounding circle inscribed in
+    /// the unit square). `c0` at offset 0 (centre), `c1` at offset 1
+    /// (edge).
+    pub fn two_stop_centered(c0: impl Into<Srgb8>, c1: impl Into<Srgb8>) -> Self {
+        Self::new(
+            Vec2::splat(0.5),
+            Vec2::splat(0.5),
+            [Stop::new(0.0, c0), Stop::new(1.0, c1)],
+        )
+    }
+
+    pub fn with_spread(mut self, spread: Spread) -> Self {
+        self.spread = spread;
+        self
+    }
+
+    pub fn with_interp(mut self, interp: Interp) -> Self {
+        self.interp = interp;
+        self
+    }
+
+    pub fn is_noop(&self) -> bool {
+        self.stops.iter().all(|s| s.color.is_noop())
+    }
+
+    /// Pack `(center, radius)` into a `FillAxis` wire slot. The shader
+    /// reads it as `(cx, cy, rx, ry)` for the radial branch.
+    pub fn axis(&self) -> FillAxis {
+        FillAxis {
+            dir_x: self.center.x,
+            dir_y: self.center.y,
+            t0: self.radius.x,
+            t1: self.radius.y,
+        }
+    }
+}
+
+/// Conic (sweep) gradient — paints colour by sweeping the parametric
+/// axis 0..1 around `center` starting at `start_angle` radians,
+/// counter-clockwise. Object-space `center` is in 0..1 coordinates.
+/// The shader projects each fragment to
+/// `t = fract((atan2(dy, dx) - start_angle) / TAU + 1.0)`, applies
+/// `Spread`, samples the LUT.
+///
+/// Per-variant `Interp` default: `Linear`. Conic gradients commonly
+/// implement colour-wheel / hue-rotation visuals where straight
+/// linear-RGB interpolation gives the most predictable hue sweep;
+/// Oklab can shift the perceived hue at the midpoint. (A future
+/// `Oklch{hue}` interp would be the truly right default — see
+/// `docs/roadmap/brushes.md`.)
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ConicGradient {
+    pub center: Vec2,
+    pub start_angle: f32,
+    pub stops: ArrayVec<[Stop; MAX_STOPS]>,
+    pub spread: Spread,
+    pub interp: Interp,
+}
+
+impl std::hash::Hash for ConicGradient {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u32(canon_bits(self.center.x));
+        state.write_u32(canon_bits(self.center.y));
+        state.write_u32(canon_bits(self.start_angle));
+        state.write_u8(self.spread as u8);
+        state.write_u8(self.interp as u8);
+        state.write_u8(self.stops.len() as u8);
+        for s in self.stops.iter() {
+            state.write_u32(canon_bits(s.offset));
+            s.color.hash(state);
+        }
+    }
+}
+
+impl ConicGradient {
+    pub fn new(center: Vec2, start_angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
+        let stops = collect_stops::<{ MAX_STOPS }>(stops, "ConicGradient");
+        Self {
+            center,
+            start_angle,
+            stops,
+            spread: Spread::default(),
+            interp: Interp::Linear,
+        }
+    }
+
+    /// Centred shorthand — `center = (0.5, 0.5)`, starts at angle 0
+    /// (positive x-axis, sweeping CCW). 2 stops at offsets 0/1.
+    pub fn two_stop_centered(c0: impl Into<Srgb8>, c1: impl Into<Srgb8>) -> Self {
+        Self::new(
+            Vec2::splat(0.5),
+            0.0,
+            [Stop::new(0.0, c0), Stop::new(1.0, c1)],
+        )
+    }
+
+    pub fn with_spread(mut self, spread: Spread) -> Self {
+        self.spread = spread;
+        self
+    }
+
+    pub fn with_interp(mut self, interp: Interp) -> Self {
+        self.interp = interp;
+        self
+    }
+
+    pub fn is_noop(&self) -> bool {
+        self.stops.iter().all(|s| s.color.is_noop())
+    }
+
+    /// Pack `(center, start_angle)` into a `FillAxis` wire slot. The
+    /// shader reads it as `(cx, cy, start_angle, _)` for the conic
+    /// branch; `t1` is unused.
+    pub fn axis(&self) -> FillAxis {
+        FillAxis {
+            dir_x: self.center.x,
+            dir_y: self.center.y,
+            t0: self.start_angle,
+            t1: 0.0,
+        }
+    }
+}
+
+/// Shared 2..=MAX_STOPS validation used by every gradient constructor.
+fn collect_stops<const N: usize>(
+    stops: impl IntoIterator<Item = Stop>,
+    ty: &'static str,
+) -> ArrayVec<[Stop; MAX_STOPS]> {
+    let mut sv: ArrayVec<[Stop; MAX_STOPS]> = ArrayVec::new();
+    for s in stops {
+        assert!(
+            sv.len() < MAX_STOPS,
+            "{ty}: stop count exceeds MAX_STOPS = {MAX_STOPS}",
+        );
+        sv.push(s);
+    }
+    assert!(
+        sv.len() >= 2,
+        "{ty} requires at least 2 stops, got {}",
+        sv.len(),
+    );
+    sv
+}
+
 /// Paint source for fills and strokes.
 ///
 /// `Solid(Color)` is the hot 99% path — 16 B inline, animation-lerpable.
-/// `Linear(LinearGradient)` carries the gradient inline (~80 B);
-/// gradient morph animations currently snap (see
-/// `docs/roadmap/brushes.md` "Future work: gradient morph animation"),
-/// and the rendering pipeline for non-solid variants lands in slice 2.
-/// Until then, lowering sites call `as_solid().expect(...)` which
-/// panics on `Linear` with a slice-2 TODO message.
+/// `Linear`/`Radial`/`Conic` carry their geometry inline (~80 B);
+/// gradient morph animations snap across variants and across distinct
+/// gradients of the same variant (see `docs/roadmap/brushes.md` "Future
+/// work: gradient morph animation"). Stroke-with-gradient is still
+/// solid-only; lowering sites call `as_solid().expect(...)` for stroke.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Brush {
     Solid(Color),
     Linear(LinearGradient),
+    Radial(RadialGradient),
+    Conic(ConicGradient),
 }
 
 impl Brush {
@@ -233,18 +413,20 @@ impl Brush {
         match self {
             Brush::Solid(c) => c.is_noop(),
             Brush::Linear(g) => g.is_noop(),
+            Brush::Radial(g) => g.is_noop(),
+            Brush::Conic(g) => g.is_noop(),
         }
     }
 
     /// Extracts the underlying `Color` for the solid fast path. Returns
-    /// `None` for gradient variants until slice 2's gradient rendering
-    /// lands; downstream call sites currently `.expect()` with a
-    /// slice-2 TODO message.
+    /// `None` for gradient variants; downstream sites that don't yet
+    /// support gradient paint (currently: stroke) `.expect()` with a
+    /// TODO message.
     #[inline]
     pub const fn as_solid(self) -> Option<Color> {
         match self {
             Brush::Solid(c) => Some(c),
-            Brush::Linear(_) => None,
+            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => None,
         }
     }
 }
@@ -288,6 +470,14 @@ impl std::hash::Hash for Brush {
                 state.write_u8(1);
                 g.hash(state);
             }
+            Brush::Radial(g) => {
+                state.write_u8(2);
+                g.hash(state);
+            }
+            Brush::Conic(g) => {
+                state.write_u8(3);
+                g.hash(state);
+            }
         }
     }
 }
@@ -326,14 +516,14 @@ impl Animatable for Brush {
     fn scale(self, k: f32) -> Self {
         match self {
             Brush::Solid(c) => Brush::Solid(c.scale(k)),
-            Brush::Linear(_) => self,
+            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => self,
         }
     }
     #[inline]
     fn magnitude_squared(self) -> f32 {
         match self {
             Brush::Solid(c) => c.magnitude_squared(),
-            Brush::Linear(_) => 0.0,
+            Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => 0.0,
         }
     }
     #[inline]
@@ -483,6 +673,95 @@ mod tests {
         // t < 1.0 snaps to a; t >= 1.0 snaps to b.
         assert_eq!(Brush::lerp(a, b, 0.5), a);
         assert_eq!(Brush::lerp(a, b, 1.0), b);
+    }
+
+    #[test]
+    fn radial_default_centered() {
+        let g = RadialGradient::two_stop_centered(Color::WHITE, Color::BLACK);
+        assert_eq!(g.center, Vec2::splat(0.5));
+        assert_eq!(g.radius, Vec2::splat(0.5));
+        assert_eq!(g.interp, Interp::Oklab);
+        assert_eq!(g.spread, Spread::Pad);
+        // axis packs (cx, cy, rx, ry).
+        let a = g.axis();
+        assert_eq!((a.dir_x, a.dir_y, a.t0, a.t1), (0.5, 0.5, 0.5, 0.5));
+    }
+
+    #[test]
+    fn conic_default_linear_interp_per_variant() {
+        let g =
+            ConicGradient::two_stop_centered(Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
+        // Per-variant default: conic prefers Linear interp (predictable
+        // hue sweeps). Linear/Radial default to Oklab.
+        assert_eq!(g.interp, Interp::Linear);
+        let l = LinearGradient::two_stop(0.0, Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
+        assert_eq!(l.interp, Interp::Oklab);
+        let r =
+            RadialGradient::two_stop_centered(Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
+        assert_eq!(r.interp, Interp::Oklab);
+    }
+
+    #[test]
+    fn conic_axis_packs_start_angle() {
+        let g = ConicGradient::new(
+            Vec2::new(0.4, 0.6),
+            std::f32::consts::FRAC_PI_4,
+            [
+                Stop::new(0.0, Color::rgb(1.0, 0.0, 0.0)),
+                Stop::new(1.0, Color::rgb(0.0, 0.0, 1.0)),
+            ],
+        );
+        let a = g.axis();
+        assert_eq!(a.dir_x, 0.4);
+        assert_eq!(a.dir_y, 0.6);
+        assert_eq!(a.t0, std::f32::consts::FRAC_PI_4);
+    }
+
+    #[test]
+    fn brush_radial_conic_noop_when_all_transparent() {
+        let r = RadialGradient::two_stop_centered(Srgb8::TRANSPARENT, Srgb8::TRANSPARENT);
+        let c = ConicGradient::two_stop_centered(Srgb8::TRANSPARENT, Srgb8::TRANSPARENT);
+        assert!(Brush::Radial(r).is_noop());
+        assert!(Brush::Conic(c).is_noop());
+    }
+
+    #[test]
+    fn brush_radial_conic_as_solid_is_none() {
+        let r =
+            RadialGradient::two_stop_centered(Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
+        let c =
+            ConicGradient::two_stop_centered(Color::rgb(1.0, 0.0, 0.0), Color::rgb(0.0, 0.0, 1.0));
+        assert!(Brush::Radial(r).as_solid().is_none());
+        assert!(Brush::Conic(c).as_solid().is_none());
+    }
+
+    /// Brush hashing: variant tag distinguishes Radial vs Conic vs
+    /// Linear even when stops match.
+    #[test]
+    fn brush_variant_tag_distinguishes_hash() {
+        let stops = [
+            Stop::new(0.0, Color::rgb(1.0, 0.0, 0.0)),
+            Stop::new(1.0, Color::rgb(0.0, 0.0, 1.0)),
+        ];
+        let l = Brush::Linear(LinearGradient::new(0.0, stops));
+        let r = Brush::Radial(RadialGradient::new(
+            Vec2::splat(0.5),
+            Vec2::splat(0.5),
+            stops,
+        ));
+        let c = Brush::Conic(ConicGradient::new(Vec2::splat(0.5), 0.0, stops));
+        assert_ne!(h(l), h(r));
+        assert_ne!(h(r), h(c));
+        assert_ne!(h(l), h(c));
+    }
+
+    #[test]
+    #[should_panic(expected = "exceeds MAX_STOPS")]
+    fn radial_too_many_stops_panics() {
+        let many: Vec<Stop> = (0..=MAX_STOPS)
+            .map(|i| Stop::new(i as f32 / 8.0, Color::WHITE))
+            .collect();
+        let _ = RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.5), many);
     }
 
     #[test]
