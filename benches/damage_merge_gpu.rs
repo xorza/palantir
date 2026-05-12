@@ -36,7 +36,6 @@ const CELL_W: f32 = 30.0;
 const CELL_H: f32 = 20.0;
 const GAP: f32 = 2.0;
 const PADDING: f32 = 4.0;
-const CLEAR: Color = Color::rgb(0.05, 0.05, 0.07);
 
 /// Headless wgpu setup. Surface texture stands in for the swapchain;
 /// `Host` renders into its own backbuffer then copies to this
@@ -149,7 +148,7 @@ fn render_frame(
     if let Some(rects) = forced_damage {
         internals::force_report_damage_to_rects(&mut report, rects);
     }
-    host.render(&gpu.surface_tex, CLEAR, &report);
+    host.render_to_texture(&gpu.surface_tex, &report);
     gpu.device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("device poll wait");

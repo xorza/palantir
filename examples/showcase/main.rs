@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use palantir::{
-    Background, Button, Color, Configure, Display, Host, InputEvent, Panel, Sizing, Ui,
-};
+use palantir::{Background, Button, Color, Configure, Host, InputEvent, Panel, Sizing, Ui};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -93,7 +91,7 @@ struct State {
     device: wgpu::Device,
     config: wgpu::SurfaceConfiguration,
     host: Host,
-    display: palantir::Display,
+    scale_factor: f32,
     active: usize,
     /// Host-side repaint gate. Cleared at top of `draw`; re-armed by
     /// input, resize, surface loss, occlusion, and animation tickers.
@@ -159,10 +157,7 @@ impl ApplicationHandler for App {
         // Showcase exists to demo the animation primitive — opt in.
         host.ui.theme.button.anim = None;
         host.ui.theme.button.anim = Some(palantir::AnimSpec::SPRING);
-        let display = Display::from_physical(
-            glam::UVec2::new(config.width, config.height),
-            window.scale_factor() as f32,
-        );
+        let scale_factor = window.scale_factor() as f32;
 
         window.request_redraw();
         self.state = Some(State {
@@ -171,7 +166,7 @@ impl ApplicationHandler for App {
             device,
             config,
             host,
-            display,
+            scale_factor,
             active: 0,
             repaint_requested: true,
         });
@@ -207,7 +202,7 @@ impl ApplicationHandler for App {
             state.repaint_requested = true;
         }
 
-        if let Some(ev) = InputEvent::from_winit(&event, state.display.scale_factor) {
+        if let Some(ev) = InputEvent::from_winit(&event, state.scale_factor) {
             state.host.ui.on_input(ev);
             state.repaint_requested = true;
         }
@@ -215,7 +210,7 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                state.display.scale_factor = scale_factor as f32;
+                state.scale_factor = scale_factor as f32;
                 state.repaint_requested = true;
             }
             WindowEvent::Resized(new) => {
@@ -223,7 +218,6 @@ impl ApplicationHandler for App {
                 state.config.width = new.width.clamp(1, max);
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
-                state.display.physical = glam::UVec2::new(state.config.width, state.config.height);
                 state.repaint_requested = true;
             }
             WindowEvent::RedrawRequested => state.draw(),
@@ -235,40 +229,11 @@ impl ApplicationHandler for App {
 
 impl State {
     fn draw(&mut self) {
-        // Run the frame first so we can early-out on `Skip` without
-        // touching the swapchain at all. Acquired `SurfaceTexture`s
-        // *must* be presented; dropping one without `present()` leaves
-        // the swapchain in an undefined state and stutters the next
-        // acquire.
-        let frame_report = self
-            .host
-            .run_frame(self.display, |ui| build_ui(ui, &mut self.active));
-        self.repaint_requested = frame_report.repaint_requested();
-
-        if frame_report.skip_render() {
-            return;
-        }
-
-        use wgpu::CurrentSurfaceTexture::*;
-        let frame = match self.surface.get_current_texture() {
-            Success(f) => f,
-            Suboptimal(_) | Outdated | Lost => {
-                tracing::warn!("surface acquire: suboptimal / outdated / lost");
-                self.surface.configure(&self.device, &self.config);
-                self.repaint_requested = true;
-                return;
-            }
-            Timeout | Validation => {
-                tracing::warn!("surface acquire: timeout / validation");
-                self.repaint_requested = true;
-                return;
-            }
-            Occluded => return,
-        };
-
-        self.host.render(&frame.texture, &frame_report);
-
-        frame.present();
+        self.repaint_requested =
+            self.host
+                .frame_and_render(&self.surface, &self.config, self.scale_factor, |ui| {
+                    build_ui(ui, &mut self.active)
+                });
     }
 }
 

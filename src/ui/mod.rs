@@ -166,14 +166,12 @@ impl Ui {
             self.frame_state.mark_submitted();
         }
 
-        let report = FrameReport {
+        FrameReport {
             repaint_requested: self.repaint_requested,
             skip_render: damage.is_none(),
             damage,
             clear_color: self.theme.window_clear,
-        };
-        profiling::finish_frame!();
-        report
+        }
     }
 
     /// Should we discard the last painted frame's damage snapshot? True

@@ -103,7 +103,7 @@ impl Harness {
         let report = self
             .host
             .run_frame(Display::from_physical(physical, scale), scene);
-        self.host.render(&target, &report);
+        self.host.render_to_texture(&target, &report);
 
         readback(&self.device, &self.queue, &target, physical)
     }
