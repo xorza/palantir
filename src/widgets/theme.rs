@@ -235,7 +235,7 @@ impl Default for ScrollbarTheme {
 /// Per-theme `pick(state)` returns `&WidgetLook`; widgets call
 /// [`Self::animate`] to interpolate the look's components and get an
 /// [`AnimatedLook`] ready to render with.
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetLook {
     pub background: Option<Background>,
     pub text: Option<TextStyle>,
