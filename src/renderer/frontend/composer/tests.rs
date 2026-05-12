@@ -1,4 +1,4 @@
-use super::super::cmd_buffer::RenderCmdBuffer;
+use super::super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
 use super::Composer;
 use crate::layout::types::{display::Display, span::Span};
 use crate::primitives::{
@@ -6,6 +6,7 @@ use crate::primitives::{
     transform::TranslateScale, urect::URect,
 };
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::shape::{ColorMode, ColorModeBits, LineCap, LineCapBits, LineJoin, LineJoinBits};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
@@ -773,6 +774,46 @@ fn compose_rounded_clip_change_splits_text_batch() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.text_batches.len(), 2, "rounded change must split batch");
+}
+
+/// Pin: a mesh (here, a polyline lowering to a mesh) recorded between
+/// two text runs splits the batch. Mesh paints over text by kind
+/// order; if it weren't a split, the merged batch's text would emit
+/// at end-of-batch, *after* the mesh, breaking that ordering.
+#[test]
+fn compose_mesh_between_texts_splits_text_batch() {
+    let buf = run(
+        |b| {
+            text(b, rect(0.0, 0.0, 100.0, 20.0));
+            // Stuff a 2-point polyline into the arena and record it.
+            let p_start = b.shape_payloads.polyline_points.len() as u32;
+            b.shape_payloads.polyline_points.push(Vec2::new(0.0, 25.0));
+            b.shape_payloads
+                .polyline_points
+                .push(Vec2::new(100.0, 25.0));
+            let c_start = b.shape_payloads.polyline_colors.len() as u32;
+            b.shape_payloads.polyline_colors.push(Color::WHITE);
+            b.draw_polyline(DrawPolylinePayload {
+                bbox: rect(0.0, 25.0, 100.0, 0.0),
+                width: 1.0,
+                points_start: p_start,
+                points_len: 2,
+                colors_start: c_start,
+                colors_len: 1,
+                color_mode: ColorModeBits::new(ColorMode::Single),
+                cap: LineCapBits::new(LineCap::Butt),
+                join: LineJoinBits::new(LineJoin::Miter),
+                ..bytemuck::Zeroable::zeroed()
+            });
+            text(b, rect(0.0, 40.0, 100.0, 20.0));
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(
+        buf.text_batches.len(),
+        2,
+        "mesh between texts must split the batch",
+    );
 }
 
 /// Pin: a quad that overlaps prior batch text closes the batch — the

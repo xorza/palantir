@@ -92,12 +92,24 @@ pub(crate) fn for_each_step(
         emit(RenderStep::PreClear);
     }
 
-    // Text batches map 1:1 to a group via their `last_group` field;
-    // the schedule emits `RenderStep::Text` once when the walk reaches
-    // that group (after its quads, before its meshes). `last_group`
-    // values are monotonically increasing across batches (composer
-    // pushes batches in order), so one cursor suffices instead of a
-    // per-group scan.
+    // Text batches map to a group via their `last_group` field; the
+    // schedule emits `RenderStep::Text` when the walk reaches that
+    // group (after its quads, before its meshes). `last_group` values
+    // are monotonically increasing across batches (composer pushes in
+    // order), so one cursor suffices instead of a per-group scan.
+    //
+    // **Damage-pass drain.** A batch whose `last_group` falls in a
+    // damage-skipped group must still render — earlier groups in the
+    // batch may sit inside the damage rect, and dropping the whole
+    // batch would silently erase their text. So before each rendered
+    // group's quads, drain any batches whose `last_group < j`: emit
+    // them now (paint-safe — the composer's overlap rule guarantees
+    // no quad in `(last_group, j)` overlapped them, and any of those
+    // skipped groups' quads don't paint this pass). A trailing drain
+    // after the loop catches batches anchored in tail-skipped groups.
+    // Stencil limitation: under rounded clip the drained batch's mask
+    // may differ from the active mask at the drain point — the text
+    // will stencil-clip against the wrong mask. Accepted: rare combo.
     let mut next_batch: usize = 0;
 
     // `Some(mi)` means the stencil currently has mask `mi` stamped
@@ -118,6 +130,16 @@ pub(crate) fn for_each_step(
         };
         if effective.w == 0 || effective.h == 0 {
             continue;
+        }
+        // Drain batches stuck behind earlier damage-skipped groups
+        // BEFORE this group's own setup, so the next quad/meshes
+        // emitted (in this group) can paint over the drained text.
+        while next_batch < buffer.text_batches.len()
+            && (buffer.text_batches[next_batch].last_group as usize) < i
+        {
+            emit(RenderStep::SetScissor(text_scissor));
+            emit(RenderStep::Text { batch: next_batch });
+            next_batch += 1;
         }
         emit(RenderStep::SetScissor(effective));
 
@@ -199,5 +221,11 @@ pub(crate) fn for_each_step(
                 });
             }
         }
+    }
+    // Trailing drain — batches anchored in tail-skipped groups.
+    while next_batch < buffer.text_batches.len() {
+        emit(RenderStep::SetScissor(text_scissor));
+        emit(RenderStep::Text { batch: next_batch });
+        next_batch += 1;
     }
 }
