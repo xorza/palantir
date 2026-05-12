@@ -332,4 +332,3 @@ fn cell_color(r: u32, c: u32) -> Color {
         0.85 - 0.55 * tr,
     )
 }
-
