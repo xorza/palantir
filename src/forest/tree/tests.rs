@@ -3,32 +3,32 @@ use crate::forest::element::Configure;
 use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::ShapeRecord;
 use crate::forest::tree::{Layer, NodeId};
-use crate::layout::types::{display::Display, justify::Justify, sizing::Sizing};
+use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
 use crate::shape::Shape;
-use crate::support::testing::{encode_cmds, shapes_of, ui_at, ui_with_text};
+use crate::support::testing::{encode_cmds, run_at_acked, shapes_of, ui_with_text};
 use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
+const SURFACE: UVec2 = UVec2::new(200, 200);
+
 #[test]
 fn shapes_attached_to_button_node() {
     let mut ui = Ui::new();
-    {
-        ui.display = Display::default();
-        ui.pre_record();
-    }
     let mut button_node = None;
-    Panel::hstack().auto_id().show(&mut ui, |ui| {
-        button_node = Some(Button::new().auto_id().label("X").show(ui).node);
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            button_node = Some(Button::new().auto_id().label("X").show(ui).node);
+        });
     });
 
-    // Chrome (the button background) lives in `Tree::chrome_table`,
-    // not in the shapes list. Only the label `Text` shape lands here.
+    // Button chrome lives in `chrome_table`, not in shapes — only the
+    // label `Text` shape lands here.
     let shapes: Vec<&ShapeRecord> =
         shapes_of(ui.forest.tree(Layer::Main), button_node.unwrap()).collect();
     assert_eq!(shapes.len(), 1);
@@ -39,15 +39,13 @@ fn shapes_attached_to_button_node() {
             .chrome
             .get(button_node.unwrap().index())
             .is_some(),
-        "button chrome recorded in chrome table",
     );
 }
 
-/// Pin record-order interleaving end-to-end: when shapes are
-/// interleaved with child nodes under one parent, the children's
-/// `shapes.start` values fall between parent shape indices in the
-/// flat shape buffer, and the encoder paints them in that order.
-/// Each shape's size encodes the expected slot for unambiguous readback.
+/// Pin record-order interleaving: shapes interleaved with child nodes
+/// under one parent surface as `shapes.start` values between parent
+/// shape indices in the flat buffer; the encoder paints them in that
+/// order.
 #[test]
 fn interleaved_shapes_record_correct_order() {
     fn pos_rect(slot: u16) -> Shape<'static> {
@@ -59,40 +57,41 @@ fn interleaved_shapes_record_correct_order() {
             stroke: Stroke::ZERO,
         }
     }
-    let mut ui = ui_at(UVec2::new(200, 200));
-    let p = Panel::vstack()
-        .auto_id()
-        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-        .show(&mut ui, |ui| {
-            ui.add_shape(pos_rect(0));
-            Frame::new()
-                .id_salt("c0")
-                .background(Background {
-                    fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                    ..Default::default()
+    let mut ui = Ui::new();
+    let mut p = None;
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        p = Some(
+            Panel::vstack()
+                .auto_id()
+                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                .show(ui, |ui| {
+                    ui.add_shape(pos_rect(0));
+                    Frame::new()
+                        .id_salt("c0")
+                        .background(Background {
+                            fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                            ..Default::default()
+                        })
+                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .show(ui);
+                    ui.add_shape(pos_rect(1));
+                    Frame::new()
+                        .id_salt("c1")
+                        .background(Background {
+                            fill: Color::rgb(0.0, 0.0, 1.0).into(),
+                            ..Default::default()
+                        })
+                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .show(ui);
+                    ui.add_shape(pos_rect(2));
                 })
-                .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
-                .show(ui);
-            ui.add_shape(pos_rect(1));
-            Frame::new()
-                .id_salt("c1")
-                .background(Background {
-                    fill: Color::rgb(0.0, 0.0, 1.0).into(),
-                    ..Default::default()
-                })
-                .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
-                .show(ui);
-            ui.add_shape(pos_rect(2));
-        })
-        .node;
-    ui.post_record();
-    ui.finalize_frame();
-    // Children's `shapes.start` values must fall between the parent's
-    // direct shape indices, encoding the shape→child→shape→child→shape
-    // interleave purely via spans.
+                .node,
+        );
+    });
+    let p = p.unwrap();
     let pi = p.index();
     let p_shapes = ui.forest.tree(Layer::Main).records.shape_span()[pi];
-    assert_eq!(p_shapes.len, 3, "parent owns 3 direct shapes");
+    assert_eq!(p_shapes.len, 3);
     let children: Vec<_> = ui
         .forest
         .tree(Layer::Main)
@@ -102,20 +101,11 @@ fn interleaved_shapes_record_correct_order() {
     assert_eq!(children.len(), 2);
     let c0_shapes = ui.forest.tree(Layer::Main).records.shape_span()[children[0].index()];
     let c1_shapes = ui.forest.tree(Layer::Main).records.shape_span()[children[1].index()];
-    assert_eq!(
-        c0_shapes.start,
-        p_shapes.start + 1,
-        "1 parent shape recorded before c0 opens",
-    );
-    assert_eq!(
-        c1_shapes.start,
-        p_shapes.start + 2,
-        "1 parent shape recorded between c0 close and c1 open",
-    );
+    assert_eq!(c0_shapes.start, p_shapes.start + 1);
+    assert_eq!(c1_shapes.start, p_shapes.start + 2);
     assert_eq!(
         p_shapes.start + p_shapes.len,
-        c1_shapes.start + c1_shapes.len + 1,
-        "1 parent shape recorded after c1 closes",
+        c1_shapes.start + c1_shapes.len + 1
     );
     let sizes: Vec<f32> = shapes_of(ui.forest.tree(Layer::Main), p)
         .map(|s| match s {
@@ -126,13 +116,8 @@ fn interleaved_shapes_record_correct_order() {
             _ => panic!("unexpected shape variant"),
         })
         .collect();
-    // Record order is preserved by direct push to `kinds` + `shapes`.
     assert_eq!(sizes, vec![10.0, 20.0, 30.0]);
 
-    // End-to-end: the encoder paints draw commands in record order —
-    // `pos_rect(0)` → child c0 chrome → `pos_rect(1)` → child c1 chrome
-    // → `pos_rect(2)`. 3 parent sub-rects + 2 child chrome paints = 5
-    // DrawRect cmds in total.
     let cmds = encode_cmds(&mut ui);
     let draw_rect_count = cmds
         .kinds
@@ -141,21 +126,15 @@ fn interleaved_shapes_record_correct_order() {
         .count();
     assert_eq!(
         draw_rect_count, 5,
-        "expected 3 parent shapes interleaved with 2 child chromes",
+        "3 parent shapes interleaved with 2 child chromes",
     );
 }
 
 /// Regression: `subtree_shape_count` must stay correct when a parent
-/// pushes shapes *after* its only child closes (slot=N shapes). The
-/// child and parent share the same NodeId-space `end`, so the old
-/// "look at next pre-order node's shape_first" trick over-counted by
-/// the parent's trailing shapes — the encoder's shape cursor then
-/// overshot `shapes.len()` and panicked when the cache-replay /
-/// invisible-cascade short-circuit fired on the child.
-///
-/// Mirrors the production scrollbar pattern: `Scroll` has a single
-/// `Body` child, then pushes bar `sub-rect`s at slot N. Without the
-/// fix, `nodes[Body].shapes.len` counted the bars too.
+/// pushes shapes after its only child closes (slot=N). Mirrors the
+/// scrollbar pattern: `Scroll` has a single `Body` child, then pushes
+/// bar `sub-rect`s at slot N. Without the fix, `nodes[Body].shapes.len`
+/// over-counts the bars and the encoder cursor overshoots.
 #[test]
 fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     fn pos_rect() -> Shape<'static> {
@@ -166,92 +145,70 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
             stroke: Stroke::ZERO,
         }
     }
-    let mut ui = ui_at(UVec2::new(200, 200));
+    let mut ui = Ui::new();
     let mut child_id = None;
-    let parent_id = Panel::vstack()
-        .auto_id()
-        .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-        .show(&mut ui, |ui| {
-            // Single child, no shapes inside.
-            child_id = Some(
-                Frame::new()
-                    .id_salt("only-child")
-                    .background(Background {
-                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
-                        ..Default::default()
-                    })
-                    .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
-                    .show(ui)
-                    .node,
-            );
-            // Two shapes pushed AFTER the child closes (slot=N).
-            ui.add_shape(pos_rect());
-            ui.add_shape(pos_rect());
-        })
-        .node;
-    ui.post_record();
-    ui.finalize_frame();
-    let parent = parent_id.index();
+    let mut parent_id = None;
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        parent_id = Some(
+            Panel::vstack()
+                .auto_id()
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                .show(ui, |ui| {
+                    child_id = Some(
+                        Frame::new()
+                            .id_salt("only-child")
+                            .background(Background {
+                                fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                                ..Default::default()
+                            })
+                            .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                            .show(ui)
+                            .node,
+                    );
+                    ui.add_shape(pos_rect());
+                    ui.add_shape(pos_rect());
+                })
+                .node,
+        );
+    });
+    let parent = parent_id.unwrap().index();
     let child = child_id.unwrap().index();
 
-    // Parent and child share `end` (parent has only this one child),
-    // which is the bug trigger.
     assert_eq!(
         ui.forest.tree(Layer::Main).records.subtree_end()[parent],
         ui.forest.tree(Layer::Main).records.subtree_end()[child],
         "test setup: parent's only child shares the parent's end NodeId"
     );
-
-    // Parent's subtree contains both bar shapes.
     assert_eq!(
         ui.forest.tree(Layer::Main).records.shape_span()[parent].len,
-        2,
-        "parent's subtree owns both slot-N shapes"
+        2
     );
-    // Child's subtree contains zero shapes — the trailing bars belong
-    // to the parent, not the child.
     assert_eq!(
         ui.forest.tree(Layer::Main).records.shape_span()[child].len,
         0,
         "child's subtree must NOT include parent's slot-N shapes"
     );
 
-    // End-to-end: the encoder must walk this tree without panicking
-    // (cursor overshoot was the original symptom). `encode_cmds`
-    // exercises the full encode path.
+    // Encoder walks without panicking (the original symptom).
     let _cmds = encode_cmds(&mut ui);
 }
 
-// --- Authoring-hash tests ---------------------------------------------------
-// `Tree::compute_hashes` populates `Tree.hashes` with one u64 per node
-// reflecting *only* the authoring inputs (layout, paint attrs, extras,
-// shapes, grid defs). Tests below pin the contract: identical authoring
-// hashes the same; flipping any field changes the hash.
+// --- Authoring-hash tests ---------------------------------------------
 
-/// Drive one frame from a builder closure and snapshot the root node's
-/// hash. The builder receives `ui` after `pre_record` and returns the
-/// `NodeId` to read.
 fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
-    let mut ui = ui_at(UVec2::new(200, 200));
-    let target = f(&mut ui);
-    ui.post_record();
-    ui.finalize_frame();
-    ui.forest.tree(Layer::Main).rollups.node[target.index()]
+    let mut ui = Ui::new();
+    let mut target = None;
+    let mut f = Some(f);
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        target = Some((f.take().unwrap())(ui));
+    });
+    ui.forest.tree(Layer::Main).rollups.node[target.unwrap().index()]
 }
 
 #[test]
 fn empty_tree_has_no_hashes() {
     let mut ui = Ui::new();
-    {
-        ui.display = Display::default();
-        ui.pre_record();
-    }
-    // No widgets recorded — node_count is 0 → both hash arrays stay
-    // empty. (Layout / post_record normally need a root, so we
-    // intentionally skip them; just call compute_hashes directly to
-    // verify the empty-tree case.)
-    ui.forest.post_record();
-
+    run_at_acked(&mut ui, SURFACE, |_| {});
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 0);
     assert!(ui.forest.tree(Layer::Main).rollups.node.is_empty());
     assert!(ui.forest.tree(Layer::Main).rollups.subtree.is_empty());
@@ -259,7 +216,7 @@ fn empty_tree_has_no_hashes() {
 
 #[test]
 fn same_authoring_produces_same_hash() {
-    let h1 = record_hash(|ui| {
+    let build = |ui: &mut Ui| {
         Panel::hstack()
             .id_salt("root")
             .show(ui, |ui| {
@@ -273,116 +230,36 @@ fn same_authoring_produces_same_hash() {
                     .show(ui);
             })
             .node
-    });
-    let h2 = record_hash(|ui| {
-        Panel::hstack()
-            .id_salt("root")
-            .show(ui, |ui| {
-                Frame::new()
-                    .id_salt("a")
-                    .size(50.0)
-                    .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-            })
-            .node
-    });
-    assert_eq!(h1, h2, "identical authoring must hash identically");
+    };
+    assert_eq!(record_hash(build), record_hash(build));
 }
 
 #[test]
 fn changing_fill_color_changes_hash() {
-    let h1 = record_hash(|ui| {
-        Panel::hstack()
-            .id_salt("root")
-            .show(ui, |ui| {
+    fn build_child(ui: &mut Ui, fill: Color) -> NodeId {
+        let mut child = None;
+        Panel::hstack().id_salt("root").show(ui, |ui| {
+            child = Some(
                 Frame::new()
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        fill: fill.into(),
                         ..Default::default()
                     })
-                    .show(ui);
-            })
-            .node
-    });
-    let h2 = record_hash(|ui| {
-        Panel::hstack()
-            .id_salt("root")
-            .show(ui, |ui| {
-                Frame::new()
-                    .id_salt("a")
-                    .size(50.0)
-                    .background(Background {
-                        fill: Color::rgb(0.9, 0.4, 0.8).into(),
-                        ..Default::default()
-                    }) // different red
-                    .show(ui);
-            })
-            .node
-    });
-    // The root panel paints no shapes (no fill set), so its own hash
-    // stays the same. The fill change is on the *child*. The root
-    // hash captures only its own fields, so this assertion is on the
-    // child's hash via reading it directly.
-    let _ = (h1, h2); // root is unaffected — pin the child instead.
-
-    let mut ui1 = Ui::new();
-    {
-        ui1.display = Display::from_physical(UVec2::new(200, 200), 1.0);
-        ui1.pre_record();
+                    .show(ui)
+                    .node,
+            );
+        });
+        child.unwrap()
     }
-    let mut child1 = None;
-    Panel::hstack().id_salt("root").show(&mut ui1, |ui| {
-        child1 = Some(
-            Frame::new()
-                .id_salt("a")
-                .size(50.0)
-                .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                    ..Default::default()
-                })
-                .show(ui)
-                .node,
-        );
-    });
-    ui1.post_record();
-    ui1.finalize_frame();
-    let mut ui2 = Ui::new();
-    {
-        ui2.display = Display::default();
-        ui2.pre_record();
-    }
-    let mut child2 = None;
-    Panel::hstack().id_salt("root").show(&mut ui2, |ui| {
-        child2 = Some(
-            Frame::new()
-                .id_salt("a")
-                .size(50.0)
-                .background(Background {
-                    fill: Color::rgb(0.9, 0.4, 0.8).into(),
-                    ..Default::default()
-                })
-                .show(ui)
-                .node,
-        );
-    });
-    ui2.post_record();
-    ui2.finalize_frame();
-    assert_ne!(
-        ui1.forest.tree(Layer::Main).rollups.node[child1.unwrap().index()],
-        ui2.forest.tree(Layer::Main).rollups.node[child2.unwrap().index()],
-        "different fill must produce different hash",
-    );
+    let h1 = record_hash(|ui| build_child(ui, Color::rgb(0.2, 0.4, 0.8)));
+    let h2 = record_hash(|ui| build_child(ui, Color::rgb(0.9, 0.4, 0.8)));
+    assert_ne!(h1, h2);
 }
 
 #[test]
 fn widget_id_does_not_affect_hash() {
-    // Same authoring, different ids → same hash. The hash captures
-    // *value*, the WidgetId is the *key* into the prev-map.
     let h1 = record_hash(|ui| Panel::hstack().id_salt("a").show(ui, |_| {}).node);
     let h2 = record_hash(|ui| Panel::hstack().id_salt("b").show(ui, |_| {}).node);
     assert_eq!(h1, h2);
@@ -505,136 +382,63 @@ fn changing_layout_property_changes_hash() {
 
 #[test]
 fn shape_order_matters_for_hash() {
-    // bg-then-text and text-then-bg paint differently. Hash must
-    // reflect that.
-    let mut ui1 = Ui::new();
-    {
-        ui1.display = Display::from_physical(UVec2::new(200, 200), 1.0);
-        ui1.pre_record();
-    }
-    let mut n1 = None;
-    Panel::hstack().auto_id().show(&mut ui1, |ui| {
-        // Push a Frame then add a manual Text shape via a Button.
-        n1 = Some(Button::new().id_salt("a").label("X").show(ui).node);
-    });
-    ui1.post_record();
-    ui1.finalize_frame();
-    // Two recordings of the same Button — hashes must match.
-    let mut ui2 = Ui::new();
-    {
-        ui2.display = Display::default();
-        ui2.pre_record();
-    }
-    let mut n2 = None;
-    Panel::hstack().auto_id().show(&mut ui2, |ui| {
-        n2 = Some(Button::new().id_salt("a").label("X").show(ui).node);
-    });
-    ui2.post_record();
-    ui2.finalize_frame();
-    assert_eq!(
-        ui1.forest.tree(Layer::Main).rollups.node[n1.unwrap().index()],
-        ui2.forest.tree(Layer::Main).rollups.node[n2.unwrap().index()],
-    );
+    let build = |ui: &mut Ui| {
+        let mut n = None;
+        Panel::hstack().auto_id().show(ui, |ui| {
+            n = Some(Button::new().id_salt("a").label("X").show(ui).node);
+        });
+        n.unwrap()
+    };
+    assert_eq!(record_hash(build), record_hash(build));
 }
 
-/// Meta-guard: changing the *text* of a `ShapeRecord::Text` (e.g., counter
-/// updating) changes the hash. This catches "I'd forgotten to hash
-/// the text content."
 #[test]
 fn changing_text_content_changes_hash() {
     use crate::widgets::text::Text;
-    let mut ui1 = Ui::new();
-    {
-        ui1.display = Display::from_physical(UVec2::new(200, 200), 1.0);
-        ui1.pre_record();
+    fn build(ui: &mut Ui, label: &'static str) -> NodeId {
+        let mut n = None;
+        Panel::hstack().auto_id().show(ui, |ui| {
+            n = Some(Text::new(label).id_salt("t").show(ui).node);
+        });
+        n.unwrap()
     }
-    let mut a = None;
-    Panel::hstack().auto_id().show(&mut ui1, |ui| {
-        a = Some(Text::new("Hello").id_salt("t").show(ui).node);
-    });
-    ui1.post_record();
-    ui1.finalize_frame();
-    let mut ui2 = Ui::new();
-    {
-        ui2.display = Display::default();
-        ui2.pre_record();
-    }
-    let mut b = None;
-    Panel::hstack().auto_id().show(&mut ui2, |ui| {
-        b = Some(Text::new("World").id_salt("t").show(ui).node);
-    });
-    ui2.post_record();
-    ui2.finalize_frame();
-    assert_ne!(
-        ui1.forest.tree(Layer::Main).rollups.node[a.unwrap().index()],
-        ui2.forest.tree(Layer::Main).rollups.node[b.unwrap().index()]
-    );
+    let h1 = record_hash(|ui| build(ui, "Hello"));
+    let h2 = record_hash(|ui| build(ui, "World"));
+    assert_ne!(h1, h2);
 }
 
-/// Meta-guard: a change to a *child* doesn't ripple into the parent's
-/// hash. Each node's hash is *local* — Stage 3's dirty-set is the
-/// per-node array, not subtree-aggregated.
 #[test]
 fn child_hash_does_not_affect_parent_hash() {
-    let mut ui1 = Ui::new();
-    {
-        ui1.display = Display::from_physical(UVec2::new(200, 200), 1.0);
-        ui1.pre_record();
+    fn build(ui: &mut Ui, fill: Color) -> NodeId {
+        Panel::hstack()
+            .id_salt("root")
+            .show(ui, |ui| {
+                Frame::new()
+                    .id_salt("c")
+                    .size(50.0)
+                    .background(Background {
+                        fill: fill.into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            })
+            .node
     }
-    let parent1 = Panel::hstack()
-        .id_salt("root")
-        .show(&mut ui1, |ui| {
-            Frame::new()
-                .id_salt("c")
-                .size(50.0)
-                .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                    ..Default::default()
-                })
-                .show(ui);
-        })
-        .node;
-    ui1.post_record();
-    ui1.finalize_frame();
-    let mut ui2 = Ui::new();
-    {
-        ui2.display = Display::default();
-        ui2.pre_record();
-    }
-    let parent2 = Panel::hstack()
-        .id_salt("root")
-        .show(&mut ui2, |ui| {
-            Frame::new()
-                .id_salt("c")
-                .size(50.0)
-                .background(Background {
-                    fill: Color::rgb(0.9, 0.4, 0.8).into(),
-                    ..Default::default()
-                }) // different child fill
-                .show(ui);
-        })
-        .node;
-    ui2.post_record();
-    ui2.finalize_frame();
-    assert_eq!(
-        ui1.forest.tree(Layer::Main).rollups.node[parent1.index()],
-        ui2.forest.tree(Layer::Main).rollups.node[parent2.index()],
-        "parent hash captures only its own fields, not children's",
-    );
+    let h1 = record_hash(|ui| build(ui, Color::rgb(0.2, 0.4, 0.8)));
+    let h2 = record_hash(|ui| build(ui, Color::rgb(0.9, 0.4, 0.8)));
+    assert_eq!(h1, h2, "parent hash captures only its own fields");
 }
 
-// --- Subtree-hash rollup ----------------------------------------------------
-// `Tree.subtree_hashes[i]` folds `hashes[i]` with each direct child's
-// subtree hash, in declaration order. Equality across frames means
-// nothing in the subtree changed — the contract the cross-frame measure
-// cache will rely on.
+// --- Subtree-hash rollup --------------------------------------------
 
 fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
-    let mut ui = ui_at(UVec2::new(200, 200));
-    let target = f(&mut ui);
-    ui.post_record();
-    ui.finalize_frame();
-    ui.forest.tree(Layer::Main).rollups.subtree[target.index()]
+    let mut ui = Ui::new();
+    let mut target = None;
+    let mut f = Some(f);
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        target = Some((f.take().unwrap())(ui));
+    });
+    ui.forest.tree(Layer::Main).rollups.subtree[target.unwrap().index()]
 }
 
 #[test]
@@ -662,14 +466,12 @@ fn subtree_hash_stable_across_frames() {
             })
             .node
     };
-    let h1 = record_subtree_hash(build);
-    let h2 = record_subtree_hash(build);
-    assert_eq!(h1, h2);
+    assert_eq!(record_subtree_hash(build), record_subtree_hash(build));
 }
 
 #[test]
 fn subtree_hash_changes_when_descendant_changes() {
-    let h1 = record_subtree_hash(|ui| {
+    fn build(ui: &mut Ui, fill: Color) -> NodeId {
         Panel::hstack()
             .id_salt("root")
             .show(ui, |ui| {
@@ -677,178 +479,107 @@ fn subtree_hash_changes_when_descendant_changes() {
                     .id_salt("a")
                     .size(50.0)
                     .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        fill: fill.into(),
                         ..Default::default()
                     })
                     .show(ui);
             })
             .node
-    });
-    let h2 = record_subtree_hash(|ui| {
-        Panel::hstack()
-            .id_salt("root")
-            .show(ui, |ui| {
-                Frame::new()
-                    .id_salt("a")
-                    .size(50.0)
-                    .background(Background {
-                        fill: Color::rgb(0.9, 0.4, 0.8).into(),
-                        ..Default::default()
-                    }) // changed leaf fill
-                    .show(ui);
-            })
-            .node
-    });
-    assert_ne!(
-        h1, h2,
-        "leaf change must invalidate every ancestor's subtree hash",
-    );
+    }
+    let h1 = record_subtree_hash(|ui| build(ui, Color::rgb(0.2, 0.4, 0.8)));
+    let h2 = record_subtree_hash(|ui| build(ui, Color::rgb(0.9, 0.4, 0.8)));
+    assert_ne!(h1, h2, "leaf change must invalidate every ancestor");
 }
 
 #[test]
 fn subtree_hash_changes_on_sibling_reorder() {
-    let h_ab = record_subtree_hash(|ui| {
+    fn build(ui: &mut Ui, swap: bool) -> NodeId {
+        let a = |ui: &mut Ui| {
+            Frame::new()
+                .id_salt("a")
+                .size(50.0)
+                .background(Background {
+                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                    ..Default::default()
+                })
+                .show(ui);
+        };
+        let b = |ui: &mut Ui| {
+            Frame::new()
+                .id_salt("b")
+                .size(30.0)
+                .background(Background {
+                    fill: Color::rgb(0.9, 0.1, 0.1).into(),
+                    ..Default::default()
+                })
+                .show(ui);
+        };
         Panel::hstack()
             .id_salt("root")
             .show(ui, |ui| {
-                Frame::new()
-                    .id_salt("a")
-                    .size(50.0)
-                    .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Frame::new()
-                    .id_salt("b")
-                    .size(30.0)
-                    .background(Background {
-                        fill: Color::rgb(0.9, 0.1, 0.1).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
+                if swap {
+                    b(ui);
+                    a(ui);
+                } else {
+                    a(ui);
+                    b(ui);
+                }
             })
             .node
-    });
-    let h_ba = record_subtree_hash(|ui| {
-        Panel::hstack()
-            .id_salt("root")
-            .show(ui, |ui| {
-                Frame::new()
-                    .id_salt("b")
-                    .size(30.0)
-                    .background(Background {
-                        fill: Color::rgb(0.9, 0.1, 0.1).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-                Frame::new()
-                    .id_salt("a")
-                    .size(50.0)
-                    .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-            })
-            .node
-    });
-    assert_ne!(
-        h_ab, h_ba,
-        "sibling reorder must change the parent's subtree hash",
-    );
+    }
+    let h_ab = record_subtree_hash(|ui| build(ui, false));
+    let h_ba = record_subtree_hash(|ui| build(ui, true));
+    assert_ne!(h_ab, h_ba);
 }
 
 #[test]
-fn leaf_subtree_hash_depends_on_node_hash() {
-    // For a leaf, the subtree hash is a deterministic function of the
-    // node hash (nothing else folded in), but the two values are not
-    // identical — the rollup runs the node hash through FxHasher
-    // again. Pin: equal node hashes ⇒ equal subtree hashes.
-    let mut ui1 = Ui::new();
-    {
-        ui1.display = Display::default();
-        ui1.pre_record();
-    }
-    let leaf1 = Frame::new()
-        .id_salt("a")
-        .size(50.0)
-        .background(Background {
-            fill: Color::rgb(0.2, 0.4, 0.8).into(),
-            ..Default::default()
-        })
-        .show(&mut ui1)
-        .node;
-    ui1.post_record();
-    ui1.finalize_frame();
-    let mut ui2 = Ui::new();
-    {
-        ui2.display = Display::default();
-        ui2.pre_record();
-    }
-    let leaf2 = Frame::new()
-        .id_salt("a")
-        .size(50.0)
-        .background(Background {
-            fill: Color::rgb(0.2, 0.4, 0.8).into(),
-            ..Default::default()
-        })
-        .show(&mut ui2)
-        .node;
-    ui2.post_record();
-    ui2.finalize_frame();
-    assert_eq!(
-        ui1.forest.tree(Layer::Main).rollups.node[leaf1.index()],
-        ui2.forest.tree(Layer::Main).rollups.node[leaf2.index()]
-    );
-    assert_eq!(
-        ui1.forest.tree(Layer::Main).rollups.subtree[leaf1.index()],
-        ui2.forest.tree(Layer::Main).rollups.subtree[leaf2.index()]
-    );
+fn leaf_subtree_hash_is_function_of_node_hash() {
+    let build = |ui: &mut Ui| {
+        Frame::new()
+            .id_salt("a")
+            .size(50.0)
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                ..Default::default()
+            })
+            .show(ui)
+            .node
+    };
+    assert_eq!(record_hash(build), record_hash(build));
+    assert_eq!(record_subtree_hash(build), record_subtree_hash(build));
 }
 
-/// Transform changes are intentionally folded into `subtree_hash` only,
-/// not the per-node hash — the encode cache (subtree-keyed) must
-/// invalidate while damage rect-diffing handles paint-position drift.
-/// Pin both directions in one fixture.
+/// Transform changes fold into `subtree_hash` only — encode cache
+/// (subtree-keyed) invalidates while damage rect-diffing handles paint
+/// position drift.
 #[test]
 fn transform_change_affects_subtree_but_not_node_hash() {
     use crate::primitives::transform::TranslateScale;
     use glam::Vec2;
-
-    let mut ui1 = ui_at(UVec2::new(200, 200));
-    let n1 = Panel::hstack()
-        .id_salt("root")
-        .transform(TranslateScale::IDENTITY)
-        .show(&mut ui1, |_| {})
-        .node;
-    ui1.post_record();
-    ui1.finalize_frame();
-    let mut ui2 = ui_at(UVec2::new(200, 200));
-    let n2 = Panel::hstack()
-        .id_salt("root")
-        .transform(TranslateScale::from_translation(Vec2::new(10.0, 0.0)))
-        .show(&mut ui2, |_| {})
-        .node;
-    ui2.post_record();
-    ui2.finalize_frame();
+    fn build(ui: &mut Ui, t: TranslateScale) -> NodeId {
+        Panel::hstack()
+            .id_salt("root")
+            .transform(t)
+            .show(ui, |_| {})
+            .node
+    }
+    let h_node_a = record_hash(|ui| build(ui, TranslateScale::IDENTITY));
+    let h_node_b =
+        record_hash(|ui| build(ui, TranslateScale::from_translation(Vec2::new(10.0, 0.0))));
     assert_eq!(
-        ui1.forest.tree(Layer::Main).rollups.node[n1.index()],
-        ui2.forest.tree(Layer::Main).rollups.node[n2.index()],
-        "transform change must NOT change per-node hash",
+        h_node_a, h_node_b,
+        "transform must NOT change per-node hash"
     );
-    assert_ne!(
-        ui1.forest.tree(Layer::Main).rollups.subtree[n1.index()],
-        ui2.forest.tree(Layer::Main).rollups.subtree[n2.index()],
-        "transform change MUST change subtree hash (encode cache key)",
-    );
+    let h_sub_a = record_subtree_hash(|ui| build(ui, TranslateScale::IDENTITY));
+    let h_sub_b =
+        record_subtree_hash(|ui| build(ui, TranslateScale::from_translation(Vec2::new(10.0, 0.0))));
+    assert_ne!(h_sub_a, h_sub_b, "transform MUST change subtree hash");
 }
 
-/// `LayoutMode::Grid(idx)` carries a frame-local arena slot that shifts
-/// with sibling order. The per-node hash must NOT depend on it — only
-/// on the def's contents, which are rolled in at `NodeExit`. Two frames
-/// recording the same grid in different relative positions to other
-/// grids must produce identical per-node hashes for the matching grid.
+/// `LayoutMode::Grid(idx)` carries a frame-local arena slot. Per-node
+/// hash must NOT depend on it — only on def contents (rolled in at
+/// `NodeExit`). Same grid declared in different positions still hashes
+/// the same.
 #[test]
 fn grid_per_node_hash_independent_of_arena_slot() {
     use crate::layout::types::track::Track;
@@ -858,116 +589,84 @@ fn grid_per_node_hash_independent_of_arena_slot() {
     let cols: Rc<[Track]> = Rc::from([Track::fill(), Track::fill()]);
     let rows: Rc<[Track]> = Rc::from([Track::fill()]);
 
-    // Frame 1: target grid recorded first. Slot 0.
-    let mut ui1 = ui_at(UVec2::new(200, 200));
+    let mut ui1 = Ui::new();
     let mut g1 = None;
-    Panel::vstack().id_salt("root").show(&mut ui1, |ui| {
-        g1 = Some(
+    run_at_acked(&mut ui1, SURFACE, |ui| {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
+            g1 = Some(
+                Grid::new()
+                    .id_salt("target")
+                    .cols(cols.clone())
+                    .rows(rows.clone())
+                    .show(ui, |_| {})
+                    .node,
+            );
             Grid::new()
-                .id_salt("target")
+                .id_salt("other")
                 .cols(cols.clone())
                 .rows(rows.clone())
-                .show(ui, |_| {})
-                .node,
-        );
-        Grid::new()
-            .id_salt("other")
-            .cols(cols.clone())
-            .rows(rows.clone())
-            .show(ui, |_| {});
+                .show(ui, |_| {});
+        });
     });
-    ui1.post_record();
-    ui1.finalize_frame();
-    // Frame 2: same grids, swapped declaration order. Target grid now
-    // gets arena slot 1 instead of 0.
-    let mut ui2 = ui_at(UVec2::new(200, 200));
+    let mut ui2 = Ui::new();
     let mut g2 = None;
-    Panel::vstack().id_salt("root").show(&mut ui2, |ui| {
-        Grid::new()
-            .id_salt("other")
-            .cols(cols.clone())
-            .rows(rows.clone())
-            .show(ui, |_| {});
-        g2 = Some(
+    run_at_acked(&mut ui2, SURFACE, |ui| {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
             Grid::new()
-                .id_salt("target")
+                .id_salt("other")
                 .cols(cols.clone())
                 .rows(rows.clone())
-                .show(ui, |_| {})
-                .node,
-        );
+                .show(ui, |_| {});
+            g2 = Some(
+                Grid::new()
+                    .id_salt("target")
+                    .cols(cols.clone())
+                    .rows(rows.clone())
+                    .show(ui, |_| {})
+                    .node,
+            );
+        });
     });
-    ui2.post_record();
-    ui2.finalize_frame();
     assert_eq!(
         ui1.forest.tree(Layer::Main).rollups.node[g1.unwrap().index()],
         ui2.forest.tree(Layer::Main).rollups.node[g2.unwrap().index()],
-        "grid arena slot must not contribute to the per-node hash",
     );
 }
 
-// --- subtree_end rollup ----------------------------------------------------
-// `Tree::open_node` writes the per-node leaf marker `i + 1`;
-// `close_node` rolls each closing subtree up into its parent's slot.
-// The invariant: `subtree_end[i]` points one past the last descendant
-// of `i` in pre-order, and is final the moment the root's `close_node`
-// returns — no separate finalize pass.
+// --- subtree_end rollup ---------------------------------------------
 
 #[test]
 fn subtree_end_rolls_up_during_recording() {
     let mut ui = Ui::new();
-    {
-        ui.display = Display::default();
-        ui.pre_record();
-    }
-    let root = Panel::hstack()
-        .id_salt("root")
-        .show(&mut ui, |ui| {
-            Frame::new().id_salt("a").size(10.0).show(ui);
-            Panel::hstack().id_salt("inner").show(ui, |ui| {
-                Frame::new().id_salt("b").size(10.0).show(ui);
-                Frame::new().id_salt("c").size(10.0).show(ui);
-            });
-            Frame::new().id_salt("d").size(10.0).show(ui);
-        })
-        .node;
-    // Tree (pre-order):  0=root  1=a  2=inner  3=b  4=c  5=d
+    let mut root = None;
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        root = Some(
+            Panel::hstack()
+                .id_salt("root")
+                .show(ui, |ui| {
+                    Frame::new().id_salt("a").size(10.0).show(ui);
+                    Panel::hstack().id_salt("inner").show(ui, |ui| {
+                        Frame::new().id_salt("b").size(10.0).show(ui);
+                        Frame::new().id_salt("c").size(10.0).show(ui);
+                    });
+                    Frame::new().id_salt("d").size(10.0).show(ui);
+                })
+                .node,
+        );
+    });
+    // Pre-order: 0=root 1=a 2=inner 3=b 4=c 5=d
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 6);
-    assert_eq!(
-        ui.forest.tree(Layer::Main).records.subtree_end()[root.index()],
-        6,
-        "root"
-    );
-    assert_eq!(
-        ui.forest.tree(Layer::Main).records.subtree_end()[1],
-        2,
-        "leaf a"
-    );
-    assert_eq!(
-        ui.forest.tree(Layer::Main).records.subtree_end()[2],
-        5,
-        "inner spans b,c"
-    );
-    assert_eq!(
-        ui.forest.tree(Layer::Main).records.subtree_end()[3],
-        4,
-        "leaf b"
-    );
-    assert_eq!(
-        ui.forest.tree(Layer::Main).records.subtree_end()[4],
-        5,
-        "leaf c"
-    );
-    assert_eq!(
-        ui.forest.tree(Layer::Main).records.subtree_end()[5],
-        6,
-        "leaf d"
-    );
+    let ends = ui.forest.tree(Layer::Main).records.subtree_end();
+    assert_eq!(ends[root.unwrap().index()], 6, "root");
+    assert_eq!(ends[1], 2, "leaf a");
+    assert_eq!(ends[2], 5, "inner spans b,c");
+    assert_eq!(ends[3], 4, "leaf b");
+    assert_eq!(ends[4], 5, "leaf c");
+    assert_eq!(ends[5], 6, "leaf d");
 }
 
 #[test]
 fn subtree_end_handles_deep_nesting() {
-    // Linear chain: depth-N stacks each containing one stack until a leaf.
     fn nest(ui: &mut Ui, depth: usize) {
         if depth == 0 {
             Frame::new().id_salt(("leaf", depth)).size(10.0).show(ui);
@@ -978,13 +677,9 @@ fn subtree_end_handles_deep_nesting() {
             .show(ui, |ui| nest(ui, depth - 1));
     }
     let mut ui = Ui::new();
-    {
-        ui.display = Display::default();
-        ui.pre_record();
-    }
-    nest(&mut ui, 16);
+    run_at_acked(&mut ui, SURFACE, |ui| nest(ui, 16));
     let n = ui.forest.tree(Layer::Main).records.len() as u32;
-    assert_eq!(n, 17, "16 stacks + 1 leaf");
+    assert_eq!(n, 17);
     for i in 0..(n - 1) {
         assert_eq!(
             ui.forest.tree(Layer::Main).records.subtree_end()[i as usize],
@@ -995,20 +690,15 @@ fn subtree_end_handles_deep_nesting() {
     assert_eq!(
         ui.forest.tree(Layer::Main).records.subtree_end()[(n - 1) as usize],
         n,
-        "leaf"
     );
 }
 
-/// Pin: `subtree_hash` rollup is root-local. Multi-root prep — when
-/// `Ui::layer` lands (`docs/popups.md` step 2), a popup recorded
-/// alongside the Main tree must hash independently of Main's content.
-/// Today we synthesize the second root by recording two top-level
-/// subtrees back-to-back; `open_node` lazy-pushes a `RootSlot` for each.
-/// Both slots are `Main` here (step 2 introduces a per-layer push).
+/// `subtree_hash` rollup is root-local: synthesizing a second root by
+/// recording two top-level subtrees back-to-back yields independent
+/// hashes for the second root regardless of the first's content.
 #[test]
 fn subtree_hash_rollup_root_local_across_two_roots() {
     fn build(ui: &mut Ui, root_a_color: Color) -> u32 {
-        // Root A — content varies via `root_a_color`.
         Panel::vstack().id_salt("root-a").show(ui, |ui| {
             Frame::new()
                 .id_salt("a-leaf")
@@ -1019,190 +709,139 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
                 })
                 .show(ui);
         });
-        // Capture the index where root B will start, then record root B
-        // (identical across both invocations).
         let b_first = ui.forest.tree(Layer::Main).records.len() as u32;
         Panel::vstack().id_salt("root-b").show(ui, |ui| {
             Frame::new().id_salt("b-leaf").size(30.0).show(ui);
         });
         b_first
     }
-    let (h_b1, b_first1) = {
-        let mut ui = ui_at(UVec2::new(200, 200));
-        let b_first = build(&mut ui, Color::rgb(1.0, 0.0, 0.0));
-        ui.post_record();
-        ui.finalize_frame();
-        (
-            ui.forest.tree(Layer::Main).rollups.subtree[b_first as usize],
-            b_first,
-        )
-    };
-    let (h_b2, b_first2) = {
-        let mut ui = ui_at(UVec2::new(200, 200));
-        let b_first = build(&mut ui, Color::rgb(0.0, 1.0, 0.0));
-        ui.post_record();
-        ui.finalize_frame();
-        (
-            ui.forest.tree(Layer::Main).rollups.subtree[b_first as usize],
-            b_first,
-        )
-    };
-    assert_eq!(
-        b_first1, b_first2,
-        "root B's first node must land at the same index in both builds",
-    );
-    assert_eq!(
-        h_b1, h_b2,
-        "root B's subtree_hash must not fold root A's content",
-    );
+    let mut ui1 = Ui::new();
+    let mut b_first1 = 0;
+    run_at_acked(&mut ui1, SURFACE, |ui| {
+        b_first1 = build(ui, Color::rgb(1.0, 0.0, 0.0));
+    });
+    let h_b1 = ui1.forest.tree(Layer::Main).rollups.subtree[b_first1 as usize];
+
+    let mut ui2 = Ui::new();
+    let mut b_first2 = 0;
+    run_at_acked(&mut ui2, SURFACE, |ui| {
+        b_first2 = build(ui, Color::rgb(0.0, 1.0, 0.0));
+    });
+    let h_b2 = ui2.forest.tree(Layer::Main).rollups.subtree[b_first2 as usize];
+    assert_eq!(b_first1, b_first2);
+    assert_eq!(h_b1, h_b2, "root B's subtree_hash must not fold root A");
 }
 
-/// Pin: `Ui::layer` dispatches the popup body into the `Popup` tree.
-/// Main and Popup live in separate arenas; popup body nodes nest
-/// inside their own root, never inside the surrounding Main scope.
 #[test]
 fn ui_layer_records_popup_into_separate_tree() {
-    let mut ui = ui_at(UVec2::new(400, 400));
+    let mut ui = Ui::new();
     let popup_anchor = glam::Vec2::new(50.0, 60.0);
-    Panel::vstack().id_salt("main-root").show(&mut ui, |ui| {
-        Frame::new().id_salt("main-leaf").size(50.0).show(ui);
-        Frame::new().id_salt("main-leaf-2").size(30.0).show(ui);
-    });
-    ui.layer(Layer::Popup, popup_anchor, None, |ui| {
-        Panel::vstack().id_salt("popup-root").show(ui, |ui| {
-            Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
+    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+        Panel::vstack().id_salt("main-root").show(ui, |ui| {
+            Frame::new().id_salt("main-leaf").size(50.0).show(ui);
+            Frame::new().id_salt("main-leaf-2").size(30.0).show(ui);
+        });
+        ui.layer(Layer::Popup, popup_anchor, None, |ui| {
+            Panel::vstack().id_salt("popup-root").show(ui, |ui| {
+                Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
+            });
         });
     });
-    ui.post_record();
-    ui.finalize_frame();
     let main_tree = ui.forest.tree(Layer::Main);
     let popup_tree = ui.forest.tree(Layer::Popup);
-    assert_eq!(main_tree.roots.len(), 1, "Main has one root");
-    assert_eq!(popup_tree.roots.len(), 1, "Popup has one root");
+    assert_eq!(main_tree.roots.len(), 1);
+    assert_eq!(popup_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node, 0);
     assert_eq!(popup_tree.roots[0].first_node, 0);
-
-    // Popup's anchor passes through from `Ui::layer`; no size cap
-    // was supplied so the layout pass derives "available" from the
-    // surface at run time.
     assert_eq!(popup_tree.roots[0].anchor, popup_anchor);
     assert_eq!(popup_tree.roots[0].size, None);
-
-    // Each tree is self-contained: Main's root subtree covers only
-    // Main records, popup's covers only popup records.
     assert_eq!(
         main_tree.records.subtree_end()[0] as usize,
         main_tree.records.len(),
-        "Main's subtree covers every Main record",
     );
     assert_eq!(
         popup_tree.records.subtree_end()[0] as usize,
         popup_tree.records.len(),
-        "Popup's subtree covers every Popup record",
     );
 }
 
-/// Pin `Ui::layer`'s optional size cap. `RootSlot.size` rides through
-/// to `LayoutEngine::run` and selects the overlay's measured
-/// "available":
-/// - `None` → fill from anchor to the surface bottom-right;
-/// - `Some(s)` smaller than `surface - anchor` → cap wins;
-/// - `Some(s)` larger than `surface - anchor` → clamped to viewport
-///   (oversized caps must never bleed past the surface).
-///
-/// Table-driven against a Fill/Fill overlay panel so the body's
-/// arranged width/height equal "available" — the cap branch and the
-/// viewport-clamp branch are both visible in `rect.size`.
+/// `Ui::layer`'s optional size cap rides through to `LayoutEngine::run` and
+/// selects the overlay's `available`: `None` fills from anchor to surface
+/// bottom-right; smaller cap wins; oversized cap clamps to viewport so
+/// it never bleeds past the surface.
 #[test]
 fn ui_layer_size_caps_overlay_available() {
     use crate::primitives::size::Size;
-    use crate::support::testing::begin;
-    const SURFACE: UVec2 = UVec2::new(400, 300);
+    const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = glam::Vec2::new(50.0, 40.0);
-    // (cap, expected_size). Remaining viewport = (350, 260).
+    // Remaining viewport = (350, 260).
     let cases: &[(Option<Size>, Size)] = &[
         (None, Size::new(350.0, 260.0)),
-        // Cap smaller on both axes → cap wins.
         (Some(Size::new(120.0, 80.0)), Size::new(120.0, 80.0)),
-        // Cap larger on both axes → clamp to remaining.
         (Some(Size::new(9999.0, 9999.0)), Size::new(350.0, 260.0)),
-        // Mixed: width capped, height oversized.
         (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 260.0)),
     ];
-    let mut ui = ui_at(SURFACE);
+    let mut ui = Ui::new();
     for (cap, expected) in cases {
-        begin(&mut ui, SURFACE);
-        Panel::vstack()
-            .id_salt("main")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(&mut ui, |_| {});
-        ui.layer(Layer::Popup, anchor, *cap, |ui| {
+        run_at_acked(&mut ui, SURF, |ui| {
             Panel::vstack()
-                .id_salt("overlay-root")
+                .id_salt("main")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |_| {});
+            ui.layer(Layer::Popup, anchor, *cap, |ui| {
+                Panel::vstack()
+                    .id_salt("overlay-root")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |_| {});
+            });
         });
-        ui.post_record();
-        ui.finalize_frame();
         let popup_tree = ui.forest.tree(Layer::Popup);
         let root = popup_tree.roots[0].first_node as usize;
         let rect = ui.layout[Layer::Popup].rect[root];
-        assert_eq!(rect.min, anchor, "cap={cap:?}: anchor placement preserved");
-        assert_eq!(rect.size, *expected, "cap={cap:?}: available branch");
+        assert_eq!(rect.min, anchor, "cap={cap:?}");
+        assert_eq!(rect.size, *expected, "cap={cap:?}");
     }
 }
 
-/// Pin: an empty `Ui::layer` body records no nodes; the popup tree
-/// stays empty while Main's tree is unaffected.
 #[test]
 fn empty_popup_body_leaves_popup_tree_empty() {
-    let mut ui = ui_at(UVec2::new(200, 200));
-    Panel::vstack().id_salt("only-main").show(&mut ui, |ui| {
-        Frame::new().id_salt("leaf").size(20.0).show(ui);
+    let mut ui = Ui::new();
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        Panel::vstack().id_salt("only-main").show(ui, |ui| {
+            Frame::new().id_salt("leaf").size(20.0).show(ui);
+        });
+        ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |_| {});
     });
-    ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |_| {});
-    ui.post_record();
-    ui.finalize_frame();
     assert_eq!(ui.forest.tree(Layer::Main).roots.len(), 1);
-    assert!(
-        ui.forest.tree(Layer::Popup).roots.is_empty(),
-        "empty popup body pushes no root",
-    );
+    assert!(ui.forest.tree(Layer::Popup).roots.is_empty());
     assert!(ui.forest.tree(Layer::Popup).records.is_empty());
 }
 
-/// Pin: recording order between layers is irrelevant because trees
-/// are independent — popup-recorded-first or main-recorded-first
-/// produces the same per-tree contents.
 #[test]
 fn forest_independence_across_recording_orders() {
     let popup_anchor = glam::Vec2::new(10.0, 10.0);
-    let mut ui_p_first = ui_at(UVec2::new(400, 400));
-    ui_p_first.layer(Layer::Popup, popup_anchor, None, |ui| {
-        Panel::vstack().id_salt("popup-root").show(ui, |ui| {
-            Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
-        });
-    });
-    Panel::vstack()
-        .id_salt("main-root")
-        .show(&mut ui_p_first, |ui| {
+    let record_main = |ui: &mut Ui| {
+        Panel::vstack().id_salt("main-root").show(ui, |ui| {
             Frame::new().id_salt("main-leaf").size(50.0).show(ui);
         });
-    ui_p_first.post_record();
-    ui_p_first.finalize_frame();
-    let mut ui_m_first = ui_at(UVec2::new(400, 400));
-    Panel::vstack()
-        .id_salt("main-root")
-        .show(&mut ui_m_first, |ui| {
-            Frame::new().id_salt("main-leaf").size(50.0).show(ui);
+    };
+    let record_popup = |ui: &mut Ui| {
+        ui.layer(Layer::Popup, popup_anchor, None, |ui| {
+            Panel::vstack().id_salt("popup-root").show(ui, |ui| {
+                Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
+            });
         });
-    ui_m_first.layer(Layer::Popup, popup_anchor, None, |ui| {
-        Panel::vstack().id_salt("popup-root").show(ui, |ui| {
-            Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
-        });
+    };
+    let mut ui_p_first = Ui::new();
+    run_at_acked(&mut ui_p_first, UVec2::new(400, 400), |ui| {
+        record_popup(ui);
+        record_main(ui);
     });
-    ui_m_first.post_record();
-    ui_m_first.finalize_frame();
+    let mut ui_m_first = Ui::new();
+    run_at_acked(&mut ui_m_first, UVec2::new(400, 400), |ui| {
+        record_main(ui);
+        record_popup(ui);
+    });
     for layer in [Layer::Main, Layer::Popup] {
         assert_eq!(
             ui_p_first.forest.tree(layer).records.len(),
@@ -1212,25 +851,20 @@ fn forest_independence_across_recording_orders() {
     }
 }
 
-/// Pin: a mid-recording popup with text-bearing widgets (Button
-/// labels) renders end-to-end without leaking shapes between Main
-/// and Popup. With per-layer trees, Main's shapes buffer never
-/// receives popup texts in the first place — each tree owns its
-/// own buffer. Mirrors the showcase popup tab structure.
 #[test]
 fn mid_recording_popup_with_text_renders_through_encoder() {
     let mut ui = ui_with_text(UVec2::new(400, 400));
     let popup_anchor = glam::Vec2::new(50.0, 100.0);
-    Panel::vstack().id_salt("outer-main").show(&mut ui, |ui| {
-        Button::new().id_salt("trigger").label("menu").show(ui);
-        ui.layer(Layer::Popup, popup_anchor, None, |ui| {
-            Panel::vstack().id_salt("popup-body").show(ui, |ui| {
-                Button::new().id_salt("popup-item").label("copy").show(ui);
+    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+        Panel::vstack().id_salt("outer-main").show(ui, |ui| {
+            Button::new().id_salt("trigger").label("menu").show(ui);
+            ui.layer(Layer::Popup, popup_anchor, None, |ui| {
+                Panel::vstack().id_salt("popup-body").show(ui, |ui| {
+                    Button::new().id_salt("popup-item").label("copy").show(ui);
+                });
             });
         });
     });
-    ui.post_record();
-    ui.finalize_frame();
     let _cmds = encode_cmds(&mut ui);
 
     let main_tree = ui.forest.tree(Layer::Main);
@@ -1245,11 +879,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
             _ => None,
         })
         .collect();
-    assert_eq!(
-        main_texts,
-        vec!["menu"],
-        "Main tree owns only the trigger label",
-    );
+    assert_eq!(main_texts, vec!["menu"]);
 
     let popup_root_span = popup_tree.records.shape_span()[0];
     let popup_texts: Vec<&str> = popup_tree.shapes.records
@@ -1260,21 +890,12 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
             _ => None,
         })
         .collect();
-    assert_eq!(popup_texts, vec!["copy"], "Popup tree owns 'copy'");
+    assert_eq!(popup_texts, vec!["copy"]);
 }
 
-/// Pin: `Ui::layer` is callable mid-recording. The popup body's
-/// records dispatch directly into the `Popup` tree, so Main's tree
-/// only ever sees Main records and Popup's tree only sees popup
-/// records — no shared buffer, no interleaving, no permutation
-/// pass. Within each tree, recording order (== pre-order) is
-/// preserved.
-///
-/// Fixture mirrors `docs/popups.md` step 4: `Main { mc1, mc2,
-/// Popup { ps1, ps2 }, mc3, mc4 }`. Direct shapes are pushed at
-/// every Main + Popup level so the fixture also pins per-tree
-/// shape buffer contents: each shape appears exactly once, in its
-/// owning tree, in recording order.
+/// Mirrors `docs/popups.md` step 4: per-tree shape buffer ownership
+/// proven by markers pushed at every Main + Popup level — each appears
+/// exactly once, in its owning tree, in recording order.
 #[test]
 fn mid_recording_popup_keeps_trees_independent() {
     fn marker(slot: u8) -> Shape<'static> {
@@ -1296,153 +917,117 @@ fn mid_recording_popup_keeps_trees_independent() {
         }
     }
 
-    let mut ui = ui_at(UVec2::new(400, 400));
+    let mut ui = Ui::new();
     let popup_anchor = glam::Vec2::new(50.0, 60.0);
-    let parent = Panel::vstack()
-        .id_salt("main-parent")
-        .show(&mut ui, |ui| {
-            ui.add_shape(marker(0));
-            Frame::new().id_salt("mc1").size(20.0).show(ui);
-            ui.add_shape(marker(1));
-            Frame::new().id_salt("mc2").size(20.0).show(ui);
-            ui.add_shape(marker(2));
-            ui.layer(Layer::Popup, popup_anchor, None, |ui| {
-                Panel::vstack().id_salt("popup-root").show(ui, |ui| {
-                    ui.add_shape(marker(10));
-                    Frame::new().id_salt("popup-leaf").size(10.0).show(ui);
-                    ui.add_shape(marker(11));
-                    Frame::new().id_salt("popup-leaf-2").size(10.0).show(ui);
-                });
-            });
-            ui.add_shape(marker(3));
-            Frame::new().id_salt("mc3").size(20.0).show(ui);
-            Frame::new().id_salt("mc4").size(20.0).show(ui);
-            ui.add_shape(marker(4));
-        })
-        .node;
-    ui.post_record();
-    ui.finalize_frame();
+    let mut parent = None;
+    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+        parent = Some(
+            Panel::vstack()
+                .id_salt("main-parent")
+                .show(ui, |ui| {
+                    ui.add_shape(marker(0));
+                    Frame::new().id_salt("mc1").size(20.0).show(ui);
+                    ui.add_shape(marker(1));
+                    Frame::new().id_salt("mc2").size(20.0).show(ui);
+                    ui.add_shape(marker(2));
+                    ui.layer(Layer::Popup, popup_anchor, None, |ui| {
+                        Panel::vstack().id_salt("popup-root").show(ui, |ui| {
+                            ui.add_shape(marker(10));
+                            Frame::new().id_salt("popup-leaf").size(10.0).show(ui);
+                            ui.add_shape(marker(11));
+                            Frame::new().id_salt("popup-leaf-2").size(10.0).show(ui);
+                        });
+                    });
+                    ui.add_shape(marker(3));
+                    Frame::new().id_salt("mc3").size(20.0).show(ui);
+                    Frame::new().id_salt("mc4").size(20.0).show(ui);
+                    ui.add_shape(marker(4));
+                })
+                .node,
+        );
+    });
+    let parent = parent.unwrap();
     let main_tree = ui.forest.tree(Layer::Main);
     let popup_tree = ui.forest.tree(Layer::Popup);
 
-    // Main tree: [parent, mc1, mc2, mc3, mc4]. Popup is absent.
     assert_eq!(main_tree.records.len(), 5);
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node, 0);
-    assert_eq!(
-        main_tree.records.subtree_end()[parent.index()],
-        5,
-        "parent's subtree spans every Main record",
-    );
+    assert_eq!(main_tree.records.subtree_end()[parent.index()], 5);
 
     let kids: Vec<u32> = main_tree.children(parent).map(|c| c.id.0).collect();
-    assert_eq!(kids, vec![1, 2, 3, 4], "no popup leak in Main children");
+    assert_eq!(kids, vec![1, 2, 3, 4]);
 
     let widths: Vec<u32> = main_tree.shapes.records.iter().map(marker_w).collect();
-    assert_eq!(
-        widths,
-        vec![1, 2, 3, 4, 5],
-        "Main shapes preserve recording order",
-    );
+    assert_eq!(widths, vec![1, 2, 3, 4, 5]);
     let parent_span = main_tree.records.shape_span()[parent.index()];
     assert_eq!(parent_span.start, 0);
     assert_eq!(parent_span.len, 5);
     for leaf_idx in [1, 2, 3, 4] {
-        assert_eq!(
-            main_tree.records.shape_span()[leaf_idx as usize].len,
-            0,
-            "Main leaf at {leaf_idx} has no direct shapes",
-        );
+        assert_eq!(main_tree.records.shape_span()[leaf_idx as usize].len, 0);
     }
 
-    // Popup tree: [popup_root, popup_leaf, popup_leaf_2].
     assert_eq!(popup_tree.records.len(), 3);
     assert_eq!(popup_tree.roots.len(), 1);
     assert_eq!(popup_tree.roots[0].first_node, 0);
-    assert_eq!(
-        popup_tree.records.subtree_end()[0],
-        3,
-        "popup root spans every Popup record",
-    );
+    assert_eq!(popup_tree.records.subtree_end()[0], 3);
 
     let popup_widths: Vec<u32> = popup_tree.shapes.records.iter().map(marker_w).collect();
-    assert_eq!(popup_widths, vec![11, 12], "Popup shapes in record order");
+    assert_eq!(popup_widths, vec![11, 12]);
     let popup_root_span = popup_tree.records.shape_span()[0];
     assert_eq!(popup_root_span.start, 0);
     assert_eq!(popup_root_span.len, 2);
     for leaf_idx in [1, 2] {
-        assert_eq!(
-            popup_tree.records.shape_span()[leaf_idx as usize].len,
-            0,
-            "Popup leaf at {leaf_idx} has no direct shapes",
-        );
+        assert_eq!(popup_tree.records.shape_span()[leaf_idx as usize].len, 0);
     }
 }
 
-/// Pin the bounds/panel column split: `.gap(...)` is panel-only, so it
-/// must populate `panel.table` without touching `bounds.table`. Conversely,
-/// `.min_size(...)` populates `bounds.table` without touching `panel.table`.
-/// Catches accidental re-merging of the two columns or a setter routing to
-/// the wrong column.
+/// `.gap(...)` is panel-only → populates `panel.table` only;
+/// `.min_size(...)` populates `bounds.table` only. Pin so a future
+/// re-merge or setter mis-routing trips here.
 #[test]
 fn extras_columns_split_by_field_kind() {
     use crate::primitives::size::Size;
 
     let mut ui = Ui::new();
-    {
-        ui.display = Display::default();
-        ui.pre_record();
-    }
-    Panel::hstack()
-        .id_salt("panel-with-gap")
-        .gap(8.0)
-        .show(&mut ui, |ui| {
-            Frame::new()
-                .id_salt("leaf-with-min")
-                .min_size(Size::new(20.0, 20.0))
-                .show(ui);
-            Frame::new().id_salt("plain-leaf").size(10.0).show(ui);
-        });
-    ui.post_record();
-    ui.finalize_frame();
-    // Panel set `.gap`: one entry in `panel.table`, none in `bounds.table`.
-    // Leaf set `.min_size`: one entry in `bounds.table`, none in `panel.table`.
-    // Plain leaf set neither: contributes to neither table.
-    assert_eq!(
-        ui.forest.tree(Layer::Main).panel.table.len(),
-        1,
-        "only the gapped panel populates panel.table",
-    );
-    assert_eq!(
-        ui.forest.tree(Layer::Main).bounds.table.len(),
-        1,
-        "only the min-sized leaf populates bounds.table",
-    );
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        Panel::hstack()
+            .id_salt("panel-with-gap")
+            .gap(8.0)
+            .show(ui, |ui| {
+                Frame::new()
+                    .id_salt("leaf-with-min")
+                    .min_size(Size::new(20.0, 20.0))
+                    .show(ui);
+                Frame::new().id_salt("plain-leaf").size(10.0).show(ui);
+            });
+    });
+    assert_eq!(ui.forest.tree(Layer::Main).panel.table.len(), 1);
+    assert_eq!(ui.forest.tree(Layer::Main).bounds.table.len(), 1);
 }
 
 #[test]
 fn child_iter_traverses_correctly_after_finalize() {
     let mut ui = Ui::new();
-    {
-        ui.display = Display::default();
-        ui.pre_record();
-    }
-    let root = Panel::hstack()
-        .id_salt("root")
-        .show(&mut ui, |ui| {
-            Frame::new().id_salt("a").size(10.0).show(ui);
-            Panel::hstack().id_salt("inner").show(ui, |ui| {
-                Frame::new().id_salt("b").size(10.0).show(ui);
-            });
-            Frame::new().id_salt("c").size(10.0).show(ui);
-        })
-        .node;
-    ui.post_record();
-    ui.finalize_frame();
+    let mut root = None;
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        root = Some(
+            Panel::hstack()
+                .id_salt("root")
+                .show(ui, |ui| {
+                    Frame::new().id_salt("a").size(10.0).show(ui);
+                    Panel::hstack().id_salt("inner").show(ui, |ui| {
+                        Frame::new().id_salt("b").size(10.0).show(ui);
+                    });
+                    Frame::new().id_salt("c").size(10.0).show(ui);
+                })
+                .node,
+        );
+    });
     let kids: Vec<u32> = ui
         .forest
         .tree(Layer::Main)
-        .children(root)
+        .children(root.unwrap())
         .map(|c| c.id.0)
         .collect();
     assert_eq!(kids, vec![1, 2, 4], "root's direct children: a, inner, c");

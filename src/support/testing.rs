@@ -30,27 +30,17 @@ pub(crate) fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &Shap
     })
 }
 
-pub(crate) fn begin(ui: &mut Ui, size: UVec2) {
-    {
-        ui.display = Display::from_physical(size, 1.0);
-        ui.pre_record();
-    }
-}
-
-/// Drive one full frame through the production [`Ui::run_frame`]
-/// path at the given surface size. Time is frozen at zero — tests
-/// that exercise animation pass `now` themselves via `run_frame`
-/// directly. Discards the returned [`crate::renderer::frontend::FrameOutput`]
-/// so the caller can keep mutating `ui` afterwards.
+/// Drive one full frame through [`Ui::frame`] at the given surface
+/// size. Time is frozen at zero — tests that exercise animation pass
+/// `now` themselves via `frame` directly.
 pub(crate) fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
     ui.frame(display, Duration::ZERO, record);
 }
 
-/// Same as [`run_at`] but additionally marks the frame as
-/// submitted. Tests that drive frames without going through a real
-/// `WgpuBackend::submit` need this — otherwise
-/// [`Ui::pre_record`]'s auto-rewind kicks in and every subsequent
+/// Same as [`run_at`] but additionally marks the frame as submitted.
+/// Tests that drive frames without a real `WgpuBackend::submit` need
+/// this — otherwise the auto-rewind kicks in and every subsequent
 /// frame's damage escalates to `Full`.
 pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
@@ -58,15 +48,18 @@ pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)
     out.frame_state.mark_submitted();
 }
 
+/// Construct a `Ui` and stamp the display dimensions, but do not yet
+/// drive a frame. For tests that introspect `ui.display` before
+/// recording or pre-seed `Ui` state.
 pub(crate) fn ui_at(size: UVec2) -> Ui {
     let mut ui = Ui::new();
-    begin(&mut ui, size);
+    ui.display = Display::from_physical(size, 1.0);
     ui
 }
 
 pub(crate) fn ui_with_text(size: UVec2) -> Ui {
     let mut ui = new_ui_text();
-    begin(&mut ui, size);
+    ui.display = Display::from_physical(size, 1.0);
     ui
 }
 
