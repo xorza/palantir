@@ -102,6 +102,10 @@ pub(crate) struct TextRenderer {
     /// trims down without losing live state (its `ready` bits were
     /// already cleared, slots are unused).
     high_water: usize,
+    /// Last viewport size pushed to glyphon's viewport uniform. `ZERO`
+    /// on construction; first non-zero `update_viewport` mismatches and
+    /// uploads. Saves a per-frame `viewport.update` call in steady state.
+    last_viewport: UVec2,
 }
 
 impl TextRenderer {
@@ -124,6 +128,7 @@ impl TextRenderer {
             ready: FixedBitSet::new(),
             stencil_ready: FixedBitSet::new(),
             high_water: 0,
+            last_viewport: UVec2::ZERO,
         }
     }
 
@@ -141,7 +146,12 @@ impl TextRenderer {
 
     /// Update the viewport uniform. Called once per frame before the
     /// per-group prepares so all renderers see the same viewport.
+    /// Skips the GPU upload when the viewport matches last frame's —
+    /// glyphon's uniform contents are pure functions of the resolution.
     pub(crate) fn update_viewport(&mut self, queue: &wgpu::Queue, viewport_phys: UVec2) {
+        if self.last_viewport == viewport_phys {
+            return;
+        }
         self.viewport.update(
             queue,
             Resolution {
@@ -149,6 +159,7 @@ impl TextRenderer {
                 height: viewport_phys.y,
             },
         );
+        self.last_viewport = viewport_phys;
     }
 
     /// Build glyphon `TextArea`s from `runs` (looked up in the shared
