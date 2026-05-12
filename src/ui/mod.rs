@@ -144,8 +144,8 @@ impl Ui {
         self.display = display;
         // Pending until the renderer (`Host::render`) confirms a
         // successful submit. Tests driving `Ui::frame` directly must
-        // ack via `FrameReport::frame_state.mark_submitted()` or the
-        // next frame's `should_invalidate_prev` will force a `Full`.
+        // ack via `ui.frame_state.mark_submitted()` or the next
+        // frame's `should_invalidate_prev` will force a `Full`.
         self.frame_state.mark_pending();
 
         let action_flag = self.record_pass(&mut record);
@@ -159,7 +159,6 @@ impl Ui {
 
         FrameReport {
             repaint_requested: self.repaint_requested,
-            frame_state: self.frame_state.clone(),
             skip_render: damage.is_none(),
             damage,
         }

@@ -24,7 +24,6 @@ use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::Ui;
 use crate::ui::damage::Damage;
-use crate::ui::frame_state::FrameState;
 
 /// One frame's plain-data report from [`Ui::frame`]: the post-record
 /// signals the host needs to act on. All frame-shaped state (forest,
@@ -35,11 +34,6 @@ use crate::ui::frame_state::FrameState;
 /// [`Ui`]: crate::ui::Ui
 pub struct FrameReport {
     pub(crate) repaint_requested: bool,
-    /// Shared with `Ui::frame_state`. Set to `Pending` at the top of
-    /// `Ui::frame` and (on success) to `Submitted` by the renderer.
-    /// The next `Ui::pre_record` auto-rewinds damage if it doesn't
-    /// see `Submitted`.
-    pub(crate) frame_state: FrameState,
     pub(crate) skip_render: bool,
     /// Per-frame paint plan produced by `Ui::finalize_frame`. `None`
     /// ⇒ skip path (nothing changed; backbuffer is correct).
@@ -58,10 +52,6 @@ impl FrameReport {
 
     pub fn skip_render(&self) -> bool {
         self.skip_render
-    }
-
-    pub fn confirm_submitted(&self) {
-        self.frame_state.mark_submitted();
     }
 }
 

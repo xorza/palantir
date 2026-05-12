@@ -105,12 +105,12 @@ pub fn damage_region_after_adds(rects: &[crate::primitives::rect::Rect]) -> usiz
 }
 
 /// Simulate a successful `Renderer::render` for benches that drive
-/// `Ui::run_frame` without a real GPU. Without it, `Ui::pre_record`'s
-/// auto-rewind would fire every iteration — every bench frame would
-/// escalate to `Full` and the Skip / Partial scenarios would be
-/// unmeasurable.
-pub fn mark_frame_submitted(out: &crate::renderer::frontend::FrameReport) {
-    out.frame_state.mark_submitted();
+/// `Ui::frame` without a real GPU. Without it, the next frame's
+/// `should_invalidate_prev` would fire every iteration — every bench
+/// frame would escalate to `Full` and the Skip / Partial scenarios
+/// would be unmeasurable.
+pub fn mark_frame_submitted(ui: &Ui) {
+    ui.frame_state.mark_submitted();
 }
 
 /// Force the host's `Ui::damage` to a specific value, bypassing

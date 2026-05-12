@@ -28,9 +28,9 @@ const DISPLAY: Display = Display {
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
 fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Option<Damage> {
-    let out = ui.frame(DISPLAY, Duration::ZERO, f);
-    out.frame_state.mark_submitted();
-    out.damage
+    let damage = ui.frame(DISPLAY, Duration::ZERO, f).damage;
+    ui.frame_state.mark_submitted();
+    damage
 }
 
 /// The standard "root with one 50×50 frame" tree used by most damage
@@ -202,23 +202,21 @@ fn click_on_empty_bg_does_not_force_full() {
         });
     };
     // Frame 0 (cold): expect Full. Submit.
-    ui.frame(DISPLAY, Duration::ZERO, build)
-        .frame_state
-        .mark_submitted();
+    ui.frame(DISPLAY, Duration::ZERO, build);
+    ui.frame_state.mark_submitted();
     // Frame 1 (warm): nothing changed → Skip (damage = None).
-    let out = ui.frame(DISPLAY, Duration::ZERO, build);
-    assert!(out.damage.is_none(), "warm frame must Skip");
-    out.frame_state.mark_submitted();
+    let warm = ui.frame(DISPLAY, Duration::ZERO, build).damage;
+    assert!(warm.is_none(), "warm frame must Skip");
+    ui.frame_state.mark_submitted();
 
     // Click on empty background (far from the 50×50 frame at origin).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let out = ui.frame(DISPLAY, Duration::ZERO, build);
+    let click_damage = ui.frame(DISPLAY, Duration::ZERO, build).damage;
     assert!(
-        !matches!(out.damage, Some(Damage::Full)),
-        "click on empty bg escalated to Full repaint: {:?}",
-        out.damage,
+        !matches!(click_damage, Some(Damage::Full)),
+        "click on empty bg escalated to Full repaint: {click_damage:?}",
     );
 }
 
@@ -229,22 +227,28 @@ fn click_on_empty_bg_does_not_force_full() {
 #[test]
 fn skip_frame_does_not_force_next_to_full() {
     let mut ui = Ui::new();
-    let first = ui.frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
-    assert_eq!(first.damage, Some(Damage::Full));
-    first.frame_state.mark_submitted();
+    let first = ui
+        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .damage;
+    assert_eq!(first, Some(Damage::Full));
+    ui.frame_state.mark_submitted();
 
     // Identical content → Skip (damage = None). Host::render confirms
     // submitted on the skip path too (copies the backbuffer onto the
     // swapchain); the test mirrors that ack.
-    let skip = ui.frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
-    assert!(skip.damage.is_none(), "identical content must Skip");
-    skip.frame_state.mark_submitted();
+    let skip = ui
+        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .damage;
+    assert!(skip.is_none(), "identical content must Skip");
+    ui.frame_state.mark_submitted();
 
     // Next frame: still no diff. Pre-fix this could regress to Full if
     // the skip wasn't acked — Host::render owns that ack now.
-    let next = ui.frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE));
+    let next = ui
+        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .damage;
     assert!(
-        next.damage.is_none(),
+        next.is_none(),
         "Skip frames must not poison the next frame into Full",
     );
 }
@@ -705,31 +709,31 @@ fn display_change_forces_full_repaint() {
         };
 
         // Steady-state: Full first frame, then Skip on identical re-record.
-        let f1 = ui.frame(DISPLAY, Duration::ZERO, &mut build);
-        assert_eq!(f1.damage, Some(Damage::Full), "case: {label} f1");
-        f1.frame_state.mark_submitted();
-        let f2 = ui.frame(DISPLAY, Duration::ZERO, &mut build);
-        assert!(f2.damage.is_none(), "case: {label} f2 must Skip");
+        let f1 = ui.frame(DISPLAY, Duration::ZERO, &mut build).damage;
+        assert_eq!(f1, Some(Damage::Full), "case: {label} f1");
+        ui.frame_state.mark_submitted();
+        let f2 = ui.frame(DISPLAY, Duration::ZERO, &mut build).damage;
+        assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(ui.damage_engine.dirty.is_empty(), "case: {label} steady");
-        f2.frame_state.mark_submitted();
+        ui.frame_state.mark_submitted();
 
         // Mutate Display; identical authoring; must short-circuit to Full.
-        let mutated_frame = ui.frame(*mutated, Duration::ZERO, &mut build);
+        let mutated_damage = ui.frame(*mutated, Duration::ZERO, &mut build).damage;
         assert_eq!(
-            mutated_frame.damage,
+            mutated_damage,
             Some(Damage::Full),
             "case: {label} display change"
         );
-        mutated_frame.frame_state.mark_submitted();
+        ui.frame_state.mark_submitted();
         assert!(
             !ui.damage_engine.dirty.is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
         );
 
         // Stable surface at the new size, identical authoring → back to Skip.
-        let stable = ui.frame(*mutated, Duration::ZERO, &mut build);
+        let stable = ui.frame(*mutated, Duration::ZERO, &mut build).damage;
         assert!(
-            stable.damage.is_none(),
+            stable.is_none(),
             "case: {label} post-mutation steady must Skip",
         );
         assert!(
@@ -790,12 +794,10 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             });
     };
 
-    ui.frame(big, Duration::ZERO, &mut scene)
-        .frame_state
-        .mark_submitted();
-    ui.frame(big, Duration::ZERO, &mut scene)
-        .frame_state
-        .mark_submitted();
+    ui.frame(big, Duration::ZERO, &mut scene);
+    ui.frame_state.mark_submitted();
+    ui.frame(big, Duration::ZERO, &mut scene);
+    ui.frame_state.mark_submitted();
     assert!(ui.damage_engine.dirty.is_empty());
 
     // Inject: nudge widget "a"'s prev rect so the next diff sees a
@@ -814,10 +816,10 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         physical: UVec2::new(1999, 2000),
         ..big
     };
-    let out = ui.frame(smaller, Duration::ZERO, &mut scene);
+    let resize_damage = ui.frame(smaller, Duration::ZERO, &mut scene).damage;
 
     assert_eq!(
-        out.damage,
+        resize_damage,
         Some(Damage::Full),
         "small-damage + surface-change must force full repaint \
          (this is the showcase resize-flicker case — encoder would emit a \
@@ -840,23 +842,25 @@ fn stable_surface_does_not_short_circuit() {
     };
 
     // Warm up: two identical frames bring damage to steady state.
-    ui.frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE))
-        .frame_state
-        .mark_submitted();
-    let warm = ui.frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE));
-    assert!(warm.damage.is_none(), "warm steady-state must Skip");
+    ui.frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE));
+    ui.frame_state.mark_submitted();
+    let warm = ui
+        .frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE))
+        .damage;
+    assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(ui.damage_engine.dirty.is_empty());
-    warm.frame_state.mark_submitted();
+    ui.frame_state.mark_submitted();
 
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
-    let changed = ui.frame(DISPLAY, Duration::ZERO, |ui| build(ui, RED));
-    let Some(Damage::Partial(region)) = changed.damage else {
+    let changed = ui
+        .frame(DISPLAY, Duration::ZERO, |ui| build(ui, RED))
+        .damage;
+    let Some(Damage::Partial(region)) = changed else {
         panic!(
             "stable surface + one-leaf change should produce a partial \
-             repaint, got {:?} — surface-change short-circuit fired incorrectly",
-            changed.damage,
+             repaint, got {changed:?} — surface-change short-circuit fired incorrectly",
         );
     };
     // DamageEngine rect = the 50×50 frame's rect. Well below 50% of 200×200.

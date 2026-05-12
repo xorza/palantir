@@ -271,7 +271,6 @@ impl State {
         self.host.render(&frame.texture, clear);
 
         frame.present();
-        frame_report.confirm_submitted();
     }
 }
 
