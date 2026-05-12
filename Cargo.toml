@@ -16,7 +16,7 @@ bitflags = "*"
 bytemuck = { version = "*", features = ["derive"] }
 encase = "*"
 fixedbitset = "*"
-glam = { version = "*", features = ["bytemuck", "encase"] }
+glam = { version = "*", features = ["bytemuck", "encase", "serde"] }
 glyphon = "*"
 rustc-hash = "*"
 tracing = "*"
