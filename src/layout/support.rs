@@ -8,7 +8,7 @@ use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
 use crate::forest::element::LayoutCore;
 use crate::forest::shapes::ShapeRecord;
-use crate::forest::tree::{Child, NodeId, Tree};
+use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::{
     align::Align, align::AxisAlign, justify::Justify, sizing::Sizes, sizing::Sizing,
@@ -167,7 +167,7 @@ pub(crate) fn children_max_intrinsic(
     text: &TextShaper,
 ) -> f32 {
     let mut m = 0.0f32;
-    for c in tree.children(node).filter_map(Child::active) {
+    for c in tree.active_children(node) {
         m = m.max(layout.intrinsic(tree, c, axis, req, text));
     }
     m
@@ -258,7 +258,7 @@ pub(crate) fn measure_per_axis_hug(
     let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
-    for c in tree.children(node).filter_map(Child::active) {
+    for c in tree.active_children(node) {
         let d = layout.measure(tree, c, child_avail, text, out);
         let cont = contrib(tree, c, d);
         max_w = max_w.max(cont.w);

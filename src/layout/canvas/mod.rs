@@ -2,7 +2,7 @@ use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
 use super::support::{measure_per_axis_hug, zero_subtree};
-use crate::forest::tree::{Child, NodeId, Tree};
+use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextShaper;
@@ -75,7 +75,7 @@ pub(crate) fn intrinsic(
     text: &TextShaper,
 ) -> f32 {
     let mut max = 0.0_f32;
-    for c in tree.children(node).filter_map(Child::active) {
+    for c in tree.active_children(node) {
         let pos = tree.bounds(c).position;
         max = max.max(axis.main_v(pos) + layout.intrinsic(tree, c, axis, req, text));
     }

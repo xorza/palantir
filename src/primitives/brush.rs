@@ -431,6 +431,17 @@ impl Brush {
             Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => None,
         }
     }
+
+    /// Unwrap to the solid color, panicking on gradient variants with the
+    /// shared "not yet implemented" message. Centralizes the lowering-side
+    /// gradient-not-supported assert; remove this method when slice 2 lands.
+    #[inline]
+    #[track_caller]
+    pub fn expect_solid(self) -> Color {
+        self.as_solid().expect(
+            "gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2",
+        )
+    }
 }
 
 impl Default for Brush {

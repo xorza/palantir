@@ -4,7 +4,7 @@ use super::layoutengine::LayoutEngine;
 use super::support::{
     JustifyOffsets, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
 };
-use crate::forest::tree::{Child, NodeId, Tree};
+use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::{rect::Rect, size::Size};
@@ -55,7 +55,7 @@ pub(crate) fn measure(
     let mut total_weight = 0.0f32;
     let mut max_cross = 0.0f32;
     let mut count = 0usize;
-    for c in tree.children(node).filter_map(Child::active) {
+    for c in tree.active_children(node) {
         count += 1;
         let l = tree.records.layout()[c.index()];
         if let Sizing::Fill(w) = axis.main_sizing(l.size) {
@@ -108,7 +108,7 @@ pub(crate) fn measure(
             // push entries, slice through `[start..]`, truncate at
             // exit. Nested stacks reuse the tail capacity.
             let pool_start = layout.scratch.stack_fill.pool.len();
-            for c in tree.children(node).filter_map(Child::active) {
+            for c in tree.active_children(node) {
                 let Sizing::Fill(w) = axis.main_sizing(tree.records.layout()[c.index()].size)
                 else {
                     continue;
@@ -180,7 +180,7 @@ pub(crate) fn measure(
             // stack saw.
             layout.scratch.stack_fill.pool.truncate(pool_start);
         } else {
-            for c in tree.children(node).filter_map(Child::active) {
+            for c in tree.active_children(node) {
                 let Sizing::Fill(_) = axis.main_sizing(tree.records.layout()[c.index()].size)
                 else {
                     continue;
@@ -222,7 +222,7 @@ pub(crate) fn arrange(
     let mut sum_main_desired = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
-    for c in tree.children(node).filter_map(Child::active) {
+    for c in tree.active_children(node) {
         let l = tree.records.layout()[c.index()];
         if let Sizing::Fill(weight) = axis.main_sizing(l.size) {
             total_weight += weight;
@@ -292,7 +292,7 @@ pub(crate) fn intrinsic(
     if main_axis == query_axis {
         let mut total = 0.0_f32;
         let mut count = 0_usize;
-        for c in tree.children(node).filter_map(Child::active) {
+        for c in tree.active_children(node) {
             total += layout.intrinsic(tree, c, query_axis, req, text);
             count += 1;
         }
