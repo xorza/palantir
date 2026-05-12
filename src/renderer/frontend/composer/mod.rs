@@ -1,6 +1,6 @@
 use super::cmd_buffer::{
-    CmdKind, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawRectStrokedPayload,
-    DrawTextPayload, PushClipRoundedPayload, RenderCmdBuffer,
+    CmdKind, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload,
+    PushClipPayload, RenderCmdBuffer,
 };
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
@@ -35,26 +35,16 @@ struct GroupBuilder {
     last_kind: Option<DrawKind>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// Render order within a group: quads paint first, then text, then
+/// meshes — derived from the variant order below. A kind transition
+/// that would emit something *before* what's already in the group
+/// (smaller variant than `last_kind`) forces a flush. Equal or larger
+/// is fine — natural per-group draw sequence preserves record order.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum DrawKind {
     Quad,
     Text,
     Mesh,
-}
-
-impl DrawKind {
-    /// Render order within a group: quads paint first, then text, then
-    /// meshes. A kind transition that would emit something *before*
-    /// what's already in the group (lower order than `last_kind`)
-    /// forces a flush. Equal or higher order is fine — the natural
-    /// per-group draw sequence preserves record order.
-    fn order(self) -> u8 {
-        match self {
-            DrawKind::Quad => 0,
-            DrawKind::Text => 1,
-            DrawKind::Mesh => 2,
-        }
-    }
 }
 
 impl GroupBuilder {
@@ -105,7 +95,7 @@ impl GroupBuilder {
     /// matches record order. Same scissor continues into the new group.
     fn before_draw(&mut self, kind: DrawKind, out: &mut RenderBuffer) {
         if let Some(prev) = self.last_kind
-            && kind.order() < prev.order()
+            && kind < prev
         {
             self.flush(out);
         }
@@ -139,7 +129,7 @@ impl GroupBuilder {
 pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
     /// Pairs the resolved scissor with its rounded-clip data (when the
-    /// push was `PushClipRounded`); both ride together so a `PopClip`
+    /// push carried a non-zero radius); both ride together so a `PopClip`
     /// restores them as a unit.
     clip_stack: Vec<ClipFrame>,
     transform_stack: Vec<TranslateScale>,
@@ -189,21 +179,14 @@ impl Composer {
         let mut current_transform = TranslateScale::IDENTITY;
         let mut group = GroupBuilder::default();
 
-        let n = cmds.kinds.len();
-        let mut i = 0usize;
-        while i < n {
+        for i in 0..cmds.kinds.len() {
             let kind = cmds.kinds[i];
             let start = cmds.starts[i];
             match kind {
-                CmdKind::PushClip | CmdKind::PushClipRounded => {
-                    let (r, logical_radius) = match kind {
-                        CmdKind::PushClip => (cmds.read::<Rect>(start), None),
-                        _ => {
-                            let p: PushClipRoundedPayload = cmds.read(start);
-                            (p.rect, Some(p.radius))
-                        }
-                    };
-                    let world = current_transform.apply_rect(r);
+                CmdKind::PushClip => {
+                    let p: PushClipPayload = cmds.read(start);
+                    let logical_radius = (!p.radius.approx_zero()).then_some(p.radius);
+                    let world = current_transform.apply_rect(p.rect);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
                     let scissor = match self.clip_stack.last() {
                         Some(parent) => me.clamp_to(parent.scissor),
@@ -257,45 +240,9 @@ impl Composer {
                         .pop()
                         .expect("PopTransform without matching PushTransform");
                 }
-                kind @ (CmdKind::DrawRect | CmdKind::DrawRectStroked) => {
-                    let (
-                        rect,
-                        radius,
-                        fill,
-                        stroke_color,
-                        stroke_width,
-                        fill_kind,
-                        fill_grad_idx,
-                        fill_axis,
-                    ) = match kind {
-                        CmdKind::DrawRect => {
-                            let p: DrawRectPayload = cmds.read(start);
-                            (
-                                p.rect,
-                                p.radius,
-                                p.fill,
-                                Color::TRANSPARENT,
-                                0.0,
-                                p.fill_kind,
-                                p.fill_grad_idx,
-                                p.fill_axis,
-                            )
-                        }
-                        _ => {
-                            let p: DrawRectStrokedPayload = cmds.read(start);
-                            (
-                                p.rect,
-                                p.radius,
-                                p.fill,
-                                p.stroke_color,
-                                p.stroke_width,
-                                p.fill_kind,
-                                p.fill_grad_idx,
-                                p.fill_axis,
-                            )
-                        }
-                    };
-                    let world_rect = current_transform.apply_rect(rect);
+                CmdKind::DrawRect => {
+                    let p: DrawRectPayload = cmds.read(start);
+                    let world_rect = current_transform.apply_rect(p.rect);
                     // Clip-cull: skip emitting the quad when it sits
                     // entirely outside the active scissor. The GPU
                     // would scissor it away anyway; this saves the
@@ -305,20 +252,14 @@ impl Composer {
                     if let Some(active) = self.clip_stack.last() {
                         let me = scissor_from_logical(world_rect, scale, snap, viewport_phys);
                         if me.intersect(active.scissor).is_none() {
-                            i += 1;
                             continue;
                         }
                     }
-                    let world_radius = radius.scaled_by(current_transform.scale);
+                    let world_radius = p.radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
-                    // Linear brushes register with the atlas on first
-                    // sight and reuse the row across subsequent quads
-                    // pointing at the same content (same gradient on
-                    // multiple panels → one bake). Solid passes
-                    // through with the row sentinel'd to 0.
-                    let fill_lut_row = if fill_kind.is_gradient() {
-                        let key = &cmds.gradient_lut_keys[fill_grad_idx as usize];
+                    let fill_lut_row = if p.fill_kind.is_gradient() {
+                        let key = &cmds.gradient_lut_keys[p.fill_grad_idx as usize];
                         out.gradient_atlas.register_stops(&key.stops, key.interp)
                     } else {
                         LutRow::FALLBACK
@@ -327,23 +268,23 @@ impl Composer {
                         out,
                         Quad {
                             rect: phys_rect,
-                            fill,
+                            fill: p.fill,
                             radius: phys_radius,
-                            stroke_color,
-                            stroke_width: stroke_width * current_transform.scale * scale,
-                            fill_kind,
+                            stroke_color: p.stroke_color,
+                            stroke_width: p.stroke_width * current_transform.scale * scale,
+                            fill_kind: p.fill_kind,
                             fill_lut_row,
-                            fill_axis,
+                            fill_axis: p.fill_axis,
                         },
                     );
                 }
                 CmdKind::DrawMesh => {
                     let p: DrawMeshPayload = cmds.read(start);
-                    // Per-vertex transform: shift by `origin` (logical
-                    // px owner-relative → world), apply the active
-                    // transform, then DPI-scale. No pixel-snap: the
-                    // mesh is user geometry; snapping arbitrary
-                    // vertices changes shape.
+                    // Per-vertex transform: apply the active transform,
+                    // then DPI-scale. Verts are already in logical-px
+                    // world coords (encoder pre-translated). No
+                    // pixel-snap: the mesh is user geometry; snapping
+                    // arbitrary vertices changes shape.
                     let v_start = p.v_start as usize;
                     let v_end = v_start + p.v_len as usize;
                     let i_start = p.i_start as usize;
@@ -351,7 +292,7 @@ impl Composer {
                     let phys_v_start = out.meshes.arena.vertices.len() as u32;
                     let tint = p.tint;
                     for v in &cmds.shape_payloads.meshes.vertices[v_start..v_end] {
-                        let world = current_transform.apply_point(v.pos + p.origin);
+                        let world = current_transform.apply_point(v.pos);
                         // Premultiplied-alpha tinting: component-wise
                         // multiply works for both rgb and alpha. The
                         // backend pipeline doesn't take a tint uniform
@@ -359,7 +300,7 @@ impl Composer {
                         let c = v.color;
                         out.meshes.arena.vertices.push(MeshVertex {
                             pos: world * scale,
-                            color: crate::primitives::color::Color {
+                            color: Color {
                                 r: c.r * tint.r,
                                 g: c.g * tint.g,
                                 b: c.b * tint.b,
@@ -411,7 +352,6 @@ impl Composer {
                         let bbox_scissor =
                             scissor_from_logical(inflated, scale, false, viewport_phys);
                         if bbox_scissor.intersect(active.scissor).is_none() {
-                            i += 1;
                             continue;
                         }
                     }
@@ -451,7 +391,6 @@ impl Composer {
                     let v_len = out.meshes.arena.vertices.len() as u32 - phys_v_start;
                     let i_len = out.meshes.arena.indices.len() as u32 - phys_i_start;
                     if v_len == 0 {
-                        i += 1;
                         continue;
                     }
                     group.push_mesh(
@@ -476,7 +415,6 @@ impl Composer {
                         bounds = bounds.clamp_to(parent.scissor);
                     }
                     if bounds.w == 0 || bounds.h == 0 {
-                        i += 1;
                         continue;
                     }
                     let phys_rect = world_rect.scaled_by(scale, snap);
@@ -492,7 +430,6 @@ impl Composer {
                     );
                 }
             }
-            i += 1;
         }
         group.flush(out);
     }

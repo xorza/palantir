@@ -1,6 +1,5 @@
 use super::super::cmd_buffer::{
-    CmdKind, DrawRectPayload, DrawRectStrokedPayload, DrawTextPayload, PushClipRoundedPayload,
-    RenderCmdBuffer,
+    CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
 use super::align_text_in;
 use crate::Ui;
@@ -42,7 +41,7 @@ fn count_clip_pairs(cmds: &RenderCmdBuffer) -> ClipPairs {
 fn count_draw_rects(cmds: &RenderCmdBuffer) -> usize {
     cmds.kinds
         .iter()
-        .filter(|k| matches!(k, CmdKind::DrawRect | CmdKind::DrawRectStroked))
+        .filter(|k| matches!(k, CmdKind::DrawRect))
         .count()
 }
 
@@ -170,7 +169,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     let draws = cmds
         .kinds
         .iter()
-        .filter(|k| matches!(k, CmdKind::DrawRect | CmdKind::DrawRectStroked))
+        .filter(|k| matches!(k, CmdKind::DrawRect))
         .count();
     assert!(draws >= 1, "RoundedRect must emit a DrawRect, got {draws}");
     let polylines = cmds
@@ -266,7 +265,7 @@ fn clip_emits_balanced_push_pop() {
         .kinds
         .iter()
         .enumerate()
-        .filter_map(|(i, k)| matches!(k, CmdKind::DrawRect | CmdKind::DrawRectStroked).then_some(i))
+        .filter_map(|(i, k)| matches!(k, CmdKind::DrawRect).then_some(i))
         .collect();
     assert!(!draw_idxs.is_empty());
     for &di in &draw_idxs {
@@ -310,20 +309,32 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     let rounded_idx = cmds
         .kinds
         .iter()
-        .position(|k| *k == CmdKind::PushClipRounded)
-        .expect("rounded clip with rounded background emits PushClipRounded");
-    assert_eq!(
-        cmds.kinds
-            .iter()
-            .filter(|k| **k == CmdKind::PushClipRounded)
-            .count(),
-        1,
-    );
+        .enumerate()
+        .find_map(|(idx, k)| {
+            if *k != CmdKind::PushClip {
+                return None;
+            }
+            let payload: PushClipPayload = cmds.read(cmds.starts[idx]);
+            (!payload.radius.approx_zero()).then_some(idx)
+        })
+        .expect("rounded clip with rounded background emits PushClip with non-zero radius");
+    let rounded_count = cmds
+        .kinds
+        .iter()
+        .enumerate()
+        .filter(|(idx, k)| {
+            **k == CmdKind::PushClip && {
+                let p: PushClipPayload = cmds.read(cmds.starts[*idx]);
+                !p.radius.approx_zero()
+            }
+        })
+        .count();
+    assert_eq!(rounded_count, 1);
 
     let panel_rect = ui.layout[Layer::Main].rect[panel_node.unwrap().index()];
     let expected_rect = panel_rect.deflated_by(Spacing::all(2.0));
     let start = cmds.starts[rounded_idx];
-    let payload: PushClipRoundedPayload = cmds.read(start);
+    let payload: PushClipPayload = cmds.read(start);
     assert_eq!(payload.rect, expected_rect);
     assert_eq!(payload.radius, Corners::all(6.0));
 }
@@ -343,20 +354,17 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
         });
     });
     let cmds = encode_cmds(&ui);
-    assert_eq!(
-        cmds.kinds
-            .iter()
-            .filter(|k| **k == CmdKind::PushClipRounded)
-            .count(),
-        0,
-        "no background → no radius → falls back to scissor"
-    );
-    assert_eq!(
-        cmds.kinds
-            .iter()
-            .filter(|k| **k == CmdKind::PushClip)
-            .count(),
-        1
+    let push_clips: Vec<PushClipPayload> = cmds
+        .kinds
+        .iter()
+        .enumerate()
+        .filter(|(_, k)| **k == CmdKind::PushClip)
+        .map(|(idx, _)| cmds.read::<PushClipPayload>(cmds.starts[idx]))
+        .collect();
+    assert_eq!(push_clips.len(), 1);
+    assert!(
+        push_clips[0].radius.approx_zero(),
+        "no background → no radius → falls back to plain scissor",
     );
 }
 
@@ -378,9 +386,9 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
                 t = t.compose(child);
             }
             CmdKind::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
-            CmdKind::PushClip | CmdKind::PushClipRounded => {
-                let r: Rect = cmds.read(start);
-                let screen = t.apply_rect(r);
+            CmdKind::PushClip => {
+                let p: PushClipPayload = cmds.read(start);
+                let screen = t.apply_rect(p.rect);
                 let intersected = match clip {
                     Some(c) => screen.intersect(c),
                     None => screen,
@@ -391,15 +399,6 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
             CmdKind::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
             CmdKind::DrawRect => {
                 let p: DrawRectPayload = cmds.read(start);
-                let screen = t.apply_rect(p.rect);
-                let visible = match clip {
-                    Some(c) => screen.intersect(c),
-                    None => screen,
-                };
-                out.push((p.fill, visible));
-            }
-            CmdKind::DrawRectStroked => {
-                let p: DrawRectStrokedPayload = cmds.read(start);
                 let screen = t.apply_rect(p.rect);
                 let visible = match clip {
                     Some(c) => screen.intersect(c),

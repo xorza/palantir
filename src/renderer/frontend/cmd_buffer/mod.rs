@@ -25,34 +25,26 @@
 
 use crate::forest::shapes::ShapePayloads;
 use crate::primitives::brush::{Brush, FillAxis, Interp, MAX_STOPS, Stop};
-use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
 use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
-use glam::Vec2;
 use tinyvec::ArrayVec;
-
-/// Sentinel for "this payload's fill is solid, no gradient registered."
-/// Composer skips the `linear_gradients` lookup when it sees this.
-pub(crate) const NO_GRAD_IDX: u32 = u32::MAX;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CmdKind {
+    /// Scissor clip with optional rounded-corner stencil mask. Carries
+    /// [`PushClipPayload`] (rect + radius). When `radius` is all-zero
+    /// the composer treats it as a plain scissor; otherwise the
+    /// backend's stencil path writes the SDF mask using the radius.
     PushClip,
-    /// Scissor clip + rounded-corner stencil mask. Carries
-    /// `PushClipRoundedPayload` (rect + radius). Composer treats it as
-    /// a regular scissor for the purposes of group splitting; the
-    /// backend's stencil path reads the radius to write the SDF mask.
-    PushClipRounded,
     PopClip,
     PushTransform,
     PopTransform,
     DrawRect,
-    DrawRectStroked,
     DrawText,
     /// Mesh paint cmd. Payload: [`DrawMeshPayload`]. Vertex/index
     /// bytes live in [`RenderCmdBuffer::mesh_vertices`] /
@@ -67,35 +59,27 @@ pub(crate) enum CmdKind {
     DrawPolyline,
 }
 
+/// Scissor clip payload. `radius` is all-zero for plain rect clips
+/// and non-zero for rounded-mask clips — the composer decides which
+/// path to take by inspecting it.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct PushClipRoundedPayload {
+pub(crate) struct PushClipPayload {
     pub(crate) rect: Rect,
     pub(crate) radius: Corners,
 }
 
 /// Brush metadata packed into draw-rect payloads. `fill_kind` low byte
-/// is the kind tag (`BRUSH_KIND_SOLID` / `BRUSH_KIND_LINEAR`); bits
-/// 8..16 carry `Spread` when linear. `fill_grad_idx` indexes into
-/// [`RenderCmdBuffer::linear_gradients`] when linear, [`NO_GRAD_IDX`]
-/// otherwise. `fill_axis` carries the `(dir.x, dir.y, t0, t1)` axis
-/// vector computed at encode time from `LinearGradient::axis()`.
-/// `fill: Color` is the solid colour when `kind == SOLID`; for linear
-/// it's zeroed and the composer's atlas lookup supplies the LUT row.
+/// is the kind tag; bits 8..16 carry `Spread` for gradient variants.
+/// `fill_grad_idx` indexes into [`RenderCmdBuffer::gradient_lut_keys`]
+/// when `fill_kind.is_gradient()`; unused (and unread) for solid.
+/// `fill_axis` carries gradient geometry computed at encode time from
+/// the brush's `axis()`. `fill: Color` is the solid colour when
+/// `kind == SOLID`; for gradients it's zeroed and the composer's atlas
+/// lookup supplies the LUT row.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawRectPayload {
-    pub(crate) rect: Rect,
-    pub(crate) radius: Corners,
-    pub(crate) fill: Color,
-    pub(crate) fill_kind: FillKind,
-    pub(crate) fill_grad_idx: u32,
-    pub(crate) fill_axis: FillAxis,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct DrawRectStrokedPayload {
     pub(crate) rect: Rect,
     pub(crate) radius: Corners,
     pub(crate) fill: Color,
@@ -114,10 +98,6 @@ pub(crate) struct DrawTextPayload {
     pub(crate) key: TextCacheKey,
 }
 
-/// Mesh draw payload (40 B). Spans are inlined as `(start, len)`
-/// `u32` pairs so the payload is plain Pod — no `Span: Pod` needed.
-/// `origin` is the logical-px translation applied at compose time
-/// before baking the transform/DPI into physical-px verts.
 /// Stroked polyline payload. `width` is logical px. Points +
 /// colors live in [`RenderCmdBuffer::polyline_points`] /
 /// [`RenderCmdBuffer::polyline_colors`]; `colors_len` is 1
@@ -151,10 +131,14 @@ pub(crate) struct DrawPolylinePayload {
     pub(crate) join: LineJoinBits,
 }
 
+/// Mesh draw payload. Spans are inlined as `(start, len)` u32 pairs so
+/// the payload is plain Pod — no `Span: Pod` needed. Vertex positions
+/// are already in logical-px world-coords (encoder pre-translates by
+/// the owner's top-left), matching the polyline convention.
+#[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawMeshPayload {
-    pub(crate) origin: Vec2,
     pub(crate) tint: Color,
     pub(crate) v_start: u32,
     pub(crate) v_len: u32,
@@ -177,7 +161,7 @@ pub(crate) struct RenderCmdBuffer {
     /// with no recording-state reach-back. See [`ShapePayloads`].
     pub(crate) shape_payloads: ShapePayloads,
     /// Per-frame arena of gradient LUT keys referenced by
-    /// `DrawRect*Payload::fill_grad_idx`. Composer reads through this
+    /// `DrawRectPayload::fill_grad_idx`. Composer reads through this
     /// to register the gradient with the LUT atlas and pack the
     /// resulting row id into `Quad`. Variant-agnostic: linear / radial
     /// / conic gradients all push a `GradientLutKey { stops, interp }`
@@ -196,6 +180,14 @@ pub(crate) struct GradientLutKey {
     pub(crate) interp: Interp,
 }
 
+/// Result of lowering a `Brush` into draw-rect payload fields.
+struct BrushPack {
+    fill_color: Color,
+    fill_kind: FillKind,
+    fill_grad_idx: u32,
+    fill_axis: FillAxis,
+}
+
 impl RenderCmdBuffer {
     pub(crate) fn clear(&mut self) {
         self.kinds.clear();
@@ -206,15 +198,21 @@ impl RenderCmdBuffer {
     }
 
     #[inline]
-    pub(crate) fn push_clip(&mut self, r: Rect) {
+    pub(crate) fn push_clip(&mut self, rect: Rect) {
         self.record_start(CmdKind::PushClip);
-        write_pod(&mut self.data, r);
+        write_pod(
+            &mut self.data,
+            PushClipPayload {
+                rect,
+                radius: Corners::ZERO,
+            },
+        );
     }
 
     #[inline]
     pub(crate) fn push_clip_rounded(&mut self, rect: Rect, radius: Corners) {
-        self.record_start(CmdKind::PushClipRounded);
-        write_pod(&mut self.data, PushClipRoundedPayload { rect, radius });
+        self.record_start(CmdKind::PushClip);
+        write_pod(&mut self.data, PushClipPayload { rect, radius });
     }
 
     #[inline]
@@ -235,70 +233,38 @@ impl RenderCmdBuffer {
 
     #[inline]
     pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: &Brush, stroke: Stroke) {
-        // Decompose the brush into Pod fields. Solid: write `fill` and
-        // sentinel-out the gradient slot. Gradient: zero `fill`, push
-        // the LUT key (stops + interp) into the per-frame arena, encode
-        // kind + spread + per-variant geometry into `fill_axis`.
         // Stroke stays solid-only — gradient strokes are a non-goal.
-        let (fill_color, fill_kind, fill_grad_idx, fill_axis) = match fill {
-            Brush::Solid(c) => (*c, FillKind::SOLID, NO_GRAD_IDX, FillAxis::ZERO),
-            Brush::Linear(g) => {
-                let idx = self.push_gradient_lut_key(g.stops, g.interp);
-                (
-                    Color::TRANSPARENT,
-                    FillKind::linear(g.spread),
-                    idx,
-                    g.axis(),
-                )
-            }
-            Brush::Radial(g) => {
-                let idx = self.push_gradient_lut_key(g.stops, g.interp);
-                (
-                    Color::TRANSPARENT,
-                    FillKind::radial(g.spread),
-                    idx,
-                    g.axis(),
-                )
-            }
-            Brush::Conic(g) => {
-                let idx = self.push_gradient_lut_key(g.stops, g.interp);
-                (Color::TRANSPARENT, FillKind::conic(g.spread), idx, g.axis())
-            }
-        };
+        let BrushPack {
+            fill_color,
+            fill_kind,
+            fill_grad_idx,
+            fill_axis,
+        } = self.pack_brush(fill);
 
-        // Two cmd kinds keep the wire format compact: a stroke-less
-        // rect skips the trailing 24 B of stroke payload. The branch
-        // is on the value, not on `Option`-presence — semantically
-        // identical, no Option machinery upstream.
-        if stroke.is_noop() {
-            self.record_start(CmdKind::DrawRect);
-            write_pod(
-                &mut self.data,
-                DrawRectPayload {
-                    rect,
-                    radius,
-                    fill: fill_color,
-                    fill_kind,
-                    fill_grad_idx,
-                    fill_axis,
-                },
-            );
+        let (stroke_color, stroke_width) = if stroke.is_noop() {
+            (Color::TRANSPARENT, 0.0)
         } else {
-            self.record_start(CmdKind::DrawRectStroked);
-            write_pod(
-                &mut self.data,
-                DrawRectStrokedPayload {
-                    rect,
-                    radius,
-                    fill: fill_color,
-                    stroke_color: stroke.brush.as_solid().expect("gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2"),
-                    stroke_width: stroke.width,
-                    fill_kind,
-                    fill_grad_idx,
-                    fill_axis,
-                },
-            );
-        }
+            (
+                stroke.brush.as_solid().expect(
+                    "gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2",
+                ),
+                stroke.width,
+            )
+        };
+        self.record_start(CmdKind::DrawRect);
+        write_pod(
+            &mut self.data,
+            DrawRectPayload {
+                rect,
+                radius,
+                fill: fill_color,
+                stroke_color,
+                stroke_width,
+                fill_kind,
+                fill_grad_idx,
+                fill_axis,
+            },
+        );
     }
 
     #[inline]
@@ -307,34 +273,14 @@ impl RenderCmdBuffer {
         write_pod(&mut self.data, DrawTextPayload { rect, color, key });
     }
 
-    /// Copy `verts` + `idx` into the cmd buffer's mesh arena and
-    /// record a `DrawMesh` cmd. Indices are pushed unchanged; the
-    /// composer (and ultimately the wgpu `draw_indexed`) addresses
-    /// the vertex range with a `base_vertex` offset.
-    pub(crate) fn draw_mesh(
-        &mut self,
-        origin: Vec2,
-        tint: Color,
-        verts: &[MeshVertex],
-        idx: &[u16],
-    ) {
-        let mesh = &mut self.shape_payloads.meshes;
-        let v_start = mesh.vertices.len() as u32;
-        mesh.vertices.extend_from_slice(verts);
-        let i_start = mesh.indices.len() as u32;
-        mesh.indices.extend_from_slice(idx);
+    /// Record a `DrawMesh` cmd against already-staged vertices + indices
+    /// in `shape_payloads.meshes`. Caller pushes verts (translated into
+    /// the owner's logical-px world coords) and indices directly so the
+    /// encoder can apply the owner-rect offset inline without an
+    /// intermediate scratch buffer.
+    pub(crate) fn draw_mesh(&mut self, payload: DrawMeshPayload) {
         self.record_start(CmdKind::DrawMesh);
-        write_pod(
-            &mut self.data,
-            DrawMeshPayload {
-                origin,
-                tint,
-                v_start,
-                v_len: verts.len() as u32,
-                i_start,
-                i_len: idx.len() as u32,
-            },
-        );
+        write_pod(&mut self.data, payload);
     }
 
     /// Record a `DrawPolyline` cmd against already-staged points and
@@ -347,6 +293,39 @@ impl RenderCmdBuffer {
     pub(crate) fn draw_polyline(&mut self, payload: DrawPolylinePayload) {
         self.record_start(CmdKind::DrawPolyline);
         write_pod(&mut self.data, payload);
+    }
+
+    /// Lower a `Brush` into payload fields. Solid: pass colour through,
+    /// zero gradient slots. Gradient: zero `fill_color`, push the LUT
+    /// key into the per-frame arena, encode kind + spread + per-variant
+    /// geometry into `fill_axis`.
+    fn pack_brush(&mut self, brush: &Brush) -> BrushPack {
+        match brush {
+            Brush::Solid(c) => BrushPack {
+                fill_color: *c,
+                fill_kind: FillKind::SOLID,
+                fill_grad_idx: 0,
+                fill_axis: FillAxis::ZERO,
+            },
+            Brush::Linear(g) => BrushPack {
+                fill_color: Color::TRANSPARENT,
+                fill_kind: FillKind::linear(g.spread),
+                fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
+                fill_axis: g.axis(),
+            },
+            Brush::Radial(g) => BrushPack {
+                fill_color: Color::TRANSPARENT,
+                fill_kind: FillKind::radial(g.spread),
+                fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
+                fill_axis: g.axis(),
+            },
+            Brush::Conic(g) => BrushPack {
+                fill_color: Color::TRANSPARENT,
+                fill_kind: FillKind::conic(g.spread),
+                fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
+                fill_axis: g.axis(),
+            },
+        }
     }
 
     #[inline]

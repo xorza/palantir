@@ -140,7 +140,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     let draws = cmds
         .kinds
         .iter()
-        .filter(|k| matches!(k, CmdKind::DrawRect | CmdKind::DrawRectStroked))
+        .filter(|k| matches!(k, CmdKind::DrawRect))
         .count();
     assert_eq!(draws, 2, "only the two Visible frames should paint");
 }

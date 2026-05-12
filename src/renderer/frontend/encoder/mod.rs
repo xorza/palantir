@@ -1,8 +1,9 @@
-use super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
+use super::cmd_buffer::{DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
 use crate::forest::shapes::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
+use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
@@ -70,7 +71,7 @@ fn emit_one_shape(
     id: NodeId,
     owner_rect: Rect,
     shape: &ShapeRecord,
-    text_ordinal: u16,
+    text_ordinal: u32,
     out: &mut RenderCmdBuffer,
 ) {
     match shape {
@@ -97,11 +98,11 @@ fn emit_one_shape(
         } => {
             let span = layout.text_spans[id.index()];
             assert!(
-                u32::from(text_ordinal) < span.len,
+                text_ordinal < span.len,
                 "encoder text-shape ordinal {text_ordinal} out of bounds for span len {}",
                 span.len,
             );
-            let shaped = layout.text_shapes[(span.start + u32::from(text_ordinal)) as usize];
+            let shaped = layout.text_shapes[(span.start + text_ordinal) as usize];
             if shaped.key.is_invalid() {
                 tracing::trace!(?shape, "encoder: dropping text with invalid key");
                 return;
@@ -170,17 +171,35 @@ fn emit_one_shape(
             indices,
             content_hash: _,
         } => {
-            // Mesh verts are owner-local logical px; origin maps them
-            // into the parent's logical-px coords for the composer.
-            // `local_rect`'s top-left, if given, offsets within the
-            // owner; otherwise the owner's own top-left is the origin.
+            // Mesh verts are owner-local logical px; translate inline
+            // into the cmd buffer's mesh arena so the cmd buffer holds
+            // world-coord points (matches polyline). `local_rect`'s
+            // top-left, if given, offsets within the owner; otherwise
+            // the owner's own top-left is the origin.
             let origin = match local_rect {
                 None => owner_rect.min,
                 Some(lr) => owner_rect.min + lr.min,
             };
-            let verts = &tree.shapes.payloads.meshes.vertices[vertices.range()];
-            let idx = &tree.shapes.payloads.meshes.indices[indices.range()];
-            out.draw_mesh(origin, *tint, verts, idx);
+            let src_verts = &tree.shapes.payloads.meshes.vertices[vertices.range()];
+            let src_idx = &tree.shapes.payloads.meshes.indices[indices.range()];
+            let out_meshes = &mut out.shape_payloads.meshes;
+            let v_start = out_meshes.vertices.len() as u32;
+            out_meshes
+                .vertices
+                .extend(src_verts.iter().map(|v| MeshVertex {
+                    pos: v.pos + origin,
+                    color: v.color,
+                }));
+            let i_start = out_meshes.indices.len() as u32;
+            out_meshes.indices.extend_from_slice(src_idx);
+            out.draw_mesh(DrawMeshPayload {
+                tint: *tint,
+                v_start,
+                v_len: src_verts.len() as u32,
+                i_start,
+                i_len: src_idx.len() as u32,
+                ..bytemuck::Zeroable::zeroed()
+            });
         }
     }
 }
@@ -238,9 +257,6 @@ fn encode_node(
     let clip = mode.is_clip();
     let chrome = tree.chrome.get(id.index()).copied();
 
-    let paints =
-        damage_filter.is_none_or(|region| region.any_intersects(rows[id.index()].screen_rect));
-
     // Chrome paints BEFORE the clip is pushed. The clip rect is
     // deflated by the chrome's stroke width (so children don't paint
     // over the stroke), which means chrome's own stroke pixels would
@@ -251,7 +267,7 @@ fn encode_node(
     // No `is_noop` guard here: `Tree::open_node` already drops chrome
     // to `None` when the paint is invisible, so reaching this branch
     // means there's something to paint.
-    if paints && let Some(bg) = chrome {
+    if let Some(bg) = chrome {
         out.draw_rect(rect, bg.radius, &bg.fill, bg.stroke);
     }
 
@@ -299,19 +315,13 @@ fn encode_node(
         }
     }
 
-    // DamageEngine filter: skip leaf shape emission when this node's
-    // *screen* rect (layout rect projected through ancestor
-    // transforms via `cascades`) doesn't intersect the dirty region.
-    // DamageEngine rects in `damage_filter` are also screen-space, so the
-    // comparison is consistent under arbitrary transform stacks.
-    // Push/PopClip and Push/PopTransform are still emitted (above
-    // and below) so scissor groups and child transforms stay
-    // coherent. `None` filter ⇒ paint everything.
-    //
     // Clip culling (skipping leaves outside the active ancestor
     // clip) intentionally does NOT live in the encoder: cmd shape
     // would depend on screen position, complicating downstream
     // walks. The composer culls per-cmd at compose time instead.
+    // Damage filtering happens at subtree granularity above (early
+    // return when no rect intersects this node's screen rect); leaves
+    // emit unconditionally once we're past that gate.
 
     // Skip Push/PopTransform when the transform is identity —
     // composing identity is a no-op, so emitting the pair just
@@ -326,13 +336,11 @@ fn encode_node(
     // Shapes paint *outside* the owner's pan transform so they stay
     // anchored to the owner regardless of scroll offset; transform is
     // pushed/popped per child accordingly.
-    let mut text_ordinal: u16 = 0;
+    let mut text_ordinal: u32 = 0;
     for item in tree.tree_items(id) {
         match item {
             TreeItem::ShapeRecord(shape) => {
-                if paints {
-                    emit_one_shape(tree, layout, id, rect, shape, text_ordinal, out);
-                }
+                emit_one_shape(tree, layout, id, rect, shape, text_ordinal, out);
                 if matches!(shape, ShapeRecord::Text { .. }) {
                     text_ordinal += 1;
                 }
