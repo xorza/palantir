@@ -285,6 +285,7 @@ impl Tree {
     /// root if `open_frames` is empty) and make it the new tip. Root
     /// mints stamp the top of `pending_anchors` onto the new
     /// `RootSlot`; child opens don't read the stack.
+    #[profiling::function]
     pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
         let parent_frame = self.open_frames.last().copied();
         let parent = parent_frame.map(|f| f.node);
@@ -409,6 +410,7 @@ impl Tree {
             .is_some_and(|f| f.ancestor_or_self_disabled)
     }
 
+    #[profiling::function]
     pub(crate) fn close_node(&mut self) {
         let closing = self
             .open_frames
