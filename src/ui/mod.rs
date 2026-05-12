@@ -391,6 +391,13 @@ impl Ui {
         self.input.focused
     }
 
+    /// Active `Display` (physical surface size + scale factor). Read
+    /// by example/demo code that wants to inject synthetic input
+    /// coordinates without threading window dimensions through itself.
+    pub fn display(&self) -> Display {
+        self.display
+    }
+
     /// Programmatically set or clear focus. Bypasses [`FocusPolicy`].
     pub fn request_focus(&mut self, id: Option<WidgetId>) {
         self.input.focused = id;
