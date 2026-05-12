@@ -578,6 +578,94 @@ fn compose_does_not_split_consecutive_texts() {
     assert_eq!(buf.groups[0].texts, Span::new(0, 2));
 }
 
+/// Pin: a nested clip that resolves to the same scissor as its
+/// parent (a redundant `PushClip` of an equal-or-larger rect) is a
+/// no-op — accumulated overlap state must survive the push/pop pair
+/// so a later disjoint quad still batches into the open group.
+/// Without this, anything emitted between the inner Push and Pop
+/// would lose the parent's text-overlap context and a following
+/// quad could reorder over earlier text.
+#[test]
+fn compose_same_clip_push_pop_preserves_overlap_state() {
+    let buf = run(
+        |b| {
+            b.push_clip(rect(0.0, 0.0, 200.0, 200.0));
+            draw(b, rect(0.0, 0.0, 100.0, 28.0)); // node A bg
+            text(b, rect(4.0, 4.0, 90.0, 20.0)); //  node A label
+            // Redundant nested clip — same rect, no narrowing.
+            b.push_clip(rect(0.0, 0.0, 200.0, 200.0));
+            b.pop_clip();
+            // Overlapping bg after the redundant clip: must still
+            // flush against node A's label.
+            draw(b, rect(40.0, 10.0, 100.0, 28.0)); // node B bg, overlaps A's label
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.quads.len(), 2);
+    assert_eq!(buf.texts.len(), 1);
+    assert_eq!(
+        buf.groups.len(),
+        2,
+        "overlap state must survive a redundant clip Push/Pop",
+    );
+}
+
+/// Pin: a stack of `(quad, text)` row units that don't overlap each
+/// other batches into ONE group. This is the row-list / grid case —
+/// 40 rows each with a background and a label should collapse to a
+/// single `quads` batch and a single `texts` batch, not 40 groups.
+/// Overlap-aware composer: a later quad only flushes when it
+/// intersects a prior text in the same group; disjoint rows stay
+/// batched.
+#[test]
+fn compose_batches_disjoint_row_units_into_one_group() {
+    let buf = run(
+        |b| {
+            for i in 0..5 {
+                let y = (i as f32) * 40.0;
+                draw(b, rect(0.0, y, 100.0, 28.0));
+                text(b, rect(4.0, y + 4.0, 90.0, 20.0));
+            }
+        },
+        &params(1.0, UVec2::new(200, 400)),
+    );
+    assert_eq!(buf.quads.len(), 5);
+    assert_eq!(buf.texts.len(), 5);
+    assert_eq!(
+        buf.groups.len(),
+        1,
+        "disjoint (quad,text) rows must batch into one group",
+    );
+    assert_eq!(buf.groups[0].quads, Span::new(0, 5));
+    assert_eq!(buf.groups[0].texts, Span::new(0, 5));
+}
+
+/// Pin: when a later quad DOES overlap a prior text (the node-editor
+/// case — node B's chrome lands on node A's label), the composer
+/// must flush so paint order is preserved. Same fixture shape as the
+/// row-batching test but the second row's chrome is offset to land
+/// on the first row's label.
+#[test]
+fn compose_flushes_when_later_quad_overlaps_prior_text() {
+    let buf = run(
+        |b| {
+            draw(b, rect(0.0, 0.0, 100.0, 28.0)); // node A chrome
+            text(b, rect(4.0, 4.0, 90.0, 20.0)); //  node A label
+            draw(b, rect(40.0, 10.0, 100.0, 28.0)); // node B chrome, overlaps A's label
+            text(b, rect(44.0, 14.0, 90.0, 20.0)); // node B label
+        },
+        &params(1.0, UVec2::new(400, 200)),
+    );
+    assert_eq!(buf.quads.len(), 2);
+    assert_eq!(buf.texts.len(), 2);
+    assert_eq!(
+        buf.groups.len(),
+        2,
+        "overlapping quad-after-text must start a new group",
+    );
+}
+
 /// Pin: `Quad → Quad → Text` fits in one group. The text comes after
 /// both quads and renders on top of both — the common case (button
 /// background + button stroke + label).

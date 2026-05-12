@@ -287,6 +287,7 @@ impl QuadPipeline {
     /// `GradientCpuAtlas` for why per-row uploads aren't worth the API
     /// overhead. Called from `WgpuBackend::submit` before the render
     /// pass starts.
+    #[profiling::function]
     pub(crate) fn upload_gradients(&self, queue: &wgpu::Queue, atlas: &GradientCpuAtlas) {
         let Some(bytes) = atlas.flush() else {
             return;
@@ -314,6 +315,7 @@ impl QuadPipeline {
 
     /// Lazy-build the stencil-aware variants. Idempotent; called from
     /// the rounded-clip render path before the first `set_pipeline`.
+    #[profiling::function]
     pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
         if self.stencil.is_none() {
             self.stencil = Some(self.build_stencil_pipelines(device));
@@ -421,6 +423,7 @@ impl QuadPipeline {
         }
     }
 
+    #[profiling::function]
     pub(crate) fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, quads: &[Quad]) {
         if quads.is_empty() {
             return;
@@ -465,6 +468,7 @@ impl QuadPipeline {
     /// last frame's pixels. Alpha is forced because a translucent
     /// pre-clear would blend against last frame's pixels and defeat
     /// the fringe-fix.
+    #[profiling::function]
     pub(crate) fn upload_clear(&mut self, queue: &wgpu::Queue, viewport: Vec2, color: Color) {
         let q = Quad {
             rect: Rect {
@@ -522,6 +526,7 @@ impl QuadPipeline {
     /// have run [`Self::ensure_stencil`] earlier this frame. After
     /// this call, `self.mask_indices` parallels `groups`: `Some(j)`
     /// at index `i` says "group `i`'s mask is mask quad `j`."
+    #[profiling::function]
     pub(crate) fn stage_masks(
         &mut self,
         device: &wgpu::Device,

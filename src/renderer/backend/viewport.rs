@@ -39,6 +39,7 @@ pub(super) fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Op
 /// rect clamps to zero, the list ends up empty and the caller degrades
 /// the frame to a Full repaint (correct, just wasteful — won't happen
 /// in practice unless damage lies entirely outside the surface).
+#[profiling::function]
 pub(super) fn build_damage_scissors(
     out: &mut tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]>,
     damage: Damage,
