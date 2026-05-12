@@ -1,5 +1,6 @@
 pub(crate) mod cascade;
 pub(crate) mod damage;
+pub(crate) mod frame_report;
 pub(crate) mod frame_state;
 pub(crate) mod state;
 
@@ -16,11 +17,11 @@ use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::Mesh;
-use crate::renderer::frontend::FrameReport;
 use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
 use crate::ui::damage::{Damage, DamageEngine};
+use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
