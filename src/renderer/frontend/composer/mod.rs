@@ -7,6 +7,7 @@ use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
+use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{DrawGroup, MeshDraw, RenderBuffer, RoundedClip, TextRun};
 use glam::{UVec2, Vec2};
@@ -318,7 +319,7 @@ impl Composer {
                         let key = &cmds.gradient_lut_keys[fill_grad_idx as usize];
                         out.gradient_atlas.register_stops(&key.stops, key.interp)
                     } else {
-                        0
+                        LutRow::FALLBACK
                     };
                     group.push_quad(
                         out,

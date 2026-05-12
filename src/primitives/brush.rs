@@ -1,5 +1,6 @@
 use crate::animation::animatable::Animatable;
 use crate::primitives::color::{Color, Srgb8};
+use crate::primitives::num::canon_bits;
 use glam::Vec2;
 use tinyvec::ArrayVec;
 
@@ -116,9 +117,10 @@ pub struct LinearGradient {
 
 impl std::hash::Hash for LinearGradient {
     /// Hand-written: f32 fields (`angle`, per-stop `offset`) need
-    /// canonical bit encoding so `-0.0` / `+0.0` and NaN bit patterns
-    /// don't fragment cache keys. Drives `GradientCpuAtlas::register`
-    /// row addressing.
+    /// canonical bit encoding via `canon_bits` so `-0.0` / `+0.0` and
+    /// NaN bit patterns don't fragment cache keys. Used by command-
+    /// buffer dedup; the atlas hashes `(stops, interp)` separately
+    /// (variant-agnostic) in `gradient_atlas::hash_stops`.
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write_u32(canon_bits(self.angle));
         state.write_u8(self.spread as u8);
@@ -442,19 +444,6 @@ impl From<Color> for Brush {
     #[inline]
     fn from(c: Color) -> Self {
         Brush::Solid(c)
-    }
-}
-
-/// Canonicalize an `f32` so equal values hash identically: collapse
-/// `-0.0` to `+0.0` and every NaN to a single quiet-NaN bit pattern.
-#[inline]
-fn canon_bits(f: f32) -> u32 {
-    if f.is_nan() {
-        f32::NAN.to_bits()
-    } else if f == 0.0 {
-        0u32
-    } else {
-        f.to_bits()
     }
 }
 
