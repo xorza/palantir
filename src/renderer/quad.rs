@@ -38,6 +38,19 @@ impl FillKind {
         Self(1 | ((spread as u32) << 8))
     }
 
+    /// Radial-gradient marker. `fill_axis` carries `(cx, cy, rx, ry)`
+    /// in object-space 0..1 coords; the shader projects each fragment
+    /// onto the elliptical radius to derive `t`.
+    pub(crate) const fn radial(spread: Spread) -> Self {
+        Self(2 | ((spread as u32) << 8))
+    }
+
+    /// Conic-gradient marker. `fill_axis` carries `(cx, cy,
+    /// start_angle, _)`; the shader uses `atan2` to derive `t`.
+    pub(crate) const fn conic(spread: Spread) -> Self {
+        Self(3 | ((spread as u32) << 8))
+    }
+
     /// `true` when the kind tag is `0`.
     #[allow(dead_code)] // used in tests + future is_solid fast paths
     #[inline]
@@ -45,11 +58,13 @@ impl FillKind {
         (self.0 & 0xFF) == 0
     }
 
-    /// `true` when the kind tag is `1`. Used by the composer to decide
-    /// whether to register the gradient with the LUT atlas.
+    /// `true` for any gradient variant. Used by the composer to decide
+    /// whether to register the gradient stops with the LUT atlas. All
+    /// gradient variants share the same atlas keying (stops + interp);
+    /// only the per-fragment `t` derivation differs.
     #[inline]
-    pub(crate) const fn is_linear(self) -> bool {
-        (self.0 & 0xFF) == 1
+    pub(crate) const fn is_gradient(self) -> bool {
+        matches!(self.0 & 0xFF, 1..=3)
     }
 }
 

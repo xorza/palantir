@@ -12,14 +12,19 @@ struct Viewport {
 const ATLAS_ROWS_F: f32 = 256.0;
 
 // Brush kind low byte:
-//   0 = solid (use `fill` directly)
-//   1 = linear gradient (sample `gradient_tex` via `fill_axis` projection)
+//   0 = solid  (use `fill` directly)
+//   1 = linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
+//   2 = radial (sample LUT via `fill_axis = (cx, cy, rx, ry)`)
+//   3 = conic  (sample LUT via `fill_axis = (cx, cy, start_angle, _)`)
 const BRUSH_KIND_SOLID:  u32 = 0u;
 const BRUSH_KIND_LINEAR: u32 = 1u;
-// Spread mode (bits 8..16 of fill_kind), only meaningful when kind == 1.
+const BRUSH_KIND_RADIAL: u32 = 2u;
+const BRUSH_KIND_CONIC:  u32 = 3u;
+// Spread mode (bits 8..16 of fill_kind), only meaningful for gradients.
 const SPREAD_PAD:     u32 = 0u;
 const SPREAD_REPEAT:  u32 = 1u;
 const SPREAD_REFLECT: u32 = 2u;
+const TAU: f32 = 6.2831853;
 
 struct VertexOut {
     @builtin(position) clip:         vec4<f32>,
@@ -110,17 +115,39 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
     if (kind == BRUSH_KIND_SOLID) {
         return in.fill;
     }
-    // Linear gradient.
     let spread  = (in.fill_kind >> 8u) & 0xFFu;
     let local01 = in.local / in.size;
-    let axis    = in.fill_axis.xy;
-    let t0      = in.fill_axis.z;
-    let t1      = in.fill_axis.w;
-    let raw     = dot(local01, axis);
-    let span    = t1 - t0;
-    let t01     = select(0.0, (raw - t0) / span, abs(span) > 1e-6);
-    let t       = apply_spread(t01, spread);
-    let v       = (f32(in.fill_lut_row) + 0.5) / ATLAS_ROWS_F;
+    var t01: f32;
+    if (kind == BRUSH_KIND_LINEAR) {
+        // Linear: project local01 onto the gradient direction, remap
+        // (raw - t0) / (t1 - t0) → 0..1.
+        let axis = in.fill_axis.xy;
+        let t0   = in.fill_axis.z;
+        let t1   = in.fill_axis.w;
+        let raw  = dot(local01, axis);
+        let span = t1 - t0;
+        t01 = select(0.0, (raw - t0) / span, abs(span) > 1e-6);
+    } else if (kind == BRUSH_KIND_RADIAL) {
+        // Radial: distance from `center` measured in `radius` units.
+        // `t = 1.0` at the elliptical edge of the radius vector.
+        let center = in.fill_axis.xy;
+        let radius = in.fill_axis.zw;
+        let rx = select(1.0, radius.x, abs(radius.x) > 1e-6);
+        let ry = select(1.0, radius.y, abs(radius.y) > 1e-6);
+        let d  = (local01 - center) / vec2<f32>(rx, ry);
+        t01 = length(d);
+    } else {
+        // Conic: sweep around `center`, starting at `start_angle`
+        // (radians, CCW). atan2 returns -π..π; the +1.0 then fract
+        // wraps to 0..1 in a single step regardless of sign.
+        let center      = in.fill_axis.xy;
+        let start_angle = in.fill_axis.z;
+        let p           = local01 - center;
+        let theta       = atan2(p.y, p.x);
+        t01 = fract((theta - start_angle) / TAU + 1.0);
+    }
+    let t = apply_spread(t01, spread);
+    let v = (f32(in.fill_lut_row) + 0.5) / ATLAS_ROWS_F;
     return textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
 }
 

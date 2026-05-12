@@ -3,8 +3,8 @@
 
 use glam::{UVec2, Vec2};
 use palantir::{
-    Background, Brush, Button, Color, Configure, Corners, Frame, LineCap, LineJoin, LinearGradient,
-    Panel, Rect, Shape, Sizing, Srgb8, Stroke,
+    Background, Brush, Button, Color, Configure, ConicGradient, Corners, Frame, LineCap, LineJoin,
+    LinearGradient, Panel, RadialGradient, Rect, Shape, Sizing, Srgb8, Stroke,
 };
 
 use crate::diff::Tolerance;
@@ -214,6 +214,57 @@ fn showcase_gradients_tab_matches_golden() {
             });
     });
     assert_matches_golden("showcase_gradients_tab", &img, Tolerance::default());
+}
+
+/// Pins the radial + conic shader paths end-to-end. Two side-by-side
+/// frames: a centred radial (yellow core fading to navy) and a 4-stop
+/// conic colour wheel. Mismatch flags drift in `eval_fill`'s radial /
+/// conic branches, the atlas (stops, interp) keying, or the
+/// `fill_axis` payload packing.
+#[test]
+fn radial_and_conic_gradient_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(320, 160), 1.0, DARK_BG, |ui| {
+        Panel::hstack()
+            .auto_id()
+            .gap(16.0)
+            .padding(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                let r =
+                    RadialGradient::two_stop_centered(Srgb8::hex(0xfacc15), Srgb8::hex(0x1a1a2e));
+                Frame::new()
+                    .id_salt("radial")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .background(Background {
+                        fill: Brush::Radial(r),
+                        radius: Corners::all(8.0),
+                        ..Default::default()
+                    })
+                    .show(ui);
+                let c = ConicGradient::new(
+                    glam::Vec2::splat(0.5),
+                    0.0,
+                    [
+                        palantir::Stop::new(0.0, Srgb8::hex(0xff5e44)),
+                        palantir::Stop::new(0.25, Srgb8::hex(0xfacc15)),
+                        palantir::Stop::new(0.5, Srgb8::hex(0x46c46c)),
+                        palantir::Stop::new(0.75, Srgb8::hex(0x4c5cdb)),
+                        palantir::Stop::new(1.0, Srgb8::hex(0xff5e44)),
+                    ],
+                );
+                Frame::new()
+                    .id_salt("conic")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .background(Background {
+                        fill: Brush::Conic(c),
+                        radius: Corners::all(8.0),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
+    });
+    assert_matches_golden("radial_and_conic_gradient", &img, Tolerance::default());
 }
 
 /// Pins the rounded-clip stencil path. Layered: full-canvas pink, then

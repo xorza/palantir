@@ -314,9 +314,9 @@ impl Composer {
                     // pointing at the same content (same gradient on
                     // multiple panels → one bake). Solid passes
                     // through with the row sentinel'd to 0.
-                    let fill_lut_row = if fill_kind.is_linear() {
-                        let g = &cmds.linear_gradients[fill_grad_idx as usize];
-                        out.gradient_atlas.register(g)
+                    let fill_lut_row = if fill_kind.is_gradient() {
+                        let key = &cmds.gradient_lut_keys[fill_grad_idx as usize];
+                        out.gradient_atlas.register_stops(&key.stops, key.interp)
                     } else {
                         0
                     };

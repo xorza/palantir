@@ -24,7 +24,7 @@
 //! 4-byte-only-aligned offset.
 
 use crate::forest::shapes::ShapePayloads;
-use crate::primitives::brush::{Brush, FillAxis, LinearGradient};
+use crate::primitives::brush::{Brush, FillAxis, Interp, MAX_STOPS, Stop};
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
@@ -33,6 +33,7 @@ use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
 use glam::Vec2;
+use tinyvec::ArrayVec;
 
 /// Sentinel for "this payload's fill is solid, no gradient registered."
 /// Composer skips the `linear_gradients` lookup when it sees this.
@@ -175,12 +176,24 @@ pub(crate) struct RenderCmdBuffer {
     /// pins the composer's contract — `&RenderCmdBuffer → RenderBuffer`
     /// with no recording-state reach-back. See [`ShapePayloads`].
     pub(crate) shape_payloads: ShapePayloads,
-    /// Per-frame arena of `LinearGradient` values referenced by
+    /// Per-frame arena of gradient LUT keys referenced by
     /// `DrawRect*Payload::fill_grad_idx`. Composer reads through this
     /// to register the gradient with the LUT atlas and pack the
-    /// resulting row id into `Quad`. Cleared every frame; capacity
-    /// retained — steady-state alloc-free.
-    pub(crate) linear_gradients: Vec<LinearGradient>,
+    /// resulting row id into `Quad`. Variant-agnostic: linear / radial
+    /// / conic gradients all push a `GradientLutKey { stops, interp }`
+    /// — the per-fragment `t` derivation lives entirely in the shader,
+    /// driven by `fill_kind` + `fill_axis`. Cleared every frame;
+    /// capacity retained — steady-state alloc-free.
+    pub(crate) gradient_lut_keys: Vec<GradientLutKey>,
+}
+
+/// Per-frame entry the composer hands to the LUT atlas. Geometry has
+/// already been packed into the cmd's `FillAxis`; only the bake inputs
+/// survive here.
+#[derive(Clone, Debug)]
+pub(crate) struct GradientLutKey {
+    pub(crate) stops: ArrayVec<[Stop; MAX_STOPS]>,
+    pub(crate) interp: Interp,
 }
 
 impl RenderCmdBuffer {
@@ -189,7 +202,7 @@ impl RenderCmdBuffer {
         self.starts.clear();
         self.data.clear();
         self.shape_payloads.clear();
-        self.linear_gradients.clear();
+        self.gradient_lut_keys.clear();
     }
 
     #[inline]
@@ -223,21 +236,33 @@ impl RenderCmdBuffer {
     #[inline]
     pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: &Brush, stroke: Stroke) {
         // Decompose the brush into Pod fields. Solid: write `fill` and
-        // sentinel-out the gradient slot. Linear: zero `fill`, push the
-        // gradient into the per-frame arena, encode kind + spread +
-        // axis into the metadata fields. Stroke stays solid-only —
-        // gradient strokes are a slice-2 non-goal.
+        // sentinel-out the gradient slot. Gradient: zero `fill`, push
+        // the LUT key (stops + interp) into the per-frame arena, encode
+        // kind + spread + per-variant geometry into `fill_axis`.
+        // Stroke stays solid-only — gradient strokes are a non-goal.
         let (fill_color, fill_kind, fill_grad_idx, fill_axis) = match fill {
             Brush::Solid(c) => (*c, FillKind::SOLID, NO_GRAD_IDX, FillAxis::ZERO),
             Brush::Linear(g) => {
-                let idx = self.linear_gradients.len() as u32;
-                self.linear_gradients.push(*g);
+                let idx = self.push_gradient_lut_key(g.stops, g.interp);
                 (
                     Color::TRANSPARENT,
                     FillKind::linear(g.spread),
                     idx,
                     g.axis(),
                 )
+            }
+            Brush::Radial(g) => {
+                let idx = self.push_gradient_lut_key(g.stops, g.interp);
+                (
+                    Color::TRANSPARENT,
+                    FillKind::radial(g.spread),
+                    idx,
+                    g.axis(),
+                )
+            }
+            Brush::Conic(g) => {
+                let idx = self.push_gradient_lut_key(g.stops, g.interp);
+                (Color::TRANSPARENT, FillKind::conic(g.spread), idx, g.axis())
             }
         };
 
@@ -322,6 +347,14 @@ impl RenderCmdBuffer {
     pub(crate) fn draw_polyline(&mut self, payload: DrawPolylinePayload) {
         self.record_start(CmdKind::DrawPolyline);
         write_pod(&mut self.data, payload);
+    }
+
+    #[inline]
+    fn push_gradient_lut_key(&mut self, stops: ArrayVec<[Stop; MAX_STOPS]>, interp: Interp) -> u32 {
+        let idx = self.gradient_lut_keys.len() as u32;
+        self.gradient_lut_keys
+            .push(GradientLutKey { stops, interp });
+        idx
     }
 
     #[inline]

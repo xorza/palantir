@@ -268,7 +268,7 @@ impl WgpuBackend {
         // gradients) drain an empty dirty flag and do nothing; first
         // frame uploads row 0's magenta fallback plus any baked rows
         // composer queued. Has to run before the render pass starts —
-        // any quad with `fill_kind.is_linear()` samples this texture.
+        // any quad with `fill_kind.is_gradient()` samples this texture.
         self.quad
             .upload_gradients(&self.queue, &buffer.gradient_atlas);
 

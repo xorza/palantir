@@ -429,7 +429,10 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     let mut out = RenderBuffer::default();
     composer.compose(&buffer, params(1.0, UVec2::new(100, 100)), &mut out);
     let q = &out.quads[0];
-    assert!(q.fill_kind.is_linear(), "linear quad carries kind=linear");
+    assert!(
+        q.fill_kind.is_gradient(),
+        "linear quad carries gradient kind"
+    );
     // Spread bits aren't exposed as a public accessor on FillKind; pin
     // identity via the matching constructor — same bit pattern reaches
     // the shader regardless.

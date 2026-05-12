@@ -1,6 +1,7 @@
-//! CPU side of the gradient LUT atlas. This file currently exports
-//! only the bake function ([`bake_linear`]); step 2 of the brushes
-//! slice-2 plan adds the [`GradientCpuAtlas`] struct on top.
+//! CPU side of the gradient LUT atlas. Bakes stop sequences into LUT
+//! rows shared across linear / radial / conic gradient variants; the
+//! shader does the per-fragment `t` derivation. See [`bake_stops`] and
+//! [`GradientCpuAtlas::register_stops`].
 //!
 //! ## Bake output convention
 //!
@@ -23,10 +24,10 @@
 //!   Avoids the muddy midpoint without needing a tweaked palette.
 
 use crate::common::hash::Hasher as FxHasher;
-use crate::primitives::brush::{Interp, LinearGradient, Stop};
+use crate::primitives::brush::{Interp, MAX_STOPS, Stop};
 use crate::primitives::color::{Color, Srgb8, linear_to_oklab, oklab_to_linear};
 use std::cell::Cell;
-use std::hash::{Hash, Hasher};
+use std::hash::Hasher;
 
 /// Number of rows in the LUT atlas texture. One row per distinct
 /// gradient currently in use. Row 0 is reserved as a debug-magenta
@@ -53,28 +54,28 @@ pub(crate) const LUT_ROW_BYTES: usize = LUT_ROW_TEXELS * 4;
 /// (`Pad`/`Repeat`/`Reflect`) are applied **shader-side** on the
 /// sampling `t` coordinate, not at bake time — one row serves all
 /// spread modes for the same gradient.
-pub(crate) fn bake_linear(g: &LinearGradient, out: &mut [u8; LUT_ROW_BYTES]) {
+pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut [u8; LUT_ROW_BYTES]) {
     // Sort stops by offset into a stack scratch. 8 elements max, simple
     // insertion sort beats any allocation. Equal offsets stay in input
     // order (stable) so a hard-transition pair (`(0.5, A), (0.5, B)`)
     // picks `A` on the left, `B` on the right.
-    let mut stops: [Stop; crate::primitives::brush::MAX_STOPS] = Default::default();
-    let n = g.stops.len();
-    stops[..n].copy_from_slice(&g.stops[..]);
+    let mut sorted: [Stop; MAX_STOPS] = Default::default();
+    let n = stops.len();
+    sorted[..n].copy_from_slice(stops);
     for i in 1..n {
         let mut j = i;
-        while j > 0 && stops[j - 1].offset > stops[j].offset {
-            stops.swap(j - 1, j);
+        while j > 0 && sorted[j - 1].offset > sorted[j].offset {
+            sorted.swap(j - 1, j);
             j -= 1;
         }
     }
 
-    let first_color = stops[0].color;
-    let last_color = stops[n - 1].color;
+    let first_color = sorted[0].color;
+    let last_color = sorted[n - 1].color;
 
     for i in 0..LUT_ROW_TEXELS {
         let t = i as f32 / (LUT_ROW_TEXELS - 1) as f32;
-        let texel = lerp_at(&stops[..n], first_color, last_color, t, g.interp);
+        let texel = lerp_at(&sorted[..n], first_color, last_color, t, interp);
         let off = i * 4;
         out[off] = texel.r;
         out[off + 1] = texel.g;
@@ -245,12 +246,13 @@ impl GradientCpuAtlas {
         self.dirty.set(true);
     }
 
-    /// Find-or-bake the row for `g`. Returns the row id (in
-    /// `1..ATLAS_ROWS`). The same gradient registered repeatedly across
-    /// frames returns the same row without re-baking; a fresh gradient
-    /// gets the next slot via content-hash + linear probing.
-    pub(crate) fn register(&mut self, g: &LinearGradient) -> u32 {
-        let content_hash = hash_gradient(g);
+    /// Find-or-bake the row for the gradient identified by `(stops,
+    /// interp)`. Variant-agnostic: linear/radial/conic gradients with
+    /// matching stops + interp share one row (the geometry differs in
+    /// per-fragment `t`, but the LUT only depends on the colour-stop
+    /// sequence). Returns the row id in `1..ATLAS_ROWS`.
+    pub(crate) fn register_stops(&mut self, stops: &[Stop], interp: Interp) -> u32 {
+        let content_hash = hash_stops(stops, interp);
         // Probe starting at `1 + (hash mod 255)` so row 0 is never
         // claimed by a real gradient.
         let start = 1 + (content_hash % (ATLAS_ROWS as u64 - 1)) as u32;
@@ -260,7 +262,7 @@ impl GradientCpuAtlas {
                 Some(h) if h == content_hash => return row,
                 None => {
                     // Free slot — bake into it.
-                    bake_linear(g, &mut self.baked[row as usize]);
+                    bake_stops(stops, interp, &mut self.baked[row as usize]);
                     self.rows[row as usize] = Some(content_hash);
                     self.dirty.set(true);
                     return row;
@@ -290,20 +292,37 @@ impl GradientCpuAtlas {
     }
 }
 
-/// Content hash of a `LinearGradient`. Stable across frames given
-/// identical content. Drives row-id derivation in `register`; identical
-/// content always picks the same probe start, so the same gradient
-/// reuses the same row.
+/// Content hash of the bake-relevant gradient inputs: the stop list
+/// and the interpolation space. Stable across frames given identical
+/// content; variant-agnostic so the same stops baked under the same
+/// interp reuse one row regardless of geometry (linear angle, radial
+/// centre/radius, conic centre/start-angle).
 #[inline]
-fn hash_gradient(g: &LinearGradient) -> u64 {
+fn hash_stops(stops: &[Stop], interp: Interp) -> u64 {
     let mut h = FxHasher::new();
-    g.hash(&mut h);
+    h.write_u8(interp as u8);
+    h.write_u8(stops.len() as u8);
+    for s in stops {
+        let bits = if s.offset.is_nan() {
+            f32::NAN.to_bits()
+        } else if s.offset == 0.0 {
+            0
+        } else {
+            s.offset.to_bits()
+        };
+        h.write_u32(bits);
+        h.write_u8(s.color.r);
+        h.write_u8(s.color.g);
+        h.write_u8(s.color.b);
+        h.write_u8(s.color.a);
+    }
     h.finish()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::primitives::brush::LinearGradient;
 
     fn texel(out: &[u8; LUT_ROW_BYTES], i: usize) -> Srgb8 {
         Srgb8 {
@@ -323,7 +342,7 @@ mod tests {
     fn srgb_midpoint_black_to_white_is_128() {
         let g = LinearGradient::two_stop(0.0, Srgb8::BLACK, Srgb8::WHITE).with_interp(Interp::Srgb);
         let mut out = [0u8; LUT_ROW_BYTES];
-        bake_linear(&g, &mut out);
+        bake_stops(&g.stops, g.interp, &mut out);
         // Texel index 127.5 doesn't exist; check both bracket texels.
         // 127/255 ≈ 0.498 → ~127; 128/255 ≈ 0.502 → ~128.
         let mid = texel(&out, 127);
@@ -347,7 +366,7 @@ mod tests {
         let g =
             LinearGradient::two_stop(0.0, Srgb8::BLACK, Srgb8::WHITE).with_interp(Interp::Linear);
         let mut out = [0u8; LUT_ROW_BYTES];
-        bake_linear(&g, &mut out);
+        bake_stops(&g.stops, g.interp, &mut out);
         let mid = texel(&out, 127);
         assert!(
             mid.r >= 180,
@@ -370,7 +389,7 @@ mod tests {
         let green = Srgb8::rgb(0, 255, 0);
         let g = LinearGradient::two_stop(0.0, red, green).with_interp(Interp::Oklab);
         let mut out = [0u8; LUT_ROW_BYTES];
-        bake_linear(&g, &mut out);
+        bake_stops(&g.stops, g.interp, &mut out);
         let mid = texel(&out, 127);
         // Both channels should be non-trivial at midpoint — Oklab
         // hits a yellowish midpoint, not the dark muddy brown that
@@ -394,7 +413,7 @@ mod tests {
         for interp in [Interp::Srgb, Interp::Linear, Interp::Oklab] {
             let g = LinearGradient::two_stop(0.0, c0, c1).with_interp(interp);
             let mut out = [0u8; LUT_ROW_BYTES];
-            bake_linear(&g, &mut out);
+            bake_stops(&g.stops, g.interp, &mut out);
             let first = texel(&out, 0);
             let last = texel(&out, LUT_ROW_TEXELS - 1);
             // sRGB matches exactly; linear/Oklab roundtrip through f32
@@ -432,7 +451,7 @@ mod tests {
         )
         .with_interp(Interp::Srgb);
         let mut out = [0u8; LUT_ROW_BYTES];
-        bake_linear(&g, &mut out);
+        bake_stops(&g.stops, g.interp, &mut out);
         // Texel at i=64 ≈ t=0.251 → halfway between stops 0 and 1.
         // r channel: lerp(0, 255, 0.502) ≈ 128.
         let q = texel(&out, 64);
@@ -453,7 +472,7 @@ mod tests {
         assert_eq!(LUT_ROW_TEXELS, 256);
         let g = LinearGradient::two_stop(0.0, Srgb8::rgb(1, 2, 3), Srgb8::rgb(4, 5, 6));
         let mut out = [0u8; LUT_ROW_BYTES];
-        bake_linear(&g, &mut out);
+        bake_stops(&g.stops, g.interp, &mut out);
         // First texel: explicit byte order check.
         assert_eq!(&out[..4], &[1, 2, 3, 255]);
         // Last texel.
@@ -471,7 +490,7 @@ mod tests {
         ];
         let g = LinearGradient::new(0.0, stops);
         let mut out = [0u8; LUT_ROW_BYTES];
-        bake_linear(&g, &mut out);
+        bake_stops(&g.stops, g.interp, &mut out);
         // First texel should be blue (the stop at 0.0), last should be red.
         let first = texel(&out, 0);
         let last = texel(&out, LUT_ROW_TEXELS - 1);
@@ -492,7 +511,7 @@ mod tests {
         ];
         let g = LinearGradient::new(0.0, stops);
         let mut out = [0u8; LUT_ROW_BYTES];
-        bake_linear(&g, &mut out);
+        bake_stops(&g.stops, g.interp, &mut out);
         // Texel 0 (t=0): clamped to first stop colour.
         assert_eq!(texel(&out, 0).g, 255);
         // Texel 255 (t=1): clamped to last stop colour.
@@ -501,8 +520,26 @@ mod tests {
 
     // ----- GradientCpuAtlas tests ------------------------------------
 
+    /// Vary the *stops* (the only thing the row key now depends on)
+    /// across calls. Geometry (angle/centre/etc.) is now atlas-key
+    /// irrelevant — varying angle would silently produce row reuse
+    /// under the (stops, interp) keying.
     fn distinct_grad(seed: f32) -> LinearGradient {
-        LinearGradient::two_stop(seed, Srgb8::rgb(0xff, 0, 0), Srgb8::rgb(0, 0xff, 0))
+        // FxHash on the seed bits gives well-distributed 32-bit chunks
+        // for the (r, g, b) bytes, so different seeds produce visibly
+        // different stop colours and the (stops, interp) hash lands in
+        // distinct atlas rows.
+        let mut h = FxHasher::new();
+        h.write_u32(seed.to_bits());
+        let v = h.finish();
+        let r = v as u8;
+        let g = (v >> 8) as u8;
+        let b = (v >> 16) as u8;
+        LinearGradient::two_stop(0.0, Srgb8::rgb(r, g, b), Srgb8::rgb(0, 0xff, 0))
+    }
+
+    fn register_for(atlas: &mut GradientCpuAtlas, g: LinearGradient) -> u32 {
+        atlas.register_stops(&g.stops, g.interp)
     }
 
     /// Row 0 is reserved magenta. Created at construction; dirty list
@@ -527,7 +564,7 @@ mod tests {
     fn register_returns_nonzero_row_and_marks_dirty() {
         let mut atlas = GradientCpuAtlas::default();
         let g = distinct_grad(0.1);
-        let row = atlas.register(&g);
+        let row = atlas.register_stops(&g.stops, g.interp);
         assert!(
             (1..ATLAS_ROWS).contains(&row),
             "row {row} must be in 1..ATLAS_ROWS"
@@ -541,11 +578,11 @@ mod tests {
     fn register_same_gradient_twice_reuses_row() {
         let mut atlas = GradientCpuAtlas::default();
         let g = distinct_grad(0.5);
-        let r1 = atlas.register(&g);
+        let r1 = atlas.register_stops(&g.stops, g.interp);
         // Flush so subsequent registrations of the same content can
         // be detected as no-ops.
         let _ = atlas.flush();
-        let r2 = atlas.register(&g);
+        let r2 = atlas.register_stops(&g.stops, g.interp);
         assert_eq!(r1, r2);
         assert!(
             !atlas.dirty.get(),
@@ -559,8 +596,8 @@ mod tests {
     fn register_distinct_gradients_get_distinct_rows() {
         let mut atlas = GradientCpuAtlas::default();
         let _ = atlas.flush();
-        let ra = atlas.register(&distinct_grad(0.1));
-        let rb = atlas.register(&distinct_grad(0.2));
+        let ra = register_for(&mut atlas, distinct_grad(0.1));
+        let rb = register_for(&mut atlas, distinct_grad(0.2));
         assert_ne!(ra, rb);
         assert!(atlas.dirty.get());
     }
@@ -577,7 +614,7 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for i in 0..(ATLAS_ROWS - 1) {
             let g = distinct_grad(i as f32 * 0.01);
-            let row = atlas.register(&g);
+            let row = atlas.register_stops(&g.stops, g.interp);
             assert!(
                 seen.insert(row),
                 "row {row} reused across distinct gradients"
@@ -595,10 +632,10 @@ mod tests {
     fn register_panics_when_atlas_full() {
         let mut atlas = GradientCpuAtlas::default();
         for i in 0..(ATLAS_ROWS - 1) {
-            atlas.register(&distinct_grad(i as f32 * 0.01));
+            register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
         }
         // 256th distinct gradient (255 real slots already occupied).
-        atlas.register(&distinct_grad(9999.0));
+        register_for(&mut atlas, distinct_grad(9999.0));
     }
 
     /// `flush` returns `Some(...)` once after a register, then `None`
@@ -606,12 +643,31 @@ mod tests {
     #[test]
     fn flush_returns_bytes_once_then_none() {
         let mut atlas = GradientCpuAtlas::default();
-        atlas.register(&distinct_grad(0.3));
+        register_for(&mut atlas, distinct_grad(0.3));
         assert!(atlas.flush().is_some(), "dirty atlas must yield bytes");
         assert!(
             atlas.flush().is_none(),
             "second flush without register is none"
         );
+    }
+
+    /// (stops, interp) keying is variant-agnostic: a linear and a
+    /// radial gradient with matching stops + interp share one atlas
+    /// row. Geometry differs in the shader (per-fragment `t`), but the
+    /// LUT bake doesn't depend on it.
+    #[test]
+    fn register_stops_dedups_across_variants() {
+        let mut atlas = GradientCpuAtlas::default();
+        let stops = [
+            Stop::new(0.0, Srgb8::rgb(255, 64, 0)),
+            Stop::new(1.0, Srgb8::rgb(0, 128, 255)),
+        ];
+        let r_linear = atlas.register_stops(&stops, Interp::Oklab);
+        let r_radial = atlas.register_stops(&stops, Interp::Oklab);
+        assert_eq!(r_linear, r_radial);
+        // Same stops, different interp → different row.
+        let r_other_interp = atlas.register_stops(&stops, Interp::Linear);
+        assert_ne!(r_linear, r_other_interp);
     }
 
     /// Idle atlas (no registrations beyond magenta init) hits the

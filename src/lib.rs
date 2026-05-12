@@ -43,7 +43,9 @@ pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use palantir_anim_derive::Animatable;
-pub use primitives::brush::{Brush, Interp, LinearGradient, Spread, Stop};
+pub use primitives::brush::{
+    Brush, ConicGradient, Interp, LinearGradient, RadialGradient, Spread, Stop,
+};
 pub use primitives::color::Color;
 pub use primitives::color::Srgb8;
 pub use primitives::corners::Corners;
