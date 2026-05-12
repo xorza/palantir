@@ -8,6 +8,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::ui::Ui;
+use palantir_anim_derive::Animatable;
 
 // Default palette: Ayu Mirage High Contrast. Mirrors
 // `assets/reference-palette.toml` — that file is the hand-edited source
@@ -248,7 +249,7 @@ pub struct WidgetLook {
 /// `text.line_height_mult` are snap-carried from the picked
 /// `WidgetLook` (or the fallback) — see `TextStyle`'s
 /// `#[animate(snap)]` markings.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Animatable)]
 pub struct AnimatedLook {
     pub background: Background,
     pub text: TextStyle,
@@ -264,9 +265,11 @@ impl AnimatedLook {
 }
 
 impl WidgetLook {
-    /// Slots [`Self::animate`] reserves on the widget's id.
-    const SLOT_BG: AnimSlot = AnimSlot("look.bg");
-    const SLOT_TEXT: AnimSlot = AnimSlot("look.text");
+    /// Slot [`Self::animate`] reserves on the widget's id. One row
+    /// per widget animates the whole resolved look (background + text)
+    /// — halves `Ui::animate` call traffic compared to per-component
+    /// slots.
+    const SLOT_LOOK: AnimSlot = AnimSlot("look");
 
     /// Resolve the look to flat animated values. `Background` (fill +
     /// stroke) animates as one slot; `TextStyle` (color animated,
@@ -283,14 +286,11 @@ impl WidgetLook {
         fallback_text: TextStyle,
         spec: Option<AnimSpec>,
     ) -> AnimatedLook {
-        let background = ui.animate(id, Self::SLOT_BG, self.background.unwrap_or_default(), spec);
-        let text = ui.animate(
-            id,
-            Self::SLOT_TEXT,
-            self.text.unwrap_or(fallback_text),
-            spec,
-        );
-        AnimatedLook { background, text }
+        let target = AnimatedLook {
+            background: self.background.unwrap_or_default(),
+            text: self.text.unwrap_or(fallback_text),
+        };
+        ui.animate(id, Self::SLOT_LOOK, target, spec)
     }
 }
 

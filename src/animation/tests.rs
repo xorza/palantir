@@ -733,14 +733,9 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     assert_eq!(snap.text.font_size_px, fallback.font_size_px);
     assert_eq!(snap.text.line_height_mult, fallback.line_height_mult);
     assert_eq!(
-        crate::support::internals::anim_row_count::<Background>(&mut ui),
+        crate::support::internals::anim_row_count::<AnimatedLook>(&mut ui),
         0,
-        "None spec: WidgetLook::animate must allocate no Background row",
-    );
-    assert_eq!(
-        crate::support::internals::anim_row_count::<TextStyle>(&mut ui),
-        0,
-        "None spec: WidgetLook::animate must allocate no TextStyle row",
+        "None spec: WidgetLook::animate must allocate no AnimatedLook row",
     );
 
     // Some(FAST) spec, retargeting to a different fill: a row gets
@@ -759,8 +754,8 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         Frame::new().id_salt("look-test").show(ui);
     });
     assert!(
-        crate::support::internals::anim_row_count::<Background>(&mut ui) > 0,
-        "Some(FAST) on changed fill must allocate a Background row",
+        crate::support::internals::anim_row_count::<AnimatedLook>(&mut ui) > 0,
+        "Some(FAST) on changed fill must allocate an AnimatedLook row",
     );
 }
 
