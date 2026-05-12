@@ -277,6 +277,7 @@ impl<'a> TextEdit<'a> {
         let state = ui.response_for(id);
         Response {
             node: resp_node,
+            id,
             state,
         }
     }

@@ -86,7 +86,7 @@ impl Text {
             });
         });
         let state = ui.response_for(id);
-        Response { node, state }
+        Response { node, id, state }
     }
 }
 

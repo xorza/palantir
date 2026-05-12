@@ -12,7 +12,7 @@ use glam::Vec2;
 use rustc_hash::FxHashSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[allow(dead_code)] // Right/Middle reserved for v2.
+#[allow(dead_code)] // Middle reserved for v2.
 pub enum PointerButton {
     Left,
     Right,
@@ -102,14 +102,18 @@ impl InputEvent {
                 )))
             }
             WindowEvent::CursorLeft { .. } => Some(InputEvent::PointerLeft),
-            WindowEvent::MouseInput {
-                state,
-                button: MouseButton::Left,
-                ..
-            } => Some(match state {
-                ElementState::Pressed => InputEvent::PointerPressed(PointerButton::Left),
-                ElementState::Released => InputEvent::PointerReleased(PointerButton::Left),
-            }),
+            WindowEvent::MouseInput { state, button, .. } => {
+                let pb = match button {
+                    MouseButton::Left => PointerButton::Left,
+                    MouseButton::Right => PointerButton::Right,
+                    MouseButton::Middle => PointerButton::Middle,
+                    _ => return None,
+                };
+                Some(match state {
+                    ElementState::Pressed => InputEvent::PointerPressed(pb),
+                    ElementState::Released => InputEvent::PointerReleased(pb),
+                })
+            }
             // Convert to "positive delta = pan offset forward" so widgets can
             // do `offset += delta` directly. winit reports +y when the wheel
             // rotates *away* from the user (scroll up) and +x when it rotates
@@ -170,6 +174,9 @@ pub struct ResponseState {
     pub hovered: bool,
     pub pressed: bool,
     pub clicked: bool,
+    /// One-frame edge: right-button click landed and released on this
+    /// widget without a drag. Independent of `clicked` (left-button).
+    pub secondary_clicked: bool,
     pub disabled: bool,
     pub focused: bool,
     /// Cumulative pointer travel since press while `id` holds the
@@ -217,6 +224,14 @@ pub struct InputState {
     /// state.
     pub(crate) frame_drag_started: Option<WidgetId>,
     frame_clicks: FxHashSet<WidgetId>,
+    /// Right-button capture, parallel to `active`. Press latches; a
+    /// release on the same id (no drag latch — secondary doesn't drive
+    /// drags today) inserts into `frame_secondary_clicks`. Independent
+    /// from `active` so a left-drag in progress doesn't block a
+    /// right-click and vice-versa.
+    active_secondary: Option<WidgetId>,
+    press_pos_secondary: Option<Vec2>,
+    frame_secondary_clicks: FxHashSet<WidgetId>,
     /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
     /// in [`Self::post_record`]. Read by scroll widgets at record time.
     pub(crate) frame_scroll_delta: Vec2,
@@ -277,6 +292,9 @@ impl InputState {
             drag_latched: false,
             frame_drag_started: None,
             frame_clicks: FxHashSet::default(),
+            active_secondary: None,
+            press_pos_secondary: None,
+            frame_secondary_clicks: FxHashSet::default(),
             frame_scroll_delta: Vec2::ZERO,
             frame_zoom_delta: 1.0,
             frame_keys: Vec::new(),
@@ -358,7 +376,24 @@ impl InputState {
             InputEvent::Zoom(f) => {
                 self.frame_zoom_delta *= f;
             }
-            // Right/Middle: not yet wired through to widgets. Silently drop.
+            InputEvent::PointerPressed(PointerButton::Right) => {
+                self.active_secondary = self
+                    .pointer_pos
+                    .and_then(|p| cascades.hit_test(p, Sense::clicks));
+                self.press_pos_secondary = self.active_secondary.and(self.pointer_pos);
+            }
+            InputEvent::PointerReleased(PointerButton::Right) => {
+                if let Some(a) = self.active_secondary.take() {
+                    let hit = self
+                        .pointer_pos
+                        .and_then(|p| cascades.hit_test(p, Sense::clicks));
+                    if hit == Some(a) {
+                        self.frame_secondary_clicks.insert(a);
+                    }
+                }
+                self.press_pos_secondary = None;
+            }
+            // Middle: not yet wired through to widgets. Silently drop.
             InputEvent::PointerPressed(_) | InputEvent::PointerReleased(_) => {}
             InputEvent::KeyDown { key, repeat } => {
                 self.frame_keys.push(KeyPress {
@@ -391,6 +426,7 @@ impl InputState {
     /// Capacity-retained on the backing buffers.
     pub(crate) fn drain_per_frame_queues(&mut self) {
         self.frame_clicks.clear();
+        self.frame_secondary_clicks.clear();
         self.frame_drag_started = None;
         self.frame_scroll_delta = Vec2::ZERO;
         self.frame_zoom_delta = 1.0;
@@ -411,6 +447,12 @@ impl InputState {
         {
             self.active = None;
             self.clear_capture();
+        }
+        if let Some(a) = self.active_secondary
+            && !cascades.by_id.contains_key(&a)
+        {
+            self.active_secondary = None;
+            self.press_pos_secondary = None;
         }
         // Focus eviction: same model as the active-capture eviction
         // above. A focused widget that vanished from the tree (was not
@@ -480,6 +522,7 @@ impl InputState {
         let pressed = me_captured && me_under_pointer;
         let hovered = me_under_pointer && (nothing_captured || me_captured);
         let clicked = self.frame_clicks.contains(&id);
+        let secondary_clicked = self.frame_secondary_clicks.contains(&id);
         let focused = self.focused == Some(id);
         let drag_delta = if me_captured && self.drag_latched {
             self.drag_delta(id)
@@ -493,6 +536,7 @@ impl InputState {
             hovered,
             pressed,
             clicked,
+            secondary_clicked,
             disabled,
             focused,
             drag_delta,

@@ -112,6 +112,7 @@ impl Popup {
             let node = ui.node(element, body);
             body_resp = Some(Response {
                 node,
+                id: body_id,
                 state: ui.response_for(body_id),
             });
         });

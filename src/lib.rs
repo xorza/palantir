@@ -62,6 +62,7 @@ pub use ui::Ui;
 pub use ui::frame_report::FrameReport;
 pub use widgets::Response;
 pub use widgets::button::Button;
+pub use widgets::context_menu::{ContextMenu, ContextMenuResponse, MenuItem};
 pub use widgets::frame::Frame;
 pub use widgets::grid::Grid;
 pub use widgets::panel::Panel;
@@ -70,6 +71,6 @@ pub use widgets::scroll::Scroll;
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
 pub use widgets::theme::{
-    AnimatedLook, Background, ButtonTheme, ScrollbarTheme, TextEditTheme, TextStyle, Theme,
-    WidgetLook,
+    AnimatedLook, Background, ButtonTheme, ContextMenuTheme, MenuItemTheme, ScrollbarTheme,
+    TextEditTheme, TextStyle, Theme, WidgetLook,
 };

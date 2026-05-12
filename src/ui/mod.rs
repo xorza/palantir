@@ -411,6 +411,12 @@ impl Ui {
         self.input.focused = id;
     }
 
+    /// Current pointer position in logical pixels (surface space), or
+    /// `None` if the pointer has left the surface.
+    pub fn pointer_pos(&self) -> Option<glam::Vec2> {
+        self.input.pointer_pos
+    }
+
     pub fn focus_policy(&self) -> FocusPolicy {
         self.input.focus_policy
     }
@@ -418,6 +424,14 @@ impl Ui {
     /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
     pub fn set_focus_policy(&mut self, p: FocusPolicy) {
         self.input.focus_policy = p;
+    }
+
+    /// `true` if Escape was pressed this frame. Used by
+    /// [`crate::widgets::context_menu::ContextMenu`] to dismiss on Esc;
+    /// can also be read by host code for modal-style behaviors.
+    pub fn escape_pressed(&self) -> bool {
+        use crate::input::keyboard::Key;
+        self.input.frame_keys.iter().any(|k| k.key == Key::Escape)
     }
 }
 
