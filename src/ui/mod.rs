@@ -158,6 +158,13 @@ impl Ui {
         }
         let damage = self.finalize_frame();
 
+        // Skip frames have nothing for the host to submit, so ack
+        // here — otherwise `frame_state` stays `Pending` and the next
+        // paint frame's `should_invalidate_prev` escalates to `Full`.
+        if damage.is_none() {
+            self.frame_state.mark_submitted();
+        }
+
         FrameReport {
             repaint_requested: self.repaint_requested,
             skip_render: damage.is_none(),
