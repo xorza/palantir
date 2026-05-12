@@ -12,6 +12,7 @@ mod animations;
 mod bezier;
 mod buttons;
 mod clip;
+mod complex_pan_zoom;
 mod disabled;
 mod drag;
 mod gap;
