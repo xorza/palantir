@@ -177,6 +177,14 @@ impl ContextMenu {
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
         ui.state_mut::<ContextMenuState>(for_id).anchor = None;
     }
+
+    /// `true` while the menu keyed off `for_id` has an active anchor.
+    /// Cheap immutable probe — no row is allocated for triggers that
+    /// have never been opened.
+    pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
+        ui.try_state::<ContextMenuState>(for_id)
+            .is_some_and(|st| st.anchor.is_some())
+    }
 }
 
 pub(crate) fn clamp_anchor(raw: Vec2, size: Option<Size>, surface: Rect) -> Vec2 {

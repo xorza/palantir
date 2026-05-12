@@ -31,6 +31,17 @@ impl StateMap {
         self.typed_mut::<T>().get_or_insert_with(id, init)
     }
 
+    pub(crate) fn try_get<T: 'static>(&self, id: WidgetId) -> Option<&T> {
+        let store = self
+            .by_type
+            .get(&TypeId::of::<T>())?
+            .as_any()
+            .downcast_ref::<Store<T>>()
+            .expect("TypeId is stable per T, downcast cannot fail");
+        let idx = *store.map.get(&id)? as usize;
+        Some(&store.data[idx])
+    }
+
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         if removed.is_empty() {
             return;
@@ -102,6 +113,7 @@ impl<T> Store<T> {
 trait AnyTyped: Any {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
     fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn as_any(&self) -> &dyn Any;
 }
 
 impl<T: 'static> AnyTyped for Store<T> {
@@ -109,6 +121,9 @@ impl<T: 'static> AnyTyped for Store<T> {
         Store::<T>::sweep_removed(self, removed);
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+    fn as_any(&self) -> &dyn Any {
         self
     }
 }

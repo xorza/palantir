@@ -359,6 +359,15 @@ impl Ui {
         self.state.get_or_insert_with(id, T::default)
     }
 
+    /// Read-only peek at the cross-frame state row for `id`. `None` if
+    /// nothing has been stored for `(id, T)` yet — does not allocate or
+    /// mutate. Use this on the `&Ui` side (probes, hit-test helpers,
+    /// "is this menu open?" checks) where `state_mut`'s `&mut Ui`
+    /// receiver would be a needless borrow upgrade.
+    pub fn try_state<T: 'static>(&self, id: WidgetId) -> Option<&T> {
+        self.state.try_get::<T>(id)
+    }
+
     /// Advance an animation row keyed by `(id, slot)` and return the
     /// current value. `spec = None` snaps to `target` and drops any
     /// stale row without requesting a repaint — the canonical

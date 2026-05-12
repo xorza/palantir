@@ -8,7 +8,7 @@ use crate::input::keyboard::Key;
 use crate::layout::types::sizing::Sizing;
 use crate::support::testing::{click_at, run_at, run_at_acked, secondary_click_at};
 use crate::widgets::button::Button;
-use crate::widgets::context_menu::{ContextMenu, MenuItem};
+use crate::widgets::context_menu::{ContextMenu, ContextMenuState, MenuItem};
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -39,9 +39,8 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
         });
 }
 
-fn menu_open(_ui: &Ui) -> bool {
-    // todo fixme
-    true
+fn menu_open(ui: &Ui) -> bool {
+    ContextMenu::is_open(ui, trigger_id())
 }
 
 #[test]
