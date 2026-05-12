@@ -200,8 +200,12 @@ impl Ui {
     /// cycle. Returns whether the cycle saw action input (which triggers
     /// a second pass in `Ui::frame`).
     fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
+        profiling::scope!("Ui::record_pass");
         self.pre_record();
-        record(self);
+        {
+            profiling::scope!("Ui::record_user");
+            record(self);
+        }
         let action_flag = self.input.take_action_flag();
         self.post_record();
         action_flag
@@ -220,6 +224,7 @@ impl Ui {
     }
 
     fn pre_record(&mut self) {
+        profiling::scope!("Ui::pre_record");
         self.forest.pre_record();
     }
 
