@@ -99,9 +99,11 @@ impl Harness {
             view_formats: &[],
         });
 
-        self.host
+        self.host.ui.theme.window_clear = clear;
+        let report = self
+            .host
             .run_frame(Display::from_physical(physical, scale), scene);
-        self.host.render(&target, clear);
+        self.host.render(&target, &report);
 
         readback(&self.device, &self.queue, &target, physical)
     }

@@ -113,12 +113,12 @@ pub fn mark_frame_submitted(ui: &Ui) {
     ui.frame_state.mark_submitted();
 }
 
-/// Force the host's `Ui::damage` to a specific value, bypassing
+/// Force a `FrameReport`'s damage to a specific value, bypassing
 /// `DamageEngine::compute`'s merge policy and coverage threshold.
 /// Used by the GPU merge bench (`benches/damage_merge_gpu.rs`) to
 /// A/B "submit the same scene with N separate damage rects vs one
-/// merged bbox" without touching production damage policy. Call
-/// between `Host::run_frame` and `Host::render`.
+/// merged bbox" without touching production damage policy. Mutate
+/// the report between `Host::run_frame` and `Host::render(&report)`.
 ///
 /// `rects.is_empty()` ⇒ `Damage::Full` (single full-viewport
 /// pass). Otherwise builds `Damage::Partial(region)` by
@@ -126,18 +126,21 @@ pub fn mark_frame_submitted(ui: &Ui) {
 /// merge cascade, so passing two overlapping rects collapses to
 /// one. Pass disjoint rects to actually exercise the multi-pass
 /// path.
-pub fn force_host_damage_to_rects(host: &mut crate::Host, rects: &[crate::primitives::rect::Rect]) {
+pub fn force_report_damage_to_rects(
+    report: &mut crate::FrameReport,
+    rects: &[crate::primitives::rect::Rect],
+) {
     use crate::ui::damage::Damage;
     use crate::ui::damage::region::DamageRegion;
     if rects.is_empty() {
-        host.pending_damage = Some(Damage::Full);
+        report.damage = Some(Damage::Full);
         return;
     }
     let mut region = DamageRegion::default();
     for r in rects {
         region.add(*r);
     }
-    host.pending_damage = Some(Damage::Partial(region));
+    report.damage = Some(Damage::Partial(region));
 }
 
 /// Bench-public mirror of internal `ColorMode`. The user-facing

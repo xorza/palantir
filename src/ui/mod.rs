@@ -162,6 +162,7 @@ impl Ui {
             repaint_requested: self.repaint_requested,
             skip_render: damage.is_none(),
             damage,
+            clear_color: self.theme.window_clear,
         }
     }
 

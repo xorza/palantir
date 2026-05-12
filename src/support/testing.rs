@@ -12,7 +12,7 @@ use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
-use crate::renderer::frontend::encoder::Encoder;
+use crate::renderer::frontend::encoder::encode;
 use crate::text::TextShaper;
 use crate::ui::damage::region::DamageRegion;
 use crate::widgets::panel::Panel;
@@ -138,16 +138,14 @@ pub(crate) fn encode_cmds_with_rects(ui: &Ui, rects: &[Rect]) -> RenderCmdBuffer
 }
 
 fn encode_cmds_with_region(ui: &Ui, region: Option<DamageRegion>) -> RenderCmdBuffer {
-    // Fresh `Encoder` per call → empty cache, every encode is a cold
-    // build. Tests that want to verify cache-replay output use
-    // `ui.frontend.encoder.cmds()` instead. `None` ⇒ `Damage::Full`
-    // (no filter), `Some(region)` ⇒ `Damage::Partial`.
+    // Fresh `RenderCmdBuffer` per call → cold build. `None` ⇒
+    // `Damage::Full` (no filter), `Some(region)` ⇒ `Damage::Partial`.
     use crate::ui::damage::Damage;
     let damage = match region {
         Some(r) => Damage::Partial(r),
         None => Damage::Full,
     };
-    let mut encoder = Encoder::default();
-    encoder.encode(ui, damage);
-    std::mem::take(&mut encoder.cmds)
+    let mut cmds = RenderCmdBuffer::default();
+    encode(ui, damage, &mut cmds);
+    cmds
 }

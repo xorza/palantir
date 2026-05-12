@@ -2,11 +2,12 @@
 //! signals the host needs to act on. All frame-shaped state (forest,
 //! layout, cascades, display) stays on [`Ui`] itself — `Frontend::build`
 //! reads it directly via a `&Ui` borrow, plus the per-frame [`Damage`]
-//! this report carries.
+//! and clear color this report carries.
 //!
 //! [`Ui`]: crate::ui::Ui
 //! [`Ui::frame`]: crate::ui::Ui::frame
 
+use crate::primitives::color::Color;
 use crate::ui::damage::Damage;
 
 pub struct FrameReport {
@@ -16,6 +17,10 @@ pub struct FrameReport {
     /// ⇒ skip path (nothing changed; backbuffer is correct).
     /// `Some(Full | Partial)` ⇒ work for the renderer.
     pub(crate) damage: Option<Damage>,
+    /// Snapshot of `Ui.theme.window_clear` at frame time. Threaded
+    /// through so `Host::render` doesn't need a separate `clear` arg
+    /// and so a theme change mid-frame doesn't desync the paint.
+    pub(crate) clear_color: Color,
 }
 
 impl FrameReport {

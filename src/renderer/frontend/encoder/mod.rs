@@ -26,43 +26,36 @@ use crate::ui::damage::region::DamageRegion;
 /// emitted so descendant scissor state and group boundaries
 /// (composer text↔quad split) stay correct. `None` paints
 /// everything — used for the first frame and full-repaint fallback.
-#[derive(Default)]
-pub(crate) struct Encoder {
-    pub(crate) cmds: RenderCmdBuffer,
-}
+/// Encode every tree in `ui.forest` into `out` in paint order.
+/// Per-tree layout and cascade rows are looked up by layer off
+/// `ui.layout`. `damage` is the paint plan for this frame — `Full`
+/// paints everything, `Partial(region)` filters leaves against the
+/// region. The skip path is the caller's responsibility (`None`
+/// damage ⇒ never call `encode`). `out` is cleared at entry and
+/// keeps its capacity for the next frame.
+pub(crate) fn encode(ui: &Ui, damage: Damage, out: &mut RenderCmdBuffer) {
+    out.clear();
 
-impl Encoder {
-    /// Encode every tree in `ui.forest` into the encoder's owned
-    /// command buffer in paint order. Per-tree layout and cascade rows
-    /// are looked up by layer off `ui.layout`. `damage` is the paint
-    /// plan for this frame — `Full` paints everything, `Partial(region)`
-    /// filters leaves against the region. The skip path is the caller's
-    /// responsibility (`None` damage ⇒ never call `encode`).
-    pub(crate) fn encode(&mut self, ui: &Ui, damage: Damage) -> &RenderCmdBuffer {
-        self.cmds.clear();
+    let damage_filter = match &damage {
+        Damage::Partial(region) => Some(region),
+        Damage::Full => None,
+    };
 
-        let damage_filter = match &damage {
-            Damage::Partial(region) => Some(region),
-            Damage::Full => None,
-        };
-
-        let viewport = ui.display.logical_rect();
-        for (layer, tree) in ui.forest.iter_paint_order() {
-            let layout = &ui.layout[layer];
-            let rows = ui.layout.cascades.rows_for(layer);
-            for root in &tree.roots {
-                encode_node(
-                    tree,
-                    layout,
-                    rows,
-                    damage_filter,
-                    viewport,
-                    NodeId(root.first_node),
-                    &mut self.cmds,
-                );
-            }
+    let viewport = ui.display.logical_rect();
+    for (layer, tree) in ui.forest.iter_paint_order() {
+        let layout = &ui.layout[layer];
+        let rows = ui.layout.cascades.rows_for(layer);
+        for root in &tree.roots {
+            encode_node(
+                tree,
+                layout,
+                rows,
+                damage_filter,
+                viewport,
+                NodeId(root.first_node),
+                out,
+            );
         }
-        &self.cmds
     }
 }
 
