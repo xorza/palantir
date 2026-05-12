@@ -34,6 +34,7 @@ use crate::ui::damage::region::DamageRegion;
 /// region. The skip path is the caller's responsibility (`None`
 /// damage ⇒ never call `encode`). `out` is cleared at entry and
 /// keeps its capacity for the next frame.
+#[profiling::function]
 pub(crate) fn encode(ui: &Ui, damage: Damage, out: &mut RenderCmdBuffer) {
     out.clear();
 

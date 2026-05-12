@@ -123,6 +123,7 @@ impl CascadesEngine {
     /// layer is read from the layer's own `RootSlot.anchor` — no
     /// parent transform plumbing is needed because trees never share
     /// NodeId space.
+    #[profiling::function]
     pub(crate) fn run(&mut self, forest: &Forest, layout: &mut Layout) {
         let total: usize = forest.trees.iter().map(|t| t.records.len()).sum();
         {

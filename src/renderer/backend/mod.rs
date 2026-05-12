@@ -244,6 +244,7 @@ impl WgpuBackend {
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.
     #[allow(clippy::too_many_arguments)]
+    #[profiling::function]
     pub(crate) fn submit(
         &mut self,
         surface_tex: &wgpu::Texture,

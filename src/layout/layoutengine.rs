@@ -187,6 +187,7 @@ impl LayoutEngine {
     /// `Layer::PAINT_ORDER`; each tree's output lands in
     /// `self.result[layer]` directly. Recursive measure/arrange reads
     /// the active slot via `self.active_layer`.
+    #[profiling::function]
     pub(crate) fn run(
         &mut self,
         forest: &Forest,
