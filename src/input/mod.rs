@@ -389,7 +389,6 @@ impl InputState {
     /// a `PointerMoved` over a non-hover-reactive surface (no active
     /// capture, no hover/scroll target change) leaves
     /// `requests_repaint` false so the frame can be skipped entirely.
-    #[profiling::function]
     pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &Cascades) -> InputDelta {
         if matches!(
             event,
