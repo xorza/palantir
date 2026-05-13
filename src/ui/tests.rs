@@ -576,12 +576,16 @@ fn frame_pass_count_matches_action_trigger() {
         ("idle", |_ui| {}, 1),
         (
             "hover only",
-            |ui| ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0))),
+            |ui| {
+                ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+            },
             1,
         ),
         (
             "modifiers only",
-            |ui| ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE)),
+            |ui| {
+                ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
+            },
             1,
         ),
         (
@@ -599,13 +603,15 @@ fn frame_pass_count_matches_action_trigger() {
                 ui.on_input(InputEvent::KeyDown {
                     key: Key::Enter,
                     repeat: false,
-                })
+                });
             },
             2,
         ),
         (
             "scroll",
-            |ui| ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0))),
+            |ui| {
+                ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
+            },
             1,
         ),
     ];
