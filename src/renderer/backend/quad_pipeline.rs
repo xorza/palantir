@@ -75,7 +75,13 @@ pub(crate) struct QuadPipeline {
 }
 
 /// Side of the gradient LUT atlas texture (square: 256 × 256).
+/// Must equal `ATLAS_ROWS_F` in `quad.wgsl` — the shader divides the
+/// row index by this constant to compute the sample `v` coord.
 const GRADIENT_ATLAS_SIDE: u32 = 256;
+const _: () = assert!(
+    GRADIENT_ATLAS_SIDE == 256,
+    "shader ATLAS_ROWS_F is hardcoded to 256.0; update quad.wgsl if you change this"
+);
 
 /// Two pipelines built atop the same shader + viewport bind group as
 /// the no-stencil `pipeline`, used in the stencil-attached render pass.
