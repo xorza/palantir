@@ -22,6 +22,23 @@
 //! `bytemuck::pod_read_unaligned` so payloads with align >4
 //! (`DrawTextPayload`) work even when the arena slot starts at a
 //! 4-byte-only-aligned offset.
+//!
+//! ## Noop policy
+//!
+//! Every `draw_*` early-returns when its inputs would emit no visible
+//! pixels (transparent fill color, no-op stroke, no-op shadow tint).
+//! **The cmd buffer is the single canonical correctness gate** —
+//! callers don't need to pre-check, and the encoder doesn't gate per
+//! branch. Upstream filters (`Shape::is_noop` at `Ui::add_shape`,
+//! whole-`Background::is_noop` at `Tree::open_node`) are performance
+//! optimizations that skip expensive lowering (text shaping, polyline
+//! tessellation) or sparse-column writes, not correctness gates.
+//!
+//! Exception: `draw_polyline` doesn't gate. Its colors live in spans
+//! (`PerSegment` can mix one solid stop with N transparent), and an
+//! O(n) read on every emit would dominate the per-cmd cost. Polyline
+//! noops are caught by `Shape::Polyline::is_noop` at the authoring
+//! boundary, which is the only practical gate.
 
 use crate::forest::shapes::payloads::ShapePayloads;
 use crate::primitives::brush::{Brush, FillAxis, Interp, MAX_STOPS, Stop};
@@ -233,10 +250,10 @@ impl RenderCmdBuffer {
 
     #[inline]
     pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: &Brush, stroke: Stroke) {
-        // Single noop gate for every rect emit (chrome, shapes,
-        // animation-decayed). Skip when both fill and stroke would
-        // emit nothing — keeps zero-paint commands out of the buffer
-        // regardless of whether the caller already filtered.
+        // Module-level noop policy: drop the cmd when both fill and
+        // stroke are no-op. Catches chrome shadow-only backgrounds,
+        // Shape::RoundedRect with all-transparent paint, and any
+        // animation-decayed brush regardless of source.
         if fill.is_noop() && stroke.is_noop() {
             return;
         }
@@ -285,9 +302,8 @@ impl RenderCmdBuffer {
         fill_kind: FillKind,
         fill_axis: FillAxis,
     ) {
-        // Same single noop gate as `draw_rect`: drop the cmd when the
-        // shadow tint is fully transparent (authored, decayed, or
-        // produced by `Shadow::NONE`'s lerp endpoint).
+        // Module-level noop policy: drop the cmd when the shadow tint
+        // is no-op (authored, decayed, or `Shadow::NONE`'s lerp endpoint).
         if color.is_noop() {
             return;
         }
@@ -309,6 +325,9 @@ impl RenderCmdBuffer {
 
     #[inline]
     pub(crate) fn draw_text(&mut self, rect: Rect, color: Color, key: TextCacheKey) {
+        if color.is_noop() {
+            return;
+        }
         self.record_start(CmdKind::DrawText);
         write_pod(&mut self.data, DrawTextPayload { rect, color, key });
     }
@@ -319,6 +338,9 @@ impl RenderCmdBuffer {
     /// encoder can apply the owner-rect offset inline without an
     /// intermediate scratch buffer.
     pub(crate) fn draw_mesh(&mut self, payload: DrawMeshPayload) {
+        if payload.tint.is_noop() {
+            return;
+        }
         self.record_start(CmdKind::DrawMesh);
         write_pod(&mut self.data, payload);
     }
