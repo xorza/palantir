@@ -40,14 +40,14 @@ const TAU: f32 = 6.2831853;
 struct VertexOut {
     @builtin(position) clip:         vec4<f32>,
     @location(0)       local:        vec2<f32>,
-    @location(1)       size:         vec2<f32>,
-    @location(2)       fill:         vec4<f32>,
-    @location(3)       radius:       vec4<f32>,
-    @location(4)       stroke_color: vec4<f32>,
-    @location(5)       stroke_width: f32,
-    // `@interpolate(flat)` — brush metadata is per-instance, the
-    // same value at all four vertices; interpolating wastes vertex
-    // output bandwidth without affecting the fragment-stage value.
+    // Everything below is per-instance: identical at all four
+    // vertices. `flat` skips plane-equation setup + per-fragment
+    // interpolation and avoids f32 drift across large quads.
+    @location(1) @interpolate(flat) size:         vec2<f32>,
+    @location(2) @interpolate(flat) fill:         vec4<f32>,
+    @location(3) @interpolate(flat) radius:       vec4<f32>,
+    @location(4) @interpolate(flat) stroke_color: vec4<f32>,
+    @location(5) @interpolate(flat) stroke_width: f32,
     @location(6) @interpolate(flat) fill_kind:    u32,
     @location(7) @interpolate(flat) fill_lut_row: u32,
     @location(8) @interpolate(flat) fill_axis:    vec4<f32>,
@@ -93,16 +93,24 @@ fn vs(
     return out;
 }
 
-// Per-corner SDF rounded rect. radius = (tl, tr, br, bl).
-fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
-    let half = size * 0.5;
-    let right  = step(half.x, p.x);
-    let bottom = step(half.y, p.y);
+// Rounded-rect SDF centered at the origin: half-extents `b`,
+// per-corner radius `r = (tl, tr, br, bl)`. Quadrant-select picks the
+// corner radius by sign of `p` so each corner can differ.
+fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f32 {
+    let right  = step(0.0, p.x);
+    let bottom = step(0.0, p.y);
     let r = mix(mix(radius.x, radius.y, right),
                 mix(radius.w, radius.z, right),
                 bottom);
-    let q = abs(p - half) - (half - vec2<f32>(r));
+    let q = abs(p) - (b - vec2<f32>(r));
     return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
+}
+
+// Corner-origin convenience: `p` measured from the top-left of a rect
+// of `size`. Forwards to the centered form.
+fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
+    let half = size * 0.5;
+    return sdf_rounded_box_centered(p - half, half, radius);
 }
 
 // Apply the user-selected spread mode to a parametric `t`. `Pad` clamps
@@ -127,8 +135,8 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         return in.fill;
     }
     let spread  = (in.fill_kind >> 8u) & 0xFFu;
-    let local01 = in.local / in.size;
-    var t01: f32;
+    let local01 = in.local / max(in.size, vec2<f32>(1e-6));
+    var t01: f32 = 0.0;
     if (kind == BRUSH_KIND_LINEAR) {
         // Linear: project local01 onto the gradient direction, remap
         // (raw - t0) / (t1 - t0) → 0..1.
@@ -137,7 +145,8 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         let t1   = in.fill_axis.w;
         let raw  = dot(local01, axis);
         let span = t1 - t0;
-        t01 = select(0.0, (raw - t0) / span, abs(span) > 1e-6);
+        let span_safe = select(1.0, span, abs(span) > 1e-6);
+        t01 = (raw - t0) / span_safe;
     } else if (kind == BRUSH_KIND_RADIAL) {
         // Radial: distance from `center` measured in `radius` units.
         // `t = 1.0` at the elliptical edge of the radius vector.
@@ -147,7 +156,7 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         let ry = select(1.0, radius.y, abs(radius.y) > 1e-6);
         let d  = (local01 - center) / vec2<f32>(rx, ry);
         t01 = length(d);
-    } else {
+    } else if (kind == BRUSH_KIND_CONIC) {
         // Conic: sweep around `center`, starting at `start_angle`
         // (radians, CCW). atan2 returns -π..π; the +1.0 then fract
         // wraps to 0..1 in a single step regardless of sign.
@@ -156,24 +165,14 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         let p           = local01 - center;
         let theta       = atan2(p.y, p.x);
         t01 = fract((theta - start_angle) / TAU + 1.0);
+    } else {
+        // Unknown brush kind: fall back to solid fill rather than
+        // silently sampling the LUT with garbage `t`.
+        return in.fill;
     }
     let t = apply_spread(t01, spread);
     let v = (f32(in.fill_lut_row) + 0.5) / ATLAS_ROWS_F;
     return textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
-}
-
-// Rounded-box SDF centered at the origin: source half-extents `b`,
-// per-corner radius `r = (tl, tr, br, bl)`. Same quadrant selection
-// scheme as `sdf_rounded_rect` but operates in centered coords —
-// matches the source-shape frame the shadow integrates over.
-fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f32 {
-    let right  = step(0.0, p.x);
-    let bottom = step(0.0, p.y);
-    let r = mix(mix(radius.x, radius.y, right),
-                mix(radius.w, radius.z, right),
-                bottom);
-    let q = abs(p) - (b - vec2<f32>(r));
-    return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
 }
 
 // `erf` approximation (Abramowitz & Stegun 7.1.26 form, max error
@@ -239,8 +238,13 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
             return vec4<f32>(0.0);
         }
         let hole_half = max(half - vec2<f32>(spread), vec2<f32>(0.0));
+        // Inner edge of a rounded rect deflated by `spread` has corner
+        // radii reduced by the same amount (CSS / Qt / RN inset-shadow
+        // convention); floored at 0 so big spread collapses to square
+        // corners instead of inverting.
+        let hole_radius = max(in.radius - vec4<f32>(spread), vec4<f32>(0.0));
         let p_hole = in.local - half - offset;
-        let d_hole = sdf_rounded_box_centered(p_hole, hole_half, in.radius);
+        let d_hole = sdf_rounded_box_centered(p_hole, hole_half, hole_radius);
         let cov_hole = blurred_rect_coverage(d_hole, sigma);
         let cov = clamp(1.0 - cov_hole, 0.0, 1.0);
         let a = in.fill.a * cov;
@@ -253,14 +257,20 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     let fill_rgba = eval_fill(in);
 
     if (in.stroke_width > 0.0) {
-        // Stroke sits on the inner edge: fill region is everything inside the rect
-        // shifted inward by stroke_width.
+        // Stroke sits on the inner edge: fill region is the rect
+        // shrunk by `stroke_width`. Composite stroke OVER fill in
+        // premultiplied space (Porter–Duff): `out = S + F*(1-Sa)`.
+        // Earlier code summed premul RGB additively while combining
+        // alpha via P-D over, which over-brightened the SDF transition
+        // band whenever both stroke and fill were translucent.
         let inner_d  = d + in.stroke_width;
         let inner_aa = clamp(0.5 - inner_d, 0.0, 1.0);
         let stroke_a = (outer_aa - inner_aa) * in.stroke_color.a;
         let fill_a   = inner_aa * fill_rgba.a;
-        let rgb = fill_rgba.rgb * fill_a + in.stroke_color.rgb * stroke_a;
-        let a   = fill_a + stroke_a - fill_a * stroke_a;
+        let stroke_rgb = in.stroke_color.rgb * stroke_a;
+        let fill_rgb   = fill_rgba.rgb       * fill_a;
+        let rgb = stroke_rgb + fill_rgb * (1.0 - stroke_a);
+        let a   = stroke_a   + fill_a   * (1.0 - stroke_a);
         return vec4<f32>(rgb, a);
     }
     let a = fill_rgba.a * outer_aa;
