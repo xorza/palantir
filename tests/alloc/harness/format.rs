@@ -83,13 +83,12 @@ fn classify(rel: &str) -> FrameKind {
 }
 
 /// Drop the `alloc::` test-binary-crate prefix from a demangled symbol
-/// name. The test binary built from `tests/alloc/main.rs` is named
-/// `alloc`, so every fixture/harness symbol starts with `alloc::`; that
-/// prefix is the same on every line and adds no information.
+/// name, including occurrences inside generic parameters
+/// (`frame<alloc::harness_tests::…>`). The test binary built from
+/// `tests/alloc/main.rs` is named `alloc`, so the prefix is the same
+/// everywhere and adds no information.
 fn strip_test_crate_prefix(name: String) -> String {
-    name.strip_prefix("alloc::")
-        .map(String::from)
-        .unwrap_or(name)
+    name.replace("alloc::", "")
 }
 
 /// Workspace-relative tail of a captured filename, or `None` if the path
