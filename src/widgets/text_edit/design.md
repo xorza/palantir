@@ -21,11 +21,12 @@ Code lives in `src/widgets/text_edit/{mod.rs,tests.rs}`.
 One leaf node, no children.
 
 ```
-TextEdit            (Leaf, sense = Click, focusable = true)
+TextEdit            (Leaf, sense = Click, focusable, ClipMode::Rect)
   shapes:
     [Background]    (state.background; theme-driven, omitted when None)
-    Text            (the buffer or the placeholder — TextWrap::Single)
-    Overlay         (caret, painted last, only when focused)
+    [Selection]     (only when focused with live selection)
+    Text            (buffer or placeholder; TextWrap::Single or ::Wrap)
+    [Caret]         (painted last, only when focused)
 ```
 
 Empty buffer + unfocused renders the placeholder; focused (even with an
@@ -47,6 +48,7 @@ pub(crate) struct TextEditState {
     pub(crate) undo: VecDeque<EditSnapshot>,       // capped at UNDO_LIMIT (128)
     pub(crate) redo: Vec<EditSnapshot>,            // cleared on every fresh edit
     pub(crate) last_edit_kind: Option<EditKind>,   // Typing / Delete / Other; None ⇒ new group
+    pub(crate) scroll: Vec2,                       // viewport offset; subtracted at emit time
 }
 ```
 
@@ -240,6 +242,31 @@ clears. On subsequent pressed frames `state.caret` follows the pointer
 and `state.selection` flips to `Some(drag_anchor)` once the active end
 diverges from the anchor (collapses back to `None` if they coincide,
 matching the invariant). The release edge clears `drag_anchor`.
+
+### Overflow handling
+
+`Element::clip = ClipMode::Rect` is set in `TextEdit::new`, so any
+shape painted inside the editor that bleeds past the arranged rect is
+scissored by the renderer. Chrome (background) paints *before* the
+clip, so themed borders/backgrounds aren't affected.
+
+`state.scroll: Vec2` is a viewport offset into the unscrolled text
+layout. Updated in `update_scroll` each frame, after input but before
+the node is opened, so the caret stays inside the visible inner rect:
+
+- Single-line: only `scroll.x` moves. If `caret_x < scroll.x` it snaps
+  back; if `caret_x + caret_width > scroll.x + inner_w` it advances.
+  `scroll.y` is forced to 0.
+- Multi-line: only `scroll.y` moves. Wrap to inner width kills
+  horizontal overflow, so `scroll.x` stays 0; `scroll.y` follows the
+  caret line.
+- `response.rect` is one frame stale; the first recorded frame has
+  no rect and scroll stays at zero.
+
+Every emitted shape (selection wash, text, caret) shifts its
+`local_rect.min` by `-scroll`. Click hit-test in `handle_input` adds
+`scroll` back into pointer-local coords before calling `byte_at_xy`
+so the user clicks on what they see, not the unscrolled layout.
 
 ## Theme
 

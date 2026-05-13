@@ -2,6 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::keyboard::{Key, KeyPress};
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
+use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
@@ -11,6 +12,7 @@ use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::theme::TextEditTheme;
+use glam::Vec2;
 use std::borrow::Cow;
 use std::collections::VecDeque;
 
@@ -46,6 +48,14 @@ pub(crate) struct TextEditState {
     /// a single undo unit. `None` after any caret-only motion so the
     /// next edit always opens a fresh group.
     pub(crate) last_edit_kind: Option<EditKind>,
+    /// Viewport offset into the unscrolled text layout, in
+    /// editor-local px. Single-line uses `.x` only (text wraps to
+    /// inner width in multi-line so x stays at 0); multi-line uses
+    /// `.y` for scroll-to-caret as content grows past the visible
+    /// height. Updated each frame after input so the caret stays
+    /// inside the visible area; subtracted from every shape
+    /// (text / selection / caret) at emit time.
+    pub(crate) scroll: Vec2,
 }
 
 #[derive(Clone, Debug)]
@@ -206,6 +216,53 @@ fn sanitize_single_line(s: &str) -> String {
     out
 }
 
+/// Scroll the editor so the caret stays inside the visible inner
+/// rect, updating `state.scroll` in place and returning the new
+/// offset (which the caller subtracts from every emitted shape).
+/// Single-line scrolls only on the x axis; multi-line wraps to inner
+/// width so only y scrolls. `response_rect` is one frame stale: on
+/// the first frame the widget is recorded it's `None` and scroll
+/// stays at zero — acceptable, the caret is at byte 0 then anyway.
+#[allow(clippy::too_many_arguments)]
+fn update_scroll(
+    state: &mut TextEditState,
+    response_rect: Option<Rect>,
+    padding: Spacing,
+    multiline: bool,
+    caret_x: f32,
+    caret_y_top: f32,
+    line_height: f32,
+    caret_width: f32,
+) -> Vec2 {
+    let Some(rect) = response_rect else {
+        state.scroll = Vec2::ZERO;
+        return Vec2::ZERO;
+    };
+    let inner_w = (rect.size.w - padding.horiz()).max(0.0);
+    let inner_h = (rect.size.h - padding.vert()).max(0.0);
+    if multiline {
+        // Only y scrolls — wrap kills horizontal overflow.
+        state.scroll.x = 0.0;
+        let caret_bottom = caret_y_top + line_height;
+        if caret_y_top < state.scroll.y {
+            state.scroll.y = caret_y_top;
+        } else if caret_bottom > state.scroll.y + inner_h {
+            state.scroll.y = caret_bottom - inner_h;
+        }
+        state.scroll.y = state.scroll.y.max(0.0);
+    } else {
+        state.scroll.y = 0.0;
+        let caret_right = caret_x + caret_width;
+        if caret_x < state.scroll.x {
+            state.scroll.x = caret_x;
+        } else if caret_right > state.scroll.x + inner_w {
+            state.scroll.x = caret_right - inner_w;
+        }
+        state.scroll.x = state.scroll.x.max(0.0);
+    }
+    state.scroll
+}
+
 /// Delete the live selection range (if any), update caret to the range
 /// start, and return the deleted range — callers use it to know whether
 /// to skip a subsequent codepoint-delete (Backspace/Delete) or not.
@@ -247,6 +304,11 @@ impl<'a> TextEdit<'a> {
         let mut element = Element::new(LayoutMode::Leaf);
         element.sense = Sense::CLICK;
         element.focusable = true;
+        // Clip glyphs, caret, and selection wash to the editor's own
+        // rect so a `Fixed`-sized editor with long content doesn't
+        // bleed over its neighbours. Chrome (background) draws before
+        // the clip, so the editor's surround still paints normally.
+        element.clip = ClipMode::Rect;
         // `Element::padding` left at zero — `show()` substitutes
         // `theme.text_edit.padding` when the user didn't call
         // `.padding(...)`. Same renderer semantics as before; the
@@ -353,14 +415,41 @@ impl<'a> TextEdit<'a> {
         let caret_byte = input.caret;
         let selection = input.selection;
 
-        // Phase 2: open the node and push shapes. `cursor_xy` +
+        // Phase 2: scroll-to-caret. Compute the caret position in
+        // unscrolled coords once (used for both the scroll update
+        // and the caret shape), then adjust `state.scroll` so the
+        // caret stays inside the visible area. `response.rect` is
+        // one frame stale; on the first recorded frame it's `None`
+        // and scroll defaults to `Vec2::ZERO`.
+        let caret_pos = ui.text.cursor_xy(
+            self.text,
+            caret_byte,
+            font_size,
+            font_size * line_height_mult,
+            wrap_target,
+            look.text.family,
+        );
+        let scroll = update_scroll(
+            ui.state_mut::<TextEditState>(id),
+            response.rect,
+            padding,
+            self.multiline,
+            caret_pos.x,
+            caret_pos.y_top,
+            caret_pos.line_height,
+            theme.caret_width,
+        );
+
+        // Phase 3: open the node and push shapes. `cursor_xy` +
         // `selection_rects` handle both single- and multi-line via
         // cosmic's shaped-buffer APIs; the single-line case is just
         // an unwrapped layout with one visual run. Touch `ui.text`
         // (disjoint from `ui.forest`, so `add_shape` sequences fine).
         // Chrome paints via `Tree::chrome_for` — encoder emits it
-        // before any clip. No clip is set: TextEdit's caret + selection
-        // handle their own painting and don't need rect-clipping.
+        // before any clip. Every shape's local_rect is shifted by
+        // `-scroll` so the caret/text/selection wash track the
+        // visible viewport; the editor's `ClipMode::Rect` (set in
+        // `new()`) scissors anything that slips past the edge.
         let mut element = self.element;
         element.chrome = Some(look.background);
         let placeholder = self.placeholder;
@@ -389,7 +478,12 @@ impl<'a> TextEdit<'a> {
                     look.text.family,
                     |x, y, w, h| {
                         ui.forest.add_shape(Shape::RoundedRect {
-                            local_rect: Some(Rect::new(padding.left + x, padding.top + y, w, h)),
+                            local_rect: Some(Rect::new(
+                                padding.left + x - scroll.x,
+                                padding.top + y - scroll.y,
+                                w,
+                                h,
+                            )),
                             radius: Default::default(),
                             fill: sel_color.into(),
                             stroke: Stroke::ZERO,
@@ -401,6 +495,10 @@ impl<'a> TextEdit<'a> {
             // Text or placeholder. Empty buffer + unfocused shows the
             // placeholder; focused shows the buffer (even if empty)
             // because we still want the caret to render flush-left.
+            // `local_rect: Some(...)` positions the shaped text at
+            // owner-local `(padding − scroll)`; size carries the
+            // visible inner extent but doesn't affect alignment under
+            // `Align::Auto` (text origin sits at `leaf.min`).
             let (display, color) = if text_ptr.is_empty() && !is_focused {
                 (placeholder.clone(), theme.placeholder)
             } else {
@@ -408,7 +506,15 @@ impl<'a> TextEdit<'a> {
             };
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {
-                    local_rect: None,
+                    local_rect: Some(Rect::new(
+                        padding.left - scroll.x,
+                        padding.top - scroll.y,
+                        // Size is unused under `Align::Auto`; pick
+                        // something positive so `is_paint_empty`
+                        // doesn't reject the shape.
+                        1.0,
+                        1.0,
+                    )),
                     text: display,
                     brush: color.into(),
                     font_size_px: font_size,
@@ -427,19 +533,11 @@ impl<'a> TextEdit<'a> {
             // coords so it stays in the widget's clip and renders
             // *over* the text. Only when focused.
             if is_focused {
-                let pos = ui.text.cursor_xy(
-                    text_ptr,
-                    caret_byte,
-                    font_size,
-                    line_h,
-                    wrap_target,
-                    look.text.family,
-                );
                 let caret_rect = Rect::new(
-                    padding.left + pos.x,
-                    padding.top + pos.y_top,
+                    padding.left + caret_pos.x - scroll.x,
+                    padding.top + caret_pos.y_top - scroll.y,
                     theme.caret_width,
-                    pos.line_height,
+                    caret_pos.line_height,
                 );
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(caret_rect),
@@ -450,7 +548,7 @@ impl<'a> TextEdit<'a> {
             }
         });
 
-        // Phase 3: side effects that need a fresh borrow of `ui`
+        // Phase 4: side effects that need a fresh borrow of `ui`
         // (Escape-to-blur). Done after the node closes so we don't
         // accidentally mutate during recording.
         if blur_after {
@@ -464,7 +562,7 @@ impl<'a> TextEdit<'a> {
             state,
         };
 
-        // Phase 4: default Cut / Copy / Paste / Clear context menu.
+        // Phase 5: default Cut / Copy / Paste / Clear context menu.
         // Triggered by secondary click on the editor; items mutate
         // the host's buffer through the same `&mut String` borrow
         // `show` was given, then sync `TextEditState.caret` /
@@ -594,8 +692,13 @@ fn handle_input(
     if resp_state.pressed
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos)
     {
-        let local_x = ptr.x - rect.min.x - padding.left;
-        let local_y = ptr.y - rect.min.y - padding.top;
+        // Hit-test runs against the *unscrolled* shaped layout, so
+        // we add last frame's scroll back into the pointer's local
+        // coords. Updated scroll for this frame is computed after
+        // `handle_input` returns — the user clicked on what they
+        // saw, which is last frame's scroll.
+        let local_x = ptr.x - rect.min.x - padding.left + state.scroll.x;
+        let local_y = ptr.y - rect.min.y - padding.top + state.scroll.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
