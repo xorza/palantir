@@ -6,8 +6,15 @@
 
 use crate::animation::animatable::Animatable;
 
-const POS_EPS: f32 = 0.001;
-const VEL_EPS: f32 = 0.01;
+// Settle tolerances. Bumped from 1e-3 / 1e-2 → 1e-2 / 1e-1 to give
+// the integrator a more forgiving floor in pixel-scale animations
+// where the f32 ULP near `cur ≈ 400` is already ~2.4e-5; sub-pixel
+// drift below 0.01 px is visually indistinguishable and lets the
+// spring settle a frame or two earlier on tight tolerances. The
+// fixed-step accumulator on `Ui` is the primary fix for the
+// NoVsync precision stall; this just trims residual settle time.
+const POS_EPS: f32 = 0.01;
+const VEL_EPS: f32 = 0.1;
 const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;
 const VEL_EPS_SQ: f32 = VEL_EPS * VEL_EPS;
 
