@@ -320,15 +320,29 @@ impl Composer {
                     // before scanning per-rect — the common case in a
                     // large batch is "quad far from any text," so the
                     // O(n) scan is wasted work without this.
+                    //
+                    // Shadow quads use a 2σ-deflated rect for the
+                    // overlap check: the outer 2σ rim of a Gaussian
+                    // contributes <5% alpha and is visually
+                    // indistinguishable from the background, so we
+                    // shouldn't force a batch flush for that ring.
+                    // Keeps adjacent text in the same batch when a
+                    // soft drop shadow sits 1–2σ away from text.
+                    let overlap_urect = if p.fill_kind.is_shadow() {
+                        let sigma_phys = p.fill_axis.t0.max(0.0) * current_transform.scale * scale;
+                        quad_urect.deflated((2.0 * sigma_phys) as u32)
+                    } else {
+                        quad_urect
+                    };
                     let batch_text_hit = self
                         .open_batch
                         .as_ref()
-                        .is_some_and(|b| b.text_union.intersect(quad_urect).is_some())
-                        && any_overlap(&self.batch_text_rects, quad_urect);
+                        .is_some_and(|b| b.text_union.intersect(overlap_urect).is_some())
+                        && any_overlap(&self.batch_text_rects, overlap_urect);
                     if batch_text_hit {
                         self.close_batch(out);
                         self.flush(out);
-                    } else if any_overlap(&self.mesh_rects, quad_urect) {
+                    } else if any_overlap(&self.mesh_rects, overlap_urect) {
                         self.flush(out);
                     }
                     let world_radius = p.radius.scaled_by(current_transform.scale);

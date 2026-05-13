@@ -30,6 +30,7 @@ pub fn build(ui: &mut Ui) {
                 .show(ui, |ui| {
                     cell(ui, "sharp", sharp);
                     cell(ui, "glow", glow);
+                    cell(ui, "inset", inset);
                     cell(ui, "stacked", stacked);
                 });
         });
@@ -108,9 +109,9 @@ fn sharp(ui: &mut Ui) {
     ui.add_shape(Shape::Shadow {
         local_rect: Some(card_rect()),
         radius: radius(),
-        color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+        color: Color::rgba(0.0, 0.0, 0.0, 1.0),
         offset: Vec2::new(6.0, 6.0),
-        blur: 0.0,
+        blur: 2.0,
         spread: 0.0,
         inset: false,
     });
@@ -129,6 +130,20 @@ fn glow(ui: &mut Ui) {
         inset: false,
     });
     card_fill(ui);
+}
+
+/// Inset shadow — interior darkening, pressed-button feel.
+fn inset(ui: &mut Ui) {
+    card_fill(ui);
+    ui.add_shape(Shape::Shadow {
+        local_rect: Some(card_rect()),
+        radius: radius(),
+        color: Color::rgba(0.0, 0.0, 0.0, 0.45),
+        offset: Vec2::new(0.0, 3.0),
+        blur: 8.0,
+        spread: 0.0,
+        inset: true,
+    });
 }
 
 /// Multi-shadow stack — CSS `box-shadow: a, b, c`. Pushed in record

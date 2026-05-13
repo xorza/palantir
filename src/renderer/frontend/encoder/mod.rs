@@ -190,20 +190,21 @@ fn emit_one_shape(
                 },
             };
             let sigma3 = 3.0 * blur.max(0.0);
-            let (paint_rect, kind) = if *inset {
-                // Paint inside source verbatim; spread shrinks the
-                // hole inside the shader via the (1 - hole_cov) math
-                // on `half - spread`. Source size unchanged.
-                (source, FillKind::SHADOW_INSET)
+            let spread_pos = spread.max(0.0);
+            // For drop: paint bbox absorbs spread; shader doesn't
+            // need it. For inset: paint bbox = source; spread is
+            // passed through `fill_axis.w` so the shader can shrink
+            // the hole.
+            let (paint_rect, kind, axis_w) = if *inset {
+                (source, FillKind::SHADOW_INSET, spread_pos)
             } else {
-                let spread = spread.max(0.0);
-                let dx = offset.x.abs() + sigma3 + spread;
-                let dy = offset.y.abs() + sigma3 + spread;
+                let dx = offset.x.abs() + sigma3 + spread_pos;
+                let dy = offset.y.abs() + sigma3 + spread_pos;
                 let r = Rect {
                     min: source.min - Vec2::new(dx, dy),
                     size: Size::new(source.size.w + 2.0 * dx, source.size.h + 2.0 * dy),
                 };
-                (r, FillKind::SHADOW_DROP)
+                (r, FillKind::SHADOW_DROP, 0.0)
             };
             out.draw_shadow(
                 paint_rect,
@@ -214,7 +215,7 @@ fn emit_one_shape(
                     dir_x: offset.x,
                     dir_y: offset.y,
                     t0: *blur,
-                    t1: 0.0,
+                    t1: axis_w,
                 },
             );
         }
