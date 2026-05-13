@@ -8,12 +8,10 @@
 //! take `&Cascades` as their single frozen-state handle.
 
 use crate::forest::Forest;
-use crate::forest::shapes::record::Overhang;
 use crate::forest::tree::{Layer, NodeId, Tree, TreeItem, TreeItems};
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
-use crate::primitives::size::Size;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
@@ -246,12 +244,11 @@ fn clip_to(rect: Rect, clip: Option<Rect>) -> Rect {
     }
 }
 
-/// Union the per-shape [`Overhang`] of every direct shape on `node`,
-/// inflate `layout_rect` by the union (still in owner-local px),
-/// apply `parent_transform`, then clip to the ancestor clip. The
-/// walk falls through to the un-inflated path for nodes that own no
-/// shapes (no direct paint) or only emit shapes that stay within
-/// their owner rect — the common case.
+/// Union the owner-local `paint_bbox` of every direct shape on
+/// `node` with the node's own rect, translate to tree-local coords,
+/// apply `parent_transform`, then clip to the ancestor clip. Nodes
+/// with no shapes — or with shapes whose bbox stays inside the
+/// owner rect — fall through to the un-inflated path.
 fn compute_paint_rect(
     tree: &Tree,
     node: NodeId,
@@ -259,28 +256,21 @@ fn compute_paint_rect(
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
 ) -> Rect {
-    let mut overhang = Overhang::ZERO;
+    let owner_local = Rect {
+        min: Vec2::ZERO,
+        size: layout_rect.size,
+    };
+    let mut paint_local = owner_local;
     if tree.records.shape_span()[node.index()].len > 0 {
-        let owner_size = layout_rect.size;
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             if let TreeItem::ShapeRecord(s) = item {
-                overhang = overhang.union(s.paint_overhang_local(owner_size));
+                paint_local = paint_local.union(s.paint_bbox_local(layout_rect.size));
             }
         }
     }
-    let local = if overhang.is_zero() {
-        layout_rect
-    } else {
-        Rect {
-            min: Vec2::new(
-                layout_rect.min.x - overhang.left,
-                layout_rect.min.y - overhang.top,
-            ),
-            size: Size::new(
-                layout_rect.size.w + overhang.left + overhang.right,
-                layout_rect.size.h + overhang.top + overhang.bottom,
-            ),
-        }
+    let paint_tree_local = Rect {
+        min: layout_rect.min + paint_local.min,
+        size: paint_local.size,
     };
-    clip_to(parent_transform.apply_rect(local), parent_clip)
+    clip_to(parent_transform.apply_rect(paint_tree_local), parent_clip)
 }
