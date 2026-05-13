@@ -161,37 +161,63 @@ pub(crate) enum ShapeRecord {
     } = 4,
 }
 
+/// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — drop shadow
+/// inflated by `|offset| + 3σ + max(spread, 0)` per axis from the
+/// source rect; inset shadow stays inside the source. `local_rect =
+/// None` ⇒ source covers the full owner; `Some(r)` ⇒ source is `r` at
+/// owner-relative coords. **Sole formula source** for the shadow paint
+/// extent: encoder (per-quad paint rect) and cascade (per-node
+/// [`Overhang`]) both call this so the two views can't drift.
+pub(crate) fn shadow_paint_rect_local(
+    local_rect: Option<Rect>,
+    owner_size: Size,
+    offset: Vec2,
+    blur: f32,
+    spread: f32,
+    inset: bool,
+) -> Rect {
+    let source = match local_rect {
+        None => Rect {
+            min: Vec2::ZERO,
+            size: owner_size,
+        },
+        Some(r) => r,
+    };
+    if inset {
+        return source;
+    }
+    let dx = offset.x.abs() + 3.0 * blur.max(0.0) + spread.max(0.0);
+    let dy = offset.y.abs() + 3.0 * blur.max(0.0) + spread.max(0.0);
+    Rect {
+        min: Vec2::new(source.min.x - dx, source.min.y - dy),
+        size: Size::new(source.size.w + 2.0 * dx, source.size.h + 2.0 * dy),
+    }
+}
+
 impl ShapeRecord {
     /// Per-side overhang beyond the owner's arranged rect (owner-local
     /// px). Only drop shadows extend outside; everything else returns
-    /// [`Overhang::ZERO`]. The drop-shadow formula matches the
-    /// `paint_rect` the encoder hands to `draw_shadow`
-    /// (`offset.abs() + 3σ + max(spread, 0)` per axis), so damage and
-    /// paint can't drift.
+    /// [`Overhang::ZERO`]. Derived from [`shadow_paint_rect_local`] so
+    /// the formula stays in one place.
     pub(crate) fn paint_overhang_local(&self, owner_size: Size) -> Overhang {
-        match self {
-            ShapeRecord::Shadow {
-                local_rect,
-                offset,
-                blur,
-                spread,
-                inset: false,
-                ..
-            } => {
-                let dx = offset.x.abs() + 3.0 * blur.max(0.0) + spread.max(0.0);
-                let dy = offset.y.abs() + 3.0 * blur.max(0.0) + spread.max(0.0);
-                let (sx, sy, sw, sh) = match local_rect {
-                    None => (0.0, 0.0, owner_size.w, owner_size.h),
-                    Some(r) => (r.min.x, r.min.y, r.size.w, r.size.h),
-                };
-                Overhang {
-                    left: (dx - sx).max(0.0),
-                    top: (dy - sy).max(0.0),
-                    right: (sx + sw + dx - owner_size.w).max(0.0),
-                    bottom: (sy + sh + dy - owner_size.h).max(0.0),
-                }
-            }
-            _ => Overhang::ZERO,
+        let ShapeRecord::Shadow {
+            local_rect,
+            offset,
+            blur,
+            spread,
+            inset: false,
+            ..
+        } = self
+        else {
+            return Overhang::ZERO;
+        };
+        let paint =
+            shadow_paint_rect_local(*local_rect, owner_size, *offset, *blur, *spread, false);
+        Overhang {
+            left: (-paint.min.x).max(0.0),
+            top: (-paint.min.y).max(0.0),
+            right: (paint.min.x + paint.size.w - owner_size.w).max(0.0),
+            bottom: (paint.min.y + paint.size.h - owner_size.h).max(0.0),
         }
     }
 
