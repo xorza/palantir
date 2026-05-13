@@ -1,7 +1,7 @@
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::widget_id::WidgetId;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
 use crate::support::testing::run_at_acked;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;

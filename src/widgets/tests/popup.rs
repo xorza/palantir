@@ -47,7 +47,7 @@ fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
 }
 
 fn main_panel_clicked(ui: &Ui) -> bool {
-    let main_id = crate::forest::widget_id::WidgetId::from_hash("main-bg");
+    let main_id = crate::primitives::widget_id::WidgetId::from_hash("main-bg");
     ui.response_for(main_id).clicked
 }
 

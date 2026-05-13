@@ -1,5 +1,4 @@
 use crate::forest::element::{Configure, Element, LayoutMode, ScrollAxes};
-use crate::forest::widget_id::WidgetId;
 use crate::input::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
@@ -13,6 +12,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
+use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::ScrollbarTheme;

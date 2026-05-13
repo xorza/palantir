@@ -29,7 +29,6 @@ pub(crate) mod seen_ids;
 pub(crate) mod shapes;
 pub(crate) mod tree;
 pub(crate) mod visibility;
-pub(crate) mod widget_id;
 
 /// One arena per [`Layer`]. Recording dispatches `open_node`,
 /// `add_shape`, `close_node` to `trees[current_layer as usize]`.

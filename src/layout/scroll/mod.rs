@@ -19,11 +19,11 @@
 
 use crate::forest::element::ScrollAxes;
 use crate::forest::tree::{NodeId, Tree};
-use crate::forest::widget_id::WidgetId;
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetId;
 use crate::text::TextShaper;
 use glam::Vec2;
 use rustc_hash::FxHashMap;

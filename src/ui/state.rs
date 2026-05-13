@@ -13,7 +13,7 @@
 //! affected rows and patches the swapped neighbour's index in O(1)
 //! using the parallel `owners` vec.
 
-use crate::forest::widget_id::WidgetId;
+use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::any::{Any, TypeId};
 

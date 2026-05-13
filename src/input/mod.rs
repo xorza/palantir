@@ -2,12 +2,12 @@ pub(crate) mod keyboard;
 pub(crate) mod sense;
 pub(crate) mod shortcut;
 
-use crate::forest::widget_id::WidgetId;
 use crate::input::keyboard::{
     Key, KeyPress, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
 };
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::primitives::rect::Rect;
+use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use glam::Vec2;
 

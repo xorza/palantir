@@ -1,11 +1,11 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
-use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetId;
 use crate::support::internals::scroll_state;
 use crate::support::testing::{run_at_acked, under_outer};
 use crate::widgets::frame::Frame;
@@ -499,9 +499,9 @@ mod bars {
     use crate::forest::element::Configure;
     use crate::forest::shapes::record::ShapeRecord;
     use crate::forest::tree::{Layer, NodeId};
-    use crate::forest::widget_id::WidgetId;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::background::Background;
+    use crate::primitives::widget_id::WidgetId;
     use crate::support::internals::scroll_state;
     use crate::support::testing::{run_at_acked, shapes_of};
     use crate::widgets::frame::Frame;

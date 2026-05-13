@@ -210,7 +210,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
 /// visible in the showcase as a flash of "alive" disabled buttons.
 #[test]
 fn child_inside_disabled_panel_sees_disabled_at_record_time() {
-    use crate::forest::widget_id::WidgetId;
+    use crate::primitives::widget_id::WidgetId;
     let mut ui = Ui::new();
     let child_id = WidgetId::from_hash("child");
     let mut observed = None;

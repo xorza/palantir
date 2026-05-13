@@ -28,8 +28,8 @@
 use crate::forest::Forest;
 use crate::forest::rollups::NodeHash;
 use crate::forest::tree::NodeId;
-use crate::forest::widget_id::WidgetId;
 use crate::primitives::rect::Rect;
+use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use rustc_hash::{FxHashMap, FxHashSet};

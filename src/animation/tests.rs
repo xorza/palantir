@@ -6,9 +6,9 @@
 use super::*;
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::widget_id::WidgetId;
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
+use crate::primitives::widget_id::WidgetId;
 use crate::support::testing::run_at;
 use crate::widgets::frame::Frame;
 use glam::{UVec2, Vec2};

@@ -14,3 +14,4 @@ pub(crate) mod stroke;
 pub(crate) mod stroke_tessellate;
 pub(crate) mod transform;
 pub(crate) mod urect;
+pub(crate) mod widget_id;

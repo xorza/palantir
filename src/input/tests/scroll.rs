@@ -31,7 +31,7 @@ fn from_winit_line_delta_emits_scroll_lines_with_flipped_signs() {
 
 #[test]
 fn scroll_delta_for_combines_pixels_and_lines_by_line_step() {
-    use crate::forest::widget_id::WidgetId;
+    use crate::primitives::widget_id::WidgetId;
     let mut state = InputState::new();
     let cascades = Cascades::default();
     let id = WidgetId::from_hash("scroll");

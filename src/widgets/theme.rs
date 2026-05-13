@@ -1,5 +1,4 @@
 use crate::animation::{AnimSlot, AnimSpec};
-use crate::forest::widget_id::WidgetId;
 use crate::input::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
@@ -9,6 +8,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
+use crate::primitives::widget_id::WidgetId;
 use crate::text::FontFamily;
 use crate::ui::Ui;
 use palantir_anim_derive::Animatable;

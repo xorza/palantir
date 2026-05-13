@@ -8,12 +8,12 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
-use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::tooltip::{Tooltip, TooltipState, place_anchor};

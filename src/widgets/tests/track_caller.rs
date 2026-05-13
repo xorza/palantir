@@ -6,7 +6,7 @@
 //! still works within a frame, but state stability degrades).
 
 use crate::forest::element::Configure;
-use crate::forest::widget_id::WidgetId;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel, text::Text};
 
 #[track_caller]

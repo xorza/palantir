@@ -23,7 +23,7 @@
 
 use crate::forest::element::Element;
 use crate::forest::tree::{Layer, NodeId};
-use crate::forest::widget_id::WidgetId;
+use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// How a `WidgetId` was produced. Both sources share the same

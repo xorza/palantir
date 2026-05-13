@@ -1,8 +1,8 @@
 //! Per-NodeId record stored in `Tree`'s SoA arena.
 
 use crate::forest::element::{LayoutCore, NodeFlags};
-use crate::forest::widget_id::WidgetId;
 use crate::layout::types::span::Span;
+use crate::primitives::widget_id::WidgetId;
 use soa_rs::Soars;
 
 /// Per-NodeId record. One push per `open_node`, finalized by

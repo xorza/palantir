@@ -29,10 +29,10 @@
 
 use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO, LiveArena};
 use crate::forest::rollups::NodeHash;
-use crate::forest::widget_id::WidgetId;
 use crate::layout::ShapedText;
 use crate::layout::types::span::Span;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetId;
 use glam::IVec2;
 use rustc_hash::FxHashMap;
 use std::ops::Range;
