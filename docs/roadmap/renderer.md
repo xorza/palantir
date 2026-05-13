@@ -9,9 +9,9 @@
 - **Offscreen render targets / mask layer.** Blocks blur, masked
   compositing, tab transitions. (Drop shadows don't need it — see
   below.)
-- **SDF drop shadows.** Slice 1 shipped — see
-  `docs/roadmap/shadow.md`. Inset shadows (slice 2) and
-  `Background::shadow` sugar (slice 4) still open.
+- **SDF drop shadows.** Shipped — outer + inset shadows and the
+  `Background::shadow` sugar are all live. See
+  `docs/roadmap/shadow.md` for the slice history.
 - **Sprite atlas for icons.** Bin-packed texture array (mono +
   polychrome), instanced sampler — same shape as the glyph atlas.
   Replaces ad-hoc icon paths and makes SVG/raster icons cheap to

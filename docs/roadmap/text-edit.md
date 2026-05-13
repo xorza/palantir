@@ -2,9 +2,10 @@
 
 v1 ships single-line typing, caret, codepoint backspace/delete +
 arrows + home/end, click/drag-to-place, focus + `FocusPolicy`,
-escape-to-blur, IME `Commit`, and selection — visible wash + shift/arrow
+escape-to-blur, IME `Commit`, selection (visible wash + shift/arrow
 extension + drag-select + ctrl/cmd+A + two-stage Escape, edits replace
-the range. See `src/widgets/text_edit/design.md`.
+the range), and clipboard (ctrl/cmd+c/x/v via `arboard`). See
+`src/widgets/text_edit/design.md`.
 
 ## Next
 
@@ -19,8 +20,6 @@ the range. See `src/widgets/text_edit/design.md`.
   double-click selects word, triple-click selects all.
 - **Multi-line.** Enter inserts `\n`, PageUp/Down live, caret y from
   `Buffer::hit`, `TextWrap::Wrap` when builder sets `multiline`.
-- **Clipboard.** `arboard` behind `Clipboard` trait on `Ui`; route
-  ctrl/cmd+c/x/v from `frame_keys`.
 - **IME preedit.** Currently dropped at translation. Plumb
   `InputEvent::ImePreedit { text, cursor }`, render underlined under
   caret, commit on `Ime(Commit)`.
