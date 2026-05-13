@@ -8,6 +8,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
@@ -238,7 +239,7 @@ impl MenuItem {
             fill: ui.theme.context_menu.separator.into(),
             stroke: Stroke::ZERO,
             radius: Corners::ZERO,
-            shadow: None,
+            shadow: Shadow::NONE,
         });
         let id = element.id;
         let node = ui.node(element, |_| {});

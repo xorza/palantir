@@ -4,6 +4,7 @@ use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{justify::Justify, sizing::Sizing};
+use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
@@ -11,7 +12,6 @@ use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
 use crate::shape::Shape;
 use crate::support::testing::{encode_cmds, run_at_acked, shapes_of, ui_with_text};
-use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 

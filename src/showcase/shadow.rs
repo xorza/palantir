@@ -41,7 +41,7 @@ pub fn build(ui: &mut Ui) {
                     cell(ui, "inset", inset);
                     cell(ui, "stacked", stacked);
                 });
-            // Chrome-attached shadows: `Background { shadow: Some(_) }`
+            // Chrome-attached shadows: `Background { shadow: Shadow {...} }`
             // routes through the encoder's chrome branch — paints
             // before the rect fill, so it composes correctly under
             // semi-transparent fills. Compare with row 1's
@@ -180,13 +180,13 @@ fn chrome_soft() -> Background {
         fill: Color::rgb(0.95, 0.95, 0.97).into(),
         stroke: Default::default(),
         radius: Corners::all(12.0),
-        shadow: Some(Shadow {
+        shadow: Shadow {
             color: Color::rgba(0.0, 0.0, 0.0, 0.20),
             offset: Vec2::new(0.0, 4.0),
             blur: 8.0,
             spread: 0.0,
             inset: false,
-        }),
+        },
     }
 }
 
@@ -195,13 +195,13 @@ fn chrome_elevated() -> Background {
         fill: Color::rgb(0.95, 0.95, 0.97).into(),
         stroke: Default::default(),
         radius: Corners::all(12.0),
-        shadow: Some(Shadow {
+        shadow: Shadow {
             color: Color::rgba(0.0, 0.0, 0.0, 0.28),
             offset: Vec2::new(0.0, 12.0),
             blur: 20.0,
             spread: 0.0,
             inset: false,
-        }),
+        },
     }
 }
 
@@ -210,13 +210,13 @@ fn chrome_inset() -> Background {
         fill: Color::rgb(0.95, 0.95, 0.97).into(),
         stroke: Default::default(),
         radius: Corners::all(12.0),
-        shadow: Some(Shadow {
+        shadow: Shadow {
             color: Color::rgba(0.0, 0.0, 0.0, 0.45),
             offset: Vec2::new(0.0, 3.0),
             blur: 8.0,
             spread: 0.0,
             inset: true,
-        }),
+        },
     }
 }
 
@@ -228,13 +228,13 @@ fn chrome_translucent() -> Background {
         fill: Color::rgba(0.95, 0.95, 0.97, 0.4).into(),
         stroke: Default::default(),
         radius: Corners::all(12.0),
-        shadow: Some(Shadow {
+        shadow: Shadow {
             color: Color::rgba(0.0, 0.0, 0.0, 0.5),
             offset: Vec2::new(0.0, 6.0),
             blur: 12.0,
             spread: 0.0,
             inset: false,
-        }),
+        },
     }
 }
 

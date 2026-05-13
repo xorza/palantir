@@ -8,6 +8,7 @@ use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
@@ -240,7 +241,7 @@ fn push_bar_nodes(
         fill: fill.into(),
         stroke: Stroke::ZERO,
         radius,
-        shadow: None,
+        shadow: Shadow::NONE,
     });
     ui.node(thumb, |_| {});
 }

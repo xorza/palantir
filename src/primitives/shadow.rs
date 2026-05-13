@@ -1,12 +1,18 @@
-use crate::primitives::approx::noop_f32;
 use crate::primitives::color::Color;
 use glam::Vec2;
 use palantir_anim_derive::Animatable;
 
-/// Single drop-or-inset shadow attached to a [`Background`]. Lowered
-/// at `open_node` into a [`ShapeRecord::Shadow`] sitting at the head
-/// of the owning node's shape span so existing damage / paint-rect /
-/// overhang plumbing covers it without a parallel code path.
+/// Single drop-or-inset shadow. Used in two places: embedded in a
+/// `Shape::Shadow` (paints via the shape buffer, multi-shadow stacks
+/// allowed by record order) and as `Background::shadow` (paints via
+/// the encoder's chrome branch, before the rect fill, single-shadow
+/// only). Both routes share the `shadow_paint_rect_local` overhang
+/// formula and the `draw_shadow` cmd path.
+///
+/// `Shadow::NONE` (also `Default`) is the "no shadow" sentinel —
+/// matches the `Stroke::ZERO` convention so consumers can store a
+/// plain `Shadow` field instead of `Option<Shadow>` and animate
+/// componentwise through it.
 ///
 /// `offset` shifts in logical px (CSS `box-shadow` x/y). `blur` is
 /// the Gaussian σ in logical px (CSS `blur-radius / 2`); 0 collapses
@@ -15,9 +21,7 @@ use palantir_anim_derive::Animatable;
 /// `false` paints outside it.
 ///
 /// Multi-shadow stacks are intentionally not modelled here — drop a
-/// `Shape::Shadow` directly when you need more than one. Folding a
-/// `SmallVec<[Shadow; N]>` onto `Background` would cost the
-/// `Copy`/`Hash`/`SparseColumn` properties for a niche case.
+/// `Shape::Shadow` directly when you need more than one.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
 )]
@@ -45,11 +49,6 @@ impl Shadow {
 
     pub fn is_noop(&self) -> bool {
         self.color.is_noop()
-            || (noop_f32(self.blur)
-                && noop_f32(self.spread)
-                && noop_f32(self.offset.x)
-                && noop_f32(self.offset.y)
-                && self.color.a <= 0.0)
     }
 }
 

@@ -2,10 +2,10 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::support::testing::{click_at, run_at, run_at_acked, shapes_of};
-use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 

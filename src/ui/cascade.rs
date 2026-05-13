@@ -274,8 +274,9 @@ fn compute_paint_rect(
     // `shadow_paint_rect_local` so paint extent and damage extent
     // stay in lockstep.
     if let Some(bg) = tree.chrome.get(node.index())
-        && let Some(s) = bg.shadow.filter(|s| !s.is_noop())
+        && !bg.shadow.is_noop()
     {
+        let s = &bg.shadow;
         let shadow_local =
             shadow_paint_rect_local(None, layout_rect.size, s.offset, s.blur, s.spread, s.inset);
         paint_local = paint_local.union(shadow_local);

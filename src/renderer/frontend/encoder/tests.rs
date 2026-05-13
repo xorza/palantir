@@ -9,13 +9,14 @@ use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
+use crate::primitives::background::Background;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
 use crate::support::testing::{
     encode_cmds, encode_cmds_filtered, encode_cmds_with_rects, run_at_acked,
 };
-use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -362,7 +363,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                         fill: Color::rgb(0.2, 0.2, 0.2).into(),
                         stroke: Stroke::solid(Color::rgb(1.0, 1.0, 1.0), 2.0),
                         radius: Corners::all(8.0),
-                        shadow: None,
+                        shadow: Shadow::NONE,
                     })
                     .clip_rounded()
                     .show(ui, |ui| {

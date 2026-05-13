@@ -7,7 +7,8 @@
 use super::swatch::{caption_style, section, swatch_bg};
 use crate::showcase::swatch;
 use palantir::{
-    Background, Configure, Corners, Frame, Justify, Panel, Sizing, Stroke, Text, TextStyle, Ui,
+    Background, Configure, Corners, Frame, Justify, Panel, Shadow, Sizing, Stroke, Text, TextStyle,
+    Ui,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -129,7 +130,7 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
                 1.0,
             ),
             radius: Corners::all(10.0),
-            shadow: None,
+            shadow: Shadow::NONE,
         })
         .show(ui, |ui| {
             Text::new(label)

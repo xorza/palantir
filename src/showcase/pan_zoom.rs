@@ -1,6 +1,6 @@
 use palantir::{
-    AnimSpec, Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Scroll, Sizing,
-    Stroke, TextStyle, Ui, WidgetLook,
+    AnimSpec, Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Scroll, Shadow,
+    Sizing, Stroke, TextStyle, Ui, WidgetLook,
 };
 
 /// `Scroll::both().with_zoom()` over a dense grid of buttons. Bare wheel pans;
@@ -85,7 +85,7 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
         fill: brighten(base, 0.3).into(),
         stroke: Stroke::solid(Color::hex(0xffffff), 1.0),
         radius: Corners::all(3.0),
-        shadow: None,
+        shadow: Shadow::NONE,
     };
     let label_text = TextStyle::default()
         .with_font_size(11.0)

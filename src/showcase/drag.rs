@@ -1,6 +1,7 @@
 use glam::Vec2;
 use palantir::{
-    Background, Color, Configure, Corners, Frame, Panel, Sense, Sizing, Stroke, Ui, WidgetId,
+    Background, Color, Configure, Corners, Frame, Panel, Sense, Shadow, Sizing, Stroke, Ui,
+    WidgetId,
 };
 
 /// Three draggable cards on a Canvas. Each card stores its `Vec2`
@@ -68,7 +69,7 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
             fill: accent.into(),
             stroke: Stroke::solid(Color::hex(0x202020), 1.0),
             radius: Corners::all(6.0),
-            shadow: None,
+            shadow: Shadow::NONE,
         })
         .show(ui);
 

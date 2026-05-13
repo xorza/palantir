@@ -1,5 +1,5 @@
 use crate::showcase::swatch;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
 
 /// Card with a rounded background. Used in three configurations below
 /// (no clip, scissor clip, rounded stencil clip) to demonstrate how
@@ -11,7 +11,7 @@ fn card() -> Background {
         fill: Color::hex(0x252525).into(),
         stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
         radius: Corners::all(28.0),
-        shadow: None,
+        shadow: Shadow::NONE,
     }
 }
 
