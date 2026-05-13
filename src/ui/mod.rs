@@ -16,7 +16,7 @@ use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::types::display::Display;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::sizing::{Sizes, Sizing};
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -379,7 +379,7 @@ impl Ui {
         // Fill matches the historical "root paints full surface"
         // behavior while letting user roots respect their own sizing.
         let mut viewport = Element::new(LayoutMode::ZStack);
-        viewport.size = Sizes::from((Sizing::FILL, Sizing::FILL));
+        viewport.size = Sizing::FILL.into();
         self.forest.open_node(viewport);
         {
             profiling::scope!("Ui::record_user");

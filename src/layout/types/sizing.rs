@@ -1,4 +1,5 @@
 use crate::primitives::num::Num;
+use crate::primitives::size::Size;
 
 /// WPF-style sizing. Maps to: Fixed = exact px, Hug = Auto (use desired),
 /// Fill = Star (take remainder, distributed by `weight` across Fill siblings).
@@ -87,6 +88,15 @@ impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for Sizes {
         Self {
             w: w.into(),
             h: h.into(),
+        }
+    }
+}
+
+impl From<Size> for Sizes {
+    fn from(s: Size) -> Self {
+        Self {
+            w: Sizing::Fixed(s.w),
+            h: Sizing::Fixed(s.h),
         }
     }
 }
