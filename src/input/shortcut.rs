@@ -16,6 +16,7 @@
 //!   for the hot set (`cmd[+shift] + ASCII letter`). Rare combos
 //!   allocate once via `Display`.
 
+use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use std::borrow::Cow;
 use std::fmt;
@@ -66,7 +67,7 @@ impl Mods {
     /// Project event-state [`Modifiers`] into shortcut vocabulary.
     /// `cmd = meta` on macOS, `cmd = ctrl` elsewhere.
     pub fn from_event(m: Modifiers) -> Self {
-        let cmd = if cfg!(target_os = "macos") {
+        let cmd = if matches!(PLATFORM, Platform::Mac) {
             m.meta
         } else {
             m.ctrl
@@ -136,7 +137,7 @@ impl Shortcut {
 
 impl fmt::Display for Shortcut {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if cfg!(target_os = "macos") {
+        if matches!(PLATFORM, Platform::Mac) {
             // Canonical macOS order: ⌃ ⌥ ⇧ ⌘ <key>. We don't model
             // raw Ctrl, so just option / shift / cmd.
             if self.mods.alt {
@@ -183,12 +184,12 @@ fn write_key(f: &mut fmt::Formatter<'_>, key: Key) -> fmt::Result {
         Key::ArrowRight => f.write_str("→"),
         Key::ArrowUp => f.write_str("↑"),
         Key::ArrowDown => f.write_str("↓"),
-        Key::Backspace => f.write_str(if cfg!(target_os = "macos") {
+        Key::Backspace => f.write_str(if matches!(PLATFORM, Platform::Mac) {
             "⌫"
         } else {
             "Backspace"
         }),
-        Key::Delete => f.write_str(if cfg!(target_os = "macos") {
+        Key::Delete => f.write_str(if matches!(PLATFORM, Platform::Mac) {
             "⌦"
         } else {
             "Delete"
@@ -197,12 +198,12 @@ fn write_key(f: &mut fmt::Formatter<'_>, key: Key) -> fmt::Result {
         Key::End => f.write_str("End"),
         Key::PageUp => f.write_str("PgUp"),
         Key::PageDown => f.write_str("PgDn"),
-        Key::Enter => f.write_str(if cfg!(target_os = "macos") {
+        Key::Enter => f.write_str(if matches!(PLATFORM, Platform::Mac) {
             "⏎"
         } else {
             "Enter"
         }),
-        Key::Tab => f.write_str(if cfg!(target_os = "macos") {
+        Key::Tab => f.write_str(if matches!(PLATFORM, Platform::Mac) {
             "⇥"
         } else {
             "Tab"
@@ -231,135 +232,131 @@ const fn label_const(s: Shortcut) -> Option<&'static str> {
     None
 }
 
-#[cfg(target_os = "macos")]
 const fn cmd_label(c: char) -> &'static str {
-    match c {
-        'A' => "⌘A",
-        'B' => "⌘B",
-        'C' => "⌘C",
-        'D' => "⌘D",
-        'E' => "⌘E",
-        'F' => "⌘F",
-        'G' => "⌘G",
-        'H' => "⌘H",
-        'I' => "⌘I",
-        'J' => "⌘J",
-        'K' => "⌘K",
-        'L' => "⌘L",
-        'M' => "⌘M",
-        'N' => "⌘N",
-        'O' => "⌘O",
-        'P' => "⌘P",
-        'Q' => "⌘Q",
-        'R' => "⌘R",
-        'S' => "⌘S",
-        'T' => "⌘T",
-        'U' => "⌘U",
-        'V' => "⌘V",
-        'W' => "⌘W",
-        'X' => "⌘X",
-        'Y' => "⌘Y",
-        'Z' => "⌘Z",
-        _ => "?",
+    if matches!(PLATFORM, Platform::Mac) {
+        match c {
+            'A' => "⌘A",
+            'B' => "⌘B",
+            'C' => "⌘C",
+            'D' => "⌘D",
+            'E' => "⌘E",
+            'F' => "⌘F",
+            'G' => "⌘G",
+            'H' => "⌘H",
+            'I' => "⌘I",
+            'J' => "⌘J",
+            'K' => "⌘K",
+            'L' => "⌘L",
+            'M' => "⌘M",
+            'N' => "⌘N",
+            'O' => "⌘O",
+            'P' => "⌘P",
+            'Q' => "⌘Q",
+            'R' => "⌘R",
+            'S' => "⌘S",
+            'T' => "⌘T",
+            'U' => "⌘U",
+            'V' => "⌘V",
+            'W' => "⌘W",
+            'X' => "⌘X",
+            'Y' => "⌘Y",
+            'Z' => "⌘Z",
+            _ => "?",
+        }
+    } else {
+        match c {
+            'A' => "Ctrl+A",
+            'B' => "Ctrl+B",
+            'C' => "Ctrl+C",
+            'D' => "Ctrl+D",
+            'E' => "Ctrl+E",
+            'F' => "Ctrl+F",
+            'G' => "Ctrl+G",
+            'H' => "Ctrl+H",
+            'I' => "Ctrl+I",
+            'J' => "Ctrl+J",
+            'K' => "Ctrl+K",
+            'L' => "Ctrl+L",
+            'M' => "Ctrl+M",
+            'N' => "Ctrl+N",
+            'O' => "Ctrl+O",
+            'P' => "Ctrl+P",
+            'Q' => "Ctrl+Q",
+            'R' => "Ctrl+R",
+            'S' => "Ctrl+S",
+            'T' => "Ctrl+T",
+            'U' => "Ctrl+U",
+            'V' => "Ctrl+V",
+            'W' => "Ctrl+W",
+            'X' => "Ctrl+X",
+            'Y' => "Ctrl+Y",
+            'Z' => "Ctrl+Z",
+            _ => "?",
+        }
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-const fn cmd_label(c: char) -> &'static str {
-    match c {
-        'A' => "Ctrl+A",
-        'B' => "Ctrl+B",
-        'C' => "Ctrl+C",
-        'D' => "Ctrl+D",
-        'E' => "Ctrl+E",
-        'F' => "Ctrl+F",
-        'G' => "Ctrl+G",
-        'H' => "Ctrl+H",
-        'I' => "Ctrl+I",
-        'J' => "Ctrl+J",
-        'K' => "Ctrl+K",
-        'L' => "Ctrl+L",
-        'M' => "Ctrl+M",
-        'N' => "Ctrl+N",
-        'O' => "Ctrl+O",
-        'P' => "Ctrl+P",
-        'Q' => "Ctrl+Q",
-        'R' => "Ctrl+R",
-        'S' => "Ctrl+S",
-        'T' => "Ctrl+T",
-        'U' => "Ctrl+U",
-        'V' => "Ctrl+V",
-        'W' => "Ctrl+W",
-        'X' => "Ctrl+X",
-        'Y' => "Ctrl+Y",
-        'Z' => "Ctrl+Z",
-        _ => "?",
-    }
-}
-
-#[cfg(target_os = "macos")]
 const fn cmd_shift_label(c: char) -> &'static str {
-    match c {
-        'A' => "⇧⌘A",
-        'B' => "⇧⌘B",
-        'C' => "⇧⌘C",
-        'D' => "⇧⌘D",
-        'E' => "⇧⌘E",
-        'F' => "⇧⌘F",
-        'G' => "⇧⌘G",
-        'H' => "⇧⌘H",
-        'I' => "⇧⌘I",
-        'J' => "⇧⌘J",
-        'K' => "⇧⌘K",
-        'L' => "⇧⌘L",
-        'M' => "⇧⌘M",
-        'N' => "⇧⌘N",
-        'O' => "⇧⌘O",
-        'P' => "⇧⌘P",
-        'Q' => "⇧⌘Q",
-        'R' => "⇧⌘R",
-        'S' => "⇧⌘S",
-        'T' => "⇧⌘T",
-        'U' => "⇧⌘U",
-        'V' => "⇧⌘V",
-        'W' => "⇧⌘W",
-        'X' => "⇧⌘X",
-        'Y' => "⇧⌘Y",
-        'Z' => "⇧⌘Z",
-        _ => "?",
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-const fn cmd_shift_label(c: char) -> &'static str {
-    match c {
-        'A' => "Ctrl+Shift+A",
-        'B' => "Ctrl+Shift+B",
-        'C' => "Ctrl+Shift+C",
-        'D' => "Ctrl+Shift+D",
-        'E' => "Ctrl+Shift+E",
-        'F' => "Ctrl+Shift+F",
-        'G' => "Ctrl+Shift+G",
-        'H' => "Ctrl+Shift+H",
-        'I' => "Ctrl+Shift+I",
-        'J' => "Ctrl+Shift+J",
-        'K' => "Ctrl+Shift+K",
-        'L' => "Ctrl+Shift+L",
-        'M' => "Ctrl+Shift+M",
-        'N' => "Ctrl+Shift+N",
-        'O' => "Ctrl+Shift+O",
-        'P' => "Ctrl+Shift+P",
-        'Q' => "Ctrl+Shift+Q",
-        'R' => "Ctrl+Shift+R",
-        'S' => "Ctrl+Shift+S",
-        'T' => "Ctrl+Shift+T",
-        'U' => "Ctrl+Shift+U",
-        'V' => "Ctrl+Shift+V",
-        'W' => "Ctrl+Shift+W",
-        'X' => "Ctrl+Shift+X",
-        'Y' => "Ctrl+Shift+Y",
-        'Z' => "Ctrl+Shift+Z",
-        _ => "?",
+    if matches!(PLATFORM, Platform::Mac) {
+        match c {
+            'A' => "⇧⌘A",
+            'B' => "⇧⌘B",
+            'C' => "⇧⌘C",
+            'D' => "⇧⌘D",
+            'E' => "⇧⌘E",
+            'F' => "⇧⌘F",
+            'G' => "⇧⌘G",
+            'H' => "⇧⌘H",
+            'I' => "⇧⌘I",
+            'J' => "⇧⌘J",
+            'K' => "⇧⌘K",
+            'L' => "⇧⌘L",
+            'M' => "⇧⌘M",
+            'N' => "⇧⌘N",
+            'O' => "⇧⌘O",
+            'P' => "⇧⌘P",
+            'Q' => "⇧⌘Q",
+            'R' => "⇧⌘R",
+            'S' => "⇧⌘S",
+            'T' => "⇧⌘T",
+            'U' => "⇧⌘U",
+            'V' => "⇧⌘V",
+            'W' => "⇧⌘W",
+            'X' => "⇧⌘X",
+            'Y' => "⇧⌘Y",
+            'Z' => "⇧⌘Z",
+            _ => "?",
+        }
+    } else {
+        match c {
+            'A' => "Ctrl+Shift+A",
+            'B' => "Ctrl+Shift+B",
+            'C' => "Ctrl+Shift+C",
+            'D' => "Ctrl+Shift+D",
+            'E' => "Ctrl+Shift+E",
+            'F' => "Ctrl+Shift+F",
+            'G' => "Ctrl+Shift+G",
+            'H' => "Ctrl+Shift+H",
+            'I' => "Ctrl+Shift+I",
+            'J' => "Ctrl+Shift+J",
+            'K' => "Ctrl+Shift+K",
+            'L' => "Ctrl+Shift+L",
+            'M' => "Ctrl+Shift+M",
+            'N' => "Ctrl+Shift+N",
+            'O' => "Ctrl+Shift+O",
+            'P' => "Ctrl+Shift+P",
+            'Q' => "Ctrl+Shift+Q",
+            'R' => "Ctrl+Shift+R",
+            'S' => "Ctrl+Shift+S",
+            'T' => "Ctrl+Shift+T",
+            'U' => "Ctrl+Shift+U",
+            'V' => "Ctrl+Shift+V",
+            'W' => "Ctrl+Shift+W",
+            'X' => "Ctrl+Shift+X",
+            'Y' => "Ctrl+Shift+Y",
+            'Z' => "Ctrl+Shift+Z",
+            _ => "?",
+        }
     }
 }
 
