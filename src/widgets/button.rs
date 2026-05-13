@@ -17,6 +17,7 @@ pub struct Button {
 
 impl Button {
     #[allow(clippy::new_without_default)]
+    #[track_caller]
     pub fn new() -> Self {
         let mut element = Element::new(LayoutMode::Leaf);
         element.sense = Sense::CLICK;

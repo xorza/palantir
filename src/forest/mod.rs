@@ -6,7 +6,6 @@
 use crate::forest::element::Element;
 use crate::forest::seen_ids::SeenIds;
 use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
-use crate::forest::widget_id::WidgetId;
 use crate::primitives::size::Size;
 use crate::shape::Shape;
 use glam::Vec2;
@@ -88,12 +87,6 @@ impl Forest {
     }
 
     pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
-        assert!(
-            element.id != WidgetId::default(),
-            "widget recorded without a `WidgetId` — chain `.id_salt(key)`, \
-             `.id(precomputed)`, or `.auto_id()` on the builder before `.show(ui)`. \
-             `Foo::new()` no longer derives an id automatically.",
-        );
         self.ids.record(&mut element);
         self.trees[self.current_layer as usize].open_node(element)
     }

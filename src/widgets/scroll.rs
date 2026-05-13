@@ -228,7 +228,7 @@ fn push_bar_nodes(
         theme.thumb
     };
     let mut thumb = Element::new(LayoutMode::Leaf);
-    thumb.id = thumb_id;
+    thumb.set_id(thumb_id);
     thumb.size = (
         Sizing::Fixed(plan.thumb_rect.size.w),
         Sizing::Fixed(plan.thumb_rect.size.h),
@@ -276,18 +276,22 @@ pub struct Scroll {
 }
 
 impl Scroll {
+    #[track_caller]
     pub fn vertical() -> Self {
         Self::with_axes(ScrollAxes::Vertical)
     }
 
+    #[track_caller]
     pub fn horizontal() -> Self {
         Self::with_axes(ScrollAxes::Horizontal)
     }
 
+    #[track_caller]
     pub fn both() -> Self {
         Self::with_axes(ScrollAxes::Both)
     }
 
+    #[track_caller]
     fn with_axes(axes: ScrollAxes) -> Self {
         let mut element = Element::new(LayoutMode::Scroll(axes));
         element.sense = Sense::SCROLL;
@@ -543,8 +547,7 @@ impl Scroll {
         // inner under the same ZStack) can reach into the gutter
         // strip with absolute positions.
         let mut outer = Element::new(LayoutMode::ZStack);
-        outer.id = id;
-        outer.id_source = self.element.id_source;
+        outer.set_id_from(&self.element);
         outer.size = self.element.size;
         outer.min_size = self.element.min_size;
         outer.max_size = self.element.max_size;
@@ -565,7 +568,7 @@ impl Scroll {
         // margin, so inner's rendered rect = outer.rect minus the
         // reserved strip on the cross axes.
         let mut inner = Element::new(self.element.mode);
-        inner.id = scroll_id;
+        inner.set_id(scroll_id);
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;
         inner.margin = Spacing {
@@ -633,7 +636,7 @@ impl Scroll {
             // record order, hit-tested above inner via cascade order.
             if plan_v.is_some() || plan_h.is_some() {
                 let mut overlay = Element::new(LayoutMode::Canvas);
-                overlay.id = scroll_id.with("__bars");
+                overlay.set_id(scroll_id.with("__bars"));
                 overlay.size = (Sizing::FILL, Sizing::FILL).into();
                 ui.node(overlay, |ui| {
                     if let Some(p) = plan_v {

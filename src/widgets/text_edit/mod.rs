@@ -126,6 +126,7 @@ pub struct TextEdit<'a> {
 }
 
 impl<'a> TextEdit<'a> {
+    #[track_caller]
     pub fn new(text: &'a mut String) -> Self {
         let mut element = Element::new(LayoutMode::Leaf);
         element.sense = Sense::CLICK;

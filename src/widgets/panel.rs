@@ -22,6 +22,7 @@ pub struct Panel {
 }
 
 impl Panel {
+    #[track_caller]
     fn auto(mode: LayoutMode) -> Self {
         Self {
             element: Element::new(mode),
@@ -55,10 +56,12 @@ impl Panel {
         Response { node, id, state }
     }
 
+    #[track_caller]
     pub fn hstack() -> Self {
         Self::auto(LayoutMode::HStack)
     }
 
+    #[track_caller]
     pub fn vstack() -> Self {
         Self::auto(LayoutMode::VStack)
     }
@@ -70,6 +73,7 @@ impl Panel {
     /// `Sizing::Fill` on a child's main axis is treated as `Hug` for
     /// now (no per-row leftover distribution); cross-axis Fill stretches
     /// to row height.
+    #[track_caller]
     pub fn wrap_hstack() -> Self {
         Self::auto(LayoutMode::WrapHStack)
     }
@@ -78,12 +82,14 @@ impl Panel {
     /// next child wouldn't fit in the current column, wrap to a new
     /// column on the right. Symmetric to `wrap_hstack` — same code,
     /// axes swapped.
+    #[track_caller]
     pub fn wrap_vstack() -> Self {
         Self::auto(LayoutMode::WrapVStack)
     }
 
     /// Layered children: each child placed at the parent's inner top-left,
     /// sized per its own `Sizing`. Last sibling paints on top.
+    #[track_caller]
     pub fn zstack() -> Self {
         Self::auto(LayoutMode::ZStack)
     }
@@ -91,6 +97,7 @@ impl Panel {
     /// Children placed at their declared `Layout.position` (parent-inner
     /// coords). Use per-child `.position(Vec2)`. Canvas hugs to the bounding
     /// box of placed children.
+    #[track_caller]
     pub fn canvas() -> Self {
         Self::auto(LayoutMode::Canvas)
     }

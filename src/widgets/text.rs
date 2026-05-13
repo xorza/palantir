@@ -29,6 +29,7 @@ pub struct Text {
 }
 
 impl Text {
+    #[track_caller]
     pub fn new(text: impl Into<Cow<'static, str>>) -> Self {
         Self {
             element: Element::new(LayoutMode::Leaf),
