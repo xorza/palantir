@@ -1298,6 +1298,52 @@ fn clipboard_shortcuts_apply_keypresses() {
     }
 }
 
+/// Paste of multi-line clipboard content collapses every newline run
+/// (`\n`, `\r`, `\r\n`, repeated breaks) into a single space — the
+/// single-line buffer can't render or hit-test newlines so they get
+/// scrubbed at the input boundary. Pinning both the menu Paste and
+/// the Cmd/Ctrl+V shortcut.
+#[test]
+fn paste_strips_newlines() {
+    use super::sanitize_single_line;
+    let cases: &[(&str, &str)] = &[
+        ("ab\ncd", "ab cd"),
+        ("ab\rcd", "ab cd"),
+        ("ab\r\ncd", "ab cd"),
+        ("ab\n\ncd", "ab cd"),
+        ("\nab\n", " ab "),
+        ("no breaks", "no breaks"),
+    ];
+    for (input, expected) in cases {
+        assert_eq!(
+            sanitize_single_line(input),
+            *expected,
+            "sanitize({input:?})",
+        );
+    }
+
+    // End-to-end via Cmd+V: a multi-line clipboard string lands in
+    // the buffer as a single space-separated line.
+    let _cb_guard = crate::clipboard::test_serialize_guard();
+    crate::clipboard::set("first\r\nsecond\nthird");
+    let mut text = String::new();
+    let mut state = TextEditState::default();
+    super::apply_key(
+        &mut text,
+        &mut state,
+        KeyPress {
+            key: Key::Char('v'),
+            mods: Modifiers {
+                meta: true,
+                ..Modifiers::NONE
+            },
+            repeat: false,
+        },
+    );
+    assert_eq!(text, "first second third");
+    assert_eq!(state.caret, text.len());
+}
+
 /// `ctrl+c` etc. should NOT also insert the character — confirms the
 /// shortcut branch suppresses the printable-char insert path.
 #[test]
