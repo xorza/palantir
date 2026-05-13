@@ -8,6 +8,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
+use crate::text::FontFamily;
 use crate::ui::Ui;
 use palantir_anim_derive::Animatable;
 
@@ -119,6 +120,11 @@ pub struct TextStyle {
     /// (`TextEdit::line_height_mult`).
     #[animate(snap)]
     pub line_height_mult: f32,
+    /// Font family used for shaping. Default
+    /// [`FontFamily::Sans`] resolves to bundled Inter; the debug
+    /// `frame_stats` overlay overrides to [`FontFamily::Mono`].
+    #[animate(snap)]
+    pub family: FontFamily,
 }
 
 impl Default for TextStyle {
@@ -127,6 +133,7 @@ impl Default for TextStyle {
             font_size_px: 16.0,
             color: palette::TEXT,
             line_height_mult: crate::text::LINE_HEIGHT_MULT,
+            family: FontFamily::Sans,
         }
     }
 }
@@ -703,6 +710,7 @@ mod tests {
                 font_size_px: 16.0,
                 color: Color::TRANSPARENT,
                 line_height_mult: 1.5,
+                family: FontFamily::Sans,
             },
         };
         assert!((look.line_height_px() - 24.0).abs() < 1e-6);

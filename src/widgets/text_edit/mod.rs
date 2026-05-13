@@ -347,6 +347,7 @@ impl<'a> TextEdit<'a> {
             padding,
             self.multiline,
             wrap_target,
+            look.text.family,
             &mut blur_after,
         );
         let caret_byte = input.caret;
@@ -385,6 +386,7 @@ impl<'a> TextEdit<'a> {
                     font_size,
                     line_h,
                     wrap_target,
+                    look.text.family,
                     |x, y, w, h| {
                         ui.forest.add_shape(Shape::RoundedRect {
                             local_rect: Some(Rect::new(padding.left + x, padding.top + y, w, h)),
@@ -417,6 +419,7 @@ impl<'a> TextEdit<'a> {
                         TextWrap::Single
                     },
                     align: Default::default(),
+                    family: look.text.family,
                 });
             }
 
@@ -424,9 +427,14 @@ impl<'a> TextEdit<'a> {
             // coords so it stays in the widget's clip and renders
             // *over* the text. Only when focused.
             if is_focused {
-                let pos = ui
-                    .text
-                    .cursor_xy(text_ptr, caret_byte, font_size, line_h, wrap_target);
+                let pos = ui.text.cursor_xy(
+                    text_ptr,
+                    caret_byte,
+                    font_size,
+                    line_h,
+                    wrap_target,
+                    look.text.family,
+                );
                 let caret_rect = Rect::new(
                     padding.left + pos.x,
                     padding.top + pos.y_top,
@@ -547,6 +555,7 @@ fn handle_input(
     padding: Spacing,
     multiline: bool,
     wrap_target: Option<f32>,
+    family: crate::text::FontFamily,
     blur_after: &mut bool,
 ) -> InputResult {
     let resp_state = ui.response_for(id);
@@ -597,6 +606,7 @@ fn handle_input(
             font_size,
             line_height_px,
             wrap_target,
+            family,
         );
         if !state.prev_pressed {
             state.drag_anchor = Some(hit);
@@ -650,9 +660,14 @@ fn handle_input(
             *blur_after = true;
         }
         if let Some(v) = vert.take() {
-            let pos = ui
-                .text
-                .cursor_xy(text, state.caret, font_size, line_height_px, wrap_target);
+            let pos = ui.text.cursor_xy(
+                text,
+                state.caret,
+                font_size,
+                line_height_px,
+                wrap_target,
+                family,
+            );
             let probe_y = match v.direction {
                 VerticalDir::Up => pos.y_top - 1.0,
                 VerticalDir::Down => pos.y_top + pos.line_height + 1.0,
@@ -660,8 +675,15 @@ fn handle_input(
             let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
                 0
             } else {
-                ui.text
-                    .byte_at_xy(text, pos.x, probe_y, font_size, line_height_px, wrap_target)
+                ui.text.byte_at_xy(
+                    text,
+                    pos.x,
+                    probe_y,
+                    font_size,
+                    line_height_px,
+                    wrap_target,
+                    family,
+                )
             };
             move_caret(state, target, v.extend);
         }

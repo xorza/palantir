@@ -18,7 +18,7 @@ use crate::layout::{
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::shape::TextWrap;
-use crate::text::TextShaper;
+use crate::text::{FontFamily, TextShaper};
 use rustc_hash::FxHashSet;
 
 /// Per-frame intermediate state: every field is reset / overwritten at
@@ -558,6 +558,7 @@ impl LayoutEngine {
                 ts.font_size_px,
                 ts.line_height_px,
                 ts.wrap,
+                ts.family,
                 available_w,
                 text,
                 out,
@@ -586,6 +587,7 @@ impl LayoutEngine {
         font_size_px: f32,
         line_height_px: f32,
         wrap: TextWrap,
+        family: FontFamily,
         available_w: f32,
         text: &TextShaper,
         out: &mut Layout,
@@ -597,8 +599,15 @@ impl LayoutEngine {
         // has shifted. Crucially, when only the wrap target changed
         // (e.g. animated parent width), the unbounded cache is
         // preserved and only the wrap reshape runs in shape_wrap.
-        let unbounded =
-            text.shape_unbounded(wid, ordinal, curr_hash, src, font_size_px, line_height_px);
+        let unbounded = text.shape_unbounded(
+            wid,
+            ordinal,
+            curr_hash,
+            src,
+            font_size_px,
+            line_height_px,
+            family,
+        );
 
         let want_wrap = matches!(wrap, TextWrap::Wrap)
             && available_w.is_finite()
@@ -615,6 +624,7 @@ impl LayoutEngine {
                 line_height_px,
                 target,
                 target_q,
+                family,
             )
         } else {
             unbounded

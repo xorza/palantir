@@ -84,6 +84,7 @@ impl Text {
                 line_height_px,
                 wrap: self.wrap,
                 align: self.align,
+                family: style.family,
             });
         });
         let state = ui.response_for(id);

@@ -36,6 +36,21 @@ pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 
 use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 
+/// Font family picker on [`crate::TextStyle`] and
+/// [`crate::Shape::Text`]. `Sans` resolves to bundled Inter (the
+/// default); `Mono` resolves to bundled JetBrains Mono. Both fonts
+/// ship inside [`CosmicMeasure::with_bundled_fonts`]; the mono
+/// fallback ignores family entirely (every glyph is `0.5 × font_size`
+/// regardless).
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub enum FontFamily {
+    #[default]
+    Sans,
+    Mono,
+}
+
 /// Shared, cloneable text shaper. Holds (1) an optional [`CosmicMeasure`]
 /// for real shaping (`None` ⇒ mono fallback), (2) a cross-frame reuse
 /// cache keyed by `(WidgetId, ordinal)` so layout skips `measure`
@@ -121,15 +136,17 @@ impl TextShaper {
         font_size_px: f32,
         line_height_px: f32,
         max_width_px: Option<f32>,
+        family: FontFamily,
     ) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         inner.measure_calls += 1;
-        inner.dispatch(text, font_size_px, line_height_px, max_width_px)
+        inner.dispatch(text, font_size_px, line_height_px, max_width_px, family)
     }
 
     /// Identity-cached unbounded shape for `wid`, refreshing it (and
     /// clearing any stale wrap entry) when the authoring hash has
     /// shifted.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn shape_unbounded(
         &self,
         wid: WidgetId,
@@ -138,6 +155,7 @@ impl TextShaper {
         text: &str,
         font_size_px: f32,
         line_height_px: f32,
+        family: FontFamily,
     ) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
@@ -148,7 +166,7 @@ impl TextShaper {
             return o.get().unbounded;
         }
         inner.measure_calls += 1;
-        let unbounded = inner.dispatch(text, font_size_px, line_height_px, None);
+        let unbounded = inner.dispatch(text, font_size_px, line_height_px, None, family);
         inner.reuse.insert(
             (wid, ordinal),
             TextReuseEntry {
@@ -175,6 +193,7 @@ impl TextShaper {
         line_height_px: f32,
         target: f32,
         target_q: u32,
+        family: FontFamily,
     ) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
@@ -190,7 +209,7 @@ impl TextShaper {
             return w.result;
         }
         inner.measure_calls += 1;
-        let m = inner.dispatch(text, font_size_px, line_height_px, Some(target));
+        let m = inner.dispatch(text, font_size_px, line_height_px, Some(target), family);
         // Re-borrow `entry` because dispatch took `&mut inner` over the
         // whole struct; the prior borrow ended at the early-return.
         inner
@@ -216,9 +235,10 @@ impl TextShaper {
         font_size_px: f32,
         line_height_px: f32,
         max_width_px: Option<f32>,
+        family: FontFamily,
         body: impl FnOnce(&glyphon::cosmic_text::Buffer) -> R,
     ) -> Option<R> {
-        let result = self.measure(text, font_size_px, line_height_px, max_width_px);
+        let result = self.measure(text, font_size_px, line_height_px, max_width_px, family);
         let inner = self.inner.borrow();
         let buffer = inner.cosmic.as_ref()?.buffer_for(result.key)?;
         Some(body(buffer))
@@ -238,45 +258,53 @@ impl TextShaper {
         font_size_px: f32,
         line_height_px: f32,
         max_width_px: Option<f32>,
+        family: FontFamily,
     ) -> CursorPos {
         let target = cursor_from_byte(text, byte_offset);
-        self.with_buffer(text, font_size_px, line_height_px, max_width_px, |buffer| {
-            // Iterate visual lines (buffer lines × soft-wrap segments).
-            // For each run on the target's buffer line, locate the
-            // glyph whose `[start, end)` byte span contains
-            // `target.index`. Trailing-edge cursor uses `line_w`.
-            let mut last_in_line: Option<(f32, f32, f32)> = None;
-            for run in buffer.layout_runs() {
-                if run.line_i != target.line {
-                    continue;
-                }
-                last_in_line = Some((run.line_w, run.line_top, run.line_height));
-                for g in run.glyphs {
-                    if g.start == target.index {
-                        return CursorPos {
-                            x: g.x,
-                            y_top: run.line_top,
-                            line_height: run.line_height,
-                        };
+        self.with_buffer(
+            text,
+            font_size_px,
+            line_height_px,
+            max_width_px,
+            family,
+            |buffer| {
+                // Iterate visual lines (buffer lines × soft-wrap segments).
+                // For each run on the target's buffer line, locate the
+                // glyph whose `[start, end)` byte span contains
+                // `target.index`. Trailing-edge cursor uses `line_w`.
+                let mut last_in_line: Option<(f32, f32, f32)> = None;
+                for run in buffer.layout_runs() {
+                    if run.line_i != target.line {
+                        continue;
                     }
-                    if g.start < target.index && target.index < g.end {
-                        return CursorPos {
-                            x: g.x + g.w,
-                            y_top: run.line_top,
-                            line_height: run.line_height,
-                        };
+                    last_in_line = Some((run.line_w, run.line_top, run.line_height));
+                    for g in run.glyphs {
+                        if g.start == target.index {
+                            return CursorPos {
+                                x: g.x,
+                                y_top: run.line_top,
+                                line_height: run.line_height,
+                            };
+                        }
+                        if g.start < target.index && target.index < g.end {
+                            return CursorPos {
+                                x: g.x + g.w,
+                                y_top: run.line_top,
+                                line_height: run.line_height,
+                            };
+                        }
                     }
+                    // Past the last glyph of this run: continue iterating
+                    // — a soft-wrap continuation may carry `target.index`.
                 }
-                // Past the last glyph of this run: continue iterating
-                // — a soft-wrap continuation may carry `target.index`.
-            }
-            let (line_w, line_top, line_h) = last_in_line.unwrap_or((0.0, 0.0, line_height_px));
-            CursorPos {
-                x: line_w,
-                y_top: line_top,
-                line_height: line_h,
-            }
-        })
+                let (line_w, line_top, line_h) = last_in_line.unwrap_or((0.0, 0.0, line_height_px));
+                CursorPos {
+                    x: line_w,
+                    y_top: line_top,
+                    line_height: line_h,
+                }
+            },
+        )
         .unwrap_or(CursorPos {
             x: caret_x_mono_single_line(text, byte_offset, font_size_px),
             y_top: 0.0,
@@ -288,6 +316,7 @@ impl TextShaper {
     /// path via `Buffer::hit`. Mono / empty-text falls back to a 1D
     /// `(x ÷ 0.5·font_size)` scan over char boundaries — enough for
     /// headless single-line click tests, ignores `y` entirely.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn byte_at_xy(
         &self,
         text: &str,
@@ -296,13 +325,21 @@ impl TextShaper {
         font_size_px: f32,
         line_height_px: f32,
         max_width_px: Option<f32>,
+        family: FontFamily,
     ) -> usize {
-        self.with_buffer(text, font_size_px, line_height_px, max_width_px, |buffer| {
-            buffer
-                .hit(x, y)
-                .map(|c| cursor_to_byte(text, c))
-                .unwrap_or(text.len())
-        })
+        self.with_buffer(
+            text,
+            font_size_px,
+            line_height_px,
+            max_width_px,
+            family,
+            |buffer| {
+                buffer
+                    .hit(x, y)
+                    .map(|c| cursor_to_byte(text, c))
+                    .unwrap_or(text.len())
+            },
+        )
         .unwrap_or_else(|| mono_byte_at_x(text, x, font_size_px))
     }
 
@@ -312,6 +349,7 @@ impl TextShaper {
     /// how to render them. Multi-line aware via cosmic `LayoutRun::
     /// highlight`. Mono / empty-text path emits one 1D rect spanning
     /// the byte range (no line breaks modelled).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn selection_rects(
         &self,
         text: &str,
@@ -319,21 +357,29 @@ impl TextShaper {
         font_size_px: f32,
         line_height_px: f32,
         max_width_px: Option<f32>,
+        family: FontFamily,
         mut out: impl FnMut(f32, f32, f32, f32),
     ) {
         if range.is_empty() {
             return;
         }
         let cosmic_ran = self
-            .with_buffer(text, font_size_px, line_height_px, max_width_px, |buffer| {
-                let start = cursor_from_byte(text, range.start);
-                let end = cursor_from_byte(text, range.end);
-                for run in buffer.layout_runs() {
-                    if let Some((x, w)) = run.highlight(start, end) {
-                        out(x, run.line_top, w, run.line_height);
+            .with_buffer(
+                text,
+                font_size_px,
+                line_height_px,
+                max_width_px,
+                family,
+                |buffer| {
+                    let start = cursor_from_byte(text, range.start);
+                    let end = cursor_from_byte(text, range.end);
+                    for run in buffer.layout_runs() {
+                        if let Some((x, w)) = run.highlight(start, end) {
+                            out(x, run.line_top, w, run.line_height);
+                        }
                     }
-                }
-            })
+                },
+            )
             .is_some();
         if !cosmic_ran {
             let x0 = caret_x_mono_single_line(text, range.start, font_size_px);
@@ -382,9 +428,10 @@ impl ShaperInner {
         font_size_px: f32,
         line_height_px: f32,
         max_width_px: Option<f32>,
+        family: FontFamily,
     ) -> MeasureResult {
         match self.cosmic.as_mut() {
-            Some(c) => c.measure(text, font_size_px, line_height_px, max_width_px),
+            Some(c) => c.measure(text, font_size_px, line_height_px, max_width_px, family),
             None => mono_measure(text, font_size_px, line_height_px, max_width_px),
         }
     }
@@ -413,6 +460,10 @@ pub struct TextCacheKey {
     /// same font-size but different leading produce different shaped
     /// buffers (different `Metrics::new`), so the key has to discriminate.
     pub lh_q: u32,
+    /// [`FontFamily`] discriminant. Two runs with identical text/size but
+    /// different families produce different shaped buffers, so the key
+    /// has to discriminate.
+    pub family_q: u32,
 }
 
 impl TextCacheKey {
@@ -426,18 +477,23 @@ impl TextCacheKey {
     /// `bytemuck::Pod`'s no-padding-bytes invariant; the
     /// `..Zeroable::zeroed()` spread fills them with zeros so callers
     /// don't have to know they exist.
-    pub(crate) fn new(text_hash: u64, size_q: u32, max_w_q: u32, lh_q: u32) -> Self {
+    pub(crate) fn new(text_hash: u64, size_q: u32, max_w_q: u32, lh_q: u32, family_q: u32) -> Self {
         Self {
             text_hash,
             size_q,
             max_w_q,
             lh_q,
+            family_q,
             ..bytemuck::Zeroable::zeroed()
         }
     }
 
     pub const fn is_invalid(self) -> bool {
-        self.text_hash == 0 && self.size_q == 0 && self.max_w_q == 0 && self.lh_q == 0
+        self.text_hash == 0
+            && self.size_q == 0
+            && self.max_w_q == 0
+            && self.lh_q == 0
+            && self.family_q == 0
     }
 }
 
@@ -696,7 +752,8 @@ mod tests {
         for (label, text, offset, fs, lh_v, expected) in cases {
             let m = TextShaper::default();
             assert_eq!(
-                m.cursor_xy(text, *offset, *fs, *lh_v, None).x,
+                m.cursor_xy(text, *offset, *fs, *lh_v, None, FontFamily::Sans)
+                    .x,
                 *expected,
                 "case: {label}"
             );
@@ -712,12 +769,16 @@ mod tests {
         // measured rect against the rasterized glyphs.
         use crate::text::cosmic::CosmicMeasure;
         let mut c = CosmicMeasure::with_bundled_fonts();
-        let a = c.measure("hi", 16.0, 16.0 * LINE_HEIGHT_MULT, None).key;
-        let b = c.measure("hi", 16.0, 24.0, None).key;
+        let a = c
+            .measure("hi", 16.0, 16.0 * LINE_HEIGHT_MULT, None, FontFamily::Sans)
+            .key;
+        let b = c.measure("hi", 16.0, 24.0, None, FontFamily::Sans).key;
         assert_ne!(a, b, "different leading must produce different key");
         assert_ne!(a.lh_q, b.lh_q, "lh_q is the discriminating field");
         // Same call repeated → identical key (cache hit, deterministic).
-        let a2 = c.measure("hi", 16.0, 16.0 * LINE_HEIGHT_MULT, None).key;
+        let a2 = c
+            .measure("hi", 16.0, 16.0 * LINE_HEIGHT_MULT, None, FontFamily::Sans)
+            .key;
         assert_eq!(a, a2);
     }
 
@@ -734,15 +795,15 @@ mod tests {
         let wid = WidgetId::from_hash("a");
         let h1 = NodeHash(1);
         let h2 = NodeHash(2);
-        let r1 = m.shape_unbounded(wid, 0, h1, "hi", 16.0, 16.0);
-        let r2 = m.shape_unbounded(wid, 0, h2, "hi", 16.0, 24.0);
+        let r1 = m.shape_unbounded(wid, 0, h1, "hi", 16.0, 16.0, FontFamily::Sans);
+        let r2 = m.shape_unbounded(wid, 0, h2, "hi", 16.0, 24.0, FontFamily::Sans);
         assert_ne!(
             r1.size.h, r2.size.h,
             "different leading via different hash → distinct cache entries",
         );
         // Re-querying with the original hash returns the original (16
         // px height), proving the entry wasn't overwritten.
-        let r1_again = m.shape_unbounded(wid, 0, h1, "hi", 16.0, 16.0);
+        let r1_again = m.shape_unbounded(wid, 0, h1, "hi", 16.0, 16.0, FontFamily::Sans);
         assert_eq!(r1.size.h, r1_again.size.h);
     }
 
@@ -755,7 +816,7 @@ mod tests {
         // first fails loudly instead of silently losing the cache.
         let m = TextShaper::default();
         let wid = WidgetId::from_hash("a");
-        m.shape_wrap(wid, 0, "hi", 16.0, 16.0, 100.0, 100);
+        m.shape_wrap(wid, 0, "hi", 16.0, 16.0, 100.0, 100, FontFamily::Sans);
     }
 
     #[test]
@@ -766,7 +827,7 @@ mod tests {
         assert!(TextCacheKey::INVALID.is_invalid());
         // And a non-INVALID key registers as such even with all
         // hashable fields zero except text_hash.
-        let real = TextCacheKey::new(1, 0, 0, 0);
+        let real = TextCacheKey::new(1, 0, 0, 0, 0);
         assert!(!real.is_invalid());
     }
 
@@ -779,7 +840,10 @@ mod tests {
         let m = TextShaper::with_bundled_fonts();
         let s = "hello";
         let widths: Vec<f32> = (0..=s.len())
-            .map(|i| m.cursor_xy(s, i, 16.0, 16.0 * LINE_HEIGHT_MULT, None).x)
+            .map(|i| {
+                m.cursor_xy(s, i, 16.0, 16.0 * LINE_HEIGHT_MULT, None, FontFamily::Sans)
+                    .x
+            })
             .collect();
         assert_eq!(widths[0], 0.0, "caret-x at offset 0 is zero");
         for w in widths.windows(2) {

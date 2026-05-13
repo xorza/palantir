@@ -15,7 +15,7 @@ use crate::layout::types::{
 };
 use crate::primitives::{rect::Rect, size::Size};
 use crate::shape::TextWrap;
-use crate::text::TextShaper;
+use crate::text::{FontFamily, TextShaper};
 use glam::Vec2;
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
@@ -25,6 +25,7 @@ pub(crate) struct LeafTextShape<'a> {
     pub(crate) font_size_px: f32,
     pub(crate) line_height_px: f32,
     pub(crate) wrap: TextWrap,
+    pub(crate) family: FontFamily,
 }
 
 /// Iterate every `ShapeRecord::Text` on a leaf. Single source of truth for
@@ -53,12 +54,14 @@ pub(crate) fn leaf_text_shapes(
             font_size_px,
             line_height_px,
             wrap,
+            family,
             ..
         } => Some(LeafTextShape {
             text: text.as_ref(),
             font_size_px: *font_size_px,
             line_height_px: *line_height_px,
             wrap: *wrap,
+            family: *family,
         }),
         _ => None,
     })

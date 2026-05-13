@@ -173,6 +173,7 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &TextShaper) -
             ts.text,
             ts.font_size_px,
             ts.line_height_px,
+            ts.family,
         );
         let v = match (axis, req) {
             // Non-wrapping text can't break, so its min-content equals its
