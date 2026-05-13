@@ -31,18 +31,22 @@ const MULTI_CLICK_WINDOW: f32 = 0.5;
 /// counted as the same multi-click sequence.
 const MULTI_CLICK_RADIUS: f32 = 5.0;
 
+/// After this long without caret/text/selection change, the blink
+/// stops scheduling wakes and the caret stays solid — saves the host
+/// a forever 2 Hz repaint loop on a focused-but-idle editor.
+const BLINK_STOP_AFTER_IDLE: f32 = 30.0;
+
 /// Cross-frame state for one [`TextEdit`]. Stored in [`Ui`]'s
 /// `WidgetId → Any` map keyed by the widget's id; lifecycle managed by
 /// the same removed-widget sweep that drives the layout/text caches.
 ///
 /// `caret` is a *byte* offset into the buffer (cosmic-text returns
 /// byte cursors and `&buffer[..caret]` is the natural prefix-measure
-/// path). v1 mutates byte boundaries that always coincide with
-/// codepoint boundaries (insert at caret, remove one codepoint at a
-/// time on backspace/delete) so a malformed offset shouldn't be
-/// reachable from inside the widget. Host code that mutates the
-/// buffer between frames may shrink it past `caret`; `show()` clamps
-/// at the top each frame.
+/// path). All widget-driven mutations step grapheme-cluster boundaries
+/// (which are themselves codepoint-aligned), so the caret should never
+/// land mid-codepoint. Host code that mutates the buffer between
+/// frames may shrink it past `caret`; `show()` clamps at the top each
+/// frame.
 #[derive(Clone, Default, Debug)]
 pub(crate) struct TextEditState {
     pub(crate) caret: usize,
@@ -453,16 +457,13 @@ impl<'a> TextEdit<'a> {
         );
         let caret_byte = input.caret;
         let selection = input.selection;
-        let caret_changed = caret_before != caret_byte
-            || sel_before != ui.state_mut::<TextEditState>(id).selection
-            || text_len_before != self.text.len();
 
-        // Phase 2: scroll-to-caret. Compute the caret position in
-        // unscrolled coords once (used for both the scroll update
-        // and the caret shape), then adjust `state.scroll` so the
-        // caret stays inside the visible area. `response.rect` is
-        // one frame stale; on the first recorded frame it's `None`
-        // and scroll defaults to `Vec2::ZERO`.
+        // Phase 2: scroll-to-caret + blink-phase reset. One `state`
+        // borrow covers (a) the post-input caret_changed compare for
+        // the blink reset, (b) `update_scroll` mutating `state.scroll`,
+        // and (c) snapshotting `last_caret_change` for the visibility
+        // calc below. `caret_pos` is computed via the shaper (disjoint
+        // field) first so the state borrow is contiguous.
         let caret_pos = ui.text.cursor_xy(
             self.text,
             caret_byte,
@@ -471,33 +472,42 @@ impl<'a> TextEdit<'a> {
             wrap_target,
             look.text.family,
         );
-        let scroll = update_scroll(
-            ui.state_mut::<TextEditState>(id),
-            response.rect,
-            padding,
-            self.multiline,
-            caret_pos.x,
-            caret_pos.y_top,
-            caret_pos.line_height,
-            theme.caret_width,
-        );
-
-        // Caret blink. Reset to phase 0 (solid) on any caret /
-        // selection / text change so active typing always paints a
-        // visible caret. Then flip on/off every `BLINK_HALF` seconds.
-        // Schedule a wake at the next phase boundary; deadlines
-        // dedup so re-scheduling each frame doesn't pile up.
         let now = ui.time;
-        let caret_visible = if is_focused {
+        let (scroll, last_caret_change) = {
             let state = ui.state_mut::<TextEditState>(id);
-            if caret_changed {
+            let caret_changed = caret_before != caret_byte
+                || sel_before != state.selection
+                || text_len_before != self.text.len();
+            let scroll = update_scroll(
+                state,
+                response.rect,
+                padding,
+                self.multiline,
+                caret_pos.x,
+                caret_pos.y_top,
+                caret_pos.line_height,
+                theme.caret_width,
+            );
+            if is_focused && caret_changed {
                 state.last_caret_change = now;
             }
-            let elapsed = now.saturating_sub(state.last_caret_change).as_secs_f32();
-            let phase = (elapsed / BLINK_HALF).floor();
-            let until_next = ((phase + 1.0) * BLINK_HALF - elapsed).max(0.0);
-            ui.request_repaint_after(Duration::from_secs_f32(until_next));
-            (phase as u64).is_multiple_of(2)
+            (scroll, state.last_caret_change)
+        };
+
+        // Caret blink. Phase 0 = solid; flip every `BLINK_HALF`
+        // seconds. After `BLINK_STOP_AFTER_IDLE` the caret stays
+        // visible and no wake is scheduled, so an unattended focused
+        // editor doesn't keep the host's repaint loop spinning.
+        let caret_visible = if is_focused {
+            let elapsed = now.saturating_sub(last_caret_change).as_secs_f32();
+            if elapsed >= BLINK_STOP_AFTER_IDLE {
+                true
+            } else {
+                let phase = (elapsed / BLINK_HALF).floor();
+                let until_next = ((phase + 1.0) * BLINK_HALF - elapsed).max(0.0);
+                ui.request_repaint_after(Duration::from_secs_f32(until_next));
+                (phase as u64).is_multiple_of(2)
+            }
         } else {
             true
         };
@@ -558,9 +568,9 @@ impl<'a> TextEdit<'a> {
             // placeholder; focused shows the buffer (even if empty)
             // because we still want the caret to render flush-left.
             // `local_rect: Some(...)` positions the shaped text at
-            // owner-local `(padding − scroll)`; size carries the
-            // visible inner extent but doesn't affect alignment under
-            // `Align::Auto` (text origin sits at `leaf.min`).
+            // owner-local `(padding − scroll)`; the size is unused
+            // under `Align::Auto` (text origin sits at `leaf.min`
+            // and the painted extent is the shaped glyph bbox).
             let (display, color) = if text_ptr.is_empty() && !is_focused {
                 (placeholder.clone(), theme.placeholder)
             } else {
@@ -571,11 +581,8 @@ impl<'a> TextEdit<'a> {
                     local_rect: Some(Rect::new(
                         padding.left - scroll.x,
                         padding.top - scroll.y,
-                        // Size is unused under `Align::Auto`; pick
-                        // something positive so `is_paint_empty`
-                        // doesn't reject the shape.
-                        1.0,
-                        1.0,
+                        0.0,
+                        0.0,
                     )),
                     text: display,
                     brush: color.into(),
@@ -924,9 +931,10 @@ enum VerticalDir {
 /// mode); every other recognized key is consumed silently. Sets
 /// `out_vertical` to `Some(VerticalMotion)` when the key is `Up` /
 /// `Down` in multi-line mode — the caller resolves the cross-axis
-/// probe (it needs the shaper + layout context, which this pure
-/// function doesn't carry). Multi-line mode also treats `Enter` as
-/// `\n` insertion.
+/// probe against the shaper, which this function doesn't touch.
+/// Behaviour gates: `multiline` toggles Enter → `\n` insertion and
+/// enables Up/Down motion; `clipboard_active` is `false` when a
+/// context menu is open so its shortcut bindings can intercept.
 fn apply_key(
     text: &mut String,
     state: &mut TextEditState,
@@ -1111,8 +1119,9 @@ fn prev_grapheme_boundary(text: &str, offset: usize) -> usize {
 
 /// Coarse char classification used by word-nav and double-click word
 /// selection. Underscore is bound to `Word` so identifiers in code-like
-/// text don't fragment. Codepoint-granular; grapheme awareness lands
-/// when `unicode-segmentation` does.
+/// text don't fragment. Codepoint-granular — fine for Latin / digit /
+/// mixed text; a Unicode word-break iterator would do better on CJK
+/// and friends but isn't wired yet.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CharKind {
     Whitespace,
@@ -1202,14 +1211,15 @@ fn word_range_at(text: &str, byte: usize) -> std::ops::Range<usize> {
         (Some(k), _) if k != CharKind::Whitespace => k,
         _ => return byte..byte,
     };
-    // Walk left while same kind.
+    // Walk left while same kind. When the anchor is the *backward*
+    // char (forward char is whitespace / EOT), step `start` back over
+    // it first — that char ends at `byte`, so it starts at
+    // `byte - c.len_utf8()`. Otherwise the forward char is the anchor
+    // and `start` already points at its start.
     let mut start = byte;
-    if forward_char.is_some_and(|c| char_kind(c) == anchor_kind) {
-        // Caret is at the start of the anchor char — don't step back
-        // over the anchor itself, just keep walking left.
-    } else if let Some(c) = backward_char {
-        // Anchor is the char before `byte`; that char ends at `byte`,
-        // so its start is `byte - c.len_utf8()`.
+    if !forward_char.is_some_and(|c| char_kind(c) == anchor_kind)
+        && let Some(c) = backward_char
+    {
         start = byte - c.len_utf8();
     }
     for (i, c) in text[..start].char_indices().rev() {
