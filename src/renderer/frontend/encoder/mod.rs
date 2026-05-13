@@ -5,6 +5,7 @@ use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::mesh::MeshVertex;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
@@ -170,47 +171,8 @@ fn emit_one_shape(
         ShapeRecord::Shadow {
             local_rect,
             radius,
-            color,
-            offset,
-            blur,
-            spread,
-            inset,
-        } => {
-            // Paint bbox in owner-local coords from the shared helper;
-            // translate to world by the owner rect's origin. Drop: bbox
-            // absorbs spread, shader ignores it. Inset: bbox = source,
-            // spread flows through `fill_axis.w` so the shader can
-            // shrink the hole.
-            let paint_local = shadow_paint_rect_local(
-                *local_rect,
-                owner_rect.size,
-                *offset,
-                *blur,
-                *spread,
-                *inset,
-            );
-            let paint_rect = Rect {
-                min: owner_rect.min + paint_local.min,
-                size: paint_local.size,
-            };
-            let (kind, axis_w) = if *inset {
-                (FillKind::SHADOW_INSET, spread.max(0.0))
-            } else {
-                (FillKind::SHADOW_DROP, 0.0)
-            };
-            out.draw_shadow(
-                paint_rect,
-                *radius,
-                *color,
-                kind,
-                FillAxis {
-                    dir_x: offset.x,
-                    dir_y: offset.y,
-                    t0: *blur,
-                    t1: axis_w,
-                },
-            );
-        }
+            shadow,
+        } => emit_shadow(out, owner_rect, *local_rect, *radius, shadow),
         ShapeRecord::Mesh {
             local_rect,
             tint,
@@ -317,33 +279,11 @@ fn encode_node(
     // means there's something to paint.
     if let Some(bg) = chrome {
         // Shadow paints UNDER the rect fill (CSS box-shadow order).
-        // Owner-local source = full owner rect; world translation by
-        // `rect.min`. Inflate handled by `shadow_paint_rect_local`,
-        // mirrored in `compute_paint_rect` for damage.
-        if let Some(s) = bg.shadow.filter(|s| !s.is_noop()) {
-            let paint_local =
-                shadow_paint_rect_local(None, rect.size, s.offset, s.blur, s.spread, s.inset);
-            let paint_rect = Rect {
-                min: rect.min + paint_local.min,
-                size: paint_local.size,
-            };
-            let (kind, axis_w) = if s.inset {
-                (FillKind::SHADOW_INSET, s.spread.max(0.0))
-            } else {
-                (FillKind::SHADOW_DROP, 0.0)
-            };
-            out.draw_shadow(
-                paint_rect,
-                bg.radius,
-                s.color,
-                kind,
-                FillAxis {
-                    dir_x: s.offset.x,
-                    dir_y: s.offset.y,
-                    t0: s.blur,
-                    t1: axis_w,
-                },
-            );
+        // `local_rect = None` means the shadow follows the owner's
+        // full arranged rect — `compute_paint_rect` mirrors this so
+        // paint extent and damage extent stay in lockstep.
+        if !bg.shadow.is_noop() {
+            emit_shadow(out, rect, None, bg.radius, &bg.shadow);
         }
         out.draw_rect(rect, bg.radius, &bg.fill, bg.stroke);
     }
@@ -462,6 +402,49 @@ fn align_text_in(leaf: Rect, measured: Size, align: Align) -> Rect {
         measured.w,
         measured.h,
     )
+}
+
+/// Shared shadow emit. Chrome branch (`Background::shadow`,
+/// `local_rect = None`) and shape-buffer branch (`ShapeRecord::Shadow`,
+/// owner-relative `local_rect`) both route here so the
+/// `shadow_paint_rect_local` translation + `(kind, axis_w)` packing
+/// can't drift between the two views.
+fn emit_shadow(
+    out: &mut RenderCmdBuffer,
+    owner_rect: Rect,
+    local_rect: Option<Rect>,
+    radius: Corners,
+    shadow: &Shadow,
+) {
+    let paint_local = shadow_paint_rect_local(
+        local_rect,
+        owner_rect.size,
+        shadow.offset,
+        shadow.blur,
+        shadow.spread,
+        shadow.inset,
+    );
+    let paint_rect = Rect {
+        min: owner_rect.min + paint_local.min,
+        size: paint_local.size,
+    };
+    let (kind, axis_w) = if shadow.inset {
+        (FillKind::SHADOW_INSET, shadow.spread.max(0.0))
+    } else {
+        (FillKind::SHADOW_DROP, 0.0)
+    };
+    out.draw_shadow(
+        paint_rect,
+        radius,
+        shadow.color,
+        kind,
+        FillAxis {
+            dir_x: shadow.offset.x,
+            dir_y: shadow.offset.y,
+            t0: shadow.blur,
+            t1: axis_w,
+        },
+    );
 }
 
 #[cfg(test)]

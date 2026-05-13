@@ -2,9 +2,9 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
+use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::support::testing::{run_at, shapes_of};
-use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 

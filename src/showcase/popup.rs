@@ -11,8 +11,8 @@
 //! work.
 
 use palantir::{
-    Align, Background, Button, Color, Configure, Corners, Panel, Popup, Rect, Sizing, Stroke, Text,
-    Ui, WidgetId,
+    Align, Background, Button, Color, Configure, Corners, Panel, Popup, Rect, Shadow, Sizing,
+    Stroke, Text, Ui, WidgetId,
 };
 
 #[derive(Default)]
@@ -92,7 +92,7 @@ pub fn build(ui: &mut Ui) {
             fill: Color::hex(0x2a2a2a).into(),
             stroke: Stroke::solid(Color::hex(0x4a4a4a), 1.0),
             radius: Corners::all(6.0),
-            shadow: None,
+            shadow: Shadow::NONE,
         })
         .show(ui, |ui, _popup| {
             for label in ["copy", "paste", "delete"] {

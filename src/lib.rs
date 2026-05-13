@@ -45,6 +45,7 @@ pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
 pub use palantir_anim_derive::Animatable;
+pub use primitives::background::Background;
 pub use primitives::brush::{
     Brush, ConicGradient, Interp, LinearGradient, RadialGradient, Spread, Stop,
 };
@@ -74,6 +75,6 @@ pub use widgets::scroll::Scroll;
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
 pub use widgets::theme::{
-    AnimatedLook, Background, ButtonTheme, ContextMenuTheme, MenuItemTheme, ScrollbarTheme,
-    TextEditTheme, TextStyle, Theme, WidgetLook,
+    AnimatedLook, ButtonTheme, ContextMenuTheme, MenuItemTheme, ScrollbarTheme, TextEditTheme,
+    TextStyle, Theme, WidgetLook,
 };

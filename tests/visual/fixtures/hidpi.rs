@@ -3,8 +3,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Stroke, Text,
-    TextStyle, Track,
+    Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Shadow, Sizing, Stroke,
+    Text, TextStyle, Track,
 };
 
 use crate::diff::Tolerance;
@@ -44,7 +44,7 @@ fn dashboard_matches_golden() {
                         fill: Color::rgb(0.18, 0.22, 0.32).into(),
                         stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
                         radius: Corners::all(6.0),
-                        shadow: None,
+                        shadow: Shadow::NONE,
                     })
                     .show(ui, |ui| {
                         Text::new("Palantir")
@@ -119,7 +119,7 @@ fn dashboard_matches_golden() {
                                     fill: (*c).into(),
                                     stroke: Stroke::solid(Color::rgba(1.0, 1.0, 1.0, 0.18), 1.0),
                                     radius: Corners::all(8.0),
-                                    shadow: None,
+                                    shadow: Shadow::NONE,
                                 })
                                 .show(ui, |ui| {
                                     Text::new("Card")

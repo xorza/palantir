@@ -28,25 +28,26 @@ pub struct Background {
     pub stroke: Stroke,
     #[animate(snap)]
     pub radius: Corners,
-    #[animate(snap)]
-    /// Optional single drop / inset shadow. Lowered at `open_node`
-    /// into a [`ShapeRecord::Shadow`] prepended to the node's shape
-    /// span — the shape pipeline owns damage / paint / overhang for
-    /// chrome shadows too. For multi-shadow stacks, drop
+    /// Single drop / inset shadow. `Shadow::NONE` (the `Default`) is
+    /// the "no shadow" sentinel — matches the `Stroke::ZERO`
+    /// convention so the field stays plain `Shadow` and animates
+    /// componentwise (alpha lerps in/out for hover-elevation), with
+    /// the paint-time `is_noop` filter catching authored or
+    /// animation-decayed no-ops. Multi-shadow stacks: push
     /// `Shape::Shadow` records directly via `Ui::add_shape`.
-    pub shadow: Option<Shadow>,
+    pub shadow: Shadow,
 }
 
 impl Background {
-    /// True when this Background paints nothing visible (transparent
-    /// fill + transparent/zero-width stroke + no shadow). The encoder
-    /// skips emitting a `DrawRect` for no-op chrome so transparent
-    /// `Surface::scissor()` defaults don't leak draw commands. The
-    /// shadow path runs through the shape buffer (lowered in
-    /// `open_node`), so a chrome whose only paint is a shadow still
-    /// reports `is_noop()` here — the lowered `ShapeRecord::Shadow`
-    /// keeps the node painting.
+    /// True when this Background paints nothing visible — transparent
+    /// fill + transparent/zero-width stroke + no-op shadow. The
+    /// encoder skips emitting a `DrawRect` for no-op chrome so
+    /// transparent `Surface::scissor()` defaults don't leak draw
+    /// commands. The shadow check is required: the encoder's chrome
+    /// branch paints shadow before the rect, so dropping chrome
+    /// without considering shadow would silently kill a shadow-only
+    /// background.
     pub fn is_noop(&self) -> bool {
-        self.fill.is_noop() && self.stroke.is_noop()
+        self.fill.is_noop() && self.stroke.is_noop() && self.shadow.is_noop()
     }
 }

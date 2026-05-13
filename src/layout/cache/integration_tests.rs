@@ -10,11 +10,12 @@ use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::forest::tree::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
+use crate::primitives::background::Background;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
 use crate::support::testing::{encode_cmds, new_ui_text, run_at_acked, ui_with_text};
-use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -224,7 +225,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                         fill: Color::rgb(0.16, 0.18, 0.22).into(),
                         stroke: Stroke::solid(Color::rgb(0.3, 0.34, 0.42), 1.0),
                         radius: Corners::all(4.0),
-                        shadow: None,
+                        shadow: Shadow::NONE,
                     })
                     .show(ui, |ui| {
                         Grid::new()

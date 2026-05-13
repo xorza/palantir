@@ -4,6 +4,7 @@ use crate::primitives::brush::Brush;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::stroke::Stroke;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
@@ -117,11 +118,7 @@ pub(crate) enum ShapeRecord {
     Shadow {
         local_rect: Option<Rect>,
         radius: Corners,
-        color: Color,
-        offset: Vec2,
-        blur: f32,
-        spread: f32,
-        inset: bool,
+        shadow: Shadow,
     } = 4,
 }
 
@@ -169,13 +166,15 @@ impl ShapeRecord {
     pub(crate) fn paint_bbox_local(&self, owner_size: Size) -> Rect {
         match self {
             ShapeRecord::Shadow {
-                local_rect,
-                offset,
-                blur,
-                spread,
-                inset,
-                ..
-            } => shadow_paint_rect_local(*local_rect, owner_size, *offset, *blur, *spread, *inset),
+                local_rect, shadow, ..
+            } => shadow_paint_rect_local(
+                *local_rect,
+                owner_size,
+                shadow.offset,
+                shadow.blur,
+                shadow.spread,
+                shadow.inset,
+            ),
             ShapeRecord::Polyline { bbox, .. } => *bbox,
             ShapeRecord::RoundedRect { local_rect, .. }
             | ShapeRecord::Text { local_rect, .. }
@@ -275,11 +274,7 @@ impl Hash for ShapeRecord {
             ShapeRecord::Shadow {
                 local_rect,
                 radius,
-                color,
-                offset,
-                blur,
-                spread,
-                inset,
+                shadow,
             } => {
                 match local_rect {
                     None => h.write_u8(0),
@@ -289,12 +284,7 @@ impl Hash for ShapeRecord {
                     }
                 }
                 radius.hash(h);
-                color.hash(h);
-                h.write_u32(offset.x.to_bits());
-                h.write_u32(offset.y.to_bits());
-                h.write_u32(blur.to_bits());
-                h.write_u32(spread.to_bits());
-                h.write_u8(*inset as u8);
+                shadow.hash(h);
             }
         }
     }

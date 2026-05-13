@@ -4,8 +4,8 @@
 //! from the framework default. Default styling demoed in the first row.
 
 use palantir::{
-    Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Sizing, Stroke, TextStyle,
-    Ui, WidgetLook,
+    Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Shadow, Sizing, Stroke,
+    TextStyle, Ui, WidgetLook,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -81,7 +81,7 @@ fn outlined_style() -> ButtonTheme {
         fill: fill.into(),
         stroke,
         radius: Corners::all(4.0),
-        shadow: None,
+        shadow: Shadow::NONE,
     };
     ButtonTheme {
         normal: WidgetLook {
@@ -120,7 +120,7 @@ fn danger_style() -> ButtonTheme {
         fill: fill.into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(2.0),
-        shadow: None,
+        shadow: Shadow::NONE,
     };
     ButtonTheme {
         normal: WidgetLook {

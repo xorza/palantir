@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use palantir::{Background, Button, Color, Configure, Host, InputEvent, Panel, Sizing, Ui};
+use palantir::{Background, Button, Color, Configure, Host, InputEvent, Panel, Shadow, Sizing, Ui};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -290,7 +290,7 @@ fn build_ui(ui: &mut Ui, active: &mut usize) {
                     fill: Color::hex(0x343434).into(),
                     stroke: palantir::Stroke::solid(Color::hex(0x363636), 1.0),
                     radius: palantir::Corners::all(8.0),
-                    shadow: None,
+                    shadow: Shadow::NONE,
                 })
                 .show(ui, |ui| {
                     let (_, build_fn) = SHOWCASES[*active];

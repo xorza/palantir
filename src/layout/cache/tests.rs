@@ -3,9 +3,9 @@ use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::forest::widget_id::WidgetId;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey};
+use crate::primitives::background::Background;
 use crate::primitives::{color::Color, size::Size};
 use crate::support::testing::run_at_acked;
-use crate::widgets::theme::Background;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 

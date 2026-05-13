@@ -3,7 +3,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Align, Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Stroke, Track,
+    Align, Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Shadow, Sizing,
+    Stroke, Track,
 };
 
 use crate::diff::Tolerance;
@@ -123,7 +124,7 @@ fn zstack_centered_button_matches_golden() {
                 fill: Color::rgb(0.16, 0.20, 0.28).into(),
                 stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
                 radius: Corners::all(10.0),
-                shadow: None,
+                shadow: Shadow::NONE,
             })
             .show(ui, |ui| {
                 Button::new()

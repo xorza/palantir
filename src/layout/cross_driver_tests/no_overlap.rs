@@ -8,10 +8,11 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{sizing::Sizing, track::Track};
+use crate::primitives::background::Background;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::support::testing::{encode_cmds, new_ui_text, run_at};
-use crate::widgets::theme::Background;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -30,7 +31,7 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
             fill: Color::rgb(0.16, 0.18, 0.22).into(),
             stroke: Stroke::solid(Color::rgb(0.30, 0.34, 0.42), 1.0),
             radius: Corners::all(4.0),
-            shadow: None,
+            shadow: Shadow::NONE,
         })
         .show(ui, |ui| {
             Text::new("title")

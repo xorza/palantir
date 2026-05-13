@@ -1,6 +1,6 @@
 use super::swatch::swatch_bg;
 use crate::showcase::swatch;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
+use palantir::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
 
 /// Inner-panel background used for padding/margin demos. The whole
 /// point of these demos is to *see* where the parent's bounds are
@@ -90,7 +90,7 @@ pub fn build(ui: &mut Ui) {
                                 fill: swatch::B.into(),
                                 stroke: Stroke::solid(swatch::B, 1.0),
                                 radius: Corners::all(4.0),
-                                shadow: None,
+                                shadow: Shadow::NONE,
                             })
                             .show(ui);
                     });

@@ -6,10 +6,10 @@ use crate::forest::tree::NodeId;
 use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};
+use crate::primitives::background::Background;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
 use crate::support::testing::run_at_acked;
 use crate::widgets::popup::Popup;
-use crate::widgets::theme::Background;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -1117,13 +1117,13 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                 .background(Background {
                     fill: BLUE.into(),
-                    shadow: Some(Shadow {
+                    shadow: Shadow {
                         color: Color::rgba(0.0, 0.0, 0.0, 0.5),
                         offset: Vec2::ZERO,
                         blur: 8.0,
                         spread: 2.0,
                         inset: false,
-                    }),
+                    },
                     ..Default::default()
                 })
                 .show(ui, |_| {});

@@ -501,12 +501,13 @@ mod bars {
     use crate::forest::tree::{Layer, NodeId};
     use crate::forest::widget_id::WidgetId;
     use crate::layout::types::sizing::Sizing;
+    use crate::primitives::background::Background;
     use crate::support::internals::scroll_state;
     use crate::support::testing::{run_at_acked, shapes_of};
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::{Scroll, bar_geometry};
-    use crate::widgets::theme::{Background, ScrollbarTheme};
+    use crate::widgets::theme::ScrollbarTheme;
     use glam::UVec2;
 
     fn theme() -> ScrollbarTheme {
