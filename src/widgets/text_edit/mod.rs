@@ -61,6 +61,34 @@ fn move_caret(state: &mut TextEditState, new_caret: usize, extend: bool) {
     }
 }
 
+/// Strip line-break chars from an inbound string so the single-line
+/// TextEdit's buffer never contains `\n` / `\r`. Hit by both the
+/// paste path and the IME-text-commit path — host events and OS
+/// clipboards routinely carry `\r\n` / `\n` from multi-line sources
+/// that this widget can't render or hit-test correctly. Spaces are a
+/// safer substitute than outright deletion (preserves intent for
+/// "First Name\nLast Name" → "First Name Last Name").
+fn sanitize_single_line(s: &str) -> String {
+    if !s.contains(['\n', '\r']) {
+        return s.to_owned();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut prev_was_break = false;
+    for ch in s.chars() {
+        if ch == '\n' || ch == '\r' {
+            // Collapse `\r\n` and runs of breaks into a single space.
+            if !prev_was_break {
+                out.push(' ');
+            }
+            prev_was_break = true;
+        } else {
+            out.push(ch);
+            prev_was_break = false;
+        }
+    }
+    out
+}
+
 /// Delete the live selection range (if any), update caret to the range
 /// start, and return the deleted range — callers use it to know whether
 /// to skip a subsequent codepoint-delete (Backspace/Delete) or not.
@@ -443,8 +471,9 @@ fn handle_input(
     // typed text intact), then `frame_keys` for navigation/edits.
     if !ui.input.frame_text.is_empty() {
         delete_selection(text, state);
-        text.insert_str(state.caret, &ui.input.frame_text);
-        state.caret += ui.input.frame_text.len();
+        let sanitized = sanitize_single_line(&ui.input.frame_text);
+        text.insert_str(state.caret, &sanitized);
+        state.caret += sanitized.len();
     }
 
     for kp in &ui.input.frame_keys {
@@ -500,7 +529,7 @@ fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool
                 return false;
             }
             'v' => {
-                let cb = crate::clipboard::get();
+                let cb = sanitize_single_line(&crate::clipboard::get());
                 if !cb.is_empty() {
                     delete_selection(text, state);
                     text.insert_str(state.caret, &cb);
