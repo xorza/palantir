@@ -68,6 +68,10 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "input_throughput"
+harness = false
+
+[[bench]]
 name = "caches"
 harness = false
 required-features = ["internals", "bench-deep"]
