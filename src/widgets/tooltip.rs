@@ -1,13 +1,13 @@
-use crate::forest::element::Configure;
+use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::seen_ids::IdSource;
 use crate::forest::tree::Layer;
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use glam::Vec2;
 use std::borrow::Cow;
@@ -93,21 +93,25 @@ pub struct Tooltip<'r> {
     response: &'r Response,
     text: Cow<'static, str>,
     delay: Option<f32>,
-    max_width: Option<f32>,
     show_when_disabled: bool,
+    element: Element,
 }
 
 impl<'r> Tooltip<'r> {
     /// Attach a tooltip to the given trigger response. The response
     /// carries the trigger's `WidgetId` and last-frame rect — both
     /// drive timer keying and anchor computation.
+    #[track_caller]
     pub fn for_(response: &'r Response) -> Self {
+        let mut element = Element::new(LayoutMode::VStack);
+        // Bubble must never claim hover — would shadow its own trigger.
+        element.sense = Sense::empty();
         Self {
             response,
             text: Cow::Borrowed(""),
             delay: None,
-            max_width: None,
             show_when_disabled: false,
+            element,
         }
     }
 
@@ -123,12 +127,6 @@ impl<'r> Tooltip<'r> {
         self
     }
 
-    /// Override the max bubble width before wrapping (logical px).
-    pub fn max_width(mut self, px: f32) -> Self {
-        self.max_width = Some(px);
-        self
-    }
-
     /// Allow the tooltip to fire on disabled triggers. Off by default —
     /// most disabled tooltips would be UX noise.
     pub fn show_when_disabled(mut self, yes: bool) -> Self {
@@ -141,7 +139,6 @@ impl<'r> Tooltip<'r> {
     /// trigger.
     pub fn show(self, ui: &mut Ui) {
         let delay = self.delay.unwrap_or(ui.theme.tooltip.delay);
-        let max_width = self.max_width.unwrap_or(ui.theme.tooltip.max_width);
         let warmup = ui.theme.tooltip.warmup;
         let gap = ui.theme.tooltip.gap;
 
@@ -180,21 +177,26 @@ impl<'r> Tooltip<'r> {
             let viewport = ui.display().logical_rect();
             let placed = place_anchor(trigger_rect, state.last_size, viewport, gap);
             let text = self.text;
-            // Theme reads inside the closure need a fresh borrow — pull
-            // out before the `&mut ui` borrow `layer` takes.
-            let panel = ui.theme.tooltip.panel;
+            // Theme fallbacks for fields the caller didn't override.
+            // Sentinel checks mirror Button/TextEdit's pattern: ZERO
+            // padding / INF max_size / None chrome mean "inherit".
+            let mut element = self.element;
+            element.id = bubble_id;
+            element.id_source = IdSource::Explicit;
             let text_style = ui.theme.tooltip.text;
-            let padding = ui.theme.tooltip.padding;
+            if element.chrome.is_none() {
+                element.chrome = Some(ui.theme.tooltip.panel);
+            }
+            if element.padding == Spacing::ZERO {
+                element.padding = ui.theme.tooltip.padding;
+            }
+            if element.max_size == Size::INF {
+                element.max_size = ui.theme.tooltip.max_size;
+            }
             ui.layer(Layer::Tooltip, placed.anchor, None, |ui| {
-                Panel::vstack()
-                    .id(bubble_id)
-                    .background(panel)
-                    .padding(padding)
-                    .size((Sizing::Fixed(max_width), Sizing::Hug))
-                    .sense(Sense::empty())
-                    .show(ui, |ui| {
-                        Text::new(text).style(text_style).wrapping().show(ui);
-                    });
+                ui.node(element, |ui| {
+                    Text::new(text).style(text_style).wrapping().show(ui);
+                });
             });
             if let Some(r) = ui.response_for(bubble_id).rect {
                 state.last_size = r.size;
@@ -203,5 +205,11 @@ impl<'r> Tooltip<'r> {
 
         *ui.state_mut::<TooltipState>(state_id) = state;
         *ui.state_mut::<TooltipGlobal>(g_id) = global;
+    }
+}
+
+impl Configure for Tooltip<'_> {
+    fn element_mut(&mut self) -> &mut Element {
+        &mut self.element
     }
 }
