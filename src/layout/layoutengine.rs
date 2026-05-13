@@ -8,6 +8,7 @@ use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::scroll::ScrollStates;
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{AxisCtx, leaf_text_shapes, resolve_axis_size, zero_subtree};
+use crate::layout::types::align::HAlign;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::span::Span;
 use crate::layout::wrapstack::WrapScratch;
@@ -559,6 +560,7 @@ impl LayoutEngine {
                 ts.line_height_px,
                 ts.wrap,
                 ts.family,
+                ts.halign,
                 available_w,
                 text,
                 out,
@@ -588,6 +590,7 @@ impl LayoutEngine {
         line_height_px: f32,
         wrap: TextWrap,
         family: FontFamily,
+        halign: HAlign,
         available_w: f32,
         text: &TextShaper,
         out: &mut Layout,
@@ -609,9 +612,16 @@ impl LayoutEngine {
             family,
         );
 
-        let want_wrap = matches!(wrap, TextWrap::Wrap)
-            && available_w.is_finite()
-            && available_w < unbounded.size.w;
+        // Always re-shape through `shape_wrap` for `TextWrap::Wrap` +
+        // a finite available width, even when the content fits — the
+        // shaped buffer only carries per-line `BufferLine::set_align`
+        // when `max_width_px` is `Some`, and a multi-line buffer
+        // built without it has every visual line pinned at x = 0.
+        // Without this, an `\n`-separated paragraph that never wraps
+        // would render left-aligned while the widget's `cursor_xy`
+        // (always called with the wrap target) reads per-line-aligned
+        // coords from a different cached buffer.
+        let want_wrap = matches!(wrap, TextWrap::Wrap) && available_w.is_finite();
 
         let result = if want_wrap {
             let target = available_w.max(unbounded.intrinsic_min);
@@ -625,6 +635,7 @@ impl LayoutEngine {
                 target,
                 target_q,
                 family,
+                halign,
             )
         } else {
             unbounded

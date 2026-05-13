@@ -19,6 +19,7 @@
 //! [`Ui`]: crate::Ui
 
 use crate::forest::rollups::NodeHash;
+use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -144,10 +145,18 @@ impl TextShaper {
         line_height_px: f32,
         max_width_px: Option<f32>,
         family: FontFamily,
+        halign: HAlign,
     ) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         inner.measure_calls += 1;
-        inner.dispatch(text, font_size_px, line_height_px, max_width_px, family)
+        inner.dispatch(
+            text,
+            font_size_px,
+            line_height_px,
+            max_width_px,
+            family,
+            halign,
+        )
     }
 
     /// Identity-cached unbounded shape for `wid`, refreshing it (and
@@ -173,7 +182,19 @@ impl TextShaper {
             return o.get().unbounded;
         }
         inner.measure_calls += 1;
-        let unbounded = inner.dispatch(text, font_size_px, line_height_px, None, family);
+        // Unbounded shape ignores `halign` — cosmic only does per-line
+        // alignment when there's a wrap target to align inside, and
+        // there's no width here. Always passes `HAlign::Auto` so the
+        // shaped buffer (and its `TextCacheKey`) match callers who
+        // look it up without an align param.
+        let unbounded = inner.dispatch(
+            text,
+            font_size_px,
+            line_height_px,
+            None,
+            family,
+            HAlign::Auto,
+        );
         inner.reuse.insert(
             (wid, ordinal),
             TextReuseEntry {
@@ -201,6 +222,7 @@ impl TextShaper {
         target: f32,
         target_q: u32,
         family: FontFamily,
+        halign: HAlign,
     ) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
@@ -212,11 +234,19 @@ impl TextShaper {
         };
         if let Some(w) = entry.get().wrap
             && w.target_q == target_q
+            && w.halign_q == halign as u8
         {
             return w.result;
         }
         inner.measure_calls += 1;
-        let m = inner.dispatch(text, font_size_px, line_height_px, Some(target), family);
+        let m = inner.dispatch(
+            text,
+            font_size_px,
+            line_height_px,
+            Some(target),
+            family,
+            halign,
+        );
         // Re-borrow `entry` because dispatch took `&mut inner` over the
         // whole struct; the prior borrow ended at the early-return.
         inner
@@ -225,6 +255,7 @@ impl TextShaper {
             .expect("entry just confirmed to exist")
             .wrap = Some(WrapReuse {
             target_q,
+            halign_q: halign as u8,
             result: m,
         });
         m
@@ -236,6 +267,7 @@ impl TextShaper {
     /// returns the invalid sentinel key). Centralises the
     /// `measure → borrow → cosmic → buffer_for` preamble for every
     /// caret/selection helper below.
+    #[allow(clippy::too_many_arguments)]
     fn with_buffer<R>(
         &self,
         text: &str,
@@ -243,9 +275,17 @@ impl TextShaper {
         line_height_px: f32,
         max_width_px: Option<f32>,
         family: FontFamily,
+        halign: HAlign,
         body: impl FnOnce(&glyphon::cosmic_text::Buffer) -> R,
     ) -> Option<R> {
-        let result = self.measure(text, font_size_px, line_height_px, max_width_px, family);
+        let result = self.measure(
+            text,
+            font_size_px,
+            line_height_px,
+            max_width_px,
+            family,
+            halign,
+        );
         let inner = self.inner.borrow();
         let buffer = inner.cosmic.as_ref()?.buffer_for(result.key)?;
         Some(body(buffer))
@@ -258,6 +298,7 @@ impl TextShaper {
     /// distinct visual line). Mono fallback / empty-text path
     /// collapses to a 1D layout — `y_top = 0`, `x` from a flat mono
     /// per-byte estimate — usable for tests / headless.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn cursor_xy(
         &self,
         text: &str,
@@ -266,6 +307,7 @@ impl TextShaper {
         line_height_px: f32,
         max_width_px: Option<f32>,
         family: FontFamily,
+        halign: HAlign,
     ) -> CursorPos {
         let target = cursor_from_byte(text, byte_offset);
         self.with_buffer(
@@ -274,17 +316,25 @@ impl TextShaper {
             line_height_px,
             max_width_px,
             family,
+            halign,
             |buffer| {
-                // Iterate visual lines (buffer lines × soft-wrap segments).
-                // For each run on the target's buffer line, locate the
-                // glyph whose `[start, end)` byte span contains
-                // `target.index`. Trailing-edge cursor uses `line_w`.
+                // Iterate visual lines (buffer lines × soft-wrap
+                // segments). For each run on the target's buffer line,
+                // locate the glyph whose `[start, end)` byte span
+                // contains `target.index`. For a trailing-edge caret
+                // (no glyph matches in this run), remember the last
+                // glyph's `(x + w)` — that's the post-aligned
+                // line-end position. Using `run.line_w` instead would
+                // ignore cosmic's per-line halign offset and the
+                // caret would jump back to the left on right/center-
+                // aligned lines.
                 let mut last_in_line: Option<(f32, f32, f32)> = None;
                 for run in buffer.layout_runs() {
                     if run.line_i != target.line {
                         continue;
                     }
-                    last_in_line = Some((run.line_w, run.line_top, run.line_height));
+                    let line_end_x = run.glyphs.last().map(|g| g.x + g.w).unwrap_or(run.line_w);
+                    last_in_line = Some((line_end_x, run.line_top, run.line_height));
                     for g in run.glyphs {
                         if g.start == target.index {
                             return CursorPos {
@@ -304,18 +354,39 @@ impl TextShaper {
                     // Past the last glyph of this run: continue iterating
                     // — a soft-wrap continuation may carry `target.index`.
                 }
-                let (line_w, line_top, line_h) = last_in_line.unwrap_or((0.0, 0.0, line_height_px));
+                let (line_end_x, line_top, line_h) =
+                    last_in_line.unwrap_or((0.0, 0.0, line_height_px));
                 CursorPos {
-                    x: line_w,
+                    x: line_end_x,
                     y_top: line_top,
                     line_height: line_h,
                 }
             },
         )
-        .unwrap_or(CursorPos {
-            x: caret_x_mono_single_line(text, byte_offset, font_size_px),
-            y_top: 0.0,
-            line_height: line_height_px,
+        .unwrap_or_else(|| {
+            // No shaped buffer (mono fallback OR empty text → cosmic
+            // returns INVALID sentinel → `with_buffer` returns None).
+            // For empty text inside a finite wrap target we still
+            // need the caret to land where cosmic *would* per-line
+            // align it — otherwise an empty right-aligned multi-line
+            // editor renders its caret at x = 0 instead of at the
+            // right edge.
+            let x = if text.is_empty()
+                && let Some(w) = max_width_px
+            {
+                match halign {
+                    HAlign::Center => w * 0.5,
+                    HAlign::Right => w,
+                    HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
+                }
+            } else {
+                caret_x_mono_single_line(text, byte_offset, font_size_px)
+            };
+            CursorPos {
+                x,
+                y_top: 0.0,
+                line_height: line_height_px,
+            }
         })
     }
 
@@ -333,6 +404,7 @@ impl TextShaper {
         line_height_px: f32,
         max_width_px: Option<f32>,
         family: FontFamily,
+        halign: HAlign,
     ) -> usize {
         self.with_buffer(
             text,
@@ -340,6 +412,7 @@ impl TextShaper {
             line_height_px,
             max_width_px,
             family,
+            halign,
             |buffer| {
                 buffer
                     .hit(x, y)
@@ -365,6 +438,7 @@ impl TextShaper {
         line_height_px: f32,
         max_width_px: Option<f32>,
         family: FontFamily,
+        halign: HAlign,
         mut out: impl FnMut(f32, f32, f32, f32),
     ) {
         if range.is_empty() {
@@ -377,6 +451,7 @@ impl TextShaper {
                 line_height_px,
                 max_width_px,
                 family,
+                halign,
                 |buffer| {
                     let start = cursor_from_byte(text, range.start);
                     let end = cursor_from_byte(text, range.end);
@@ -393,40 +468,6 @@ impl TextShaper {
             let x1 = caret_x_mono_single_line(text, range.end, font_size_px);
             out(x0, 0.0, x1 - x0, line_height_px);
         }
-    }
-
-    /// Widest visual line width for `text` under the supplied
-    /// metrics. Used by widgets that want block-level horizontal
-    /// alignment of a wrapped paragraph: the inner offset is
-    /// `inner_w − max_line_width(…)` rather than `inner_w − measured.w`
-    /// (which equals the wrap target and collapses to zero). Mono
-    /// fallback returns the single-line width.
-    pub(crate) fn max_line_width(
-        &self,
-        text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        max_width_px: Option<f32>,
-        family: FontFamily,
-    ) -> f32 {
-        self.with_buffer(
-            text,
-            font_size_px,
-            line_height_px,
-            max_width_px,
-            family,
-            |buffer| {
-                buffer
-                    .layout_runs()
-                    .map(|run| run.line_w)
-                    .fold(0.0_f32, f32::max)
-            },
-        )
-        .unwrap_or_else(|| {
-            self.measure(text, font_size_px, line_height_px, max_width_px, family)
-                .size
-                .w
-        })
     }
 
     /// Drop reuse entries for the supplied removed-widget set. Called
@@ -470,9 +511,19 @@ impl ShaperInner {
         line_height_px: f32,
         max_width_px: Option<f32>,
         family: FontFamily,
+        halign: HAlign,
     ) -> MeasureResult {
         match self.cosmic.as_mut() {
-            Some(c) => c.measure(text, font_size_px, line_height_px, max_width_px, family),
+            Some(c) => c.measure(
+                text,
+                font_size_px,
+                line_height_px,
+                max_width_px,
+                family,
+                halign,
+            ),
+            // Mono fallback is single-line; cosmic per-line align
+            // can't be applied so `halign` is unused here.
             None => mono_measure(text, font_size_px, line_height_px, max_width_px),
         }
     }
@@ -508,6 +559,13 @@ pub struct TextCacheKey {
     /// slack so `bytemuck::Pod`'s no-padding-bytes invariant still
     /// holds.
     pub family_q: u8,
+    /// [`HAlign`] discriminant for per-line text alignment. Cosmic
+    /// shapes the buffer with line-internal x offsets that depend on
+    /// the per-line align, so two runs with identical text/size but
+    /// different halign produce different shaped buffers and the key
+    /// has to discriminate. `0` (`HAlign::Auto`) means "no per-line
+    /// alignment" and matches the previous behaviour.
+    pub halign_q: u8,
 }
 
 impl TextCacheKey {
@@ -521,18 +579,26 @@ impl TextCacheKey {
     /// `is_invalid` and the sentinel together.
     pub const INVALID: Self = unsafe { std::mem::zeroed() };
 
-    /// Construct from the five hashed fields. The `padding_struct` proc
+    /// Construct from the six hashed fields. The `padding_struct` proc
     /// macro injects trailing padding fields to satisfy
     /// `bytemuck::Pod`'s no-padding-bytes invariant; the
     /// `..Zeroable::zeroed()` spread fills them with zeros so callers
     /// don't have to know they exist.
-    pub(crate) fn new(text_hash: u64, size_q: u32, max_w_q: u32, lh_q: u32, family_q: u8) -> Self {
+    pub(crate) fn new(
+        text_hash: u64,
+        size_q: u32,
+        max_w_q: u32,
+        lh_q: u32,
+        family_q: u8,
+        halign_q: u8,
+    ) -> Self {
         Self {
             text_hash,
             size_q,
             max_w_q,
             lh_q,
             family_q,
+            halign_q,
             ..bytemuck::Zeroable::zeroed()
         }
     }
@@ -543,6 +609,7 @@ impl TextCacheKey {
             && self.max_w_q == 0
             && self.lh_q == 0
             && self.family_q == 0
+            && self.halign_q == 0
     }
 }
 
@@ -715,6 +782,10 @@ pub(crate) struct TextReuseEntry {
 #[derive(Clone, Copy)]
 struct WrapReuse {
     target_q: u32,
+    /// `HAlign as u8` for the cached wrap. Cosmic's per-line align
+    /// changes glyph positions inside the shaped buffer, so changing
+    /// halign invalidates this slot even when `target_q` is unchanged.
+    halign_q: u8,
     result: MeasureResult,
 }
 
@@ -801,8 +872,16 @@ mod tests {
         for (label, text, offset, fs, lh_v, expected) in cases {
             let m = TextShaper::default();
             assert_eq!(
-                m.cursor_xy(text, *offset, *fs, *lh_v, None, FontFamily::Sans)
-                    .x,
+                m.cursor_xy(
+                    text,
+                    *offset,
+                    *fs,
+                    *lh_v,
+                    None,
+                    FontFamily::Sans,
+                    HAlign::Auto,
+                )
+                .x,
                 *expected,
                 "case: {label}"
             );
@@ -819,14 +898,30 @@ mod tests {
         use crate::text::cosmic::CosmicMeasure;
         let mut c = CosmicMeasure::with_bundled_fonts();
         let a = c
-            .measure("hi", 16.0, 16.0 * LINE_HEIGHT_MULT, None, FontFamily::Sans)
+            .measure(
+                "hi",
+                16.0,
+                16.0 * LINE_HEIGHT_MULT,
+                None,
+                FontFamily::Sans,
+                HAlign::Auto,
+            )
             .key;
-        let b = c.measure("hi", 16.0, 24.0, None, FontFamily::Sans).key;
+        let b = c
+            .measure("hi", 16.0, 24.0, None, FontFamily::Sans, HAlign::Auto)
+            .key;
         assert_ne!(a, b, "different leading must produce different key");
         assert_ne!(a.lh_q, b.lh_q, "lh_q is the discriminating field");
         // Same call repeated → identical key (cache hit, deterministic).
         let a2 = c
-            .measure("hi", 16.0, 16.0 * LINE_HEIGHT_MULT, None, FontFamily::Sans)
+            .measure(
+                "hi",
+                16.0,
+                16.0 * LINE_HEIGHT_MULT,
+                None,
+                FontFamily::Sans,
+                HAlign::Auto,
+            )
             .key;
         assert_eq!(a, a2);
     }
@@ -840,8 +935,8 @@ mod tests {
         // other test would still pass.
         use crate::text::cosmic::CosmicMeasure;
         let mut c = CosmicMeasure::with_bundled_fonts();
-        let sans = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Sans);
-        let mono = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Mono);
+        let sans = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
+        let mono = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Mono, HAlign::Auto);
         assert_ne!(sans.key, mono.key, "family must enter the cache key");
         assert_ne!(
             sans.key.family_q, mono.key.family_q,
@@ -887,7 +982,17 @@ mod tests {
         // first fails loudly instead of silently losing the cache.
         let m = TextShaper::default();
         let wid = WidgetId::from_hash("a");
-        m.shape_wrap(wid, 0, "hi", 16.0, 16.0, 100.0, 100, FontFamily::Sans);
+        m.shape_wrap(
+            wid,
+            0,
+            "hi",
+            16.0,
+            16.0,
+            100.0,
+            100,
+            FontFamily::Sans,
+            HAlign::Auto,
+        );
     }
 
     #[test]
@@ -898,7 +1003,7 @@ mod tests {
         assert!(TextCacheKey::INVALID.is_invalid());
         // And a non-INVALID key registers as such even with all
         // hashable fields zero except text_hash.
-        let real = TextCacheKey::new(1, 0, 0, 0, 0);
+        let real = TextCacheKey::new(1, 0, 0, 0, 0, 0);
         assert!(!real.is_invalid());
     }
 
@@ -912,8 +1017,16 @@ mod tests {
         let s = "hello";
         let widths: Vec<f32> = (0..=s.len())
             .map(|i| {
-                m.cursor_xy(s, i, 16.0, 16.0 * LINE_HEIGHT_MULT, None, FontFamily::Sans)
-                    .x
+                m.cursor_xy(
+                    s,
+                    i,
+                    16.0,
+                    16.0 * LINE_HEIGHT_MULT,
+                    None,
+                    FontFamily::Sans,
+                    HAlign::Auto,
+                )
+                .x
             })
             .collect();
         assert_eq!(widths[0], 0.0, "caret-x at offset 0 is zero");

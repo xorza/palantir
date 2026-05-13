@@ -10,6 +10,7 @@ use crate::forest::element::LayoutCore;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
+use crate::layout::types::align::HAlign;
 use crate::layout::types::{
     align::Align, align::AxisAlign, justify::Justify, sizing::Sizes, sizing::Sizing,
 };
@@ -19,13 +20,20 @@ use crate::text::{FontFamily, TextShaper};
 use glam::Vec2;
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
-/// [`leaf_text_shapes`]; named so the four fields aren't a tuple.
+/// [`leaf_text_shapes`]; named so the fields aren't a tuple.
 pub(crate) struct LeafTextShape<'a> {
     pub(crate) text: &'a str,
     pub(crate) font_size_px: f32,
     pub(crate) line_height_px: f32,
     pub(crate) wrap: TextWrap,
     pub(crate) family: FontFamily,
+    /// Horizontal alignment from `Shape::Text.align`. Cosmic-text
+    /// bakes per-line offsets into the shaped buffer when wrap is on,
+    /// so the layout pass has to thread this all the way down to
+    /// `shape_wrap` (and into `TextCacheKey`) — two shapes with
+    /// identical text/size/wrap but different halign aren't
+    /// interchangeable.
+    pub(crate) halign: HAlign,
 }
 
 /// Iterate every `ShapeRecord::Text` on a leaf. Single source of truth for
@@ -55,6 +63,7 @@ pub(crate) fn leaf_text_shapes(
             line_height_px,
             wrap,
             family,
+            align,
             ..
         } => Some(LeafTextShape {
             text: text.as_ref(),
@@ -62,6 +71,7 @@ pub(crate) fn leaf_text_shapes(
             line_height_px: *line_height_px,
             wrap: *wrap,
             family: *family,
+            halign: align.halign(),
         }),
         _ => None,
     })

@@ -310,6 +310,315 @@ fn selection_rects_offset_matches_text() {
     );
 }
 
+/// Per-line halign tests use real cosmic shaping (`ui_with_text`).
+/// Asks the shaper directly for caret + selection coords on a
+/// wrapped multi-line buffer at different halign values; verifies
+/// that line-internal x offsets reflect the encoder convention
+/// `dx_per_line = (line_width - line_w) * factor` where factor is
+/// 0 (Left), 0.5 (Center), 1.0 (Right).
+mod per_line {
+    use super::super::*;
+    use crate::text::FontFamily;
+    use crate::{Align, HAlign};
+    use glam::UVec2;
+
+    fn cosmic_ui() -> Ui {
+        ui_with_text(UVec2::new(800, 200))
+    }
+
+    #[test]
+    fn caret_at_eol_shifts_with_halign_under_wrap() {
+        // Wrapped paragraph: line "hi" (2 chars) inside a 300 px
+        // wrap target. Caret at the end of the line under
+        // `HAlign::Right` must sit at x ≈ wrap_target; under
+        // `HAlign::Left` at x ≈ line_w; under `HAlign::Center` at
+        // x ≈ (wrap + line_w) / 2.
+        let ui = cosmic_ui();
+        let fs = 16.0_f32;
+        let lh = fs * 1.2;
+        let wrap = 300.0_f32;
+        let text = "hi";
+
+        let left = ui
+            .text
+            .cursor_xy(text, 2, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Left)
+            .x;
+        let center = ui
+            .text
+            .cursor_xy(
+                text,
+                2,
+                fs,
+                lh,
+                Some(wrap),
+                FontFamily::Sans,
+                HAlign::Center,
+            )
+            .x;
+        let right = ui
+            .text
+            .cursor_xy(text, 2, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Right)
+            .x;
+
+        // Right > Center > Left (caret follows the per-line offset).
+        assert!(
+            right > center,
+            "right ({right}) must exceed center ({center})"
+        );
+        assert!(center > left, "center ({center}) must exceed left ({left})");
+        // Right caret sits inside the wrap target (one cap of slack
+        // for inter-line trailing whitespace handling).
+        assert!(
+            right <= wrap + 1.0,
+            "right caret ({right}) must be within wrap target ({wrap})",
+        );
+        // Center caret is roughly midway between left and right.
+        let mid_expected = (left + right) * 0.5;
+        assert!(
+            (center - mid_expected).abs() < 2.0,
+            "center caret {center} must be ~mid of left {left} and right {right}",
+        );
+    }
+
+    #[test]
+    fn cache_key_distinguishes_halign() {
+        // Cosmic shapes a different buffer for each per-line align.
+        // The cache key must reflect that so two simultaneous lookups
+        // (e.g. caret then selection) can't pick up the wrong buffer.
+        use crate::text::cosmic::CosmicMeasure;
+        let mut c = CosmicMeasure::with_bundled_fonts();
+        let l = c
+            .measure(
+                "hi",
+                16.0,
+                19.2,
+                Some(100.0),
+                FontFamily::Sans,
+                HAlign::Left,
+            )
+            .key;
+        let r = c
+            .measure(
+                "hi",
+                16.0,
+                19.2,
+                Some(100.0),
+                FontFamily::Sans,
+                HAlign::Right,
+            )
+            .key;
+        assert_ne!(l, r, "halign must enter the cache key");
+        assert_ne!(
+            l.halign_q, r.halign_q,
+            "halign_q is the discriminating field"
+        );
+    }
+
+    #[test]
+    fn unbounded_halign_collapses_to_auto_in_key() {
+        // Without a wrap target cosmic can't apply per-line align,
+        // so every halign value at `max_width_px = None` shapes the
+        // same buffer. `key_for` collapses `halign_q` to `Auto`'s
+        // discriminant on that path so single-line callers don't
+        // pay an N-way cache split for identical glyph positions.
+        use crate::text::cosmic::CosmicMeasure;
+        let mut c = CosmicMeasure::with_bundled_fonts();
+        let left = c
+            .measure("hi", 16.0, 19.2, None, FontFamily::Sans, HAlign::Left)
+            .key;
+        let right = c
+            .measure("hi", 16.0, 19.2, None, FontFamily::Sans, HAlign::Right)
+            .key;
+        assert_eq!(left, right, "halign must not split the unbounded cache");
+        assert_eq!(
+            left.halign_q,
+            HAlign::Auto as u8,
+            "unbounded entries always carry the Auto discriminant",
+        );
+    }
+
+    /// Regression: a multi-line editor whose content fits within the
+    /// wrap target (every `\n`-separated line shorter than inner width)
+    /// must still shape its rendered buffer through the wrap path so
+    /// cosmic bakes per-line `set_align` offsets. Without this the
+    /// widget's `cursor_xy` reads from an aligned cache entry while
+    /// the encoder paints from an unaligned one — caret looks right-
+    /// aligned but glyphs sit at x = 0.
+    #[test]
+    fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
+        use crate::forest::tree::Layer;
+        let mut ui = cosmic_ui();
+        let mut buf = String::from("hi\nyo");
+        let mut node = None;
+        let mut record = |ui: &mut Ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                node = Some(
+                    TextEdit::new(&mut buf)
+                        .id_salt("fits-ml")
+                        .multiline(true)
+                        .text_align(Align::TOP_RIGHT)
+                        .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
+                        .show(ui)
+                        .node,
+                );
+            });
+        };
+        // Two frames — first warms up `response.rect`, second is the
+        // one we inspect.
+        run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+        run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+        // Read the layout's `ShapedText.key` for the rendered text.
+        // `text_spans[node]` indexes one entry per `ShapeRecord::Text`
+        // on the leaf; multi-line TextEdit emits a single text shape.
+        let node = node.unwrap();
+        let main = &ui.layout[Layer::Main];
+        let span = main.text_spans[node.index()];
+        assert_eq!(span.len, 1, "one Shape::Text expected on the leaf");
+        let shaped = main.text_shapes[span.start as usize];
+        // `HAlign::Right as u8 = 3` — pin the discriminant directly
+        // so a variant reordering trips here instead of silently
+        // falling through.
+        assert_eq!(
+            shaped.key.halign_q,
+            HAlign::Right as u8,
+            "rendered buffer must carry the user's halign in its cache key (got {})",
+            shaped.key.halign_q,
+        );
+        // Also check the wrap-target axis is set — if it's
+        // `u32::MAX` the buffer was shaped without `max_width_px`
+        // and cosmic wouldn't have applied per-line align.
+        assert_ne!(
+            shaped.key.max_w_q,
+            u32::MAX,
+            "rendered buffer must have a finite wrap target so cosmic per-line align fires",
+        );
+    }
+
+    /// Regression: an empty multi-line buffer with right-align must
+    /// place the caret at the right edge of the wrap target, not at
+    /// x = 0. Empty text returns `TextCacheKey::INVALID` and the
+    /// shaper's `with_buffer` falls through to the mono path, which
+    /// historically ignored halign — caret pinned to the left while
+    /// the user expects it to anchor where typed text will appear.
+    #[test]
+    fn empty_buffer_caret_lands_at_aligned_edge() {
+        let ui = cosmic_ui();
+        let fs = 16.0_f32;
+        let lh = fs * 1.2;
+        let wrap = 290.0_f32;
+        let right = ui
+            .text
+            .cursor_xy("", 0, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Right)
+            .x;
+        let center = ui
+            .text
+            .cursor_xy("", 0, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Center)
+            .x;
+        let left = ui
+            .text
+            .cursor_xy("", 0, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Left)
+            .x;
+        assert!(
+            (right - wrap).abs() < 1e-3,
+            "right-aligned empty caret must sit at the wrap target: got {right}",
+        );
+        assert!(
+            (center - wrap * 0.5).abs() < 1e-3,
+            "center-aligned empty caret must sit at wrap/2: got {center}",
+        );
+        assert!(
+            left.abs() < 1e-3,
+            "left-aligned empty caret at 0: got {left}"
+        );
+    }
+
+    /// Regression: `MeasureResult.size.w` must extend to the right-
+    /// most rendered pixel under per-line align, not to the content
+    /// width of the widest visual line. cosmic-text positions
+    /// right-aligned glyphs at `(wrap_target - line_w)`, so the
+    /// effective bbox reaches `wrap_target`. If `measured.w` stays
+    /// at `max(line_w)` (the unaligned content width), the encoder
+    /// hands glyphon a `TextBounds` too narrow on the right and
+    /// every right-aligned glyph is clipped — the user sees nothing.
+    #[test]
+    fn measured_width_encloses_aligned_glyphs() {
+        use crate::text::cosmic::CosmicMeasure;
+        let mut c = CosmicMeasure::with_bundled_fonts();
+        let wrap = 290.0_f32;
+        let aligned = c.measure(
+            "hi\nyo",
+            16.0,
+            19.2,
+            Some(wrap),
+            FontFamily::Sans,
+            HAlign::Right,
+        );
+        // The widest visual line content is ~13 px for "hi"; with
+        // right-align it sits at x ≈ 277 inside a 290 wrap. Bbox
+        // must reach the wrap target (within rounding slop).
+        assert!(
+            aligned.size.w >= wrap - 1.0,
+            "right-aligned bbox width must reach the wrap target: got {} (wrap {})",
+            aligned.size.w,
+            wrap,
+        );
+    }
+
+    #[test]
+    fn multiline_widget_right_aligns_each_line() {
+        // End-to-end: a multi-line TextEdit with `.text_align(RIGHT)`
+        // must produce caret coords at end-of-line that approach the
+        // wrap target. Pre-existing `block alignment` would have
+        // collapsed this to (widest_line - line_w) ≈ 0 for the
+        // widest line; per-line alignment offsets each shorter line
+        // by `wrap_target - line_w`.
+        let mut ui = cosmic_ui();
+        let buf_init = String::from("short\nlonger line here");
+        let id = WidgetId::from_hash("ml-right");
+        let mut buf = buf_init.clone();
+        let mut record = |ui: &mut Ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                TextEdit::new(&mut buf)
+                    .id_salt("ml-right")
+                    .multiline(true)
+                    .text_align(Align::TOP_RIGHT)
+                    .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
+                    .show(ui);
+            });
+        };
+        run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+        // Caret at end of "short" (byte 5): under right-align the
+        // caret should sit far from the left edge.
+        ui.state_mut::<TextEditState>(id).caret = 5;
+        run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+        // Ask the shaper directly for the caret position the widget
+        // would have seen this frame. wrap target = inner width =
+        // 300 - 2*5 = 290.
+        let fs = 16.0_f32;
+        let lh = fs * 1.2;
+        let caret_short = ui
+            .text
+            .cursor_xy(
+                &buf,
+                5,
+                fs,
+                lh,
+                Some(290.0),
+                FontFamily::Sans,
+                HAlign::Right,
+            )
+            .x;
+        // Without per-line alignment, the short line would land at
+        // x ≈ line_w ≈ 35-40 px. With per-line alignment under
+        // right-align, the caret at end-of-short sits near the wrap
+        // target (~290).
+        assert!(
+            caret_short > 200.0,
+            "right-aligned 'short' caret at end must be far from 0 (got {caret_short})",
+        );
+    }
+}
+
 #[test]
 fn multiline_default_is_top_left() {
     // Default for `multiline(true)` is `Align::TOP_LEFT`. With "abcd"
