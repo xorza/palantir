@@ -11,42 +11,6 @@ use glam::Vec2;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 
-/// Per-side ink overhang in owner-local px — how far this shape paints
-/// **beyond** the owner's arranged rect on each side. Non-zero only for
-/// drop shadows today; everything else paints within the owner rect (or
-/// inside an explicit `local_rect` that itself sits inside the owner).
-/// Cascade folds these per-node into `paint_rect` so damage tracking
-/// covers the pixels the encoder actually touches.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct Overhang {
-    pub(crate) left: f32,
-    pub(crate) top: f32,
-    pub(crate) right: f32,
-    pub(crate) bottom: f32,
-}
-
-impl Overhang {
-    pub(crate) const ZERO: Self = Self {
-        left: 0.0,
-        top: 0.0,
-        right: 0.0,
-        bottom: 0.0,
-    };
-
-    pub(crate) fn union(self, other: Self) -> Self {
-        Self {
-            left: self.left.max(other.left),
-            top: self.top.max(other.top),
-            right: self.right.max(other.right),
-            bottom: self.bottom.max(other.bottom),
-        }
-    }
-
-    pub(crate) fn is_zero(self) -> bool {
-        self.left == 0.0 && self.top == 0.0 && self.right == 0.0 && self.bottom == 0.0
-    }
-}
-
 /// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache
 /// keys (which write the discriminant into the hash) stay stable
 /// across variant reordering. Reorder freely — the on-disk tag
@@ -166,8 +130,8 @@ pub(crate) enum ShapeRecord {
 /// source rect; inset shadow stays inside the source. `local_rect =
 /// None` ⇒ source covers the full owner; `Some(r)` ⇒ source is `r` at
 /// owner-relative coords. **Sole formula source** for the shadow paint
-/// extent: encoder (per-quad paint rect) and cascade (per-node
-/// [`Overhang`]) both call this so the two views can't drift.
+/// extent: the encoder (per-quad paint rect) and [`ShapeRecord::paint_bbox_local`]
+/// (cascade's per-node ink union) both call this so the two views can't drift.
 pub(crate) fn shadow_paint_rect_local(
     local_rect: Option<Rect>,
     owner_size: Size,
@@ -195,29 +159,30 @@ pub(crate) fn shadow_paint_rect_local(
 }
 
 impl ShapeRecord {
-    /// Per-side overhang beyond the owner's arranged rect (owner-local
-    /// px). Only drop shadows extend outside; everything else returns
-    /// [`Overhang::ZERO`]. Derived from [`shadow_paint_rect_local`] so
-    /// the formula stays in one place.
-    pub(crate) fn paint_overhang_local(&self, owner_size: Size) -> Overhang {
-        let ShapeRecord::Shadow {
-            local_rect,
-            offset,
-            blur,
-            spread,
-            inset: false,
-            ..
-        } = self
-        else {
-            return Overhang::ZERO;
-        };
-        let paint =
-            shadow_paint_rect_local(*local_rect, owner_size, *offset, *blur, *spread, false);
-        Overhang {
-            left: (-paint.min.x).max(0.0),
-            top: (-paint.min.y).max(0.0),
-            right: (paint.min.x + paint.size.w - owner_size.w).max(0.0),
-            bottom: (paint.min.y + paint.size.h - owner_size.h).max(0.0),
+    /// Owner-local paint bbox this shape draws into — cascade unions
+    /// across siblings to derive `Cascade.paint_rect`, encoder reads
+    /// the world-space form for damage culling. Drop shadows extend
+    /// beyond the owner via [`shadow_paint_rect_local`]; other variants
+    /// paint into `local_rect` (when set) or the owner's full rect at
+    /// `(0, 0)`. `Polyline` carries a pre-computed owner-relative bbox
+    /// from `lower_polyline`.
+    pub(crate) fn paint_bbox_local(&self, owner_size: Size) -> Rect {
+        match self {
+            ShapeRecord::Shadow {
+                local_rect,
+                offset,
+                blur,
+                spread,
+                inset,
+                ..
+            } => shadow_paint_rect_local(*local_rect, owner_size, *offset, *blur, *spread, *inset),
+            ShapeRecord::Polyline { bbox, .. } => *bbox,
+            ShapeRecord::RoundedRect { local_rect, .. }
+            | ShapeRecord::Text { local_rect, .. }
+            | ShapeRecord::Mesh { local_rect, .. } => local_rect.unwrap_or(Rect {
+                min: Vec2::ZERO,
+                size: owner_size,
+            }),
         }
     }
 
