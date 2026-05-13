@@ -94,20 +94,36 @@ fn attach_menu(ui: &mut Ui, trigger: &palantir::Response, state_id: WidgetId, fl
             .max_size((320.0, 280.0))
             .padding(Spacing::all(10.0));
     }
-    menu.show(ui, |ui| {
-        if MenuItem::new("Copy").shortcut("⌘C").show(ui).clicked() {
+    menu.show(ui, |ui, popup| {
+        if MenuItem::new("Copy")
+            .shortcut("⌘C")
+            .show(ui, popup)
+            .clicked()
+        {
             ui.state_mut::<State>(state_id).last_action = Some("last action: Copy");
         }
-        if MenuItem::new("Cut").shortcut("⌘X").show(ui).clicked() {
+        if MenuItem::new("Cut")
+            .shortcut("⌘X")
+            .show(ui, popup)
+            .clicked()
+        {
             ui.state_mut::<State>(state_id).last_action = Some("last action: Cut");
         }
-        if MenuItem::new("Paste").shortcut("⌘V").show(ui).clicked() {
+        if MenuItem::new("Paste")
+            .shortcut("⌘V")
+            .show(ui, popup)
+            .clicked()
+        {
             ui.state_mut::<State>(state_id).last_action = Some("last action: Paste");
         }
         MenuItem::separator(ui);
-        MenuItem::new("Disabled").enabled(false).show(ui);
+        MenuItem::new("Disabled").enabled(false).show(ui, popup);
         MenuItem::separator(ui);
-        if MenuItem::new("Delete").shortcut("⌫").show(ui).clicked() {
+        if MenuItem::new("Delete")
+            .shortcut("⌫")
+            .show(ui, popup)
+            .clicked()
+        {
             ui.state_mut::<State>(state_id).last_action = Some("last action: Delete");
         }
     });

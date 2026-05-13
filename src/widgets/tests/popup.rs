@@ -36,7 +36,7 @@ fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
                 .id_salt("test-popup")
                 .click_outside(config)
                 .padding(4.0)
-                .show(ui, |ui| {
+                .show(ui, |ui, _popup| {
                     Panel::vstack()
                         .id_salt("popup-content")
                         .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
@@ -113,7 +113,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
                     let r = Popup::anchored_to(ANCHOR)
                         .id_salt("test-popup")
                         .click_outside(ClickOutside::Dismiss)
-                        .show(ui, |ui| {
+                        .show(ui, |ui, _popup| {
                             Panel::vstack()
                                 .id_salt("popup-content")
                                 .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
@@ -168,7 +168,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                         .id_salt("sized-popup")
                         .padding(0.0)
                         .size((sw, sh))
-                        .show(ui, |ui| {
+                        .show(ui, |ui, _popup| {
                             Panel::vstack()
                                 .id_salt("popup-content")
                                 .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))

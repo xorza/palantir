@@ -143,7 +143,7 @@ fn popup_eater_does_not_force_full_repaint() {
                 fill: BLUE.into(),
                 ..Default::default()
             })
-            .show(ui, |ui| {
+            .show(ui, |ui, _popup| {
                 Frame::new()
                     .id_salt("body-leaf")
                     .size(60.0)
