@@ -4,7 +4,7 @@ use super::*;
 /// to keep the caret visible once content overflows the inner width, and
 /// snaps back when the caret returns home. Mono fallback (8 px / char @
 /// 16 px font, 1.5 px caret) gives predictable math; the editor's inner
-/// width is `280 − 2·8` = 264 px.
+/// width is `280 − 2·5` = 270 px (theme default padding 5 px each side).
 #[test]
 fn scroll_keeps_caret_inside_visible_inner_rect() {
     let ed_id = WidgetId::from_hash("scroll-ed");
@@ -28,13 +28,13 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     assert_eq!(scroll, Vec2::ZERO, "text fits — no scroll");
 
     // Long text past inner_w: caret at end (100) → x = 800 px.
-    // caret_right (800 + 1.5) − inner_w (264) = 537.5.
+    // caret_right (800 + 1.5) − inner_w (270) = 531.5.
     let mut long = "a".repeat(100);
     run_at_acked(&mut ui, NARROW, |ui| body(ui, &mut long));
     ui.state_mut::<TextEditState>(ed_id).caret = 100;
     run_at_acked(&mut ui, NARROW, |ui| body(ui, &mut long));
     let scroll = ui.state_mut::<TextEditState>(ed_id).scroll;
-    assert!((scroll.x - 537.5).abs() < 0.5, "scroll.x = {}", scroll.x);
+    assert!((scroll.x - 531.5).abs() < 0.5, "scroll.x = {}", scroll.x);
     assert_eq!(scroll.y, 0.0, "single-line never scrolls y");
 
     // Caret home: scroll.x snaps back so the start of the text is

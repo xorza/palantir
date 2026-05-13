@@ -26,6 +26,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("text", text::build),
     ("text layouts", text::build_layouts),
     ("text edit", text_edit::build),
+    ("text edit align", text_edit::build_align),
     ("z-order", text_zorder::build),
     ("panels", panels::build),
     ("scroll", scroll::build),

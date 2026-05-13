@@ -1,4 +1,7 @@
-use palantir::{Button, Configure, FocusPolicy, Panel, Sizing, Text, TextEdit, Ui, WidgetId};
+use palantir::{
+    Align, Button, Configure, FocusPolicy, HAlign, Panel, Sizing, Text, TextEdit, Ui, VAlign,
+    WidgetId,
+};
 
 /// Two TextEdits + a Button + an echo line.
 ///
@@ -108,6 +111,8 @@ pub fn build(ui: &mut Ui) {
                 "Multi-line: Enter inserts \\n, Up/Down navigate visual lines, \
                  selection spans newlines, paste preserves multi-line clipboard.",
             )
+            .text_align(Align::RIGHT)
+            .align(Align::BOTTOM_RIGHT)
             .auto_id()
             .wrapping()
             .show(ui);
@@ -123,4 +128,71 @@ pub fn build(ui: &mut Ui) {
     *ui.state_mut::<String>(buf_a_id) = buf_a;
     *ui.state_mut::<String>(buf_b_id) = buf_b;
     *ui.state_mut::<String>(buf_ml_id) = buf_ml;
+}
+
+/// 3×3 grid of single-line TextEdits, one per `(HAlign, VAlign)`
+/// combination. Editors are wider than the natural label width and
+/// twice the line height so the vertical placement is obvious; each
+/// row's buffer survives across tab switches via `Ui::state_mut`.
+pub fn build_align(ui: &mut Ui) {
+    const ROWS: [(VAlign, &str); 3] = [
+        (VAlign::Top, "top"),
+        (VAlign::Center, "center"),
+        (VAlign::Bottom, "bottom"),
+    ];
+    const COLS: [(HAlign, &str); 3] = [
+        (HAlign::Left, "left"),
+        (HAlign::Center, "center"),
+        (HAlign::Right, "right"),
+    ];
+
+    Panel::vstack()
+        .auto_id()
+        .padding(20.0)
+        .gap(12.0)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            Text::new("TextEdit — 9 single-line editors, one per align combination.")
+                .auto_id()
+                .show(ui);
+            Text::new(
+                "Each editor is taller than its text line so the vertical alignment shows. \
+                 Click any field to focus; the caret tracks the glyphs regardless of where \
+                 the text sits inside the rect.",
+            )
+            .auto_id()
+            .wrapping()
+            .show(ui);
+
+            Panel::vstack()
+                .id_salt("grid")
+                .gap(8.0)
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui, |ui| {
+                    for (v, vname) in ROWS {
+                        Panel::hstack()
+                            .id_salt(vname)
+                            .gap(8.0)
+                            .size((Sizing::FILL, Sizing::Hug))
+                            .show(ui, |ui| {
+                                for (h, hname) in COLS {
+                                    let key = format!("textedit_align__{vname}_{hname}");
+                                    let buf_id = WidgetId::from_hash(key.as_str());
+                                    let mut buf = std::mem::take(ui.state_mut::<String>(buf_id));
+                                    if buf.is_empty() {
+                                        buf = format!("{vname}-{hname}");
+                                    }
+                                    TextEdit::new(&mut buf)
+                                        .id_salt(key.as_str())
+                                        .align(Align::new(h, v))
+                                        .placeholder(format!("{vname} / {hname}"))
+                                        .size((Sizing::FILL, Sizing::Fixed(60.0)))
+                                        .min_size((140.0, 60.0))
+                                        .show(ui);
+                                    *ui.state_mut::<String>(buf_id) = buf;
+                                }
+                            });
+                    }
+                });
+        });
 }
