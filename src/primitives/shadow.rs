@@ -31,6 +31,18 @@ pub struct Shadow {
 }
 
 impl Shadow {
+    /// Canonical "no shadow" sentinel. Equivalent to
+    /// `Shadow::default()` but `const`, so callers can use it in
+    /// `const` contexts (theme tables, look defaults). Reports
+    /// `is_noop()` — emits nothing.
+    pub const NONE: Self = Self {
+        color: Color::TRANSPARENT,
+        offset: Vec2::ZERO,
+        blur: 0.0,
+        spread: 0.0,
+        inset: false,
+    };
+
     pub fn is_noop(&self) -> bool {
         self.color.is_noop()
             || (noop_f32(self.blur)

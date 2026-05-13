@@ -6,6 +6,7 @@ use crate::primitives::{
     color::Color,
     corners::Corners,
     rect::Rect,
+    shadow::Shadow,
     stroke::Stroke,
 };
 use glam::Vec2;
@@ -116,11 +117,7 @@ pub enum Shape<'a> {
     Shadow {
         local_rect: Option<Rect>,
         radius: Corners,
-        color: Color,
-        offset: Vec2,
-        blur: f32,
-        spread: f32,
-        inset: bool,
+        shadow: Shadow,
     },
 }
 
@@ -402,8 +399,8 @@ impl Shape<'_> {
                     || mesh.indices.len() % 3 != 0
             }
             Shape::Shadow {
-                local_rect, color, ..
-            } => local_rect_paint_empty(local_rect) || color.is_noop(),
+                local_rect, shadow, ..
+            } => local_rect_paint_empty(local_rect) || shadow.is_noop(),
         }
     }
 }
