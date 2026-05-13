@@ -1,5 +1,6 @@
 pub(crate) mod keyboard;
 pub(crate) mod sense;
+pub(crate) mod shortcut;
 
 use crate::forest::widget_id::WidgetId;
 use crate::input::keyboard::{

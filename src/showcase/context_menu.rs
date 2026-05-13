@@ -4,8 +4,8 @@
 //! click, or Esc.
 
 use palantir::{
-    Background, Button, Color, Configure, ContextMenu, Corners, Frame, MenuItem, Panel, Sense,
-    Sizing, Spacing, Stroke, Text, Ui, WidgetId,
+    Background, Button, Color, Configure, ContextMenu, Corners, Frame, Key, MenuItem, Mods, Panel,
+    Sense, Shortcut, Sizing, Spacing, Stroke, Text, Ui, WidgetId,
 };
 
 #[derive(Default)]
@@ -96,21 +96,21 @@ fn attach_menu(ui: &mut Ui, trigger: &palantir::Response, state_id: WidgetId, fl
     }
     menu.show(ui, |ui, popup| {
         if MenuItem::new("Copy")
-            .shortcut("⌘C")
+            .shortcut(Shortcut::cmd('C'))
             .show(ui, popup)
             .clicked()
         {
             ui.state_mut::<State>(state_id).last_action = Some("last action: Copy");
         }
         if MenuItem::new("Cut")
-            .shortcut("⌘X")
+            .shortcut(Shortcut::cmd('X'))
             .show(ui, popup)
             .clicked()
         {
             ui.state_mut::<State>(state_id).last_action = Some("last action: Cut");
         }
         if MenuItem::new("Paste")
-            .shortcut("⌘V")
+            .shortcut(Shortcut::cmd('V'))
             .show(ui, popup)
             .clicked()
         {
@@ -120,7 +120,7 @@ fn attach_menu(ui: &mut Ui, trigger: &palantir::Response, state_id: WidgetId, fl
         MenuItem::new("Disabled").enabled(false).show(ui, popup);
         MenuItem::separator(ui);
         if MenuItem::new("Delete")
-            .shortcut("⌫")
+            .shortcut(Shortcut::new(Mods::NONE, Key::Backspace))
             .show(ui, popup)
             .clicked()
         {

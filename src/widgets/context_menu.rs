@@ -1,6 +1,7 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
@@ -44,8 +45,9 @@ pub(crate) struct ContextMenuState {
 /// For programmatic opens (keyboard shortcut, custom gesture) call
 /// [`Self::open`] before [`Self::for_id`]`(id).show(...)`.
 ///
-/// Closes on outside-click, on Esc, or when any [`MenuItem`] inside
-/// reports `clicked()`.
+/// Closes on outside-click, on Esc, when any [`MenuItem`] inside
+/// reports `clicked()`, or when a [`MenuItem`]'s declared
+/// [`Shortcut`] matches a keypress this frame.
 ///
 /// Implements [`Configure`] — chain `.max_size(...)`, `.min_size(...)`,
 /// `.padding(...)`, `.gap(...)`, `.background(...)`, etc. on the menu
@@ -184,10 +186,16 @@ pub(crate) fn clamp_anchor(raw: Vec2, size: Option<Size>, surface: Rect) -> Vec2
 /// `Response` so callers branch on `clicked()`; the row also calls
 /// [`PopupHandle::close`] on click so the parent `ContextMenu`
 /// auto-closes without the caller threading state.
+///
+/// If [`Self::shortcut`] is set, the row also intercepts that
+/// shortcut from this frame's key events: matching keypresses
+/// synthesize a click (so `if item.clicked() { … }` fires) AND
+/// close the menu, mirroring native menu behaviour. Disabled rows
+/// don't intercept.
 pub struct MenuItem {
     element: Element,
     label: Cow<'static, str>,
-    shortcut: Option<Cow<'static, str>>,
+    shortcut: Option<Shortcut>,
 }
 
 impl MenuItem {
@@ -204,8 +212,13 @@ impl MenuItem {
         }
     }
 
-    pub fn shortcut(mut self, s: impl Into<Cow<'static, str>>) -> Self {
-        self.shortcut = Some(s.into());
+    /// Attach a keyboard shortcut. Renders the right-aligned hint
+    /// using the platform's native form (`⌘C` / `Ctrl+C`) and
+    /// intercepts that keypress while the menu is open. Glyph-only
+    /// hints (no modifier, e.g. `Backspace → ⌫`) are expressed as
+    /// `Shortcut::new(Mods::NONE, Key::Backspace)`.
+    pub fn shortcut(mut self, s: Shortcut) -> Self {
+        self.shortcut = Some(s);
         self
     }
 
@@ -264,6 +277,12 @@ impl MenuItem {
 
         let label = self.label;
         let shortcut = self.shortcut;
+        // Shortcut intercept: while the menu is open, a matching
+        // keypress synthesizes a click and closes the menu. Resolved
+        // before the node records so we don't pay for the label
+        // resolution on rows with no shortcut.
+        let shortcut_fired = shortcut.is_some_and(|s| !disabled && ui.shortcut_pressed(s));
+        let shortcut_label = shortcut.map(|s| s.label());
 
         let node = ui.node(element, |ui| {
             let mut label_el = Element::new(LayoutMode::Leaf);
@@ -281,7 +300,7 @@ impl MenuItem {
                     align: crate::layout::types::align::Align::default(),
                 });
             });
-            if let Some(s) = shortcut {
+            if let Some(s) = shortcut_label {
                 let mut sh_el = Element::new(LayoutMode::Leaf);
                 sh_el.id = id.with("shortcut");
                 sh_el.id_source = crate::forest::seen_ids::IdSource::Explicit;
@@ -300,7 +319,10 @@ impl MenuItem {
             }
         });
 
-        let state = ui.response_for(id);
+        let mut state = ui.response_for(id);
+        if shortcut_fired {
+            state.clicked = true;
+        }
         let resp = Response { node, id, state };
         if resp.clicked() {
             popup.close();

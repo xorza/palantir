@@ -2,6 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::widget_id::WidgetId;
 use crate::input::keyboard::{Key, KeyPress};
 use crate::input::sense::Sense;
+use crate::input::shortcut::Shortcut;
 use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
@@ -378,7 +379,7 @@ impl<'a> TextEdit<'a> {
         let text = self.text;
         ContextMenu::attach(ui, &response).show(ui, |ui, popup| {
             if MenuItem::new("Cut")
-                .shortcut("⌘X")
+                .shortcut(Shortcut::cmd('X'))
                 .enabled(has_sel)
                 .show(ui, popup)
                 .clicked()
@@ -391,7 +392,7 @@ impl<'a> TextEdit<'a> {
                 st.selection = None;
             }
             if MenuItem::new("Copy")
-                .shortcut("⌘C")
+                .shortcut(Shortcut::cmd('C'))
                 .enabled(has_sel)
                 .show(ui, popup)
                 .clicked()
@@ -400,7 +401,7 @@ impl<'a> TextEdit<'a> {
                 crate::clipboard::set(&text[r]);
             }
             if MenuItem::new("Paste")
-                .shortcut("⌘V")
+                .shortcut(Shortcut::cmd('V'))
                 .enabled(cb_has)
                 .show(ui, popup)
                 .clicked()
@@ -471,6 +472,11 @@ fn handle_input(
     blur_after: &mut bool,
 ) -> InputResult {
     let resp_state = ui.response_for(id);
+    // Snapshot once before the long `&mut state` borrow below. The
+    // menu and the text-edit state live under the same WidgetId but
+    // different TypeIds; the borrow checker can't see the disjoint
+    // rows so we read the menu row first.
+    let clipboard_active = !ContextMenu::is_open(ui, id);
 
     // Hold the state row once for the whole function. `ui.state`,
     // `ui.input`, and `ui.text` are disjoint fields of `Ui`,
@@ -557,7 +563,7 @@ fn handle_input(
     let mut vert: Option<VerticalMotion> = None;
     let mut pending_vert: Vec<VerticalMotion> = Vec::new();
     for kp in &ui.input.frame_keys {
-        if apply_key(text, state, *kp, multiline, &mut vert) {
+        if apply_key(text, state, *kp, multiline, clipboard_active, &mut vert) {
             *blur_after = true;
         }
         if let Some(v) = vert.take() {
@@ -617,58 +623,57 @@ fn apply_key(
     state: &mut TextEditState,
     kp: KeyPress,
     multiline: bool,
+    clipboard_active: bool,
     out_vertical: &mut Option<VerticalMotion>,
 ) -> bool {
-    // Platform clipboard shortcuts: `ctrl+_` on Win/Linux, `cmd+_` on
-    // macOS (the standard convention every framework hardcodes since
-    // OS settings for these aren't exposed via a stable cross-
-    // platform API). Routed before the `Char` insert branch so they
-    // don't get swallowed by the `any_command` suppression below.
-    if let Key::Char(c) = kp.key
-        && (kp.mods.ctrl || kp.mods.meta)
-        && !kp.mods.alt
-    {
-        match c.to_ascii_lowercase() {
-            'a' => {
-                if !text.is_empty() {
-                    state.selection = Some(0);
-                    state.caret = text.len();
-                    if state.selection == Some(state.caret) {
-                        state.selection = None;
-                    }
-                }
-                return false;
-            }
-            'c' => {
-                if let Some(r) = state.sel_range() {
-                    crate::clipboard::set(&text[r]);
-                }
-                return false;
-            }
-            'x' => {
-                if let Some(r) = state.sel_range() {
-                    crate::clipboard::set(&text[r.clone()]);
-                    text.replace_range(r.clone(), "");
-                    state.caret = r.start;
+    // Platform clipboard shortcuts. Routed before the `Char` insert
+    // branch so they don't get swallowed by the `any_command`
+    // suppression below. Gated by `clipboard_active` so an open
+    // context menu can intercept the same bindings.
+    const SELECT_ALL: Shortcut = Shortcut::cmd('A');
+    const COPY: Shortcut = Shortcut::cmd('C');
+    const CUT: Shortcut = Shortcut::cmd('X');
+    const PASTE: Shortcut = Shortcut::cmd('V');
+
+    if clipboard_active {
+        if SELECT_ALL.matches(kp) {
+            if !text.is_empty() {
+                state.selection = Some(0);
+                state.caret = text.len();
+                if state.selection == Some(state.caret) {
                     state.selection = None;
                 }
-                return false;
             }
-            'v' => {
-                let raw = crate::clipboard::get();
-                let cb: String = if multiline {
-                    raw
-                } else {
-                    sanitize_single_line(&raw)
-                };
-                if !cb.is_empty() {
-                    delete_selection(text, state);
-                    text.insert_str(state.caret, &cb);
-                    state.caret += cb.len();
-                }
-                return false;
+            return false;
+        }
+        if COPY.matches(kp) {
+            if let Some(r) = state.sel_range() {
+                crate::clipboard::set(&text[r]);
             }
-            _ => {}
+            return false;
+        }
+        if CUT.matches(kp) {
+            if let Some(r) = state.sel_range() {
+                crate::clipboard::set(&text[r.clone()]);
+                text.replace_range(r.clone(), "");
+                state.caret = r.start;
+                state.selection = None;
+            }
+            return false;
+        }
+        if PASTE.matches(kp) {
+            let raw = crate::clipboard::get();
+            let cb: String = if multiline {
+                raw
+            } else {
+                sanitize_single_line(&raw)
+            };
+            if !cb.is_empty() {
+                delete_selection(text, state);
+                text.insert_str(state.caret, &cb);
+                state.caret += cb.len();
+            }
+            return false;
         }
     }
     let shift = kp.mods.shift;
