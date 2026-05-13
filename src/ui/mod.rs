@@ -434,8 +434,6 @@ impl Ui {
     /// host can skip the frame entirely. Animation/tooltip-delay wakes
     /// still drive paints independently via `FrameReport::repaint_after`.
     pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
-        #[cfg(feature = "profile-with-tracy")]
-        let _tracy_input = tracy_client::non_continuous_frame!("input");
         self.input.on_input(event, &self.layout.cascades)
     }
 
