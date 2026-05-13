@@ -1,1 +1,1 @@
-tooltips
+debugoverlay for colliding widgetids
