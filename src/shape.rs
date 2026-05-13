@@ -383,12 +383,7 @@ impl Shape<'_> {
                     || brush.is_noop()
                     || (vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2))
             }
-            Shape::Text {
-                text,
-                brush,
-                local_rect,
-                ..
-            } => local_rect_paint_empty(local_rect) || text.is_empty() || brush.is_noop(),
+            Shape::Text { text, brush, .. } => text.is_empty() || brush.is_noop(),
             Shape::Mesh {
                 mesh,
                 local_rect,
