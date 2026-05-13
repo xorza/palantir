@@ -305,6 +305,15 @@ impl Tree {
         }
     }
 
+    /// `NodeId` the next [`Self::open_node`] call will assign — i.e.
+    /// `records.len() as u32` wrapped. Lets callers (notably
+    /// `Forest::open_node`) reserve the id ahead of the push so
+    /// `SeenIds::record` can stash it for collision lookup before
+    /// `element` is moved into the tree.
+    pub(crate) fn peek_next_id(&self) -> NodeId {
+        NodeId(self.records.len() as u32)
+    }
+
     /// Push a node as a child of the currently-open node (or as a new
     /// root if `open_frames` is empty) and make it the new tip. Root
     /// mints stamp the top of `pending_anchors` onto the new
@@ -312,7 +321,7 @@ impl Tree {
     pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
         let parent_frame = self.open_frames.last().copied();
         let parent = parent_frame.map(|f| f.node);
-        let new_id = NodeId(self.records.len() as u32);
+        let new_id = self.peek_next_id();
         if parent.is_none() {
             let pending = self.pending_anchors.last().copied().unwrap_or_default();
             self.roots.push(RootSlot {
