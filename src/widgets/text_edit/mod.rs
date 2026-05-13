@@ -464,22 +464,52 @@ fn handle_input(
 /// recognized key is consumed silently. Single-line v1 ignores Enter /
 /// Tab / PageUp / PageDown.
 fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
-    // Select-all: ctrl+A on Win/Linux, cmd+A on macOS. Routed before
-    // the `Char` insert branch so it doesn't get swallowed by the
-    // any_command suppression below.
+    // Platform clipboard shortcuts: `ctrl+_` on Win/Linux, `cmd+_` on
+    // macOS (the standard convention every framework hardcodes since
+    // OS settings for these aren't exposed via a stable cross-
+    // platform API). Routed before the `Char` insert branch so they
+    // don't get swallowed by the `any_command` suppression below.
     if let Key::Char(c) = kp.key
-        && (c == 'a' || c == 'A')
         && (kp.mods.ctrl || kp.mods.meta)
         && !kp.mods.alt
     {
-        if !text.is_empty() {
-            state.selection = Some(0);
-            state.caret = text.len();
-            if state.selection == Some(state.caret) {
-                state.selection = None;
+        match c.to_ascii_lowercase() {
+            'a' => {
+                if !text.is_empty() {
+                    state.selection = Some(0);
+                    state.caret = text.len();
+                    if state.selection == Some(state.caret) {
+                        state.selection = None;
+                    }
+                }
+                return false;
             }
+            'c' => {
+                if let Some(r) = state.sel_range() {
+                    crate::clipboard::set(&text[r]);
+                }
+                return false;
+            }
+            'x' => {
+                if let Some(r) = state.sel_range() {
+                    crate::clipboard::set(&text[r.clone()]);
+                    text.replace_range(r.clone(), "");
+                    state.caret = r.start;
+                    state.selection = None;
+                }
+                return false;
+            }
+            'v' => {
+                let cb = crate::clipboard::get();
+                if !cb.is_empty() {
+                    delete_selection(text, state);
+                    text.insert_str(state.caret, &cb);
+                    state.caret += cb.len();
+                }
+                return false;
+            }
+            _ => {}
         }
-        return false;
     }
     let shift = kp.mods.shift;
     match kp.key {
