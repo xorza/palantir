@@ -452,7 +452,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
     let mut leaf = None;
     Panel::vstack().auto_id().show(ui, |ui| {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.id = crate::WidgetId::from_hash("multi-text-leaf");
+        element.set_id(crate::WidgetId::from_hash("multi-text-leaf"));
         leaf = Some(ui.node(element, |ui| {
             ui.add_shape(Shape::Text {
                 local_rect: Some(Rect::new(0.0, 0.0, 100.0, 20.0)),

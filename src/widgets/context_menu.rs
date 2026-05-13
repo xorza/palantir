@@ -104,8 +104,7 @@ impl ContextMenu {
         let first_open = prev_size.is_none();
 
         let mut e = self.element;
-        e.id = body_id;
-        e.id_source = crate::forest::seen_ids::IdSource::Explicit;
+        e.set_id(body_id);
         if e.chrome.is_none() {
             e.chrome = Some(theme.panel);
         }
@@ -202,8 +201,6 @@ impl MenuItem {
     #[track_caller]
     pub fn new(label: impl Into<Cow<'static, str>>) -> Self {
         let mut element = Element::new(LayoutMode::HStack);
-        element.id = WidgetId::auto_stable();
-        element.id_source = crate::forest::seen_ids::IdSource::Auto;
         element.sense = Sense::CLICK;
         Self {
             element,
@@ -232,8 +229,6 @@ impl MenuItem {
     #[track_caller]
     pub fn separator(ui: &mut Ui) -> Response {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.id = WidgetId::auto_stable();
-        element.id_source = crate::forest::seen_ids::IdSource::Auto;
         element.sense = Sense::NONE;
         // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container. See `docs/popups.md`.
         element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
@@ -286,8 +281,7 @@ impl MenuItem {
 
         let node = ui.node(element, |ui| {
             let mut label_el = Element::new(LayoutMode::Leaf);
-            label_el.id = id.with("label");
-            label_el.id_source = crate::forest::seen_ids::IdSource::Explicit;
+            label_el.set_id(id.with("label"));
             label_el.size = (Sizing::Hug, Sizing::Hug).into();
             ui.node(label_el, |ui| {
                 ui.add_shape(Shape::Text {
@@ -302,8 +296,7 @@ impl MenuItem {
             });
             if let Some(s) = shortcut_label {
                 let mut sh_el = Element::new(LayoutMode::Leaf);
-                sh_el.id = id.with("shortcut");
-                sh_el.id_source = crate::forest::seen_ids::IdSource::Explicit;
+                sh_el.set_id(id.with("shortcut"));
                 sh_el.size = (Sizing::Hug, Sizing::Hug).into();
                 ui.node(sh_el, |ui| {
                     ui.add_shape(Shape::Text {

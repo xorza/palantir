@@ -263,7 +263,6 @@ impl std::hash::Hash for LayoutCore {
 pub struct Element {
     // ---- Identity + layout-algorithm selector --------------------------------
     pub(crate) id: WidgetId,
-    pub(crate) mode: LayoutMode,
     /// How `id` was produced: [`IdSource::Auto`] when synthesized by
     /// [`WidgetId::auto_stable`] (caller used `Foo::new()` + `.auto_id()`),
     /// [`IdSource::Explicit`] when set via [`Configure::id_salt`] /
@@ -271,6 +270,7 @@ pub struct Element {
     /// auto ids by mixing in a per-id occurrence counter; explicit-key
     /// collisions still hard-assert as caller bugs.
     pub(crate) id_source: IdSource,
+    pub(crate) mode: LayoutMode,
 
     // ---- Own size + alignment (read by every parent layout) ------------------
     pub(crate) size: Sizes,
@@ -361,17 +361,17 @@ pub(crate) struct ElementColumns {
 }
 
 impl Element {
-    /// Build an `Element` with an *unset* id. Widget constructors call
-    /// this; the caller must then chain one of [`Configure::id_salt`],
-    /// [`Configure::id`], or [`Configure::auto_id`] before `show()`,
-    /// otherwise the [`crate::ui::Ui::node`] write-path asserts. No
-    /// implicit `auto_stable` derivation in constructors keeps
-    /// `#[track_caller]` off every widget `*::new`.
+    /// Build an `Element` with a call-site-derived auto id. `#[track_caller]`
+    /// propagates through every widget constructor that's also marked
+    /// `#[track_caller]`, so `Foo::new()` at the user's source line yields a
+    /// distinct id per call site. Override with [`Configure::id_salt`] /
+    /// [`Configure::id`] when call order isn't stable across frames.
+    #[track_caller]
     pub(crate) fn new(mode: LayoutMode) -> Self {
         Self {
-            id: WidgetId::default(),
+            id: WidgetId::auto_stable(),
             mode,
-            id_source: IdSource::Explicit,
+            id_source: IdSource::Auto,
             size: Sizes::default(),
             min_size: Size::ZERO,
             max_size: Size::INF,
@@ -392,6 +392,22 @@ impl Element {
             chrome: None,
             transform: None,
         }
+    }
+
+    /// Overwrite the id with a precomputed [`WidgetId`], marking it
+    /// [`IdSource::Explicit`] so `Ui::node` hard-asserts on collision.
+    pub(crate) fn set_id(&mut self, id: WidgetId) {
+        self.id = id;
+        self.id_source = IdSource::Explicit;
+    }
+
+    /// Overwrite the id while inheriting `id_source` from another element.
+    /// Use when forwarding an outer wrapper's identity to an internal
+    /// sub-element built by the same widget (e.g. `Scroll`'s outer/inner
+    /// split) — the caller's choice of auto vs. explicit propagates.
+    pub(crate) fn set_id_from(&mut self, other: &Element) {
+        self.id = other.id;
+        self.id_source = other.id_source;
     }
 
     /// Fan this `Element` out into the per-NodeId columns `Tree` stores.

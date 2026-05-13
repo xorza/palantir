@@ -61,6 +61,7 @@ pub struct Grid {
 
 impl Grid {
     #[allow(clippy::new_without_default)]
+    #[track_caller]
     pub fn new() -> Self {
         // Mode is patched at `show()` time once `grid.push_def` returns the
         // real index. Initialize with a placeholder that `Tree::push_node`'s

@@ -87,6 +87,7 @@ pub struct Popup {
 }
 
 impl Popup {
+    #[track_caller]
     pub fn anchored_to(anchor: Vec2) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
         element.sense = Sense::CLICK;
