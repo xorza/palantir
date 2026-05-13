@@ -93,7 +93,7 @@ pub fn build(ui: &mut Ui) {
             stroke: Stroke::solid(Color::hex(0x4a4a4a), 1.0),
             radius: Corners::all(6.0),
         })
-        .show(ui, |ui| {
+        .show(ui, |ui, _popup| {
             for label in ["copy", "paste", "delete"] {
                 if Button::new()
                     .id_salt(("popup-item", label))

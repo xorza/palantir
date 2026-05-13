@@ -29,12 +29,16 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
                 .label("right click me")
                 .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            ContextMenu::attach(ui, &trigger).show(ui, |ui| {
-                if MenuItem::new("Copy").shortcut("⌘C").show(ui).clicked() {
+            ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
+                if MenuItem::new("Copy")
+                    .shortcut("⌘C")
+                    .show(ui, popup)
+                    .clicked()
+                {
                     *clicked_copy = true;
                 }
                 MenuItem::separator(ui);
-                MenuItem::new("Paste").show(ui);
+                MenuItem::new("Paste").show(ui, popup);
             });
         });
 }

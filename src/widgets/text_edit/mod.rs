@@ -376,11 +376,11 @@ impl<'a> TextEdit<'a> {
         let cb_has = !crate::clipboard::get().is_empty();
         let has_text = !self.text.is_empty();
         let text = self.text;
-        ContextMenu::attach(ui, &response).show(ui, |ui| {
+        ContextMenu::attach(ui, &response).show(ui, |ui, popup| {
             if MenuItem::new("Cut")
                 .shortcut("⌘X")
                 .enabled(has_sel)
-                .show(ui)
+                .show(ui, popup)
                 .clicked()
                 && let Some(r) = sel.clone()
             {
@@ -393,7 +393,7 @@ impl<'a> TextEdit<'a> {
             if MenuItem::new("Copy")
                 .shortcut("⌘C")
                 .enabled(has_sel)
-                .show(ui)
+                .show(ui, popup)
                 .clicked()
                 && let Some(r) = sel.clone()
             {
@@ -402,7 +402,7 @@ impl<'a> TextEdit<'a> {
             if MenuItem::new("Paste")
                 .shortcut("⌘V")
                 .enabled(cb_has)
-                .show(ui)
+                .show(ui, popup)
                 .clicked()
             {
                 let cb = crate::clipboard::get();
@@ -419,7 +419,11 @@ impl<'a> TextEdit<'a> {
                 st.selection = None;
             }
             MenuItem::separator(ui);
-            if MenuItem::new("Clear").enabled(has_text).show(ui).clicked() {
+            if MenuItem::new("Clear")
+                .enabled(has_text)
+                .show(ui, popup)
+                .clicked()
+            {
                 text.clear();
                 let st = ui.state_mut::<TextEditState>(id);
                 st.caret = 0;

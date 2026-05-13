@@ -13,7 +13,7 @@ use crate::primitives::stroke::Stroke;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::popup::{ClickOutside, Popup, PopupResponse};
+use crate::widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
 
 use glam::Vec2;
 use std::borrow::Cow;
@@ -38,7 +38,7 @@ pub(crate) struct ContextMenuState {
 /// let trigger = Button::new().label("…").show(ui);
 /// ContextMenu::attach(ui, &trigger)
 ///     .max_size((280.0, 400.0))
-///     .show(ui, |ui| { … });
+///     .show(ui, |ui, popup| { MenuItem::new("…").show(ui, popup); });
 /// ```
 ///
 /// For programmatic opens (keyboard shortcut, custom gesture) call
@@ -78,7 +78,11 @@ impl ContextMenu {
     /// Record the menu and return per-frame outcome. The body closure
     /// records [`MenuItem`]s inside `Layer::Popup`; the menu auto-
     /// closes on outside-click, Esc, or an item click.
-    pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> ContextMenuResponse {
+    pub fn show(
+        &self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui, &PopupHandle),
+    ) -> ContextMenuResponse {
         if ui.escape_pressed() {
             ContextMenu::close(ui, self.for_id);
         }
@@ -178,7 +182,7 @@ pub(crate) fn clamp_anchor(raw: Vec2, size: Option<Size>, surface: Rect) -> Vec2
 /// One row inside a [`ContextMenu`]. Label on the left, optional
 /// right-aligned shortcut hint, theme-driven hover chrome. Reports
 /// `Response` so callers branch on `clicked()`; the row also calls
-/// [`Popup::request_close`] on click so the parent `ContextMenu`
+/// [`PopupHandle::close`] on click so the parent `ContextMenu`
 /// auto-closes without the caller threading state.
 pub struct MenuItem {
     element: Element,
@@ -233,7 +237,7 @@ impl MenuItem {
         Response { node, id, state }
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut Ui, popup: &PopupHandle) -> Response {
         let id = self.element.id;
         let disabled = self.element.disabled;
         let mut raw_state = ui.response_for(id);
@@ -299,7 +303,7 @@ impl MenuItem {
         let state = ui.response_for(id);
         let resp = Response { node, id, state };
         if resp.clicked() {
-            Popup::request_close(ui);
+            popup.close();
         }
         resp
     }
