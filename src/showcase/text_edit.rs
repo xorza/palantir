@@ -112,13 +112,15 @@ pub fn build(ui: &mut Ui) {
                  selection spans newlines, paste preserves multi-line clipboard.",
             )
             .text_align(Align::RIGHT)
-            .align(Align::BOTTOM_RIGHT)
+            .align(Align::RIGHT)
             .auto_id()
             .wrapping()
             .show(ui);
             TextEdit::new(&mut buf_ml)
                 .id_salt("editor_ml")
                 .multiline(true)
+                .text_align(Align::RIGHT)
+                .align(Align::RIGHT)
                 .placeholder("paste a paragraph here")
                 .size((Sizing::FILL, Sizing::Fixed(160.0)))
                 .min_size((180.0, 80.0))
@@ -183,7 +185,7 @@ pub fn build_align(ui: &mut Ui) {
                                     }
                                     TextEdit::new(&mut buf)
                                         .id_salt(key.as_str())
-                                        .align(Align::new(h, v))
+                                        .text_align(Align::new(h, v))
                                         .placeholder(format!("{vname} / {hname}"))
                                         .size((Sizing::FILL, Sizing::Fixed(60.0)))
                                         .min_size((140.0, 60.0))
