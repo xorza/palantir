@@ -18,10 +18,12 @@ use palantir::{Button, Configure, FocusPolicy, Panel, Sizing, Text, TextEdit, Ui
 pub fn build(ui: &mut Ui) {
     let buf_a_id = WidgetId::from_hash("textedit_showcase__buffer_a");
     let buf_b_id = WidgetId::from_hash("textedit_showcase__buffer_b");
+    let buf_ml_id = WidgetId::from_hash("textedit_showcase__buffer_ml");
     let policy_id = WidgetId::from_hash("textedit_showcase__policy");
 
     let mut buf_a = std::mem::take(ui.state_mut::<String>(buf_a_id));
     let mut buf_b = std::mem::take(ui.state_mut::<String>(buf_b_id));
+    let mut buf_ml = std::mem::take(ui.state_mut::<String>(buf_ml_id));
     let policy = *ui.state_mut::<FocusPolicy>(policy_id);
     ui.set_focus_policy(policy);
 
@@ -101,8 +103,24 @@ pub fn build(ui: &mut Ui) {
             Text::new(format!("buffer B ({:>2} bytes): {}", buf_b.len(), buf_b))
                 .auto_id()
                 .show(ui);
+
+            Text::new(
+                "Multi-line: Enter inserts \\n, Up/Down navigate visual lines, \
+                 selection spans newlines, paste preserves multi-line clipboard.",
+            )
+            .auto_id()
+            .wrapping()
+            .show(ui);
+            TextEdit::new(&mut buf_ml)
+                .id_salt("editor_ml")
+                .multiline(true)
+                .placeholder("paste a paragraph here")
+                .size((Sizing::FILL, Sizing::Fixed(160.0)))
+                .min_size((180.0, 80.0))
+                .show(ui);
         });
 
     *ui.state_mut::<String>(buf_a_id) = buf_a;
     *ui.state_mut::<String>(buf_b_id) = buf_b;
+    *ui.state_mut::<String>(buf_ml_id) = buf_ml;
 }

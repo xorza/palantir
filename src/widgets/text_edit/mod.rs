@@ -117,6 +117,11 @@ pub struct TextEdit<'a> {
     text: &'a mut String,
     style: Option<TextEditTheme>,
     placeholder: Cow<'static, str>,
+    /// When `true`, Enter inserts `\n`, paste/IME preserve newlines,
+    /// click hit-test + caret + selection render in 2D, and text
+    /// soft-wraps to the editor's inner width via cosmic-text. v1
+    /// single-line behaviour is the default — flip via [`Self::multiline`].
+    multiline: bool,
 }
 
 impl<'a> TextEdit<'a> {
@@ -133,7 +138,17 @@ impl<'a> TextEdit<'a> {
             text,
             style: None,
             placeholder: Cow::Borrowed(""),
+            multiline: false,
         }
+    }
+
+    /// Switch to multi-line mode. Enter inserts `\n` (instead of
+    /// blurring), paste / IME-text preserve newlines, text soft-wraps
+    /// to the editor's inner width, and click/caret/selection all
+    /// route through cosmic-text's 2D layout.
+    pub fn multiline(mut self, on: bool) -> Self {
+        self.multiline = on;
+        self
     }
 
     pub fn placeholder(mut self, s: impl Into<Cow<'static, str>>) -> Self {
@@ -186,6 +201,19 @@ impl<'a> TextEdit<'a> {
         // here keeps the caret rect aligned with the glyphs.
         let padding = self.element.padding;
 
+        // Wrap target for multi-line: editor's inner width (outer −
+        // padding). Read from the previous arrange via `response.rect`
+        // — cascade runs in `post_record` so the value is up-to-date
+        // both in steady state and across `request_relayout` passes.
+        // `None` on the first frame the widget is recorded; cosmic
+        // then lays out unbounded (single visual line per `\n` chunk)
+        // until the next frame catches up.
+        let wrap_target: Option<f32> = if self.multiline {
+            response.rect.map(|r| (r.size.w - padding.horiz()).max(1.0))
+        } else {
+            None
+        };
+
         // Phase 1: input handling. Touches `ui.state` and `ui.input`
         // (separate fields, disjoint borrows). Click-to-place-caret
         // happens here too, before keystroke processing, so a click +
@@ -198,50 +226,71 @@ impl<'a> TextEdit<'a> {
             self.text,
             font_size,
             font_size * line_height_mult,
-            padding.left,
+            padding,
+            self.multiline,
+            wrap_target,
             &mut blur_after,
         );
         let caret_byte = input.caret;
         let selection = input.selection;
 
-        // Phase 2: open the node and push shapes. `caret_x` for the
-        // caret position lives inside the closure since it touches
-        // `ui.text` (disjoint from `ui.tree`, so add_shape
-        // sequences fine after the measurement returns).
-        // Chrome paints via `Tree::chrome_for` — encoder emits it before
-        // any clip. No clip is set: TextEdit's caret and selection
+        // Phase 2: open the node and push shapes. `cursor_xy` /
+        // `selection_rects` for multi-line; flat `caret_x` for v1
+        // single-line. Both paths touch `ui.text` (disjoint from
+        // `ui.tree`, so `add_shape` sequences fine).
+        // Chrome paints via `Tree::chrome_for` — encoder emits it
+        // before any clip. No clip is set: TextEdit's caret + selection
         // handle their own painting and don't need rect-clipping.
         let mut element = self.element;
         element.chrome = Some(look.background);
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
+        let multiline = self.multiline;
+        let line_h = font_size * line_height_mult;
         let resp_node = ui.node(element, |ui| {
             // Selection highlight, painted *before* the text so glyphs
             // sit on top of the wash. Only when focused and a range is
             // actually live (anchor != caret — collapsed selections are
             // stored as `None`, so any `Some` here has positive width).
-            if is_focused && let Some(range) = selection {
-                let x0 = ui.text.caret_x(
-                    text_ptr,
-                    range.start,
-                    font_size,
-                    font_size * line_height_mult,
-                );
-                let x1 =
-                    ui.text
-                        .caret_x(text_ptr, range.end, font_size, font_size * line_height_mult);
-                let sel_rect = Rect::new(
-                    padding.left + x0,
-                    padding.top,
-                    x1 - x0,
-                    font_size * line_height_mult,
-                );
-                ui.add_shape(Shape::RoundedRect {
-                    local_rect: Some(sel_rect),
-                    radius: Default::default(),
-                    fill: theme.selection.into(),
-                    stroke: Stroke::ZERO,
-                });
+            if is_focused && let Some(range) = selection.clone() {
+                if multiline {
+                    // `ui.text` (the shaper) and `ui.forest` (where
+                    // `add_shape` writes) are disjoint fields on
+                    // `Ui`; cosmic's `LayoutRun::highlight` calls
+                    // through the shaper while the closure pushes
+                    // shapes — no `Vec<Rect>` round-trip needed.
+                    let sel_color = theme.selection;
+                    ui.text.selection_rects(
+                        text_ptr,
+                        range,
+                        font_size,
+                        line_h,
+                        wrap_target,
+                        |x, y, w, h| {
+                            ui.forest.add_shape(Shape::RoundedRect {
+                                local_rect: Some(Rect::new(
+                                    padding.left + x,
+                                    padding.top + y,
+                                    w,
+                                    h,
+                                )),
+                                radius: Default::default(),
+                                fill: sel_color.into(),
+                                stroke: Stroke::ZERO,
+                            });
+                        },
+                    );
+                } else {
+                    let x0 = ui.text.caret_x(text_ptr, range.start, font_size, line_h);
+                    let x1 = ui.text.caret_x(text_ptr, range.end, font_size, line_h);
+                    let sel_rect = Rect::new(padding.left + x0, padding.top, x1 - x0, line_h);
+                    ui.add_shape(Shape::RoundedRect {
+                        local_rect: Some(sel_rect),
+                        radius: Default::default(),
+                        fill: theme.selection.into(),
+                        stroke: Stroke::ZERO,
+                    });
+                }
             }
 
             // Text or placeholder. Empty buffer + unfocused shows the
@@ -258,8 +307,12 @@ impl<'a> TextEdit<'a> {
                     text: display,
                     brush: color.into(),
                     font_size_px: font_size,
-                    line_height_px: font_size * line_height_mult,
-                    wrap: TextWrap::Single,
+                    line_height_px: line_h,
+                    wrap: if multiline {
+                        TextWrap::Wrap
+                    } else {
+                        TextWrap::Single
+                    },
                     align: Default::default(),
                 });
             }
@@ -268,25 +321,25 @@ impl<'a> TextEdit<'a> {
             // coords so it stays in the widget's clip and renders
             // *over* the text. Only when focused.
             if is_focused {
-                let caret_x = ui.text.caret_x(
-                    text_ptr,
-                    caret_byte,
-                    font_size,
-                    font_size * line_height_mult,
-                );
-                let pad = padding;
-                // Caret height = `font_size × line_height_mult`
-                // (default 1.2 from `TextEditTheme`, matching the
-                // shaper's leading) so the rect spans the same y-range
-                // the shaped text occupies. Using `font_size` alone
-                // leaves it ~20 % short and visually offset upward
-                // against the glyph baseline.
-                let caret_rect = Rect::new(
-                    pad.left + caret_x,
-                    pad.top,
-                    theme.caret_width,
-                    font_size * line_height_mult,
-                );
+                let caret_rect = if multiline {
+                    let pos =
+                        ui.text
+                            .cursor_xy(text_ptr, caret_byte, font_size, line_h, wrap_target);
+                    Rect::new(
+                        padding.left + pos.x,
+                        padding.top + pos.y_top,
+                        theme.caret_width,
+                        pos.line_height,
+                    )
+                } else {
+                    let caret_x = ui.text.caret_x(text_ptr, caret_byte, font_size, line_h);
+                    Rect::new(
+                        padding.left + caret_x,
+                        padding.top,
+                        theme.caret_width,
+                        line_h,
+                    )
+                };
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(caret_rect),
                     radius: Default::default(),
@@ -320,7 +373,7 @@ impl<'a> TextEdit<'a> {
         // `.enabled(...)` per state.
         let sel = ui.state_mut::<TextEditState>(id).sel_range();
         let has_sel = sel.is_some();
-        let cb_has = !crate::clipboard::is_empty();
+        let cb_has = !crate::clipboard::get().is_empty();
         let has_text = !self.text.is_empty();
         let text = self.text;
         ContextMenu::attach(ui, &response).show(ui, |ui| {
@@ -404,12 +457,13 @@ fn handle_input(
     text: &mut String,
     font_size: f32,
     line_height_px: f32,
-    // Resolved left-padding from the per-widget style (after merging
-    // `.style()` override with the theme default). Subtracted from the
-    // press-x so the caret hit-test runs in text-local coords. Passed
-    // in rather than re-resolved here so the override branch in
-    // `show()` doesn't desync from the click target.
-    pad_left: f32,
+    // Resolved padding from the per-widget style (after merging
+    // `.style()` override with the theme default). Subtracted from
+    // the press position so caret/click hit-test runs in text-local
+    // coords. Multi-line uses both axes; single-line only `.left`.
+    padding: Spacing,
+    multiline: bool,
+    wrap_target: Option<f32>,
     blur_after: &mut bool,
 ) -> InputResult {
     let resp_state = ui.response_for(id);
@@ -443,8 +497,20 @@ fn handle_input(
     if resp_state.pressed
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos)
     {
-        let local_x = ptr.x - rect.min.x - pad_left;
-        let hit = caret_from_x(text, local_x, font_size, line_height_px, &ui.text);
+        let local_x = ptr.x - rect.min.x - padding.left;
+        let local_y = ptr.y - rect.min.y - padding.top;
+        // `byte_at_xy` handles both axes; single-line probes at
+        // `y=0` (against an unwrapped layout) collapse to cosmic's
+        // 1D `Buffer::hit` walk — one shaped lookup vs. the old
+        // O(n) per-byte `caret_x` scan.
+        let hit = ui.text.byte_at_xy(
+            text,
+            local_x,
+            if multiline { local_y } else { 0.0 },
+            font_size,
+            line_height_px,
+            wrap_target,
+        );
         if !state.prev_pressed {
             state.drag_anchor = Some(hit);
             state.selection = None;
@@ -471,15 +537,44 @@ fn handle_input(
     // typed text intact), then `frame_keys` for navigation/edits.
     if !ui.input.frame_text.is_empty() {
         delete_selection(text, state);
-        let sanitized = sanitize_single_line(&ui.input.frame_text);
-        text.insert_str(state.caret, &sanitized);
-        state.caret += sanitized.len();
+        let to_insert: String = if multiline {
+            ui.input.frame_text.clone()
+        } else {
+            sanitize_single_line(&ui.input.frame_text)
+        };
+        text.insert_str(state.caret, &to_insert);
+        state.caret += to_insert.len();
     }
 
+    // Drain keys via the pure `apply_key`; vertical-nav probes
+    // happen out-of-line because they need the shaper + layout.
+    // Collect motions first, then resolve, so the borrow on
+    // `frame_keys` releases before we touch `ui.text`.
+    let mut vert: Option<VerticalMotion> = None;
+    let mut pending_vert: Vec<VerticalMotion> = Vec::new();
     for kp in &ui.input.frame_keys {
-        if apply_key(text, state, *kp) {
+        if apply_key(text, state, *kp, multiline, &mut vert) {
             *blur_after = true;
         }
+        if let Some(v) = vert.take() {
+            pending_vert.push(v);
+        }
+    }
+    for v in pending_vert {
+        let pos = ui
+            .text
+            .cursor_xy(text, state.caret, font_size, line_height_px, wrap_target);
+        let probe_y = match v.direction {
+            VerticalDir::Up => pos.y_top - 1.0,
+            VerticalDir::Down => pos.y_top + pos.line_height + 1.0,
+        };
+        let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
+            0
+        } else {
+            ui.text
+                .byte_at_xy(text, pos.x, probe_y, font_size, line_height_px, wrap_target)
+        };
+        move_caret(state, target, v.extend);
     }
 
     InputResult {
@@ -488,11 +583,38 @@ fn handle_input(
     }
 }
 
+/// Up/Down direction emitted by [`apply_key`] for the caller to
+/// resolve against the shaper's 2D layout. Multi-line nav needs the
+/// editor's `font_size` / `line_height` / `wrap_target` to probe one
+/// line above or below the current caret; pulling that resolution out
+/// of `apply_key` keeps the function pure on `(text, state, key)`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct VerticalMotion {
+    direction: VerticalDir,
+    extend: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum VerticalDir {
+    Up,
+    Down,
+}
+
 /// Apply one keypress to the buffer + state. Returns `true` if the
-/// caller should blur (Escape with no live selection); every other
-/// recognized key is consumed silently. Single-line v1 ignores Enter /
-/// Tab / PageUp / PageDown.
-fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
+/// caller should blur (Escape with no live selection in single-line
+/// mode); every other recognized key is consumed silently. Sets
+/// `out_vertical` to `Some(VerticalMotion)` when the key is `Up` /
+/// `Down` in multi-line mode — the caller resolves the cross-axis
+/// probe (it needs the shaper + layout context, which this pure
+/// function doesn't carry). Multi-line mode also treats `Enter` as
+/// `\n` insertion.
+fn apply_key(
+    text: &mut String,
+    state: &mut TextEditState,
+    kp: KeyPress,
+    multiline: bool,
+    out_vertical: &mut Option<VerticalMotion>,
+) -> bool {
     // Platform clipboard shortcuts: `ctrl+_` on Win/Linux, `cmd+_` on
     // macOS (the standard convention every framework hardcodes since
     // OS settings for these aren't exposed via a stable cross-
@@ -529,7 +651,12 @@ fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool
                 return false;
             }
             'v' => {
-                let cb = sanitize_single_line(&crate::clipboard::get());
+                let raw = crate::clipboard::get();
+                let cb: String = if multiline {
+                    raw
+                } else {
+                    sanitize_single_line(&raw)
+                };
                 if !cb.is_empty() {
                     delete_selection(text, state);
                     text.insert_str(state.caret, &cb);
@@ -578,6 +705,23 @@ fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool
             };
             move_caret(state, target, shift);
         }
+        Key::ArrowUp if multiline => {
+            *out_vertical = Some(VerticalMotion {
+                direction: VerticalDir::Up,
+                extend: shift,
+            });
+        }
+        Key::ArrowDown if multiline => {
+            *out_vertical = Some(VerticalMotion {
+                direction: VerticalDir::Down,
+                extend: shift,
+            });
+        }
+        Key::Enter if multiline => {
+            delete_selection(text, state);
+            text.insert(state.caret, '\n');
+            state.caret += 1;
+        }
         Key::Home => move_caret(state, 0, shift),
         Key::End => move_caret(state, text.len(), shift),
         Key::Escape => {
@@ -614,32 +758,6 @@ fn next_char_boundary(text: &str, offset: usize) -> usize {
         i += 1;
     }
     i
-}
-
-/// Linear scan: pick the byte offset whose prefix-x is closest to
-/// `target_x`. O(n) measure calls per click — acceptable for v1 since
-/// click events are rare and short strings cheap. A future
-/// `MeasureResult::byte_to_x` API (exposed by cosmic-text via
-/// `Buffer::layout_runs`) would collapse this to one shaped lookup.
-fn caret_from_x(
-    text: &str,
-    target_x: f32,
-    font_size: f32,
-    line_height_px: f32,
-    m: &crate::text::TextShaper,
-) -> usize {
-    let mut best_off = 0usize;
-    let mut best_dist = target_x.abs();
-    for (i, ch) in text.char_indices() {
-        let next = i + ch.len_utf8();
-        let x = m.caret_x(text, next, font_size, line_height_px);
-        let d = (x - target_x).abs();
-        if d < best_dist {
-            best_dist = d;
-            best_off = next;
-        }
-    }
-    best_off
 }
 
 #[cfg(test)]
