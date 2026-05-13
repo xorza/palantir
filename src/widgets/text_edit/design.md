@@ -4,18 +4,21 @@ Focusable, click/drag-to-place-caret editable text leaf. Single-line
 by default; flip to multi-line with `.multiline(true)`. Typing via
 `KeyDown` printable chars or IME `Text` commits; backspace/delete,
 left/right arrows (up/down too in multi-line), home/end, escape-to-blur.
-Selection: shift+arrow / shift+home/end extend, plain arrows collapse,
-ctrl/cmd+A select-all, click+drag selects, edits replace the range,
-two-stage Escape (first collapse, second blur), painted highlight wash
-behind the glyphs. Cut/copy/paste via Cmd/Ctrl+X/C/V and a default
-right-click menu; paste sanitizes `\n`/`\r` to spaces in single-line
-mode. Undo/redo via Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z with snapshot
-coalescing — consecutive typing or consecutive deletes group into one
-undo unit; any caret-only motion ends the group. Overflow handling
-(`ClipMode::Rect` + scroll-to-caret) keeps glyphs and caret inside
-the editor's rect when content exceeds it; caret blinks on a 500 ms
-half-period and resets to "visible" on any caret / text change. IME
-preedit is still deferred — see "Out of scope" at the end.
+Word navigation via Alt+Arrow on macOS or Ctrl+Arrow elsewhere;
+double-click selects the word under the caret, triple-click selects
+everything. Selection: shift+arrow / shift+home/end extend, plain
+arrows collapse, ctrl/cmd+A select-all, click+drag selects, edits
+replace the range, two-stage Escape (first collapse, second blur),
+painted highlight wash behind the glyphs. Cut/copy/paste via
+Cmd/Ctrl+X/C/V and a default right-click menu; paste sanitizes
+`\n`/`\r` to spaces in single-line mode. Undo/redo via Cmd/Ctrl+Z
+and Cmd/Ctrl+Shift+Z with snapshot coalescing — consecutive typing
+or consecutive deletes group into one undo unit; any caret-only
+motion ends the group. Overflow handling (`ClipMode::Rect` +
+scroll-to-caret) keeps glyphs and caret inside the editor's rect
+when content exceeds it; caret blinks on a 500 ms half-period and
+resets to "visible" on any caret / text change. IME preedit is
+still deferred — see "Out of scope" at the end.
 
 Code lives in `src/widgets/text_edit/{mod.rs,tests.rs}`.
 
@@ -53,6 +56,9 @@ pub(crate) struct TextEditState {
     pub(crate) last_edit_kind: Option<EditKind>,   // Typing / Delete / Other; None ⇒ new group
     pub(crate) scroll: Vec2,                       // viewport offset; subtracted at emit time
     pub(crate) last_caret_change: Duration,        // `Ui::time` of last caret/text/sel change
+    pub(crate) last_press_time: Duration,          // for multi-click detection
+    pub(crate) last_press_pos: Vec2,               //   "
+    pub(crate) click_count: u8,                    // 1 = single, 2 = double, ≥3 = triple
 }
 ```
 
@@ -227,11 +233,19 @@ collapses on plain navigation — the "never store empty selection"
 invariant lives there. `Char` also handles space — there is no `Space`
 variant; winit's `NamedKey::Space` is translated to `Char(' ')`.
 
-Codepoint-granular boundary walks (`prev_char_boundary` /
-`next_char_boundary`) on the `&str`, not graphemes — multi-codepoint
-graphemes (emoji + ZWJ, accent combiners) split apart on backspace.
-Acceptable v1; grapheme awareness lands with `unicode-segmentation` on
-the v1.1 selection branch where it already pays its way.
+Grapheme-cluster boundary walks (`prev_grapheme_boundary` /
+`next_grapheme_boundary`) via `unicode_segmentation::GraphemeCursor`.
+Arrow keys, backspace, and delete step whole grapheme clusters, so
+combining marks (`e` + `U+0301`) and ZWJ-joined family emoji
+(`👨‍👩‍👧`) advance as one unit instead of fragmenting. Each call is a
+single cursor probe over `text`; not hot enough to bother with
+incremental caching.
+
+(Word-nav's `CharKind` classifier is still ASCII-class — alphanumeric
++ `_` is Word, whitespace is Whitespace, everything else is Other —
+which gives the right answer for Latin / digit / mixed text but
+treats CJK and similar scripts as one big Word run. Upgrading is
+deferred.)
 
 ### Click-to-place-caret + drag-select
 
@@ -290,6 +304,41 @@ Reset detection runs around `handle_input`: snapshot `(caret,
 selection, text.len())` before, compare after. Any difference resets
 the phase to "visible" so the caret stays solid during active typing
 instead of flickering on every keystroke.
+
+### Word navigation
+
+`is_word_nav(mods)` matches the platform's standard word-nav modifier
+— `Alt` on macOS, `Ctrl` elsewhere. `apply_key` intercepts
+`Word+ArrowLeft/Right` *before* the plain arrow handlers so the word
+versions take priority. `Shift` extends selection through
+`move_caret(state, target, shift)` exactly like the per-codepoint
+case.
+
+`next_word_boundary` / `prev_word_boundary` classify chars into
+`CharKind::{Whitespace, Word, Other}` (where `Word = is_alphanumeric
+|| '_'`) and skip the leading whitespace run plus the first
+contiguous run of one kind. `word_range_at(text, byte)` returns the
+smallest same-kind range anchored at `byte`, picking the
+forward char when it's word/other, otherwise the backward char
+(so a trailing-edge caret on the last letter of a word still selects
+that word).
+
+### Multi-click selection
+
+On every press rising-edge, `handle_input` compares `ui.time` and
+`pointer_pos` against the previous press: under
+`MULTI_CLICK_WINDOW = 0.5 s` and `MULTI_CLICK_RADIUS = 5 px` it
+increments `click_count`, otherwise resets to 1.
+
+- `click_count == 1`: caret jumps to the hit byte; `drag_anchor` is
+  latched so subsequent pressed frames extend selection.
+- `click_count == 2`: `word_range_at(text, hit)` becomes the
+  selection; `drag_anchor` is cleared so drag doesn't override it.
+- `click_count >= 3`: select everything.
+
+Drag-select code lives in the `else if state.drag_anchor.is_some()`
+branch, gated on the anchor having been set on a single-click press,
+so double/triple-click selections survive a held pointer.
 
 ## Theme
 

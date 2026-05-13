@@ -1,5 +1,5 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::input::keyboard::{Key, KeyPress};
+use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::clip_mode::ClipMode;
@@ -22,6 +22,14 @@ use std::time::Duration;
 /// to the visible phase on every caret or text change so during
 /// active typing the caret stays solid.
 const BLINK_HALF: f32 = 0.5;
+
+/// Max time between presses still counted as one multi-click
+/// sequence. Standard OS default.
+const MULTI_CLICK_WINDOW: f32 = 0.5;
+
+/// Max distance (in logical px) between consecutive presses still
+/// counted as the same multi-click sequence.
+const MULTI_CLICK_RADIUS: f32 = 5.0;
 
 /// Cross-frame state for one [`TextEdit`]. Stored in [`Ui`]'s
 /// `WidgetId → Any` map keyed by the widget's id; lifecycle managed by
@@ -68,6 +76,17 @@ pub(crate) struct TextEditState {
     /// against this so the caret stays solid for the first
     /// [`BLINK_HALF`] seconds after any input.
     pub(crate) last_caret_change: Duration,
+    /// `Ui::time` of the most recent press rising-edge. Compared
+    /// against the next press to detect double/triple clicks within
+    /// [`MULTI_CLICK_WINDOW`].
+    pub(crate) last_press_time: Duration,
+    /// Pointer position of the most recent press, for the "click
+    /// didn't move" half of the multi-click predicate.
+    pub(crate) last_press_pos: Vec2,
+    /// Running click count for the current multi-click sequence.
+    /// 1 = single click, 2 = double, ≥3 = triple. Reset to 1 once
+    /// the time or distance threshold is exceeded.
+    pub(crate) click_count: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -756,11 +775,52 @@ fn handle_input(
             family,
         );
         if !state.prev_pressed {
-            state.drag_anchor = Some(hit);
-            state.selection = None;
-            state.caret = hit;
+            // Press rising edge. Detect multi-click: consecutive
+            // presses within `MULTI_CLICK_WINDOW` and `MULTI_CLICK_RADIUS`
+            // increment `click_count`; otherwise it resets to 1.
+            let elapsed = ui.time.saturating_sub(state.last_press_time).as_secs_f32();
+            let near = (ptr - state.last_press_pos).length_squared()
+                <= MULTI_CLICK_RADIUS * MULTI_CLICK_RADIUS;
+            state.click_count = if elapsed < MULTI_CLICK_WINDOW && near {
+                state.click_count.saturating_add(1)
+            } else {
+                1
+            };
+            state.last_press_time = ui.time;
+            state.last_press_pos = ptr;
             state.last_edit_kind = None;
-        } else {
+            match state.click_count {
+                1 => {
+                    state.drag_anchor = Some(hit);
+                    state.selection = None;
+                    state.caret = hit;
+                }
+                2 => {
+                    // Double-click: select the word under the caret.
+                    let r = word_range_at(text, hit);
+                    if r.is_empty() {
+                        state.drag_anchor = Some(hit);
+                        state.selection = None;
+                        state.caret = hit;
+                    } else {
+                        state.drag_anchor = None;
+                        state.selection = Some(r.start);
+                        state.caret = r.end;
+                    }
+                }
+                _ => {
+                    // Triple-click and beyond: select everything.
+                    state.drag_anchor = None;
+                    state.selection = if text.is_empty() { None } else { Some(0) };
+                    state.caret = text.len();
+                }
+            }
+        } else if state.drag_anchor.is_some() {
+            // Held drag from a single-click press — caret follows
+            // pointer, selection grows from the anchor. Multi-click
+            // sequences clear `drag_anchor` so they don't enter this
+            // branch and the selection stays locked at the word/all
+            // range chosen on the press.
             let anchor = state.drag_anchor.unwrap_or(hit);
             state.caret = hit;
             state.selection = if hit == anchor { None } else { Some(anchor) };
@@ -933,7 +993,7 @@ fn apply_key(
             if has_sel || state.caret > 0 {
                 record_edit(text, state, EditKind::Delete);
                 if !delete_selection(text, state) {
-                    let prev = prev_char_boundary(text, state.caret);
+                    let prev = prev_grapheme_boundary(text, state.caret);
                     text.replace_range(prev..state.caret, "");
                     state.caret = prev;
                 }
@@ -944,16 +1004,24 @@ fn apply_key(
             if has_sel || state.caret < text.len() {
                 record_edit(text, state, EditKind::Delete);
                 if !delete_selection(text, state) {
-                    let next = next_char_boundary(text, state.caret);
+                    let next = next_grapheme_boundary(text, state.caret);
                     text.replace_range(state.caret..next, "");
                 }
             }
+        }
+        Key::ArrowLeft if is_word_nav(kp.mods) => {
+            let target = prev_word_boundary(text, state.caret);
+            move_caret(state, target, shift);
+        }
+        Key::ArrowRight if is_word_nav(kp.mods) => {
+            let target = next_word_boundary(text, state.caret);
+            move_caret(state, target, shift);
         }
         Key::ArrowLeft => {
             let target = if !shift && let Some(r) = state.sel_range() {
                 r.start
             } else {
-                prev_char_boundary(text, state.caret)
+                prev_grapheme_boundary(text, state.caret)
             };
             move_caret(state, target, shift);
         }
@@ -961,7 +1029,7 @@ fn apply_key(
             let target = if !shift && let Some(r) = state.sel_range() {
                 r.end
             } else {
-                next_char_boundary(text, state.caret)
+                next_grapheme_boundary(text, state.caret)
             };
             move_caret(state, target, shift);
         }
@@ -1004,26 +1072,163 @@ fn apply_key(
     false
 }
 
-fn prev_char_boundary(text: &str, offset: usize) -> usize {
-    if offset == 0 {
-        return 0;
+/// Word-nav modifier: Alt (Option) on macOS, Ctrl elsewhere — matches
+/// the platform conventions every desktop text field follows. Shift may
+/// be held in addition (selection-extending word nav).
+fn is_word_nav(m: Modifiers) -> bool {
+    if cfg!(target_os = "macos") {
+        m.alt && !m.ctrl && !m.meta
+    } else {
+        m.ctrl && !m.alt && !m.meta
     }
-    let mut i = offset - 1;
-    while i > 0 && !text.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
 }
 
-fn next_char_boundary(text: &str, offset: usize) -> usize {
+/// Next grapheme-cluster boundary strictly after `offset` (clamped to
+/// `text.len()`). Walks extended grapheme clusters via
+/// [`unicode_segmentation::GraphemeCursor`] so multi-codepoint clusters
+/// (combining marks, ZWJ-joined family emoji) advance as one unit.
+fn next_grapheme_boundary(text: &str, offset: usize) -> usize {
     if offset >= text.len() {
         return text.len();
     }
-    let mut i = offset + 1;
-    while i < text.len() && !text.is_char_boundary(i) {
-        i += 1;
+    let mut cursor = unicode_segmentation::GraphemeCursor::new(offset, text.len(), true);
+    cursor
+        .next_boundary(text, 0)
+        .ok()
+        .flatten()
+        .unwrap_or(text.len())
+}
+
+/// Previous grapheme-cluster boundary strictly before `offset` (clamped
+/// to zero).
+fn prev_grapheme_boundary(text: &str, offset: usize) -> usize {
+    if offset == 0 {
+        return 0;
     }
-    i
+    let mut cursor = unicode_segmentation::GraphemeCursor::new(offset, text.len(), true);
+    cursor.prev_boundary(text, 0).ok().flatten().unwrap_or(0)
+}
+
+/// Coarse char classification used by word-nav and double-click word
+/// selection. Underscore is bound to `Word` so identifiers in code-like
+/// text don't fragment. Codepoint-granular; grapheme awareness lands
+/// when `unicode-segmentation` does.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CharKind {
+    Whitespace,
+    Word,
+    Other,
+}
+
+fn char_kind(c: char) -> CharKind {
+    if c.is_whitespace() {
+        CharKind::Whitespace
+    } else if c.is_alphanumeric() || c == '_' {
+        CharKind::Word
+    } else {
+        CharKind::Other
+    }
+}
+
+/// Forward word boundary: skip whitespace, then skip the run of
+/// same-`CharKind` chars. Returns `text.len()` if `from` is already at
+/// the end. The result is the byte index *just past* the end of the
+/// consumed word run — same convention as `Ctrl+Right` in most editors.
+fn next_word_boundary(text: &str, from: usize) -> usize {
+    let mut chars = text[from..].char_indices();
+    let mut pos;
+    let target_kind = loop {
+        let Some((i, c)) = chars.next() else {
+            return text.len();
+        };
+        if char_kind(c) != CharKind::Whitespace {
+            pos = from + i + c.len_utf8();
+            break char_kind(c);
+        }
+    };
+    for (i, c) in chars {
+        if char_kind(c) == target_kind {
+            pos = from + i + c.len_utf8();
+        } else {
+            break;
+        }
+    }
+    pos
+}
+
+/// Mirror of [`next_word_boundary`]. Walks backward from `from` over
+/// whitespace and then over the run of same-`CharKind` chars; returns
+/// the byte index of the first consumed char (start of that run).
+fn prev_word_boundary(text: &str, from: usize) -> usize {
+    let mut rev = text[..from].char_indices().rev();
+    let mut pos;
+    let target_kind = loop {
+        let Some((i, c)) = rev.next() else {
+            return 0;
+        };
+        if char_kind(c) != CharKind::Whitespace {
+            pos = i;
+            break char_kind(c);
+        }
+    };
+    for (i, c) in rev {
+        if char_kind(c) == target_kind {
+            pos = i;
+        } else {
+            break;
+        }
+    }
+    pos
+}
+
+/// Word range surrounding `byte`. Returns the smallest `[start, end)`
+/// such that every char in it shares one `CharKind` and `byte` lies on
+/// or just past a boundary inside the run. Whitespace runs collapse to
+/// `byte..byte` so a double-click on a space doesn't select the gap.
+/// Used by double-click word selection.
+fn word_range_at(text: &str, byte: usize) -> std::ops::Range<usize> {
+    if text.is_empty() {
+        return 0..0;
+    }
+    let byte = byte.min(text.len());
+    // Pick the char that "anchors" this position: the one at `byte`
+    // (forward) if it's word/other, otherwise the char before `byte`
+    // (so a trailing-edge caret on the last char of a word still
+    // selects that word).
+    let forward_char = text[byte..].chars().next();
+    let backward_char = text[..byte].chars().next_back();
+    let anchor_kind = match (forward_char.map(char_kind), backward_char.map(char_kind)) {
+        (Some(CharKind::Whitespace) | None, Some(k)) if k != CharKind::Whitespace => k,
+        (Some(k), _) if k != CharKind::Whitespace => k,
+        _ => return byte..byte,
+    };
+    // Walk left while same kind.
+    let mut start = byte;
+    if forward_char.is_some_and(|c| char_kind(c) == anchor_kind) {
+        // Caret is at the start of the anchor char — don't step back
+        // over the anchor itself, just keep walking left.
+    } else if let Some(c) = backward_char {
+        // Anchor is the char before `byte`; that char ends at `byte`,
+        // so its start is `byte - c.len_utf8()`.
+        start = byte - c.len_utf8();
+    }
+    for (i, c) in text[..start].char_indices().rev() {
+        if char_kind(c) == anchor_kind {
+            start = i;
+        } else {
+            break;
+        }
+    }
+    // Walk right while same kind.
+    let mut end = byte;
+    for (i, c) in text[end..].char_indices() {
+        if char_kind(c) == anchor_kind {
+            end = byte + i + c.len_utf8();
+        } else {
+            break;
+        }
+    }
+    start..end
 }
 
 #[cfg(test)]

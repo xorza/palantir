@@ -32,6 +32,7 @@ strum = { version = "*", features = ["derive"] }
 serde = { version = "*", features = ["derive"] }
 toml = "*"
 tinyvec = { version = "*", features = ["serde"] }
+unicode-segmentation = "*"
 profiling = { version = "1.0.18", default-features = false, features = ["procmacros"] }
 # Pinned to whatever `profiling/profile-with-tracy` resolves to so cargo
 # dedupes to one tracy-client instance (one FFI connection). Bump in

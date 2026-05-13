@@ -9,18 +9,21 @@ the range), undo/redo (128-entry ring with edit-kind coalescing),
 clipboard (ctrl/cmd+c/x/v + right-click context menu via `arboard`),
 IME `Commit`, placeholder, theme per-state, disabled, overflow
 handling (`ClipMode::Rect` + scroll-to-caret: single-line x,
-multi-line y), **caret blink (500 ms half-period, resets on any caret
-/ selection / text change, host wake via `request_repaint_after`)**.
-See `src/widgets/text_edit/design.md`.
+multi-line y), caret blink (500 ms half-period, resets on any caret /
+selection / text change, host wake via `request_repaint_after`),
+word navigation (platform-aware Ctrl/Alt+Arrow, shift extends) +
+double-click word select + triple-click select-all (multi-click
+window 500 ms / 5 px), **grapheme-aware boundary walks via
+`unicode_segmentation::GraphemeCursor` so arrow / backspace / delete
+step whole grapheme clusters (combining marks, ZWJ-joined family
+emoji) instead of single codepoints**. See
+`src/widgets/text_edit/design.md`.
 
 ## Next — tier 1, perceived-quality bar
 
-- **Word navigation.** Ctrl/Cmd+ArrowLeft/Right,
-  Ctrl/Cmd+Shift+ArrowLeft/Right, double-click selects word,
-  triple-click selects line / all. Universal expectation.
-- **Grapheme-aware boundary walks.** `unicode-segmentation` so
-  shift+arrow / backspace step whole graphemes (emoji + ZWJ, accent
-  combiners) instead of bare codepoints.
+(All tier-1 items shipped. Word-nav's `CharKind` is still ASCII-class
+heuristic — upgrading to a Unicode word-break iterator would help
+non-Latin scripts but doesn't block typical use.)
 
 ## Next — tier 2, non-English / a11y correctness
 

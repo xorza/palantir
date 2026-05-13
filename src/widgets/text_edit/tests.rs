@@ -1,4 +1,7 @@
-use super::{TextEditState, next_char_boundary, prev_char_boundary};
+use super::{
+    TextEditState, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
+    prev_word_boundary, word_range_at,
+};
 
 /// Test wrapper: single-line `apply_key` with the vertical-motion
 /// out-param ignored. Single-line tests never exercise Up/Down so the
@@ -448,13 +451,65 @@ fn redo_stack_clears_on_fresh_edit() {
 }
 
 #[test]
-fn boundary_helpers_jump_full_codepoints() {
-    let s = "héllo";
-    assert_eq!(next_char_boundary(s, 0), 1);
-    assert_eq!(next_char_boundary(s, 1), 3);
-    assert_eq!(prev_char_boundary(s, 3), 1);
-    assert_eq!(next_char_boundary(s, s.len()), s.len());
-    assert_eq!(prev_char_boundary(s, 0), 0);
+fn backspace_deletes_whole_grapheme_cluster() {
+    // Buffer: 'a', e + combining-acute (one grapheme, two codepoints,
+    // 3 bytes), 'b'. Caret at end. One backspace must delete 'b',
+    // a second must delete *both* bytes of the combining grapheme.
+    let mut s = String::from("ae\u{0301}b");
+    let mut state = TextEditState {
+        caret: s.len(),
+        ..Default::default()
+    };
+    apply_key(&mut s, &mut state, press(Key::Backspace));
+    assert_eq!(s, "ae\u{0301}", "backspace removes 'b'");
+    assert_eq!(state.caret, 4);
+    apply_key(&mut s, &mut state, press(Key::Backspace));
+    assert_eq!(
+        s, "a",
+        "backspace deletes e + combining acute as one grapheme",
+    );
+    assert_eq!(state.caret, 1);
+}
+
+#[test]
+fn grapheme_boundary_helpers_step_whole_clusters() {
+    // ASCII / single-codepoint graphemes: boundaries match the
+    // codepoint walk one-for-one.
+    let s = "héllo"; // NFC: é = U+00E9 = 2 bytes / 1 codepoint / 1 grapheme
+    assert_eq!(next_grapheme_boundary(s, 0), 1);
+    assert_eq!(next_grapheme_boundary(s, 1), 3);
+    assert_eq!(prev_grapheme_boundary(s, 3), 1);
+    assert_eq!(next_grapheme_boundary(s, s.len()), s.len());
+    assert_eq!(prev_grapheme_boundary(s, 0), 0);
+
+    // Combining mark: 'e' + U+0301 (combining acute) is one grapheme,
+    // two codepoints, 3 bytes. Walks must step over both codepoints
+    // in one shot — otherwise backspace would split the accent off.
+    let s = "ae\u{0301}b";
+    assert_eq!(next_grapheme_boundary(s, 0), 1, "past 'a'");
+    assert_eq!(
+        next_grapheme_boundary(s, 1),
+        4,
+        "skip e + combining acute as one grapheme",
+    );
+    assert_eq!(
+        prev_grapheme_boundary(s, 4),
+        1,
+        "rewind back to the start of the e + combining grapheme",
+    );
+    assert_eq!(next_grapheme_boundary(s, 4), 5, "past 'b'");
+
+    // ZWJ-joined family emoji: 7 codepoints, 1 grapheme cluster.
+    // U+1F468 ZWJ U+1F469 ZWJ U+1F467 = 18 bytes.
+    let s = "x👨\u{200D}👩\u{200D}👧y";
+    let emoji_start = 1;
+    let y_byte = s.find('y').unwrap();
+    assert_eq!(
+        next_grapheme_boundary(s, emoji_start),
+        y_byte,
+        "ZWJ-joined family emoji walks as one grapheme",
+    );
+    assert_eq!(prev_grapheme_boundary(s, y_byte), emoji_start);
 }
 
 // -- Integration tests through `Ui` ---------------------------------
@@ -1862,6 +1917,214 @@ fn caret_blinks_on_and_off_while_focused() {
         caret_painted(&ui, leaf.unwrap()),
         "keystroke resets blink: caret immediately visible",
     );
+}
+
+#[test]
+fn word_boundary_helpers_step_word_then_skip_whitespace() {
+    let cases: &[(&str, &str, usize, usize, usize)] = &[
+        // label, text, from, want_next, want_prev
+        ("ascii_word_then_space", "hello world", 0, 5, 0),
+        ("from_inside_word", "hello world", 2, 5, 0),
+        ("at_word_end_skips_to_next", "hello world", 5, 11, 0),
+        ("from_space_skips_to_next_word", "hello world", 6, 11, 0),
+        ("end_of_text_is_terminal", "hello world", 11, 11, 6),
+        ("leading_whitespace", "  hello", 0, 7, 0),
+        ("punctuation_is_own_class", "hello, world", 5, 6, 0),
+        ("from_after_punct", "hello, world", 6, 12, 5),
+        ("empty_string", "", 0, 0, 0),
+    ];
+    for (label, text, from, want_next, want_prev) in cases {
+        assert_eq!(
+            next_word_boundary(text, *from),
+            *want_next,
+            "{label}: next_word_boundary",
+        );
+        assert_eq!(
+            prev_word_boundary(text, *from),
+            *want_prev,
+            "{label}: prev_word_boundary",
+        );
+    }
+}
+
+#[test]
+fn word_range_at_picks_anchor_kind() {
+    let cases: &[(&str, &str, usize, std::ops::Range<usize>)] = &[
+        ("inside_word", "hello world", 3, 0..5),
+        ("at_word_start", "hello world", 0, 0..5),
+        ("at_word_end_picks_previous", "hello world", 5, 0..5),
+        (
+            "between_words_at_space_picks_word_after",
+            "hello world",
+            6,
+            6..11,
+        ),
+        ("on_punctuation_selects_punct_run", "a,,b", 1, 1..3),
+        ("on_whitespace_returns_empty", "  ", 1, 1..1),
+        ("empty_text", "", 0, 0..0),
+        ("end_of_buffer", "hello world", 11, 6..11),
+    ];
+    for (label, text, byte, want) in cases {
+        assert_eq!(word_range_at(text, *byte), want.clone(), "{label}",);
+    }
+}
+
+#[test]
+fn apply_key_word_nav_cases() {
+    // Word-nav modifier (Alt on macOS, Ctrl elsewhere) plus arrow.
+    fn word_nav(key: Key) -> KeyPress {
+        let mods = if cfg!(target_os = "macos") {
+            Modifiers {
+                alt: true,
+                ..Modifiers::NONE
+            }
+        } else {
+            Modifiers {
+                ctrl: true,
+                ..Modifiers::NONE
+            }
+        };
+        KeyPress {
+            key,
+            mods,
+            repeat: false,
+        }
+    }
+    fn word_nav_shift(key: Key) -> KeyPress {
+        let mut kp = word_nav(key);
+        kp.mods.shift = true;
+        kp
+    }
+
+    // Single-line apply_key. label, buf, caret, key, want_caret, want_sel.
+    #[allow(clippy::type_complexity)]
+    let cases: &[(&str, &str, usize, KeyPress, usize, Option<usize>)] = &[
+        (
+            "right_jumps_to_word_end",
+            "hello world",
+            0,
+            word_nav(Key::ArrowRight),
+            5,
+            None,
+        ),
+        (
+            "right_from_word_end_skips_whitespace",
+            "hello world",
+            5,
+            word_nav(Key::ArrowRight),
+            11,
+            None,
+        ),
+        (
+            "left_jumps_to_word_start",
+            "hello world",
+            11,
+            word_nav(Key::ArrowLeft),
+            6,
+            None,
+        ),
+        (
+            "left_from_word_start_jumps_over_space",
+            "hello world",
+            6,
+            word_nav(Key::ArrowLeft),
+            0,
+            None,
+        ),
+        (
+            "shift_right_extends_selection",
+            "hello world",
+            0,
+            word_nav_shift(Key::ArrowRight),
+            5,
+            Some(0),
+        ),
+        (
+            "shift_left_extends_selection",
+            "hello world",
+            11,
+            word_nav_shift(Key::ArrowLeft),
+            6,
+            Some(11),
+        ),
+    ];
+    for (label, buf, caret, key, want_caret, want_sel) in cases {
+        let mut s = String::from(*buf);
+        let mut state = TextEditState {
+            caret: *caret,
+            ..Default::default()
+        };
+        apply_key(&mut s, &mut state, *key);
+        assert_eq!(state.caret, *want_caret, "{label}: caret");
+        assert_eq!(state.selection, *want_sel, "{label}: selection");
+        assert_eq!(s, *buf, "{label}: buffer must not mutate");
+    }
+}
+
+/// Double-click selects the word under the caret; triple-click
+/// selects the whole buffer. Pin the multi-click state machine in
+/// `handle_input` against the configured time/distance thresholds.
+#[test]
+fn double_and_triple_click_select_word_and_all() {
+    use crate::layout::types::display::Display;
+    use std::time::Duration;
+
+    let ed_id = WidgetId::from_hash("multi-ed");
+    fn body(ui: &mut Ui, buf: &mut String) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id_salt("multi-ed")
+                .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    }
+    fn frame_at(ui: &mut Ui, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
+        let display = Display::from_physical(NARROW, 1.0);
+        ui.frame(display, Duration::from_secs_f32(now_secs), |ui| f(ui));
+        ui.frame_state.mark_submitted();
+    }
+
+    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut buf = String::from("hello world");
+
+    // Setup: record once so the editor's rect is known to the next frame.
+    frame_at(&mut ui, 0.0, |ui| body(ui, &mut buf));
+
+    // Click 1 at x=32 (mono byte 3, inside "hello").
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(32.0, 20.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    frame_at(&mut ui, 0.0, |ui| body(ui, &mut buf));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    frame_at(&mut ui, 0.0, |ui| body(ui, &mut buf));
+    let st = ui.state_mut::<TextEditState>(ed_id).clone();
+    assert_eq!(st.click_count, 1, "single click");
+    assert_eq!(st.caret, 3);
+    assert_eq!(st.selection, None);
+
+    // Click 2 at same pos, well inside the window → click_count = 2,
+    // selects word at byte 3 → "hello".
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    frame_at(&mut ui, 0.1, |ui| body(ui, &mut buf));
+    let st = ui.state_mut::<TextEditState>(ed_id).clone();
+    assert_eq!(st.click_count, 2, "double click");
+    assert_eq!(st.sel_range(), Some(0..5));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    frame_at(&mut ui, 0.1, |ui| body(ui, &mut buf));
+
+    // Click 3 still inside the window → click_count = 3 → select all.
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    frame_at(&mut ui, 0.2, |ui| body(ui, &mut buf));
+    let st = ui.state_mut::<TextEditState>(ed_id).clone();
+    assert_eq!(st.click_count, 3, "triple click");
+    assert_eq!(st.sel_range(), Some(0..buf.len()));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    frame_at(&mut ui, 0.2, |ui| body(ui, &mut buf));
+
+    // Long pause then another click resets click_count to 1.
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    frame_at(&mut ui, 5.0, |ui| body(ui, &mut buf));
+    let st = ui.state_mut::<TextEditState>(ed_id).clone();
+    assert_eq!(st.click_count, 1, "pause resets multi-click");
 }
 
 /// Focused TextEdit must keep the host's repaint loop alive — without
