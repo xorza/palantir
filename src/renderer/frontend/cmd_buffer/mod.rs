@@ -107,12 +107,48 @@ pub(crate) struct DrawRectPayload {
     pub(crate) fill_axis: FillAxis,
 }
 
+impl DrawRectPayload {
+    /// Canonical noop predicate — zero-extent rect, or no visible
+    /// paint at all (transparent fill **and** zero-width / noop
+    /// stroke). The encoder constructs the payload in `draw_rect` /
+    /// `draw_shadow` then gates on this; consumers downstream of
+    /// the buffer never see a no-op rect / shadow record.
+    ///
+    /// For gradient `fill_kind` the inline `fill` is zeroed (the
+    /// composer's atlas supplies the LUT row), so the predicate
+    /// only inspects `fill` for solid / shadow variants — gradient
+    /// payloads count as always-painting at this layer.
+    #[inline]
+    pub(crate) fn is_noop(&self) -> bool {
+        if self.rect.is_paint_empty() {
+            return true;
+        }
+        let fill_noop = if self.fill_kind.is_gradient() {
+            false
+        } else {
+            self.fill.is_noop()
+        };
+        let stroke_noop = self.stroke_width <= 0.0 || self.stroke_color.is_noop();
+        fill_noop && stroke_noop
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawTextPayload {
     pub(crate) rect: Rect,
     pub(crate) color: Color,
     pub(crate) key: TextCacheKey,
+}
+
+impl DrawTextPayload {
+    /// Canonical noop predicate for this payload — zero-extent rect
+    /// or fully transparent color. See `cmd_buffer` module docs for
+    /// the noop policy.
+    #[inline]
+    pub(crate) fn is_noop(&self) -> bool {
+        self.rect.is_paint_empty() || self.color.is_noop()
+    }
 }
 
 /// Stroked polyline payload. `width` is logical px. Points +
@@ -148,6 +184,21 @@ pub(crate) struct DrawPolylinePayload {
     pub(crate) join: LineJoinBits,
 }
 
+impl DrawPolylinePayload {
+    /// Canonical noop predicate — fewer than two points (no
+    /// segments) or zero/negative stroke width. **Does not** check
+    /// color noop-ness: per-point / per-segment colours live in
+    /// spans on `RenderCmdBuffer`, and an O(n) read here would
+    /// dominate the per-cmd cost. Color noop is filtered at the
+    /// `Shape::Polyline::is_noop` authoring boundary instead. The
+    /// bbox can legitimately be zero-area (horizontal / vertical
+    /// line) and still paint stroke pixels, so it's not gated either.
+    #[inline]
+    pub(crate) fn is_noop(&self) -> bool {
+        self.points_len < 2 || self.width <= 0.0
+    }
+}
+
 /// Mesh draw payload. Spans are inlined as `(start, len)` u32 pairs so
 /// the payload is plain Pod — no `Span: Pod` needed. Vertex positions
 /// are already in logical-px world-coords (encoder pre-translates by
@@ -161,6 +212,16 @@ pub(crate) struct DrawMeshPayload {
     pub(crate) v_len: u32,
     pub(crate) i_start: u32,
     pub(crate) i_len: u32,
+}
+
+impl DrawMeshPayload {
+    /// Canonical noop predicate — empty vertex buffer, fewer than
+    /// one full triangle, an index count that isn't a multiple of 3,
+    /// or fully transparent tint.
+    #[inline]
+    pub(crate) fn is_noop(&self) -> bool {
+        self.v_len == 0 || self.i_len < 3 || !self.i_len.is_multiple_of(3) || self.tint.is_noop()
+    }
 }
 
 /// Append-only command buffer. See module docs.
@@ -250,14 +311,6 @@ impl RenderCmdBuffer {
 
     #[inline]
     pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: &Brush, stroke: Stroke) {
-        // Module-level noop policy: drop the cmd when the rect paints
-        // nothing — zero-size geometry, or both fill and stroke
-        // no-op. Catches chrome shadow-only backgrounds, collapsed
-        // layouts, Shape::RoundedRect with all-transparent paint, and
-        // animation-decayed brushes regardless of source.
-        if rect.is_paint_empty() || (fill.is_noop() && stroke.is_noop()) {
-            return;
-        }
         // Stroke stays solid-only — gradient strokes are a non-goal.
         let BrushPack {
             fill_color,
@@ -271,20 +324,25 @@ impl RenderCmdBuffer {
         } else {
             (stroke.brush.expect_solid(), stroke.width)
         };
+        let payload = DrawRectPayload {
+            rect,
+            radius,
+            fill: fill_color,
+            stroke_color,
+            stroke_width,
+            fill_kind,
+            fill_grad_idx,
+            fill_axis,
+        };
+        // Module-level noop policy: drop the cmd via the payload's
+        // own predicate. Catches chrome shadow-only backgrounds,
+        // collapsed layouts, Shape::RoundedRect with all-transparent
+        // paint, and animation-decayed brushes regardless of source.
+        if payload.is_noop() {
+            return;
+        }
         self.record_start(CmdKind::DrawRect);
-        write_pod(
-            &mut self.data,
-            DrawRectPayload {
-                rect,
-                radius,
-                fill: fill_color,
-                stroke_color,
-                stroke_width,
-                fill_kind,
-                fill_grad_idx,
-                fill_axis,
-            },
-        );
+        write_pod(&mut self.data, payload);
     }
 
     /// Record a shadow paint cmd. Reuses the `DrawRect` slot — shadow
@@ -303,37 +361,35 @@ impl RenderCmdBuffer {
         fill_kind: FillKind,
         fill_axis: FillAxis,
     ) {
-        // Module-level noop policy: drop the cmd when the paint rect
-        // is zero-size or the shadow tint is no-op (authored, decayed,
-        // or `Shadow::NONE`'s lerp endpoint).
-        if rect.is_paint_empty() || color.is_noop() {
+        let payload = DrawRectPayload {
+            rect,
+            radius,
+            fill: color,
+            stroke_color: Color::TRANSPARENT,
+            stroke_width: 0.0,
+            fill_kind,
+            fill_grad_idx: 0,
+            fill_axis,
+        };
+        // Module-level noop policy: same payload predicate as
+        // `draw_rect`. Catches shadow whose tint decayed to
+        // transparent (or `Shadow::NONE`'s lerp endpoint) and
+        // zero-extent paint rects.
+        if payload.is_noop() {
             return;
         }
         self.record_start(CmdKind::DrawRect);
-        write_pod(
-            &mut self.data,
-            DrawRectPayload {
-                rect,
-                radius,
-                fill: color,
-                stroke_color: Color::TRANSPARENT,
-                stroke_width: 0.0,
-                fill_kind,
-                fill_grad_idx: 0,
-                fill_axis,
-            },
-        );
+        write_pod(&mut self.data, payload);
     }
 
     #[inline]
     pub(crate) fn draw_text(&mut self, rect: Rect, color: Color, key: TextCacheKey) {
-        // Module-level noop policy: zero-size text box or fully
-        // transparent color emits nothing.
-        if rect.is_paint_empty() || color.is_noop() {
+        let payload = DrawTextPayload { rect, color, key };
+        if payload.is_noop() {
             return;
         }
         self.record_start(CmdKind::DrawText);
-        write_pod(&mut self.data, DrawTextPayload { rect, color, key });
+        write_pod(&mut self.data, payload);
     }
 
     /// Record a `DrawMesh` cmd against already-staged vertices + indices
@@ -342,16 +398,7 @@ impl RenderCmdBuffer {
     /// encoder can apply the owner-rect offset inline without an
     /// intermediate scratch buffer.
     pub(crate) fn draw_mesh(&mut self, payload: DrawMeshPayload) {
-        // Module-level noop policy: drop the cmd when geometry is
-        // empty (zero vertices, fewer than one full triangle, or
-        // index count not a multiple of 3) or the tint is no-op.
-        // `Shape::Mesh::is_noop` filters these upstream; the gate
-        // here is the canonical correctness one.
-        if payload.v_len == 0
-            || payload.i_len < 3
-            || !payload.i_len.is_multiple_of(3)
-            || payload.tint.is_noop()
-        {
+        if payload.is_noop() {
             return;
         }
         self.record_start(CmdKind::DrawMesh);
@@ -366,14 +413,7 @@ impl RenderCmdBuffer {
     /// is a caller invariant enforced upstream by
     /// `PolylineColors::assert_matches` in `Shapes::add`.
     pub(crate) fn draw_polyline(&mut self, payload: DrawPolylinePayload) {
-        // Module-level noop policy: drop the cmd when the polyline
-        // has fewer than 2 points (no segments) or zero width. The
-        // bbox can legitimately be zero-area (a perfectly horizontal
-        // or vertical line) and still paint stroke pixels, so we
-        // don't gate on it here. Color noop-ness isn't checked here
-        // either — it lives in spans; see the module-level docstring's
-        // polyline exception.
-        if payload.points_len < 2 || payload.width <= 0.0 {
+        if payload.is_noop() {
             return;
         }
         self.record_start(CmdKind::DrawPolyline);
