@@ -32,7 +32,7 @@ pub use forest::element::{Configure, Element, LayoutMode};
 pub use forest::tree::Layer;
 pub use forest::visibility::Visibility;
 pub use forest::widget_id::WidgetId;
-pub use host::Host;
+pub use host::{FramePresent, Host};
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
 pub use input::sense::Sense;
 pub use input::shortcut::{Mods, Shortcut};

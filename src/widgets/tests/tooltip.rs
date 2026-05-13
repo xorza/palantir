@@ -116,8 +116,8 @@ fn delay_gates_visibility() {
         .unwrap_or_default();
     assert!(
         !early.visible,
-        "tooltip must stay hidden before delay elapses (elapsed={})",
-        early.elapsed
+        "tooltip must stay hidden before delay elapses (started_at={:?})",
+        early.hover_started_at
     );
 
     // Tick well past the delay. The cascade lag is one frame, so we
@@ -136,8 +136,8 @@ fn delay_gates_visibility() {
         .unwrap_or_default();
     assert!(
         late.visible,
-        "tooltip must become visible after delay (elapsed={})",
-        late.elapsed
+        "tooltip must become visible after delay (started_at={:?})",
+        late.hover_started_at
     );
 
     // The tooltip subtree should have been recorded into the Tooltip

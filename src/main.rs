@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use palantir::{Background, Button, Color, Configure, Host, InputEvent, Panel, Shadow, Sizing, Ui};
+use palantir::{
+    Background, Button, Color, Configure, FramePresent, Host, InputEvent, Panel, Shadow, Sizing, Ui,
+};
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, KeyEvent, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event::{ElementState, KeyEvent, StartCause, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
@@ -77,9 +79,10 @@ struct State {
     host: Host,
     scale_factor: f32,
     active: usize,
-    /// Host-side repaint gate. Cleared at top of `draw`; re-armed by
+    /// Host-side scheduling state. Reset at the top of `draw` from the
+    /// `FramePresent` the frame returned; re-armed to `Immediate` by
     /// input, resize, surface loss, occlusion, and animation tickers.
-    repaint_requested: bool,
+    next: FramePresent,
 }
 
 impl ApplicationHandler for App {
@@ -152,17 +155,33 @@ impl ApplicationHandler for App {
             host,
             scale_factor,
             active: 0,
-            repaint_requested: true,
+            next: FramePresent::Immediate,
         });
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
+        // WaitUntil deadline reached → switch to Immediate so the
+        // next about_to_wait requests a redraw. Without this, the
+        // scheduled wake fires but no frame ever paints.
+        if let StartCause::ResumeTimeReached { .. } = cause
+            && let Some(state) = self.state.as_mut()
+        {
+            state.next = FramePresent::Immediate;
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let Some(state) = self.state.as_ref() else {
             return;
         };
 
-        if state.repaint_requested {
-            state.window.request_redraw();
+        match state.next {
+            FramePresent::Immediate => {
+                state.window.request_redraw();
+                event_loop.set_control_flow(ControlFlow::Poll);
+            }
+            FramePresent::At(at) => event_loop.set_control_flow(ControlFlow::WaitUntil(at)),
+            FramePresent::Idle => event_loop.set_control_flow(ControlFlow::Wait),
         }
     }
 
@@ -183,29 +202,29 @@ impl ApplicationHandler for App {
         } = event
             && handle_debug_key(state, key)
         {
-            state.repaint_requested = true;
+            state.next = FramePresent::Immediate;
         }
 
         if let Some(ev) = InputEvent::from_winit(&event, state.scale_factor) {
             state.host.ui.on_input(ev);
-            state.repaint_requested = true;
+            state.next = FramePresent::Immediate;
         }
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 state.scale_factor = scale_factor as f32;
-                state.repaint_requested = true;
+                state.next = FramePresent::Immediate;
             }
             WindowEvent::Resized(new) => {
                 let max = state.device.limits().max_texture_dimension_2d;
                 state.config.width = new.width.clamp(1, max);
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
-                state.repaint_requested = true;
+                state.next = FramePresent::Immediate;
             }
             WindowEvent::RedrawRequested => state.draw(),
-            WindowEvent::Occluded(false) => state.repaint_requested = true,
+            WindowEvent::Occluded(false) => state.next = FramePresent::Immediate,
             _ => {}
         }
     }
@@ -213,7 +232,7 @@ impl ApplicationHandler for App {
 
 impl State {
     fn draw(&mut self) {
-        self.repaint_requested =
+        self.next =
             self.host
                 .frame_and_render(&self.surface, &self.config, self.scale_factor, |ui| {
                     build_ui(ui, &mut self.active)

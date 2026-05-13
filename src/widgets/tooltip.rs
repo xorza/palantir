@@ -46,31 +46,27 @@ pub(crate) fn place_anchor(trigger: Rect, bubble: Size, viewport: Rect, gap: f32
     }
 }
 
-/// Per-trigger tooltip state row. `elapsed` ticks while the trigger is
-/// hovered; once it crosses the delay (or warmup short-circuits) the
-/// bubble becomes `visible`. `last_size` caches the previous frame's
-/// measured bubble size so the anchor math in step 4 can flip / clamp
-/// against viewport edges before recording.
+/// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
+/// hovered frame; elapsed = `now - hover_started_at`, immune to
+/// `Ui::dt`'s `MAX_DT` clamp on idle wakes. `last_size` caches the
+/// previous frame's bubble extent for anchor flip/clamp.
 #[derive(Default, Clone, Copy)]
 pub(crate) struct TooltipState {
-    pub(crate) elapsed: f32,
+    pub(crate) hover_started_at: Option<f32>,
     pub(crate) visible: bool,
     pub(crate) last_size: Size,
 }
 
-/// Singleton row tracking the most recent frame any tooltip was
-/// visible. A cold-start tooltip within `theme.warmup` seconds of
-/// that timestamp skips its delay — the egui-style "scan a toolbar
-/// without re-delaying" behavior.
-///
-/// Keyed by a fixed `WidgetId` derived from a stable string. Survives
-/// across frames as long as at least one tooltip is being recorded
-/// (every `Tooltip::show` pokes the row, keeping it alive against the
-/// StateMap sweep).
+/// Singleton tracking the most recent moment any tooltip was visible.
+/// Cold-start tooltips within `theme.warmup` of `last_visible_at`
+/// skip their delay (egui-style toolbar warmup).
 #[derive(Default, Clone, Copy)]
 pub(crate) struct TooltipGlobal {
-    pub(crate) last_visible_at: f32,
+    pub(crate) last_visible_at: Option<f32>,
 }
+
+static GLOBAL_STATE_ID: std::sync::LazyLock<WidgetId> =
+    std::sync::LazyLock::new(|| WidgetId::from_hash("palantir.tooltip.global"));
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
 /// [`crate::forest::tree::Layer::Tooltip`] after the pointer has rested
@@ -145,7 +141,18 @@ impl<'r> Tooltip<'r> {
         let trigger_id = self.response.id;
         let state_id = trigger_id.with("tooltip");
         let bubble_id = trigger_id.with("tooltip.bubble");
-        let g_id = WidgetId::from_hash("palantir.tooltip.global");
+        let g_id = *GLOBAL_STATE_ID;
+
+        // State keying needs `bubble_id` for the StateMap row to live
+        // alongside the trigger's lifecycle. A caller-supplied id via
+        // `.id_salt(...)` would silently be overwritten — hard-assert
+        // instead of swallowing the bug.
+        assert!(
+            matches!(self.element.id_source, IdSource::Auto),
+            "Tooltip does not honor `.id(...)` / `.id_salt(...)` — the id is \
+             derived from the trigger's response so per-trigger state stays \
+             paired. Drop the override.",
+        );
 
         let trigger_hovered = self.response.state.hovered;
         let trigger_disabled = self.response.state.disabled;
@@ -153,27 +160,35 @@ impl<'r> Tooltip<'r> {
         let active_trigger = trigger_hovered && (!trigger_disabled || self.show_when_disabled);
 
         let now = ui.time.as_secs_f32();
-        let dt = ui.dt;
 
         let mut state: TooltipState = *ui.state_mut::<TooltipState>(state_id);
         let mut global: TooltipGlobal = *ui.state_mut::<TooltipGlobal>(g_id);
 
-        let warmup_active = global.last_visible_at > 0.0 && (now - global.last_visible_at) < warmup;
+        let warmup_active = global
+            .last_visible_at
+            .is_some_and(|t| (now - t) < warmup);
 
         if active_trigger {
-            state.elapsed += dt;
-            if warmup_active || state.elapsed >= delay {
+            let started = *state.hover_started_at.get_or_insert(now);
+            let elapsed = now - started;
+            if warmup_active || elapsed >= delay {
                 state.visible = true;
+            } else {
+                // Damage-driven repaint means idle frames don't run.
+                // Without an explicit wake the delay never elapses;
+                // schedule one at the threshold.
+                let remaining = (delay - elapsed).max(0.0);
+                ui.request_repaint_after(std::time::Duration::from_secs_f32(remaining));
             }
         } else {
-            state.elapsed = 0.0;
+            state.hover_started_at = None;
             state.visible = false;
         }
 
         if state.visible
             && let Some(trigger_rect) = trigger_rect
         {
-            global.last_visible_at = now;
+            global.last_visible_at = Some(now);
             let viewport = ui.display().logical_rect();
             let placed = place_anchor(trigger_rect, state.last_size, viewport, gap);
             let text = self.text;
@@ -181,8 +196,7 @@ impl<'r> Tooltip<'r> {
             // Sentinel checks mirror Button/TextEdit's pattern: ZERO
             // padding / INF max_size / None chrome mean "inherit".
             let mut element = self.element;
-            element.id = bubble_id;
-            element.id_source = IdSource::Explicit;
+            element.set_id(bubble_id);
             let text_style = ui.theme.tooltip.text;
             if element.chrome.is_none() {
                 element.chrome = Some(ui.theme.tooltip.panel);
