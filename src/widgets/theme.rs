@@ -408,7 +408,7 @@ impl Default for TextEditTheme {
             caret: palette::TEXT,
             caret_width: 1.5,
             selection,
-            padding: Spacing::xy(8.0, 6.0),
+            padding: Spacing::xy(5.0, 3.0),
             margin: Spacing::ZERO,
             anim: None,
         }
