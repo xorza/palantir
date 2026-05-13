@@ -11,24 +11,17 @@ use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
 fn build_hover_target(ui: &mut Ui) {
-    // Outer Fill panel with no sense gives us an inert background;
-    // the inner Fixed(100, 100) hover target sits at top-left.
     Panel::hstack()
-        .id_salt("outer")
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            Panel::hstack()
-                .id_salt("hot")
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-                .sense(Sense::HOVER)
-                .show(ui, |_| {});
-        });
+        .id_salt("hot")
+        .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+        .sense(Sense::HOVER)
+        .show(ui, |_| {});
 }
 
 fn build_two_hover_targets(ui: &mut Ui) {
     Panel::hstack()
         .id_salt("outer")
-        .size((Sizing::FILL, Sizing::FILL))
+        .size((Sizing::Hug, Sizing::Hug))
         .show(ui, |ui| {
             Panel::hstack()
                 .id_salt("a")
@@ -94,15 +87,10 @@ fn move_during_active_capture_requests_repaint() {
     let mut ui = Ui::new();
     let build = |ui: &mut Ui| {
         Panel::hstack()
-            .id_salt("outer")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Panel::hstack()
-                    .id_salt("hot")
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-                    .sense(Sense::CLICK)
-                    .show(ui, |_| {});
-            });
+            .id_salt("hot")
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .sense(Sense::CLICK)
+            .show(ui, |_| {});
     };
     run_at_acked(&mut ui, UVec2::new(400, 400), build);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));

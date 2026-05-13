@@ -8,7 +8,7 @@ use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
-use crate::forest::element::{Configure, Element};
+use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
 use crate::input::{FocusPolicy, InputDelta, InputEvent, InputState, ResponseState};
@@ -16,7 +16,7 @@ use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::types::display::Display;
 use crate::layout::types::justify::Justify;
-use crate::layout::types::sizing::Sizing;
+use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -372,6 +372,15 @@ impl Ui {
     /// a second pass in `Ui::frame`).
     fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
         self.pre_record();
+        // Synthetic viewport root for Layer::Main. Without this, the
+        // first user-recorded node becomes the root and the layout
+        // engine forces its rect to the surface — silently overriding
+        // declared `Sizing` / `Sense` on the top-level widget. ZStack +
+        // Fill matches the historical "root paints full surface"
+        // behavior while letting user roots respect their own sizing.
+        let mut viewport = Element::new(LayoutMode::ZStack);
+        viewport.size = Sizes::from((Sizing::FILL, Sizing::FILL));
+        self.forest.open_node(viewport);
         {
             profiling::scope!("Ui::record_user");
             record(self);
@@ -380,6 +389,7 @@ impl Ui {
         if self.debug_overlay.frame_stats {
             self.record_frame_stats();
         }
+        self.forest.close_node();
         self.post_record();
         action_flag
     }

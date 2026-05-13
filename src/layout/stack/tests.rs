@@ -23,6 +23,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
         root = Some(
             Panel::hstack()
                 .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Button::new().auto_id().label("Hi").show(ui);
                     Button::new()
@@ -157,6 +158,7 @@ fn hstack_justify_distributes_leftover() {
             root = Some(
                 Panel::hstack()
                     .auto_id()
+                    .size((Sizing::FILL, Sizing::Hug))
                     .justify(*justify)
                     .show(ui, |ui| {
                         for i in 0..expected_xs.len() {

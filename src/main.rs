@@ -222,7 +222,10 @@ impl ApplicationHandler for App {
         }
 
         match event {
+            WindowEvent::RedrawRequested => state.draw(),
+
             WindowEvent::CloseRequested => event_loop.exit(),
+
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 state.scale_factor = scale_factor as f32;
                 state.next = FramePresent::Immediate;
@@ -234,8 +237,8 @@ impl ApplicationHandler for App {
                 state.surface.configure(&state.device, &state.config);
                 state.next = FramePresent::Immediate;
             }
-            WindowEvent::RedrawRequested => state.draw(),
             WindowEvent::Occluded(false) => state.next = FramePresent::Immediate,
+
             _ => {}
         }
     }

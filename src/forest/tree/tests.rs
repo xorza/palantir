@@ -209,9 +209,10 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
 fn empty_tree_has_no_hashes() {
     let mut ui = Ui::new();
     run_at_acked(&mut ui, SURFACE, |_| {});
-    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 0);
-    assert!(ui.forest.tree(Layer::Main).rollups.node.is_empty());
-    assert!(ui.forest.tree(Layer::Main).rollups.subtree.is_empty());
+    // Synthetic viewport root: present even for an empty user record.
+    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
+    assert_eq!(ui.forest.tree(Layer::Main).rollups.node.len(), 1);
+    assert_eq!(ui.forest.tree(Layer::Main).rollups.subtree.len(), 1);
 }
 
 #[test]
@@ -625,15 +626,16 @@ fn subtree_end_rolls_up_during_recording() {
                 .node,
         );
     });
-    // Pre-order: 0=root 1=a 2=inner 3=b 4=c 5=d
-    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 6);
+    // Pre-order: 0=viewport 1=root 2=a 3=inner 4=b 5=c 6=d
+    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 7);
     let ends = ui.forest.tree(Layer::Main).records.subtree_end();
-    assert_eq!(ends[root.unwrap().index()], 6, "root");
-    assert_eq!(ends[1], 2, "leaf a");
-    assert_eq!(ends[2], 5, "inner spans b,c");
-    assert_eq!(ends[3], 4, "leaf b");
-    assert_eq!(ends[4], 5, "leaf c");
-    assert_eq!(ends[5], 6, "leaf d");
+    assert_eq!(ends[0], 7, "synthetic viewport spans everything");
+    assert_eq!(ends[root.unwrap().index()], 7, "root");
+    assert_eq!(ends[2], 3, "leaf a");
+    assert_eq!(ends[3], 6, "inner spans b,c");
+    assert_eq!(ends[4], 5, "leaf b");
+    assert_eq!(ends[5], 6, "leaf c");
+    assert_eq!(ends[6], 7, "leaf d");
 }
 
 #[test]
@@ -650,7 +652,8 @@ fn subtree_end_handles_deep_nesting() {
     let mut ui = Ui::new();
     run_at_acked(&mut ui, SURFACE, |ui| nest(ui, 16));
     let n = ui.forest.tree(Layer::Main).records.len() as u32;
-    assert_eq!(n, 17);
+    // Synthetic viewport + 16 nested vstacks + 1 leaf frame.
+    assert_eq!(n, 18);
     for i in 0..(n - 1) {
         assert_eq!(
             ui.forest.tree(Layer::Main).records.subtree_end()[i as usize],
@@ -921,20 +924,21 @@ fn mid_recording_popup_keeps_trees_independent() {
     let main_tree = ui.forest.tree(Layer::Main);
     let popup_tree = ui.forest.tree(Layer::Popup);
 
-    assert_eq!(main_tree.records.len(), 5);
+    // Synthetic viewport at NodeId(0); user "main-parent" at NodeId(1).
+    assert_eq!(main_tree.records.len(), 6);
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node, 0);
-    assert_eq!(main_tree.records.subtree_end()[parent.index()], 5);
+    assert_eq!(main_tree.records.subtree_end()[parent.index()], 6);
 
     let kids: Vec<u32> = main_tree.children(parent).map(|c| c.id.0).collect();
-    assert_eq!(kids, vec![1, 2, 3, 4]);
+    assert_eq!(kids, vec![2, 3, 4, 5]);
 
     let widths: Vec<u32> = main_tree.shapes.records.iter().map(marker_w).collect();
     assert_eq!(widths, vec![1, 2, 3, 4, 5]);
     let parent_span = main_tree.records.shape_span()[parent.index()];
     assert_eq!(parent_span.start, 0);
     assert_eq!(parent_span.len, 5);
-    for leaf_idx in [1, 2, 3, 4] {
+    for leaf_idx in [2, 3, 4, 5] {
         assert_eq!(main_tree.records.shape_span()[leaf_idx as usize].len, 0);
     }
 
@@ -1001,12 +1005,13 @@ fn child_iter_traverses_correctly_after_finalize() {
         .children(root.unwrap())
         .map(|c| c.id.0)
         .collect();
-    assert_eq!(kids, vec![1, 2, 4], "root's direct children: a, inner, c");
+    // Synthetic viewport at NodeId(0); user "root" at NodeId(1).
+    assert_eq!(kids, vec![2, 3, 5], "root's direct children: a, inner, c");
     let inner_kids: Vec<u32> = ui
         .forest
         .tree(Layer::Main)
-        .children(NodeId(2))
+        .children(NodeId(3))
         .map(|c| c.id.0)
         .collect();
-    assert_eq!(inner_kids, vec![3], "inner's direct child: b");
+    assert_eq!(inner_kids, vec![4], "inner's direct child: b");
 }
