@@ -1101,11 +1101,13 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                     ui.add_shape(Shape::Shadow {
                         local_rect: None,
                         radius: Corners::all(0.0),
-                        color: Color::rgba(0.0, 0.0, 0.0, 0.5),
-                        offset: Vec2::ZERO,
-                        blur: 8.0,
-                        spread: 2.0,
-                        inset: false,
+                        shadow: Shadow {
+                            color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                            offset: Vec2::ZERO,
+                            blur: 8.0,
+                            spread: 2.0,
+                            inset: false,
+                        },
                     });
                 });
         }),
@@ -1155,6 +1157,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
 /// pretends to paint pixels the GPU's scissor will discard.
 #[test]
 fn shadow_overhang_inside_clipped_parent_is_clamped() {
+    use crate::Shadow;
     use crate::primitives::corners::Corners;
     use crate::shape::Shape;
 
@@ -1182,11 +1185,13 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                                 ui.add_shape(Shape::Shadow {
                                     local_rect: None,
                                     radius: Corners::all(0.0),
-                                    color: Color::rgba(0.0, 0.0, 0.0, 0.5),
-                                    offset: Vec2::ZERO,
-                                    blur,
-                                    spread: 0.0,
-                                    inset: false,
+                                    shadow: Shadow {
+                                        color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                                        offset: Vec2::ZERO,
+                                        blur,
+                                        spread: 0.0,
+                                        inset: false,
+                                    },
                                 });
                             });
                     });

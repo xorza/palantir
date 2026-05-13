@@ -192,6 +192,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
 /// rect. `fill_axis` carries `(offset.x, offset.y, σ, _)`.
 #[test]
 fn shadow_lowers_to_drawrect_with_inflated_bbox() {
+    use crate::Shadow;
     use crate::primitives::corners::Corners;
     use crate::renderer::quad::FillKind;
     use crate::shape::Shape;
@@ -202,11 +203,13 @@ fn shadow_lowers_to_drawrect_with_inflated_bbox() {
             ui.add_shape(Shape::Shadow {
                 local_rect: Some(Rect::new(10.0, 20.0, 30.0, 40.0)),
                 radius: Corners::all(4.0),
-                color: Color::rgba(0.0, 0.0, 0.0, 0.5),
-                offset: Vec2::new(2.0, 4.0),
-                blur: 8.0,
-                spread: 1.0,
-                inset: false,
+                shadow: Shadow {
+                    color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                    offset: Vec2::new(2.0, 4.0),
+                    blur: 8.0,
+                    spread: 1.0,
+                    inset: false,
+                },
             });
             Frame::new().id_salt("host").size(50.0).show(ui);
         });

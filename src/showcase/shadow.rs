@@ -7,6 +7,14 @@
 use glam::Vec2;
 use palantir::{Background, Color, Configure, Corners, Panel, Rect, Shadow, Shape, Sizing, Ui};
 
+fn shadow_shape(s: Shadow) -> Shape<'static> {
+    Shape::Shadow {
+        local_rect: Some(card_rect()),
+        radius: radius(),
+        shadow: s,
+    }
+}
+
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
@@ -43,10 +51,10 @@ pub fn build(ui: &mut Ui) {
                 .gap(16.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    chrome_cell(ui, "soft", chrome_soft());
-                    chrome_cell(ui, "elevated", chrome_elevated());
-                    chrome_cell(ui, "inset", chrome_inset());
-                    chrome_cell(ui, "translucent", chrome_translucent());
+                    chrome_cell(ui, "chrome-soft", chrome_soft());
+                    chrome_cell(ui, "chrome-elevated", chrome_elevated());
+                    chrome_cell(ui, "chrome-inset", chrome_inset());
+                    chrome_cell(ui, "chrome-translucent", chrome_translucent());
                 });
         });
 }
@@ -78,87 +86,75 @@ fn card_fill(ui: &mut Ui) {
 
 /// Standard soft drop shadow — Material Design "elevation 2".
 fn soft(ui: &mut Ui) {
-    ui.add_shape(Shape::Shadow {
-        local_rect: Some(card_rect()),
-        radius: radius(),
+    ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.20),
         offset: Vec2::new(0.0, 4.0),
         blur: 8.0,
         spread: 0.0,
         inset: false,
-    });
+    }));
     card_fill(ui);
 }
 
 /// Heavier drop, larger blur — "elevation 8" look.
 fn elevated(ui: &mut Ui) {
-    ui.add_shape(Shape::Shadow {
-        local_rect: Some(card_rect()),
-        radius: radius(),
+    ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.28),
         offset: Vec2::new(0.0, 12.0),
         blur: 20.0,
         spread: 0.0,
         inset: false,
-    });
+    }));
     card_fill(ui);
 }
 
 /// Tight, dense shadow hugging the shape — UI button rest state.
 fn tight(ui: &mut Ui) {
-    ui.add_shape(Shape::Shadow {
-        local_rect: Some(card_rect()),
-        radius: radius(),
+    ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.35),
         offset: Vec2::new(0.0, 1.0),
         blur: 2.0,
         spread: 0.0,
         inset: false,
-    });
+    }));
     card_fill(ui);
 }
 
 /// σ = 0 — sharp drop. Should match the rounded-rect SDF exactly,
 /// shifted by `offset`. Pins the degenerate-blur code path visually.
 fn sharp(ui: &mut Ui) {
-    ui.add_shape(Shape::Shadow {
-        local_rect: Some(card_rect()),
-        radius: radius(),
+    ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 1.0),
         offset: Vec2::new(6.0, 6.0),
         blur: 2.0,
         spread: 0.0,
         inset: false,
-    });
+    }));
     card_fill(ui);
 }
 
 /// Coloured glow, zero offset — bloom feel.
 fn glow(ui: &mut Ui) {
-    ui.add_shape(Shape::Shadow {
-        local_rect: Some(card_rect()),
-        radius: radius(),
+    ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.4, 0.6, 1.0, 0.6),
         offset: Vec2::ZERO,
         blur: 18.0,
         spread: 2.0,
         inset: false,
-    });
+    }));
     card_fill(ui);
 }
 
 /// Inset shadow — interior darkening, pressed-button feel.
 fn inset(ui: &mut Ui) {
     card_fill(ui);
-    ui.add_shape(Shape::Shadow {
-        local_rect: Some(card_rect()),
-        radius: radius(),
+    ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.45),
         offset: Vec2::new(0.0, 3.0),
         blur: 8.0,
         spread: 0.0,
         inset: true,
-    });
+    }));
 }
 
 /// One chrome-cell: a centered card sized to roughly match `card_rect`,
@@ -245,32 +241,26 @@ fn chrome_translucent() -> Background {
 /// Multi-shadow stack — CSS `box-shadow: a, b, c`. Pushed in record
 /// order, the deepest first; composer batches them onto one draw.
 fn stacked(ui: &mut Ui) {
-    ui.add_shape(Shape::Shadow {
-        local_rect: Some(card_rect()),
-        radius: radius(),
+    ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.18),
         offset: Vec2::new(0.0, 24.0),
         blur: 32.0,
         spread: 0.0,
         inset: false,
-    });
-    ui.add_shape(Shape::Shadow {
-        local_rect: Some(card_rect()),
-        radius: radius(),
+    }));
+    ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.22),
         offset: Vec2::new(0.0, 8.0),
         blur: 10.0,
         spread: 0.0,
         inset: false,
-    });
-    ui.add_shape(Shape::Shadow {
-        local_rect: Some(card_rect()),
-        radius: radius(),
+    }));
+    ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.30),
         offset: Vec2::new(0.0, 1.0),
         blur: 2.0,
         spread: 0.0,
         inset: false,
-    });
+    }));
     card_fill(ui);
 }
