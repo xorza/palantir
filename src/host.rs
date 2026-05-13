@@ -15,7 +15,6 @@
 
 use std::time::Instant;
 
-use crate::debug_overlay::DebugOverlayConfig;
 use crate::renderer::backend::WgpuBackend;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
@@ -29,9 +28,6 @@ use crate::{Display, FrameReport};
 /// [`Host::ui`] field.
 pub struct Host {
     pub ui: Ui,
-    /// Per-frame debug visualizations. Default = all-off. Read during
-    /// `render_*`; flip flags between frames.
-    pub debug_overlay: DebugOverlayConfig,
     pub(crate) frontend: Frontend,
     pub(crate) backend: WgpuBackend,
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
@@ -59,7 +55,6 @@ impl Host {
     ) -> Self {
         Self {
             ui: Ui::with_text(shaper.clone()),
-            debug_overlay: DebugOverlayConfig::default(),
             frontend: Frontend::default(),
             backend: WgpuBackend::new(device, queue, format, shaper),
             start: Instant::now(),
@@ -104,7 +99,7 @@ impl Host {
             report.clear_color,
             buffer,
             damage,
-            self.debug_overlay,
+            self.ui.debug_overlay,
         );
         self.ui.frame_state.mark_submitted();
     }

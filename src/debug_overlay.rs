@@ -1,13 +1,11 @@
-//! Debug overlay configuration on `Host`. Set fields on
-//! [`DebugOverlayConfig`] and assign via
-//! `host.debug_overlay = Some(cfg)` to enable per-frame visualizations.
-//! Each flag draws on top of the regular paint without changing the
-//! main pass's `LoadOp`: [`DebugOverlayConfig::damage_rect`] strokes
-//! the damaged rects on the swapchain after the backbuffer→surface
-//! copy; [`DebugOverlayConfig::dim_undamaged`] paints a translucent
-//! quad onto the backbuffer in a separate `LoadOp::Load` pre-pass
-//! before the partial damage passes. Neither flag mutates the
-//! `RenderBuffer` or the schedule.
+//! Debug overlay configuration on `Ui`. Set fields on
+//! [`DebugOverlayConfig`] via `ui.debug_overlay.field = …` to enable
+//! per-frame visualizations. `damage_rect` and `dim_undamaged` draw
+//! on top of the regular paint without changing the main pass's
+//! `LoadOp`. `frame_stats` records a `Text` widget into
+//! `Layer::Debug` at the top-left during `Ui::frame`; it goes through
+//! the regular paint pipeline (dirties its own small rect every frame,
+//! Main scene damage is untouched).
 
 /// Per-overlay flags. Each `bool` toggles one visualization.
 /// Default is all-off; flip the flags you want individually.
@@ -28,4 +26,12 @@ pub struct DebugOverlayConfig {
     /// no partial damage skip the dim entirely (one full-screen clear
     /// resets the trail).
     pub dim_undamaged: bool,
+    /// Show a frame counter + EMA FPS readout in the top-left,
+    /// recorded into `Layer::Debug` by `Ui::frame` after the user's
+    /// record callback. Because the text changes every frame, this
+    /// forces a `Partial(small rect)` damage even when the rest of
+    /// the scene is idle — the readout's rect is unioned into the
+    /// damage region; the Main scene's dirty-rect calculation is
+    /// unaffected.
+    pub frame_stats: bool,
 }
