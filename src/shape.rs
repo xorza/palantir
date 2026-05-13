@@ -129,12 +129,8 @@ pub enum Shape<'a> {
 /// caller bug.
 #[derive(Clone, Copy, Debug)]
 pub enum PolylineColors<'a> {
-    /// One brush for the whole stroke. Broadcast to every
-    /// cross-section. Widened to `Brush` so single-colour polylines
-    /// integrate with the same paint surface as fills; per-vertex
-    /// brush evaluation has no clean meaning so `PerPoint`/`PerSegment`
-    /// stay `Color`-typed.
-    Single(Brush),
+    /// One color for the whole stroke. Broadcast to every cross-section.
+    Single(Color),
     /// One color per input point. `len()` must equal `points.len()`.
     /// GPU lerps between adjacent cross-sections, giving a smooth
     /// gradient along the stroke.
@@ -356,7 +352,7 @@ impl Shape<'_> {
                     return true;
                 }
                 match colors {
-                    PolylineColors::Single(b) => b.is_noop(),
+                    PolylineColors::Single(c) => c.is_noop(),
                     PolylineColors::PerPoint(cs) => cs.iter().all(|c| c.is_noop()),
                     PolylineColors::PerSegment(cs) => cs.iter().all(|c| c.is_noop()),
                 }

@@ -57,7 +57,7 @@ impl Shapes {
                 join,
             } => self.payloads.lower_polyline(
                 &[a, b],
-                PolylineColors::Single(brush),
+                PolylineColors::Single(brush.expect_solid()),
                 width,
                 cap,
                 join,

@@ -564,7 +564,7 @@ fn polyline_bevel_join_matches_golden() {
                 ];
                 ui.add_shape(Shape::Polyline {
                     points: &shallow,
-                    colors: PolylineColors::Single(cyan.into()),
+                    colors: PolylineColors::Single(cyan),
                     width: 5.0,
                     cap: LineCap::Butt,
                     join: LineJoin::Miter,
@@ -576,7 +576,7 @@ fn polyline_bevel_join_matches_golden() {
                 ];
                 ui.add_shape(Shape::Polyline {
                     points: &sharp,
-                    colors: PolylineColors::Single(cyan.into()),
+                    colors: PolylineColors::Single(cyan),
                     width: 5.0,
                     cap: LineCap::Butt,
                     join: LineJoin::Miter,
@@ -645,7 +645,7 @@ fn polyline_round_join_matches_golden() {
                     ];
                     ui.add_shape(Shape::Polyline {
                         points: &pts,
-                        colors: PolylineColors::Single(cyan.into()),
+                        colors: PolylineColors::Single(cyan),
                         width: 8.0,
                         cap: LineCap::Butt,
                         join,

@@ -77,15 +77,8 @@ impl ShapePayloads {
         // `PolylineColors::assert_matches` in `Ui::add_shape`; the
         // `Shape::Line` path constructs `Single(color)` internally and is
         // unconstrained.
-        // `Single(Brush)` extracts to a `Color` slot since slice-1 records
-        // are still `Color`-typed; the local outlives the slice via the
-        // outer binding.
-        let single_color: Color;
-        let (mode, color_slice): (ColorMode, &[Color]) = match colors {
-            PolylineColors::Single(b) => {
-                single_color = b.expect_solid();
-                (ColorMode::Single, std::slice::from_ref(&single_color))
-            }
+        let (mode, color_slice): (ColorMode, &[Color]) = match &colors {
+            PolylineColors::Single(c) => (ColorMode::Single, std::slice::from_ref(c)),
             PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
             PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
         };

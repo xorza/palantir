@@ -107,7 +107,7 @@ fn joins(ui: &mut Ui) {
         ];
         ui.add_shape(Shape::Polyline {
             points: &pts,
-            colors: PolylineColors::Single(cyan.into()),
+            colors: PolylineColors::Single(cyan),
             width: 5.0,
             cap: LineCap::Butt,
             join,

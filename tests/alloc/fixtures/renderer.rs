@@ -58,7 +58,7 @@ fn polyline_static_alloc_free() {
             .show(ui, |ui| {
                 ui.add_shape(Shape::Polyline {
                     points: &points,
-                    colors: PolylineColors::Single(Color::WHITE.into()),
+                    colors: PolylineColors::Single(Color::WHITE),
                     width: 2.0,
                     cap: LineCap::Butt,
                     join: LineJoin::Miter,
