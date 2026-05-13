@@ -276,8 +276,10 @@ fn align_offset(inner: Size, measured: Size, align: Align) -> Vec2 {
 
 /// Bundle of text-shape parameters resolved once at the top of
 /// `show()` and threaded down to input handling, scroll, and caret
-/// resolution. All five fields are read-only for the duration of one
-/// `show()` call.
+/// resolution. All fields are read-only for the duration of one
+/// `show()` call. `halign` is the alignment the shaper applies
+/// per-line when `wrap_target.is_some()` — it has to travel through
+/// every shaper call so the cached buffer's `TextCacheKey` matches.
 #[derive(Clone, Copy)]
 struct ShapeCtx {
     font_size: f32,
@@ -286,6 +288,7 @@ struct ShapeCtx {
     wrap_target: Option<f32>,
     family: FontFamily,
     multiline: bool,
+    halign: HAlign,
 }
 
 /// Scroll the editor so the caret stays inside the visible inner
@@ -477,6 +480,15 @@ impl<'a> TextEdit<'a> {
         } else {
             None
         };
+        // Resolved alignment: explicit `.text_align(...)` wins, else
+        // the mode-appropriate default. Single-line vcenters the one
+        // visual line; multi-line top-lefts so growing content fills
+        // downward.
+        let text_align = self.text_align.unwrap_or(if self.multiline {
+            Align::TOP_LEFT
+        } else {
+            Align::LEFT
+        });
         let ctx = ShapeCtx {
             font_size,
             line_height_px: font_size * line_height_mult,
@@ -484,28 +496,18 @@ impl<'a> TextEdit<'a> {
             wrap_target,
             family: look.text.family,
             multiline: self.multiline,
+            halign: text_align.halign(),
         };
-        // Resolved alignment: explicit `.text_align(...)` wins, else
-        // the mode-appropriate default. Single-line vcenters the one
-        // visual line; multi-line top-lefts so growing content fills
-        // downward.
-        let text_align = self.text_align.unwrap_or(if ctx.multiline {
-            Align::TOP_LEFT
+        // Multi-line lets cosmic bake per-line halign offsets into
+        // the shaped buffer (`BufferLine::set_align`), so the widget
+        // applies only the vertical block offset. Single-line has no
+        // wrap target for cosmic to align inside, so the widget
+        // computes both axes from the measured bbox itself.
+        let widget_align = if ctx.multiline {
+            Align::v(text_align.valign())
         } else {
-            Align::LEFT
-        });
-        // Single source of truth for text origin: measure whatever
-        // string we'll actually render (buffer when non-empty or
-        // focused, placeholder when the buffer is empty + unfocused),
-        // then place its bbox inside the inner rect per `align`. The
-        // resulting `(dx, dy)` is added to the text origin, to the
-        // caret + selection rects, and subtracted from the pointer
-        // local coords in the click hit-test — all three views stay in
-        // sync. Overflow clamps to zero on each axis (encoder
-        // convention), leaving scroll-to-caret to keep the active end
-        // visible. Height floors at one line so an empty focused
-        // editor vcenters its caret against a full line, not a zero
-        // bbox.
+            text_align
+        };
         let offset = if let Some(r) = response.rect {
             let measure_str: &str = if !self.text.is_empty() || is_focused {
                 self.text
@@ -520,30 +522,13 @@ impl<'a> TextEdit<'a> {
                     ctx.line_height_px,
                     ctx.wrap_target,
                     ctx.family,
+                    ctx.halign,
                 )
                 .size;
-            // For multi-line, `m.w` equals the wrap target, so it
-            // collapses any non-Left halign to zero offset. Use the
-            // widest visual line as the effective bbox width instead
-            // — gives block-level horizontal alignment of the
-            // paragraph. Per-line internal alignment would need cosmic
-            // `BufferLine::set_align` plumbed through the cache key,
-            // tracked as a follow-up.
-            let effective_w = if ctx.multiline {
-                ui.text.max_line_width(
-                    measure_str,
-                    ctx.font_size,
-                    ctx.line_height_px,
-                    ctx.wrap_target,
-                    ctx.family,
-                )
-            } else {
-                m.w
-            };
-            let measured = Size::new(effective_w, m.h.max(ctx.line_height_px));
+            let measured = Size::new(m.w, m.h.max(ctx.line_height_px));
             let inner_w = (r.size.w - ctx.padding.horiz()).max(0.0);
             let inner_h = (r.size.h - ctx.padding.vert()).max(0.0);
-            align_offset(Size::new(inner_w, inner_h), measured, text_align)
+            align_offset(Size::new(inner_w, inner_h), measured, widget_align)
         } else {
             Vec2::ZERO
         };
@@ -578,6 +563,7 @@ impl<'a> TextEdit<'a> {
             ctx.line_height_px,
             ctx.wrap_target,
             ctx.family,
+            ctx.halign,
         );
         let now = ui.time;
         let (scroll, last_caret_change) = {
@@ -644,6 +630,7 @@ impl<'a> TextEdit<'a> {
                     ctx.line_height_px,
                     ctx.wrap_target,
                     ctx.family,
+                    ctx.halign,
                     |x, y, w, h| {
                         ui.forest.add_shape(Shape::RoundedRect {
                             local_rect: Some(Rect::new(
@@ -689,7 +676,15 @@ impl<'a> TextEdit<'a> {
                     } else {
                         TextWrap::Single
                     },
-                    align: Default::default(),
+                    // Pass the user's `text_align` so the layout
+                    // pipeline's `shape_wrap` builds a `TextCacheKey`
+                    // whose `halign_q` matches the buffer the widget
+                    // queries via `cursor_xy` / `selection_rects`.
+                    // Without this the rendered text shapes against
+                    // an `HAlign::Auto` cache entry while the widget
+                    // reads from an aligned one — coords match by
+                    // accident, but the user sees unaligned text.
+                    align: text_align,
                     family: ctx.family,
                 });
             }
@@ -867,6 +862,7 @@ fn handle_input(
             ctx.line_height_px,
             ctx.wrap_target,
             ctx.family,
+            ctx.halign,
         );
         if !state.prev_pressed {
             // Press rising edge. Detect multi-click: consecutive
@@ -972,6 +968,7 @@ fn handle_input(
                 ctx.line_height_px,
                 ctx.wrap_target,
                 ctx.family,
+                ctx.halign,
             );
             let probe_y = match v.direction {
                 VerticalDir::Up => pos.y_top - 1.0,
@@ -988,6 +985,7 @@ fn handle_input(
                     ctx.line_height_px,
                     ctx.wrap_target,
                     ctx.family,
+                    ctx.halign,
                 )
             };
             move_caret(state, target, v.extend);

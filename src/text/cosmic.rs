@@ -12,8 +12,11 @@
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
 use super::{FontFamily, MeasureResult, TextCacheKey};
+use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
-use glyphon::cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, fontdb};
+use glyphon::cosmic_text::{
+    Align as CosmicAlign, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, fontdb,
+};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -38,6 +41,7 @@ fn key_for(
     line_height_px: f32,
     max_w_px: Option<f32>,
     family: FontFamily,
+    halign: HAlign,
 ) -> TextCacheKey {
     let mut h = DefaultHasher::new();
     text.hash(&mut h);
@@ -47,12 +51,23 @@ fn key_for(
     if text_hash == 0 {
         text_hash = 1;
     }
+    // Cosmic only applies per-line align when `max_width_px` is
+    // `Some`. Without a wrap target every halign collapses to the
+    // same shaped buffer, so fold `halign_q` to `Auto`'s discriminant
+    // (0) on that path — single-line callers don't pay an N-way
+    // cache split for identical glyph positions.
+    let halign_q = if max_w_px.is_some() {
+        halign as u8
+    } else {
+        HAlign::Auto as u8
+    };
     TextCacheKey::new(
         text_hash,
         quantize(size_px),
         max_w_px.map(quantize).unwrap_or(MAX_W_NONE),
         quantize(line_height_px),
         family as u8,
+        halign_q,
     )
 }
 
@@ -60,6 +75,20 @@ fn attrs_for(family: FontFamily) -> Attrs<'static> {
     match family {
         FontFamily::Sans => Attrs::new().family(Family::Name("Inter")),
         FontFamily::Mono => Attrs::new().family(Family::Name("JetBrains Mono")),
+    }
+}
+
+/// Map a Palantir [`HAlign`] to cosmic-text's per-line align. `Auto`
+/// and `Stretch` both fall through to `None` (cosmic defaults to its
+/// left-or-rtl-aware behaviour), which keeps the legacy "no per-line
+/// align" path identical bit-for-bit. `Left/Center/Right` translate
+/// directly; cosmic's `Justified` and `End` aren't surfaced.
+fn cosmic_align(halign: HAlign) -> Option<CosmicAlign> {
+    match halign {
+        HAlign::Auto | HAlign::Stretch => None,
+        HAlign::Left => Some(CosmicAlign::Left),
+        HAlign::Center => Some(CosmicAlign::Center),
+        HAlign::Right => Some(CosmicAlign::Right),
     }
 }
 
@@ -166,6 +195,7 @@ impl CosmicMeasure {
         line_height_px: f32,
         max_width_px: Option<f32>,
         family: FontFamily,
+        halign: HAlign,
     ) -> MeasureResult {
         if text.is_empty() || font_size_px <= 0.0 {
             return MeasureResult {
@@ -174,7 +204,14 @@ impl CosmicMeasure {
                 intrinsic_min: 0.0,
             };
         }
-        let key = key_for(text, font_size_px, line_height_px, max_width_px, family);
+        let key = key_for(
+            text,
+            font_size_px,
+            line_height_px,
+            max_width_px,
+            family,
+            halign,
+        );
         if let Some(entry) = self.cache.get(&key) {
             return MeasureResult {
                 size: entry.measured,
@@ -186,12 +223,22 @@ impl CosmicMeasure {
         let metrics = Metrics::new(font_size_px, line_height_px);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_size(&mut self.font_system, max_width_px, None);
+        // Per-line alignment travels through cosmic's `set_text`
+        // `alignment` slot — that's the canonical entry point and
+        // applies the align to every parsed buffer line in one
+        // shot. Iterating `buffer.lines.iter_mut().set_align` after
+        // `set_text` is the older API surface and tends to no-op on
+        // freshly populated lines in 0.18+. Per-line align is only
+        // meaningful with a finite wrap target (cosmic uses it as the
+        // line width); without one we pass `None` so single-line
+        // editors keep their widget-side `dx` placement.
+        let alignment = max_width_px.and_then(|_| cosmic_align(halign));
         buffer.set_text(
             &mut self.font_system,
             text,
             &attrs_for(family),
             Shaping::Advanced,
-            None,
+            alignment,
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
@@ -200,7 +247,14 @@ impl CosmicMeasure {
         let mut intrinsic_min = 0.0_f32;
         let mut current_word_w = 0.0_f32;
         for run in buffer.layout_runs() {
-            max_w = max_w.max(run.line_w);
+            // `line_w` is content width before per-line alignment;
+            // when align shifts glyphs right, the glyph cluster's
+            // physical x extends past `line_w`. Take the last glyph's
+            // trailing edge so the measured bbox encloses every
+            // rendered pixel — otherwise glyphon clips right-aligned
+            // glyphs against an undersized `TextBounds`.
+            let line_right = run.glyphs.last().map(|g| g.x + g.w).unwrap_or(run.line_w);
+            max_w = max_w.max(line_right);
             total_h = total_h.max(run.line_top + run.line_height);
             for g in run.glyphs {
                 let cluster = &run.text[g.start..g.end];
