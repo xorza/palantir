@@ -4,8 +4,10 @@ use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::primitives::brush::FillAxis;
+use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::shadow::Shadow;
+use crate::primitives::stroke::Stroke;
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
@@ -15,6 +17,12 @@ use crate::ui::Ui;
 use crate::ui::cascade::Cascade;
 use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
+
+/// Always-on outline emitted over widgets whose explicit `WidgetId`
+/// collided this frame. Magenta — distinct from the opt-in red
+/// damage-rect overlay. Painted unclipped at the end of `encode`,
+/// after every layer's regular paint.
+const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU
 /// work, no scale/snap math — that lives in the backend's process
@@ -59,6 +67,35 @@ pub(crate) fn encode(ui: &Ui, damage: Damage, out: &mut RenderCmdBuffer) {
                 viewport,
                 NodeId(root.first_node),
                 out,
+            );
+        }
+    }
+
+    emit_collision_overlays(ui, out);
+}
+
+/// Final pass: emit a magenta outline for each explicit-id collision
+/// recorded this frame. Painted after the regular per-layer walk so
+/// it sits on top of everything; emitted with no scissor push so it
+/// ignores any clip context the colliding widgets sit under (scroll
+/// viewports, clipped popups). Both `NodeId`s are precomputed at
+/// recording time (`SeenIds.curr` hashmap lookup) — no tree scan.
+fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
+    if ui.forest.collisions.is_empty() {
+        return;
+    }
+    let fill = Color::TRANSPARENT.into();
+    for record in &ui.forest.collisions {
+        for (layer, node) in [record.first, record.second] {
+            let rects = &ui.layout[layer].rect;
+            if node.index() >= rects.len() {
+                continue;
+            }
+            out.draw_rect(
+                rects[node.index()],
+                Corners::ZERO,
+                &fill,
+                COLLISION_OVERLAY_STROKE,
             );
         }
     }

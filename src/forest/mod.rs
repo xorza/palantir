@@ -4,13 +4,23 @@
 //! and never interleaves.
 
 use crate::forest::element::Element;
-use crate::forest::seen_ids::SeenIds;
+use crate::forest::seen_ids::{RecordOutcome, SeenIds};
 use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
 use crate::primitives::size::Size;
 use crate::shape::Shape;
 use glam::Vec2;
 use std::array;
 use strum::EnumCount as _;
+
+/// One explicit-id collision recorded this frame. Both endpoints
+/// carry their own `Layer` because the colliding ids can straddle a
+/// `push_layer` boundary (e.g. same `.id_salt(...)` in Main and in a
+/// Popup body). Resolved at recording time from `SeenIds.curr`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CollisionRecord {
+    pub(crate) first: (Layer, NodeId),
+    pub(crate) second: (Layer, NodeId),
+}
 
 pub(crate) mod element;
 pub(crate) mod node;
@@ -38,6 +48,12 @@ pub(crate) struct Forest {
     /// reaches `open_node` — including direct callers that bypass
     /// `Ui::node` — gets the same collision check.
     pub(crate) ids: SeenIds,
+    /// Explicit-id collisions recorded this frame. Each carries the
+    /// freshly-disambiguated `NodeId` plus the original `WidgetId`
+    /// that the first-occurrence node still owns. Drained by
+    /// [`Self::flush_collision_overlays`] after measure+arrange.
+    /// Public-in-crate so tests can introspect.
+    pub(crate) collisions: Vec<CollisionRecord>,
     /// Active layer for the next `open_node`. `Main` between/outside
     /// `Ui::layer` scopes; switched by `push_layer` / `pop_layer`.
     pub(crate) current_layer: Layer,
@@ -54,6 +70,7 @@ impl Default for Forest {
         Self {
             trees: array::from_fn(|_| Tree::default()),
             ids: SeenIds::default(),
+            collisions: Vec::new(),
             current_layer: Layer::Main,
             layer_stack: Vec::new(),
         }
@@ -65,6 +82,7 @@ impl Forest {
         self.current_layer = Layer::Main;
         self.layer_stack.clear();
         self.ids.pre_record();
+        self.collisions.clear();
         for t in &mut self.trees {
             t.pre_record();
         }
@@ -87,8 +105,24 @@ impl Forest {
     }
 
     pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
-        self.ids.record(&mut element);
-        self.trees[self.current_layer as usize].open_node(element)
+        let layer = self.current_layer;
+        // `Tree::open_node` assigns the next NodeId from
+        // `records.len()`; predict it so `SeenIds::record` can stash
+        // it in `curr` for first-collision lookup. Must run `record`
+        // *before* `tree.open_node` so a disambiguated `element.id`
+        // is what the tree stores (otherwise siblings end up sharing
+        // a `widget_id` and every per-id store gets corrupted).
+        let node = NodeId(self.trees[layer as usize].records.len() as u32);
+        let outcome = self.ids.record(&mut element, layer, node);
+        let opened = self.trees[layer as usize].open_node(element);
+        debug_assert_eq!(opened, node, "SeenIds NodeId prediction drifted from Tree");
+        if let RecordOutcome::DisambiguatedExplicit { first } = outcome {
+            self.collisions.push(CollisionRecord {
+                first,
+                second: (layer, node),
+            });
+        }
+        node
     }
 
     pub(crate) fn close_node(&mut self) {

@@ -30,19 +30,59 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
         .node
 }
 
+/// Two `.id_salt("dup")` calls in one frame would silently corrupt
+/// every per-id store. Instead of panicking, `SeenIds::record`
+/// disambiguates the second one (same path as auto-id collisions),
+/// `Forest` pairs both colliding nodes via `Forest.collisions`, and
+/// the encoder emits a magenta `DrawRect` at each colliding node's
+/// arranged rect after the regular paint walk.
 #[test]
-#[should_panic(expected = "WidgetId collision")]
-fn duplicate_widget_id_panics() {
-    // Two `Button::new().id_salt("dup")` calls in one frame produce the same
-    // `WidgetId`, which would silently corrupt every per-id store. `Ui::node`
-    // enforces uniqueness with a release `assert!`.
+fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let mut ui = Ui::new();
+    let button_node = std::cell::Cell::new(NodeId(0));
     run_at(&mut ui, UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
+            let a = Button::new().id_salt("dup").show(ui);
             Button::new().id_salt("dup").show(ui);
-            Button::new().id_salt("dup").show(ui);
+            button_node.set(a.node);
         });
     });
+    // One collision pair should be recorded, survives until the next
+    // `pre_record` so the encoder can read it.
+    assert_eq!(
+        ui.forest.collisions.len(),
+        1,
+        "expected exactly one explicit collision recorded",
+    );
+    let button_rect = ui.layout[Layer::Main].rect[button_node.get().index()];
+    // Drive the encoder and check the emitted quads. The two overlay
+    // quads should be stroked, magenta-ish, and rect-equal to the two
+    // colliding buttons' arranged rects.
+    use crate::renderer::frontend::Frontend;
+    let mut frontend = Frontend::default();
+    let buffer = frontend.build(&ui, Damage::Full);
+    let overlay_quads: Vec<_> = buffer
+        .quads
+        .iter()
+        .filter(|q| q.stroke_width > 2.5 && q.stroke_width < 3.5)
+        .collect();
+    assert_eq!(
+        overlay_quads.len(),
+        2,
+        "expected 2 magenta collision overlay quads in the render buffer",
+    );
+    // Pin rect math: the first button's arranged rect maps to one
+    // of the overlay quads (physical-px == logical at scale=1).
+    let matched = overlay_quads.iter().any(|q| {
+        (q.rect.min.x - button_rect.min.x).abs() < 1.0
+            && (q.rect.min.y - button_rect.min.y).abs() < 1.0
+            && (q.rect.size.w - button_rect.size.w).abs() < 1.0
+            && (q.rect.size.h - button_rect.size.h).abs() < 1.0
+    });
+    assert!(
+        matched,
+        "no overlay quad matched first button's arranged rect {button_rect:?}; overlays: {overlay_quads:?}",
+    );
 }
 
 /// Auto-generated ids (call-site hash) silently disambiguate when the same

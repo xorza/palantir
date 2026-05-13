@@ -13,8 +13,9 @@ mod showcase;
 use showcase::app_state::AppState;
 use showcase::{
     alignment, animations, app_state, bezier, buttons, clip, context_menu, disabled, drag, gap,
-    gradients, grid, justify, lines, mesh, pan_zoom, pan_zoom_auto, panels, popup, scroll, shadow,
-    sizing, spacing, text, text_edit, text_zorder, tooltips, transform, visibility, wrap,
+    gradients, grid, id_collisions, justify, lines, mesh, pan_zoom, pan_zoom_auto, panels, popup,
+    scroll, shadow, sizing, spacing, text, text_edit, text_zorder, tooltips, transform, visibility,
+    wrap,
 };
 
 /// Each showcase: a label for the toolbar button, and a builder that fills the
@@ -53,6 +54,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("drag", drag::build),
     ("gradients", gradients::build),
     ("shadow", shadow::build),
+    ("id collisions", id_collisions::build),
 ];
 
 fn main() {
@@ -242,13 +244,10 @@ impl State {
         let host = &mut self.host;
         let app = &mut self.app;
         let active = &mut self.active;
-        self.next = host.frame_and_render_with(
-            &self.surface,
-            &self.config,
-            self.scale_factor,
-            app,
-            |ui| build_ui(ui, active),
-        );
+        self.next =
+            host.frame_and_render_with(&self.surface, &self.config, self.scale_factor, app, |ui| {
+                build_ui(ui, active)
+            });
     }
 }
 
