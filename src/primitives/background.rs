@@ -50,4 +50,13 @@ impl Background {
     pub fn is_noop(&self) -> bool {
         self.fill.is_noop() && self.stroke.is_noop() && self.shadow.is_noop()
     }
+
+    pub fn fill<I: Into<Brush>>(brush: I) -> Self {
+        Self {
+            fill: brush.into(),
+            stroke: Stroke::ZERO,
+            radius: Corners::ZERO,
+            shadow: Shadow::NONE,
+        }
+    }
 }
