@@ -85,6 +85,89 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     );
 }
 
+/// Cross-layer collision: `.id_salt("dup")` in Main and another with
+/// the same key inside a `Ui::layer(Popup, ...)` body. `SeenIds.curr`
+/// is shared across layers, so the second occurrence is detected as a
+/// collision. Each `CollisionRecord` endpoint carries its own `Layer`,
+/// so the encoder paints each overlay at the correct per-layer rect.
+#[test]
+fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
+    let mut ui = Ui::new();
+    run_at(&mut ui, UVec2::new(200, 200), |ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            Button::new().id_salt("dup").show(ui);
+        });
+        ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |ui| {
+            Button::new().id_salt("dup").show(ui);
+        });
+    });
+    assert_eq!(
+        ui.forest.collisions.len(),
+        1,
+        "expected one collision pair across Main + Popup",
+    );
+    let pair = ui.forest.collisions[0];
+    assert_eq!(
+        pair.first.0,
+        Layer::Main,
+        "first occurrence should be in Main, got {:?}",
+        pair.first.0,
+    );
+    assert_eq!(
+        pair.second.0,
+        Layer::Popup,
+        "second occurrence should be in Popup, got {:?}",
+        pair.second.0,
+    );
+    // Each endpoint's rect must come from its own layer's `LayerLayout`.
+    let main_rect = ui.layout[Layer::Main].rect[pair.first.1.index()];
+    let popup_rect = ui.layout[Layer::Popup].rect[pair.second.1.index()];
+    use crate::renderer::frontend::Frontend;
+    let mut frontend = Frontend::default();
+    let buffer = frontend.build(&ui, Damage::Full);
+    let overlay_quads: Vec<_> = buffer
+        .quads
+        .iter()
+        .filter(|q| q.stroke_width > 2.5 && q.stroke_width < 3.5)
+        .collect();
+    assert_eq!(overlay_quads.len(), 2, "expected 2 overlay quads");
+    let has_main = overlay_quads
+        .iter()
+        .any(|q| (q.rect.min - main_rect.min).length() < 1.0);
+    let has_popup = overlay_quads
+        .iter()
+        .any(|q| (q.rect.min - popup_rect.min).length() < 1.0);
+    assert!(has_main, "no overlay quad at Main rect {main_rect:?}");
+    assert!(has_popup, "no overlay quad at Popup rect {popup_rect:?}");
+}
+
+/// Pin: the encoder-direct overlay path leaves `Layer::Debug` empty
+/// (no sink node recorded) — guards against silent regression back to
+/// the prior "sink in Debug" approach.
+#[test]
+fn collisions_do_not_record_into_debug_layer() {
+    let mut ui = Ui::new();
+    assert!(
+        !ui.debug_overlay.frame_stats,
+        "test relies on frame_stats off — Debug should otherwise stay empty",
+    );
+    run_at(&mut ui, UVec2::new(100, 100), |ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Button::new().id_salt("dup").show(ui);
+            Button::new().id_salt("dup").show(ui);
+        });
+    });
+    assert!(
+        !ui.forest.collisions.is_empty(),
+        "collision should have been recorded",
+    );
+    assert_eq!(
+        ui.forest.tree(Layer::Debug).records.len(),
+        0,
+        "encoder-direct overlay path must not record nodes into Layer::Debug",
+    );
+}
+
 /// Auto-generated ids (call-site hash) silently disambiguate when the same
 /// site fires more than once per frame — the "loop / closure helper" case.
 #[test]

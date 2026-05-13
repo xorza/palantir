@@ -48,11 +48,11 @@ pub(crate) struct Forest {
     /// reaches `open_node` — including direct callers that bypass
     /// `Ui::node` — gets the same collision check.
     pub(crate) ids: SeenIds,
-    /// Explicit-id collisions recorded this frame. Each carries the
-    /// freshly-disambiguated `NodeId` plus the original `WidgetId`
-    /// that the first-occurrence node still owns. Drained by
-    /// [`Self::flush_collision_overlays`] after measure+arrange.
-    /// Public-in-crate so tests can introspect.
+    /// Explicit-id collisions recorded this frame — each carries the
+    /// first-occurrence and disambiguated nodes (with their layers).
+    /// Read by `encoder::emit_collision_overlays` after the regular
+    /// paint walk; cleared by the next `pre_record`. Public-in-crate
+    /// so tests can introspect.
     pub(crate) collisions: Vec<CollisionRecord>,
     /// Active layer for the next `open_node`. `Main` between/outside
     /// `Ui::layer` scopes; switched by `push_layer` / `pop_layer`.
@@ -105,17 +105,16 @@ impl Forest {
     }
 
     pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
+        // `record` runs before `open_node` so a disambiguated
+        // `element.id` is what the tree stores — siblings sharing a
+        // `widget_id` would corrupt every per-id store. `peek_next_id`
+        // hands us the slot `open_node` will fill so `record` can
+        // stash it for first-collision lookup.
         let layer = self.current_layer;
-        // `Tree::open_node` assigns the next NodeId from
-        // `records.len()`; predict it so `SeenIds::record` can stash
-        // it in `curr` for first-collision lookup. Must run `record`
-        // *before* `tree.open_node` so a disambiguated `element.id`
-        // is what the tree stores (otherwise siblings end up sharing
-        // a `widget_id` and every per-id store gets corrupted).
-        let node = NodeId(self.trees[layer as usize].records.len() as u32);
+        let node = self.trees[layer as usize].peek_next_id();
         let outcome = self.ids.record(&mut element, layer, node);
         let opened = self.trees[layer as usize].open_node(element);
-        debug_assert_eq!(opened, node, "SeenIds NodeId prediction drifted from Tree");
+        assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         if let RecordOutcome::DisambiguatedExplicit { first } = outcome {
             self.collisions.push(CollisionRecord {
                 first,
