@@ -374,6 +374,79 @@ fn escape_with_selection_does_not_blur() {
     assert!(blur2, "second escape (no selection) must blur");
 }
 
+fn cmd_shift_press(key: Key) -> KeyPress {
+    let mut kp = cmd_press(key);
+    kp.mods.shift = true;
+    kp
+}
+
+#[test]
+fn undo_redo_round_trips_typed_chars() {
+    let mut s = String::new();
+    let mut state = TextEditState::default();
+    for c in ['a', 'b', 'c'] {
+        apply_key(&mut s, &mut state, press(Key::Char(c)));
+    }
+    assert_eq!(s, "abc");
+    assert_eq!(state.caret, 3);
+
+    apply_key(&mut s, &mut state, cmd_press(Key::Char('z')));
+    assert_eq!(s, "", "consecutive typing coalesces into one undo group");
+    assert_eq!(state.caret, 0);
+
+    apply_key(&mut s, &mut state, cmd_shift_press(Key::Char('z')));
+    assert_eq!(s, "abc", "redo restores the coalesced edit");
+    assert_eq!(state.caret, 3);
+}
+
+#[test]
+fn arrow_breaks_typing_coalesce_into_two_undo_groups() {
+    let mut s = String::new();
+    let mut state = TextEditState::default();
+    apply_key(&mut s, &mut state, press(Key::Char('a')));
+    apply_key(&mut s, &mut state, press(Key::Char('b')));
+    apply_key(&mut s, &mut state, press(Key::ArrowLeft));
+    apply_key(&mut s, &mut state, press(Key::Char('x')));
+    assert_eq!(s, "axb");
+
+    apply_key(&mut s, &mut state, cmd_press(Key::Char('z')));
+    assert_eq!(s, "ab", "first undo drops the post-arrow insert only");
+
+    apply_key(&mut s, &mut state, cmd_press(Key::Char('z')));
+    assert_eq!(s, "", "second undo drops the pre-arrow typing group");
+}
+
+#[test]
+fn undo_restores_selection_after_delete() {
+    let mut s = String::from("hello");
+    let mut state = TextEditState {
+        caret: 4,
+        selection: Some(1),
+        ..Default::default()
+    };
+    apply_key(&mut s, &mut state, press(Key::Backspace));
+    assert_eq!(s, "ho");
+    assert_eq!(state.caret, 1);
+    assert_eq!(state.selection, None);
+
+    apply_key(&mut s, &mut state, cmd_press(Key::Char('z')));
+    assert_eq!(s, "hello");
+    assert_eq!(state.caret, 4);
+    assert_eq!(state.selection, Some(1));
+}
+
+#[test]
+fn redo_stack_clears_on_fresh_edit() {
+    let mut s = String::new();
+    let mut state = TextEditState::default();
+    apply_key(&mut s, &mut state, press(Key::Char('a')));
+    apply_key(&mut s, &mut state, cmd_press(Key::Char('z')));
+    assert_eq!(s, "");
+    apply_key(&mut s, &mut state, press(Key::Char('b')));
+    apply_key(&mut s, &mut state, cmd_shift_press(Key::Char('z')));
+    assert_eq!(s, "b", "redo after a new edit is a no-op");
+}
+
 #[test]
 fn boundary_helpers_jump_full_codepoints() {
     let s = "héllo";
@@ -1246,7 +1319,7 @@ fn context_menu_cut_copy_paste_clear() {
     click_menu_row(&mut ui, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
     assert_eq!(crate::clipboard::get(), "ell");
-    let st = *ui.state_mut::<TextEditState>(editor_id());
+    let st = ui.state_mut::<TextEditState>(editor_id()).clone();
     assert_eq!(st.caret, 1);
     assert_eq!(st.selection, None);
 
@@ -1254,7 +1327,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 2); // row 2 == Paste
     assert_eq!(buf, "hello", "paste inserts clipboard at caret");
-    let st = *ui.state_mut::<TextEditState>(editor_id());
+    let st = ui.state_mut::<TextEditState>(editor_id()).clone();
     assert_eq!(st.caret, 4, "caret advances past pasted text");
 
     // Clear → buffer wiped, caret reset. Row 3 is the separator;
@@ -1262,8 +1335,20 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 4);
     assert_eq!(buf, "");
-    let st = *ui.state_mut::<TextEditState>(editor_id());
+    let st = ui.state_mut::<TextEditState>(editor_id()).clone();
     assert_eq!(st.caret, 0);
+
+    // Regression: pasting `\n`-bearing clipboard via the menu must
+    // sanitize the same way the Cmd+V keypress does — otherwise the
+    // single-line buffer ends up with literal line breaks it can't
+    // render or hit-test. Earlier menu code lacked the sanitize call.
+    crate::clipboard::set("foo\nbar");
+    open_menu_and_record(&mut ui, &mut buf);
+    click_menu_row(&mut ui, &mut buf, 2); // Paste
+    assert_eq!(
+        buf, "foo bar",
+        "menu Paste must sanitize newlines for single-line editor"
+    );
 }
 
 /// Platform clipboard shortcuts — only the *platform-primary*
@@ -1463,7 +1548,7 @@ fn multiline_enter_inserts_newline() {
     });
     run_at_acked(&mut ui, UVec2::new(300, 160), multiline_editor(&mut buf));
     assert_eq!(buf, "abc\n");
-    let st = *ui.state_mut::<TextEditState>(ed_id);
+    let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.caret, 4);
 
     // A subsequent printable char goes on the new visual line.
@@ -1513,7 +1598,7 @@ fn multiline_paste_keeps_newlines() {
     };
     run_at_acked(&mut ui, UVec2::new(300, 200), multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
-    let st = *ui.state_mut::<TextEditState>(ed_id);
+    let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert_eq!(st.caret, buf.len());
 }
 
@@ -1542,7 +1627,7 @@ fn multiline_selection_crosses_newline() {
         ..Modifiers::NONE
     };
     run_at_acked(&mut ui, UVec2::new(300, 200), multiline_editor(&mut buf));
-    let st = *ui.state_mut::<TextEditState>(ed_id);
+    let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert!(
         st.selection.is_some(),
         "shift+down across newline establishes a selection",

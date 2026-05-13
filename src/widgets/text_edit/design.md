@@ -1,13 +1,18 @@
 # TextEdit — design
 
-Single-line, focusable, click/drag-to-place-caret editable text leaf.
-Typing via `KeyDown` printable chars or IME `Text` commits;
-backspace/delete, left/right arrows, home/end, escape-to-blur.
+Focusable, click/drag-to-place-caret editable text leaf. Single-line
+by default; flip to multi-line with `.multiline(true)`. Typing via
+`KeyDown` printable chars or IME `Text` commits; backspace/delete,
+left/right arrows (up/down too in multi-line), home/end, escape-to-blur.
 Selection: shift+arrow / shift+home/end extend, plain arrows collapse,
 ctrl/cmd+A select-all, click+drag selects, edits replace the range,
 two-stage Escape (first collapse, second blur), painted highlight wash
-behind the glyphs. Multi-line, IME preedit, undo, copy/paste are
-deferred — see "Out of scope" at the end.
+behind the glyphs. Cut/copy/paste via Cmd/Ctrl+X/C/V and a default
+right-click menu; paste sanitizes `\n`/`\r` to spaces in single-line
+mode. Undo/redo via Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z with snapshot
+coalescing — consecutive typing or consecutive deletes group into one
+undo unit; any caret-only motion ends the group. IME preedit and
+caret blink are still deferred — see "Out of scope" at the end.
 
 Code lives in `src/widgets/text_edit/{mod.rs,tests.rs}`.
 
@@ -35,12 +40,25 @@ Per-widget cross-frame row in `Ui::state` keyed by `WidgetId`:
 
 ```rust
 pub(crate) struct TextEditState {
-    pub(crate) caret: usize,                // byte offset (active end)
-    pub(crate) selection: Option<usize>,    // anchor byte; None == no sel
-    pub(crate) drag_anchor: Option<usize>,  // latched on press rising edge
-    pub(crate) prev_pressed: bool,          // edge detection for `pressed`
+    pub(crate) caret: usize,                       // byte offset (active end)
+    pub(crate) selection: Option<usize>,           // anchor byte; None == no sel
+    pub(crate) drag_anchor: Option<usize>,         // latched on press rising edge
+    pub(crate) prev_pressed: bool,                 // edge detection for `pressed`
+    pub(crate) undo: VecDeque<EditSnapshot>,       // capped at UNDO_LIMIT (128)
+    pub(crate) redo: Vec<EditSnapshot>,            // cleared on every fresh edit
+    pub(crate) last_edit_kind: Option<EditKind>,   // Typing / Delete / Other; None ⇒ new group
 }
 ```
+
+`EditSnapshot` is `{ text, caret, selection }` — the *pre-edit* buffer
++ caret state captured by `record_edit` before each mutation. Snapshot
+coalescing rule: consecutive same-kind edits (`Typing` runs,
+`Delete` runs) skip the push because the group's existing top already
+captures the pre-state. `Other` (paste, cut, clear, multi-line
+`Enter`) never coalesces. Any caret-only motion calls `move_caret`,
+which clears `last_edit_kind` and opens a fresh group on the next
+edit. Undo limit is a constant 128; older entries fall off the front
+of the deque.
 
 Byte offsets, not chars: cosmic-text's hit-testing returns byte cursors
 and `&buffer[..caret]` is the natural prefix-measure path.
@@ -184,6 +202,13 @@ borrow choreography):
 | `Home` / `End`            | caret to 0 / `text.len()`           | collapse + jump                          |
 | `Shift+Home` / `Shift+End`| extend to 0 / `text.len()`          | extend to 0 / `text.len()`               |
 | `Ctrl+A` / `Cmd+A`        | select all (anchor=0, caret=len)    | select all                               |
+| `Ctrl/Cmd+C`              | copy (no-op)                        | clipboard ← range                        |
+| `Ctrl/Cmd+X`              | cut (no-op)                         | clipboard ← range, delete range          |
+| `Ctrl/Cmd+V`              | insert clipboard at caret           | replace range with clipboard             |
+| `Ctrl/Cmd+Z`              | pop undo group                      | pop undo group                           |
+| `Ctrl/Cmd+Shift+Z`        | pop redo group                      | pop redo group                           |
+| `Enter` (multi-line only) | insert `\n`                         | replace range with `\n`                  |
+| `Up` / `Down` (multi-line)| caret one visual line up / down     | extend with shift                        |
 | `Escape`                  | request blur                        | collapse selection, *don't* blur         |
 | anything else             | ignored                             | ignored                                  |
 
@@ -290,14 +315,8 @@ already authored at ~25% alpha so it doesn't obscure the glyphs).
 
 ## Out of scope (future slices)
 
-- **Multi-line** — re-uses caret-x via a future
-  `MeasureResult::byte_to_x` plus per-line vertical offset; Enter
-  inserts `\n`; PageUp/PageDown become live.
 - **Grapheme-aware backspace/delete** — `unicode-segmentation` on the
   selection branch.
-- **Copy/paste** — clipboard crate + ctrl+c/x/v shortcut routing
-  (needs the `any_command()` branch to fan out instead of suppress).
-- **Undo/redo** — ring buffer per `TextEditState`.
 - **IME composition preview** — winit `Preedit` events + an extra
   underlined `Text` shape under the caret. cosmic-text supports it.
 - **`Ui::wants_ime()`** — gate `window.set_ime_allowed(true)` on
@@ -306,3 +325,9 @@ already authored at ~25% alpha so it doesn't obscure the glyphs).
 - **Tab focus cycling** — needs a focus-order traversal over the
   cascade; eats Tab keypresses from focused editors when not
   multi-line.
+- **Caret blink** — needs `request_repaint`-on-timer; today the
+  caret is always-on.
+- **Op-log undo** — current undo stores full-buffer snapshots, which
+  is fine for small fields but linear in buffer size per edit-group
+  boundary. An Insert/Delete op-log would amortize better if buffer
+  sizes ever grow.
