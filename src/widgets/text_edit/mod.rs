@@ -12,6 +12,7 @@ use crate::widgets::Response;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::theme::TextEditTheme;
 use std::borrow::Cow;
+use std::collections::VecDeque;
 
 /// Cross-frame state for one [`TextEdit`]. Stored in [`Ui`]'s
 /// `WidgetId → Any` map keyed by the widget's id; lifecycle managed by
@@ -25,7 +26,7 @@ use std::borrow::Cow;
 /// reachable from inside the widget. Host code that mutates the
 /// buffer between frames may shrink it past `caret`; `show()` clamps
 /// at the top each frame.
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub(crate) struct TextEditState {
     pub(crate) caret: usize,
     /// Selection anchor. `None` = no selection. Invariant: never
@@ -38,6 +39,118 @@ pub(crate) struct TextEditState {
     /// Was the widget pressed last frame? Used to detect the press
     /// rising edge for anchor latching.
     pub(crate) prev_pressed: bool,
+    pub(crate) undo: VecDeque<EditSnapshot>,
+    pub(crate) redo: Vec<EditSnapshot>,
+    /// Kind of the most recent recorded edit, used to coalesce
+    /// consecutive same-kind edits (typing chars, deleting chars) into
+    /// a single undo unit. `None` after any caret-only motion so the
+    /// next edit always opens a fresh group.
+    pub(crate) last_edit_kind: Option<EditKind>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct EditSnapshot {
+    pub(crate) text: String,
+    pub(crate) caret: usize,
+    pub(crate) selection: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum EditKind {
+    Typing,
+    Delete,
+    /// Bulk edits (paste, cut, clear, newline insert) — never coalesce.
+    Other,
+}
+
+const UNDO_LIMIT: usize = 128;
+
+fn record_edit(text: &str, state: &mut TextEditState, kind: EditKind) {
+    let coalesce =
+        kind != EditKind::Other && state.last_edit_kind == Some(kind) && !state.undo.is_empty();
+    if !coalesce {
+        if state.undo.len() >= UNDO_LIMIT {
+            state.undo.pop_front();
+        }
+        state.undo.push_back(EditSnapshot {
+            text: text.to_owned(),
+            caret: state.caret,
+            selection: state.selection,
+        });
+    }
+    state.redo.clear();
+    state.last_edit_kind = Some(kind);
+}
+
+fn apply_history(text: &mut String, state: &mut TextEditState, snap: EditSnapshot) {
+    *text = snap.text;
+    state.caret = snap.caret.min(text.len());
+    state.selection = snap
+        .selection
+        .filter(|&a| a <= text.len() && a != state.caret);
+    state.last_edit_kind = None;
+}
+
+fn apply_undo(text: &mut String, state: &mut TextEditState) {
+    let Some(snap) = state.undo.pop_back() else {
+        return;
+    };
+    state.redo.push(EditSnapshot {
+        text: text.clone(),
+        caret: state.caret,
+        selection: state.selection,
+    });
+    apply_history(text, state, snap);
+}
+
+fn apply_redo(text: &mut String, state: &mut TextEditState) {
+    let Some(snap) = state.redo.pop() else { return };
+    state.undo.push_back(EditSnapshot {
+        text: text.clone(),
+        caret: state.caret,
+        selection: state.selection,
+    });
+    apply_history(text, state, snap);
+}
+
+/// Cut the live selection to the clipboard. No-op when nothing is
+/// selected — caller can use `state.sel_range().is_some()` to gate
+/// menu / shortcut UI affordances.
+fn cut_selection(text: &mut String, state: &mut TextEditState) {
+    let Some(r) = state.sel_range() else { return };
+    crate::clipboard::set(&text[r.clone()]);
+    record_edit(text, state, EditKind::Other);
+    text.replace_range(r.clone(), "");
+    state.caret = r.start;
+    state.selection = None;
+}
+
+/// Paste `raw` at the caret, replacing any live selection. Sanitizes
+/// line breaks for single-line editors so `\n` / `\r` never enter the
+/// buffer. No-op on an empty clipboard.
+fn paste_at_caret(text: &mut String, state: &mut TextEditState, raw: &str, multiline: bool) {
+    let cleaned: Cow<'_, str> = if multiline {
+        Cow::Borrowed(raw)
+    } else {
+        Cow::Owned(sanitize_single_line(raw))
+    };
+    if cleaned.is_empty() {
+        return;
+    }
+    record_edit(text, state, EditKind::Other);
+    delete_selection(text, state);
+    text.insert_str(state.caret, &cleaned);
+    state.caret += cleaned.len();
+}
+
+fn clear_buffer(text: &mut String, state: &mut TextEditState) {
+    if text.is_empty() {
+        return;
+    }
+    record_edit(text, state, EditKind::Other);
+    text.clear();
+    state.caret = 0;
+    state.selection = None;
 }
 
 impl TextEditState {
@@ -49,7 +162,9 @@ impl TextEditState {
 
 /// Move the caret to `new_caret`, extending the selection if `extend`
 /// is set (latches anchor on the first extending move) or collapsing it
-/// otherwise. Maintains the "never Some(caret)" invariant.
+/// otherwise. Maintains the "never Some(caret)" invariant. Always ends
+/// the current edit-coalesce group — caret-only motion breaks Typing /
+/// Delete runs into separate undo entries.
 fn move_caret(state: &mut TextEditState, new_caret: usize, extend: bool) {
     if extend {
         state.selection.get_or_insert(state.caret);
@@ -60,6 +175,7 @@ fn move_caret(state: &mut TextEditState, new_caret: usize, extend: bool) {
     if state.selection == Some(state.caret) {
         state.selection = None;
     }
+    state.last_edit_kind = None;
 }
 
 /// Strip line-break chars from an inbound string so the single-line
@@ -104,10 +220,10 @@ fn delete_selection(text: &mut String, state: &mut TextEditState) -> bool {
     true
 }
 
-/// Single-line editable text leaf. v1 supports: typing (via `KeyDown`
-/// printable chars or IME `Text` commits), backspace/delete, left/right
-/// arrows, home/end, escape-to-blur, click-to-place-caret. Selection,
-/// shift+arrow, drag-select, multi-line, copy/paste, undo are deferred.
+/// Editable text leaf. Supports typing (`KeyDown` printable chars or
+/// IME `Text` commits), backspace/delete, left/right (+ shift / home /
+/// end), drag-select, multi-line, cut/copy/paste, undo+redo
+/// (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z), escape-to-blur, click-to-place-caret.
 ///
 /// Borrows `&'a mut String` for the buffer — host owns the storage,
 /// widget mutates in place. State row carries only caret/selection so
@@ -384,13 +500,8 @@ impl<'a> TextEdit<'a> {
                 .enabled(has_sel)
                 .show(ui, popup)
                 .clicked()
-                && let Some(r) = sel.clone()
             {
-                crate::clipboard::set(&text[r.clone()]);
-                text.replace_range(r.clone(), "");
-                let st = ui.state_mut::<TextEditState>(id);
-                st.caret = r.start;
-                st.selection = None;
+                cut_selection(text, ui.state_mut::<TextEditState>(id));
             }
             if MenuItem::new("Copy")
                 .shortcut(Shortcut::cmd('C'))
@@ -407,18 +518,12 @@ impl<'a> TextEdit<'a> {
                 .show(ui, popup)
                 .clicked()
             {
-                let cb = crate::clipboard::get();
-                let st_snap = *ui.state_mut::<TextEditState>(id);
-                let new_caret = if let Some(r) = st_snap.sel_range() {
-                    text.replace_range(r.clone(), &cb);
-                    r.start + cb.len()
-                } else {
-                    text.insert_str(st_snap.caret, &cb);
-                    st_snap.caret + cb.len()
-                };
-                let st = ui.state_mut::<TextEditState>(id);
-                st.caret = new_caret;
-                st.selection = None;
+                paste_at_caret(
+                    text,
+                    ui.state_mut::<TextEditState>(id),
+                    &crate::clipboard::get(),
+                    multiline,
+                );
             }
             MenuItem::separator(ui);
             if MenuItem::new("Clear")
@@ -426,10 +531,7 @@ impl<'a> TextEdit<'a> {
                 .show(ui, popup)
                 .clicked()
             {
-                text.clear();
-                let st = ui.state_mut::<TextEditState>(id);
-                st.caret = 0;
-                st.selection = None;
+                clear_buffer(text, ui.state_mut::<TextEditState>(id));
             }
         });
 
@@ -526,6 +628,7 @@ fn handle_input(
             state.drag_anchor = Some(hit);
             state.selection = None;
             state.caret = hit;
+            state.last_edit_kind = None;
         } else {
             let anchor = state.drag_anchor.unwrap_or(hit);
             state.caret = hit;
@@ -547,45 +650,47 @@ fn handle_input(
     // ModifiersChanged + keystrokes-for-shortcut sequence still leaves
     // typed text intact), then `frame_keys` for navigation/edits.
     if !ui.input.frame_text.is_empty() {
-        delete_selection(text, state);
         let to_insert: String = if multiline {
             ui.input.frame_text.clone()
         } else {
             sanitize_single_line(&ui.input.frame_text)
         };
-        text.insert_str(state.caret, &to_insert);
-        state.caret += to_insert.len();
+        if !to_insert.is_empty() {
+            record_edit(text, state, EditKind::Typing);
+            delete_selection(text, state);
+            text.insert_str(state.caret, &to_insert);
+            state.caret += to_insert.len();
+        }
     }
 
     // Drain keys via the pure `apply_key`; vertical-nav probes
-    // happen out-of-line because they need the shaper + layout.
-    // Collect motions first, then resolve, so the borrow on
-    // `frame_keys` releases before we touch `ui.text`.
+    // happen inline because they need the shaper + layout. Indexing
+    // (instead of iter) keeps the borrow on `frame_keys` short-lived
+    // so we can dispatch to `ui.text` inside the same loop without a
+    // scratch Vec.
     let mut vert: Option<VerticalMotion> = None;
-    let mut pending_vert: Vec<VerticalMotion> = Vec::new();
-    for kp in &ui.input.frame_keys {
-        if apply_key(text, state, *kp, multiline, clipboard_active, &mut vert) {
+    let n = ui.input.frame_keys.len();
+    for i in 0..n {
+        let kp = ui.input.frame_keys[i];
+        if apply_key(text, state, kp, multiline, clipboard_active, &mut vert) {
             *blur_after = true;
         }
         if let Some(v) = vert.take() {
-            pending_vert.push(v);
+            let pos = ui
+                .text
+                .cursor_xy(text, state.caret, font_size, line_height_px, wrap_target);
+            let probe_y = match v.direction {
+                VerticalDir::Up => pos.y_top - 1.0,
+                VerticalDir::Down => pos.y_top + pos.line_height + 1.0,
+            };
+            let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
+                0
+            } else {
+                ui.text
+                    .byte_at_xy(text, pos.x, probe_y, font_size, line_height_px, wrap_target)
+            };
+            move_caret(state, target, v.extend);
         }
-    }
-    for v in pending_vert {
-        let pos = ui
-            .text
-            .cursor_xy(text, state.caret, font_size, line_height_px, wrap_target);
-        let probe_y = match v.direction {
-            VerticalDir::Up => pos.y_top - 1.0,
-            VerticalDir::Down => pos.y_top + pos.line_height + 1.0,
-        };
-        let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
-            0
-        } else {
-            ui.text
-                .byte_at_xy(text, pos.x, probe_y, font_size, line_height_px, wrap_target)
-        };
-        move_caret(state, target, v.extend);
     }
 
     InputResult {
@@ -635,15 +740,23 @@ fn apply_key(
     const COPY: Shortcut = Shortcut::cmd('C');
     const CUT: Shortcut = Shortcut::cmd('X');
     const PASTE: Shortcut = Shortcut::cmd('V');
+    const UNDO: Shortcut = Shortcut::cmd('Z');
+    const REDO: Shortcut = Shortcut::cmd_shift('Z');
 
+    if UNDO.matches(kp) {
+        apply_undo(text, state);
+        return false;
+    }
+    if REDO.matches(kp) {
+        apply_redo(text, state);
+        return false;
+    }
     if clipboard_active {
         if SELECT_ALL.matches(kp) {
             if !text.is_empty() {
                 state.selection = Some(0);
                 state.caret = text.len();
-                if state.selection == Some(state.caret) {
-                    state.selection = None;
-                }
+                state.last_edit_kind = None;
             }
             return false;
         }
@@ -654,51 +767,45 @@ fn apply_key(
             return false;
         }
         if CUT.matches(kp) {
-            if let Some(r) = state.sel_range() {
-                crate::clipboard::set(&text[r.clone()]);
-                text.replace_range(r.clone(), "");
-                state.caret = r.start;
-                state.selection = None;
-            }
+            cut_selection(text, state);
             return false;
         }
         if PASTE.matches(kp) {
-            let raw = crate::clipboard::get();
-            let cb: String = if multiline {
-                raw
-            } else {
-                sanitize_single_line(&raw)
-            };
-            if !cb.is_empty() {
-                delete_selection(text, state);
-                text.insert_str(state.caret, &cb);
-                state.caret += cb.len();
-            }
+            paste_at_caret(text, state, &crate::clipboard::get(), multiline);
             return false;
         }
     }
     let shift = kp.mods.shift;
     match kp.key {
         Key::Char(c) if !kp.mods.any_command() => {
+            record_edit(text, state, EditKind::Typing);
             delete_selection(text, state);
             let mut buf = [0u8; 4];
             let s = c.encode_utf8(&mut buf);
             text.insert_str(state.caret, s);
             state.caret += s.len();
         }
-        Key::Backspace if !delete_selection(text, state) && state.caret > 0 => {
-            let prev = prev_char_boundary(text, state.caret);
-            text.replace_range(prev..state.caret, "");
-            state.caret = prev;
+        Key::Backspace => {
+            let has_sel = state.sel_range().is_some();
+            if has_sel || state.caret > 0 {
+                record_edit(text, state, EditKind::Delete);
+                if !delete_selection(text, state) {
+                    let prev = prev_char_boundary(text, state.caret);
+                    text.replace_range(prev..state.caret, "");
+                    state.caret = prev;
+                }
+            }
         }
-        Key::Delete if !delete_selection(text, state) && state.caret < text.len() => {
-            let next = next_char_boundary(text, state.caret);
-            text.replace_range(state.caret..next, "");
+        Key::Delete => {
+            let has_sel = state.sel_range().is_some();
+            if has_sel || state.caret < text.len() {
+                record_edit(text, state, EditKind::Delete);
+                if !delete_selection(text, state) {
+                    let next = next_char_boundary(text, state.caret);
+                    text.replace_range(state.caret..next, "");
+                }
+            }
         }
-        // Backspace/Delete after the guard's `delete_selection` ran:
-        // the guard already consumed a live selection or established
-        // we're at the buffer edge; nothing left to do.
-        Key::Backspace | Key::Delete => {}
         Key::ArrowLeft => {
             let target = if !shift && let Some(r) = state.sel_range() {
                 r.start
@@ -715,6 +822,10 @@ fn apply_key(
             };
             move_caret(state, target, shift);
         }
+        // Vertical motion in multi-line mode emits a `VerticalMotion`
+        // for the caller to resolve against the shaper (needs layout
+        // context this pure fn doesn't carry). Caret hasn't moved yet
+        // so the coalesce reset rides on the caller's `move_caret`.
         Key::ArrowUp if multiline => {
             *out_vertical = Some(VerticalMotion {
                 direction: VerticalDir::Up,
@@ -728,6 +839,7 @@ fn apply_key(
             });
         }
         Key::Enter if multiline => {
+            record_edit(text, state, EditKind::Other);
             delete_selection(text, state);
             text.insert(state.caret, '\n');
             state.caret += 1;
@@ -739,6 +851,7 @@ fn apply_key(
             // there's no selection to drop.
             if state.selection.is_some() {
                 state.selection = None;
+                state.last_edit_kind = None;
             } else {
                 return true;
             }
