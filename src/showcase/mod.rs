@@ -25,6 +25,7 @@ pub mod swatch;
 pub mod text;
 pub mod text_edit;
 pub mod text_zorder;
+pub mod tooltips;
 pub mod transform;
 pub mod visibility;
 pub mod wrap;

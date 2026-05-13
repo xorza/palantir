@@ -5,6 +5,7 @@ mod frame;
 mod panel;
 mod popup;
 mod scroll;
+mod tooltip;
 mod track_caller;
 mod visibility;
 mod zstack;

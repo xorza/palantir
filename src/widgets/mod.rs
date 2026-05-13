@@ -8,6 +8,7 @@ pub(crate) mod scroll;
 pub(crate) mod text;
 pub(crate) mod text_edit;
 pub(crate) mod theme;
+pub(crate) mod tooltip;
 
 use crate::forest::tree::NodeId;
 use crate::forest::widget_id::WidgetId;

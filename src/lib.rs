@@ -76,5 +76,6 @@ pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
 pub use widgets::theme::{
     AnimatedLook, ButtonTheme, ContextMenuTheme, MenuItemTheme, ScrollbarTheme, TextEditTheme,
-    TextStyle, Theme, WidgetLook,
+    TextStyle, Theme, TooltipTheme, WidgetLook,
 };
+pub use widgets::tooltip::Tooltip;
