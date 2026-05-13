@@ -239,24 +239,16 @@ impl ApplicationHandler for App {
 
 impl State {
     fn draw(&mut self) {
-        // Split-borrow: `frame_and_render_with` needs `&mut self.host`
-        // and `&mut self.app` simultaneously, and the closure needs
-        // `&mut self.active`. A plain `self.host.frame_and_render_with(
-        // ..., &mut self.app, |ui| build_ui(ui, &mut self.active))` would
-        // borrow `self` mutably twice over.
-        let Self {
-            host,
-            surface,
-            config,
-            scale_factor,
-            active,
+        let host = &mut self.host;
+        let app = &mut self.app;
+        let active = &mut self.active;
+        self.next = host.frame_and_render_with(
+            &self.surface,
+            &self.config,
+            self.scale_factor,
             app,
-            next,
-            ..
-        } = self;
-        *next = host.frame_and_render_with(surface, config, *scale_factor, app, |ui| {
-            build_ui(ui, active)
-        });
+            |ui| build_ui(ui, active),
+        );
     }
 }
 
