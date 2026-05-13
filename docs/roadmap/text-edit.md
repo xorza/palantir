@@ -7,17 +7,12 @@ escape-to-blur (two-stage), selection (visible wash via
 `selection_rects` + shift/arrow extension + ctrl/cmd+A + edits replace
 the range), undo/redo (128-entry ring with edit-kind coalescing),
 clipboard (ctrl/cmd+c/x/v + right-click context menu via `arboard`),
-IME `Commit`, placeholder, theme per-state, disabled. See
-`src/widgets/text_edit/design.md`.
+IME `Commit`, placeholder, theme per-state, disabled, **overflow
+handling (`ClipMode::Rect` + scroll-to-caret: single-line x,
+multi-line y)**. See `src/widgets/text_edit/design.md`.
 
 ## Next — tier 1, perceived-quality bar
 
-- **Overflow handling.** Set `ClipMode::Rect` on the editor's own rect
-  so glyphs / caret / selection don't bleed past a `Fixed`-sized
-  editor. Then horizontal scroll-to-caret for single-line and vertical
-  scroll-to-caret for multi-line so the caret stays visible as text
-  grows past the box. Today the widget paints unclipped and has no
-  internal scroll offset.
 - **Caret blink.** Tick alpha off `dt`. Reads as "frozen" without it.
   Needs the animation-tick infra consumer.
 - **Word navigation.** Ctrl/Cmd+ArrowLeft/Right,
