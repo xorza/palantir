@@ -2,8 +2,10 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
+use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
@@ -251,6 +253,27 @@ fn sanitize_single_line(s: &str) -> String {
     out
 }
 
+/// Place a text bbox of size `measured` inside an inner rect of size
+/// `inner` per `align`, returning the top-left offset. Overflow on
+/// either axis clamps that axis to zero, matching the encoder's
+/// `align_text_in` so widget-side caret/selection placement can't
+/// drift from the rendered glyphs. The widget owns this rather than
+/// delegating to `Shape::Text.align` because caret + selection rects
+/// must use the same offset, and they aren't `Shape::Text`.
+fn align_offset(inner: Size, measured: Size, align: Align) -> Vec2 {
+    let dx = match align.halign() {
+        HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
+        HAlign::Center => (inner.w - measured.w) * 0.5,
+        HAlign::Right => inner.w - measured.w,
+    };
+    let dy = match align.valign() {
+        VAlign::Auto | VAlign::Top | VAlign::Stretch => 0.0,
+        VAlign::Center => (inner.h - measured.h) * 0.5,
+        VAlign::Bottom => inner.h - measured.h,
+    };
+    Vec2::new(dx.max(0.0), dy.max(0.0))
+}
+
 /// Bundle of text-shape parameters resolved once at the top of
 /// `show()` and threaded down to input handling, scroll, and caret
 /// resolution. All five fields are read-only for the duration of one
@@ -338,6 +361,12 @@ pub struct TextEdit<'a> {
     /// soft-wraps to the editor's inner width via cosmic-text. v1
     /// single-line behaviour is the default — flip via [`Self::multiline`].
     multiline: bool,
+    /// Caller-supplied alignment of the text inside the editor's inner
+    /// rect. `None` means "pick the mode-appropriate default" —
+    /// `Align::LEFT` (left + vcenter) for single-line, `Align::TOP_LEFT`
+    /// for multi-line. Caret and selection rects derive from the same
+    /// offset, so any alignment keeps them tracking the glyphs.
+    align: Option<Align>,
 }
 
 impl<'a> TextEdit<'a> {
@@ -361,7 +390,18 @@ impl<'a> TextEdit<'a> {
             style: None,
             placeholder: Cow::Borrowed(""),
             multiline: false,
+            align: None,
         }
+    }
+
+    /// Place the text inside the editor's inner rect (the rect minus
+    /// padding). Defaults: `Align::LEFT` (left + vcenter) for
+    /// single-line, `Align::TOP_LEFT` for multi-line. Overflow clamps
+    /// the offset to zero on each axis so caret + horizontal scroll
+    /// keep working when the text exceeds the inner rect.
+    pub fn align(mut self, a: Align) -> Self {
+        self.align = Some(a);
+        self
     }
 
     /// Switch to multi-line mode. Enter inserts `\n` (instead of
@@ -443,6 +483,40 @@ impl<'a> TextEdit<'a> {
             family: look.text.family,
             multiline: self.multiline,
         };
+        // Resolved alignment: explicit `.align(...)` wins, else the
+        // mode-appropriate default. Single-line vcenters the one
+        // visual line; multi-line top-lefts so growing content fills
+        // downward.
+        let align = self.align.unwrap_or(if ctx.multiline {
+            Align::TOP_LEFT
+        } else {
+            Align::LEFT
+        });
+        // Single source of truth for text origin: measure the buffer,
+        // then place its bbox inside the inner rect per `align`. The
+        // resulting `(dx, dy)` is added to the text origin, to the
+        // caret + selection rects, and subtracted from the pointer
+        // local coords in the click hit-test — all three views stay in
+        // sync. Overflow clamps to zero on each axis (encoder
+        // convention), leaving scroll-to-caret to keep the active end
+        // visible.
+        let offset = if let Some(r) = response.rect {
+            let measured = ui
+                .text
+                .measure(
+                    self.text,
+                    ctx.font_size,
+                    ctx.line_height_px,
+                    ctx.wrap_target,
+                    ctx.family,
+                )
+                .size;
+            let inner_w = (r.size.w - ctx.padding.horiz()).max(0.0);
+            let inner_h = (r.size.h - ctx.padding.vert()).max(0.0);
+            align_offset(Size::new(inner_w, inner_h), measured, align)
+        } else {
+            Vec2::ZERO
+        };
 
         // Phase 1: input handling. Touches `ui.state` and `ui.input`
         // (separate fields, disjoint borrows). Click-to-place-caret
@@ -457,7 +531,7 @@ impl<'a> TextEdit<'a> {
             (s.caret, s.selection)
         };
         let mut blur_after = false;
-        let input = handle_input(ui, id, is_focused, self.text, &ctx, &mut blur_after);
+        let input = handle_input(ui, id, is_focused, self.text, &ctx, offset, &mut blur_after);
         let caret_byte = input.caret;
         let selection = input.selection;
 
@@ -543,8 +617,8 @@ impl<'a> TextEdit<'a> {
                     |x, y, w, h| {
                         ui.forest.add_shape(Shape::RoundedRect {
                             local_rect: Some(Rect::new(
-                                ctx.padding.left + x - scroll.x,
-                                ctx.padding.top + y - scroll.y,
+                                ctx.padding.left + offset.x + x - scroll.x,
+                                ctx.padding.top + offset.y + y - scroll.y,
                                 w,
                                 h,
                             )),
@@ -571,8 +645,8 @@ impl<'a> TextEdit<'a> {
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_rect: Some(Rect::new(
-                        ctx.padding.left - scroll.x,
-                        ctx.padding.top - scroll.y,
+                        ctx.padding.left + offset.x - scroll.x,
+                        ctx.padding.top + offset.y - scroll.y,
                         0.0,
                         0.0,
                     )),
@@ -596,8 +670,8 @@ impl<'a> TextEdit<'a> {
             // visible half of the blink cycle.
             if is_focused && caret_visible {
                 let caret_rect = Rect::new(
-                    ctx.padding.left + caret_pos.x - scroll.x,
-                    ctx.padding.top + caret_pos.y_top - scroll.y,
+                    ctx.padding.left + offset.x + caret_pos.x - scroll.x,
+                    ctx.padding.top + offset.y + caret_pos.y_top - scroll.y,
                     theme.caret_width,
                     caret_pos.line_height,
                 );
@@ -706,6 +780,7 @@ fn handle_input(
     is_focused: bool,
     text: &mut String,
     ctx: &ShapeCtx,
+    align_offset: Vec2,
     blur_after: &mut bool,
 ) -> InputResult {
     let resp_state = ui.response_for(id);
@@ -749,8 +824,8 @@ fn handle_input(
         // coords. Updated scroll for this frame is computed after
         // `handle_input` returns — the user clicked on what they
         // saw, which is last frame's scroll.
-        let local_x = ptr.x - rect.min.x - ctx.padding.left + state.scroll.x;
-        let local_y = ptr.y - rect.min.y - ctx.padding.top + state.scroll.y;
+        let local_x = ptr.x - rect.min.x - ctx.padding.left - align_offset.x + state.scroll.x;
+        let local_y = ptr.y - rect.min.y - ctx.padding.top - align_offset.y + state.scroll.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
