@@ -265,7 +265,7 @@ fn canvas_polylines(ui: &mut Ui) {
                 );
                 ui.add_shape(Shape::Polyline {
                     points: &pts,
-                    colors: PolylineColors::Single(c.into()),
+                    colors: PolylineColors::Single(c),
                     width: 1.5,
                     cap: LineCap::Round,
                     join: LineJoin::Round,
