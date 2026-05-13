@@ -7,14 +7,14 @@ escape-to-blur (two-stage), selection (visible wash via
 `selection_rects` + shift/arrow extension + ctrl/cmd+A + edits replace
 the range), undo/redo (128-entry ring with edit-kind coalescing),
 clipboard (ctrl/cmd+c/x/v + right-click context menu via `arboard`),
-IME `Commit`, placeholder, theme per-state, disabled, **overflow
+IME `Commit`, placeholder, theme per-state, disabled, overflow
 handling (`ClipMode::Rect` + scroll-to-caret: single-line x,
-multi-line y)**. See `src/widgets/text_edit/design.md`.
+multi-line y), **caret blink (500 ms half-period, resets on any caret
+/ selection / text change, host wake via `request_repaint_after`)**.
+See `src/widgets/text_edit/design.md`.
 
 ## Next — tier 1, perceived-quality bar
 
-- **Caret blink.** Tick alpha off `dt`. Reads as "frozen" without it.
-  Needs the animation-tick infra consumer.
 - **Word navigation.** Ctrl/Cmd+ArrowLeft/Right,
   Ctrl/Cmd+Shift+ArrowLeft/Right, double-click selects word,
   triple-click selects line / all. Universal expectation.

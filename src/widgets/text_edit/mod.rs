@@ -15,6 +15,13 @@ use crate::widgets::theme::TextEditTheme;
 use glam::Vec2;
 use std::borrow::Cow;
 use std::collections::VecDeque;
+use std::time::Duration;
+
+/// Half-period of the caret blink, in seconds. The caret is visible
+/// for `BLINK_HALF` then hidden for `BLINK_HALF`, repeating. Reset
+/// to the visible phase on every caret or text change so during
+/// active typing the caret stays solid.
+const BLINK_HALF: f32 = 0.5;
 
 /// Cross-frame state for one [`TextEdit`]. Stored in [`Ui`]'s
 /// `WidgetId → Any` map keyed by the widget's id; lifecycle managed by
@@ -56,6 +63,11 @@ pub(crate) struct TextEditState {
     /// inside the visible area; subtracted from every shape
     /// (text / selection / caret) at emit time.
     pub(crate) scroll: Vec2,
+    /// `Ui::time` snapshot from the last frame the caret moved, text
+    /// changed, or selection shifted. The blink phase is computed
+    /// against this so the caret stays solid for the first
+    /// [`BLINK_HALF`] seconds after any input.
+    pub(crate) last_caret_change: Duration,
 }
 
 #[derive(Clone, Debug)]
@@ -398,6 +410,14 @@ impl<'a> TextEdit<'a> {
         // (separate fields, disjoint borrows). Click-to-place-caret
         // happens here too, before keystroke processing, so a click +
         // type in the same frame inserts at the click point.
+        // Snapshot caret + selection + text length before input so
+        // the blink reset can detect any change without instrumenting
+        // every mutation site.
+        let text_len_before = self.text.len();
+        let (caret_before, sel_before) = {
+            let s = ui.state_mut::<TextEditState>(id);
+            (s.caret, s.selection)
+        };
         let mut blur_after = false;
         let input = handle_input(
             ui,
@@ -414,6 +434,9 @@ impl<'a> TextEdit<'a> {
         );
         let caret_byte = input.caret;
         let selection = input.selection;
+        let caret_changed = caret_before != caret_byte
+            || sel_before != ui.state_mut::<TextEditState>(id).selection
+            || text_len_before != self.text.len();
 
         // Phase 2: scroll-to-caret. Compute the caret position in
         // unscrolled coords once (used for both the scroll update
@@ -439,6 +462,26 @@ impl<'a> TextEdit<'a> {
             caret_pos.line_height,
             theme.caret_width,
         );
+
+        // Caret blink. Reset to phase 0 (solid) on any caret /
+        // selection / text change so active typing always paints a
+        // visible caret. Then flip on/off every `BLINK_HALF` seconds.
+        // Schedule a wake at the next phase boundary; deadlines
+        // dedup so re-scheduling each frame doesn't pile up.
+        let now = ui.time;
+        let caret_visible = if is_focused {
+            let state = ui.state_mut::<TextEditState>(id);
+            if caret_changed {
+                state.last_caret_change = now;
+            }
+            let elapsed = now.saturating_sub(state.last_caret_change).as_secs_f32();
+            let phase = (elapsed / BLINK_HALF).floor();
+            let until_next = ((phase + 1.0) * BLINK_HALF - elapsed).max(0.0);
+            ui.request_repaint_after(Duration::from_secs_f32(until_next));
+            (phase as u64).is_multiple_of(2)
+        } else {
+            true
+        };
 
         // Phase 3: open the node and push shapes. `cursor_xy` +
         // `selection_rects` handle both single- and multi-line via
@@ -531,8 +574,9 @@ impl<'a> TextEdit<'a> {
 
             // Caret. Painted as a thin Overlay rect at owner-local
             // coords so it stays in the widget's clip and renders
-            // *over* the text. Only when focused.
-            if is_focused {
+            // *over* the text. Only when focused and inside the
+            // visible half of the blink cycle.
+            if is_focused && caret_visible {
                 let caret_rect = Rect::new(
                     padding.left + caret_pos.x - scroll.x,
                     padding.top + caret_pos.y_top - scroll.y,

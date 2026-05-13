@@ -11,8 +11,11 @@ behind the glyphs. Cut/copy/paste via Cmd/Ctrl+X/C/V and a default
 right-click menu; paste sanitizes `\n`/`\r` to spaces in single-line
 mode. Undo/redo via Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z with snapshot
 coalescing — consecutive typing or consecutive deletes group into one
-undo unit; any caret-only motion ends the group. IME preedit and
-caret blink are still deferred — see "Out of scope" at the end.
+undo unit; any caret-only motion ends the group. Overflow handling
+(`ClipMode::Rect` + scroll-to-caret) keeps glyphs and caret inside
+the editor's rect when content exceeds it; caret blinks on a 500 ms
+half-period and resets to "visible" on any caret / text change. IME
+preedit is still deferred — see "Out of scope" at the end.
 
 Code lives in `src/widgets/text_edit/{mod.rs,tests.rs}`.
 
@@ -49,6 +52,7 @@ pub(crate) struct TextEditState {
     pub(crate) redo: Vec<EditSnapshot>,            // cleared on every fresh edit
     pub(crate) last_edit_kind: Option<EditKind>,   // Typing / Delete / Other; None ⇒ new group
     pub(crate) scroll: Vec2,                       // viewport offset; subtracted at emit time
+    pub(crate) last_caret_change: Duration,        // `Ui::time` of last caret/text/sel change
 }
 ```
 
@@ -268,6 +272,25 @@ Every emitted shape (selection wash, text, caret) shifts its
 `scroll` back into pointer-local coords before calling `byte_at_xy`
 so the user clicks on what they see, not the unscrolled layout.
 
+### Caret blink
+
+`state.last_caret_change: Duration` snapshots `Ui::time` whenever the
+caret position, selection anchor, or buffer length changes between
+frames. Visibility is `((Ui::time − last_caret_change) / BLINK_HALF)
+.floor()` even → on, odd → off; `BLINK_HALF = 0.5 s`. The caret
+shape is skipped on hidden frames so it costs nothing.
+
+`Ui::request_repaint_after(until_next_phase)` is called every focused
+frame so the host wakes at each on/off flip; deadlines dedup, so
+re-scheduling the same absolute time across frames doesn't pile up.
+Unfocused editors don't schedule wakes — the caret isn't rendered
+anyway.
+
+Reset detection runs around `handle_input`: snapshot `(caret,
+selection, text.len())` before, compare after. Any difference resets
+the phase to "visible" so the caret stays solid during active typing
+instead of flickering on every keystroke.
+
 ## Theme
 
 ```rust
@@ -350,8 +373,6 @@ already authored at ~25% alpha so it doesn't obscure the glyphs).
 - **Tab focus cycling** — needs a focus-order traversal over the
   cascade; eats Tab keypresses from focused editors when not
   multi-line.
-- **Caret blink** — needs `request_repaint`-on-timer; today the
-  caret is always-on.
 - **Op-log undo** — current undo stores full-buffer snapshots, which
   is fine for small fields but linear in buffer size per edit-group
   boundary. An Insert/Delete op-log would amortize better if buffer
