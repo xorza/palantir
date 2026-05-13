@@ -462,6 +462,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 line_height_px: 16.0,
                 wrap: TextWrap::Single,
                 align: Default::default(),
+                family: crate::text::FontFamily::Sans,
             });
             ui.add_shape(Shape::Text {
                 local_rect: Some(Rect::new(0.0, 22.0, 100.0, 20.0)),
@@ -471,6 +472,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 line_height_px: 16.0,
                 wrap: TextWrap::Single,
                 align: Default::default(),
+                family: crate::text::FontFamily::Sans,
             });
         }));
     });

@@ -95,6 +95,7 @@ mod tests {
             line_height_px,
             wrap: TextWrap::Single,
             align: Align::default(),
+            family: crate::text::FontFamily::Sans,
         }
     }
 

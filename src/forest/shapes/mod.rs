@@ -136,6 +136,7 @@ impl Shapes {
                 line_height_px,
                 wrap,
                 align,
+                family,
             } => ShapeRecord::Text {
                 local_rect,
                 text,
@@ -144,6 +145,7 @@ impl Shapes {
                 line_height_px,
                 wrap,
                 align,
+                family,
             },
             Shape::Shadow {
                 local_rect,

@@ -8,6 +8,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::stroke::Stroke;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
+use crate::text::FontFamily;
 use glam::Vec2;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
@@ -94,6 +95,7 @@ pub(crate) enum ShapeRecord {
         line_height_px: f32,
         wrap: TextWrap,
         align: Align,
+        family: FontFamily,
     } = 2,
     /// User-supplied colored triangle mesh. Vertex/index data lives in
     /// the active `Tree`'s `mesh_vertices` / `mesh_indices` arenas;
@@ -240,6 +242,7 @@ impl Hash for ShapeRecord {
                 line_height_px,
                 wrap,
                 align,
+                family,
             } => {
                 match local_rect {
                     None => h.write_u8(0),
@@ -253,6 +256,7 @@ impl Hash for ShapeRecord {
                 h.write_u32(font_size_px.to_bits());
                 h.write_u32(line_height_px.to_bits());
                 h.write_u16(((align.raw() as u16) << 8) | *wrap as u8 as u16);
+                h.write_u8(*family as u8);
             }
             ShapeRecord::Mesh {
                 local_rect,

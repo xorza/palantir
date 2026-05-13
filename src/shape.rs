@@ -9,6 +9,7 @@ use crate::primitives::{
     shadow::Shadow,
     stroke::Stroke,
 };
+use crate::text::FontFamily;
 use glam::Vec2;
 use std::borrow::Cow;
 
@@ -89,6 +90,7 @@ pub enum Shape<'a> {
         line_height_px: f32,
         wrap: TextWrap,
         align: Align,
+        family: FontFamily,
     },
     /// User-supplied colored triangle mesh. The framework copies
     /// `mesh.vertices` / `mesh.indices` into the active `Tree`'s mesh

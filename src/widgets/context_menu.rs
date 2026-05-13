@@ -294,6 +294,7 @@ impl MenuItem {
                     line_height_px,
                     wrap: TextWrap::Single,
                     align: crate::layout::types::align::Align::default(),
+                    family: text_style.family,
                 });
             });
             if let Some(s) = shortcut_label {
@@ -309,6 +310,7 @@ impl MenuItem {
                         line_height_px,
                         wrap: TextWrap::Single,
                         align: crate::layout::types::align::Align::default(),
+                        family: text_style.family,
                     });
                 });
             }

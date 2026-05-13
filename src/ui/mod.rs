@@ -8,23 +8,30 @@ use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
-use crate::forest::element::Element;
+use crate::forest::element::{Configure, Element};
 use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
 use crate::input::{FocusPolicy, InputEvent, InputState, ResponseState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::types::display::Display;
+use crate::layout::types::justify::Justify;
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
+use crate::primitives::background::Background;
+use crate::primitives::color::Color;
+use crate::primitives::spacing::Spacing;
 use crate::shape::Shape;
+use crate::text::FontFamily;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
 use crate::ui::damage::{Damage, DamageEngine};
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
+use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
-use crate::widgets::theme::Theme;
+use crate::widgets::theme::{TextStyle, Theme};
 use std::time::Duration;
 
 /// Recorder + input/response broker. All public coordinates are
@@ -284,14 +291,36 @@ impl Ui {
         action_flag
     }
 
-    /// Append the `frame_stats` readout into `Layer::Debug` at the
-    /// top-left of the viewport. Records every frame so the text
-    /// changes (and damage picks up the small rect), which keeps the
-    /// FPS readout ticking on otherwise-idle frames.
+    /// Append the `frame_stats` readout into `Layer::Debug` pinned to
+    /// the top-right of the viewport, wrapped in a semi-transparent
+    /// black chrome so it stays legible against any background.
+    /// Records every frame so the text changes (and damage picks up
+    /// the small rect), which keeps the FPS readout ticking on
+    /// otherwise-idle frames.
     fn record_frame_stats(&mut self) {
-        let label = format!("f {} · {:.0} fps", self.frame_id, self.fps_ema);
-        self.layer(Layer::Debug, glam::Vec2::new(8.0, 8.0), None, |ui| {
-            Text::new(label).show(ui);
+        let label = format!("f {} · {:>4.0} fps", self.frame_id, self.fps_ema);
+        let style = TextStyle {
+            family: FontFamily::Mono,
+            color: Color::rgb(1.0, 0.2, 0.2),
+            ..self.theme.text
+        };
+        let chrome = Background {
+            fill: Color::linear_rgba(0.0, 0.0, 0.0, 0.6).into(),
+            ..Default::default()
+        };
+        self.layer(Layer::Debug, glam::Vec2::ZERO, None, |ui| {
+            Panel::hstack()
+                .size((Sizing::FILL, Sizing::Hug))
+                .justify(Justify::End)
+                .padding(Spacing::all(8.0))
+                .show(ui, |ui| {
+                    Panel::hstack()
+                        .background(chrome)
+                        .padding(Spacing::xy(8.0, 4.0))
+                        .show(ui, |ui| {
+                            Text::new(label).style(style).show(ui);
+                        });
+                });
         });
     }
 

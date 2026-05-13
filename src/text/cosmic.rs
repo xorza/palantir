@@ -11,11 +11,9 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
-use super::{MeasureResult, TextCacheKey};
+use super::{FontFamily, MeasureResult, TextCacheKey};
 use crate::primitives::size::Size;
-use glyphon::cosmic_text::{
-    Attrs, AttrsOwned, Buffer, Family, FontSystem, Metrics, Shaping, fontdb,
-};
+use glyphon::cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, fontdb};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -34,7 +32,13 @@ fn quantize(v: f32) -> u32 {
     (v.max(0.0) * 64.0).round() as u32
 }
 
-fn key_for(text: &str, size_px: f32, line_height_px: f32, max_w_px: Option<f32>) -> TextCacheKey {
+fn key_for(
+    text: &str,
+    size_px: f32,
+    line_height_px: f32,
+    max_w_px: Option<f32>,
+    family: FontFamily,
+) -> TextCacheKey {
     let mut h = DefaultHasher::new();
     text.hash(&mut h);
     let mut text_hash = h.finish();
@@ -48,7 +52,15 @@ fn key_for(text: &str, size_px: f32, line_height_px: f32, max_w_px: Option<f32>)
         quantize(size_px),
         max_w_px.map(quantize).unwrap_or(MAX_W_NONE),
         quantize(line_height_px),
+        family as u32,
     )
+}
+
+fn attrs_for(family: FontFamily) -> Attrs<'static> {
+    match family {
+        FontFamily::Sans => Attrs::new().family(Family::Name("Inter")),
+        FontFamily::Mono => Attrs::new().family(Family::Name("JetBrains Mono")),
+    }
 }
 
 struct CacheEntry {
@@ -73,7 +85,6 @@ struct CacheEntry {
 pub struct CosmicMeasure {
     font_system: FontSystem,
     cache: HashMap<TextCacheKey, CacheEntry>,
-    default_attrs: AttrsOwned,
 }
 
 impl CosmicMeasure {
@@ -84,13 +95,14 @@ impl CosmicMeasure {
         Self {
             font_system: FontSystem::new(),
             cache: HashMap::new(),
-            default_attrs: AttrsOwned::new(&Attrs::new()),
         }
     }
 
     /// Use only the bundled fonts (Inter + JetBrains Mono, regular + bold).
     /// No system font scan: fast, deterministic, and gives the same metrics
-    /// on every machine. Default family is `Inter`.
+    /// on every machine. Per-call font family selection comes from
+    /// [`FontFamily`] on each [`Self::measure`] invocation; if a named
+    /// family is missing, cosmic-text falls back through its match chain.
     pub fn with_bundled_fonts() -> Self {
         let sources = [INTER_REGULAR, INTER_BOLD, JBMONO_REGULAR, JBMONO_BOLD]
             .into_iter()
@@ -99,7 +111,6 @@ impl CosmicMeasure {
         Self {
             font_system,
             cache: HashMap::new(),
-            default_attrs: AttrsOwned::new(&Attrs::new().family(Family::Name("Inter"))),
         }
     }
 
@@ -167,6 +178,7 @@ impl CosmicMeasure {
         font_size_px: f32,
         line_height_px: f32,
         max_width_px: Option<f32>,
+        family: FontFamily,
     ) -> MeasureResult {
         if text.is_empty() || font_size_px <= 0.0 {
             return MeasureResult {
@@ -175,7 +187,7 @@ impl CosmicMeasure {
                 intrinsic_min: 0.0,
             };
         }
-        let key = key_for(text, font_size_px, line_height_px, max_width_px);
+        let key = key_for(text, font_size_px, line_height_px, max_width_px, family);
         if let Some(entry) = self.cache.get(&key) {
             return MeasureResult {
                 size: entry.measured,
@@ -190,7 +202,7 @@ impl CosmicMeasure {
         buffer.set_text(
             &mut self.font_system,
             text,
-            &self.default_attrs.as_attrs(),
+            &attrs_for(family),
             Shaping::Advanced,
             None,
         );

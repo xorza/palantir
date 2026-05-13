@@ -96,6 +96,7 @@ impl Button {
                     line_height_px: look.line_height_px(),
                     wrap: TextWrap::Single,
                     align: label_align,
+                    family: look.text.family,
                 });
             }
         });
