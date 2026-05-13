@@ -33,7 +33,7 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
                 if MenuItem::new("Copy").shortcut("⌘C").show(ui).clicked() {
                     *clicked_copy = true;
                 }
-                MenuItem::separator().show(ui);
+                MenuItem::separator(ui);
                 MenuItem::new("Paste").show(ui);
             });
         });

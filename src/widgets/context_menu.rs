@@ -13,6 +13,7 @@ use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::popup::{ClickOutside, Popup, PopupResponse};
+
 use glam::Vec2;
 use std::borrow::Cow;
 
@@ -38,59 +39,46 @@ pub(crate) struct ContextMenuState {
 /// id, so opening / dismissing survives across frames without the
 /// caller threading a flag.
 ///
-/// Two construction paths:
+/// Typical usage chains [`Self::attach`] off a trigger's `Response`,
+/// which auto-opens at the pointer on `secondary_clicked`:
 ///
-/// - [`ContextMenu::for_id`] — primitive; the menu only opens when
-///   the caller flips state via [`Self::open`] (e.g. from a keyboard
-///   shortcut) or chains [`Self::open_at`].
-/// - [`ContextMenu::attach`] — sugar that reads
-///   [`Response::secondary_clicked`] on a trigger widget and opens
-///   the menu at the current pointer position automatically.
+/// ```ignore
+/// let trigger = Button::new().label("…").show(ui);
+/// ContextMenu::attach(ui, &trigger).show(ui, |ui| { … });
+/// ```
+///
+/// For programmatic opens (keyboard shortcut, custom gesture) call
+/// [`Self::open`] before [`Self::for_id`]`(id).show(...)`.
 ///
 /// Closes on outside-click, on Esc, or when any [`MenuItem`] inside
 /// reports `clicked()`.
 pub struct ContextMenu {
     for_id: WidgetId,
-    open_at: Option<Vec2>,
 }
 
 impl ContextMenu {
     pub fn for_id(for_id: WidgetId) -> Self {
-        Self {
-            for_id,
-            open_at: None,
-        }
+        Self { for_id }
     }
 
     /// Derive `for_id` from a trigger widget's response, and auto-open
     /// at the current pointer position if the trigger reported
     /// `secondary_clicked` this frame.
-    pub fn attach(ui: &Ui, resp: &Response) -> Self {
-        let open_at = if resp.secondary_clicked() {
-            ui.pointer_pos()
-        } else {
-            None
-        };
+    pub fn attach(ui: &mut Ui, resp: &Response) -> Self {
+        if resp.secondary_clicked()
+            && let Some(p) = ui.pointer_pos()
+        {
+            ContextMenu::open(ui, resp.widget_id(), p);
+        }
         Self {
             for_id: resp.widget_id(),
-            open_at,
         }
-    }
-
-    /// Open the menu programmatically at `anchor` (surface-space).
-    /// Chains with `show`.
-    pub fn open_at(mut self, anchor: Vec2) -> Self {
-        self.open_at = Some(anchor);
-        self
     }
 
     /// Record the menu and return per-frame outcome. The body closure
     /// records [`MenuItem`]s inside `Layer::Popup`; the menu auto-
     /// closes on outside-click, Esc, or an item click.
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> ContextMenuResponse {
-        if let Some(p) = self.open_at {
-            ContextMenu::open(ui, self.for_id, p);
-        }
         if ui.escape_pressed() {
             ContextMenu::close(ui, self.for_id);
         }
@@ -116,17 +104,8 @@ impl ContextMenu {
         let PopupResponse {
             body: body_resp,
             dismissed,
+            close_requested: item_clicked,
         } = popup.show(ui, body);
-
-        // An item that handled a click already called
-        // `ContextMenu::close(ui, for_id)`, flipping our anchor to None.
-        // Detect that transition — we know anchor was `Some` above
-        // (else we'd have early-returned), so `None` now ⇒ item closed us.
-        let item_clicked = ui
-            .state_mut::<ContextMenuState>(self.for_id)
-            .anchor
-            .is_none()
-            && !dismissed;
 
         // Record measured size for next-frame clamp. If this is the
         // first frame the menu opened (last_size was None) or if the
@@ -150,7 +129,6 @@ impl ContextMenu {
         }
 
         ContextMenuResponse {
-            opened: true,
             dismissed,
             item_clicked,
         }
@@ -159,7 +137,6 @@ impl ContextMenu {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ContextMenuResponse {
-    pub opened: bool,
     pub dismissed: bool,
     pub item_clicked: bool,
 }
@@ -204,15 +181,13 @@ pub(crate) fn clamp_anchor(raw: Vec2, size: Option<Size>, surface: Rect) -> Vec2
 
 /// One row inside a [`ContextMenu`]. Label on the left, optional
 /// right-aligned shortcut hint, theme-driven hover chrome. Reports
-/// `Response` so callers branch on `clicked()`; the row also flags a
-/// per-frame bit on `Ui` so the parent `ContextMenu` auto-closes on
-/// click without the caller threading state.
+/// `Response` so callers branch on `clicked()`; the row also calls
+/// [`Popup::request_close`] on click so the parent `ContextMenu`
+/// auto-closes without the caller threading state.
 pub struct MenuItem {
     element: Element,
     label: Cow<'static, str>,
     shortcut: Option<Cow<'static, str>>,
-    enabled: bool,
-    is_separator: bool,
 }
 
 impl MenuItem {
@@ -226,8 +201,6 @@ impl MenuItem {
             element,
             label: label.into(),
             shortcut: None,
-            enabled: true,
-            is_separator: false,
         }
     }
 
@@ -237,36 +210,36 @@ impl MenuItem {
     }
 
     pub fn enabled(mut self, e: bool) -> Self {
-        self.enabled = e;
+        self.element.disabled = !e;
         self
     }
 
-    /// Thin horizontal divider — no label, no input.
+    /// Thin horizontal divider — no label, no input. Free function in
+    /// disguise: chain `.show(ui)` and ignore the response.
     #[track_caller]
-    pub fn separator() -> Self {
+    pub fn separator(ui: &mut Ui) -> Response {
         let mut element = Element::new(LayoutMode::Leaf);
         element.id = WidgetId::auto_stable();
         element.id_source = crate::forest::seen_ids::IdSource::Auto;
         element.sense = Sense::NONE;
-        Self {
-            element,
-            label: Cow::Borrowed(""),
-            shortcut: None,
-            enabled: false,
-            is_separator: true,
-        }
+        element.size = (Sizing::FILL, Sizing::Fixed(1.0)).into();
+        element.margin = Spacing::xy(0.0, 4.0);
+        element.chrome = Some(Background {
+            fill: ui.theme.context_menu.separator.into(),
+            stroke: Stroke::ZERO,
+            radius: Corners::ZERO,
+        });
+        let id = element.id;
+        let node = ui.node(element, |_| {});
+        let state = ui.response_for(id);
+        Response { node, id, state }
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        if self.is_separator {
-            return self.show_separator(ui);
-        }
-
         let id = self.element.id;
+        let disabled = self.element.disabled;
         let mut raw_state = ui.response_for(id);
-        if !self.enabled {
-            raw_state.disabled = true;
-        }
+        raw_state.disabled = disabled;
 
         let theme = ui.theme.context_menu.item.clone();
         let look = theme.pick(raw_state);
@@ -282,10 +255,6 @@ impl MenuItem {
         element.size = (Sizing::FILL, Sizing::Hug).into();
         element.padding = padding;
         element.chrome = look_bg;
-        if !self.enabled {
-            element.disabled = true;
-        }
-        // Center label/shortcut on the cross axis inside the row.
         element.gap = 16.0;
 
         let label = self.label;
@@ -329,28 +298,10 @@ impl MenuItem {
 
         let state = ui.response_for(id);
         let resp = Response { node, id, state };
-        if resp.clicked()
-            && let Some(menu_id) = ui.current_popup_id()
-        {
-            ContextMenu::close(ui, menu_id);
+        if resp.clicked() {
+            Popup::request_close(ui);
         }
         resp
-    }
-
-    fn show_separator(self, ui: &mut Ui) -> Response {
-        let id = self.element.id;
-        let color = ui.theme.context_menu.separator;
-        let mut element = self.element;
-        element.size = (Sizing::FILL, Sizing::Fixed(1.0)).into();
-        element.margin = Spacing::xy(0.0, 4.0);
-        element.chrome = Some(Background {
-            fill: color.into(),
-            stroke: Stroke::ZERO,
-            radius: Corners::ZERO,
-        });
-        let node = ui.node(element, |_| {});
-        let state = ui.response_for(id);
-        Response { node, id, state }
     }
 }
 

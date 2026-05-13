@@ -64,12 +64,6 @@ pub struct Ui {
     /// `post_record` to trigger one re-record per
     /// `run_frame`.
     relayout_requested: bool,
-    /// Stack of currently-recording popup ids. Pushed by
-    /// [`Self::with_popup_id`] around a popup body, read by content
-    /// widgets (e.g. `MenuItem`) that need to dismiss their host
-    /// without threading the id through every call. Empty between
-    /// frames; balanced push/pop is enforced by the scoped guard.
-    popup_id_stack: Vec<WidgetId>,
 }
 
 impl Default for Ui {
@@ -115,7 +109,6 @@ impl Ui {
             frame_state: FrameState::default(),
             relayout_requested: false,
             repaint_requested: false,
-            popup_id_stack: Vec::new(),
         }
     }
 
@@ -360,28 +353,6 @@ impl Ui {
     /// receiver would be a needless borrow upgrade.
     pub fn try_state<T: 'static>(&self, id: WidgetId) -> Option<&T> {
         self.state.try_get::<T>(id)
-    }
-
-    /// Run `body` with `id` pushed as the innermost "current popup" —
-    /// content widgets recorded inside can call [`Self::current_popup_id`]
-    /// to learn which popup hosts them. Used by `ContextMenu::show` so
-    /// `MenuItem` can dismiss its container without threading the id.
-    pub fn with_popup_id<R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Ui) -> R) -> R {
-        self.popup_id_stack.push(id);
-        let out = body(self);
-        let popped = self.popup_id_stack.pop();
-        assert_eq!(
-            popped,
-            Some(id),
-            "popup_id_stack unbalanced — nested record stole a pop",
-        );
-        out
-    }
-
-    /// Innermost popup id currently being recorded, or `None` when not
-    /// inside a `with_popup_id` scope.
-    pub fn current_popup_id(&self) -> Option<WidgetId> {
-        self.popup_id_stack.last().copied()
     }
 
     /// Advance an animation row keyed by `(id, slot)` and return the
