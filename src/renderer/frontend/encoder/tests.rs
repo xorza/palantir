@@ -344,13 +344,12 @@ fn clip_emits_balanced_push_pop() {
     }
 }
 
-/// Rounded-clip emission, plus encoded mask geometry: stroke width insets
-/// the encoded rect on every side; corner radii reduce by the same amount
-/// so the mask curve stays concentric with the painted stroke's inner edge.
+/// Rounded-clip emission, plus encoded mask geometry: with zero padding
+/// the mask matches the panel rect and radius verbatim — stroke is chrome
+/// only and doesn't deflate the clip.
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
-    use crate::primitives::spacing::Spacing;
     let mut ui = Ui::new();
     let mut panel_node = None;
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
@@ -401,11 +400,10 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     assert_eq!(rounded_count, 1);
 
     let panel_rect = ui.layout[Layer::Main].rect[panel_node.unwrap().index()];
-    let expected_rect = panel_rect.deflated_by(Spacing::all(2.0));
     let start = cmds.starts[rounded_idx];
     let payload: PushClipPayload = cmds.read(start);
-    assert_eq!(payload.rect, expected_rect);
-    assert_eq!(payload.radius, Corners::all(6.0));
+    assert_eq!(payload.rect, panel_rect);
+    assert_eq!(payload.radius, Corners::all(8.0));
 }
 
 #[test]

@@ -8,9 +8,7 @@ use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
-use crate::primitives::{
-    corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
-};
+use crate::primitives::{corners::Corners, rect::Rect, size::Size, transform::TranslateScale};
 use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
@@ -331,42 +329,32 @@ fn encode_node(
     }
 
     if clip {
-        // Inset the clip by the chrome's stroke width AND the panel's
-        // padding so children clip at the content rect, inside the
-        // painted stroke ring. With no chrome (paint dropped because
-        // invisible, or clip set without a Surface), stroke is 0 —
-        // there's no painted ring to stay inside of, but padding
-        // still applies. Padding semantics here match how children
-        // are laid out (parent's inner rect = rect - padding), so a
-        // child with `margin(0)` lands flush with the clip edge.
-        //
-        let stroke = chrome.map_or(0.0, |bg| bg.stroke.width);
+        // Clip deflates by `padding` only. Stroke is chrome — a visual
+        // detail of this node's own background — not a layout offset
+        // for its content. Children lay out at `rect - padding`, so
+        // clipping to the same inset keeps a `margin(0)` child flush
+        // with the clip edge. Glyphs / borders that happen to land on
+        // the stroke ring are intentional; the stroke paints over them
+        // in record order.
         let padding = tree.records.layout()[id.index()].padding;
-        let inset = Spacing {
-            left: stroke + padding.left,
-            top: stroke + padding.top,
-            right: stroke + padding.right,
-            bottom: stroke + padding.bottom,
-        };
-        let mask_rect = rect.deflated_by(inset);
+        let mask_rect = rect.deflated_by(padding);
         match mode {
             ClipMode::Rect => out.push_clip(mask_rect),
             ClipMode::Rounded => {
                 // Per-corner reduction by the larger of the two
-                // adjacent edge insets. With uniform padding this
-                // keeps the mask curve concentric with the painted
-                // stroke's inner edge; with asymmetric padding the
-                // mask snaps inside both adjacent edges (radius
-                // can't honor concentricity on both axes at once).
+                // adjacent edge insets so the mask curve stays inside
+                // both adjacent edges; radius can't honor concentricity
+                // with the painted stroke on both axes when padding is
+                // asymmetric.
                 let painted =
                     tree.clip_radius.get(id.index()).copied().expect(
                         "ClipMode::Rounded without clip_radius — open_node invariant violated",
                     );
                 let mask_radius = Corners {
-                    tl: (painted.tl - inset.top.max(inset.left)).max(0.0),
-                    tr: (painted.tr - inset.top.max(inset.right)).max(0.0),
-                    br: (painted.br - inset.bottom.max(inset.right)).max(0.0),
-                    bl: (painted.bl - inset.bottom.max(inset.left)).max(0.0),
+                    tl: (painted.tl - padding.top.max(padding.left)).max(0.0),
+                    tr: (painted.tr - padding.top.max(padding.right)).max(0.0),
+                    br: (painted.br - padding.bottom.max(padding.right)).max(0.0),
+                    bl: (painted.bl - padding.bottom.max(padding.left)).max(0.0),
                 };
                 out.push_clip_rounded(mask_rect, mask_radius);
             }

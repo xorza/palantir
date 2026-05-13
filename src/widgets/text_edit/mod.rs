@@ -463,9 +463,6 @@ impl<'a> TextEdit<'a> {
             .animate(ui, id, fallback_text, theme.anim);
         let font_size = look.text.font_size_px;
         let line_height_mult = look.text.line_height_mult;
-        // The renderer deflates by `element.padding` when laying out
-        // `ShapeRecord::Text` (see `encoder::mod.rs`). Reading the same value
-        // here keeps the caret rect aligned with the glyphs.
         let padding = self.element.padding;
 
         // Wrap target for multi-line: editor's inner width (outer −
