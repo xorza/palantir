@@ -84,6 +84,13 @@ pub struct Ui {
     pub(crate) fps_ema: f32,
     /// Set by [`Self::animate`] when an animation hasn't settled.
     pub(crate) repaint_requested: bool,
+    /// Absolute Ui-time (`self.time` units) at which a deferred
+    /// repaint should fire. Reset to `None` each frame; widgets call
+    /// [`Self::request_repaint_after`] to schedule a wake-up. Multiple
+    /// callers compose via min-aggregation — the earliest deadline
+    /// wins. Hosts read this off [`FrameReport`] and pair with
+    /// `winit::ControlFlow::WaitUntil` (or equivalent).
+    pub(crate) repaint_after: Option<Duration>,
     pub(crate) anim: AnimMap,
     /// Submission status of the last *painted* frame. NOT reset in
     /// `pre_record` — `click_on_empty_bg_does_not_force_full`
@@ -150,6 +157,7 @@ impl Ui {
             frame_state: FrameState::default(),
             relayout_requested: false,
             repaint_requested: false,
+            repaint_after: None,
         }
     }
 
@@ -205,6 +213,7 @@ impl Ui {
         self.time = now;
         self.frame_id += 1;
         self.repaint_requested = false;
+        self.repaint_after = None;
         self.relayout_requested = false;
 
         if self.should_invalidate_prev(display) {
@@ -246,6 +255,7 @@ impl Ui {
 
         FrameReport {
             repaint_requested: self.repaint_requested,
+            repaint_after: self.repaint_after,
             skip_render: damage.is_none(),
             damage,
             clear_color: self.theme.window_clear,
@@ -352,6 +362,29 @@ impl Ui {
             self.frame_id,
         );
         self.repaint_requested = true;
+    }
+
+    /// Ask the host to schedule another frame `after` from now, without
+    /// burning intervening frames. Composes via earliest-deadline-wins:
+    /// repeated calls in the same frame keep the soonest target. Use
+    /// for time-driven UI like tooltip delays where idle pixels don't
+    /// change but we still need a wake-up at a known instant.
+    #[track_caller]
+    pub fn request_repaint_after(&mut self, after: Duration) {
+        let caller = std::panic::Location::caller();
+        tracing::trace!(
+            target: "palantir.repaint",
+            "request_repaint_after({:?}) @ {}:{} (frame={})",
+            after,
+            caller.file(),
+            caller.line(),
+            self.frame_id,
+        );
+        let deadline = self.time.saturating_add(after);
+        self.repaint_after = Some(match self.repaint_after {
+            Some(prev) => prev.min(deadline),
+            None => deadline,
+        });
     }
 
     fn pre_record(&mut self) {

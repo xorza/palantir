@@ -125,7 +125,7 @@ impl Host {
         config: &wgpu::SurfaceConfiguration,
         scale_factor: f32,
         record: impl FnMut(&mut Ui),
-    ) -> bool {
+    ) -> FramePresent {
         // Bracket the body with a Tracy *discontinuous* frame so the
         // frame strip shows actual work duration, not the gap between
         // back-to-back `finish_frame!()` ticks (which counts idle time
@@ -163,6 +163,28 @@ impl Host {
 
         profiling::finish_frame!();
 
-        repaint
+        if repaint {
+            FramePresent::Immediate
+        } else if let Some(deadline) = report.repaint_after() {
+            FramePresent::At(self.start + deadline)
+        } else {
+            FramePresent::Idle
+        }
     }
+}
+
+/// Host scheduling hint returned by [`Host::frame_and_render`].
+/// Three mutually-exclusive states the event loop must service:
+///
+/// - [`Self::Immediate`] — call `request_redraw` right away
+///   (animation in flight, surface lost, occlusion change).
+/// - [`Self::At`] — schedule a wake at this `Instant` via
+///   `ControlFlow::WaitUntil`. Used for time-driven UI like tooltip
+///   delays where idle pixels don't change but a frame is still
+///   needed at a known moment.
+/// - [`Self::Idle`] — nothing pending; sleep until the next input.
+pub enum FramePresent {
+    Immediate,
+    At(Instant),
+    Idle,
 }
