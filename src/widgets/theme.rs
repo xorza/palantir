@@ -6,6 +6,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
+use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::text::FontFamily;
@@ -619,8 +620,10 @@ pub struct TooltipTheme {
     pub text: TextStyle,
     /// Padding between chrome and the text.
     pub padding: Spacing,
-    /// Max bubble width in logical px before text wraps.
-    pub max_width: f32,
+    /// Cap on the bubble's outer size. Width gates wrap; height is
+    /// usually `INF` so tall tooltips just keep growing. Builder
+    /// callers override via `.max_size(...)` (`Configure`).
+    pub max_size: Size,
     /// Seconds the pointer must rest on the trigger before the bubble
     /// shows (cold start).
     pub delay: f32,
@@ -645,7 +648,7 @@ impl Default for TooltipTheme {
             panel,
             text: TextStyle::default().with_font_size(13.0),
             padding: Spacing::xy(6.0, 4.0),
-            max_width: 280.0,
+            max_size: Size::new(280.0, f32::INFINITY),
             delay: 0.5,
             warmup: 1.0,
             gap: 6.0,
@@ -754,7 +757,8 @@ mod tests {
         let t = TooltipTheme::default();
         assert!((t.delay - 0.5).abs() < 1e-6);
         assert!((t.warmup - 1.0).abs() < 1e-6);
-        assert!((t.max_width - 280.0).abs() < 1e-6);
+        assert!((t.max_size.w - 280.0).abs() < 1e-6);
+        assert!(t.max_size.h.is_infinite());
         assert!((t.gap - 6.0).abs() < 1e-6);
     }
 

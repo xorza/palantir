@@ -47,8 +47,8 @@ pub fn build(ui: &mut Ui) {
 
                 let r = Button::new().id_salt("w-2").label("narrow").show(ui);
                 Tooltip::for_(&r)
-                    .text("Override max_width to force tighter wrap on a single tooltip.")
-                    .max_width(140.0)
+                    .text("Override max width to force tighter wrap on a single tooltip.")
+                    .max_size((140.0, f32::INFINITY))
                     .show(ui);
             });
 
