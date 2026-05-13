@@ -97,6 +97,37 @@ impl Cascades {
         None
     }
 
+    /// One reverse walk that finds the topmost match for both filters
+    /// at once. Used on `PointerMoved` to recompute hover + scroll
+    /// target without a second pass over `entries`.
+    pub(crate) fn hit_test_pair(
+        &self,
+        pos: Vec2,
+        a_filter: impl Fn(Sense) -> bool,
+        b_filter: impl Fn(Sense) -> bool,
+    ) -> HitPair {
+        let mut a = None;
+        let mut b = None;
+        for e in self.entries.iter().rev() {
+            if !e.rect.contains(pos) {
+                continue;
+            }
+            if a.is_none() && a_filter(e.sense) {
+                a = Some(e.id);
+            }
+            if b.is_none() && b_filter(e.sense) {
+                b = Some(e.id);
+            }
+            if a.is_some() && b.is_some() {
+                break;
+            }
+        }
+        HitPair {
+            hover: a,
+            scroll: b,
+        }
+    }
+
     pub(crate) fn hit_test_focusable(&self, pos: Vec2) -> Option<WidgetId> {
         for e in self.entries.iter().rev() {
             if e.focusable && e.rect.contains(pos) {
@@ -111,6 +142,12 @@ impl Cascades {
     pub(crate) fn rows_for(&self, layer: Layer) -> &[Cascade] {
         &self.rows[layer as usize]
     }
+}
+
+#[derive(Default, Clone, Copy, Debug)]
+pub(crate) struct HitPair {
+    pub(crate) hover: Option<WidgetId>,
+    pub(crate) scroll: Option<WidgetId>,
 }
 
 #[derive(Default)]

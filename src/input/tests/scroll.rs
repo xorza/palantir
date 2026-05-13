@@ -19,13 +19,13 @@ fn from_winit_line_delta_emits_scroll_lines_with_flipped_signs() {
     // both so palantir's +delta means "advance the scroll offset." Line
     // count flows through unscaled — the consuming widget multiplies by
     // its own font-derived line step.
-    let ev = InputEvent::from_winit(&wheel(MouseScrollDelta::LineDelta(2.0, 1.0)), 1.0)
-        .expect("wheel produces a Scroll event");
-    match ev {
-        InputEvent::ScrollLines(d) => {
-            assert_eq!(d, Vec2::new(-2.0, -1.0));
-        }
-        _ => panic!("expected ScrollLines, got {ev:?}"),
+    let mut got = None;
+    InputEvent::from_winit(&wheel(MouseScrollDelta::LineDelta(2.0, 1.0)), 1.0, |ev| {
+        got = Some(ev);
+    });
+    match got.expect("wheel produces a Scroll event") {
+        InputEvent::ScrollLines(d) => assert_eq!(d, Vec2::new(-2.0, -1.0)),
+        ev => panic!("expected ScrollLines, got {ev:?}"),
     }
 }
 
@@ -48,19 +48,20 @@ fn scroll_delta_for_combines_pixels_and_lines_by_line_step() {
 
 #[test]
 fn from_winit_pixel_delta_divides_by_scale_factor_and_flips_both_axes() {
-    let ev = InputEvent::from_winit(
+    let mut got = None;
+    InputEvent::from_winit(
         &wheel(MouseScrollDelta::PixelDelta(PhysicalPosition::new(
             60.0, -120.0,
         ))),
         2.0,
-    )
-    .expect("pixel-delta wheel produces a Scroll event");
-    match ev {
+        |ev| got = Some(ev),
+    );
+    match got.expect("pixel-delta wheel produces a Scroll event") {
         InputEvent::ScrollPixels(d) => {
             // x: -(60 / 2) = -30. y: -(-120 / 2) = 60.
             assert_eq!(d, Vec2::new(-30.0, 60.0));
         }
-        _ => panic!("expected Scroll, got {ev:?}"),
+        ev => panic!("expected Scroll, got {ev:?}"),
     }
 }
 

@@ -61,22 +61,24 @@ fn modifiers_from_winit_translates_each_bit() {
 #[test]
 fn from_winit_ime_commit_routing() {
     // (label, payload, expect_text). None expect = dropped cleanly.
-    let cases: &[(&str, &str, Option<&str>)] = &[
-        ("short_grapheme_emits_text", "é", Some("é")),
-        ("over_inline_cap_drops", "0123456789abcdef", None),
+    // (label, payload). Long commits split at char boundaries — the
+    // concatenated chunks must roundtrip back to the original.
+    let cases: &[(&str, &str)] = &[
+        ("short_grapheme_emits_text", "é"),
+        ("over_inline_cap_splits", "0123456789abcdef"),
+        ("cjk_long_commit_splits", "日本語入力テスト文字列"),
     ];
-    for (label, s, expect) in cases {
-        let ev = InputEvent::from_winit(
+    for (label, s) in cases {
+        let mut got = String::new();
+        InputEvent::from_winit(
             &WindowEvent::Ime(winit::event::Ime::Commit((*s).into())),
             1.0,
+            |ev| match ev {
+                InputEvent::Text(chunk) => got.push_str(chunk.as_str()),
+                other => panic!("case {label}: unexpected {other:?}"),
+            },
         );
-        match (ev, expect) {
-            (Some(InputEvent::Text(chunk)), Some(want)) => {
-                assert_eq!(chunk.as_str(), *want, "case {label}")
-            }
-            (None, None) => {}
-            (other, _) => panic!("case {label}: unexpected {other:?}"),
-        }
+        assert_eq!(got, *s, "case {label}: roundtrip");
     }
 }
 

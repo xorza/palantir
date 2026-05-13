@@ -10,14 +10,55 @@ use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::primitives::rect::Rect;
 use crate::ui::cascade::Cascades;
 use glam::Vec2;
-use rustc_hash::FxHashSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[allow(dead_code)] // Middle reserved for v2.
+#[repr(u8)]
 pub enum PointerButton {
-    Left,
-    Right,
-    Middle,
+    Left = 0,
+    Right = 1,
+    Middle = 2,
+}
+
+impl PointerButton {
+    pub(crate) const COUNT: usize = 3;
+
+    #[inline]
+    fn idx(self) -> usize {
+        self as usize
+    }
+}
+
+/// Per-button press/drag/click capture. One slot per [`PointerButton`].
+/// Cleared on release, on cascade-eviction of the captured widget, and
+/// on [`InputState::post_record`] for the one-frame edges
+/// (`frame_drag_started`, `frame_click`).
+#[derive(Default, Clone, Copy, Debug)]
+pub(crate) struct Capture {
+    /// Widget the press latched onto, or `None` if the press missed.
+    pub(crate) active: Option<WidgetId>,
+    /// Pointer position at the moment of press. Subtracted from the
+    /// current pointer position for rect-independent drag deltas.
+    pub(crate) press_pos: Option<Vec2>,
+    /// Pointer has travelled at least [`DRAG_THRESHOLD`] from
+    /// `press_pos` since the press latched. Sticky for the press
+    /// lifetime; doubles as "suppress click on release."
+    pub(crate) drag_latched: bool,
+    /// One-frame edge: the `active` id on the move that flipped
+    /// `drag_latched` `false → true`. Cleared by `post_record` / release
+    /// / eviction.
+    pub(crate) frame_drag_started: Option<WidgetId>,
+    /// One-frame edge: widget that this button's press+release latched
+    /// onto when the release landed on the same id and no drag was
+    /// latched. Cleared by `post_record`.
+    pub(crate) frame_click: Option<WidgetId>,
+}
+
+impl Capture {
+    fn clear_press(&mut self) {
+        self.press_pos = None;
+        self.drag_latched = false;
+        self.frame_drag_started = None;
+    }
 }
 
 /// What happens to the currently-focused widget when the user presses
@@ -102,32 +143,38 @@ pub struct InputDelta {
 }
 
 impl InputEvent {
-    /// Translate a winit `WindowEvent` into a palantir input event.
-    /// `scale_factor` divides physical pointer coordinates so that the produced
-    /// `PointerMoved` is in logical pixels (matches the units layout works in).
-    /// Returns `None` for events we don't currently consume.
-    pub fn from_winit(event: &winit::event::WindowEvent, scale_factor: f32) -> Option<Self> {
+    /// Translate a winit `WindowEvent` into one or more palantir input
+    /// events, invoking `emit` for each. Most events fan out 1:1; IME
+    /// commits over [`TextChunk`]'s inline capacity split into multiple
+    /// `Text` events at char boundaries so long CJK compositions don't
+    /// silently drop. `scale_factor` divides physical pointer coordinates
+    /// so that emitted `PointerMoved` is in logical pixels.
+    pub fn from_winit(
+        event: &winit::event::WindowEvent,
+        scale_factor: f32,
+        mut emit: impl FnMut(InputEvent),
+    ) {
         use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+        let s = scale_factor.max(f32::EPSILON);
         match event {
             WindowEvent::CursorMoved { position, .. } => {
-                let s = scale_factor.max(f32::EPSILON);
-                Some(InputEvent::PointerMoved(Vec2::new(
+                emit(InputEvent::PointerMoved(Vec2::new(
                     position.x as f32 / s,
                     position.y as f32 / s,
-                )))
+                )));
             }
-            WindowEvent::CursorLeft { .. } => Some(InputEvent::PointerLeft),
+            WindowEvent::CursorLeft { .. } => emit(InputEvent::PointerLeft),
             WindowEvent::MouseInput { state, button, .. } => {
                 let pb = match button {
                     MouseButton::Left => PointerButton::Left,
                     MouseButton::Right => PointerButton::Right,
                     MouseButton::Middle => PointerButton::Middle,
-                    _ => return None,
+                    _ => return,
                 };
-                Some(match state {
+                emit(match state {
                     ElementState::Pressed => InputEvent::PointerPressed(pb),
                     ElementState::Released => InputEvent::PointerReleased(pb),
-                })
+                });
             }
             // Convert to "positive delta = pan offset forward" so widgets can
             // do `offset += delta` directly. winit reports +y when the wheel
@@ -135,35 +182,62 @@ impl InputEvent {
             // / swipes right (reveal content to the right means panning
             // *into* it, i.e. content shifts left); flip both so positive
             // means "advance the scroll offset."
-            WindowEvent::PinchGesture { delta, .. } => Some(InputEvent::Zoom(1.0 + *delta as f32)),
-            WindowEvent::MouseWheel { delta, .. } => Some(match *delta {
+            WindowEvent::PinchGesture { delta, .. } => emit(InputEvent::Zoom(1.0 + *delta as f32)),
+            WindowEvent::MouseWheel { delta, .. } => emit(match *delta {
                 MouseScrollDelta::LineDelta(x, y) => InputEvent::ScrollLines(Vec2::new(-x, -y)),
                 MouseScrollDelta::PixelDelta(p) => {
-                    let s = scale_factor.max(f32::EPSILON);
                     InputEvent::ScrollPixels(Vec2::new(-p.x as f32 / s, -p.y as f32 / s))
                 }
             }),
-            WindowEvent::KeyboardInput { event, .. } => match event.state {
-                // Releases are dropped — no consumer needs them yet.
-                ElementState::Pressed => Some(InputEvent::KeyDown {
+            // Releases are dropped — no consumer needs them yet.
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                emit(InputEvent::KeyDown {
                     key: key_from_winit(&event.logical_key),
                     repeat: event.repeat,
-                }),
-                ElementState::Released => None,
-            },
-            // IME commit: what the user *meant* to insert after composition
-            // (dead keys, multi-keystroke CJK input). Strings longer than
-            // the inline buffer are dropped — IME commits over 15 bytes
-            // are rare enough that we'd rather see them surface as a bug
-            // than silently truncate at a non-grapheme boundary.
-            WindowEvent::Ime(winit::event::Ime::Commit(s)) => {
-                TextChunk::new(s).map(InputEvent::Text)
+                });
             }
-            WindowEvent::ModifiersChanged(m) => Some(InputEvent::ModifiersChanged(
+            // IME commit: what the user *meant* to insert after composition
+            // (dead keys, multi-keystroke CJK input). Long commits (CJK
+            // phrase input, emoji ZWJ sequences) routinely exceed the
+            // 15-byte inline `TextChunk`; split at char boundaries so each
+            // chunk fits without losing the typed text. Char (not grapheme)
+            // boundaries are sufficient for byte safety; consumers
+            // re-assemble at append time.
+            WindowEvent::Ime(winit::event::Ime::Commit(s)) => {
+                emit_text_chunks(s, &mut emit);
+            }
+            WindowEvent::ModifiersChanged(m) => emit(InputEvent::ModifiersChanged(
                 modifiers_from_winit(&m.state()),
             )),
-            _ => None,
+            _ => {}
         }
+    }
+}
+
+/// Split `s` into `Text` events at char boundaries such that each
+/// chunk fits the [`TextChunk`] inline buffer. Char boundaries (not
+/// grapheme cluster boundaries) are safe for UTF-8; splitting inside a
+/// grapheme cluster is visually ugly but doesn't corrupt the buffer —
+/// downstream text consumers re-assemble at append time.
+fn emit_text_chunks(s: &str, emit: &mut impl FnMut(InputEvent)) {
+    let cap = TextChunk::INLINE_CAP;
+    let mut start = 0;
+    for (i, c) in s.char_indices() {
+        let next_end = i + c.len_utf8();
+        if next_end - start > cap {
+            if i > start {
+                // SAFETY: `start` and `i` are both char-boundary offsets.
+                if let Some(chunk) = TextChunk::new(&s[start..i]) {
+                    emit(InputEvent::Text(chunk));
+                }
+            }
+            start = i;
+        }
+    }
+    if start < s.len()
+        && let Some(chunk) = TextChunk::new(&s[start..])
+    {
+        emit(InputEvent::Text(chunk));
     }
 }
 
@@ -211,40 +285,16 @@ pub struct ResponseState {
 pub struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pub(crate) pointer_pos: Option<Vec2>,
-    pub(crate) active: Option<WidgetId>,
     hovered: Option<WidgetId>,
     /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
     /// whenever the pointer moves and at `post_record`. The scroll widget
     /// matching this id consumes [`Self::frame_scroll_pixels`].
     scroll_target: Option<WidgetId>,
-    /// Pointer position captured at the moment of the press that set
-    /// `active`. Subtracted from the current pointer position to give
-    /// drag widgets a rect-independent delta — the pointer can leave
-    /// the originating widget mid-drag and the delta keeps tracking.
-    /// Cleared on release / capture eviction.
-    press_pos: Option<Vec2>,
-    /// Set once the pointer has travelled at least [`DRAG_THRESHOLD`]
-    /// from `press_pos` while `active.is_some()`. Held for the press
-    /// lifetime — sticky even if the pointer drifts back inside the
-    /// threshold. Cleared on release / active-eviction. Doubles as the
-    /// "suppress click on release" bit (PointerReleased reads it).
-    pub(crate) drag_latched: bool,
-    /// One-frame edge: set to the active widget on the move event that
-    /// flips `drag_latched` from `false` to `true`; cleared by
-    /// `drain_per_frame_queues`, by release, and by active-eviction.
-    /// Read by `Ui::drag_started` to expose a single-frame "drag began"
-    /// signal to widgets without forcing them to compare last/this-frame
-    /// state.
-    pub(crate) frame_drag_started: Option<WidgetId>,
-    frame_clicks: FxHashSet<WidgetId>,
-    /// Right-button capture, parallel to `active`. Press latches; a
-    /// release on the same id (no drag latch — secondary doesn't drive
-    /// drags today) inserts into `frame_secondary_clicks`. Independent
-    /// from `active` so a left-drag in progress doesn't block a
-    /// right-click and vice-versa.
-    active_secondary: Option<WidgetId>,
-    press_pos_secondary: Option<Vec2>,
-    frame_secondary_clicks: FxHashSet<WidgetId>,
+    /// Per-button press capture (active widget, press pos, drag latch,
+    /// frame edges for `drag_started` and `clicked`). Indexed by
+    /// [`PointerButton`] via [`PointerButton::idx`]. Independent per
+    /// button — a left-drag in progress doesn't block a right-click.
+    pub(crate) captures: [Capture; PointerButton::COUNT],
     /// Pixel-precise wheel / touchpad delta accumulated this frame
     /// (logical px from `ScrollPixels`). Cleared in
     /// [`Self::post_record`]. Read by scroll widgets at record time
@@ -287,7 +337,7 @@ pub struct InputState {
     /// `frame_text` (step 5 of the TextEdit plan).
     pub(crate) focused: Option<WidgetId>,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
-    pub focus_policy: FocusPolicy,
+    pub(crate) focus_policy: FocusPolicy,
     /// Set in `on_input` when an event arrives that could plausibly
     /// drive a state mutation (clicks, keys, text, scroll). Read by
     /// `Ui::run_frame` to decide whether to re-record the frame after
@@ -308,16 +358,9 @@ impl InputState {
     pub fn new() -> Self {
         Self {
             pointer_pos: None,
-            active: None,
             hovered: None,
             scroll_target: None,
-            press_pos: None,
-            drag_latched: false,
-            frame_drag_started: None,
-            frame_clicks: FxHashSet::default(),
-            active_secondary: None,
-            press_pos_secondary: None,
-            frame_secondary_clicks: FxHashSet::default(),
+            captures: [Capture::default(); PointerButton::COUNT],
             frame_scroll_pixels: Vec2::ZERO,
             frame_scroll_lines: Vec2::ZERO,
             frame_zoom_delta: 1.0,
@@ -328,6 +371,16 @@ impl InputState {
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
         }
+    }
+
+    #[inline]
+    fn capture(&self, b: PointerButton) -> &Capture {
+        &self.captures[b.idx()]
+    }
+
+    #[inline]
+    fn capture_mut(&mut self, b: PointerButton) -> &mut Capture {
+        &mut self.captures[b.idx()]
     }
 
     /// Feed a palantir-native input event. Hit-tests against the
@@ -353,60 +406,73 @@ impl InputState {
                 let prev_hover = self.hovered;
                 let prev_scroll = self.scroll_target;
                 self.pointer_pos = Some(p);
-                if !self.drag_latched
-                    && self.active.is_some()
-                    && let Some(press) = self.press_pos
+                // Drag-latch check, left button only today. When middle/
+                // right drag widgets land, gate by `Capture::drags_when_latched`
+                // or similar; until then, only left flips `drag_latched`.
+                let lc = self.capture_mut(PointerButton::Left);
+                if !lc.drag_latched
+                    && lc.active.is_some()
+                    && let Some(press) = lc.press_pos
                     && (p - press).length() >= DRAG_THRESHOLD
                 {
-                    self.drag_latched = true;
-                    self.frame_drag_started = self.active;
+                    lc.drag_latched = true;
+                    lc.frame_drag_started = lc.active;
                     self.frame_had_action = true;
                 }
-                self.recompute_hover(cascades);
-                self.recompute_scroll_target(cascades);
+                let hits = cascades.hit_test_pair(p, Sense::hovers, Sense::scrolls);
+                self.hovered = hits.hover;
+                self.scroll_target = hits.scroll;
                 self.hovered != prev_hover
                     || self.scroll_target != prev_scroll
-                    || self.active.is_some()
+                    || self.captures.iter().any(|c| c.active.is_some())
             }
             InputEvent::PointerLeft => {
-                let observable =
-                    self.hovered.is_some() || self.scroll_target.is_some() || self.active.is_some();
+                let observable = self.hovered.is_some()
+                    || self.scroll_target.is_some()
+                    || self.captures.iter().any(|c| c.active.is_some());
                 self.pointer_pos = None;
                 self.hovered = None;
                 self.scroll_target = None;
                 observable
             }
-            InputEvent::PointerPressed(PointerButton::Left) => {
-                // Press hits the topmost *clickable* widget — hover-only widgets
-                // are transparent to presses even though they show as hovered.
-                self.active = self
-                    .pointer_pos
-                    .and_then(|p| cascades.hit_test(p, Sense::clicks));
-                self.press_pos = self.active.and(self.pointer_pos);
-                // Focus updates on a separate hit-test: focusability is
-                // orthogonal to clickability (clicking a Button shouldn't
-                // steal focus from a TextEdit). Press on empty surface or
-                // on a non-focusable widget defers to `focus_policy`.
-                let focus_hit = self
-                    .pointer_pos
-                    .and_then(|p| cascades.hit_test_focusable(p));
-                match (focus_hit, self.focus_policy) {
-                    (Some(id), _) => self.focused = Some(id),
-                    (None, FocusPolicy::ClearOnMiss) => self.focused = None,
-                    (None, FocusPolicy::PreserveOnMiss) => {} // hold focus
+            InputEvent::PointerPressed(btn) => {
+                // Hit-test for the press target (the topmost *clickable*
+                // widget under the pointer). Hover-only widgets are
+                // transparent to presses even though they show as hovered.
+                let pointer_pos = self.pointer_pos;
+                let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
+                let cap = self.capture_mut(btn);
+                cap.active = hit;
+                cap.press_pos = hit.and(pointer_pos);
+                // Focus updates on a separate hit-test on the *left*
+                // button only — right/middle clicks shouldn't steal
+                // focus from a TextEdit. Focusability is orthogonal to
+                // clickability (clicking a Button shouldn't steal focus
+                // from a TextEdit either, hence the separate test).
+                if btn == PointerButton::Left {
+                    let focus_hit = self
+                        .pointer_pos
+                        .and_then(|p| cascades.hit_test_focusable(p));
+                    match (focus_hit, self.focus_policy) {
+                        (Some(id), _) => self.focused = Some(id),
+                        (None, FocusPolicy::ClearOnMiss) => self.focused = None,
+                        (None, FocusPolicy::PreserveOnMiss) => {}
+                    }
                 }
                 true
             }
-            InputEvent::PointerReleased(PointerButton::Left) => {
-                if let Some(a) = self.active.take() {
-                    let hit = self
-                        .pointer_pos
-                        .and_then(|p| cascades.hit_test(p, Sense::clicks));
-                    if hit == Some(a) && !self.drag_latched {
-                        self.frame_clicks.insert(a);
+            InputEvent::PointerReleased(btn) => {
+                let pointer_pos = self.pointer_pos;
+                let cap = self.capture_mut(btn);
+                let drag_suppressed_click = cap.drag_latched;
+                let captured = cap.active.take();
+                cap.clear_press();
+                if let Some(a) = captured {
+                    let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
+                    if hit == Some(a) && !drag_suppressed_click {
+                        self.capture_mut(btn).frame_click = Some(a);
                     }
                 }
-                self.clear_capture();
                 true
             }
             InputEvent::ScrollPixels(d) => {
@@ -421,27 +487,6 @@ impl InputState {
                 self.frame_zoom_delta *= f;
                 self.scroll_target.is_some()
             }
-            InputEvent::PointerPressed(PointerButton::Right) => {
-                self.active_secondary = self
-                    .pointer_pos
-                    .and_then(|p| cascades.hit_test(p, Sense::clicks));
-                self.press_pos_secondary = self.active_secondary.and(self.pointer_pos);
-                true
-            }
-            InputEvent::PointerReleased(PointerButton::Right) => {
-                if let Some(a) = self.active_secondary.take() {
-                    let hit = self
-                        .pointer_pos
-                        .and_then(|p| cascades.hit_test(p, Sense::clicks));
-                    if hit == Some(a) {
-                        self.frame_secondary_clicks.insert(a);
-                    }
-                }
-                self.press_pos_secondary = None;
-                true
-            }
-            // Middle: not yet wired through to widgets. Silently drop.
-            InputEvent::PointerPressed(_) | InputEvent::PointerReleased(_) => false,
             InputEvent::KeyDown { key, repeat } => {
                 self.frame_keys.push(KeyPress {
                     key,
@@ -476,9 +521,10 @@ impl InputState {
     /// returns `false` everywhere and clicks aren't double-fired.
     /// Capacity-retained on the backing buffers.
     pub(crate) fn drain_per_frame_queues(&mut self) {
-        self.frame_clicks.clear();
-        self.frame_secondary_clicks.clear();
-        self.frame_drag_started = None;
+        for cap in &mut self.captures {
+            cap.frame_click = None;
+            cap.frame_drag_started = None;
+        }
         self.frame_scroll_pixels = Vec2::ZERO;
         self.frame_scroll_lines = Vec2::ZERO;
         self.frame_zoom_delta = 1.0;
@@ -494,29 +540,31 @@ impl InputState {
         // `modifiers` deliberately persists: modifier state is a running
         // snapshot, not per-frame. Held shift across multiple frames must
         // stay `true`.
-        if let Some(active) = self.active
-            && !cascades.by_id.contains_key(&active)
-        {
-            self.active = None;
-            self.clear_capture();
+        for cap in &mut self.captures {
+            if let Some(a) = cap.active
+                && !cascades.by_id.contains_key(&a)
+            {
+                cap.active = None;
+                cap.clear_press();
+            }
         }
-        if let Some(a) = self.active_secondary
-            && !cascades.by_id.contains_key(&a)
-        {
-            self.active_secondary = None;
-            self.press_pos_secondary = None;
-        }
-        // Focus eviction: same model as the active-capture eviction
-        // above. A focused widget that vanished from the tree (was not
-        // recorded this frame) drops focus to None; otherwise next
-        // frame's keystrokes would route to a ghost.
+        // Focus eviction: same model as the per-button capture eviction
+        // above. A focused widget that vanished from the tree drops
+        // focus to None; otherwise next frame's keystrokes route to a
+        // ghost.
         if let Some(focused) = self.focused
             && !cascades.by_id.contains_key(&focused)
         {
             self.focused = None;
         }
-        self.recompute_hover(cascades);
-        self.recompute_scroll_target(cascades);
+        if let Some(p) = self.pointer_pos {
+            let hits = cascades.hit_test_pair(p, Sense::hovers, Sense::scrolls);
+            self.hovered = hits.hover;
+            self.scroll_target = hits.scroll;
+        } else {
+            self.hovered = None;
+            self.scroll_target = None;
+        }
     }
 
     /// Returns this frame's combined scroll delta if `id` is the
@@ -566,12 +614,11 @@ impl InputState {
     /// rect mid-drag and the delta keeps tracking. `None` when `id`
     /// isn't active or the pointer has left the surface.
     pub(crate) fn drag_delta(&self, id: WidgetId) -> Option<Vec2> {
-        if self.active != Some(id) {
+        let cap = self.capture(PointerButton::Left);
+        if cap.active != Some(id) {
             return None;
         }
-        let press = self.press_pos?;
-        let now = self.pointer_pos?;
-        Some(now - press)
+        Some(self.pointer_pos? - cap.press_pos?)
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
@@ -585,21 +632,24 @@ impl InputState {
         // Widgets that need lag-free self-toggle response merge their
         // own `element.disabled` on top after calling.
         let disabled = entry.is_some_and(|e| e.disabled);
-        let me_under_pointer = self.hovered == Some(id);
-        let me_captured = self.active == Some(id);
-        let nothing_captured = self.active.is_none();
+        let left = self.capture(PointerButton::Left);
+        let right = self.capture(PointerButton::Right);
 
-        let pressed = me_captured && me_under_pointer;
-        let hovered = me_under_pointer && (nothing_captured || me_captured);
-        let clicked = self.frame_clicks.contains(&id);
-        let secondary_clicked = self.frame_secondary_clicks.contains(&id);
+        let me_under_pointer = self.hovered == Some(id);
+        let me_left_captured = left.active == Some(id);
+        let nothing_left_captured = left.active.is_none();
+
+        let pressed = me_left_captured && me_under_pointer;
+        let hovered = me_under_pointer && (nothing_left_captured || me_left_captured);
+        let clicked = left.frame_click == Some(id);
+        let secondary_clicked = right.frame_click == Some(id);
         let focused = self.focused == Some(id);
-        let drag_delta = if me_captured && self.drag_latched {
+        let drag_delta = if me_left_captured && left.drag_latched {
             self.drag_delta(id)
         } else {
             None
         };
-        let drag_started = self.frame_drag_started == Some(id);
+        let drag_started = left.frame_drag_started == Some(id);
 
         ResponseState {
             rect,
@@ -612,27 +662,6 @@ impl InputState {
             drag_delta,
             drag_started,
         }
-    }
-
-    /// Clear all drag/press-related state. `active` is the caller's
-    /// responsibility (Released takes it; eviction clears it). Called
-    /// both on left-release and on cascade-evict of the active widget.
-    fn clear_capture(&mut self) {
-        self.press_pos = None;
-        self.drag_latched = false;
-        self.frame_drag_started = None;
-    }
-
-    fn recompute_hover(&mut self, cascades: &Cascades) {
-        self.hovered = self
-            .pointer_pos
-            .and_then(|p| cascades.hit_test(p, Sense::hovers));
-    }
-
-    fn recompute_scroll_target(&mut self, cascades: &Cascades) {
-        self.scroll_target = self
-            .pointer_pos
-            .and_then(|p| cascades.hit_test(p, Sense::scrolls));
     }
 }
 
