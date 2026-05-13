@@ -464,16 +464,26 @@ impl<'a> TextEdit<'a> {
         let font_size = look.text.font_size_px;
         let line_height_mult = look.text.line_height_mult;
         let padding = self.element.padding;
+        // Reserve a caret-width sliver at the trailing edge of every
+        // line so a caret sitting at end-of-line on right/center-
+        // aligned text stays inside the clip. The shaper's per-line
+        // halign and the widget's single-line `align_offset` both see
+        // the same reduced width, so glyphs + caret + selection wash
+        // shift together and click hit-test (which reads back the
+        // same `align_offset`) stays consistent.
+        let caret_room = theme.caret_width.max(0.0);
 
         // Wrap target for multi-line: editor's inner width (outer −
-        // padding). Read from the previous arrange via `response.rect`
-        // — cascade runs in `post_record` so the value is up-to-date
-        // both in steady state and across `request_relayout` passes.
-        // `None` on the first frame the widget is recorded; cosmic
-        // then lays out unbounded (single visual line per `\n` chunk)
-        // until the next frame catches up.
+        // padding − caret room). Read from the previous arrange via
+        // `response.rect` — cascade runs in `post_record` so the value
+        // is up-to-date both in steady state and across
+        // `request_relayout` passes. `None` on the first frame the
+        // widget is recorded; cosmic then lays out unbounded (single
+        // visual line per `\n` chunk) until the next frame catches up.
         let wrap_target: Option<f32> = if self.multiline {
-            response.rect.map(|r| (r.size.w - padding.horiz()).max(1.0))
+            response
+                .rect
+                .map(|r| (r.size.w - padding.horiz() - caret_room).max(1.0))
         } else {
             None
         };
@@ -523,7 +533,7 @@ impl<'a> TextEdit<'a> {
                 )
                 .size;
             let measured = Size::new(m.w, m.h.max(ctx.line_height_px));
-            let inner_w = (r.size.w - ctx.padding.horiz()).max(0.0);
+            let inner_w = (r.size.w - ctx.padding.horiz() - caret_room).max(0.0);
             let inner_h = (r.size.h - ctx.padding.vert()).max(0.0);
             align_offset(Size::new(inner_w, inner_h), measured, widget_align)
         } else {

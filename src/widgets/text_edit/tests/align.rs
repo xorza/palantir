@@ -14,8 +14,13 @@ const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
 const PAD_L: f32 = 5.0;
 const PAD_T: f32 = 3.0;
+/// Default `TextEditTheme::caret_width` — the widget reserves this much
+/// room at every line's trailing edge so a caret on right/center-aligned
+/// text stays inside the clip.
+const CARET_W: f32 = 1.5;
 const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 270
 const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 34
+const ALIGN_W: f32 = INNER_W - CARET_W; // 268.5
 const LINE_H: f32 = 19.2; // 16 px font × 1.2 LINE_HEIGHT_MULT
 const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 
@@ -123,9 +128,9 @@ fn single_line_text_align_table() {
     // Sweep every (HAlign × VAlign) combination on a single-line
     // editor with "abcd". Expected `(dx, dy)` per the encoder
     // convention — overflow clamps to zero, which doesn't fire here
-    // because 32×19.2 fits inside 270×34.
-    let cx = (INNER_W - TEXT_W_4CH) * 0.5; // 119
-    let rx = INNER_W - TEXT_W_4CH; // 238
+    // because 32×19.2 fits inside 268.5×34 (inner − caret reservation).
+    let cx = (ALIGN_W - TEXT_W_4CH) * 0.5; // 118.25
+    let rx = ALIGN_W - TEXT_W_4CH; // 236.5
     let cy = (INNER_H - LINE_H) * 0.5; // 7.4
     let by = INNER_H - LINE_H; // 14.8
     let cases: &[(Align, f32, f32, &str)] = &[
@@ -163,8 +168,9 @@ fn single_line_text_align_table() {
 #[test]
 fn caret_tracks_aligned_text() {
     // Focus + caret at end of "abcd". With HAlign::Right the text
-    // origin shifts right by 238; the caret must shift by the same
-    // dx so it sits at the rightmost glyph trailing edge.
+    // origin shifts right by `ALIGN_W − TEXT_W_4CH`; the caret must
+    // shift by the same dx so it sits at the rightmost glyph trailing
+    // edge, leaving `CARET_W` of reserved room before the clip edge.
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");
     // Warmup so response.rect lands; click; then a final frame so
@@ -181,7 +187,7 @@ fn caret_tracks_aligned_text() {
     let (text_origin, caret_origin) = shape_origins(&ui, node);
     let t = text_origin.expect("text shape");
     let c = caret_origin.expect("caret rect emitted while focused");
-    let dx = INNER_W - TEXT_W_4CH; // 238
+    let dx = ALIGN_W - TEXT_W_4CH; // 236.5
     let dy = (INNER_H - LINE_H) * 0.5; // 7.4
     assert!((t.x - (PAD_L + dx)).abs() < 1e-3, "text.x = {}", t.x);
     assert!(
@@ -189,6 +195,12 @@ fn caret_tracks_aligned_text() {
         "caret.x = {} (expected {})",
         c.x,
         PAD_L + dx + TEXT_W_4CH,
+    );
+    // Caret right edge sits exactly at the clip's right edge.
+    assert!(
+        (c.x + CARET_W - (PAD_L + INNER_W)).abs() < 1e-3,
+        "caret should reserve CARET_W before clip edge: caret.x + CARET_W = {}",
+        c.x + CARET_W,
     );
     assert!((c.y - (PAD_T + dy)).abs() < 1e-3, "caret.y = {}", c.y);
 }
@@ -222,7 +234,7 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     let node = warmup_then(&mut ui, &mut buf, Some(Align::RIGHT), Some("wxyz"));
     let (origin, _) = shape_origins(&ui, node);
     let o = origin.expect("placeholder paints when unfocused + empty");
-    let dx = INNER_W - TEXT_W_4CH;
+    let dx = ALIGN_W - TEXT_W_4CH;
     assert!(
         (o.x - (PAD_L + dx)).abs() < 1e-3,
         "placeholder must align right: x = {} (expected {})",
@@ -281,7 +293,7 @@ fn selection_rects_offset_matches_text() {
     // Selection wash uses the same `align_offset` as the text shape.
     // Mono fallback emits one rect for [0..2] on "abcd" → x = 0,
     // w = 16 in text-local coords. Under HAlign::Right that becomes
-    // editor-local x = 5 + 238.
+    // editor-local x = PAD_L + (ALIGN_W − TEXT_W_4CH).
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");
     frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
@@ -302,7 +314,7 @@ fn selection_rects_offset_matches_text() {
         _ => None,
     });
     let r = first_rounded.expect("selection wash rect present");
-    let dx = INNER_W - TEXT_W_4CH;
+    let dx = ALIGN_W - TEXT_W_4CH;
     assert!(
         (r.min.x - (PAD_L + dx)).abs() < 1e-3,
         "selection wash must align with right-aligned text: x = {}",
