@@ -593,3 +593,56 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         "repaint_requested must reset at the top of frame()",
     );
 }
+
+/// Pin: enabling `frame_stats` records a Debug-layer text widget,
+/// keeps damage `Partial` (not `Full`) on an otherwise-static scene,
+/// and updates `fps_ema` once two frames have elapsed.
+#[test]
+fn frame_stats_overlay_records_partial_damage() {
+    let mut ui = Ui::new();
+    ui.debug_overlay.frame_stats = true;
+    let display = Display::from_physical(SURFACE, 1.0);
+
+    // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
+    // diff against), but the Debug layer should already carry the
+    // readout.
+    ui.frame(display, Duration::ZERO, |ui| {
+        Frame::new().id_salt("body").size(50.0).show(ui);
+    });
+    ui.frame_state.mark_submitted();
+    assert_eq!(ui.fps_ema, 0.0);
+    assert!(
+        !ui.forest.tree(Layer::Debug).records.is_empty(),
+        "Debug layer must carry the frame_stats readout",
+    );
+
+    // Second frame at t = 16ms. Main scene is unchanged; only the
+    // Debug-layer readout dirties → expect `Partial`, not `Full`,
+    // and not `None` either. `fps_ema` picks up its first instantaneous
+    // reading (~62.5).
+    let report = ui.frame(display, Duration::from_millis(16), |ui| {
+        Frame::new().id_salt("body").size(50.0).show(ui);
+    });
+    ui.frame_state.mark_submitted();
+    assert!(
+        matches!(report.damage, Some(Damage::Partial(_))),
+        "frame_stats should produce Partial damage on a static scene; got {:?}",
+        report.damage,
+    );
+    assert!(
+        ui.fps_ema > 0.0,
+        "fps_ema must update after the second frame; got {}",
+        ui.fps_ema,
+    );
+
+    // Disabling the flag mid-stream evicts the Debug-layer node next
+    // frame.
+    ui.debug_overlay.frame_stats = false;
+    ui.frame(display, Duration::from_millis(32), |ui| {
+        Frame::new().id_salt("body").size(50.0).show(ui);
+    });
+    assert!(
+        ui.forest.tree(Layer::Debug).records.is_empty(),
+        "Debug layer must clear once frame_stats is turned off",
+    );
+}

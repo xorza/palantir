@@ -6,6 +6,7 @@ pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
+use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
 use crate::forest::element::Element;
 use crate::forest::tree::{Layer, NodeId};
@@ -22,6 +23,7 @@ use crate::ui::damage::{Damage, DamageEngine};
 use crate::ui::frame_report::FrameReport;
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
+use crate::widgets::text::Text;
 use crate::widgets::theme::Theme;
 use std::time::Duration;
 
@@ -32,6 +34,11 @@ use std::time::Duration;
 pub struct Ui {
     pub(crate) forest: Forest,
     pub theme: Theme,
+    /// Per-frame debug visualizations. Default all-off; flip flags
+    /// between frames. `damage_rect` / `dim_undamaged` are read by
+    /// the backend at submit time; `frame_stats` is read by
+    /// `Ui::frame` itself to auto-inject the FPS readout.
+    pub debug_overlay: DebugOverlayConfig,
     /// Cross-frame `WidgetId → Any` widget state.
     pub(crate) state: StateMap,
     /// Shared font/glyph shaper. Set at construction via
@@ -64,6 +71,10 @@ pub struct Ui {
     pub(crate) frame_id: u64,
     /// Host-supplied monotonic timestamp for this frame.
     pub(crate) time: Duration,
+    /// EMA of `1/raw_dt` across frames. Zero on the first frame
+    /// (no prior `time` to diff against); updated in
+    /// [`Self::frame`]. Surfaced by the `frame_stats` debug overlay.
+    pub(crate) fps_ema: f32,
     /// Set by [`Self::animate`] when an animation hasn't settled.
     pub(crate) repaint_requested: bool,
     pub(crate) anim: AnimMap,
@@ -114,6 +125,7 @@ impl Ui {
         Self {
             forest: Forest::default(),
             theme: Theme::default(),
+            debug_overlay: DebugOverlayConfig::default(),
             state: StateMap::default(),
             text,
             layout_engine: LayoutEngine::default(),
@@ -126,6 +138,7 @@ impl Ui {
             dt_accum: 0.0,
             frame_id: 0,
             time: Duration::ZERO,
+            fps_ema: 0.0,
             anim: AnimMap::default(),
             frame_state: FrameState::default(),
             relayout_requested: false,
@@ -156,6 +169,19 @@ impl Ui {
             .saturating_sub(self.time)
             .as_secs_f32()
             .min(Self::MAX_DT);
+        // EMA over instantaneous fps. First frame: raw_dt is `now` (vs
+        // ZERO), giving an absurd reading the first frame; skip the
+        // update there. Coefficient 0.1 ≈ ~10-frame window — smooth
+        // enough that the readout doesn't jitter wildly, fast enough
+        // to track real frame-rate drops.
+        if self.frame_id > 0 && raw_dt > EPS {
+            let inst = 1.0 / raw_dt;
+            self.fps_ema = if self.fps_ema == 0.0 {
+                inst
+            } else {
+                self.fps_ema * 0.9 + inst * 0.1
+            };
+        }
         self.dt_accum += raw_dt;
         // Fixed-step accumulator. Spend the whole bucket once we
         // cross the threshold (spring's MAX_SUBSTEP_DT substeps it
@@ -251,8 +277,22 @@ impl Ui {
             record(self);
         }
         let action_flag = self.input.take_action_flag();
+        if self.debug_overlay.frame_stats {
+            self.record_frame_stats();
+        }
         self.post_record();
         action_flag
+    }
+
+    /// Append the `frame_stats` readout into `Layer::Debug` at the
+    /// top-left of the viewport. Records every frame so the text
+    /// changes (and damage picks up the small rect), which keeps the
+    /// FPS readout ticking on otherwise-idle frames.
+    fn record_frame_stats(&mut self) {
+        let label = format!("f {} · {:.0} fps", self.frame_id, self.fps_ema);
+        self.layer(Layer::Debug, glam::Vec2::new(8.0, 8.0), None, |ui| {
+            Text::new(label).show(ui);
+        });
     }
 
     /// Feed a palantir-native input event. Hosts own redraw scheduling.

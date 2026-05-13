@@ -220,29 +220,28 @@ impl State {
     }
 }
 
-/// F12 toggles the debug overlay on/off; F10 toggles "darken undamaged"
-/// (turning the overlay on if it was off). Returns `true` if the key
-/// was handled.
+/// F12 toggles damage-rect outlines; F10 toggles darken-undamaged;
+/// F9 toggles the frame/FPS readout. Returns `true` if the key was
+/// handled.
 fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
+    let overlay = &mut state.host.ui.debug_overlay;
     match key {
         KeyCode::F12 => {
-            state.host.debug_overlay.damage_rect = !state.host.debug_overlay.damage_rect;
+            overlay.damage_rect = !overlay.damage_rect;
             eprintln!(
                 "[F12] damage rect overlay: {}",
-                if state.host.debug_overlay.damage_rect {
-                    "on"
-                } else {
-                    "off"
-                }
+                if overlay.damage_rect { "on" } else { "off" }
             );
             true
         }
         KeyCode::F10 => {
-            state.host.debug_overlay.dim_undamaged = !state.host.debug_overlay.dim_undamaged;
-            eprintln!(
-                "[F10] darken undamaged: {}",
-                state.host.debug_overlay.dim_undamaged
-            );
+            overlay.dim_undamaged = !overlay.dim_undamaged;
+            eprintln!("[F10] darken undamaged: {}", overlay.dim_undamaged);
+            true
+        }
+        KeyCode::F9 => {
+            overlay.frame_stats = !overlay.frame_stats;
+            eprintln!("[F9] frame stats: {}", overlay.frame_stats);
             true
         }
         _ => false,
