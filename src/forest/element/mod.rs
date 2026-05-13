@@ -266,9 +266,10 @@ pub struct Element {
     /// How `id` was produced: [`IdSource::Auto`] when synthesized by
     /// [`WidgetId::auto_stable`] (caller used `Foo::new()` + `.auto_id()`),
     /// [`IdSource::Explicit`] when set via [`Configure::id_salt`] /
-    /// [`Configure::id`]. `Ui::node` silently disambiguates colliding
-    /// auto ids by mixing in a per-id occurrence counter; explicit-key
-    /// collisions still hard-assert as caller bugs.
+    /// [`Configure::id`]. Both sources are disambiguated by mixing in
+    /// a per-id occurrence counter on collision; explicit collisions
+    /// additionally get a magenta debug outline so caller bugs surface
+    /// at runtime instead of corrupting per-id stores.
     pub(crate) id_source: IdSource,
     pub(crate) mode: LayoutMode,
 
@@ -452,9 +453,9 @@ pub trait Configure: Sized {
     /// Override this widget's id with a hash of `key`. Use whenever the
     /// default call-site-derived id wouldn't survive across frames or across
     /// loop iterations — e.g. a `for` loop where each iteration must keep
-    /// per-widget state separate. Marks the id as `Explicit`, so collisions
-    /// surface as hard asserts in `Ui::node` rather than getting silently
-    /// disambiguated.
+    /// per-widget state separate. Marks the id as `Explicit`: collisions
+    /// are disambiguated (so state stays well-formed) but flagged with
+    /// a magenta runtime outline because they're caller bugs.
     fn id_salt(mut self, key: impl std::hash::Hash) -> Self {
         let e = self.element_mut();
         e.id = WidgetId::from_hash(key);

@@ -11,6 +11,7 @@ pub mod drag;
 pub mod gap;
 pub mod gradients;
 pub mod grid;
+pub mod id_collisions;
 pub mod justify;
 pub mod lines;
 pub mod mesh;
