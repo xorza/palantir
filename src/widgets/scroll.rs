@@ -13,17 +13,11 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
-use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::ScrollbarTheme;
 use glam::Vec2;
 use std::ops::RangeInclusive;
-
-// Logical pixels per wheel "notch" — matches `input::SCROLL_LINE_PIXELS`.
-// Used to convert `frame_scroll_delta` (sign-flipped logical pixels) back
-// into discrete notches so we can compose `step.powf(notches)` for zoom.
-const SCROLL_LINE_PIXELS: f32 = 40.0;
 
 /// What kind of input triggers a zoom step. See [`ZoomConfig::modifier`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -201,26 +195,40 @@ fn bar_plan(
 }
 
 /// Emit one bar's worth of nodes onto the overlay Canvas: a track
-/// rounded-rect shape (skipped when `theme.track` is transparent) and
-/// a thumb leaf with `Sense::DRAG`. Both expressed in OUTER-local
-/// coords; the overlay covers outer's full rect so position +
-/// local_rect line up.
+/// leaf with `Sense::CLICK` (paging on press) and a thumb leaf with
+/// `Sense::DRAG` painted on top. Both expressed in OUTER-local coords;
+/// the overlay covers outer's full rect so position + local_rect line
+/// up. Track is always a leaf even when `theme.track` alpha is 0 so
+/// the click-to-page surface stays available — the gutter is reserved
+/// either way and matches OS scrollbar conventions.
 fn push_bar_nodes(
     ui: &mut Ui,
     plan: BarPlan,
+    track_id: WidgetId,
     thumb_id: WidgetId,
     resp: ResponseState,
     theme: &ScrollbarTheme,
 ) {
     let radius = Corners::all(theme.radius);
+    let mut track = Element::new(LayoutMode::Leaf);
+    track.set_id(track_id);
+    track.size = (
+        Sizing::Fixed(plan.track_rect.size.w),
+        Sizing::Fixed(plan.track_rect.size.h),
+    )
+        .into();
+    track.position = plan.track_rect.min;
+    track.sense = Sense::CLICK;
     if theme.track.a > 0.0 {
-        ui.add_shape(Shape::RoundedRect {
-            local_rect: Some(plan.track_rect),
-            radius,
+        track.chrome = Some(Background {
             fill: theme.track.into(),
             stroke: Stroke::ZERO,
+            radius,
+            shadow: Shadow::NONE,
         });
     }
+    ui.node(track, |_| {});
+
     let fill = if resp.drag_delta.is_some() || resp.pressed {
         theme.thumb_active
     } else if resp.hovered {
@@ -356,7 +364,14 @@ impl Scroll {
         // viewport node's id — that's the `LayoutMode::Scroll` node
         // the driver writes to.
         let scroll_id = id.with("__viewport");
-        let pan_delta_raw = ui.input.scroll_delta_for(id);
+        // Font-derived line step for wheel→pixel conversion. Pulls
+        // `theme.text` (the default font config) rather than scanning
+        // children for a dominant font — that's a future polish; for
+        // now the active theme's text size is a good proxy and stays
+        // consistent with what the user is reading.
+        let line_px = ui.theme.text.line_height_for(ui.theme.text.font_size_px);
+        let pan_delta_raw = ui.input.scroll_delta_for(id, line_px);
+        let wheel_lines = ui.input.scroll_lines_for(id);
         let pinch_delta = ui.input.zoom_delta_for(id);
         let mods = ui.input.modifiers;
         // `mods.ctrl || mods.meta` rather than `Modifiers::any_command`,
@@ -368,13 +383,13 @@ impl Scroll {
         });
         // Route the wheel: when the gate matches, the wheel notches
         // become a multiplicative zoom factor; pan is suppressed for
-        // the same frame. Convert sign-flipped logical pixels back into
-        // notches; positive scroll_delta.y means scroll-down which by
+        // the same frame. Notch count comes from `frame_scroll_lines`
+        // directly — one line == one notch, no roundtrip through a
+        // pixel constant. Positive line.y means scroll-down which by
         // convention zooms *out* (factor < 1).
         let (pan_delta, wheel_zoom_factor) = if wheel_zoom_gate {
             let cfg = self.zoom.as_ref().unwrap();
-            let notches_y = pan_delta_raw.y / SCROLL_LINE_PIXELS;
-            (Vec2::ZERO, cfg.step.powf(-notches_y))
+            (Vec2::ZERO, cfg.step.powf(-wheel_lines.y))
         } else {
             (pan_delta_raw, 1.0_f32)
         };
@@ -411,8 +426,13 @@ impl Scroll {
         let theme = ui.theme.scrollbar.clone();
         let thumb_id_v = scroll_id.with("__vthumb");
         let thumb_id_h = scroll_id.with("__hthumb");
+        let track_id_v = scroll_id.with("__vtrack");
+        let track_id_h = scroll_id.with("__htrack");
         let resp_v = ui.response_for(thumb_id_v);
         let resp_h = ui.response_for(thumb_id_h);
+        let resp_track_v = ui.response_for(track_id_v);
+        let resp_track_h = ui.response_for(track_id_h);
+        let pointer = ui.input.pointer_pos;
 
         let scroll = {
             let row = ui.layout_engine.scroll_states.entry(scroll_id).or_default();
@@ -520,6 +540,56 @@ impl Scroll {
                 match axis {
                     Axis::X => row.offset.x = clamped,
                     Axis::Y => row.offset.y = clamped,
+                }
+            }
+
+            // 4) Click-on-track to page. Press on the empty track
+            //    above/below the thumb pages the offset by one viewport
+            //    in the click direction. The track's main-axis origin
+            //    is 0 in outer-local coords, so the click position
+            //    along the bar is `pointer.main - outer_origin.main`.
+            //    Pointer-position is the current pointer (release-
+            //    frame); good enough since clicks fire on release and
+            //    the pointer hasn't moved far. Clamped to `[0,
+            //    max_off]` — same range as thumb-drag, not the wheel's
+            //    extended range, because click-paging is always a
+            //    toward-natural motion.
+            let panned_axes = [
+                (Axis::Y, resp_track_v, pan.y),
+                (Axis::X, resp_track_h, pan.x),
+            ];
+            for (axis, resp_track, panned) in panned_axes {
+                if !panned || !resp_track.clicked {
+                    continue;
+                }
+                let (Some(ptr), Some(outer_origin)) = (pointer, widget_origin) else {
+                    continue;
+                };
+                let track_main = axis.main(bl.bar_viewport);
+                let main_content = axis.main(bl.scaled_content);
+                let Some(geom) = bar_geometry(
+                    track_main,
+                    main_content,
+                    axis.main_v(row.offset),
+                    track_main,
+                    &theme,
+                ) else {
+                    continue;
+                };
+                let click_main = axis.main_v(ptr) - axis.main_v(outer_origin);
+                let max_off = (main_content - track_main).max(0.0);
+                let viewport_main = track_main;
+                let cur = axis.main_v(row.offset);
+                let next = if click_main < geom.thumb_offset {
+                    (cur - viewport_main).max(0.0)
+                } else if click_main > geom.thumb_offset + geom.thumb_size {
+                    (cur + viewport_main).min(max_off)
+                } else {
+                    cur
+                };
+                match axis {
+                    Axis::X => row.offset.x = next,
+                    Axis::Y => row.offset.y = next,
                 }
             }
             *row
@@ -642,10 +712,10 @@ impl Scroll {
                 overlay.size = (Sizing::FILL, Sizing::FILL).into();
                 ui.node(overlay, |ui| {
                     if let Some(p) = plan_v {
-                        push_bar_nodes(ui, p, thumb_id_v, resp_v, &theme);
+                        push_bar_nodes(ui, p, track_id_v, thumb_id_v, resp_v, &theme);
                     }
                     if let Some(p) = plan_h {
-                        push_bar_nodes(ui, p, thumb_id_h, resp_h, &theme);
+                        push_bar_nodes(ui, p, track_id_h, thumb_id_h, resp_h, &theme);
                     }
                 });
             }

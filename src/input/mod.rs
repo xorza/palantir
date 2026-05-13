@@ -50,11 +50,19 @@ pub enum InputEvent {
     PointerLeft,
     PointerPressed(PointerButton),
     PointerReleased(PointerButton),
-    /// Scroll-wheel / touchpad delta in logical pixels. Positive `y`
+    /// Pixel-precise scroll delta — touchpad / precision wheel /
+    /// `MouseScrollDelta::PixelDelta`. Logical pixels. Positive `y`
     /// means the user wants content to scroll *down* (a scroll widget
     /// should add to its vertical offset). Multiple events in one frame
-    /// accumulate into [`InputState::frame_scroll_delta`].
-    Scroll(Vec2),
+    /// accumulate into [`InputState::frame_scroll_pixels`].
+    ScrollPixels(Vec2),
+    /// Notched scroll delta — classic wheel /
+    /// `MouseScrollDelta::LineDelta`. Carries the raw line count
+    /// (sign-flipped to match `ScrollPixels`); the consuming widget
+    /// multiplies by its own font-derived line step at record time
+    /// rather than this layer baking in a constant. Multiple events
+    /// in one frame accumulate into [`InputState::frame_scroll_lines`].
+    ScrollLines(Vec2),
     /// Multiplicative zoom factor from a touch / touchpad pinch gesture.
     /// `1.0` is identity; `1.05` zooms in 5%, `0.95` zooms out 5%.
     /// Multiple events in one frame multiply into
@@ -82,10 +90,6 @@ pub enum InputEvent {
     /// e.g. ctrl+'a' (shortcut) from 'a' (text).
     ModifiersChanged(Modifiers),
 }
-
-/// Logical pixels per `MouseScrollDelta::LineDelta` line. Matches the
-/// winit / egui convention; text-aware step is a future polish.
-const SCROLL_LINE_PIXELS: f32 = 40.0;
 
 impl InputEvent {
     /// Translate a winit `WindowEvent` into a palantir input event.
@@ -123,12 +127,10 @@ impl InputEvent {
             // means "advance the scroll offset."
             WindowEvent::PinchGesture { delta, .. } => Some(InputEvent::Zoom(1.0 + *delta as f32)),
             WindowEvent::MouseWheel { delta, .. } => Some(match *delta {
-                MouseScrollDelta::LineDelta(x, y) => {
-                    InputEvent::Scroll(Vec2::new(-x, -y) * SCROLL_LINE_PIXELS)
-                }
+                MouseScrollDelta::LineDelta(x, y) => InputEvent::ScrollLines(Vec2::new(-x, -y)),
                 MouseScrollDelta::PixelDelta(p) => {
                     let s = scale_factor.max(f32::EPSILON);
-                    InputEvent::Scroll(Vec2::new(-p.x as f32 / s, -p.y as f32 / s))
+                    InputEvent::ScrollPixels(Vec2::new(-p.x as f32 / s, -p.y as f32 / s))
                 }
             }),
             WindowEvent::KeyboardInput { event, .. } => match event.state {
@@ -203,7 +205,7 @@ pub struct InputState {
     hovered: Option<WidgetId>,
     /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
     /// whenever the pointer moves and at `post_record`. The scroll widget
-    /// matching this id consumes [`Self::frame_scroll_delta`].
+    /// matching this id consumes [`Self::frame_scroll_pixels`].
     scroll_target: Option<WidgetId>,
     /// Pointer position captured at the moment of the press that set
     /// `active`. Subtracted from the current pointer position to give
@@ -233,13 +235,23 @@ pub struct InputState {
     active_secondary: Option<WidgetId>,
     press_pos_secondary: Option<Vec2>,
     frame_secondary_clicks: FxHashSet<WidgetId>,
-    /// Wheel/touchpad delta accumulated this frame (logical px). Cleared
-    /// in [`Self::post_record`]. Read by scroll widgets at record time.
-    pub(crate) frame_scroll_delta: Vec2,
+    /// Pixel-precise wheel / touchpad delta accumulated this frame
+    /// (logical px from `ScrollPixels`). Cleared in
+    /// [`Self::post_record`]. Read by scroll widgets at record time
+    /// alongside [`Self::frame_scroll_lines`] — the widget combines
+    /// the two via its font-derived line step.
+    pub(crate) frame_scroll_pixels: Vec2,
+    /// Notched wheel delta accumulated this frame (line count from
+    /// `ScrollLines`). Cleared in [`Self::post_record`]. The scroll
+    /// widget multiplies by its own line-px step at consumption time
+    /// instead of baking a constant in here, so wheel feel tracks the
+    /// active font size. Also read directly by zoom routing (each line
+    /// = one notch, no roundtrip through a pixel constant).
+    pub(crate) frame_scroll_lines: Vec2,
     /// Multiplicative pinch-zoom delta accumulated this frame; `1.0` =
     /// no zoom. Cleared in [`Self::post_record`]. Read by scroll widgets
     /// configured with a `ZoomConfig`. Wheel-based zoom is computed
-    /// at the widget from [`Self::frame_scroll_delta`] under the
+    /// at the widget from [`Self::frame_scroll_pixels`] under the
     /// `ZoomConfig::modifier` gate, not accumulated here.
     pub(crate) frame_zoom_delta: f32,
     /// Keystrokes accumulated this frame, awaiting drain by the focused
@@ -296,7 +308,8 @@ impl InputState {
             active_secondary: None,
             press_pos_secondary: None,
             frame_secondary_clicks: FxHashSet::default(),
-            frame_scroll_delta: Vec2::ZERO,
+            frame_scroll_pixels: Vec2::ZERO,
+            frame_scroll_lines: Vec2::ZERO,
             frame_zoom_delta: 1.0,
             frame_keys: Vec::new(),
             frame_text: String::new(),
@@ -315,7 +328,7 @@ impl InputState {
             InputEvent::PointerPressed(_)
                 | InputEvent::PointerReleased(_)
                 | InputEvent::KeyDown { .. }
-                | InputEvent::Text(_) // | InputEvent::Scroll(_)
+                | InputEvent::Text(_) // | InputEvent::Scroll{Pixels,Lines}(_)
                                       // | InputEvent::Zoom(_)
         ) {
             self.frame_had_action = true;
@@ -371,8 +384,11 @@ impl InputState {
                 }
                 self.clear_capture();
             }
-            InputEvent::Scroll(d) => {
-                self.frame_scroll_delta += d;
+            InputEvent::ScrollPixels(d) => {
+                self.frame_scroll_pixels += d;
+            }
+            InputEvent::ScrollLines(d) => {
+                self.frame_scroll_lines += d;
             }
             InputEvent::Zoom(f) => {
                 self.frame_zoom_delta *= f;
@@ -429,7 +445,8 @@ impl InputState {
         self.frame_clicks.clear();
         self.frame_secondary_clicks.clear();
         self.frame_drag_started = None;
-        self.frame_scroll_delta = Vec2::ZERO;
+        self.frame_scroll_pixels = Vec2::ZERO;
+        self.frame_scroll_lines = Vec2::ZERO;
         self.frame_zoom_delta = 1.0;
         self.frame_keys.clear();
         self.frame_text.clear();
@@ -468,12 +485,27 @@ impl InputState {
         self.recompute_scroll_target(cascades);
     }
 
-    /// Returns this frame's scroll delta if `id` is the current scroll
-    /// hit-target; otherwise `Vec2::ZERO`. Scroll widgets call this at
-    /// record time to claim wheel/touchpad input.
-    pub(crate) fn scroll_delta_for(&self, id: WidgetId) -> Vec2 {
+    /// Returns this frame's combined scroll delta if `id` is the
+    /// current scroll hit-target; otherwise `Vec2::ZERO`. Combines the
+    /// pixel-precise accumulator with the line-discrete accumulator
+    /// scaled by `line_px` — caller supplies the line step (typically
+    /// `theme.text.line_height_for(font_size)`) so wheel feel tracks
+    /// the active font size instead of a hard-coded constant.
+    pub(crate) fn scroll_delta_for(&self, id: WidgetId, line_px: f32) -> Vec2 {
         if self.scroll_target == Some(id) {
-            self.frame_scroll_delta
+            self.frame_scroll_pixels + self.frame_scroll_lines * line_px
+        } else {
+            Vec2::ZERO
+        }
+    }
+
+    /// Returns this frame's notched scroll count (line deltas) if `id`
+    /// is the current scroll hit-target; otherwise `Vec2::ZERO`. Used
+    /// by zoom routing, where each line is one notch — no roundtrip
+    /// through a pixel constant.
+    pub(crate) fn scroll_lines_for(&self, id: WidgetId) -> Vec2 {
+        if self.scroll_target == Some(id) {
+            self.frame_scroll_lines
         } else {
             Vec2::ZERO
         }

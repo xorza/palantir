@@ -13,19 +13,35 @@ fn wheel(delta: MouseScrollDelta) -> WindowEvent {
 }
 
 #[test]
-fn from_winit_line_delta_scales_by_step_pixels_and_flips_both_axes() {
+fn from_winit_line_delta_emits_scroll_lines_with_flipped_signs() {
     // winit's +y wheel = rotation away from user = scroll up; +x wheel
     // = swipe right (reveal content right = pan offset forward). We flip
-    // both so palantir's +delta means "advance the scroll offset."
+    // both so palantir's +delta means "advance the scroll offset." Line
+    // count flows through unscaled — the consuming widget multiplies by
+    // its own font-derived line step.
     let ev = InputEvent::from_winit(&wheel(MouseScrollDelta::LineDelta(2.0, 1.0)), 1.0)
         .expect("wheel produces a Scroll event");
     match ev {
-        InputEvent::Scroll(d) => {
-            assert_eq!(d.x, -80.0, "2 lines right → -2·SCROLL_LINE_PIXELS");
-            assert_eq!(d.y, -40.0, "1 line up → -SCROLL_LINE_PIXELS");
+        InputEvent::ScrollLines(d) => {
+            assert_eq!(d, Vec2::new(-2.0, -1.0));
         }
-        _ => panic!("expected Scroll, got {ev:?}"),
+        _ => panic!("expected ScrollLines, got {ev:?}"),
     }
+}
+
+#[test]
+fn scroll_delta_for_combines_pixels_and_lines_by_line_step() {
+    use crate::forest::widget_id::WidgetId;
+    let mut state = InputState::new();
+    let cascades = Cascades::default();
+    let id = WidgetId::from_hash("scroll");
+    state.scroll_target = Some(id);
+    state.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)), &cascades);
+    state.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 2.0)), &cascades);
+    // 5 px + 2 lines × 19.2 px/line = 43.4 px.
+    let d = state.scroll_delta_for(id, 19.2);
+    assert!((d.y - 43.4).abs() < 1e-4, "got {d:?}");
+    assert_eq!(state.scroll_lines_for(id), Vec2::new(0.0, 2.0));
 }
 
 #[test]
@@ -38,7 +54,7 @@ fn from_winit_pixel_delta_divides_by_scale_factor_and_flips_both_axes() {
     )
     .expect("pixel-delta wheel produces a Scroll event");
     match ev {
-        InputEvent::Scroll(d) => {
+        InputEvent::ScrollPixels(d) => {
             // x: -(60 / 2) = -30. y: -(-120 / 2) = 60.
             assert_eq!(d, Vec2::new(-30.0, 60.0));
         }
@@ -50,9 +66,9 @@ fn from_winit_pixel_delta_divides_by_scale_factor_and_flips_both_axes() {
 fn on_input_accumulates_scroll_delta() {
     let mut state = InputState::new();
     let cascades = Cascades::default();
-    state.on_input(InputEvent::Scroll(Vec2::new(0.0, 40.0)), &cascades);
-    state.on_input(InputEvent::Scroll(Vec2::new(5.0, -10.0)), &cascades);
-    assert_eq!(state.frame_scroll_delta, Vec2::new(5.0, 30.0));
+    state.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 40.0)), &cascades);
+    state.on_input(InputEvent::ScrollPixels(Vec2::new(5.0, -10.0)), &cascades);
+    assert_eq!(state.frame_scroll_pixels, Vec2::new(5.0, 30.0));
 }
 
 #[test]
@@ -78,8 +94,8 @@ fn post_record_resets_zoom_delta_to_identity() {
 fn post_record_clears_scroll_delta() {
     let mut state = InputState::new();
     let cascades = Cascades::default();
-    state.on_input(InputEvent::Scroll(Vec2::new(7.0, 7.0)), &cascades);
-    assert_eq!(state.frame_scroll_delta, Vec2::new(7.0, 7.0));
+    state.on_input(InputEvent::ScrollPixels(Vec2::new(7.0, 7.0)), &cascades);
+    assert_eq!(state.frame_scroll_pixels, Vec2::new(7.0, 7.0));
     state.post_record(&cascades);
-    assert_eq!(state.frame_scroll_delta, Vec2::ZERO);
+    assert_eq!(state.frame_scroll_pixels, Vec2::ZERO);
 }

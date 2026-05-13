@@ -8,16 +8,16 @@
 
 ## Next — drag-to-pan follow-ups
 
-- **Click-on-track to page.** Track is still a shape, not a leaf — add
-  a `Sense::CLICK` track leaf under the overlay, page on press.
 - **Hover-grow thumb.** `thumb_hover` already lights up; add a width
   bump on hover via the theme.
 
 ## Next
 
-- **Wheel step from font metrics.** Drop fixed 40 px/line
-  (`SCROLL_LINE_PIXELS`); use line-height of dominant font in
-  scrolled content.
+- **Dominant-font wheel step.** Today's `Scroll` derives the line
+  step from `ui.theme.text` (`font_size * line_height_mult`). The
+  future-polish version walks the scrolled content to find the
+  dominant font and uses *its* line height — useful when a panel
+  overrides the text theme but the surrounding chrome doesn't.
 
 ## Later — workload-gated
 

@@ -27,7 +27,7 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     };
     run_at_acked(&mut ui, surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
     let inner_id = WidgetId::from_hash("inner");
     let outer_id = WidgetId::from_hash("outer");
     let mut inner_d = Vec2::ZERO;
@@ -35,8 +35,8 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     run_at_acked(&mut ui, surface, |ui| {
         build(ui);
         if inner_d == Vec2::ZERO {
-            inner_d = ui.input.scroll_delta_for(inner_id);
-            outer_d = ui.input.scroll_delta_for(outer_id);
+            inner_d = ui.input.scroll_delta_for(inner_id, 40.0);
+            outer_d = ui.input.scroll_delta_for(outer_id, 40.0);
         }
     });
     assert_eq!(inner_d, Vec2::new(0.0, 5.0));
@@ -56,12 +56,12 @@ fn scroll_delta_zero_for_non_target() {
     };
     run_at_acked(&mut ui, surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 9.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 9.0)));
     let unrelated = WidgetId::from_hash("nope");
     let mut d = Vec2::new(1.0, 1.0);
     run_at_acked(&mut ui, surface, |ui| {
         build(ui);
-        d = ui.input.scroll_delta_for(unrelated);
+        d = ui.input.scroll_delta_for(unrelated, 40.0);
     });
     // Both passes return zero — the widget id never matches.
     assert_eq!(d, Vec2::ZERO);
@@ -81,12 +81,12 @@ fn pointer_left_clears_scroll_target() {
     run_at_acked(&mut ui, surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerLeft);
-    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
     let id = WidgetId::from_hash("scroller");
     let mut d = Vec2::new(1.0, 1.0);
     run_at_acked(&mut ui, surface, |ui| {
         build(ui);
-        d = ui.input.scroll_delta_for(id);
+        d = ui.input.scroll_delta_for(id, 40.0);
     });
     assert_eq!(
         d,

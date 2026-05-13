@@ -84,7 +84,7 @@ fn from_winit_ime_commit_routing() {
 fn keyboard_events_do_not_perturb_scroll_state() {
     let mut state = InputState::new();
     let cascades = Cascades::default();
-    let before_scroll = state.frame_scroll_delta;
+    let before_scroll = state.frame_scroll_pixels;
     state.on_input(
         InputEvent::KeyDown {
             key: Key::ArrowLeft,
@@ -94,7 +94,7 @@ fn keyboard_events_do_not_perturb_scroll_state() {
     );
     state.on_input(InputEvent::Text(TextChunk::new("a").unwrap()), &cascades);
     state.on_input(InputEvent::ModifiersChanged(Modifiers::NONE), &cascades);
-    assert_eq!(state.frame_scroll_delta, before_scroll);
+    assert_eq!(state.frame_scroll_pixels, before_scroll);
 }
 
 #[test]
