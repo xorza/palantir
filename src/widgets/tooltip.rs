@@ -164,9 +164,7 @@ impl<'r> Tooltip<'r> {
         let mut state: TooltipState = *ui.state_mut::<TooltipState>(state_id);
         let mut global: TooltipGlobal = *ui.state_mut::<TooltipGlobal>(g_id);
 
-        let warmup_active = global
-            .last_visible_at
-            .is_some_and(|t| (now - t) < warmup);
+        let warmup_active = global.last_visible_at.is_some_and(|t| (now - t) < warmup);
 
         if active_trigger {
             let started = match state.hover_started_at {

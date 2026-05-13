@@ -68,6 +68,19 @@ impl Host {
         self.ui.frame(display, self.start.elapsed(), record)
     }
 
+    /// Like [`Self::run_frame`] but installs `state` as the ambient
+    /// app state visible to deep widgets via [`Ui::app::<T>()`] —
+    /// removes the need to thread `&mut T` through every closure.
+    pub fn run_frame_with<T: 'static>(
+        &mut self,
+        display: Display,
+        state: &mut T,
+        record: impl FnMut(&mut Ui),
+    ) -> FrameReport {
+        self.ui
+            .frame_with(display, self.start.elapsed(), state, record)
+    }
+
     /// GPU submit against a caller-supplied texture. For visual
     /// harness / offscreen benches that paint into a texture they own
     /// (no swapchain). On the skip path (`report.damage.is_none()`),
@@ -126,6 +139,35 @@ impl Host {
         scale_factor: f32,
         record: impl FnMut(&mut Ui),
     ) -> FramePresent {
+        let display =
+            Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
+        let report = self.run_frame(display, record);
+        self.present(surface, config, report)
+    }
+
+    /// Like [`Self::frame_and_render`] but installs `state` as the
+    /// ambient app state visible to deep widgets via
+    /// [`Ui::app::<T>()`].
+    pub fn frame_and_render_with<T: 'static>(
+        &mut self,
+        surface: &wgpu::Surface<'_>,
+        config: &wgpu::SurfaceConfiguration,
+        scale_factor: f32,
+        state: &mut T,
+        record: impl FnMut(&mut Ui),
+    ) -> FramePresent {
+        let display =
+            Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
+        let report = self.run_frame_with(display, state, record);
+        self.present(surface, config, report)
+    }
+
+    fn present(
+        &mut self,
+        surface: &wgpu::Surface<'_>,
+        config: &wgpu::SurfaceConfiguration,
+        report: FrameReport,
+    ) -> FramePresent {
         // Bracket the body with a Tracy *discontinuous* frame so the
         // frame strip shows actual work duration, not the gap between
         // back-to-back `finish_frame!()` ticks (which counts idle time
@@ -133,10 +175,6 @@ impl Host {
         #[cfg(feature = "profile-with-tracy")]
         let _tracy_frame = tracy_client::non_continuous_frame!("frame");
         profiling::scope!("Host::frame_and_render");
-
-        let display =
-            Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
-        let report = self.run_frame(display, record);
 
         let repaint = if report.skip_render() {
             report.repaint_requested()
