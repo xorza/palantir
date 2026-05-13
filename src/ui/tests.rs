@@ -646,3 +646,81 @@ fn frame_stats_overlay_records_partial_damage() {
         "Debug layer must clear once frame_stats is turned off",
     );
 }
+
+/// Multiple distinct deadlines coexist in the queue and surface
+/// in ascending order; each fires independently on a frame at or
+/// past its deadline.
+#[test]
+fn request_repaint_after_queues_distinct_deadlines() {
+    let mut ui = Ui::new();
+    let display = Display::from_physical(SURFACE, 1.0);
+    let report = ui.frame(display, Duration::from_secs_f32(0.0), |ui| {
+        ui.request_repaint_after(Duration::from_secs_f32(0.5));
+        ui.request_repaint_after(Duration::from_secs_f32(1.5));
+    });
+    // Earliest deadline wins the report slot.
+    assert_eq!(
+        report.repaint_after(),
+        Some(Duration::from_secs_f32(0.5)),
+        "FrameReport must surface the earliest pending wake",
+    );
+    // Both entries are still queued (neither has fired).
+    assert_eq!(
+        ui.repaint_wakes.len(),
+        2,
+        "both distinct deadlines stay queued"
+    );
+
+    // Run a frame at the first deadline. The earliest entry drains;
+    // the second survives.
+    let report = ui.frame(display, Duration::from_secs_f32(0.5), |_| {});
+    assert_eq!(
+        report.repaint_after(),
+        Some(Duration::from_secs_f32(1.5)),
+        "second deadline survives the first frame's drain",
+    );
+    assert_eq!(ui.repaint_wakes.len(), 1);
+
+    // Run a frame at the second deadline. Queue empties.
+    let report = ui.frame(display, Duration::from_secs_f32(1.5), |_| {});
+    assert_eq!(report.repaint_after(), None);
+    assert!(ui.repaint_wakes.is_empty());
+}
+
+/// Re-requesting an already-queued deadline within the same frame
+/// is a no-op — the queue is sorted + dedup'd.
+#[test]
+fn request_repaint_after_dedups_within_frame() {
+    let mut ui = Ui::new();
+    let display = Display::from_physical(SURFACE, 1.0);
+    ui.frame(display, Duration::from_secs_f32(0.0), |ui| {
+        for _ in 0..10 {
+            ui.request_repaint_after(Duration::from_secs_f32(0.5));
+        }
+        ui.request_repaint_after(Duration::from_secs_f32(0.5));
+    });
+    assert_eq!(
+        ui.repaint_wakes.len(),
+        1,
+        "duplicate deadlines collapse to one entry",
+    );
+}
+
+/// Entries with `deadline <= now` drain at the top of the next
+/// frame; entries strictly past `now` survive.
+#[test]
+fn request_repaint_after_drains_fired_entries() {
+    let mut ui = Ui::new();
+    let display = Display::from_physical(SURFACE, 1.0);
+    ui.frame(display, Duration::from_secs_f32(0.0), |ui| {
+        ui.request_repaint_after(Duration::from_secs_f32(0.5));
+        ui.request_repaint_after(Duration::from_secs_f32(1.0));
+        ui.request_repaint_after(Duration::from_secs_f32(2.0));
+    });
+    assert_eq!(ui.repaint_wakes.len(), 3);
+
+    // Frame at t=1.0 drains entries at 0.5 and 1.0; 2.0 survives.
+    let report = ui.frame(display, Duration::from_secs_f32(1.0), |_| {});
+    assert_eq!(ui.repaint_wakes.len(), 1);
+    assert_eq!(report.repaint_after(), Some(Duration::from_secs_f32(2.0)));
+}
