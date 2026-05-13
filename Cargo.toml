@@ -12,6 +12,7 @@ doctest = false
 
 [dependencies]
 palantir-anim-derive = { path = "anim-derive" }
+arboard = "*"
 bitflags = "*"
 bytemuck = { version = "*", features = ["derive"] }
 encase = "*"
