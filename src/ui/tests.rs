@@ -183,8 +183,8 @@ fn auto_id_collisions_disambiguate() {
             chip(ui);
         });
     });
-    // 1 panel + 3 chips = 4 distinct ids, no panic.
-    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 4);
+    // Synthetic viewport root + 1 panel + 3 chips = 5 distinct ids, no panic.
+    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 5);
 }
 
 /// Cascade runs in `post_record` (after each pass's measure+arrange),
@@ -252,7 +252,8 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(buffer.texts.is_empty());
     assert!(buffer.groups.is_empty());
 
-    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 0);
+    // Synthetic viewport root: even an empty user record produces one node.
+    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
     assert!(ui.damage_engine.prev.is_empty());
     assert!(ui.damage_engine.dirty.is_empty());
     assert!(ui.damage_engine.region.is_empty());
@@ -268,7 +269,8 @@ fn empty_then_populated_frame() {
     run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |_| {});
     });
-    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
+    // Synthetic viewport root + user Panel = 2 records.
+    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 2);
     // Root Panel is non-painting (no chrome, no shapes) so prev stays
     // empty — only painting widgets are tracked.
     assert!(ui.damage_engine.prev.is_empty());
