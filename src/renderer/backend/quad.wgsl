@@ -24,9 +24,10 @@ const BRUSH_KIND_CONIC:        u32 = 3u;
 // `fill_axis = (offset.x, offset.y, sigma, spread)` in physical px.
 // `fill` is the shadow colour, `radius` is the source rect's corner
 // radii, `size` is the paint bbox.
-//   - Drop:  paint bbox = source.inflated(|offset| + 3σ + spread).
-//            Spread is BAKED into the paint bbox, so `fill_axis.w`
-//            is unused on this path (held at 0 by the encoder).
+//   - Drop:  paint bbox = source.inflated(abs(offset) + 3σ + spread)
+//            per-component (matches encoder). Spread is BAKED into
+//            the paint bbox, so `fill_axis.w` is unused on this path
+//            (held at 0 by the encoder).
 //   - Inset: paint bbox = source. Spread shrinks the "hole" rect
 //            inside the shader via `fill_axis.w`.
 const BRUSH_KIND_SHADOW_DROP:  u32 = 4u;
