@@ -492,25 +492,35 @@ impl<'a> TextEdit<'a> {
         } else {
             Align::LEFT
         });
-        // Single source of truth for text origin: measure the buffer,
+        // Single source of truth for text origin: measure whatever
+        // string we'll actually render (buffer when non-empty or
+        // focused, placeholder when the buffer is empty + unfocused),
         // then place its bbox inside the inner rect per `align`. The
         // resulting `(dx, dy)` is added to the text origin, to the
         // caret + selection rects, and subtracted from the pointer
         // local coords in the click hit-test — all three views stay in
         // sync. Overflow clamps to zero on each axis (encoder
         // convention), leaving scroll-to-caret to keep the active end
-        // visible.
+        // visible. Height floors at one line so an empty focused
+        // editor vcenters its caret against a full line, not a zero
+        // bbox.
         let offset = if let Some(r) = response.rect {
-            let measured = ui
+            let measure_str: &str = if !self.text.is_empty() || is_focused {
+                self.text
+            } else {
+                &self.placeholder
+            };
+            let m = ui
                 .text
                 .measure(
-                    self.text,
+                    measure_str,
                     ctx.font_size,
                     ctx.line_height_px,
                     ctx.wrap_target,
                     ctx.family,
                 )
                 .size;
+            let measured = Size::new(m.w, m.h.max(ctx.line_height_px));
             let inner_w = (r.size.w - ctx.padding.horiz()).max(0.0);
             let inner_h = (r.size.h - ctx.padding.vert()).max(0.0);
             align_offset(Size::new(inner_w, inner_h), measured, align)

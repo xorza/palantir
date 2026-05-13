@@ -165,7 +165,6 @@ pub fn build_align(ui: &mut Ui) {
             .show(ui);
 
             Panel::vstack()
-                .id_salt("grid")
                 .gap(8.0)
                 .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
