@@ -89,6 +89,13 @@ pub enum Shape<'a> {
         font_size_px: f32,
         line_height_px: f32,
         wrap: TextWrap,
+        /// Visual placement *and* cache-key discriminator: encoder
+        /// positions the glyph bbox inside `base` via both axes, and
+        /// the layout pipeline threads `align.halign()` into cosmic's
+        /// per-line `set_align` + [`crate::TextCacheKey`]. Same field
+        /// because both want the user-intended alignment — `halign`
+        /// drives X positioning and the shaped buffer's per-line
+        /// offset together, `valign` drives Y positioning only.
         align: Align,
         family: FontFamily,
     },
