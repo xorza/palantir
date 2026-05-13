@@ -7,7 +7,9 @@ use crate::forest::widget_id::WidgetId;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::sizing::Sizing;
-use crate::support::testing::{click_at, run_at_acked, shapes_of, ui_with_text};
+use crate::support::testing::{
+    click_at, run_at, run_at_acked, secondary_click_at, shapes_of, ui_with_text,
+};
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
@@ -1143,5 +1145,132 @@ fn line_height_override_changes_caret_rect_height() {
     assert!(
         (doubled - 32.0).abs() < 1e-5,
         "2.0 multiplier yields 32 px caret, got {doubled}",
+    );
+}
+
+/// Default context menu wires Cut / Copy / Paste / Clear against
+/// the host buffer. Drives the menu end-to-end: right-click opens
+/// it on the next frame, clicking a row mutates the buffer + the
+/// clipboard, and the menu auto-closes.
+#[test]
+fn context_menu_cut_copy_paste_clear() {
+    use crate::widgets::context_menu::ContextMenu;
+    // Whole test holds the clipboard guard so a parallel test in
+    // the lib binary can't slip between our `set`/`get` checks.
+    let _cb_guard = crate::clipboard::test_serialize_guard();
+    crate::clipboard::set("");
+
+    fn editor_id() -> WidgetId {
+        WidgetId::from_hash("ctx-ed")
+    }
+    fn body(ui: &mut Ui, buf: &mut String) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id_salt("ctx-ed")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    }
+    fn open_menu_and_record(ui: &mut Ui, buf: &mut String) {
+        ContextMenu::open(ui, editor_id(), Vec2::new(20.0, 10.0));
+        run_at(&mut *ui, SMALL, |ui| body(ui, buf));
+    }
+    /// Click into the body element of the open menu at row-offset
+    /// `(rel_x, rel_y)` from the body's top-left, then run a frame
+    /// so the click is observed by `MenuItem::show`.
+    fn click_menu_row(ui: &mut Ui, buf: &mut String, row_idx: usize) {
+        let body_id = editor_id().with("ctx_menu_body");
+        let body_rect = ui
+            .layout
+            .cascades
+            .by_id
+            .get(&body_id)
+            .map(|&i| ui.layout.cascades.entries[i as usize].rect)
+            .expect("context menu body recorded");
+        // Theme padding ~4 px + row height ~31 px including row
+        // padding. Click well inside the chosen row.
+        let row_y = body_rect.min.y + 8.0 + (row_idx as f32) * 32.0;
+        click_at(ui, Vec2::new(body_rect.min.x + 20.0, row_y));
+        run_at(&mut *ui, SMALL, |ui| body(ui, buf));
+    }
+
+    // Seed: buffer with text, select "ell" (caret=4, anchor=1).
+    let mut ui = ui_at_no_cosmic(SMALL);
+    let mut buf = String::from("hello");
+    run_at_acked(&mut ui, SMALL, |ui| body(ui, &mut buf));
+    {
+        let st = ui.state_mut::<TextEditState>(editor_id());
+        st.caret = 4;
+        st.selection = Some(1);
+    }
+
+    // Copy → clipboard holds "ell", buffer unchanged. Menu closes
+    // on click.
+    open_menu_and_record(&mut ui, &mut buf);
+    click_menu_row(&mut ui, &mut buf, 1); // row 1 == Copy
+    assert_eq!(buf, "hello", "copy doesn't mutate the buffer");
+    assert_eq!(crate::clipboard::get(), "ell");
+    assert!(
+        !ContextMenu::is_open(&ui, editor_id()),
+        "item click auto-closes menu",
+    );
+
+    // Cut → buffer drops "ell", caret collapses to selection start.
+    {
+        let st = ui.state_mut::<TextEditState>(editor_id());
+        st.caret = 4;
+        st.selection = Some(1);
+    }
+    open_menu_and_record(&mut ui, &mut buf);
+    click_menu_row(&mut ui, &mut buf, 0); // row 0 == Cut
+    assert_eq!(buf, "ho", "cut removes the selection");
+    assert_eq!(crate::clipboard::get(), "ell");
+    let st = *ui.state_mut::<TextEditState>(editor_id());
+    assert_eq!(st.caret, 1);
+    assert_eq!(st.selection, None);
+
+    // Paste at caret → "h" + "ell" + "o" = "hello".
+    open_menu_and_record(&mut ui, &mut buf);
+    click_menu_row(&mut ui, &mut buf, 2); // row 2 == Paste
+    assert_eq!(buf, "hello", "paste inserts clipboard at caret");
+    let st = *ui.state_mut::<TextEditState>(editor_id());
+    assert_eq!(st.caret, 4, "caret advances past pasted text");
+
+    // Clear → buffer wiped, caret reset. Row 3 is the separator;
+    // row 4 is Clear in render order.
+    open_menu_and_record(&mut ui, &mut buf);
+    click_menu_row(&mut ui, &mut buf, 4);
+    assert_eq!(buf, "");
+    let st = *ui.state_mut::<TextEditState>(editor_id());
+    assert_eq!(st.caret, 0);
+}
+
+/// Right-click on the editor opens the menu — pins the secondary-
+/// click → `ContextMenu::attach` wiring.
+#[test]
+fn secondary_click_opens_text_edit_menu() {
+    use crate::widgets::context_menu::ContextMenu;
+    let _cb_guard = crate::clipboard::test_serialize_guard();
+
+    let editor_id = WidgetId::from_hash("ctx-ed-sec");
+    fn body(ui: &mut Ui, buf: &mut String) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id_salt("ctx-ed-sec")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    }
+
+    let mut ui = ui_at_no_cosmic(SMALL);
+    let mut buf = String::from("hi");
+    run_at_acked(&mut ui, SMALL, |ui| body(ui, &mut buf));
+    assert!(!ContextMenu::is_open(&ui, editor_id));
+
+    secondary_click_at(&mut ui, Vec2::new(40.0, 20.0));
+    run_at(&mut ui, SMALL, |ui| body(ui, &mut buf));
+    assert!(
+        ContextMenu::is_open(&ui, editor_id),
+        "secondary click on TextEdit opens its default menu",
     );
 }
