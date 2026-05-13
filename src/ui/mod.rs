@@ -84,13 +84,14 @@ pub struct Ui {
     pub(crate) fps_ema: f32,
     /// Set by [`Self::animate`] when an animation hasn't settled.
     pub(crate) repaint_requested: bool,
-    /// Absolute Ui-time (`self.time` units) at which a deferred
-    /// repaint should fire. Reset to `None` each frame; widgets call
-    /// [`Self::request_repaint_after`] to schedule a wake-up. Multiple
-    /// callers compose via min-aggregation — the earliest deadline
-    /// wins. Hosts read this off [`FrameReport`] and pair with
+    /// Pending wake-up deadlines (absolute Ui-time, sorted ascending,
+    /// dedup'd). Survive across frames — callers schedule once via
+    /// [`Self::request_repaint_after`] and the entry stays until its
+    /// deadline fires, at which point [`Self::frame`] drains it at the
+    /// top of the next frame. Hosts read the earliest pending entry
+    /// off [`FrameReport::repaint_after`] and pair with
     /// `winit::ControlFlow::WaitUntil` (or equivalent).
-    pub(crate) repaint_after: Option<Duration>,
+    pub(crate) repaint_wakes: Vec<Duration>,
     pub(crate) anim: AnimMap,
     /// Submission status of the last *painted* frame. NOT reset in
     /// `pre_record` — `click_on_empty_bg_does_not_force_full`
@@ -157,7 +158,7 @@ impl Ui {
             frame_state: FrameState::default(),
             relayout_requested: false,
             repaint_requested: false,
-            repaint_after: None,
+            repaint_wakes: Vec::new(),
         }
     }
 
@@ -213,7 +214,10 @@ impl Ui {
         self.time = now;
         self.frame_id += 1;
         self.repaint_requested = false;
-        self.repaint_after = None;
+        // Drop wakes whose deadline has fired (this frame is at or
+        // past them). Sorted-ascending invariant means a prefix slice.
+        let fired = self.repaint_wakes.partition_point(|&d| d <= self.time);
+        self.repaint_wakes.drain(..fired);
         self.relayout_requested = false;
 
         if self.should_invalidate_prev(display) {
@@ -255,7 +259,7 @@ impl Ui {
 
         FrameReport {
             repaint_requested: self.repaint_requested,
-            repaint_after: self.repaint_after,
+            repaint_after: self.repaint_wakes.first().copied(),
             skip_render: damage.is_none(),
             damage,
             clear_color: self.theme.window_clear,
@@ -364,11 +368,14 @@ impl Ui {
         self.repaint_requested = true;
     }
 
-    /// Ask the host to schedule another frame `after` from now, without
-    /// burning intervening frames. Composes via earliest-deadline-wins:
-    /// repeated calls in the same frame keep the soonest target. Use
-    /// for time-driven UI like tooltip delays where idle pixels don't
-    /// change but we still need a wake-up at a known instant.
+    /// Schedule a one-shot wake at `now + after`. The entry persists
+    /// across frames; [`Self::frame`] drains entries whose deadline
+    /// has fired at the top of each frame. Duplicate deadlines collapse
+    /// (sorted + dedup'd), so re-requesting the same wake is a no-op.
+    ///
+    /// Callers don't need to re-request each frame. To cancel, schedule
+    /// nothing else — the wake will fire once, the next frame will run
+    /// briefly, and the queue drains.
     #[track_caller]
     pub fn request_repaint_after(&mut self, after: Duration) {
         let caller = std::panic::Location::caller();
@@ -381,10 +388,9 @@ impl Ui {
             self.frame_id,
         );
         let deadline = self.time.saturating_add(after);
-        self.repaint_after = Some(match self.repaint_after {
-            Some(prev) => prev.min(deadline),
-            None => deadline,
-        });
+        if let Err(pos) = self.repaint_wakes.binary_search(&deadline) {
+            self.repaint_wakes.insert(pos, deadline);
+        }
     }
 
     fn pre_record(&mut self) {

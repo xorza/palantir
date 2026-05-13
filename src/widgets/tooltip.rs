@@ -169,16 +169,20 @@ impl<'r> Tooltip<'r> {
             .is_some_and(|t| (now - t) < warmup);
 
         if active_trigger {
-            let started = *state.hover_started_at.get_or_insert(now);
+            let started = match state.hover_started_at {
+                Some(t) => t,
+                None => {
+                    state.hover_started_at = Some(now);
+                    // One wake at the threshold is enough — the queue
+                    // remembers it. If the user moves off before then
+                    // the wake still fires into a no-op frame; cheap.
+                    ui.request_repaint_after(std::time::Duration::from_secs_f32(delay));
+                    now
+                }
+            };
             let elapsed = now - started;
             if warmup_active || elapsed >= delay {
                 state.visible = true;
-            } else {
-                // Damage-driven repaint means idle frames don't run.
-                // Without an explicit wake the delay never elapses;
-                // schedule one at the threshold.
-                let remaining = (delay - elapsed).max(0.0);
-                ui.request_repaint_after(std::time::Duration::from_secs_f32(remaining));
             }
         } else {
             state.hover_started_at = None;
@@ -192,9 +196,8 @@ impl<'r> Tooltip<'r> {
             let viewport = ui.display().logical_rect();
             let placed = place_anchor(trigger_rect, state.last_size, viewport, gap);
             let text = self.text;
-            // Theme fallbacks for fields the caller didn't override.
-            // Sentinel checks mirror Button/TextEdit's pattern: ZERO
-            // padding / INF max_size / None chrome mean "inherit".
+            // Theme fallbacks: ZERO padding / INF max_size / None
+            // chrome mean "inherit from theme.tooltip".
             let mut element = self.element;
             element.set_id(bubble_id);
             let text_style = ui.theme.tooltip.text;
