@@ -3,15 +3,18 @@ use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
+use crate::primitives::brush::FillAxis;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::{
     corners::Corners, rect::Rect, size::Size, spacing::Spacing, transform::TranslateScale,
 };
+use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
 use crate::ui::cascade::Cascade;
 use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
+use glam::Vec2;
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU
 /// work, no scale/snap math — that lives in the backend's process
@@ -164,6 +167,56 @@ fn emit_one_shape(
                 join: LineJoinBits::new(*join),
                 ..bytemuck::Zeroable::zeroed()
             });
+        }
+        ShapeRecord::Shadow {
+            local_rect,
+            radius,
+            color,
+            offset,
+            blur,
+            spread,
+            inset,
+        } => {
+            // Source rect after spread: inflated (drop) / deflated
+            // (inset) by `spread`. Then paint bbox = source.inflated
+            // symmetrically by `|offset_axis| + 3σ` per axis (for
+            // drop). Inset paints inside the source rect; no
+            // expansion beyond it.
+            let source = match local_rect {
+                None => owner_rect,
+                Some(lr) => Rect {
+                    min: owner_rect.min + lr.min,
+                    size: lr.size,
+                },
+            };
+            let sigma3 = 3.0 * blur.max(0.0);
+            let (paint_rect, kind) = if *inset {
+                // Paint inside source verbatim; spread shrinks the
+                // hole inside the shader via the (1 - hole_cov) math
+                // on `half - spread`. Source size unchanged.
+                (source, FillKind::SHADOW_INSET)
+            } else {
+                let spread = spread.max(0.0);
+                let dx = offset.x.abs() + sigma3 + spread;
+                let dy = offset.y.abs() + sigma3 + spread;
+                let r = Rect {
+                    min: source.min - Vec2::new(dx, dy),
+                    size: Size::new(source.size.w + 2.0 * dx, source.size.h + 2.0 * dy),
+                };
+                (r, FillKind::SHADOW_DROP)
+            };
+            out.draw_shadow(
+                paint_rect,
+                *radius,
+                *color,
+                kind,
+                FillAxis {
+                    dir_x: offset.x,
+                    dir_y: offset.y,
+                    t0: *blur,
+                    t1: 0.0,
+                },
+            );
         }
         ShapeRecord::Mesh {
             local_rect,

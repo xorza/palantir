@@ -131,6 +131,23 @@ impl Shapes {
                 wrap,
                 align,
             },
+            Shape::Shadow {
+                local_rect,
+                radius,
+                color,
+                offset,
+                blur,
+                spread,
+                inset,
+            } => ShapeRecord::Shadow {
+                local_rect,
+                radius,
+                color,
+                offset,
+                blur,
+                spread,
+                inset,
+            },
             Shape::Mesh {
                 mesh,
                 local_rect,

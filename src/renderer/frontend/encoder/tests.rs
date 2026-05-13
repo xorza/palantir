@@ -185,6 +185,70 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     );
 }
 
+/// `Shape::Shadow` lowers to a single `DrawRect` cmd (shadow is just
+/// another quad-kind on the same pipeline). The payload's
+/// `fill_kind` is `FillKind::SHADOW_DROP` (4) and the paint bbox is
+/// inflated by `|offset| + 3σ + spread` per side from the source
+/// rect. `fill_axis` carries `(offset.x, offset.y, σ, _)`.
+#[test]
+fn shadow_lowers_to_drawrect_with_inflated_bbox() {
+    use crate::primitives::corners::Corners;
+    use crate::renderer::quad::FillKind;
+    use crate::shape::Shape;
+
+    let mut ui = Ui::new();
+    run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            ui.add_shape(Shape::Shadow {
+                local_rect: Some(Rect::new(10.0, 20.0, 30.0, 40.0)),
+                radius: Corners::all(4.0),
+                color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                offset: Vec2::new(2.0, 4.0),
+                blur: 8.0,
+                spread: 1.0,
+                inset: false,
+            });
+            Frame::new().id_salt("host").size(50.0).show(ui);
+        });
+    });
+    let cmds = encode_cmds(&ui);
+    let shadow_payloads: Vec<DrawRectPayload> = cmds
+        .kinds
+        .iter()
+        .zip(cmds.starts.iter())
+        .filter_map(|(k, s)| {
+            if matches!(k, CmdKind::DrawRect) {
+                let p: DrawRectPayload = cmds.read(*s);
+                if p.fill_kind == FillKind::SHADOW_DROP {
+                    return Some(p);
+                }
+            }
+            None
+        })
+        .collect();
+    assert_eq!(shadow_payloads.len(), 1, "exactly one shadow cmd");
+    let p = shadow_payloads[0];
+    // Inflation: dx = |2| + 3*8 + 1 = 27, dy = |4| + 3*8 + 1 = 29.
+    // Source is (10,20)..(40,60); paint bbox = (-17,-9)..(67,89).
+    // Owner rect min comes from Panel layout, which we don't know
+    // exactly — just assert the size and that fill_axis carries the
+    // raw offset/σ.
+    assert!(
+        (p.rect.size.w - 84.0).abs() < 0.5,
+        "paint bbox width = source.w + 2*dx = 30 + 54 = 84, got {}",
+        p.rect.size.w
+    );
+    assert!(
+        (p.rect.size.h - 98.0).abs() < 0.5,
+        "paint bbox height = source.h + 2*dy = 40 + 58 = 98, got {}",
+        p.rect.size.h
+    );
+    assert_eq!(p.fill_axis.dir_x, 2.0);
+    assert_eq!(p.fill_axis.dir_y, 4.0);
+    assert_eq!(p.fill_axis.t0, 8.0);
+    assert_eq!(p.fill, Color::rgba(0.0, 0.0, 0.0, 0.5));
+}
+
 #[test]
 fn text_shape_emits_draw_text() {
     use crate::Text;

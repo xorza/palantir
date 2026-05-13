@@ -6,6 +6,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
+use glam::Vec2;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 
@@ -105,6 +106,22 @@ pub(crate) enum ShapeRecord {
         indices: Span,
         content_hash: u64,
     } = 3,
+    /// Gaussian-blurred rounded rect — drop / inset shadow. All
+    /// parameters are inline scalars; no payload arena. With
+    /// `local_rect = None` the shadow shadows the owner's full
+    /// arranged rect; with `Some(r)` it shadows the owner-relative
+    /// rect `r`. Encoder inflates the paint bbox by
+    /// `|offset| + 3σ + spread` and routes through the existing
+    /// `DrawRect` cmd with `FillKind::SHADOW_DROP|SHADOW_INSET`.
+    Shadow {
+        local_rect: Option<Rect>,
+        radius: Corners,
+        color: Color,
+        offset: Vec2,
+        blur: f32,
+        spread: f32,
+        inset: bool,
+    } = 4,
 }
 
 impl ShapeRecord {
@@ -118,6 +135,7 @@ impl ShapeRecord {
             ShapeRecord::Polyline { .. } => 1,
             ShapeRecord::Text { .. } => 2,
             ShapeRecord::Mesh { .. } => 3,
+            ShapeRecord::Shadow { .. } => 4,
         }
     }
 }
@@ -192,6 +210,30 @@ impl Hash for ShapeRecord {
                 }
                 tint.hash(h);
                 h.write_u64(*content_hash);
+            }
+            ShapeRecord::Shadow {
+                local_rect,
+                radius,
+                color,
+                offset,
+                blur,
+                spread,
+                inset,
+            } => {
+                match local_rect {
+                    None => h.write_u8(0),
+                    Some(r) => {
+                        h.write_u8(1);
+                        r.hash(h);
+                    }
+                }
+                radius.hash(h);
+                color.hash(h);
+                h.write_u32(offset.x.to_bits());
+                h.write_u32(offset.y.to_bits());
+                h.write_u32(blur.to_bits());
+                h.write_u32(spread.to_bits());
+                h.write_u8(*inset as u8);
             }
         }
     }

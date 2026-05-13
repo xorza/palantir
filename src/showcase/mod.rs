@@ -18,6 +18,7 @@ pub mod pan_zoom_auto;
 pub mod panels;
 pub mod popup;
 pub mod scroll;
+pub mod shadow;
 pub mod sizing;
 pub mod spacing;
 pub mod swatch;

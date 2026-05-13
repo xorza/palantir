@@ -16,10 +16,18 @@ const ATLAS_ROWS_F: f32 = 256.0;
 //   1 = linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
 //   2 = radial (sample LUT via `fill_axis = (cx, cy, rx, ry)`)
 //   3 = conic  (sample LUT via `fill_axis = (cx, cy, start_angle, _)`)
-const BRUSH_KIND_SOLID:  u32 = 0u;
-const BRUSH_KIND_LINEAR: u32 = 1u;
-const BRUSH_KIND_RADIAL: u32 = 2u;
-const BRUSH_KIND_CONIC:  u32 = 3u;
+const BRUSH_KIND_SOLID:        u32 = 0u;
+const BRUSH_KIND_LINEAR:       u32 = 1u;
+const BRUSH_KIND_RADIAL:       u32 = 2u;
+const BRUSH_KIND_CONIC:        u32 = 3u;
+// Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
+// `fill_axis = (offset.x, offset.y, sigma, _)` in physical px.
+// `fill` is the shadow colour, `radius` is the source rect's corner
+// radii, `size` is the paint bbox (source.inflated(|offset| + 3σ +
+// spread)). Spread is baked into the paint bbox at encode time, so
+// the shader doesn't need it explicitly.
+const BRUSH_KIND_SHADOW_DROP:  u32 = 4u;
+const BRUSH_KIND_SHADOW_INSET: u32 = 5u;
 // Spread mode (bits 8..16 of fill_kind), only meaningful for gradients.
 const SPREAD_PAD:     u32 = 0u;
 const SPREAD_REPEAT:  u32 = 1u;
@@ -151,8 +159,91 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
     return textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
 }
 
+// Rounded-box SDF centered at the origin: source half-extents `b`,
+// per-corner radius `r = (tl, tr, br, bl)`. Same quadrant selection
+// scheme as `sdf_rounded_rect` but operates in centered coords —
+// matches the source-shape frame the shadow integrates over.
+fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f32 {
+    let right  = step(0.0, p.x);
+    let bottom = step(0.0, p.y);
+    let r = mix(mix(radius.x, radius.y, right),
+                mix(radius.w, radius.z, right),
+                bottom);
+    let q = abs(p) - (b - vec2<f32>(r));
+    return min(max(q.x, q.y), 0.0) + length(max(q, vec2<f32>(0.0))) - r;
+}
+
+// `erf` approximation (Abramowitz & Stegun 7.1.26 form, max error
+// ~1.5e-7). WGSL doesn't ship `erf` as a builtin.
+fn erf_approx(x: f32) -> f32 {
+    let s = sign(x);
+    let a = abs(x);
+    let t = 1.0 / (1.0 + 0.3275911 * a);
+    let y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-a * a);
+    return s * y;
+}
+
+// Closed-form coverage of a Gaussian-blurred rounded box. For σ → 0
+// the result is `clamp(0.5 - d, 0, 1)` — same shape as the existing
+// non-blurred SDF coverage, so the path collapses cleanly to a sharp
+// shadow. For σ > 0 we use the SDF distance as the input to an erf,
+// which is exact for an axis-aligned half-plane and a smooth
+// approximation for a rounded rect (the same trick Evan Wallace's
+// shader uses; see `references/vello.md` §3).
+fn blurred_rect_coverage(d: f32, sigma: f32) -> f32 {
+    if (sigma <= 1.0e-4) {
+        return clamp(0.5 - d, 0.0, 1.0);
+    }
+    // d < 0 inside the shape → coverage ≈ 1; d > 0 outside → 0.
+    // `erf(-d / (√2 σ))` smoothly transitions, mapped to 0..1.
+    let inv = 1.0 / (1.41421356 * sigma);
+    return 0.5 - 0.5 * erf_approx(d * inv);
+}
+
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
+    let kind = in.fill_kind & 0xFFu;
+    if (kind == BRUSH_KIND_SHADOW_DROP) {
+        // Paint bbox covers (source + offset).inflated(3σ + spread).
+        // Source center (in paint-local) = paint_size/2 - offset.
+        // Source half = paint_size/2 - |offset| - 3σ (spread baked in).
+        let offset = in.fill_axis.xy;
+        let sigma  = in.fill_axis.z;
+        let half   = in.size * 0.5;
+        let src_half = max(half - abs(offset) - vec2<f32>(3.0 * sigma), vec2<f32>(0.0));
+        let p = in.local - half - offset;
+        let d = sdf_rounded_box_centered(p, src_half, in.radius);
+        let cov = blurred_rect_coverage(d, sigma);
+        let a = in.fill.a * cov;
+        return vec4<f32>(in.fill.rgb * a, a);
+    }
+    if (kind == BRUSH_KIND_SHADOW_INSET) {
+        // Inset: paint bbox = source. Shadow lives inside the source
+        // rect, clipped to inside. Coverage is 1 - blurred(source - hole),
+        // where the hole is the source shifted by offset (deflated by
+        // spread, already baked in source half). Source is paint bbox
+        // itself; hole rect = source shifted by offset, evaluated as
+        // the SDF of the source minus a translated copy.
+        let offset = in.fill_axis.xy;
+        let sigma  = in.fill_axis.z;
+        let half   = in.size * 0.5;
+        // Outer source SDF (paint = source).
+        let p_src = in.local - half;
+        let d_src = sdf_rounded_box_centered(p_src, half, in.radius);
+        if (d_src > 0.0) {
+            // Outside the source — inset shadows never paint outside.
+            return vec4<f32>(0.0);
+        }
+        // Inner "hole" — the source shifted by offset and 3σ-inflated.
+        // Inset coverage = (1 - hole coverage) inside source.
+        let p_hole = in.local - half - offset;
+        let d_hole = sdf_rounded_box_centered(p_hole, half, in.radius);
+        let cov_hole = blurred_rect_coverage(d_hole, sigma);
+        let cov = clamp(1.0 - cov_hole, 0.0, 1.0);
+        let a = in.fill.a * cov;
+        return vec4<f32>(in.fill.rgb * a, a);
+    }
+
     let d = sdf_rounded_rect(in.local, in.size, in.radius);
     let outer_aa = clamp(0.5 - d, 0.0, 1.0);
 
