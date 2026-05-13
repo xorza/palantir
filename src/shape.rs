@@ -83,19 +83,26 @@ pub enum Shape<'a> {
         tolerance: f32,
     },
     Text {
-        local_rect: Option<Rect>,
+        /// `None` → encoder owns positioning: the glyph bbox is
+        /// placed inside the owner's padded inner rect via `align`.
+        /// Used by Text/Button/ContextMenu.
+        /// `Some(origin)` → widget owns positioning: bbox origin is
+        /// `owner.min + origin`, encoder is a passthrough (`align`'s
+        /// placement axes are ignored). Used by TextEdit so it can
+        /// shift the text by scroll + alignment offsets the encoder
+        /// can't compute.
+        local_origin: Option<Vec2>,
         text: Cow<'static, str>,
         brush: Brush,
         font_size_px: f32,
         line_height_px: f32,
         wrap: TextWrap,
         /// Visual placement *and* cache-key discriminator: encoder
-        /// positions the glyph bbox inside `base` via both axes, and
-        /// the layout pipeline threads `align.halign()` into cosmic's
-        /// per-line `set_align` + [`crate::TextCacheKey`]. Same field
-        /// because both want the user-intended alignment — `halign`
-        /// drives X positioning and the shaped buffer's per-line
-        /// offset together, `valign` drives Y positioning only.
+        /// positions the glyph bbox inside `base` via both axes (only
+        /// when `local_rect = None`), and the layout pipeline always
+        /// threads `align.halign()` into cosmic's per-line
+        /// `set_align` + [`crate::TextCacheKey`]. Same field because
+        /// both consumers want the user-intended alignment.
         align: Align,
         family: FontFamily,
     },

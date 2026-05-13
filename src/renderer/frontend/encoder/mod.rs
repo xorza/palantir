@@ -132,7 +132,7 @@ fn emit_one_shape(
             out.draw_rect(r, *radius, fill, *stroke);
         }
         ShapeRecord::Text {
-            local_rect,
+            local_origin,
             color,
             align,
             ..
@@ -148,21 +148,27 @@ fn emit_one_shape(
                 tracing::trace!(?shape, "encoder: dropping text with invalid key");
                 return;
             }
-            // `local_rect: None` → owner inner rect (padding-deflated).
-            // `local_rect: Some` → owner-relative explicit rect, padding
-            // skipped. `align` positions the glyph bbox inside whichever.
-            let base = match local_rect {
-                None => owner_rect.deflated_by(tree.records.layout()[id.index()].padding),
-                Some(lr) => Rect {
-                    min: owner_rect.min + lr.min,
-                    size: lr.size,
+            // Two paths share the same `DrawText` payload:
+            // - `local_rect: None` → encoder owns positioning. Place
+            //   the shaped bbox inside the owner's padded inner rect
+            //   via `align_text_in`.
+            // - `local_rect: Some(origin)` → widget owns positioning.
+            //   Origin is `owner.min + origin`; bbox size is the
+            //   shaped measurement. `align`'s placement axes are
+            //   ignored (only `align.halign()` matters here, and
+            //   that's already baked into the shaped buffer's
+            //   per-line glyph offsets).
+            let rect = match local_origin {
+                None => {
+                    let padded = owner_rect.deflated_by(tree.records.layout()[id.index()].padding);
+                    align_text_in(padded, shaped.measured, *align)
+                }
+                Some(origin) => Rect {
+                    min: owner_rect.min + *origin,
+                    size: shaped.measured,
                 },
             };
-            out.draw_text(
-                align_text_in(base, shaped.measured, *align),
-                *color,
-                shaped.key,
-            );
+            out.draw_text(rect, *color, shaped.key);
         }
         ShapeRecord::Polyline {
             width,

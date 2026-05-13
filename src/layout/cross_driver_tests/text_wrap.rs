@@ -8,7 +8,6 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
-use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
 use crate::support::testing::{encode_cmds, run_at_acked, shapes_of, ui_with_text};
@@ -455,7 +454,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
         element.set_id(crate::WidgetId::from_hash("multi-text-leaf"));
         leaf = Some(ui.node(element, |ui| {
             ui.add_shape(Shape::Text {
-                local_rect: Some(Rect::new(0.0, 0.0, 100.0, 20.0)),
+                local_origin: Some(glam::Vec2::new(0.0, 0.0)),
                 text: Cow::Borrowed("first"),
                 brush: Color::WHITE.into(),
                 font_size_px: 14.0,
@@ -465,7 +464,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 family: crate::text::FontFamily::Sans,
             });
             ui.add_shape(Shape::Text {
-                local_rect: Some(Rect::new(0.0, 22.0, 100.0, 20.0)),
+                local_origin: Some(glam::Vec2::new(0.0, 22.0)),
                 text: Cow::Borrowed("second-with-different-text"),
                 brush: Color::WHITE.into(),
                 font_size_px: 14.0,

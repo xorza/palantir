@@ -129,7 +129,7 @@ impl Shapes {
                 )
             }
             Shape::Text {
-                local_rect,
+                local_origin,
                 text,
                 brush,
                 font_size_px,
@@ -138,7 +138,7 @@ impl Shapes {
                 align,
                 family,
             } => ShapeRecord::Text {
-                local_rect,
+                local_origin,
                 text,
                 color: brush.expect_solid(),
                 font_size_px,
