@@ -349,17 +349,18 @@ impl Tree {
 
         self.bounds.push((!bounds.is_default()).then_some(bounds));
         self.panel.push((!panel.is_default()).then_some(panel));
-        // Single noop-policy site for chrome:
+        // Noop policy for chrome:
         //   * `clip_radius` extracts `chrome.radius` whenever this
         //     node has `ClipMode::Rounded`, *regardless* of whether
         //     the paint is invisible — the encoder needs the radius
-        //     for the stencil mask even when the paint isn't drawn.
-        //   * `chrome` itself is dropped to `None` when the paint is
-        //     invisible (`Background::is_noop()`), so the encoder can
-        //     just say "if chrome is some, draw it" — no per-frame
-        //     noop guard downstream.
-        // Together these decouple "paint info" from "mask radius",
-        // so the encoder treats both as plain plumbing.
+        //     for the stencil mask even when nothing paints.
+        //   * `chrome` itself is dropped to `None` only when every
+        //     paintable part is no-op (fill + stroke + shadow); a
+        //     shadow-only or fill-only background survives, and the
+        //     encoder's chrome branch gates each `draw_*` call on
+        //     its own `is_noop` so a fill-only background doesn't
+        //     trail an empty `DrawShadow` and a shadow-only one
+        //     doesn't trail an empty `DrawRect`.
         let clip_radius = matches!(attrs.clip_mode(), ClipMode::Rounded)
             .then(|| chrome.as_ref().map(|bg| bg.radius))
             .flatten();

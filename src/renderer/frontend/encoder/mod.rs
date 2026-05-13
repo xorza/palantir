@@ -274,17 +274,16 @@ fn encode_node(
     // chrome first leaves it unclipped (the panel's SDF self-clips
     // correctly), preserving the stroke ring.
     //
-    // No `is_noop` guard here: `Tree::open_node` already drops chrome
-    // to `None` when the paint is invisible, so reaching this branch
-    // means there's something to paint.
+    // `Tree::open_node` drops chrome to `None` only when every
+    // paintable part is no-op. Both `draw_rect` and `draw_shadow`
+    // gate on their own `is_noop` internally, so a shadow-only or
+    // fill-only background here emits exactly one command.
     if let Some(bg) = chrome {
         // Shadow paints UNDER the rect fill (CSS box-shadow order).
         // `local_rect = None` means the shadow follows the owner's
         // full arranged rect — `compute_paint_rect` mirrors this so
         // paint extent and damage extent stay in lockstep.
-        if !bg.shadow.is_noop() {
-            emit_shadow(out, rect, None, bg.radius, &bg.shadow);
-        }
+        emit_shadow(out, rect, None, bg.radius, &bg.shadow);
         out.draw_rect(rect, bg.radius, &bg.fill, bg.stroke);
     }
 
@@ -416,6 +415,9 @@ fn emit_shadow(
     radius: Corners,
     shadow: &Shadow,
 ) {
+    if shadow.is_noop() {
+        return;
+    }
     let paint_local = shadow_paint_rect_local(
         local_rect,
         owner_rect.size,
