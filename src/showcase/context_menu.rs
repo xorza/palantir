@@ -5,7 +5,7 @@
 
 use palantir::{
     Background, Button, Color, Configure, ContextMenu, Corners, Frame, MenuItem, Panel, Sense,
-    Sizing, Stroke, Text, Ui, WidgetId,
+    Sizing, Spacing, Stroke, Text, Ui, WidgetId,
 };
 
 #[derive(Default)]
@@ -45,14 +45,15 @@ pub fn build(ui: &mut Ui) {
                         .id_salt("ctx-menu-button-trigger")
                         .label("right-click me")
                         .show(ui);
-                    attach_menu(ui, &trigger, state_id);
+                    attach_menu(ui, &trigger, state_id, MenuFlavor::Default);
                 });
 
             // Trigger 2: a generic Frame surface (Sense::CLICK so it
-            // can receive secondary clicks).
+            // can receive secondary clicks). Demonstrates the
+            // theme-driven default look.
             let surface = Frame::new()
                 .id_salt("ctx-menu-surface")
-                .size((Sizing::FILL, Sizing::Fixed(160.0)))
+                .size((Sizing::FILL, Sizing::Fixed(120.0)))
                 .sense(Sense::CLICK)
                 .background(Background {
                     fill: Color::hex(0x2a2a2a).into(),
@@ -60,13 +61,40 @@ pub fn build(ui: &mut Ui) {
                     radius: Corners::all(6.0),
                 })
                 .show(ui);
-            attach_menu(ui, &surface, state_id);
+            attach_menu(ui, &surface, state_id, MenuFlavor::Default);
+
+            // Trigger 3: same items, but configured wider with bigger
+            // padding and a max width. Demonstrates ContextMenu's
+            // Configure surface.
+            let wide_surface = Frame::new()
+                .id_salt("ctx-menu-wide-surface")
+                .size((Sizing::FILL, Sizing::Fixed(120.0)))
+                .sense(Sense::CLICK)
+                .background(Background {
+                    fill: Color::hex(0x223344).into(),
+                    stroke: Stroke::solid(Color::hex(0x445566), 1.0),
+                    radius: Corners::all(6.0),
+                })
+                .show(ui);
+            attach_menu(ui, &wide_surface, state_id, MenuFlavor::Wide);
         });
 }
 
-fn attach_menu(ui: &mut Ui, trigger: &palantir::Response, state_id: WidgetId) {
-    ContextMenu::attach(ui, trigger)
-    .show(ui, |ui| {
+#[derive(Copy, Clone)]
+enum MenuFlavor {
+    Default,
+    Wide,
+}
+
+fn attach_menu(ui: &mut Ui, trigger: &palantir::Response, state_id: WidgetId, flavor: MenuFlavor) {
+    let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::Hug, Sizing::Hug));
+    if let MenuFlavor::Wide = flavor {
+        menu = menu
+            .min_size((260.0, 0.0))
+            .max_size((320.0, 280.0))
+            .padding(Spacing::all(10.0));
+    }
+    menu.show(ui, |ui| {
         if MenuItem::new("Copy").shortcut("⌘C").show(ui).clicked() {
             ui.state_mut::<State>(state_id).last_action = Some("last action: Copy");
         }
