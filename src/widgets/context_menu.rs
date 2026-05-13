@@ -91,19 +91,12 @@ impl ContextMenu {
         let theme = ui.theme.context_menu.clone();
         let body_id = self.for_id.with("ctx_menu_body");
 
-        // Use the body's most recent arranged rect to clamp the
-        // anchor inside the surface. Cascade runs in `post_record`,
-        // so on a re-record pass this returns pass A's rect — no
-        // one-frame bleed. On the very first frame the menu opens
-        // there's no prior cascade entry; we record at the raw
-        // anchor and `request_relayout` so pass B can clamp.
+        // First open has no prior cascade entry — record raw and
+        // request a relayout so pass B can clamp against measured size.
         let prev_size = ui.response_for(body_id).rect.map(|r| r.size);
         let clamped = clamp_anchor(raw_anchor, prev_size, surface);
         let first_open = prev_size.is_none();
 
-        // Apply theme defaults onto our element where the caller
-        // didn't override. Mirrors Popup's `panel_background`
-        // sentinel pattern.
         let mut e = self.element;
         e.id = body_id;
         e.id_source = crate::forest::seen_ids::IdSource::Explicit;
@@ -117,14 +110,11 @@ impl ContextMenu {
             e.min_size.w = theme.min_width;
         }
 
-        let mut popup = Popup::anchored_to(clamped)
-            .click_outside(ClickOutside::Dismiss)
-            .owned_by(self.for_id);
+        let mut popup = Popup::anchored_to(clamped).click_outside(ClickOutside::Dismiss);
         *popup.element_mut() = e;
         let PopupResponse {
             dismissed,
             close_requested: item_clicked,
-            ..
         } = popup.show(ui, body);
 
         if dismissed || item_clicked {
@@ -138,18 +128,7 @@ impl ContextMenu {
             item_clicked,
         }
     }
-}
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ContextMenuResponse {
-    pub dismissed: bool,
-    pub item_clicked: bool,
-}
-
-/// Host-facing lifecycle for context menus, keyed off a trigger
-/// `WidgetId`. Cross-frame state lives in [`Ui::state`]; these are the
-/// only entrypoints — `ContextMenu::show` is the per-frame recorder.
-impl ContextMenu {
     /// Open the context menu keyed off `for_id` at surface-space
     /// `anchor`. Idempotent — repeated calls refresh the anchor.
     pub fn open(ui: &mut Ui, for_id: WidgetId, anchor: Vec2) {
@@ -168,6 +147,12 @@ impl ContextMenu {
         ui.try_state::<ContextMenuState>(for_id)
             .is_some_and(|st| st.anchor.is_some())
     }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ContextMenuResponse {
+    pub dismissed: bool,
+    pub item_clicked: bool,
 }
 
 impl Configure for ContextMenu {
@@ -233,11 +218,7 @@ impl MenuItem {
         element.id = WidgetId::auto_stable();
         element.id_source = crate::forest::seen_ids::IdSource::Auto;
         element.sense = Sense::NONE;
-        // `Hug` width + `Stretch` align (NOT `Fill`): same reasoning
-        // as `MenuItem::show` — `Fill` would leak `INF` width up
-        // through the Hug menu container and the menu would span the
-        // surface. Hug-with-Stretch arranges to the body's inner.w
-        // without growing the body during measure.
+        // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container. See `docs/popups.md`.
         element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
         element.align = Align::h(HAlign::Stretch);
         element.margin = Spacing::xy(0.0, 4.0);
@@ -269,16 +250,7 @@ impl MenuItem {
         let padding = theme.padding;
 
         let mut element = self.element;
-        // Hug both axes so each row measures to its natural width
-        // (label + gap + shortcut). Stretch on the cross axis makes
-        // arrange widen the row to the parent VStack's inner width
-        // (= widest row, with `Hug` ancestors). `SpaceBetween` then
-        // pushes label to the left edge and shortcut to the right
-        // edge of the stretched row during arrange, since both
-        // children are Hug-sized with leftover space between them.
-        // Using `Fill` anywhere here would leak `INF` width up to
-        // the Hug menu container and the menu would span the
-        // surface — see `docs/popups.md`.
+        // Hug+Stretch+SpaceBetween: row hugs content, arrange stretches to widest row, label/shortcut pin to opposite edges. Fill would leak INF — see `docs/popups.md`.
         element.size = (Sizing::Hug, Sizing::Hug).into();
         element.align = Align::h(HAlign::Stretch);
         element.justify = Justify::SpaceBetween;
@@ -290,9 +262,6 @@ impl MenuItem {
         let shortcut = self.shortcut;
 
         let node = ui.node(element, |ui| {
-            // Label cell — Hug width (NOT Fill, see comment on the
-            // row element above). `Justify::SpaceBetween` on the row
-            // pushes the label to the left during arrange.
             let mut label_el = Element::new(LayoutMode::Leaf);
             label_el.id = id.with("label");
             label_el.id_source = crate::forest::seen_ids::IdSource::Explicit;
