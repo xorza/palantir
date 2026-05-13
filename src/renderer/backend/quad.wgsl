@@ -21,11 +21,14 @@ const BRUSH_KIND_LINEAR:       u32 = 1u;
 const BRUSH_KIND_RADIAL:       u32 = 2u;
 const BRUSH_KIND_CONIC:        u32 = 3u;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
-// `fill_axis = (offset.x, offset.y, sigma, _)` in physical px.
+// `fill_axis = (offset.x, offset.y, sigma, spread)` in physical px.
 // `fill` is the shadow colour, `radius` is the source rect's corner
-// radii, `size` is the paint bbox (source.inflated(|offset| + 3σ +
-// spread)). Spread is baked into the paint bbox at encode time, so
-// the shader doesn't need it explicitly.
+// radii, `size` is the paint bbox.
+//   - Drop:  paint bbox = source.inflated(|offset| + 3σ + spread).
+//            Spread is BAKED into the paint bbox, so `fill_axis.w`
+//            is unused on this path (held at 0 by the encoder).
+//   - Inset: paint bbox = source. Spread shrinks the "hole" rect
+//            inside the shader via `fill_axis.w`.
 const BRUSH_KIND_SHADOW_DROP:  u32 = 4u;
 const BRUSH_KIND_SHADOW_INSET: u32 = 5u;
 // Spread mode (bits 8..16 of fill_kind), only meaningful for gradients.
@@ -218,26 +221,26 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         return vec4<f32>(in.fill.rgb * a, a);
     }
     if (kind == BRUSH_KIND_SHADOW_INSET) {
-        // Inset: paint bbox = source. Shadow lives inside the source
-        // rect, clipped to inside. Coverage is 1 - blurred(source - hole),
-        // where the hole is the source shifted by offset (deflated by
-        // spread, already baked in source half). Source is paint bbox
-        // itself; hole rect = source shifted by offset, evaluated as
-        // the SDF of the source minus a translated copy.
+        // Inset shadow: source rect S equals the paint bbox. The
+        // "hole" is S deflated by `spread` per side, then shifted by
+        // `offset` (the light source moves in that direction → shadow
+        // grows opposite). Coverage at fragment p inside S =
+        // `1 - blurred_cov(p relative to hole)` — outside the hole
+        // but still inside S is where the shadow paints; deep inside
+        // the hole is lit (cov→0).
         let offset = in.fill_axis.xy;
         let sigma  = in.fill_axis.z;
+        let spread = max(in.fill_axis.w, 0.0);
         let half   = in.size * 0.5;
-        // Outer source SDF (paint = source).
+        // Clip to inside the source — inset never paints outside.
         let p_src = in.local - half;
         let d_src = sdf_rounded_box_centered(p_src, half, in.radius);
         if (d_src > 0.0) {
-            // Outside the source — inset shadows never paint outside.
             return vec4<f32>(0.0);
         }
-        // Inner "hole" — the source shifted by offset and 3σ-inflated.
-        // Inset coverage = (1 - hole coverage) inside source.
+        let hole_half = max(half - vec2<f32>(spread), vec2<f32>(0.0));
         let p_hole = in.local - half - offset;
-        let d_hole = sdf_rounded_box_centered(p_hole, half, in.radius);
+        let d_hole = sdf_rounded_box_centered(p_hole, hole_half, in.radius);
         let cov_hole = blurred_rect_coverage(d_hole, sigma);
         let cov = clamp(1.0 - cov_hole, 0.0, 1.0);
         let a = in.fill.a * cov;
