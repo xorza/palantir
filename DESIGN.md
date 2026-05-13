@@ -23,12 +23,12 @@ user closures ──► [1] Record    (append per-node columns + Shapes; no layo
                   [4] Cascade   (pre-order, top-down)    — flatten disabled/visibility/clip/transform
                                                           + build hit index in same walk
                   [5] Encode + Compose + Paint            — emit RenderCmds, compose to physical-px quads,
-                                                          submit; damage tri-state (Full/Partial/Skip)
+                                                          submit; Option<Damage> (Full / Partial / None)
                                                           filters which leaves the encoder paints
                   [*] Hit-test next frame's input against last frame's cascade
 ```
 
-The tree is rebuilt every frame but laid out fresh — no stale cached sizes, no jitter. Identity is by stable IDs (`WidgetId`, hashed call-site + user key) so animation/state/focus survive across frames. Cross-frame *work skipping* lives in the `MeasureCache`, keyed on `(WidgetId, subtree_hash, available_q)`: identical authoring + identical incoming `available` ⇒ blit last frame's `desired` and skip recursion. Encode and compose used to mirror the same key; both caches contributed <1% of frame time and were removed (see `src/renderer/frontend/encoder/encode-cache.md`). The tree itself stays throwaway.
+The tree is rebuilt every frame but laid out fresh — no stale cached sizes, no jitter. Identity is by stable IDs (`WidgetId`, hashed call-site + user key) so animation/state/focus survive across frames. Cross-frame *work skipping* lives in the `MeasureCache`, keyed on `(WidgetId, subtree_hash, available_q)`: identical authoring + identical incoming `available` ⇒ blit last frame's `desired` and skip recursion. Encode and compose used to mirror the same key; both caches contributed <1% of frame time and were removed (see `docs/cache-history/encode.md`). The tree itself stays throwaway.
 
 **Cascade is its own pass** (not folded into encoder or hit-test) precisely so the encoder *and* the hit-index read the same flattened state — they can't drift on disabled/clipped/transformed subtrees. The hit index is built inside the cascade walk so they share one allocation.
 
@@ -152,11 +152,11 @@ Cases handled:
 
 Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The composer turns commands into physical-px instanced quads grouped by scissor; `WgpuBackend` submits one render pass per surface. Text runs via `glyphon` + `cosmic-text` interleave with quads inside each scissor group, sharing one `TextAtlas` + `SwashCache`. A single `TextShaper` handle (mono fallback for tests, real cosmic shaper for hosts) is shared between `Ui` (via `set_text_shaper`) and `WgpuBackend` so layout-time measurement and render-time shaping hit the same buffer cache; wrapping leaves reshape against the parent-committed width during the bottom-up measure pass, and a `(WidgetId, ordinal)`-keyed reuse cache short-circuits unchanged leaves.
 
-**No encode or compose cache.** Both were implemented mirroring the measure cache (same `(WidgetId, subtree_hash, available_q)` key) and removed after profiling — encode contributed 0.06%–0.9% of frame time across four workloads, compose was in the same range. The encoder + composer are memcpy-shaped over flat SoA columns; a per-frame rebuild is already at the floor and a cache replay didn't beat it. Full investigation lives in `src/renderer/frontend/encoder/encode-cache.md`. The `MeasureCache` (~35% on the same workloads) stays.
+**No encode or compose cache.** Both were implemented mirroring the measure cache (same `(WidgetId, subtree_hash, available_q)` key) and removed after profiling — encode contributed 0.06%–0.9% of frame time across four workloads, compose was in the same range. The encoder + composer are memcpy-shaped over flat SoA columns; a per-frame rebuild is already at the floor and a cache replay didn't beat it. Full investigation lives in `docs/cache-history/encode.md`. The `MeasureCache` (~35% on the same workloads) stays.
 
-**Damage** is a tri-state (`DamagePaint`): `Full` (re-paint everything), `Partial(rect)` (encoder filters cmds whose screen rect intersects), `Skip` (no diff vs prev frame, no submit). `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `post_record` is forced to `Full`.
+**Damage** is `enum Damage { Full, Partial(DamageRegion) }`; `compute`/`filter` return `Option<Damage>`. `Full` re-paints everything, `Partial(region)` lets the encoder filter cmds whose screen rect intersects, and `None` is the "no diff vs prev frame, just present" skip signal. `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `post_record` is forced to `Full`.
 
-**Debug overlay.** `Ui::debug_overlay: Option<DebugOverlayConfig>` (in `src/ui/debug_overlay.rs`) gates per-frame visualizations: `damage_rect` strokes the damaged region, `clear_damage` flips `Partial` frames' main-pass `LoadOp::Clear` so the undamaged region flashes the clear color (damage scissor still narrows draws). Drawn after the backbuffer→surface copy so they don't ghost across frames.
+**Debug overlay.** `Ui::debug_overlay: Option<DebugOverlayConfig>` (in `src/debug_overlay.rs`) gates per-frame visualizations: `damage_rect` strokes the damaged region, `clear_damage` flips `Partial` frames' main-pass `LoadOp::Clear` so the undamaged region flashes the clear color (damage scissor still narrows draws). Drawn after the backbuffer→surface copy so they don't ghost across frames.
 
 Single render pass per surface, instanced draws.
 
@@ -172,7 +172,7 @@ Single render pass per surface, instanced draws.
 
 - **Re-measure on size mismatch during arrange.** WPF allows constrained re-measure. Currently one pass each. If a widget reports a measured-vs-arranged mismatch in practice, add an egui-style `request_discard` second-frame fallback. Not yet motivated.
 - **Hit shapes + layers.** Both proposed above. Adding them is straightforward; deferred until a workload demands non-rect hit-testing or explicit popup ordering.
-- **Render bundles.** `wgpu::RenderBundle` for unchanged subtrees is a possible future direction if a workload makes the per-frame submit cost matter. Would need a fresh keying scheme — the encode/compose caches that previously underpinned it are gone (see `src/renderer/frontend/encoder/encode-cache.md`).
+- **Render bundles.** `wgpu::RenderBundle` for unchanged subtrees is a possible future direction if a workload makes the per-frame submit cost matter. Would need a fresh keying scheme — the encode/compose caches that previously underpinned it are gone (see `docs/cache-history/encode.md`).
 
 ## Prior Art Worth Studying
 
