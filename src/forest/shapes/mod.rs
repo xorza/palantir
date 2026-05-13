@@ -35,7 +35,21 @@ impl Shapes {
     /// passthrough for rect/text, curve flattening for beziers,
     /// span-stamping for the variable-length variants (polyline /
     /// mesh) whose payloads land in `self.payloads`.
+    ///
+    /// Single canonical noop gate for the shape buffer — drops any
+    /// shape whose authoring inputs would emit no visible pixels
+    /// before lowering runs. Mirrors `cmd_buffer::draw_*`'s emit-time
+    /// gate: caller code can pass anything, the storage layer
+    /// canonicalises. Saves the per-shape lowering cost (polyline
+    /// tessellation, bezier flattening, mesh hashing, text shaping
+    /// downstream) that the cmd-buffer gate alone wouldn't.
     pub(crate) fn add(&mut self, shape: Shape<'_>) {
+        if shape.is_noop() {
+            return;
+        }
+        if let Shape::Polyline { points, colors, .. } = &shape {
+            colors.assert_matches(points.len());
+        }
         let record = match shape {
             Shape::RoundedRect {
                 local_rect,
