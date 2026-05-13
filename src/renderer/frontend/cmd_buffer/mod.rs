@@ -233,6 +233,13 @@ impl RenderCmdBuffer {
 
     #[inline]
     pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: &Brush, stroke: Stroke) {
+        // Single noop gate for every rect emit (chrome, shapes,
+        // animation-decayed). Skip when both fill and stroke would
+        // emit nothing — keeps zero-paint commands out of the buffer
+        // regardless of whether the caller already filtered.
+        if fill.is_noop() && stroke.is_noop() {
+            return;
+        }
         // Stroke stays solid-only — gradient strokes are a non-goal.
         let BrushPack {
             fill_color,
@@ -278,6 +285,12 @@ impl RenderCmdBuffer {
         fill_kind: FillKind,
         fill_axis: FillAxis,
     ) {
+        // Same single noop gate as `draw_rect`: drop the cmd when the
+        // shadow tint is fully transparent (authored, decayed, or
+        // produced by `Shadow::NONE`'s lerp endpoint).
+        if color.is_noop() {
+            return;
+        }
         self.record_start(CmdKind::DrawRect);
         write_pod(
             &mut self.data,
