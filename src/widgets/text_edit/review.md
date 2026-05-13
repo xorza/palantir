@@ -1,304 +1,218 @@
 # `src/widgets/text_edit/` — review
 
-Scope: `mod.rs`, `tests/` (sharded), `design.md`.
-Posture-cross-checked against `CLAUDE.md` / `DESIGN.md`. Code is well
-factored overall — most findings are small. The biggest ones are (1) a
-steady-state allocation per frame, (2) the test file violating the
-"split fat-test files" rule, and (3) some stale docstrings after the
-recent grapheme migration.
+Scope: `mod.rs` (1245 lines), `tests/` (sharded, 12 files), `design.md`.
+Cross-checked against project posture in `CLAUDE.md`.
 
-## Status — items resolved in the follow-up pass
-
-- ✅ **Item 1** (per-frame buffer clone) — open, see "Still outstanding"
-  below. Needs a `Shape::Text.text` lifetime decision; out of scope for
-  a TextEdit-only fix.
-- ✅ **Item 2** — `tests.rs` (2172 lines) split into
-  `tests/{mod,apply_key,selection,undo,grapheme,word_nav,multi_click,blink,scroll,click,multiline,theme,context_menu}.rs`,
-  each well under 500 lines.
-- ⚠️ **Item 3** — partially. `apply_key` docstring updated, but the
-  function itself wasn't restructured; the "pure" framing in design.md
-  was softened in the docstring.
-- ✅ **Item 4** — `show()` now holds a single `state_mut` borrow
-  covering the post-input compare, `update_scroll`, and the blink reset
-  / `last_caret_change` snapshot. Three fewer hashmap probes.
-- 🟡 **Item 5** — first-frame `wrap_target = None` is still documented
-  in design.md / known-gotchas; tracking via `request_discard` slice in
-  `docs/roadmap/invalidation.md`.
-- ✅ **Item 6** — `word_range_at` dead-store arm flattened to a single
-  `if … && let …`.
-- ✅ **Item 8** — dropped the 1×1 placeholder rect. `Shape::Text::is_noop`
-  no longer ANDs on `local_rect_paint_empty`; TextEdit passes a 0×0
-  anchor.
-- ✅ **Item 9** — `TextEditState` and `apply_key` docstrings refreshed
-  to reflect grapheme walks and the function's actual parameters.
-
-Behavioural additions during the follow-up:
-
-- `BLINK_STOP_AFTER_IDLE = 30s` — focused-but-idle editors stop
-  scheduling blink wakes after 30 s and the caret stays solid, so an
-  unattended host doesn't keep repainting at 2 Hz forever. Pinned by
-  the appended assertion in `caret_blinks_on_and_off_while_focused`.
+Code is in good shape after the prior pass — tests are sharded, the
+state-borrow choreography is consolidated, and the `apply_key` /
+`handle_input` split reads cleanly. Remaining findings cluster around
+(a) one steady-state allocation that's structural, (b) some
+parameter-bag smells now that input is feature-rich, and (c) a few
+small contract drifts.
 
 ## Architectural issues
 
-### 1. Per-frame buffer clone violates the alloc-free posture
+### 1. Per-frame buffer clone is still the dominant alloc
 
-Every `show()` clones the entire host buffer into a new `String` and
-hands it to `Shape::Text` as `Cow::Owned`:
+`mod.rs:577` — `Cow::Owned(text_ptr.clone())` is unconditional on every
+recorded frame for a focused / non-empty editor. With a 10 KB buffer
+that's a 10 KB heap copy per frame to satisfy `Shape::Text.text:
+Cow<'static, str>`. This is the only systematic violation of the
+"steady-state heap-alloc-free after warmup" rule in this widget.
 
-`mod.rs:564-568` — the `text_ptr.clone()` runs unconditionally on every
-recorded frame for a focused, non-empty editor. With a 10 KB buffer
-that's a 10 KB allocation per frame just to keep the shape alive past
-the `show()` borrow.
+Root cause is upstream (`Shape::Text` lifetime). Three viable shapes:
 
-The root cause is upstream: `Shape::Text.text: Cow<'static, str>`
-(`src/shape.rs:87`) — `'static` rules out borrowing from the host's
-`&mut String`. So this isn't a TextEdit-only fix, but it's where the
-per-frame allocation actually lands.
+- Widen to `Cow<'frame, str>` carried through `Shapes` and copied once
+  at the arena boundary.
+- Add an `Arc<str>` variant and cache last frame's clone in
+  `TextEditState`, keyed by a `text.len() + hash` guard so we only
+  re-clone when the host actually mutates.
+- Smallest local change: hash the buffer into `TextEditState`,
+  re-use an `Arc<str>` (or boxed `String`) when unchanged. Costs one
+  `Arc::clone` per frame instead of an N-byte memcpy.
 
-Suggestion: track the text-bytes hash in `TextEditState`. When the host
-hasn't mutated the buffer (hash unchanged) re-use last frame's cloned
-`Arc<str>` / `Cow::Owned`. Or — bigger change — widen `Shape::Text` to
-`Cow<'frame, str>` so recording can borrow the host buffer directly and
-the shapes arena copies once at the recording boundary. Either keeps
-typing alloc-free in steady state.
+The hash-and-cache approach is feasible without touching `Shape`.
 
-### 2. `tests.rs` violates the "split fat-test files" rule
+### 2. `handle_input` / `update_scroll` parameter bags
 
-`tests.rs` is 2172 lines (vs. `mod.rs` at 1235) — by CLAUDE.md's >150
-lines / >40% threshold, this file should be sharded into
-`tests/{keyboard, multi_click, scroll, blink, word_nav, grapheme,
-clipboard, context_menu, focus, theme, multiline}.rs`. The current
-arrangement makes future migrations on a single feature touch a
-2-thousand-line file.
+`handle_input` takes 10 parameters (`#[allow(clippy::too_many_arguments)]`
+at `mod.rs:711`); `update_scroll` takes 8 (`mod.rs:261`). Five of those
+parameters in each — `font_size`, `line_height_px`, `padding`,
+`wrap_target`, `family` — are the resolved text-style triplet plus
+geometry, computed once at the top of `show()` and threaded down two
+levels.
 
-Concrete shape:
+Suggestion: introduce a `ShapeCtx { font_size, line_height_px,
+wrap_target, family, padding }` (locally in this module — not a public
+type) constructed once in `show()` and passed by value. Same data, one
+name, no clippy allow.
 
-```
-tests/
-  mod.rs          // shared helpers: editor_at, body, frame_at, press, shift, …
-  apply_key.rs    // pure-fn table tests
-  selection.rs    // selection_state_transitions
-  undo.rs         // undo/redo cases
-  grapheme.rs     // grapheme boundary + backspace cluster tests
-  word_nav.rs     // word boundary, word_range_at, apply_key_word_nav_cases
-  multi_click.rs  // double-/triple-click selection
-  blink.rs        // caret_blinks_on_and_off + wake
-  scroll.rs       // scroll_keeps_caret + click hit-test compensation
-  click.rs        // click_lands_caret + padding + dual-editor focus
-  ime.rs          // text_event_inserts + paste_strips_newlines
-  multiline.rs    // multiline_*
-  theme.rs        // each_text_widget_reads_its_own_theme_path_*
-  context_menu.rs // secondary_click + open + menu interactions
-```
+`update_scroll`'s `caret_x` / `caret_y_top` / `line_height` /
+`caret_width` group is a `CaretGeom`-shaped quad — the call-site at
+`mod.rs:481` already builds it from `caret_pos` and `theme.caret_width`,
+so passing `(caret_pos, theme.caret_width)` would be cleaner.
 
-Helpers like `body`, `frame_at`, `editor_id` are inlined in multiple
-tests today (`tests.rs:1738-1750`, `1825-1841`, `2070-2085`) — folding
-them into the new `tests/mod.rs` removes the duplication.
+### 3. `apply_key` carries pointer / menu concerns it shouldn't
 
-### 3. `apply_key`'s pure-function contract leaks padding-of-features
+`mod.rs:938` — `apply_key` is documented as the keyboard path but takes
+`clipboard_active: bool` (= "no context menu open") and threads it
+through to gate the clipboard shortcut routes. That's input-layer state
+leaking into a function that should be `(text, state, keypress, mode)`.
 
-`apply_key` (`mod.rs:930-1073`) is "pure on `(text, state, kp)`" except
-it now takes `multiline` and `clipboard_active` as in-band flags and
-emits a vertical-motion side-channel via `out_vertical`. With overflow
-handling + multi-click + blink layered on top, the line between
-`apply_key` (pure) and `handle_input` (impure) has gotten blurry.
+Cleaner factoring: run a `dispatch_shortcut(...)` step in
+`handle_input` *before* the per-key loop. It owns clipboard / undo /
+select-all / paste, returns `bool consumed`. `apply_key` shrinks to
+chars + edits + navigation. Bonus: shortcut dispatch becomes reusable
+for a future command palette without dragging in editor specifics.
 
-The actual split that matters now is keyboard-vs-pointer, not pure-vs-
-impure: pointer / multi-click / scroll / blink all live in
-`handle_input`, and keyboard nav lives in `apply_key`. The "pure" framing
-is still useful for testability but stretched. Worth either:
+The vertical-motion side-channel (`out_vertical: &mut
+Option<VerticalMotion>`) is the same pattern — an out-param emitted
+because `apply_key` lacks shaper access. With the dispatch split above,
+returning an enum from `apply_key` (`Consumed { blur, vertical:
+Option<VerticalMotion> }`) drops the `&mut` out-param.
 
-- renaming `apply_key` → `apply_keypress` and dropping the "pure"
-  language in design.md, or
-- pulling clipboard / undo dispatch out of `apply_key` into a separate
-  `apply_shortcut` step run before the key-by-key dispatch, leaving
-  `apply_key` strictly for editing keys (chars, backspace/delete,
-  arrows, home/end, escape). That'd shrink the function from ~150 lines
-  to ~80 and make the shortcut dispatch easy to reuse for a future
-  command palette.
+### 4. `update_scroll` returns the value it just stored
 
-### 4. `state_mut::<TextEditState>(id)` is called 6× in one `show()`
+`mod.rs:271-298` mutates `state.scroll` and returns `Vec2` — the
+returned value is always `state.scroll`. Caller binds it at
+`mod.rs:482`. Either return the new scroll and let the caller assign,
+or just mutate and read back. Both-at-once is a low-grade footgun:
+future refactors can drift the two.
 
-`mod.rs:437, 457, 475, 492, 636, 648, 667, 678` — every call is a
-`HashMap::entry` lookup. Borrow choreography forces this (we can't hold
-`&mut state` across `ui.text` / `ui.node` calls), but at least 3 of
-them can be folded: the `caret_before / sel_before` snapshot (437), the
-`caret_changed` recompare (457), and the `update_scroll`-then-blink
-pair (475 / 492) could share one borrow.
+Pick mutation-only — the function is named `update_scroll` and already
+takes `&mut state`. Drop the return type.
 
-The fix is a small helper, e.g. `with_state<T>(ui, id, |s| -> T)`, or
-just collapsing the three reads at the top of `show()` into one block.
-Not perf-critical (single-digit lookups), but it removes ambiguity
-about which `state` mutations are seen by which downstream stage.
+### 5. State row touched 6+ times per `show()`
 
-### 5. First-frame `wrap_target = None` is now a known correctness gap
+`mod.rs:441, 478, 644, 656, 675, 686` — every call is a `HashMap::entry`
+probe. The prior pass collapsed three reads in the scroll/blink block;
+the remaining four are inside the context menu closure. Each menu item
+that mutates does its own `ui.state_mut::<TextEditState>(id)` lookup.
 
-`mod.rs:422-426` reads `wrap_target` from `response.rect` which is
-`None` on the first recorded frame. Multi-line editors lay out
-unwrapped on that first frame, then re-layout once cascade catches up.
-Documented in `design.md` and roadmap "Known gotchas", but the symptom
-is that `update_scroll` runs against the wrong layout for one frame too
-(caret_pos.y is computed at unwrapped layout). Most editors don't
-notice; a tall first-frame multi-line editor with long content might
-see a one-frame scroll flash.
-
-If `request_discard` (per `docs/roadmap/invalidation.md`) lands, plumb
-it here.
+Not a perf issue (single-digit FxHashMap lookups), but it muddles the
+"who saw which mutation" picture: a `Cut` followed by a `Paste` in the
+same menu invocation each rebinds the state row. A small
+`with_state<R>(ui, id, |s| -> R)` helper or a single `state_mut` at the
+top of the closure would unify the four touches.
 
 ## Simplifications
 
-### 6. `word_range_at` has a dead-store branch
+### 6. `apply_history`'s defensive clamps are dead
 
-`mod.rs:1207-1214`:
+`mod.rs:130-137` — `snap.caret.min(text.len())` and
+`selection.filter(|a| a <= text.len())` both run after
+`*text = snap.text`, so `text.len() == snap.text.len()`. The clamps
+only fire if `EditSnapshot` was constructed inconsistently, which
+`record_edit` (the only constructor) doesn't permit. Either delete the
+clamps or replace with a release `assert!(snap.caret <= snap.text.len())`
+per CLAUDE.md invariant-assert posture.
 
-```rust
-let mut start = byte;
-if forward_char.is_some_and(|c| char_kind(c) == anchor_kind) {
-    // Caret is at the start of the anchor char — don't step back …
-} else if let Some(c) = backward_char {
-    start = byte - c.len_utf8();
-}
-```
+### 7. `drag_anchor` + `prev_pressed` + `click_count` model one state machine
 
-The first `if` arm is a no-op with an explanatory comment. The comment
-is doing all the work; the arm doesn't have to exist. Replace with:
+`mod.rs:59-62, 93` — `drag_anchor: Option<usize>` is `Some` while a
+single-click drag is active and `None` otherwise; `prev_pressed: bool`
+records last frame's `pressed`; `click_count` tracks the multi-click
+streak. On the drag branch we check `drag_anchor.is_some()`
+(`mod.rs:825`) instead of `prev_pressed` directly.
 
-```rust
-let mut start = byte;
-if !forward_char.is_some_and(|c| char_kind(c) == anchor_kind)
-    && let Some(c) = backward_char
-{
-    start = byte - c.len_utf8();
-}
-```
+A single `press_state: enum { Up, Dragging { anchor }, WordSelected,
+AllSelected }` (with multi-click history kept separate) would model
+the state machine in one place. Not urgent — current trio works — but
+the three-field encoding has redundancy.
 
-Two fewer levels of nesting and the intent is clearer.
+### 8. `state.scroll: Vec2` for a one-axis-at-a-time scroll
 
-### 7. `next_word_boundary` / `prev_word_boundary`: phase-1 vs phase-2 duplication
+`mod.rs:77, 280-296` — single-line uses `.x`, multi-line uses `.y`, and
+`update_scroll` zeros the inactive axis on every call. The data shape
+is "a single `f32` whose axis depends on `multiline`". Probably leave
+`Vec2` for forward-compat with bi-directional scroll in multiline mode,
+but drop the zero-the-other-axis writes — they're only there because
+the type allows the inactive axis to drift.
 
-`mod.rs:1137-1182` — `next_word_boundary` and `prev_word_boundary` have
-the exact same structure (skip whitespace, then skip same-kind run),
-just mirrored. The mirroring is small but it duplicates the `target_kind`
-loop + the same-kind loop in both directions.
+### 9. `clipboard_active` is misnamed
 
-Either accept the duplication (current state, fine) or factor through
-a generic `walk_word(text, from, dir: Step)`. Probably not worth
-introducing a helper for two callers, but flag in case word-boundary
-semantics ever change — the two functions must change together.
+`mod.rs:734, 943` — the bool means "no context menu is open, so
+keyboard shortcuts should fire here." It does not gate the clipboard
+subsystem; it gates whether *this widget* claims the shortcut. Rename
+`shortcuts_owned_by_widget` or invert to `menu_open`.
 
-### 8. The 1×1 placeholder `local_rect` for text is a workaround comment
+### 10. `is_word_nav` predicate inlined while `Shortcut` exists elsewhere
 
-`mod.rs:571-579` — `local_rect: Some(Rect::new(padding.left - scroll.x,
-padding.top - scroll.y, 1.0, 1.0))` with a comment "Size is unused under
-`Align::Auto`; pick something positive so `is_paint_empty` doesn't
-reject the shape."
-
-This is a fragile coupling: TextEdit reaches into encoder semantics
-(text positions at `leaf.min` under `Auto`, ignoring size) and
-`is_paint_empty` semantics (positive w/h). If either changes, this
-silently breaks.
-
-Two cleaner options:
-
-- Encode "positioned text with shaped-size bbox" as a first-class
-  `Shape::Text` variant that doesn't go through `is_paint_empty`.
-- Pass the shaped measurement back out of the shaper and put it into
-  `local_rect.size` (still ignored by Auto, but at least correct).
-
-The simplest pragmatic fix: skip the `is_paint_empty` check for
-`Shape::Text` (`src/shape.rs:391`) since text emptiness already gates
-on `text.is_empty()`. That removes the workaround entirely.
-
-### 9. Stale docstring on `TextEditState`
-
-`mod.rs:40-43`:
-
-```
-/// v1 mutates byte boundaries that always coincide with
-/// codepoint boundaries (insert at caret, remove one codepoint at a
-/// time on backspace/delete) so a malformed offset shouldn't be
-/// reachable from inside the widget.
-```
-
-Codepoint-at-a-time was true before grapheme-aware boundary walks
-shipped. Backspace / Delete now remove whole grapheme clusters, which
-can span 2-18+ bytes. Either widen the comment to "grapheme cluster"
-or just drop the parenthetical — the invariant ("malformed offset
-unreachable") is what matters, not the mechanism.
-
-### 10. `MULTI_CLICK_WINDOW` / `MULTI_CLICK_RADIUS` constants vs. theme
-
-`mod.rs:28-32` — both are crate-local `f32` consts. Standard OS
-behavior varies (Windows: 500 ms, macOS: ~500 ms but configurable, GTK:
-250 ms). Long-term these probably belong on `TextEditTheme` or a
-top-level `InputTheme` so a host app can match the OS's actual setting.
-Not urgent, but the comment "Standard OS default" overpromises.
+`mod.rs:1086-1092` hand-rolls platform mod gating. Everywhere else in
+the file we use `Shortcut::cmd(...)`. The word-nav binding doesn't have
+a key (just modifiers), so it doesn't quite fit `Shortcut`, but the
+asymmetry is noticeable. Consider extending `Shortcut` (or a sibling)
+to carry a modifier-only matcher.
 
 ## Smaller improvements
 
-- `mod.rs:38-44`: docstring talks about "malformed offset shouldn't be
-  reachable" — but `byte_at_xy` returning a non-grapheme-boundary in
-  combining-mark text could in principle land caret mid-grapheme. Cosmic
-  is grapheme-aware, so it doesn't, but the invariant is now upheld by
-  cosmic, not by widget code. Worth noting.
-- `mod.rs:457`: `sel_before != ui.state_mut::<TextEditState>(id).selection`
-  — re-borrows just to re-read the selection. Could be folded into the
-  snapshot block above.
-- `mod.rs:497-500`: blink-phase computation uses `f32::floor` and casts
-  to `u64`. A long-running editor's `elapsed` could grow into the
-  hundreds (focused for an hour with no input). At `elapsed = 1e6`,
-  `phase as u64` is fine but the f32 step loses precision near
-  `BLINK_HALF`. Cap or clamp at, say, 60 phases (30 s of unchanged
-  caret) and treat "definitely visible" beyond that.
-- `mod.rs:781`: `ui.time.saturating_sub(state.last_press_time)` — if
-  the editor is re-shown after a host time-jump backward (rare), this
-  underflows to 0 and could chain-trigger a multi-click. Harmless but
-  surprising.
-- `tests.rs` defines `body` and `frame_at` inline in three places
-  (1738, 1825, 2068) — extract once in `tests/mod.rs`.
-- `mod.rs:923-929`: the long docstring on `apply_key` still calls it
-  "pure on `(text, state, key)`" — now also takes `multiline` and
-  `clipboard_active` and emits `out_vertical`. Update.
-- `design.md:236-241` and `design.md:267-308` describe overflow + blink
-  + word nav inside the "Edit set (`apply_key`)" section, but the
-  rendering side (clip mode, shape offset, repaint scheduling) lives in
-  `show()`, not `apply_key`. Re-organize so each subsystem's home is
-  contiguous (state → input → scroll → blink → rendering).
+- `mod.rs:1107` — `next_grapheme_boundary` constructs a fresh
+  `GraphemeCursor` per call. Backspace on a long string + word-nav
+  walks call this in a loop. Cosmic-text already shapes the buffer; we
+  could ride its cluster boundaries instead of segmenting a second
+  time. Defer until profiling motivates.
+- `mod.rs:1148-1165` / `1171-1190` — `next_word_boundary` /
+  `prev_word_boundary` are mirror images. Acceptable duplication; flag
+  if word semantics ever change so both edit together.
+- `mod.rs:506-510` — blink-phase `(elapsed / BLINK_HALF).floor() as u64`
+  on `f32`. With `BLINK_STOP_AFTER_IDLE = 30s` and `BLINK_HALF = 0.5s`,
+  `phase` stays ≤ 60 before the early-out kicks in, so f32 precision is
+  fine. The earlier review's "long-running editor" concern is mooted.
+- `mod.rs:166-171, 184-188, 191-199` — every mutator calls `record_edit`
+  *before* mutating, so the snapshot captures the pre-edit buffer.
+  Correct, but easy to invert under refactor. One-line comment at the
+  top of `record_edit` ("snapshot before mutate") earns its place.
+- `mod.rs:439-443, 478-481` — `text_len_before` only approximates
+  "buffer changed" (typing `a` then deleting `a` in one frame would
+  tie). Consequence of a false negative is a one-frame late blink
+  reset, invisible in practice. Flag only if a user reports flicker.
+- `mod.rs:467-474` — `caret_pos` is computed via `ui.text.cursor_xy`
+  once for scroll, and again inside `handle_input`'s vertical-motion
+  resolver (`mod.rs:877`) for each Up/Down keypress. The shaper
+  caches, so cost is small, but the duplication says the caret-pos
+  derivation belongs on a small helper. Folds into item 2.
+- `mod.rs:386-417` — `show()` is now 300+ lines with five named phases
+  in comments. The phase boundaries are real; consider extracting
+  Phase 2 (scroll + blink) and Phase 5 (context menu) into free
+  functions next to `handle_input` so `show()` reads as five short
+  calls plus the recording closure.
 
 ## Open questions
 
-- **Theme vs. configuration**: should `MULTI_CLICK_WINDOW` /
-  `BLINK_HALF` / `MULTI_CLICK_RADIUS` move to `TextEditTheme`? They're
-  more behavioural than visual, so maybe a separate `InputTheme`?
-- **Shape::Text alloc**: is the per-frame buffer clone acceptable given
-  CLAUDE.md's posture? If so, document the exception. If not, item 1
-  needs a real plan (Arc<str> on `Shape::Text`? `Cow<'frame, str>`?).
-- **Multi-click drag-after-doubleclick**: macOS extends selection
-  word-by-word on a held drag after a double-click. Today we clear
-  `drag_anchor` on double-click, so drag is no-op. Add to Tier 2
-  roadmap or accept the gap?
-- **`prev_grapheme_boundary` from a non-grapheme-boundary offset**: the
-  current implementation handles it (returns the previous boundary),
-  but the comment in `TextEditState` claims this is unreachable. Either
-  prove it (assert at the call site) or weaken the comment.
+- **Behavioural constants on a theme.** `MULTI_CLICK_WINDOW`,
+  `MULTI_CLICK_RADIUS`, `BLINK_HALF`, `BLINK_STOP_AFTER_IDLE` are
+  hard-coded. No external consumer is asking yet. Move to
+  `TextEditTheme`, leave on a future `InputTheme`, or accept as module
+  constants?
+- **Drag-after-doubleclick selection extension.** macOS extends
+  word-by-word on a held drag after a double-click. Today `drag_anchor`
+  clears on `click_count == 2`, so the drag is a no-op. Tier 2 nicety
+  or out of scope?
+- **CJK word boundaries.** `char_kind` is an ASCII-shaped classifier.
+  Pinned in design.md as deferred — re-confirm.
+- **`Shape::Text` lifetime.** Per item 1 — decision needed: hash+cache
+  inside `TextEditState`, or widen `Shape::Text.text` to a non-static
+  lifetime.
 
-## Still outstanding
+## Prioritized shortlist
 
-1. **Per-frame buffer clone (item 1)** — `Cow::Owned(text_ptr.clone())`
-   still allocates every frame. Needs a `Shape::Text.text: Cow<'frame,
-   str>` or `Arc<str>` rework upstream. Out of scope for a
-   TextEdit-only patch.
-2. **`apply_key` restructure (item 3)** — clipboard / undo dispatch
-   still mixed into `apply_key`. Could split into `apply_shortcut`
-   (clipboard, undo, redo, select-all) ahead of `apply_keypress`
-   (chars, backspace/delete, arrows, home/end, escape). Defer until a
-   command palette / external shortcut consumer needs the dispatch.
-3. **First-frame `wrap_target = None` (item 5)** — depends on the
-   `request_discard` slice on the invalidation roadmap.
-4. **`MULTI_CLICK_WINDOW` / `BLINK_HALF` on a theme (item 10)** —
-   behavioural, not visual; probably belongs on an `InputTheme`.
-   Skipped — no consumer asking yet.
-5. **CJK / non-Latin word-break iterator** — `CharKind` is still ASCII
-   classifier territory. Noted in design.md; defer to a Unicode
-   word-break upgrade.
+If picking the next 3–5 things to do here:
+
+1. **Item 1** — kill the per-frame `text.clone()`. Easiest local form:
+   hash + cache an `Arc<str>` on `TextEditState`. Without this, the
+   widget can't honour the "alloc-free in steady state" posture.
+2. **Item 2** — fold `handle_input` / `update_scroll` params into a
+   `ShapeCtx`. Removes two `clippy::too_many_arguments` allows and
+   makes the next addition (line numbering, IME preedit) easier to
+   thread.
+3. **Item 3** — pull clipboard / undo / select-all into a
+   `dispatch_shortcut` step ahead of `apply_key`. Returns the keyboard
+   path to one job and makes dispatch reusable.
+4. **Item 4 + 9** — drop the redundant return from `update_scroll` and
+   rename `clipboard_active`. Both are minutes of work and remove
+   small footguns.
+5. **Item 6** — collapse `apply_history`'s dead clamps to an
+   `assert!`. Tightens the invariant.
+
+Items 5, 7, 8, 10 are cleanups worth doing opportunistically; open
+questions wait on real consumers.

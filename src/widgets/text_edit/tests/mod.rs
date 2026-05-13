@@ -3,14 +3,17 @@ use super::{
     prev_word_boundary, word_range_at,
 };
 
-/// Test wrapper: single-line `apply_key` with the vertical-motion
-/// out-param ignored. Single-line tests never exercise Up/Down so the
-/// motion sink is always `None`. Clipboard handling is always on
-/// here; menu-intercept gating is exercised end-to-end via the
-/// integration tests instead.
+/// Test wrapper: routes one keypress through `dispatch_shortcut`
+/// (clipboard / undo / select-all) then falls through to single-line
+/// `apply_key`. Single-line tests never exercise Up/Down so the
+/// motion sink is always `None`. Menu-intercept gating is exercised
+/// end-to-end via the integration tests instead.
 fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
+    if super::dispatch_shortcut(text, state, kp, false, false) {
+        return false;
+    }
     let mut vert = None;
-    super::apply_key(text, state, kp, false, true, &mut vert)
+    super::apply_key(text, state, kp, false, &mut vert)
 }
 use crate::Spacing;
 use crate::Ui;
