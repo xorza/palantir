@@ -39,16 +39,23 @@ use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 /// Font family picker on [`crate::TextStyle`] and
 /// [`crate::Shape::Text`]. `Sans` resolves to bundled Inter (the
 /// default); `Mono` resolves to bundled JetBrains Mono. Both fonts
-/// ship inside [`CosmicMeasure::with_bundled_fonts`]; the mono
-/// fallback ignores family entirely (every glyph is `0.5 × font_size`
-/// regardless).
+/// ship inside [`CosmicMeasure::with_bundled_fonts`]; the mono-
+/// fallback shaper (when no `CosmicMeasure` is installed) ignores
+/// family entirely.
+///
+/// `#[repr(u8)]` with explicit discriminants pins the on-disk tag so
+/// `TextCacheKey::family_q` and the `ShapeRecord::Text` hash byte
+/// stay stable across variant reordering. `Sans = 0` is also load-
+/// bearing for [`TextCacheKey::is_invalid`], which folds family into
+/// its all-zeroes check.
+#[repr(u8)]
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub enum FontFamily {
     #[default]
-    Sans,
-    Mono,
+    Sans = 0,
+    Mono = 1,
 }
 
 /// Shared, cloneable text shaper. Holds (1) an optional [`CosmicMeasure`]
@@ -460,24 +467,32 @@ pub struct TextCacheKey {
     /// same font-size but different leading produce different shaped
     /// buffers (different `Metrics::new`), so the key has to discriminate.
     pub lh_q: u32,
-    /// [`FontFamily`] discriminant. Two runs with identical text/size but
-    /// different families produce different shaped buffers, so the key
-    /// has to discriminate.
-    pub family_q: u32,
+    /// [`FontFamily`] discriminant. Two runs with identical text/size
+    /// but different families produce different shaped buffers, so the
+    /// key has to discriminate. `u8` because `FontFamily` is
+    /// `#[repr(u8)]`; `padding_struct` fills the trailing alignment
+    /// slack so `bytemuck::Pod`'s no-padding-bytes invariant still
+    /// holds.
+    pub family_q: u8,
 }
 
 impl TextCacheKey {
-    /// Sentinel returned by the mono fallback. The renderer skips runs with
-    /// this key. `bytemuck::Zeroable::zeroed` fills the padding fields
-    /// the `padding_struct` proc macro generated.
+    /// Sentinel returned by the mono fallback. The renderer skips runs
+    /// with this key. `bytemuck::Zeroable::zeroed` fills the padding
+    /// fields the `padding_struct` proc macro generated.
+    ///
+    /// `is_invalid` folds `family_q == 0` into the all-zeroes check,
+    /// which lines up with [`FontFamily::Sans`] also having
+    /// discriminant 0. If the variant order ever changes, update
+    /// `is_invalid` and the sentinel together.
     pub const INVALID: Self = unsafe { std::mem::zeroed() };
 
-    /// Construct from the four hashed fields. The `padding_struct` proc
+    /// Construct from the five hashed fields. The `padding_struct` proc
     /// macro injects trailing padding fields to satisfy
     /// `bytemuck::Pod`'s no-padding-bytes invariant; the
     /// `..Zeroable::zeroed()` spread fills them with zeros so callers
     /// don't have to know they exist.
-    pub(crate) fn new(text_hash: u64, size_q: u32, max_w_q: u32, lh_q: u32, family_q: u32) -> Self {
+    pub(crate) fn new(text_hash: u64, size_q: u32, max_w_q: u32, lh_q: u32, family_q: u8) -> Self {
         Self {
             text_hash,
             size_q,
@@ -780,6 +795,28 @@ mod tests {
             .measure("hi", 16.0, 16.0 * LINE_HEIGHT_MULT, None, FontFamily::Sans)
             .key;
         assert_eq!(a, a2);
+    }
+
+    #[test]
+    fn cosmic_text_family_distinguishes_key_and_metrics() {
+        // Pin: Sans (Inter) and Mono (JetBrains Mono) at the same text
+        // and size produce (a) different cache keys and (b) different
+        // measured widths. Without this, a regression in `attrs_for`
+        // could silently fall both families through to Inter and every
+        // other test would still pass.
+        use crate::text::cosmic::CosmicMeasure;
+        let mut c = CosmicMeasure::with_bundled_fonts();
+        let sans = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Sans);
+        let mono = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Mono);
+        assert_ne!(sans.key, mono.key, "family must enter the cache key");
+        assert_ne!(
+            sans.key.family_q, mono.key.family_q,
+            "family_q is the discriminating field",
+        );
+        assert_ne!(
+            sans.size.w, mono.size.w,
+            "Inter and JBMono produce different glyph widths for 'MMMM'",
+        );
     }
 
     #[test]
