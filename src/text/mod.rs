@@ -234,7 +234,7 @@ impl TextShaper {
         };
         if let Some(w) = entry.get().wrap
             && w.target_q == target_q
-            && w.halign_q == halign as u8
+            && w.halign == halign
         {
             return w.result;
         }
@@ -255,7 +255,7 @@ impl TextShaper {
             .expect("entry just confirmed to exist")
             .wrap = Some(WrapReuse {
             target_q,
-            halign_q: halign as u8,
+            halign,
             result: m,
         });
         m
@@ -366,19 +366,10 @@ impl TextShaper {
         .unwrap_or_else(|| {
             // No shaped buffer (mono fallback OR empty text → cosmic
             // returns INVALID sentinel → `with_buffer` returns None).
-            // For empty text inside a finite wrap target we still
-            // need the caret to land where cosmic *would* per-line
-            // align it — otherwise an empty right-aligned multi-line
-            // editor renders its caret at x = 0 instead of at the
-            // right edge.
-            let x = if text.is_empty()
-                && let Some(w) = max_width_px
-            {
-                match halign {
-                    HAlign::Center => w * 0.5,
-                    HAlign::Right => w,
-                    HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
-                }
+            // For empty text the caret must land where cosmic *would*
+            // per-line align it; for non-empty mono we walk chars.
+            let x = if text.is_empty() {
+                empty_line_x(max_width_px, halign)
             } else {
                 caret_x_mono_single_line(text, byte_offset, font_size_px)
             };
@@ -713,6 +704,21 @@ fn caret_x_mono_single_line(text: &str, byte_offset: usize, font_size_px: f32) -
     (clamped as f32) * font_size_px * 0.5
 }
 
+/// Where the caret on a zero-glyph line ends up after cosmic's
+/// per-line align. Mirrors cosmic's `(line_width - line_w) * factor`
+/// formula collapsed for `line_w = 0`. Used by `cursor_xy` when the
+/// shaped buffer is missing (empty buffer / mono fallback) — without
+/// it, an empty right-aligned multi-line editor would paint its
+/// caret at `x = 0` instead of at the right edge.
+fn empty_line_x(max_width_px: Option<f32>, halign: HAlign) -> f32 {
+    let Some(w) = max_width_px else { return 0.0 };
+    match halign {
+        HAlign::Center => w * 0.5,
+        HAlign::Right => w,
+        HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
+    }
+}
+
 /// Inverse of [`caret_x_mono_single_line`]. Picks the char boundary
 /// whose prefix-x is closest to `target_x` so click positioning on
 /// the mono fallback matches the rendered glyph layout exactly.
@@ -782,10 +788,10 @@ pub(crate) struct TextReuseEntry {
 #[derive(Clone, Copy)]
 struct WrapReuse {
     target_q: u32,
-    /// `HAlign as u8` for the cached wrap. Cosmic's per-line align
-    /// changes glyph positions inside the shaped buffer, so changing
-    /// halign invalidates this slot even when `target_q` is unchanged.
-    halign_q: u8,
+    /// Cached halign. Cosmic's per-line align changes glyph positions
+    /// inside the shaped buffer, so changing halign invalidates this
+    /// slot even when `target_q` is unchanged.
+    halign: HAlign,
     result: MeasureResult,
 }
 

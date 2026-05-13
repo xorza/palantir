@@ -78,17 +78,20 @@ fn attrs_for(family: FontFamily) -> Attrs<'static> {
     }
 }
 
-/// Map a Palantir [`HAlign`] to cosmic-text's per-line align. `Auto`
-/// and `Stretch` both fall through to `None` (cosmic defaults to its
-/// left-or-rtl-aware behaviour), which keeps the legacy "no per-line
-/// align" path identical bit-for-bit. `Left/Center/Right` translate
-/// directly; cosmic's `Justified` and `End` aren't surfaced.
+/// Map a Palantir [`HAlign`] to cosmic-text's per-line align.
+/// `Auto`/`Stretch` map to `None` — cosmic falls back to its
+/// left-or-rtl-aware default, identical bit-for-bit to the legacy
+/// "no per-line align" path. `Left`/`Center`/`Right` translate
+/// directly. Cosmic's `Justified` and `End` aren't surfaced.
 fn cosmic_align(halign: HAlign) -> Option<CosmicAlign> {
     match halign {
-        HAlign::Auto | HAlign::Stretch => None,
         HAlign::Left => Some(CosmicAlign::Left),
         HAlign::Center => Some(CosmicAlign::Center),
         HAlign::Right => Some(CosmicAlign::Right),
+        // `Auto` is the documented "no per-line align" default;
+        // `Stretch` doesn't make sense per-line for text and falls
+        // through to the same path.
+        HAlign::Auto | HAlign::Stretch => None,
     }
 }
 

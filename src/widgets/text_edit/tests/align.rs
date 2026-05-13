@@ -494,6 +494,58 @@ mod per_line {
         );
     }
 
+    /// Regression: `LayoutEngine::shape_text` always re-shapes
+    /// through `shape_wrap` for `TextWrap::Wrap` (item 4 in the
+    /// per-line-align review). With the slot cache keyed on
+    /// `(target_q, halign)`, the layout pipeline must hit that
+    /// cache on every steady-state frame — otherwise we'd reshape
+    /// on every frame and the per-frame text path becomes O(n) in
+    /// glyph count.
+    ///
+    /// `TextShaper::measure` increments `measure_calls`
+    /// unconditionally (even on cosmic-cache hits), so the widget's
+    /// own probes (offset measure + cursor_xy) inflate the raw
+    /// counter every frame. We instead check the *delta* across
+    /// consecutive stable frames is constant — a reshape regression
+    /// would bump that delta by one or more.
+    #[test]
+    fn stable_multiline_holds_constant_per_frame_cost() {
+        use crate::support::internals::text_shaper_measure_calls;
+        let mut ui = cosmic_ui();
+        let mut buf = String::from("hi\nyo");
+        let mut record = |ui: &mut Ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                TextEdit::new(&mut buf)
+                    .id_salt("stable-ml")
+                    .multiline(true)
+                    .text_align(Align::TOP_RIGHT)
+                    .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
+                    .show(ui);
+            });
+        };
+        // Warmup: two frames so `response.rect` lands and every cache
+        // is primed.
+        run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+        run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+        let a = text_shaper_measure_calls(&ui.text);
+        run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+        let b = text_shaper_measure_calls(&ui.text);
+        let per_frame = b - a;
+        // Drive several more frames with identical inputs and verify
+        // each one costs exactly the same number of `measure_calls`.
+        for i in 0..5 {
+            let before = text_shaper_measure_calls(&ui.text);
+            run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+            let after = text_shaper_measure_calls(&ui.text);
+            assert_eq!(
+                after - before,
+                per_frame,
+                "frame {i}: per-frame measure cost changed (baseline {per_frame}, this frame {})",
+                after - before,
+            );
+        }
+    }
+
     /// Regression: an empty multi-line buffer with right-align must
     /// place the caret at the right edge of the wrap target, not at
     /// x = 0. Empty text returns `TextCacheKey::INVALID` and the
