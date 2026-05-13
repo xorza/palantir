@@ -215,8 +215,10 @@ impl ApplicationHandler for App {
         }
 
         if let Some(ev) = InputEvent::from_winit(&event, state.scale_factor) {
-            state.host.ui.on_input(ev);
-            state.next = FramePresent::Immediate;
+            let delta = state.host.ui.on_input(ev);
+            if delta.requests_repaint {
+                state.next = FramePresent::Immediate;
+            }
         }
 
         match event {

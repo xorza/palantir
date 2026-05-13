@@ -91,6 +91,16 @@ pub enum InputEvent {
     ModifiersChanged(Modifiers),
 }
 
+/// What changed observably after an [`InputEvent`] was dispatched.
+/// Hosts read [`Self::requests_repaint`] to decide whether to schedule
+/// a redraw — pointer moves over inert surfaces leave it `false`, so
+/// the frame can be skipped entirely. Animation/tooltip-delay wakes
+/// still drive paints via `FrameReport::repaint_after`, independently.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InputDelta {
+    pub requests_repaint: bool,
+}
+
 impl InputEvent {
     /// Translate a winit `WindowEvent` into a palantir input event.
     /// `scale_factor` divides physical pointer coordinates so that the produced
@@ -321,8 +331,12 @@ impl InputState {
     }
 
     /// Feed a palantir-native input event. Hit-tests against the
-    /// frozen `Cascades` from this frame's most recent run.
-    pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &Cascades) {
+    /// frozen `Cascades` from this frame's most recent run. Returns an
+    /// [`InputDelta`] hosts use to decide whether to request a redraw —
+    /// a `PointerMoved` over a non-hover-reactive surface (no active
+    /// capture, no hover/scroll target change) leaves
+    /// `requests_repaint` false so the frame can be skipped entirely.
+    pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &Cascades) -> InputDelta {
         if matches!(
             event,
             InputEvent::PointerPressed(_)
@@ -333,8 +347,10 @@ impl InputState {
         ) {
             self.frame_had_action = true;
         }
-        match event {
+        let requests_repaint = match event {
             InputEvent::PointerMoved(p) => {
+                let prev_hover = self.hovered;
+                let prev_scroll = self.scroll_target;
                 self.pointer_pos = Some(p);
                 if !self.drag_latched
                     && self.active.is_some()
@@ -347,11 +363,17 @@ impl InputState {
                 }
                 self.recompute_hover(cascades);
                 self.recompute_scroll_target(cascades);
+                self.hovered != prev_hover
+                    || self.scroll_target != prev_scroll
+                    || self.active.is_some()
             }
             InputEvent::PointerLeft => {
+                let observable =
+                    self.hovered.is_some() || self.scroll_target.is_some() || self.active.is_some();
                 self.pointer_pos = None;
                 self.hovered = None;
                 self.scroll_target = None;
+                observable
             }
             InputEvent::PointerPressed(PointerButton::Left) => {
                 // Press hits the topmost *clickable* widget — hover-only widgets
@@ -372,6 +394,7 @@ impl InputState {
                     (None, FocusPolicy::ClearOnMiss) => self.focused = None,
                     (None, FocusPolicy::PreserveOnMiss) => {} // hold focus
                 }
+                true
             }
             InputEvent::PointerReleased(PointerButton::Left) => {
                 if let Some(a) = self.active.take() {
@@ -383,21 +406,26 @@ impl InputState {
                     }
                 }
                 self.clear_capture();
+                true
             }
             InputEvent::ScrollPixels(d) => {
                 self.frame_scroll_pixels += d;
+                self.scroll_target.is_some()
             }
             InputEvent::ScrollLines(d) => {
                 self.frame_scroll_lines += d;
+                self.scroll_target.is_some()
             }
             InputEvent::Zoom(f) => {
                 self.frame_zoom_delta *= f;
+                self.scroll_target.is_some()
             }
             InputEvent::PointerPressed(PointerButton::Right) => {
                 self.active_secondary = self
                     .pointer_pos
                     .and_then(|p| cascades.hit_test(p, Sense::clicks));
                 self.press_pos_secondary = self.active_secondary.and(self.pointer_pos);
+                true
             }
             InputEvent::PointerReleased(PointerButton::Right) => {
                 if let Some(a) = self.active_secondary.take() {
@@ -409,23 +437,28 @@ impl InputState {
                     }
                 }
                 self.press_pos_secondary = None;
+                true
             }
             // Middle: not yet wired through to widgets. Silently drop.
-            InputEvent::PointerPressed(_) | InputEvent::PointerReleased(_) => {}
+            InputEvent::PointerPressed(_) | InputEvent::PointerReleased(_) => false,
             InputEvent::KeyDown { key, repeat } => {
                 self.frame_keys.push(KeyPress {
                     key,
                     mods: self.modifiers,
                     repeat,
                 });
+                true
             }
             InputEvent::Text(chunk) => {
                 self.frame_text.push_str(chunk.as_str());
+                true
             }
             InputEvent::ModifiersChanged(m) => {
                 self.modifiers = m;
+                true
             }
-        }
+        };
+        InputDelta { requests_repaint }
     }
 
     /// Read and reset [`Self::frame_had_action`]. Called by

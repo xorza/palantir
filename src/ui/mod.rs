@@ -11,7 +11,7 @@ use crate::forest::Forest;
 use crate::forest::element::{Configure, Element};
 use crate::forest::tree::{Layer, NodeId};
 use crate::forest::widget_id::WidgetId;
-use crate::input::{FocusPolicy, InputEvent, InputState, ResponseState};
+use crate::input::{FocusPolicy, InputDelta, InputEvent, InputState, ResponseState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::types::display::Display;
@@ -418,9 +418,13 @@ impl Ui {
         });
     }
 
-    /// Feed a palantir-native input event. Hosts own redraw scheduling.
-    pub fn on_input(&mut self, event: InputEvent) {
-        self.input.on_input(event, &self.layout.cascades);
+    /// Feed a palantir-native input event. Returns an [`InputDelta`]
+    /// the host reads to decide whether to request a redraw — pointer
+    /// moves over inert surfaces leave `requests_repaint` false so the
+    /// host can skip the frame entirely. Animation/tooltip-delay wakes
+    /// still drive paints independently via `FrameReport::repaint_after`.
+    pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
+        self.input.on_input(event, &self.layout.cascades)
     }
 
     /// Re-record this frame after measure runs (for widgets that

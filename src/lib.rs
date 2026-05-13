@@ -36,7 +36,7 @@ pub use host::{FramePresent, Host};
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
 pub use input::sense::Sense;
 pub use input::shortcut::{Mods, Shortcut};
-pub use input::{FocusPolicy, InputEvent, PointerButton, ResponseState};
+pub use input::{FocusPolicy, InputDelta, InputEvent, PointerButton, ResponseState};
 pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::clip_mode::ClipMode;
 pub use layout::types::display::Display;
