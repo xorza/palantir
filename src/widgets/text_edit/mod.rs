@@ -8,6 +8,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
+use crate::text::{CursorPos, FontFamily};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
@@ -128,11 +129,10 @@ fn record_edit(text: &str, state: &mut TextEditState, kind: EditKind) {
 }
 
 fn apply_history(text: &mut String, state: &mut TextEditState, snap: EditSnapshot) {
+    assert!(snap.caret <= snap.text.len());
     *text = snap.text;
-    state.caret = snap.caret.min(text.len());
-    state.selection = snap
-        .selection
-        .filter(|&a| a <= text.len() && a != state.caret);
+    state.caret = snap.caret;
+    state.selection = snap.selection.filter(|&a| a != state.caret);
     state.last_edit_kind = None;
 }
 
@@ -251,51 +251,58 @@ fn sanitize_single_line(s: &str) -> String {
     out
 }
 
+/// Bundle of text-shape parameters resolved once at the top of
+/// `show()` and threaded down to input handling, scroll, and caret
+/// resolution. All five fields are read-only for the duration of one
+/// `show()` call.
+#[derive(Clone, Copy)]
+struct ShapeCtx {
+    font_size: f32,
+    line_height_px: f32,
+    padding: Spacing,
+    wrap_target: Option<f32>,
+    family: FontFamily,
+    multiline: bool,
+}
+
 /// Scroll the editor so the caret stays inside the visible inner
-/// rect, updating `state.scroll` in place and returning the new
-/// offset (which the caller subtracts from every emitted shape).
-/// Single-line scrolls only on the x axis; multi-line wraps to inner
-/// width so only y scrolls. `response_rect` is one frame stale: on
-/// the first frame the widget is recorded it's `None` and scroll
-/// stays at zero — acceptable, the caret is at byte 0 then anyway.
-#[allow(clippy::too_many_arguments)]
+/// rect, mutating `state.scroll` in place. Single-line scrolls only
+/// on the x axis; multi-line wraps to inner width so only y scrolls.
+/// `response_rect` is one frame stale: on the first frame the widget
+/// is recorded it's `None` and scroll stays at zero — acceptable, the
+/// caret is at byte 0 then anyway.
 fn update_scroll(
     state: &mut TextEditState,
     response_rect: Option<Rect>,
-    padding: Spacing,
-    multiline: bool,
-    caret_x: f32,
-    caret_y_top: f32,
-    line_height: f32,
+    ctx: &ShapeCtx,
+    caret_pos: CursorPos,
     caret_width: f32,
-) -> Vec2 {
+) {
     let Some(rect) = response_rect else {
         state.scroll = Vec2::ZERO;
-        return Vec2::ZERO;
+        return;
     };
-    let inner_w = (rect.size.w - padding.horiz()).max(0.0);
-    let inner_h = (rect.size.h - padding.vert()).max(0.0);
-    if multiline {
-        // Only y scrolls — wrap kills horizontal overflow.
+    let inner_w = (rect.size.w - ctx.padding.horiz()).max(0.0);
+    let inner_h = (rect.size.h - ctx.padding.vert()).max(0.0);
+    if ctx.multiline {
         state.scroll.x = 0.0;
-        let caret_bottom = caret_y_top + line_height;
-        if caret_y_top < state.scroll.y {
-            state.scroll.y = caret_y_top;
+        let caret_bottom = caret_pos.y_top + caret_pos.line_height;
+        if caret_pos.y_top < state.scroll.y {
+            state.scroll.y = caret_pos.y_top;
         } else if caret_bottom > state.scroll.y + inner_h {
             state.scroll.y = caret_bottom - inner_h;
         }
         state.scroll.y = state.scroll.y.max(0.0);
     } else {
         state.scroll.y = 0.0;
-        let caret_right = caret_x + caret_width;
-        if caret_x < state.scroll.x {
-            state.scroll.x = caret_x;
+        let caret_right = caret_pos.x + caret_width;
+        if caret_pos.x < state.scroll.x {
+            state.scroll.x = caret_pos.x;
         } else if caret_right > state.scroll.x + inner_w {
             state.scroll.x = caret_right - inner_w;
         }
         state.scroll.x = state.scroll.x.max(0.0);
     }
-    state.scroll
 }
 
 /// Delete the live selection range (if any), update caret to the range
@@ -428,6 +435,14 @@ impl<'a> TextEdit<'a> {
         } else {
             None
         };
+        let ctx = ShapeCtx {
+            font_size,
+            line_height_px: font_size * line_height_mult,
+            padding,
+            wrap_target,
+            family: look.text.family,
+            multiline: self.multiline,
+        };
 
         // Phase 1: input handling. Touches `ui.state` and `ui.input`
         // (separate fields, disjoint borrows). Click-to-place-caret
@@ -442,19 +457,7 @@ impl<'a> TextEdit<'a> {
             (s.caret, s.selection)
         };
         let mut blur_after = false;
-        let input = handle_input(
-            ui,
-            id,
-            is_focused,
-            self.text,
-            font_size,
-            font_size * line_height_mult,
-            padding,
-            self.multiline,
-            wrap_target,
-            look.text.family,
-            &mut blur_after,
-        );
+        let input = handle_input(ui, id, is_focused, self.text, &ctx, &mut blur_after);
         let caret_byte = input.caret;
         let selection = input.selection;
 
@@ -467,10 +470,10 @@ impl<'a> TextEdit<'a> {
         let caret_pos = ui.text.cursor_xy(
             self.text,
             caret_byte,
-            font_size,
-            font_size * line_height_mult,
-            wrap_target,
-            look.text.family,
+            ctx.font_size,
+            ctx.line_height_px,
+            ctx.wrap_target,
+            ctx.family,
         );
         let now = ui.time;
         let (scroll, last_caret_change) = {
@@ -478,20 +481,11 @@ impl<'a> TextEdit<'a> {
             let caret_changed = caret_before != caret_byte
                 || sel_before != state.selection
                 || text_len_before != self.text.len();
-            let scroll = update_scroll(
-                state,
-                response.rect,
-                padding,
-                self.multiline,
-                caret_pos.x,
-                caret_pos.y_top,
-                caret_pos.line_height,
-                theme.caret_width,
-            );
+            update_scroll(state, response.rect, &ctx, caret_pos, theme.caret_width);
             if is_focused && caret_changed {
                 state.last_caret_change = now;
             }
-            (scroll, state.last_caret_change)
+            (state.scroll, state.last_caret_change)
         };
 
         // Caret blink. Phase 0 = solid; flip every `BLINK_HALF`
@@ -526,8 +520,6 @@ impl<'a> TextEdit<'a> {
         element.chrome = Some(look.background);
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
-        let multiline = self.multiline;
-        let line_h = font_size * line_height_mult;
         let resp_node = ui.node(element, |ui| {
             // Selection highlight, painted *before* the text so glyphs
             // sit on top of the wash. Only when focused and a range is
@@ -544,15 +536,15 @@ impl<'a> TextEdit<'a> {
                 ui.text.selection_rects(
                     text_ptr,
                     range,
-                    font_size,
-                    line_h,
-                    wrap_target,
-                    look.text.family,
+                    ctx.font_size,
+                    ctx.line_height_px,
+                    ctx.wrap_target,
+                    ctx.family,
                     |x, y, w, h| {
                         ui.forest.add_shape(Shape::RoundedRect {
                             local_rect: Some(Rect::new(
-                                padding.left + x - scroll.x,
-                                padding.top + y - scroll.y,
+                                ctx.padding.left + x - scroll.x,
+                                ctx.padding.top + y - scroll.y,
                                 w,
                                 h,
                             )),
@@ -579,22 +571,22 @@ impl<'a> TextEdit<'a> {
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_rect: Some(Rect::new(
-                        padding.left - scroll.x,
-                        padding.top - scroll.y,
+                        ctx.padding.left - scroll.x,
+                        ctx.padding.top - scroll.y,
                         0.0,
                         0.0,
                     )),
                     text: display,
                     brush: color.into(),
-                    font_size_px: font_size,
-                    line_height_px: line_h,
-                    wrap: if multiline {
+                    font_size_px: ctx.font_size,
+                    line_height_px: ctx.line_height_px,
+                    wrap: if ctx.multiline {
                         TextWrap::Wrap
                     } else {
                         TextWrap::Single
                     },
                     align: Default::default(),
-                    family: look.text.family,
+                    family: ctx.family,
                 });
             }
 
@@ -604,8 +596,8 @@ impl<'a> TextEdit<'a> {
             // visible half of the blink cycle.
             if is_focused && caret_visible {
                 let caret_rect = Rect::new(
-                    padding.left + caret_pos.x - scroll.x,
-                    padding.top + caret_pos.y_top - scroll.y,
+                    ctx.padding.left + caret_pos.x - scroll.x,
+                    ctx.padding.top + caret_pos.y_top - scroll.y,
                     theme.caret_width,
                     caret_pos.line_height,
                 );
@@ -673,7 +665,7 @@ impl<'a> TextEdit<'a> {
                     text,
                     ui.state_mut::<TextEditState>(id),
                     &crate::clipboard::get(),
-                    multiline,
+                    ctx.multiline,
                 );
             }
             MenuItem::separator(ui);
@@ -708,22 +700,12 @@ struct InputResult {
 /// out of `show()` keeps the borrow choreography contained: we touch
 /// `ui.state`, `ui.input`, and `ui.text` here, but never the
 /// shape/tree storage.
-#[allow(clippy::too_many_arguments)]
 fn handle_input(
     ui: &mut Ui,
     id: WidgetId,
     is_focused: bool,
     text: &mut String,
-    font_size: f32,
-    line_height_px: f32,
-    // Resolved padding from the per-widget style (after merging
-    // `.style()` override with the theme default). Subtracted from
-    // the press position so caret/click hit-test runs in text-local
-    // coords. Multi-line uses both axes; single-line only `.left`.
-    padding: Spacing,
-    multiline: bool,
-    wrap_target: Option<f32>,
-    family: crate::text::FontFamily,
+    ctx: &ShapeCtx,
     blur_after: &mut bool,
 ) -> InputResult {
     let resp_state = ui.response_for(id);
@@ -731,7 +713,7 @@ fn handle_input(
     // menu and the text-edit state live under the same WidgetId but
     // different TypeIds; the borrow checker can't see the disjoint
     // rows so we read the menu row first.
-    let clipboard_active = !ContextMenu::is_open(ui, id);
+    let menu_open = ContextMenu::is_open(ui, id);
 
     // Hold the state row once for the whole function. `ui.state`,
     // `ui.input`, and `ui.text` are disjoint fields of `Ui`,
@@ -767,19 +749,19 @@ fn handle_input(
         // coords. Updated scroll for this frame is computed after
         // `handle_input` returns — the user clicked on what they
         // saw, which is last frame's scroll.
-        let local_x = ptr.x - rect.min.x - padding.left + state.scroll.x;
-        let local_y = ptr.y - rect.min.y - padding.top + state.scroll.y;
+        let local_x = ptr.x - rect.min.x - ctx.padding.left + state.scroll.x;
+        let local_y = ptr.y - rect.min.y - ctx.padding.top + state.scroll.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
         let hit = ui.text.byte_at_xy(
             text,
             local_x,
-            if multiline { local_y } else { 0.0 },
-            font_size,
-            line_height_px,
-            wrap_target,
-            family,
+            if ctx.multiline { local_y } else { 0.0 },
+            ctx.font_size,
+            ctx.line_height_px,
+            ctx.wrap_target,
+            ctx.family,
         );
         if !state.prev_pressed {
             // Press rising edge. Detect multi-click: consecutive
@@ -848,7 +830,7 @@ fn handle_input(
     // ModifiersChanged + keystrokes-for-shortcut sequence still leaves
     // typed text intact), then `frame_keys` for navigation/edits.
     if !ui.input.frame_text.is_empty() {
-        let to_insert: String = if multiline {
+        let to_insert: String = if ctx.multiline {
             ui.input.frame_text.clone()
         } else {
             sanitize_single_line(&ui.input.frame_text)
@@ -861,7 +843,8 @@ fn handle_input(
         }
     }
 
-    // Drain keys via the pure `apply_key`; vertical-nav probes
+    // Drain keys: clipboard / undo shortcuts via `dispatch_shortcut`
+    // first, then editing keys via `apply_key`. Vertical-nav probes
     // happen inline because they need the shaper + layout. Indexing
     // (instead of iter) keeps the borrow on `frame_keys` short-lived
     // so we can dispatch to `ui.text` inside the same loop without a
@@ -870,17 +853,20 @@ fn handle_input(
     let n = ui.input.frame_keys.len();
     for i in 0..n {
         let kp = ui.input.frame_keys[i];
-        if apply_key(text, state, kp, multiline, clipboard_active, &mut vert) {
+        if dispatch_shortcut(text, state, kp, ctx.multiline, menu_open) {
+            continue;
+        }
+        if apply_key(text, state, kp, ctx.multiline, &mut vert) {
             *blur_after = true;
         }
         if let Some(v) = vert.take() {
             let pos = ui.text.cursor_xy(
                 text,
                 state.caret,
-                font_size,
-                line_height_px,
-                wrap_target,
-                family,
+                ctx.font_size,
+                ctx.line_height_px,
+                ctx.wrap_target,
+                ctx.family,
             );
             let probe_y = match v.direction {
                 VerticalDir::Up => pos.y_top - 1.0,
@@ -893,10 +879,10 @@ fn handle_input(
                     text,
                     pos.x,
                     probe_y,
-                    font_size,
-                    line_height_px,
-                    wrap_target,
-                    family,
+                    ctx.font_size,
+                    ctx.line_height_px,
+                    ctx.wrap_target,
+                    ctx.family,
                 )
             };
             move_caret(state, target, v.extend);
@@ -926,27 +912,18 @@ enum VerticalDir {
     Down,
 }
 
-/// Apply one keypress to the buffer + state. Returns `true` if the
-/// caller should blur (Escape with no live selection in single-line
-/// mode); every other recognized key is consumed silently. Sets
-/// `out_vertical` to `Some(VerticalMotion)` when the key is `Up` /
-/// `Down` in multi-line mode — the caller resolves the cross-axis
-/// probe against the shaper, which this function doesn't touch.
-/// Behaviour gates: `multiline` toggles Enter → `\n` insertion and
-/// enables Up/Down motion; `clipboard_active` is `false` when a
-/// context menu is open so its shortcut bindings can intercept.
-fn apply_key(
+/// Route platform shortcuts (undo / redo / select-all / cut / copy /
+/// paste) before keyboard edit dispatch. Returns `true` when `kp` was
+/// claimed; caller skips `apply_key` for that key. Undo/redo always
+/// fire; clipboard + select-all are suppressed when a context menu
+/// owns the same bindings (`menu_open == true`).
+fn dispatch_shortcut(
     text: &mut String,
     state: &mut TextEditState,
     kp: KeyPress,
     multiline: bool,
-    clipboard_active: bool,
-    out_vertical: &mut Option<VerticalMotion>,
+    menu_open: bool,
 ) -> bool {
-    // Platform clipboard shortcuts. Routed before the `Char` insert
-    // branch so they don't get swallowed by the `any_command`
-    // suppression below. Gated by `clipboard_active` so an open
-    // context menu can intercept the same bindings.
     const SELECT_ALL: Shortcut = Shortcut::cmd('A');
     const COPY: Shortcut = Shortcut::cmd('C');
     const CUT: Shortcut = Shortcut::cmd('X');
@@ -956,36 +933,56 @@ fn apply_key(
 
     if UNDO.matches(kp) {
         apply_undo(text, state);
-        return false;
+        return true;
     }
     if REDO.matches(kp) {
         apply_redo(text, state);
+        return true;
+    }
+    if menu_open {
         return false;
     }
-    if clipboard_active {
-        if SELECT_ALL.matches(kp) {
-            if !text.is_empty() {
-                state.selection = Some(0);
-                state.caret = text.len();
-                state.last_edit_kind = None;
-            }
-            return false;
+    if SELECT_ALL.matches(kp) {
+        if !text.is_empty() {
+            state.selection = Some(0);
+            state.caret = text.len();
+            state.last_edit_kind = None;
         }
-        if COPY.matches(kp) {
-            if let Some(r) = state.sel_range() {
-                crate::clipboard::set(&text[r]);
-            }
-            return false;
-        }
-        if CUT.matches(kp) {
-            cut_selection(text, state);
-            return false;
-        }
-        if PASTE.matches(kp) {
-            paste_at_caret(text, state, &crate::clipboard::get(), multiline);
-            return false;
-        }
+        return true;
     }
+    if COPY.matches(kp) {
+        if let Some(r) = state.sel_range() {
+            crate::clipboard::set(&text[r]);
+        }
+        return true;
+    }
+    if CUT.matches(kp) {
+        cut_selection(text, state);
+        return true;
+    }
+    if PASTE.matches(kp) {
+        paste_at_caret(text, state, &crate::clipboard::get(), multiline);
+        return true;
+    }
+    false
+}
+
+/// Apply one keypress to the buffer + state. Returns `true` if the
+/// caller should blur (Escape with no live selection in single-line
+/// mode); every other recognized key is consumed silently. Sets
+/// `out_vertical` to `Some(VerticalMotion)` when the key is `Up` /
+/// `Down` in multi-line mode — the caller resolves the cross-axis
+/// probe against the shaper, which this function doesn't touch.
+/// Platform shortcuts (undo / clipboard / select-all) are handled by
+/// `dispatch_shortcut` before this; `multiline` toggles Enter → `\n`
+/// insertion and enables Up/Down motion.
+fn apply_key(
+    text: &mut String,
+    state: &mut TextEditState,
+    kp: KeyPress,
+    multiline: bool,
+    out_vertical: &mut Option<VerticalMotion>,
+) -> bool {
     let shift = kp.mods.shift;
     match kp.key {
         Key::Char(c) if !kp.mods.any_command() => {
