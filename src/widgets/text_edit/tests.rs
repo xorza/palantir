@@ -766,7 +766,7 @@ fn two_textedits_only_one_focused_at_a_time() {
 }
 
 /// `ui_at_no_cosmic` constructs a Ui without cosmic, so the mono
-/// fallback drives `caret_x` (8 px/char at 16 px font) — predictable
+/// fallback drives caret-x (8 px/char at 16 px font) — predictable
 /// widths the click-positioning tests rely on.
 fn ui_at_no_cosmic(size: UVec2) -> Ui {
     use crate::layout::types::display::Display;

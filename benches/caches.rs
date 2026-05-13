@@ -26,8 +26,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use palantir::support::internals;
 use palantir::{
-    Background, Color, Configure, Corners, Display, Frame, InputEvent, Panel, Rect, Scroll, Shape,
-    Sizing, Stroke, Text, TextShaper, TextStyle, Ui,
+    Background, Color, Configure, Corners, Display, Frame, InputEvent, Panel, Rect, Scroll, Shadow,
+    Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui,
 };
 use std::hint::black_box;
 

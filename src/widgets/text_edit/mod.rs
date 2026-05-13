@@ -352,10 +352,11 @@ impl<'a> TextEdit<'a> {
         let caret_byte = input.caret;
         let selection = input.selection;
 
-        // Phase 2: open the node and push shapes. `cursor_xy` /
-        // `selection_rects` for multi-line; flat `caret_x` for v1
-        // single-line. Both paths touch `ui.text` (disjoint from
-        // `ui.tree`, so `add_shape` sequences fine).
+        // Phase 2: open the node and push shapes. `cursor_xy` +
+        // `selection_rects` handle both single- and multi-line via
+        // cosmic's shaped-buffer APIs; the single-line case is just
+        // an unwrapped layout with one visual run. Touch `ui.text`
+        // (disjoint from `ui.forest`, so `add_shape` sequences fine).
         // Chrome paints via `Tree::chrome_for` — encoder emits it
         // before any clip. No clip is set: TextEdit's caret + selection
         // handle their own painting and don't need rect-clipping.
@@ -371,44 +372,28 @@ impl<'a> TextEdit<'a> {
             // actually live (anchor != caret — collapsed selections are
             // stored as `None`, so any `Some` here has positive width).
             if is_focused && let Some(range) = selection.clone() {
-                if multiline {
-                    // `ui.text` (the shaper) and `ui.forest` (where
-                    // `add_shape` writes) are disjoint fields on
-                    // `Ui`; cosmic's `LayoutRun::highlight` calls
-                    // through the shaper while the closure pushes
-                    // shapes — no `Vec<Rect>` round-trip needed.
-                    let sel_color = theme.selection;
-                    ui.text.selection_rects(
-                        text_ptr,
-                        range,
-                        font_size,
-                        line_h,
-                        wrap_target,
-                        |x, y, w, h| {
-                            ui.forest.add_shape(Shape::RoundedRect {
-                                local_rect: Some(Rect::new(
-                                    padding.left + x,
-                                    padding.top + y,
-                                    w,
-                                    h,
-                                )),
-                                radius: Default::default(),
-                                fill: sel_color.into(),
-                                stroke: Stroke::ZERO,
-                            });
-                        },
-                    );
-                } else {
-                    let x0 = ui.text.caret_x(text_ptr, range.start, font_size, line_h);
-                    let x1 = ui.text.caret_x(text_ptr, range.end, font_size, line_h);
-                    let sel_rect = Rect::new(padding.left + x0, padding.top, x1 - x0, line_h);
-                    ui.add_shape(Shape::RoundedRect {
-                        local_rect: Some(sel_rect),
-                        radius: Default::default(),
-                        fill: theme.selection.into(),
-                        stroke: Stroke::ZERO,
-                    });
-                }
+                // `ui.text` (the shaper) and `ui.forest` (where
+                // `add_shape` writes) are disjoint fields on `Ui`;
+                // cosmic's `LayoutRun::highlight` calls through the
+                // shaper while the closure pushes shapes — no
+                // `Vec<Rect>` round-trip needed. Single-line lays out
+                // unwrapped (`wrap_target=None`) and emits one rect.
+                let sel_color = theme.selection;
+                ui.text.selection_rects(
+                    text_ptr,
+                    range,
+                    font_size,
+                    line_h,
+                    wrap_target,
+                    |x, y, w, h| {
+                        ui.forest.add_shape(Shape::RoundedRect {
+                            local_rect: Some(Rect::new(padding.left + x, padding.top + y, w, h)),
+                            radius: Default::default(),
+                            fill: sel_color.into(),
+                            stroke: Stroke::ZERO,
+                        });
+                    },
+                );
             }
 
             // Text or placeholder. Empty buffer + unfocused shows the
@@ -439,25 +424,15 @@ impl<'a> TextEdit<'a> {
             // coords so it stays in the widget's clip and renders
             // *over* the text. Only when focused.
             if is_focused {
-                let caret_rect = if multiline {
-                    let pos =
-                        ui.text
-                            .cursor_xy(text_ptr, caret_byte, font_size, line_h, wrap_target);
-                    Rect::new(
-                        padding.left + pos.x,
-                        padding.top + pos.y_top,
-                        theme.caret_width,
-                        pos.line_height,
-                    )
-                } else {
-                    let caret_x = ui.text.caret_x(text_ptr, caret_byte, font_size, line_h);
-                    Rect::new(
-                        padding.left + caret_x,
-                        padding.top,
-                        theme.caret_width,
-                        line_h,
-                    )
-                };
+                let pos = ui
+                    .text
+                    .cursor_xy(text_ptr, caret_byte, font_size, line_h, wrap_target);
+                let caret_rect = Rect::new(
+                    padding.left + pos.x,
+                    padding.top + pos.y_top,
+                    theme.caret_width,
+                    pos.line_height,
+                );
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(caret_rect),
                     radius: Default::default(),
@@ -614,8 +589,7 @@ fn handle_input(
         let local_y = ptr.y - rect.min.y - padding.top;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
-        // 1D `Buffer::hit` walk — one shaped lookup vs. the old
-        // O(n) per-byte `caret_x` scan.
+        // 1D `Buffer::hit` walk — one shaped lookup.
         let hit = ui.text.byte_at_xy(
             text,
             local_x,
