@@ -52,7 +52,7 @@ fn key_for(
         quantize(size_px),
         max_w_px.map(quantize).unwrap_or(MAX_W_NONE),
         quantize(line_height_px),
-        family as u32,
+        family as u8,
     )
 }
 
@@ -74,35 +74,22 @@ struct CacheEntry {
     intrinsic_min: f32,
 }
 
-/// Real-shaping text measurer. Owns a [`FontSystem`] (system fonts via
-/// [`CosmicMeasure::new`], or just the bundled Inter + JetBrains Mono via
-/// [`CosmicMeasure::with_bundled_fonts`]) and a cache of shaped `Buffer`s
-/// keyed on the inputs that affect shaping.
-///
-/// `default_attrs` is what `measure` uses when shaping — apps that need a
-/// different family/weight/style would build their own [`Attrs`] eventually,
-/// but today every run goes through the same default.
+/// Real-shaping text measurer. Owns a [`FontSystem`] populated by
+/// [`CosmicMeasure::with_bundled_fonts`] (Inter + JetBrains Mono) and a
+/// cache of shaped `Buffer`s keyed on the inputs that affect shaping.
+/// Per-call font family selection comes from [`FontFamily`] on each
+/// [`Self::measure`] invocation; the named lookups in [`attrs_for`]
+/// resolve against the bundled set.
 pub struct CosmicMeasure {
     font_system: FontSystem,
     cache: HashMap<TextCacheKey, CacheEntry>,
 }
 
 impl CosmicMeasure {
-    /// Use the OS's font set. Picks up whatever system fonts are installed
-    /// (slow on cold start, nondeterministic across machines — fine for apps,
-    /// avoid in tests). Default family is `SansSerif`.
-    pub fn new() -> Self {
-        Self {
-            font_system: FontSystem::new(),
-            cache: HashMap::new(),
-        }
-    }
-
     /// Use only the bundled fonts (Inter + JetBrains Mono, regular + bold).
     /// No system font scan: fast, deterministic, and gives the same metrics
     /// on every machine. Per-call font family selection comes from
-    /// [`FontFamily`] on each [`Self::measure`] invocation; if a named
-    /// family is missing, cosmic-text falls back through its match chain.
+    /// [`FontFamily`] on each [`Self::measure`] invocation.
     pub fn with_bundled_fonts() -> Self {
         let sources = [INTER_REGULAR, INTER_BOLD, JBMONO_REGULAR, JBMONO_BOLD]
             .into_iter()
@@ -166,7 +153,7 @@ impl<'a> BufferLookup<'a> {
 
 impl Default for CosmicMeasure {
     fn default() -> Self {
-        Self::new()
+        Self::with_bundled_fonts()
     }
 }
 
