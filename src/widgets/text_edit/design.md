@@ -229,11 +229,9 @@ the v1.1 selection branch where it already pays its way.
 
 ### Click-to-place-caret + drag-select
 
-`caret_from_x` linearly scans char boundaries, calling `caret_x` at
-each one and picking the closest to `target_x`. O(n) measure calls
-per pressed-frame — acceptable for short single-line strings, swappable
-for a `byte_to_x` API on `MeasureResult` once cosmic-text's
-`Buffer::layout_runs` is wired through `TextMeasurer`.
+`TextShaper::byte_at_xy` is one shaped lookup via `Buffer::hit` — O(1)
+in caret count, multi-line aware. Mono / empty-text falls back to a 1D
+`(x ÷ 0.5·font_size)` scan over char boundaries.
 
 Drag-select rides on the same pressed-frame loop: on the *rising edge*
 of `ResponseState::pressed` (detected via `state.prev_pressed`) the
