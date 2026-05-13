@@ -292,7 +292,7 @@ impl<'a> TextEdit<'a> {
         // `.enabled(...)` per state.
         let sel = ui.state_mut::<TextEditState>(id).sel_range();
         let has_sel = sel.is_some();
-        let cb_has = !crate::clipboard::get(ui).is_empty();
+        let cb_has = !crate::clipboard::is_empty();
         let has_text = !self.text.is_empty();
         let text = self.text;
         ContextMenu::attach(ui, &response).show(ui, |ui| {
@@ -303,7 +303,7 @@ impl<'a> TextEdit<'a> {
                 .clicked()
                 && let Some(r) = sel.clone()
             {
-                crate::clipboard::set(ui, &text[r.clone()]);
+                crate::clipboard::set(&text[r.clone()]);
                 text.replace_range(r.clone(), "");
                 let st = ui.state_mut::<TextEditState>(id);
                 st.caret = r.start;
@@ -316,7 +316,7 @@ impl<'a> TextEdit<'a> {
                 .clicked()
                 && let Some(r) = sel.clone()
             {
-                crate::clipboard::set(ui, &text[r]);
+                crate::clipboard::set(&text[r]);
             }
             if MenuItem::new("Paste")
                 .shortcut("⌘V")
@@ -324,9 +324,7 @@ impl<'a> TextEdit<'a> {
                 .show(ui)
                 .clicked()
             {
-                // Snapshot the clipboard string before we touch
-                // state — `set`/`state_mut` reborrow `ui`.
-                let cb = crate::clipboard::get(ui).to_owned();
+                let cb = crate::clipboard::get();
                 let st_snap = *ui.state_mut::<TextEditState>(id);
                 let new_caret = if let Some(r) = st_snap.sel_range() {
                     text.replace_range(r.clone(), &cb);
