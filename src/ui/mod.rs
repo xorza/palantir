@@ -432,6 +432,14 @@ impl Ui {
         use crate::input::keyboard::Key;
         self.input.frame_keys.iter().any(|k| k.key == Key::Escape)
     }
+
+    /// `true` if any keypress this frame matches `s`. Reads the same
+    /// `frame_keys` buffer that [`Self::escape_pressed`] uses — single
+    /// canonical entrypoint so widgets stop reaching for
+    /// `ui.input.frame_keys` directly.
+    pub fn shortcut_pressed(&self, s: crate::input::shortcut::Shortcut) -> bool {
+        self.input.frame_keys.iter().any(|kp| s.matches(*kp))
+    }
 }
 
 #[cfg(test)]

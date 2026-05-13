@@ -5,6 +5,7 @@ use crate::forest::element::Configure;
 use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::input::keyboard::Key;
+use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
 use crate::support::testing::{click_at, run_at, run_at_acked, secondary_click_at};
 use crate::widgets::button::Button;
@@ -31,7 +32,7 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
                 .show(ui);
             ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
                 if MenuItem::new("Copy")
-                    .shortcut("⌘C")
+                    .shortcut(Shortcut::cmd('C'))
                     .show(ui, popup)
                     .clicked()
                 {
@@ -121,6 +122,52 @@ fn item_click_dismisses_and_reports_clicked() {
     });
     assert!(copied, "clicking the Copy row reports clicked()");
     assert!(!menu_open(&ui), "item click auto-closes the menu");
+}
+
+/// Pressing a `MenuItem`'s shortcut while the menu is open fires
+/// the item (its `Response::clicked` is `true`) AND closes the menu,
+/// mirroring native menu behaviour. Disabled items don't intercept.
+#[test]
+fn shortcut_press_fires_item_and_dismisses() {
+    let mut ui = Ui::new();
+    let mut copied = false;
+    let mut dismissed = false;
+    run_at_acked(&mut ui, SURFACE, |ui| {
+        build(ui, &mut copied, &mut dismissed)
+    });
+    ContextMenu::open(&mut ui, trigger_id(), Vec2::new(60.0, 60.0));
+    let mut copied = false;
+    let mut dismissed = false;
+    run_at(&mut ui, SURFACE, |ui| {
+        build(ui, &mut copied, &mut dismissed)
+    });
+    assert!(menu_open(&ui));
+
+    // Inject the platform-primary modifier + 'C' — matches
+    // `Shortcut::cmd('C')` on the Copy item.
+    let primary_mods = if cfg!(target_os = "macos") {
+        crate::input::keyboard::Modifiers {
+            meta: true,
+            ..crate::input::keyboard::Modifiers::NONE
+        }
+    } else {
+        crate::input::keyboard::Modifiers {
+            ctrl: true,
+            ..crate::input::keyboard::Modifiers::NONE
+        }
+    };
+    ui.on_input(InputEvent::ModifiersChanged(primary_mods));
+    ui.on_input(InputEvent::KeyDown {
+        key: Key::Char('C'),
+        repeat: false,
+    });
+    let mut copied = false;
+    let mut dismissed = false;
+    run_at(&mut ui, SURFACE, |ui| {
+        build(ui, &mut copied, &mut dismissed)
+    });
+    assert!(copied, "shortcut press synthesizes a click on the Copy row");
+    assert!(!menu_open(&ui), "shortcut press auto-closes the menu");
 }
 
 #[test]

@@ -35,6 +35,7 @@ pub use forest::widget_id::WidgetId;
 pub use host::Host;
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
 pub use input::sense::Sense;
+pub use input::shortcut::{Mods, Shortcut};
 pub use input::{FocusPolicy, InputEvent, PointerButton, ResponseState};
 pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::clip_mode::ClipMode;

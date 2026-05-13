@@ -2,10 +2,12 @@ use super::{TextEditState, next_char_boundary, prev_char_boundary};
 
 /// Test wrapper: single-line `apply_key` with the vertical-motion
 /// out-param ignored. Single-line tests never exercise Up/Down so the
-/// motion sink is always `None`.
+/// motion sink is always `None`. Clipboard handling is always on
+/// here; menu-intercept gating is exercised end-to-end via the
+/// integration tests instead.
 fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
     let mut vert = None;
-    super::apply_key(text, state, kp, false, &mut vert)
+    super::apply_key(text, state, kp, false, true, &mut vert)
 }
 use crate::Spacing;
 use crate::Ui;
@@ -160,13 +162,24 @@ fn shift(key: Key) -> KeyPress {
     }
 }
 
-fn ctrl(key: Key) -> KeyPress {
-    KeyPress {
-        key,
-        mods: Modifiers {
+/// `Cmd+key` on macOS, `Ctrl+key` elsewhere — the platform primary
+/// modifier under which shortcuts like select-all / copy / cut /
+/// paste fire.
+fn cmd_press(key: Key) -> KeyPress {
+    let mods = if cfg!(target_os = "macos") {
+        Modifiers {
+            meta: true,
+            ..Modifiers::NONE
+        }
+    } else {
+        Modifiers {
             ctrl: true,
             ..Modifiers::NONE
-        },
+        }
+    };
+    KeyPress {
+        key,
+        mods,
         repeat: false,
     }
 }
@@ -305,7 +318,7 @@ fn selection_state_transitions() {
             buf: "hello",
             caret: 2,
             sel: None,
-            key: ctrl(Key::Char('a')),
+            key: cmd_press(Key::Char('a')),
             want_buf: "hello",
             want_caret: 5,
             want_sel: Some(0),
@@ -315,7 +328,7 @@ fn selection_state_transitions() {
             buf: "",
             caret: 0,
             sel: None,
-            key: ctrl(Key::Char('a')),
+            key: cmd_press(Key::Char('a')),
             want_buf: "",
             want_caret: 0,
             want_sel: None,
@@ -1253,22 +1266,26 @@ fn context_menu_cut_copy_paste_clear() {
     assert_eq!(st.caret, 0);
 }
 
-/// Platform clipboard shortcuts — Cmd/Ctrl + C / X / V mutate the
-/// buffer and the clipboard exactly like the corresponding menu
-/// items. Both `ctrl` and `meta` accepted on every platform (single
-/// table-driven sweep over the two modifier flags + 3 actions).
+/// Platform clipboard shortcuts — only the *platform-primary*
+/// command modifier triggers (Cmd on macOS, Ctrl elsewhere); the
+/// other does not. Sweeps copy/cut/paste through one keypress shape
+/// per platform.
 #[test]
 fn clipboard_shortcuts_apply_keypresses() {
     let _cb_guard = crate::clipboard::test_serialize_guard();
 
-    /// Build a `KeyPress` with one of `ctrl` / `meta` set.
-    fn shortcut(c: char, meta_not_ctrl: bool) -> KeyPress {
-        let mut mods = Modifiers::NONE;
-        if meta_not_ctrl {
-            mods.meta = true;
+    fn primary(c: char) -> KeyPress {
+        let mods = if cfg!(target_os = "macos") {
+            Modifiers {
+                meta: true,
+                ..Modifiers::NONE
+            }
         } else {
-            mods.ctrl = true;
-        }
+            Modifiers {
+                ctrl: true,
+                ..Modifiers::NONE
+            }
+        };
         KeyPress {
             key: Key::Char(c),
             mods,
@@ -1276,34 +1293,64 @@ fn clipboard_shortcuts_apply_keypresses() {
         }
     }
 
-    // Copy then cut then paste, each through both ctrl and meta. Same
-    // state machine as the menu test, just driven via key events.
-    for &use_meta in &[false, true] {
-        crate::clipboard::set("");
-        let mut text = String::from("hello");
-        let mut state = TextEditState {
-            caret: 4,
-            selection: Some(1),
-            ..TextEditState::default()
+    fn non_primary(c: char) -> KeyPress {
+        let mods = if cfg!(target_os = "macos") {
+            Modifiers {
+                ctrl: true,
+                ..Modifiers::NONE
+            }
+        } else {
+            Modifiers {
+                meta: true,
+                ..Modifiers::NONE
+            }
         };
-
-        // Copy: clipboard ← "ell", buffer unchanged.
-        apply_key(&mut text, &mut state, shortcut('c', use_meta));
-        assert_eq!(text, "hello");
-        assert_eq!(crate::clipboard::get(), "ell");
-
-        // Cut: clipboard keeps "ell", buffer drops it, caret collapses.
-        apply_key(&mut text, &mut state, shortcut('x', use_meta));
-        assert_eq!(text, "ho");
-        assert_eq!(crate::clipboard::get(), "ell");
-        assert_eq!(state.caret, 1);
-        assert_eq!(state.selection, None);
-
-        // Paste: insert clipboard at caret → "hello".
-        apply_key(&mut text, &mut state, shortcut('v', use_meta));
-        assert_eq!(text, "hello");
-        assert_eq!(state.caret, 4);
+        KeyPress {
+            key: Key::Char(c),
+            mods,
+            repeat: false,
+        }
     }
+
+    crate::clipboard::set("");
+    let mut text = String::from("hello");
+    let mut state = TextEditState {
+        caret: 4,
+        selection: Some(1),
+        ..TextEditState::default()
+    };
+
+    // Copy: clipboard ← "ell", buffer unchanged.
+    apply_key(&mut text, &mut state, primary('c'));
+    assert_eq!(text, "hello");
+    assert_eq!(crate::clipboard::get(), "ell");
+
+    // Cut: clipboard keeps "ell", buffer drops it, caret collapses.
+    apply_key(&mut text, &mut state, primary('x'));
+    assert_eq!(text, "ho");
+    assert_eq!(crate::clipboard::get(), "ell");
+    assert_eq!(state.caret, 1);
+    assert_eq!(state.selection, None);
+
+    // Paste: insert clipboard at caret → "hello".
+    apply_key(&mut text, &mut state, primary('v'));
+    assert_eq!(text, "hello");
+    assert_eq!(state.caret, 4);
+
+    // Non-primary modifier must NOT trigger any clipboard action.
+    // (On macOS, raw Ctrl+C is not Copy; on Win/Linux, Super+C is
+    // not Copy.) Reset state and verify a no-op.
+    crate::clipboard::set("CLIP");
+    let mut text2 = String::from("hello");
+    let mut state2 = TextEditState {
+        caret: 4,
+        selection: Some(1),
+        ..TextEditState::default()
+    };
+    apply_key(&mut text2, &mut state2, non_primary('c'));
+    assert_eq!(crate::clipboard::get(), "CLIP", "non-primary must not copy");
+    apply_key(&mut text2, &mut state2, non_primary('v'));
+    assert_eq!(text2, "hello", "non-primary must not paste");
 }
 
 /// Paste of multi-line clipboard content collapses every newline run
