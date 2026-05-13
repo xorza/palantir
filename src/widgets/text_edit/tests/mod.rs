@@ -149,6 +149,7 @@ fn multiline_editor(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
     }
 }
 
+mod align;
 mod apply_key;
 mod blink;
 mod click;

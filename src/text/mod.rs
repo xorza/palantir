@@ -395,6 +395,40 @@ impl TextShaper {
         }
     }
 
+    /// Widest visual line width for `text` under the supplied
+    /// metrics. Used by widgets that want block-level horizontal
+    /// alignment of a wrapped paragraph: the inner offset is
+    /// `inner_w − max_line_width(…)` rather than `inner_w − measured.w`
+    /// (which equals the wrap target and collapses to zero). Mono
+    /// fallback returns the single-line width.
+    pub(crate) fn max_line_width(
+        &self,
+        text: &str,
+        font_size_px: f32,
+        line_height_px: f32,
+        max_width_px: Option<f32>,
+        family: FontFamily,
+    ) -> f32 {
+        self.with_buffer(
+            text,
+            font_size_px,
+            line_height_px,
+            max_width_px,
+            family,
+            |buffer| {
+                buffer
+                    .layout_runs()
+                    .map(|run| run.line_w)
+                    .fold(0.0_f32, f32::max)
+            },
+        )
+        .unwrap_or_else(|| {
+            self.measure(text, font_size_px, line_height_px, max_width_px, family)
+                .size
+                .w
+        })
+    }
+
     /// Drop reuse entries for the supplied removed-widget set. Called
     /// from `Ui::post_record` against the same per-frame diff fed to
     /// `DamageEngine::compute` so cleanup stays bounded under widget churn

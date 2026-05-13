@@ -361,12 +361,12 @@ pub struct TextEdit<'a> {
     /// soft-wraps to the editor's inner width via cosmic-text. v1
     /// single-line behaviour is the default — flip via [`Self::multiline`].
     multiline: bool,
-    /// Caller-supplied alignment of the text inside the editor's inner
-    /// rect. `None` means "pick the mode-appropriate default" —
+    /// Caller-supplied alignment of the text inside the editor's
+    /// inner rect. `None` means "pick the mode-appropriate default" —
     /// `Align::LEFT` (left + vcenter) for single-line, `Align::TOP_LEFT`
     /// for multi-line. Caret and selection rects derive from the same
     /// offset, so any alignment keeps them tracking the glyphs.
-    align: Option<Align>,
+    text_align: Option<Align>,
 }
 
 impl<'a> TextEdit<'a> {
@@ -390,17 +390,19 @@ impl<'a> TextEdit<'a> {
             style: None,
             placeholder: Cow::Borrowed(""),
             multiline: false,
-            align: None,
+            text_align: None,
         }
     }
 
-    /// Place the text inside the editor's inner rect (the rect minus
-    /// padding). Defaults: `Align::LEFT` (left + vcenter) for
+    /// Position of the text inside the editor's inner rect (the rect
+    /// minus padding). Defaults: `Align::LEFT` (left + vcenter) for
     /// single-line, `Align::TOP_LEFT` for multi-line. Overflow clamps
     /// the offset to zero on each axis so caret + horizontal scroll
-    /// keep working when the text exceeds the inner rect.
-    pub fn align(mut self, a: Align) -> Self {
-        self.align = Some(a);
+    /// keep working when the text exceeds the inner rect. Distinct
+    /// from [`Configure::align`], which positions the *widget* inside
+    /// its parent's stack slot.
+    pub fn text_align(mut self, a: Align) -> Self {
+        self.text_align = Some(a);
         self
     }
 
@@ -483,11 +485,11 @@ impl<'a> TextEdit<'a> {
             family: look.text.family,
             multiline: self.multiline,
         };
-        // Resolved alignment: explicit `.align(...)` wins, else the
-        // mode-appropriate default. Single-line vcenters the one
+        // Resolved alignment: explicit `.text_align(...)` wins, else
+        // the mode-appropriate default. Single-line vcenters the one
         // visual line; multi-line top-lefts so growing content fills
         // downward.
-        let align = self.align.unwrap_or(if ctx.multiline {
+        let text_align = self.text_align.unwrap_or(if ctx.multiline {
             Align::TOP_LEFT
         } else {
             Align::LEFT
@@ -520,10 +522,28 @@ impl<'a> TextEdit<'a> {
                     ctx.family,
                 )
                 .size;
-            let measured = Size::new(m.w, m.h.max(ctx.line_height_px));
+            // For multi-line, `m.w` equals the wrap target, so it
+            // collapses any non-Left halign to zero offset. Use the
+            // widest visual line as the effective bbox width instead
+            // — gives block-level horizontal alignment of the
+            // paragraph. Per-line internal alignment would need cosmic
+            // `BufferLine::set_align` plumbed through the cache key,
+            // tracked as a follow-up.
+            let effective_w = if ctx.multiline {
+                ui.text.max_line_width(
+                    measure_str,
+                    ctx.font_size,
+                    ctx.line_height_px,
+                    ctx.wrap_target,
+                    ctx.family,
+                )
+            } else {
+                m.w
+            };
+            let measured = Size::new(effective_w, m.h.max(ctx.line_height_px));
             let inner_w = (r.size.w - ctx.padding.horiz()).max(0.0);
             let inner_h = (r.size.h - ctx.padding.vert()).max(0.0);
-            align_offset(Size::new(inner_w, inner_h), measured, align)
+            align_offset(Size::new(inner_w, inner_h), measured, text_align)
         } else {
             Vec2::ZERO
         };
