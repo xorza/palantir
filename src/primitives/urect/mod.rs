@@ -100,4 +100,18 @@ impl URect {
             h: y1.saturating_sub(y0),
         }
     }
+
+    /// Shrink symmetrically by `inset` pixels per side. Saturating:
+    /// a collapsing rect becomes zero-sized at the moved origin. Used
+    /// by the composer's shadow overlap check, where the outer-σ rim
+    /// of a Gaussian shadow is visually negligible and shouldn't
+    /// trigger text-batch flushes for nearby text.
+    pub const fn deflated(self, inset: u32) -> Self {
+        Self {
+            x: self.x + inset,
+            y: self.y + inset,
+            w: self.w.saturating_sub(2 * inset),
+            h: self.h.saturating_sub(2 * inset),
+        }
+    }
 }
