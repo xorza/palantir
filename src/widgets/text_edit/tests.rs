@@ -1245,6 +1245,87 @@ fn context_menu_cut_copy_paste_clear() {
     assert_eq!(st.caret, 0);
 }
 
+/// Platform clipboard shortcuts — Cmd/Ctrl + C / X / V mutate the
+/// buffer and the clipboard exactly like the corresponding menu
+/// items. Both `ctrl` and `meta` accepted on every platform (single
+/// table-driven sweep over the two modifier flags + 3 actions).
+#[test]
+fn clipboard_shortcuts_apply_keypresses() {
+    let _cb_guard = crate::clipboard::test_serialize_guard();
+
+    /// Build a `KeyPress` with one of `ctrl` / `meta` set.
+    fn shortcut(c: char, meta_not_ctrl: bool) -> KeyPress {
+        let mut mods = Modifiers::NONE;
+        if meta_not_ctrl {
+            mods.meta = true;
+        } else {
+            mods.ctrl = true;
+        }
+        KeyPress {
+            key: Key::Char(c),
+            mods,
+            repeat: false,
+        }
+    }
+
+    // Copy then cut then paste, each through both ctrl and meta. Same
+    // state machine as the menu test, just driven via key events.
+    for &use_meta in &[false, true] {
+        crate::clipboard::set("");
+        let mut text = String::from("hello");
+        let mut state = TextEditState {
+            caret: 4,
+            selection: Some(1),
+            ..TextEditState::default()
+        };
+
+        // Copy: clipboard ← "ell", buffer unchanged.
+        super::apply_key(&mut text, &mut state, shortcut('c', use_meta));
+        assert_eq!(text, "hello");
+        assert_eq!(crate::clipboard::get(), "ell");
+
+        // Cut: clipboard keeps "ell", buffer drops it, caret collapses.
+        super::apply_key(&mut text, &mut state, shortcut('x', use_meta));
+        assert_eq!(text, "ho");
+        assert_eq!(crate::clipboard::get(), "ell");
+        assert_eq!(state.caret, 1);
+        assert_eq!(state.selection, None);
+
+        // Paste: insert clipboard at caret → "hello".
+        super::apply_key(&mut text, &mut state, shortcut('v', use_meta));
+        assert_eq!(text, "hello");
+        assert_eq!(state.caret, 4);
+    }
+}
+
+/// `ctrl+c` etc. should NOT also insert the character — confirms the
+/// shortcut branch suppresses the printable-char insert path.
+#[test]
+fn clipboard_shortcut_does_not_insert_char() {
+    let _cb_guard = crate::clipboard::test_serialize_guard();
+    crate::clipboard::set("");
+
+    let mut text = String::from("ab");
+    let mut state = TextEditState {
+        caret: 2,
+        ..TextEditState::default()
+    };
+    super::apply_key(
+        &mut text,
+        &mut state,
+        KeyPress {
+            key: Key::Char('c'),
+            mods: Modifiers {
+                ctrl: true,
+                ..Modifiers::NONE
+            },
+            repeat: false,
+        },
+    );
+    assert_eq!(text, "ab", "ctrl+c without a selection is a no-op");
+    assert_eq!(state.caret, 2);
+}
+
 /// Right-click on the editor opens the menu — pins the secondary-
 /// click → `ContextMenu::attach` wiring.
 #[test]
