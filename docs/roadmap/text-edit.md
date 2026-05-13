@@ -9,10 +9,6 @@ the range), and clipboard (ctrl/cmd+c/x/v via `arboard`). See
 
 ## Next
 
-- **Glyph hit-test via `Buffer::hit`.** Replace O(n) `caret_from_x`
-  scan with one shaped lookup. Same upgrade gives multi-line
-  `byte_to_xy` and a cheaper selection-rect width computation
-  (two `caret_x` calls become one shaped lookup pair).
 - **Grapheme-aware boundary walks.** `unicode-segmentation` so
   shift+arrow / backspace step whole graphemes (emoji + ZWJ, accent
   combiners) instead of bare codepoints.
