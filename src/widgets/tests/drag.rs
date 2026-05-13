@@ -9,10 +9,10 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
-use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
 use crate::support::testing::{press_at, release_left, run_at_acked};
 use crate::widgets::{Response, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};

@@ -1,11 +1,11 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::seen_ids::IdSource;
 use crate::forest::tree::Layer;
-use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
+use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::text::Text;

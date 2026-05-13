@@ -1,7 +1,6 @@
 use crate::forest::Forest;
 use crate::forest::element::{LayoutCore, LayoutMode};
 use crate::forest::tree::{Layer, NodeId, Tree};
-use crate::forest::widget_id::WidgetId;
 use crate::layout::axis::Axis;
 use crate::layout::cache::{MeasureCache, SubtreeArenas, quantize_available};
 use crate::layout::grid::GridContext;
@@ -17,6 +16,7 @@ use crate::layout::{
 };
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
 use crate::text::{FontFamily, TextShaper};
 use rustc_hash::FxHashSet;

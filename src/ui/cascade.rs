@@ -10,9 +10,9 @@
 use crate::forest::Forest;
 use crate::forest::shapes::record::shadow_paint_rect_local;
 use crate::forest::tree::{Layer, NodeId, Tree, TreeItem, TreeItems};
-use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
+use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
 use glam::Vec2;
 use rustc_hash::FxHashMap;

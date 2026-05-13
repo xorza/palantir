@@ -5,12 +5,12 @@ use super::align_text_in;
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
-use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
+use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };

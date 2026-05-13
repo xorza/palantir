@@ -19,8 +19,8 @@
 //! [`Ui`]: crate::Ui
 
 use crate::forest::rollups::NodeHash;
-use crate::forest::widget_id::WidgetId;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;

@@ -11,8 +11,8 @@
 
 use crate::Ui;
 use crate::animation::animatable::Animatable;
-use crate::forest::widget_id::WidgetId;
 use crate::layout::scroll::ScrollLayoutState;
+use crate::primitives::widget_id::WidgetId;
 use crate::text::TextShaper;
 
 /// Drop every cross-frame measure-cache entry, forcing the next frame

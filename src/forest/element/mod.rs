@@ -21,12 +21,12 @@
 
 use crate::forest::seen_ids::IdSource;
 use crate::forest::visibility::Visibility;
-use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
     justify::Justify, sizing::Sizes,
 };
+use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     background::Background, size::Size, spacing::Spacing, transform::TranslateScale,
 };

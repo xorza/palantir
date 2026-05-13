@@ -152,9 +152,9 @@ fn focus_policy_routing() {
     use crate::FocusPolicy;
     use crate::Ui;
     use crate::forest::element::Configure;
-    use crate::forest::widget_id::WidgetId;
     use crate::input::PointerButton;
     use crate::layout::types::sizing::Sizing;
+    use crate::primitives::widget_id::WidgetId;
     use crate::support::testing::{click_at, run_at_acked};
     use crate::widgets::{button::Button, panel::Panel};
 
@@ -200,8 +200,8 @@ fn focus_policy_routing() {
 fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     use crate::Ui;
     use crate::forest::element::Configure;
-    use crate::forest::widget_id::WidgetId;
     use crate::layout::types::sizing::Sizing;
+    use crate::primitives::widget_id::WidgetId;
     use crate::support::testing::{click_at, run_at_acked};
     use crate::widgets::{button::Button, panel::Panel};
 
@@ -270,7 +270,7 @@ fn focus_is_evicted_when_widget_disappears() {
 fn request_focus_bypasses_policy() {
     use crate::Ui;
     let mut ui = Ui::new();
-    let id = crate::forest::widget_id::WidgetId::from_hash("manual");
+    let id = crate::primitives::widget_id::WidgetId::from_hash("manual");
     ui.request_focus(Some(id));
     assert_eq!(ui.focused_id(), Some(id));
     ui.request_focus(None);

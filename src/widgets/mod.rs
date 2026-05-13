@@ -11,9 +11,9 @@ pub(crate) mod theme;
 pub(crate) mod tooltip;
 
 use crate::forest::tree::NodeId;
-use crate::forest::widget_id::WidgetId;
 use crate::input::ResponseState;
 use crate::primitives::rect::Rect;
+use crate::primitives::widget_id::WidgetId;
 use glam::Vec2;
 
 #[cfg(test)]

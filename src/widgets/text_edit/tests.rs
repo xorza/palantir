@@ -13,10 +13,10 @@ use crate::Spacing;
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
-use crate::forest::widget_id::WidgetId;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
 use crate::support::testing::{
     click_at, run_at, run_at_acked, secondary_click_at, shapes_of, ui_with_text,
 };

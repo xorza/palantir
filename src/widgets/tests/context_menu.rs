@@ -2,11 +2,11 @@
 
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::widget_id::WidgetId;
 use crate::input::InputEvent;
 use crate::input::keyboard::Key;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
 use crate::support::testing::{click_at, run_at, run_at_acked, secondary_click_at};
 use crate::widgets::button::Button;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
