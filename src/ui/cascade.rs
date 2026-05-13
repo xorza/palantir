@@ -8,10 +8,12 @@
 //! take `&Cascades` as their single frozen-state handle.
 
 use crate::forest::Forest;
-use crate::forest::tree::{Layer, NodeId, Tree};
+use crate::forest::shapes::record::{Overhang, ShapeRecord};
+use crate::forest::tree::{Layer, NodeId, Tree, TreeItem, TreeItems};
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
+use crate::primitives::size::Size;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
@@ -27,14 +29,16 @@ pub(crate) struct Cascade {
     pub(crate) clip: Option<Rect>,
     /// Raw transformed layout rect — what the parent transform produces
     /// for this node, ignoring any ancestor clip. Used as the source for
-    /// `visible_rect` and as the fallback when no clip is active.
+    /// `paint_rect` and as the fallback when no clip is active.
     pub(crate) screen_rect: Rect,
-    /// `screen_rect` intersected with the active ancestor clip. This is
-    /// the rect that actually contributes paint to the surface — damage
-    /// tracking and culling read this so an offscreen-by-pan child of a
-    /// clipped scroll viewport doesn't inflate the dirty region with
-    /// pixels that never reach the framebuffer.
-    pub(crate) visible_rect: Rect,
+    /// `screen_rect` inflated by every shape's owner-local
+    /// [`Overhang`](crate::forest::shapes::record::Overhang) (drop
+    /// shadows are the only contributor today), then intersected with
+    /// the ancestor clip. Damage tracking reads this so a tab swap
+    /// clears the full shadow halo, not just the arranged rect.
+    /// Hit-test uses its own `HitEntry.rect` (the un-inflated visible
+    /// rect) — shadows aren't clickable.
+    pub(crate) paint_rect: Rect,
     pub(crate) invisible: bool,
 }
 
@@ -186,16 +190,25 @@ fn run_tree(
         let disabled = parent_dis || attrs.is_disabled();
         let invisible = parent_inv || !layout_col[i].visibility.is_visible();
 
-        let screen_rect = parent_transform.apply_rect(layout.rect[id.index()]);
+        let layout_rect = layout.rect[id.index()];
+        let screen_rect = parent_transform.apply_rect(layout_rect);
         let visible_rect = match parent_clip {
             Some(c) => screen_rect.intersect(c),
             None => screen_rect,
         };
+        let paint_rect = compute_paint_rect(
+            tree,
+            id,
+            layout_rect,
+            parent_transform,
+            parent_clip,
+            screen_rect,
+        );
         let row = Cascade {
             transform: parent_transform,
             clip: parent_clip,
             screen_rect,
-            visible_rect,
+            paint_rect,
             invisible,
         };
 
@@ -237,5 +250,56 @@ fn run_tree(
             invisible,
             subtree_end: ends[i],
         });
+    }
+}
+
+/// Union the per-shape [`Overhang`] of every direct shape on `node`,
+/// inflate `layout_rect` by the union (still in owner-local px),
+/// apply `parent_transform`, then clip to the ancestor clip. Skips
+/// the walk entirely when the node owns no shapes — the common case.
+fn compute_paint_rect(
+    tree: &Tree,
+    node: NodeId,
+    layout_rect: Rect,
+    parent_transform: TranslateScale,
+    parent_clip: Option<Rect>,
+    screen_rect: Rect,
+) -> Rect {
+    let span = tree.records.shape_span()[node.index()];
+    if span.len == 0 {
+        return match parent_clip {
+            Some(c) => screen_rect.intersect(c),
+            None => screen_rect,
+        };
+    }
+    let owner_size = layout_rect.size;
+    let mut overhang = Overhang::ZERO;
+    for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
+        if let TreeItem::ShapeRecord(s) = item
+            && matches!(s, ShapeRecord::Shadow { .. })
+        {
+            overhang = overhang.union(s.paint_overhang_local(owner_size));
+        }
+    }
+    if overhang.is_zero() {
+        return match parent_clip {
+            Some(c) => screen_rect.intersect(c),
+            None => screen_rect,
+        };
+    }
+    let inflated_local = Rect {
+        min: Vec2::new(
+            layout_rect.min.x - overhang.left,
+            layout_rect.min.y - overhang.top,
+        ),
+        size: Size::new(
+            layout_rect.size.w + overhang.left + overhang.right,
+            layout_rect.size.h + overhang.top + overhang.bottom,
+        ),
+    };
+    let inflated_screen = parent_transform.apply_rect(inflated_local);
+    match parent_clip {
+        Some(c) => inflated_screen.intersect(c),
+        None => inflated_screen,
     }
 }

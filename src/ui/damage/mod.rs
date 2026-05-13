@@ -46,9 +46,12 @@ pub(crate) mod region;
 /// evicts it in place.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
-    /// Screen-space rect from last frame's `Cascade.visible_rect`
-    /// (raw transformed rect intersected with ancestor clip), so
-    /// scrolled-offscreen children don't inflate the damage region.
+    /// Screen-space rect from last frame's `Cascade.paint_rect`
+    /// (raw transformed rect inflated by per-shape ink overhang —
+    /// drop-shadow halos — then intersected with the ancestor clip).
+    /// Using `paint_rect` rather than `visible_rect` means a node
+    /// going away (e.g. on tab switch) contributes the full halo
+    /// it painted last frame, so the encoder clears the shadow bleed.
     pub(crate) rect: Rect,
     /// Authoring hash from last frame's `Tree.hashes`.
     pub(crate) hash: NodeHash,
@@ -166,9 +169,11 @@ impl DamageEngine {
     /// the diff) are dropped afterwards.
     ///
     /// Rects are tracked in **screen space** (read straight off
-    /// `Cascade.screen_rect`). This makes damage match where the GPU
-    /// actually paints, so the backend scissor lands on the right
-    /// pixels even under transformed parents.
+    /// `Cascade.paint_rect` — the transformed layout rect inflated by
+    /// per-shape ink overhang, then ancestor-clipped). This makes
+    /// damage match where the GPU actually paints, so the backend
+    /// scissor lands on the right pixels even under transformed
+    /// parents or around a drop shadow.
     ///
     /// `surface` is the rect the host arranged the UI into this
     /// frame. A degenerate zero-area surface short-circuits to full
@@ -199,7 +204,7 @@ impl DamageEngine {
             let widget_ids = tree.records.widget_id();
             for i in 0..n {
                 let wid = widget_ids[i];
-                let curr_rect = rows[i].visible_rect;
+                let curr_rect = rows[i].paint_rect;
                 let curr_paints = tree.rollups.paints.contains(i);
                 let curr = NodeSnapshot {
                     rect: curr_rect,

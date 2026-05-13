@@ -4,11 +4,48 @@ use crate::primitives::brush::Brush;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use crate::primitives::stroke::Stroke;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use glam::Vec2;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
+
+/// Per-side ink overhang in owner-local px — how far this shape paints
+/// **beyond** the owner's arranged rect on each side. Non-zero only for
+/// drop shadows today; everything else paints within the owner rect (or
+/// inside an explicit `local_rect` that itself sits inside the owner).
+/// Cascade folds these per-node into `paint_rect` so damage tracking
+/// covers the pixels the encoder actually touches.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct Overhang {
+    pub(crate) left: f32,
+    pub(crate) top: f32,
+    pub(crate) right: f32,
+    pub(crate) bottom: f32,
+}
+
+impl Overhang {
+    pub(crate) const ZERO: Self = Self {
+        left: 0.0,
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+    };
+
+    pub(crate) fn union(self, other: Self) -> Self {
+        Self {
+            left: self.left.max(other.left),
+            top: self.top.max(other.top),
+            right: self.right.max(other.right),
+            bottom: self.bottom.max(other.bottom),
+        }
+    }
+
+    pub(crate) fn is_zero(self) -> bool {
+        self.left == 0.0 && self.top == 0.0 && self.right == 0.0 && self.bottom == 0.0
+    }
+}
 
 /// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache
 /// keys (which write the discriminant into the hash) stay stable
@@ -125,6 +162,39 @@ pub(crate) enum ShapeRecord {
 }
 
 impl ShapeRecord {
+    /// Per-side overhang beyond the owner's arranged rect (owner-local
+    /// px). Only drop shadows extend outside; everything else returns
+    /// [`Overhang::ZERO`]. The drop-shadow formula matches the
+    /// `paint_rect` the encoder hands to `draw_shadow`
+    /// (`offset.abs() + 3σ + max(spread, 0)` per axis), so damage and
+    /// paint can't drift.
+    pub(crate) fn paint_overhang_local(&self, owner_size: Size) -> Overhang {
+        match self {
+            ShapeRecord::Shadow {
+                local_rect,
+                offset,
+                blur,
+                spread,
+                inset: false,
+                ..
+            } => {
+                let dx = offset.x.abs() + 3.0 * blur.max(0.0) + spread.max(0.0);
+                let dy = offset.y.abs() + 3.0 * blur.max(0.0) + spread.max(0.0);
+                let (sx, sy, sw, sh) = match local_rect {
+                    None => (0.0, 0.0, owner_size.w, owner_size.h),
+                    Some(r) => (r.min.x, r.min.y, r.size.w, r.size.h),
+                };
+                Overhang {
+                    left: (dx - sx).max(0.0),
+                    top: (dy - sy).max(0.0),
+                    right: (sx + sw + dx - owner_size.w).max(0.0),
+                    bottom: (sy + sh + dy - owner_size.h).max(0.0),
+                }
+            }
+            _ => Overhang::ZERO,
+        }
+    }
+
     /// Stable on-disk tag. Used as the discriminant byte in the
     /// `Hash` impl, which feeds subtree hashes / cache keys. The
     /// values match the `= N` annotations on the variants — never
