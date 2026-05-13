@@ -32,7 +32,18 @@ use crate::ui::state::StateMap;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::{TextStyle, Theme};
+use std::any::TypeId;
+use std::ptr::NonNull;
 use std::time::Duration;
+
+/// Type-erased pointer to caller-owned app state, installed for the
+/// duration of [`Ui::with_app_state`] / [`Ui::frame_with`]. Retrieved
+/// via [`Ui::app`].
+#[derive(Clone, Copy)]
+struct AppSlot {
+    ptr: NonNull<()>,
+    type_id: TypeId,
+}
 
 /// Recorder + input/response broker. All public coordinates are
 /// logical pixels (DIPs); `Display::scale_factor` converts to
@@ -101,6 +112,11 @@ pub struct Ui {
     /// `post_record` to trigger one re-record per
     /// `run_frame`.
     relayout_requested: bool,
+    /// Ambient caller-owned app state for the current frame. Installed
+    /// by [`Self::with_app_state`] / [`Self::frame_with`], cleared by
+    /// the RAII guard on scope exit (incl. panic). Retrieved via
+    /// [`Self::app`].
+    app_slot: Option<AppSlot>,
 }
 
 impl Default for Ui {
@@ -159,7 +175,56 @@ impl Ui {
             relayout_requested: false,
             repaint_requested: false,
             repaint_wakes: Vec::new(),
+            app_slot: None,
         }
+    }
+
+    /// Install `state` as the ambient app state for `f`'s duration so
+    /// widgets nested arbitrarily deep can reach it via
+    /// [`Self::app::<T>()`] without threading `&mut T` through every
+    /// closure. Nests cleanly — a `with_app_state` inside another
+    /// stacks the inner slot and restores the outer on scope exit
+    /// (incl. panic).
+    pub fn with_app_state<T: 'static, R>(
+        &mut self,
+        state: &mut T,
+        f: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
+        struct Guard<'a> {
+            ui: &'a mut Ui,
+            prev: Option<AppSlot>,
+        }
+        impl Drop for Guard<'_> {
+            fn drop(&mut self) {
+                self.ui.app_slot = self.prev;
+            }
+        }
+        let prev = self.app_slot.replace(AppSlot {
+            ptr: NonNull::from(state).cast(),
+            type_id: TypeId::of::<T>(),
+        });
+        let g = Guard { ui: self, prev };
+        f(&mut *g.ui)
+    }
+
+    /// Borrow the app state installed by the enclosing
+    /// [`Self::with_app_state`] / [`Self::frame_with`]. Panics if no
+    /// slot is installed or `T` doesn't match the installed type —
+    /// both are caller bugs, not runtime conditions.
+    pub fn app<T: 'static>(&mut self) -> &mut T {
+        let slot = self
+            .app_slot
+            .expect("Ui::app called with no app state installed");
+        assert!(
+            slot.type_id == TypeId::of::<T>(),
+            "Ui::app::<T>() type mismatch — installed type differs from requested",
+        );
+        // SAFETY: `with_app_state` borrows `state: &mut T` for the
+        // duration of `f`; `Ui::app` reborrows through `&mut self` so
+        // the returned `&mut T` can't alias another `Ui` access. The
+        // Guard restores `prev` on drop (incl. panic), so the pointer
+        // is live whenever the slot is `Some`.
+        unsafe { slot.ptr.cast::<T>().as_mut() }
     }
 
     // ── Frame lifecycle ───────────────────────────────────────────────
@@ -264,6 +329,20 @@ impl Ui {
             damage,
             clear_color: self.theme.window_clear,
         }
+    }
+
+    /// Like [`Self::frame`] but installs `state` as the ambient app
+    /// state for the duration of the record passes, so deep widgets
+    /// can reach it via [`Self::app::<T>()`] without explicit
+    /// threading.
+    pub fn frame_with<T: 'static>(
+        &mut self,
+        display: Display,
+        now: Duration,
+        state: &mut T,
+        mut record: impl FnMut(&mut Ui),
+    ) -> FrameReport {
+        self.with_app_state(state, |ui| ui.frame(display, now, &mut record))
     }
 
     /// Should we discard the last painted frame's damage snapshot? True

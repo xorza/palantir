@@ -1,5 +1,6 @@
 pub mod alignment;
 pub mod animations;
+pub mod app_state;
 pub mod bezier;
 pub mod buttons;
 pub mod clip;

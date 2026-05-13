@@ -724,3 +724,51 @@ fn request_repaint_after_drains_fired_entries() {
     assert_eq!(ui.repaint_wakes.len(), 1);
     assert_eq!(report.repaint_after(), Some(Duration::from_secs_f32(2.0)));
 }
+
+#[test]
+fn app_state_round_trip_across_frame() {
+    struct App {
+        count: u32,
+    }
+    let mut ui = Ui::new();
+    let mut app = App { count: 0 };
+    ui.frame_with(Display::default(), Duration::ZERO, &mut app, |ui| {
+        ui.app::<App>().count += 1;
+        ui.app::<App>().count += 1;
+    });
+    assert_eq!(app.count, 2);
+}
+
+#[test]
+fn app_state_nests_and_restores_outer() {
+    let mut ui = Ui::new();
+    let mut outer: u32 = 1;
+    let mut inner: i64 = -5;
+    ui.with_app_state(&mut outer, |ui| {
+        assert_eq!(*ui.app::<u32>(), 1);
+        ui.with_app_state(&mut inner, |ui| {
+            assert_eq!(*ui.app::<i64>(), -5);
+            *ui.app::<i64>() = 42;
+        });
+        assert_eq!(*ui.app::<u32>(), 1);
+        *ui.app::<u32>() = 9;
+    });
+    assert_eq!(outer, 9);
+    assert_eq!(inner, 42);
+}
+
+#[test]
+#[should_panic(expected = "no app state installed")]
+fn app_without_install_panics() {
+    let _ = Ui::new().app::<u32>();
+}
+
+#[test]
+#[should_panic(expected = "type mismatch")]
+fn app_type_mismatch_panics() {
+    let mut ui = Ui::new();
+    let mut a: u32 = 7;
+    ui.with_app_state(&mut a, |ui| {
+        let _ = ui.app::<i64>();
+    });
+}

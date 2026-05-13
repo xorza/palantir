@@ -10,10 +10,11 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 mod showcase;
+use showcase::app_state::AppState;
 use showcase::{
-    alignment, animations, bezier, buttons, clip, context_menu, disabled, drag, gap, gradients,
-    grid, justify, lines, mesh, pan_zoom, pan_zoom_auto, panels, popup, scroll, shadow, sizing,
-    spacing, text, text_edit, text_zorder, tooltips, transform, visibility, wrap,
+    alignment, animations, app_state, bezier, buttons, clip, context_menu, disabled, drag, gap,
+    gradients, grid, justify, lines, mesh, pan_zoom, pan_zoom_auto, panels, popup, scroll, shadow,
+    sizing, spacing, text, text_edit, text_zorder, tooltips, transform, visibility, wrap,
 };
 
 /// Each showcase: a label for the toolbar button, and a builder that fills the
@@ -45,6 +46,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("tooltips", tooltips::build),
     ("context menu", context_menu::build),
     ("animations", animations::build),
+    ("app state", app_state::build),
     ("mesh", mesh::build),
     ("lines", lines::build),
     ("bezier", bezier::build),
@@ -83,6 +85,10 @@ struct State {
     /// `FramePresent` the frame returned; re-armed to `Immediate` by
     /// input, resize, surface loss, occlusion, and animation tickers.
     next: FramePresent,
+    /// Caller-owned app state, installed ambient on the `Ui` for the
+    /// duration of every frame via `Host::frame_and_render_with`.
+    /// The "app state" showcase tab reads/mutates it via `ui.app::<AppState>()`.
+    app: AppState,
 }
 
 impl ApplicationHandler for App {
@@ -156,6 +162,7 @@ impl ApplicationHandler for App {
             scale_factor,
             active: 0,
             next: FramePresent::Immediate,
+            app: AppState { counter: 0 },
         });
     }
 
@@ -232,11 +239,24 @@ impl ApplicationHandler for App {
 
 impl State {
     fn draw(&mut self) {
-        self.next =
-            self.host
-                .frame_and_render(&self.surface, &self.config, self.scale_factor, |ui| {
-                    build_ui(ui, &mut self.active)
-                });
+        // Split-borrow: `frame_and_render_with` needs `&mut self.host`
+        // and `&mut self.app` simultaneously, and the closure needs
+        // `&mut self.active`. A plain `self.host.frame_and_render_with(
+        // ..., &mut self.app, |ui| build_ui(ui, &mut self.active))` would
+        // borrow `self` mutably twice over.
+        let Self {
+            host,
+            surface,
+            config,
+            scale_factor,
+            active,
+            app,
+            next,
+            ..
+        } = self;
+        *next = host.frame_and_render_with(surface, config, *scale_factor, app, |ui| {
+            build_ui(ui, active)
+        });
     }
 }
 
