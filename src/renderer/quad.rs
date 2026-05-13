@@ -52,6 +52,18 @@ impl FillKind {
         Self(3 | ((spread as u32) << 8))
     }
 
+    /// Drop-shadow marker. `fill: Color` carries the shadow colour,
+    /// `fill_axis = (offset.x, offset.y, sigma, spread)`,
+    /// `radius` carries the *source* shape's corner radii (the shadow
+    /// is paint-bbox-aligned but conceptually wraps a source rect at
+    /// `rect_centre - offset`). The shader runs `shadow_coverage` and
+    /// multiplies `fill.rgb * fill.a * cov`.
+    pub(crate) const SHADOW_DROP: Self = Self(4);
+
+    /// Inset-shadow marker. Same packing as `SHADOW_DROP`; the
+    /// shader inverts coverage and clips to inside the source rect.
+    pub(crate) const SHADOW_INSET: Self = Self(5);
+
     /// `true` when the kind tag is `0`.
     #[allow(dead_code)] // used in tests + future is_solid fast paths
     #[inline]
@@ -66,6 +78,15 @@ impl FillKind {
     #[inline]
     pub(crate) const fn is_gradient(self) -> bool {
         matches!(self.0 & 0xFF, 1..=3)
+    }
+
+    /// `true` for any shadow variant. Composer scales `fill_axis`
+    /// (`offset_xy, sigma, _`) by DPI for these — gradient axes are
+    /// 0..1 local coords and stay scale-free, but shadow params are
+    /// physical-px in the shader.
+    #[inline]
+    pub(crate) const fn is_shadow(self) -> bool {
+        matches!(self.0 & 0xFF, 4..=5)
     }
 }
 
@@ -113,8 +134,31 @@ pub(crate) struct Quad {
 
 #[cfg(test)]
 mod tests {
-    use super::Quad;
+    use super::{FillKind, Quad};
+    use crate::primitives::brush::Spread;
     use std::mem::offset_of;
+
+    /// Pin: brush-kind discriminants match the WGSL `BRUSH_KIND_*`
+    /// constants in `src/renderer/backend/quad.wgsl`. Reordering
+    /// either side silently desyncs — the shader path picks the
+    /// wrong branch, no compile error. Cross-checked at the byte
+    /// level because that's what the vertex attribute carries.
+    #[test]
+    fn fill_kind_discriminants_match_wgsl() {
+        // Solid / Linear / Radial / Conic carry the kind in the low
+        // byte; Spread rides in bits 8..16 but isn't relevant here.
+        assert_eq!(FillKind::SOLID.0 & 0xFF, 0);
+        assert_eq!(FillKind::linear(Spread::Pad).0 & 0xFF, 1);
+        assert_eq!(FillKind::radial(Spread::Pad).0 & 0xFF, 2);
+        assert_eq!(FillKind::conic(Spread::Pad).0 & 0xFF, 3);
+        assert_eq!(FillKind::SHADOW_DROP.0 & 0xFF, 4);
+        assert_eq!(FillKind::SHADOW_INSET.0 & 0xFF, 5);
+        // Sanity: shadow detector covers exactly 4..=5.
+        assert!(FillKind::SHADOW_DROP.is_shadow());
+        assert!(FillKind::SHADOW_INSET.is_shadow());
+        assert!(!FillKind::SOLID.is_shadow());
+        assert!(!FillKind::linear(Spread::Pad).is_shadow());
+    }
 
     /// Pin: `Quad` is exactly 92 bytes — pos(8) + size(8) + fill(16) +
     /// radius(16) + stroke_color(16) + stroke_width(4) + fill_kind(4) +

@@ -99,6 +99,29 @@ pub enum Shape<'a> {
         local_rect: Option<Rect>,
         tint: Brush,
     },
+    /// Gaussian-blurred rounded rectangle — drop shadow or inner
+    /// shadow. Closed-form analytic shader (Evan Wallace's erf
+    /// trick) batched on the existing quad pipeline; no offscreen
+    /// pass, no separable blur. `local_rect = None` shadows the
+    /// owner's full arranged rect; `Some(r)` paints the shadow of
+    /// the owner-relative rect `r`. `offset` shifts the shadow in
+    /// logical px (CSS `box-shadow` x/y). `blur` is the Gaussian
+    /// σ in logical px (CSS `blur-radius / 2`, matching native
+    /// renderers); `0` collapses to a sharp SDF — same code path.
+    /// `spread` inflates (drop) or deflates (inset) the source
+    /// rect. `inset = true` paints inside the shape boundary;
+    /// `false` paints outside (the common drop-shadow case).
+    /// Multi-shadow stacks just push multiple `Shape::Shadow`s in
+    /// record order — composer batches them on the same draw call.
+    Shadow {
+        local_rect: Option<Rect>,
+        radius: Corners,
+        color: Color,
+        offset: Vec2,
+        blur: f32,
+        spread: f32,
+        inset: bool,
+    },
 }
 
 /// Color source for [`Shape::Polyline`]. Length constraints
@@ -382,6 +405,9 @@ impl Shape<'_> {
                     || mesh.indices.len() < 3
                     || mesh.indices.len() % 3 != 0
             }
+            Shape::Shadow {
+                local_rect, color, ..
+            } => local_rect_paint_empty(local_rect) || color.is_noop(),
         }
     }
 }

@@ -262,6 +262,38 @@ impl RenderCmdBuffer {
         );
     }
 
+    /// Record a shadow paint cmd. Reuses the `DrawRect` slot — shadow
+    /// is just another quad-kind quad. `rect` is the paint bbox
+    /// (source.inflated by `|offset| + 3σ + spread` per axis at
+    /// encode time). `radius` is the *source* shape's corner radii.
+    /// `color` is the shadow tint. `fill_kind` is
+    /// `FillKind::SHADOW_DROP|SHADOW_INSET`. Shadow params
+    /// (`offset.x, offset.y, σ, _unused`) ride in `fill_axis`.
+    #[inline]
+    pub(crate) fn draw_shadow(
+        &mut self,
+        rect: Rect,
+        radius: Corners,
+        color: Color,
+        fill_kind: FillKind,
+        fill_axis: FillAxis,
+    ) {
+        self.record_start(CmdKind::DrawRect);
+        write_pod(
+            &mut self.data,
+            DrawRectPayload {
+                rect,
+                radius,
+                fill: color,
+                stroke_color: Color::TRANSPARENT,
+                stroke_width: 0.0,
+                fill_kind,
+                fill_grad_idx: 0,
+                fill_axis,
+            },
+        );
+    }
+
     #[inline]
     pub(crate) fn draw_text(&mut self, rect: Rect, color: Color, key: TextCacheKey) {
         self.record_start(CmdKind::DrawText);

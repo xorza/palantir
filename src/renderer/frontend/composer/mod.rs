@@ -4,6 +4,7 @@ use super::cmd_buffer::{
 };
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
+use crate::primitives::brush::FillAxis;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
@@ -339,6 +340,21 @@ impl Composer {
                     } else {
                         LutRow::FALLBACK
                     };
+                    // Shadow params (offset, σ) live in fill_axis as
+                    // logical-px scalars; scale to physical px so the
+                    // shader's `local` (physical px from vs) lines up.
+                    // Gradient axis is 0..1 local — never scaled.
+                    let fill_axis = if p.fill_kind.is_shadow() {
+                        let s = current_transform.scale * scale;
+                        FillAxis {
+                            dir_x: p.fill_axis.dir_x * s,
+                            dir_y: p.fill_axis.dir_y * s,
+                            t0: p.fill_axis.t0 * s,
+                            t1: p.fill_axis.t1 * s,
+                        }
+                    } else {
+                        p.fill_axis
+                    };
                     out.quads.push(Quad {
                         rect: phys_rect,
                         fill: p.fill,
@@ -347,7 +363,7 @@ impl Composer {
                         stroke_width: p.stroke_width * current_transform.scale * scale,
                         fill_kind: p.fill_kind,
                         fill_lut_row,
-                        fill_axis: p.fill_axis,
+                        fill_axis,
                     });
                 }
                 CmdKind::DrawMesh => {
