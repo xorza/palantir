@@ -114,7 +114,7 @@ impl TextShaper {
 
     /// ShapeRecord `text` and return its measurement. Bypasses the per-widget
     /// reuse cache — direct dispatch to cosmic (if installed) or mono.
-    /// Used by [`Self::caret_x`] and other prefix/probe paths.
+    /// Used by [`Self::cursor_xy`] and other shape/probe paths.
     pub fn measure(
         &self,
         text: &str,
@@ -202,32 +202,6 @@ impl TextShaper {
             result: m,
         });
         m
-    }
-
-    /// Unbounded measured width of `text[..byte_offset]`, used for
-    /// caret-x positioning inside an editor. Bypasses the per-`WidgetId`
-    /// reuse cache because the prefix changes with caret movement and
-    /// editing — caching every prefix would bloat the table without
-    /// the savings the cache exists for. A future `byte_to_x` API on
-    /// `MeasureResult` (cosmic exposes one via `Buffer::layout_runs`)
-    /// will replace this when multi-line / IME / drag-select land.
-    ///
-    /// Panics if `byte_offset` doesn't fall on a UTF-8 character
-    /// boundary — same surface as `&text[..byte_offset]`.
-    pub(crate) fn caret_x(
-        &self,
-        text: &str,
-        byte_offset: usize,
-        font_size_px: f32,
-        line_height_px: f32,
-    ) -> f32 {
-        if byte_offset == 0 || text.is_empty() {
-            return 0.0;
-        }
-        let prefix = &text[..byte_offset];
-        self.measure(prefix, font_size_px, line_height_px, None)
-            .size
-            .w
     }
 
     /// Borrow the shaped cosmic `Buffer` for `(text, fs, lh, mw)`,
@@ -400,8 +374,8 @@ impl TextShaper {
 impl ShaperInner {
     /// Bypass-cache dispatch: cosmic if installed, mono otherwise.
     /// Caller is responsible for incrementing `measure_calls` on cache
-    /// misses (we don't bump it here because some paths — `shape_wrap`,
-    /// `caret_x` — already account for it).
+    /// misses (we don't bump it here because some paths — `shape_wrap`
+    /// — already account for it).
     fn dispatch(
         &mut self,
         text: &str,
@@ -704,12 +678,12 @@ mod tests {
         assert!(mono_measure("", 16.0, lh(16.0), None).key.is_invalid());
     }
 
-    /// `caret_x(text, byte_offset, font_size, line_height)`. Mono
-    /// fallback: each ASCII byte is `font_size * 0.5` wide. Caret x is
-    /// independent of `line_height` (advance only depends on font_size
-    /// + glyph). Empty string and zero offset short-circuit to zero.
+    /// `cursor_xy(...).x`. Mono fallback: each ASCII byte is
+    /// `font_size * 0.5` wide. Caret x is independent of `line_height`
+    /// (advance only depends on font_size + glyph). Empty string and
+    /// zero offset short-circuit to zero.
     #[test]
-    fn caret_x_cases() {
+    fn cursor_xy_x_cases() {
         let cases: &[(&str, &str, usize, f32, f32, f32)] = &[
             ("zero_offset", "hello", 0, 16.0, lh(16.0), 0.0),
             ("empty_string", "", 0, 16.0, lh(16.0), 0.0),
@@ -722,40 +696,11 @@ mod tests {
         for (label, text, offset, fs, lh_v, expected) in cases {
             let m = TextShaper::default();
             assert_eq!(
-                m.caret_x(text, *offset, *fs, *lh_v),
+                m.cursor_xy(text, *offset, *fs, *lh_v, None).x,
                 *expected,
                 "case: {label}"
             );
         }
-    }
-
-    #[test]
-    fn caret_x_increments_measure_calls_counter() {
-        // The `measure_calls` counter pins reshape-skip behavior in
-        // existing tests; pin that caret_x participates in it (no
-        // free measurements) so a future caller can detect over-call.
-        let m = TextShaper::default();
-        let before = crate::support::internals::text_shaper_measure_calls(&m);
-        let _ = m.caret_x("abc", 2, 16.0, lh(16.0));
-        assert_eq!(
-            crate::support::internals::text_shaper_measure_calls(&m),
-            before + 1
-        );
-        // Zero-offset shortcut must not bump the counter.
-        let zero_before = crate::support::internals::text_shaper_measure_calls(&m);
-        let _ = m.caret_x("abc", 0, 16.0, lh(16.0));
-        assert_eq!(
-            crate::support::internals::text_shaper_measure_calls(&m),
-            zero_before
-        );
-    }
-
-    #[test]
-    #[should_panic]
-    fn caret_x_panics_inside_multibyte_codepoint() {
-        // "é" is two UTF-8 bytes; offset 1 splits it.
-        let m = TextShaper::default();
-        let _ = m.caret_x("é", 1, 16.0, lh(16.0));
     }
 
     #[test]
@@ -826,21 +771,21 @@ mod tests {
     }
 
     #[test]
-    fn caret_x_cosmic_path_is_monotonic_and_bounded() {
-        // With real shaping, prefix widths must be non-decreasing and
-        // approach the full-string width at the final offset. We don't
-        // pin exact pixel values — those depend on font metrics — just
-        // the monotonicity invariant any consumer relies on.
+    fn cursor_xy_cosmic_path_is_monotonic_and_bounded() {
+        // With real shaping, caret-x at each byte boundary must be
+        // non-decreasing and approach the full-string width at the
+        // final offset. Exact pixel values depend on font metrics; we
+        // only pin the monotonicity invariant consumers rely on.
         let m = TextShaper::with_bundled_fonts();
         let s = "hello";
         let widths: Vec<f32> = (0..=s.len())
-            .map(|i| m.caret_x(s, i, 16.0, 16.0 * LINE_HEIGHT_MULT))
+            .map(|i| m.cursor_xy(s, i, 16.0, 16.0 * LINE_HEIGHT_MULT, None).x)
             .collect();
-        assert_eq!(widths[0], 0.0, "prefix-x at offset 0 is zero");
+        assert_eq!(widths[0], 0.0, "caret-x at offset 0 is zero");
         for w in widths.windows(2) {
             assert!(
                 w[1] >= w[0] - 0.01,
-                "prefix widths must be non-decreasing, got {w:?}",
+                "caret-x must be non-decreasing, got {w:?}",
             );
         }
         assert!(
