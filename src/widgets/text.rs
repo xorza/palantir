@@ -77,7 +77,7 @@ impl Text {
         let line_height_px = style.line_height_for(style.font_size_px);
         let node = ui.node(self.element, |ui| {
             ui.add_shape(Shape::Text {
-                local_rect: None,
+                local_origin: None,
                 text: self.text,
                 brush: style.color.into(),
                 font_size_px: style.font_size_px,

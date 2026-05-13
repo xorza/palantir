@@ -661,11 +661,9 @@ impl<'a> TextEdit<'a> {
             };
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {
-                    local_rect: Some(Rect::new(
+                    local_origin: Some(Vec2::new(
                         ctx.padding.left + offset.x - scroll.x,
                         ctx.padding.top + offset.y - scroll.y,
-                        0.0,
-                        0.0,
                     )),
                     text: display,
                     brush: color.into(),

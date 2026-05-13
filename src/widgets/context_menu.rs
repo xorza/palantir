@@ -287,7 +287,7 @@ impl MenuItem {
             label_el.size = (Sizing::Hug, Sizing::Hug).into();
             ui.node(label_el, |ui| {
                 ui.add_shape(Shape::Text {
-                    local_rect: None,
+                    local_origin: None,
                     text: label,
                     brush: label_color.into(),
                     font_size_px,
@@ -303,7 +303,7 @@ impl MenuItem {
                 sh_el.size = (Sizing::Hug, Sizing::Hug).into();
                 ui.node(sh_el, |ui| {
                     ui.add_shape(Shape::Text {
-                        local_rect: None,
+                        local_origin: None,
                         text: s,
                         brush: shortcut_color.into(),
                         font_size_px,

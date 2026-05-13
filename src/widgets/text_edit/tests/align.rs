@@ -75,9 +75,9 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
     for s in shapes_of(ui.forest.tree(Layer::Main), node) {
         match s {
             ShapeRecord::Text {
-                local_rect: Some(r),
+                local_origin: Some(o),
                 ..
-            } => text_origin = Some(glam::Vec2::new(r.min.x, r.min.y)),
+            } => text_origin = Some(*o),
             ShapeRecord::RoundedRect {
                 local_rect: Some(r),
                 ..
@@ -544,6 +544,67 @@ mod per_line {
                 after - before,
             );
         }
+    }
+
+    /// End-to-end: empty + unfocused multi-line editor with a long
+    /// placeholder + `text_align(RIGHT)`. The widget renders the
+    /// *placeholder string* through the layout pipeline so cosmic
+    /// per-line-aligns each visual line of the placeholder. Pins:
+    /// (a) the rendered `Shape::Text` carries `align = TOP_RIGHT`,
+    /// (b) the cached buffer key carries `halign_q = Right`,
+    /// (c) `max_w_q` is finite (cosmic actually got a wrap target).
+    /// Without these, the placeholder would shape with `HAlign::Auto`
+    /// and render left-aligned regardless of `text_align`.
+    #[test]
+    fn placeholder_per_line_aligns_under_wrap() {
+        use crate::forest::shapes::record::ShapeRecord;
+        use crate::forest::tree::Layer;
+        let mut ui = cosmic_ui();
+        let mut buf = String::new();
+        let mut node = None;
+        let mut record = |ui: &mut Ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                node = Some(
+                    TextEdit::new(&mut buf)
+                        .id_salt("ph-ml")
+                        .multiline(true)
+                        .text_align(Align::TOP_RIGHT)
+                        .placeholder("type a paragraph here — long enough to actually wrap")
+                        .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
+                        .show(ui)
+                        .node,
+                );
+            });
+        };
+        run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+        run_at_acked(&mut ui, UVec2::new(800, 200), &mut record);
+        let node = node.unwrap();
+        // (a) `Shape::Text.align` reflects the user's text_align.
+        let shape_align = shapes_of(ui.forest.tree(Layer::Main), node).find_map(|s| match s {
+            ShapeRecord::Text { align, text, .. } => Some((*align, text.clone())),
+            _ => None,
+        });
+        let (shape_align, shape_text) = shape_align.expect("placeholder paints as Shape::Text");
+        assert_eq!(shape_align, Align::TOP_RIGHT);
+        assert!(
+            shape_text.contains("type a paragraph"),
+            "rendered text must be the placeholder, got {shape_text:?}",
+        );
+        // (b) + (c) cached buffer key.
+        let main = &ui.layout[Layer::Main];
+        let span = main.text_spans[node.index()];
+        assert_eq!(span.len, 1, "one Shape::Text expected on the leaf");
+        let shaped = main.text_shapes[span.start as usize];
+        assert_eq!(
+            shaped.key.halign_q,
+            HAlign::Right as u8,
+            "placeholder buffer must carry the user's halign in its cache key",
+        );
+        assert_ne!(
+            shaped.key.max_w_q,
+            u32::MAX,
+            "placeholder buffer must have a finite wrap target so cosmic per-line align fires",
+        );
     }
 
     /// Regression: an empty multi-line buffer with right-align must

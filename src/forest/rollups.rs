@@ -81,14 +81,13 @@ mod tests {
     use crate::forest::shapes::record::ShapeRecord;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
-    use crate::primitives::rect::Rect;
     use crate::shape::TextWrap;
     use std::borrow::Cow;
     use std::hash::{Hash, Hasher as _};
 
-    fn text_shape(line_height_px: f32, local_rect: Option<Rect>) -> ShapeRecord {
+    fn text_shape(line_height_px: f32, local_origin: Option<glam::Vec2>) -> ShapeRecord {
         ShapeRecord::Text {
-            local_rect,
+            local_origin,
             text: Cow::Borrowed("hi"),
             color: Color::WHITE,
             font_size_px: 16.0,
@@ -113,8 +112,8 @@ mod tests {
     /// New fields go in the table, not in a new test.
     #[test]
     fn text_shape_hash_distinguishes_each_authoring_field() {
-        let r_a = Some(Rect::new(0.0, 0.0, 10.0, 10.0));
-        let r_b = Some(Rect::new(5.0, 5.0, 10.0, 10.0));
+        let o_a = Some(glam::Vec2::new(0.0, 0.0));
+        let o_b = Some(glam::Vec2::new(5.0, 5.0));
         let cases: [(&str, ShapeRecord, ShapeRecord); 3] = [
             (
                 "line_height_px",
@@ -122,14 +121,14 @@ mod tests {
                 text_shape(16.0 * 1.5, None),
             ),
             (
-                "local_rect None vs Some",
+                "local_origin None vs Some",
                 text_shape(19.2, None),
-                text_shape(19.2, r_a),
+                text_shape(19.2, o_a),
             ),
             (
-                "local_rect Some(a) vs Some(b)",
-                text_shape(19.2, r_a),
-                text_shape(19.2, r_b),
+                "local_origin Some(a) vs Some(b)",
+                text_shape(19.2, o_a),
+                text_shape(19.2, o_b),
             ),
         ];
         for (label, a, b) in cases {

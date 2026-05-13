@@ -68,14 +68,14 @@ pub(crate) enum ShapeRecord {
     /// `HAlign::Auto`/`Stretch` and `VAlign::Auto`/`Stretch` collapse to
     /// top-left for text (glyphs don't stretch).
     ///
-    /// `local_rect` mirrors `RoundedRect::local_rect`: `None` paints into
-    /// the owner's arranged rect (deflated by the node's `padding`);
-    /// `Some(lr)` paints `lr` at owner-relative coords (`lr.min = (0, 0)`
-    /// is owner top-left), with `padding` skipped and `align` positioning
-    /// the run *inside `lr`*. Lets a custom widget place multiple text
-    /// runs in one leaf without each clobbering the others.
+    /// `None` paints into the owner's arranged rect (deflated by the
+    /// node's `padding`) and `align` positions the glyph bbox inside
+    /// it. `Some(origin)` paints at `owner.min + origin` with the
+    /// shaped measurement as the bbox — the encoder is a passthrough
+    /// for positioning. Lets a widget shift the run by
+    /// scroll/alignment offsets that depend on shaped-buffer state.
     Text {
-        local_rect: Option<Rect>,
+        local_origin: Option<Vec2>,
         /// `Cow<'static, str>` so static-string labels (the common case via
         /// `&'static str → Into<Cow<…>>`) round-trip with only pointer-copy
         /// `Clone`s — no per-frame heap alloc. Dynamic strings still allocate
@@ -178,12 +178,27 @@ impl ShapeRecord {
                 shadow.inset,
             ),
             ShapeRecord::Polyline { bbox, .. } => *bbox,
-            ShapeRecord::RoundedRect { local_rect, .. }
-            | ShapeRecord::Text { local_rect, .. }
-            | ShapeRecord::Mesh { local_rect, .. } => local_rect.unwrap_or(Rect {
-                min: Vec2::ZERO,
-                size: owner_size,
-            }),
+            ShapeRecord::RoundedRect { local_rect, .. } | ShapeRecord::Mesh { local_rect, .. } => {
+                local_rect.unwrap_or(Rect {
+                    min: Vec2::ZERO,
+                    size: owner_size,
+                })
+            }
+            // `Text` carries an origin-only override — glyph extent
+            // depends on shaped-buffer measurement which paint_bbox
+            // doesn't have. Width reports zero on the `Some(origin)`
+            // path; cascade falls back to the leaf's own arranged
+            // rect for the damage union.
+            ShapeRecord::Text { local_origin, .. } => match local_origin {
+                None => Rect {
+                    min: Vec2::ZERO,
+                    size: owner_size,
+                },
+                Some(origin) => Rect {
+                    min: *origin,
+                    size: Size::ZERO,
+                },
+            },
         }
     }
 
@@ -235,7 +250,7 @@ impl Hash for ShapeRecord {
                 h.write_u64(*content_hash);
             }
             ShapeRecord::Text {
-                local_rect,
+                local_origin,
                 text,
                 color,
                 font_size_px,
@@ -244,11 +259,12 @@ impl Hash for ShapeRecord {
                 align,
                 family,
             } => {
-                match local_rect {
+                match local_origin {
                     None => h.write_u8(0),
-                    Some(r) => {
+                    Some(o) => {
                         h.write_u8(1);
-                        r.hash(h);
+                        h.write_u32(o.x.to_bits());
+                        h.write_u32(o.y.to_bits());
                     }
                 }
                 text.hash(h);
