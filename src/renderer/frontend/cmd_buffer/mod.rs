@@ -108,16 +108,13 @@ pub(crate) struct DrawRectPayload {
 }
 
 impl DrawRectPayload {
-    /// Canonical noop predicate — zero-extent rect, or no visible
-    /// paint at all (transparent fill **and** zero-width / noop
-    /// stroke). The encoder constructs the payload in `draw_rect` /
-    /// `draw_shadow` then gates on this; consumers downstream of
-    /// the buffer never see a no-op rect / shadow record.
-    ///
-    /// For gradient `fill_kind` the inline `fill` is zeroed (the
-    /// composer's atlas supplies the LUT row), so the predicate
-    /// only inspects `fill` for solid / shadow variants — gradient
-    /// payloads count as always-painting at this layer.
+    /// Post-pack noop predicate — zero-extent rect, or no visible
+    /// paint at all (transparent inline `fill` **and** zero-width /
+    /// noop stroke). Gradient `fill_kind` always reports painting at
+    /// this layer because the inline `fill` is zeroed for gradients
+    /// (the atlas LUT row supplies the color); the all-transparent-
+    /// stops case is filtered upstream in `draw_rect` via
+    /// `Brush::is_noop`, which sees the stops directly.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
         if self.rect.is_paint_empty() {
@@ -311,6 +308,16 @@ impl RenderCmdBuffer {
 
     #[inline]
     pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: &Brush, stroke: Stroke) {
+        // Pre-pack gate: `Brush::is_noop` peeks inside gradient stops
+        // (which the packed payload's inline `fill` no longer carries
+        // — gradient color lives in the atlas LUT row indexed by
+        // `fill_grad_idx`). Catching the all-transparent-stops case
+        // here also avoids the atlas registration and `BrushPack`
+        // build downstream.
+        if rect.is_paint_empty() || (fill.is_noop() && stroke.is_noop()) {
+            return;
+        }
+
         // Stroke stays solid-only — gradient strokes are a non-goal.
         let BrushPack {
             fill_color,
@@ -334,10 +341,9 @@ impl RenderCmdBuffer {
             fill_grad_idx,
             fill_axis,
         };
-        // Module-level noop policy: drop the cmd via the payload's
-        // own predicate. Catches chrome shadow-only backgrounds,
-        // collapsed layouts, Shape::RoundedRect with all-transparent
-        // paint, and animation-decayed brushes regardless of source.
+        // Defense-in-depth: payload predicate covers post-pack states
+        // the pre-pack gate can't (e.g. a stroke that animation-decays
+        // between the two checks). Cheap; same noop policy.
         if payload.is_noop() {
             return;
         }
