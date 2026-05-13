@@ -1,3 +1,27 @@
+//! Per-layer arena tree: SoA `records` column, sparse side tables
+//! (`bounds`/`panel`/`chrome`/`clip_radius`), flat shape buffer,
+//! and the subtree-rollup hashes used by cross-frame caches.
+//!
+//! ## Noop policy
+//!
+//! Tree storage is the canonical gate for "is this worth keeping
+//! around?" Two sites enforce it, both single-site for their column:
+//!
+//! - `Shapes::add` drops shapes whose authoring inputs would emit no
+//!   pixels (`Shape::is_noop` covers every variant). Saves per-shape
+//!   lowering — bezier flattening, polyline tessellation, mesh
+//!   hashing — that runs inside `Shapes::add` itself.
+//! - `Tree::open_node` drops a node's chrome entry from
+//!   `SparseColumn<Background>` when `Background::is_noop` (all of
+//!   fill, stroke, shadow are no-op). Saves a slot write and keeps
+//!   chrome iteration tight.
+//!
+//! Partial-noop chrome (e.g. shadow-only) survives storage and is
+//! dropped per-emit by `cmd_buffer::draw_*`'s gates. Together with
+//! the authoring filter at `Shapes::add` and the emit-time gates in
+//! `cmd_buffer`, every layer has exactly one canonical noop site,
+//! and `Ui::add_shape` / encoder branches stay gate-free pass-throughs.
+
 use crate::ClipMode;
 use crate::common::hash::Hasher;
 use crate::common::sparse_column::SparseColumn;
@@ -349,18 +373,16 @@ impl Tree {
 
         self.bounds.push((!bounds.is_default()).then_some(bounds));
         self.panel.push((!panel.is_default()).then_some(panel));
-        // Noop policy for chrome:
-        //   * `clip_radius` extracts `chrome.radius` whenever this
-        //     node has `ClipMode::Rounded`, *regardless* of whether
-        //     the paint is invisible — the encoder needs the radius
-        //     for the stencil mask even when nothing paints.
-        //   * `chrome` itself is dropped to `None` only when every
-        //     paintable part is no-op (fill + stroke + shadow); a
-        //     shadow-only or fill-only background survives, and the
-        //     encoder's chrome branch gates each `draw_*` call on
-        //     its own `is_noop` so a fill-only background doesn't
-        //     trail an empty `DrawShadow` and a shadow-only one
-        //     doesn't trail an empty `DrawRect`.
+        // Tree-storage noop gate for chrome — mirrors `Shapes::add`
+        // for the shape buffer and `cmd_buffer::draw_*` for emits.
+        // Whole-`Background::is_noop` drops the entry from the
+        // SparseColumn so chrome iteration / hashing skips the slot
+        // entirely. Partial-noop chrome (e.g. shadow-only) survives
+        // here and is dropped per-emit by the cmd buffer's gates.
+        // `clip_radius` extracts `chrome.radius` whenever this node
+        // has `ClipMode::Rounded`, regardless of whether the paint
+        // is invisible — the encoder needs the radius for the
+        // stencil mask even when nothing paints.
         let clip_radius = matches!(attrs.clip_mode(), ClipMode::Rounded)
             .then(|| chrome.as_ref().map(|bg| bg.radius))
             .flatten();
