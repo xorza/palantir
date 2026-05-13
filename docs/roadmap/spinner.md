@@ -17,37 +17,12 @@ its own scope and ships standalone.
 
 ### A. No public hook for perpetual repaint
 
-The spinner never settles. Today `Ui::repaint_requested` is
-`pub(crate)` and only flipped by `Ui::animate` for a non-settled
-animation row (`src/ui/mod.rs:374`). No widget-facing way to say
-"tick me again next frame."
-
-Add two public hooks on `Ui`:
-
-```rust
-// src/ui/mod.rs
-impl Ui {
-    /// Force the next frame to paint even when input is idle. Used
-    /// by perpetual animations (spinner, marquee) that don't fit
-    /// `Ui::animate`'s settle model.
-    pub fn request_repaint(&mut self) {
-        self.repaint_requested = true;
-    }
-
-    /// Last `now` argument passed to `run_frame`. Monotonic.
-    /// Animation widgets compute phase from this so they don't
-    /// thread `dt` through their own state.
-    pub fn time(&self) -> std::time::Duration {
-        self.time
-    }
-}
-```
-
-This aligns with `animations.md`'s open question about
-`request_repaint` granularity and is what `TextEdit` already fakes
-via `animate` for caret blink. If the open question's
-`Option<Duration>` upgrade ever lands, `request_repaint` grows a
-parameter.
+`Ui::request_repaint()` is shipped (`src/ui/mod.rs:238`) — widgets
+can already say "tick me again next frame." Still pending: a public
+`Ui::time()` accessor. The field exists as `pub(crate) time: Duration`
+at `src/ui/mod.rs:55`; flip the visibility (or add an inline accessor)
+so the spinner can compute its phase from monotonic frame time
+without threading `dt` through its own state.
 
 ### B. Authoring-time geometry without a measured rect
 
@@ -257,15 +232,11 @@ New `examples/showcase/` tab "Spinner":
 
 Each step ships standalone with its own tests + showcase wiring.
 
-1. **`Ui::request_repaint()` + `Ui::time()` public** (§A). Trivial
-   visibility flip + doc comments. Pin: calling `request_repaint`
-   flips `FrameOutput.repaint_requested` for one frame and resets
-   at the next `run_frame` (extends `ui/tests.rs:580–636`).
+1. **`Ui::time()` public** (§A). `request_repaint` already shipped;
+   only the time accessor remains — trivial visibility flip + doc
+   comment.
 2. **`SpinnerTheme` + `Spinner` widget**. Pure composition over
    (1) and the existing line renderer. Showcase tab "Spinner".
-
-Step 1 is independently useful for any future continuous
-animation — even if step 2 changed shape we'd want it.
 
 ## Non-goals
 
