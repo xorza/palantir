@@ -214,11 +214,12 @@ impl ApplicationHandler for App {
             state.next = FramePresent::Immediate;
         }
 
-        if let Some(ev) = InputEvent::from_winit(&event, state.scale_factor) {
-            let delta = state.host.ui.on_input(ev);
-            if delta.requests_repaint {
-                state.next = FramePresent::Immediate;
-            }
+        let mut wants_repaint = false;
+        InputEvent::from_winit(&event, state.scale_factor, |ev| {
+            wants_repaint |= state.host.ui.on_input(ev).requests_repaint;
+        });
+        if wants_repaint {
+            state.next = FramePresent::Immediate;
         }
 
         match event {

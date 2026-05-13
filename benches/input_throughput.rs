@@ -37,23 +37,27 @@ const GRID_COLS: usize = 12;
 const GRID_ROWS: usize = 8;
 
 fn build_ui(ui: &mut Ui) {
-    Panel::zstack().auto_id()
+    Panel::zstack()
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             // Bottom layer: dense clickable grid filling the viewport.
             // Every cell is a Button (Sense::CLICK + focusable), so the
             // cascade has G*G entries before any overlap stack starts.
-            Panel::vstack().auto_id()
+            Panel::vstack()
+                .auto_id()
                 .gap(0.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for r in 0..GRID_ROWS {
-                        Panel::hstack().id_salt(("grid-row", r))
+                        Panel::hstack()
+                            .id_salt(("grid-row", r))
                             .gap(0.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 for c in 0..GRID_COLS {
-                                    Button::new().id_salt(("cell", r, c))
+                                    Button::new()
+                                        .id_salt(("cell", r, c))
                                         .label("·")
                                         .size((Sizing::FILL, Sizing::FILL))
                                         .show(ui);
@@ -68,7 +72,8 @@ fn build_ui(ui: &mut Ui) {
             // topmost-first reverse hit scan. Sense rotates HOVER /
             // CLICK / DRAG / SCROLL so all three hit-test filters
             // (hovers/clicks/scrolls) walk a populated path.
-            Panel::zstack().auto_id()
+            Panel::zstack()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for i in 0..OVERLAP_LAYERS {
@@ -78,7 +83,8 @@ fn build_ui(ui: &mut Ui) {
                             2 => Sense::CLICK | Sense::DRAG,
                             _ => Sense::SCROLL,
                         };
-                        Frame::new().id_salt(("ovl", i))
+                        Frame::new()
+                            .id_salt(("ovl", i))
                             .sense(sense)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui);
@@ -88,10 +94,12 @@ fn build_ui(ui: &mut Ui) {
             // Scrollable region in the middle covering the viewport
             // center so `recompute_scroll_target` succeeds — exercises
             // the scroll-target update branch on pointer move.
-            Scroll::both().auto_id()
+            Scroll::both()
+                .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Panel::vstack().auto_id()
+                    Panel::vstack()
+                        .auto_id()
                         .gap(0.0)
                         .size((Sizing::Fixed(4000.0), Sizing::Fixed(4000.0)))
                         .show(ui, |ui| {
@@ -100,7 +108,8 @@ fn build_ui(ui: &mut Ui) {
                                     .id_salt(("scrolltxt", i))
                                     .show(ui);
                             }
-                            Frame::new().auto_id()
+                            Frame::new()
+                                .auto_id()
                                 .size((Sizing::Fixed(4000.0), Sizing::Fixed(4000.0)))
                                 .show(ui);
                         });
@@ -186,7 +195,7 @@ fn bench_input(c: &mut Criterion) {
                 ui.on_input(InputEvent::PointerMoved(pointer_at(i.wrapping_add(1))));
                 ui.on_input(InputEvent::PointerMoved(pointer_at(i.wrapping_add(2))));
                 ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 3.0)));
-                if i % 16 == 0 {
+                if i.is_multiple_of(16) {
                     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
                     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
                 }

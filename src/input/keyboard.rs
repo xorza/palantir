@@ -74,28 +74,28 @@ impl Modifiers {
 }
 
 /// Inline UTF-8 byte buffer carried by [`InputEvent::Text`]. Sized for
-/// the common case (a single grapheme cluster ≤ 15 bytes); IME commits
-/// longer than that split across multiple events at the translation
-/// boundary. Inline storage keeps `InputEvent: Copy`.
+/// the common case (a single grapheme cluster ≤ 15 bytes); longer IME
+/// commits split across multiple events at the translation boundary.
+/// Inline storage keeps `InputEvent: Copy`.
 ///
 /// [`InputEvent::Text`]: crate::input::InputEvent::Text
-const TEXT_CHUNK_CAP: usize = 15;
-
 #[derive(Clone, Copy)]
 pub struct TextChunk {
-    bytes: [u8; TEXT_CHUNK_CAP],
+    bytes: [u8; Self::INLINE_CAP],
     len: u8,
 }
 
 impl TextChunk {
+    pub const INLINE_CAP: usize = 15;
+
     /// Build a chunk from `s`. Returns `None` if `s` exceeds the inline
     /// capacity. Callers translating from winit should split at
     /// grapheme boundaries before calling — never split mid-codepoint.
     pub fn new(s: &str) -> Option<Self> {
-        if s.len() > TEXT_CHUNK_CAP {
+        if s.len() > Self::INLINE_CAP {
             return None;
         }
-        let mut bytes = [0u8; TEXT_CHUNK_CAP];
+        let mut bytes = [0u8; Self::INLINE_CAP];
         bytes[..s.len()].copy_from_slice(s.as_bytes());
         Some(Self {
             bytes,
@@ -107,10 +107,6 @@ impl TextChunk {
         // SAFETY: `from_str` only stores valid UTF-8 from a `&str`,
         // and `len` always reflects the byte count written.
         unsafe { std::str::from_utf8_unchecked(&self.bytes[..self.len as usize]) }
-    }
-
-    pub const fn is_empty(&self) -> bool {
-        self.len == 0
     }
 }
 
@@ -202,7 +198,7 @@ mod tests {
             assert_eq!(c.is_some(), *expect_some, "case {label}: some-ness");
             if let Some(c) = c {
                 assert_eq!(c.as_str(), *s, "case {label}: roundtrip");
-                assert_eq!(c.is_empty(), *expect_empty, "case {label}: empty");
+                assert_eq!(c.as_str().is_empty(), *expect_empty, "case {label}: empty");
             }
         }
     }
