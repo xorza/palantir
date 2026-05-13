@@ -237,7 +237,7 @@ impl ApplicationHandler for App {
                 state.config.width = new.width.clamp(1, max);
                 state.config.height = new.height.clamp(1, max);
                 state.surface.configure(&state.device, &state.config);
-                state.next = FramePresent::Immediate;
+                state.draw();
             }
             WindowEvent::Occluded(false) => state.next = FramePresent::Immediate,
 
