@@ -67,21 +67,6 @@ pub fn set(s: &str) {
     g.cache.push_str(s);
 }
 
-/// `true` when the clipboard currently holds no text. Cheap probe
-/// for menu-item `.enabled(...)` flags — avoids the `get()`
-/// allocation when the caller only needs a yes/no.
-pub fn is_empty() -> bool {
-    #[allow(unused_mut)]
-    let mut g = instance().lock().expect("clipboard mutex poisoned");
-    #[cfg(not(test))]
-    if let Some(c) = g.os.as_mut()
-        && let Ok(text) = c.get_text()
-    {
-        return text.is_empty();
-    }
-    g.cache.is_empty()
-}
-
 /// Test-only serialization guard. The clipboard backend is a
 /// process-global `Mutex<Inner>`, so parallel tests calling
 /// `get`/`set` race on the cached value between each other's
@@ -102,13 +87,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn set_get_is_empty_roundtrip() {
+    fn set_get_roundtrip() {
         let _g = test_serialize_guard();
         set("clipboard-test-roundtrip-✓");
         assert_eq!(get(), "clipboard-test-roundtrip-✓");
-        assert!(!is_empty());
         set("");
-        assert!(is_empty());
         assert_eq!(get(), "");
     }
 }

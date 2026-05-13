@@ -230,6 +230,144 @@ impl TextShaper {
             .w
     }
 
+    /// Borrow the shaped cosmic `Buffer` for `(text, fs, lh, mw)`,
+    /// shaping on demand if the cache misses. Returns `None` on the
+    /// mono fallback (no cosmic installed) or empty text (cosmic
+    /// returns the invalid sentinel key). Centralises the
+    /// `measure → borrow → cosmic → buffer_for` preamble for every
+    /// caret/selection helper below.
+    fn with_buffer<R>(
+        &self,
+        text: &str,
+        font_size_px: f32,
+        line_height_px: f32,
+        max_width_px: Option<f32>,
+        body: impl FnOnce(&glyphon::cosmic_text::Buffer) -> R,
+    ) -> Option<R> {
+        let result = self.measure(text, font_size_px, line_height_px, max_width_px);
+        let inner = self.inner.borrow();
+        let buffer = inner.cosmic.as_ref()?.buffer_for(result.key)?;
+        Some(body(buffer))
+    }
+
+    /// (x, y_top, line_height) for the caret at `byte_offset` inside
+    /// `text` rendered at `(font_size_px, line_height_px)` with an
+    /// optional wrap `max_width_px`. Multi-line aware via cosmic-text
+    /// layout runs (each `\n` and each soft-wrap segment becomes a
+    /// distinct visual line). Mono fallback / empty-text path
+    /// collapses to a 1D layout — `y_top = 0`, `x` from a flat mono
+    /// per-byte estimate — usable for tests / headless.
+    pub(crate) fn cursor_xy(
+        &self,
+        text: &str,
+        byte_offset: usize,
+        font_size_px: f32,
+        line_height_px: f32,
+        max_width_px: Option<f32>,
+    ) -> CursorPos {
+        let target = cursor_from_byte(text, byte_offset);
+        self.with_buffer(text, font_size_px, line_height_px, max_width_px, |buffer| {
+            // Iterate visual lines (buffer lines × soft-wrap segments).
+            // For each run on the target's buffer line, locate the
+            // glyph whose `[start, end)` byte span contains
+            // `target.index`. Trailing-edge cursor uses `line_w`.
+            let mut last_in_line: Option<(f32, f32, f32)> = None;
+            for run in buffer.layout_runs() {
+                if run.line_i != target.line {
+                    continue;
+                }
+                last_in_line = Some((run.line_w, run.line_top, run.line_height));
+                for g in run.glyphs {
+                    if g.start == target.index {
+                        return CursorPos {
+                            x: g.x,
+                            y_top: run.line_top,
+                            line_height: run.line_height,
+                        };
+                    }
+                    if g.start < target.index && target.index < g.end {
+                        return CursorPos {
+                            x: g.x + g.w,
+                            y_top: run.line_top,
+                            line_height: run.line_height,
+                        };
+                    }
+                }
+                // Past the last glyph of this run: continue iterating
+                // — a soft-wrap continuation may carry `target.index`.
+            }
+            let (line_w, line_top, line_h) = last_in_line.unwrap_or((0.0, 0.0, line_height_px));
+            CursorPos {
+                x: line_w,
+                y_top: line_top,
+                line_height: line_h,
+            }
+        })
+        .unwrap_or(CursorPos {
+            x: caret_x_mono_single_line(text, byte_offset, font_size_px),
+            y_top: 0.0,
+            line_height: line_height_px,
+        })
+    }
+
+    /// Pixel-position → byte-offset. Multi-line aware on the cosmic
+    /// path via `Buffer::hit`. Mono / empty-text falls back to a 1D
+    /// `(x ÷ 0.5·font_size)` scan over char boundaries — enough for
+    /// headless single-line click tests, ignores `y` entirely.
+    pub(crate) fn byte_at_xy(
+        &self,
+        text: &str,
+        x: f32,
+        y: f32,
+        font_size_px: f32,
+        line_height_px: f32,
+        max_width_px: Option<f32>,
+    ) -> usize {
+        self.with_buffer(text, font_size_px, line_height_px, max_width_px, |buffer| {
+            buffer
+                .hit(x, y)
+                .map(|c| cursor_to_byte(text, c))
+                .unwrap_or(text.len())
+        })
+        .unwrap_or_else(|| mono_byte_at_x(text, x, font_size_px))
+    }
+
+    /// Iterate selection rectangles for `range` against the laid-out
+    /// `text`. Calls `out` once per visual line that intersects the
+    /// range with `(x, y_top, width, height)` — the caller chooses
+    /// how to render them. Multi-line aware via cosmic `LayoutRun::
+    /// highlight`. Mono / empty-text path emits one 1D rect spanning
+    /// the byte range (no line breaks modelled).
+    pub(crate) fn selection_rects(
+        &self,
+        text: &str,
+        range: std::ops::Range<usize>,
+        font_size_px: f32,
+        line_height_px: f32,
+        max_width_px: Option<f32>,
+        mut out: impl FnMut(f32, f32, f32, f32),
+    ) {
+        if range.is_empty() {
+            return;
+        }
+        let cosmic_ran = self
+            .with_buffer(text, font_size_px, line_height_px, max_width_px, |buffer| {
+                let start = cursor_from_byte(text, range.start);
+                let end = cursor_from_byte(text, range.end);
+                for run in buffer.layout_runs() {
+                    if let Some((x, w)) = run.highlight(start, end) {
+                        out(x, run.line_top, w, run.line_height);
+                    }
+                }
+            })
+            .is_some();
+        if !cosmic_ran {
+            let x0 = caret_x_mono_single_line(text, range.start, font_size_px);
+            let x1 = caret_x_mono_single_line(text, range.end, font_size_px);
+            out(x0, 0.0, x1 - x0, line_height_px);
+        }
+    }
+
     /// Drop reuse entries for the supplied removed-widget set. Called
     /// from `Ui::post_record` against the same per-frame diff fed to
     /// `DamageEngine::compute` so cleanup stays bounded under widget churn
@@ -406,6 +544,81 @@ fn mono_measure(
         key: TextCacheKey::INVALID,
         intrinsic_min,
     }
+}
+
+/// Caret position returned by [`TextShaper::cursor_xy`]. Top-left in
+/// text-local pixels plus the visual line's height (so the renderer
+/// can size the caret rect to match the line cosmic-text laid out,
+/// not the requested `line_height_px` — they differ when font
+/// fallback shifts ascent/descent).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct CursorPos {
+    pub(crate) x: f32,
+    pub(crate) y_top: f32,
+    pub(crate) line_height: f32,
+}
+
+/// Caret-x along a single-line mono layout (0.5×font_size per byte).
+/// Multi-line aware callers should go through `cursor_xy` instead —
+/// this is the cheap path for the mono fallback's degenerate single-
+/// line behaviour.
+fn caret_x_mono_single_line(text: &str, byte_offset: usize, font_size_px: f32) -> f32 {
+    let clamped = byte_offset.min(text.len());
+    (clamped as f32) * font_size_px * 0.5
+}
+
+/// Inverse of [`caret_x_mono_single_line`]. Picks the char boundary
+/// whose prefix-x is closest to `target_x` so click positioning on
+/// the mono fallback matches the rendered glyph layout exactly.
+fn mono_byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
+    let mut best_off = 0usize;
+    let mut best_dist = target_x.abs();
+    for (i, ch) in text.char_indices() {
+        let next = i + ch.len_utf8();
+        let x = caret_x_mono_single_line(text, next, font_size_px);
+        let d = (x - target_x).abs();
+        if d < best_dist {
+            best_dist = d;
+            best_off = next;
+        }
+    }
+    best_off
+}
+
+/// Map a UTF-8 byte offset into `text` to a cosmic-text `Cursor`:
+/// `line` = count of `\n` before the offset, `index` = bytes since
+/// the most recent `\n` (or start of text).
+fn cursor_from_byte(text: &str, byte_offset: usize) -> glyphon::cosmic_text::Cursor {
+    let mut line = 0usize;
+    let mut line_start = 0usize;
+    for (i, byte) in text.as_bytes().iter().enumerate() {
+        if i >= byte_offset {
+            break;
+        }
+        if *byte == b'\n' {
+            line += 1;
+            line_start = i + 1;
+        }
+    }
+    glyphon::cosmic_text::Cursor::new(line, byte_offset.saturating_sub(line_start))
+}
+
+/// Inverse of [`cursor_from_byte`]. Walks `text` to find the
+/// `line`-th `\n` and adds `cursor.index`.
+fn cursor_to_byte(text: &str, cursor: glyphon::cosmic_text::Cursor) -> usize {
+    if cursor.line == 0 {
+        return cursor.index.min(text.len());
+    }
+    let mut line = 0usize;
+    for (i, byte) in text.as_bytes().iter().enumerate() {
+        if *byte == b'\n' {
+            line += 1;
+            if line == cursor.line {
+                return (i + 1 + cursor.index).min(text.len());
+            }
+        }
+    }
+    text.len()
 }
 
 /// Cached unbounded shape + most-recent wrap result, validity-checked
