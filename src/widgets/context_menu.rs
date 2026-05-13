@@ -1,8 +1,9 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
+use crate::layout::types::align::{Align, HAlign};
+use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
@@ -20,18 +21,9 @@ use std::borrow::Cow;
 /// Cross-frame state for one context-menu site, keyed off the trigger
 /// widget's id in [`crate::ui::state::StateMap`]. `anchor = Some` is
 /// the single source of truth for "menu open".
-///
-/// `last_size` is the menu container's measured size from the most
-/// recent open frame, reused to clamp future-frame anchors so the
-/// menu never spills off the surface. On the first open after a
-/// content change `ContextMenu::show` calls
-/// [`Ui::request_relayout`] so the discard-and-rerecord pass paints
-/// the clamped anchor without a one-frame flicker — same machinery
-/// that scroll content-size changes rely on.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct ContextMenuState {
     pub(crate) anchor: Option<Vec2>,
-    pub(crate) last_size: Option<Size>,
 }
 
 /// A right-click / programmatically-opened popup menu attached to a
@@ -44,7 +36,9 @@ pub(crate) struct ContextMenuState {
 ///
 /// ```ignore
 /// let trigger = Button::new().label("…").show(ui);
-/// ContextMenu::attach(ui, &trigger).show(ui, |ui| { … });
+/// ContextMenu::attach(ui, &trigger)
+///     .max_size((280.0, 400.0))
+///     .show(ui, |ui| { … });
 /// ```
 ///
 /// For programmatic opens (keyboard shortcut, custom gesture) call
@@ -52,13 +46,21 @@ pub(crate) struct ContextMenuState {
 ///
 /// Closes on outside-click, on Esc, or when any [`MenuItem`] inside
 /// reports `clicked()`.
+///
+/// Implements [`Configure`] — chain `.max_size(...)`, `.min_size(...)`,
+/// `.padding(...)`, `.gap(...)`, `.background(...)`, etc. on the menu
+/// body. Theme-driven defaults fill in any field the caller leaves
+/// untouched (`chrome`, `padding`, `min_size.w`).
 pub struct ContextMenu {
     for_id: WidgetId,
+    element: Element,
 }
 
 impl ContextMenu {
     pub fn for_id(for_id: WidgetId) -> Self {
-        Self { for_id }
+        let mut element = Element::new(LayoutMode::VStack);
+        element.sense = Sense::CLICK;
+        Self { for_id, element }
     }
 
     /// Derive `for_id` from a trigger widget's response, and auto-open
@@ -70,9 +72,7 @@ impl ContextMenu {
         {
             ContextMenu::open(ui, resp.widget_id(), p);
         }
-        Self {
-            for_id: resp.widget_id(),
-        }
+        ContextMenu::for_id(resp.widget_id())
     }
 
     /// Record the menu and return per-frame outcome. The body closure
@@ -83,48 +83,53 @@ impl ContextMenu {
             ContextMenu::close(ui, self.for_id);
         }
 
-        let st = *ui.state_mut::<ContextMenuState>(self.for_id);
-        let Some(raw_anchor) = st.anchor else {
+        let Some(raw_anchor) = ui.state_mut::<ContextMenuState>(self.for_id).anchor else {
             return ContextMenuResponse::default();
         };
 
         let surface = ui.display().logical_rect();
-        let clamped = clamp_anchor(raw_anchor, st.last_size, surface);
-
         let theme = ui.theme.context_menu.clone();
         let body_id = self.for_id.with("ctx_menu_body");
 
-        let popup = Popup::anchored_to(clamped)
-            .id(body_id)
+        // Use the body's most recent arranged rect to clamp the
+        // anchor inside the surface. Cascade runs in `post_record`,
+        // so on a re-record pass this returns pass A's rect — no
+        // one-frame bleed. On the very first frame the menu opens
+        // there's no prior cascade entry; we record at the raw
+        // anchor and `request_relayout` so pass B can clamp.
+        let prev_size = ui.response_for(body_id).rect.map(|r| r.size);
+        let clamped = clamp_anchor(raw_anchor, prev_size, surface);
+        let first_open = prev_size.is_none();
+
+        // Apply theme defaults onto our element where the caller
+        // didn't override. Mirrors Popup's `panel_background`
+        // sentinel pattern.
+        let mut e = self.element;
+        e.id = body_id;
+        e.id_source = crate::forest::seen_ids::IdSource::Explicit;
+        if e.chrome.is_none() {
+            e.chrome = Some(theme.panel);
+        }
+        if e.padding == Spacing::ZERO {
+            e.padding = theme.padding;
+        }
+        if e.min_size.w <= 0.0 {
+            e.min_size.w = theme.min_width;
+        }
+
+        let mut popup = Popup::anchored_to(clamped)
             .click_outside(ClickOutside::Dismiss)
-            .owned_by(self.for_id)
-            .background(theme.panel)
-            .padding(theme.padding)
-            .min_size(Size::new(theme.min_width, 0.0));
+            .owned_by(self.for_id);
+        *popup.element_mut() = e;
         let PopupResponse {
-            body: body_resp,
             dismissed,
             close_requested: item_clicked,
+            ..
         } = popup.show(ui, body);
-
-        // Record measured size for next-frame clamp. If this is the
-        // first frame the menu opened (last_size was None) or if the
-        // body grew/shrank, ask for a re-record so the clamp lands in
-        // the same visible frame (same machinery scroll uses).
-        let measured = body_resp.state.rect.map(|r| r.size);
-        let need_relayout = match (measured, st.last_size) {
-            (Some(now), Some(prev)) => (now.w - prev.w).abs() > EPS || (now.h - prev.h).abs() > EPS,
-            (Some(_), None) => true,
-            _ => false,
-        };
-        let st_mut = ui.state_mut::<ContextMenuState>(self.for_id);
-        if let Some(m) = measured {
-            st_mut.last_size = Some(m);
-        }
 
         if dismissed || item_clicked {
             ContextMenu::close(ui, self.for_id);
-        } else if need_relayout {
+        } else if first_open {
             ui.request_relayout();
         }
 
@@ -162,6 +167,12 @@ impl ContextMenu {
     pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
         ui.try_state::<ContextMenuState>(for_id)
             .is_some_and(|st| st.anchor.is_some())
+    }
+}
+
+impl Configure for ContextMenu {
+    fn element_mut(&mut self) -> &mut Element {
+        &mut self.element
     }
 }
 
@@ -222,7 +233,13 @@ impl MenuItem {
         element.id = WidgetId::auto_stable();
         element.id_source = crate::forest::seen_ids::IdSource::Auto;
         element.sense = Sense::NONE;
-        element.size = (Sizing::FILL, Sizing::Fixed(1.0)).into();
+        // `Hug` width + `Stretch` align (NOT `Fill`): same reasoning
+        // as `MenuItem::show` — `Fill` would leak `INF` width up
+        // through the Hug menu container and the menu would span the
+        // surface. Hug-with-Stretch arranges to the body's inner.w
+        // without growing the body during measure.
+        element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
+        element.align = Align::h(HAlign::Stretch);
         element.margin = Spacing::xy(0.0, 4.0);
         element.chrome = Some(Background {
             fill: ui.theme.context_menu.separator.into(),
@@ -252,7 +269,19 @@ impl MenuItem {
         let padding = theme.padding;
 
         let mut element = self.element;
-        element.size = (Sizing::FILL, Sizing::Hug).into();
+        // Hug both axes so each row measures to its natural width
+        // (label + gap + shortcut). Stretch on the cross axis makes
+        // arrange widen the row to the parent VStack's inner width
+        // (= widest row, with `Hug` ancestors). `SpaceBetween` then
+        // pushes label to the left edge and shortcut to the right
+        // edge of the stretched row during arrange, since both
+        // children are Hug-sized with leftover space between them.
+        // Using `Fill` anywhere here would leak `INF` width up to
+        // the Hug menu container and the menu would span the
+        // surface — see `docs/popups.md`.
+        element.size = (Sizing::Hug, Sizing::Hug).into();
+        element.align = Align::h(HAlign::Stretch);
+        element.justify = Justify::SpaceBetween;
         element.padding = padding;
         element.chrome = look_bg;
         element.gap = 16.0;
@@ -261,11 +290,13 @@ impl MenuItem {
         let shortcut = self.shortcut;
 
         let node = ui.node(element, |ui| {
-            // Label cell — Fill grabs all leftover; shortcut hugs.
+            // Label cell — Hug width (NOT Fill, see comment on the
+            // row element above). `Justify::SpaceBetween` on the row
+            // pushes the label to the left during arrange.
             let mut label_el = Element::new(LayoutMode::Leaf);
             label_el.id = id.with("label");
             label_el.id_source = crate::forest::seen_ids::IdSource::Explicit;
-            label_el.size = (Sizing::FILL, Sizing::Hug).into();
+            label_el.size = (Sizing::Hug, Sizing::Hug).into();
             ui.node(label_el, |ui| {
                 ui.add_shape(Shape::Text {
                     local_rect: None,

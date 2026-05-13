@@ -244,7 +244,10 @@ impl Ui {
         self.forest.pre_record();
     }
 
-    /// Record-half of `frame`: finalize hashes, run measure / arrange.
+    /// Record-half of `frame`: finalize hashes, run measure / arrange,
+    /// then cascade. Cascade runs here (not in `finalize_frame`) so
+    /// pass B of a `request_relayout` frame reads pass A's arranged
+    /// rects via [`Self::response_for`] like steady-state frames do.
     /// Stale cache entries (for widgets recorded last frame but
     /// absent this pass) are tolerated through `layout.run` — they
     /// can't match live keys — and reaped once in `finalize_frame`
@@ -258,14 +261,15 @@ impl Ui {
             &self.text,
             &mut self.layout,
         );
+        self.cascades_engine.run(&self.forest, &mut self.layout);
     }
 
     /// Paint-half of `frame`: diff seen ids against the last painted
-    /// frame, fan the `removed` set out to per-widget caches, cascade
-    /// → hit-index → damage. Reads the `Layout` from the most recent
-    /// `post_record`. Sweep runs here (once per `frame`) rather than
-    /// per `post_record` so a widget that vanishes in pass A but
-    /// returns in pass B keeps its state across the discard.
+    /// frame, fan the `removed` set out to per-widget caches, run
+    /// input/damage against the final pass's cascade. Sweep runs
+    /// here (once per `frame`) rather than per `post_record` so a
+    /// widget that vanishes in pass A but returns in pass B keeps
+    /// its state across the discard.
     fn finalize_frame(&mut self) -> Option<Damage> {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
@@ -274,7 +278,6 @@ impl Ui {
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
 
-        self.cascades_engine.run(&self.forest, &mut self.layout);
         self.input.post_record(&self.layout.cascades);
         self.damage_engine.compute(
             &self.forest,
