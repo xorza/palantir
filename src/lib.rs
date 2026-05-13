@@ -5,6 +5,7 @@
 extern crate self as palantir;
 
 pub(crate) mod animation;
+pub mod clipboard;
 pub(crate) mod common;
 pub(crate) mod debug_overlay;
 pub(crate) mod forest;

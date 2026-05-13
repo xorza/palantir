@@ -8,6 +8,7 @@ use crate::primitives::stroke::Stroke;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
+use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::theme::TextEditTheme;
 use std::borrow::Cow;
 
@@ -23,7 +24,7 @@ use std::borrow::Cow;
 /// reachable from inside the widget. Host code that mutates the
 /// buffer between frames may shrink it past `caret`; `show()` clamps
 /// at the top each frame.
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 pub(crate) struct TextEditState {
     pub(crate) caret: usize,
     /// Selection anchor. `None` = no selection. Invariant: never
@@ -275,11 +276,79 @@ impl<'a> TextEdit<'a> {
         }
 
         let state = ui.response_for(id);
-        Response {
+        let response = Response {
             node: resp_node,
             id,
             state,
-        }
+        };
+
+        // Phase 4: default Cut / Copy / Paste / Clear context menu.
+        // Triggered by secondary click on the editor; items mutate
+        // the host's buffer through the same `&mut String` borrow
+        // `show` was given, then sync `TextEditState.caret` /
+        // `selection` so the next frame paints the right place.
+        // Selection range + clipboard liveness snapshotted before
+        // the closure so the items can render with the right
+        // `.enabled(...)` per state.
+        let sel = ui.state_mut::<TextEditState>(id).sel_range();
+        let has_sel = sel.is_some();
+        let cb_has = !crate::clipboard::get(ui).is_empty();
+        let has_text = !self.text.is_empty();
+        let text = self.text;
+        ContextMenu::attach(ui, &response).show(ui, |ui| {
+            if MenuItem::new("Cut")
+                .shortcut("⌘X")
+                .enabled(has_sel)
+                .show(ui)
+                .clicked()
+                && let Some(r) = sel.clone()
+            {
+                crate::clipboard::set(ui, &text[r.clone()]);
+                text.replace_range(r.clone(), "");
+                let st = ui.state_mut::<TextEditState>(id);
+                st.caret = r.start;
+                st.selection = None;
+            }
+            if MenuItem::new("Copy")
+                .shortcut("⌘C")
+                .enabled(has_sel)
+                .show(ui)
+                .clicked()
+                && let Some(r) = sel.clone()
+            {
+                crate::clipboard::set(ui, &text[r]);
+            }
+            if MenuItem::new("Paste")
+                .shortcut("⌘V")
+                .enabled(cb_has)
+                .show(ui)
+                .clicked()
+            {
+                // Snapshot the clipboard string before we touch
+                // state — `set`/`state_mut` reborrow `ui`.
+                let cb = crate::clipboard::get(ui).to_owned();
+                let st_snap = *ui.state_mut::<TextEditState>(id);
+                let new_caret = if let Some(r) = st_snap.sel_range() {
+                    text.replace_range(r.clone(), &cb);
+                    r.start + cb.len()
+                } else {
+                    text.insert_str(st_snap.caret, &cb);
+                    st_snap.caret + cb.len()
+                };
+                let st = ui.state_mut::<TextEditState>(id);
+                st.caret = new_caret;
+                st.selection = None;
+            }
+            MenuItem::separator(ui);
+            if MenuItem::new("Clear").enabled(has_text).show(ui).clicked() {
+                text.clear();
+                let st = ui.state_mut::<TextEditState>(id);
+                st.caret = 0;
+                st.selection = None;
+            }
+        });
+
+        response
     }
 }
 
