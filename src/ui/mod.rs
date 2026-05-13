@@ -46,8 +46,19 @@ pub struct Ui {
     pub(crate) cascades_engine: CascadesEngine,
     pub(crate) display: Display,
     pub(crate) damage_engine: DamageEngine,
-    /// `now - prev_now` clamped to [`Self::MAX_DT`].
+    /// Effective per-frame dt fed into the animation integrators
+    /// (`AnimMapTyped::tick` / `spring::step`). Real wall-clock dt is
+    /// accumulated into [`Self::dt_accum`] and only spent here once
+    /// it crosses `Self::ANIM_FIXED_STEP` — frames that don't spend
+    /// see `dt = 0.0` and `tick` short-circuits the advance. Without
+    /// this, NoVsync + `repaint_requested` spin the loop at 10s of
+    /// kHz, `dt` drops to ~10 µs, and `cur += vel·dt` falls below the
+    /// f32 ULP at pixel-scale positions — the spring integrator stalls
+    /// short of settle eps and the loop never terminates.
     pub(crate) dt: f32,
+    /// Unspent wall-clock dt waiting to cross the fixed-step
+    /// threshold. See [`Self::dt`].
+    pub(crate) dt_accum: f32,
     /// Bumped once per [`Self::run_frame`], before either pass —
     /// pinned by `run_frame_pass_count_matches_action_trigger`.
     pub(crate) frame_id: u64,
@@ -78,6 +89,15 @@ impl Ui {
     /// still tracks the host's true clock.
     pub(crate) const MAX_DT: f32 = 0.1;
 
+    /// Minimum dt the animation integrators ever see. Frames whose
+    /// real `dt` falls below this threshold accumulate into
+    /// [`Self::dt_accum`] and don't advance the spring/duration
+    /// integrators — eliminates the f32-ULP precision stall at high
+    /// frame rates (NoVsync + `repaint_requested` loop). 1/240 s
+    /// matches `spring::MAX_SUBSTEP_DT` so each spent step is a
+    /// single, stable substep.
+    pub(crate) const ANIM_FIXED_STEP: f32 = 1.0 / 240.0;
+
     /// Construct with the mono-fallback shaper. Use for headless /
     /// test / preview contexts where glyph cache identity doesn't
     /// matter; production apps use [`crate::Host`], which builds a
@@ -103,6 +123,7 @@ impl Ui {
             display: Display::default(),
             damage_engine: DamageEngine::default(),
             dt: 0.0,
+            dt_accum: 0.0,
             frame_id: 0,
             time: Duration::ZERO,
             anim: AnimMap::default(),
@@ -131,8 +152,23 @@ impl Ui {
             display.scale_factor,
         );
 
-        let raw_dt = now.saturating_sub(self.time);
-        self.dt = raw_dt.as_secs_f32().min(Self::MAX_DT);
+        let raw_dt = now
+            .saturating_sub(self.time)
+            .as_secs_f32()
+            .min(Self::MAX_DT);
+        self.dt_accum += raw_dt;
+        // Fixed-step accumulator. Spend the whole bucket once we
+        // cross the threshold (spring's MAX_SUBSTEP_DT substeps it
+        // internally); leave `dt = 0.0` on frames that don't cross
+        // so `tick` short-circuits without churning the integrator
+        // below f32 precision.
+        self.dt = if self.dt_accum >= Self::ANIM_FIXED_STEP {
+            let spent = self.dt_accum;
+            self.dt_accum = 0.0;
+            spent
+        } else {
+            0.0
+        };
         self.time = now;
         self.frame_id += 1;
         self.repaint_requested = false;
@@ -235,7 +271,16 @@ impl Ui {
     /// at the top of every `frame`; widgets/showcases that need
     /// continuous animation call this each frame to keep the host
     /// awake.
+    #[track_caller]
     pub fn request_repaint(&mut self) {
+        let caller = std::panic::Location::caller();
+        tracing::info!(
+            target: "palantir.repaint",
+            "request_repaint @ {}:{} (frame={})",
+            caller.file(),
+            caller.line(),
+            self.frame_id,
+        );
         self.repaint_requested = true;
     }
 

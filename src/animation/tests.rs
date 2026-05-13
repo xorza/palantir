@@ -518,6 +518,47 @@ fn animate_drives_repaint_until_settle() {
     );
 }
 
+/// Pin the fixed-step accumulator on `Ui`: a `Ui::frame` loop driven
+/// at NoVsync-style sub-millisecond `dt` must still settle a spring
+/// retarget. Pre-fix, `cur += vel·dt` would fall below the f32 ULP at
+/// pixel-scale positions, the integrator would stall short of
+/// `POS_EPS`, and `repaint_requested` would stay armed forever.
+#[test]
+fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
+    let AnimUi {
+        mut ui,
+        id,
+        display,
+    } = setup_anim_ui("anim-novsync");
+
+    // First touch at target=80 → snap, no repaint.
+    let mut now = Duration::ZERO;
+    let _ = ui.frame(display, now, |ui| {
+        let _ = ui.animate(id, SLOT, 80.0_f32, Some(AnimSpec::SPRING));
+        Frame::new().id_salt("anim-novsync").show(ui);
+    });
+
+    // Retarget to 400 over a tight loop with 10 µs per frame (NoVsync).
+    let mut settled_at = None;
+    for i in 0..200_000 {
+        now += Duration::from_micros(10);
+        let repaint = ui
+            .frame(display, now, |ui| {
+                let _ = ui.animate(id, SLOT, 400.0_f32, Some(AnimSpec::SPRING));
+                Frame::new().id_salt("anim-novsync").show(ui);
+            })
+            .repaint_requested();
+        if !repaint {
+            settled_at = Some(i);
+            break;
+        }
+    }
+    assert!(
+        settled_at.is_some(),
+        "spring must settle under sub-millisecond dt",
+    );
+}
+
 #[test]
 fn removed_widget_evicts_all_slots_across_typed_maps() {
     let mut map = AnimMap::default();
