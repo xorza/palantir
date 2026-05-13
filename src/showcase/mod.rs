@@ -4,6 +4,7 @@ pub mod bezier;
 pub mod buttons;
 pub mod clip;
 pub mod complex_pan_zoom;
+pub mod context_menu;
 pub mod disabled;
 pub mod drag;
 pub mod gap;
