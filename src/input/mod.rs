@@ -499,16 +499,19 @@ impl InputState {
         }
     }
 
-    /// Returns this frame's notched scroll count (line deltas) if `id`
-    /// is the current scroll hit-target; otherwise `Vec2::ZERO`. Used
-    /// by zoom routing, where each line is one notch — no roundtrip
-    /// through a pixel constant.
-    pub(crate) fn scroll_lines_for(&self, id: WidgetId) -> Vec2 {
-        if self.scroll_target == Some(id) {
-            self.frame_scroll_lines
-        } else {
-            Vec2::ZERO
+    /// Returns this frame's notched scroll count if `id` is the
+    /// current scroll hit-target; otherwise `Vec2::ZERO`. Combines
+    /// real line deltas (classic wheel) with touchpad-pixel deltas
+    /// converted via `line_px` — so a touchpad gesture under a
+    /// zoom modifier produces fractional notches at the same rate
+    /// the pan side would have moved pixels, matching the pre-split
+    /// behavior. Used by zoom routing.
+    pub(crate) fn scroll_notches_for(&self, id: WidgetId, line_px: f32) -> Vec2 {
+        if self.scroll_target != Some(id) {
+            return Vec2::ZERO;
         }
+        let denom = line_px.max(f32::EPSILON);
+        self.frame_scroll_lines + self.frame_scroll_pixels / denom
     }
 
     /// Returns this frame's pinch-zoom factor if `id` is the current

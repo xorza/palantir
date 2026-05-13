@@ -1213,41 +1213,174 @@ fn drag_thumb_pans_proportionally() {
 }
 
 #[test]
-fn click_on_track_above_thumb_pages_up_below_pages_down() {
+fn click_on_track_before_thumb_pages_back_after_pages_forward() {
+    // Both axes follow the same code path; pin both so the symmetric
+    // helper can't drift. For each axis: click far end of track →
+    // page forward by one viewport; click near end → page back to 0.
     use crate::input::PointerButton;
+    enum AxisCase {
+        V,
+        H,
+    }
+    let cases: &[(&str, AxisCase, &str, &str, f32)] = &[
+        ("vertical", AxisCase::V, "scroll", "__vtrack", 200.0),
+        ("horizontal", AxisCase::H, "hscroll", "__htrack", 200.0),
+    ];
+    for (label, axis, scroll_key, track_suffix, page_step) in cases {
+        let mut ui = Ui::new();
+        let build_axis = |ui: &mut Ui| match axis {
+            AxisCase::V => build(ui, 200.0, 800.0),
+            AxisCase::H => {
+                Panel::vstack().id_salt("root").show(ui, |ui| {
+                    Scroll::horizontal()
+                        .id_salt("hscroll")
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id_salt("hcontent")
+                                .size((Sizing::Fixed(800.0), Sizing::Fixed(40.0)))
+                                .show(ui);
+                        });
+                });
+            }
+        };
+        run_at_acked(&mut ui, SURFACE, build_axis);
 
+        let scroll_id = WidgetId::from_hash(*scroll_key).with("__viewport");
+        let track_id = scroll_id.with(*track_suffix);
+        let track_rect = ui.response_for(track_id).rect.expect("track visible");
+        let (forward_press, back_press) = match axis {
+            AxisCase::V => (
+                track_rect.min + Vec2::new(track_rect.size.w * 0.5, track_rect.size.h - 4.0),
+                track_rect.min + Vec2::new(track_rect.size.w * 0.5, 4.0),
+            ),
+            AxisCase::H => (
+                track_rect.min + Vec2::new(track_rect.size.w - 4.0, track_rect.size.h * 0.5),
+                track_rect.min + Vec2::new(4.0, track_rect.size.h * 0.5),
+            ),
+        };
+
+        ui.on_input(InputEvent::PointerMoved(forward_press));
+        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+        run_at_acked(&mut ui, SURFACE, build_axis);
+        let offset = scroll_state(&mut ui, scroll_id).offset;
+        let forward = match axis {
+            AxisCase::V => offset.y,
+            AxisCase::H => offset.x,
+        };
+        assert_eq!(
+            forward, *page_step,
+            "case: {label} — click past thumb pages forward by viewport",
+        );
+
+        ui.on_input(InputEvent::PointerMoved(back_press));
+        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+        run_at_acked(&mut ui, SURFACE, build_axis);
+        let offset = scroll_state(&mut ui, scroll_id).offset;
+        let back = match axis {
+            AxisCase::V => offset.y,
+            AxisCase::H => offset.x,
+        };
+        assert_eq!(
+            back, 0.0,
+            "case: {label} — click before thumb pages back to 0"
+        );
+    }
+}
+
+#[test]
+fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
+    // The wheel-step refactor split lines vs pixels at the input
+    // layer; the zoom path must combine them so a touchpad gesture
+    // under ctrl still zooms — pre-split it did, and regressing that
+    // breaks touchpad pinch-via-modifier. With line_px = 19.2 (default
+    // 16 × 1.2), 38.4 px of touchpad scroll = 2 virtual notches.
     let mut ui = Ui::new();
-    let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
-    run_at_acked(&mut ui, SURFACE, build_v);
+    let build_zoom = |ui: &mut Ui| {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
+            Scroll::both()
+                .id_salt("zoomy")
+                .with_zoom()
+                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt("content")
+                        .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                        .show(ui);
+                });
+        });
+    };
+    run_at_acked(&mut ui, SURFACE, build_zoom);
 
-    let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
-    let track_id = scroll_id.with("__vtrack");
-    let track_rect = ui.response_for(track_id).rect.expect("track visible");
+    let scroll_id = WidgetId::from_hash("zoomy").with("__viewport");
+    let before_zoom = scroll_state(&mut ui, scroll_id).zoom;
 
-    // Click below the thumb (near bottom of track) → pages down by one
-    // viewport (200 px).
-    let press_below = track_rect.min + Vec2::new(track_rect.size.w * 0.5, track_rect.size.h - 4.0);
-    ui.on_input(InputEvent::PointerMoved(press_below));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    run_at_acked(&mut ui, SURFACE, build_v);
-    assert_eq!(
-        scroll_state(&mut ui, scroll_id).offset.y,
-        200.0,
-        "click below thumb pages down by viewport",
+    // Press ctrl, then touchpad-scroll. `wheel_zoom_gate` requires
+    // ctrl||cmd; with cfg.step = 1.03 the factor is 1.03^(-2) ≈ 0.9426.
+    use crate::input::keyboard::Modifiers;
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
+    ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    }));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 38.4)));
+    run_at_acked(&mut ui, SURFACE, build_zoom);
+
+    let after_zoom = scroll_state(&mut ui, scroll_id).zoom;
+    let expected = before_zoom * 1.03_f32.powf(-2.0);
+    assert!(
+        (after_zoom - expected).abs() < 1e-3,
+        "ctrl+touchpad zoom: expected {expected}, got {after_zoom}",
     );
+}
 
-    // Now click *above* the thumb (top of track) → pages back up.
-    let press_above = track_rect.min + Vec2::new(track_rect.size.w * 0.5, 4.0);
-    ui.on_input(InputEvent::PointerMoved(press_above));
-    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    run_at_acked(&mut ui, SURFACE, build_v);
-    assert_eq!(
-        scroll_state(&mut ui, scroll_id).offset.y,
-        0.0,
-        "click above thumb pages back up to start",
-    );
+#[test]
+fn wheel_zoom_step_is_font_independent() {
+    // One wheel line = one zoom notch, regardless of theme font size.
+    // The line→pan magnitude scales with font; the line→zoom step must
+    // not — pin that so a future refactor that reintroduces a
+    // font-scaled denominator on the zoom side fails loudly.
+    let mut last_zoom: Option<f32> = None;
+    for font_size in [12.0_f32, 16.0, 24.0] {
+        let mut ui = Ui::new();
+        ui.theme.text = ui.theme.text.with_font_size(font_size);
+        let build_zoom = |ui: &mut Ui| {
+            Panel::vstack().id_salt("root").show(ui, |ui| {
+                Scroll::both()
+                    .id_salt("fz")
+                    .with_zoom()
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id_salt("content")
+                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                            .show(ui);
+                    });
+            });
+        };
+        run_at_acked(&mut ui, SURFACE, build_zoom);
+
+        use crate::input::keyboard::Modifiers;
+        ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 100.0)));
+        ui.on_input(InputEvent::ModifiersChanged(Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        }));
+        ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
+        run_at_acked(&mut ui, SURFACE, build_zoom);
+
+        let scroll_id = WidgetId::from_hash("fz").with("__viewport");
+        let zoom = scroll_state(&mut ui, scroll_id).zoom;
+        if let Some(prev) = last_zoom {
+            assert!(
+                (zoom - prev).abs() < 1e-4,
+                "zoom step must be font-independent: prev {prev}, got {zoom} at font_size {font_size}",
+            );
+        }
+        last_zoom = Some(zoom);
+    }
 }
 
 #[test]

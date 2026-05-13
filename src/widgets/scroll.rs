@@ -371,7 +371,7 @@ impl Scroll {
         // consistent with what the user is reading.
         let line_px = ui.theme.text.line_height_for(ui.theme.text.font_size_px);
         let pan_delta_raw = ui.input.scroll_delta_for(id, line_px);
-        let wheel_lines = ui.input.scroll_lines_for(id);
+        let wheel_notches = ui.input.scroll_notches_for(id, line_px);
         let pinch_delta = ui.input.zoom_delta_for(id);
         let mods = ui.input.modifiers;
         // `mods.ctrl || mods.meta` rather than `Modifiers::any_command`,
@@ -381,15 +381,16 @@ impl Scroll {
             ZoomModifier::Always => true,
             ZoomModifier::PinchOnly => false,
         });
-        // Route the wheel: when the gate matches, the wheel notches
-        // become a multiplicative zoom factor; pan is suppressed for
-        // the same frame. Notch count comes from `frame_scroll_lines`
-        // directly — one line == one notch, no roundtrip through a
-        // pixel constant. Positive line.y means scroll-down which by
-        // convention zooms *out* (factor < 1).
+        // Route the wheel: when the gate matches, the notches become
+        // a multiplicative zoom factor; pan is suppressed for the same
+        // frame. `wheel_notches` already combines classic-wheel lines
+        // and touchpad-pixel→virtual-notch (via `line_px`) so ctrl
+        // held over a touchpad pinch-via-scroll zooms at the same rate
+        // it would have panned. Positive notches.y means scroll-down
+        // which by convention zooms *out* (factor < 1).
         let (pan_delta, wheel_zoom_factor) = if wheel_zoom_gate {
             let cfg = self.zoom.as_ref().unwrap();
-            (Vec2::ZERO, cfg.step.powf(-wheel_lines.y))
+            (Vec2::ZERO, cfg.step.powf(-wheel_notches.y))
         } else {
             (pan_delta_raw, 1.0_f32)
         };
@@ -562,28 +563,28 @@ impl Scroll {
                 if !panned || !resp_track.clicked {
                     continue;
                 }
-                let (Some(ptr), Some(outer_origin)) = (pointer, widget_origin) else {
+                let (Some(ptr), Some(origin)) = (pointer, widget_origin) else {
                     continue;
                 };
-                let track_main = axis.main(bl.bar_viewport);
+                // page step = bar_viewport.main (one visible page).
+                let page_step = axis.main(bl.bar_viewport);
                 let main_content = axis.main(bl.scaled_content);
                 let Some(geom) = bar_geometry(
-                    track_main,
+                    page_step,
                     main_content,
                     axis.main_v(row.offset),
-                    track_main,
+                    page_step,
                     &theme,
                 ) else {
                     continue;
                 };
-                let click_main = axis.main_v(ptr) - axis.main_v(outer_origin);
-                let max_off = (main_content - track_main).max(0.0);
-                let viewport_main = track_main;
+                let click_main = axis.main_v(ptr) - axis.main_v(origin);
+                let max_off = (main_content - page_step).max(0.0);
                 let cur = axis.main_v(row.offset);
                 let next = if click_main < geom.thumb_offset {
-                    (cur - viewport_main).max(0.0)
+                    (cur - page_step).max(0.0)
                 } else if click_main > geom.thumb_offset + geom.thumb_size {
-                    (cur + viewport_main).min(max_off)
+                    (cur + page_step).min(max_off)
                 } else {
                     cur
                 };
