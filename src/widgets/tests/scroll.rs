@@ -64,7 +64,7 @@ fn wheel_delta_advances_offset_with_clamp() {
         run_at_acked(&mut ui, SURFACE, |ui| build(ui, *viewport_h, *content_h));
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         for wheel_y in *pushes {
-            ui.on_input(InputEvent::Scroll(Vec2::new(0.0, *wheel_y)));
+            ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, *wheel_y)));
             run_at_acked(&mut ui, SURFACE, |ui| build(ui, *viewport_h, *content_h));
         }
 
@@ -90,7 +90,7 @@ fn horizontal_scroll_pans_only_x() {
     };
     run_at_acked(&mut ui, SURFACE, build_h);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    ui.on_input(InputEvent::Scroll(Vec2::new(75.0, 200.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(75.0, 200.0)));
 
     run_at_acked(&mut ui, SURFACE, build_h);
     let id = WidgetId::from_hash("hscroll").with("__viewport");
@@ -116,7 +116,7 @@ fn both_axis_scroll_pans_both_axes() {
     };
     run_at_acked(&mut ui, SURFACE, build_xy);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::Scroll(Vec2::new(40.0, 60.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(40.0, 60.0)));
 
     run_at_acked(&mut ui, SURFACE, build_xy);
     let id = WidgetId::from_hash("xy").with("__viewport");
@@ -370,7 +370,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(pointer.0, pointer.1)));
         for &(px, py) in pans {
-            ui.on_input(InputEvent::Scroll(Vec2::new(px, py)));
+            ui.on_input(InputEvent::ScrollPixels(Vec2::new(px, py)));
             run_at_acked(&mut ui, SURFACE, build);
         }
 
@@ -473,7 +473,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     }
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, 5.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
     run_at_acked(&mut ui, SURFACE, build);
 
     let after = *scroll_state(&mut ui, id);
@@ -483,7 +483,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
         after.offset.y,
     );
 
-    ui.on_input(InputEvent::Scroll(Vec2::new(0.0, -5.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -5.0)));
     run_at_acked(&mut ui, SURFACE, build);
     let after2 = *scroll_state(&mut ui, id);
     assert!(
@@ -1210,4 +1210,73 @@ fn drag_thumb_pans_proportionally() {
         600.0,
         "drag past end clamps to max_offset (content - viewport)",
     );
+}
+
+#[test]
+fn click_on_track_above_thumb_pages_up_below_pages_down() {
+    use crate::input::PointerButton;
+
+    let mut ui = Ui::new();
+    let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
+    run_at_acked(&mut ui, SURFACE, build_v);
+
+    let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+    let track_id = scroll_id.with("__vtrack");
+    let track_rect = ui.response_for(track_id).rect.expect("track visible");
+
+    // Click below the thumb (near bottom of track) → pages down by one
+    // viewport (200 px).
+    let press_below = track_rect.min + Vec2::new(track_rect.size.w * 0.5, track_rect.size.h - 4.0);
+    ui.on_input(InputEvent::PointerMoved(press_below));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    run_at_acked(&mut ui, SURFACE, build_v);
+    assert_eq!(
+        scroll_state(&mut ui, scroll_id).offset.y,
+        200.0,
+        "click below thumb pages down by viewport",
+    );
+
+    // Now click *above* the thumb (top of track) → pages back up.
+    let press_above = track_rect.min + Vec2::new(track_rect.size.w * 0.5, 4.0);
+    ui.on_input(InputEvent::PointerMoved(press_above));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    run_at_acked(&mut ui, SURFACE, build_v);
+    assert_eq!(
+        scroll_state(&mut ui, scroll_id).offset.y,
+        0.0,
+        "click above thumb pages back up to start",
+    );
+}
+
+#[test]
+fn line_wheel_step_scales_with_theme_font_size() {
+    // Pin: a `ScrollLines(0, 1)` event lands `font_size * line_height_mult`
+    // pixels of pan — not the legacy 40 px constant. Two themes, two
+    // expected pixel offsets.
+    let cases: &[(&str, f32, f32, f32)] = &[
+        ("default_16px_text", 16.0, 1.2, 19.2),
+        ("larger_24px_text", 24.0, 1.5, 36.0),
+    ];
+    for (label, font_size, line_height_mult, expected_px) in cases {
+        let mut ui = Ui::new();
+        ui.theme.text = ui
+            .theme
+            .text
+            .with_font_size(*font_size)
+            .with_line_height_mult(*line_height_mult);
+        let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
+        run_at_acked(&mut ui, SURFACE, build_v);
+        ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
+        run_at_acked(&mut ui, SURFACE, build_v);
+
+        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+        let offset_y = scroll_state(&mut ui, scroll_id).offset.y;
+        assert!(
+            (offset_y - expected_px).abs() < 0.01,
+            "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}",
+        );
+    }
 }

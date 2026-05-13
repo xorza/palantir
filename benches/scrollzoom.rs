@@ -72,7 +72,7 @@ fn bench_scrollzoom(c: &mut Criterion) {
         c.bench_function("scrollzoom/pan_only", |b| {
             b.iter(|| {
                 let t = i as f32 * 0.05;
-                ui.on_input(InputEvent::Scroll(Vec2::new(
+                ui.on_input(InputEvent::ScrollPixels(Vec2::new(
                     t.cos() * 5.0,
                     (t * 0.7).cos() * 5.0,
                 )));
@@ -103,7 +103,7 @@ fn bench_scrollzoom(c: &mut Criterion) {
         c.bench_function("scrollzoom/pan_zoom", |b| {
             b.iter(|| {
                 let t = i as f32 * 0.05;
-                ui.on_input(InputEvent::Scroll(Vec2::new(
+                ui.on_input(InputEvent::ScrollPixels(Vec2::new(
                     t.cos() * 5.0,
                     (t * 0.7).cos() * 5.0,
                 )));

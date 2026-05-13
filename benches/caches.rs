@@ -296,7 +296,7 @@ fn bench(c: &mut Criterion) {
             // arbitrary iteration counts; both signs still produce a
             // non-zero `current_transform` whenever the running offset
             // is non-zero, so cascade_fp still busts.
-            ui.on_input(InputEvent::Scroll(Vec2::new(0.0, sign)));
+            ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, sign)));
             sign = -sign;
             black_box(ui.frame(display, std::time::Duration::ZERO, build_scrolling));
         });
