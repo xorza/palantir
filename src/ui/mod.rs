@@ -302,21 +302,22 @@ impl Ui {
         let style = TextStyle {
             family: FontFamily::Mono,
             color: Color::rgb(1.0, 0.2, 0.2),
+            font_size_px: 12.0,
             ..self.theme.text
         };
         let chrome = Background {
-            fill: Color::linear_rgba(0.0, 0.0, 0.0, 0.6).into(),
+            fill: Color::linear_rgba(0.0, 0.0, 0.0, 0.75).into(),
             ..Default::default()
         };
         self.layer(Layer::Debug, glam::Vec2::ZERO, None, |ui| {
             Panel::hstack()
                 .size((Sizing::FILL, Sizing::Hug))
                 .justify(Justify::End)
-                .padding(Spacing::all(8.0))
                 .show(ui, |ui| {
                     Panel::hstack()
                         .background(chrome)
-                        .padding(Spacing::xy(8.0, 4.0))
+                        .size((Sizing::Hug, Sizing::Hug))
+                        .padding(Spacing::xy(4.0, 2.0))
                         .show(ui, |ui| {
                             Text::new(label).style(style).show(ui);
                         });
