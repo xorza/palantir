@@ -36,11 +36,24 @@ impl Size {
     /// True if both axes are within `EPS` of zero — i.e. this size
     /// is approximately `Size::ZERO`. Strict (both-axis) semantic to
     /// match the [`super::approx::approx_zero`] free fn on `f32`.
-    /// For "paints no pixels" (which also catches negative axes from
-    /// degenerate construction), use `w <= EPS || h <= EPS` at the
-    /// call site — that's a different (looser) predicate.
+    /// For "paints no pixels" use [`Self::is_paint_empty`] —
+    /// different (looser) predicate.
     pub const fn approx_zero(self) -> bool {
         super::approx::approx_zero(self.w) && super::approx::approx_zero(self.h)
+    }
+
+    /// True when either axis is at or below `EPS` (including NaN /
+    /// negative from degenerate construction). The shared "paints no
+    /// pixels" predicate — call from any gate that wants to drop
+    /// zero-extent geometry before emit / cache work runs.
+    ///
+    /// The negated-comparison form (`!(x > EPS)`) catches NaN
+    /// (a forward compare against NaN is always false → negated is
+    /// true) where `x <= EPS` wouldn't.
+    #[inline]
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
+    pub const fn is_paint_empty(self) -> bool {
+        !(self.w > super::approx::EPS) || !(self.h > super::approx::EPS)
     }
 
     pub const fn min(self, other: Self) -> Self {

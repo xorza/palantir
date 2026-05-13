@@ -250,11 +250,12 @@ impl RenderCmdBuffer {
 
     #[inline]
     pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: &Brush, stroke: Stroke) {
-        // Module-level noop policy: drop the cmd when both fill and
-        // stroke are no-op. Catches chrome shadow-only backgrounds,
-        // Shape::RoundedRect with all-transparent paint, and any
-        // animation-decayed brush regardless of source.
-        if fill.is_noop() && stroke.is_noop() {
+        // Module-level noop policy: drop the cmd when the rect paints
+        // nothing — zero-size geometry, or both fill and stroke
+        // no-op. Catches chrome shadow-only backgrounds, collapsed
+        // layouts, Shape::RoundedRect with all-transparent paint, and
+        // animation-decayed brushes regardless of source.
+        if rect.is_paint_empty() || (fill.is_noop() && stroke.is_noop()) {
             return;
         }
         // Stroke stays solid-only — gradient strokes are a non-goal.
@@ -302,9 +303,10 @@ impl RenderCmdBuffer {
         fill_kind: FillKind,
         fill_axis: FillAxis,
     ) {
-        // Module-level noop policy: drop the cmd when the shadow tint
-        // is no-op (authored, decayed, or `Shadow::NONE`'s lerp endpoint).
-        if color.is_noop() {
+        // Module-level noop policy: drop the cmd when the paint rect
+        // is zero-size or the shadow tint is no-op (authored, decayed,
+        // or `Shadow::NONE`'s lerp endpoint).
+        if rect.is_paint_empty() || color.is_noop() {
             return;
         }
         self.record_start(CmdKind::DrawRect);
@@ -325,7 +327,9 @@ impl RenderCmdBuffer {
 
     #[inline]
     pub(crate) fn draw_text(&mut self, rect: Rect, color: Color, key: TextCacheKey) {
-        if color.is_noop() {
+        // Module-level noop policy: zero-size text box or fully
+        // transparent color emits nothing.
+        if rect.is_paint_empty() || color.is_noop() {
             return;
         }
         self.record_start(CmdKind::DrawText);
@@ -338,7 +342,16 @@ impl RenderCmdBuffer {
     /// encoder can apply the owner-rect offset inline without an
     /// intermediate scratch buffer.
     pub(crate) fn draw_mesh(&mut self, payload: DrawMeshPayload) {
-        if payload.tint.is_noop() {
+        // Module-level noop policy: drop the cmd when geometry is
+        // empty (zero vertices, fewer than one full triangle, or
+        // index count not a multiple of 3) or the tint is no-op.
+        // `Shape::Mesh::is_noop` filters these upstream; the gate
+        // here is the canonical correctness one.
+        if payload.v_len == 0
+            || payload.i_len < 3
+            || !payload.i_len.is_multiple_of(3)
+            || payload.tint.is_noop()
+        {
             return;
         }
         self.record_start(CmdKind::DrawMesh);
@@ -349,10 +362,20 @@ impl RenderCmdBuffer {
     /// colors. Caller pushes onto `polyline_points` / `polyline_colors`
     /// directly (so the encoder can apply the owner-rect offset
     /// inline without an intermediate scratch buffer) and passes the
-    /// resulting spans here. `points_len >= 2` and the
-    /// `color_mode`-dictated `colors_len` are caller invariants —
-    /// `Shape::is_noop` and `lower_polyline` enforce them upstream.
+    /// resulting spans here. The `color_mode`-dictated `colors_len`
+    /// is a caller invariant enforced upstream by
+    /// `PolylineColors::assert_matches` in `Shapes::add`.
     pub(crate) fn draw_polyline(&mut self, payload: DrawPolylinePayload) {
+        // Module-level noop policy: drop the cmd when the polyline
+        // has fewer than 2 points (no segments) or zero width. The
+        // bbox can legitimately be zero-area (a perfectly horizontal
+        // or vertical line) and still paint stroke pixels, so we
+        // don't gate on it here. Color noop-ness isn't checked here
+        // either — it lives in spans; see the module-level docstring's
+        // polyline exception.
+        if payload.points_len < 2 || payload.width <= 0.0 {
+            return;
+        }
         self.record_start(CmdKind::DrawPolyline);
         write_pod(&mut self.data, payload);
     }

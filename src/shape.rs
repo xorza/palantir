@@ -1,7 +1,7 @@
 use crate::layout::types::align::Align;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{
-    approx::{EPS, noop_f32, vec2_approx_eq},
+    approx::{noop_f32, vec2_approx_eq},
     brush::Brush,
     color::Color,
     corners::Corners,
@@ -323,7 +323,7 @@ pub enum TextWrap {
 /// is never paint-empty.
 #[inline]
 fn local_rect_paint_empty(local_rect: &Option<Rect>) -> bool {
-    local_rect.is_some_and(|r| r.size.w <= EPS || r.size.h <= EPS)
+    local_rect.is_some_and(|r| r.is_paint_empty())
 }
 
 impl Shape<'_> {

@@ -46,6 +46,15 @@ impl Rect {
         approx_zero(self.min.x) && approx_zero(self.min.y) && self.size.approx_zero()
     }
 
+    /// True when this rect paints no pixels — at least one axis is
+    /// `<= EPS` (including NaN / negative). Defers to
+    /// [`Size::is_paint_empty`]; shared between every cmd-buffer
+    /// noop gate so the predicate can't drift.
+    #[inline]
+    pub const fn is_paint_empty(self) -> bool {
+        self.size.is_paint_empty()
+    }
+
     pub const fn contains(&self, p: Vec2) -> bool {
         let mx = self.max();
         p.x >= self.min.x && p.y >= self.min.y && p.x < mx.x && p.y < mx.y
