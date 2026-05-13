@@ -90,6 +90,7 @@ pub fn build(ui: &mut Ui) {
                                 fill: swatch::B.into(),
                                 stroke: Stroke::solid(swatch::B, 1.0),
                                 radius: Corners::all(4.0),
+                                shadow: None,
                             })
                             .show(ui);
                     });

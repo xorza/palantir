@@ -44,6 +44,7 @@ fn dashboard_matches_golden() {
                         fill: Color::rgb(0.18, 0.22, 0.32).into(),
                         stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
                         radius: Corners::all(6.0),
+                        shadow: None,
                     })
                     .show(ui, |ui| {
                         Text::new("Palantir")
@@ -118,6 +119,7 @@ fn dashboard_matches_golden() {
                                     fill: (*c).into(),
                                     stroke: Stroke::solid(Color::rgba(1.0, 1.0, 1.0, 0.18), 1.0),
                                     radius: Corners::all(8.0),
+                                    shadow: None,
                                 })
                                 .show(ui, |ui| {
                                     Text::new("Card")

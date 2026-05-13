@@ -290,6 +290,7 @@ fn build_ui(ui: &mut Ui, active: &mut usize) {
                     fill: Color::hex(0x343434).into(),
                     stroke: palantir::Stroke::solid(Color::hex(0x363636), 1.0),
                     radius: palantir::Corners::all(8.0),
+                    shadow: None,
                 })
                 .show(ui, |ui| {
                     let (_, build_fn) = SHOWCASES[*active];

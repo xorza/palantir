@@ -81,6 +81,7 @@ fn outlined_style() -> ButtonTheme {
         fill: fill.into(),
         stroke,
         radius: Corners::all(4.0),
+        shadow: None,
     };
     ButtonTheme {
         normal: WidgetLook {
@@ -119,6 +120,7 @@ fn danger_style() -> ButtonTheme {
         fill: fill.into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(2.0),
+        shadow: None,
     };
     ButtonTheme {
         normal: WidgetLook {

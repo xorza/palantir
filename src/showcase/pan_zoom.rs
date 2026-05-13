@@ -85,6 +85,7 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
         fill: brighten(base, 0.3).into(),
         stroke: Stroke::solid(Color::hex(0xffffff), 1.0),
         radius: Corners::all(3.0),
+        shadow: None,
     };
     let label_text = TextStyle::default()
         .with_font_size(11.0)

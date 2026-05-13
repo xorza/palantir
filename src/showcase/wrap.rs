@@ -129,6 +129,7 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
                 1.0,
             ),
             radius: Corners::all(10.0),
+            shadow: None,
         })
         .show(ui, |ui| {
             Text::new(label)

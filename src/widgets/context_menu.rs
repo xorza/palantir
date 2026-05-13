@@ -238,6 +238,7 @@ impl MenuItem {
             fill: ui.theme.context_menu.separator.into(),
             stroke: Stroke::ZERO,
             radius: Corners::ZERO,
+            shadow: None,
         });
         let id = element.id;
         let node = ui.node(element, |_| {});

@@ -359,6 +359,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                         fill: Color::rgb(0.2, 0.2, 0.2).into(),
                         stroke: Stroke::solid(Color::rgb(1.0, 1.0, 1.0), 2.0),
                         radius: Corners::all(8.0),
+                        shadow: None,
                     })
                     .clip_rounded()
                     .show(ui, |ui| {

@@ -1074,27 +1074,25 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
 
 /// Pin: a node that paints a drop shadow contributes its **inflated**
 /// paint bounds (rect + `|offset| + 3σ + spread` on each side) to the
-/// damage region, not just the arranged rect. Without this, swapping
-/// out a shadowed card (e.g. switching showcase tabs) would leave the
-/// shadow halo bleeding onto the next tab because the encoder's clear
-/// scissor stops at the layout rect.
+/// damage region, not just the arranged rect. Both routes — direct
+/// `Shape::Shadow` push and `Background::shadow` chrome — must reach
+/// the same `paint_rect` so a tab swap clears the full halo, not just
+/// the layout rect.
 #[test]
 fn drop_shadow_overhang_contributes_to_damage_on_remove() {
+    use crate::Shadow;
     use crate::primitives::corners::Corners;
     use crate::shape::Shape;
 
-    let offset = Vec2::new(0.0, 0.0);
-    let blur = 8.0;
-    let spread = 2.0;
     let frame_size = 50.0;
-    let expected_overhang = offset.x.abs().max(offset.y.abs()) + 3.0 * blur + spread;
+    let expected_overhang = 3.0 * 8.0 + 2.0;
 
-    let mut ui = Ui::new();
-    frame(&mut ui, |ui| {
-        Panel::hstack().id_salt("root").show(ui, |ui| {
+    type Build = fn(&mut Ui);
+    let cases: &[(&str, Build)] = &[
+        ("shape", |ui| {
             Panel::hstack()
                 .id_salt("card")
-                .size((Sizing::Fixed(frame_size), Sizing::Fixed(frame_size)))
+                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                 .background(Background {
                     fill: BLUE.into(),
                     ..Default::default()
@@ -1104,26 +1102,49 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                         local_rect: None,
                         radius: Corners::all(0.0),
                         color: Color::rgba(0.0, 0.0, 0.0, 0.5),
-                        offset,
-                        blur,
-                        spread,
+                        offset: Vec2::ZERO,
+                        blur: 8.0,
+                        spread: 2.0,
                         inset: false,
                     });
                 });
+        }),
+        ("chrome", |ui| {
+            Panel::hstack()
+                .id_salt("card")
+                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .background(Background {
+                    fill: BLUE.into(),
+                    shadow: Some(Shadow {
+                        color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                        offset: Vec2::ZERO,
+                        blur: 8.0,
+                        spread: 2.0,
+                        inset: false,
+                    }),
+                    ..Default::default()
+                })
+                .show(ui, |_| {});
+        }),
+    ];
+    for (label, build) in cases {
+        let mut ui = Ui::new();
+        frame(&mut ui, |ui| {
+            Panel::hstack().id_salt("root").show(ui, build);
         });
-    });
-    let prev_rect = ui.damage_engine.prev[&WidgetId::from_hash("card")].rect;
-    assert!(
-        prev_rect.size.w >= frame_size + 2.0 * expected_overhang - 0.5
-            && prev_rect.size.h >= frame_size + 2.0 * expected_overhang - 0.5,
-        "snapshot rect must include drop-shadow overhang; got {prev_rect:?}",
-    );
+        let prev_rect = ui.damage_engine.prev[&WidgetId::from_hash("card")].rect;
+        assert!(
+            prev_rect.size.w >= frame_size + 2.0 * expected_overhang - 0.5
+                && prev_rect.size.h >= frame_size + 2.0 * expected_overhang - 0.5,
+            "[{label}] snapshot rect must include drop-shadow overhang; got {prev_rect:?}",
+        );
 
-    frame(&mut ui, |ui| {
-        Panel::hstack().id_salt("root").show(ui, |_| {});
-    });
-    let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
-    assert_eq!(rects, vec![prev_rect]);
+        frame(&mut ui, |ui| {
+            Panel::hstack().id_salt("root").show(ui, |_| {});
+        });
+        let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
+        assert_eq!(rects, vec![prev_rect], "[{label}] damage region");
+    }
 }
 
 /// Pin: a drop-shadow whose halo extends past a clipping ancestor

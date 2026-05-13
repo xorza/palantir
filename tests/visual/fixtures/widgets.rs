@@ -39,6 +39,7 @@ fn frame_filled_with_stroke_matches_golden() {
                     fill: Color::rgb(0.20, 0.30, 0.55).into(),
                     stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
                     radius: Corners::all(16.0),
+                    shadow: None,
                 })
                 .show(ui);
         });
@@ -295,6 +296,7 @@ fn surface_rounded_clips_full_fill_child() {
                         fill: Color::TRANSPARENT.into(),
                         stroke: Stroke::solid(Color::rgb_u8(0, 255, 0), 5.0),
                         radius: Corners::new(4.0, 12.0, 20.0, 28.0),
+                        shadow: None,
                     })
                     .clip_rounded()
                     .show(ui, |ui| {
@@ -340,6 +342,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                         fill: Color::TRANSPARENT.into(),
                         stroke: Stroke::solid(Color::rgb_u8(0, 255, 0), 4.0),
                         radius: Corners::all(24.0),
+                        shadow: None,
                     })
                     .clip_rounded()
                     .show(ui, |ui| {

@@ -103,16 +103,19 @@ fn build_heavy(ui: &mut Ui) {
         fill: Color::hex(0x1a1a1a).into(),
         stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
         radius: Corners::all(12.0),
+        shadow: None,
     };
     let row_bg = Background {
         fill: Color::hex(0x252525).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(6.0),
+        shadow: None,
     };
     let avatar_bg = Background {
         fill: Color::hex(0x3a4a5c).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(10.0),
+        shadow: None,
     };
     Panel::vstack()
         .id_salt("heavy-root")
@@ -181,6 +184,7 @@ fn build_dense(ui: &mut Ui) {
         fill: Color::hex(0x3a4a5c).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(8.0),
+        shadow: None,
     };
     Panel::vstack()
         .id_salt("dense-root")
