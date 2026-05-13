@@ -46,6 +46,7 @@ pub struct Theme {
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
     pub context_menu: ContextMenuTheme,
+    pub tooltip: TooltipTheme,
     pub text: TextStyle,
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: Color,
@@ -76,6 +77,7 @@ impl Default for Theme {
             scrollbar: ScrollbarTheme::default(),
             text_edit: TextEditTheme::default(),
             context_menu: ContextMenuTheme::default(),
+            tooltip: TooltipTheme::default(),
             text: TextStyle::default(),
             window_clear: palette::TERMINAL_BG,
             panel_background: None,
@@ -605,6 +607,52 @@ impl Default for MenuItemTheme {
     }
 }
 
+/// Visuals + timing for [`crate::widgets::tooltip::Tooltip`]. Bubbles
+/// paint into `Layer::Tooltip` after the pointer has hovered a trigger
+/// for `delay` seconds; the `warmup` window keeps subsequent tooltips
+/// instant for a short period after one was dismissed.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct TooltipTheme {
+    /// Bubble chrome (fill + stroke + radius + optional shadow).
+    pub panel: Background,
+    /// Text inside the bubble.
+    pub text: TextStyle,
+    /// Padding between chrome and the text.
+    pub padding: Spacing,
+    /// Max bubble width in logical px before text wraps.
+    pub max_width: f32,
+    /// Seconds the pointer must rest on the trigger before the bubble
+    /// shows (cold start).
+    pub delay: f32,
+    /// Seconds after a tooltip is dismissed during which the next
+    /// tooltip appears instantly (warmup). Set to 0 to disable.
+    pub warmup: f32,
+    /// Gap in logical px between trigger rect and bubble.
+    pub gap: f32,
+}
+
+impl Default for TooltipTheme {
+    fn default() -> Self {
+        let m = palette::TEXT_MUTED;
+        let edge = Color::linear_rgba(m.r, m.g, m.b, 0.22);
+        let panel = Background {
+            fill: palette::ELEM.into(),
+            stroke: Stroke::solid(edge, 1.0),
+            radius: Corners::all(4.0),
+            shadow: Shadow::NONE,
+        };
+        Self {
+            panel,
+            text: TextStyle::default().with_font_size(13.0),
+            padding: Spacing::xy(6.0, 4.0),
+            max_width: 280.0,
+            delay: 0.5,
+            warmup: 1.0,
+            gap: 6.0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -697,6 +745,17 @@ mod tests {
                 "{label}: pick should return the matching slot",
             );
         }
+    }
+
+    /// Pins tooltip defaults: delay/warmup/max-width are user-facing
+    /// timings, regressing them is a visible UX change.
+    #[test]
+    fn tooltip_theme_defaults() {
+        let t = TooltipTheme::default();
+        assert!((t.delay - 0.5).abs() < 1e-6);
+        assert!((t.warmup - 1.0).abs() < 1e-6);
+        assert!((t.max_width - 280.0).abs() < 1e-6);
+        assert!((t.gap - 6.0).abs() < 1e-6);
     }
 
     /// `AnimatedLook::line_height_px` delegates to `TextStyle`'s
