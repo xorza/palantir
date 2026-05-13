@@ -642,7 +642,13 @@ impl Default for TooltipTheme {
             fill: palette::ELEM.into(),
             stroke: Stroke::solid(edge, 1.0),
             radius: Corners::all(4.0),
-            shadow: Shadow::NONE,
+            shadow: Shadow {
+                color: Color::linear_rgba(0.0, 0.0, 0.0, 0.6),
+                offset: glam::Vec2::new(2.0, 2.0),
+                blur: 5.0,
+                spread: 0.0,
+                inset: false,
+            },
         };
         Self {
             panel,
