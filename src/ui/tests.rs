@@ -64,6 +64,54 @@ fn auto_id_collisions_disambiguate() {
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 4);
 }
 
+/// Cascade runs in `post_record` (after each pass's measure+arrange),
+/// not in `finalize_frame`. Means a `request_relayout` re-record can
+/// read pass A's arranged rect via `response_for(id).rect` — the
+/// invariant `ContextMenu::show` relies on to clamp its anchor in
+/// the same frame as the first open, and the general API contract
+/// for any widget that needs its own size mid-frame.
+#[test]
+fn cascade_visible_to_relayout_pass() {
+    use std::cell::Cell;
+    let pass = Cell::new(0u32);
+    let pass_a_rect = Cell::new(None::<Rect>);
+    let pass_b_rect = Cell::new(None::<Rect>);
+    let id_salt = "cascade-relayout-probe";
+
+    let mut ui = Ui::new();
+    run_at(&mut ui, SURFACE, |ui| {
+        let probe_resp = std::cell::RefCell::new(None);
+        Panel::vstack().auto_id().show(ui, |ui| {
+            *probe_resp.borrow_mut() = Some(Frame::new().id_salt(id_salt).size(40.0).show(ui));
+        });
+        let resp = probe_resp.into_inner().unwrap();
+        match pass.get() {
+            0 => {
+                // Pass A: no cascade yet for our frame this run — first
+                // ever recording of this widget. Trigger pass B.
+                pass_a_rect.set(resp.state.rect);
+                ui.request_relayout();
+            }
+            1 => {
+                // Pass B: cascade was rebuilt by pass A's post_record,
+                // so response_for now returns pass A's arranged rect.
+                pass_b_rect.set(resp.state.rect);
+            }
+            _ => unreachable!("relayout capped at one retry per frame"),
+        }
+        pass.set(pass.get() + 1);
+    });
+
+    assert_eq!(pass.get(), 2, "expected exactly two record passes");
+    assert!(
+        pass_a_rect.get().is_none(),
+        "pass A sees no cascade entry yet (widget first recorded this frame)",
+    );
+    let b = pass_b_rect.get().expect("pass B reads pass-A cascade");
+    assert_eq!(b.size.w, 40.0);
+    assert_eq!(b.size.h, 40.0);
+}
+
 /// Pin: an empty frame drives the full pipeline without panicking and
 /// produces no draw commands.
 #[test]
