@@ -155,6 +155,7 @@ fn gradient_strip(ui: &mut Ui) {
                         fill: Brush::Linear(LinearGradient::two_stop(0.0, a, b)),
                         radius: Corners::all(6.0),
                         stroke: Stroke::solid(Color::hex(0x202020), 1.0),
+                        shadow: None,
                     })
                     .show(ui);
             }
@@ -242,6 +243,7 @@ fn canvas_polylines(ui: &mut Ui) {
             fill: Color::hex(0x1a1a1a).into(),
             radius: Corners::all(4.0),
             stroke: Stroke::solid(Color::hex(0x303030), 1.0),
+            shadow: None,
         })
         .show(ui, |ui| {
             Frame::new()
@@ -287,6 +289,7 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
         fill: brighten(base, 0.3).into(),
         stroke: Stroke::solid(Color::hex(0xffffff), 1.0),
         radius: Corners::all(3.0),
+        shadow: None,
     };
     let label_text = TextStyle::default()
         .with_font_size(11.0)

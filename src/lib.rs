@@ -53,6 +53,7 @@ pub use primitives::color::Srgb8;
 pub use primitives::corners::Corners;
 pub use primitives::mesh::{Mesh, MeshVertex};
 pub use primitives::rect::Rect;
+pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::Spacing;
 pub use primitives::stroke::Stroke;

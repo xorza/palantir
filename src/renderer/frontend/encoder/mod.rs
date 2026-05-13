@@ -316,6 +316,35 @@ fn encode_node(
     // to `None` when the paint is invisible, so reaching this branch
     // means there's something to paint.
     if let Some(bg) = chrome {
+        // Shadow paints UNDER the rect fill (CSS box-shadow order).
+        // Owner-local source = full owner rect; world translation by
+        // `rect.min`. Inflate handled by `shadow_paint_rect_local`,
+        // mirrored in `compute_paint_rect` for damage.
+        if let Some(s) = bg.shadow.filter(|s| !s.is_noop()) {
+            let paint_local =
+                shadow_paint_rect_local(None, rect.size, s.offset, s.blur, s.spread, s.inset);
+            let paint_rect = Rect {
+                min: rect.min + paint_local.min,
+                size: paint_local.size,
+            };
+            let (kind, axis_w) = if s.inset {
+                (FillKind::SHADOW_INSET, s.spread.max(0.0))
+            } else {
+                (FillKind::SHADOW_DROP, 0.0)
+            };
+            out.draw_shadow(
+                paint_rect,
+                bg.radius,
+                s.color,
+                kind,
+                FillAxis {
+                    dir_x: s.offset.x,
+                    dir_y: s.offset.y,
+                    t0: s.blur,
+                    t1: axis_w,
+                },
+            );
+        }
         out.draw_rect(rect, bg.radius, &bg.fill, bg.stroke);
     }
 

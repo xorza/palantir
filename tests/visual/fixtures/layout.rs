@@ -123,6 +123,7 @@ fn zstack_centered_button_matches_golden() {
                 fill: Color::rgb(0.16, 0.20, 0.28).into(),
                 stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
                 radius: Corners::all(10.0),
+                shadow: None,
             })
             .show(ui, |ui| {
                 Button::new()

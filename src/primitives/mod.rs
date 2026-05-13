@@ -7,6 +7,7 @@ pub(crate) mod corners;
 pub(crate) mod mesh;
 pub(crate) mod num;
 pub(crate) mod rect;
+pub(crate) mod shadow;
 pub(crate) mod size;
 pub(crate) mod spacing;
 pub(crate) mod stroke;

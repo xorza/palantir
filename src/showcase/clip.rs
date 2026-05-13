@@ -11,6 +11,7 @@ fn card() -> Background {
         fill: Color::hex(0x252525).into(),
         stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
         radius: Corners::all(28.0),
+        shadow: None,
     }
 }
 

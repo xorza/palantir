@@ -240,6 +240,7 @@ fn push_bar_nodes(
         fill: fill.into(),
         stroke: Stroke::ZERO,
         radius,
+        shadow: None,
     });
     ui.node(thumb, |_| {});
 }

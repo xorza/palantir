@@ -1,5 +1,6 @@
 use crate::primitives::brush::Brush;
 use crate::primitives::corners::Corners;
+use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use palantir_anim_derive::Animatable;
 
@@ -27,13 +28,24 @@ pub struct Background {
     pub stroke: Stroke,
     #[animate(snap)]
     pub radius: Corners,
+    #[animate(snap)]
+    /// Optional single drop / inset shadow. Lowered at `open_node`
+    /// into a [`ShapeRecord::Shadow`] prepended to the node's shape
+    /// span — the shape pipeline owns damage / paint / overhang for
+    /// chrome shadows too. For multi-shadow stacks, drop
+    /// `Shape::Shadow` records directly via `Ui::add_shape`.
+    pub shadow: Option<Shadow>,
 }
 
 impl Background {
     /// True when this Background paints nothing visible (transparent
-    /// fill + transparent/zero-width stroke). The encoder skips
-    /// emitting a `DrawRect` for no-op chrome so transparent
-    /// `Surface::scissor()` defaults don't leak draw commands.
+    /// fill + transparent/zero-width stroke + no shadow). The encoder
+    /// skips emitting a `DrawRect` for no-op chrome so transparent
+    /// `Surface::scissor()` defaults don't leak draw commands. The
+    /// shadow path runs through the shape buffer (lowered in
+    /// `open_node`), so a chrome whose only paint is a shadow still
+    /// reports `is_noop()` here — the lowered `ShapeRecord::Shadow`
+    /// keeps the node painting.
     pub fn is_noop(&self) -> bool {
         self.fill.is_noop() && self.stroke.is_noop()
     }

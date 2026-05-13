@@ -30,6 +30,7 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
             fill: Color::rgb(0.16, 0.18, 0.22).into(),
             stroke: Stroke::solid(Color::rgb(0.30, 0.34, 0.42), 1.0),
             radius: Corners::all(4.0),
+            shadow: None,
         })
         .show(ui, |ui| {
             Text::new("title")

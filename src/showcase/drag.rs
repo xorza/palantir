@@ -68,6 +68,7 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
             fill: accent.into(),
             stroke: Stroke::solid(Color::hex(0x202020), 1.0),
             radius: Corners::all(6.0),
+            shadow: None,
         })
         .show(ui);
 

@@ -8,6 +8,7 @@
 //! take `&Cascades` as their single frozen-state handle.
 
 use crate::forest::Forest;
+use crate::forest::shapes::record::shadow_paint_rect_local;
 use crate::forest::tree::{Layer, NodeId, Tree, TreeItem, TreeItems};
 use crate::forest::widget_id::WidgetId;
 use crate::input::sense::Sense;
@@ -267,6 +268,17 @@ fn compute_paint_rect(
                 paint_local = paint_local.union(s.paint_bbox_local(layout_rect.size));
             }
         }
+    }
+    // Chrome-attached drop shadow inflates the same way a
+    // `ShapeRecord::Shadow` would; encoder mirrors this via
+    // `shadow_paint_rect_local` so paint extent and damage extent
+    // stay in lockstep.
+    if let Some(bg) = tree.chrome.get(node.index())
+        && let Some(s) = bg.shadow.filter(|s| !s.is_noop())
+    {
+        let shadow_local =
+            shadow_paint_rect_local(None, layout_rect.size, s.offset, s.blur, s.spread, s.inset);
+        paint_local = paint_local.union(shadow_local);
     }
     let paint_tree_local = Rect {
         min: layout_rect.min + paint_local.min,

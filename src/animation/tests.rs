@@ -704,6 +704,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         fill: Color::hex(0x336699).into(),
         stroke: Stroke::solid(Color::hex(0xffffff), 2.0),
         radius: Corners::all(4.0),
+        shadow: None,
     };
     let look = WidgetLook {
         background: Some(bg),
@@ -775,6 +776,7 @@ fn spring_snap_fields_carry_target_immediately() {
         fill: Color::rgb(0.0, 0.0, 0.0).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(2.0),
+        shadow: None,
     };
     // First touch: snaps current = start, returns settled. No motion
     // started yet.
@@ -785,6 +787,7 @@ fn spring_snap_fields_carry_target_immediately() {
         fill: Color::rgb(1.0, 0.0, 0.0).into(),
         stroke: Stroke::ZERO,
         radius: Corners::all(12.0),
+        shadow: None,
     };
     let r = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.016, next_frame());
     assert!(

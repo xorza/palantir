@@ -362,16 +362,19 @@ impl Default for TextEditTheme {
             fill: palette::ELEM_HOVER.into(),
             stroke: Stroke::solid(edge, 1.0),
             radius,
+            shadow: None,
         };
         let focused_bg = Background {
             fill: palette::ELEM_HOVER.into(),
             stroke: Stroke::solid(palette::BORDER_FOCUSED, 1.5),
             radius,
+            shadow: None,
         };
         let disabled_bg = Background {
             fill: palette::ELEM.into(),
             stroke: Stroke::solid(edge, 1.0),
             radius,
+            shadow: None,
         };
         // Selection = accent at ~25% alpha — readable wash that doesn't
         // obscure the glyphs underneath.
@@ -446,6 +449,7 @@ impl Default for ButtonTheme {
                 fill: fill.into(),
                 stroke: Stroke::solid(edge, 1.0),
                 radius: Corners::all(4.0),
+                shadow: None,
             })
         };
         // Pressed = hovered fill + focused stroke (palette has no further fill tier).
@@ -453,6 +457,7 @@ impl Default for ButtonTheme {
             fill: palette::ELEM_ACTIVE.into(),
             stroke: Stroke::solid(palette::BORDER_FOCUSED, 1.0),
             radius: Corners::all(4.0),
+            shadow: None,
         };
         Self {
             normal: WidgetLook {
@@ -553,6 +558,7 @@ impl Default for ContextMenuTheme {
             fill: palette::ELEM.into(),
             stroke: Stroke::solid(edge, 1.0),
             radius: Corners::all(6.0),
+            shadow: None,
         };
         let separator = Color::linear_rgba(m.r, m.g, m.b, 0.18);
         Self {
@@ -573,6 +579,7 @@ impl Default for MenuItemTheme {
             fill: palette::ELEM_ACTIVE.into(),
             stroke: Stroke::ZERO,
             radius: Corners::all(4.0),
+            shadow: None,
         };
         Self {
             normal: WidgetLook::default(),
@@ -619,6 +626,7 @@ mod tests {
                     fill: Color::hex(0x336699).into(),
                     stroke: Stroke::solid(Color::hex(0xffffff), 1.5),
                     radius: Corners::all(6.0),
+                    shadow: None,
                 }),
                 text: Some(TextStyle::default().with_font_size(20.0)),
             },
