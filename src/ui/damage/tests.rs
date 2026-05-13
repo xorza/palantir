@@ -1125,3 +1125,61 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
     assert_eq!(rects, vec![prev_rect]);
 }
+
+/// Pin: a drop-shadow whose halo extends past a clipping ancestor
+/// contributes only the **clipped** halo to damage. The shadow's
+/// overhang is folded into `paint_rect` in owner-local space before
+/// the ancestor clip is applied, so a `ClipMode::Clip` parent caps
+/// the contribution at the parent's bounds — otherwise the halo
+/// pretends to paint pixels the GPU's scissor will discard.
+#[test]
+fn shadow_overhang_inside_clipped_parent_is_clamped() {
+    use crate::primitives::corners::Corners;
+    use crate::shape::Shape;
+
+    let viewport = 60.0;
+    let card = 40.0;
+    let blur = 8.0;
+
+    let mut ui = Ui::new();
+    let build = |fill: Color, ui: &mut Ui| {
+        run_at_acked(ui, UVec2::new(200, 200), |ui| {
+            Panel::hstack().id_salt("host").show(ui, |ui| {
+                Panel::zstack()
+                    .id_salt("viewport")
+                    .size((Sizing::Fixed(viewport), Sizing::Fixed(viewport)))
+                    .clip_rect()
+                    .show(ui, |ui| {
+                        Panel::hstack()
+                            .id_salt("card")
+                            .size((Sizing::Fixed(card), Sizing::Fixed(card)))
+                            .background(Background {
+                                fill: fill.into(),
+                                ..Default::default()
+                            })
+                            .show(ui, |ui| {
+                                ui.add_shape(Shape::Shadow {
+                                    local_rect: None,
+                                    radius: Corners::all(0.0),
+                                    color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                                    offset: Vec2::ZERO,
+                                    blur,
+                                    spread: 0.0,
+                                    inset: false,
+                                });
+                            });
+                    });
+            });
+        });
+    };
+
+    build(BLUE, &mut ui);
+    build(RED, &mut ui);
+
+    for r in ui.damage_engine.region.iter_rects() {
+        assert!(
+            r.size.w <= viewport + 0.5 && r.size.h <= viewport + 0.5,
+            "shadow halo damage must stay inside the {viewport}px clip; got {r:?}",
+        );
+    }
+}

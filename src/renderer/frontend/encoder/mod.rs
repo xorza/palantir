@@ -1,5 +1,5 @@
 use super::cmd_buffer::{DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
-use crate::forest::shapes::record::ShapeRecord;
+use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local};
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
@@ -14,7 +14,6 @@ use crate::ui::Ui;
 use crate::ui::cascade::Cascade;
 use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
-use glam::Vec2;
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU
 /// work, no scale/snap math — that lives in the backend's process
@@ -177,34 +176,27 @@ fn emit_one_shape(
             spread,
             inset,
         } => {
-            // Source rect after spread: inflated (drop) / deflated
-            // (inset) by `spread`. Then paint bbox = source.inflated
-            // symmetrically by `|offset_axis| + 3σ` per axis (for
-            // drop). Inset paints inside the source rect; no
-            // expansion beyond it.
-            let source = match local_rect {
-                None => owner_rect,
-                Some(lr) => Rect {
-                    min: owner_rect.min + lr.min,
-                    size: lr.size,
-                },
+            // Paint bbox in owner-local coords from the shared helper;
+            // translate to world by the owner rect's origin. Drop: bbox
+            // absorbs spread, shader ignores it. Inset: bbox = source,
+            // spread flows through `fill_axis.w` so the shader can
+            // shrink the hole.
+            let paint_local = shadow_paint_rect_local(
+                *local_rect,
+                owner_rect.size,
+                *offset,
+                *blur,
+                *spread,
+                *inset,
+            );
+            let paint_rect = Rect {
+                min: owner_rect.min + paint_local.min,
+                size: paint_local.size,
             };
-            let sigma3 = 3.0 * blur.max(0.0);
-            let spread_pos = spread.max(0.0);
-            // For drop: paint bbox absorbs spread; shader doesn't
-            // need it. For inset: paint bbox = source; spread is
-            // passed through `fill_axis.w` so the shader can shrink
-            // the hole.
-            let (paint_rect, kind, axis_w) = if *inset {
-                (source, FillKind::SHADOW_INSET, spread_pos)
+            let (kind, axis_w) = if *inset {
+                (FillKind::SHADOW_INSET, spread.max(0.0))
             } else {
-                let dx = offset.x.abs() + sigma3 + spread_pos;
-                let dy = offset.y.abs() + sigma3 + spread_pos;
-                let r = Rect {
-                    min: source.min - Vec2::new(dx, dy),
-                    size: Size::new(source.size.w + 2.0 * dx, source.size.h + 2.0 * dy),
-                };
-                (r, FillKind::SHADOW_DROP, 0.0)
+                (FillKind::SHADOW_DROP, 0.0)
             };
             out.draw_shadow(
                 paint_rect,
@@ -273,22 +265,23 @@ fn encode_node(
     }
 
     // Off-screen subtree cull. Skips the whole subtree's recursion
-    // when its screen-space bounds don't intersect the viewport.
-    if !rows[id.index()].screen_rect.intersects(viewport) {
+    // when its paint bounds (layout rect inflated by shape overhang —
+    // drop-shadow halos) don't intersect the viewport.
+    if !rows[id.index()].paint_rect.intersects(viewport) {
         return;
     }
 
     // DamageEngine-aware subtree cull. Same shape as the viewport cull
-    // above: if no damage rect intersects this subtree's screen
-    // bounds, the whole subtree contributes nothing this frame —
-    // skip recursion + Push/Pop emission entirely. **Soundness
-    // caveat:** `Cascade.screen_rect` is the node's own paint rect,
-    // not the subtree bbox; descendants of Canvas / non-clipped /
-    // transformed parents may overflow. The viewport cull already
-    // trusts this assumption "by convention"; damage cull inherits
-    // the same. See `docs/roadmap/damage.md`.
+    // above: if no damage rect intersects this subtree's paint bounds,
+    // the whole subtree contributes nothing this frame — skip
+    // recursion + Push/Pop emission entirely. **Soundness caveat:**
+    // `Cascade.paint_rect` is the node's own paint bounds, not the
+    // subtree bbox; descendants of Canvas / non-clipped / transformed
+    // parents may overflow. The viewport cull already trusts this
+    // assumption "by convention"; damage cull inherits the same. See
+    // `docs/roadmap/damage.md`.
     if let Some(region) = damage_filter
-        && !region.any_intersects(rows[id.index()].screen_rect)
+        && !region.any_intersects(rows[id.index()].paint_rect)
     {
         return;
     }
