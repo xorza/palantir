@@ -41,7 +41,9 @@ fn scroll_delta_for_combines_pixels_and_lines_by_line_step() {
     // 5 px + 2 lines × 19.2 px/line = 43.4 px.
     let d = state.scroll_delta_for(id, 19.2);
     assert!((d.y - 43.4).abs() < 1e-4, "got {d:?}");
-    assert_eq!(state.scroll_lines_for(id), Vec2::new(0.0, 2.0));
+    // 2 real lines + 5 px / 19.2 ≈ 2.2604 virtual notches.
+    let n = state.scroll_notches_for(id, 19.2);
+    assert!((n.y - (2.0 + 5.0 / 19.2)).abs() < 1e-4, "got {n:?}");
 }
 
 #[test]
