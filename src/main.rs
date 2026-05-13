@@ -9,9 +9,9 @@ use winit::window::{Window, WindowId};
 
 mod showcase;
 use showcase::{
-    alignment, animations, bezier, buttons, clip, disabled, drag, gap, gradients, grid, justify,
-    lines, mesh, pan_zoom, pan_zoom_auto, panels, popup, scroll, sizing, spacing, text, text_edit,
-    text_zorder, transform, visibility, wrap,
+    alignment, animations, bezier, buttons, clip, context_menu, disabled, drag, gap, gradients,
+    grid, justify, lines, mesh, pan_zoom, pan_zoom_auto, panels, popup, scroll, sizing, spacing,
+    text, text_edit, text_zorder, transform, visibility, wrap,
 };
 
 /// Each showcase: a label for the toolbar button, and a builder that fills the
@@ -40,6 +40,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("spacing", spacing::build),
     ("buttons", buttons::build),
     ("popup", popup::build),
+    ("context menu", context_menu::build),
     ("animations", animations::build),
     ("mesh", mesh::build),
     ("lines", lines::build),
