@@ -6,6 +6,7 @@
 use crate::forest::element::Element;
 use crate::forest::seen_ids::{RecordOutcome, SeenIds};
 use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
+use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::shape::Shape;
 use glam::Vec2;
@@ -114,6 +115,28 @@ impl Forest {
         let outcome = self.ids.record(&mut element, layer, node);
         let opened = self.trees[layer as usize].open_node(element);
         debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
+        self.record_collision(outcome, layer, node);
+        node
+    }
+
+    pub(crate) fn open_node_with_chrome(
+        &mut self,
+        mut element: Element,
+        chrome: Background,
+    ) -> NodeId {
+        let layer = self.current_layer;
+        let node = self.trees[layer as usize].peek_next_id();
+        let outcome = self.ids.record(&mut element, layer, node);
+        let opened = self.trees[layer as usize].open_node_with_chrome(element, chrome);
+        debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
+        self.record_collision(outcome, layer, node);
+        node
+    }
+
+    /// Shared between [`Self::open_node`] / [`Self::open_node_with_chrome`].
+    /// Logs + records an explicit-id collision (auto collisions are
+    /// silent — the disambiguation already ran inside `SeenIds::record`).
+    fn record_collision(&mut self, outcome: RecordOutcome, layer: Layer, node: NodeId) {
         if let RecordOutcome::DisambiguatedExplicit { first } = outcome {
             tracing::error!(
                 first_layer = ?first.0,
@@ -127,7 +150,6 @@ impl Forest {
                 second: (layer, node),
             });
         }
-        node
     }
 
     pub(crate) fn close_node(&mut self) {

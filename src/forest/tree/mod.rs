@@ -25,7 +25,7 @@
 use crate::ClipMode;
 use crate::common::hash::Hasher;
 use crate::forest::element::{
-    BoundsExtras, Element, ElementColumns, LayoutCore, LayoutMode, PanelExtras,
+    BoundsExtras, Element, LayoutCore, LayoutMode, NodeFlags, PanelExtras,
 };
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
@@ -36,6 +36,7 @@ use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::grid::GridDef;
 use glam::Vec2;
 use soa_rs::Soa;
@@ -96,6 +97,16 @@ impl Layer {
 pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,
     pub(crate) ancestor_or_self_disabled: bool,
+}
+
+/// Shared between [`Tree::open_node`] / [`Tree::open_node_with_chrome`].
+/// Threads the parent-frame + slot id from the prologue helper through
+/// the variant-specific body and into the finalize helper.
+#[derive(Clone, Copy)]
+struct OpenNodeCtx {
+    parent_frame: Option<OpenFrame>,
+    parent: Option<NodeId>,
+    new_id: NodeId,
 }
 
 /// One root within a single layer's [`Tree`]. Multiple roots in the
@@ -271,7 +282,6 @@ pub(crate) struct Tree {
     // -- Output (populated by `post_record`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
 
-
     /// Per-NodeId bit: `1` iff the subtree rooted at node `i` contains
     /// any `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
     /// grid-hug snapshot/restore walk. Recording-time lifecycle —
@@ -415,7 +425,81 @@ impl Tree {
     /// root if `open_frames` is empty) and make it the new tip. Root
     /// mints stamp the top of `pending_anchors` onto the new
     /// `RootSlot`; child opens don't read the stack.
+    ///
+    /// **No-chrome variant.** `ClipMode::Rounded` always downgrades to
+    /// `Rect` here — without a chrome radius there's nothing to mask.
+    /// See [`Self::open_node_with_chrome`] for the chrome path.
     pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
+        if matches!(element.clip, ClipMode::Rounded) {
+            element.clip = ClipMode::Rect;
+        }
+        let ctx = self.open_node_prologue(element.mode);
+        let cols = element.into_columns();
+        self.check_grid_cell(ctx.parent, &cols.bounds);
+
+        let mut ex = ExtrasIdx::default();
+        if !cols.bounds.is_default() {
+            ex.bounds = Slot::from_len(self.bounds_table.len());
+            self.bounds_table.push(cols.bounds);
+        }
+        if !cols.panel.is_default() {
+            ex.panel = Slot::from_len(self.panel_table.len());
+            self.panel_table.push(cols.panel);
+        }
+        self.extras_idx.push(ex);
+        self.open_node_finalize(ctx, cols.widget_id, cols.layout, cols.attrs)
+    }
+
+    /// Chrome variant of [`Self::open_node`]. Pushes `chrome` (and the
+    /// rounded-clip mask radius, if applicable) into the dense
+    /// `chrome_table` / `clip_radius_table`. Split from the no-chrome
+    /// path so neither call site carries the 232-byte
+    /// `Option<Background>` parameter, and so the `ClipMode::Rounded`
+    /// downgrade can be skipped statically when no radius is present.
+    pub(crate) fn open_node_with_chrome(&mut self, mut element: Element, bg: Background) -> NodeId {
+        // Tree-storage noop gate for chrome — mirrors `Shapes::add` for
+        // the shape buffer and `cmd_buffer::draw_*` for emits. Whole-
+        // `Background::is_noop` drops the entry so chrome iteration /
+        // hashing skips it. Partial-noop chrome (e.g. shadow-only)
+        // survives here and is dropped per-emit by the cmd buffer's
+        // gates. `clip_radius` extracts `bg.radius` whenever this node
+        // has `ClipMode::Rounded`, regardless of whether the paint is
+        // invisible — the encoder needs the radius for the stencil
+        // mask even when nothing paints.
+        if matches!(element.clip, ClipMode::Rounded) && bg.radius.approx_zero() {
+            element.clip = ClipMode::Rect;
+        }
+        let ctx = self.open_node_prologue(element.mode);
+        let cols = element.into_columns();
+        self.check_grid_cell(ctx.parent, &cols.bounds);
+
+        let mut ex = ExtrasIdx::default();
+        if !cols.bounds.is_default() {
+            ex.bounds = Slot::from_len(self.bounds_table.len());
+            self.bounds_table.push(cols.bounds);
+        }
+        if !cols.panel.is_default() {
+            ex.panel = Slot::from_len(self.panel_table.len());
+            self.panel_table.push(cols.panel);
+        }
+        if matches!(cols.attrs.clip_mode(), ClipMode::Rounded) {
+            ex.clip_radius = Slot::from_len(self.clip_radius_table.len());
+            self.clip_radius_table.push(bg.radius);
+        }
+        if !bg.is_noop() {
+            ex.chrome = Slot::from_len(self.chrome_table.len());
+            self.chrome_table.push(bg);
+        }
+        self.extras_idx.push(ex);
+        self.open_node_finalize(ctx, cols.widget_id, cols.layout, cols.attrs)
+    }
+
+    /// Roots/parent bookkeeping shared by both `open_node` variants.
+    /// Captures the parent frame + slot id so the body can drive the
+    /// chrome-specific table writes, then returns to
+    /// [`Self::open_node_finalize`].
+    #[inline(always)]
+    fn open_node_prologue(&mut self, mode: LayoutMode) -> OpenNodeCtx {
         let parent_frame = self.open_frames.last().copied();
         let parent = parent_frame.map(|f| f.node);
         let new_id = self.peek_next_id();
@@ -427,32 +511,24 @@ impl Tree {
                 size: pending.size,
             });
         }
-        if let LayoutMode::Grid(idx) = element.mode {
+        if let LayoutMode::Grid(idx) = mode {
             assert!(
                 (idx as usize) < self.grid.defs.len(),
                 "LayoutMode::Grid({idx}) references no grid_def — only Grid::show should push grid nodes",
             );
         }
-        // `ClipMode::Rounded` without a usable radius — caller asked
-        // for a stencil mask but didn't supply corners (no chrome, or
-        // chrome with all-zero radius). Downgrade to scissor: the
-        // stencil pass would mask exactly the rect bbox anyway, and
-        // skipping it saves a render pass. Mirrors what users wrote
-        // by hand before the API split.
-        if matches!(element.clip, ClipMode::Rounded)
-            && element.chrome.is_none_or(|bg| bg.radius.approx_zero())
-        {
-            element.clip = ClipMode::Rect;
+        OpenNodeCtx {
+            parent_frame,
+            parent,
+            new_id,
         }
-        let ElementColumns {
-            widget_id,
-            layout,
-            attrs,
-            bounds,
-            panel,
-            chrome,
-        } = element.into_columns();
+    }
 
+    /// Range-check a child's `grid` cell against its parent's
+    /// `GridDef` row/col counts. Only fires when the parent is a
+    /// `Grid` node and the def has nonzero rows + cols.
+    #[inline(always)]
+    fn check_grid_cell(&self, parent: Option<NodeId>, bounds: &BoundsExtras) {
         if let Some(parent_id) = parent
             && let LayoutMode::Grid(grid_idx) = self.records.layout()[parent_id.0 as usize].mode
         {
@@ -476,49 +552,26 @@ impl Tree {
                 );
             }
         }
+    }
 
-        // Build one packed `ExtrasIdx` row and append it. Per-table
-        // dense pushes only happen when the corresponding field is
-        // non-default; the absent fast path (most leaves) is one
-        // 8-byte store of `ALL_ABSENT` with no further work.
-        // Tree-storage noop gate for chrome — mirrors `Shapes::add`
-        // for the shape buffer and `cmd_buffer::draw_*` for emits.
-        // Whole-`Background::is_noop` drops the entry so chrome
-        // iteration / hashing skips it. Partial-noop chrome (e.g.
-        // shadow-only) survives here and is dropped per-emit by the
-        // cmd buffer's gates. `clip_radius` extracts `chrome.radius`
-        // whenever this node has `ClipMode::Rounded`, regardless of
-        // whether the paint is invisible — the encoder needs the
-        // radius for the stencil mask even when nothing paints.
-        let mut ex = ExtrasIdx::default();
-        if !bounds.is_default() {
-            ex.bounds = Slot::from_len(self.bounds_table.len());
-            self.bounds_table.push(bounds);
-        }
-        if !panel.is_default() {
-            ex.panel = Slot::from_len(self.panel_table.len());
-            self.panel_table.push(panel);
-        }
-        if let Some(bg) = chrome {
-            if matches!(attrs.clip_mode(), ClipMode::Rounded) {
-                ex.clip_radius = Slot::from_len(self.clip_radius_table.len());
-                self.clip_radius_table.push(bg.radius);
-            }
-            if !bg.is_noop() {
-                ex.chrome = Slot::from_len(self.chrome_table.len());
-                self.chrome_table.push(bg);
-            }
-        }
-        self.extras_idx.push(ex);
-
+    /// Records-column push + `open_frames` push. Returns the new node
+    /// id so the caller's `?`-style flow stays linear.
+    #[inline(always)]
+    fn open_node_finalize(
+        &mut self,
+        ctx: OpenNodeCtx,
+        widget_id: WidgetId,
+        layout: LayoutCore,
+        attrs: NodeFlags,
+    ) -> NodeId {
         self.records.push(NodeRecord {
             widget_id,
             shape_span: Span::new(self.shapes.records.len() as u32, 0),
-            subtree_end: new_id.0 + 1,
+            subtree_end: ctx.new_id.0 + 1,
             layout,
             attrs,
         });
-        self.parents.push(parent.unwrap_or(NodeId::ROOT));
+        self.parents.push(ctx.parent.unwrap_or(NodeId::ROOT));
         self.has_grid.grow(self.records.len());
         // Column length-equality. `records` + `extras_idx` + `parents`
         // must agree on `len`; a missed push silently shifts every
@@ -530,13 +583,15 @@ impl Tree {
             assert_eq!(self.extras_idx.len(), n);
             assert_eq!(self.parents.len(), n);
         }
-        let ancestor_or_self_disabled =
-            parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || attrs.is_disabled();
+        let ancestor_or_self_disabled = ctx
+            .parent_frame
+            .is_some_and(|f| f.ancestor_or_self_disabled)
+            || attrs.is_disabled();
         self.open_frames.push(OpenFrame {
-            node: new_id,
+            node: ctx.new_id,
             ancestor_or_self_disabled,
         });
-        new_id
+        ctx.new_id
     }
 
     /// True when any currently-open ancestor in this tree's recording

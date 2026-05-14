@@ -547,6 +547,9 @@ impl Ui {
         result
     }
 
+    /// Open a node with no paint chrome — the common path for layout-only
+    /// containers, text leaves, and chrome-less Frames. Avoids passing
+    /// a 232-byte `Option<Background>` through the call chain.
     pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
         // Id collision detection + auto-id disambiguation happen
         // inside `Forest::open_node`, so any path that opens a node
@@ -554,6 +557,22 @@ impl Ui {
         // same check. Explicit-id collisions hard-assert, auto-id
         // collisions get silently disambiguated.
         let node = self.forest.open_node(element);
+        f(self);
+        self.forest.close_node();
+        node
+    }
+
+    /// Open a node with a paint chrome. Widgets that always set chrome
+    /// (`Button`, `MenuItem`) or that resolved a theme fallback to
+    /// `Some(_)` call this; others use [`Self::node`] to skip the
+    /// 232-byte chrome arg.
+    pub(crate) fn node_with_chrome(
+        &mut self,
+        element: Element,
+        chrome: Background,
+        f: impl FnOnce(&mut Ui),
+    ) -> NodeId {
+        let node = self.forest.open_node_with_chrome(element, chrome);
         f(self);
         self.forest.close_node();
         node
