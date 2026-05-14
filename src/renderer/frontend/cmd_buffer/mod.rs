@@ -45,9 +45,7 @@ use crate::forest::shapes::record::ShapeStroke;
 use crate::primitives::brush::{
     Brush, ConicGradient, FillAxis, Interp, LinearGradient, MAX_STOPS, RadialGradient, Stop,
 };
-use crate::primitives::{
-    color::ColorF16, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
-};
+use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
 use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
@@ -381,7 +379,7 @@ impl RenderCmdBuffer {
         let (stroke_color, stroke_width) = if stroke.is_noop() {
             (ColorF16::TRANSPARENT, 0.0)
         } else {
-            (ColorF16::from(stroke.brush.expect_solid()), stroke.width)
+            (stroke.color, stroke.width())
         };
         let payload = DrawRectPayload {
             rect,
