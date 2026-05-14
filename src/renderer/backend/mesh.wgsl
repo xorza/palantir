@@ -8,6 +8,11 @@ struct VsIn {
     // (`From<Color> for ColorU8` is a linear quantize), so the
     // rasterizer interpolates linear values directly.
     @location(1) color: vec4<f32>,
+    // Per-instance transform + tint. `physical = pos * scale + translate`;
+    // `out_color = color * tint`. Both color lanes are linear premul.
+    @location(2) translate: vec2<f32>,
+    @location(3) scale: f32,
+    @location(4) tint: vec4<f32>,
 };
 
 struct VsOut {
@@ -17,13 +22,14 @@ struct VsOut {
 
 @vertex
 fn vs(in: VsIn) -> VsOut {
+    let phys = in.pos * in.scale + in.translate;
     let ndc = vec2<f32>(
-        in.pos.x / vp.size.x * 2.0 - 1.0,
-        1.0 - in.pos.y / vp.size.y * 2.0,
+        phys.x / vp.size.x * 2.0 - 1.0,
+        1.0 - phys.y / vp.size.y * 2.0,
     );
     var out: VsOut;
     out.clip = vec4<f32>(ndc, 0.0, 1.0);
-    out.color = in.color;
+    out.color = in.color * in.tint;
     return out;
 }
 

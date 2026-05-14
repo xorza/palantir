@@ -336,6 +336,7 @@ impl WgpuBackend {
             &self.queue,
             &buffer.meshes.arena.vertices,
             &buffer.meshes.arena.indices,
+            &buffer.meshes.instances,
         );
 
         if !damage_scissors.is_empty() {
@@ -645,12 +646,18 @@ impl WgpuBackend {
                     }
                     let start = range.start as usize;
                     let end = start + range.len as usize;
-                    for draw in &buffer.meshes.draws[start..end] {
+                    for (offset, draw) in buffer.meshes.draws[start..end].iter().enumerate() {
                         // `draw_indexed` takes a per-call vertex
                         // offset; pass the mesh's vertex start as
                         // `base_vertex` so indices stay buffer-local.
-                        self.mesh
-                            .draw(pass, draw.indices.into(), draw.vertices.start as i32);
+                        // Instance index is the draw's absolute slot in
+                        // `meshes.instances`.
+                        self.mesh.draw(
+                            pass,
+                            draw.indices.into(),
+                            draw.vertices.start as i32,
+                            (start + offset) as u32,
+                        );
                     }
                     pass.pop_debug_group();
                 }

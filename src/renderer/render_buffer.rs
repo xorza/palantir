@@ -118,6 +118,10 @@ pub(crate) struct RoundedClip {
 #[derive(Default, Clone)]
 pub(crate) struct MeshScene {
     pub(crate) draws: Vec<MeshDraw>,
+    /// Parallels `draws`: one row per draw, uploaded verbatim to the
+    /// per-instance vertex buffer. Composer pushes both together; the
+    /// backend looks them up by `instance_index`.
+    pub(crate) instances: Vec<MeshInstance>,
     pub(crate) arena: Mesh,
 }
 
@@ -125,17 +129,31 @@ impl MeshScene {
     #[inline]
     pub(crate) fn clear(&mut self) {
         self.draws.clear();
+        self.instances.clear();
         self.arena.clear();
     }
 }
 
 /// One mesh draw within a group. Vertex/index slices live in
-/// `RenderBuffer.meshes.arena`. Tint was already baked into vertex
-/// colors at compose time, so this entry carries just the spans.
+/// `RenderBuffer.meshes.arena`; the per-instance transform + tint live
+/// in [`MeshScene::instances`] at the matching index.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MeshDraw {
     pub(crate) vertices: Span,
     pub(crate) indices: Span,
+}
+
+/// Per-mesh GPU state, uploaded to a `step_mode: Instance` vertex
+/// buffer. The shader composes `physical = pos * scale + translate`
+/// and `out_color = vertex.color * tint`. `Pod`-shaped so the upload
+/// is a single `write_buffer` of `bytemuck::cast_slice(instances)`.
+#[padding_struct::padding_struct]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct MeshInstance {
+    pub(crate) translate: Vec2,
+    pub(crate) scale: f32,
+    pub(crate) tint: ColorU8,
 }
 
 /// One shaped text run placed in physical-px space. The buffer it references

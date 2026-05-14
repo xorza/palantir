@@ -248,6 +248,13 @@ impl DrawPolylinePayload {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawMeshPayload {
+    /// Logical-px AABB of `vertices` in cmd-buffer (world) coords. The
+    /// composer transforms its four corners (uniform-scale
+    /// `TranslateScale` preserves AABBs), scales to physical px, and
+    /// uses the result for the overlap test + scissor cull — same
+    /// trick polylines use, so the per-vertex pass becomes a pure
+    /// `extend_from_slice` memcpy.
+    pub(crate) bbox: Rect,
     pub(crate) tint: ColorF16,
     pub(crate) v_start: u32,
     pub(crate) v_len: u32,

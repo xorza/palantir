@@ -16,6 +16,7 @@ use crate::ui::Ui;
 use crate::ui::cascade::Cascade;
 use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
+use glam::Vec2;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
 /// collided this frame. Magenta — distinct from the opt-in red
@@ -254,15 +255,26 @@ fn emit_one_shape(
             let src_idx = &tree.shapes.payloads.meshes.indices[indices.range()];
             let out_meshes = &mut out.shape_payloads.meshes;
             let v_start = out_meshes.vertices.len() as u32;
-            out_meshes
-                .vertices
-                .extend(src_verts.iter().map(|v| MeshVertex {
-                    pos: v.pos + origin,
+            let mut min = Vec2::splat(f32::INFINITY);
+            let mut max = Vec2::splat(f32::NEG_INFINITY);
+            out_meshes.vertices.extend(src_verts.iter().map(|v| {
+                let pos = v.pos + origin;
+                min = min.min(pos);
+                max = max.max(pos);
+                MeshVertex {
+                    pos,
                     color: v.color,
-                }));
+                }
+            }));
             let i_start = out_meshes.indices.len() as u32;
             out_meshes.indices.extend_from_slice(src_idx);
+            let bbox = if src_verts.is_empty() {
+                Rect::ZERO
+            } else {
+                Rect::new(min.x, min.y, max.x - min.x, max.y - min.y)
+            };
             out.draw_mesh(DrawMeshPayload {
+                bbox,
                 tint: *tint,
                 v_start,
                 v_len: src_verts.len() as u32,
