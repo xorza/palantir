@@ -1,60 +1,61 @@
 {
-    "permissions": {
-        "defaultMode": "acceptEdits",
-        "allow": [
-            "Read",
-            "Edit",
-            "Write",
-            "Grep",
-            "Glob",
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Grep",
+      "Glob",
 
-            "Edit(/tmp/**)",
-            "Write(/tmp/**)",
-            "Read(//tmp/**)",
+      "Edit(/tmp/**)",
+      "Write(/tmp/**)",
+      "Read(//tmp/**)",
 
-            "Bash(xargs sed *)",
-            "Bash(sd:*)",
+      "Bash(xargs sed *)",
+      "Bash(sd:*)",
 
-            "Bash(UPDATE_GOLDEN=1 cargo test*)",
-            "Bash(UPDATE_GOLDEN=1 cargo nexttest run*)",
-            "Bash(cargo build *)",
-            "Bash(cargo run*)",
-            "Bash(cargo run *)",
-            "Bash(cargo test *)",
-            "Bash(cargo clippy*)",
-            "Bash(cargo fmt*)",
-            "Bash(cargo nextest *)",
-            "Bash(cargo check *)",
-            "Bash(cargo search *)",
-            "Bash(cargo info *)",
-            "Bash(cargo doc *)",
-            "Bash(cargo bench *)",
-            "Bash(cargo metadata *)",
-            "Bash(cargo add *)",
-            "Bash(cargo tree *)",
+      "Bash(UPDATE_GOLDEN=1 cargo test*)",
+      "Bash(UPDATE_GOLDEN=1 cargo nexttest run*)",
+      "Bash(cargo build *)",
+      "Bash(cargo run*)",
+      "Bash(cargo run *)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy*)",
+      "Bash(cargo fmt*)",
+      "Bash(cargo nextest *)",
+      "Bash(cargo check *)",
+      "Bash(cargo search *)",
+      "Bash(cargo info *)",
+      "Bash(cargo doc *)",
+      "Bash(cargo bench *)",
+      "Bash(cargo metadata *)",
+      "Bash(cargo add *)",
+      "Bash(cargo tree *)",
 
-            "Bash(cargo +nightly test*)",
+      "Bash(cargo +nightly test*)",
 
-            "Bash(git mv:*)",
-            "Bash(git add:*)",
-            "Bash(git rm:*)",
-            "Bash(git fetch *)",
+      "Bash(git mv:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git fetch *)",
+      "Bash(git stash *)",
 
-            "Bash(sd:*)",
-            "Bash(awk:*)",
-            "Bash(rg:*)",
-            "Bash(wait)",
+      "Bash(sd:*)",
+      "Bash(awk:*)",
+      "Bash(rg:*)",
+      "Bash(wait)",
 
-            "Bash(perf report *)",
-            "Bash(perf script *)",
-            "Bash(perf record *)",
+      "Bash(perf report *)",
+      "Bash(perf script *)",
+      "Bash(perf record *)",
 
-            "Bash(scripts/*.sh)",
-            "Bash(./scripts/*-all.sh)",
-            "Bash(FAST=1 scripts/*.sh)",
-            "Bash(FAST=1 ./scripts/*.sh)",
+      "Bash(scripts/*.sh)",
+      "Bash(./scripts/*-all.sh)",
+      "Bash(FAST=1 scripts/*.sh)",
+      "Bash(FAST=1 ./scripts/*.sh)",
 
-            "Bash(npm_config_cache=\"/tmp/npm-cache\" npx --yes jscpd *)"
-        ]
-    }
+      "Bash(npm_config_cache=\"/tmp/npm-cache\" npx --yes jscpd *)"
+    ]
+  }
 }
