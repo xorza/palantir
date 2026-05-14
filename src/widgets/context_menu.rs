@@ -57,7 +57,7 @@ pub(crate) struct ContextMenuState {
 pub struct ContextMenu {
     for_id: WidgetId,
     element: Element,
-    chrome: Option<crate::primitives::background::Background>,
+    chrome: Option<Background>,
 }
 
 impl ContextMenu {
@@ -69,6 +69,14 @@ impl ContextMenu {
             element,
             chrome: None,
         }
+    }
+
+    /// Paint chrome (fill / stroke / corner radius / shadow). `None`
+    /// is the default; theme fallback in [`Self::show`] fills it in
+    /// from `ui.theme.context_menu.panel` when unset.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
     }
 
     /// Derive `for_id` from a trigger widget's response, and auto-open
@@ -120,7 +128,7 @@ impl ContextMenu {
 
         let mut popup = Popup::anchored_to(clamped).click_outside(ClickOutside::Dismiss);
         *popup.element_mut() = e;
-        popup.chrome = self.chrome.or(Some(theme.panel));
+        popup.chrome = Some(self.chrome.unwrap_or(theme.panel));
         let PopupResponse {
             dismissed,
             close_requested: item_clicked,

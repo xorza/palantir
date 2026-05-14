@@ -3,6 +3,7 @@ use crate::forest::tree::Layer;
 use crate::input::sense::Sense;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::background::Background;
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;
 use glam::Vec2;
@@ -84,7 +85,7 @@ pub struct Popup {
     anchor: Vec2,
     click_outside: ClickOutside,
     element: Element,
-    pub(crate) chrome: Option<crate::primitives::background::Background>,
+    pub(crate) chrome: Option<Background>,
 }
 
 impl Popup {
@@ -108,7 +109,7 @@ impl Popup {
     /// Paint chrome (fill / stroke / corner radius / shadow). `None`
     /// is the default; theme fallback in [`Self::show`] fills it in
     /// from `ui.theme.panel_background` when unset.
-    pub fn background(mut self, bg: crate::primitives::background::Background) -> Self {
+    pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }

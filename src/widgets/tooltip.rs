@@ -2,6 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::seen_ids::IdSource;
 use crate::forest::tree::Layer;
 use crate::input::sense::Sense;
+use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -91,7 +92,7 @@ pub struct Tooltip<'r> {
     delay: Option<f32>,
     show_when_disabled: bool,
     element: Element,
-    chrome: Option<crate::primitives::background::Background>,
+    chrome: Option<Background>,
 }
 
 impl<'r> Tooltip<'r> {
@@ -111,6 +112,14 @@ impl<'r> Tooltip<'r> {
             element,
             chrome: None,
         }
+    }
+
+    /// Paint chrome (fill / stroke / corner radius / shadow). `None`
+    /// is the default; theme fallback in [`Self::show`] fills it in
+    /// from `ui.theme.tooltip.panel` when unset.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
     }
 
     pub fn text(mut self, t: impl Into<Cow<'static, str>>) -> Self {

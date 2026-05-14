@@ -101,12 +101,21 @@ pub(crate) struct OpenFrame {
 
 /// Shared between [`Tree::open_node`] / [`Tree::open_node_with_chrome`].
 /// Threads the parent-frame + slot id from the prologue helper through
-/// the variant-specific body and into the finalize helper.
+/// the variant-specific body and into the finalize helper. `parent`
+/// (the parent's `NodeId`) is derived from `parent_frame` at the call
+/// site that needs it — kept here as a single pre-computed source so
+/// the prologue / finalize boundary doesn't have to recompute it.
 #[derive(Clone, Copy)]
 struct OpenNodeCtx {
     parent_frame: Option<OpenFrame>,
-    parent: Option<NodeId>,
     new_id: NodeId,
+}
+
+impl OpenNodeCtx {
+    #[inline]
+    fn parent(&self) -> Option<NodeId> {
+        self.parent_frame.map(|f| f.node)
+    }
 }
 
 /// One root within a single layer's [`Tree`]. Multiple roots in the
@@ -166,10 +175,16 @@ impl Slot {
     pub(crate) const ABSENT: Self = Self(u16::MAX);
 
     /// `len`-derived constructor. Pair with `Vec::push(v)` so the
-    /// resulting `Slot` indexes the entry that push wrote.
+    /// resulting `Slot` indexes the entry that push wrote. Release
+    /// `assert!` because silent truncation at `len ≥ u16::MAX` would
+    /// collide with [`Slot::ABSENT`] and corrupt the table mapping —
+    /// invariant per CLAUDE.md's "default to release assert!".
     #[inline]
     pub(crate) fn from_len(len: usize) -> Self {
-        debug_assert!(len < u16::MAX as usize, "Slot exhausted: len = {len}");
+        assert!(
+            len < Self::ABSENT.0 as usize,
+            "Slot exhausted — more than 65 535 entries in a single sparse-column frame (got {len})",
+        );
         Self(len as u16)
     }
 
@@ -435,7 +450,7 @@ impl Tree {
         }
         let ctx = self.open_node_prologue(element.mode);
         let cols = element.into_columns();
-        self.check_grid_cell(ctx.parent, &cols.bounds);
+        self.check_grid_cell(ctx.parent(), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
         if !cols.bounds.is_default() {
@@ -471,7 +486,7 @@ impl Tree {
         }
         let ctx = self.open_node_prologue(element.mode);
         let cols = element.into_columns();
-        self.check_grid_cell(ctx.parent, &cols.bounds);
+        self.check_grid_cell(ctx.parent(), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
         if !cols.bounds.is_default() {
@@ -501,9 +516,8 @@ impl Tree {
     #[inline(always)]
     fn open_node_prologue(&mut self, mode: LayoutMode) -> OpenNodeCtx {
         let parent_frame = self.open_frames.last().copied();
-        let parent = parent_frame.map(|f| f.node);
         let new_id = self.peek_next_id();
-        if parent.is_none() {
+        if parent_frame.is_none() {
             let pending = self.pending_anchors.last().copied().unwrap_or_default();
             self.roots.push(RootSlot {
                 first_node: new_id.0,
@@ -519,7 +533,6 @@ impl Tree {
         }
         OpenNodeCtx {
             parent_frame,
-            parent,
             new_id,
         }
     }
@@ -571,7 +584,7 @@ impl Tree {
             layout,
             attrs,
         });
-        self.parents.push(ctx.parent.unwrap_or(NodeId::ROOT));
+        self.parents.push(ctx.parent().unwrap_or(NodeId::ROOT));
         self.has_grid.grow(self.records.len());
         // Column length-equality. `records` + `extras_idx` + `parents`
         // must agree on `len`; a missed push silently shifts every
