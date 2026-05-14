@@ -1,4 +1,5 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::primitives::background::Background;
 use crate::ui::Ui;
 use crate::widgets::Response;
 
@@ -10,6 +11,7 @@ use crate::widgets::Response;
 /// [`Configure::clip_rounded`].
 pub struct Frame {
     element: Element,
+    chrome: Option<Background>,
 }
 
 impl Frame {
@@ -18,12 +20,22 @@ impl Frame {
     pub fn new() -> Self {
         Self {
             element: Element::new(LayoutMode::Leaf),
+            chrome: None,
         }
+    }
+
+    /// Paint chrome (fill / stroke / corner radius / shadow).
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
     }
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        let node = ui.node(self.element, |_| {});
+        let node = match self.chrome {
+            Some(c) => ui.node_with_chrome(self.element, c, |_| {}),
+            None => ui.node(self.element, |_| {}),
+        };
         let state = ui.response_for(id);
         Response { node, id, state }
     }

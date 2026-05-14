@@ -91,6 +91,7 @@ pub struct Tooltip<'r> {
     delay: Option<f32>,
     show_when_disabled: bool,
     element: Element,
+    chrome: Option<crate::primitives::background::Background>,
 }
 
 impl<'r> Tooltip<'r> {
@@ -108,6 +109,7 @@ impl<'r> Tooltip<'r> {
             delay: None,
             show_when_disabled: false,
             element,
+            chrome: None,
         }
     }
 
@@ -199,9 +201,7 @@ impl<'r> Tooltip<'r> {
             let mut element = self.element;
             element.set_id(bubble_id);
             let text_style = ui.theme.tooltip.text;
-            if element.chrome.is_none() {
-                element.chrome = Some(ui.theme.tooltip.panel);
-            }
+            let chrome = self.chrome.unwrap_or(ui.theme.tooltip.panel);
             if element.padding == Spacing::ZERO {
                 element.padding = ui.theme.tooltip.padding;
             }
@@ -209,7 +209,7 @@ impl<'r> Tooltip<'r> {
                 element.max_size = ui.theme.tooltip.max_size;
             }
             ui.layer(Layer::Tooltip, placed.anchor, None, |ui| {
-                ui.node(element, |ui| {
+                ui.node_with_chrome(element, chrome, |ui| {
                     Text::new(text).style(text_style).wrapping().show(ui);
                 });
             });

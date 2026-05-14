@@ -19,6 +19,7 @@ use crate::widgets::Response;
 /// set its own.
 pub struct Panel {
     element: Element,
+    chrome: Option<crate::primitives::background::Background>,
 }
 
 impl Panel {
@@ -26,6 +27,7 @@ impl Panel {
     fn auto(mode: LayoutMode) -> Self {
         Self {
             element: Element::new(mode),
+            chrome: None,
         }
     }
 
@@ -39,19 +41,28 @@ impl Panel {
         self
     }
 
+    /// Paint chrome (fill / stroke / corner radius / shadow). `None` is
+    /// the default; theme fallback in [`Self::show`] fills it in from
+    /// `ui.theme.panel_background` when unset.
+    pub fn background(mut self, bg: crate::primitives::background::Background) -> Self {
+        self.chrome = Some(bg);
+        self
+    }
+
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None
         // value) wins.
         let mut element = self.element;
-        if element.chrome.is_none() {
-            element.chrome = ui.theme.panel_background;
-        }
+        let chrome = self.chrome.or(ui.theme.panel_background);
         if matches!(element.clip, ClipMode::None) {
             element.clip = ui.theme.panel_clip;
         }
-        let node = ui.node(element, body);
+        let node = match chrome {
+            Some(c) => ui.node_with_chrome(element, c, body),
+            None => ui.node(element, body),
+        };
         let state = ui.response_for(id);
         Response { node, id, state }
     }
