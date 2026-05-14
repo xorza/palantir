@@ -23,7 +23,7 @@ rustc-hash = "*"
 tracing = "*"
 pollster = "*"
 thiserror = "*"
-wgpu = "*"
+wgpu = { version = "*", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12"] }
 winit = "*"
 rayon = "*"
 padding-struct = "*"
