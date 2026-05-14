@@ -57,13 +57,18 @@ pub(crate) struct ContextMenuState {
 pub struct ContextMenu {
     for_id: WidgetId,
     element: Element,
+    chrome: Option<crate::primitives::background::Background>,
 }
 
 impl ContextMenu {
     pub fn for_id(for_id: WidgetId) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
         element.sense = Sense::CLICK;
-        Self { for_id, element }
+        Self {
+            for_id,
+            element,
+            chrome: None,
+        }
     }
 
     /// Derive `for_id` from a trigger widget's response, and auto-open
@@ -106,9 +111,6 @@ impl ContextMenu {
 
         let mut e = self.element;
         e.set_id(body_id);
-        if e.chrome.is_none() {
-            e.chrome = Some(theme.panel);
-        }
         if e.padding == Spacing::ZERO {
             e.padding = theme.padding;
         }
@@ -118,6 +120,7 @@ impl ContextMenu {
 
         let mut popup = Popup::anchored_to(clamped).click_outside(ClickOutside::Dismiss);
         *popup.element_mut() = e;
+        popup.chrome = self.chrome.or(Some(theme.panel));
         let PopupResponse {
             dismissed,
             close_requested: item_clicked,
@@ -235,14 +238,14 @@ impl MenuItem {
         element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
         element.align = Align::h(HAlign::Stretch);
         element.margin = Spacing::xy(0.0, 4.0);
-        element.chrome = Some(Background {
+        let chrome = Background {
             fill: ui.theme.context_menu.separator.into(),
             stroke: Stroke::ZERO,
             radius: Corners::ZERO,
             shadow: Shadow::NONE,
-        });
+        };
         let id = element.id;
-        let node = ui.node(element, |_| {});
+        let node = ui.node_with_chrome(element, chrome, |_| {});
         let state = ui.response_for(id);
         Response { node, id, state }
     }
@@ -269,7 +272,6 @@ impl MenuItem {
         element.align = Align::h(HAlign::Stretch);
         element.justify = Justify::SpaceBetween;
         element.padding = padding;
-        element.chrome = look_bg;
         element.gap = 16.0;
 
         let label = self.label;
@@ -281,7 +283,8 @@ impl MenuItem {
         let shortcut_fired = shortcut.is_some_and(|s| !disabled && ui.shortcut_pressed(s));
         let shortcut_label = shortcut.map(|s| s.label());
 
-        let node = ui.node(element, |ui| {
+        let family = text_style.family;
+        let body = |ui: &mut Ui| {
             let mut label_el = Element::new(LayoutMode::Leaf);
             label_el.set_id(id.with("label"));
             label_el.size = (Sizing::Hug, Sizing::Hug).into();
@@ -294,7 +297,7 @@ impl MenuItem {
                     line_height_px,
                     wrap: TextWrap::Single,
                     align: crate::layout::types::align::Align::default(),
-                    family: text_style.family,
+                    family,
                 });
             });
             if let Some(s) = shortcut_label {
@@ -310,11 +313,15 @@ impl MenuItem {
                         line_height_px,
                         wrap: TextWrap::Single,
                         align: crate::layout::types::align::Align::default(),
-                        family: text_style.family,
+                        family,
                     });
                 });
             }
-        });
+        };
+        let node = match look_bg {
+            Some(c) => ui.node_with_chrome(element, c, body),
+            None => ui.node(element, body),
+        };
 
         let mut state = ui.response_for(id);
         if shortcut_fired {

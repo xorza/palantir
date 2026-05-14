@@ -613,11 +613,11 @@ impl<'a> TextEdit<'a> {
         // `-scroll` so the caret/text/selection wash track the
         // visible viewport; the editor's `ClipMode::Rect` (set in
         // `new()`) scissors anything that slips past the edge.
-        let mut element = self.element;
-        element.chrome = Some(look.background);
+        let element = self.element;
+        let chrome = look.background;
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
-        let resp_node = ui.node(element, |ui| {
+        let resp_node = ui.node_with_chrome(element, chrome, |ui| {
             // Selection highlight, painted *before* the text so glyphs
             // sit on top of the wash. Only when focused and a range is
             // actually live (anchor != caret — collapsed selections are

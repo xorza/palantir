@@ -84,6 +84,7 @@ pub struct Popup {
     anchor: Vec2,
     click_outside: ClickOutside,
     element: Element,
+    pub(crate) chrome: Option<crate::primitives::background::Background>,
 }
 
 impl Popup {
@@ -95,11 +96,20 @@ impl Popup {
             anchor,
             click_outside: ClickOutside::Dismiss,
             element,
+            chrome: None,
         }
     }
 
     pub fn click_outside(mut self, m: ClickOutside) -> Self {
         self.click_outside = m;
+        self
+    }
+
+    /// Paint chrome (fill / stroke / corner radius / shadow). `None`
+    /// is the default; theme fallback in [`Self::show`] fills it in
+    /// from `ui.theme.panel_background` when unset.
+    pub fn background(mut self, bg: crate::primitives::background::Background) -> Self {
+        self.chrome = Some(bg);
         self
     }
 
@@ -116,15 +126,18 @@ impl Popup {
                 .show(ui);
         });
         let mut element = self.element;
-        if element.chrome.is_none() {
-            element.chrome = ui.theme.panel_background;
-        }
+        let chrome = self.chrome.or(ui.theme.panel_background);
         if matches!(element.clip, ClipMode::None) {
             element.clip = ui.theme.panel_clip;
         }
         let handle = PopupHandle::new();
-        ui.layer(Layer::Popup, self.anchor, None, |ui| {
-            ui.node(element, |ui| body(ui, &handle));
+        ui.layer(Layer::Popup, self.anchor, None, |ui| match chrome {
+            Some(c) => {
+                ui.node_with_chrome(element, c, |ui| body(ui, &handle));
+            }
+            None => {
+                ui.node(element, |ui| body(ui, &handle));
+            }
         });
         let eater_clicked = ui.response_for(eater_id).clicked;
         PopupResponse {

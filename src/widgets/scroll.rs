@@ -219,15 +219,20 @@ fn push_bar_nodes(
         .into();
     track.position = plan.track_rect.min;
     track.sense = Sense::CLICK;
-    if theme.track.a > 0.0 {
-        track.chrome = Some(Background {
-            fill: theme.track.into(),
-            stroke: Stroke::ZERO,
-            radius,
-            shadow: Shadow::NONE,
-        });
+    if !theme.track.is_noop() {
+        ui.node_with_chrome(
+            track,
+            Background {
+                fill: theme.track.into(),
+                stroke: Stroke::ZERO,
+                radius,
+                shadow: Shadow::NONE,
+            },
+            |_| {},
+        );
+    } else {
+        ui.node(track, |_| {});
     }
-    ui.node(track, |_| {});
 
     let fill = if resp.drag_delta.is_some() || resp.pressed {
         theme.thumb_active
@@ -245,13 +250,16 @@ fn push_bar_nodes(
         .into();
     thumb.position = plan.thumb_rect.min;
     thumb.sense = Sense::DRAG;
-    thumb.chrome = Some(Background {
-        fill: fill.into(),
-        stroke: Stroke::ZERO,
-        radius,
-        shadow: Shadow::NONE,
-    });
-    ui.node(thumb, |_| {});
+    ui.node_with_chrome(
+        thumb,
+        Background {
+            fill: fill.into(),
+            stroke: Stroke::ZERO,
+            radius,
+            shadow: Shadow::NONE,
+        },
+        |_| {},
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +291,7 @@ fn push_bar_nodes(
 pub struct Scroll {
     element: Element,
     zoom: Option<ZoomConfig>,
+    chrome: Option<Background>,
 }
 
 impl Scroll {
@@ -312,6 +321,7 @@ impl Scroll {
         Self {
             element,
             zoom: None,
+            chrome: None,
         }
     }
 
@@ -653,7 +663,7 @@ impl Scroll {
         inner.line_gap = self.element.line_gap;
         inner.justify = self.element.justify;
         inner.child_align = self.element.child_align;
-        inner.chrome = self.element.chrome;
+        let inner_chrome = self.chrome;
         // Scroll is always clipped — `with_axes` set `ClipMode::Rect`
         // by default; if the caller upgraded to `Rounded` via
         // `Configure::clip_rounded`, that wins.
@@ -701,7 +711,14 @@ impl Scroll {
         );
 
         let outer_node = ui.node(outer, |ui| {
-            ui.node(inner, |ui| body(ui));
+            match inner_chrome {
+                Some(c) => {
+                    ui.node_with_chrome(inner, c, |ui| body(ui));
+                }
+                None => {
+                    ui.node(inner, |ui| body(ui));
+                }
+            }
             // Bar overlay: Canvas sibling of inner, Fill on both axes
             // → covers outer's full rect. Tracks attach as shapes on
             // the overlay (paint first); thumbs are Sense::DRAG leaves
@@ -728,6 +745,15 @@ impl Scroll {
             id,
             state: resp_state,
         }
+    }
+}
+
+impl Scroll {
+    /// Paint chrome for the inner scroll surface (background under
+    /// children, painted before the scrollbar overlay).
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
     }
 }
 

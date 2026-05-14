@@ -27,9 +27,7 @@ use crate::layout::types::{
     justify::Justify, sizing::Sizes,
 };
 use crate::primitives::widget_id::WidgetId;
-use crate::primitives::{
-    background::Background, size::Size, spacing::Spacing, transform::TranslateScale,
-};
+use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
 use glam::Vec2;
 
 /// How a node arranges its children. Stored on `Element::mode` and read by
@@ -333,12 +331,13 @@ pub struct Element {
     /// (radius derived from `chrome.radius` in `Tree::open_node`).
     /// `None` = no clip. No effect on layout.
     pub(crate) clip: ClipMode,
-    /// Optional paint chrome (fill, stroke, corner radius). Authored
-    /// via `Configure::background`. `Tree::open_node` filters
-    /// invisible paint to `None` and stashes the radius into a
-    /// dedicated `clip_radius` column when `clip` is `Rounded` so
-    /// the encoder reads paint and mask info as independent plumbing.
-    pub(crate) chrome: Option<Background>,
+    // Paint chrome (`Option<Background>`, ~232 B) used to live here.
+    // Hoisted out to a side-channel passed to
+    // `Ui::node(element, chrome, ...)` so the hot `Element` copy in
+    // widget `show()` shrinks from ~360 B to ~128 B. Widgets that
+    // support a paintable chrome carry their own
+    // `chrome: Option<Background>` field and impl
+    // `Configure::chrome_mut` so `Configure::background` writes there.
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any
     /// ancestor transform; descendants render and hit-test in the world
@@ -358,7 +357,6 @@ pub(crate) struct ElementColumns {
     pub(crate) attrs: NodeFlags,
     pub(crate) bounds: BoundsExtras,
     pub(crate) panel: PanelExtras,
-    pub(crate) chrome: Option<Background>,
 }
 
 impl Element {
@@ -390,7 +388,6 @@ impl Element {
             focusable: false,
             visibility: Visibility::Visible,
             clip: ClipMode::None,
-            chrome: None,
             transform: None,
         }
     }
@@ -439,7 +436,6 @@ impl Element {
                 justify: self.justify,
                 child_align: self.child_align,
             },
-            chrome: self.chrome,
         }
     }
 }
@@ -606,16 +602,6 @@ pub trait Configure: Sized {
     /// Shorthand for [`Visibility::Collapsed`]: skip the node entirely (zero slot).
     fn collapsed(self) -> Self {
         self.visibility(Visibility::Collapsed)
-    }
-
-    /// Paint chrome (fill, stroke, corner radius). `Tree::open_node`
-    /// drops invisible paint to `None` and stashes the radius into
-    /// the encoder's `clip_radius` column when this node also calls
-    /// [`Self::clip_rounded`], so the encoder doesn't run a noop
-    /// guard at draw time.
-    fn background(mut self, bg: Background) -> Self {
-        self.element_mut().chrome = Some(bg);
-        self
     }
 
     /// Generic clip setter. Most callers use the [`Self::clip_rect`]
